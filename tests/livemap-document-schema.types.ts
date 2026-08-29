@@ -195,7 +195,7 @@ hson.liveMap.schema.define((s) => {
   return s.tuple(s.repeat(s.string));
 });
 hson.liveMap.schema.define((s) => {
-  // @ts-expect-error Projected object schemas cannot contain document elements.
+  // @ts-expect-error Data object schemas cannot contain document elements.
   return s.object.exact({ child: s.div() });
 });
 hson.liveMap.schema.define((s) => {

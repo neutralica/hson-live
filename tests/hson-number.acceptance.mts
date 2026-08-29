@@ -24,14 +24,14 @@ function error_details(fn: () => unknown): { operation: unknown; code: unknown }
     fn();
   } catch (error) {
     if (typeof error !== "object" || error === null) {
-      assert.fail("expected an object-shaped structured HSON error");
+      assert.fail("expected an object-shaped structured Hson error");
     }
     return {
       operation: Reflect.get(error, "operation"),
       code: Reflect.get(error, "code"),
     };
   }
-  assert.fail("expected a structured HSON admission error");
+  assert.fail("expected a structured Hson admission error");
 }
 
 function runtimeCalc(value: unknown): unknown {
@@ -60,10 +60,10 @@ function authored_error_details(source: string) {
     hson.fromHson(source).toNode();
   } catch (error) {
     const details = read_transform_error_details(error);
-    assert.ok(details, `expected a structured authored-HSON error for ${source}`);
+    assert.ok(details, `expected a structured authored-Hson error for ${source}`);
     return details;
   }
-  assert.fail(`expected authored HSON to reject: ${source}`);
+  assert.fail(`expected authored Hson to reject: ${source}`);
 }
 
 const accepted = [
@@ -113,7 +113,7 @@ check("both calc surfaces preserve a directly admitted negative zero exactly", (
   assert.equal(Object.is(hson.transform.calc(-0), -0), true);
 });
 
-check("authored HSON accepts every settled JSON-number lexical branch", () => {
+check("authored Hson accepts every settled JSON-number lexical branch", () => {
   for (const [source, value, canonical] of [
     ["0", 0, "0"],
     ["-0", -0, "-0"],
@@ -140,7 +140,7 @@ check("authored HSON accepts every settled JSON-number lexical branch", () => {
   }
 });
 
-check("authored HSON leading zeroes reject at the second integer digit", () => {
+check("authored Hson leading zeroes reject at the second integer digit", () => {
   for (const [source, index, column] of [["01", 1, 2], ["00", 1, 2], ["-01", 2, 3]] as const) {
     assert.deepEqual(authored_error_details(source), {
       operation: "tokenize-hson",
@@ -151,7 +151,7 @@ check("authored HSON leading zeroes reject at the second integer digit", () => {
   }
 });
 
-check("authored HSON leading plus signs reject at the sign", () => {
+check("authored Hson leading plus signs reject at the sign", () => {
   for (const source of ["+1", "+0", "+1.5", "+1e3"] as const) {
     assert.deepEqual(authored_error_details(source), {
       operation: "tokenize-hson",
@@ -300,7 +300,7 @@ check("Promise results are rejected synchronously and are not awaited", () => {
   });
 });
 
-check("authored HSON, JSON values, and raw nodes share finite admission", () => {
+check("authored Hson, JSON values, and raw nodes share finite admission", () => {
   const authored = hson.fromHson(`<value -0>`).toNode();
   assert.equal(Object.is(first_number(authored), -0), true);
   const json = hson.fromJson(-0).toNode();
@@ -328,5 +328,5 @@ check("transport carries ordinary numbers and requires fresh admission proof", (
   assert.equal(runtimeCalc(decoded), admitted);
 });
 
-process.stdout.write(`# ${checks} HSON numeric admission checks passed\n`);
+process.stdout.write(`# ${checks} Hson numeric admission checks passed\n`);
 emit_hson_live_test_completion("core.hson-number", checks, checks, 0);

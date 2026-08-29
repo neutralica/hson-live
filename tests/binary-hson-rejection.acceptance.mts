@@ -309,7 +309,7 @@ await check("an actual Worker has byte, decode/encode, and SHA parity", async ()
     worker.once("message", resolve);
     worker.once("error", reject);
     worker.once("exit", (code) => {
-      if (code !== 0) reject(new Error(`Binary HSON Worker exited with code ${code}`));
+      if (code !== 0) reject(new Error(`Binary Hson Worker exited with code ${code}`));
     });
   });
   assert.deepEqual(Uint8Array.from(result.bytes), GOLDEN_NESTED);

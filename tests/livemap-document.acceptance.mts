@@ -97,7 +97,7 @@ check("malformed and unsupported canonical roots are rejected with causes", () =
   assert.throws(
     () => hson.liveMap.fromNode({ $_tag: "_hson_root", $_content: [1] }),
     (error) => error instanceof Error
-      && error.message.includes("malformed canonical HSON root")
+      && error.message.includes("malformed canonical Hson root")
       && error.cause instanceof Error,
   );
   assert.throws(
@@ -247,11 +247,11 @@ check("duplicate and malformed persisted document QUIDs are rejected", () => {
   if (div !== undefined) div.$_meta = { quid: 42 as unknown as string };
   assert.throws(
     () => hson.liveMap.fromNode(malformed),
-    /malformed canonical HSON root/,
+    /malformed canonical Hson root/,
   );
 });
 
-check("document runtime façade omits projected data APIs", () => {
+check("document runtime façade omits data data APIs", () => {
   const element = hson.liveMap.fromHson(`<button "Save"/>`);
   const fragment = hson.liveMap.fromHson(`<button/> <button/>`);
   for (const map of [element, fragment]) {

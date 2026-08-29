@@ -14,7 +14,7 @@ export type Fmt = "json" | "html" | "hson";
  */
 export type SourceFormat = Fmt | "auto" | "node" | "dom";
 /**
- * Direction of traversal around the JSON ↔ HTML ↔ HSON ring.
+ * Direction of traversal around the JSON ↔ HTML ↔ Hson ring.
  */
 export type LoopDir = "cw" | "ccw";
 /**

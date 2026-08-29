@@ -26,18 +26,18 @@ import {
 } from "../utils/json-utils/ordered-json.js";
 
 /**
- * Serialize a well-formed HSON tree to JSON text.
+ * Serialize a well-formed Hson tree to JSON text.
  *
  * Pipeline:
  * 1. Clone & validate:
  *    - `clone_node($node)` creates a defensive copy so the original IR is not
  *      mutated by any downstream fixes or assertions.
  *    - `assert_invariants(clone, "serialize_json")` guarantees the node
- *      satisfies all structural invariants expected of HSON 2.0 before
+ *      satisfies all structural invariants expected of Hson 2.0 before
  *      attempting to emit JSON.
  *
  * 2. Structural conversion:
- *    - Projects the HSON tree into an internal ordered JSON representation,
+ *    - Projects the Hson tree into an internal ordered JSON representation,
  *      resolving:
  *        - VSNs (`_hson_root`, `_hson_obj`, `_hson_arr`, `_hson_elem`, `_hson_ii`, `_hson_str`, `_hson_val`)
  *        - Standard tags (HTML-like and user-defined)
@@ -58,9 +58,9 @@ import {
  * - Input must be a valid `HsonNode` that passes invariants, or an error is
  *   thrown.
  * - Output is a JSON string representing the same logical data that produced
- *   the HSON tree (modulo the established HSON-to-JSON mapping rules).
+ *   the Hson tree (modulo the established Hson-to-JSON mapping rules).
  *
- * @param $node - The root HSON node to serialize.
+ * @param $node - The root Hson node to serialize.
  * @returns A JSON string representation of the node.
  * @throws If invariants fail or final JSON emission fails.
  */
@@ -178,7 +178,7 @@ function orderedJsonFromNode(node: HsonNode): OrderedProjectedValue {
  * Serialize the JSON projection without collapsing IEEE-754 negative zero.
  *
  * `JSON.stringify(-0)` emits `0`, even though `-0` is a valid JSON numeric
- * spelling and canonical HSON graph equality distinguishes the two runtime
+ * spelling and canonical Hson graph equality distinguishes the two runtime
  * values. The transport therefore owns its numeric emission rather than
  * delegating numbers to `JSON.stringify`.
  */
@@ -215,7 +215,7 @@ export function serialize_json_value(value: JsonValue, depth = 0): string {
         + `\n${indent}}`;
 }
 
-/** Project a canonical HSON graph directly to its in-memory JSON value. */
+/** Project a canonical Hson graph directly to its in-memory JSON value. */
 export function json_value_from_node($node: HsonNode): JsonValue {
     // JSON projection is still a canonical HsonNode egress boundary even
     // though projected application JSON intentionally omits node identity.
@@ -249,7 +249,7 @@ function collapse_redundant_roots(node: HsonNode): HsonNode {
 }
 
 /**
- * Recursively convert a HSON node into the public in-memory `JsonValue`.
+ * Recursively convert a Hson node into the public in-memory `JsonValue`.
  *
  * This converter backs `.toJson().value()`. JSON text serialization uses the
  * ordered internal projection above so integer-index property names never
@@ -320,10 +320,10 @@ function collapse_redundant_roots(node: HsonNode): HsonNode {
  *   structural expectations are met (e.g., `_hson_root` has exactly one child,
  *   `_hson_ii` has exactly one child, etc.).
  *
- * @param node - The HSON node to convert.
+ * @param node - The Hson node to convert.
  * @returns A `JsonValue` (object, array, or primitive) suitable for
  *   `JSON.stringify`.
- * @throws If the node shape violates HSON invariants or contains unknown
+ * @throws If the node shape violates Hson invariants or contains unknown
  *   VSN-like tags.
  */
 function jsonFromNode(node: HsonNode): JsonValue {

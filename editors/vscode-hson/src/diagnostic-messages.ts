@@ -12,7 +12,7 @@ export function diagnosticSubject(name: string | number | undefined, attribute: 
 // Trusted capture associates a scalar with one substitution expression.
 // Attached to that expression, not its evaluated characters or literal segments.
 export function substitutionEvaluation(kind: string): string {
-  return `This expression evaluated to ${kind === "null" ? "HSON null" : `an HSON ${kind}`}`;
+  return `This expression evaluated to ${kind === "null" ? "Hson null" : `an Hson ${kind}`}`;
 }
 
 // TYPE_MISMATCH belongs to a captured substitution expression.
@@ -51,13 +51,13 @@ export function requiredFlagMissing(name: string | undefined): string {
   return `Required flag \`${name}\` is missing.`;
 }
 
-// MISSING_REQUIRED covers projected members, tuple positions and document gaps.
+// MISSING_REQUIRED covers data members, tuple positions and document gaps.
 // Anchored to existing parent source; the path does not describe a complex child.
 export function requiredValueMissing(subject: string): string {
   return `Required ${subject} is missing.`;
 }
 
-// UNKNOWN_KEY identifies a projected member or an ordinary attribute.
+// UNKNOWN_KEY identifies a data member or an ordinary attribute.
 // Usually on its name; the issue does not carry the full allowed-key set.
 export function exactMemberUnknown(subject: string): string {
   return `${subject} is not allowed by this exact Schema.`;
@@ -79,7 +79,7 @@ export function literalMismatch(subject: string, expected: string | undefined, r
 // TYPE_MISMATCH has recognized primitive/container kind descriptions on both sides.
 // Usually on the value; attributes remain strings even when authored unquoted.
 export function primitiveTypeMismatch(subject: string, expected: string, received: string): string {
-  return `Expected ${subject} to be ${expected === "null" ? "null" : `${expected === "object" || expected === "array" ? "an" : "a"} ${expected}`}, but this value is an HSON ${received}.`;
+  return `Expected ${subject} to be ${expected === "null" ? "null" : `${expected === "object" || expected === "array" ? "an" : "a"} ${expected}`}, but this value is an Hson ${received}.`;
 }
 
 // TYPE_MISMATCH lacks two recognized kind descriptions (including root/pick errors).
@@ -121,16 +121,16 @@ export function schemaRequestRelated(call: "validate" | "map.schema.use", label:
 // TransformError contains a related source role whose offset maps successfully.
 // Related range points at that source token; role names are inherited, not inferred.
 export function hsonSourceRelated(role: string): string {
-  return `Related HSON source (${role}).`;
+  return `Related Hson source (${role}).`;
 }
 
 // The standalone/static adapter has Transform details but no local Error instance.
 // Uses point/EOF or whole-source fallback; real local TransformErrors pass verbatim.
-export const hsonValidationFailed = "HSON validation failed.";
+export const hsonValidationFailed = "Hson validation failed.";
 
 // The tagged admission adapter has Transform details but no local Error instance.
 // Uses literal point/EOF or body fallback; this is not a new admission rule.
-export const hsonAdmissionFailed = "HSON admission failed.";
+export const hsonAdmissionFailed = "Hson admission failed.";
 
 // The trusted client caught a non-Error value while validating.
 // Status tooltip only; no source diagnostic or exception detail is invented.
@@ -143,7 +143,7 @@ export const runtimeFailed = "Runtime failed.";
 // The active document's status is displayed, defaulting to off without a record.
 // Status-bar text only; absence of errors must not imply validation success.
 export function schemaStatusLabel(status: SchemaStatus | undefined): string {
-  return `HSON Schema: ${status ?? "off"}`;
+  return `Hson Schema: ${status ?? "off"}`;
 }
 
 // Current source was checked against trusted runtime evidence.
@@ -163,7 +163,7 @@ export function schemaStatusTooltip(status: SchemaStatus | undefined, message?: 
 // Syntax production threw outside the recognized TransformError path.
 // Extension-host console only; the underlying error is logged separately.
 export function unexpectedDiagnosticsFailure(fileName: string): string {
-  return `HSON diagnostics failed for ${fileName}`;
+  return `Hson diagnostics failed for ${fileName}`;
 }
 
 // Measured trusted validation end-to-end time is at least two seconds.
@@ -173,9 +173,9 @@ export const slowSchemaRequest = "Slow trusted diagnostic request (>= 2 seconds)
 // A completion candidate provides its core-owned detail description.
 // Completion menu only, not a diagnostic; the description passes through verbatim.
 export function schemaCompletionDetail(detail: string): string {
-  return `HSON Schema: ${detail}`;
+  return `Hson Schema: ${detail}`;
 }
 
 // The packaged grammar registry returned no grammar after loading its resources.
 // Infrastructure error only; not an authored syntax error or a color-setting change.
-export const missingPackagedGrammar = "Missing packaged HSON grammar";
+export const missingPackagedGrammar = "Missing packaged Hson grammar";

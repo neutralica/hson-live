@@ -263,7 +263,7 @@ check("dangerous names are ordinary distinct ordered carrier keys", () => {
   );
   assert.throws(
     () => ordered_projected_object([["same", 1], ["same", 2]]),
-    /Duplicate ordered projected object key/,
+    /Duplicate ordered data object key/,
   );
 });
 

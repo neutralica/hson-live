@@ -27,7 +27,7 @@ export type DisposeNodeDeepResult = Readonly<{
 }>;
 
 /**
- * Terminally dispose a complete HSON subtree.
+ * Terminally dispose a complete Hson subtree.
  *
  * Parent-graph unlinking remains the caller's responsibility. Unlike
  * `detach_node_deep`, this operation destroys QUID identity and marks all node

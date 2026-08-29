@@ -6,7 +6,7 @@ import type { LocusActionPayloads } from "./locus.protocol.types.js";
 import type { LocusCanonicalCommit } from "./locus.representation.types.js";
 import type { LocusIncarnationId, LocusLogicalMapId } from "./locus.shared.types.js";
 
-/** Stable persisted map-kind discriminant. Projected data is reserved for a later codec. */
+/** Stable persisted map-kind discriminant. Data data is reserved for a later codec. */
 export type LocusPersistedMapKind = "document" | "projected-data";
 
 export type LocusPersistedViewState = Readonly<{

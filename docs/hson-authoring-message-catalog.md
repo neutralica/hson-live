@@ -1,16 +1,16 @@
-# HSON authoring diagnostic language review catalog
+# Hson authoring diagnostic language review catalog
 
 This is the copy-review surface, not a proposed language redesign. Edit prose in [the editor bank](../editors/vscode-hson/src/diagnostic-messages.ts), then consciously update its exact tests and this catalog. Core/runtime-owned strings stay at their listed owners. No public API, protocol, provenance, validation rule, code action, or color styling is changed by this pass.
 
 Each `bank.*` ID is the exact exported formatter/constant name. Each entry gives the trigger, range and limitation from its immediately preceding source comment, plus authoring/Schema context and fix classification. Rendered text blocks preserve capitalization, punctuation and leading spaces. Fragments are not standalone diagnostic sentences. Missing-evidence probes do not claim that current validators emit those combinations.
 
-Current HSON syntax: `<age 37 name "Ada">` is a projected object, `[1, "x"]` an array, `<button disabled/>` a document element, and `<main <button/>/>` nested content. Object members are NOT separate sibling angle pairs. In Schema examples, `define` means `hson.liveMap.schema.define`; `s` is its callback parameter. Trusted examples use a registered binding and `HSON.validate(ReviewSchema, value)` unless stated otherwise.
+Current Hson syntax: `<age 37 name "Ada">` is a data object, `[1, "x"]` an array, `<button disabled/>` a document element, and `<main <button/>/>` nested content. Object members are NOT separate sibling angle pairs. In Schema examples, `define` means `hson.liveMap.schema.define`; `s` is its callback parameter. Trusted examples use a registered binding and `Hson.validate(ReviewSchema, value)` unless stated otherwise.
 
 Precision: “exact” means a mapped span, not necessarily a single offending token. Syntax uses legacy `point`/`eof`, described as exact point/EOF; `fallback` is unresolved body/document coverage. Substitutions use `substitution-expression`: exact host expression span with semantic, NOT character-exact evaluated-value attribution. Anchors refer to existing closes/names/coverage. Infrastructure has no source squiggle. Successful exact placement adds no prose.
 
 Future fixes only: safe = deterministic under the stated strict conditions; suggestion only = requires intent or can destroy information; none = no general authored-text repair. No fixes are implemented.
 
-## 1. HSON syntax and admission
+## 1. Hson syntax and admission
 
 ### bank.hsonValidationFailed
 
@@ -27,7 +27,7 @@ Future fixes only: safe = deterministic under the stated strict conditions; sugg
 Variant `fallback`:
 
 ```text
-HSON validation failed.
+Hson validation failed.
 ```
 
 ### bank.hsonAdmissionFailed
@@ -35,7 +35,7 @@ HSON validation failed.
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:133](../editors/vscode-hson/src/diagnostic-messages.ts#L133).
 - Trigger / placement / semantic limit: The tagged admission adapter has Transform details but no local Error instance. Uses literal point/EOF or body fallback; this is not a new admission rule.
-- Authored example: ``HSON`<age 1>```.
+- Authored example: ``Hson`<age 1>```.
 - Schema / infrastructure condition: `none; synthetic adapter fallback`.
 - Precision: unresolved (or literal point/EOF with details).
 - Related: none unless Transform source roles map
@@ -45,10 +45,10 @@ HSON validation failed.
 Variant `fallback`:
 
 ```text
-HSON admission failed.
+Hson admission failed.
 ```
 
-## 2. Projected Schema — values and members
+## 2. Data Schema — values and members
 
 ### bank.diagnosticSubject
 
@@ -101,44 +101,44 @@ attribute `count`
 Variant `number`:
 
 ```text
-Expected `age` to be a number, but this value is an HSON string.
+Expected `age` to be a number, but this value is an Hson string.
 ```
 
 Variant `string`:
 
 ```text
-Expected `name` to be a string, but this value is an HSON number.
+Expected `name` to be a string, but this value is an Hson number.
 ```
 
 Variant `array`:
 
 ```text
-Expected this value to be an array, but this value is an HSON object.
+Expected this value to be an array, but this value is an Hson object.
 ```
 
 Variant `object`:
 
 ```text
-Expected this value to be an object, but this value is an HSON array.
+Expected this value to be an object, but this value is an Hson array.
 ```
 
 Variant `null`:
 
 ```text
-Expected this value to be null, but this value is an HSON boolean.
+Expected this value to be null, but this value is an Hson boolean.
 ```
 
 Variant `boolean`:
 
 ```text
-Expected this value to be a boolean, but this value is an HSON null.
+Expected this value to be a boolean, but this value is an Hson null.
 ```
 
 ### bank.requiredValueMissing
 
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:56](../editors/vscode-hson/src/diagnostic-messages.ts#L56).
-- Trigger / placement / semantic limit: MISSING_REQUIRED covers projected members, tuple positions and document gaps. Anchored to existing parent source; the path does not describe a complex child.
+- Trigger / placement / semantic limit: MISSING_REQUIRED covers data members, tuple positions and document gaps. Anchored to existing parent source; the path does not describe a complex child.
 - Authored example: ``<>; [1]; <main/>; <button/>``.
 - Schema / infrastructure condition: `s.object({age:s.number}); s.tuple(s.number,s.string); s.main(s.button()); s.button(s.attrs({id:s.string}))`.
 - Precision: anchor.
@@ -162,7 +162,7 @@ Required `1` is missing.
 
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:62](../editors/vscode-hson/src/diagnostic-messages.ts#L62).
-- Trigger / placement / semantic limit: UNKNOWN_KEY identifies a projected member or an ordinary attribute. Usually on its name; the issue does not carry the full allowed-key set.
+- Trigger / placement / semantic limit: UNKNOWN_KEY identifies a data member or an ordinary attribute. Usually on its name; the issue does not carry the full allowed-key set.
 - Authored example: ``<extra 1>; <button extra="x"/>``.
 - Schema / infrastructure condition: `s.object.exact({}); s.button(s.attrs.exact({}))`.
 - Precision: exact.
@@ -182,7 +182,7 @@ Variant `attribute`:
 attribute `extra` is not allowed by this exact Schema.
 ```
 
-## 3. Projected Schema — tuples, literals, alternatives
+## 3. Data Schema — tuples, literals, alternatives
 
 ### bank.literalMismatch
 
@@ -223,7 +223,7 @@ Expected this value to equal undefined; found undefined.
 Variant `root`:
 
 ```text
-Expected this value: fragment document root; received projected root.
+Expected this value: fragment document root; received data root.
 ```
 
 Variant `fallback`:
@@ -339,7 +339,7 @@ Variant `empty-label`:
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:14](../editors/vscode-hson/src/diagnostic-messages.ts#L14).
 - Trigger / placement / semantic limit: Trusted capture associates a scalar with one substitution expression. Attached to that expression, not its evaluated characters or literal segments.
-- Authored example: ``HSON`<age ${age}>` with age = "37"``.
+- Authored example: ``Hson`<age ${age}>` with age = "37"``.
 - Schema / infrastructure condition: `s.object({age:s.number})`.
 - Precision: exact expression span, semantic (not character-exact evaluated token).
 - Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
@@ -349,19 +349,19 @@ Variant `empty-label`:
 Variant `string`:
 
 ```text
-This expression evaluated to an HSON string
+This expression evaluated to an Hson string
 ```
 
 Variant `null`:
 
 ```text
-This expression evaluated to HSON null
+This expression evaluated to Hson null
 ```
 
 Variant `fallback`:
 
 ```text
-This expression evaluated to an HSON value
+This expression evaluated to an Hson value
 ```
 
 ### bank.substitutionTypeMismatch
@@ -369,23 +369,23 @@ This expression evaluated to an HSON value
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:20](../editors/vscode-hson/src/diagnostic-messages.ts#L20).
 - Trigger / placement / semantic limit: TYPE_MISMATCH belongs to a captured substitution expression. Expected is the existing Schema description, not a reconstructed contract.
-- Authored example: ``HSON`<age ${age}>` with age = "37"``.
+- Authored example: ``Hson`<age ${age}>` with age = "37"``.
 - Schema / infrastructure condition: `s.object({age:s.number})`.
 - Precision: exact expression span, semantic.
 - Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
 - Future fix: suggestion only.
-- Evidence limitations: Producing expression is not a string-literal HSON token; unquoting it is not a general safe repair.
+- Evidence limitations: Producing expression is not a string-literal Hson token; unquoting it is not a general safe repair.
 
 Variant `number`:
 
 ```text
-This expression evaluated to an HSON string, but the Schema requires number here.
+This expression evaluated to an Hson string, but the Schema requires number here.
 ```
 
 Variant `fallback`:
 
 ```text
-This expression evaluated to HSON null, but the Schema requires a different value here.
+This expression evaluated to Hson null, but the Schema requires a different value here.
 ```
 
 ### bank.substitutionLiteralMismatch
@@ -393,7 +393,7 @@ This expression evaluated to HSON null, but the Schema requires a different valu
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:26](../editors/vscode-hson/src/diagnostic-messages.ts#L26).
 - Trigger / placement / semantic limit: INVALID_LITERAL belongs to a captured substitution expression. The expression range is used; expected may describe several literals as text.
-- Authored example: ``HSON`<state ${state}>` with state = "pending"``.
+- Authored example: ``Hson`<state ${state}>` with state = "pending"``.
 - Schema / infrastructure condition: `s.object({state:s.literal("draft","published")})`.
 - Precision: exact expression span, semantic.
 - Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
@@ -403,13 +403,13 @@ This expression evaluated to HSON null, but the Schema requires a different valu
 Variant `literal`:
 
 ```text
-This expression evaluated to an HSON string, but the Schema requires literal "draft" here.
+This expression evaluated to an Hson string, but the Schema requires literal "draft" here.
 ```
 
 Variant `missing-evidence`:
 
 ```text
-This expression evaluated to an HSON string, but the Schema requires literal undefined here.
+This expression evaluated to an Hson string, but the Schema requires literal undefined here.
 ```
 
 ### bank.substitutionConstraintFailed
@@ -417,7 +417,7 @@ This expression evaluated to an HSON string, but the Schema requires literal und
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:32](../editors/vscode-hson/src/diagnostic-messages.ts#L32).
 - Trigger / placement / semantic limit: A captured substitution fails its predicate after base validation succeeds. The expression range is used; without a label no predicate intent is known.
-- Authored example: ``HSON`<age ${age}>` with age = -1``.
+- Authored example: ``Hson`<age ${age}>` with age = -1``.
 - Schema / infrastructure condition: `s.object({age:s.number.constrain("positive age",n=>n>0)}) / unlabeled`.
 - Precision: exact expression span, semantic.
 - Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
@@ -427,13 +427,13 @@ This expression evaluated to an HSON string, but the Schema requires literal und
 Variant `labeled`:
 
 ```text
-This expression evaluated to an HSON number that does not satisfy constraint “positive age”.
+This expression evaluated to an Hson number that does not satisfy constraint “positive age”.
 ```
 
 Variant `unlabeled`:
 
 ```text
-This expression evaluated to an HSON number that does not satisfy its Schema constraint.
+This expression evaluated to an Hson number that does not satisfy its Schema constraint.
 ```
 
 ### bank.substitutionValidationFailed
@@ -441,7 +441,7 @@ This expression evaluated to an HSON number that does not satisfy its Schema con
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:38](../editors/vscode-hson/src/diagnostic-messages.ts#L38).
 - Trigger / placement / semantic limit: A substitution issue has no specialized wording for its code. Attached to the expression; the code is retained without inferring a repair.
-- Authored example: ``HSON`${value}```.
+- Authored example: ``Hson`${value}```.
 - Schema / infrastructure condition: `synthetic unrecognized issue code for a captured scalar`.
 - Precision: exact expression span, semantic.
 - Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
@@ -451,7 +451,7 @@ This expression evaluated to an HSON number that does not satisfy its Schema con
 Variant `generic`:
 
 ```text
-This expression evaluated to an HSON string that fails Schema validation (INVALID_SCHEMA).
+This expression evaluated to an Hson string that fails Schema validation (INVALID_SCHEMA).
 ```
 
 ## 7. Missing structure / anchored diagnostics
@@ -462,7 +462,7 @@ This expression evaluated to an HSON string that fails Schema validation (INVALI
 - Source: [diagnostic-messages.ts:99](../editors/vscode-hson/src/diagnostic-messages.ts#L99).
 - Trigger / placement / semantic limit: Lowering located existing parent source for absent required structure. Appended on anchor ranges only; it does not claim the missing token exists.
 - Authored example: ``<>; [1]; <main/>``.
-- Schema / infrastructure condition: `required projected member / tuple position / document child`.
+- Schema / infrastructure condition: `required data member / tuple position / document child`.
 - Precision: anchor.
 - Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
 - Future fix: suggestion only (flag may be conditionally safe).
@@ -481,7 +481,7 @@ Variant `anchor`:
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:103](../editors/vscode-hson/src/diagnostic-messages.ts#L103).
 - Trigger / placement / semantic limit: A Schema range could not be mapped truthfully to a character-exact host span. Appended on occurrence-level fallback; static fromHson also uses this legacy text.
-- Authored example: ``HSON`<age "37">`; fromHson('<age "37">')``.
+- Authored example: ``Hson`<age "37">`; fromHson('<age "37">')``.
 - Schema / infrastructure condition: `same mismatch with unavailable/out-of-bounds source evidence`.
 - Precision: unresolved.
 - Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
@@ -499,7 +499,7 @@ Variant `unresolved`:
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:107](../editors/vscode-hson/src/diagnostic-messages.ts#L107).
 - Trigger / placement / semantic limit: A reconstructed-source span crosses more than one interpolation origin. The mapped host span is explicitly non-character-exact, even if offsets exist.
-- Authored example: ``HSON`<a ${a} b ${b}>```.
+- Authored example: ``Hson`<a ${a} b ${b}>```.
 - Schema / infrastructure condition: `constraint on a container spanning literal and substitution origins`.
 - Precision: unresolved / composite host span.
 - Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
@@ -517,7 +517,7 @@ Variant `composite`:
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:111](../editors/vscode-hson/src/diagnostic-messages.ts#L111).
 - Trigger / placement / semantic limit: A discovered validation association supplies its Schema label and rendered issue. Wraps any precision without adding validation evidence or changing the range.
-- Authored example: ``HSON`<age "37">```.
+- Authored example: ``Hson`<age "37">```.
 - Schema / infrastructure condition: `UserSchema requested by validate/use`.
 - Precision: exact / anchor / unresolved.
 - Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
@@ -537,7 +537,7 @@ Variant `exact`:
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:145](../editors/vscode-hson/src/diagnostic-messages.ts#L145).
 - Trigger / placement / semantic limit: The active document's status is displayed, defaulting to off without a record. Status-bar text only; absence of errors must not imply validation success.
-- Authored example: ``HSON`<age "37">```.
+- Authored example: ``Hson`<age "37">```.
 - Schema / infrastructure condition: `trusted off/waiting/current/stale/ambiguous/unavailable/failed`.
 - Precision: status/infrastructure.
 - Related: none
@@ -547,7 +547,7 @@ Variant `exact`:
 Variant `missing-state`:
 
 ```text
-HSON Schema: off
+Hson Schema: off
 ```
 
 ### bank.currentSchemaStatus
@@ -555,7 +555,7 @@ HSON Schema: off
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:151](../editors/vscode-hson/src/diagnostic-messages.ts#L151).
 - Trigger / placement / semantic limit: Current source was checked against trusted runtime evidence. Status tooltip only; predicates can be stateful and this is not a certificate.
-- Authored example: ``HSON`<age 37>` / HSON`<age "37">```.
+- Authored example: ``Hson`<age 37>` / Hson`<age "37">```.
 - Schema / infrastructure condition: `current valid or invalid registered validation`.
 - Precision: status/infrastructure.
 - Related: none
@@ -573,7 +573,7 @@ Current authored source checked using trusted runtime evidence. Stateful predica
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:155](../editors/vscode-hson/src/diagnostic-messages.ts#L155).
 - Trigger / placement / semantic limit: No current valid/invalid result supplies the default status explanation. Status tooltip only; off/waiting/stale/ambiguous/unavailable/failure share this text.
-- Authored example: ``HSON`<age "37">```.
+- Authored example: ``Hson`<age "37">```.
 - Schema / infrastructure condition: `off/waiting/stale/ambiguous/unavailable/runtime-failed without detail`.
 - Precision: status/infrastructure.
 - Related: none
@@ -591,7 +591,7 @@ Trusted Schema diagnostics require Workspace Trust, explicit enablement, and a c
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:159](../editors/vscode-hson/src/diagnostic-messages.ts#L159).
 - Trigger / placement / semantic limit: An optional runtime message overrides the default status explanation verbatim. Tooltip only; even an empty supplied message is preserved, with no English parsing.
-- Authored example: ``HSON`<age "37">```.
+- Authored example: ``Hson`<age "37">```.
 - Schema / infrastructure condition: `any status, optional runtime-provided message`.
 - Precision: status/infrastructure.
 - Related: none
@@ -629,7 +629,7 @@ Variant `empty-override`:
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:137](../editors/vscode-hson/src/diagnostic-messages.ts#L137).
 - Trigger / placement / semantic limit: The trusted client caught a non-Error value while validating. Status tooltip only; no source diagnostic or exception detail is invented.
-- Authored example: ``HSON`<age 37>```.
+- Authored example: ``Hson`<age 37>```.
 - Schema / infrastructure condition: `client validate catches non-Error`.
 - Precision: status/infrastructure.
 - Related: none
@@ -647,7 +647,7 @@ Trusted Schema runtime failed.
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:141](../editors/vscode-hson/src/diagnostic-messages.ts#L141).
 - Trigger / placement / semantic limit: The diagnostic controller's client promise rejected with a non-Error value. Status tooltip only; this remains distinct from the trusted-client fallback.
-- Authored example: ``HSON`<age 37>```.
+- Authored example: ``Hson`<age 37>```.
 - Schema / infrastructure condition: `controller client promise rejects with non-Error`.
 - Precision: status/infrastructure.
 - Related: none
@@ -675,7 +675,7 @@ Runtime failed.
 Variant `file`:
 
 ```text
-HSON diagnostics failed for /project/user.ts
+Hson diagnostics failed for /project/user.ts
 ```
 
 ### bank.slowSchemaRequest
@@ -701,7 +701,7 @@ Slow trusted diagnostic request (>= 2 seconds); includes cold load if this is th
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:181](../editors/vscode-hson/src/diagnostic-messages.ts#L181).
 - Trigger / placement / semantic limit: The packaged grammar registry returned no grammar after loading its resources. Infrastructure error only; not an authored syntax error or a color-setting change.
-- Authored example: ``HSON`<age 37>```.
+- Authored example: ``Hson`<age 37>```.
 - Schema / infrastructure condition: `registry returned no packaged grammar`.
 - Precision: status/infrastructure.
 - Related: none
@@ -711,7 +711,7 @@ Slow trusted diagnostic request (>= 2 seconds); includes cold load if this is th
 Variant `missing`:
 
 ```text
-Missing packaged HSON grammar
+Missing packaged Hson grammar
 ```
 
 ## 11. Related information / validation-site references
@@ -721,7 +721,7 @@ Missing packaged HSON grammar
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:117](../editors/vscode-hson/src/diagnostic-messages.ts#L117).
 - Trigger / placement / semantic limit: Discovery proved a validate or map.schema.use association for this occurrence. Related range is the call, not the primary diagnostic or Schema declaration.
-- Authored example: ``HSON`<age "37">`; HSON.validate(UserSchema,value); map.schema.use(UserSchema)``.
+- Authored example: ``Hson`<age "37">`; Hson.validate(UserSchema,value); map.schema.use(UserSchema)``.
 - Schema / infrastructure condition: `discovered UserSchema binding`.
 - Precision: exact call range (related information).
 - Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
@@ -755,7 +755,7 @@ Schema requested by this map.schema.use call (UserSchema).
 Variant `first-declaration`:
 
 ```text
-Related HSON source (first-declaration).
+Related Hson source (first-declaration).
 ```
 
 ## 12. Adjacent completion presentation (not validation)
@@ -775,7 +775,7 @@ Related HSON source (first-declaration).
 Variant `detail`:
 
 ```text
-HSON Schema: required member
+Hson Schema: required member
 ```
 
 ## 13. End-to-end review examples — core vs actual editor rendering
@@ -785,11 +785,11 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 ### scenario.number-string
 
 - Category / owner: B core issue; A adapted editor text.
-- Authored HSON: `<age "37">`.
+- Authored Hson: `<age "37">`.
 - Schema: `define(s => s.object({ age: s.number }))`.
 - Trigger: admitted source violates the shown Schema.
 - Precision and related: actual lowerer/presenter values below.
-- Future fix: safe only for an exact projected string scalar whose decoded value admits the required finite primitive; otherwise suggestion only.
+- Future fix: safe only for an exact data string scalar whose decoded value admits the required finite primitive; otherwise suggestion only.
 - Evidence limitation: Only existing code/path/expected/received/attributeName, sidecars and precision are used; no English parsing.
 
 <!-- scenario:number-string -->
@@ -797,7 +797,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 [
   {
     "core": "LiveMap schema expected number at [\"age\"], received string",
-    "message": "[ReviewSchema] Expected `age` to be a number, but this value is an HSON string.",
+    "message": "[ReviewSchema] Expected `age` to be a number, but this value is an Hson string.",
     "precision": "exact",
     "slice": "\"37\"",
     "related": "Schema requested by this validate call (ReviewSchema)."
@@ -808,7 +808,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 ### scenario.string-number
 
 - Category / owner: B core issue; A adapted editor text.
-- Authored HSON: `<name 37>`.
+- Authored Hson: `<name 37>`.
 - Schema: `define(s => s.object({ name: s.string }))`.
 - Trigger: admitted source violates the shown Schema.
 - Precision and related: actual lowerer/presenter values below.
@@ -820,7 +820,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 [
   {
     "core": "LiveMap schema expected string at [\"name\"], received number",
-    "message": "[ReviewSchema] Expected `name` to be a string, but this value is an HSON number.",
+    "message": "[ReviewSchema] Expected `name` to be a string, but this value is an Hson number.",
     "precision": "exact",
     "slice": "37",
     "related": "Schema requested by this validate call (ReviewSchema)."
@@ -831,7 +831,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 ### scenario.missing-member
 
 - Category / owner: B core issue; A adapted editor text.
-- Authored HSON: `<>`.
+- Authored Hson: `<>`.
 - Schema: `define(s => s.object({ age: s.number }))`.
 - Trigger: admitted source violates the shown Schema.
 - Precision and related: actual lowerer/presenter values below.
@@ -854,7 +854,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 ### scenario.unknown-member
 
 - Category / owner: B core issue; A adapted editor text.
-- Authored HSON: `<extra 1>`.
+- Authored Hson: `<extra 1>`.
 - Schema: `define(s => s.object.exact({}))`.
 - Trigger: admitted source violates the shown Schema.
 - Precision and related: actual lowerer/presenter values below.
@@ -877,7 +877,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 ### scenario.finite-literals
 
 - Category / owner: B core issue; A adapted editor text.
-- Authored HSON: `<state "pending">`.
+- Authored Hson: `<state "pending">`.
 - Schema: `define(s => s.object({ state: s.literal("draft", "published") }))`.
 - Trigger: admitted source violates the shown Schema.
 - Precision and related: actual lowerer/presenter values below.
@@ -900,7 +900,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 ### scenario.tuple-missing
 
 - Category / owner: B core issue; A adapted editor text.
-- Authored HSON: `[1]`.
+- Authored Hson: `[1]`.
 - Schema: `define(s => s.tuple(s.number, s.string))`.
 - Trigger: admitted source violates the shown Schema.
 - Precision and related: actual lowerer/presenter values below.
@@ -923,7 +923,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 ### scenario.tuple-extra
 
 - Category / owner: B core issue; A adapted editor text.
-- Authored HSON: `[1, "extra"]`.
+- Authored Hson: `[1, "extra"]`.
 - Schema: `define(s => s.tuple(s.number))`.
 - Trigger: admitted source violates the shown Schema.
 - Precision and related: actual lowerer/presenter values below.
@@ -946,7 +946,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 ### scenario.constraint-labeled
 
 - Category / owner: B core issue; A adapted editor text.
-- Authored HSON: `<age -1>`.
+- Authored Hson: `<age -1>`.
 - Schema: `define(s => s.object({ age: s.number.constrain("positive age", n => n > 0) }))`.
 - Trigger: admitted source violates the shown Schema.
 - Precision and related: actual lowerer/presenter values below.
@@ -969,7 +969,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 ### scenario.constraint-unlabeled
 
 - Category / owner: B core issue; A adapted editor text.
-- Authored HSON: `<age -1>`.
+- Authored Hson: `<age -1>`.
 - Schema: `define(s => s.object({ age: s.number.constrain(n => n > 0) }))`.
 - Trigger: admitted source violates the shown Schema.
 - Precision and related: actual lowerer/presenter values below.
@@ -992,7 +992,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 ### scenario.pick
 
 - Category / owner: B core issue; A adapted editor text.
-- Authored HSON: `true`.
+- Authored Hson: `true`.
 - Schema: `define(s => s.pick(s.string, s.number))`.
 - Trigger: admitted source violates the shown Schema.
 - Precision and related: actual lowerer/presenter values below.
@@ -1015,7 +1015,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 ### scenario.wrong-tag
 
 - Category / owner: B core issue; A adapted editor text.
-- Authored HSON: `<span/>`.
+- Authored Hson: `<span/>`.
 - Schema: `define(s => s.button())`.
 - Trigger: admitted source violates the shown Schema.
 - Precision and related: actual lowerer/presenter values below.
@@ -1038,7 +1038,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 ### scenario.wrong-item-kind
 
 - Category / owner: B core issue; A adapted editor text.
-- Authored HSON: `<main "bad"/>`.
+- Authored Hson: `<main "bad"/>`.
 - Schema: `define(s => s.main(s.button()))`.
 - Trigger: admitted source violates the shown Schema.
 - Precision and related: actual lowerer/presenter values below.
@@ -1061,7 +1061,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 ### scenario.missing-child
 
 - Category / owner: B core issue; A adapted editor text.
-- Authored HSON: `<main/>`.
+- Authored Hson: `<main/>`.
 - Schema: `define(s => s.main(s.button()))`.
 - Trigger: admitted source violates the shown Schema.
 - Precision and related: actual lowerer/presenter values below.
@@ -1084,7 +1084,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 ### scenario.unexpected-child
 
 - Category / owner: B core issue; A adapted editor text.
-- Authored HSON: `<main <button/>/>`.
+- Authored Hson: `<main <button/>/>`.
 - Schema: `define(s => s.main(s.empty))`.
 - Trigger: admitted source violates the shown Schema.
 - Precision and related: actual lowerer/presenter values below.
@@ -1107,7 +1107,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 ### scenario.invalid-attribute
 
 - Category / owner: B core issue; A adapted editor text.
-- Authored HSON: `<button count="bad"/>`.
+- Authored Hson: `<button count="bad"/>`.
 - Schema: `define(s => s.button(s.attrs({ count: s.number })))`.
 - Trigger: admitted source violates the shown Schema.
 - Precision and related: actual lowerer/presenter values below.
@@ -1119,7 +1119,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 [
   {
     "core": "Attribute \"count\" at [] is invalid: LiveMap schema expected number at [], received string",
-    "message": "[ReviewSchema] Expected attribute `count` to be a number, but this value is an HSON string.",
+    "message": "[ReviewSchema] Expected attribute `count` to be a number, but this value is an Hson string.",
     "precision": "exact",
     "slice": "\"bad\"",
     "related": "Schema requested by this validate call (ReviewSchema)."
@@ -1130,7 +1130,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 ### scenario.unknown-attribute
 
 - Category / owner: B core issue; A adapted editor text.
-- Authored HSON: `<button extra="x"/>`.
+- Authored Hson: `<button extra="x"/>`.
 - Schema: `define(s => s.button(s.attrs.exact({})))`.
 - Trigger: admitted source violates the shown Schema.
 - Precision and related: actual lowerer/presenter values below.
@@ -1153,7 +1153,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 ### scenario.missing-attribute
 
 - Category / owner: B core issue; A adapted editor text.
-- Authored HSON: `<button/>`.
+- Authored Hson: `<button/>`.
 - Schema: `define(s => s.button(s.attrs({ id: s.string })))`.
 - Trigger: admitted source violates the shown Schema.
 - Precision and related: actual lowerer/presenter values below.
@@ -1176,7 +1176,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 ### scenario.missing-flag
 
 - Category / owner: B core issue; A adapted editor text.
-- Authored HSON: `<button/>`.
+- Authored Hson: `<button/>`.
 - Schema: `define(s => s.button(s.attrs({ disabled: s.flag })))`.
 - Trigger: admitted source violates the shown Schema.
 - Precision and related: actual lowerer/presenter values below.
@@ -1199,7 +1199,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 ### scenario.repeat-short
 
 - Category / owner: B core issue; A adapted editor text.
-- Authored HSON: `<div <button/>/>`.
+- Authored Hson: `<div <button/>/>`.
 - Schema: `define(s => s.div(s.repeat(2, s.button())))`.
 - Trigger: admitted source violates the shown Schema.
 - Precision and related: actual lowerer/presenter values below.
@@ -1222,7 +1222,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 ### scenario.repeat-long
 
 - Category / owner: B core issue; A adapted editor text.
-- Authored HSON: `<div <button/> <button/>/>`.
+- Authored Hson: `<div <button/> <button/>/>`.
 - Schema: `define(s => s.div(s.repeat(1, s.button())))`.
 - Trigger: admitted source violates the shown Schema.
 - Precision and related: actual lowerer/presenter values below.
@@ -1245,7 +1245,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 ### scenario.attribute-throw
 
 - Category / owner: B core issue; A adapted editor text.
-- Authored HSON: `<button count="bad"/>`.
+- Authored Hson: `<button count="bad"/>`.
 - Schema: `define(s => s.button(s.attrs({ count: s.string.constrain("never throws?", () => { throw new Error("predicate exploded"); }) })))`.
 - Trigger: admitted source violates the shown Schema (predicate throws; caught by attribute validation).
 - Precision and related: actual lowerer/presenter values below.
@@ -1268,7 +1268,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 ### scenario.root-mismatch
 
 - Category / owner: B core issue; A adapted editor text.
-- Authored HSON: `1`.
+- Authored Hson: `1`.
 - Schema: `define(s => s.tuple(s.button()))`.
 - Trigger: admitted source violates the shown Schema.
 - Precision and related: actual lowerer/presenter values below.
@@ -1279,8 +1279,8 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 ```json
 [
   {
-    "core": "Expected fragment document root; received projected root.",
-    "message": "[ReviewSchema] Expected this value: fragment document root; received projected root.",
+    "core": "Expected fragment document root; received data root.",
+    "message": "[ReviewSchema] Expected this value: fragment document root; received data root.",
     "precision": "exact",
     "slice": "1",
     "related": "Schema requested by this validate call (ReviewSchema)."
@@ -1291,7 +1291,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 ### scenario.invalid-capability
 
 - Category / owner: B core issue; A adapted editor text.
-- Authored HSON: `1`.
+- Authored Hson: `1`.
 - Schema: `({})`.
 - Trigger: admitted source violates the shown Schema.
 - Precision and related: actual lowerer/presenter values below.
@@ -1314,12 +1314,12 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 ### scenario.tagged
 
 - Category / owner: B core issue, adapted by A editor bank.
-- Authored HSON: `<kind "other">`.
+- Authored Hson: `<kind "other">`.
 - Schema: `define(s => s.tagged("kind", { draft: s.object({}), published: s.object({}) }))`.
 - Trigger: no alternative admits the authored value.
 - Precision / related: actual mapped values below.
 - Future fix: suggestion only.
-- Evidence limitation: closest-branch failures do not prove that this branch is the only valid choice. Projected tagged validation returns the closest branch without an aggregate alternative list. Document pick returns its aggregate issue PLUS the closest branch's issues. The editor has no branch provenance, and cannot safely rewrite these into global requirements. This potentially misleading wording is retained pending structured branch evidence; no new evidence or semantics were invented.
+- Evidence limitation: closest-branch failures do not prove that this branch is the only valid choice. Data tagged validation returns the closest branch without an aggregate alternative list. Document pick returns its aggregate issue PLUS the closest branch's issues. The editor has no branch provenance, and cannot safely rewrite these into global requirements. This potentially misleading wording is retained pending structured branch evidence; no new evidence or semantics were invented.
 
 <!-- scenario:tagged -->
 ```json
@@ -1337,12 +1337,12 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 ### scenario.document-pick
 
 - Category / owner: B core issue, adapted by A editor bank.
-- Authored HSON: `<main <em/>/>`.
+- Authored Hson: `<main <em/>/>`.
 - Schema: `define(s => s.main(s.pick(s.button(), s.span())))`.
 - Trigger: no alternative admits the authored value.
 - Precision / related: actual mapped values below.
 - Future fix: suggestion only.
-- Evidence limitation: closest-branch failures do not prove that this branch is the only valid choice. Projected tagged validation returns the closest branch without an aggregate alternative list. Document pick returns its aggregate issue PLUS the closest branch's issues. The editor has no branch provenance, and cannot safely rewrite these into global requirements. This potentially misleading wording is retained pending structured branch evidence; no new evidence or semantics were invented.
+- Evidence limitation: closest-branch failures do not prove that this branch is the only valid choice. Data tagged validation returns the closest branch without an aggregate alternative list. Document pick returns its aggregate issue PLUS the closest branch's issues. The editor has no branch provenance, and cannot safely rewrite these into global requirements. This potentially misleading wording is retained pending structured branch evidence; no new evidence or semantics were invented.
 
 <!-- scenario:document-pick -->
 ```json
@@ -1370,7 +1370,7 @@ Each record comes from the actual standalone editor adapter. Category B message,
 
 ### syntax.invalid-primitive
 
-- Authored HSON: "+1".
+- Authored Hson: "+1".
 - Trigger: invalid primitive; exact code and message below.
 - Owner: `src/api/transform/parsers/tokenize-hson.ts`, wrapped by `src/core/errors.ts:91`; inherited verbatim.
 - Precision / related: actual adapter output below.
@@ -1380,7 +1380,7 @@ Each record comes from the actual standalone editor adapter. Category B message,
 ```json
 [
   {
-    "message": "[ERR: transform = tokenize-hson()]:\n  -> invalid HSON number \"+1\" at 1:1 (index 0)",
+    "message": "[ERR: transform = tokenize-hson()]:\n  -> invalid Hson number \"+1\" at 1:1 (index 0)",
     "code": "HSON_NUMBER_LEADING_PLUS",
     "precision": "point",
     "slice": "+",
@@ -1391,7 +1391,7 @@ Each record comes from the actual standalone editor adapter. Category B message,
 
 ### syntax.unsupported-quote
 
-- Authored HSON: "'bad'".
+- Authored Hson: "'bad'".
 - Trigger: unsupported quote; exact code and message below.
 - Owner: `src/api/transform/parsers/tokenize-hson.ts`, wrapped by `src/core/errors.ts:91`; inherited verbatim.
 - Precision / related: actual adapter output below.
@@ -1412,7 +1412,7 @@ Each record comes from the actual standalone editor adapter. Category B message,
 
 ### syntax.malformed-member
 
-- Authored HSON: "<age>".
+- Authored Hson: "<age>".
 - Trigger: malformed member; exact code and message below.
 - Owner: `src/api/transform/parsers/tokenize-hson.ts`, wrapped by `src/core/errors.ts:91`; inherited verbatim.
 - Precision / related: actual adapter output below.
@@ -1433,7 +1433,7 @@ Each record comes from the actual standalone editor adapter. Category B message,
 
 ### syntax.incomplete-source
 
-- Authored HSON: "<age 1".
+- Authored Hson: "<age 1".
 - Trigger: incomplete source; exact code and message below.
 - Owner: `src/api/transform/parsers/tokenize-hson.ts`, wrapped by `src/core/errors.ts:91`; inherited verbatim.
 - Precision / related: actual adapter output below.
@@ -1454,7 +1454,7 @@ Each record comes from the actual standalone editor adapter. Category B message,
 
 ### syntax.empty-source
 
-- Authored HSON: "".
+- Authored Hson: "".
 - Trigger: empty source; exact code and message below.
 - Owner: `src/api/transform/parsers/parse-hson.ts:43`, wrapped by `src/core/errors.ts:91`; inherited verbatim.
 - Precision / related: actual adapter output below.
@@ -1464,7 +1464,7 @@ Each record comes from the actual standalone editor adapter. Category B message,
 ```json
 [
   {
-    "message": "[ERR: transform = parse_hson()]:\n  -> empty, whitespace-only, or comment-only HSON source has no semantic value",
+    "message": "[ERR: transform = parse_hson()]:\n  -> empty, whitespace-only, or comment-only Hson source has no semantic value",
     "code": "HSON_SOURCE_EMPTY",
     "precision": "eof",
     "slice": "",
@@ -1475,7 +1475,7 @@ Each record comes from the actual standalone editor adapter. Category B message,
 
 ### syntax.duplicate-member
 
-- Authored HSON: "<age 1 age 2>".
+- Authored Hson: "<age 1 age 2>".
 - Trigger: duplicate member; exact code and message below.
 - Owner: `src/api/transform/parsers/tokenize-hson.ts`, wrapped by `src/core/errors.ts:91`; inherited verbatim.
 - Precision / related: actual adapter output below.
@@ -1485,13 +1485,13 @@ Each record comes from the actual standalone editor adapter. Category B message,
 ```json
 [
   {
-    "message": "[ERR: transform = tokenize-hson()]:\n  -> [duplicate-object-member] duplicate HSON object member \"age\"; first declared at 1:2 (index 1) at 1:8 (index 7)",
+    "message": "[ERR: transform = tokenize-hson()]:\n  -> [duplicate-object-member] duplicate Hson object member \"age\"; first declared at 1:2 (index 1) at 1:8 (index 7)",
     "code": "HSON_OBJECT_DUPLICATE_MEMBER",
     "precision": "point",
     "slice": "a",
     "related": [
       {
-        "message": "Related HSON source (first-declaration).",
+        "message": "Related Hson source (first-declaration).",
         "slice": "a"
       }
     ]
@@ -1501,7 +1501,7 @@ Each record comes from the actual standalone editor adapter. Category B message,
 
 ### syntax.duplicate-attribute
 
-- Authored HSON: "<button id=a id=b/>".
+- Authored Hson: "<button id=a id=b/>".
 - Trigger: duplicate attribute; exact code and message below.
 - Owner: `src/api/transform/parsers/tokenize-hson.ts`, wrapped by `src/core/errors.ts:91`; inherited verbatim.
 - Precision / related: actual adapter output below.
@@ -1511,13 +1511,13 @@ Each record comes from the actual standalone editor adapter. Category B message,
 ```json
 [
   {
-    "message": "[ERR: transform = tokenize-hson()]:\n  -> [duplicate-attribute] duplicate HSON attribute \"id\"; first declared at 1:9 (index 8) at 1:14 (index 13)",
+    "message": "[ERR: transform = tokenize-hson()]:\n  -> [duplicate-attribute] duplicate Hson attribute \"id\"; first declared at 1:9 (index 8) at 1:14 (index 13)",
     "code": "HSON_ELEMENT_DUPLICATE_ATTRIBUTE",
     "precision": "point",
     "slice": "i",
     "related": [
       {
-        "message": "Related HSON source (first-declaration).",
+        "message": "Related Hson source (first-declaration).",
         "slice": "i"
       }
     ]
@@ -1527,7 +1527,7 @@ Each record comes from the actual standalone editor adapter. Category B message,
 
 ### syntax.unexpected-closer
 
-- Authored HSON: ">".
+- Authored Hson: ">".
 - Trigger: unexpected closer; exact code and message below.
 - Owner: `src/api/transform/parsers/tokenize-hson.ts`, wrapped by `src/core/errors.ts:91`; inherited verbatim.
 - Precision / related: actual adapter output below.
@@ -1548,18 +1548,18 @@ Each record comes from the actual standalone editor adapter. Category B message,
 
 ## 15. Status / availability review and exact labels
 
-Every row below is an authoring example with valid HSON `<age 37>`; the differing condition is infrastructure, not authored invalidity. Owner A for the label/stock tooltip, C for supplied runtime messages. Precision: status/infrastructure. Related information: none. Future deterministic authored fix: none. A missing diagnostic is never proof of Schema validity.
+Every row below is an authoring example with valid Hson `<age 37>`; the differing condition is infrastructure, not authored invalidity. Owner A for the label/stock tooltip, C for supplied runtime messages. Precision: status/infrastructure. Related information: none. Future deterministic authored fix: none. A missing diagnostic is never proof of Schema validity.
 
 | State | Trigger | Exact status-bar text | Tooltip without supplied detail |
 | --- | --- | --- | --- |
-| off | Explicit enablement off or workspace untrusted | HSON Schema: off | bank.unavailableSchemaStatus |
-| waiting | Debounce, startup/load, or fresh interpolation evaluation pending | HSON Schema: waiting | bank.unavailableSchemaStatus |
-| current-valid | At least one current check; no invalid result, no higher-priority unavailable state | HSON Schema: current-valid | bank.currentSchemaStatus |
-| current-invalid | Current check produced one or more invalid diagnostics | HSON Schema: current-invalid | bank.currentSchemaStatus |
-| stale | Revision/generation retired, or dirty provider prevents current evidence | HSON Schema: stale | bank.unavailableSchemaStatus |
-| ambiguous | Multiple registrations, applications, or captures occupy the relationship | HSON Schema: ambiguous | bank.unavailableSchemaStatus |
-| unavailable | No configured client, discoverable association, current binding, or usable result | HSON Schema: unavailable | bank.unavailableSchemaStatus |
-| runtime-failed | Runtime/IPC/load/validation execution failed | HSON Schema: runtime-failed | bank.unavailableSchemaStatus |
+| off | Explicit enablement off or workspace untrusted | Hson Schema: off | bank.unavailableSchemaStatus |
+| waiting | Debounce, startup/load, or fresh interpolation evaluation pending | Hson Schema: waiting | bank.unavailableSchemaStatus |
+| current-valid | At least one current check; no invalid result, no higher-priority unavailable state | Hson Schema: current-valid | bank.currentSchemaStatus |
+| current-invalid | Current check produced one or more invalid diagnostics | Hson Schema: current-invalid | bank.currentSchemaStatus |
+| stale | Revision/generation retired, or dirty provider prevents current evidence | Hson Schema: stale | bank.unavailableSchemaStatus |
+| ambiguous | Multiple registrations, applications, or captures occupy the relationship | Hson Schema: ambiguous | bank.unavailableSchemaStatus |
+| unavailable | No configured client, discoverable association, current binding, or usable result | Hson Schema: unavailable | bank.unavailableSchemaStatus |
+| runtime-failed | Runtime/IPC/load/validation execution failed | Hson Schema: runtime-failed | bank.unavailableSchemaStatus |
 
 Supplied `message` always overrides those defaults, including empty string. Exact current runtime payloads and their triggering source conditions are in the “Trusted runtime and availability” census section. There are no additional stock messages “Schema loading”, “Schema timed out”, “Schema crashed”, or “Schema declaration here”.
 
@@ -1584,26 +1584,26 @@ All use `<age 37>` with an otherwise registered number Schema unless noted; cate
 | node-runtime-entry catch | dispatcher rejects with non-Error | Runtime failure. |
 | node-supervisor trust gate | either trust gate false when calling supervisor directly | Trusted Schema diagnostics require Workspace Trust and explicit enablement. |
 
-Timeout and crash retain `runtime-failed`, not an authored Schema violation. Error instances from Node, IPC, module loading and user predicates carry arbitrary verbatim text; their values cannot have a finite literal inventory. Non-Error values use the fixed boundary fallback. Public `HSON.validate` failure throws `HSON Schema validation failed.` from `src/internal/schema-hson-validation/validate-canonical-hson.ts:13`; that public text stays D-owned when observed through module/callback failure. Its issues are independently validated/formatted for editor diagnostics.
+Timeout and crash retain `runtime-failed`, not an authored Schema violation. Error instances from Node, IPC, module loading and user predicates carry arbitrary verbatim text; their values cannot have a finite literal inventory. Non-Error values use the fixed boundary fallback. Public `Hson.validate` failure throws `Hson Schema validation failed.` from `src/internal/schema-hson-validation/validate-canonical-hson.ts:13`; that public text stays D-owned when observed through module/callback failure. Its issues are independently validated/formatted for editor diagnostics.
 
 ### Suppressed and adapted language (reachability audit)
 
-- `runtime.ts:199` returns candidate parser Error.message or `Candidate HSON is invalid.` with `CANDIDATE_INVALID`. The client sets unavailable but does NOT copy that response.message into the tooltip. Secure syntax/admission diagnostics are the user-facing source error. Cataloged as runtime-owned, not an additional live Schema diagnostic.
+- `runtime.ts:199` returns candidate parser Error.message or `Candidate Hson is invalid.` with `CANDIDATE_INVALID`. The client sets unavailable but does NOT copy that response.message into the tooltip. Secure syntax/admission diagnostics are the user-facing source error. Cataloged as runtime-owned, not an additional live Schema diagnostic.
 - `runtime.ts:63` retains partial module load Error.message or `Project module failed to load.` after captured evaluations. The client receives it as loaded.loadFailure. This is a second call site for the same runtime fallback at line 125; it can accompany remaining captured diagnostics without certifying that the module finished.
 - `runtime.complete` failures “No current completion contract.”, “No current interpolation evidence.” and “Completion contract retired.” are mapped to completion availability; the current completion provider does not display their message. “Completion traversal bound” is caught in the query and yields unavailable, not a user-visible diagnostic.
-- `lifecycle-evidence.ts:125` “Unrecognized projected Schema capability.” and document schema-use root-mode errors are caught into attachment evidence. The runtime does NOT transport that attachment Error.message as a source diagnostic. The subsequent graph validation supplies structured issues.
+- `lifecycle-evidence.ts:125` “Unrecognized data Schema capability.” and document schema-use root-mode errors are caught into attachment evidence. The runtime does NOT transport that attachment Error.message as a source diagnostic. The subsequent graph validation supplies structured issues.
 - No current normal complete-root validation emits UNKNOWN_PATH. Its core validator/selection APIs own it; the editor's code-only fallback is defensive and covered without inventing a source path. INVALID_SCHEMA recursion/constraint guards are similarly defensive for recognized builders.
-- Serializer/invariant defenses are reachable shared code but many cannot be produced by an admitted HSON graph. They remain B/D-owned and are listed, not portrayed as ordinary author mistakes. Non-Transform errors in secure syntax go to unexpected console output; recognized TransformErrors map using existing source evidence or body fallback.
+- Serializer/invariant defenses are reachable shared code but many cannot be produced by an admitted Hson graph. They remain B/D-owned and are listed, not portrayed as ordinary author mistakes. Non-Transform errors in secure syntax go to unexpected console output; recognized TransformErrors map using existing source evidence or body fallback.
 - `map-transform-error.ts` returns machine reason codes (source missing, invalid index/descriptor, coordinate warnings), not English diagnostics. The current extension adapters supply the messages. No extra English precision labels are hidden there.
 - Schema-declaration range metadata exists for binding discovery, but there is NO current declaration-related diagnostic label. Related information currently targets only the validation/use call and Transform first-declaration roles.
 
 ## 16. Structured evidence and outstanding copy-quality gaps
 
-Source evidence is authoritative: `TrustedSchemaDiagnostic` in `src/internal/trusted-schema-diagnostics/protocol.ts` transports code, path, expected, received, attributeName, range and optional hostOrigin/tag/flag/constraintLabel sidecars. `issue-presentation.ts` stores the tag/flag/label evidence in a WeakMap; runtime copies it before transport. Projected/document lowerers supply exact/anchor/unresolved ranges. Discovery supplies schemaLabel and callRange/mapFlow. No editor message reads or parses `issue.message`.
+Source evidence is authoritative: `TrustedSchemaDiagnostic` in `src/internal/trusted-schema-diagnostics/protocol.ts` transports code, path, expected, received, attributeName, range and optional hostOrigin/tag/flag/constraintLabel sidecars. `issue-presentation.ts` stores the tag/flag/label evidence in a WeakMap; runtime copies it before transport. Data/document lowerers supply exact/anchor/unresolved ranges. Discovery supplies schemaLabel and callRange/mapFlow. No editor message reads or parses `issue.message`.
 
 | Evidence gap | Current behavior | Needed for later polish (not implemented) |
 | --- | --- | --- |
-| Projected pick/tagged alternatives | Closest object branch can be shown as if it were the only required literal | Branch identity, aggregate alternatives, and relation of branch issues to the overall failure |
+| Data pick/tagged alternatives | Closest object branch can be shown as if it were the only required literal | Branch identity, aggregate alternatives, and relation of branch issues to the overall failure |
 | Document pick | Aggregate plus selected closest branch; two messages may cover one element | Structured alternative and child-contract evidence |
 | Missing complex child/member | Last path segment only; `Required 0`/member name, anchor suffix | Missing child/member contract and distinguish position from member |
 | Repeat/closed sequence counts | expected/received contain `length N`; current renderer ignores them for missing/surplus codes | Typed expected/actual count, count-rule kind, missing index/surplus span |
@@ -1616,17 +1616,17 @@ Source evidence is authoritative: `TrustedSchemaDiagnostic` in `src/internal/tru
 | Runtime unavailable | Several distinct causes share stock tooltip | Structured availability reason if later desired; do not infer from absence |
 | Document tag | Whole-element coverage even when prose names the tag | Tag-name provenance selection, separate placement decision |
 
-Constraint labels: successful base validation followed by false predicate produces INVALID_CONSTRAINT plus the outer failing constraint label. An unlabeled predicate produces no label and generic wording. An empty label remains present, rendering empty curly quotes. A failed base type or inner constraint does not inherit an unrelated outer label. Projected predicate throws escape as runtime execution failures; caught attribute predicate throws lose the label and are currently generic type mismatches. Richer domain wording cannot be justified from an unlabeled function's source.
+Constraint labels: successful base validation followed by false predicate produces INVALID_CONSTRAINT plus the outer failing constraint label. An unlabeled predicate produces no label and generic wording. An empty label remains present, rendering empty curly quotes. A failed base type or inner constraint does not inherit an unrelated outer label. Data predicate throws escape as runtime execution failures; caught attribute predicate throws lose the label and are currently generic type mismatches. Richer domain wording cannot be justified from an unlabeled function's source.
 
 ### Core description vocabulary (inherited field formatting)
 
-Owner/category B: `src/api/livemap/livemap.schema.ts:1708` (`schema_kind_label`, `json_value_type_label`, `projected_admission_received`) and `src/api/livemap/livemap.document.schema.ts:785` (`describe_item`, `describe_root`). These are structured-field descriptions, not English-message parsing. Literal alternatives are individually JSON-serialized and joined with ` | `; picks join branch descriptions the same way, falling back to `pick` for no descriptions. Undefined recursion uses `recurse`; constraints use their label or `constraint`; nullable kinds use `${node.kind} | null`; other kinds use their kind string. Received kinds are `null`, `array` or `typeof value`; invalid projected admission uses `undefined`, `non-finite number`, or the lowercase error code with underscores replaced by spaces. Document descriptions include `text`, `element <${tag}>`, `structural node <${tag}>`, and root descriptions `<${root.$_tag}>`. A type string here is not a typed allowed-value/branch list. Representative sources and complete rendered results are in the Schema scenarios. Precision and related information come from the issue's consumer; suggestion only, except no general fix for invalid internal descriptions.
+Owner/category B: `src/api/livemap/livemap.schema.ts:1708` (`schema_kind_label`, `json_value_type_label`, `projected_admission_received`) and `src/api/livemap/livemap.document.schema.ts:785` (`describe_item`, `describe_root`). These are structured-field descriptions, not English-message parsing. Literal alternatives are individually JSON-serialized and joined with ` | `; picks join branch descriptions the same way, falling back to `pick` for no descriptions. Undefined recursion uses `recurse`; constraints use their label or `constraint`; nullable kinds use `${node.kind} | null`; other kinds use their kind string. Received kinds are `null`, `array` or `typeof value`; invalid data admission uses `undefined`, `non-finite number`, or the lowercase error code with underscores replaced by spaces. Document descriptions include `text`, `element <${tag}>`, `structural node <${tag}>`, and root descriptions `<${root.$_tag}>`. A type string here is not a typed allowed-value/branch list. Representative sources and complete rendered results are in the Schema scenarios. Precision and related information come from the issue's consumer; suggestion only, except no general fix for invalid internal descriptions.
 
 ## 17. Future fix inventory — no code actions implemented
 
 | Family | Classification | Strict limitation |
 | --- | --- | --- |
-| Projected quoted numeric/boolean/null scalar | safe possible | Existing exact scalar range, decoded string is exactly an admitted finite primitive of the required kind; preserve negative zero and escaping; not attributes or substitution expressions; revalidation may still fail constraints |
+| Data quoted numeric/boolean/null scalar | safe possible | Existing exact scalar range, decoded string is exactly an admitted finite primitive of the required kind; preserve negative zero and escaping; not attributes or substitution expressions; revalidation may still fail constraints |
 | Missing flag | safe possible | Proven missing flag, current owning element and Schema, unambiguous insertion position; not a guessed ordinary attribute |
 | Literal choice, wrong tag/type/root, branch choice | suggestion only | User intent chooses among values/contracts |
 | Missing complex member/child/tuple item or count shortfall | suggestion only | No default structure/value is provided |
@@ -1658,7 +1658,7 @@ Owner `editors/vscode-hson/package.json` at `capabilities.untrustedWorkspaces.de
 
 ```text
 Syntax tooling works in Restricted Mode. Trusted Schema diagnostics execute project code only with Workspace Trust and explicit enablement.
-HSON trusted Schema diagnostics
+Hson trusted Schema diagnostics
 Explicitly allow trusted project Schema execution. Also requires Workspace Trust. Not a sandbox.
 Trusted Schema registration module path relative to the workspace folder. Prefer a Schema-only module, not the application entrypoint.
 Path to the project's hson.js facade (same runtime instance as its private D1 entry).
@@ -1666,7 +1666,7 @@ Optional private D1 Node entry path; defaults beside hson.js under internal/trus
 Explicit trusted Node loader arguments, if required by the configured project runtime.
 ```
 
-Diagnostic source labels are `HSON` (syntax/runtime admission) and `HSON Schema` (Schema problems). Output channel label: `HSON Schema diagnostics`. They identify product surfaces, not error assertions. Timing output is JSON field data, not additional English prose.
+Diagnostic source labels are `Hson` (syntax/runtime admission) and `Hson Schema` (Schema problems). Output channel label: `Hson Schema diagnostics`. They identify product surfaces, not error assertions. Timing output is JSON field data, not additional English prose.
 
 ## 19. Separate color work — deliberately deferred
 
@@ -1685,17 +1685,17 @@ The catalog is intentionally a static review document, not a generated language 
 3. Files changed: `editors/vscode-hson/src/{document-diagnostics,extension,highlighting,schema-diagnostics,schema-presentation,tag-admission,trusted-schema-client}.ts` and `tests/schema-d2-presentation.acceptance.mts`. The highlighting edit only imports its infrastructure-error message.
 4. Final editor bank: `editors/vscode-hson/src/diagnostic-messages.ts`. Final review catalog: `docs/hson-authoring-message-catalog.md`.
 5. Stable IDs: all 33 names below; source comments directly precede every entry. No generated registry or giant anonymous switch.
-6. Ownership retained: tokenizer/parser/serializer, canonical invariant and QUID/number errors, Schema issue strings and constructors, public HSON/LiveMap errors, trusted-runtime/supervisor/registration strings, declarative package metadata and core completion detail. Editor formatting uses existing evidence only; core English is not parsed.
+6. Ownership retained: tokenizer/parser/serializer, canonical invariant and QUID/number errors, Schema issue strings and constructors, public Hson/LiveMap errors, trusted-runtime/supervisor/registration strings, declarative package metadata and core completion detail. Editor formatting uses existing evidence only; core English is not parsed.
 7. Exact current inventory: bank variants in sections 1–12, core/adapted snapshots in 13–14, status/runtime inventory and suppression notes in 15, inherited description vocabulary in 16, adjacent text in 18, and the complete pinned source expressions below. Interpolated values and external Error.message remain variable inputs.
 8. Representative entries: number/string mismatch, missing/unknown member, finite literals, tuples, tagged/pick, both constraint-label forms, document tags/content/attrs/flags, counted repeats, caught attribute throw, root capability, syntax, exact/anchor/unresolved/composite/expression placement, status, timeout and crash.
 9. Evidence: issue code, path, expected/received, attributeName, tag/flag/constraintLabel WeakMap sidecars, lowerer precision/range, hostOrigin scalar kind/range, discovery schemaLabel/callRange/mapFlow, runtime status and supplied message. No new protocol evidence.
 10. Gaps: branches/tagged alternatives; complex missing children; typed repeat/count/surplus evidence; allowed exact keys; structured literal arrays; unlabeled constraints; caught attribute exceptions; legacy missing-evidence and Template-level fallbacks. See section 16.
 11. Constraint labels: retained for false predicates after base success; unlabeled remains generic; empty label stays explicit; caught attribute throws lose label/exception; no label/API requirement introduced.
-12. Future fixes: strict projected scalar unquoting and absent-flag insertion may be safe; literals/structure/removal require suggestions; constraints/runtime/placement have no general repair. No code actions.
+12. Future fixes: strict data scalar unquoting and absent-flag insertion may be safe; literals/structure/removal require suggestions; constraints/runtime/placement have no general repair. No code actions.
 13. Exact message suite: `npm run test:schema-d2-presentation` — **137 checks passed**: 20 existing presentation, 7 composed/evidence tests, 58 direct bank variants, 8 statuses, 2 reconciliation/comment checks, 25 real Schema scenarios, 8 syntax snapshots, 9 runtime/supervisor checks.
 14. Reconciliation: exported bank names equal unique catalog headings and tested IDs; literal expected text is present under its own heading; source exports require preceding comments. Scenario snapshots compare exact core/editor strings, precision, selected source and related information. Runtime elapsed milliseconds use an anchored dynamic-template assertion.
 15. Regressions: all commands listed below passed. Real VS Code **1.95.3**, trusted and Restricted Mode, passed D2–D6 integration. Non-failing host output included an unrelated parent-directory file-watch permission warning, chat-registry fetch failure, font/IPC-path warnings, and utility-process shutdown notices; both test runs exited successfully. No unrelated hosted certification run.
-16. Public API impact: **none**. No `src/` library file, package export, Schema/HSON/LiveMap API, public error, diagnostic protocol, provenance type, LiveTree prototype or runtime identity changed. No color treatment implemented.
+16. Public API impact: **none**. No `src/` library file, package export, Schema/Hson/LiveMap API, public error, diagnostic protocol, provenance type, LiveTree prototype or runtime identity changed. No color treatment implemented.
 17. Git status: 8 modified tracked files, 5 new untracked files; all scoped above. No staging or commit. Ignored extension build/test artifacts refreshed. `git diff --check` passed.
 18. Suggested commit (not executed): `refactor(vscode): centralize authoring diagnostic messages and add review catalog`.
 
@@ -1788,7 +1788,7 @@ The extension unit suite passed 32 checks. Diagnostics inventory remained 169 te
 
 Recorded before production edits on 2026-08-28. The worktree was clean. D6 and baseline-repair notes explicitly deferred this pass; no prior bank/catalog implementation was found.
 
-The mechanical sweep followed local runtime imports from HSON admission, parsing, and serialization, and scanned editor, trusted-runtime, and Schema owners: 66 modules, 390 emission/formatting sites (not unique rendered sentences). It inspected TypeScript AST calls to `_throw_transform_err`, lexer `fail`, Schema `issue`/`validation_issue`, runtime `error`, Error constructors, message/reason fields, editor return/placement/status expressions, and invariant accumulation. Call sites, repeated uses, interpolated wrappers, and defensive paths are deliberately retained. A subsequent manual reachability audit and concrete examples appear above. External module, Node/IPC, and user callback Error.message text are unbounded inputs, not finite bank entries.
+The mechanical sweep followed local runtime imports from Hson admission, parsing, and serialization, and scanned editor, trusted-runtime, and Schema owners: 66 modules, 390 emission/formatting sites (not unique rendered sentences). It inspected TypeScript AST calls to `_throw_transform_err`, lexer `fail`, Schema `issue`/`validation_issue`, runtime `error`, Error constructors, message/reason fields, editor return/placement/status expressions, and invariant accumulation. Call sites, repeated uses, interpolated wrappers, and defensive paths are deliberately retained. A subsequent manual reachability audit and concrete examples appear above. External module, Node/IPC, and user callback Error.message text are unbounded inputs, not finite bank entries.
 
 Source locations below are pinned to the pre-edit revision; use the stable editor IDs above for the current owners. Expressions in TypeScript fences are exact source templates, including punctuation and every conditional branch, not proposed wording. `${...}` denotes runtime substitution, not literal user-facing characters. Transform payloads acquire `[ERR: transform = ${functionName}()]:\n  -> ${message}${ctxLine}`; lexer payloads first acquire ` at ${pos.line}:${pos.col} (index ${pos.index})`. `ctxLine` is empty or `\n  :: ${ctx}`. Schema issue.message is NOT read by the editor; its structured fields drive the bank instead.
 
@@ -1807,7 +1807,7 @@ Per-site authored contexts illustrate the semantic family, not a claim that ever
 - Rendered payload / exact formatter expression:
 
 ```ts
-`Related HSON source (${item.role}).`
+`Related Hson source (${item.role}).`
 ```
 
 - Surface: Editor-owned before migration; see current stable bank entries for ownership and variants.
@@ -1825,7 +1825,7 @@ Per-site authored contexts illustrate the semantic family, not a claim that ever
 - Rendered payload / exact formatter expression:
 
 ```ts
-error instanceof Error ? error.message : "HSON validation failed."
+error instanceof Error ? error.message : "Hson validation failed."
 ```
 
 - Surface: Editor-owned before migration; see current stable bank entries for ownership and variants.
@@ -1843,7 +1843,7 @@ error instanceof Error ? error.message : "HSON validation failed."
 - Rendered payload / exact formatter expression:
 
 ```ts
-`Related HSON source (${item.role}).`
+`Related Hson source (${item.role}).`
 ```
 
 - Surface: Editor-owned before migration; see current stable bank entries for ownership and variants.
@@ -1861,7 +1861,7 @@ error instanceof Error ? error.message : "HSON validation failed."
 - Rendered payload / exact formatter expression:
 
 ```ts
-error instanceof Error ? error.message : "HSON validation failed."
+error instanceof Error ? error.message : "Hson validation failed."
 ```
 
 - Surface: Editor-owned before migration; see current stable bank entries for ownership and variants.
@@ -1879,7 +1879,7 @@ error instanceof Error ? error.message : "HSON validation failed."
 - Rendered payload / exact formatter expression:
 
 ```ts
-`HSON diagnostics failed for ${document.fileName}`
+`Hson diagnostics failed for ${document.fileName}`
 ```
 
 - Surface: Editor-owned before migration; see current stable bank entries for ownership and variants.
@@ -1897,7 +1897,7 @@ error instanceof Error ? error.message : "HSON validation failed."
 - Rendered payload / exact formatter expression:
 
 ```ts
-`HSON Schema: ${state?.status ?? "off"}`
+`Hson Schema: ${state?.status ?? "off"}`
 ```
 
 - Surface: Editor-owned before migration; see current stable bank entries for ownership and variants.
@@ -1953,7 +1953,7 @@ state?.message ?? (state?.status === "current-valid" || state?.status === "curre
 - Rendered payload / exact formatter expression:
 
 ```ts
-`HSON Schema: ${spec.detail}`
+`Hson Schema: ${spec.detail}`
 ```
 
 - Surface: Editor-owned before migration; see current stable bank entries for ownership and variants.
@@ -1971,7 +1971,7 @@ state?.message ?? (state?.status === "current-valid" || state?.status === "curre
 - Rendered payload / exact formatter expression:
 
 ```ts
-"Missing packaged HSON grammar"
+"Missing packaged Hson grammar"
 ```
 
 - Surface: Editor-owned before migration; see current stable bank entries for ownership and variants.
@@ -2043,7 +2043,7 @@ message
 - Rendered payload / exact formatter expression:
 
 ```ts
-`This expression evaluated to ${kind === "null" ? "HSON null" : `an HSON ${kind}`}`
+`This expression evaluated to ${kind === "null" ? "Hson null" : `an Hson ${kind}`}`
 ```
 
 - Surface: Editor-owned before migration; see current stable bank entries for ownership and variants.
@@ -2261,7 +2261,7 @@ issue.constraintLabel === undefined
 - Rendered payload / exact formatter expression:
 
 ```ts
-`Expected ${subject} to be ${issue.expected === "null" ? "null" : `${issue.expected === "object" || issue.expected === "array" ? "an" : "a"} ${issue.expected}`}, but this value is an HSON ${issue.received}.`
+`Expected ${subject} to be ${issue.expected === "null" ? "null" : `${issue.expected === "object" || issue.expected === "array" ? "an" : "a"} ${issue.expected}`}, but this value is an Hson ${issue.received}.`
 ```
 
 - Surface: Editor-owned before migration; see current stable bank entries for ownership and variants.
@@ -2338,7 +2338,7 @@ issue.hostOrigin?.kind === "composite" ? " (Range spans multiple source origins;
 {
     message: `[${association.schemaLabel}] ${schema_diagnostic_message(issue)}${locationNote}`,
     range: mapped ?? occurrenceRange,
-    precision, source: "HSON", code: issue.code,
+    precision, source: "Hson", code: issue.code,
     hostOrigin: issue.hostOrigin?.kind,
     related: [{ range: association.callRange, message: `Schema requested by this ${association.mapFlow === undefined ? "validate" : "map.schema.use"} call (${association.schemaLabel}).` }],
   }
@@ -2395,7 +2395,7 @@ issue.hostOrigin?.kind === "composite" ? " (Range spans multiple source origins;
 - Rendered payload / exact formatter expression:
 
 ```ts
-error instanceof Error ? error.message : "HSON admission failed."
+error instanceof Error ? error.message : "Hson admission failed."
 ```
 
 - Surface: Editor-owned before migration; see current stable bank entries for ownership and variants.
@@ -2413,7 +2413,7 @@ error instanceof Error ? error.message : "HSON admission failed."
 - Rendered payload / exact formatter expression:
 
 ```ts
-`Related HSON source (${item.role}).`
+`Related Hson source (${item.role}).`
 ```
 
 - Surface: Editor-owned before migration; see current stable bank entries for ownership and variants.
@@ -2919,7 +2919,7 @@ response.message
 - Rendered payload / exact formatter expression:
 
 ```ts
-"Projected schema composition received a document-only schema expression."
+"Data schema composition received a document-only schema expression."
 ```
 
 - Surface: Not a normal source diagnostic; may propagate verbatim through trusted project/module or callback failure. Defensive helpers may be unreachable for admitted source.
@@ -2937,7 +2937,7 @@ response.message
 - Rendered payload / exact formatter expression:
 
 ```ts
-"Projected schema composition received an unrecognized schema expression."
+"Data schema composition received an unrecognized schema expression."
 ```
 
 - Surface: Not a normal source diagnostic; may propagate verbatim through trusted project/module or callback failure. Defensive helpers may be unreachable for admitted source.
@@ -3063,7 +3063,7 @@ response.message
 - Rendered payload / exact formatter expression:
 
 ```ts
-`LiveMap tagged schema variant ${JSON.stringify(key)} must be a projected schema expression.`
+`LiveMap tagged schema variant ${JSON.stringify(key)} must be a data schema expression.`
 ```
 
 - Surface: Not a normal source diagnostic; may propagate verbatim through trusted project/module or callback failure. Defensive helpers may be unreachable for admitted source.
@@ -3362,7 +3362,7 @@ response.message
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
-### Census: Projected Schema — values, members, tuples, literals, constraints
+### Census: data Schema — values, members, tuples, literals, constraints
 
 #### baseline.062
 
@@ -3463,7 +3463,7 @@ response.message
 - Rendered payload / exact formatter expression:
 
 ```ts
-`LiveMap schema received an invalid projected value at ${format_schema_path(error.path)} (${error.code})`
+`LiveMap schema received an invalid data value at ${format_schema_path(error.path)} (${error.code})`
 ```
 
 - Surface: Adapted: issue.message is discarded; code/path/expected/received/attributeName and sidecars are authoritative.
@@ -3598,18 +3598,18 @@ error.code.toLowerCase().replaceAll("_", " ")
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
-### Census: HSON syntax and admission
+### Census: Hson syntax and admission
 
 #### baseline.099
 
-- Representative authored context: ``HSON`<age ${value}>` with a nonprimitive value, or invalid cooked template / manual non-tag invocation``.
+- Representative authored context: ``Hson`<age ${value}>` with a nonprimitive value, or invalid cooked template / manual non-tag invocation``.
 - Schema condition: none; admission only.
 - Owner/category: B; `src/api/transform/hson-admission.ts:32` at pre-edit `821ab89`.
 - Trigger: `encode_hson_template_substitution / value !== null && typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean"`; emission `_throw_transform_err`.
 - Rendered payload / exact formatter expression:
 
 ```ts
-`HSON tagged-template substitutions must be primitive string, number, boolean, or null values; substitution ${index + 1} received ${typeof value}`
+`Hson tagged-template substitutions must be primitive string, number, boolean, or null values; substitution ${index + 1} received ${typeof value}`
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
@@ -3620,14 +3620,14 @@ error.code.toLowerCase().replaceAll("_", " ")
 
 #### baseline.100
 
-- Representative authored context: ``HSON`<age ${value}>` with a nonprimitive value, or invalid cooked template / manual non-tag invocation``.
+- Representative authored context: ``Hson`<age ${value}>` with a nonprimitive value, or invalid cooked template / manual non-tag invocation``.
 - Schema condition: none; admission only.
 - Owner/category: B; `src/api/transform/hson-admission.ts:57` at pre-edit `821ab89`.
 - Trigger: `reconstructTaggedSource / strings.raw.length !== substitutions.length + 1`; emission `_throw_transform_err`.
 - Rendered payload / exact formatter expression:
 
 ```ts
-"invalid HSON tagged-template segment/substitution arity"
+"invalid Hson tagged-template segment/substitution arity"
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
@@ -3638,14 +3638,14 @@ error.code.toLowerCase().replaceAll("_", " ")
 
 #### baseline.101
 
-- Representative authored context: ``HSON`<age ${value}>` with a nonprimitive value, or invalid cooked template / manual non-tag invocation``.
+- Representative authored context: ``Hson`<age ${value}>` with a nonprimitive value, or invalid cooked template / manual non-tag invocation``.
 - Schema condition: none; admission only.
 - Owner/category: B; `src/api/transform/hson-admission.ts:93` at pre-edit `821ab89`.
 - Trigger: `admit_hson / !isTemplateStringsArray(source)`; emission `_throw_transform_err`.
 - Rendered payload / exact formatter expression:
 
 ```ts
-"HSON must be used as a tagged template: HSON`...`"
+"Hson must be used as a tagged template: Hson`...`"
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
@@ -3663,7 +3663,7 @@ error.code.toLowerCase().replaceAll("_", " ")
 - Rendered payload / exact formatter expression:
 
 ```ts
-"empty, whitespace-only, or comment-only HSON source has no semantic value"
+"empty, whitespace-only, or comment-only Hson source has no semantic value"
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
@@ -3897,7 +3897,7 @@ error.code.toLowerCase().replaceAll("_", " ")
 - Rendered payload / exact formatter expression:
 
 ```ts
-"a top-level primitive must be the sole semantic HSON value"
+"a top-level primitive must be the sole semantic Hson value"
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
@@ -3956,7 +3956,7 @@ error.code.toLowerCase().replaceAll("_", " ")
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -3974,7 +3974,7 @@ error.code.toLowerCase().replaceAll("_", " ")
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -3994,7 +3994,7 @@ this.tokens.length === 0
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4009,12 +4009,12 @@ this.tokens.length === 0
 ```ts
 numericDefect === undefined
               ? `unexpected bare token outside tag header: "${raw}"`
-              : `invalid HSON number "${raw}"`
+              : `invalid Hson number "${raw}"`
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4032,7 +4032,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4050,7 +4050,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4068,7 +4068,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4086,7 +4086,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4104,7 +4104,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4122,7 +4122,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4140,7 +4140,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4158,7 +4158,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4176,7 +4176,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4194,7 +4194,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4207,12 +4207,12 @@ numericDefect === undefined
 - Rendered payload / exact formatter expression:
 
 ```ts
-`[duplicate-object-member] duplicate HSON object member "${name}"; first declared at ${first.line}:${first.col} (index ${first.index})`
+`[duplicate-object-member] duplicate Hson object member "${name}"; first declared at ${first.line}:${first.col} (index ${first.index})`
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4230,7 +4230,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4248,7 +4248,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4266,7 +4266,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4284,7 +4284,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4302,7 +4302,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4320,7 +4320,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4338,7 +4338,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4356,7 +4356,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4374,7 +4374,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4392,7 +4392,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4410,7 +4410,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4428,7 +4428,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4446,7 +4446,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4464,7 +4464,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4482,7 +4482,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4500,7 +4500,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4518,7 +4518,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4536,7 +4536,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4554,7 +4554,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4567,12 +4567,12 @@ numericDefect === undefined
 - Rendered payload / exact formatter expression:
 
 ```ts
-`authored HSON metadata must not use element attribute syntax`
+`authored Hson metadata must not use element attribute syntax`
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4590,7 +4590,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4608,7 +4608,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4626,7 +4626,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4644,7 +4644,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4662,7 +4662,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4680,7 +4680,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4698,7 +4698,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4716,7 +4716,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4734,7 +4734,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4752,7 +4752,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4770,7 +4770,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4788,7 +4788,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4806,7 +4806,7 @@ numericDefect === undefined
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4824,7 +4824,7 @@ sawItem ? `missing array item between commas` : `unexpected comma before first a
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4842,7 +4842,7 @@ sawItem ? `missing array item between commas` : `unexpected comma before first a
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4860,7 +4860,7 @@ sawItem ? `missing array item between commas` : `unexpected comma before first a
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4878,7 +4878,7 @@ sawItem ? `missing array item between commas` : `unexpected comma before first a
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4896,7 +4896,7 @@ sawItem ? `missing array item between commas` : `unexpected comma before first a
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4914,7 +4914,7 @@ sawItem ? `missing array item between commas` : `unexpected comma before first a
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4932,7 +4932,7 @@ sawItem ? `missing array item between commas` : `unexpected comma before first a
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4950,7 +4950,7 @@ sawItem ? `missing array item between commas` : `unexpected comma before first a
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4968,7 +4968,7 @@ final === "'" ? `mixed quote boundary in quoted string` : `unterminated quoted s
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -4986,7 +4986,7 @@ final === "'" ? `mixed quote boundary in quoted string` : `unterminated quoted s
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5006,7 +5006,7 @@ final === "'"
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5024,7 +5024,7 @@ final === "'"
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5037,12 +5037,12 @@ final === "'"
 - Rendered payload / exact formatter expression:
 
 ```ts
-`[invalid-name-escape] malformed unicode escape ${JSON.stringify(`\\u${hex}`)} in quoted HSON name`
+`[invalid-name-escape] malformed unicode escape ${JSON.stringify(`\\u${hex}`)} in quoted Hson name`
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5060,7 +5060,7 @@ final === "'"
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5073,12 +5073,12 @@ final === "'"
 - Rendered payload / exact formatter expression:
 
 ```ts
-`raw control character is forbidden in single-quoted HSON name`
+`raw control character is forbidden in single-quoted Hson name`
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5091,12 +5091,12 @@ final === "'"
 - Rendered payload / exact formatter expression:
 
 ```ts
-`unterminated single-quoted HSON name`
+`unterminated single-quoted Hson name`
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5114,7 +5114,7 @@ final === "'"
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5132,7 +5132,7 @@ final === "'"
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5150,7 +5150,7 @@ final === "'"
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5163,12 +5163,12 @@ final === "'"
 - Rendered payload / exact formatter expression:
 
 ```ts
-`[duplicate-attribute] duplicate HSON attribute "${attr.name}"; first declared at ${first.line}:${first.col} (index ${first.index})`
+`[duplicate-attribute] duplicate Hson attribute "${attr.name}"; first declared at ${first.line}:${first.col} (index ${first.index})`
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5186,7 +5186,7 @@ final === "'"
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5204,7 +5204,7 @@ final === "'"
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5218,13 +5218,13 @@ final === "'"
 
 ```ts
 quoted === `"`
-                ? `[invalid-json-escape] invalid escape termination in quoted HSON string`
+                ? `[invalid-json-escape] invalid escape termination in quoted Hson string`
                 : `[invalid-name-escape] invalid quoted-name escape termination`
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5238,13 +5238,13 @@ quoted === `"`
 
 ```ts
 quoted === `"`
-              ? `unescaped control character in quoted HSON string`
-              : `raw control character in single-quoted HSON name`
+              ? `unescaped control character in quoted Hson string`
+              : `raw control character in single-quoted Hson name`
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5262,7 +5262,7 @@ quoted === `"`
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5275,12 +5275,12 @@ quoted === `"`
 - Rendered payload / exact formatter expression:
 
 ```ts
-`block comments are not supported in authored HSON`
+`block comments are not supported in authored Hson`
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5298,7 +5298,7 @@ quoted === `"`
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5316,7 +5316,7 @@ quoted === `"`
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5334,7 +5334,7 @@ final === "'" ? `mixed quote boundary in quoted string` : `unterminated quoted s
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5347,12 +5347,12 @@ final === "'" ? `mixed quote boundary in quoted string` : `unterminated quoted s
 - Rendered payload / exact formatter expression:
 
 ```ts
-`unterminated single-quoted HSON name`
+`unterminated single-quoted Hson name`
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5370,7 +5370,7 @@ final === "'" ? `mixed quote boundary in quoted string` : `unterminated quoted s
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5388,7 +5388,7 @@ final === "'" ? `mixed quote boundary in quoted string` : `unterminated quoted s
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5401,12 +5401,12 @@ final === "'" ? `mixed quote boundary in quoted string` : `unterminated quoted s
 - Rendered payload / exact formatter expression:
 
 ```ts
-`block comments are not supported in authored HSON`
+`block comments are not supported in authored Hson`
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5424,7 +5424,7 @@ final === "'" ? `mixed quote boundary in quoted string` : `unterminated quoted s
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5437,12 +5437,12 @@ final === "'" ? `mixed quote boundary in quoted string` : `unterminated quoted s
 - Rendered payload / exact formatter expression:
 
 ```ts
-`HSON number must be finite: "${raw}"`
+`Hson number must be finite: "${raw}"`
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5460,7 +5460,7 @@ final === "'" ? `mixed quote boundary in quoted string` : `unterminated quoted s
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5478,7 +5478,7 @@ final === "'" ? `mixed quote boundary in quoted string` : `unterminated quoted s
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5491,12 +5491,12 @@ final === "'" ? `mixed quote boundary in quoted string` : `unterminated quoted s
 - Rendered payload / exact formatter expression:
 
 ```ts
-`legacy backtick-delimited HSON names are invalid; use a single-quoted name`
+`legacy backtick-delimited Hson names are invalid; use a single-quoted name`
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5514,7 +5514,7 @@ final === "'" ? `mixed quote boundary in quoted string` : `unterminated quoted s
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
 - Precision: exact point when source evidence exists; otherwise unresolved (whole source/body).
-- Related: `Related HSON source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
+- Related: `Related Hson source (first-declaration).` only when emitted related-role evidence maps; otherwise none.
 - Future fix: suggestion only by default; strict safe cases and no-general-fix constraints are identified in the review examples.
 - Evidence limitation: Source expressions below are evidence of existing language, not permission to parse prose or invent missing semantic fields.
 
@@ -5673,7 +5673,7 @@ final === "'" ? `mixed quote boundary in quoted string` : `unterminated quoted s
 - Rendered payload / exact formatter expression:
 
 ```ts
-`serialize-hson: invalid HSON number ${String(value)}; numbers must be finite`
+`serialize-hson: invalid Hson number ${String(value)}; numbers must be finite`
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
@@ -6051,7 +6051,7 @@ final === "'" ? `mixed quote boundary in quoted string` : `unterminated quoted s
 - Rendered payload / exact formatter expression:
 
 ```ts
-`[authored-reserved-name] authored HSON name "${name}" is reserved for internal structural nodes at ${pos.line}:${pos.col} (index ${pos.index})`
+`[authored-reserved-name] authored Hson name "${name}" is reserved for internal structural nodes at ${pos.line}:${pos.col} (index ${pos.index})`
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
@@ -6072,7 +6072,7 @@ final === "'" ? `mixed quote boundary in quoted string` : `unterminated quoted s
 cause.code === "MALFORMED_QUID"
     ? "quid must be a canonical persisted QUID"
     : cause.code === "INELIGIBLE_QUID"
-      ? "persisted QUID on an ineligible HSON structural node"
+      ? "persisted QUID on an ineligible Hson structural node"
       : `duplicate quid "${String(cause.value)}" (Duplicate QUID claim)`
 ```
 
@@ -6109,7 +6109,7 @@ cause.code === "MALFORMED_QUID"
 - Rendered payload / exact formatter expression:
 
 ```ts
-"HSON string literal did not parse to string"
+"Hson string literal did not parse to string"
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
@@ -6363,7 +6363,7 @@ policy.valid
 - Rendered payload / exact formatter expression:
 
 ```ts
-`${here}@attrs:${JSON.stringify(key)}: private HSON metadata transit name is forbidden`
+`${here}@attrs:${JSON.stringify(key)}: private Hson metadata transit name is forbidden`
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
@@ -6399,7 +6399,7 @@ policy.valid
 - Rendered payload / exact formatter expression:
 
 ```ts
-`${here}@attrs:${JSON.stringify(key)}: invalid HSON attribute name`
+`${here}@attrs:${JSON.stringify(key)}: invalid Hson attribute name`
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
@@ -6543,7 +6543,7 @@ policy.valid
 - Rendered payload / exact formatter expression:
 
 ```ts
-`${here}/$_content[0]: invalid HSON number ${String(v)}; numbers must be finite`
+`${here}/$_content[0]: invalid Hson number ${String(v)}; numbers must be finite`
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
@@ -7408,7 +7408,7 @@ errorMessage
 - Rendered payload / exact formatter expression:
 
 ```ts
-`[HSON array indexes] ${message} in ${where} at ${path || "/"}`
+`[Hson array indexes] ${message} in ${where} at ${path || "/"}`
 ```
 
 - Surface: Not a normal source diagnostic; may propagate verbatim through trusted project/module or callback failure. Defensive helpers may be unreachable for admitted source.
@@ -7426,7 +7426,7 @@ errorMessage
 - Rendered payload / exact formatter expression:
 
 ```ts
-`[HSON array indexes] cycle detected in ${where} at ${path}`
+`[Hson array indexes] cycle detected in ${where} at ${path}`
 ```
 
 - Surface: Not a normal source diagnostic; may propagate verbatim through trusted project/module or callback failure. Defensive helpers may be unreachable for admitted source.
@@ -7444,7 +7444,7 @@ errorMessage
 - Rendered payload / exact formatter expression:
 
 ```ts
-`[HSON array indexes] ${analysis.reason} in ${where} at ${path}/${tag}`
+`[Hson array indexes] ${analysis.reason} in ${where} at ${path}/${tag}`
 ```
 
 - Surface: Not a normal source diagnostic; may propagate verbatim through trusted project/module or callback failure. Defensive helpers may be unreachable for admitted source.
@@ -7498,7 +7498,7 @@ errorMessage
 - Rendered payload / exact formatter expression:
 
 ```ts
-`unknown HSON metadata markup name "${markupName}"`
+`unknown Hson metadata markup name "${markupName}"`
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
@@ -7516,7 +7516,7 @@ errorMessage
 - Rendered payload / exact formatter expression:
 
 ```ts
-`invalid value for HSON metadata "${markupName}"`
+`invalid value for Hson metadata "${markupName}"`
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
@@ -7570,7 +7570,7 @@ errorMessage
 - Rendered payload / exact formatter expression:
 
 ```ts
-`Cannot ${operation} QUID metadata on ineligible HSON structural node "${node.$_tag}".`
+`Cannot ${operation} QUID metadata on ineligible Hson structural node "${node.$_tag}".`
 ```
 
 - Surface: Not a normal source diagnostic; may propagate verbatim through trusted project/module or callback failure. Defensive helpers may be unreachable for admitted source.
@@ -7660,7 +7660,7 @@ errorMessage
 - Rendered payload / exact formatter expression:
 
 ```ts
-`HSON numbers must be primitive JavaScript numbers; received ${typeof value}`
+`Hson numbers must be primitive JavaScript numbers; received ${typeof value}`
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
@@ -7678,7 +7678,7 @@ errorMessage
 - Rendered payload / exact formatter expression:
 
 ```ts
-`invalid HSON number ${String(value)}; numbers must be finite`
+`invalid Hson number ${String(value)}; numbers must be finite`
 ```
 
 - Surface: Verbatim TransformError when recognized by the syntax/admission adapter; non-Transform exceptions go to unexpected-failure output or trusted runtime status.
@@ -7770,7 +7770,7 @@ errorMessage
 - Rendered payload / exact formatter expression:
 
 ```ts
-"HSON Schema validation failed."
+"Hson Schema validation failed."
 ```
 
 - Surface: Not a normal source diagnostic; may propagate verbatim through trusted project/module or callback failure. Defensive helpers may be unreachable for admitted source.
@@ -7826,7 +7826,7 @@ errorMessage
 - Rendered payload / exact formatter expression:
 
 ```ts
-cause instanceof Error ? cause.message : "HSON admission failed."
+cause instanceof Error ? cause.message : "Hson admission failed."
 ```
 
 - Surface: Verbatim in status tooltip when carried as response.message / caught Error.message; lifecycle and completion-only failures may be suppressed (see reachability notes).
@@ -7916,7 +7916,7 @@ cause instanceof Error ? cause.message : "HSON admission failed."
 - Rendered payload / exact formatter expression:
 
 ```ts
-"Unrecognized projected Schema capability."
+"Unrecognized data Schema capability."
 ```
 
 - Surface: Verbatim in status tooltip when carried as response.message / caught Error.message; lifecycle and completion-only failures may be suppressed (see reachability notes).
@@ -8600,7 +8600,7 @@ cause instanceof Error ? cause.message : "Project module failed to load."
 - Rendered payload / exact formatter expression:
 
 ```ts
-cause instanceof Error ? cause.message : "Candidate HSON is invalid."
+cause instanceof Error ? cause.message : "Candidate Hson is invalid."
 ```
 
 - Surface: Verbatim in status tooltip when carried as response.message / caught Error.message; lifecycle and completion-only failures may be suppressed (see reachability notes).
@@ -8704,7 +8704,7 @@ cause instanceof Error ? cause.message : "Schema validation threw unexpectedly."
 - Representative authored context: ``<age 37> (valid context; failure is runtime state, not these bytes)``.
 - Schema condition: registered number Schema unless configuration/capability is rejected first.
 - Owner/category: C; `src/internal/trusted-schema-diagnostics/source-lifecycle.ts:25` at pre-edit `821ab89`.
-- Trigger: `interpolation / tag !== HSON`; emission `new Error`.
+- Trigger: `interpolation / tag !== Hson`; emission `new Error`.
 - Rendered payload / exact formatter expression:
 
 ```ts
@@ -8722,7 +8722,7 @@ cause instanceof Error ? cause.message : "Schema validation threw unexpectedly."
 - Representative authored context: ``<age 37> (valid context; failure is runtime state, not these bytes)``.
 - Schema condition: registered number Schema unless configuration/capability is rejected first.
 - Owner/category: C; `src/internal/trusted-schema-diagnostics/source-lifecycle.ts:38` at pre-edit `821ab89`.
-- Trigger: `tag / tag !== HSON`; emission `new Error`.
+- Trigger: `tag / tag !== Hson`; emission `new Error`.
 - Rendered payload / exact formatter expression:
 
 ```ts

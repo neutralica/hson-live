@@ -1192,7 +1192,7 @@ function validate_registration(
   if (get_node_for_el(element) !== registration.node) {
     throw new DocumentReflectError(
       DOCUMENT_REFLECT_DOM_MAPPING_MISMATCH_ERROR_CODE,
-      "Mounted projected element resolves to a different HSON node.",
+      "Mounted projected element resolves to a different Hson node.",
     );
   }
   const projectedDomQuid = element.getAttribute(HSON_QUID_MARKUP_NAME) ?? undefined;
@@ -1206,7 +1206,7 @@ function validate_registration(
   if (typeof tagName === "string" && tagName.toLowerCase() !== registration.node.$_tag.toLowerCase()) {
     throw new DocumentReflectError(
       DOCUMENT_REFLECT_NODE_KIND_MISMATCH_ERROR_CODE,
-      "Mounted projected element tag does not match its HSON node kind.",
+      "Mounted projected element tag does not match its Hson node kind.",
     );
   }
 }

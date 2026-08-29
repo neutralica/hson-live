@@ -39,7 +39,7 @@ export interface HtmlSourceOptions {
  * which typically distinguishes:
  *
  *   - "JSON"   → originally from JSON input
- *   - "HSON"   → originally from HSON input
+ *   - "Hson"   → originally from Hson input
  *   - "HTML"   → originally from HTML input
  *   - "NODE"   → originally from an existing HsonNode
  *
@@ -83,7 +83,7 @@ export interface FrameConstructor {
  *
  *   $RENDER = {
  *     JSON: "JSON",
- *     HSON: "HSON",
+ *     Hson: "Hson",
  *     HTML: "HTML",
  *   } as const;
  *
@@ -91,7 +91,7 @@ export interface FrameConstructor {
  ***************/
 export type RenderFormats = (typeof $RENDER)[keyof typeof $RENDER];
 
-/** Non-HSON formats that participate in the shared option stage. */
+/** Non-Hson formats that participate in the shared option stage. */
 export type OutputRenderFormats =
   | (typeof $RENDER)["JSON"]
   | (typeof $RENDER)["HTML"];
@@ -114,7 +114,7 @@ export type OutputRenderFormats =
  * direct `.toNode()` terminal.
  *
  *  - fromHson(input)
- *      HSON string → Nodes.
+ *      Hson string → Nodes.
  *
  *  - fromJson(input)
  *      JSON value or string → Nodes.
@@ -137,18 +137,18 @@ export type OutputRenderFormats =
  ***************/
 export interface SourceConstructor_1 {
   /**
-   * HSON text → normalized HSON frame.
+   * Hson text → normalized Hson frame.
    *
-   * Accepts a raw HSON source string and parses it into the stage-1 frame
+   * Accepts a raw Hson source string and parses it into the stage-1 frame
    * used by the transformer pipeline.
    *
    * Call `.toNode()` to parse and return the canonical graph directly.
-   * Other output projections, including HSON reserialization, remain available.
+   * Other output projections, including Hson reserialization, remain available.
    */
   fromHson(input: string): HsonSourceConstructor_2;
   
    /**
-   * JSON → normalized HSON frame.
+   * JSON → normalized Hson frame.
    *
    * Accepts either a JSON string or an already-parsed `JsonValue` and
    * converts it into the stage-1 frame used by the transformer pipeline.
@@ -163,7 +163,7 @@ export interface SourceConstructor_1 {
    */
   fromJson(input: string | JsonValue): OutputConstructor_2;
      /**
-     * HTML → normalized HSON frame.
+     * HTML → normalized Hson frame.
      *
      * Accepts an HTML string or `Element` and produces the stage-1 frame used
      * by the transformer pipeline.
@@ -188,13 +188,13 @@ export interface SourceConstructor_1 {
      */
   fromHtml(input: string | Element, options?: HtmlSourceOptions): OutputConstructor_2;
   /**
-   * Existing `HsonNode` → normalized HSON frame.
+   * Existing `HsonNode` → normalized Hson frame.
    *
    * Accepts an already-constructed `HsonNode` graph and wraps it as the
    * stage-1 frame used by the transformer pipeline.
    *
    * This is the identity-style entrypoint for callers that already have
-   * HSON in memory and want to use the same output pipeline as the parsers.
+   * Hson in memory and want to use the same output pipeline as the parsers.
    *
    * This stage does not create `LiveTree` instances. It only prepares the
    * normalized node frame for later `toNode()`, output selection, `value()`,
@@ -203,7 +203,7 @@ export interface SourceConstructor_1 {
   fromNode(input: HsonNode): OutputConstructor_2;
   
   /**
-   * Existing DOM subtree → normalized HSON frame.
+   * Existing DOM subtree → normalized Hson frame.
    *
    * Selects an element via `document.querySelector(selector)`, reads its
    * `innerHTML`, and converts that markup into the stage-1 frame used by
@@ -219,7 +219,7 @@ export interface SourceConstructor_1 {
   queryDOM(selector: string): OutputConstructor_2;
   
   /**
-   * `document.body` subtree → normalized HSON frame.
+   * `document.body` subtree → normalized Hson frame.
    *
    * Reads `document.body.innerHTML` and converts it into the stage-1 frame
    * used by the transformer pipeline.
@@ -243,7 +243,7 @@ export interface SourceConstructor_1 {
  * “Step 2” of the pipeline: choose the *output* representation for
  * the current frame. Each `toX()`:
  *
- *   1) selects a render format (JSON / HSON / HTML),
+ *   1) selects a render format (JSON / Hson / HTML),
  *   2) ensures that representation is materialized in the frame,
  *   3) returns a merged type that exposes:
  *        - step 3: OptionsConstructor_3<K>
@@ -255,7 +255,7 @@ export interface SourceConstructor_1 {
  *      Choose JSON output. value() yields the in-memory JsonValue.
  *
  *  - toHson()
- *      Choose HSON text output. Its finalizer serializes only; use the
+ *      Choose Hson text output. Its finalizer serializes only; use the
  *      source-level toNode() terminal for the canonical graph.
  *
  *  - toHtml()
@@ -293,7 +293,7 @@ export interface OutputConstructor_2 {
    *   5) returns a NEW builder rooted at that sanitized Nodes.
    *
    * Use cases:
-   * - unknown/untrusted JSON/HSON/Nodes that semantically encode HTML
+   * - unknown/untrusted JSON/Hson/Nodes that semantically encode HTML
    *   may need to be run through the HTML sanitizer before touching the DOM.
    *
    * Dangers:
@@ -308,10 +308,10 @@ export interface OutputConstructor_2 {
 }
 
 /**
- * HSON text source surface.
+ * Hson text source surface.
  *
  * Parsing terminates directly with `toNode()`. All ordinary output projections
- * are retained; the HSON serializer finalizer intentionally has no `parse()`.
+ * are retained; the Hson serializer finalizer intentionally has no `parse()`.
  */
 export interface HsonSourceConstructor_2 extends OutputConstructor_2 {}
 
@@ -335,7 +335,7 @@ export interface FrameRender<K extends RenderFormats> {
  *
  *  - graft()
  *      Parses the selected target element itself as the source root,
- *      re-projects its descendants as the HSON-controlled view, and returns
+ *      re-projects its descendants as the Hson-controlled view, and returns
  *      the controlling LiveTree instance for that same root element.
  ***************/
 export interface GraftConstructor {
@@ -367,9 +367,9 @@ export interface OptionsConstructor_3<K extends OutputRenderFormats> {
 }
 
 /**
- * Active HSON serialization preferences. Readable output is the default;
+ * Active Hson serialization preferences. Readable output is the default;
  * `noBreak` selects canonical compact layout and `noQuid` filters only the
- * persisted `quid` metadata key from HSON output.
+ * persisted `quid` metadata key from Hson output.
  */
 export interface FrameOptions {
   noBreak?: boolean;
@@ -380,7 +380,7 @@ export interface FrameOptions {
 export type PublicFrameOptions<K extends OutputRenderFormats> =
   Pick<FrameOptions, "noBreak">;
 
-/** Composable HSON-only option/finalizer methods. */
+/** Composable Hson-only option/finalizer methods. */
 export interface HsonOptionsConstructor_3 {
   withOptions(opts: FrameOptions): HsonOptionsConstructor_3 & HsonSerializeConstructor_4;
   noBreak(): HsonOptionsConstructor_3 & HsonSerializeConstructor_4;
@@ -400,7 +400,7 @@ export interface HsonOptionsConstructor_3 {
  *  - serialize()
  *      Return a string representation in the selected format:
  *        JSON → JSON string
- *        HSON → HSON text (through SerializeConstructor_4)
+ *        Hson → Hson text (through SerializeConstructor_4)
  *        HTML → HTML string
  *
  *  - value()

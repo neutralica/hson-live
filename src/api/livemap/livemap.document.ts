@@ -106,7 +106,7 @@ export function classify_live_root_mode(root: HsonNode): LiveMapRootMode {
   try {
     assert_invariants(root, "classify_live_root_mode");
   } catch (cause) {
-    throw new Error("LiveMap cannot own a malformed canonical HSON root.", { cause });
+    throw new Error("LiveMap cannot own a malformed canonical Hson root.", { cause });
   }
 
   return classify_live_root_shape(root);

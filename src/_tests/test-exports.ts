@@ -94,7 +94,7 @@ function read_node_from_any_source(source: AnySourceSurface): HsonNode {
 }
 
 function assert_hson_serializer_has_no_parse(source: HsonSourceSurface): void {
-  // @ts-expect-error HSON graph access belongs to the source-level toNode().
+  // @ts-expect-error Hson graph access belongs to the source-level toNode().
   source.toHson().parse();
 }
 
@@ -154,7 +154,7 @@ function assert_classified_livemap_surface(map: ClassifiedLiveMapSurface): HsonN
     map.proxy();
     // @ts-expect-error Data maps do not expose document capability namespaces.
     map.document.attrs.set(target, "id", "main");
-    // @ts-expect-error Projected maps do not expose document operations.
+    // @ts-expect-error Data maps do not expose document operations.
     map.document;
   }
 

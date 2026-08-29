@@ -212,10 +212,10 @@ check("xml namespace plumbing is dropped consistently rather than transit-decode
 });
 
 check("invalid canonical ordinary names reject instead of being renamed", () => {
-  assert_rejects_both(`<main @bad="1"/>`, /invalid HSON attribute name "@bad"/);
+  assert_rejects_both(`<main @bad="1"/>`, /invalid Hson attribute name "@bad"/);
   assert.throws(
     () => parse_html(direct_element("main", [{ name: "@bad", value: "1" }])),
-    /invalid HSON attribute name "@bad"/,
+    /invalid Hson attribute name "@bad"/,
   );
 });
 
@@ -301,11 +301,11 @@ check("duplicate minimized and valued attrs follow the same last-wins rule", () 
 check("duplicate metadata declarations reject before ordinary duplicate policy", () => {
   assert_rejects_both(
     `<main hson:quid="${Q1}" hson:quid="${Q1}"/>`,
-    /duplicate HSON metadata attribute "hson:quid"/,
+    /duplicate Hson metadata attribute "hson:quid"/,
   );
   assert_rejects_both(
     `<_hson_arr><_hson_ii hson:index="0" hson:index="0"><a/></_hson_ii></_hson_arr>`,
-    /duplicate HSON metadata attribute "hson:index"/,
+    /duplicate Hson metadata attribute "hson:index"/,
   );
 });
 
@@ -342,7 +342,7 @@ check("nested SVG xlink alias and case behavior agree across browser and Worker"
 });
 
 check("HTML metadata spelling follows case-insensitive HTML name semantics", () => {
-  const source = `<main HSON:QUID="${Q1}"/>`;
+  const source = `<main Hson:QUID="${Q1}"/>`;
   const workerNode = worker(source);
   const browserNode = browser(source);
   assert.equal(must_tag(workerNode, "main").$_meta?.quid, Q1);
@@ -390,7 +390,7 @@ check("transport-sensitive attrs satisfy parse/serialize/parse closure", () => {
   }
 });
 
-check("transport-sensitive attrs retain canonical equality through HSON text", () => {
+check("transport-sensitive attrs retain canonical equality through Hson text", () => {
   const first = worker(`<main a:b="1" a__COLON__b="2" data--attrmap="owned"/>`);
   const semantic = detach_hson_root_value(first);
   const hsonText = hsonTransform.fromNode(semantic).toHson().serialize();

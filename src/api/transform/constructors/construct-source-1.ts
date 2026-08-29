@@ -39,10 +39,10 @@ export interface HtmlSourceOptions {
 }
 
 /**
- * Unified HSON source constructor (NEW).
+ * Unified Hson source constructor (NEW).
  *
  * This is stage 1 of the NEW pipeline:
- *   - It accepts *source formats* (HTML / JSON / HSON / DOM / IR),
+ *   - It accepts *source formats* (HTML / JSON / Hson / DOM / IR),
  *   - Normalizes them into a single HsonNode frame,
  *   - Then hands that frame to `construct_output_2` (stage 2).
  *
@@ -58,14 +58,14 @@ export interface HtmlSourceOptions {
  *   - HTML sources bypass sanitization and go through `parse_html` verbatim.
  *   - Intended only for trusted, developer-authored content (fixtures, demos).
  *
- * Non-HTML sources (JSON / HSON / Node):
+ * Non-HTML sources (JSON / Hson / Node):
  * - Are treated as *structural* inputs.
  * - Are **not** passed through DOMPurify here.
  * - If they encode HTML AST and you want HTML-style sanitization, you must do
  *   that explicitly later (e.g. Node → HTML → DOMPurify → Node).
  *
  * @param pipelineOptions - Pipeline configuration (safe vs unsafe parsing).
- * @returns Stage-1 constructor API for creating a normalized HSON frame.
+ * @returns Stage-1 constructor API for creating a normalized Hson frame.
  */
 export function construct_source_1(
   pipelineOptions: { unsafe: boolean } = { unsafe: false }
@@ -128,7 +128,7 @@ export function construct_source_1(
     },
 
     /**
-     * JSON → HSON Node.
+     * JSON → Hson Node.
      *
      * Accepts a JSON string or parsed JSON value and normalizes it to HsonNode.
      *
@@ -157,16 +157,16 @@ export function construct_source_1(
     },
 
     /**
-     * HSON text → direct HSON Node constructor.
+     * Hson text → direct Hson Node constructor.
      *
      * Retains the source until `.toNode()` (or a cross-format conversion)
-     * invokes the existing HSON parser. A successful parse is cached within
+     * invokes the existing Hson parser. A successful parse is cached within
      * this source frame.
      *
      * Security notes:
-     * - HSON is treated as an internal/intermediate format.
+     * - Hson is treated as an internal/intermediate format.
      * - No HTML sanitization is applied here.
-     * - If your HSON ultimately encodes risky HTML, that must be handled
+     * - If your Hson ultimately encodes risky HTML, that must be handled
      *   at the HTML stage, not here.
      */
     fromHson(input: string): HsonSourceConstructor_2 {
@@ -244,7 +244,7 @@ export function construct_source_1(
     },
 
     /**
-     * `document.querySelector(selector).innerHTML` → HSON Node.
+     * `document.querySelector(selector).innerHTML` → Hson Node.
      *
      * Snapshot helper for existing DOM. Semantics:
      * - Reads `innerHTML` of the matched element.
@@ -275,7 +275,7 @@ export function construct_source_1(
     },
 
     /**
-     * `document.body.innerHTML` → HSON Node.
+     * `document.body.innerHTML` → Hson Node.
      *
      * Snapshot helper for the entire page.
      *

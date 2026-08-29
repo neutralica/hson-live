@@ -277,7 +277,7 @@ check("Locus sync and recovery use exact projected transport", () => {
   const recovery = make_locus_recovery_planner(valueMap, stream);
   const plan = recovery.plan({ logicalMapId: stream.logicalMapId });
   assert.equal(plan.outcome, "snapshot");
-  if (plan.outcome !== "snapshot" || !("hson" in plan.body)) throw new Error("Expected HSON snapshot.");
+  if (plan.outcome !== "snapshot" || !("hson" in plan.body)) throw new Error("Expected Hson snapshot.");
   const restored = make_livemap_core(parse_hson(plan.body.hson));
   assert.deepEqual(keys(capability(restored).read(["value"])), ["10", "2", "1"]);
   plan.dispose();

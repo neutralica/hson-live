@@ -10,11 +10,11 @@ remove metadata, or retry through another ingress.
 
 Closure observes these concrete boundaries independently where applicable:
 
-1. HSON source tokenization and parsing;
+1. Hson source tokenization and parsing;
 2. exact root detachment;
 3. canonical invariant admission;
 4. serializer admission and serialization;
-5. HSON reparse and exact detachment;
+5. Hson reparse and exact detachment;
 6. strict canonical comparison;
 7. input nonmutation and repeated-cycle convergence;
 8. runtime-local semantic projection.

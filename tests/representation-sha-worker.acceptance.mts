@@ -50,7 +50,7 @@ async function assertTextLane(
   assert.equal(observed.production, await nodeRepresentation.sha256());
 }
 
-await check("actual Worker HSON bytes and native SHA match Node", () => {
+await check("actual Worker Hson bytes and native SHA match Node", () => {
   return assertTextLane(worker.hson, node.toHson());
 });
 

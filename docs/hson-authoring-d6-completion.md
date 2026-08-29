@@ -1,4 +1,4 @@
-# HSON authoring D6 completion report
+# Hson authoring D6 completion report
 
 Implemented and verified on 2026-08-28. No commit made.
 
@@ -56,7 +56,7 @@ The existing tokenizer reports private grammar slots through its optional lexica
 collector. Its existing angle-closer classification still decides object versus
 element grammar. A request-local stop token captures one slot. Exactly one legal
 probe is inserted into an analysis copy, parsed by `parse_hson_with_provenance`,
-and resolved through existing projected/document logical location authorities.
+and resolved through existing data/document logical location authorities.
 The probe is identified by exact provenance ranges, not its text. Its generated
 name exceeds the entire source length, making collision with an authored decoded
 name impossible. The probe and parsed copy are discarded after the query.
@@ -75,7 +75,7 @@ return no completion. Normal syntax diagnostics are unchanged.
 ## 4. Trusted Schema authority
 
 The actual registered Schema object is queried inside the existing supervised
-runtime. Projected nodes come from the existing defined-Schema WeakMap; document
+runtime. Data nodes come from the existing defined-Schema WeakMap; document
 nodes come from the existing document capability registry. Document attr rules
 now retain their already-compiled value node beside the existing validator.
 
@@ -100,7 +100,7 @@ declarative structure and finite literals remain available; descriptions remind
 authors that constraints still validate. No inverse constraint interpretation or
 candidate search is performed.
 
-## 7. Projected members
+## 7. Data members
 
 Declared names, requiredness and optionality come from compiled props. Existing
 members are excluded using parsed ordered-object entries. Exact/open objects both
@@ -108,11 +108,11 @@ offer known declarations; open-object detail explicitly avoids exclusivity.
 
 ## 8. Literals
 
-Finite literal/pick alternatives, booleans and null are supported. Existing HSON
+Finite literal/pick alternatives, booleans and null are supported. Existing Hson
 serialization preserves negative zero, string escapes and ordered structured
 values. Structured values use compact canonical spelling. Broad string/number
 Schemas produce no fabricated defaults. Template delimiter characters in
-serialized strings/names use equivalent HSON Unicode escapes so insertion cannot
+serialized strings/names use equivalent Hson Unicode escapes so insertion cannot
 accidentally create JavaScript interpolation or close the template.
 
 ## 9. Arrays and tuples
@@ -123,7 +123,7 @@ length. No comma means no guessed array append.
 
 ## 10. Tagged/pick behavior
 
-Literal evidence may eliminate incompatible projected object branches. A missing
+Literal evidence may eliminate incompatible data object branches. A missing
 discriminator yields common declared names and finite discriminator alternatives,
 not a closest branch. Branch-specific names appear after unambiguous literal
 evidence. Opaque interpolation values and the analysis probe never select a
@@ -154,21 +154,21 @@ does not generate prose; the existing document text node exposes no finite text
 literal declaration to enumerate. Skeletons are shallow and preserve required
 attrs/flags with placeholders, never recursive document synthesis.
 
-## 14. Interpolated HSON
+## 14. Interpolated Hson
 
 Literal segments can complete without runtime values when provenance proves each
-unknown substitution is a complete projected scalar or document attr-value slot.
+unknown substitution is a complete data scalar or document attr-value slot.
 Those substitutions remain opaque, not assumed nulls. Other contexts require
 current D5 capture evidence. Fresh discriminator captures select the actual
 branch; stale captures cannot select the old branch. Repeated evaluations fail
 closed. Exact capture identity is checked before and after the runtime query.
-JavaScript `${...}` expressions receive no HSON completion.
+JavaScript `${...}` expressions receive no Hson completion.
 
 ## 15. Explicit fromHson exclusion
 
 Ordinary `fromHson("...")` and untagged template arguments receive no D6 Schema
 completion, including proven D4 lifecycle relationships. D4 diagnostics continue.
-Documentation directs rich interactive authoring to `HSON`.
+Documentation directs rich interactive authoring to `Hson`.
 
 ## 16. Multiple Schemas
 
@@ -180,7 +180,7 @@ diagnostics still validate independent contracts separately.
 
 Unknown values use blank snippet placeholders. A singleton declarative literal
 may be inserted directly. Existing name replacements preserve their existing
-value/body. Required attr/flag skeleton content is shallow. HSON name/literal
+value/body. Required attr/flag skeleton content is shallow. Hson name/literal
 serialization, host-template escaping, snippet escaping and necessary sibling
 separators are handled separately. No default `0`, empty string, false or null
 is inserted merely to make a primitive type fit.
@@ -227,7 +227,7 @@ Passed with VS Code 1.95.3, both trusted and Restricted Mode extension hosts.
 Mechanically exercised manual member completion, snippets and ordering, finite
 literals, attrs/flags, child/tag choices, incomplete edits, source-update
 filtering, expression exclusion, explicit disablement, Restricted Mode absence,
-and natural `map.schema.use` completion without `HSON.validate`. A real recurse
+and natural `map.schema.use` completion without `Hson.validate`. A real recurse
 thunk signaled entry and paused; retiring its runtime while the request was
 pending prevented old completion publication. D2–D5 journeys also passed.
 
@@ -242,7 +242,7 @@ These are measurements, not a microsecond SLA.
 
 | Scenario | Slot/probe | Parse/provenance | Logical resolve | Schema query | IPC ping | Full client request |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Projected members | 0.017 | 0.148 | 0.029 | 0.020 | 0.039 | 1.627 |
+| data members | 0.017 | 0.148 | 0.029 | 0.020 | 0.039 | 1.627 |
 | Finite literal | 0.019 | 0.039 | 0.008 | 0.022 | 0.029 | 1.134 |
 | Document attrs | 0.015 | 0.045 | 0.038 | 0.036 | 0.030 | 1.143 |
 | Document child/tag | 0.017 | 0.047 | 0.040 | 0.019 | 0.036 | 0.968 |
@@ -259,7 +259,7 @@ max 0.03542 ms. The deliberately delayed retirement case is a safety test, not a
 normal warmed timing sample. The D5 production-tag benchmark also remained in
 its prior roughly 0.009 ms range.
 
-## 24. Narrow production HSON bundle
+## 24. Narrow production Hson bundle
 
 The production `/hson` probe passed all 10 checks. It retains 51 modules, exactly
 as before, and parses/retains no completion query, editor, provider, protocol,
@@ -339,7 +339,7 @@ hosted certification, clean-install certification, CI work or packaging repair.
 
 ## 26. Public API
 
-No package export, public Schema/HSON method, public cursor/completion API,
+No package export, public Schema/Hson method, public cursor/completion API,
 certificate type or subpath added. The Schema node accessor/type are private
 module exports only, absent from public barrels. Root compatibility still checks
 109 runtime exports. LiveTree prototypes, identity and packaging were untouched.
@@ -359,6 +359,6 @@ packaging work separate; none was folded into D6.
 
 ## 29. Suggested commit
 
-`feat(authoring): add bounded trusted HSON Schema completion`
+`feat(authoring): add bounded trusted Hson Schema completion`
 
 Suggestion only; nothing committed.

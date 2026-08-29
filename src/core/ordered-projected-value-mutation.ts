@@ -178,10 +178,10 @@ function write_at(
 
   if (typeof part === "number") {
     if (!Array.isArray(current) || !Number.isInteger(part) || part < 0 || part >= current.length) {
-      throw new Error("Ordered projected array path does not resolve.");
+      throw new Error("Ordered data array path does not resolve.");
     }
     const child = current[part];
-    if (child === undefined) throw new Error("Ordered projected array path does not resolve.");
+    if (child === undefined) throw new Error("Ordered data array path does not resolve.");
     const nextChild = atLeaf ? value : write_at(child, path, offset + 1, value, allowMissingLeaf);
     const items = [...current];
     items[part] = nextChild;
@@ -189,18 +189,18 @@ function write_at(
   }
 
   if (!is_ordered_projected_object(current)) {
-    throw new Error("Ordered projected object path does not resolve.");
+    throw new Error("Ordered data object path does not resolve.");
   }
   const index = object_entry_index(current, part);
   if (index === -1) {
     if (!atLeaf || !allowMissingLeaf) {
-      throw new Error("Ordered projected object path does not resolve.");
+      throw new Error("Ordered data object path does not resolve.");
     }
     return ordered_projected_object([...current.entries, [part, value]]);
   }
 
   const entry = current.entries[index];
-  if (entry === undefined) throw new Error("Ordered projected object path does not resolve.");
+  if (entry === undefined) throw new Error("Ordered data object path does not resolve.");
   const nextChild = atLeaf ? value : write_at(entry[1], path, offset + 1, value, allowMissingLeaf);
   const entries = [...current.entries];
   entries[index] = [part, nextChild];
@@ -218,27 +218,27 @@ function delete_at(
 
   if (typeof part === "number") {
     if (!Array.isArray(current) || !Number.isInteger(part) || part < 0 || part >= current.length) {
-      throw new Error("Ordered projected array path does not resolve.");
+      throw new Error("Ordered data array path does not resolve.");
     }
     if (atLeaf) throw new Error("Ordered projected delete does not remove array indexes.");
     const child = current[part];
-    if (child === undefined) throw new Error("Ordered projected array path does not resolve.");
+    if (child === undefined) throw new Error("Ordered data array path does not resolve.");
     const items = [...current];
     items[part] = delete_at(child, path, offset + 1);
     return ordered_projected_array(items);
   }
 
   if (!is_ordered_projected_object(current)) {
-    throw new Error("Ordered projected object path does not resolve.");
+    throw new Error("Ordered data object path does not resolve.");
   }
   const index = object_entry_index(current, part);
-  if (index === -1) throw new Error("Ordered projected object path does not resolve.");
+  if (index === -1) throw new Error("Ordered data object path does not resolve.");
   if (atLeaf) {
     return ordered_projected_object(current.entries.filter((_entry, entryIndex) => entryIndex !== index));
   }
 
   const entry = current.entries[index];
-  if (entry === undefined) throw new Error("Ordered projected object path does not resolve.");
+  if (entry === undefined) throw new Error("Ordered data object path does not resolve.");
   const entries = [...current.entries];
   entries[index] = [part, delete_at(entry[1], path, offset + 1)];
   return ordered_projected_object(entries);

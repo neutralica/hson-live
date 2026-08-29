@@ -138,11 +138,11 @@ function element_cluster_needs_explicit_transport(content: readonly (HsonNode | 
 }
 
 /**
- * Low-level XML serializer for HSON nodes.
+ * Low-level XML serializer for Hson nodes.
  *
  * Role:
  * - Convert a `HsonNode | Primitive` tree to an XML-like string that is
- *   *structurally faithful* to the HSON IR, suitable as an intermediate
+ *   *structurally faithful* to the Hson IR, suitable as an intermediate
  *   for later HTML normalization (`serialize_html`).
  *
  * Special cases:
@@ -317,7 +317,7 @@ export function serialize_xml(node: HsonNode | Primitive | undefined): string {
 }
 
 /**
- * Public HTML serializer for HSON trees (2.0 surface).
+ * Public HTML serializer for Hson trees (2.0 surface).
  *
  * Pipeline:
  * 1. Clone & guard:
@@ -326,11 +326,11 @@ export function serialize_xml(node: HsonNode | Primitive | undefined): string {
  *
  * 2. Invariant check:
  *    - `assert_invariants(clone, "serialize_html")` ensures that the
- *      internal HSON structure is well-formed before any emission.
+ *      internal Hson structure is well-formed before any emission.
  *
  * 3. XML stage:
  *    - Delegates to `serialize_xml(clone)` to produce an XML-like string
- *      that faithfully represents HSON semantics (including `_hson_val`, `_hson_obj`,
+ *      that faithfully represents Hson semantics (including `_hson_val`, `_hson_obj`,
  *      `_hson_arr`, `_hson_ii`, etc.).
  *
  * 4. HTML normalization:
@@ -346,9 +346,9 @@ export function serialize_xml(node: HsonNode | Primitive | undefined): string {
  * - `_hson_elem` appears only when its transport boundary is required;
  *   `_hson_root` never appears as a tag.
  * - `_hson_obj` and other clusters remain visible where necessary to preserve
- *   HSON’s JSON-mode structure.
+ *   Hson’s JSON-mode structure.
  *
- * @param node - Root HSON node or primitive to serialize as HTML.
+ * @param node - Root Hson node or primitive to serialize as HTML.
  * @returns A trimmed HTML string ready for DOM insertion or inspection.
  * @throws If invariants fail or if the input is not a valid HsonNode.
  */

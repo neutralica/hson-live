@@ -21,7 +21,7 @@ const XML_SHAPED_ARRAY_WRAPPER = /<\/?_hson_(?:arr|ii)(?=[\s/>])/i;
  * 2. Sanitize the normalized HTML via `sanitize_external` (DOMPurify-based).
  * 3. If sanitization removes all content (only forbidden tags/attrs),
  *    throw with a clear error message.
- * 4. Pass the sanitized HTML into `parse_html` to build the HSON tree.
+ * 4. Pass the sanitized HTML into `parse_html` to build the Hson tree.
  *
  * This function is the safe HTML entry-point: all external/untrusted
  * HTML should go through this path rather than `parse_html` directly.

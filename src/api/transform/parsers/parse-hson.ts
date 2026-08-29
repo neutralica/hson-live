@@ -11,18 +11,18 @@ import type { HsonSourceProvenanceBuilder } from "../../../internal/hson-source-
 
 
 /**
- * Parse a HSON source string into a validated `HsonNode` tree.
+ * Parse a Hson source string into a validated `HsonNode` tree.
  *
  * Pipeline:
  * 1. Tokenize the input via `tokenize_hson`.
  * 2. Build a node tree from the tokens via `parse_tokens`.
  * 3. Validate canonical QUID placement, values, and graph-wide uniqueness.
  * 4. Run `assert_invariants` to ensure the resulting tree satisfies all
- *    structural invariants for HSON.
+ *    structural invariants for Hson.
  *
  * If invariants fail, a transform error is thrown.
  *
- * @param str - Raw HSON source text.
+ * @param str - Raw Hson source text.
  * @returns A fully-parsed and validated `HsonNode` root.
  * @see tokenize_hson
  * @see parse_tokens
@@ -41,7 +41,7 @@ export function parse_hson_attached(
     const newTokens = tokenize_hson(str, 0, provenance);
     if (newTokens.length === 0) {
         _throw_transform_err(
-            "empty, whitespace-only, or comment-only HSON source has no semantic value",
+            "empty, whitespace-only, or comment-only Hson source has no semantic value",
             "parse_hson",
             undefined,
             undefined,

@@ -7,10 +7,10 @@ import { unescape_hson_string } from "./unescape-hson.js";
 import { Primitive } from "../../../../core/types.js";
 
 /*******
- * Decode an attribute/meta value coming from the HSON tokenizer.
+ * Decode an attribute/meta value coming from the Hson tokenizer.
  *
- * HSON rule:
- * - If a value was quoted in source, it is treated as an HSON string literal
+ * Hson rule:
+ * - If a value was quoted in source, it is treated as an Hson string literal
  *   and must be unescaped (e.g. \" \\n \\uXXXX, etc.) via `unescape_hson_string`.
  * - If it was not quoted, it is treated as raw text and only trimmed.
  *
@@ -27,7 +27,7 @@ function decode_hson_value(text: string, quoted: boolean | undefined): string {
 }
 
 /*******
- * Split raw parsed attributes into `$_attrs` vs `$_meta`, applying HSON-edge decoding.
+ * Split raw parsed attributes into `$_attrs` vs `$_meta`, applying Hson-edge decoding.
  *
  * Input:
  * - `RawAttr[]` emitted by the tokenizer for a single open tag.
@@ -35,13 +35,13 @@ function decode_hson_value(text: string, quoted: boolean | undefined): string {
  *   - `name` (attribute key),
  *   - optional `value` as `{ text, quoted }`.
  *
- * HSON metadata uses dedicated grammar (`@<quid>` and structural array order).
+ * Hson metadata uses dedicated grammar (`@<quid>` and structural array order).
  * Attribute tokens are therefore always ordinary `$_attrs`.
  *
- * Value semantics (HSON edge, not HTML):
- * - Quoted values are HSON string literals and are decoded via `decode_hson_value`.
+ * Value semantics (Hson edge, not HTML):
+ * - Quoted values are Hson string literals and are decoded via `decode_hson_value`.
  * - Unquoted values are treated as raw text and trimmed.
- * - No HTML entity decoding is performed at this stage; this path assumes HSON
+ * - No HTML entity decoding is performed at this stage; this path assumes Hson
  *   source, not external HTML.
  *
  * Special cases:
@@ -84,14 +84,14 @@ export function split_attrs_meta(raw: RawAttr[]): { attrs: HsonAttrs; meta: Hson
       continue;
     }
 
-    // Flags & normal values (HSON edge — JSON-literal quotes only, no HTML entities)
+    // Flags & normal values (Hson edge — JSON-literal quotes only, no HTML entities)
     if (!ra.value) {
       // flag === key="key"
       attrs[k] = k as unknown as Primitive; 
       continue;
     }
 
-    // decode quoted HSON once
+    // decode quoted Hson once
     const val: string = decode_hson_value(ra.value.text, ra.value.quoted);
 
     // Maintain disabled="" / disabled="disabled" → key flag behavior

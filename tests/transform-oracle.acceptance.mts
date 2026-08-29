@@ -208,7 +208,7 @@ check("HTML reserved transport establishes mode before ordinary wrapping", () =>
   assert.equal(Object.is(leaf.$_content[0], -0), true);
 });
 
-check("HSON, JSON, and HTML transports cover the canonical semantic graph lattice", () => {
+check("Hson, JSON, and HTML transports cover the canonical semantic graph lattice", () => {
   const str = (value: string): HsonNode => node("_hson_str", [value]);
   const val = (value: number | boolean | null): HsonNode => node("_hson_val", [value]);
   const objValue = (value: HsonNode): HsonNode => node("_hson_obj", [value]);
@@ -391,7 +391,7 @@ check("authored reserved names expose stable lexical identity", () => {
     expectedOperation: "tokenize-hson.authored-name",
     expectedStage: "tokenization",
     expectedSource: { index: 1, line: 1, column: 2 },
-    message: /authored HSON name "_hson_obj".*1:2 \(index 1\)/,
+    message: /authored Hson name "_hson_obj".*1:2 \(index 1\)/,
     run: () => parse_hson(source),
   });
 });
@@ -439,7 +439,7 @@ check("invalid authored JSON-number prefixes expose deterministic lexical owners
       expectedOperation: "tokenize-hson",
       expectedStage: "tokenization",
       expectedSource,
-      message: /invalid HSON number/,
+      message: /invalid Hson number/,
       run: () => parse_hson(source),
     });
   }

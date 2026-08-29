@@ -1,12 +1,12 @@
 #### hson-live / hson.terminalgothic.com
 
-# HSON Spec[1]
+# Hson Spec[1]
 ## Nodes, Structure, and Invariants
 Updated: 2026-07-31
 
-HSON transformations normalize through one ordered tree representation,
+Hson transformations normalize through one ordered tree representation,
 `HsonNode`. The graph preserves the semantic structure needed to project JSON,
-HTML, and HSON, but it is not a byte-for-byte record of source spelling.
+HTML, and Hson, but it is not a byte-for-byte record of source spelling.
 Parsers and serializers can canonicalize whitespace, quoting, attribute form,
 tag case, object-key order, and other surface details.
 
@@ -47,14 +47,14 @@ underscore names are not reserved by this rule.
 `_hson_root` is an internal attachment carrier. It contains zero or one child;
 a present child must be exactly one of `_hson_obj`, `_hson_elem`, `_hson_arr`,
 `_hson_str`, or `_hson_val`. `parse_hson()` uses one root while building and
-validating HSON source, but public `fromHson().toNode()` returns the root's one
+validating Hson source, but public `fromHson().toNode()` returns the root's one
 semantic child. It removes no further structural node.
 
 The root remains significant to canonical equality and to generic graph
 validation. It is not equality-transparent and is not a semantic value. Every
-root, empty or populated, rejects at the HSON serializer boundary. Internal
-JSON/HTML parser frames and HSON-source frames explicitly detach their owned
-root before HSON output; a caller-supplied root is never melted by the HSON
+root, empty or populated, rejects at the Hson serializer boundary. Internal
+JSON/HTML parser frames and Hson-source frames explicitly detach their owned
+root before Hson output; a caller-supplied root is never melted by the Hson
 serializer.
 
 ### `_hson_obj`
@@ -121,12 +121,12 @@ when values cross an untyped text/markup representation.
 ## Attributes and metadata
 
 Attributes are data attached to an ordinary node; they are not child nodes.
-VSNs cannot have attributes. Authored HSON attributes and presence flags belong
+VSNs cannot have attributes. Authored Hson attributes and presence flags belong
 only to element mode; object members cannot author either. Other source parsers
 may normalize attribute names and values according to their source format, so
 source attribute order and exact spelling are not graph invariants.
 
-HSON element presence flags use the canonical string-equals-key representation,
+Hson element presence flags use the canonical string-equals-key representation,
 for example `{ disabled: "disabled" }`, and serialize as bare `disabled`.
 LiveTree and LiveMap expose `flags` as semantic operations over the same complete
 canonical attr bag, without separate provenance metadata. Attr reads observe the
@@ -137,13 +137,13 @@ store canonical boolean and null values; deletion is explicit through
 
 The graph type continues to permit ordinary string, number, boolean, and null
 attribute values for programmatic compatibility; this is not a promise of typed
-wire attributes. HSON parsing stores ordinary attribute values as strings, and
+wire attributes. Hson parsing stores ordinary attribute values as strings, and
 Transform node admission projects non-style attribute primitives to strings
-before HSON serialization. Thus `fromNode()` admits `{ count: 2 }` as
+before Hson serialization. Thus `fromNode()` admits `{ count: 2 }` as
 `{ count: "2" }`, which serializes as `count="2"`. Direct canonical equality
 does not imitate that projection: `{ count: 2 }` and `{ count: "2" }` are
 distinct graphs. Direct serializer input must already satisfy its string-valued
-HSON attribute domain. Structured style values retain their separate existing
+Hson attribute domain. Structured style values retain their separate existing
 CSS-string normalization behavior. Canonical no-attribute state omits
 `$_attrs`; invariant validation rejects a present empty `$_attrs` container.
 
@@ -151,8 +151,8 @@ Metadata is structural support, not semantic JSON/HTML content. QUID identity
 is stored as `$_meta["quid"]`; array index metadata uses
 `$_meta["index"]`.
 
-Authored HSON persists QUIDs only on element nodes. Object-member QUIDs and any
-other object-member metadata are outside the HSON serialization domain and
+Authored Hson persists QUIDs only on element nodes. Object-member QUIDs and any
+other object-member metadata are outside the Hson serialization domain and
 reject rather than being silently omitted; `noQuid` does not legalize such an
 object graph. For element output, `noQuid` filters only persisted `quid`.
 Array indexes are implicit in textual item order and rebuilt during parsing.
@@ -188,7 +188,7 @@ QUIDs are not a universal transform round-trip guarantee:
 - detach, movement, and reattachment preserve QUID identity;
 - cloned LiveTree branches receive fresh QUIDs;
 - terminal destruction releases active QUID ownership;
-- HSON `.noQuid()` filters output only and does not mutate graph identity or
+- Hson `.noQuid()` filters output only and does not mutate graph identity or
   runtime ownership; and
 - transform/canonicalization operations may rebuild or normalize graphs.
 
@@ -209,8 +209,8 @@ Current invariant validation enforces, among other rules:
 - `_hson_ii`-only children under `_hson_arr`; and
 - `_hson_str`/ordinary-element-only children under `_hson_elem`.
 
-For successful nonempty HSON source, the internal root has exactly one child.
-Empty, whitespace-only, and comment-only HSON source rejects rather than
+For successful nonempty Hson source, the internal root has exactly one child.
+Empty, whitespace-only, and comment-only Hson source rejects rather than
 creating an empty object. Bare strings detach as `_hson_str`; bare finite
 numbers, booleans, and `null` detach as `_hson_val`.
 

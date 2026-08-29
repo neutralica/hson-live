@@ -17,7 +17,7 @@ import type { OrderedProjectedValue } from "../../core/ordered-projected-value.j
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import { emit_ordered_json } from "../transform/utils/json-utils/ordered-json.js";
 
-/** Structured public-mutation failure backed by neutral projected admission. */
+/** Structured public-mutation failure backed by neutral data admission. */
 export class LiveMapProjectedValueError extends TypeError {
   readonly code = "INVALID_PROJECTED_VALUE" as const;
   readonly reasonCode: ProjectedValueAdmissionCode;
@@ -45,7 +45,7 @@ export type LiveMapProjectedMutationErrorCode =
   | "INVALID_ARRAY_MOVE_SOURCE"
   | "INVALID_ARRAY_MOVE_DESTINATION";
 
-/** Stable projected helper failure emitted before any canonical publication. */
+/** Stable data helper failure emitted before any canonical publication. */
 export class LiveMapProjectedMutationError extends Error {
   readonly path: LivePath;
 
@@ -79,7 +79,7 @@ export class LiveMapProjectedIdentityError extends Error {
     readonly reason: string,
     options?: ErrorOptions,
   ) {
-    super(`Invalid LiveMap projected identity at ${format_live_path(path)}: ${reason}`, options);
+    super(`Invalid LiveMap data identity at ${format_live_path(path)}: ${reason}`, options);
     this.name = "LiveMapProjectedIdentityError";
     this.path = clone_live_path(path);
   }

@@ -46,7 +46,7 @@ export function present_schema_diagnostic(issue: TrustedSchemaDiagnostic, associ
   return {
     message: messages.schemaDiagnostic(association.schemaLabel, schema_diagnostic_message(issue), locationNote),
     range: mapped ?? occurrenceRange,
-    precision, source: "HSON", code: issue.code,
+    precision, source: "Hson", code: issue.code,
     hostOrigin: issue.hostOrigin?.kind,
     related: [{ range: association.callRange, message: messages.schemaRequestRelated(association.mapFlow === undefined ? "validate" : "map.schema.use", association.schemaLabel) }],
   };

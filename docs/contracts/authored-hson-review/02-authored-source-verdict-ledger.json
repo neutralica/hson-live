@@ -1251,7 +1251,7 @@
       "agreesWithProposal": true,
       "amendmentApplied": false,
       "source": "<>",
-      "claim": "One angle pair denotes an empty HSON object.",
+      "claim": "One angle pair denotes an empty Hson object.",
       "note": "`</>` not valid however"
     },
     {
@@ -1307,7 +1307,7 @@
       "amendmentApplied": false,
       "source": "[]",
       "claim": "An empty bracket array canonicalizes to guillemets.",
-      "note": " it sounds like this means 'serializes canonically'? \nthe array symbol is obviously not stored in the nodes per se except by the _hson_arr wrapper. \nHSON's parser accepts brackets and guillemet, flexibly. It always serializes as guillemet, yes. It never serializes to bracket and there's no way to change that. "
+      "note": " it sounds like this means 'serializes canonically'? \nthe array symbol is obviously not stored in the nodes per se except by the _hson_arr wrapper. \nHson's parser accepts brackets and guillemet, flexibly. It always serializes as guillemet, yes. It never serializes to bracket and there's no way to change that. "
     },
     {
       "caseId": "hson.accept.literal.array.empty-guillemet",
@@ -1349,7 +1349,7 @@
       "amendmentApplied": false,
       "source": "[1,\"two\",false,null]",
       "claim": "Arrays remain comma-separated and retain primitive item order.",
-      "note": "item order is always preserved by arrays in HSON via ordering, just as with HSON. it is preserved in HTML expressions of JSON by wrapping each item in an ii node which melts on reparsing. the hson:index value on the ii node must determine the order of reconstruction correctly."
+      "note": "item order is always preserved by arrays in Hson via ordering, just as with Hson. it is preserved in HTML expressions of JSON by wrapping each item in an ii node which melts on reparsing. the hson:index value on the ii node must determine the order of reconstruction correctly."
     },
     {
       "caseId": "hson.accept.literal.array.trailing-comma-bracket",
@@ -1403,7 +1403,7 @@
       "amendmentApplied": false,
       "source": "<input title=\"value\"/>",
       "claim": "An element attribute retains its explicit value.",
-      "note": "Yes, I'm not sure what's even questionable here\nit's explicit value may only ever be a string\nthe source HSON is valid regardless"
+      "note": "Yes, I'm not sure what's even questionable here\nit's explicit value may only ever be a string\nthe source Hson is valid regardless"
     },
     {
       "caseId": "hson.accept.literal.element.empty",
@@ -1416,7 +1416,7 @@
       "agreesWithProposal": true,
       "amendmentApplied": false,
       "source": "<div/>",
-      "claim": "A self-closing angle construct denotes an empty HSON element.",
+      "claim": "A self-closing angle construct denotes an empty Hson element.",
       "note": "/// <div>  ///-> INVALID _hson_obj must hve a value and a key"
     },
     {
@@ -1457,7 +1457,7 @@
       "agreesWithProposal": true,
       "amendmentApplied": false,
       "source": "<p \"text\"/>",
-      "claim": "An HSON element may contain quoted string content."
+      "claim": "An Hson element may contain quoted string content."
     },
     {
       "caseId": "hson.accept.literal.element.three-empty-strings",
@@ -1511,7 +1511,7 @@
       "agreesWithProposal": true,
       "amendmentApplied": false,
       "source": "[<name \"Ada\">]",
-      "claim": "An array item may be a HSON object."
+      "claim": "An array item may be a Hson object."
     },
     {
       "caseId": "hson.accept.literal.element.mixed-content",
@@ -1537,7 +1537,7 @@
       "agreesWithProposal": true,
       "amendmentApplied": false,
       "source": "<p <em \"text\"/>/>",
-      "claim": "An HSON element may contain a nested element."
+      "claim": "An Hson element may contain a nested element."
     },
     {
       "caseId": "hson.accept.literal.object.array-value",
@@ -1563,7 +1563,7 @@
       "agreesWithProposal": true,
       "amendmentApplied": false,
       "source": "<record <field 2>>",
-      "claim": "An object property may contain a nested HSON object."
+      "claim": "An object property may contain a nested Hson object."
     },
     {
       "caseId": "hson.accept.basis.object.primitive-looking-keys",
@@ -1576,7 +1576,7 @@
       "agreesWithProposal": true,
       "amendmentApplied": false,
       "source": "<true 1 false 2 null 3>",
-      "claim": "true, false, and null are ordinary property keys in HSON object key position."
+      "claim": "true, false, and null are ordinary property keys in Hson object key position."
     },
     {
       "caseId": "hson.accept.literal.element.keyword-flags",
@@ -1752,7 +1752,7 @@
       "agreesWithProposal": true,
       "amendmentApplied": false,
       "source": "0x10",
-      "claim": "Hexadecimal spelling is not JSON-compatible HSON number syntax."
+      "claim": "Hexadecimal spelling is not JSON-compatible Hson number syntax."
     },
     {
       "caseId": "hson.reject.basis.number.leading-plus",
@@ -1765,7 +1765,7 @@
       "agreesWithProposal": true,
       "amendmentApplied": false,
       "source": "+1",
-      "claim": "A JSON-compatible HSON number may not begin with plus."
+      "claim": "A JSON-compatible Hson number may not begin with plus."
     },
     {
       "caseId": "hson.reject.basis.number.leading-zero",
@@ -1896,7 +1896,7 @@
       "agreesWithProposal": true,
       "amendmentApplied": false,
       "source": "1_0",
-      "claim": "Numeric separators are not JSON-compatible HSON number syntax.",
+      "claim": "Numeric separators are not JSON-compatible Hson number syntax.",
       "note": "seek parity with JSON"
     },
     {
@@ -2019,7 +2019,7 @@
       "agreesWithProposal": null,
       "amendmentApplied": false,
       "source": "1﻿",
-      "claim": "U+FEFF is not authored-HSON trivia.",
+      "claim": "U+FEFF is not authored-Hson trivia.",
       "note": "PROPOSAL VALUES ACCEPTED"
     },
     {
@@ -2321,7 +2321,7 @@
       "amendmentApplied": false,
       "source": "1　",
       "claim": "Unsupported whitespace U+3000 rejects outside a quoted token.",
-      "note": "I can't read any of these really but I trust your judgement. if it's not JSON it's not HSON (unless it's HTML)"
+      "note": "I can't read any of these really but I trust your judgement. if it's not JSON it's not Hson (unless it's HTML)"
     },
     {
       "caseId": "hson.accept.family.quoted-string.quote",
@@ -3399,7 +3399,7 @@
       "agreesWithProposal": true,
       "amendmentApplied": true,
       "source": "<'x y'/>",
-      "claim": "A nonempty single-quoted name is admitted as an HSON element name."
+      "claim": "A nonempty single-quoted name is admitted as an Hson element name."
     },
     {
       "caseId": "hson.accept.literal.object.colon-dot-names",
@@ -4667,7 +4667,7 @@
       "agreesWithProposal": true,
       "amendmentApplied": false,
       "source": "<a @000000001 1>",
-      "claim": "Object-property QUIDs do not exist in authored HSON."
+      "claim": "Object-property QUIDs do not exist in authored Hson."
     },
     {
       "caseId": "hson.reject.literal.array.mismatched-bracket",
@@ -4851,7 +4851,7 @@
       "agreesWithProposal": true,
       "amendmentApplied": false,
       "source": "<a <e/>>",
-      "claim": "An HSON object property cannot contain an element-mode value."
+      "claim": "An Hson object property cannot contain an element-mode value."
     },
     {
       "caseId": "hson.reject.literal.element.numeric-content",
@@ -4864,7 +4864,7 @@
       "agreesWithProposal": true,
       "amendmentApplied": false,
       "source": "<e 1/>",
-      "claim": "Numeric typed content beneath an HSON element rejects."
+      "claim": "Numeric typed content beneath an Hson element rejects."
     },
     {
       "caseId": "hson.reject.literal.mode.array-element",
@@ -4890,7 +4890,7 @@
       "agreesWithProposal": true,
       "amendmentApplied": false,
       "source": "<e [1]/>",
-      "claim": "An HSON element cannot contain an array."
+      "claim": "An Hson element cannot contain an array."
     },
     {
       "caseId": "hson.reject.literal.mode.element-object",
@@ -4903,7 +4903,7 @@
       "agreesWithProposal": true,
       "amendmentApplied": false,
       "source": "<e <b 1>/>",
-      "claim": "An HSON element cannot contain object structure."
+      "claim": "An Hson element cannot contain object structure."
     },
     {
       "caseId": "hson.reject.literal.root.bare-name",

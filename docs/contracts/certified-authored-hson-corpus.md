@@ -1,6 +1,6 @@
-# Materialized authored-HSON conformance corpus candidate
+# Materialized authored-Hson conformance corpus candidate
 
-The materialized authored-HSON conformance corpus candidate is the executable source of truth for the
+The materialized authored-Hson conformance corpus candidate is the executable source of truth for the
 settled authored language and its graph, structural JSON, and structural HTML
 transport boundaries. It is a finite contract inventory, not a fuzz suite or a
 second implementation of the parser.
@@ -19,7 +19,7 @@ launcher rejects stale or nondeterministic regeneration.
 ## Descriptor architecture
 
 `tests/certified-corpus/corpus-types.mts` separates literal accepted and
-rejected authored-HSON cases, transparent family definitions and their
+rejected authored-Hson cases, transparent family definitions and their
 materialized cases, accepted and rejected graph ingress, structural JSON,
 structural HTML, diagnostic-circuit regressions, and specialized-test
 cross-references. Every materialized case has a stable ID, explicit taxonomy,
@@ -36,10 +36,10 @@ serializer under test generates them.
 
 | Classification | Concrete descriptors |
 | --- | ---: |
-| Literal accepted authored-HSON | 51 |
-| Transparent accepted authored-HSON | 50 |
-| Literal rejected authored-HSON | 55 |
-| Transparent rejected authored-HSON | 117 |
+| Literal accepted authored-Hson | 51 |
+| Transparent accepted authored-Hson | 50 |
+| Literal rejected authored-Hson | 55 |
+| Transparent rejected authored-Hson | 117 |
 | Graph-only accepted transport | 11 |
 | Graph-only rejected transport | 9 |
 | Structural JSON transport | 14 |
@@ -75,7 +75,7 @@ duplicate remains in the JSON ingress suite.
 
 `transform/legacy/html::html__largeFormat.html_wikipedia` remains the
 long-standing real-world closure and performance regression in the specialized
-legacy HTML suite. It is not an authored-HSON semantic descriptor.
+legacy HTML suite. It is not an authored-Hson semantic descriptor.
 
 No parser, serializer, invariant, equality, normalization, transport,
 diagnostic-circuit, or public-facade behavior was changed to introduce this
@@ -92,6 +92,6 @@ the Node catalog fingerprint is `fnv1a32-fe2e33a7`, and the Worker catalog
 fingerprint is `fnv1a32-18e3249e`.
 
 The completed human worksheet remains immutable historical input. Current
-membership records are amendment-aware. The next authored-HSON decisions are
+membership records are amendment-aware. The next authored-Hson decisions are
 `.5` admission, element-closer trivia, comment syntax, and mixed-root design
 reservation.

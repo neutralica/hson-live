@@ -44,7 +44,7 @@ type BinaryStyleValue =
   | Readonly<{ value: string | number; unit?: string }>;
 
 function fail(message: string): never {
-  throw new Error(`Binary HSON: ${message}`);
+  throw new Error(`Binary Hson: ${message}`);
 }
 
 function compare_code_units(left: string, right: string): number {
@@ -190,7 +190,7 @@ function write_content(writer: BinaryWriter, content: HsonNode["$_content"]): vo
 function write_node(writer: BinaryWriter, node: HsonNode): void {
   switch (node.$_tag) {
     case ROOT_TAG:
-      fail("_hson_root is not a detached Binary HSON value");
+      fail("_hson_root is not a detached Binary Hson value");
     case STR_TAG:
       writer.byte(STR);
       write_fields(writer, node);
@@ -227,7 +227,7 @@ function write_node(writer: BinaryWriter, node: HsonNode): void {
 
 export function serialize_binary(node: HsonNode): Uint8Array {
   assert_invariants(node, "toBinary");
-  if (node.$_tag === ROOT_TAG) fail("_hson_root is not a detached Binary HSON value");
+  if (node.$_tag === ROOT_TAG) fail("_hson_root is not a detached Binary Hson value");
   const writer = new BinaryWriter();
   for (const byte of MARKER) writer.byte(byte);
   write_node(writer, node);

@@ -61,7 +61,7 @@ const locus = create_locus({
 ```
 
 `LocusOptions<TMap, TActions>` accepts an existing authoritative map.
-`ProjectedLocusOptions<TState, TActions>` creates a projected data map from
+`ProjectedLocusOptions<TState, TActions>` creates a data map from
 state. A Locus owns one canonical stream identified by `logicalMapId` and
 `incarnationId`; neither is its route selector or a client identity.
 
@@ -133,7 +133,7 @@ single bootstrap artifact.
 
 `create_persistent_locus` is the document persistence constructor. It uses a
 `LocusPersistenceAdapter`, appends each changed commit before visibility, and
-supports exact checkpoint replacement. Projected-data persistence remains
+supports exact checkpoint replacement. Data persistence remains
 reserved and rejects.
 
 The multi-authority persistent store is intentionally not public in U10.

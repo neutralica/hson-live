@@ -62,8 +62,8 @@ check("identifier custom tag retains exact tag and emptiness", () => { element(`
 check("bracket custom tag retains exact tag and emptiness", () => { element(`<my-widget/>`).schema.use(EmptyCustom); assert.match(rejects(element(`<my-widget "x"/>`), EmptyCustom).message, /length 0/); });
 check("empty and tuple() accept the same empty fragment", () => { emptyFragment().schema.use(EmptyTuple); emptyFragment().schema.use(Empty); });
 check("tuple() retains projected empty tuple capability", () => { assert.equal(EmptyProjectedTuple.validateRoot([]).ok, true); });
-check("projected tuple() rejects nonempty arrays", () => { assert.equal(EmptyProjectedTuple.validateRoot([1]).ok, false); });
-check("empty rejects projected object and array composition", () => {
+check("data tuple() rejects nonempty arrays", () => { assert.equal(EmptyProjectedTuple.validateRoot([1]).ok, false); });
+check("empty rejects data object and array composition", () => {
   assert.throws(() => hson.liveMap.schema.define((s) => Reflect.apply(s.object, undefined, [{ child: s.empty }])), /document-only/);
   assert.throws(() => hson.liveMap.schema.define((s) => Reflect.apply(s.array, undefined, [s.empty])), /document-only/);
 });

@@ -11,7 +11,7 @@ import { resolve_wrapper_node } from "./livemap.editor.js";
  *
  * Projected JSON wrapper resolution runs first so JSON data remains canonical
  * when JSON keys overlap with HTML tag names. The child-tag fallback exists for
- * HTML-shaped HSON, where element nodes may sit behind `_hson_elem` clusters.
+ * HTML-shaped Hson, where element nodes may sit behind `_hson_elem` clusters.
  * This module is not exported through a supported package entrypoint.
  */
 export function resolveLiveMapNode(root: HsonNode, path: LivePath): HsonNode | undefined {

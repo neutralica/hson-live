@@ -194,7 +194,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }));
   const schemaCollection = vscode.languages.createDiagnosticCollection("hson-schema");
   const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 10);
-  const output = vscode.window.createOutputChannel("HSON Schema diagnostics");
+  const output = vscode.window.createOutputChannel("Hson Schema diagnostics");
   const statuses = new Map<string, { status: SchemaStatus; message?: string }>();
   const clients = new Map<string, TrustedSchemaClient>();
   const files = new Map<string, ReadonlySet<string>>();
@@ -233,7 +233,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (current === undefined) return;
       schemaCollection.set(current.uri, specs.map(spec => {
         const diagnostic = new vscode.Diagnostic(toRange(current, spec), spec.message, vscode.DiagnosticSeverity.Error);
-        diagnostic.source = spec.runtimeAdmission ? "HSON" : "HSON Schema"; diagnostic.code = spec.code;
+        diagnostic.source = spec.runtimeAdmission ? "Hson" : "Hson Schema"; diagnostic.code = spec.code;
         diagnostic.relatedInformation = spec.related.map(item => new vscode.DiagnosticRelatedInformation(new vscode.Location(current.uri,
           new vscode.Range(current.positionAt(item.range.start), current.positionAt(item.range.end))), item.message));
         return diagnostic;
@@ -278,7 +278,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const unavailableMessage = !configured ? "Trusted Schema diagnostics are disabled."
         : !vscode.workspace.isTrusted ? "Workspace Trust is required before project code can execute."
         : folder === undefined ? "The document is not contained by a workspace folder."
-        : !hasConsent(folder, uri) ? "This provider/runtime configuration is awaiting explicit HSON consent."
+        : !hasConsent(folder, uri) ? "This provider/runtime configuration is awaiting explicit Hson consent."
         : message;
       statuses.set(document.uri, { status: configured && vscode.workspace.isTrusted && folder !== undefined && hasConsent(folder, uri)
         ? staleProviders.has(folder.uri.toString()) ? "stale" : status : "off", message: unavailableMessage });
@@ -309,20 +309,20 @@ export function activate(context: vscode.ExtensionContext): void {
     const key = folder.uri.toString();
     if (hasConsent(folder, resource)) return true;
     if (!vscode.workspace.isTrusted) {
-      void vscode.window.showWarningMessage("HSON trusted Schema diagnostics remain off until this workspace is trusted through VS Code Workspace Trust.");
+      void vscode.window.showWarningMessage("Hson trusted Schema diagnostics remain off until this workspace is trusted through VS Code Workspace Trust.");
       return false;
     }
     const execution = executionConfiguration(resource);
     if (!execution.module || !execution.hsonModule) {
-      void vscode.window.showWarningMessage("Configure both the HSON Provider Entry and HSON Runtime Module before enabling trusted Schema diagnostics.", "Open HSON Settings")
-        .then(action => action === "Open HSON Settings" && vscode.commands.executeCommand("hson.openSettings"));
+      void vscode.window.showWarningMessage("Configure both the Hson Provider Entry and Hson Runtime Module before enabling trusted Schema diagnostics.", "Open Hson Settings")
+        .then(action => action === "Open Hson Settings" && vscode.commands.executeCommand("hson.openSettings"));
       return false;
     }
     if (pendingConsent.has(key)) return false;
     pendingConsent.add(key);
     try {
       const allow = process.env.HSON_D2_TEST_WORKSPACE !== undefined ? "Allow Trusted Execution" : await vscode.window.showWarningMessage(
-        `Allow HSON to execute project code from “${folder.name}” with your user permissions in a supervised separate process? Schema definitions, constraints, recurse callbacks, and module initialization may run. This is not a security sandbox.`,
+        `Allow Hson to execute project code from “${folder.name}” with your user permissions in a supervised separate process? Schema definitions, constraints, recurse callbacks, and module initialization may run. This is not a security sandbox.`,
         { modal: true },
         "Allow Trusted Execution",
       );
@@ -337,7 +337,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const updateEnabled = async (value: boolean): Promise<void> => {
     const folder = selectedFolder();
     if (folder === undefined) {
-      void vscode.window.showWarningMessage("Open a workspace folder before configuring HSON trusted Schema diagnostics.");
+      void vscode.window.showWarningMessage("Open a workspace folder before configuring Hson trusted Schema diagnostics.");
       return;
     }
     const resource = resourceFor(folder);
@@ -360,11 +360,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("hson.restartTrustedSchemaRuntime", async () => {
       const folder = selectedFolder();
       if (folder === undefined || !trustedExecutionAvailable(resourceFor(folder))) {
-        void vscode.window.showWarningMessage("HSON trusted Schema diagnostics are not currently authorized and available.");
+        void vscode.window.showWarningMessage("Hson trusted Schema diagnostics are not currently authorized and available.");
         return;
       }
       reconfigure();
-      void vscode.window.showInformationMessage("HSON trusted Schema runtime restarted.");
+      void vscode.window.showInformationMessage("Hson trusted Schema runtime restarted.");
     }),
   );
   // Manual invocation only: no punctuation-trigger spam or expression ownership.

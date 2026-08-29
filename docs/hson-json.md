@@ -1,7 +1,7 @@
 #### hson-live / hson.terminalgothic.com
 
-# HSON Spec[2]
-## JSON Representation in HSON
+# Hson Spec[2]
+## JSON Representation in Hson
 Updated: 2026-07-13
 
 This section describes how JSON values map to `HsonNode` and back. JSON input accepts either a JSON string or an already parsed `JsonValue`.
@@ -20,7 +20,7 @@ Every parsed JSON value is placed under `_hson_root`, whose one child is a clust
 
 JSON property names become ordinary `$_tag` values. The `_hson_` prefix is reserved for structural keys and is rejected in ordinary user JSON, apart from the parser's explicit structural `_hson_elem` interchange form.
 
-The explicit `_hson_root` interchange form may omit `$_meta` or use a neutral empty optional record. Populated or malformed root metadata is invalid and rejects rather than being ignored. The empty `_hson_root` runtime carrier is a separate exception and remains outside direct HSON-text serialization.
+The explicit `_hson_root` interchange form may omit `$_meta` or use a neutral empty optional record. Populated or malformed root metadata is invalid and rejects rather than being ignored. The empty `_hson_root` runtime carrier is a separate exception and remains outside direct Hson-text serialization.
 
 ---
 
@@ -37,11 +37,11 @@ _hson_obj
       └─ _hson_str ("Hello")
 ```
 
-Nested objects recurse through the same property/cluster arrangement. This wrapper structure is part of the current IR even when serialized HSON presents the shorter form `<title "Hello">`.
+Nested objects recurse through the same property/cluster arrangement. This wrapper structure is part of the current IR even when serialized Hson presents the shorter form `<title "Hello">`.
 
 An ordinary JavaScript record remains only an ingress representation, but once its properties become canonical `_hson_obj` content their sequence is graph identity. JSON text emission follows that canonical property sequence directly and does not alphabetize or integer-sort it.
 
-JSON string ingress reads object entries in textual order before constructing the canonical graph. It does not first pass them through a JavaScript object, because ECMAScript enumeration would reorder integer-index property names. It also rejects duplicate decoded property names before construction, including equivalent spellings such as `"x"` and `"\u0078"`. The structured `HSON_JSON_DUPLICATE_PROPERTY` failure identifies the later declaration as primary source evidence and the first declaration as related evidence. Already-parsed JavaScript-value ingress can preserve only the enumeration order the supplied value currently exposes; it cannot recover earlier source order or overwritten duplicate declarations that were discarded before the value reached HSON.
+JSON string ingress reads object entries in textual order before constructing the canonical graph. It does not first pass them through a JavaScript object, because ECMAScript enumeration would reorder integer-index property names. It also rejects duplicate decoded property names before construction, including equivalent spellings such as `"x"` and `"\u0078"`. The structured `HSON_JSON_DUPLICATE_PROPERTY` failure identifies the later declaration as primary source evidence and the first declaration as related evidence. Already-parsed JavaScript-value ingress can preserve only the enumeration order the supplied value currently exposes; it cannot recover earlier source order or overwritten duplicate declarations that were discarded before the value reached Hson.
 
 ---
 
@@ -87,7 +87,7 @@ false -> _hson_val (false)
 null  -> _hson_val (null)
 ```
 
-The VSN distinction prevents numbers, booleans, and null from being silently converted to strings when routed through HSON or markup.
+The VSN distinction prevents numbers, booleans, and null from being silently converted to strings when routed through Hson or markup.
 
 ---
 

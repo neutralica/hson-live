@@ -16,7 +16,7 @@
 
 ## Executive conclusion
 
-The 339-descriptor materialized authored-HSON conformance corpus candidate is mechanically complete and reviewable, but it is not yet sufficiently independent for human certification.
+The 339-descriptor materialized authored-Hson conformance corpus candidate is mechanically complete and reviewable, but it is not yet sufficiently independent for human certification.
 
 The decisive finding is that 175 descriptors are primarily implementation-derived. Production behavior influenced exact serializer output or rejection evidence before those expectations were materialized. This does not make the cases wrong; it means green execution cannot independently validate those expectations.
 
@@ -82,7 +82,7 @@ No evidence was found of a graph being repeatedly reshaped merely until invarian
 
 ### Exact outputs
 
-Applicable population: 169 HSON/JSON/HTML output fields.
+Applicable population: 169 Hson/JSON/HTML output fields.
 
 | Origin | Count |
 |---|---:|
@@ -94,7 +94,7 @@ Applicable population: 169 HSON/JSON/HTML output fields.
 
 There is also one newly written diagnostic witness output.
 
-The 19 production-retained HSON outputs are:
+The 19 production-retained Hson outputs are:
 
 - Eight object cases: one property, multiple properties, nested, array value, typed keywords, colon/dot names, empty decoded key, and comments.
 - Five array cases: primitives, bracket trailing comma, nested, object item, and negative zero.
@@ -111,7 +111,7 @@ Applicable population: 178 rejected descriptors.
 | Operation | 16 settled, 6 copied, 156 observed |
 | Stage | 16 settled, 6 copied, 149 observed, 7 absent |
 | Code | 16 settled, 6 copied, 154 observed, 2 calibrated |
-| Coordinates | 6 copied authored-HSON, 3 copied JSON, 4 inferred adapted JSON, 146 observed, 2 calibrated; 17 absent |
+| Coordinates | 6 copied authored-Hson, 3 copied JSON, 4 inferred adapted JSON, 146 observed, 2 calibrated; 17 absent |
 | Path | 3 copied, 4 inferred; 171 absent |
 | Related evidence | 5 copied, 4 inferred, 1 observed; 168 absent |
 
@@ -154,7 +154,7 @@ The complete 175-case list is in the external audit. It can also be defined exac
   - `hson.reject.literal.object.legacy-doubled`
 
 - All eight `html.reject.*` descriptors.
-- The 19 accepted cases whose canonical HSON output was printed from production and retained, enumerated above.
+- The 19 accepted cases whose canonical Hson output was printed from production and retained, enumerated above.
 
 The production probing included every literal rejection and all malformed/raw-control family sources before their expected evidence was finalized. Consequently, literal storage in [authored-rejected.mts](/Users/philliphanson/Documents/Design/web/hson/hson-live/tests/certified-corpus/authored-rejected.mts:35) does not establish independent authorship.
 
@@ -193,7 +193,7 @@ These are non-exclusive correspondence scopes: a case may relate to more than on
 | Earlier surface | Exact | Adapted | Cross-reference only | New corpus-owned |
 |---|---:|---:|---:|---:|
 | Tokenizer/authored input | 93 | 17 | 2 | 132 |
-| Serializer/accepted HSON and graph | 37 | 17 | 1 | 45 |
+| Serializer/accepted Hson and graph | 37 | 17 | 1 | 45 |
 | Root-boundary | 31 | 10 | 1 | 5 |
 | Structural-mode | 9 | 13 | 1 | 2 |
 | JSON ingress | 9 | 4 | 2 | 1 |

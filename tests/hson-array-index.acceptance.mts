@@ -256,7 +256,7 @@ check("Worker-safe raw-node ingress canonicalizes permutations and rejects inval
   }
 });
 
-check("JSON and HSON native arrays generate canonical positional indexes", () => {
+check("JSON and Hson native arrays generate canonical positional indexes", () => {
   const fromJson = hsonTransform.fromJson(["a", "b", "c"]).toNode();
   const fromHson = hsonTransform.fromHson(`«"a","b","c"»`).toNode();
   assert.deepEqual(indexes(fromJson), ["0", "1", "2"]);

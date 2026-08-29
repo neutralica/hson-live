@@ -46,7 +46,7 @@ check("the numeric leaf entrypoint is Worker-safe and preserves negative zero", 
   assert.equal(Object.is(hsonCalc(() => -0), -0), true);
 });
 
-check("Worker-safe Transform produces readable, compact, and no-QUID HSON", () => {
+check("Worker-safe Transform produces readable, compact, and no-QUID Hson", () => {
   const node = hsonTransform
     .fromHson(`<worker @000000001 "ready"/>`)
     .toNode();
@@ -123,7 +123,7 @@ check("untrusted HTML is sanitized without browser globals", () => {
   });
 });
 
-check("untrusted Worker parsing preserves valid HSON identity while removing unsafe behavior", () => {
+check("untrusted Worker parsing preserves valid Hson identity while removing unsafe behavior", () => {
   const node = hsonTransform
     .fromUntrustedHtml(
       `<main><span hson:quid="${Q1}" data-_quid="application" onclick="run()">ready</span></main>`,
@@ -140,8 +140,8 @@ check("untrusted Worker parsing preserves valid HSON identity while removing uns
 
 check("untrusted Worker parsing routes malformed and unknown metadata to canonical admission", () => {
   for (const [source, reason] of [
-    [`<main hson:quid="bad"/>`, /invalid value for HSON metadata "hson:quid"/],
-    [`<main hson:unknown="value"/>`, /unknown HSON metadata markup name "hson:unknown"/],
+    [`<main hson:quid="bad"/>`, /invalid value for Hson metadata "hson:quid"/],
+    [`<main hson:unknown="value"/>`, /unknown Hson metadata markup name "hson:unknown"/],
     [`<main hson:index="0"/>`, /metadata "index" is not defined for node "main"/],
   ] as const) {
     assert.throws(() => hsonTransform.fromUntrustedHtml(source), reason);
@@ -170,12 +170,12 @@ check("untrusted Worker parsing admits valid wrapper metadata and rejects malfor
 check("untrusted Worker parsing rejects metadata duplicates before htmlparser2", () => {
   for (const source of [
     `<main hson:quid="${Q1}" hson:quid="000000002"/>`,
-    `<main HSON:QUID="${Q1}" hson:quid="000000002"/>`,
+    `<main Hson:QUID="${Q1}" hson:quid="000000002"/>`,
     `<_hson_arr><_hson_ii hson:index="0" hson:index="1"/></_hson_arr>`,
   ]) {
     assert.throws(
       () => hsonTransform.fromUntrustedHtml(source),
-      /duplicate HSON metadata attribute/,
+      /duplicate Hson metadata attribute/,
     );
   }
 });
@@ -189,7 +189,7 @@ check("untrusted Worker parsing rejects both authored private transit domains", 
   ]) {
     assert.throws(
       () => hsonTransform.fromUntrustedHtml(source),
-      /externally authored private (?:HSON metadata|ordinary-attribute) transit name/,
+      /externally authored private (?:Hson metadata|ordinary-attribute) transit name/,
     );
   }
 });
@@ -294,5 +294,5 @@ assert.equal(
   "47eebceca8428b19a36dc1ae429cddb1da2de7eda05ddb3bbfad81bd8a1659c3",
 );
 checks += 1;
-process.stdout.write(`ok ${checks} - Worker-safe Transform hashes exact HSON output with WebCrypto\n`);
+process.stdout.write(`ok ${checks} - Worker-safe Transform hashes exact Hson output with WebCrypto\n`);
 process.stdout.write(`# ${checks} DOM-free transform facade checks passed\n`);

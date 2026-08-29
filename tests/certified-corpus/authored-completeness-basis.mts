@@ -77,7 +77,7 @@ function rejected(
 
 const NUMBER_PROVENANCE = "Direct transcription of the settled JSON-compatible finite-number grammar.";
 const TRIVIA_PROVENANCE = "Newly reasoned from the settled SPACE/HT/LF/CR and physical-line-comment grammar.";
-const MODE_PROVENANCE = "Direct transcription of the settled authored-HSON structural-mode contract.";
+const MODE_PROVENANCE = "Direct transcription of the settled authored-Hson structural-mode contract.";
 const NAME_PROVENANCE = "Direct transcription after auditing the existing authored-name role grammar.";
 
 export const completenessAcceptedNumberCases: readonly AcceptedCorpusCase[] = [
@@ -90,7 +90,7 @@ export const completenessAcceptedNumberCases: readonly AcceptedCorpusCase[] = [
 
 export const completenessRejectedNumberCases: readonly RejectedCorpusCase[] = [
   rejected("hson.reject.basis.number.leading-zero", "A nonzero integer may not begin with zero.", "01", tokenError("HSON_NUMBER_LEADING_ZERO", 1), "scalar", "root-number", "leading-zero", ["number", "json-number-grammar", "rejection"], NUMBER_PROVENANCE, "Adds direct ownership for the leading-zero defect."),
-  rejected("hson.reject.basis.number.leading-plus", "A JSON-compatible HSON number may not begin with plus.", "+1", tokenError("HSON_NUMBER_LEADING_PLUS", 0), "scalar", "root-number", "leading-plus", ["number", "json-number-grammar", "rejection"], NUMBER_PROVENANCE, "Adds direct ownership for the leading-plus defect."),
+  rejected("hson.reject.basis.number.leading-plus", "A JSON-compatible Hson number may not begin with plus.", "+1", tokenError("HSON_NUMBER_LEADING_PLUS", 0), "scalar", "root-number", "leading-plus", ["number", "json-number-grammar", "rejection"], NUMBER_PROVENANCE, "Adds direct ownership for the leading-plus defect."),
   rejected("hson.reject.basis.number.missing-integer-before-fraction", "A fraction requires an integer component before the decimal point.", ".5", tokenError("HSON_NUMBER_INCOMPLETE_FRACTION", 0), "scalar", "root-number", "missing-integer-before-fraction", ["number", "json-number-grammar", "rejection"], NUMBER_PROVENANCE, "Adds the missing-integer fraction boundary."),
   rejected("hson.reject.basis.number.missing-fraction-digits", "A decimal point requires following fraction digits.", "1.", tokenError("HSON_NUMBER_INCOMPLETE_FRACTION", 0), "scalar", "root-number", "missing-fraction-digits", ["number", "json-number-grammar", "rejection"], NUMBER_PROVENANCE, "Adds the missing fraction-digits boundary."),
   rejected("hson.reject.basis.number.missing-exponent-digits", "An exponent marker requires following digits.", "1e", tokenError("HSON_NUMBER_INCOMPLETE_EXPONENT", 0), "scalar", "root-number", "missing-exponent-digits", ["number", "json-number-grammar", "rejection"], NUMBER_PROVENANCE, "Adds the empty exponent boundary."),
@@ -98,8 +98,8 @@ export const completenessRejectedNumberCases: readonly RejectedCorpusCase[] = [
   rejected("hson.reject.basis.number.named-nan", "NaN is not an authored finite number.", "NaN", tokenError("HSON_NUMBER_UNSUPPORTED_SPELLING", 0), "scalar", "root-number", "named-nonfinite", ["number", "nonfinite", "rejection"], NUMBER_PROVENANCE, "Adds explicit named-NaN rejection."),
   rejected("hson.reject.basis.number.named-positive-infinity", "Infinity is not an authored finite number.", "Infinity", tokenError("HSON_NUMBER_UNSUPPORTED_SPELLING", 0), "scalar", "root-number", "named-nonfinite", ["number", "nonfinite", "rejection"], NUMBER_PROVENANCE, "Adds explicit positive-Infinity rejection."),
   rejected("hson.reject.basis.number.named-negative-infinity", "Negative Infinity is not an authored finite number.", "-Infinity", tokenError("HSON_NUMBER_UNSUPPORTED_SPELLING", 0), "scalar", "root-number", "named-nonfinite", ["number", "nonfinite", "rejection"], NUMBER_PROVENANCE, "Adds explicit negative-Infinity rejection."),
-  rejected("hson.reject.basis.number.hexadecimal", "Hexadecimal spelling is not JSON-compatible HSON number syntax.", "0x10", tokenError("HSON_NUMBER_UNSUPPORTED_SPELLING", 0), "scalar", "root-number", "unsupported-hexadecimal", ["number", "json-number-grammar", "rejection"], NUMBER_PROVENANCE, "Adds explicit hexadecimal-spelling rejection."),
-  rejected("hson.reject.basis.number.numeric-separator", "Numeric separators are not JSON-compatible HSON number syntax.", "1_0", tokenError("HSON_NUMBER_UNSUPPORTED_SPELLING", 0), "scalar", "root-number", "unsupported-separator", ["number", "json-number-grammar", "rejection"], NUMBER_PROVENANCE, "Adds explicit numeric-separator rejection."),
+  rejected("hson.reject.basis.number.hexadecimal", "Hexadecimal spelling is not JSON-compatible Hson number syntax.", "0x10", tokenError("HSON_NUMBER_UNSUPPORTED_SPELLING", 0), "scalar", "root-number", "unsupported-hexadecimal", ["number", "json-number-grammar", "rejection"], NUMBER_PROVENANCE, "Adds explicit hexadecimal-spelling rejection."),
+  rejected("hson.reject.basis.number.numeric-separator", "Numeric separators are not JSON-compatible Hson number syntax.", "1_0", tokenError("HSON_NUMBER_UNSUPPORTED_SPELLING", 0), "scalar", "root-number", "unsupported-separator", ["number", "json-number-grammar", "rejection"], NUMBER_PROVENANCE, "Adds explicit numeric-separator rejection."),
   rejected("hson.reject.basis.number.nonfinite-overflow", "A syntactically valid number that overflows binary64 rejects as nonfinite.", "1e309", tokenError("HSON_NUMBER_NONFINITE", 0), "scalar", "root-number", "nonfinite-overflow", ["number", "nonfinite", "rejection"], NUMBER_PROVENANCE, "Adds the finite-domain overflow boundary."),
 ] as const;
 
@@ -129,7 +129,7 @@ export const completenessTriviaCases: readonly AcceptedCorpusCase[] = [
     elem(element("widget", [str("a"), str("b")], { title: "value", enabled: "enabled" })),
     "<widget title=\"value\" enabled\n  \"a\"\n  \"b\"\n/>",
     "element", "element-trivia-slots", ["trivia", "comment", "element", "attribute", "flag", "crlf", "implementation-derived-output"],
-    "The graph was newly reasoned from the settled trivia grammar; the exact canonical HSON attribute order was corrected after focused production validation.",
+    "The graph was newly reasoned from the settled trivia grammar; the exact canonical Hson attribute order was corrected after focused production validation.",
     "Adds one readable basis spanning the missing element trivia slots while leaving '/>' indivisible.", "critical",
   ),
   accepted(
@@ -146,7 +146,7 @@ export const completenessTriviaCases: readonly AcceptedCorpusCase[] = [
 export const completenessCompositionCases: readonly (AcceptedCorpusCase | RejectedCorpusCase)[] = [
   rejected(
     "hson.reject.basis.mode.object-element",
-    "An HSON object property cannot contain an element-mode value.",
+    "An Hson object property cannot contain an element-mode value.",
     "<a <e/>>",
     tokenError("HSON_STRUCTURAL_MODE_CROSSING", 3),
     "object", "property-value", "element-beneath-object", ["structural-mode", "object", "element", "rejection"],
@@ -163,7 +163,7 @@ export const completenessCompositionCases: readonly (AcceptedCorpusCase | Reject
   ),
   accepted(
     "hson.accept.basis.object.primitive-looking-keys",
-    "true, false, and null are ordinary property keys in HSON object key position.",
+    "true, false, and null are ordinary property keys in Hson object key position.",
     "<true 1 false 2 null 3>",
     obj(property("true", val(1)), property("false", val(2)), property("null", val(3))),
     "<\n  true 1\n  false 2\n  null 3\n>",
@@ -175,7 +175,7 @@ export const completenessCompositionCases: readonly (AcceptedCorpusCase | Reject
 export const completenessQuotedNameRoleCases: readonly (AcceptedCorpusCase | RejectedCorpusCase)[] = [
   accepted(
     "hson.accept.basis.quoted-name.element-name",
-    "A nonempty single-quoted name is admitted as an HSON element name.",
+    "A nonempty single-quoted name is admitted as an Hson element name.",
     "<'x y'/>",
     elem(element("x y")),
     "<'x y'/>",

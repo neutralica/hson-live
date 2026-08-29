@@ -120,7 +120,7 @@ checks += 1;
 }
 checks += 1;
 
-// Snapshot HSON covers the complete projected JsonValue domain while remaining
+// Snapshot Hson covers the complete projected JsonValue domain while remaining
 // compact canonical text inside the recovery envelope.
 {
   const state = {

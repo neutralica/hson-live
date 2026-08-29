@@ -6,7 +6,7 @@ automatic discovery system. None of these modules is a package entrypoint.
 ## Direct lifecycle evidence
 
 The private `capture_trusted_schema_template` tag accepts only substitution-free
-authored HSON. A WeakMap keys occurrence identity by the JavaScript
+authored Hson. A WeakMap keys occurrence identity by the JavaScript
 `TemplateStringsArray`, never by canonical text. `construct_trusted_schema_application`
 constructs the actual LiveMap itself and captures its initial `rev` in private
 weak storage. It cannot attest to an arbitrary pre-existing map.
@@ -24,7 +24,7 @@ private result rather than replacing the library's validator.
 The configured `hson` facade must be the exact facade loaded beside D1's
 validators. Exported `trustedSchemas` require the matching project `hson` export;
 non-exported Schema registrations carry the actual origin facade instead.
-Each Schema must also be present in the validator's existing private projected
+Each Schema must also be present in the validator's existing private data
 or document capability registry. A matching facade or package version alone is
 insufficient. No Schema is cloned or reconstructed. Other runtime instances are
 unsupported and fail closed. Each generation allows one project load attempt;
@@ -89,7 +89,7 @@ one source binding to different objects fail association as ambiguous. Multiple
 validation sites referencing one object are not ambiguous and execute separately.
 
 Both D1 and the public boundary use
-`internal/schema-hson-validation/validate-schema-hson-graph.ts`. Projected graphs
+`internal/schema-hson-validation/validate-schema-hson-graph.ts`. Data graphs
 remain ordered carriers all the way into the authoritative validator; only
 constraint callbacks materialize JavaScript values. Direct D2 candidates use
 ordinary canonical parsing. D1 lifecycle fragments retain their explicit parse
@@ -97,7 +97,7 @@ context. Neither path retries interpretations to find one a Schema accepts.
 
 ## D3 natural map association
 
-D3 discovers the bounded `HSON` → `fromHson` → `map.schema.use` relationship.
+D3 discovers the bounded `Hson` → `fromHson` → `map.schema.use` relationship.
 Discovery alone is **not** authority. The existing trusted registration provider
 must supply source-bound D1 lifecycle captures; an old unbound D1 capture or a
 Schema-only registration cannot attest to an arbitrary application's map.
@@ -164,7 +164,7 @@ is attempted to make a Schema succeed.
 
 The VS Code client uses the same supervisor, trust/enablement gates, revisions,
 diagnostic collection and presentation. Related information names the relevant
-`map.schema.use` call. No primary squiggle is placed there for invalid HSON.
+`map.schema.use` call. No primary squiggle is placed there for invalid Hson.
 
 ## D4 static `fromHson` sources
 
@@ -173,7 +173,7 @@ by official Transform, LiveMap, and LiveTree `fromHson` bindings. TypeScript's
 parsed literal text is the cooking authority. A private sidecar maps UTF-16
 runtime ranges back to literal-body ranges; complete escapes, CRLF
 normalization, line continuations, and surrogate pairs remain indivisible where
-required. Canonical HSON graphs receive no JavaScript-source metadata.
+required. Canonical Hson graphs receive no JavaScript-source metadata.
 
 Supported inputs are direct quoted literals, no-substitution ordinary template
 literals, parentheses, and finite same-domain local `const` identifier aliases.
@@ -193,38 +193,38 @@ authority. Static source equality is never used to locate an occurrence.
 
 ## Uppercase authoring migration
 
-Authoring discovery recognizes `HSON` from the root or `/hson`, including renamed
-imports. Standalone associations recognize `HSON.validate` and both existing
+Authoring discovery recognizes `Hson` from the root or `/hson`, including renamed
+imports. Standalone associations recognize `Hson.validate` and both existing
 LiveMap Schema validation entrances. The narrow authoring entrypoint no longer
 exports the lowercase aggregate or subsystem facades. Aggregate construction
 uses root `hson`; dedicated construction uses root or `/livemap` `hsonLiveMap`.
-D3 captures the exact `HSON` object. D1 runtime origin registration still uses
+D3 captures the exact `Hson` object. D1 runtime origin registration still uses
 the existing noncallable aggregate `hson` from the configured `hson.js` module;
 this private runtime requirement does not enter the public authoring graph.
 
 ## D5 trusted evaluated interpolation
 
 The same explicit diagnostic-copy instrumenter now wraps discovered official
-interpolated HSON tags, including occurrences without Schema relationships so
+interpolated Hson tags, including occurrences without Schema relationships so
 admission failures can be reported. It does not wrap arbitrary tags, evaluate
 expressions in the editor, install hooks, register Schemas, or modify application
 source. The provider must evaluate the original source revision, not a rewritten
 preview combining new literals and old values.
 
-The wrapper checks HSON identity and invokes the real tag once with the original
+The wrapper checks Hson identity and invokes the real tag once with the original
 TemplateStringsArray and already evaluated argument values. JavaScript evaluates
 each expression once in original order. If an expression throws, the tag never
 runs and no template evaluation is claimed. The real tag's primitive return or
 original exception is preserved. Afterwards, private capture reuses the exact
 pure primitive admission encoder to record scalar source. This re-encodes primitive
 values, **not expressions**, and performs no second parse, coercion, property
-inspection, or cloning. Ordinary HSON shares only that small encoder function;
+inspection, or cloning. Ordinary Hson shares only that small encoder function;
 it imports none of the provider, registry, trace or source-map code.
 
 One private capture contains an evaluation ID, static occurrence/module URL,
 SHA-256 of the complete original host document, template/expression ranges,
 literal raw strings and UTF-16 boundary tables, alternating generated literal/
-substitution intervals (with primitive kinds), completed pre-serialization HSON,
+substitution intervals (with primitive kinds), completed pre-serialization Hson,
 the actual canonical return, or structured failure and offending substitution
 index. Partial source is retained when encoding cannot complete. Exact primitive
 values are represented by their authoritative scalar source, including -0;
@@ -280,7 +280,7 @@ tokenizer's optional private collector. It stops at one proven slot, inserts one
 legal probe in an analysis copy and reparses with the authoritative parser and
 Phase-B provenance. Probe identity is its exact source range, never a string
 search. Probe names exceed the entire source length so authored names cannot
-collide. Existing C1/projected and document logical resolvers supply paths and
+collide. Existing C1/data and document logical resolvers supply paths and
 duplicate/presence evidence. No tolerant parser or candidate-by-candidate parse
 search exists. Unclosed containers, ambiguous text holes and unrecoverable syntax
 fail closed. Source is capped at 128,000 UTF-16 units; traversal has a 64-level
@@ -289,16 +289,16 @@ guard and Schema queries have a 512-expansion budget.
 `schema-completion/query.ts` reads existing compiled Schema registries. The only
 additional retained declaration is the compiled value node alongside a document
 attr rule's validator. No predicate is called. Recurse uses the existing memoized
-thunk only along queried paths, within the trusted child. Common projected
+thunk only along queried paths, within the trusted child. Common data
 members and finite alternatives can survive unresolved picks; literal evidence
 can narrow branches. Document item picks offer tags, while ambiguous content-pick
 sequences and same-tag element contracts remain unsupported. No public API or
 raw Schema/IR/predicate IPC transport is added.
 
 Without current D5 values, substitution placeholders must be proven complete
-projected scalar or document attr-value slots by provenance. They remain opaque
+Data scalar or document attr-value slots by provenance. They remain opaque
 to branch selection. Other runtime-dependent contexts require exact fresh capture
-evidence, checked before and after querying. Names and literals use HSON
-serializers; template delimiters use equivalent HSON Unicode escapes, and snippet
+evidence, checked before and after querying. Names and literals use Hson
+serializers; template delimiters use equivalent Hson Unicode escapes, and snippet
 metacharacters are escaped independently. Ordinary authored attrs are strings;
 typed boolean/null attr domains do not acquire fictitious source spellings.

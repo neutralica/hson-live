@@ -48,7 +48,7 @@ function verified(entry: "hson" | "json" | "html", source: string) {
   return verify_universal_circuit({ entry, source }, { now: () => 0 });
 }
 
-check("explicit HSON verifies through the universal boundary", () => {
+check("explicit Hson verifies through the universal boundary", () => {
   const result = verified("hson", HSON_SOURCE);
   assert.equal(result.status, "verified");
   assert.equal(result.boundary, "universal-htmlparser2");
@@ -131,7 +131,7 @@ check("cancellation after a completed lap stops at the next checkpoint", () => {
   assert.equal(result.operationCounts.directions, 1);
 });
 
-check("malformed explicit HSON is a terminal preparation failure", () => {
+check("malformed explicit Hson is a terminal preparation failure", () => {
   const result = verified("hson", "a: «unterminated");
   assert.equal(result.status, "failed");
   assert.equal(result.failure?.code, "CIRCUIT_PREPARE_FAILED");
@@ -174,7 +174,7 @@ check("Unicode survives the universal circuit", () => {
   assert.match(result.baselineHson ?? "", /café/);
 });
 
-check("quoted HSON member names survive the worker-facing facade", () => {
+check("quoted Hson member names survive the worker-facing facade", () => {
   const source = hsonTransform.fromJson('{"a b":1,"quoted:name":2}').toHson().serialize();
   const result = verified("hson", source);
   assert.equal(result.status, "verified");
@@ -201,7 +201,7 @@ check("the facade result and nested evidence are immutable", () => {
   assert.equal(Object.isFrozen(result.operationCounts), true);
 });
 
-await check_async("HSON circuit retains exact output with a SHA witness", () => {
+await check_async("Hson circuit retains exact output with a SHA witness", () => {
   return assertRepresentationCircuitWitness("hson");
 });
 

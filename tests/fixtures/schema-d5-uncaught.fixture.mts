@@ -5,4 +5,4 @@ const code=instrument_trusted_schema_map_sources(caseFile('nonfinite'),cases.non
   .replaceAll('"hson-live/livemap"',JSON.stringify(new URL('../../src/api/livemap/livemap.facade.ts',import.meta.url).href))
   .replaceAll('"./schema-d5-schemas.fixture.mts"',JSON.stringify(new URL('./schema-d5-schemas.fixture.mts',import.meta.url).href));
 await import('data:text/javascript;base64,'+Buffer.from(code+'\n// uncaught provider copy').toString('base64'));
-throw new Error('Unreachable after the original HSON admission throw.');
+throw new Error('Unreachable after the original Hson admission throw.');

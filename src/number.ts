@@ -1,4 +1,4 @@
-/** Lightweight universal entrypoint for HSON numeric admission. */
+/** Lightweight universal entrypoint for Hson numeric admission. */
 export {
   HSON_NUMBER_NONFINITE,
   HSON_NUMBER_TYPE_REQUIRED,

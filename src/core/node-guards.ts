@@ -19,7 +19,7 @@ export function is_Node(bit: unknown): bit is HsonNode {
   return true;
 }
 
-/** True for a user/document element rather than a structural HSON VSN node. */
+/** True for a user/document element rather than a structural Hson VSN node. */
 export function is_ordinary_element_node(bit: unknown): bit is HsonNode {
   return is_Node(bit) && !bit.$_tag.startsWith(HSON_SYS_PREFIX);
 }

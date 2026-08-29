@@ -105,7 +105,7 @@ function attributes_from_element(
     const key = svg ? authoredName : lower;
     if (lower.startsWith(HSON_META_TRANSIT_PREFIX)) {
       _throw_transform_err(
-        `externally authored private HSON metadata transit name "${authoredName}" is forbidden`,
+        `externally authored private Hson metadata transit name "${authoredName}" is forbidden`,
         "parse-html-string",
       );
     }
@@ -129,7 +129,7 @@ function attributes_from_element(
     }
     if (!is_valid_hson_attribute_name(authoredName)) {
       _throw_transform_err(
-        `invalid HSON attribute name "${authoredName}"`,
+        `invalid Hson attribute name "${authoredName}"`,
         "parse-html-string",
       );
     }
@@ -430,7 +430,7 @@ function standalone_svg_node(element: Element): HsonNode {
     const lower = name.toLowerCase();
     if (lower.startsWith(HSON_META_TRANSIT_PREFIX)) {
       _throw_transform_err(
-        `externally authored private HSON metadata transit name "${name}" is forbidden`,
+        `externally authored private Hson metadata transit name "${name}" is forbidden`,
         "parse-html-string",
       );
     }
@@ -496,7 +496,7 @@ function root_is_empty(root: HsonNode): boolean {
 
 /**
  * Parse an HTML string without browser globals. When `sanitize` is true, the
- * parsed tree is filtered before it is converted into canonical HSON.
+ * parsed tree is filtered before it is converted into canonical Hson.
  */
 export function parse_html_string(input: string, sanitize: boolean): HsonNode {
   const normalizedInput = normalize_html_source_attributes(input);

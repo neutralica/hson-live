@@ -24,7 +24,7 @@ export type LiveMapSnapFn = (path: LivePath) => JsonValue | undefined;
 /**
  * One registered feed subscription.
  *
- * `path` is the subscriber's projected value path, not a raw HSON node path.
+ * `path` is the subscriber's data value path, not a raw Hson node path.
  * `listener` is called when an emitted op overlaps that path.
  */
 type FeedEntry = Readonly<{
@@ -44,21 +44,21 @@ type ProjectedFeedEntry = Readonly<{
  * The hub stores path/listener pairs, accepts normalized commits from Core, and
  * emits listener events for any subscription whose path overlaps a commit op.
  * It is deliberately graph-agnostic: it never mutates nodes and never resolves
- * HSON wrappers directly.
+ * Hson wrappers directly.
  */
 export function make_livemap_feed_hub(): LiveMapFeedHub {
   /**
    * Mutable registry of active subscriptions.
    *
    * This is intentionally local closure state rather than graph state. Feed
-   * subscriptions are runtime observers, not part of the HSON data graph.
+   * subscriptions are runtime observers, not part of the Hson data graph.
    */
   const entries: FeedEntry[] = [];
   const projectedEntries: ProjectedFeedEntry[] = [];
 
   return {
     /**
-     * Register a listener at a projected path and return a disposer.
+     * Register a listener at a data path and return a disposer.
      *
      * The path is copied on entry so later caller-side array mutation cannot
      * silently move the subscription.
@@ -125,7 +125,7 @@ export function make_livemap_feed_hub(): LiveMapFeedHub {
     emitProjected: (commit, read) => {
       if (!commit.changed) return;
       if (typeof commit.payload !== "string") {
-        throw new Error("LiveMap projected feed requires an exact commit payload.");
+        throw new Error("LiveMap data feed requires an exact commit payload.");
       }
       const projectedOps = decode_livemap_replay_payload(commit.payload);
 
@@ -175,7 +175,7 @@ function detached_public_commit(
 /**
  * Runtime feed registry used by LiveMap Core.
  *
- * `add()` subscribes a listener at a projected path.
+ * `add()` subscribes a listener at a data path.
  * `emit()` fans a normalized commit out to matching listeners.
  */
 export type LiveMapFeedHub = Readonly<{

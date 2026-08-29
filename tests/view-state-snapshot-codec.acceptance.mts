@@ -530,7 +530,7 @@ check("syntax and explicit representation failures remain classified and sanitiz
   );
 });
 
-check("semantically valid noncanonical HSON is rejected after deterministic re-encoding", () => {
+check("semantically valid noncanonical Hson is rejected after deterministic re-encoding", () => {
   const documentText = "recognizable-codec-content";
   const encoded = encode_view_state_snapshot(element_capture(node("div", [
     node("_hson_elem", [node("_hson_str", [documentText])]),

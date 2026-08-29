@@ -55,5 +55,5 @@ export const specializedReferenceCases: readonly SpecializedReferenceCase[] = [
   reference("oracle-self-tests", "Transform-oracle implementation self-tests remain specialized ownership.", ["tests/transform-oracle.acceptance.mts"], ["oracle", "diagnostics"]),
   reference("ordered-json-parser", "Low-level ordered JSON parser mechanics remain specialized ownership.", ["tests/json-ingress.acceptance.mts#structural-json-order"], ["json"]),
   reference("late-duplicate-performance", "The 12,000-property late duplicate remains a scale/performance regression.", ["tests/json-ingress.acceptance.mts#late-duplicate-12000"], ["json", "performance"]),
-  reference("wikipedia-legacy-closure", "The Wikipedia real-world closure remains in its legacy HTML suite and is not an authored-HSON semantic case.", ["transform/legacy/html::html__largeFormat.html_wikipedia"], ["legacy-html", "performance", "wikipedia"]),
+  reference("wikipedia-legacy-closure", "The Wikipedia real-world closure remains in its legacy HTML suite and is not an authored-Hson semantic case.", ["transform/legacy/html::html__largeFormat.html_wikipedia"], ["legacy-html", "performance", "wikipedia"]),
 ] as const;

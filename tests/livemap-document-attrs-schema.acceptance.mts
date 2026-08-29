@@ -159,13 +159,13 @@ check("attrs must be first and unique in known, custom, and any tag builders", (
   );
 });
 
-check("attrs schemas cannot be children, tuple items, projected values, or root contracts", () => {
+check("attrs schemas cannot be children, tuple items, data values, or root contracts", () => {
   assert.throws(() => hson.liveMap.schema.define((s) => Reflect.apply(s.tuple, s, [Common])), /schema capability/);
-  assert.throws(() => hson.liveMap.schema.define((s) => Reflect.apply(s.object, s, [{ attrs: Common }])), /Projected schema composition/);
+  assert.throws(() => hson.liveMap.schema.define((s) => Reflect.apply(s.object, s, [{ attrs: Common }])), /Data schema composition/);
   assert.throws(() => Reflect.apply(element(`<div/>`).schema.use, undefined, [Common]), /element or fragment root schema/);
 });
 
-check("structural projected schemas reject in attr-value positions", () => {
+check("structural data schemas reject in attr-value positions", () => {
   hson.liveMap.schema.define((s) => {
     for (const value of [s.object({}), s.object.exact({}), s.array(s.string), s.tuple(s.string), s.record(s.string), s.tagged("kind", { a: s.object({}) })]) {
       assert.throws(() => Reflect.apply(s.attrs, s, [{ bad: value }]), /primitive\/unknown attr-value schema/);

@@ -20,7 +20,7 @@ check("boolean finite domain", () => assert.deepEqual(labels(define(s => s.boole
 check("null finite domain", () => assert.deepEqual(labels(define(s => s.null), '|'), ['null']));
 check("finite alternatives preserve Schema order", () => assert.deepEqual(labels(S, '<choices |>'), ['"red"', '"blue"']));
 check("negative zero preserved", () => assert.deepEqual(labels(define(s => s.literal(-0)), '|'), ['-0']));
-check("escaping uses HSON spelling and cannot create JS interpolation", () => { assert.deepEqual(labels(define(s => s.literal('a"\n\\b')), '|'), ['"a\\"\\n\\\\b"']); assert.deepEqual(labels(define(s => s.literal('`${x}')), '|'), ['"\\u0060\\u0024{x}"']); });
+check("escaping uses Hson spelling and cannot create JS interpolation", () => { assert.deepEqual(labels(define(s => s.literal('a"\n\\b')), '|'), ['"a\\"\\n\\\\b"']); assert.deepEqual(labels(define(s => s.literal('`${x}')), '|'), ['"\\u0060\\u0024{x}"']); });
 check("structured literal uses canonical serializer", () => assert.deepEqual(labels(define(s => s.literal({ a: [true, -0] })), '|'), ['<a «true,-0»>']));
 check("member broad value uses empty placeholder", () => assert.equal(items(S, '< |>').find(i => i.label === 'required')?.insertText, 'required ${1}'));
 check("singleton literal inserted directly", () => assert.equal(items(S, '< |>').find(i => i.label === 'single')?.insertText, 'single "only"'));

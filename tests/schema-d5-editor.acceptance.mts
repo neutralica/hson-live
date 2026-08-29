@@ -14,7 +14,7 @@ const validate=(name:string)=>client.validate(doc(name),()=>true);
 try {
   await check('D2 mismatch on runtime expression body',async()=>{const r=await validate('direct');assert.equal(r.status,'current-invalid',r.message+client.supervisor.output.stderr);assert.equal(cases.direct!.slice(r.diagnostics[0]!.range.start,r.diagnostics[0]!.range.end),'age');});
   await check('D2 validates even when application validate statement was never reached',async()=>assert.equal((await validate('beforeValidate')).diagnostics[0]!.precision,'substitution-expression'));
-  await check('substitution wording describes evaluated HSON kind',async()=>assert.match((await validate('direct')).diagnostics[0]!.message,/expression evaluated to an HSON string, but the Schema requires number/));
+  await check('substitution wording describes evaluated Hson kind',async()=>assert.match((await validate('direct')).diagnostics[0]!.message,/expression evaluated to an Hson string, but the Schema requires number/));
   await check('host precision is semantic not literal exact',async()=>assert.equal((await validate('direct')).diagnostics[0]!.precision,'substitution-expression'));
   await check('actual number clears Schema mismatch',async()=>assert.equal((await validate('valid')).status,'current-valid'));
   await check('literal mismatch still points at authored token',async()=>{const r=await validate('literal');const d=r.diagnostics.find(d=>d.code==='TYPE_MISMATCH')!;assert.equal(cases.literal!.slice(d.range.start,d.range.end),'"bad"');assert.equal(d.hostOrigin,'literal-exact');});

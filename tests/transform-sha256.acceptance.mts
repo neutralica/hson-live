@@ -32,7 +32,7 @@ await check("the independent oracle has the abc SHA-256 vector", () => {
   assert.equal(sha256Oracle("abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
 });
 
-await check("HSON hashes its exact checked-in serializer output", async () => {
+await check("Hson hashes its exact checked-in serializer output", async () => {
   const representation = hsonTransform.fromJson({ note: "café" }).toHson();
   assert.equal(representation.serialize(), HSON_CAFE);
   assert.equal(await representation.sha256(), "250c070cec839503e98e1a0c4e43dd4a073610ea635ea3b8b9aa0889f30c9c33");
@@ -57,7 +57,7 @@ await check("every textual lane agrees with the independent UTF-8 oracle", async
   }
 });
 
-await check("the same graph can have distinct HSON JSON and HTML hashes", async () => {
+await check("the same graph can have distinct Hson JSON and HTML hashes", async () => {
   const source = hsonTransform.fromJson({ note: "café" });
   const hashes = await Promise.all([source.toHson().sha256(), source.toJson().sha256(), source.toHtml().sha256()]);
   assert.equal(new Set(hashes).size, 3);
@@ -74,7 +74,7 @@ await check("one graph's representation hashes remain scoped to all four emitted
   assert.equal(new Set(hashes).size, 4);
 });
 
-await check("HSON options change the hash only through changed emitted bytes", async () => {
+await check("Hson options change the hash only through changed emitted bytes", async () => {
   const source = hsonTransform.fromJson({ alpha: { beta: 1 }, gamma: [2, 3] });
   const readable = source.toHson();
   const compact = source.toHson().noBreak();
@@ -113,13 +113,13 @@ await check("property ordering remains representation-hash sensitive", async () 
   assert.notEqual(await ba.sha256(), await ab.sha256());
 });
 
-await check("readable HSON whitespace is included in the hash", async () => {
+await check("readable Hson whitespace is included in the hash", async () => {
   const readable = hsonTransform.fromJson({ alpha: { beta: 1 }, gamma: [2, 3] }).toHson();
   assert.equal(readable.serialize().includes("\n"), true);
   assert.equal(await readable.sha256(), "880005a544c91ae467d5c4e1578275325ad5aae413f950390062a4c9cac2e328");
 });
 
-await check("compact HSON whitespace selection has its checked-in hash", async () => {
+await check("compact Hson whitespace selection has its checked-in hash", async () => {
   const compact = hsonTransform.fromJson({ alpha: { beta: 1 }, gamma: [2, 3] }).toHson().noBreak();
   assert.equal(compact.serialize(), `<alpha <beta 1> gamma «2,3»>`);
   assert.equal(await compact.sha256(), "847496c03032336b389030ca25f2003292102281f32fbeb4d83dacd032a6e204");
@@ -143,7 +143,7 @@ await check("separate finalizer calls remain deterministic", async () => {
   assert.equal(await representation.sha256(), await representation.sha256());
 });
 
-await check("HSON noQuid selection remains authoritative for hashing", async () => {
+await check("Hson noQuid selection remains authoritative for hashing", async () => {
   const source = hsonTransform.fromHson(`<entry @000000001 "ready"/>`);
   const full = source.toHson();
   const filtered = source.toHson().noQuid();
@@ -151,7 +151,7 @@ await check("HSON noQuid selection remains authoritative for hashing", async () 
   assert.equal(await filtered.sha256(), sha256Oracle(filtered.serialize()));
 });
 
-await check("the Worker fixture has the shared checked-in HSON digest", async () => {
+await check("the Worker fixture has the shared checked-in Hson digest", async () => {
   const representation = hsonTransform.fromHson(`<worker @000000001 "ready"/>`).toHson();
   assert.equal(representation.serialize(), `<worker @000000001 "ready"/>`);
   assert.equal(await representation.sha256(), "47eebceca8428b19a36dc1ae429cddb1da2de7eda05ddb3bbfad81bd8a1659c3");

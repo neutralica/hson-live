@@ -154,7 +154,7 @@ check("capture and reconstruction preserve flag semantics without metadata", () 
   assert.equal(reconstructed.element.node().$_meta, undefined);
 });
 
-check("canonical flag state uses existing HSON and HTML serializers", () => {
+check("canonical flag state uses existing Hson and HTML serializers", () => {
   const map = element();
   map.at([]).flags.set("selected");
   const node = map.element.node();

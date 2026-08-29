@@ -27,7 +27,7 @@ import { create_livetree_in_runtime } from "./create-livetree.js";
 
 
 /**
- * Project a known HSON node into an existing DOM element and return a LiveTree
+ * Project a known Hson node into an existing DOM element and return a LiveTree
  * handle for that node.
  *
  * This is the real endpoint used by graft().
@@ -61,7 +61,7 @@ function graft_node_into_element(
 }
 
 /**
- * Graft an existing DOM element into HSON/LiveTree.
+ * Graft an existing DOM element into Hson/LiveTree.
  *
  * Semantics:
  * - parses the element itself (not its innerHTML string)

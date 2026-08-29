@@ -2,7 +2,7 @@
 
 Status: Units 0 through 7, Unit 2, reflected prerequisites 10R-A/10R-B, and public Unit 10 implemented and executable; later-unit architecture remains a plan.
 
-This plan corrects the architectural recommendation in the earlier [QUID scope and encoding forensic audit](./quid-scope-and-encoding-audit.md). In particular, it does **not** introduce `DocumentNodeId`, a hidden permanent UUID, or a renamed equivalent. One QUID concept remains the optional HSON Live identity affordance. Durable LiveMap structure is addressed by revisioned paths and operation semantics, while application identity remains user data.
+This plan corrects the architectural recommendation in the earlier [QUID scope and encoding forensic audit](./quid-scope-and-encoding-audit.md). In particular, it does **not** introduce `DocumentNodeId`, a hidden permanent UUID, or a renamed equivalent. One QUID concept remains the optional Hson Live identity affordance. Durable LiveMap structure is addressed by revisioned paths and operation semantics, while application identity remains user data.
 
 Unit 0 settles one additional point that supersedes the earlier draft below: QUID metadata is canonical graph state. A QUID-only mutation of a LiveMap-owned graph uses the ordinary LiveMap revision and commit stream. No `identityGeneration` is introduced, and strict canonical equality remains QUID-sensitive. Later units may derive sparse lookup updates from accepted canonical commits, but they must not create a silent identity mutation stream or allow same-revision canonical graphs to differ only by QUID metadata.
 
@@ -90,7 +90,7 @@ A path is a structural address in a named graph revision, not timeless identity.
 
 There are currently two path domains and they must remain nominally distinct:
 
-- `LivePath` is a projected JSON path of string keys and array indexes; it explicitly is not a raw HSON path ([`livemap.types.ts`](../../src/types/livemap.types.ts#L12)).
+- `LivePath` is a data path of string keys and array indexes; it explicitly is not a raw Hson path ([`livemap.types.ts`](../../src/types/livemap.types.ts#L12)).
 - `LiveMapDocumentPath` is a numeric traversal through canonical document `$_content` arrays ([`livemap.types.ts`](../../src/types/livemap.types.ts#L304)). Element mode starts at the one top-level element; fragment mode starts at the `_hson_elem` cluster ([`livemap.document.target.ts`](../../src/api/livemap/livemap.document.target.ts#L81)).
 
 The durable meaning of either path is:
@@ -103,7 +103,7 @@ For a multi-operation commit, ordinal `0` sees `prevRev`; ordinal `i` sees the s
 
 ### QUID
 
-A QUID is an optional opaque live identity token for an eligible HSON node. It is sparse, system-managed, epoch-scoped, and useful when a live subsystem must retain, reconcile, route, style, observe, or own resources for the same node independently of its current path.
+A QUID is an optional opaque live identity token for an eligible Hson node. It is sparse, system-managed, epoch-scoped, and useful when a live subsystem must retain, reconcile, route, style, observe, or own resources for the same node independently of its current path.
 
 A QUID is not:
 
@@ -128,13 +128,13 @@ It is owned by one active document LiveMap epoch. It reinforces the owned graph 
 
 ### Handle
 
-A location handle follows a path. Current `LiveMapPathHandle` objects cache a projected path and resolve that current location; they deliberately do not follow a moved value ([`livemap.types.ts`](../../src/types/livemap.types.ts#L805), [`docs/contracts/livemap-identity.md`](../contracts/livemap-identity.md#L32)).
+A location handle follows a path. Current `LiveMapPathHandle` objects cache a data path and resolve that current location; they deliberately do not follow a moved value ([`livemap.types.ts`](../../src/types/livemap.types.ts#L805), [`docs/contracts/livemap-identity.md`](../contracts/livemap-identity.md#L32)).
 
 An identity handle follows an exact node or an internal identity record and may use a QUID to route. It becomes absent or invalid when that live identity is retired. The established LiveTree handle is the model: its reference stores an exact node plus QUID, not only a raw QUID lookup.
 
 ### Application identity
 
-Application identity is user-owned data: schema keys, object keys, an HTML `id`, database keys, or explicit fields. This refactor introduces no HSON Live substitute for it.
+Application identity is user-owned data: schema keys, object keys, an HTML `id`, database keys, or explicit fields. This refactor introduces no Hson Live substitute for it.
 
 ### Identity epoch and provenance
 
@@ -142,7 +142,7 @@ An identity epoch is the lifetime during which one owner promises that a QUID cl
 
 Canonical graph equality is exact and includes QUID metadata. Adding, replacing, or removing a QUID changes the canonical graph and is revision-worthy when the graph is LiveMap-owned. `canonical_hson_graph_equal` and `canonical_hson_graph_difference` remain the strict authorities for ordinary LiveMap no-op and stale-base decisions.
 
-An explicitly named projection such as HSON `noQuid` may remove QUID metadata for a particular serialization purpose. That projection is not a second broadly applicable comparator, is not exact-equal to its QUID-bearing source, and does not redefine ordinary revision semantics.
+An explicitly named projection such as Hson `noQuid` may remove QUID metadata for a particular serialization purpose. That projection is not a second broadly applicable comparator, is not exact-equal to its QUID-bearing source, and does not redefine ordinary revision semantics.
 
 ## 3. Durable QUID dependency inventory
 
@@ -155,17 +155,17 @@ An explicitly named projection such as HSON `noQuid` may remove QUID metadata fo
 | Document `capture`, `install`, `restore` | `DocumentLiveMapCapture` and façade methods ([`livemap.types.ts`](../../src/types/livemap.types.ts#L408), [`livemap.document.ts`](../../src/api/livemap/livemap.document.ts#L181)) | Serialization preservation; same-epoch-capable but category is ambiguous | Yes | Structural install can work without QUIDs, but current exact identity and QUID-target history/continuity change. |
 | Per-map identity index | `LiveMapDocumentIdentityIndex = ReadonlyMap<string,HsonNode>` ([`livemap.document.identity.ts`](../../src/api/livemap/livemap.document.identity.ts#L7)) | Sparse lookup convenience | For map lifetime | Lookup and QUID target resolution fail; graph remains structurally usable. |
 | `document.byQuid` | detached lookup from the current index ([`livemap.document.ts`](../../src/api/livemap/livemap.document.ts#L159)) | Intentional live-epoch/compatibility API | Only while caller retains string | Lookup fails or can suffer string-reuse ABA; no structural state is lost. |
-| Projected path handles | `LiveMapPathHandle` ([`livemap.types.ts`](../../src/types/livemap.types.ts#L805)) | Path location API | Yes | Nothing; these handles do not use QUIDs and remain positional. |
+| data path handles | `LiveMapPathHandle` ([`livemap.types.ts`](../../src/types/livemap.types.ts#L805)) | Path location API | Yes | Nothing; these handles do not use QUIDs and remain positional. |
 | Reflection registration | path, path target, optional persisted QUID, and exact projected node ([`document-binding-state.ts`](../../src/api/livetree/lifecycle/document-binding-state.ts#L22)) | Legitimate live-epoch identity plus path correspondence | Yes, for binding lifetime | Same-node continuity checks and QUID-target commit resolution degrade; path delegation already remains available. |
 | Reflection structural replacement | reuses an existing projected node only for a compatible same-QUID replacement ([`reflect.document.structure.ts`](../../src/api/reflect/reflect.document.structure.ts#L251)) | Legitimate same-epoch continuity witness | Yes, within binding | Replacement uses a fresh live node and loses its old owned live behavior. |
 | LiveHost document actions | public action payload target aliases `LiveMapDocumentTarget` ([`livehost.types.ts`](../../src/types/livehost.types.ts#L394)); action execution forwards it to the map ([`livehost.document-actions.ts`](../../src/api/livehost/livehost.document-actions.ts#L39)) | Live request/compatibility surface | Request may cross transport | Safe if resolved on the authority before commit; unsafe only when copied into history. |
 | LiveHost canonical graph commit | `canonical_graph_op` copies path or raw QUID unchanged ([`livehost.history.ts`](../../src/api/livehost/livehost.history.ts#L166)) | **Improper sole durable address** | Yes: history, network, storage | Historical QUID targets cannot replay without matching metadata. |
 | Protocol decoder | `decode_document_target` accepts raw QUID targets in canonical ops and actions ([`livehost.protocol.ts`](../../src/api/livehost/livehost.protocol.ts#L182), [`livehost.protocol.ts`](../../src/api/livehost/livehost.protocol.ts#L223)) | Compatibility/protocol surface | Yes | Old and new peers disagree without versioning. |
-| Graph-content codec | exact HSON value codec preserves metadata and validates duplicate QUIDs ([`livehost.graph-content-codec.ts`](../../src/api/livehost/livehost.graph-content-codec.ts#L34)) | Serialization preservation / external admission | Yes | Content remains structurally meaningful without QUIDs; continuity/adoption differs. |
+| Graph-content codec | exact Hson value codec preserves metadata and validates duplicate QUIDs ([`livehost.graph-content-codec.ts`](../../src/api/livehost/livehost.graph-content-codec.ts#L34)) | Serialization preservation / external admission | Yes | Content remains structurally meaningful without QUIDs; continuity/adoption differs. |
 | View-state snapshot | exact codec serializes both `$_attrs` and `$_meta` ([`livemap.document.view-state-codec.ts`](../../src/api/livemap/livemap.document.view-state-codec.ts#L282)) | Same-epoch-capable and durable structural capture; currently ambiguous | Yes | Structural root/revision survive stripping; exact live metadata does not. |
 | Recovery history | retained canonical commits are returned for replay ([`livehost.recovery.ts`](../../src/api/livehost/livehost.recovery.ts#L330)) | Durable replay | Yes | Any retained QUID-only target requires old QUIDs. |
 | Recovery snapshot/mirror | document snapshots are decoded and `map.restore` is called ([`livehost.client.ts`](../../src/api/livehost/livehost.client.ts#L483)) | Durable structural recovery plus optional continuity | Yes | Snapshot installation is structural; current later QUID history and lookup assume preservation. |
-| Bootstrap | HSON snapshot is parsed, made into a map, and restored ([`livehost.bootstrap.ts`](../../src/api/livehost/livehost.bootstrap.ts#L223), [`livehost.bootstrap.ts`](../../src/api/livehost/livehost.bootstrap.ts#L491)) | Durable structural bootstrap plus serialization preservation | Yes | Structure is installable without QUID; exact continuity and old QUID commits are not. |
+| Bootstrap | Hson snapshot is parsed, made into a map, and restored ([`livehost.bootstrap.ts`](../../src/api/livehost/livehost.bootstrap.ts#L223), [`livehost.bootstrap.ts`](../../src/api/livehost/livehost.bootstrap.ts#L491)) | Durable structural bootstrap plus serialization preservation | Yes | Structure is installable without QUID; exact continuity and old QUID commits are not. |
 | Persistence checkpoint/tail | view-state checkpoint plus canonical commits are decoded and replayed on load ([`livehost.persistence.ts`](../../src/api/livehost/livehost.persistence.ts#L280)) | **Improper durable dependency** for QUID-targeted tail | Across process restart | A QUID-targeted tail cannot be reconstructed from a stripped/rekeyed checkpoint. |
 | LiveTree handle/router/resource uses | runtime maps and exact-node `LiveTreeNodeRef` ([`livetree-runtime.ts`](../../src/api/livetree/runtime/livetree-runtime.ts#L12), [`livetree.ts`](../../src/api/livetree/livetree.ts#L77)) | Legitimate live-epoch identity | Yes, for runtime/node lifetime | Active handle, DOM, CSS/event/resource ownership semantics are lost; this is allowed only on explicit identity loss/disposal. |
 | Demo raw-QUID use | pointer de-duplicates with `.quid` ([`point.ts`](../../../hson-demo2/src/app/demos/pointer/point.ts#L124)); hosted test UI reads `hson:quid` then calls `find.byQuid` ([`hosted-test-case-list.ts`](../../../hson-demo2/src/app/demos/tests/panel/hosted-test-case-list.ts#L315)) | Compatibility surface | Local asynchronous UI work | Observable on API narrowing/encoding change, though not durable application state. |
@@ -176,7 +176,7 @@ The durable records that cannot currently be interpreted after QUID removal are 
 
 > Historical audit snapshot: this matrix records the pre-refactor state used to
 > derive Units 1–5 and 11. The completed-unit sections below are authoritative
-> for current projected move, rename, and sparse identity behavior.
+> for current data move, rename, and sparse identity behavior.
 
 ### Current staging contract
 
@@ -188,12 +188,12 @@ Data-mode batches have the same sequential principle: `plan_write_ops` updates o
 
 | Operation | Current authoritative target | Revision/stage | Current QUID role | Path-only equivalent | Ambiguity or repair |
 |---|---|---|---|---|---|
-| projected `set` | `LivePath` | `prevRev`, sequential staged candidate | None | Already path-only, with `prev`/`next` witnesses | Future object/array QUID identity effect is undefined. |
-| projected `replace` | `LivePath` | Same | None | Already path-only | Explicit replacement; must retire endpoint identity unless same-node semantics are separately declared. |
-| projected `delete` | `LivePath` | Same | None | Already path-only | Retire deleted subtree; shift array locations where applicable. |
-| projected `splice` / append / insert / remove | array endpoint `LivePath` plus `start` and values | Same; `start` is evaluated in the staged array | None | Already path-only | Define path shifts and identity adoption/retirement. |
-| projected array `move` | Whole-array `set` today ([`livemap.handle-array.ts`](../../src/api/livemap/livemap.handle-array.ts#L136)) | Same | None | Needs a semantic `move` op or internal intent | Current commit loses the fact that one live item moved. |
-| projected object `rename` | Whole-object `replace` today ([`livemap.handle-object.ts`](../../src/api/livemap/livemap.handle-object.ts#L100)) | Same | None | Needs a semantic `rename` op or internal intent | Current commit loses the fact that one subtree moved from one key to another. |
+| data `set` | `LivePath` | `prevRev`, sequential staged candidate | None | Already path-only, with `prev`/`next` witnesses | Future object/array QUID identity effect is undefined. |
+| data `replace` | `LivePath` | Same | None | Already path-only | Explicit replacement; must retire endpoint identity unless same-node semantics are separately declared. |
+| data `delete` | `LivePath` | Same | None | Already path-only | Retire deleted subtree; shift array locations where applicable. |
+| data `splice` / append / insert / remove | array endpoint `LivePath` plus `start` and values | Same; `start` is evaluated in the staged array | None | Already path-only | Define path shifts and identity adoption/retirement. |
+| data array `move` | Whole-array `set` today ([`livemap.handle-array.ts`](../../src/api/livemap/livemap.handle-array.ts#L136)) | Same | None | Needs a semantic `move` op or internal intent | Current commit loses the fact that one live item moved. |
+| data object `rename` | Whole-object `replace` today ([`livemap.handle-object.ts`](../../src/api/livemap/livemap.handle-object.ts#L100)) | Same | None | Needs a semantic `rename` op or internal intent | Current commit loses the fact that one subtree moved from one key to another. |
 | set attribute | document target union | Target resolves at its operation's staged graph | Can be sole target | Parent element path | Lower QUID request to path before commit. Attr changes do not transform paths. |
 | delete attribute | document target union | Same | Can be sole target | Parent element path | Same repair. |
 | replace attribute bag | document target union | Same | Can be sole target | Parent element path | Same repair. |
@@ -205,7 +205,7 @@ Data-mode batches have the same sequential principle: `plan_write_ops` updates o
 | exact restore/snapshot install | capture revision replaces current revision | Capture's named revision | Preserves all supplied QUIDs | Root plus revision | Must declare same-epoch versus durable/external category. |
 | replay batch | commit `prevRev` and ordered ops | Later ops see earlier staged results | QUID targets resolve anew at each stage | All canonical targets become paths | This is deterministic after target lowering. |
 
-No current document path utility module centralizes numeric-path normalization, keys, prefix tests, or transforms. `livemap.path.ts` centralizes only projected `LivePath` helpers ([`livemap.path.ts`](../../src/api/livemap/livemap.path.ts#L5)). Unit 1 should add a document-path module with nominal types and pure, exhaustive transforms rather than reuse mixed string/number projected helpers accidentally.
+No current document path utility module centralizes numeric-path normalization, keys, prefix tests, or transforms. `livemap.path.ts` centralizes only data `LivePath` helpers ([`livemap.path.ts`](../../src/api/livemap/livemap.path.ts#L5)). Unit 1 should add a document-path module with nominal types and pure, exhaustive transforms rather than reuse mixed string/number data helpers accidentally.
 
 ### Canonical target shape
 
@@ -237,11 +237,11 @@ The following is the desired final semantic matrix. “Supplied” means QUID me
 
 | Operation | Existing endpoint/subtree identity | Descendant path effect | Incoming QUID policy | Same-node versus replacement rule |
 |---|---|---|---|---|
-| projected `set` of a new property | No prior endpoint | Other object paths unchanged | Default unquidded; same-epoch adoption only | Creates a new value. |
-| projected `set` of an existing primitive | No eligible identity | None | N/A | Value mutation/replacement distinction is irrelevant for primitives. |
-| projected `set` of existing object/array | **Deferred decision before eligibility** | Paths below endpoint may retire/rebuild | Default unquidded; same-epoch only | Do not infer preservation from equal shape; operation must declare update versus replace. |
-| projected exact `replace` | Retire endpoint and descendants | New subtree occupies same path | Same-epoch adoption or default unquidded | Always replacement unless a future explicit identity-preserving operation says otherwise. |
-| projected `delete` | Retire endpoint and descendants | Object siblings unchanged; array siblings shift down | N/A | Deletion invalidates identity handles. |
+| data `set` of a new property | No prior endpoint | Other object paths unchanged | Default unquidded; same-epoch adoption only | Creates a new value. |
+| data `set` of an existing primitive | No eligible identity | None | N/A | Value mutation/replacement distinction is irrelevant for primitives. |
+| data `set` of existing object/array | **Deferred decision before eligibility** | Paths below endpoint may retire/rebuild | Default unquidded; same-epoch only | Do not infer preservation from equal shape; operation must declare update versus replace. |
+| data exact `replace` | Retire endpoint and descendants | New subtree occupies same path | Same-epoch adoption or default unquidded | Always replacement unless a future explicit identity-preserving operation says otherwise. |
+| data `delete` | Retire endpoint and descendants | Object siblings unchanged; array siblings shift down | N/A | Deletion invalidates identity handles. |
 | array append/insert | Preserve existing nodes | Paths at/after insertion shift up | Default inserted subtree unquidded; adopt proven same-epoch values | New nodes. |
 | array splice | Preserve retained prefix/suffix; retire removed range | Shift retained suffix by inserted-minus-removed count | Same policy for inserted items | Replacing equal items is still replacement. |
 | array move | Preserve moved subtree and all descendant QUIDs | Rewrite moved prefix; shift the intervening range | No incoming value | Same live node moves. Requires semantic move intent. |
@@ -395,17 +395,17 @@ Raw QUID APIs are observable in `hson-demo2`: the pointer demo and hosted test p
 | `DocumentLiveMap.capture()` v2 | Exact root/revision including QUID metadata | **Ambiguous today**; split into same-epoch and durable structural intent | Preserve existing exact capture for compatibility, add explicit category/provenance rather than infer from bytes. |
 | `install` / `restore` | Preserves and indexes all QUIDs | Admission boundary | Same-epoch proof may adopt; external/durable input strips, rekeys on explicit need, or stays unquidded before ownership. |
 | view-state v2 | Deterministic exact attrs/meta graph ([`livemap.document.view-state-codec.ts`](../../src/api/livemap/livemap.document.view-state-codec.ts#L90)) | Durable structural capture that may carry identity metadata; also same-epoch-capable only with external proof | Structural decode/replay cannot depend on QUID; raw payload alone is not proof. Likely new format version for explicit category. |
-| authored HSON / `HsonCanonical` | Preserves `@quid` by default | General serialization / external graph admission | QUID bytes are untrusted identity metadata on re-admission. |
-| HSON `noQuid` | Omits QUID without mutating the source | **Identity-free projection** | Explicitly loses retained continuity, handles, reflection association, and QUID-owned behavior. It is not behaviorally equivalent. |
-| HSON compact / no-break | Layout-only; preserves QUID unless `noQuid` | Same category as surrounding serialization | Never imply identity semantics from formatting. |
+| authored Hson / `HsonCanonical` | Preserves `@quid` by default | General serialization / external graph admission | QUID bytes are untrusted identity metadata on re-admission. |
+| Hson `noQuid` | Omits QUID without mutating the source | **Identity-free projection** | Explicitly loses retained continuity, handles, reflection association, and QUID-owned behavior. It is not behaviorally equivalent. |
+| Hson compact / no-break | Layout-only; preserves QUID unless `noQuid` | Same category as surrounding serialization | Never imply identity semantics from formatting. |
 | structural HTML | Preserves `hson:quid` | External graph admission or diagnostic | Validate syntax; do not adopt into current epoch from bytes alone. |
 | ordinary managed DOM / `outerHTML` | Projection exposes `hson:quid` | Live diagnostic/compatibility representation | DOM belonging to the exact runtime may have provenance; copied markup does not. |
-| structural graph JSON | Preserves `$_meta.quid` | External graph admission/diagnostic | Same rule as HSON. |
+| structural graph JSON | Preserves `$_meta.quid` | External graph admission/diagnostic | Same rule as Hson. |
 | ordinary application JSON | Generally omits element metadata | Identity-free application projection | No live continuity promise. |
 | graph-content codec v2 | Exact node/primitive including QUID metadata | External graph admission over LiveHost | Decode detached; action admission chooses adopt/strip/rekey using provenance. Current raw content must not silently join an epoch. |
-| LiveHost HSON snapshot | Preserves QUIDs ([`livehost.document-snapshot.ts`](../../src/api/livehost/livehost.document-snapshot.ts#L118)) | Durable structural recovery; optionally same-epoch with explicit negotiated provenance | Snapshot installs structure without requiring QUID continuity. |
+| LiveHost Hson snapshot | Preserves QUIDs ([`livehost.document-snapshot.ts`](../../src/api/livehost/livehost.document-snapshot.ts#L118)) | Durable structural recovery; optionally same-epoch with explicit negotiated provenance | Snapshot installs structure without requiring QUID continuity. |
 | LiveHost view-state snapshot | Preserves exact QUID metadata | Durable structural recovery/checkpoint | Same; persistence restart begins a new live epoch unless explicitly proven otherwise. |
-| LiveHost bootstrap v1 | HSON state plus logical map/incarnation/revision ([`livehost.bootstrap.ts`](../../src/api/livehost/livehost.bootstrap.ts#L448)) | Durable structural bootstrap | Logical map/incarnation is history provenance, not by itself node-QUID epoch proof. |
+| LiveHost bootstrap v1 | Hson state plus logical map/incarnation/revision ([`livehost.bootstrap.ts`](../../src/api/livehost/livehost.bootstrap.ts#L448)) | Durable structural bootstrap | Logical map/incarnation is history provenance, not by itself node-QUID epoch proof. |
 | LiveHost canonical history | May retain raw QUID targets today | Durable structural operation stream | New history path-only; optional witnesses never route. |
 | debug output/diagnostics | May preserve or print QUID | Diagnostic | Clearly label epoch and non-application meaning. |
 | strict canonical equality | Includes QUID today | Canonical graph contract | Remains QUID-sensitive and governs ordinary LiveMap no-op and revision decisions. |
@@ -459,7 +459,7 @@ If a target is absent, duplicated, malformed, or the tail has a gap, stop. Requi
 ## 11. QUID eligibility and minting implications
 
 > Historical expansion gate, now satisfied by Unit 11. Current eligibility is
-> ordinary document elements plus semantic projected `_hson_obj` and
+> ordinary document elements plus semantic data `_hson_obj` and
 > `_hson_arr` containers; LiveTree remains ordinary-element-only.
 
 ### Current hard-coded element eligibility
@@ -477,7 +477,7 @@ The exact view-state codec already serializes arbitrary node metadata bags, but 
 
 Object and array nodes may become independently identity-bearing only after:
 
-1. projected `move`, `rename`, `set`, `replace`, and splice identity semantics are explicit;
+1. data `move`, `rename`, `set`, `replace`, and splice identity semantics are explicit;
 2. the metadata registry can represent object/array eligibility without making wrappers or primitives eligible accidentally;
 3. parsers/serializers have canonical syntax/transport rules for such metadata;
 4. the LiveMap overlay addresses those nodes without DOM assumptions;
@@ -572,20 +572,20 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 - **Dependency:** Unit 0.
 - **Suggested commit direction:** `refactor(livemap): make document commits path-authoritative`.
 
-### Unit 2 — Preserve projected move and rename intent
+### Unit 2 — Preserve data move and rename intent
 
 - **Status:** Implemented and executable.
 - **Goal:** Add explicit semantic move/rename operations or equivalent internal intent before object/array QUID eligibility.
-- **Production ownership:** projected operation types, handle array/object helpers, planning/replay/transport.
+- **Production ownership:** data operation types, handle array/object helpers, planning/replay/transport.
 - **Public/API effect:** Existing helper behavior retained; commit operation family may grow.
-- **Compatibility effect:** Structural JSON and LiveHost projected commit format may require an additive version.
+- **Compatibility effect:** Structural JSON and LiveHost data commit format may require an additive version.
 - **Tests:** move versus delete+insert; rename versus replace; staged batches; exact replay.
 - **Stop conditions:** Same-node movement can only be inferred from equal values or a permanent node ID.
 - **Dependency:** Unit 0; can proceed parallel to document-only Units 1–6 but must precede Unit 11.
 - **Suggested commit direction:** `feat(livemap): retain move and rename operation intent`.
-- **Implemented boundary:** Projected helpers now emit carrier-native `rename` and `move` operations with exact ordered before/after witnesses. Rename rejects a missing source, retains its position, and replaces an existing destination. Move accepts only nonnegative safe staged-array indexes and interprets `to` as the final post-removal index.
+- **Implemented boundary:** data helpers now emit carrier-native `rename` and `move` operations with exact ordered before/after witnesses. Rename rejects a missing source, retains its position, and replaces an existing destination. Move accepts only nonnegative safe staged-array indexes and interprets `to` as the final post-removal index.
 - **Propagation result:** Exact structural-json replay, bounded legacy replay, feeds, links, stores, LiveHost canonical history, sync, recovery, and client replay retain the semantic kind. Existing transport and LiveHost versions remain sufficient and unchanged.
-- **Identity result:** The operation fields provide the future sparse projected overlay with explicit prefix movement and sibling-shift evidence. Object/array QUID eligibility, projected overlays, registration, and minting remain absent.
+- **Identity result:** The operation fields provide the future sparse data overlay with explicit prefix movement and sibling-shift evidence. Object/array QUID eligibility, data overlays, registration, and minting remain absent.
 
 ### Unit 3 — Central sparse document identity overlay
 
@@ -649,7 +649,7 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 
 - **Status:** Implemented and executable.
 - **Goal:** Define same-epoch, durable structural, identity-free, and external admission categories; add provenance/admission policy.
-- **Production ownership:** document capture/install/restore, HSON/view-state/graph-content boundary adapters.
+- **Production ownership:** document capture/install/restore, Hson/view-state/graph-content boundary adapters.
 - **Public/API effect:** Add explicit capture/admission options or new methods; preserve old exact capture under a documented compatibility mode.
 - **Compatibility effect:** External QUID-bearing input no longer silently proves active membership; format version may change.
 - **Tests:** all four categories, `noQuid` continuity loss, same-epoch restoration, external strip/rekey/reject, restart epoch reset.
@@ -658,7 +658,7 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 - **Suggested commit direction:** `feat(livemap): classify live and structural captures`.
 - **Implemented boundary:** `capture()` retains exact durable compatibility semantics. `capture({ identity })` adds `same-epoch`, `preserve-metadata`, and `strip`; install/restore additionally accept `reject`. Same-epoch admission validates the exact owner, current local epoch, unchanged capture graph/envelope, and exact capability object before candidate preparation. Durable and external preserved claims are active only as fresh local overlay identity. Strip removes metadata on a detached candidate before ownership and never mutates the source.
 - **Provenance ownership:** One document-map closure owns an object capability and local counter. The capability is nonenumerable because it is not stored on the capture at all, is neither authentication nor authorization, and is replaced by changed durable install/restore including accepted staged-authority install. LiveTree retains its independent runtime epoch and collision-aware exact-node ownership.
-- **Compatibility result:** No capture, HSON, HTML, JSON, view-state, graph-content, bootstrap, recovery, canonical commit, or persistence format changed. No protocol field, remote token, migration, rekey, registration API, or passive shadow graph was added.
+- **Compatibility result:** No capture, Hson, HTML, JSON, view-state, graph-content, bootstrap, recovery, canonical commit, or persistence format changed. No protocol field, remote token, migration, rekey, registration API, or passive shadow graph was added.
 - **Executable result:** Three focused launchers provide 22 capture-category, 23 provenance/admission, and 23 LiveHost/Reflection closure checks. They cover opacity, stale/foreign/raw-byte rejection, duplicate/atomic admission, identity-free path replay, bootstrap/checkpoint restart semantics, and new-mirror versus exact-runtime continuity.
 
 ### Unit 8 — LiveHost path-authoritative canonical commit v2
@@ -687,7 +687,7 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 
 ### Unit 10 — Explicit LiveMap identity request and compatibility fences
 
-- **Status:** Complete internally; the later public-surface correction removes document and projected acquisition methods from public façades and declarations without removing allocation, registration, overlay, handle, replay, Reflection, or persistence machinery.
+- **Status:** Complete internally; the later public-surface correction removes document and data acquisition methods from public façades and declarations without removing allocation, registration, overlay, handle, replay, Reflection, or persistence machinery.
 - **Goal:** If demanded by retained LiveMap handles, add one explicit mint/request API; mark raw QUID surfaces live-epoch/diagnostic; preserve LiveTree behavior.
 - **Production ownership:** LiveMap identity handle/overlay API, diagnostics, documentation; LiveTree only regression tests and wording.
 - **Public/API effect:** No public acquisition method. Raw compatibility surfaces remain bounded to their existing active-epoch contracts.
@@ -703,7 +703,7 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 
 ### Unit 11 — Optional object/array QUID eligibility
 
-- **Status:** Complete internally. Semantic projected `_hson_obj` and `_hson_arr` values are eligible only through internal owner-authorized acquisition. No projected public acquisition method is exposed. Primitive/scalar carriers, property wrappers, and array-item wrappers remain ineligible.
+- **Status:** Complete internally. Semantic data `_hson_obj` and `_hson_arr` values are eligible only through internal owner-authorized acquisition. No data public acquisition method is exposed. Primitive/scalar carriers, property wrappers, and array-item wrappers remain ineligible.
 - **Goal:** Expand the single QUID concept only for independently retained object/array nodes after semantics are proven.
 - **Production ownership:** metadata registry, core validators, transforms, overlay, handle API, DOM guards.
 - **Public/API effect:** New valid metadata placements; potentially observable canonical format expansion.
@@ -712,8 +712,8 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 - **Stop conditions:** Canonical graph shape changes unexpectedly, wrappers/primitives become eligible accidentally, or operation identity remains ambiguous.
 - **Dependency:** Units 2, 4, 7, 10.
 - **Suggested commit direction:** `feat(identity): admit retained object and array nodes`.
-- **Implemented boundary:** Projected maps own a mode-specific sparse QUID/path overlay with no node pointers. The Unit 2 rename/move operations, splice, delete, set, and replace derive overlay effects without structural-equality inference or ordinary-operation minting. A parallel `LiveMapProjectedIdentityHandle` preserves the document handle lifecycle while returning detached projected values. Document and projected registration share `ensure-quid` and one collision-aware map allocator; replay uses recorded bytes.
-- **Transport closure:** Durable projected captures include the exact canonical root. Additive anonymous HSON object/array QUID headers preserve metadata through LiveHost snapshot, bootstrap, recovery, and client restore without changing the QUID encoding or protocol version. Projected feeds, links, selectors, stores, and schemas continue to observe only the user value.
+- **Implemented boundary:** data maps own a mode-specific sparse QUID/path overlay with no node pointers. The Unit 2 rename/move operations, splice, delete, set, and replace derive overlay effects without structural-equality inference or ordinary-operation minting. A parallel `LiveMapProjectedIdentityHandle` preserves the document handle lifecycle while returning detached data values. Document and data registration share `ensure-quid` and one collision-aware map allocator; replay uses recorded bytes.
+- **Transport closure:** Durable data captures include the exact canonical root. Additive anonymous Hson object/array QUID headers preserve metadata through LiveHost snapshot, bootstrap, recovery, and client restore without changing the QUID encoding or protocol version. Data feeds, links, selectors, stores, and schemas continue to observe only the user value.
 - **Executable result:** Three focused launchers add 22 acquisition, 23 rename/move/lifecycle, and 25 closure/propagation checks. A 2,000-row QUID-free fixture retains zero claims, and sparse reconciliation visits only the one registered entry in the focused accounting proof.
 
 ### Unit 12 — Million-node and namespace proof
@@ -725,7 +725,7 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 - **Compatibility effect:** Internal performance only.
 - **Tests:** all conceptual cases in section 12 across Node/browser/worker where practical; deterministic allocator injection only for tests.
 - **Stop conditions:** Any identity structure is `O(N)` for zero-QUID maps, ordinary mutation mints, or allocator reset can revive stale handles in one epoch.
-- **Dependency:** Units 3–5 and the completed Unit 11 projected-container cases.
+- **Dependency:** Units 3–5 and the completed Unit 11 data-container cases.
 - **Suggested commit direction:** `perf(livemap): prove sparse identity at million-node scale`.
 
 ### Unit 12P — Same-owner-epoch QUID non-reuse prerequisite
@@ -758,9 +758,9 @@ The first implementation target is Unit 0, followed by Unit 1. Encoding work mus
 | Change class | Expected impact | Versioning recommendation |
 |---|---|---|
 | Internal-only | Overlay representation, path trie, graph/overlay reducer, QUID-to-path lookup | No public version if behavior remains exact. |
-| Public types | Split request and commit targets; new witness/category/epoch types; possible new projected move/rename ops | Additive types first. Changing existing returned commit types is likely major unless a versioned commit surface is introduced. |
+| Public types | Split request and commit targets; new witness/category/epoch types; possible new data move/rename ops | Additive types first. Changing existing returned commit types is likely major unless a versioned commit surface is introduced. |
 | Public behavior | QUID requests return path-targeted commits in later units; external serialized QUID alone does not prove active provenance; QUID-only canonical changes remain revision-worthy | Document and stage path/admission changes behind version/compatibility mode. Likely major for direct commit assertions/admission behavior. |
-| Serialized HSON/HTML/JSON | Bytes may still carry QUID; admission semantics change | Encoding width requires explicit version/migration. Category metadata should be versioned where encoded. |
+| Serialized Hson/HTML/JSON | Bytes may still carry QUID; admission semantics change | Encoding width requires explicit version/migration. Category metadata should be versioned where encoded. |
 | LiveMap capture/view-state | Exact v2 currently preserves QUID and revision | Add a new version/category rather than silently reinterpret v2 persistence. |
 | LiveHost canonical commit | Raw QUID targets removed from new history | Existing envelope is path-closed in Unit 5; version only if later semantics require negotiation. |
 | LiveHost protocol | Exact-key decoders and recovery messages carry canonical commits | Strict current decode plus isolated bounded compatibility decode; version only for a future format change. |

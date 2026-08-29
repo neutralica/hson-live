@@ -65,7 +65,7 @@ export function render_schema_scenario(scenario: typeof schemaScenarios[number])
   const mode = is_projected_value_hson_node(parsed.value) ? "projected" : classify_live_root_mode(parsed.value);
   const issues = validate_schema_hson_graph(scenario.schema(), parsed.value).issues;
   assert.ok(issues.length > 0, scenario.id);
-  const host = `import { HSON } from "hson-live"; import { ReviewSchema } from "./schema.js"; const value = HSON\`${scenario.source}\`; HSON.validate(ReviewSchema, value);`;
+  const host = `import { Hson } from "hson-live"; import { ReviewSchema } from "./schema.js"; const value = Hson\`${scenario.source}\`; Hson.validate(ReviewSchema, value);`;
   const association = discover_schema_validation_sources("/project/review.ts", host)[0]!;
   return issues.map(issue => {
     const resolution = mode === "element" || mode === "fragment"

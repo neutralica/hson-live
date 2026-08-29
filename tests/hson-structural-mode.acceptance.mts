@@ -265,10 +265,10 @@ check("value leaves reject every payload outside the exact primitive domain", ()
     const candidate = node("_hson_val", content);
     assert.throws(
       () => assert_invariants(candidate, `forbidden value payload: ${name}`),
-      /_hson_val|invalid HSON number/,
+      /_hson_val|invalid Hson number/,
       name,
     );
-    assert.throws(() => serialize_hson(candidate), /_hson_val|invalid HSON number/, name);
+    assert.throws(() => serialize_hson(candidate), /_hson_val|invalid Hson number/, name);
   }
 });
 

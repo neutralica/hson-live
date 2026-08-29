@@ -87,7 +87,7 @@ function assert_transform_projected_keys(value: OrderedProjectedValue): void {
 }
 
 /**
- * Infer the appropriate HSON VSN tag for a JSON value.
+ * Infer the appropriate Hson VSN tag for a JSON value.
  *
  * Mapping rules:
  * - Arrays → `_hson_arr`
@@ -97,7 +97,7 @@ function assert_transform_projected_keys(value: OrderedProjectedValue): void {
  *
  * Anything that does not fit these categories triggers a transform error.
  *
- * This function is used by JSON→HSON transforms to choose the correct
+ * This function is used by JSON→Hson transforms to choose the correct
  * structural tag for each JSON value.
  *
  * @param value - Arbitrary JSON value to classify.
@@ -156,7 +156,7 @@ function optional_json_record(
  * Return the keys of an object that do not start with `"_-"`.
  *
  * Intended for separating user-facing JSON properties from reserved
- * HSON/VSN metadata, which conventionally use underscore-prefixed keys.
+ * Hson/VSN metadata, which conventionally use underscore-prefixed keys.
  *
  * @param obj - Object whose keys should be filtered.
  * @returns An array of keys that do not begin with `"_-"`.
@@ -170,12 +170,12 @@ function jsonElementTagKey(obj: JsonInputObject): string[] {
 }
 
 /**
- * Assert that a JSON object does not use reserved HSON/VSN keys.
+ * Assert that a JSON object does not use reserved Hson/VSN keys.
  *
  * Reserved keys:
  * - `_hson_obj`, `_hson_arr`, `_hson_ii`, `_hson_str`, `_hson_val`
  *
- * These are reserved for HSON/HTML internal structures and must not
+ * These are reserved for Hson/HTML internal structures and must not
  * appear directly in user-provided JSON. If any such key is found,
  * a transform error is thrown with contextual information.
  *
@@ -191,7 +191,7 @@ function assertNoForbiddenVSNKeysInJSON(obj: JsonInputObject, where: string) {
     for (const k of json_input_keys(obj)) {
         if (FORBIDDEN_JSON_VSN.has(k)) {
             _throw_transform_err(
-                `JSON input must not contain "${k}" (reserved for HSON/HTML)`,
+                `JSON input must not contain "${k}" (reserved for Hson/HTML)`,
                 "parse_json",
                 `${where}\n${describe_json_input(obj)}`
             );
@@ -201,7 +201,7 @@ function assertNoForbiddenVSNKeysInJSON(obj: JsonInputObject, where: string) {
 
 /**
  * Convert a JSON value into an `HsonNode` subtree, using a parent tag
- * to decide which HSON shape to build (`_hson_str`, `_hson_val`, `_hson_arr`, `_hson_obj`,
+ * to decide which Hson shape to build (`_hson_str`, `_hson_val`, `_hson_arr`, `_hson_obj`,
  * `_hson_elem`, `_hson_root`).
  *
  * Dispatch rules (by `$parentTag`):
@@ -275,10 +275,10 @@ function assertNoForbiddenVSNKeysInJSON(obj: JsonInputObject, where: string) {
  *   - `_hson_root` objects have illegal siblings.
  *   - `_hson_elem` is not an array or has invalid items.
  *   - A generic object contains reserved VSN keys.
- *   - A value is not representable as a supported HSON shape.
+ *   - A value is not representable as a supported Hson shape.
  *
  * @param srcJson - The JSON value to convert (already parsed).
- * @param parentTag - The HSON tag that dictates how `srcJson` is interpreted
+ * @param parentTag - The Hson tag that dictates how `srcJson` is interpreted
  *   (`STR_TAG`, `VAL_TAG`, `ARR_TAG`, `OBJ_TAG`, etc).
  * @returns An object containing the constructed `node` subtree.
  * @see parse_json
@@ -497,7 +497,7 @@ export function nodeFromJson(
  *
  * Conversion:
  * - Delegates to `nodeFromJson(parsed, getTag(parsed))`
- *   to build the main HSON subtree.
+ *   to build the main Hson subtree.
  * - Wraps the resulting node in a `_hson_root` wrapper:
  *   - `$_tag: ROOT_TAG`
  *   - `$_content: [node]`

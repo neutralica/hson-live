@@ -1,21 +1,21 @@
-import { HSON } from "hson-live/hson"
-import { HSON as markup } from "hson-live/hson"
+import { Hson } from "hson-live/hson"
+import { Hson as markup } from "hson-live/hson"
 
 // ------------------------------------------------------------
 // 1. VALID DIRECT TEMPLATE
 //
 // Should get:
-// - HSON syntax coloring
-// - NO HSON diagnostic
+// - Hson syntax coloring
+// - NO Hson diagnostic
 // ------------------------------------------------------------
 
-const valid = HSON`
+const valid = Hson`
   <main
     id="application"
 
     <header
-      <h1 "Hello, HSON">
-      <p "This is valid authored HSON.">
+      <h1 "Hello, Hson">
+      <p "This is valid authored Hson.">
     >
 
     <section
@@ -39,11 +39,11 @@ const valid = HSON`
 // 2. INVALID DIRECT TEMPLATE
 //
 // Should get:
-// - HSON syntax coloring
-// - authoritative HSON error squiggle
+// - Hson syntax coloring
+// - authoritative Hson error squiggle
 // ------------------------------------------------------------
 
-const broken = HSON`
+const broken = Hson`
   <main
     <section
       <h2 "Something is wrong"
@@ -59,9 +59,9 @@ const broken = HSON`
 //
 // Should get:
 // - probably ordinary TypeScript template-string coloring
-// - BUT still an HSON diagnostic
+// - BUT still an Hson diagnostic
 //
-// TextMate only recognizes the literal spelling "HSON".
+// TextMate only recognizes the literal spelling "Hson".
 // Pass 2 semantic discovery knows `markup` is the real import.
 // ------------------------------------------------------------
 
@@ -75,13 +75,13 @@ const aliasedBroken = markup`
 // ------------------------------------------------------------
 // 4. SAME NAME, WRONG BINDING
 //
-// Should NOT receive an HSON semantic diagnostic,
+// Should NOT receive an Hson semantic diagnostic,
 // because this local parameter shadows the imported binding.
 // ------------------------------------------------------------
 
-function shadowTest(HSON: (strings: TemplateStringsArray) => string) {
-  return HSON`
-    this is not being treated as HSON by semantic discovery
+function shadowTest(Hson: (strings: TemplateStringsArray) => string) {
+  return Hson`
+    this is not being treated as Hson by semantic discovery
   `;
 }
 
@@ -94,7 +94,7 @@ function shadowTest(HSON: (strings: TemplateStringsArray) => string) {
 
 const ordinary = `
   <main
-    this merely looks vaguely HSON-ish
+    this merely looks vaguely Hson-ish
   >
 `;
 
@@ -104,7 +104,7 @@ const ordinary = `
 //
 // Current policy:
 // - host `${...}` expression stays TypeScript
-// - extension recognizes this as an HSON-tagged template
+// - extension recognizes this as an Hson-tagged template
 // - interpolated templates receive no speculative Schema diagnostics
 //
 // Runtime primitive substitutions are supported; editor substitution capture
@@ -113,7 +113,7 @@ const ordinary = `
 
 const title = "Dynamic title";
 
-const interpolated = HSON`
+const interpolated = Hson`
   <main
     h1 ${title} asdfa 
 `;
@@ -122,10 +122,10 @@ const interpolated = HSON`
 // ------------------------------------------------------------
 // 7. ESCAPES / QUOTED NAMES
 //
-// Should exercise HSON-specific lexical coloring.
+// Should exercise Hson-specific lexical coloring.
 // ------------------------------------------------------------
 
-const lexical = HSON`
+const lexical = Hson`
   <main
     'quoted name'="value"
     apostrophe='can\'t'

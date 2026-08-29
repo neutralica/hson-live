@@ -49,7 +49,7 @@ check("empty object shapes distinguish open from exact named keyspaces", () => {
   assert.equal(Exact.validateRoot({}).ok, true);
   assert.equal(Exact.validateRoot({ extra: true }).ok, false);
 });
-check("zero-argument array admits mixed recursively legal projected values", () => {
+check("zero-argument array admits mixed recursively legal data values", () => {
   const Broad = hson.liveMap.schema.define((s) => s.array());
   assert.equal(Broad.validateRoot([]).ok, true);
   assert.equal(Broad.validateRoot(["text", 1, true, null, [2], { nested: [false] }]).ok, true);

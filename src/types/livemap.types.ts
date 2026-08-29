@@ -26,11 +26,11 @@ import type {
 export type LivePathPart = string | number;
 
 /**
- * Canonical projected path into a LiveMap graph.
+ * Canonical data path into a LiveMap graph.
  *
- * A LivePath is not a raw HSON node path. It addresses the JSON-facing value
+ * A LivePath is not a raw Hson node path. It addresses the JSON-facing value
  * projection, so `["user", "name"]` means the `name` value under `user`, not
- * the physical wrapper/content path inside the HSON graph.
+ * the physical wrapper/content path inside the Hson graph.
  */
 export type LivePath = readonly LivePathPart[];
 
@@ -43,7 +43,7 @@ export type DocumentLiveMapMode = "element" | "fragment";
  * Runtime Proxy surface for ergonomic projected-path access.
  *
  * Normal property access extends the path. `$_` exits the Proxy surface and
- * returns the existing path handle for the current projected path.
+ * returns the existing path handle for the current data path.
  *
  * Schema-aware maps expose known object keys and array indexes as typed child
  * proxies. Unknown property names remain allowed as `unknown` so loose dynamic
@@ -109,7 +109,7 @@ export type LiveMapWriteOp = LiveMapSetWriteOp | LiveMapDeleteWriteOp | LiveMapR
 
 export type LiveMapSortDirection = "asc" | "desc";
 
-/** Overloaded snapshot reader: root with no args, projected value with a path. */
+/** Overloaded snapshot reader: root with no args, data value with a path. */
 export type LiveMapCoreSnap<TValue = JsonValue | undefined> = {
   (path: LivePath): JsonValue | undefined;
   (): TValue;
@@ -225,7 +225,7 @@ export type LiveMapSetValue<TValue> = NonNullable<TValue> extends readonly unkno
   ? LiveMapObjectSetManyValues<TValue>
   : LiveMapWriteValue<TValue>;
 export type LiveMapPathSetValue<TValue, TPath extends LivePath> = LiveMapSetValue<LiveMapPathValue<TValue, TPath>>;
-/** Object patch shape accepted by `setMany` at a projected path. */
+/** Object patch shape accepted by `setMany` at a data path. */
 export type LiveMapPathSetManyValues<TValue, TPath extends LivePath> =
   LiveMapObjectSetManyValues<LiveMapPathValue<TValue, TPath>>;
 
@@ -254,12 +254,12 @@ export type LiveMapBatchReplaceFn<TValue = JsonValue | undefined> = {
  * sibling-preserving object writes.
  */
 export type LiveMapBatchTx<TValue = JsonValue | undefined> = Readonly<{
-  /** Set a resolved projected path; plain objects expand into shallow child sets. */
+  /** Set a resolved data path; plain objects expand into shallow child sets. */
   set: <const TPath extends LivePath>(
     path: TPath,
     value: NoInfer<LiveMapPathSetValue<TValue, TPath>>,
   ) => LiveMapBatchTx<TValue>;
-  /** Exact root replacement, or exact endpoint replacement at a projected path. */
+  /** Exact root replacement, or exact endpoint replacement at a data path. */
   replace: LiveMapBatchReplaceFn<TValue>;
   /** Shallow object set that expands values into child-path sets and preserves unspecified siblings. */
   setMany: <const TPath extends LivePath>(
@@ -267,7 +267,7 @@ export type LiveMapBatchTx<TValue = JsonValue | undefined> = Readonly<{
     values: NoInfer<LiveMapPathSetManyValues<TValue, TPath>>,
   ) => LiveMapBatchTx<TValue>;
   splice: (path: LivePath, start: number, deleteCount: number, ...items: readonly JsonValue[]) => LiveMapBatchTx<TValue>;
-  /** Delete the projected path. */
+  /** Delete the data path. */
   delete: (path: LivePath) => LiveMapBatchTx<TValue>;
 }>;
 
@@ -320,7 +320,7 @@ export type LiveMapCore<
     path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
   ) => LiveMapPathHandle<LiveMapPathValue<TValue, TPath>>;
   proxy: <const TPath extends LivePath = []>(path?: TPath) => LiveMapProxy<TValue, TPath>;
-  /** Set a resolved projected path; plain objects expand into shallow child sets. */
+  /** Set a resolved data path; plain objects expand into shallow child sets. */
   set: <const TPath extends LivePath>(path: TPath, value: NoInfer<LiveMapPathSetValue<TValue, TPath>>) => LiveMapCommit<LiveMapDataOp>;
   /** Shallow object set that expands values into child-path sets and preserves unspecified siblings. */
   setMany: <const TPath extends LivePath>(
@@ -328,7 +328,7 @@ export type LiveMapCore<
     values: NoInfer<LiveMapPathSetManyValues<TValue, TPath>>,
   ) => LiveMapCommit<LiveMapDataOp>;
   splice: (path: LivePath, start: number, deleteCount: number, ...items: readonly JsonValue[]) => LiveMapCommit<LiveMapDataOp>;
-  /** Exact root replacement, or exact endpoint replacement at a projected path; `set([])` remains invalid. */
+  /** Exact root replacement, or exact endpoint replacement at a data path; `set([])` remains invalid. */
   replace: LiveMapReplaceFn<TValue>;
   delete: (path: LivePath) => LiveMapCommit<LiveMapDataOp>;
   /** Explicit synchronous transaction grouping for one commit. */
@@ -353,7 +353,7 @@ export type LiveMapCore<
 /**
  * Public LiveMap surface.
  *
- * `TValue` is the current projected root value type. A map created without a
+ * `TValue` is the current data root value type. A map created without a
  * schema starts as `LiveMap<JsonValue | undefined>`. After attaching an inferred
  * schema with `map.schema.use(schema)`, the returned
  * map view becomes `LiveMap<LiveMapSchemaValue<typeof schema>>`.
@@ -440,7 +440,7 @@ export type LiveMapDocumentIdentityHandle = Readonly<{
   dispose: () => void;
 }>;
 
-/** Opaque active-epoch capability for one projected object or array value. */
+/** Opaque active-epoch capability for one data object or array value. */
 export type LiveMapProjectedIdentityHandle<TValue extends JsonValue = JsonValue> = Readonly<{
   readonly active: boolean;
   path: () => LivePath | undefined;
@@ -468,13 +468,13 @@ export type LiveMapProjectedIdentityCommitTarget = Readonly<{
 /** @deprecated Compatibility name for the live request-target union. */
 export type LiveMapDocumentTarget = LiveMapDocumentRequestTarget;
 
-/** Existing canonical HSON attribute value model; style remains structured. */
+/** Existing canonical Hson attribute value model; style remains structured. */
 export type LiveMapDocumentAttributeValue = CanonicalPublicAttrValue;
 
 /** Detached canonical final-state bag for public ordinary document attributes. */
 export type LiveMapDocumentAttrs = CanonicalPublicAttrs;
 
-/** One legal candidate value for a canonical HSON `$_content` slot. */
+/** One legal candidate value for a canonical Hson `$_content` slot. */
 export type LiveMapDocumentContent = NodeContent[number];
 
 export type DocumentLiveMapAttrsMustApi = Readonly<{
@@ -1207,7 +1207,7 @@ type DocumentLiveMapShared<
   ) => void;
   /** Atomically replay one validated canonical graph commit. */
   replay: (commit: LiveMapGraphCommit) => LiveMapGraphCommit;
-  /** Observe successful canonical graph commits without projected path coercion. */
+  /** Observe successful canonical graph commits without data path coercion. */
   commits: LiveMapCommitObserverApi;
   /** Permanent owner-level document schema attachment. */
   schema: DocumentLiveMapSchemaApi<TMode>;
@@ -1377,7 +1377,7 @@ export type LiveMapAuthority = Readonly<{
   commits: LiveMapCommitObserverApi;
 }>;
 
-/** Result of HSON/node construction after canonical root classification. */
+/** Result of Hson/node construction after canonical root classification. */
 export type ClassifiedLiveMap = LiveMap | DocumentLiveMap;
 
 /**
@@ -1386,7 +1386,7 @@ export type ClassifiedLiveMap = LiveMap | DocumentLiveMap;
  * Ops are intentionally data-shaped and replayable. Primitive/array/null
  * `set(...)`, shallow child writes from object-valued `set(...)` and
  * `setMany(...)`, array helper rewrites, and `update(fn)` commits report `set`
- * ops at the projected paths they changed.
+ * ops at the data paths they changed.
  */
 export type LiveMapSetOp = Readonly<{
   kind: "set";
@@ -1603,7 +1603,7 @@ export type LiveMapCommitObserverApi<TOp extends LiveMapAnyOp = LiveMapAnyOp> = 
  *
  * `op` is the first matching op for compatibility. `ops` contains all matching
  * ops from the commit. `path` is the subscriber's path. `value` is the current
- * projected value at the subscriber's path after the commit has been applied.
+ * data value at the subscriber's path after the commit has been applied.
  */
 export type LiveMapFeedEvent = Readonly<{
   op: LiveMapDataOp;
@@ -1667,7 +1667,7 @@ export type LiveMapSubApi<TValue = JsonValue | undefined> = LiveMapStoreApi<TVal
  */
 export type LiveMapLinkOptions = LiveMapSamePathLinkOptions | LiveMapMappedLinkOptions;
 
-/** One-way link where source and target use the same projected path. */
+/** One-way link where source and target use the same data path. */
 export type LiveMapSamePathLinkOptions = Readonly<{
   path: LivePath;
 }>;
@@ -1720,7 +1720,7 @@ export type LiveMapPathHandle<TValue = JsonValue | undefined> = Readonly<{
   readonly rev: number;
   path: () => LivePath;
   snap: () => TValue;
-  /** Create a child handle relative to this handle's projected path. */
+  /** Create a child handle relative to this handle's data path. */
   at: <const TPath extends LivePath>(
     path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
   ) => LiveMapPathHandle<LiveMapPathValue<TValue, TPath>>;

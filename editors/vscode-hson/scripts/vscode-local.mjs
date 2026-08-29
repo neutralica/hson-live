@@ -25,7 +25,7 @@ function printStatus(result) {
   const packageState = result.packageState;
   const artifact = packageState.artifact;
   process.stdout.write([
-    "HSON VS Code extension",
+    "Hson VS Code extension",
     "",
     `VS Code:      ${result.cli.channel} ${result.cli.version}`,
     `CLI:          ${result.cli.path}`,
@@ -48,7 +48,7 @@ async function main(command) {
   if (command === "package") {
     const result = await packageCurrentSource({ extensionRoot, repositoryRoot });
     process.stdout.write([
-      "HSON VS Code extension packaged",
+      "Hson VS Code extension packaged",
       "",
       `Extension: ${EXTENSION_ID}`,
       `Version:   ${result.manifest.version}`,
@@ -69,7 +69,7 @@ async function main(command) {
   if (command === "install") {
     const result = await installCurrentSource({ extensionRoot, repositoryRoot, cli });
     process.stdout.write([
-      "HSON VS Code extension installed",
+      "Hson VS Code extension installed",
       "",
       `Extension: ${EXTENSION_ID}`,
       `Version:   ${result.manifest.version}`,
@@ -87,6 +87,6 @@ async function main(command) {
 }
 
 main(process.argv[2]).catch(error => {
-  process.stderr.write(`HSON VS Code: ${error.stage ? error.message : `tooling failure: ${error.message}`}\n`);
+  process.stderr.write(`Hson VS Code: ${error.stage ? error.message : `tooling failure: ${error.message}`}\n`);
   process.exitCode = 1;
 });

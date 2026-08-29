@@ -52,7 +52,7 @@ const DEFINITIONS = {
   }),
 } satisfies Record<HsonMetadataKey, HsonMetadataDefinition>;
 
-/** The sole production registry for canonical HSON structural metadata. */
+/** The sole production registry for canonical Hson structural metadata. */
 export const HSON_METADATA_REGISTRY = Object.freeze(DEFINITIONS);
 
 const MARKUP_TO_KEY = new Map<string, HsonMetadataKey>(
@@ -146,7 +146,7 @@ export function admit_hson_metadata_markup(
   if (candidate === undefined || key === undefined) {
     return {
       valid: false,
-      reason: `unknown HSON metadata markup name "${markupName}"`,
+      reason: `unknown Hson metadata markup name "${markupName}"`,
     };
   }
   const policy = hson_metadata_policy(nodeTag, key);
@@ -154,7 +154,7 @@ export function admit_hson_metadata_markup(
   if (!policy.definition.validateValue(value)) {
     return {
       valid: false,
-      reason: `invalid value for HSON metadata "${markupName}"`,
+      reason: `invalid value for Hson metadata "${markupName}"`,
     };
   }
   return {

@@ -24,7 +24,7 @@ export function set_transform_html_sanitizer(sanitizer: TransformHtmlSanitizer):
 }
 
 /**
- * HSON pipeline, stage 2: choose an output representation.
+ * Hson pipeline, stage 2: choose an output representation.
  *
  * Given a normalized frame from stage 1, this stage materializes one of the
  * supported output forms:
@@ -34,7 +34,7 @@ export function set_transform_html_sanitizer(sanitizer: TransformHtmlSanitizer):
  * - `sanitizeBEWARE()` for explicit HTML-style sanitization of node content
  *
  * Each `toX()` call stores the chosen representation on the frame and returns
- * the merged stage-3 / stage-4 surface. HSON is serialization-only at that
+ * the merged stage-3 / stage-4 surface. Hson is serialization-only at that
  * stage; canonical graph access is the source-level `toNode()` terminal.
  *
  * LiveTree construction is handled separately by the `hson.liveTree` facade.
@@ -69,11 +69,11 @@ export function construct_output_2(frame: TransformFrame): TransformOutput {
       },
 
       toHson() {
-        const ctx: TransformFrameRender<(typeof $RENDER)["HSON"]> = {
-          // HSON is intentionally lazy so options selected after `.toHson()`
+        const ctx: TransformFrameRender<(typeof $RENDER)["Hson"]> = {
+          // Hson is intentionally lazy so options selected after `.toHson()`
           // participate in the final serialization pass.
           frame: currentFrame,
-          output: $RENDER.HSON,
+          output: $RENDER.Hson,
         };
 
         return construct_hson_options_3(ctx);
@@ -104,7 +104,7 @@ export function construct_output_2(frame: TransformFrame): TransformOutput {
       sanitizeBEWARE(): TransformOutput {
         const node = currentFrame.node;
         if (!node) {
-          throw new Error("sanitizeBEWARE(): frame is missing HSON node data");
+          throw new Error("sanitizeBEWARE(): frame is missing Hson node data");
         }
 
         // Node → HTML → sanitized Node, then continue from a fresh frame

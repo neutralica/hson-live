@@ -91,7 +91,7 @@ export function build_livemap_document_identity_overlay(
   if (base !== undefined && !is_Node(base)) {
     throw new LiveMapDocumentIdentityError(
       "OVERLAY_INVARIANT",
-      "LiveMap document identity path root is not a canonical HSON node.",
+      "LiveMap document identity path root is not a canonical Hson node.",
     );
   }
 
@@ -500,8 +500,8 @@ function map_identity_error(
   return new LiveMapDocumentIdentityError(
     cause.code === "DUPLICATE_QUID" ? "DUPLICATE_QUID" : "MALFORMED_QUID",
     cause.code === "INELIGIBLE_QUID"
-      ? `LiveMap cannot own a malformed canonical HSON root: node <${cause.node.$_tag}> is ineligible for quid ${location}.`
-      : `LiveMap cannot own a malformed canonical HSON root: element <${cause.node.$_tag}> has an invalid ${cause.value === "" ? "empty" : "malformed"} quid ${location}.`,
+      ? `LiveMap cannot own a malformed canonical Hson root: node <${cause.node.$_tag}> is ineligible for quid ${location}.`
+      : `LiveMap cannot own a malformed canonical Hson root: element <${cause.node.$_tag}> has an invalid ${cause.value === "" ? "empty" : "malformed"} quid ${location}.`,
     cause,
   );
 }

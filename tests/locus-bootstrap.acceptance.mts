@@ -225,7 +225,7 @@ check("capture returns one exact canonical identity, revision, mode, and state c
   assert.deepEqual(install_locus_bootstrap(base.bootstrap).map.capture(), base.authority.map.capture());
 });
 
-check("current unversioned encoding is deterministic canonical HSON", () => {
+check("current unversioned encoding is deterministic canonical Hson", () => {
   const first = encode_locus_bootstrap(base.bootstrap);
   assert.equal(encode_locus_bootstrap(base.bootstrap), first);
   assert.doesNotMatch(first, /^\s*\{/u);
@@ -233,7 +233,7 @@ check("current unversioned encoding is deterministic canonical HSON", () => {
   assert.equal(typeof value === "object" && value !== null && !Array.isArray(value) ? value.format : undefined, LOCUS_BOOTSTRAP_FORMAT);
 });
 
-check("valid HSON decodes with exact continuation metadata", () => {
+check("valid Hson decodes with exact continuation metadata", () => {
   const decoded = decode_locus_bootstrap(encode_locus_bootstrap(base.bootstrap));
   assert.equal(decoded.continuation.transport, "websocket");
   assert.equal(decoded.continuation.endpoint, "/live?locus=probe%3Aone");
@@ -250,7 +250,7 @@ check("valid HSON decodes with exact continuation metadata", () => {
   );
 });
 
-check("malformed HSON rejects structurally", () => {
+check("malformed Hson rejects structurally", () => {
   assert.equal(error_code(() => decode_locus_bootstrap("<broken")), "LOCUS_BOOTSTRAP_MALFORMED_HSON");
 });
 

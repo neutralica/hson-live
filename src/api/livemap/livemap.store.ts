@@ -8,7 +8,7 @@
  * the public surface can expose those amenities directly on a LiveMap without
  * requiring callers to treat the map as a separate store object.
  *
- * Store snapshots are detached projected values. Subscribers cannot mutate LiveMap by
+ * Store snapshots are detached data values. Subscribers cannot mutate LiveMap by
  * mutating a received snapshot, and path subscribers receive the same cloned
  * value shape they would get from `map.at(path).snap()`.
  */
@@ -37,7 +37,7 @@ import type {
 } from "../../types/livemap.types.js";
 
 // Selector results intentionally remain a separate compatibility domain. This
-// JSON clone is not used for LiveMap projected state, commits, paths, or
+// JSON clone is not used for LiveMap data state, commits, paths, or
 // transport and must not be substituted for the ordered carrier machinery.
 function clone_selector_value<TValue>(value: TValue): TValue {
   return value === undefined ? value : JSON.parse(JSON.stringify(value)) as TValue;
@@ -57,11 +57,11 @@ function values_equal<TValue>(
  * Create the subscription surface for one LiveMap.
  *
  * - `subscribe` notifies after any root feed event.
- * - `subscribeDiff` notifies only when ordered projected root identity changes.
+ * - `subscribeDiff` notifies only when ordered data root identity changes.
  * - `subscribeSel` notifies when the selected value changes by `Object.is` or a
  *   caller-provided equality function.
  * - `subscribePath` listens to one LivePath and compares detached path snapshots
- *   by ordered projected equality unless a caller-provided function is supplied.
+ *   by ordered data equality unless a caller-provided function is supplied.
  */
 export function make_livemap_store_api<TValue = JsonValue | undefined>(
   map: Pick<LiveMapCore<TValue>, "snap" | "feed" | "at">,

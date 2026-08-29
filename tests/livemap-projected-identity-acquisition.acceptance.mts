@@ -22,7 +22,7 @@ const quidAt = (owner: ReturnType<typeof map>, path: readonly (string | number)[
 };
 const code = (expected: string) => (error: unknown) => typeof error === "object" && error !== null && "code" in error && error.code === expected;
 
-check("projected identity acquisition is absent from the public façade", () => {
+check("data identity acquisition is absent from the public façade", () => {
   const owner = map({});
   assert.equal(Reflect.get(owner, "ensureIdentity"), undefined);
   assert.equal(Reflect.get(owner, "retain"), undefined);

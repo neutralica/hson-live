@@ -122,7 +122,7 @@ export function prepare_document_install(
     );
   }
   if (!is_Node(capture.root)) {
-    throw new LiveMapDocumentInstallError("capture root is not a canonical HSON node");
+    throw new LiveMapDocumentInstallError("capture root is not a canonical Hson node");
   }
 
   let root: HsonNode;

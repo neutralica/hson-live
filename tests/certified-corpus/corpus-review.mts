@@ -58,7 +58,7 @@ function renderCase(entry: MaterializedCorpusCase): string {
   ];
   if (entry.disposition === "accept") {
     lines.push(block("hand-authored expected graph", entry.expectedGraph));
-    lines.push(block("exact HSON output", entry.expectedOutputs.hson));
+    lines.push(block("exact Hson output", entry.expectedOutputs.hson));
     lines.push(block("exact JSON output", entry.expectedOutputs.json));
     lines.push(block("exact HTML output", entry.expectedOutputs.html));
     lines.push(block("exact diagnostic output", entry.expectedOutputs.diagnostic));
@@ -68,7 +68,7 @@ function renderCase(entry: MaterializedCorpusCase): string {
     lines.push("structured rejection: —");
   } else if (entry.disposition === "reject") {
     lines.push("hand-authored expected graph: —");
-    lines.push("exact HSON output: —");
+    lines.push("exact Hson output: —");
     lines.push("exact JSON output: —");
     lines.push("exact HTML output: —");
     lines.push(block("structured rejection", entry.expectedRejection));
@@ -96,7 +96,7 @@ export function renderCorpusReviewArtifact(): string {
     .filter((entry) => entry.classification.includes("transport"))
     .map((entry) => entry.id);
   const header = [
-    "CERTIFIED AUTHORED-HSON CORPUS — FULLY MATERIALIZED REVIEW",
+    "CERTIFIED AUTHORED-Hson CORPUS — FULLY MATERIALIZED REVIEW",
     "",
     "SUMMARY",
     JSON.stringify({ counts: corpusCounts }, null, 2),

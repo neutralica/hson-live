@@ -75,7 +75,7 @@ check("fragment content mutation publishes one graph-domain commit", () => {
   assert.deepEqual(mirror.capture(), map.capture());
 });
 
-check("projected feeds remain unchanged beside shared commit observation", () => {
+check("data feeds remain unchanged beside shared commit observation", () => {
   const map = hson.liveMap.fromJson({ value: 1 });
   const feeds: unknown[] = [];
   const observations: LiveMapCommitObservation[] = [];

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { HSON } from "../src/hson-authoring.ts";
+import { Hson } from "../src/hson-authoring.ts";
 import { discover_hson_tagged_templates } from "../src/internal/embedded-hson/discover-hson-tagged-templates.ts";
 import { interpolation_site } from "../src/internal/trusted-schema-diagnostics/interpolation-source.ts";
 import { capture_interpolation, reset_interpolation_captures, read_interpolation_captures } from "../src/internal/trusted-schema-diagnostics/interpolation-capture.ts";
@@ -12,10 +12,10 @@ let checks=0;
 const check=async(name:string,run:()=>unknown)=>{await run();console.log(`ok ${++checks} - ${name}`);};
 function execute(body:string,values:unknown[],repeat=1) {
   reset_interpolation_captures();
-  const text='import { HSON } from "hson-live/hson"; HSON`'+body+'`;';
+  const text='import { Hson } from "hson-live/hson"; Hson`'+body+'`;';
   const site=interpolation_site(discover_hson_tagged_templates('/project/test.ts',text).interpolated[0]!,'file:///project/test.ts');
-  const tag=(strings:TemplateStringsArray,...values:readonly (string|number|boolean|null)[])=>capture_interpolation(site,HSON,strings,values).canonical;
-  const run=Function('HSON','v','return HSON`'+body+'`;');
+  const tag=(strings:TemplateStringsArray,...values:readonly (string|number|boolean|null)[])=>capture_interpolation(site,Hson,strings,values).canonical;
+  const run=Function('Hson','v','return Hson`'+body+'`;');
   const results:unknown[]=[];
   for(let i=0;i<repeat;i++) results.push(run(tag,values));
   return results;
@@ -36,8 +36,8 @@ await check('public result remains primitive canonical string',()=>{assert.equal
 await check('successful canonical is actual tag result',()=>{const r=execute('<a ${v[0]}>',[37])[0];assert.equal(r,read_interpolation_captures()[0]!.canonical);});
 await check('repeated execution creates distinct evaluation IDs',()=>{execute('${v[0]}',[37],2);assert.notEqual(read_interpolation_captures()[0]!.evaluationId,read_interpolation_captures()[1]!.evaluationId);});
 await check('bounded overflow fails closed rather than selecting last',()=>{execute('${v[0]}',[37],257);assert.deepEqual(read_interpolation_captures(),[]);});
-await check('source instrumentation leaves original substitution expression intact once',()=>{const source=cases.direct!;const code=instrument_trusted_schema_map_sources(caseFile('direct'),source,'file:///helper.js');assert.equal(code.split('${age}').length-1,1);assert.ok(source.includes('HSON`'));});
-await check('shadow tags are not instrumented',()=>{const source='const HSON=x=>x; HSON`${value}`;';assert.equal(instrument_trusted_schema_map_sources('/x.ts',source,'file:///helper.js'),source);});
+await check('source instrumentation leaves original substitution expression intact once',()=>{const source=cases.direct!;const code=instrument_trusted_schema_map_sources(caseFile('direct'),source,'file:///helper.js');assert.equal(code.split('${age}').length-1,1);assert.ok(source.includes('Hson`'));});
+await check('shadow tags are not instrumented',()=>{const source='const Hson=x=>x; Hson`${value}`;';assert.equal(instrument_trusted_schema_map_sources('/x.ts',source,'file:///helper.js'),source);});
 const runtime=new TrustedSchemaDiagnosticRuntime(7);
 const env={protocolVersion:1,runtimeGeneration:7,requestId:'d5'};
 const loaded=await runtime.handle({...env,type:'load',moduleUrl:new URL('./fixtures/schema-d5-runtime.fixture.mts',import.meta.url).href,hsonModuleUrl:new URL('../src/hson.ts',import.meta.url).href});
@@ -57,7 +57,7 @@ await check('admission failure evidence exists without any Schema call',()=>asse
 await check('current capture request is request-bound and source-filtered',async()=>{const r=await runtime.handle({...env,type:'captures',requestId:'fresh-capture',moduleUrl:capture.site.moduleUrl});assert.equal(r.requestId,'fresh-capture');assert.equal(r.type,'captured');assert.equal(r.captures?.length,1);});
 await check('evaluation repeated after association invalidates authority',async()=>{
   assert.equal((await runtime.handle(request)).type,'associated');
-  const tag=(strings:TemplateStringsArray,...values:readonly (string|number|boolean|null)[])=>capture_interpolation(capture.site,HSON,strings,values).canonical;
+  const tag=(strings:TemplateStringsArray,...values:readonly (string|number|boolean|null)[])=>capture_interpolation(capture.site,Hson,strings,values).canonical;
   tag`<user <age ${'37'}>>`;
   const r=await runtime.handle({...env,type:'validate',associationId:'d5',schemaId:'user',directSource,templateRevision:1,candidateRevision:1,source:capture.source});
   assert.equal(r.error,'AMBIGUOUS_REGISTRATION');

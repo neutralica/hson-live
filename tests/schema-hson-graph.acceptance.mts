@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
-import { HSON } from "../src/hson-authoring.ts";
+import { Hson } from "../src/hson-authoring.ts";
 import { LiveMapSchemaError } from "../src/api/livemap/livemap.error.ts";
 import { is_transform_error } from "../src/core/errors.ts";
 import { parse_hson_with_provenance } from "../src/internal/hson-source-provenance/parse-hson-with-provenance.ts";
@@ -37,8 +37,8 @@ const cases: readonly [string, keyof typeof schemas.trustedSchemas, string, bool
   ["element is not coerced to fragment", "fragment", '<a/>', false],
   ["attribute and flag case validates", "attrs", '<button disabled/>', true],
   ["invalid attr and missing flag fail", "attrs", '<button count="bad"/>', false],
-  ["tuple projected root validates", "tuple", '[1, "x"]', true],
-  ["pick projected scalar validates", "pick", '"text"', true],
+  ["tuple data root validates", "tuple", '[1, "x"]', true],
+  ["pick data scalar validates", "pick", '"text"', true],
   ["tagged choice retains branch diagnostics", "tagged", '<kind "user" age "37">', false],
 ];
 for (const [name, id, source, valid] of cases) await check(name, async () => {
@@ -65,14 +65,14 @@ await check("old materialize → validateRoot incorrectly accepts integer-order 
   console.log('# integer order: old outer round trip ACCEPT; direct authority / D1 / validate REJECT');
 });
 await check("ordinary scalar string is never retried as a text fragment", () => {
-  const canonical = HSON`"text"`;
+  const canonical = Hson`"text"`;
   const fragment = hson.liveMap.schema.define(s => s.tuple(s.string));
   assert.throws(() => hson.liveMap.schema.validate(fragment, canonical), (e: unknown) => e instanceof LiveMapSchemaError && e.issues[0]?.code === "TYPE_MISMATCH");
   assert.equal(hson.liveMap.schema.validate(schemas.text, canonical), canonical);
 });
 await check("unsupported and attrs-only Schemas fail INVALID_SCHEMA", () => {
   for (const schema of [{}, hson.liveMap.schema.define(s => s.attrs({ disabled: s.flag }))]) {
-    assert.throws(() => hson.liveMap.schema.validate(schema, HSON`<button/>`), (e: unknown) => e instanceof LiveMapSchemaError && e.issues[0]?.code === "INVALID_SCHEMA");
+    assert.throws(() => hson.liveMap.schema.validate(schema, Hson`<button/>`), (e: unknown) => e instanceof LiveMapSchemaError && e.issues[0]?.code === "INVALID_SCHEMA");
   }
 });
 await check("untyped misuse and Transform errors preserve their authority", () => {
@@ -82,10 +82,10 @@ await check("untyped misuse and Transform errors preserve their authority", () =
   assert.equal(Reflect.apply(hson.liveMap.schema.validate, undefined, [schemas.text, unnormalized]), unnormalized);
 });
 await check("constraints receive JS values and exceptions propagate unchanged", () => {
-  assert.throws(() => hson.liveMap.schema.validate(schemas.throwing, HSON`1`), /constraint sentinel/);
+  assert.throws(() => hson.liveMap.schema.validate(schemas.throwing, Hson`1`), /constraint sentinel/);
   let keys: string[] = [];
   const schema = hson.liveMap.schema.define(s => s.object({ "1": s.string, "2": s.string }).constrain(value => { keys = Object.keys(value); return true; }));
-  hson.liveMap.schema.validate(schema, HSON`<'2' "b" '1' "a">`);
+  hson.liveMap.schema.validate(schema, Hson`<'2' "b" '1' "a">`);
   assert.deepEqual(keys, ["1", "2"]);
 });
 emit_hson_live_test_completion("schema-hson-graph", checks, checks, 0);

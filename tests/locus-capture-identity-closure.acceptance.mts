@@ -116,7 +116,7 @@ check("view-state Locus snapshots retain exact metadata", () => {
   assert.equal(canonical_hson_graph_equal(decoded.root, source.root()), true);
 });
 
-check("HSON Locus snapshots retain exact metadata", () => {
+check("Hson Locus snapshots retain exact metadata", () => {
   const source = element(`<main @${Q1}/>`);
   const snapshot = encode_locus_document_snapshot(
     { logicalMapId: "unit7-hson", incarnationId: "inc-hson" },

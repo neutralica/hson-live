@@ -7,7 +7,7 @@ const completionCommandTimes: number[] = [];
 async function schemaCompletions(document: vscode.TextDocument, offset: number): Promise<vscode.CompletionItem[]> {
   const started = performance.now();
   const result = await vscode.commands.executeCommand<vscode.CompletionList>('vscode.executeCompletionItemProvider', document.uri, document.positionAt(offset));
-  const items = result?.items.filter(item => item.detail?.startsWith('HSON Schema:')) ?? [];
+  const items = result?.items.filter(item => item.detail?.startsWith('Hson Schema:')) ?? [];
   if (items.length) completionCommandTimes.push(performance.now()-started);
   return items;
 }
@@ -19,17 +19,17 @@ async function diagnosticsFor(
   const timeout = Date.now() + 5_000;
   while (Date.now() < timeout) {
     const diagnostics = vscode.languages.getDiagnostics(uri)
-      .filter((diagnostic) => diagnostic.source === "HSON");
+      .filter((diagnostic) => diagnostic.source === "Hson");
     if (diagnostics.length === count) return diagnostics;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   return vscode.languages.getDiagnostics(uri)
-    .filter((diagnostic) => diagnostic.source === "HSON");
+    .filter((diagnostic) => diagnostic.source === "Hson");
 }
 
 export async function run(): Promise<void> {
   const extension = vscode.extensions.getExtension("terminal-gothic.hson-language");
-  assert.ok(extension, "HSON extension was not discovered by the extension host");
+  assert.ok(extension, "Hson extension was not discovered by the extension host");
   await extension.activate();
 
   if (process.env.HSON_D4_RESTRICTED === "1") {
@@ -46,7 +46,7 @@ export async function run(): Promise<void> {
     const interpolated = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace,"interpolated.ts")));
     await vscode.window.showTextDocument(interpolated);
     await new Promise(resolve=>setTimeout(resolve,700));
-    assert.equal(vscode.languages.getDiagnostics(interpolated.uri).filter(d=>d.source?.startsWith("HSON")).length,0);
+    assert.equal(vscode.languages.getDiagnostics(interpolated.uri).filter(d=>d.source?.startsWith("Hson")).length,0);
     assert.equal(Buffer.from(await vscode.workspace.fs.readFile(marker)).toString(),before);
     const completion = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace, 'completion-user.ts')));
     assert.deepEqual(await schemaCompletions(completion, completion.getText().indexOf('< >')+2), []);
@@ -60,7 +60,7 @@ export async function run(): Promise<void> {
   await vscode.window.showTextDocument(standalone);
   const standaloneDiagnostics = await diagnosticsFor(standalone.uri, 1);
   assert.equal(standaloneDiagnostics.length, 1);
-  assert.equal(standaloneDiagnostics[0]?.source, "HSON");
+  assert.equal(standaloneDiagnostics[0]?.source, "Hson");
   assert.equal(standaloneDiagnostics[0]?.range.start.character, 0);
 
   const fixturePath = join(__dirname, "..", "tests", "fixtures", "diagnostics-alias.ts");
@@ -87,7 +87,7 @@ export async function run(): Promise<void> {
   assert.ok(workspace && hsonModule);
   const user = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace, "user.ts")));
   await vscode.window.showTextDocument(user);
-  const schemaDiagnostics = () => vscode.languages.getDiagnostics(user.uri).filter(d => d.source === "HSON Schema");
+  const schemaDiagnostics = () => vscode.languages.getDiagnostics(user.uri).filter(d => d.source === "Hson Schema");
   assert.equal(schemaDiagnostics().length, 0, "trusted diagnostics default off");
   assert.equal(vscode.workspace.isTrusted, true);
   const config = vscode.workspace.getConfiguration("hson.trustedSchemaDiagnostics", user.uri);
@@ -102,7 +102,7 @@ export async function run(): Promise<void> {
   await waitSchema(1);
   const diagnostic = schemaDiagnostics()[0]!;
   assert.equal(user.getText(diagnostic.range), '"37"');
-  assert.match(diagnostic.message, /Expected `age` to be a number, but this value is an HSON string/);
+  assert.match(diagnostic.message, /Expected `age` to be a number, but this value is an Hson string/);
   assert.match(user.getText(diagnostic.relatedInformation?.[0]?.location.range), /validate/);
   const edits = new vscode.WorkspaceEdit(); edits.replace(user.uri, diagnostic.range, "37");
   await vscode.workspace.applyEdit(edits);
@@ -118,7 +118,7 @@ export async function run(): Promise<void> {
   process.stdout.write("ok - real VS Code D2: default off, enabled exact diagnostic, unsaved correction, revalidation, disable clearing\n");
   const mapUser = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace, "map-user.ts")));
   await vscode.window.showTextDocument(mapUser);
-  const mapDiagnostics = () => vscode.languages.getDiagnostics(mapUser.uri).filter(d => d.source === "HSON Schema");
+  const mapDiagnostics = () => vscode.languages.getDiagnostics(mapUser.uri).filter(d => d.source === "Hson Schema");
   const waitMap = async (count: number): Promise<void> => {
     const deadline = Date.now() + 10_000;
     while (mapDiagnostics().length !== count && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
@@ -155,7 +155,7 @@ export async function run(): Promise<void> {
 
   const staticMap = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace, "static-map-user.ts")));
   await vscode.window.showTextDocument(staticMap);
-  const staticSchemaDiagnostics = () => vscode.languages.getDiagnostics(staticMap.uri).filter(d => d.source === "HSON Schema");
+  const staticSchemaDiagnostics = () => vscode.languages.getDiagnostics(staticMap.uri).filter(d => d.source === "Hson Schema");
   await config.update("enabled", true, vscode.ConfigurationTarget.Workspace);
   const staticDeadline = Date.now() + 10_000;
   while (staticSchemaDiagnostics().length !== 1 && Date.now() < staticDeadline) await new Promise(resolve => setTimeout(resolve, 50));
@@ -164,13 +164,13 @@ export async function run(): Promise<void> {
   const staticMutated = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace, "static-mutated.ts")));
   await vscode.window.showTextDocument(staticMutated);
   await new Promise(resolve => setTimeout(resolve, 500));
-  assert.equal(vscode.languages.getDiagnostics(staticMutated.uri).filter(d => d.source === "HSON Schema").length, 0);
+  assert.equal(vscode.languages.getDiagnostics(staticMutated.uri).filter(d => d.source === "Hson Schema").length, 0);
   await config.update("enabled", false, vscode.ConfigurationTarget.Workspace);
   process.stdout.write("ok - real VS Code D4 trusted Schema: static escaped literal exact diagnostic and mutation suppression\n");
 
   const d5 = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace,"interpolated.ts")));
   await vscode.window.showTextDocument(d5);
-  const runtimeDiagnostics=(doc:vscode.TextDocument)=>vscode.languages.getDiagnostics(doc.uri).filter(d=>d.source==='HSON Schema'||d.source==='HSON');
+  const runtimeDiagnostics=(doc:vscode.TextDocument)=>vscode.languages.getDiagnostics(doc.uri).filter(d=>d.source==='Hson Schema'||d.source==='Hson');
   const waitRuntime=async(doc:vscode.TextDocument,count:number)=>{
     const deadline=Date.now()+15_000;
     while(runtimeDiagnostics(doc).length!==count && Date.now()<deadline) await new Promise(resolve=>setTimeout(resolve,50));
@@ -185,7 +185,7 @@ export async function run(): Promise<void> {
   await config.update('enabled',true,vscode.ConfigurationTarget.Workspace);
   const first=(await waitRuntime(d5,1))[0]!;
   assert.equal(d5.getText(first.range),'age');
-  assert.match(first.message,/expression evaluated to an HSON string/);
+  assert.match(first.message,/expression evaluated to an Hson string/);
   const exprEdit=new vscode.WorkspaceEdit(); exprEdit.replace(d5.uri,first.range,'getAge()');
   await vscode.workspace.applyEdit(exprEdit);
   assert.equal(runtimeDiagnostics(d5).length,0,'expression edit synchronously retires runtime diagnostics');
@@ -236,7 +236,7 @@ export async function run(): Promise<void> {
   assert.equal(name.insertText.value, 'name ${1}');
   assert.ok(name.sortText! < entries.find(i=>i.label==='enabled')!.sortText!);
   const editBody = async (doc: vscode.TextDocument, marked: string) => {
-    const text = doc.getText(), start = text.indexOf('HSON`')+5, end = text.indexOf('`',start);
+    const text = doc.getText(), start = text.indexOf('Hson`')+5, end = text.indexOf('`',start);
     const edit = new vscode.WorkspaceEdit(); edit.replace(doc.uri,new vscode.Range(doc.positionAt(start),doc.positionAt(end)),marked.replace('|',''));
     await vscode.workspace.applyEdit(edit);
     return start+marked.indexOf('|');
@@ -260,7 +260,7 @@ export async function run(): Promise<void> {
   const natural = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace,'map-user.ts')));
   cursor = await editBody(natural,'<user < |>>');
   entries = await waitCompletion(natural,cursor,'age');
-  assert.ok(!natural.getText().includes('HSON.validate'));
+  assert.ok(!natural.getText().includes('Hson.validate'));
   assert.ok(entries.some(i=>i.label==='age'));
   const slow = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace,'completion-slow.ts')));
   const pending = schemaCompletions(slow,slow.getText().indexOf('< >')+2);

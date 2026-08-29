@@ -184,7 +184,7 @@ check("public discovery does not advance document revision", () => {
   assert.equal(map.rev, before);
 });
 
-check("projected handles and façades do not gain document ID discovery", () => {
+check("data handles and façades do not gain document ID discovery", () => {
   const projected = hson.liveMap.fromJson({ id: "x" });
   const document = element(`<main id="x"/>`);
   assert.equal("id" in projected.at([]), false);

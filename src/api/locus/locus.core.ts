@@ -233,7 +233,7 @@ export function create_locus(
   const initialState: JsonValue = (stateResult.ok ? stateResult.value : options.state) ?? {};
   const classified = make_classified_livemap(parse_json(initialState));
   if (classified.mode !== "data-object" && classified.mode !== "data-array") {
-    throw new Error(`Locus projected state produced unexpected root mode ${classified.mode}.`);
+    throw new Error(`Locus data state produced unexpected root mode ${classified.mode}.`);
   }
   const map: LiveMap = classified;
   const { state: _state, ...shared } = options;

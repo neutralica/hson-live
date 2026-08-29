@@ -60,7 +60,7 @@ function own_data_record(
 
 function carrier_object(value: OrderedProjectedValue) {
   assert.equal(is_ordered_projected_object(value), true);
-  if (!is_ordered_projected_object(value)) throw new Error("Expected ordered projected object.");
+  if (!is_ordered_projected_object(value)) throw new Error("Expected ordered data object.");
   return value;
 }
 
@@ -71,7 +71,7 @@ function livemap_reason(fn: () => unknown): string {
     assert.ok(error instanceof Error);
     return String((error as Error & { reasonCode?: string }).reasonCode);
   }
-  throw new Error("Expected LiveMap projected admission to reject.");
+  throw new Error("Expected LiveMap data admission to reject.");
 }
 
 check("primitive admission preserves strings, isolated surrogates, booleans, null, zero and negative zero", () => {

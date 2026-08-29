@@ -5,7 +5,7 @@ import { record_livetree_materialization } from "../debug/materialization-profil
 
 const PARENT_FOR_NODE = new WeakMap<HsonNode, HsonNode>();
 
-/** Index parentage already expressed by an HSON subtree. */
+/** Index parentage already expressed by an Hson subtree. */
 export function index_subtree_ownership(root: HsonNode): void {
   const nodes = collect_subtree_nodes(root, "pre");
   record_livetree_materialization("ownershipIndexPasses");

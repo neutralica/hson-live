@@ -5,7 +5,7 @@ Updated: 2026-07-13
 
 This document covers the current style and stylesheet APIs:
 
-- `LiveTree.style` - inline style stored on the HSON node.
+- `LiveTree.style` - inline style stored on the Hson node.
 - `LiveTree.css` - QUID-scoped stylesheet rules.
 - `TreeSelector.style` and `TreeSelector.css` - broadcast proxies.
 - `CssManager.api()` - global stylesheet facade.

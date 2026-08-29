@@ -33,7 +33,7 @@ export class ProjectedValueAdmissionError extends TypeError {
     options: Readonly<{ originPath?: ProjectedValuePath; cause?: unknown }> = {},
   ) {
     super(
-      `Projected value admission failed at ${format_projected_value_path(path)}: ${detail}`,
+      `Data value admission failed at ${format_projected_value_path(path)}: ${detail}`,
       options.cause === undefined ? undefined : { cause: options.cause },
     );
     this.name = "ProjectedValueAdmissionError";

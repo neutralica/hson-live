@@ -140,7 +140,7 @@ export function make_locus_sync_manager(map: LiveMapAuthority): LocusSyncManager
     if (!sessionResult.ok) return sessionResult;
 
     if (!is_projected_live_map(map)) {
-      return fail("Projected path subscriptions are unavailable for document authorities.", {
+      return fail("Data path subscriptions are unavailable for document authorities.", {
         code: "LOCUS_PROJECTED_SUBSCRIPTION_UNSUPPORTED",
       });
     }
@@ -152,7 +152,7 @@ export function make_locus_sync_manager(map: LiveMapAuthority): LocusSyncManager
     const sessionResult = session_or_error(sessionId);
     if (!sessionResult.ok) return sessionResult;
     if (!is_projected_live_map(map)) {
-      return fail("Projected path subscriptions are unavailable for document authorities.", {
+      return fail("Data path subscriptions are unavailable for document authorities.", {
         code: "LOCUS_PROJECTED_SUBSCRIPTION_UNSUPPORTED",
       });
     }
@@ -168,7 +168,7 @@ export function make_locus_sync_manager(map: LiveMapAuthority): LocusSyncManager
     const sessionResult = session_or_error(sessionId);
     if (!sessionResult.ok) return sessionResult;
     if (!is_projected_live_map(map)) {
-      return fail("Projected path subscriptions are unavailable for document authorities.", {
+      return fail("Data path subscriptions are unavailable for document authorities.", {
         code: "LOCUS_PROJECTED_SUBSCRIPTION_UNSUPPORTED",
       });
     }

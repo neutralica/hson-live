@@ -460,7 +460,7 @@ for (const [multiline, compact] of equivalent_layouts) {
   });
 }
 
-check("unquoted HSON attribute inputs retain their existing string parse contract", () => {
+check("unquoted Hson attribute inputs retain their existing string parse contract", () => {
   const root = parse_hson(`<tag count=2 enabled=true missing=null href=http://example.test/path disabled "content"/>`);
   const cluster = root.$_content[0];
   assert.ok(is_Node(cluster));
@@ -610,7 +610,7 @@ for (const [name, source] of [
   ["whitespace-separated", `<tag a="1"    a="2"/>`],
   ["comment-separated", `<tag a="1" // declaration boundary\n a="2"/>`],
 ] as const) {
-  check(`duplicate HSON attributes reject before storage: ${name}`, () => {
+  check(`duplicate Hson attributes reject before storage: ${name}`, () => {
     assert_authored_rejection(source, "[duplicate-attribute]");
     if (name === "value/value") {
       assert.throws(() => hsonTransform.fromHson(source).toNode(), /\[duplicate-attribute\]/);
@@ -618,18 +618,18 @@ for (const [name, source] of [
   });
 }
 
-check("HSON attribute duplicate identity is case-sensitive", () => {
+check("Hson attribute duplicate identity is case-sensitive", () => {
   assert.deepEqual(authored_node(`<tag a="1" A="2"/>`).$_attrs, { a: "1", A: "2" });
 });
 
-check("distinct colonized HSON attribute names remain distinct", () => {
+check("distinct colonized Hson attribute names remain distinct", () => {
   assert.deepEqual(authored_node(`<tag data:a="1" data:A="2"/>`).$_attrs, {
     "data:a": "1",
     "data:A": "2",
   });
 });
 
-check("quoted HSON attributes decode every JSON simple escape", () => {
+check("quoted Hson attributes decode every JSON simple escape", () => {
   const cases = [
     [String.raw`\"`, `"`],
     [String.raw`\\`, `\\`],
@@ -645,7 +645,7 @@ check("quoted HSON attributes decode every JSON simple escape", () => {
   }
 });
 
-check("quoted HSON attributes decode JSON unicode escapes", () => {
+check("quoted Hson attributes decode JSON unicode escapes", () => {
   assert.equal(authored_attr(String.raw`<tag value="\u0041\u03A9"/>`), "AΩ");
 });
 
@@ -657,7 +657,7 @@ for (const [name, spelling] of [
   ["incomplete unicode", String.raw`\u12`],
   ["malformed unicode", String.raw`\uZZZZ`],
 ] as const) {
-  check(`quoted HSON attributes reject invalid JSON escape: ${name}`, () => {
+  check(`quoted Hson attributes reject invalid JSON escape: ${name}`, () => {
     assert_authored_rejection(`<tag value="${spelling}"/>`, "[invalid-json-escape]");
     if (name === "unknown q") {
       assert.throws(
@@ -942,7 +942,7 @@ check("object member content order survives parse serialize reparse and canonica
   assert.notDeepEqual(parse_hson(`<second 2 first 1 third 3>`), parsed);
 });
 
-check("quoted HSON attributes reject a trailing escape without discarding its slash", () => {
+check("quoted Hson attributes reject a trailing escape without discarding its slash", () => {
   assert_authored_rejection(`<tag value="bad${"\\"}`, "[invalid-json-escape]");
 });
 
@@ -990,7 +990,7 @@ for (const [name, source, expected] of [
   ["ordinary Unicode", "<'λ漢😀' 1>", "λ漢😀"],
   ["literal forward slash", "<'path/name' 1>", "path/name"],
 ] as const) {
-  check(`single-quoted HSON names accept ${name}`, () => {
+  check(`single-quoted Hson names accept ${name}`, () => {
     assert.equal(authored_node(source).$_tag, expected);
     const graph = parse_hson(source);
     assert.deepEqual(parse_hson(serialize_hson(detach_hson_root_value(graph))), graph);
@@ -1005,7 +1005,7 @@ for (const [name, spelling] of [
   ["zero", String.raw`\0`],
   ["hex", String.raw`\x41`],
 ] as const) {
-  check(`single-quoted HSON names reject restricted escape: ${name}`, () => {
+  check(`single-quoted Hson names reject restricted escape: ${name}`, () => {
     assert_authored_rejection(`<'name${spelling}' 1>`, "[invalid-name-escape]");
   });
 }
@@ -1052,5 +1052,5 @@ check("adjacent authored element text items remain distinct and ordered", () => 
   assert.deepEqual(values(`<div """"""/>`), ["", "", ""]);
 });
 
-process.stdout.write(`# ${checks} HSON tokenizer checks passed\n`);
+process.stdout.write(`# ${checks} Hson tokenizer checks passed\n`);
 emit_hson_live_test_completion("transform.hson-tokenizer", checks, checks, 0);

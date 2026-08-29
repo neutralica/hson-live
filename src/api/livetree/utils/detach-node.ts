@@ -14,10 +14,10 @@ import {
 } from "../runtime/livetree-runtime.js";
 
 /**
- * Recursively detach an HSON node and its descendants from the live DOM.
+ * Recursively detach an Hson node and its descendants from the live DOM.
  *
  * This is a detach operation, not an identity-destroy operation. The branch keeps
- * its HSON nodes and any claimed `quid` ownership so it can remain a valid
+ * its Hson nodes and any claimed `quid` ownership so it can remain a valid
  * unmounted branch and may be grafted again later.
  *
  * Walk order:
@@ -31,7 +31,7 @@ import {
  * 4) Deletes the node→element association from `NODE_ELEMENT_MAP`.
  *
  * Notes:
- * - This is a teardown utility for LiveTree/HSON graphs; it assumes the node may be
+ * - This is a teardown utility for LiveTree/Hson graphs; it assumes the node may be
  *   bound to a real DOM subtree via `NODE_ELEMENT_MAP`.
  * - Listener cleanup is best-effort and scoped to the internal listener registry
  *   (`_listeners_off_for_target`). It does not affect handlers attached outside that system.
@@ -40,7 +40,7 @@ import {
  * - This intentionally does not call `drop_quid`; QUID release belongs to
  *   `dispose_node_deep()` and terminal lifecycle, not this projection cleanup.
  *
- * @param node - Root HSON node to detach from live DOM bindings.
+ * @param node - Root Hson node to detach from live DOM bindings.
  * @returns void.
  */
 export function detach_node_deep(

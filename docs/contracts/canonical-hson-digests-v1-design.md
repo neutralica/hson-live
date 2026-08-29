@@ -1,4 +1,4 @@
-# Canonical HSON digests v1 — design checkpoint
+# Canonical Hson digests v1 — design checkpoint
 
 Status: byte grammar and implementation plan are complete. Two narrowly scoped
 repository mismatches must be corrected before production digest work begins;
@@ -8,7 +8,7 @@ production or test behavior is changed by this document.
 This design keeps two identities separate:
 
 ```text
-admitted canonical HSON graph -> canonical graph encoding v1 -> SHA-256
+admitted canonical Hson graph -> canonical graph encoding v1 -> SHA-256
 HsonCanonical                -> canonical text encoding v1  -> SHA-256
 ```
 
@@ -116,7 +116,7 @@ Top-level attribute values of `undefined` are not admitted. No other values,
 generic arrays, dates, maps, symbols, functions, bigint values, or prototypes
 are part of v1.
 
-## 3. Canonical HSON text byte grammar v1
+## 3. Canonical Hson text byte grammar v1
 
 ```text
 HsonCanonicalEncodingV1 = HsonCanonicalHeader String EOF
@@ -171,7 +171,7 @@ element content, and adjacent strings always retain physical order.
 
 ## 6. Domain separation, versioning, and printable identifiers
 
-SHA-256 covers the complete encoding, including its header. Thus HSON domain,
+SHA-256 covers the complete encoding, including its header. Thus Hson domain,
 artifact kind, and encoding version are inside the hashed bytes and repeated in
 the printable identifier:
 
@@ -211,7 +211,7 @@ SHA-256                     079e05a05afb447d5fe33cdb9310dd5756bd8bb32f158edd77a6
 identifier                 hson:cg:v1:sha256:079e05a05afb447d5fe33cdb9310dd5756bd8bb32f158edd77a6d7dc69301703
 ```
 
-Canonical HSON text for `-0`:
+Canonical Hson text for `-0`:
 
 ```text
 text header                 48534f4e0048530001
@@ -373,12 +373,12 @@ existing `canonical_hson_graph_*` identity vocabulary.
 For default, nonprojecting serialization, strictly equal serializable graphs
 must produce identical `HsonCanonical` output. The converse is false today:
 
-- `_hson_root` is admitted but cannot serialize as authored HSON;
+- `_hson_root` is admitted but cannot serialize as authored Hson;
 - absent `$_meta` and present empty `$_meta` are strictly different, but empty
   metadata has no authored spelling;
 - array index metadata is structural and not emitted as a separate token;
 - some admitted ordinary attribute primitive values are not accepted by the
-  HSON serializer;
+  Hson serializer;
 - `noQuid` deliberately projects graph identity before producing its default
   formatted `HsonCanonical`.
 
@@ -462,7 +462,7 @@ or fingerprint changes are required merely to add digest tests.
 
 ### A. `noBreak` is branded as HsonCanonical
 
-Current declarations and implementation type every HSON serialization as
+Current declarations and implementation type every Hson serialization as
 `HsonCanonical`, including:
 
 ```ts
@@ -471,7 +471,7 @@ serialize_hson(node, { noBreak: true })
 ```
 
 The compile fixture explicitly asserts that assignment. This contradicts the
-confirmed contract that `noBreak` is valid HSON text but must not be an
+confirmed contract that `noBreak` is valid Hson text but must not be an
 `HsonCanonical`.
 Affected owners are `transform.types.ts`, `constructor.types.ts`,
 `serialize-hson.ts`, both option constructors/finalizers, and their type
@@ -497,7 +497,7 @@ Observed results:
 ```text
 assert_invariants(...): accepts
 canonical_hson_graph_equal(distinctCloneA, distinctCloneB): throws
-  [HSON equality] invalid HSON number Infinity; numbers must be finite
+  [Hson equality] invalid Hson number Infinity; numbers must be finite
 serialize_hson(...): rejects
   operation: serialize_hson.serializeAttribute
   stage: absent
@@ -505,7 +505,7 @@ serialize_hson(...): rejects
   source/path/related: absent
 ```
 
-`NaN` and negative infinity share the admission defect. HSON's numeric value
+`NaN` and negative infinity share the admission defect. Hson's numeric value
 domain is confirmed to match JSON values: non-finite values are not allowed.
 The exact owner is the ordinary-attribute primitive branch in
 `assertNewShapeQuick()`, which checks

@@ -46,5 +46,5 @@ check("array scalar child shares authored coverage", () => assert.deepEqual(rang
 check("array scalar payload owns value spelling", () => assert.deepEqual(range(`[1]`, [0, 0, 0], "value"), { start: 1, end: 2 }));
 check("nested arrays receive physical content paths", () => assert.deepEqual(range(`[[true]]`, [0, 0], "coverage"), { start: 1, end: 7 }));
 
-process.stdout.write(`# ${checks} HSON provenance-parser checks passed\n`);
+process.stdout.write(`# ${checks} Hson provenance-parser checks passed\n`);
 emit_hson_live_test_completion("transform.hson-source-provenance-parser", checks, checks, 0);

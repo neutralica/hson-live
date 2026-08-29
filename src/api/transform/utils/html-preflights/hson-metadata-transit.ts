@@ -33,7 +33,7 @@ export function hson_metadata_transit_name(markupName: string): string {
   const candidate = hson_metadata_candidate_key(markupName);
   if (candidate === undefined || candidate.length === 0) {
     _throw_transform_err(
-      `invalid HSON metadata markup name "${markupName}"`,
+      `invalid Hson metadata markup name "${markupName}"`,
       "hson-metadata-transit",
     );
   }
@@ -136,7 +136,7 @@ function encode_start_tag(tag: string): string {
     const name = tag.slice(nameStart, index);
     if (name.startsWith(HSON_META_TRANSIT_PREFIX)) {
       _throw_transform_err(
-        `externally authored private HSON metadata transit name "${name}" is forbidden`,
+        `externally authored private Hson metadata transit name "${name}" is forbidden`,
         "hson-metadata-transit",
       );
     }
@@ -195,7 +195,7 @@ function decode_start_tag(tag: string): string {
       const decoded = decode_hson_metadata_transit_name(name);
       if (decoded === undefined) {
         _throw_transform_err(
-          `malformed private HSON metadata transit name "${name}"`,
+          `malformed private Hson metadata transit name "${name}"`,
           "hson-metadata-transit",
         );
       }

@@ -21,7 +21,7 @@ function diagnostic(error: unknown, literal: Literal, fallback: HostSourceRange)
   const primary = details.source && map(details.source.index);
   return {
     message: error instanceof Error ? error.message : messages.hsonAdmissionFailed,
-    range: primary ?? fallback, source: "HSON", code: details.code,
+    range: primary ?? fallback, source: "Hson", code: details.code,
     precision: !primary ? "fallback" : details.source?.index === literal.raw.length ? "eof" : "point",
     related: (details.related ?? []).flatMap(item => {
       const range = map(item.source.index);
@@ -37,7 +37,7 @@ export function diagnose_hson_tag(source: EmbeddedHsonSource): readonly Document
   // The real tag rejects undefined cooked segments even though it parses raw.
   const program = create_hson_source_program(source.fileName, source.hostText.slice(source.templateRange.start, source.templateRange.end));
   const invalidEscape = program.getSyntacticDiagnostics().length > 0;
-  // Cooked contents are not consumed by HSON, only their availability is checked.
+  // Cooked contents are not consumed by Hson, only their availability is checked.
   const strings = Object.freeze(Object.assign([invalidEscape ? undefined : literal.raw], { raw: Object.freeze([literal.raw]) }));
   try {
     // Reflect allows the actual admission boundary to reject invalid cooked

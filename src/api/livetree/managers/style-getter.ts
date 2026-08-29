@@ -7,7 +7,7 @@ import { normalize_css_key } from "../../transform/utils/attrs-utils/normalize-c
 /**
  * Backend contract for style reads.
  *
- * Implementations should return the *internal truth* (HSON attrs or
+ * Implementations should return the *internal truth* (Hson attrs or
  * CssManager state), not computed styles from the browser.
  */
 export type StyleGetMany = Readonly<Record<string, string>>;

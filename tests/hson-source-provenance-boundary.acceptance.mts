@@ -57,5 +57,5 @@ check("repeated parse preserves value and range determinism", () => {
   assert.deepEqual(a.provenance.range({ kind: "node", path: [0], role: "coverage" }), b.provenance.range({ kind: "node", path: [0], role: "coverage" }));
 });
 
-process.stdout.write(`# ${checks} HSON provenance-boundary checks passed\n`);
+process.stdout.write(`# ${checks} Hson provenance-boundary checks passed\n`);
 emit_hson_live_test_completion("transform.hson-source-provenance-boundary", checks, checks, 0);

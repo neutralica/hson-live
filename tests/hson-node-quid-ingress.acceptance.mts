@@ -129,7 +129,7 @@ function assert_authored_reserved_name_failure(
     `expected authored-reserved-name classification behind: ${observed.message}`,
   );
   assert.ok(
-    observed.message.includes(`authored HSON name "${name}"`),
+    observed.message.includes(`authored Hson name "${name}"`),
     `expected rejected authored name behind: ${observed.message}`,
   );
   assert.ok(
@@ -347,21 +347,21 @@ function with_browser_ingress_dom(fn: () => void): void {
   }
 }
 
-check("HSON canonical @quid attaches protected metadata", () => {
+check("Hson canonical @quid attaches protected metadata", () => {
   const canonical = must_tag(parse_hson(`<main @${Q1}/>`), "main");
   assert.equal(read_hson_node_quid(canonical), Q1);
   assert.equal(canonical.$_attrs?.[HSON_META_QUID], undefined);
   assert.equal(canonical.$_meta?.[HSON_META_QUID], Q1);
 });
 
-check("HSON object members reject authored QUID syntax", () => {
+check("Hson object members reject authored QUID syntax", () => {
   assert.throws(
     () => parse_hson(`<member @${Q1} "value">`),
     /object members cannot author persisted QUID declarations.*1:9 \(index 8\)/,
   );
 });
 
-check("HSON rejects malformed length, alphabet, and uppercase without normalization", () => {
+check("Hson rejects malformed length, alphabet, and uppercase without normalization", () => {
   for (const malformed of [
     "00000001",
     "0000000001",
@@ -375,7 +375,7 @@ check("HSON rejects malformed length, alphabet, and uppercase without normalizat
   }
 });
 
-check("HSON rejects authored reserved names with QUIDs at lexical admission", () => {
+check("Hson rejects authored reserved names with QUIDs at lexical admission", () => {
   for (const tag of [
     "_hson_root",
     "_hson_obj",
@@ -393,7 +393,7 @@ check("HSON rejects authored reserved names with QUIDs at lexical admission", ()
   }
 });
 
-check("HSON cold parsing preserves sibling and nested duplicate canonical claims", () => {
+check("Hson cold parsing preserves sibling and nested duplicate canonical claims", () => {
   const sibling = parse_hson(`<a @${Q1}/> <b @${Q1}/>`);
   assert.deepEqual(
     nodes(sibling).filter((node) => read_hson_node_quid(node) === Q1).map((node) => node.$_tag),
@@ -405,7 +405,7 @@ check("HSON cold parsing preserves sibling and nested duplicate canonical claims
   assert.equal(get_node_by_quid(Q1), undefined);
 });
 
-check("HSON accepts distinct or absent identity and parsing stays cold", () => {
+check("Hson accepts distinct or absent identity and parsing stays cold", () => {
   const distinct = parse_hson(`<a @${Q1}/> <b @${Q2}/>`);
   assert.equal(read_hson_node_quid(must_tag(distinct, "a")), Q1);
   assert.equal(read_hson_node_quid(must_tag(distinct, "b")), Q2);
@@ -441,7 +441,7 @@ check("HTML rejects unknown hson:* metadata while data-_custom remains ordinary"
     () => hsonTransform.fromTrustedHtml(`<svg><path hson:unknown="invalid"/></svg>`),
     () => hsonTransform.fromTrustedHtml(`<main _hson_meta_attr_v2_71756964="${Q1}"/>`),
   ]) {
-    assert.throws(parse, /unknown HSON metadata markup name "hson:unknown"|externally authored private HSON metadata transit name/);
+    assert.throws(parse, /unknown Hson metadata markup name "hson:unknown"|externally authored private Hson metadata transit name/);
   }
   const ordinary = hsonTransform.fromTrustedHtml(
     `<main data-_custom="ordinary"/>`,
@@ -454,7 +454,7 @@ check("trusted and untrusted HTML reject malformed protected metadata through th
     () => hsonTransform.fromTrustedHtml(`<main hson:quid="bad"/>`),
     () => hsonTransform.fromUntrustedHtml(`<main hson:quid="bad"/>`),
   ]) {
-    assert.throws(parse, /invalid value for HSON metadata "hson:quid"/);
+    assert.throws(parse, /invalid value for Hson metadata "hson:quid"/);
   }
 });
 
@@ -503,7 +503,7 @@ check("standalone SVG text preserves protected QUID metadata and ordinary SVG at
 check("standalone SVG text rejects malformed identity and preserves duplicate canonical claims", () => {
   assert.throws(
     () => hsonTransform.fromTrustedHtml(`<svg hson:quid="bad"/>`),
-    /invalid value for HSON metadata "hson:quid"/,
+    /invalid value for Hson metadata "hson:quid"/,
   );
   const duplicate = hsonTransform.fromTrustedHtml(
     `<svg><path hson:quid="${Q1}"/><circle hson:quid="${Q1}"/></svg>`,
@@ -555,7 +555,7 @@ check("SVG DOM ingestion rejects unknown hson:* and preserves data-* as ordinary
           attrs: [{ name: "hson:unknown", value: "invalid" }],
         }) as unknown as Record<string, unknown>],
       })),
-      /unknown HSON metadata markup name "hson:unknown"/,
+      /unknown Hson metadata markup name "hson:unknown"/,
     );
     assert.throws(
       () => node_from_svg(dom_element({
@@ -563,7 +563,7 @@ check("SVG DOM ingestion rejects unknown hson:* and preserves data-* as ordinary
         namespace: SVG_NS,
         attrs: [{ name: "_hson_meta_attr_v2_71756964", value: Q1 }],
       })),
-      /private HSON metadata transit name/,
+      /private Hson metadata transit name/,
     );
     const ordinary = node_from_svg(dom_element({
       tag: "svg",
@@ -582,7 +582,7 @@ check("SVG DOM ingestion rejects malformed placement and preserves duplicate can
         namespace: SVG_NS,
         attrs: [{ name: QUID_ATTR, value: "bad" }],
       })),
-      /invalid value for HSON metadata "hson:quid"/,
+      /invalid value for Hson metadata "hson:quid"/,
     );
     assert.throws(
       () => node_from_svg(dom_element({
@@ -676,7 +676,7 @@ check("all public transform graph facades agree on valid and malformed metadata"
   for (const invalid of [
     () => hsonTransform.fromTrustedHtml(`<main hson:quid="bad"/>`).toNode(),
     () => hsonTransform.fromUntrustedHtml(`<main hson:quid="bad"/>`).toNode(),
-  ]) assert.throws(invalid, /invalid value for HSON metadata "hson:quid"/);
+  ]) assert.throws(invalid, /invalid value for Hson metadata "hson:quid"/);
   assert_validation_code(
     () => hsonTransform.fromNode(document_root(element("main", "bad"))).toNode(),
     "MALFORMED_QUID",

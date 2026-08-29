@@ -1,5 +1,5 @@
 import {
-  HSON,
+  Hson,
   hson,
   hsonTransform,
   hsonLiveMap,
@@ -26,7 +26,7 @@ import {
 } from "hson-live/transform";
 import {
   TransformError as HsonSubpathTransformError,
-  HSON as HsonSubpath,
+  Hson as HsonSubpath,
   type HsonCanonical as AuthoringCanonical,
 } from "hson-live/hson";
 import type { HsonNode, HsonSemanticPrimitive, JsonValue, Primitive } from "hson-live/types";
@@ -38,7 +38,7 @@ import { validate_schema_hson_graph } from "hson-live/livemap";
 // @ts-expect-error Direct-source associations are private tooling.
 import type { TrustedSchemaDirectSource } from "hson-live/types";
 const standaloneSchema = hson.liveMap.schema.define(s => s.number);
-const standaloneCanonical: HsonCanonical = HSON.validate(standaloneSchema, HSON`37`);
+const standaloneCanonical: HsonCanonical = Hson.validate(standaloneSchema, Hson`37`);
 const narrowStandaloneCanonical: HsonCanonical = HsonSubpath.validate(standaloneSchema, standaloneCanonical);
 // @ts-expect-error Arbitrary strings are not branded HsonCanonical.
 hson.liveMap.schema.validate(standaloneSchema, "37");
@@ -799,12 +799,12 @@ declare const binaryDecodeOptions: BinaryDecodeOptions;
 
 const inferredHsonText = transformSubpath.fromNode(node).toHson().serialize();
 const inferredNormalizedHson = hson.transform.fromHson(arbitrary).toHson().serialize();
-const inferredRootTaggedHson: HsonCanonical = HSON`<main/>`;
+const inferredRootTaggedHson: HsonCanonical = Hson`<main/>`;
 const inferredHsonSubpathTaggedHson: HsonCanonical = HsonSubpath`<main/>`;
-const inferredTaggedNumber: HsonCanonical = HSON`${37}`;
-const inferredTaggedString: HsonCanonical = HSON`${"37"}`;
-const inferredTaggedBoolean: HsonCanonical = HSON`${true}`;
-const inferredTaggedNull: HsonCanonical = HSON`${null}`;
+const inferredTaggedNumber: HsonCanonical = Hson`${37}`;
+const inferredTaggedString: HsonCanonical = Hson`${"37"}`;
+const inferredTaggedBoolean: HsonCanonical = Hson`${true}`;
+const inferredTaggedNull: HsonCanonical = Hson`${null}`;
 // @ts-expect-error Ordinary source-string calls are unsupported.
 hson("<foo/>");
 // @ts-expect-error Ordinary source-string calls are unsupported.
@@ -818,24 +818,24 @@ hson(null);
 // @ts-expect-error Ordinary calls are unsupported.
 hson({});
 // @ts-expect-error Tagged substitutions exclude undefined.
-HSON`${undefined}`;
+Hson`${undefined}`;
 // @ts-expect-error Tagged substitutions exclude bigint.
-HSON`${1n}`;
+Hson`${1n}`;
 // @ts-expect-error Tagged substitutions exclude symbol.
-HSON`${Symbol()}`;
+Hson`${Symbol()}`;
 // @ts-expect-error Tagged substitutions exclude objects.
-HSON`${{}}`;
+Hson`${{}}`;
 // @ts-expect-error Tagged substitutions exclude arrays.
-HSON`${[]}`;
+Hson`${[]}`;
 // @ts-expect-error Tagged substitutions exclude functions.
-HSON`${() => {}}`;
+Hson`${() => {}}`;
 // @ts-expect-error Transform textual admission has no .string surface.
 hson.transform.string;
 // @ts-expect-error Transform textual admission has no .string surface.
 transformSubpath.string;
 // @ts-expect-error The authoring facade exposes no Transform subsystem.
 HsonSubpath.transform;
-// @ts-expect-error HSON finalizers serialize; they do not stringify.
+// @ts-expect-error Hson finalizers serialize; they do not stringify.
 transformSubpath.fromNode(node).toHson().string();
 const inferredHtmlText = transformSubpath.fromNode(node).toHtml().serialize();
 const inferredJsonText = transformSubpath.fromNode(node).toJson().serialize();
@@ -847,7 +847,7 @@ const inferredBinaryBytes: Uint8Array = inferredBinary.serialize();
 const inferredBinaryHash: Promise<string> = inferredBinary.sha256();
 transformSubpath.fromBinary(inferredBinaryBytes, binaryDecodeOptions).toNode();
 hson.fromBinary(inferredBinaryBytes, { maxBytes: 1, maxGraphDepth: 1, maxGraphNodes: 1 }).toNode();
-// @ts-expect-error Binary HSON admits Uint8Array only, not ArrayBuffer.
+// @ts-expect-error Binary Hson admits Uint8Array only, not ArrayBuffer.
 transformSubpath.fromBinary(new ArrayBuffer(0));
 // @ts-expect-error Binary decode options require numeric limits.
 transformSubpath.fromBinary(inferredBinaryBytes, { maxBytes: "1" });
@@ -894,7 +894,7 @@ const invalidOperationalNumber: HsonNumber = operationalCommit.rev;
 // @ts-expect-error Ordinary numbers require runtime admission before branding.
 const invalidAdmittedNumber: HsonNumber = arbitraryNumber;
 
-// @ts-expect-error Ordinary strings are not official HSON serializer output.
+// @ts-expect-error Ordinary strings are not official Hson serializer output.
 const invalidHson: HsonCanonical = arbitrary;
 // @ts-expect-error HTML output remains a plain string.
 const invalidHtmlHson: HsonCanonical = inferredHtmlText;
@@ -1019,9 +1019,9 @@ if (publicDocumentMap.mode === "element") {
   bindingTree.bind.attrsPaths([publicDocumentMap.at([])], (values) => ({ "data-document": values[0] !== undefined }));
   bindingTree.bind.css(publicDocumentMap.at([]), (value) => ({ opacity: value === undefined ? 0 : 1 }));
   bindingTree.bind.cssPaths([publicDocumentMap.at([])], (values) => ({ opacity: values[0] === undefined ? 0 : 1 }));
-  // @ts-expect-error Broad document locations can contain HSON and require a text formatter.
+  // @ts-expect-error Broad document locations can contain Hson and require a text formatter.
   bindingTree.bind.text(publicDocumentMap.at([]));
-  // @ts-expect-error Broad document locations can contain HSON and require an attribute formatter.
+  // @ts-expect-error Broad document locations can contain Hson and require an attribute formatter.
   bindingTree.bind.attr(publicDocumentMap.at([]), "data-document");
   void documentAcquisitionIsPublic;
 }
@@ -1055,7 +1055,7 @@ import { hson as retiredSubpathAggregate } from "hson-live/hson";
 // @ts-expect-error Subsystems use their own entrypoints or the package root.
 import { hsonLiveMap as retiredAuthoringMap } from "hson-live/hson";
 // @ts-expect-error Canonical input is required at every validation entrance.
-HSON.validate(standaloneSchema, "37");
+Hson.validate(standaloneSchema, "37");
 const authoredTypeIdentity: AuthoringCanonical = standaloneCanonical;
 const originalTypeIdentity: HsonCanonical = authoredTypeIdentity;
 const sameRootMapType: typeof mapSubpath = hsonLiveMap;

@@ -1,5 +1,5 @@
 > Historical D2 implementation record. The subsequent uppercase authoring
-> migration changes the tag to `HSON` and makes `/hson` narrow. `HSON.validate`
+> migration changes the tag to `Hson` and makes `/hson` narrow. `Hson.validate`
 > joins both retained LiveMap validation entrances; D2 architecture is unchanged.
 > See [current authoring contract](../transform/api-transform.md).
 
@@ -10,9 +10,9 @@
 1. Current surface: `hson.liveMap.schema.define`; compatible Schema objects
    expose existing validation and inspection capabilities (`validateRoot`,
    `validateValue`, rules/path inspection). The facade has no standalone
-   whole-HSON Schema validator.
+   whole-Hson Schema validator.
 2. Approved change: add only `hson.liveMap.schema.validate(schema, canonical)`.
-3. Rationale: authoritative validation of existing canonical HSON without a
+3. Rationale: authoritative validation of existing canonical Hson without a
    LiveMap allocation; a runtime boundary for fixtures, configuration, tests and
    build tooling; and a clean source-level association for D2.
 4. Alternatives already reviewed: a method on every Schema, `map.schema` only,
@@ -99,7 +99,7 @@ tests/schema-hson-public.acceptance.mts
 internally `validate_schema_hson_graph(schema: unknown, graph: HsonNode)`.
 The graph must already be an admitted detached canonical graph. It returns
 existing `LiveMapSchemaValidation`, recognizes capabilities through their owned
-registries, and dispatches to the existing projected or document authority.
+registries, and dispatches to the existing data or document authority.
 It neither parses nor materializes an outer JavaScript object, constructs a map,
 reserializes, retries interpretations, nor catches constraint exceptions.
 
@@ -146,9 +146,9 @@ Mechanical built-package checks prove identical method identity through:
 No new top-level export or subpath was introduced. Declaration fixtures reject
 plain strings, aliases, public graph-validator imports and direct-source types.
 
-### 7. Projected behavior
+### 7. Data behavior
 
-String, number, boolean, null, object and array roots go through ordered projected
+String, number, boolean, null, object and array roots go through ordered data
 carriers. Existing literal equality, object exactness, tuple/pick/tagged choice,
 constraints and recurse semantics remain authoritative. JavaScript values are
 still materialized *inside* constraints. Existing nullability semantics are
@@ -158,8 +158,8 @@ preserved: for example, an unmodified `unknown` is not silently made nullable.
 
 Actual element and fragment roots use existing document classification and
 validation, including tag, attrs, flags, content/layout and repeat/count rules.
-Combined projected/document capabilities work in their actual root domains.
-Ordinary `"text"` remains a projected scalar; neither text-to-fragment nor
+Combined data/document capabilities work in their actual root domains.
+Ordinary `"text"` remains a data scalar; neither text-to-fragment nor
 element-to-fragment coercion is attempted. Attrs-only and item-only expressions
 without complete root capability are rejected.
 
@@ -170,7 +170,7 @@ without complete root capability are rejected.
 - Incompatible actual root: root `TYPE_MISMATCH` issue.
 - Malformed untyped string: authoritative Transform error, unchanged.
 - Non-string runtime misuse: `TypeError`.
-- Projected constraint exception: original exception propagates.
+- Data constraint exception: original exception propagates.
 - Document attribute constraint exception: existing adapter still yields its
   established mismatch behavior; it is not changed to propagate.
 - D1 timeout/crash/load/compatibility/staleness failures remain tooling outcomes,
@@ -281,13 +281,13 @@ validation call is related information, not a duplicate primary squiggle.
 
 ### 22. Representative messages
 
-- `[UserSchema] Expected \`age\` to be a number, but this value is an HSON string.`
+- `[UserSchema] Expected \`age\` to be a number, but this value is an Hson string.`
 - `Required \`age\` is missing. (Anchored to existing source; required structure is absent.)`
 - `\`extra\` is not allowed by this exact Schema.`
 - `Expected \`status\` to equal "draft"; found "pending".`
 - `\`age\` does not satisfy constraint “positive age”.`
 - `Expected element tag "button"; found "span".`
-- `Expected attribute \`count\` to be a number, but this value is an HSON string.`
+- `Expected attribute \`count\` to be a number, but this value is an Hson string.`
 - `Required flag \`disabled\` is missing.`
 
 Private WeakMap evidence distinguishes tag/flag/constraint labels without parsing
@@ -300,7 +300,7 @@ Status distinguishes `off`, `waiting`, `current-valid`, `current-invalid`,
 `stale`, `ambiguous`, `unavailable`, and `runtime-failed`. Tooltip text explains
 that the current editor candidate was checked against the current mapped Schema,
 not that the application's validation statement ran. Timeout/load/constraint
-execution failures do not produce authored-HSON error squiggles. No diagnostics
+execution failures do not produce authored-Hson error squiggles. No diagnostics
 is never presented as equivalent to validity without a successful current check.
 
 ### 24. Focused suites and visible check counts
@@ -323,7 +323,7 @@ workspace and settings, not the user's normal VS Code profile.
 
 ### 25. Measured performance
 
-Seven warmed projected D2 requests on this machine, milliseconds:
+Seven warmed data D2 requests on this machine, milliseconds:
 
 | Stage | Median | Maximum |
 | --- | ---: | ---: |
@@ -398,7 +398,7 @@ them. No unrelated hosted/certification execution was required or performed.
 evidence is retained for the immediate follow-up; D2 does not infer non-mutation
 from source and does not require redundant validation for that future flow.
 
-### 28. No Schema-specific HSON type
+### 28. No Schema-specific Hson type
 
 No `HsonAssociated`, `HsonTyped`, `HsonCertified`, wrapper or certificate type was
 added. `hson` stays tag-only and returns primitive `HsonCanonical`.

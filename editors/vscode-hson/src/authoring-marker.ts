@@ -8,10 +8,10 @@ export const hsonIdentityMarkers = [
   { publicName: "hson", letter: "s", colorId: "hson.libraryMarker.s", strength: "strong" },
   { publicName: "hson", letter: "o", colorId: "hson.libraryMarker.o", strength: "strong" },
   { publicName: "hson", letter: "n", colorId: "hson.libraryMarker.n", strength: "strong" },
-  { publicName: "HSON", letter: "H", colorId: "hson.authoringMarker.h", strength: "soft" },
-  { publicName: "HSON", letter: "S", colorId: "hson.authoringMarker.s", strength: "soft" },
-  { publicName: "HSON", letter: "O", colorId: "hson.authoringMarker.o", strength: "soft" },
-  { publicName: "HSON", letter: "N", colorId: "hson.authoringMarker.n", strength: "soft" },
+  { publicName: "Hson", letter: "H", colorId: "hson.authoringMarker.h", strength: "soft" },
+  { publicName: "Hson", letter: "S", colorId: "hson.authoringMarker.s", strength: "soft" },
+  { publicName: "Hson", letter: "O", colorId: "hson.authoringMarker.o", strength: "soft" },
+  { publicName: "Hson", letter: "N", colorId: "hson.authoringMarker.n", strength: "soft" },
 ] as const;
 
 export const HSON_LIBRARY_SEPARATOR_COLOR_ID = "hson.libraryMarker.separator";
@@ -37,7 +37,7 @@ export type HsonIdentityPresentation = Readonly<{
   separators: readonly HsonLibrarySeparatorPart[];
 }>;
 
-/** Binding-aware presentation for official literal HSON-live facade references. */
+/** Binding-aware presentation for official literal Hson-live facade references. */
 export function hson_identity_presentation(
   fileName: string,
   text: string,
@@ -72,7 +72,7 @@ export function hson_identity_presentation(
   });
 }
 
-/** Presentation evidence for literal usage references to official HSON-live bindings. */
+/** Presentation evidence for literal usage references to official Hson-live bindings. */
 export function hson_identity_marker_parts(
   fileName: string,
   text: string,

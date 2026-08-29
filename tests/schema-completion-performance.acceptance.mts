@@ -5,7 +5,7 @@ import { TrustedSchemaClient } from "../editors/vscode-hson/src/trusted-schema-c
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 const fileName = fileURLToPath(new URL('./fixtures/d6-benchmark.ts', import.meta.url));
 const doc = (schema: string, body: string) => ({ fileName, uri: pathToFileURL(fileName).href, version: 1, languageId: 'typescript',
-  text: `import { HSON } from "hson-live/hson"; import { ${schema} } from "./schema-d6-schemas.fixture.mts"; const source=HSON\`${body}\`; HSON.validate(${schema},source);` });
+  text: `import { Hson } from "hson-live/hson"; import { ${schema} } from "./schema-d6-schemas.fixture.mts"; const source=Hson\`${body}\`; Hson.validate(${schema},source);` });
 const client = new TrustedSchemaClient({ trust: { workspaceTrusted: true, enabled: true }, moduleUrl: new URL('./fixtures/schema-d6-schemas.fixture.mts', import.meta.url).href,
   hsonModuleUrl: new URL('../src/hson.ts', import.meta.url).href, runtimeEntry: fileURLToPath(new URL('../src/internal/trusted-schema-diagnostics/node-runtime-entry.ts', import.meta.url)),
   execArgv: ['--loader','ts-node/esm'], startupDeadlineMs: 10_000 });
@@ -21,7 +21,7 @@ try {
   ];
   for (const [name,schema,marked] of cases) {
     const document = doc(schema!,marked!.replace('|',''));
-    const offset = document.text.indexOf('HSON`')+5+marked!.indexOf('|');
+    const offset = document.text.indexOf('Hson`')+5+marked!.indexOf('|');
     const samples: Record<string,number>[] = [];
     for (let i=0;i<12;i++) {
       const requestStarted = performance.now();

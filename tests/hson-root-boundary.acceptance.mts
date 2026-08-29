@@ -246,31 +246,31 @@ check("tagged array-valued property retains array semantics", () => {
   );
 });
 
-check("zero-length HSON source rejects", () => {
+check("zero-length Hson source rejects", () => {
   assert.throws(() => publicNode(``), /has no semantic value/);
 });
 
-check("space-only HSON source rejects", () => {
+check("space-only Hson source rejects", () => {
   assert.throws(() => publicNode(`   `), /has no semantic value/);
 });
 
-check("tab-only HSON source rejects", () => {
+check("tab-only Hson source rejects", () => {
   assert.throws(() => publicNode(`\t\t`), /has no semantic value/);
 });
 
-check("LF-only HSON source rejects", () => {
+check("LF-only Hson source rejects", () => {
   assert.throws(() => publicNode(`\n\n`), /has no semantic value/);
 });
 
-check("CRLF-only HSON source rejects", () => {
+check("CRLF-only Hson source rejects", () => {
   assert.throws(() => publicNode(`\r\n\r\n`), /has no semantic value/);
 });
 
-check("comment-only HSON source rejects", () => {
+check("comment-only Hson source rejects", () => {
   assert.throws(() => publicNode(`// comment`), /has no semantic value/);
 });
 
-check("mixed whitespace and comment-only HSON source rejects", () => {
+check("mixed whitespace and comment-only Hson source rejects", () => {
   assert.throws(() => publicNode(` \t// comment\r\n  `), /has no semantic value/);
 });
 
@@ -280,32 +280,32 @@ check("explicit empty string object and array remain valid empty values", () => 
   ]);
 });
 
-check("primitive HSON source exposes no root through any public terminal", () => {
+check("primitive Hson source exposes no root through any public terminal", () => {
   assertNoPublicRoot(`42`);
 });
 
-check("object HSON source exposes no root through any public terminal", () => {
+check("object Hson source exposes no root through any public terminal", () => {
   assertNoPublicRoot(`<a 1 b 2>`);
 });
 
-check("array HSON source exposes no root through any public terminal", () => {
+check("array Hson source exposes no root through any public terminal", () => {
   assertNoPublicRoot(`«1,2»`);
 });
 
-check("element HSON source exposes no root through any public terminal", () => {
+check("element Hson source exposes no root through any public terminal", () => {
   assertNoPublicRoot(`<a/>`);
 });
 
-check("object-side tagged HSON exposes no root through any public terminal", () => {
+check("object-side tagged Hson exposes no root through any public terminal", () => {
   assertNoPublicRoot(`<record <field 2>>`);
 });
 
-check("browser umbrella and universal Transform share exact HSON detachment", () => {
+check("browser umbrella and universal Transform share exact Hson detachment", () => {
   assert.equal(hson.fromHson, hsonTransform.fromHson);
   assert.deepEqual(hson.fromHson(`<a/>`).toNode(), hsonTransform.fromHson(`<a/>`).toNode());
 });
 
-check("browser-capable source constructor detaches its internal HSON root", () => {
+check("browser-capable source constructor detaches its internal Hson root", () => {
   const browserSource = construct_source_1({ unsafe: true });
   assert.equal(browserSource.fromHson(`42`).toNode().$_tag, "_hson_val");
   assert.equal(browserSource.fromHson(`<a/>`).toNode().$_tag, "_hson_elem");
@@ -370,27 +370,27 @@ check("exact detachment does not unwrap meaningful primitive VSNs", () => {
   }
 });
 
-check("empty root rejects direct and fluent HSON egress", () => {
+check("empty root rejects direct and fluent Hson egress", () => {
   assertRootEgressRejects(root());
 });
 
-check("root containing string rejects direct and fluent HSON egress", () => {
+check("root containing string rejects direct and fluent Hson egress", () => {
   assertRootEgressRejects(root(node("_hson_str", ["x"])));
 });
 
-check("root containing scalar rejects direct and fluent HSON egress", () => {
+check("root containing scalar rejects direct and fluent Hson egress", () => {
   assertRootEgressRejects(root(node("_hson_val", [2])));
 });
 
-check("root containing object rejects direct and fluent HSON egress", () => {
+check("root containing object rejects direct and fluent Hson egress", () => {
   assertRootEgressRejects(root(node("_hson_obj")));
 });
 
-check("root containing array rejects direct and fluent HSON egress", () => {
+check("root containing array rejects direct and fluent Hson egress", () => {
   assertRootEgressRejects(root(node("_hson_arr")));
 });
 
-check("root containing element fragment rejects direct and fluent HSON egress", () => {
+check("root containing element fragment rejects direct and fluent Hson egress", () => {
   assertRootEgressRejects(root(node("_hson_elem", [node("a")])));
 });
 
@@ -401,17 +401,17 @@ check("root rejection precedes every readable compact and QUID option combinatio
   }
 });
 
-check("HSON-source reserialization succeeds because its parser root was detached", () => {
+check("Hson-source reserialization succeeds because its parser root was detached", () => {
   assert.equal(hson.fromHson(`<a/>`).toHson().serialize(), `<a/>`);
   assert.equal(hson.fromHson(`42`).toHson().serialize(), `42`);
 });
 
-check("JSON and HTML parser-owned roots still convert to HSON through explicit detachment", () => {
+check("JSON and HTML parser-owned roots still convert to Hson through explicit detachment", () => {
   assert.equal(hson.fromJson({ a: 1 }).toHson().noBreak().serialize(), `<a 1>`);
   assert.equal(hsonTransform.fromTrustedHtml(`<a></a>`).toHson().noBreak().serialize(), `<a/>`);
 });
 
-check("HSON source frame caches one detached semantic node identity", () => {
+check("Hson source frame caches one detached semantic node identity", () => {
   const source = hson.fromHson(`<a/>`);
   assert.equal(source.toNode(), source.toNode());
   assert.equal(source.toNode().$_tag, "_hson_elem");
@@ -434,7 +434,7 @@ check("hson canonicalizes every bare primitive category", () => {
   );
 });
 
-check("hson canonicalizes tagged HSON after exact root detachment", () => {
+check("hson canonicalizes tagged Hson after exact root detachment", () => {
   assert.equal(canonicalize(`<a/><b/>`), `<a/>\n<b/>`);
 });
 
@@ -442,7 +442,7 @@ check("hson rejects empty source before branding", () => {
   assert.throws(() => canonicalize(``), /has no semantic value/);
 });
 
-check("repeated HSON canonicalization is stable", () => {
+check("repeated Hson canonicalization is stable", () => {
   const first = canonicalize(`<p "first"<em "middle"/>"last"/>`);
   assert.equal(canonicalize(first), first);
 });
@@ -453,7 +453,7 @@ check("Unit 1 mixed-mode rejection and uniform grouping remain enforced", () => 
   assert.equal(publicNode(`<a 1 b 2>`).$_tag, "_hson_obj");
 });
 
-check("valid QUID metadata survives root detachment and HSON output", () => {
+check("valid QUID metadata survives root detachment and Hson output", () => {
   const value = publicNode(`<main @000000001/>`);
   assert.equal((value.$_content[0] as HsonNode).$_meta?.quid, "000000001");
   assert.match(hson.fromNode(value).toHson().serialize(), /@000000001/);
@@ -498,5 +498,5 @@ check("internal root egress retains its precise structured serialization identit
   );
 });
 
-process.stdout.write(`# ${checks} HSON root-boundary checks passed\n`);
+process.stdout.write(`# ${checks} Hson root-boundary checks passed\n`);
 emit_hson_live_test_completion("transform.hson-root-boundary", checks, checks, 0);

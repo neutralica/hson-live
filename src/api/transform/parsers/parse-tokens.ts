@@ -22,7 +22,7 @@ export type ParseTokensOptions = Readonly<{
 
 
 /**
- * Create a canonical HSON leaf node from a primitive value.
+ * Create a canonical Hson leaf node from a primitive value.
  *
  * Rules:
  * - `string`  → `<_hson_str>` node with `$_content: [value]`.
@@ -45,8 +45,8 @@ export const make_leaf = (v: HsonSemanticPrimitive): HsonNode =>
 /**
  * Assemble a flat token stream into a hierarchical `HsonNode` tree.
  *
- * This is the second stage of the HSON parser: it consumes the output of
- * `tokenize_hson` and builds the final IR, enforcing the HSON clustering
+ * This is the second stage of the Hson parser: it consumes the output of
+ * `tokenize_hson` and builds the final IR, enforcing the Hson clustering
  * and close-mode rules.
  *
  * High-level behavior:
@@ -85,7 +85,7 @@ export const make_leaf = (v: HsonSemanticPrimitive): HsonNode =>
  *   payloads for special tags (e.g. `<_hson_val>`) also throw.
  *
  * @param tokens - Token array produced by `tokenize_hson`.
- * @returns A `_hson_root`-wrapped `HsonNode` representing the parsed HSON tree.
+ * @returns A `_hson_root`-wrapped `HsonNode` representing the parsed Hson tree.
  * @see tokenize_hson
  * @see make_leaf
  */
@@ -494,7 +494,7 @@ export function parse_tokens(
             const second = topPositions[1] ?? topPositions[0];
             const hasStructural = kids.some((child) => child.$_tag !== VAL_TAG && child.$_tag !== STR_TAG);
             _throw_transform_err(
-                "a top-level primitive must be the sole semantic HSON value",
+                "a top-level primitive must be the sole semantic Hson value",
                 "parse_tokens.root-shaping",
                 undefined,
                 undefined,

@@ -36,7 +36,7 @@ function assertEligibilityError(fn: () => unknown, tag: string): void {
   assert.throws(
     fn,
     (cause) => cause instanceof Error
-      && cause.message.includes("ineligible HSON structural node")
+      && cause.message.includes("ineligible Hson structural node")
       && cause.message.includes(`"${tag}"`),
   );
 }

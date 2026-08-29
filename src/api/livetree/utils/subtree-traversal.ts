@@ -5,7 +5,7 @@ import { record_livetree_materialization } from "../debug/materialization-profil
 export type SubtreeTraversalOrder = "pre" | "post";
 
 /**
- * Collect every HSON node in a subtree using graph structure only.
+ * Collect every Hson node in a subtree using graph structure only.
  *
  * Structural VSN nodes are included and primitive content is ignored. Child
  * order follows `$_content`, making both supported traversal orders stable.

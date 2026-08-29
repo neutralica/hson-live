@@ -66,7 +66,7 @@ function assert_livetree_quid_eligible(node: HsonNode, operation: string): void 
   if (eligible) return;
   throw new HsonNodeQuidValidationError(
     "INELIGIBLE_QUID",
-    `Cannot ${operation} QUID metadata on ineligible HSON structural node "${node.$_tag}".`,
+    `Cannot ${operation} QUID metadata on ineligible Hson structural node "${node.$_tag}".`,
     { node, value: node.$_meta?.[HSON_META_QUID] },
   );
 }
@@ -548,7 +548,7 @@ export const HSON_QUID_MARKUP_NAME =
  * issued ledger remains monotonic and is not reset here.
  *
  * Not used for normal detach/removeSelf flows. A detached branch still owns its
- * HSON nodes and persisted QUIDs so it can remain valid while unmounted and may
+ * Hson nodes and persisted QUIDs so it can remain valid while unmounted and may
  * be grafted again later.
  ***************************************/
 export function drop_quid(
@@ -588,7 +588,7 @@ export function drop_quid(
 }
 
 /**
- * Terminally destroy every QUID identity trace in an HSON subtree.
+ * Terminally destroy every QUID identity trace in an Hson subtree.
  *
  * Traversal is graph-derived and post-order. Registry ownership, persisted
  * metadata, and mapped DOM attributes are removed for the root and every

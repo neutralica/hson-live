@@ -1,4 +1,4 @@
-# Authored-HSON quoted-name delimiter amendment
+# Authored-Hson quoted-name delimiter amendment
 
 ## Binding and scope
 
@@ -17,10 +17,10 @@ escape; it does not reopen the reviewed decoded-name semantics.
 
 ## Current rule
 
-- Authored HSON names are bare or single-quoted.
+- Authored Hson names are bare or single-quoted.
 - `"..."` delimits authored string values.
 - `'...'` delimits authored quoted names.
-- `` ` `` has no HSON delimiter role.
+- `` ` `` has no Hson delimiter role.
 - `\'` replaces the former escaped-delimiter case.
 - Backslashes and the established `\b`, `\f`, `\n`, `\r`, `\t`, and `\uXXXX`
   escapes retain their reviewed meanings inside quoted names.
@@ -50,7 +50,7 @@ verdict directly from this amendment:
 | `hson.accept.family.quoted-name.literal-backtick` | valid | A backtick is ordinary unescaped data inside a single-quoted name. |
 | `hson.reject.literal.legacy-backtick-name` | invalid | A backtick cannot begin a name or invoke legacy syntax. |
 | `hson.reject.literal.quoted-name.raw-apostrophe` | invalid | An apostrophe inside a quoted name must be written `\'`. |
-| `hson.reject.literal.single-quoted-value` | invalid | Single quotes do not delimit HSON string values. |
+| `hson.reject.literal.single-quoted-value` | invalid | Single quotes do not delimit Hson string values. |
 
 ## Derived-artifact policy
 

@@ -32,11 +32,11 @@ One branch can be selected. The details surface reports canonical path, semantic
 
 The default tree uses `tree`/`treeitem`/`group` semantics, `aria-level`, `aria-expanded`, and `aria-selected`. Disclosure and selection use native buttons. Interaction is handled by one listener on the inspector root. Collapsing a subtree moves contained focus to its disclosure control.
 
-## HSON, conversion, and extensions
+## Hson, conversion, and extensions
 
-`hsonMode: "friendly"` summarizes canonical HSON tag, attributes, ordered content, and virtual-node role in selection details. `"canonical"` displays the canonical node. A path-handle-only source has no schema/node authority, so those details are reported as unavailable.
+`hsonMode: "friendly"` summarizes canonical Hson tag, attributes, ordered content, and virtual-node role in selection details. `"canonical"` displays the canonical node. A path-handle-only source has no schema/node authority, so those details are reported as unavailable.
 
-`serialize("json" | "hson" | "html" | "canonical-node", path?)` delegates to the existing transform pipeline and returns a string on demand. HTML and canonical-node conversion require a representable HSON-derived `LiveMap`; unsupported or unrepresentable requests are classified. Ordinary source commits never serialize the full source.
+`serialize("json" | "hson" | "html" | "canonical-node", path?)` delegates to the existing transform pipeline and returns a string on demand. HTML and canonical-node conversion require a representable Hson-derived `LiveMap`; unsupported or unrepresentable requests are classified. Ordinary source commits never serialize the full source.
 
 Semantic renderer hooks and prioritized specializations receive only a mutation-free read handle plus semantic context. They may return a `LiveTree` or `{ tree, update, dispose }`. Matching is deterministic by priority then declaration order. Extension failure is isolated, diagnosed, and replaced by neutral rendering. Renderer resources are terminally disposed with their owning branch.
 
@@ -73,7 +73,7 @@ const canonical = hson.inspect.fromHson({ value: serializedHson, host, hsonMode:
 
 - Only finite JSON-shaped values are accepted; cycles, class instances, DOM nodes, functions, symbols, bigints, `NaN`, and infinities are rejected.
 - Unkeyed arrays provide positional continuity only.
-- Schema and canonical HSON-node inspection require a full `LiveMap`, not an isolated path handle.
+- Schema and canonical Hson-node inspection require a full `LiveMap`, not an isolated path handle.
 - This experimental surface has no clipboard contract, editing controls, custom elements, Shadow DOM, drag/drop, transport logic, or Locus action submission.
 - Materialization is synchronous and non-virtualized; very large visible collections can block the calling thread. There is no cancellation API because no work remains scheduled after a call returns.
 - Hosted jsdom timings are reproducible development evidence, not a browser latency guarantee. Browser-specific measurements are not yet part of CI.

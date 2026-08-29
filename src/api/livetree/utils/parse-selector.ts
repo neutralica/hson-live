@@ -25,7 +25,7 @@ import { HsonQuery } from "../../../types/livetree.types.js";
  * - `[attr="value"]` sets `attrs[attr] = value`
  * - Bare `[attr]` does not add a constraint (presence checks are not represented)
  *
- * This parser is intended for HSON’s internal querying needs, not as a
+ * This parser is intended for Hson’s internal querying needs, not as a
  * general-purpose CSS selector engine.
  *
  * @param selector - A simple selector string (e.g. `div#app.item[data-x="1"]`)

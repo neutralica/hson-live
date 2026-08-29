@@ -6,7 +6,7 @@ import {
   type ParsedHsonWithProvenance,
 } from "./hson-source-provenance.js";
 
-/** Parse valid authored HSON and bind a private source sidecar to its exact detached value. */
+/** Parse valid authored Hson and bind a private source sidecar to its exact detached value. */
 export function parse_hson_with_provenance(
   source: string,
   options: ParseTokensOptions = {},

@@ -130,13 +130,13 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
         if (cfg.throwOnFirst) return;
       }
       if (lowerKey.startsWith(HSON_META_TRANSIT_PREFIX)) {
-        push(errs, cfg, `${here}@attrs:${JSON.stringify(key)}: private HSON metadata transit name is forbidden`); if (cfg.throwOnFirst) return;
+        push(errs, cfg, `${here}@attrs:${JSON.stringify(key)}: private Hson metadata transit name is forbidden`); if (cfg.throwOnFirst) return;
       }
       if (lowerKey.startsWith(_TRANSIT_PREFIX)) {
         push(errs, cfg, `${here}@attrs:${JSON.stringify(key)}: private ordinary-attribute transit name is forbidden`); if (cfg.throwOnFirst) return;
       }
       if (!is_valid_hson_attribute_name(key)) {
-        push(errs, cfg, `${here}@attrs:${JSON.stringify(key)}: invalid HSON attribute name`); if (cfg.throwOnFirst) return;
+        push(errs, cfg, `${here}@attrs:${JSON.stringify(key)}: invalid Hson attribute name`); if (cfg.throwOnFirst) return;
       }
     }
   }
@@ -189,7 +189,7 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
       }
       if (n.$_tag === VAL_TAG) {
         if (typeof v === "number" && !Number.isFinite(v)) {
-          push(errs, cfg, `${here}/$_content[0]: invalid HSON number ${String(v)}; numbers must be finite`); if (cfg.throwOnFirst) return;
+          push(errs, cfg, `${here}/$_content[0]: invalid Hson number ${String(v)}; numbers must be finite`); if (cfg.throwOnFirst) return;
         }
         const validPayload = v === null
           || typeof v === "boolean"

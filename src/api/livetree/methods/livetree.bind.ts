@@ -305,7 +305,7 @@ function text_formatter<TSource extends BindingSource>(
 
 function reject_unmapped_document_node(mode: BindingSourceMode, value: unknown): void {
   if (mode === "document" && is_Node(value)) {
-    throw new TypeError("LiveTree.bind document HSON values require an explicit mapper for primitive destinations.");
+    throw new TypeError("LiveTree.bind document Hson values require an explicit mapper for primitive destinations.");
   }
 }
 

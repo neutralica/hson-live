@@ -4,7 +4,7 @@ import type { Primitive } from "./types.js";
 const ORDERED_PROJECTED_OBJECT: unique symbol = Symbol("hson.ordered-projected-object");
 const VALIDATED_ORDERED_PROJECTED_VALUES = new WeakSet<object>();
 
-/** One object-shaped projected value whose property order is explicit data. */
+/** One object-shaped data value whose property order is explicit data. */
 export type OrderedProjectedObject = Readonly<{
   readonly [ORDERED_PROJECTED_OBJECT]: true;
   readonly entries: readonly (readonly [string, OrderedProjectedValue])[];
@@ -32,10 +32,10 @@ export function ordered_projected_object(
   const keys = new Set<string>();
   const copiedEntries = entries.map(([key, value]) => {
     if (typeof key !== "string") {
-      throw new TypeError("Ordered projected object keys must be strings.");
+      throw new TypeError("Ordered data object keys must be strings.");
     }
     if (keys.has(key)) {
-      throw new TypeError(`Duplicate ordered projected object key ${JSON.stringify(key)}.`);
+      throw new TypeError(`Duplicate ordered data object key ${JSON.stringify(key)}.`);
     }
     keys.add(key);
     assert_ordered_projected_value(value);
@@ -75,11 +75,11 @@ export function assert_ordered_projected_value(value: unknown): asserts value is
       return;
     }
     if (typeof candidate !== "object") {
-      throw new TypeError(`Unsupported ordered projected value type ${typeof candidate}.`);
+      throw new TypeError(`Unsupported ordered data value type ${typeof candidate}.`);
     }
     if (VALIDATED_ORDERED_PROJECTED_VALUES.has(candidate)) return;
     if (active.has(candidate)) {
-      throw new TypeError("Ordered projected values must be acyclic.");
+      throw new TypeError("Ordered data values must be acyclic.");
     }
 
     active.add(candidate);
@@ -102,20 +102,20 @@ export function assert_ordered_projected_value(value: unknown): asserts value is
       throw new TypeError("Ordered projected objects must use the ordered carrier factory.");
     }
     if (!Array.isArray(candidate.entries) || !Object.isFrozen(candidate.entries)) {
-      throw new TypeError("Ordered projected object entries must be immutable.");
+      throw new TypeError("Ordered data object entries must be immutable.");
     }
 
     const keys = new Set<string>();
     for (const entry of candidate.entries) {
       if (!Array.isArray(entry) || entry.length !== 2 || !Object.isFrozen(entry)) {
-        throw new TypeError("Ordered projected object entries must be immutable key/value pairs.");
+        throw new TypeError("Ordered data object entries must be immutable key/value pairs.");
       }
       const [key, child] = entry;
       if (typeof key !== "string") {
-        throw new TypeError("Ordered projected object keys must be strings.");
+        throw new TypeError("Ordered data object keys must be strings.");
       }
       if (keys.has(key)) {
-        throw new TypeError(`Duplicate ordered projected object key ${JSON.stringify(key)}.`);
+        throw new TypeError(`Duplicate ordered data object key ${JSON.stringify(key)}.`);
       }
       keys.add(key);
       visit(child);
@@ -161,7 +161,7 @@ export function ordered_projected_value_equal(
   return true;
 }
 
-/** Exact equality for a projected carrier or the path-absence sentinel. */
+/** Exact equality for a data carrier or the path-absence sentinel. */
 export function optional_ordered_projected_value_equal(
   left: OrderedProjectedValue | undefined,
   right: OrderedProjectedValue | undefined,

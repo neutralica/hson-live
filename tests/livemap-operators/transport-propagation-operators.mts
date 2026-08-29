@@ -29,7 +29,7 @@ function changed_source(): Map {
 }
 
 export const transport_propagation_operators: readonly DeterministicLiveMapOperator[] = Object.freeze([
-  lifecycle_operator("transport/capture-stable", "capture exact state", "Repeated exact captures are byte-stable and non-mutating.", "Map contains an admitted projected root.", "accept", () => {
+  lifecycle_operator("transport/capture-stable", "capture exact state", "Repeated exact captures are byte-stable and non-mutating.", "Map contains an admitted data root.", "accept", () => {
     const map = changed_source(); const before = exact(map); const first = map.capture(); const second = map.capture(); assert.equal(first.payload, second.payload); return result("accept", before, "capture() twice", exact(map), 0, 0, ["payloads byte-identical"]);
   }),
   lifecycle_operator("transport/restore-exact", "restore an exact capture", "Restore adopts exact ordered carrier state.", "Capture is the canonical structural-json representation.", "change", () => {

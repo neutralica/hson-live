@@ -136,7 +136,7 @@ function recovery_events(events, requestId) {
   return events.filter((event) => event.details?.requestId === requestId && event.phase.startsWith("recovery."));
 }
 
-await check("protocol accepts string HSON without parsing snapshot syntax", () => {
+await check("protocol accepts string Hson without parsing snapshot syntax", () => {
   const decoded = decode_locus_server_message(JSON.stringify({
     type: "recovery-snapshot",
     id: "protocol-hson",
@@ -152,7 +152,7 @@ await check("protocol accepts string HSON without parsing snapshot syntax", () =
   assert.equal(decoded.ok && decoded.value.type, "recovery-snapshot");
 });
 
-await check("protocol rejects legacy value snapshots and malformed HSON envelopes", () => {
+await check("protocol rejects legacy value snapshots and malformed Hson envelopes", () => {
   const base = { type: "recovery-snapshot", id: "protocol-invalid" };
   const invalidSnapshots = [
     { logicalMapId: "map", incarnationId: "inc", rev: 0, value: {} },
@@ -744,7 +744,7 @@ await check("invalid snapshot retains old mirror and cursor", async () => {
   assert.equal(events.filter((event) => event.phase === "recovery.complete").length, 1);
 });
 
-await check("malformed snapshot HSON fails installation without advancing state", async () => {
+await check("malformed snapshot Hson fails installation without advancing state", async () => {
   const pair = socket_pair();
   const mirror = hson.liveMap.fromJson({ value: 1 });
   restore_projected_revision(mirror, 4);
@@ -769,7 +769,7 @@ await check("malformed snapshot HSON fails installation without advancing state"
   assert.ok(client.recovery.failure.cause instanceof Error);
 });
 
-await check("valid HSON rejected by the active schema does not replace the mirror", async () => {
+await check("valid Hson rejected by the active schema does not replace the mirror", async () => {
   const pair = socket_pair();
   const schema = hson.liveMap.schema.define((shape) => shape.object({ value: shape.number }));
   const mirror = hson.liveMap.fromJson({ value: 1 });

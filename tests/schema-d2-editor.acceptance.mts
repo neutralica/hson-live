@@ -31,7 +31,7 @@ function setup(initial = true) {
   const edit = (doc: DiagnosticDocument, text = "edited") => { const next = { ...doc, version: doc.version + 1, text }; documents.set(doc.uri, next); for (const listener of changes) listener(next); return next; };
   const flush = () => { const queued = [...timers.values()]; timers.clear(); queued.forEach(fn => fn()); };
   const close = (doc: DiagnosticDocument) => { documents.delete(doc.uri); for (const listener of closes) listener(doc); };
-  const invalid: SchemaClientResult = { status: "current-invalid", diagnostics: [{ message: "Expected number", range: { start: 1, end: 2 }, precision: "exact", source: "HSON", related: [] }] };
+  const invalid: SchemaClientResult = { status: "current-invalid", diagnostics: [{ message: "Expected number", range: { start: 1, end: 2 }, precision: "exact", source: "Hson", related: [] }] };
   return { controller, open, edit, flush, close, pending, published, statuses, timers, documents, invalid,
     enable: (value: boolean) => { enabled = value; }, unavailable: () => { clientAvailable = false; }, requests: () => requests };
 }
@@ -55,6 +55,6 @@ await check("runtime rejection does not create authored errors", async () => { c
 await check("unconfigured runtime does not imply validity", () => { const s = setup(); const d = s.open(); s.unavailable(); s.flush(); assert.equal(s.statuses.get(d.uri), "unavailable"); assert.equal(s.pending.length, 0); s.controller.dispose(); });
 await check("dispose prevents late publication", async () => { const s = setup(); const d = s.open(); s.flush(); s.controller.dispose(); s.pending[0]!.resolve(s.invalid); await turn(); assert.equal(s.published.has(d.uri), false); });
 await check("independent documents do not supersede one another", async () => { const s = setup(); const a = s.open(); const b = s.open(1, "file:///project/other.ts"); s.flush(); s.pending[0]!.resolve(s.invalid); s.pending[1]!.resolve({ status: "current-valid", diagnostics: [] }); await turn(); assert.equal(s.published.get(a.uri)?.length, 1); assert.equal(s.published.get(b.uri)?.length, 0); s.controller.dispose(); });
-await check("provider candidate-only edit does not retire current Schema", () => { const before = 'import { HSON } from "hson-live"; const Schema = define(); const value = HSON`<age "37">`;'; assert.equal(schema_provider_source_changed('/project/provider.ts', before, before.replace('"37"', '37')), false); });
-await check("provider declaration edit invalidates mapped Schema", () => { const before = 'import { HSON } from "hson-live"; const Schema = define(); const value = HSON`<age "37">`;'; assert.equal(schema_provider_source_changed('/project/provider.ts', before, before.replace('define()', 'otherSchema()')), true); });
+await check("provider candidate-only edit does not retire current Schema", () => { const before = 'import { Hson } from "hson-live"; const Schema = define(); const value = Hson`<age "37">`;'; assert.equal(schema_provider_source_changed('/project/provider.ts', before, before.replace('"37"', '37')), false); });
+await check("provider declaration edit invalidates mapped Schema", () => { const before = 'import { Hson } from "hson-live"; const Schema = define(); const value = Hson`<age "37">`;'; assert.equal(schema_provider_source_changed('/project/provider.ts', before, before.replace('define()', 'otherSchema()')), true); });
 emit_hson_live_test_completion("schema-d2-editor", checks, checks, 0);

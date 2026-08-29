@@ -36,7 +36,7 @@ const attrKeyForElement = (el: Element, name: string): string => {
   // changed: SVG attrs are case-sensitive in practice; preserve DOM/authored spelling.
   if (isSvgElement(el)) return name;
 
-  // HTML attrs remain normalized to lowercase for HSON stability.
+  // HTML attrs remain normalized to lowercase for Hson stability.
   return name.toLowerCase();
 };
 
@@ -45,23 +45,23 @@ const isPresenceAttr = (key: string, name: string, value: string): boolean => {
 };
 
 /**
- * Extract HSON-facing attributes from a live DOM `Element`.
+ * Extract Hson-facing attributes from a live DOM `Element`.
  *
  * Rules:
  * - Returns `attrs` for user-visible attributes, optional `meta` for reserved
  *   structural metadata, and protected QUID input separately for canonical
  *   attachment by the caller.
- * - Decodes dedicated HSON metadata transit names only for the string parser
+ * - Decodes dedicated Hson metadata transit names only for the string parser
  *   path and rejects externally authored private names.
  * - Decodes generic ordinary-attribute transit names only for the string parser
  *   path and rejects externally authored private names.
  * - Normalizes style into a structured object via `parse_style_string`.
  * - Ignores XML namespace noise (`xmlns`, `xmlns:*`, `xml:*`) so HTML/SVG/XML
- *   sources don’t leak parser plumbing into HSON.
+ *   sources don’t leak parser plumbing into Hson.
  * - Preserves SVG attribute names exactly as the DOM reports them. This keeps
  *   case-sensitive SVG names such as `viewBox`, `stdDeviation`, and
  *   `preserveAspectRatio` intact instead of relying on an incomplete repair map.
- * - Lowercases HTML attribute names for stable HTML/HSON behavior.
+ * - Lowercases HTML attribute names for stable HTML/Hson behavior.
  * - For SVG, maps `xlink:href` → `href` only if `href` is not already present,
  *   so downstream code can treat links uniformly.
  * - Canonicalizes boolean/presence flags so `disabled`, `disabled=""`, and
@@ -126,19 +126,19 @@ export function parse_html_attrs(
     const key = attrKeyForElement(el, name);
     const v = a.value ?? "";
 
-    // A) decode dedicated HSON metadata transit or admit a literal DOM name.
+    // A) decode dedicated Hson metadata transit or admit a literal DOM name.
     let metadataMarkupName: string | undefined;
     if (is_hson_metadata_transit_name(parserName)) {
       if (!options.allowHsonTransit) {
         _throw_transform_err(
-          `externally authored private HSON metadata transit name "${parserName}" is forbidden`,
+          `externally authored private Hson metadata transit name "${parserName}" is forbidden`,
           "parse-html-attrs",
         );
       }
       metadataMarkupName = decode_hson_metadata_transit_name(parserName);
       if (metadataMarkupName === undefined) {
         _throw_transform_err(
-          `malformed private HSON metadata transit name "${parserName}"`,
+          `malformed private Hson metadata transit name "${parserName}"`,
           "parse-html-attrs",
         );
       }
@@ -173,13 +173,13 @@ export function parse_html_attrs(
     }
     if (lowerName.startsWith(HSON_META_TRANSIT_PREFIX)) {
       _throw_transform_err(
-        `externally authored private HSON metadata transit name "${name}" is forbidden`,
+        `externally authored private Hson metadata transit name "${name}" is forbidden`,
         "parse-html-attrs",
       );
     }
     if (!is_valid_hson_attribute_name(name)) {
       _throw_transform_err(
-        `invalid HSON attribute name "${name}"`,
+        `invalid Hson attribute name "${name}"`,
         "parse-html-attrs",
       );
     }

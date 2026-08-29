@@ -4,13 +4,13 @@
 > statements below describe that release and are not current API guidance.
 > See `readme.md` and `docs/livehost/overview.md` for the current contract.
 
-#### hson-live v2.3.3 / hson.terminalgothic.com 
+#### hson-live v2.3.3 / hson.terminalgothic.com
 
-# HSON: Hypertext Structured Object Notation
-## a format that unifies HTML and JSON 
+# Hson: Hypertext Structured Object Notation
+## a format that unifies HTML and JSON
 
 ### overview
-HSON is a glue format: a structural representation capable of fully expressing both JSON and HTML within a unified syntax resembling a pared-down form of HTML.
+Hson is a glue format: a structural representation capable of fully expressing both JSON and HTML within a unified syntax resembling a pared-down form of HTML.
 
 ## package entrypoints
 
@@ -42,9 +42,9 @@ the `hson-live/hson` umbrella entrypoint, loose subsystem exports, and the
 The umbrella exposes the LiveMap-authoritative reflector as `hson.reflect`.
 Browser-only HTML constructors remain available on `hson` and `hson.liveMap`.
 
-JSON and HTML occupy different domains — data and markup — but both are built from hierarchical, tree-structured relationships. In JSON, structure emerges from key:value associations; in HTML it arises from parent–child relationships between elements. HSON formalizes the equivalence between the two, representing both  structures within the same underlying node graph.
+JSON and HTML occupy different domains — data and markup — but both are built from hierarchical, tree-structured relationships. In JSON, structure emerges from key:value associations; in HTML it arises from parent–child relationships between elements. Hson formalizes the equivalence between the two, representing both  structures within the same underlying node graph.
 
-#### By expressing either format through a commonview structure, HSON enables JSON and HTML to be translated into one another losslessly, deterministically, and reversibly, preserving data integrity across any number of round-trip transformations. 
+#### By expressing either format through a commonview structure, Hson enables JSON and HTML to be translated into one another losslessly, deterministically, and reversibly, preserving data integrity across any number of round-trip transformations.
 
 The ability to parse JSON to HTML and vice versa is the operation that powers hson-live.
 
@@ -56,9 +56,9 @@ The ability to parse JSON to HTML and vice versa is the operation that powers hs
   }
 }
 ```
-### HSON:
+### Hson:
 ```ts
-<key1  
+<key1
   <key2  "value">
 >
 ```
@@ -68,17 +68,17 @@ The ability to parse JSON to HTML and vice versa is the operation that powers hs
   <child>text node</child>
 </parent>
 ```
-### HSON:
+### Hson:
 ```ts
 <parent
   <child "text node"/>
 />
 ```
 
-hson-live's transformer chain consists of 7 parsers and serializers for converting any JSON or XML-compatible HTML to HSON and back. It also provides a diagnostic suite to verify data integrity and stability across multiple transformations. 
+hson-live's transformer chain consists of 7 parsers and serializers for converting any JSON or XML-compatible HTML to Hson and back. It also provides a diagnostic suite to verify data integrity and stability across multiple transformations.
 
 ## core
-HSON's syntax expresses an explicit intermediate representation (IR), a node graph capable of representing:
+Hson's syntax expresses an explicit intermediate representation (IR), a node graph capable of representing:
 
 * JSON objects and arrays
 * HTML and SVG elements
@@ -90,12 +90,12 @@ This representation is stable under repeated transformations. Serializing to ano
 
 ## hson.transform
 `hson.transform` is the canonical `hsonTransform` facade. Its dedicated
-`hson-live/transform` entrypoint handles DOM-free HSON, JSON, and existing-node
+`hson-live/transform` entrypoint handles DOM-free Hson, JSON, and existing-node
 transformation. The complete `hson` umbrella retains trusted and untrusted HTML
 input methods for browser consumers.
 
 The transform subsystem is responsible for:
-- parsing JSON and HSON strings into a shared HsonNode intermediate representation (IR)
+- parsing JSON and Hson strings into a shared HsonNode intermediate representation (IR)
 - serializing that node graph from any supported format to any other
 - performing repeated round-trip conversions without structural drift
 - preserving mixed content, attributes, ordering, and unique node identifiers
@@ -106,7 +106,7 @@ Unifying these non-interchangeable notations in one representation suggests new 
 
 
 ## hson.liveTree
-LiveTree is an interface that projects live DOM elements from HSON, using the node graph as the source of truth and updating the DOM when changes are made.
+LiveTree is an interface that projects live DOM elements from Hson, using the node graph as the source of truth and updating the DOM when changes are made.
 
 Rather than maintaining separate virtual UI and state models that must be kept in sync, LiveTree works by:
 1.	ingesting document.body, or any HTMLElement within it, and parsing it — along with all nested content — into a HsonNode graph
@@ -126,7 +126,7 @@ Once grafted onto document.body, mutations to LiveTree’s node graph are immedi
 
 ### API example
 ```ts
-const tree = hson.liveTree.queryBody()  
+const tree = hson.liveTree.queryBody()
     // or `.queryDom(/*selector*/)`
     .graft();  // replace document.body with identical LiveTree projection
 
@@ -140,19 +140,19 @@ const branchDiv = tree.create.div()
 tree.listen
       // listener teardown/cleanup occurs automatically on node removal
     .once()
-      // event listener options are fully represented in liveTree's .listen toolchain 
+      // event listener options are fully represented in liveTree's .listen toolchain
     .onClick(() => {
           // changes to the node graph are rendered to the DOM in realtime
         branchDiv.text.set("goodbye world")
             .css.set.backgroundColor("blue");
-    }); 
+    });
 ```
 
 Detached branches can also be created directly:
 
 ```ts
 const badge = hson.liveTree.create.span().text.set("new");
-tree.append(badge); 
+tree.append(badge);
 ```
 LiveTree exposes various DOM and CSS helpers including:
 
@@ -169,7 +169,7 @@ LiveTree supports:
 * reading and writing attributes, text content, and tag names
 * scoped CSS manipulation without Shadow DOM
 * declarative animation control via CSS keyframes
-* typed event listener management with automatic teardown 
+* typed event listener management with automatic teardown
 * SVG creation, manipulation, and animation
 * <canvas> creation, manipulation, and animation
 * deterministic cleanup of removed nodes
@@ -179,7 +179,7 @@ The API is intentionally conservative. It often mirrors established JavaScript d
 ## first-class CSS
 hson-live exposes CSS not as a string-based side channel, but as a typed surface that can be read, written, created, and reasoned about directly, all within JS/TS. Style rules, keyframes, custom properties, and scoped selectors are constructed and managed programmatically in LiveTree, without sacrificing any of the expressiveness of native CSS.
 
-LiveTree's CssManager uses each node's "quantum unique ID" (QUID) as its selector. Local CSS scoping emerges naturally from this. Rules apply only on the node where they are defined, without requiring Shadow DOM boundaries, complex naming conventions, or build-time transformations. 
+LiveTree's CssManager uses each node's "quantum unique ID" (QUID) as its selector. Local CSS scoping emerges naturally from this. Rules apply only on the node where they are defined, without requiring Shadow DOM boundaries, complex naming conventions, or build-time transformations.
 
 hson-live's CssManager, KeyframesManager, StyleManager, and (@)PropertyManager together enable typed style management, deterministic cleanup, dynamic rule composition, and animation systems that can be defined, sequenced, and controlled without fragile string concatenation.
 
@@ -197,7 +197,7 @@ Cleanup is built-in: rules are automatically deleted from the <hson-_style> styl
 
 ## status and safety
 
-### HSON-LIVE IS EXPERIMENTAL - USE WITH CAUTION
+### Hson-LIVE IS EXPERIMENTAL - USE WITH CAUTION
 
 The transformation core is stable, but the surrounding APIs are still evolving. The library is suitable for exploration, prototyping, and controlled environments.
 
@@ -224,7 +224,7 @@ Compiled output is written to dist/.
 The repository can be found at
 `https://github.com/neutralica/hson-live`
 
-See the docs/ directory for detailed documentation of HSON syntax, transformer behavior, and the LiveTree API. Full documentation is also made available at hson::LiveDemo. 
+See the docs/ directory for detailed documentation of Hson syntax, transformer behavior, and the LiveTree API. Full documentation is also made available at hson::LiveDemo.
 
 ## LiveDemo
 `https://terminalgothic.com/hson`

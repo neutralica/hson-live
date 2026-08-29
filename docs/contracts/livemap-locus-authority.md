@@ -109,7 +109,7 @@ Optimism must not be added implicitly.
 
 Snapshots
 
-A host snapshot represents complete authoritative projected state at a specific revision.
+A host snapshot represents complete authoritative data state at a specific revision.
 
 Conceptually:
 

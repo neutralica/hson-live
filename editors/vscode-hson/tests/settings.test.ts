@@ -26,7 +26,7 @@ function check(name: string, body: () => void): void {
 }
 
 check("settings use three coherent native groups", () => assert.deepEqual(groups.map(group => group.title), [
-  "HSON › Appearance", "HSON › Schema Diagnostics", "HSON › Runtime / Provider",
+  "Hson › Appearance", "Hson › Schema Diagnostics", "Hson › Runtime / Provider",
 ]));
 check("appearance surface contains only the finalized eight controls", () => assert.deepEqual(
   Object.keys(groups[0]!.properties),

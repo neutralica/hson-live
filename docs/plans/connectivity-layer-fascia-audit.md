@@ -14,7 +14,7 @@ Meaningful repeated reconciliation logic exists, but it does **not** justify a n
 
 The repeated logic is concentrated in three places:
 
-1. Document paths and projected-data paths both implement move/index-shift, replacement retirement, and descendant-path preservation. They do so over different path domains and different authoritative operation vocabularies. Document paths are numeric logical HSON content paths; projected paths mix object keys and array indexes and include rename/splice semantics.
+1. Document paths and data paths both implement move/index-shift, replacement retirement, and descendant-path preservation. They do so over different path domains and different authoritative operation vocabularies. Document paths are numeric logical Hson content paths; data paths mix object keys and array indexes and include rename/splice semantics.
 2. LiveMap's document planner and Reflection's shadow planner both execute document graph operations. LiveMap decides canonical state. Reflection uses the already accepted operation plus the resulting canonical graph and exact runtime state to decide reuse, DOM work, and terminal cleanup. Their common-looking switch statements do not have the same output or policy boundary.
 3. Reflection folds the shared document path transition over operations in both identity preflight and correspondence publication. The primitive is already shared with LiveMap; only the sequencing is repeated inside one subsystem.
 
@@ -34,12 +34,12 @@ The reconciliation matrices use these source keys. Each key identifies the nontr
 
 | Key | Source and symbol | Role |
 |---|---|---|
-| **LM-P** | [`livemap.core.ts`](../../src/api/livemap/livemap.core.ts): `plan_write_ops`, `plan_write_ops_with_identity`, `prepare_projected_transition`, `apply_replay_ops` | Projected-data canonical planning, ordered carrier semantics, replay |
+| **LM-P** | [`livemap.core.ts`](../../src/api/livemap/livemap.core.ts): `plan_write_ops`, `plan_write_ops_with_identity`, `prepare_projected_transition`, `apply_replay_ops` | data canonical planning, ordered carrier semantics, replay |
 | **LM-D** | [`livemap.document.mutation.ts`](../../src/api/livemap/livemap.document.mutation.ts): `prepare_*`, `prepare_finished_mutation`, `prepare_document_graph_operation` | Document canonical mutation and replay planning |
 | **LM-A** | [`livemap.authority.ts`](../../src/api/livemap/livemap.authority.ts): `make_livemap_transition_controller`; [`livemap.core.ts`](../../src/api/livemap/livemap.core.ts): `publishCommitWithWatch`, `restore`, `applyMutation`, `applyReplay` | Atomic install and publication |
 | **DP** | [`livemap.document.path.ts`](../../src/api/livemap/livemap.document.path.ts): `document_path_effect_for_graph_operation`, `transform_document_path` | Shared document path effect and transition |
 | **DI** | [`livemap.document.identity.ts`](../../src/api/livemap/livemap.document.identity.ts): `reconcile_livemap_document_identity_overlay`, `replace_livemap_document_identity_overlay_effects` | Sparse document QUID/path index and derived effects |
-| **PI** | [`livemap.projected.identity.ts`](../../src/api/livemap/livemap.projected.identity.ts): `reconcile_livemap_projected_identity_overlay`, `transform_path`, `transform_rename`, `transform_move`, `transform_splice` | Sparse projected-data identity reconciliation |
+| **PI** | [`livemap.projected.identity.ts`](../../src/api/livemap/livemap.projected.identity.ts): `reconcile_livemap_projected_identity_overlay`, `transform_path`, `transform_rename`, `transform_move`, `transform_splice` | Sparse data identity reconciliation |
 | **IE** | [`livemap.identity-epoch.ts`](../../src/api/livemap/livemap.identity-epoch.ts): `stage_livemap_identity_epoch`, `retain_livemap_identity_epoch`; [`livemap.document.capture.ts`](../../src/api/livemap/livemap.document.capture.ts): `validate_livemap_document_admission` | Same-owner-epoch lifetime and exact capture provenance |
 | **LOC** | [`livemap.document.location.ts`](../../src/api/livemap/livemap.document.location.ts); [`livemap.watch.ts`](../../src/api/livemap/livemap.watch.ts): `make_livemap_watch_hub`; [`livemap.feed.ts`](../../src/api/livemap/livemap.feed.ts): `make_livemap_feed_hub` | Fixed-location handles, watches, and feeds |
 | **LINK** | [`livemap.link.ts`](../../src/api/livemap/livemap.link.ts): `apply_projected_link_event`, `apply_link_event` | Propagation and conflict/fallback policy |
@@ -60,14 +60,14 @@ The reconciliation matrices use these source keys. Each key identifies the nontr
 
 | Concern | Owner | Authority and available evidence |
 |---|---|---|
-| Canonical projected-data mutation | LiveMap | **LM-P** applies the requested semantic operation to the previous ordered projected carrier and constructs the resulting canonical HSON graph. Rename preserves the source position while replacing an existing destination; array move uses the final post-removal destination index. |
+| Canonical data mutation | LiveMap | **LM-P** applies the requested semantic operation to the previous ordered data carrier and constructs the resulting canonical Hson graph. Rename preserves the source position while replacing an existing destination; array move uses the final post-removal destination index. |
 | Canonical document mutation | LiveMap | **LM-D** clones the previous root, resolves path/QUID requests to canonical path targets, applies the graph operation, validates the result, and hands the detached candidate to **LM-A**. |
 | Commit construction | LiveMap | **LM-P** and **LM-D** retain semantic intent (`rename`, `move`, `splice`, graph operations) in ordered commits. History and transport do not reconstruct it from snapshots. |
 | Document path transformation | Shared internal LiveMap module | **DP** classifies insert, remove, replace, move, and root replacement. It is consumed by **DI** and **RD**. Move destination is final post-removal index and moved descendant suffixes are preserved. |
-| Projected-data path transformation | LiveMap projected identity | **PI** privately handles mixed string/number paths, rename destination retirement, array move shifts, and splice windows. No other subsystem consumes this exact operation/path vocabulary for identity continuity. |
-| QUID/path continuity | LiveMap | **DI** and **PI** own sparse derived indexes. **IE** owns the monotonic issued ledger and exact same-epoch capture capability. Canonical QUID metadata remains in the HSON graph. |
+| data path transformation | LiveMap data identity | **PI** privately handles mixed string/number paths, rename destination retirement, array move shifts, and splice windows. No other subsystem consumes this exact operation/path vocabulary for identity continuity. |
+| QUID/path continuity | LiveMap | **DI** and **PI** own sparse derived indexes. **IE** owns the monotonic issued ledger and exact same-epoch capture capability. Canonical QUID metadata remains in the Hson graph. |
 | Path/location continuity | LiveMap handles and publishers | **LOC** deliberately retains the requested coordinate and re-resolves the current occupant from the installed result. It does not follow a moved subject. |
-| Projection continuity | Reflection | **RD/RS** decide whether exact projected HSON/DOM objects move, patch, rebuild, or retire. They use the accepted commit, resulting canonical graph, map-derived identity evidence, and runtime-local exact objects. |
+| Projection continuity | Reflection | **RD/RS** decide whether exact projected Hson/DOM objects move, patch, rebuild, or retire. They use the accepted commit, resulting canonical graph, map-derived identity evidence, and runtime-local exact objects. |
 | Linked LiveTree mutation authority | LiveMap through Reflection | **LT-B** delegates linked attribute/text/QUID activity and rejects direct linked structural mutation. The linked tree does not independently reduce the commit. |
 | Standalone runtime object lifecycle | LiveTree | **LT-S/RES** own exact node, DOM, QUID, resource, event, and style lifetimes. Detach is nonterminal; remove/empty and Reflection deletion/replacement are terminal. |
 | Query and selector membership | LiveTree | **LT-Q** queries the current exact graph when invoked. `TreeSelector` holds a snapshot array of exact handles; it is not a commit-following membership index. |
@@ -83,8 +83,8 @@ The reconciliation matrices use these source keys. Each key identifies the nontr
 | Category | Existing mechanisms | Replacement | Move/rename | Termination |
 |---|---|---|---|---|
 | Location-attached | `map.at(path)`, document logical locations, feeds/watches, stores, bridge bindings | Relationship survives at the coordinate and observes the new occupant/value | Relationship remains at the old coordinate; it does not follow the subject | Explicit disposer or owning LiveTree disposal |
-| Subject-attached | Sparse projected/document identity handles; Reflection QUID correspondence when present | Fresh/no-QUID replacement retires; deliberate active same-QUID replacement may preserve the one active lifetime | Path is rewritten and lifetime remains active | Delete/replacement or owner-epoch fence retires permanently |
-| Exact-runtime-attached | LiveTree/HSON node, DOM node, selector member handle, listener/CSS/resource owner | Reflection may reuse only an already active compatible same-QUID/tag projection; otherwise disposes and replaces | Ordinary same-subject move preserves exact objects/resources | `dispose_node_deep`, runtime disposal, or binding disposal; equal bytes cannot reconstruct it |
+| Subject-attached | Sparse data/document identity handles; Reflection QUID correspondence when present | Fresh/no-QUID replacement retires; deliberate active same-QUID replacement may preserve the one active lifetime | Path is rewritten and lifetime remains active | Delete/replacement or owner-epoch fence retires permanently |
+| Exact-runtime-attached | LiveTree/Hson node, DOM node, selector member handle, listener/CSS/resource owner | Reflection may reuse only an already active compatible same-QUID/tag projection; otherwise disposes and replaces | Ordinary same-subject move preserves exact objects/resources | `dispose_node_deep`, runtime disposal, or binding disposal; equal bytes cannot reconstruct it |
 | Application-key-attached | `reflect_collection` record selected by caller key | Same key reuses a rendered branch and calls update; key change removes/creates | Reordering moves the rendered branch | Projection/source disposal or key removal |
 | Revision/session-attached | LiveHost cursor, recovery attempt, connection/session records | Not structural-subject semantics | Not structural-subject semantics | Gap/failure/disconnect/dispose policies |
 
@@ -94,7 +94,7 @@ The reconciliation matrices use these source keys. Each key identifies the nontr
 |---|---:|---:|---:|---:|---|
 | **LM-P / LM-D** canonical planning | yes | yes | constructs it | no | Authoritative reducer |
 | **DI** document overlay | yes | sparse prior index | incoming operation subtree; diagnostic scan checks result | no | Derived index/effects |
-| **PI** projected overlay | yes | sparse prior index | candidate projected graph receives reconciled metadata | no | Derived index |
+| **PI** data overlay | yes | sparse prior index | candidate data graph receives reconciled metadata | no | Derived index |
 | **LOC** watches/feeds | overlap only | prior published value | yes, re-read after install | no | Fixed-location re-resolution |
 | **LINK** | yes | target previous state | source event's resulting value | no | Propagation policy; semantic intent matters |
 | **RD / RS** | yes | prior correspondence/projected tree | yes, used as canonical convergence proof | yes | Runtime relation and lifecycle policy |
@@ -129,7 +129,7 @@ Legend: **owns** = owns canonical semantics; **independent** = independently int
 | Subtree detachment | No canonical detach operation | No overlay transition | N/A | N/A for canonical document | **LT-B rejects direct linked detach** |
 | Subtree reattachment | No canonical reattach operation | No overlay transition | N/A | N/A for canonical document | **LT-B rejects direct linked append** |
 | Root replacement | **LM-P/LM-D owns** complete-root replacement/install | **DI/PI rebuild** active sparse overlay; **IE** usually starts new epoch | **LOC snapshot/location** re-resolves; snapshot publication always emits | **RD/RS independent compatible-root convergence**, whole correspondence rebuild | **LT-B delegates** |
-| Canonical QUID assignment | **LM-D** or projected registration owns `ensure-quid`; path target is authority | **DI/PI registers claim**, **IE** extends ledger | Location values may be structurally unchanged; commit observer sees metadata change | **RD preflights claim**, consumes map-derived effect, refreshes correspondence | Linked `.q` delegates; passive traversal does not mint |
+| Canonical QUID assignment | **LM-D** or data registration owns `ensure-quid`; path target is authority | **DI/PI registers claim**, **IE** extends ledger | Location values may be structurally unchanged; commit observer sees metadata change | **RD preflights claim**, consumes map-derived effect, refreshes correspondence | Linked `.q` delegates; passive traversal does not mint |
 | Canonical QUID removal | No ordinary public attr operation; occurs via structural replacement/delete or stripped/root install | **DI/PI derives retirement**; issued ledger does not shrink | Location re-reads result | **RD/RS** retire or rebuild corresponding exact projection according to structural cause | Delegates |
 | Snapshot installation | **LM-A owns** mode/schema/admission and exact revision install | Full overlay admission; **IE** same-epoch only with exact capture capability, otherwise new epoch | Snapshot publication re-resolves every watch | **RD/RS captures resulting canonical root and converges/rebuilds** | Delegates |
 | Replay | **LM-P/LM-D owns** using the same planners as local mutation | Same **PI** or **DP/DI** reconciliation, staged over ordered ops | Published once after full install | **RD/RS** consumes accepted final commit; multi-op correspondence publishes final state only | Delegates |
@@ -142,7 +142,7 @@ Legend: **owns** = owns canonical semantics; **independent** = independently int
 
 | Operation | Standalone LiveTree | TreeSelector/query | Bindings | Resources/events | LiveHost mirror/recovery | Diagnostics / duplicate note |
 |---|---|---|---|---|---|---|
-| Object set/replace/delete | N/A as projected-data reducer | Current runtime query only | **BIND location** result update | Destination owner unchanged unless binding rerenders/removes it | **HC delegates** commit; **HR** revision-only | **PI** is the only subject transform in this vocabulary |
+| Object set/replace/delete | N/A as data reducer | Current runtime query only | **BIND location** result update | Destination owner unchanged unless binding rerenders/removes it | **HC delegates** commit; **HR** revision-only | **PI** is the only subject transform in this vocabulary |
 | Object rename | N/A | Snapshot members do not follow canonical subjects | Old source path remains old coordinate | No transfer decision | **HC delegates**; semantic rename preserved on wire/history | Concept overlaps **DP**, but mixed-key and destination semantics differ |
 | Array set/replace | N/A | Current query/snapshot exact handles | Fixed index | Renderer/Reflection decides cleanup | **HC delegates** | No duplicate canonical reducer |
 | Array insert/delete/splice | Local append/remove APIs are unrelated canonical authority | Existing selector handles remain exact; membership snapshot does not update | Fixed indexes re-resolve | **RES** only when a runtime consumer removes exact output | **HC delegates**; **HR** does not classify indexes | **PI**, **RC**, and **LINK** all use operations for different outputs/policy |
@@ -162,7 +162,7 @@ Legend: **owns** = owns canonical semantics; **independent** = independently int
 
 ## 4. Duplicate implementations
 
-### 4.1 Document and projected-data path transforms
+### 4.1 Document and data path transforms
 
 **Files and symbols:** **DP** versus **PI**.
 
@@ -177,7 +177,7 @@ Equivalent behavior:
 Meaningful differences:
 
 - **DP** accepts only numeric logical document content paths and graph operations (`insert-content`, `remove-content`, `replace-content`, `move-content`, `replace-root`).
-- **PI** accepts mixed projected paths and data operations. It must handle object rename, replacement of a prior destination key, and splice deletion/insertion windows.
+- **PI** accepts mixed data paths and data operations. It must handle object rename, replacement of a prior destination key, and splice deletion/insertion windows.
 - **DP** returns a richer document transition (`unchanged`, `moved`, `retired`, `invalid`) plus operation effect. **PI** needs only a rewritten path or retirement while rebuilding its sparse overlay.
 - **DP** has two production consumers (**DI** and **RD**). **PI** has one identity consumer.
 
@@ -275,13 +275,13 @@ The viable document kernel already exists as **DP**:
 
 It should remain internal and document-specific.
 
-A broader candidate would have to accept both document graph operations and projected data operations or invent an intermediate operation algebra. It would replace little beyond **PI**'s four small transform functions, while **RS**, **RC**, **LINK**, **LOC**, and **HC** would still need their current policy. The extraction thresholds fail as follows:
+A broader candidate would have to accept both document graph operations and data operations or invent an intermediate operation algebra. It would replace little beyond **PI**'s four small transform functions, while **RS**, **RC**, **LINK**, **LOC**, and **HC** would still need their current policy. The extraction thresholds fail as follows:
 
 | Threshold | Result |
 |---|---|
-| Two equivalent production consumers | Met only for document paths, already served by **DP**; not met for projected-data identity vocabulary |
+| Two equivalent production consumers | Met only for document paths, already served by **DP**; not met for data identity vocabulary |
 | Policy-free separation | Possible for arithmetic, not for Reflection/collection/link decisions |
-| One authoritative vocabulary | Not met across document graph and projected data operations |
+| One authoritative vocabulary | Not met across document graph and data operations |
 | Deletes existing interpretation | Too little deletion; most switches remain |
 | Cross-consumer identical tests | Existing document tests already prove **DP** consumers; cross-domain outputs are intentionally different |
 | No global owner/registry | Could be met |
@@ -305,7 +305,7 @@ A broader candidate would have to accept both document graph operations and proj
 
 ### Canonical LiveMap transaction
 
-**LM-A** stages detached candidates. On acceptance, `install()` synchronously installs canonical root/projected carrier, sparse overlay, owner-epoch ledger, and revision before `notify()` runs. Failed planning or installation publishes nothing. Multi-operation replay publishes only the completed candidate. These fields cannot externally straddle revisions through the normal API.
+**LM-A** stages detached candidates. On acceptance, `install()` synchronously installs canonical root/data carrier, sparse overlay, owner-epoch ledger, and revision before `notify()` runs. Failed planning or installation publishes nothing. Multi-operation replay publishes only the completed candidate. These fields cannot externally straddle revisions through the normal API.
 
 Watch entries update their stored previous value before invoking each listener. Failures are isolated until all watch entries have been visited, ordinary commit observers are still called, and the first observer failure retains precedence. This produces coherent map state, but publication itself is not one reversible transaction.
 
@@ -320,7 +320,7 @@ The document order is:
 
 Therefore a watch callback can synchronously read map revision `n + 1` and a Reflection binding still at `n`. A commit observer registered before Reflection can do the same. This is temporarily permitted by the implementation but not explicitly documented or characterized as a cross-subsystem publication guarantee.
 
-Reflection plans before changing the projected graph, then applies HSON/runtime changes and DOM changes. Planning failure leaves DOM untouched. Apply failure may leave a partially changed projection; Reflection prunes removed registrations, fails closed, and canonical state remains committed. A fresh binding rebuilds from canonical state.
+Reflection plans before changing the data graph, then applies Hson/runtime changes and DOM changes. Planning failure leaves DOM untouched. Apply failure may leave a partially changed projection; Reflection prunes removed registrations, fails closed, and canonical state remains committed. A fresh binding rebuilds from canonical state.
 
 ### LiveHost authority and persistence
 
@@ -367,12 +367,12 @@ All named library suites below are present in the public launcher inventory at [
 
 | Behavior | Principal evidence |
 |---|---|
-| Projected rename/move/splice path transformation, source position, destination retirement, descendant paths | [`livemap-projected-identity-lifecycle.acceptance.mts`](../../tests/livemap-projected-identity-lifecycle.acceptance.mts), [`livemap-projected-rename-intent.acceptance.mts`](../../tests/livemap-projected-rename-intent.acceptance.mts), [`livemap-projected-array-move-intent.acceptance.mts`](../../tests/livemap-projected-array-move-intent.acceptance.mts) |
+| Data rename/move/splice path transformation, source position, destination retirement, descendant paths | [`livemap-projected-identity-lifecycle.acceptance.mts`](../../tests/livemap-projected-identity-lifecycle.acceptance.mts), [`livemap-projected-rename-intent.acceptance.mts`](../../tests/livemap-projected-rename-intent.acceptance.mts), [`livemap-projected-array-move-intent.acceptance.mts`](../../tests/livemap-projected-array-move-intent.acceptance.mts) |
 | Document insert/remove/replace/move effects and overlay/fresh-scan agreement | [`livemap-document-operation-identity-effects.acceptance.mts`](../../tests/livemap-document-operation-identity-effects.acceptance.mts) |
 | Location attachment through reindex, move, replace, replay, and restore | [`livemap-document-location.acceptance.mts`](../../tests/livemap-document-location.acceptance.mts), [`livemap-path-handle.acceptance.mts`](../../tests/livemap-path-handle.acceptance.mts) |
 | Subject attachment through move/rename; retirement through delete/replace; same-epoch ABA prevention | [`livemap-identity-aba-prevention.acceptance.mts`](../../tests/livemap-identity-aba-prevention.acceptance.mts), [`livemap-document-identity-handle.acceptance.mts`](../../tests/livemap-document-identity-handle.acceptance.mts) |
 | Atomic root/revision/overlay install and failure isolation | [`livemap-document-atomic-reconciliation.acceptance.mts`](../../tests/livemap-document-atomic-reconciliation.acceptance.mts) |
-| Exact projected HSON/DOM/resource preservation through move and cleanup through replacement/delete | [`reflect-document-continuity.acceptance.mts`](../../tests/reflect-document-continuity.acceptance.mts), [`reflect-document-structure.acceptance.mts`](../../tests/reflect-document-structure.acceptance.mts) |
+| Exact projected Hson/DOM/resource preservation through move and cleanup through replacement/delete | [`reflect-document-continuity.acceptance.mts`](../../tests/reflect-document-continuity.acceptance.mts), [`reflect-document-structure.acceptance.mts`](../../tests/reflect-document-structure.acceptance.mts) |
 | Incremental Reflection correspondence, planning failure, postcommit failure, replay equivalence, root rebuild | [`reflect-document-correspondence.acceptance.mts`](../../tests/reflect-document-correspondence.acceptance.mts) |
 | Replay equivalence and snapshot rebuild | [`livemap-document-replay.acceptance.mts`](../../tests/livemap-document-replay.acceptance.mts), [`reflect-document-snapshot.acceptance.mts`](../../tests/reflect-document-snapshot.acceptance.mts) |
 | Revision-gap recovery, snapshot/replay selection, client cursor application | [`locus-recovery.acceptance.mjs`](../../tests/runtime-probes/locus-recovery.acceptance.mjs), [`locus-client-recovery.acceptance.mjs`](../../tests/runtime-probes/locus-client-recovery.acceptance.mjs), [`locus-bootstrap.acceptance.mts`](../../tests/locus-bootstrap.acceptance.mts) |
@@ -382,8 +382,8 @@ All named library suites below are present in the public launcher inventory at [
 
 ### Coverage repeated across consumers
 
-- Final-index move semantics are proven in canonical projected mutation, projected identity, document identity effects, Reflection continuity, replay, and integrated demo suites.
-- Replacement retirement is proven independently for projected handles, document handles, Reflection exact objects/resources, and terminal standalone handles.
+- Final-index move semantics are proven in canonical data mutation, data identity, document identity effects, Reflection continuity, replay, and integrated demo suites.
+- Replacement retirement is proven independently for data handles, document handles, Reflection exact objects/resources, and terminal standalone handles.
 - Replay/snapshot boundaries are proven in LiveMap, Reflection, LiveHost client recovery, and persistence suites.
 - Same-epoch/same-runtime non-reuse is proven at both canonical and exact-runtime layers.
 
@@ -425,7 +425,7 @@ The first sandboxed `livehost.client-recovery` attempt passed its first 29 check
 Specifically:
 
 1. Retain **DP** as the document-specific internal shared path-transition kernel for **DI** and **RD**.
-2. Keep **PI** private to projected identity unless a second production consumer needs the same mixed-key rename/move/splice classification.
+2. Keep **PI** private to data identity unless a second production consumer needs the same mixed-key rename/move/splice classification.
 3. Keep Reflection shadow planning, collection key reconciliation, link propagation, bindings, LiveTree cleanup, and LiveHost recovery policy in their current owning subsystems.
 4. Do not introduce a semantic graph object, registry, bus, serialized relation store, universal endpoint, or fourth subsystem.
 5. Before any future change to publication ordering or same-QUID replacement, add the two focused characterization cases identified above. Do not treat those tests as authorization to alter public semantics.

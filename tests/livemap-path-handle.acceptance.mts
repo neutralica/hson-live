@@ -423,7 +423,7 @@ check("unmapped structured document values reject before initial mutation or sub
 
   assert.throws(
     () => (tree.bind.text as (source: unknown) => () => void)(documentMap.at([0])),
-    /document HSON values require an explicit mapper/,
+    /document Hson values require an explicit mapper/,
   );
   assert.equal(tree.text.get(), "stable");
   assert.equal(disposables_count_for_owner(tree.quid), beforeResources);
@@ -433,7 +433,7 @@ check("unmapped structured document values reject before initial mutation or sub
   documentMap.at([0]).replace(element(`<em/>`).element.node());
   assert.throws(
     () => (tree.bind.attr as (source: unknown, name: string) => () => void)(documentMap.at([0]), "title"),
-    /document HSON values require an explicit mapper/,
+    /document Hson values require an explicit mapper/,
   );
   assert.equal(tree.attrs.get("title"), "stable");
   assert.equal(disposables_count_for_owner(tree.quid), beforeResources);
@@ -449,7 +449,7 @@ check("unmapped document primitive bindings survive structured failures and reco
 
   assert.throws(
     () => documentMap.at([0]).replace(element(`<strong/>`).element.node()),
-    /document HSON values require an explicit mapper/,
+    /document Hson values require an explicit mapper/,
   );
   assert.equal(tree.text.get(), "ready");
   assert.equal(isolatedCalls, 1);
@@ -542,7 +542,7 @@ check("watch keeps a fixed array coordinate through missing transitions", () => 
   dispose();
 });
 
-check("watch uses exact projected equality", () => {
+check("watch uses exact data equality", () => {
   const numberMap = hson.liveMap.fromJson({ value: 0 });
   const numbers: number[] = [];
   numberMap.at(["value"]).watch((next) => {

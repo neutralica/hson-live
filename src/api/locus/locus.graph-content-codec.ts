@@ -69,7 +69,7 @@ export function decode_locus_graph_content(
     content = decode_exact_hson_value(record.payload);
   } catch (cause) {
     const message = cause instanceof ViewStateSnapshotCodecError
-      ? "Locus graph content HSON is malformed."
+      ? "Locus graph content Hson is malformed."
       : "Locus graph content could not be decoded.";
     throw graph_error("LOCUS_GRAPH_CONTENT_PAYLOAD_INVALID", message, cause);
   }

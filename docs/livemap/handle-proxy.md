@@ -1,13 +1,13 @@
 # LiveMap paths, handles, and proxies
 
-Projected-data LiveMaps expose one canonical state through three related access
+Data LiveMaps expose one canonical state through three related access
 styles. Explicit map methods perform path-based reads and writes, `at(path)`
 returns a stable path handle, and `proxy(path?)` provides property/index syntax
 for building a path. None of these surfaces owns a second copy of state.
 
 ## Explicit paths
 
-A projected path is a readonly array of string object keys and numeric array
+A data path is a readonly array of string object keys and numeric array
 indexes:
 
 ```ts
@@ -16,7 +16,7 @@ map.set(["users", 0, "name"], "Alice");
 map.delete(["users", 0, "name"]);
 ```
 
-The empty path is the projected root. `snap()` reads that root, while
+The empty path is the data root. `snap()` reads that root, while
 `snap(path)` reads one location. Composite results are detached from canonical
 state. Mutations use the normal admission, schema, revision, commit, feed, and
 authority rules.
@@ -55,11 +55,11 @@ handle and does not silently follow a value that moves elsewhere. Removal or
 replacement changes what subsequent reads at that location observe.
 
 Document maps use their separate `document`, `element`, or `fragment`
-capabilities. They do not expose the projected path-handle surface.
+capabilities. They do not expose the data path-handle surface.
 
 ## Watching current values
 
-Projected path handles and passive logical document locations expose
+Data path handles and passive logical document locations expose
 `watch(listener)`. Registration captures the current coordinate as its internal
 comparison baseline but does not call the listener immediately:
 
@@ -121,7 +121,7 @@ methods, subscriptions, metadata helpers, `$_handle()`, or `$_subscribe()`.
 
 Repeated access to the same child path returns the same cached proxy, and `$_`
 returns the map's cached handle for that path. This is location identity only;
-the proxy is not the projected object itself.
+the proxy is not the data object itself.
 
 ## Reserved property behavior
 

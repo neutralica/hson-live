@@ -101,7 +101,7 @@ function validate_mounted_root_namespace(root: HsonNode): void {
   if (element.namespaceURI !== expectedNamespace) {
     throw new DocumentReflectError(
       DOCUMENT_REFLECT_DOM_MAPPING_MISMATCH_ERROR_CODE,
-      "Mounted projected root namespace does not match its HSON element kind.",
+      "Mounted projected root namespace does not match its Hson element kind.",
     );
   }
 }

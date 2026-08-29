@@ -18,7 +18,7 @@ import { materialize_projected_value } from "../../../../core/projected-value-ma
  * Parse JSON text without first materializing object properties through the
  * ECMAScript own-property enumeration model. Object names are validated after
  * JSON escape decoding, so neither source order nor an earlier duplicate can
- * disappear before HSON admission.
+ * disappear before Hson admission.
  */
 export function parse_ordered_json_text(source: string): OrderedProjectedValue {
   let index = 0;

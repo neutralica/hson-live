@@ -2,24 +2,24 @@
 
 # hson-live
 
-### HSON — a unified notation for HTML and JSON
+### Hson — a unified notation for HTML and JSON
 
 `hson-live` is a TypeScript system for representing data, documents, browser interfaces, and hosted application state through one canonical node graph.
 
-HSON—Hypertext Structured Object Notation—is the underlying notation. It models the tree structure shared by JSON and markup without reducing either one to the other.
+Hson—Hypertext Structured Object Notation—is the underlying notation. It models the tree structure shared by JSON and markup without reducing either one to the other.
 
 `hson-live` builds four connected systems on that model:
 
-- **hson.transform** converts between HSON, JSON, HTML, XML, SVG, and canonical HSON nodes.
-- **LiveMap** operates on HSON as local application state.
-- **LiveTree** projects HSON into live browser documents.
-- **Locus** maintains authoritative HSON state across clients and server runtimes.
+- **hson.transform** converts between Hson, JSON, HTML, XML, SVG, and canonical Hson nodes.
+- **LiveMap** operates on Hson as local application state.
+- **LiveTree** projects Hson into live browser documents.
+- **Locus** maintains authoritative Hson state across clients and server runtimes.
 
 The library is experimental. It is working architectural research, not a finished general-purpose web framework.
 
 ---
 
-## HSON
+## Hson
 
 JSON and HTML occupy different domains, but both describe hierarchical structure.
 
@@ -34,7 +34,7 @@ JSON expresses structure through objects, arrays, keys, and values:
 }
 ```
 
-The equivalent data can be expressed in HSON:
+The equivalent data can be expressed in Hson:
 
 ```hson
 <profile <
@@ -52,7 +52,7 @@ HTML expresses structure through elements, attributes, and ordered content:
 </article>
 ```
 
-The same markup structure can be expressed in HSON:
+The same markup structure can be expressed in Hson:
 
 ```hson
 <article class="note"
@@ -65,7 +65,7 @@ Both forms parse into the same canonical node model.
 
 This allows data and markup to pass through one explicit intermediate representation rather than treating HTML as an opaque string inside JSON, or JSON as an incidental script payload inside HTML.
 
-HSON can represent:
+Hson can represent:
 
 - JSON objects and arrays;
 - strings, numbers, booleans, and null;
@@ -77,7 +77,7 @@ HSON can represent:
 - stable identity for eligible live document nodes.
 
 Round trips are deterministic within each supported transformation contract.
-Authored HSON object members do not carry metadata; eligible element metadata
+Authored Hson object members do not carry metadata; eligible element metadata
 retains its separate element-mode contract.
 
 ---
@@ -89,9 +89,9 @@ The four hson-live subsystems are separate interfaces over the same structural m
 They are not intended as unrelated miniature libraries. Together they describe a path from serialized source, through local state and browser projection, to authoritative hosted state.
 
 ```text
-HSON / JSON / HTML / SVG / XML
+Hson / JSON / HTML / SVG / XML
                 ↓
-         canonical HSON graph
+         canonical Hson graph
                 ↓
       LiveMap state and history
                 ↓
@@ -112,7 +112,7 @@ or:
 
 ## hson.transform
 
-The transformation layer parses supported source formats into canonical HSON nodes and serializes those nodes into other supported representations.
+The transformation layer parses supported source formats into canonical Hson nodes and serializes those nodes into other supported representations.
 
 ```ts
 import { hson } from "hson-live";
@@ -141,15 +141,15 @@ The transformation system handles cases that are commonly awkward at format boun
 - canonical metadata;
 - persisted node identity.
 
-HSON is not only an interchange format. The same graph produced by the transformation layer is used by LiveMap, LiveTree, and Locus.
+Hson is not only an interchange format. The same graph produced by the transformation layer is used by LiveMap, LiveTree, and Locus.
 
 ---
 
 ## LiveMap
 
-LiveMap operates on an HSON graph as application state.
+LiveMap operates on an Hson graph as application state.
 
-For projected data maps, it presents ordinary JSON-shaped state through explicit paths:
+For data maps, it presents ordinary JSON-shaped state through explicit paths:
 
 ```ts
 const map = hson.liveMap.fromJson({
@@ -166,8 +166,8 @@ map.at(["items"]).array.push("three");
 console.log(map.snap());
 ```
 
-`map.at(...)` is the common passive-location operation for both projected and
-document maps. Projected paths traverse logical JSON object members and array
+`map.at(...)` is the common passive-location operation for both data and
+document maps. Data paths traverse logical JSON object members and array
 indexes. Document paths contain numeric indexes into ordered authored content:
 
 ```ts
@@ -195,14 +195,14 @@ if (document.mode === "element" || document.mode === "fragment") {
 }
 ```
 
-This searches canonical HSON rather than the DOM. The scoped element itself may
+This searches canonical Hson rather than the DOM. The scoped element itself may
 match; otherwise descendants are visited in canonical preorder, with the first
 match winning. The result is an ordinary passive, fixed-coordinate location.
 If the matched element later moves, call `id(...)` again to discover its current
 location—the previously returned location continues to represent its old
 logical coordinate.
 
-Projected and document passive locations can watch their current detached
+Data and document passive locations can watch their current detached
 value without changing their fixed-coordinate behavior:
 
 ```ts
@@ -268,7 +268,7 @@ LiveMap provides:
 
 - object and array state;
 - canonical document maps;
-- projected path handles and passive logical document locations;
+- data path handles and passive logical document locations;
 - atomic `set`, `replace`, `delete`, and `splice` operations;
 - synchronous batches;
 - revisioned commits;
@@ -282,15 +282,15 @@ Changed mutations advance the map by exactly one revision and publish one normal
 
 Reads return detached values rather than mutable references into the live graph. Writes are preflighted and applied atomically.
 
-At a high level, LiveMap occupies the role usually assigned to JSON application state, while retaining access to the canonical HSON structure beneath that projection.
+At a high level, LiveMap occupies the role usually assigned to JSON application state, while retaining access to the canonical Hson structure beneath that projection.
 
 ---
 
 ## LiveTree
 
-LiveTree turns HSON into live browser documents.
+LiveTree turns Hson into live browser documents.
 
-The HSON graph is the mutable source of truth. The DOM is its projection.
+The Hson graph is the mutable source of truth. The DOM is its projection.
 
 ```ts
 const body = hson.liveTree.queryBody().graft();
@@ -371,7 +371,7 @@ button.listen.onClick(() => {
 `map.at(path)` is the source endpoint. A binding reads the location's current
 value synchronously with `snap()`, then uses the location's snapshot-aware
 `watch(...)` subscription for later changes. `watch` itself has no initial
-callback; the binding owns that initial synchronization. Projected bindings
+callback; the binding owns that initial synchronization. Data bindings
 therefore converge after `restore()`, and even an equal-value restore reapplies
 the destination once.
 
@@ -436,7 +436,7 @@ See [the current architecture and runtime boundary](docs/livehost/overview.md).
 ### HTTP bootstrap and WebSocket continuation
 
 Locus can contribute an exact canonical authority state at revision `R` to an
-unversioned HSON bootstrap response. Application/runtime code contributes the
+unversioned Hson bootstrap response. Application/runtime code contributes the
 routing and delivery continuation, and one assembler emits one artifact.
 
 The browser installs that state and enters the ordinary WebSocket recovery path from the same authority identity and revision:
@@ -469,7 +469,7 @@ JSON and HTML need not become the same language. They can nevertheless be repres
 
 ### Serialization can remain central after state becomes live
 
-A live graph does not have to become an unserializable runtime object. HSON remains inspectable and transferable across parsing, state mutation, browser projection, hosting, snapshots, and recovery.
+A live graph does not have to become an unserializable runtime object. Hson remains inspectable and transferable across parsing, state mutation, browser projection, hosting, snapshots, and recovery.
 
 ### State and view can share a source without being the same object
 
@@ -495,10 +495,10 @@ Current limitations include:
 
 - in-memory Node authorities use a single-process ownership model;
 - distributed authority coordination is not implemented;
-- projected-data persistence is not currently provided;
+- data persistence is not currently provided;
 - document persistence remains experimental;
 - Locus is not a CRDT and does not provide offline merge;
-- HTTP HSON bootstrap is implemented, but LiveTree HTML adoption is not;
+- HTTP Hson bootstrap is implemented, but LiveTree HTML adoption is not;
 - framework-specific SSR integrations are not provided;
 - the library has not been presented as a security-certified runtime.
 
@@ -528,25 +528,25 @@ Browser and Worker-facing parts of the package do not import the Node host.
 
 ## Imports and environment boundaries
 
-Author canonical HSON through the narrow authoring entrypoint:
+Author canonical Hson through the narrow authoring entrypoint:
 
 ```ts
-import { HSON, type HsonCanonical } from "hson-live/hson";
+import { Hson, type HsonCanonical } from "hson-live/hson";
 import { hsonLiveMap } from "hson-live/livemap";
 
 const UserSchema = hsonLiveMap.schema.define(s => s.object({ age: s.number }));
-const source: HsonCanonical = HSON`<age 37>`;
+const source: HsonCanonical = Hson`<age 37>`;
 const map = hsonLiveMap.fromHson(source);
 map.schema.use(UserSchema);
 ```
 
-For standalone validation, `HSON.validate(UserSchema, source)` returns the same
+For standalone validation, `Hson.validate(UserSchema, source)` returns the same
 canonical string or throws the existing structured Schema error. The legitimate
 `hsonLiveMap.schema.validate` and `hson.liveMap.schema.validate` entrances remain
 available and share that exact implementation. Natural map governance needs no
 redundant standalone validation for trusted editor diagnostics.
 
-`HSON` is the notation/authoring facility. Lowercase `hson` is a noncallable
+`Hson` is the notation/authoring facility. Lowercase `hson` is a noncallable
 aggregate; the retired lowercase tag has no compatibility alias. `/hson` exports
 authoring, not the aggregate or subsystem facades. `HsonCanonical` is the same
 type exported from `/transform`, not a Schema certificate.
@@ -554,7 +554,7 @@ type exported from `/transform`, not a Schema certificate.
 The root package is the umbrella entrypoint:
 
 ```ts
-import { HSON, hson } from "hson-live";
+import { Hson, hson } from "hson-live";
 import type { LiveMap } from "hson-live/livemap";
 import type { LiveTree } from "hson-live/livetree";
 import type { Locus } from "hson-live/locus";
@@ -626,7 +626,7 @@ The exact repository scripts are the source of truth for compilation, entrypoint
 
 The `docs/` directory contains architecture and API references for:
 
-- HSON syntax and transformation;
+- Hson syntax and transformation;
 - LiveMap;
 - LiveTree;
 - Locus;

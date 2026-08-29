@@ -118,7 +118,7 @@ export function optional_endtag_preflight(src: string): string {
 
     const name = rawName.toLowerCase();
 
-    // Skip HSON-internal tags
+    // Skip Hson-internal tags
     if (is_vsn(name)) continue;
 
     // Skip void and explicit self-close on open tags

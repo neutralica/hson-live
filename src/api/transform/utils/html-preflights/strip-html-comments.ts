@@ -11,7 +11,7 @@
  * - Leaves all non-comment text untouched.
  *
  * Intended use:
- * - Run early in the HTML→XML/HSON preflight pipeline to avoid confusing the XML
+ * - Run early in the HTML→XML/Hson preflight pipeline to avoid confusing the XML
  *   parser with comments, especially malformed ones.
  * - Safe to compose with other preflight transforms; this function has no side
  *   effects outside comment removal.

@@ -58,7 +58,7 @@ export type {
 /**
  * Read-only accessor for rendered CSS values from a style handle.
  *
- * This reads the *internal truth* (HSON attrs or CssManager state), not
+ * This reads the *internal truth* (Hson attrs or CssManager state), not
  * computed styles from the browser.
  */
 export type CssGetter = Readonly<{

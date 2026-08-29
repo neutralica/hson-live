@@ -1,6 +1,6 @@
-# HSON Live 3.0
+# Hson Live 3.0
 
-HSON Live 3.0 expands the library from a live document graph into a
+Hson Live 3.0 expands the library from a live document graph into a
 broader state, projection, and hosting system.
 
 This release introduces LiveMap as a canonical structured-state API,
@@ -31,7 +31,7 @@ hosting, and tooling work will build upon.
   ## LiveMap
 
 LiveMap introduces canonical, mutable structured state backed by the
-HSON node graph.
+Hson node graph.
 
 ### Path-based state access
 
@@ -124,11 +124,11 @@ Linking supports:
 
 ### Physical node access
 
-The node API exposes the underlying HSON structure for advanced
+The node API exposes the underlying Hson structure for advanced
 operations involving attributes, children, insertion, removal,
 replacement, and movement.
 
-Node-level changes intentionally bypass projected schema, feeds, and
+Node-level changes intentionally bypass data schema, feeds, and
 subscriptions and are therefore an expert escape hatch rather than the
 ordinary state API.
 
@@ -160,7 +160,7 @@ a canonical snapshot.
 
 ### Snapshots and resume
 
-Recovery snapshot envelopes pair compact HSON for projected state with stream
+Recovery snapshot envelopes pair compact Hson for data state with stream
 identity and revision:
 
 interface SnapshotEnvelope {
@@ -172,7 +172,7 @@ interface SnapshotEnvelope {
 
 Clients may reconnect using their last confirmed revision. The host
 replays retained commits where possible and falls back to a snapshot
-when necessary. This remains projected-state recovery rather than
+when necessary. This remains data state recovery rather than
 identity-preserving graph transport; replay commit encoding is unchanged.
 
 ### Domain actions
@@ -256,8 +256,8 @@ expansion state.
 ### Schema and serialization
 Inspector details can expose effective LiveMap schema information and
 current validation status.
-Representable values may be serialized through the existing HSON
-transform pipeline as JSON, HSON, canonical nodes, or markup where the
+Representable values may be serialized through the existing Hson
+transform pipeline as JSON, Hson, canonical nodes, or markup where the
 source structure permits it.
 
 ### Renderer specialization
@@ -285,8 +285,8 @@ LiveTree remains the mutable document graph and browser-facing
 projection layer.
 Version 3 retains the existing transform and LiveTree foundations,
 including:
-- reversible HSON, JSON, HTML/XML, and SVG conversion
-- canonical HSON nodes
+- reversible Hson, JSON, HTML/XML, and SVG conversion
+- canonical Hson nodes
 - DOM grafting and querying
 - identity through QUIDs
 - text, attribute, data, form, CSS, SVG, and canvas APIs
@@ -300,12 +300,12 @@ architecture upward:
 LiveHost  — authority, sessions, replay, transport
 LiveMap   — canonical application state and semantic commits
 LiveTree  — canonical document and browser projection
-HSON      — shared structural notation and node model
+Hson      — shared structural notation and node model
 ```
 
 ## Architectural direction
-HSON Live 3 establishes the intended separation of responsibilities:
-- HSON is the canonical structural representation.
+Hson Live 3 establishes the intended separation of responsibilities:
+- Hson is the canonical structural representation.
 - LiveMap owns canonical application state.
 - LiveTree owns document and view identity.
 - LiveHost owns hosted authority and revision order.
@@ -322,7 +322,7 @@ Compatibility
 Version 3 adds major public API surfaces and may require updates where
 applications depended on experimental LiveMap, LiveHost, or
 LiveInspector contracts from prerelease development.
-The canonical HSON node model and `_hson_*` virtual structural node
+The canonical Hson node model and `_hson_*` virtual structural node
 naming remain the basis for current documentation and future work.
 
 ## Verification

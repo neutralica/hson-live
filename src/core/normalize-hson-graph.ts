@@ -35,7 +35,7 @@ function is_primitive(value: unknown): value is Primitive {
 }
 
 function fail(where: string, path: string, message: string): never {
-  throw new Error(`[HSON normalization] ${message} in ${where} at ${path}`);
+  throw new Error(`[Hson normalization] ${message} in ${where} at ${path}`);
 }
 
 function optional_record(
@@ -177,7 +177,7 @@ export function normalize_hson_graph(input: HsonNode, where: string): HsonNode {
         return visit(child, `${here}/$_content[${index}]`, tag, childRequiredMode);
       }
       if (!is_primitive(child)) {
-        return fail(where, `${here}/$_content[${index}]`, "content item must be a node or HSON primitive");
+        return fail(where, `${here}/$_content[${index}]`, "content item must be a node or Hson primitive");
       }
       return tag === VAL_TAG && typeof child === "number" ? admit_hson_number(child) : child;
     });

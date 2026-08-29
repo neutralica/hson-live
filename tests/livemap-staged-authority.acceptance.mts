@@ -297,7 +297,7 @@ check("notification reentrancy accepts immediately and publishes both transition
   assert.deepEqual(commits, [1, 2]);
 });
 
-check("existing projected mutation facades retain synchronous commit behavior", () => {
+check("existing data mutation facades retain synchronous commit behavior", () => {
   const setManyMap = hson.liveMap.fromJson({ left: 1, right: 2 });
   assert.equal(setManyMap.setMany([], { left: 3 }).rev, 1);
   assert.deepEqual(setManyMap.snap(), { left: 3, right: 2 });

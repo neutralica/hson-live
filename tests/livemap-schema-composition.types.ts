@@ -142,11 +142,11 @@ hson.liveMap.schema.define((s) => {
   return s.array(s.button());
 });
 hson.liveMap.schema.define((s) => {
-  // @ts-expect-error Empty is document content, not a projected object property schema.
+  // @ts-expect-error Empty is document content, not a data object property schema.
   return s.object({ child: s.empty });
 });
 hson.liveMap.schema.define((s) => {
-  // @ts-expect-error Empty is document content, not a projected array item schema.
+  // @ts-expect-error Empty is document content, not a data array item schema.
   return s.array(s.empty);
 });
 hson.liveMap.schema.define((s) => {

@@ -43,7 +43,7 @@ type LiveMapProjectedIdentityApi = Readonly<{
 
 const projectedIdentityApiForOwner = new WeakMap<object, LiveMapProjectedIdentityApi>();
 
-/** Narrow deterministic allocator seam for projected identity tests. @internal */
+/** Narrow deterministic allocator seam for data identity tests. @internal */
 export function set_livemap_projected_quid_candidate_source_for_tests(
   owner: object,
   source: (() => string) | undefined,
@@ -66,7 +66,7 @@ export function make_livemap_projected_identity_api(
   });
 }
 
-/** Register internal projected identity acquisition without extending the public map façade. */
+/** Register internal data identity acquisition without extending the public map façade. */
 export function register_livemap_projected_identity_api(
   owner: object,
   api: LiveMapProjectedIdentityApi,
@@ -80,7 +80,7 @@ export function acquire_livemap_projected_identity(
   path: LivePath,
 ): LiveMapProjectedIdentityHandle {
   const api = projectedIdentityApiForOwner.get(owner);
-  if (api === undefined) throw new Error("LiveMap has no internal projected identity authority.");
+  if (api === undefined) throw new Error("LiveMap has no internal data identity authority.");
   return api.acquire(path);
 }
 
@@ -100,7 +100,7 @@ function current_claim(
     throw new LiveMapProjectedIdentityError(
       "PROJECTED_IDENTITY_INELIGIBLE",
       path,
-      "target must be a semantic projected object or array container",
+      "target must be a semantic data object or array container",
     );
   }
   const existing = read_hson_node_quid(endpoint);

@@ -94,7 +94,7 @@ export function read_supported_hson_import_symbols(
   sourceFile: ts.SourceFile,
   checker: ts.TypeChecker,
   diagnostics: readonly ts.Diagnostic[],
-  facade: "HSON" | "hson" | "hsonTransform" | "hsonLiveMap" | "hsonLiveTree" = "HSON",
+  facade: "Hson" | "hson" | "hsonTransform" | "hsonLiveMap" | "hsonLiveTree" = "Hson",
 ): ReadonlySet<ts.Symbol> {
   const symbols = new Set<ts.Symbol>();
   for (const statement of sourceFile.statements) {
@@ -102,7 +102,7 @@ export function read_supported_hson_import_symbols(
       || statement.importClause === undefined
       || statement.importClause.isTypeOnly
       || !ts.isStringLiteral(statement.moduleSpecifier)
-      || !(facade === "HSON" ? supportedPackageSpecifiers.has(statement.moduleSpecifier.text)
+      || !(facade === "Hson" ? supportedPackageSpecifiers.has(statement.moduleSpecifier.text)
         : facade === "hson" ? statement.moduleSpecifier.text === "hson-live"
         : facade === "hsonTransform" ? ["hson-live", "hson-live/transform"].includes(statement.moduleSpecifier.text)
         : facade === "hsonLiveMap" ? ["hson-live", "hson-live/livemap"].includes(statement.moduleSpecifier.text)
@@ -124,7 +124,7 @@ export function read_supported_hson_import_symbols(
 }
 
 export type HsonBindingReference = Readonly<{
-  publicName: "HSON" | "hson";
+  publicName: "Hson" | "hson";
   range: HostSourceRange;
   memberSeparatorRange?: HostSourceRange;
 }>;
@@ -151,7 +151,7 @@ function isImportOrExportPosition(node: ts.Node): boolean {
   return false;
 }
 
-/** Discover literal usage references to official public HSON-live bindings. */
+/** Discover literal usage references to official public Hson-live bindings. */
 export function discover_hson_binding_references(
   fileName: string,
   hostText: string,
@@ -166,13 +166,13 @@ export function discover_hson_binding_references(
   if (diagnostics.some(diagnostic => diagnostic.start === undefined)) return Object.freeze([]);
   const checker = program.getTypeChecker();
   const symbols = {
-    HSON: read_supported_hson_import_symbols(sourceFile, checker, diagnostics, "HSON"),
+    Hson: read_supported_hson_import_symbols(sourceFile, checker, diagnostics, "Hson"),
     hson: read_supported_hson_import_symbols(sourceFile, checker, diagnostics, "hson"),
   } as const;
   const result: HsonBindingReference[] = [];
   const visit = (node: ts.Node): void => {
     if (ts.isIdentifier(node)
-      && (node.text === "HSON" || node.text === "hson")
+      && (node.text === "Hson" || node.text === "hson")
       && !isImportOrExportPosition(node)
       && !hasOverlappingDiagnostic(diagnostics, nodeRange(node, sourceFile))) {
       const symbol = checker.getSymbolAtLocation(node);
@@ -231,7 +231,7 @@ function readSubstitutionRanges(
   return Object.freeze(ranges);
 }
 
-/** Discover direct official HSON tags in one original in-memory TS/TSX source. */
+/** Discover direct official Hson tags in one original in-memory TS/TSX source. */
 export function discover_hson_tagged_templates(
   fileName: string,
   hostText: string,

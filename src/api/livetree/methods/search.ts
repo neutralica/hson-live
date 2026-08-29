@@ -168,7 +168,7 @@ export function matchMeta(node: HsonNode, query: HsonQuery): boolean {
 }
 
 /**
- * Depth-first search over a set of HSON nodes using a structured query.
+ * Depth-first search over a set of Hson nodes using a structured query.
  *
  * Matching:
  * - A node is considered a match if all of the following pass:

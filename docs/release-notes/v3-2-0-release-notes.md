@@ -1,10 +1,10 @@
 > Historical release record: lowercase tagged authoring was subsequently
-> hard-migrated to `HSON`; `/hson` now exports the narrow authoring facade.
+> hard-migrated to `Hson`; `/hson` now exports the narrow authoring facade.
 
 ## 3.2.0 — 2026-07-30
 
-HSON 3.2 substantially tightens canonical graph behavior, replaces the former
-QUID metadata convention, introduces branded HSON output, strengthens LiveHost
+Hson 3.2 substantially tightens canonical graph behavior, replaces the former
+QUID metadata convention, introduces branded Hson output, strengthens LiveHost
 as an independent authority runtime, and makes the complete test surface more
 truthful and deterministic.
 
@@ -26,15 +26,15 @@ truthful and deterministic.
 - Made system metadata exact and registry-driven. Unknown `hson:*` markup and
   unknown canonical metadata keys now reject.
 
-- Preserved canonical HSON QUID syntax as `@<quid>`.
+- Preserved canonical Hson QUID syntax as `@<quid>`.
 
-### Canonical HSON and normalization
+### Canonical Hson and normalization
 
 - Added the Transform-owned `HsonCanonical` branded primitive type.
 
-- HSON-specific serialization paths now return `HsonCanonical`, including:
+- Hson-specific serialization paths now return `HsonCanonical`, including:
 
-  - direct HSON serialization;
+  - direct Hson serialization;
   - default readable output;
   - compact output through `noBreak()`;
   - `noQuid()` output;
@@ -44,10 +44,10 @@ truthful and deterministic.
   DOM serialization typed as ordinary `string`.
 
 - Added the tagged root and `hson-live/hson` `hson` export. The final pre-epoch
-  surface authors HSON only through `` hson`...` ``; runtime text admission is
+  surface authors Hson only through `` hson`...` ``; runtime text admission is
   owned separately by `hson.fromHson(source)`.
 
-- Retained a single trusted brand assertion at the successful official HSON
+- Retained a single trusted brand assertion at the successful official Hson
   serializer boundary.
 
 - Added compile-time tests for format-specific return types, brand provenance,
@@ -71,7 +71,7 @@ truthful and deterministic.
   empty element-mode content.
 
 - Preserved the empty `_hson_root` as a runtime fragment carrier while
-  continuing to reject it from direct HSON-text serialization.
+  continuing to reject it from direct Hson-text serialization.
 
 - Allowed shared acyclic references to serialize repeatedly by value while
   rejecting cyclic graphs deterministically.
@@ -85,7 +85,7 @@ truthful and deterministic.
 
 - Projected QUID identity into HTML, SVG, and DOM as `hson:quid`.
 
-- Added reversible XML-safe transit handling for colonized HSON metadata during
+- Added reversible XML-safe transit handling for colonized Hson metadata during
   XML-based HTML parsing.
 
 - Centralized QUID admission, validation, assignment, collection, removal, and
@@ -130,7 +130,7 @@ truthful and deterministic.
 - Preserved ordinary `data-*` attributes through parsing, graph storage, DOM
   projection, and serialization.
 
-- Updated browser, Worker, direct Element, HTML, SVG, JSON, HSON, and raw-node
+- Updated browser, Worker, direct Element, HTML, SVG, JSON, Hson, and raw-node
   metadata boundaries.
 
 ### LiveHost
@@ -166,12 +166,12 @@ truthful and deterministic.
 
 ### Parsing and serialization
 
-- Updated HTML, SVG, JSON, HSON, raw-node, browser DOM, and Worker parsing for
+- Updated HTML, SVG, JSON, Hson, raw-node, browser DOM, and Worker parsing for
   the new canonical metadata model.
 
 - Preserved parser/serializer closure across supported canonical graph states.
 
-- Kept HSON array indexes implicit where physical array order carries their
+- Kept Hson array indexes implicit where physical array order carries their
   meaning.
 
 - Improved rejection of invalid numbers, cycles, malformed names, malformed
@@ -212,15 +212,15 @@ truthful and deterministic.
 
 ### Documentation
 
-- Updated the canonical HsonNode representation, HSON syntax, markup
+- Updated the canonical HsonNode representation, Hson syntax, markup
   projection, Transform API, QUID identity, LiveTree, LiveMap, LiveHost,
   persistence, and lifecycle documentation.
 
 - Documented `HsonCanonical` as a TypeScript-only branded primitive produced by
-  official HSON serialization.
+  official Hson serialization.
 
 - Documented that `HsonCanonical` serialization is not a security,
   authentication, or cross-process trust mechanism.
 
-- Removed the former implication that the `data-_` prefix belongs to HSON
+- Removed the former implication that the `data-_` prefix belongs to Hson
   system metadata.

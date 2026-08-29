@@ -73,9 +73,9 @@
 
 ## 2.2.1
 
-### HSON syntax
+### Hson syntax
 
-• HSON now supports backtick-quoted keys:
+• Hson now supports backtick-quoted keys:
 
 ```
   <`a b` "value">
@@ -115,7 +115,7 @@
 
 • Migrated internal VSN tags from `_name` to `_-name`
   (`_hson_root`, `_hson_obj`, `_hson_arr`, `_hson_elem`, `_hson_str`, `_hson_val`, `_hson_ii`).
-• Tightened HSON parsing and fixture validation.
+• Tightened Hson parsing and fixture validation.
 • Updated tests and docs for the new VSN namespace.
 
 Note: serialized data using legacy `_root`, `_obj`, `_elem`, etc. is no longer current.
@@ -146,7 +146,7 @@ LiveTree already offered namespace-aware SVG parsing. New updates incorporate ty
 	•	Ensures:
 	•	correct _hson_elem container usage
 	•	stable ordering during indexed inserts
-	•	consistent DOM ↔ HSON synchronization
+	•	consistent DOM ↔ Hson synchronization
 
 • SVG API on LiveTree (tree.svg)
 	•	Extended existing svg namespace (previously only inScope()).
@@ -189,12 +189,12 @@ LiveTree already offered namespace-aware SVG parsing. New updates incorporate ty
 
 Transformer Chain — Change Summary
 • Auto-detection misclassification of markup inputs
-	•	Adjusted auto entry resolution to reduce false positives between HSON and HTML.
+	•	Adjusted auto entry resolution to reduce false positives between Hson and HTML.
 	•	Added strong heuristic: presence of </ biases toward HTML for diagnostic/test inputs.
 	•	JSON detection remains highest priority when syntax-valid.
-	•	Prevents HTML fixtures from being incorrectly parsed as HSON and vice versa.
+	•	Prevents HTML fixtures from being incorrectly parsed as Hson and vice versa.
 
-• Multiline quoted attribute parsing in HSON
+• Multiline quoted attribute parsing in Hson
 	•	Tokenizer now supports quoted attribute values spanning multiple lines.
 	•	Header parsing no longer assumes single-line attributes.
 	•	Preserves literal newlines and whitespace inside quoted values.
@@ -212,7 +212,7 @@ Transformer Chain — Change Summary
 	•	\", \\, \n, \r, \t, etc.
 	•	Preserves literal formatting while correctly interpreting escape sequences.
 
-• HSON attribute serialization escaping
+• Hson attribute serialization escaping
 	•	Replaced naive quote-only escaping with full JSON-style string escaping.
 	•	Ensures correct handling of:
 	•	backslashes (\\)
@@ -228,8 +228,8 @@ Transformer Chain — Change Summary
 	•	JSON-in-attr values
 	•	escaped quote/backslash cases
 	•	Cloudflare-style beacon payloads
-	•	Identified HSON serialization as the failing stage.
-	•	Verified stable roundtrip across HTML → HSON → JSON → HTML.
+	•	Identified Hson serialization as the failing stage.
+	•	Verified stable roundtrip across HTML → Hson → JSON → HTML.
 
 •  Raw-text element handling (script, style) clarified
 	•	Failures traced primarily to incorrect source detection and test assumptions.
@@ -243,7 +243,7 @@ Transformer Chain — Change Summary
 	•	Keeps tokenizer simpler and avoids ambiguity in mixed-content lines.
 
 ### SUMMARY
-	•	Stable roundtrip across HSON ⇄ HTML ⇄ JSON confirmed for more complex payloads.
+	•	Stable roundtrip across Hson ⇄ HTML ⇄ JSON confirmed for more complex payloads.
 	•	Correct handling of multiline attributes and embedded structured strings.
 	•	Clearer separation of responsibilities between tokenizer, parser, and serializer.
 	•	Remaining edge cases reduced to intentional design constraints rather than bugs.

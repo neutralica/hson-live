@@ -52,7 +52,7 @@ export function ordinary_attr_transit_name(name: string): string {
     || lower.startsWith(_TRANSIT_PREFIX)
   ) {
     _throw_transform_err(
-      `invalid ordinary HSON attribute name "${name}"`,
+      `invalid ordinary Hson attribute name "${name}"`,
       "ordinary-attribute-transit",
     );
   }
@@ -176,7 +176,7 @@ function normalize_attributes(attributes: readonly AttributeToken[]): KeptAttrib
     const lower = attribute.name.toLowerCase();
     if (lower.startsWith(HSON_META_TRANSIT_PREFIX)) {
       _throw_transform_err(
-        `externally authored private HSON metadata transit name "${attribute.name}" is forbidden`,
+        `externally authored private Hson metadata transit name "${attribute.name}" is forbidden`,
         "ordinary-attribute-transit",
       );
     }
@@ -190,13 +190,13 @@ function normalize_attributes(attributes: readonly AttributeToken[]): KeptAttrib
     const metadata = lower.startsWith(HSON_META_MARKUP_PREFIX);
     if (!metadata && !is_valid_hson_attribute_name(attribute.name)) {
       _throw_transform_err(
-        `invalid HSON attribute name "${attribute.name}"`,
+        `invalid Hson attribute name "${attribute.name}"`,
         "ordinary-attribute-transit",
       );
     }
     if (metadata && kept.has(lower)) {
       _throw_transform_err(
-        `duplicate HSON metadata attribute "${attribute.name}"`,
+        `duplicate Hson metadata attribute "${attribute.name}"`,
         "ordinary-attribute-transit",
       );
     }

@@ -76,4 +76,4 @@ assert.ok(has(standalone, "<", "punctuation.definition.tag.begin.hson"));
 
 // TS/TSX coverage lives in baseline.test.ts and the real semantic-token journey:
 // a synthetic spelling-only injection test must not stand in for shipped behavior.
-process.stdout.write("ok - standalone HSON grammar scopes passed\n");
+process.stdout.write("ok - standalone Hson grammar scopes passed\n");

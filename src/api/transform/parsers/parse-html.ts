@@ -93,7 +93,7 @@ function snip_context(s: string, at: number, radius = 80): string {
  *    - If the error is “extra content”, wrap in `<_hson_root>…</_hson_root>` and retry,
  *      optionally re-running void expansion on the wrapped source.
  * 10. If parsing still fails, throw a transform error with context.
- * 11. Enumerate attributes, decode HSON transit names, and construct the graph.
+ * 11. Enumerate attributes, decode Hson transit names, and construct the graph.
  * 12. Wrap as `_hson_root` and validate with `assert_invariants`.
  *
  * @param input - Raw HTML/XML string or an existing `Element` subtree.
@@ -422,7 +422,7 @@ function convert(
         }
     }
 
-    // Build children (DOM → HSON)
+    // Build children (DOM → Hson)
     const childNodes: HsonNode[] = [];
     const children = elementToNode(el.childNodes, dec, allowHsonTransit);
 
@@ -596,7 +596,7 @@ function wrap_as_root(node: HsonNode): HsonNode {
 
 
 /**
- * Convert a DOM child node list into a sequence of HSON children.
+ * Convert a DOM child node list into a sequence of Hson children.
  *
  * Behavior:
  * - Iterates over the given `ChildNode`s:

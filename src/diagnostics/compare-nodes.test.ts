@@ -211,7 +211,7 @@ function compareAny(a: any, b: any, path: string): string[] {
 }
 
 /**********************************************************
- * Deep semantic comparator for two HSON node trees.
+ * Deep semantic comparator for two Hson node trees.
  *
  * Purpose:
  *   - Compare two HsonNode graphs (A vs B) and produce a list
@@ -303,8 +303,8 @@ function compareAny(a: any, b: any, path: string): string[] {
  *
  * Usage:
  *   - Asserts strong semantic equivalence between:
- *       • pre- and post-transform HSON trees,
- *       • JSON→HSON→JSON or HTML→HSON→HTML round-trips,
+ *       • pre- and post-transform Hson trees,
+ *       • JSON→Hson→JSON or HTML→Hson→HTML round-trips,
  *       • different parsers/serializers meant to be equivalent.
  **********************************************************/
 export function compare_nodes(

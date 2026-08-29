@@ -18,7 +18,7 @@ import {
   type StaticHsonSource,
 } from "../../../src/internal/embedded-hson/static-hson-source.js";
 
-export const DIAGNOSTIC_SOURCE = "HSON";
+export const DIAGNOSTIC_SOURCE = "Hson";
 export type SupportedLanguageId = "hson" | "typescript" | "typescriptreact";
 
 export type DocumentDiagnosticInput = Readonly<{

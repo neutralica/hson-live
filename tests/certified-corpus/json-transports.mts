@@ -29,7 +29,7 @@ const unusualGraph = obj(
 
 const unusualAuthoredKeyCase: AcceptedCorpusCase = {
   id: "json.accept.unusual-authored-keys",
-  claim: "Structural JSON preserves keys whose authored-HSON canonical spelling uses single-quoted names.",
+  claim: "Structural JSON preserves keys whose authored-Hson canonical spelling uses single-quoted names.",
   classification: "structural-json-transport", ingress: "graph", escapedInput: JSON.stringify(unusualGraph),
   taxonomy: { shape: "object", slot: "object-property-order", variation: "unusual-authored-keys" },
   tags: ["json", "property-order", "quoted-name", "transport"], origin: "certified-corpus-design",

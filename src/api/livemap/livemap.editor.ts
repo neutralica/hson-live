@@ -24,9 +24,9 @@ import {
 } from "../../core/projected-value-graph.js";
 
 /**
- * Internal physical witness for one projected path.  This intentionally stays
+ * Internal physical witness for one data path.  This intentionally stays
  * out of the public LiveMap surface: consumers should continue to use logical
- * projected paths, while internal bridges can reuse the editor's canonical
+ * data paths, while internal bridges can reuse the editor's canonical
  * wrapper traversal.
  */
 export type InternalProjectedHsonLocation = Readonly<{
@@ -48,7 +48,7 @@ type ResolvedParent = Readonly<{
 }>;
 
 /**
- * Clone a LiveMap HSON root for staged editor preflight or detached reads.
+ * Clone a LiveMap Hson root for staged editor preflight or detached reads.
  *
  * Batch validation uses this to prove every editor operation can apply before
  * mutating the live graph, and `LiveMap.root()` uses it for detached canonical
@@ -62,8 +62,8 @@ export function clone_live_root(root: HsonNode): HsonNode {
 /**
  * Read the projected JSON value at a LiveMap path.
  *
- * This is the editor's read entry point. It resolves the projected path through
- * HSON wrapper nodes, unwraps the value payload, and converts that value node
+ * This is the editor's read entry point. It resolves the data path through
+ * Hson wrapper nodes, unwraps the value payload, and converts that value node
  * back into ordinary JSON-ish data.
  */
 export function snap_live_path(root: HsonNode, path: LivePath): JsonValue | undefined {
@@ -71,14 +71,14 @@ export function snap_live_path(root: HsonNode, path: LivePath): JsonValue | unde
   return valueNode === undefined ? undefined : node_to_json_value(valueNode);
 }
 
-/** Read one projected path as the immutable internal carrier. */
+/** Read one data path as the immutable internal carrier. */
 export function project_live_path(root: HsonNode, path: LivePath): OrderedProjectedValue | undefined {
   const valueNode = resolve_value_node(root, path);
   return valueNode === undefined ? undefined : projected_value_from_hson_node(valueNode);
 }
 
 /**
- * Resolve a projected path to the value payload node at that path.
+ * Resolve a data path to the value payload node at that path.
  *
  * Example: for `["user", "name"]`, this returns the `_hson_str` or `_hson_val`
  * payload inside the `name` property wrapper, not the `name` wrapper itself.
@@ -90,7 +90,7 @@ export function resolve_value_node(root: HsonNode, path: LivePath): HsonNode | u
 }
 
 /**
- * Resolve one projected path through the same wrapper rules as the editor,
+ * Resolve one data path through the same wrapper rules as the editor,
  * retaining physical canonical paths for internal location/provenance work.
  */
 export function resolve_projected_hson_location(
@@ -136,7 +136,7 @@ export function resolve_projected_hson_location(
 }
 
 /**
- * Resolve a projected path to the wrapper node at that path.
+ * Resolve a data path to the wrapper node at that path.
  *
  * For object properties this is the user-key wrapper, such as a node with
  * `$_tag === "name"`. For array items this is the `_hson_ii` wrapper. Keeping
@@ -158,7 +158,7 @@ export function resolve_wrapper_node(root: HsonNode, path: LivePath): HsonNode |
 }
 
 /**
- * Resolve the parent value node for a projected path.
+ * Resolve the parent value node for a data path.
  *
  * This is the mutation-oriented resolver. Given `["user", "name"]`, it returns
  * the value node for `["user"]` plus the final key `"name"`.
@@ -177,7 +177,7 @@ export function resolve_parent_node(root: HsonNode, path: LivePath): ResolvedPar
 }
 
 /**
- * Set a projected object-property path to a JSON value.
+ * Set a data object-property path to a JSON value.
  *
  * This is the first mutation slice and is intentionally narrow:
  * - it supports replacing or adding properties on an already-resolved object
@@ -226,7 +226,7 @@ export function set_live_path_from_projected(
 }
 
 /**
- * Delete a projected object-property path.
+ * Delete a data object-property path.
  *
  * This first delete slice is intentionally narrow:
  * - it can remove object properties from an already-resolved object
@@ -276,7 +276,7 @@ export function replace_live_root(root: HsonNode, value: JsonValue): LiveMapEdit
   return materialize_projected_edit(replace_live_root_from_projected(root, admit_projected_value(value)));
 }
 
-/** Replace the projected root from one already-admitted carrier. */
+/** Replace the data root from one already-admitted carrier. */
 export function replace_live_root_from_projected(
   root: HsonNode,
   nextCarrier: OrderedProjectedValue,
@@ -423,7 +423,7 @@ function delete_object_property(parent: HsonNode, key: string): void {
 }
 
 /**
- * Convert a HSON value node into projected JSON data.
+ * Convert a Hson value node into projected JSON data.
  *
  * This is the data-map JSON projection, not a canonical document snapshot.
  * Unknown/user element nodes retain the historical object fallback for data
@@ -451,7 +451,7 @@ export function node_to_json_value(node: HsonNode): JsonValue {
 }
 
 /**
- * Find the child wrapper for one projected path segment.
+ * Find the child wrapper for one data path segment.
  *
  * Object paths use string keys and find user-tag wrappers. Array paths use
  * numeric indexes and read the canonical `_hson_ii` physical position.
@@ -527,7 +527,7 @@ function unwrap_transparent_object_payload(node: HsonNode): HsonNode | undefined
   return undefined;
 }
 
-/** Return the physical child indexes skipped by projected scalar normalization. */
+/** Return the physical child indexes skipped by data scalar normalization. */
 function transparent_value_path(node: HsonNode): readonly number[] {
   const indexes: number[] = [];
   let current = node;
@@ -549,7 +549,7 @@ function value_at_transparent_path(node: HsonNode): HsonNode | undefined {
 }
 
 /**
- * Return true for HSON nodes that represent actual JSON-facing values.
+ * Return true for Hson nodes that represent actual JSON-facing values.
  *
  * These are the nodes LiveMap reads as values rather than wrappers or structural
  * containers around values.

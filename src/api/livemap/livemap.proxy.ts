@@ -44,7 +44,7 @@ const PROXY_RESERVED_PROPERTIES = new Set<PropertyKey>([
 /**
  * Build a path-projection proxy over a LiveMap core.
  *
- * Property access extends the projected path only. Mutations intentionally go
+ * Property access extends the data path only. Mutations intentionally go
  * through `$_`, so proxy writes keep the same contract as path handles:
  *
  * - `proxy.user.$_.set(...)` uses LiveMap `set` semantics.

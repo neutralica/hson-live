@@ -196,7 +196,7 @@ export class TrustedSchemaDiagnosticRuntime {
     const parseStart = performance.now();
     let parsed: ReturnType<typeof parse_hson_with_provenance>;
     try { parsed = parse_hson_with_provenance(request.source, { allowTopLevelTextFragment: fromHson || (!validDirect && rootMode === "fragment") }); }
-    catch (cause) { return Object.freeze({ ...this.reply(request, "result"), result: { status: "CANDIDATE_INVALID" as const, diagnostics: Object.freeze([]), timings: { parseMs: performance.now() - parseStart, validateMs: 0, lowerMs: 0 } }, message: cause instanceof Error ? cause.message : "Candidate HSON is invalid." }); }
+    catch (cause) { return Object.freeze({ ...this.reply(request, "result"), result: { status: "CANDIDATE_INVALID" as const, diagnostics: Object.freeze([]), timings: { parseMs: performance.now() - parseStart, validateMs: 0, lowerMs: 0 } }, message: cause instanceof Error ? cause.message : "Candidate Hson is invalid." }); }
     const parseMs = performance.now() - parseStart;
     if (validDirect && !is_projected_value_hson_node(parsed.value)) {
       const mode = classify_live_root_mode(parsed.value);

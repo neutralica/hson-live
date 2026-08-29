@@ -1,59 +1,59 @@
-# HSON Language for VS Code
+# Hson Language for VS Code
 
 This extension provides syntax highlighting and authoritative parser diagnostics
-for standalone `.hson` files, supported `HSON` tagged templates, and statically
+for standalone `.hson` files, supported `Hson` tagged templates, and statically
 recoverable strings passed to official `fromHson` boundaries in TypeScript and
-TSX. In trusted Schema mode, `HSON` templates also support bounded structural
+TSX. In trusted Schema mode, `Hson` templates also support bounded structural
 completion.
 
 Highlighting and diagnostics share TypeScript binding-aware discovery of named
-`HSON` imports from `hson-live` and `hson-live/hson`, including renamed imports.
+`Hson` imports from `hson-live` and `hson-live/hson`, including renamed imports.
 Local/shadowed names, wrong packages, copied functions and wrappers are excluded.
-The existing HSON TextMate grammar supplies the template tokens, published through
-VS Code semantic tokens with HSON scope fallbacks. A spelling-only injection is
-not contributed. Invalid HSON and literal segments around interpolation are still
+The existing Hson TextMate grammar supplies the template tokens, published through
+VS Code semantic tokens with Hson scope fallbacks. A spelling-only injection is
+not contributed. Invalid Hson and literal segments around interpolation are still
 highlighted. Neither highlighting nor secure diagnostics requires Schema, a
 trusted provider, Workspace Trust, completion, or application execution.
 
 Literal usage references to the official `hson` facade carry strong blue, yellow,
-pink, and green family colors; literal usage references to official `HSON` use
+pink, and green family colors; literal usage references to official `Hson` use
 the same hues with softer opacity. This includes bare references, member roots,
-validation calls, and `HSON` tagged templates. The first member-access period
+validation calls, and `Hson` tagged templates. The first member-access period
 after an official lowercase `hson` root is violet; later periods are ordinary.
 Import/export declarations and renamed imports retain ordinary host-theme
 presentation. Local, shadowed, wrong-package, property-name, and otherwise
 unrelated lookalikes receive no marker. Standalone `.hson` files do not invent
-one. All ordinary HSON body syntax remains controlled by the active syntax theme.
+one. All ordinary Hson body syntax remains controlled by the active syntax theme.
 
 ## Settings
 
-Run **HSON: Open Settings** or search Settings for `@ext:terminal-gothic.hson-language`.
+Run **Hson: Open Settings** or search Settings for `@ext:terminal-gothic.hson-language`.
 The initial user-facing surface is deliberately compact:
 
-- **HSON › Appearance: Library Marker Strength**
+- **Hson › Appearance: Library Marker Strength**
   (`hson.appearance.libraryMarkerStrength`, default `1.0`) controls the presence
   of official literal `hson` markers.
-- **HSON › Appearance: Authoring Marker Strength**
+- **Hson › Appearance: Authoring Marker Strength**
   (`hson.appearance.authoringMarkerStrength`, default `0.70`) keeps official
-  literal `HSON` markers visibly quieter.
-- **HSON › Appearance: Blue / Yellow / Pink / Green**
+  literal `Hson` markers visibly quieter.
+- **Hson › Appearance: Blue / Yellow / Pink / Green**
   (`hson.appearance.blue`, `.yellow`, `.pink`, `.green`) are hexadecimal colors
-  shared by the corresponding `hson` and `HSON` letters. Their shipped defaults
+  shared by the corresponding `hson` and `Hson` letters. Their shipped defaults
   are `#00adf6`, `#c9d100`, `#ff4a8c`, and `#39a500`. The fields accept `#RGB`,
   `#RGBA`, `#RRGGBB`, or `#RRGGBBAA`.
-- **HSON › Appearance: Color Library hson**
+- **Hson › Appearance: Color Library hson**
   (`hson.appearance.colorLibraryMarker`, default `true`) controls only the
-  lowercase official library marker and its violet separator. Uppercase `HSON`,
-  HSON bodies, imports, diagnostics, and trusted runtime behavior are unaffected.
-- **HSON › Appearance: Library Separator Color**
+  lowercase official library marker and its violet separator. Uppercase `Hson`,
+  Hson bodies, imports, diagnostics, and trusted runtime behavior are unaffected.
+- **Hson › Appearance: Library Separator Color**
   (`hson.appearance.librarySeparatorColor`, default `#7247d4`) controls the first
   member-access period immediately after an official lowercase `hson` root.
-- **HSON › Schema Diagnostics: Trusted Execution**
+- **Hson › Schema Diagnostics: Trusted Execution**
   (`hson.trustedSchemaDiagnostics.enabled`, default `false`, resource scope)
-  permits project code execution only when Workspace Trust and separate HSON
+  permits project code execution only when Workspace Trust and separate Hson
   consent are also present.
-- **HSON › Runtime / Provider** contains the existing resource-scoped Provider
-  Entry, HSON Runtime Module, optional Runtime Entry, and Node Arguments needed
+- **Hson › Runtime / Provider** contains the existing resource-scoped Provider
+  Entry, Hson Runtime Module, optional Runtime Entry, and Node Arguments needed
   by the current D1–D6 trusted runtime. Paths are relative to the containing
   workspace folder. These execution-sensitive settings are restricted in
   Restricted Mode.
@@ -90,7 +90,7 @@ therefore remains the advanced override path:
 The contributed defaults use the approved blue `#00adf6`, yellow `#c9d100`, pink
 `#ff4a8c`, green `#39a500`, and separator violet `#7247d4` identities across
 dark, light, and high-contrast variants. Precedence is: a non-empty explicitly
-configured HSON Appearance color, then the corresponding theme color identity
+configured Hson Appearance color, then the corresponding theme color identity
 (including `workbench.colorCustomizations`), then its contributed default. An
 empty explicit field also falls back to the theme identity. The authoring IDs use
 the same hues; Authoring Marker Strength supplies the default `0.70` opacity.
@@ -100,7 +100,7 @@ separator. A supplied alpha channel is respected and multiplied by strength.
 Syntax diagnostics analyze only open in-memory documents. In the default secure
 mode the extension does not load a project or execute workspace code. It does
 not write helper files or modify user source.
-Substitution-free templates receive authoritative whole-HSON tag admission
+Substitution-free templates receive authoritative whole-Hson tag admission
 diagnostics, including raw-template newline normalization and UTF-16 mapping.
 Readable noncanonical formatting is accepted when the actual tag accepts it.
 Interpolated templates are discovered, but receive no speculative whole-source
@@ -119,7 +119,7 @@ methods that merely share the name `fromHson` are ignored.
 
 ## Trusted Schema completion (D6)
 
-Use **Trigger Suggest** inside `HSON` template literal segments for declared
+Use **Trigger Suggest** inside `Hson` template literal segments for declared
 members, finite literals, document tags, attrs, flags, and known child positions.
 Completions come from the **actual current runtime Schema**, require Workspace
 Trust plus trusted Schema diagnostics enablement, and become available after
@@ -131,17 +131,17 @@ Multiple governing contracts, stale runtime-dependent values, ambiguous branches
 or syntax that cannot establish a cursor slot may temporarily give no completion.
 `${...}` remains ordinary TypeScript expression editing. D6 is manual-invocation
 only and deliberately does **not** provide Schema completion in ordinary
-`fromHson(...)` strings/templates: use `HSON` for rich interactive authoring,
-and `fromHson` when you already have HSON source.
+`fromHson(...)` strings/templates: use `Hson` for rich interactive authoring,
+and `fromHson` when you already have Hson source.
 
 ## Trusted Schema diagnostics (D2, opt in)
 
 VS Code Workspace Trust, `hson.trustedSchemaDiagnostics.enabled: true`, and a
-separate HSON consent receipt for the containing workspace folder and exact
+separate Hson consent receipt for the containing workspace folder and exact
 provider/runtime configuration are all required. Workspace Trust alone never
 enables project execution. A checked-in workspace setting can express preference
 but cannot create the consent receipt, so it remains inert until the user accepts
-the HSON execution warning or runs **HSON: Enable Trusted Schema Diagnostics**.
+the Hson execution warning or runs **Hson: Enable Trusted Schema Diagnostics**.
 Changing a provider path, runtime path, runtime entry, or Node argument invalidates
 the receipt and requires consent for the new configuration. Restricted Mode
 retains highlighting and secure syntax diagnostics. This is trusted Node
@@ -151,8 +151,8 @@ security sandbox.
 The status-bar item reports `off`, `waiting`, `current-valid`, `current-invalid`,
 `stale`, `ambiguous`, `unavailable`, or `runtime-failed`; its tooltip explains
 the active document's state and never treats “no diagnostic” as proof of
-validity. Use **HSON: Disable Trusted Schema Diagnostics** to stop new trusted
-work, clear trusted diagnostics, and dispose the runtime. Use **HSON: Restart
+validity. Use **Hson: Disable Trusted Schema Diagnostics** to stop new trusted
+work, clear trusted diagnostics, and dispose the runtime. Use **Hson: Restart
 Trusted Schema Runtime** after an external provider repair; restart is available
 only while the exact configuration is trusted and authorized.
 
@@ -168,17 +168,17 @@ export const trustedSchemas = { userContract: UserSchema };
 ```
 
 ```ts
-import { HSON } from "hson-live/hson";
+import { Hson } from "hson-live/hson";
 import { UserSchema } from "./schema.js";
-const user = HSON`<user <age "37">>`;
-HSON.validate(UserSchema, user);
+const user = Hson`<user <age "37">>`;
+Hson.validate(UserSchema, user);
 ```
 
 The existing `hsonLiveMap.schema.validate` and `hson.liveMap.schema.validate`
 entrances also remain supported, using their official subsystem/root imports.
 
 The earlier `"37"` receives: “Expected `age` to be a number, but this value is
-an HSON string.” Fixing it to `37` updates the diagnostics while still unsaved.
+an Hson string.” Fixing it to `37` updates the diagnostics while still unsaved.
 The application entrypoint and its `validate` statement need not execute.
 The editor independently asks the actual registered Schema about this candidate.
 Arbitrary stateful predicates may give different answers later.
@@ -200,7 +200,7 @@ configures an explicit Node loader for development TypeScript modules. No
 runtime entry, registry, or protocol is added to package exports.
 
 The source import must resolve to the registered module URL. Initial discovery
-supports relative named imports, renamed official `HSON` imports, local `const`
+supports relative named imports, renamed official `Hson` imports, local `const`
 Schema bindings with explicit private registration metadata, parentheses, and
 acyclic identifier-only `const` aliases (at most 32 hops). Canonical declarations
 must precede their use in the same module/function-body statement domain.
@@ -212,19 +212,19 @@ Multiple validation statements run independently, including stateful predicates.
 The status bar distinguishes off, waiting, valid, invalid, stale, ambiguous,
 unavailable, and runtime failure. No squiggle is not a claim of validity.
 
-### Evaluated HSON substitutions (D5)
+### Evaluated Hson substitutions (D5)
 
-`HSON` preserves JavaScript primitive types: strings become quoted HSON strings,
+`Hson` preserves JavaScript primitive types: strings become quoted Hson strings,
 numbers remain numbers (including `-0`), booleans remain booleans, and `null`
 remains null. Substitutions are values, not structural source splices.
 
 When your explicitly configured trusted provider evaluates an instrumented
 diagnostic copy, Schema errors can underline the expression inside `${...}`.
-For example: “This expression evaluated to an HSON string, but the Schema
+For example: “This expression evaluated to an Hson string, but the Schema
 requires number here.” The underline identifies the code that **produced** the
-invalid value; it does not imply those JavaScript characters are an HSON token.
-This works with standalone `HSON.validate` and natural map/schema attachment.
-Runtime HSON admission errors can also appear without a later Schema call.
+invalid value; it does not imply those JavaScript characters are an Hson token.
+This works with standalone `Hson.validate` and natural map/schema attachment.
+Runtime Hson admission errors can also appear without a later Schema call.
 
 Expression or literal edits immediately retire runtime-derived diagnostics.
 Unsaved changes wait for fresh provider evaluation; old values are never combined
@@ -287,7 +287,7 @@ directories.
 
 Local source updates deliberately use `--force`, so replacing one `0.1.1`
 development build with another does not require an extension version bump.
-Changing HSON Appearance or trusted-diagnostics settings does not require a
+Changing Hson Appearance or trusted-diagnostics settings does not require a
 reinstall; use the normal VS Code settings lifecycle. Reinstall only after
 extension source or build inputs change.
 
@@ -312,9 +312,9 @@ debugging, but it is not the ordinary local installation workflow.
 5. Open a `.ts` file containing the malformed direct and aliased forms:
 
    ```ts
-   import { HSON, HSON as markup } from "hson-live/hson";
+   import { Hson, Hson as markup } from "hson-live/hson";
 
-   const direct = HSON`
+   const direct = Hson`
      <main
        <broken
    `;
@@ -325,10 +325,10 @@ debugging, but it is not the ordinary local installation workflow.
    `;
    ```
 
-6. Replace either body with valid HSON and confirm its squiggle clears:
+6. Replace either body with valid Hson and confirm its squiggle clears:
 
    ```ts
-   const page = HSON`
+   const page = Hson`
      <main
        <h1 "Hello">
      >
@@ -340,11 +340,11 @@ and admission diagnostics because both use the same TypeScript binding identity.
 
 Ordinary strings and templates inside `fromHson(...)` intentionally retain
 ordinary TypeScript coloring. D4 adds semantic diagnostics, not spelling-based
-TextMate injection. `HSON\`...\`` remains the preferred embedded authoring form
-with first-class HSON presentation.
+TextMate injection. `Hson\`...\`` remains the preferred embedded authoring form
+with first-class Hson presentation.
 
 Use **Developer: Inspect Editor Tokens and Scopes** in the Command Palette to
-inspect the emitted HSON semantic tokens and their TextMate scope fallbacks.
+inspect the emitted Hson semantic tokens and their TextMate scope fallbacks.
 
 ### Zero-Schema regression verification
 
@@ -354,7 +354,7 @@ edit journey in trusted and genuinely restricted workspaces. Set
 `HSON_VSCODE_EXECUTABLE` to select a VS Code binary (the runner defaults to the
 ordinary macOS installation). `npm run test:baseline:installed` builds the actual
 VSIX and runs the same journey from a clean installed-extension directory, using
-an empty test-driver extension rather than a development override for HSON.
+an empty test-driver extension rather than a development override for Hson.
 
 ### Natural LiveMap Schema governance (D3)
 
@@ -362,11 +362,11 @@ With a trusted provider supplying source-bound D1 lifecycle evidence, ordinary
 map-owning code needs no extra standalone validation call:
 
 ```ts
-import { HSON } from "hson-live/hson";
+import { Hson } from "hson-live/hson";
 import { hsonLiveMap } from "hson-live/livemap";
 import { UserSchema } from "./schema.js";
 
-const source = HSON`<user <age "37">>`;
+const source = Hson`<user <age "37">>`;
 const map = hsonLiveMap.fromHson(source);
 map.schema.use(UserSchema);
 ```
@@ -375,7 +375,7 @@ The original template receives the current candidate's Schema diagnostics,
 including when initial attachment rejects. Related information identifies the
 use site. Both the dedicated facade above and `hson.liveMap.fromHson` work;
 local immutable aliases and inline templates are supported, but the standalone
-HSON block is the preferred style. Multiple maps retain independent contracts.
+Hson block is the preferred style. Multiple maps retain independent contracts.
 Actual mutation, including mutation followed by restoration, suppresses source
 attribution for that map.
 

@@ -10,8 +10,8 @@ export interface BinaryDecodeOptions {
 declare const HSON_CANONICAL_BRAND: unique symbol;
 
 /**
- * A JavaScript string whose contents are valid canonical serialized HSON.
- * It may represent any valid detached canonical HSON value, including a
+ * A JavaScript string whose contents are valid canonical serialized Hson.
+ * It may represent any valid detached canonical Hson value, including a
  * primitive, object, element, array, or fragment.
  *
  * This TypeScript-only brand has no runtime marker and is not a trust or
@@ -84,7 +84,7 @@ export type TransformRender<K extends TransformOutputRenderFormat> =
  *
  * `sanitizeBEWARE()` remains available for compatibility. The browser umbrella
  * facade installs its HTML sanitizer; a narrow subsystem-only consumer should
- * use the structural HSON/JSON/node transforms without invoking that method.
+ * use the structural Hson/JSON/node transforms without invoking that method.
  */
 export interface TransformOutput {
   toNode(): HsonNode;

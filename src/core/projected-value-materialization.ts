@@ -22,7 +22,7 @@ export function materialize_projected_value(value: OrderedProjectedValue): JsonV
       return result;
     }
     if (!is_ordered_projected_object(candidate)) {
-      throw new TypeError("Invalid ordered projected object carrier.");
+      throw new TypeError("Invalid ordered data object carrier.");
     }
 
     const result: Record<string, JsonValue> = {};

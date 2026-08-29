@@ -7,8 +7,8 @@ import { gzipSync } from "node:zlib";
 const { build } = createRequire(new URL("../editors/vscode-hson/package.json", import.meta.url))("esbuild");
 const root = fileURLToPath(new URL("..", import.meta.url));
 const sources = {
-  tag: 'import { HSON } from "hson-live/hson"; export const value = HSON`<foo/>`;',
-  validation: 'import { HSON } from "hson-live/hson"; export const value = HSON.validate(globalThis.schema, HSON`<foo/>`);',
+  tag: 'import { Hson } from "hson-live/hson"; export const value = Hson`<foo/>`;',
+  validation: 'import { Hson } from "hson-live/hson"; export const value = Hson.validate(globalThis.schema, Hson`<foo/>`);',
   aggregate: 'import { hson } from "hson-live"; console.log(hson.liveMap);',
   transform: 'import { hsonTransform } from "hson-live/transform"; console.log(hsonTransform);',
   livemap: 'import { hsonLiveMap } from "hson-live/livemap"; console.log(hsonLiveMap);',
@@ -32,11 +32,11 @@ check("tree-shaken authoring retains no mutation history or session machinery", 
 // No capture, provider, lifecycle, protocol or generated source-map module may join it.
 check("D5 tooling never enters the ordinary authoring graph", () => assert.ok(narrow.parsed.every(path =>
   !/trusted-schema-diagnostics|embedded-hson|source-provenance/.test(path) || path.endsWith("trusted-schema-diagnostics/issue-presentation.js"))));
-check("D6 completion query/provider machinery never enters production HSON", () => assert.ok(narrow.parsed.every(path => !/schema-completion|completion-source|vscode-hson/.test(path))));
+check("D6 completion query/provider machinery never enters production Hson", () => assert.ok(narrow.parsed.every(path => !/schema-completion|completion-source|vscode-hson/.test(path))));
 check("same-object validate retains real Schema validators in tag-only bundle", () => { assert.ok(narrow.inputs.some(path => path.endsWith("livemap.schema.js"))); assert.ok(narrow.inputs.some(path => path.endsWith("livemap.document.schema.js"))); });
 check("narrow authoring stays within the approved practical size boundary", () => { assert.ok(narrow.gzip < 40_000, `gzip=${narrow.gzip}`); assert.ok(narrow.gzip < results.aggregate.gzip / 4); });
 check("referencing validate does not unexpectedly import another subsystem", () => assert.deepEqual(results.validation.inputs.filter(path => path.startsWith("dist/")), narrow.inputs.filter(path => path.startsWith("dist/"))));
 const execution = await import('data:text/javascript;base64,' + Buffer.from(narrow.code).toString('base64'));
 check("production authoring bundle executes without a browser", () => assert.equal(execution.value, "<foo/>"));
 for (const [name, { raw, min, gzip, inputs }] of Object.entries(results)) console.log(`# ${name}: ${JSON.stringify({ raw, min, gzip, retainedModules: inputs.length })}`);
-console.log(`# ${checks} HSON authoring package checks passed`);
+console.log(`# ${checks} Hson authoring package checks passed`);

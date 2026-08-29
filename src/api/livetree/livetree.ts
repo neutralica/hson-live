@@ -75,10 +75,10 @@ import {
  * - Provides `resolveElement()` which returns the associated DOM
  *   `Element`, if any, via `element_for_node(node)`.
  *
- * This is the primary bridge between HSON nodes, their QUID identity,
+ * This is the primary bridge between Hson nodes, their QUID identity,
  * and any DOM elements registered in `NODE_ELEMENT_MAP`.
  *
- * @param node - The HSON node to wrap in a reference.
+ * @param node - The Hson node to wrap in a reference.
  * @returns A `NodeRef` that exposes QUID, node, and DOM element lookup.
  * @see ensure_quid
  * @see get_el_for_node
@@ -130,7 +130,7 @@ function makeRef(node: HsonNode, tree: LiveTree): NodeRef {
  *
  * Instances maintain:
  * - nodeRef: A `NodeRef` that pins the exact current node and resolves QUID on demand.
- * - hostRoot: HSON node representing the historic root of the subtree.
+ * - hostRoot: Hson node representing the historic root of the subtree.
  * - Lazily constructed managers for style (`StyleManager`) and dataset (`DataManager`).
  */
 export class LiveTree implements LiveTreeApi<LiveTree> {
@@ -339,7 +339,7 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
   /***************************************
    * Branch removal
    *
-   * Structural removal operations against the backing HSON node graph.
+   * Structural removal operations against the backing Hson node graph.
    *
    * @see LiveTreeContent
    ***************************************/
@@ -446,7 +446,7 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
     return this;
   }
 
-  /** Resolve and return the backing HSON node.   */
+  /** Resolve and return the backing Hson node.   */
   public get node(): HsonNode {
     const n = this.nodeRef.resolveNode();
     if (!n) {

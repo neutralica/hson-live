@@ -3,7 +3,7 @@ import type { Position } from "../../token.types.js";
 import { _throw_transform_err } from "../sys-utils/throw-transform-err.utils.js";
 
 /**
- * Admit one decoded name that was explicitly authored in HSON source.
+ * Admit one decoded name that was explicitly authored in Hson source.
  *
  * Parser-synthesized structural names do not cross this boundary. That keeps
  * object-value and array construction free to use canonical VSN tags while
@@ -16,7 +16,7 @@ export function assert_authored_hson_source_name(
   if (!name.startsWith(HSON_SYS_PREFIX)) return;
 
   _throw_transform_err(
-    `[authored-reserved-name] authored HSON name "${name}" is reserved for internal structural nodes at ${pos.line}:${pos.col} (index ${pos.index})`,
+    `[authored-reserved-name] authored Hson name "${name}" is reserved for internal structural nodes at ${pos.line}:${pos.col} (index ${pos.index})`,
     "tokenize-hson.authored-name",
     undefined,
     undefined,

@@ -1,13 +1,13 @@
-# Authored-HSON source verdicts
+# Authored-Hson source verdicts
 
-This is the first-pass worksheet for the **materialized authored-HSON conformance corpus candidate**.
-The primary question for every row is: **Does this exact source belong to the authored HSON language?**
+This is the first-pass worksheet for the **materialized authored-Hson conformance corpus candidate**.
+The primary question for every row is: **Does this exact source belong to the authored Hson language?**
 
 ## Reviewer key
 
 ```text
-V = valid authored HSON
-I = invalid authored HSON
+V = valid authored Hson
+I = invalid authored Hson
 ? = uncertain or requires discussion
 blank = not reviewed
 ```
@@ -36,7 +36,7 @@ This area is intentionally blank. Do not infer progress from the Current proposa
 
 - [Immutable provenance audit](evidence/authored-hson-corpus-provenance-audit.txt) — SHA-256 `41b2d0ba4f539eae8d12fb4ccafaafba2aa6cf69427ceba3b9ca4b2163111b09`
 - [Immutable shape preview](evidence/authored-hson-shape-coverage-preview.txt) — SHA-256 `40f1ee261325ead71ed170765e443a1fd182d76efec4f11bce9eb94f214d4180`
-- Included here: 269 authored-HSON sources (100 proposed valid; 169 proposed invalid).
+- Included here: 269 authored-Hson sources (100 proposed valid; 169 proposed invalid).
 - Deferred: 11 graph-only accepted transports, 9 graph-only rejected transports, 14 structural JSON transports,
   49 structural HTML transports, 4 diagnostic-circuit regressions, and 10 specialized-test references.
 
@@ -45,8 +45,8 @@ This area is intentionally blank. Do not infer progress from the Current proposa
 ### Matched contrast: object versus element closer
 ///---> CONFIRMED
 ```hson
-<a 1>   // current proposal: valid HSON object
-<a 1/>  // current proposal: invalid HSON element typed content
+<a 1>   // current proposal: valid Hson object
+<a 1/>  // current proposal: invalid Hson element typed content
 ```
 
 ### Typed object values versus element flags
@@ -73,7 +73,7 @@ This area is intentionally blank. Do not infer progress from the Current proposa
 
 ```hson
 <`` 1>        /// valid: {"":1}
-<``/>         /// INVALID html <></> 
+<``/>         /// INVALID html <></>
 <e ``="x"/>   /// INVALID html <e ="x"></e>
 <e ``/>       /// INVALID backticks only permitted on tag names
 ```
@@ -158,13 +158,13 @@ Bare true is a typed primitive value.
 **Notes:**
 see false
 
-## 2. Basic HSON objects
+## 2. Basic Hson objects
 
 ### Matched contrast: object versus element closer
 
 ```hson
-<a 1>   // current proposal: valid HSON object /// -> confirmed
-<a 1/>  // current proposal: invalid HSON element typed content /// -> confirmed
+<a 1>   // current proposal: valid Hson object /// -> confirmed
+<a 1/>  // current proposal: invalid Hson element typed content /// -> confirmed
 ```
 
 <!-- review-meta: source=display; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
@@ -194,7 +194,7 @@ exact codes not clear but yes this is correct
 
 **Verdict — V / I / ?:** `V`
 
-One angle pair denotes an empty HSON object.
+One angle pair denotes an empty Hson object.
 
 **Source:** `<>`
 
@@ -255,7 +255,7 @@ An object contains a punctuation-free key/value property.
 Partially correct--only for non-string
 
 
-## 3. Basic HSON arrays
+## 3. Basic Hson arrays
 
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.accept.literal.array.empty-bracket -->
@@ -269,9 +269,9 @@ An empty bracket array canonicalizes to guillemets.
 **Current proposal:** Valid
 
 **Notes:**
- it sounds like this means 'serializes canonically'? 
-the array symbol is obviously not stored in the nodes per se except by the _hson_arr wrapper. 
-HSON's parser accepts brackets and guillemet, flexibly. It always serializes as guillemet, yes. It never serializes to bracket and there's no way to change that. 
+ it sounds like this means 'serializes canonically'?
+the array symbol is obviously not stored in the nodes per se except by the _hson_arr wrapper.
+Hson's parser accepts brackets and guillemet, flexibly. It always serializes as guillemet, yes. It never serializes to bracket and there's no way to change that.
 
 
 ---
@@ -324,7 +324,7 @@ Arrays remain comma-separated and retain primitive item order.
 **Current proposal:** Valid
 
 **Notes:**
-item order is always preserved by arrays in HSON via ordering, just as with HSON. it is preserved in HTML expressions of JSON by wrapping each item in an ii node which melts on reparsing. the hson:index value on the ii node must determine the order of reconstruction correctly.
+item order is always preserved by arrays in Hson via ordering, just as with Hson. it is preserved in HTML expressions of JSON by wrapping each item in an ii node which melts on reparsing. the hson:index value on the ii node must determine the order of reconstruction correctly.
 
 
 ---
@@ -358,7 +358,7 @@ A guillemet-array trailing comma is accepted variation.
 **Notes:**
 
 
-## 4. Basic HSON elements
+## 4. Basic Hson elements
 
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.accept.literal.element.adjacent-strings -->
@@ -372,7 +372,7 @@ Two adjacent authored string leaves remain distinct.
 **Current proposal:** Valid
 
 **Notes:**
-///-> only valid in _hson_elem context; 
+///-> only valid in _hson_elem context;
  `<div "a" "b">` /// INVALID
 
 ---
@@ -391,7 +391,7 @@ An element attribute retains its explicit value.
 **Notes:**
 Yes, I'm not sure what's even questionable here
 it's explicit value may only ever be a string
-the source HSON is valid regardless
+the source Hson is valid regardless
 
 
 ---
@@ -401,7 +401,7 @@ the source HSON is valid regardless
 
 **Verdict — V / I / ?:** `V`
 
-A self-closing angle construct denotes an empty HSON element.
+A self-closing angle construct denotes an empty Hson element.
 
 **Source:** `<div/>`
 
@@ -452,7 +452,7 @@ An element QUID remains supported.
 
 **Verdict — V / I / ?:** `V`
 
-An HSON element may contain quoted string content.
+An Hson element may contain quoted string content.
 
 **Source:** `<p "text"/>`
 
@@ -518,7 +518,7 @@ Nested arrays retain indexed membership.
 
 **Verdict — V / I / ?:** `V`
 
-An array item may be a HSON object.
+An array item may be a Hson object.
 
 **Source:** `[<name "Ada">]`
 
@@ -548,7 +548,7 @@ Element strings and nested elements retain their order.
 
 **Verdict — V / I / ?:** `V`
 
-An HSON element may contain a nested element.
+An Hson element may contain a nested element.
 
 **Source:** `<p <em "text"/>/>`
 
@@ -578,7 +578,7 @@ An object property may contain an array.
 
 **Verdict — V / I / ?:** `V`
 
-An object property may contain a nested HSON object.
+An object property may contain a nested Hson object.
 
 **Source:** `<record <field 2>>`
 
@@ -603,15 +603,15 @@ an object property key, and an element flag position.
 
 **Verdict — V / I / ?:** `V `
 
-true, false, and null are ordinary property keys in HSON object key position.
+true, false, and null are ordinary property keys in Hson object key position.
 
 **Source:** `<true 1 false 2 null 3>`
 
-**Review attention:** 
-Primitive-looking name ///* <false false> is valid */ 
-or 
-flag ///* <false false/> is also valid but now it's a flag instead of bool content*/ 
-versus 
+**Review attention:**
+Primitive-looking name ///* <false false> is valid */
+or
+flag ///* <false false/> is also valid but now it's a flag instead of bool content*/
+versus
 typed primitive value /// <_hson_val> tags only valid within _hson_obj content; _hson_elem cannot hold typed content
 
 **Current proposal:** Valid
@@ -682,7 +682,7 @@ A minus may prefix a nonzero JSON integer.
 **Current proposal:** Valid
 
 **Notes:**
-<negativeOne -1> is valid 
+<negativeOne -1> is valid
 
 ---
 
@@ -821,7 +821,7 @@ Zero admits as a typed numeric leaf.
 
 **Verdict — V / I / ?:** ` I`
 
-Hexadecimal spelling is not JSON-compatible HSON number syntax.
+Hexadecimal spelling is not JSON-compatible Hson number syntax.
 
 **Source:** `0x10`
 
@@ -836,7 +836,7 @@ Hexadecimal spelling is not JSON-compatible HSON number syntax.
 
 **Verdict — V / I / ?:** ` I`
 
-A JSON-compatible HSON number may not begin with plus.
+A JSON-compatible Hson number may not begin with plus.
 
 **Source:** `+1`
 
@@ -989,7 +989,7 @@ A syntactically valid number that overflows binary64 rejects as nonfinite.
 
 **Verdict — V / I / ?:** ` I`
 
-Numeric separators are not JSON-compatible HSON number syntax.
+Numeric separators are not JSON-compatible Hson number syntax.
 
 **Source:** `1_0`
 
@@ -1123,7 +1123,7 @@ Block comments are unsupported.
 **Current proposal:** Invalid
 
 **Notes:**
- TBD - I MAY WANT TO PRESERVE/ALLOW COMMENTS 
+ TBD - I MAY WANT TO PRESERVE/ALLOW COMMENTS
 ---
 
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
@@ -1161,7 +1161,7 @@ Whitespace-only source has no semantic value.
 
 **Verdict — V / I / ?:** ` ?`
 
-U+FEFF is not authored-HSON trivia.
+U+FEFF is not authored-Hson trivia.
 
 **Source:**
 
@@ -1180,7 +1180,7 @@ PROPOSAL VALUES ACCEPTED
 
 ### Family: Unsupported external whitespace
 
-**Shared rule:** Code points outside SPACE, HT, LF, and CR are not authored-HSON trivia.
+**Shared rule:** Code points outside SPACE, HT, LF, and CR are not authored-Hson trivia.
 
 **Family verdict — V / I / ?:** ` I`
 
@@ -1194,7 +1194,7 @@ Blank family and override fields mean not reviewed.
 
 **Override — V / I / ?:** ``
 
-This code point is not valid authored-HSON trivia.
+This code point is not valid authored-Hson trivia.
 
 **Source:**
 
@@ -1215,7 +1215,7 @@ This code point is not valid authored-HSON trivia.
 
 **Override — V / I / ?:** ` `
 
-This code point is not valid authored-HSON trivia.
+This code point is not valid authored-Hson trivia.
 
 **Source:**
 
@@ -1236,7 +1236,7 @@ This code point is not valid authored-HSON trivia.
 
 **Override — V / I / ?:** ` `
 
-This code point is not valid authored-HSON trivia.
+This code point is not valid authored-Hson trivia.
 
 **Source:**
 
@@ -1257,7 +1257,7 @@ This code point is not valid authored-HSON trivia.
 
 **Override — V / I / ?:** ` `
 
-This code point is not valid authored-HSON trivia.
+This code point is not valid authored-Hson trivia.
 
 **Source:**
 
@@ -1278,7 +1278,7 @@ This code point is not valid authored-HSON trivia.
 
 **Override — V / I / ?:** ` `
 
-This code point is not valid authored-HSON trivia.
+This code point is not valid authored-Hson trivia.
 
 **Source:**
 
@@ -1299,7 +1299,7 @@ This code point is not valid authored-HSON trivia.
 
 **Override — V / I / ?:** ` `
 
-This code point is not valid authored-HSON trivia.
+This code point is not valid authored-Hson trivia.
 
 **Source:**
 
@@ -1320,7 +1320,7 @@ This code point is not valid authored-HSON trivia.
 
 **Override — V / I / ?:** ` `
 
-This code point is not valid authored-HSON trivia.
+This code point is not valid authored-Hson trivia.
 
 **Source:**
 
@@ -1341,7 +1341,7 @@ This code point is not valid authored-HSON trivia.
 
 **Override — V / I / ?:** ` `
 
-This code point is not valid authored-HSON trivia.
+This code point is not valid authored-Hson trivia.
 
 **Source:**
 
@@ -1362,7 +1362,7 @@ This code point is not valid authored-HSON trivia.
 
 **Override — V / I / ?:** ` `
 
-This code point is not valid authored-HSON trivia.
+This code point is not valid authored-Hson trivia.
 
 **Source:**
 
@@ -1383,7 +1383,7 @@ This code point is not valid authored-HSON trivia.
 
 **Override — V / I / ?:** ` `
 
-This code point is not valid authored-HSON trivia.
+This code point is not valid authored-Hson trivia.
 
 **Source:**
 
@@ -1404,7 +1404,7 @@ This code point is not valid authored-HSON trivia.
 
 **Override — V / I / ?:** ` `
 
-This code point is not valid authored-HSON trivia.
+This code point is not valid authored-Hson trivia.
 
 **Source:**
 
@@ -1425,7 +1425,7 @@ This code point is not valid authored-HSON trivia.
 
 **Override — V / I / ?:** ` `
 
-This code point is not valid authored-HSON trivia.
+This code point is not valid authored-Hson trivia.
 
 **Source:**
 
@@ -1446,7 +1446,7 @@ This code point is not valid authored-HSON trivia.
 
 **Override — V / I / ?:** ` `
 
-This code point is not valid authored-HSON trivia.
+This code point is not valid authored-Hson trivia.
 
 **Source:**
 
@@ -1467,7 +1467,7 @@ This code point is not valid authored-HSON trivia.
 
 **Override — V / I / ?:** ` `
 
-This code point is not valid authored-HSON trivia.
+This code point is not valid authored-Hson trivia.
 
 **Source:**
 
@@ -1488,7 +1488,7 @@ This code point is not valid authored-HSON trivia.
 
 **Override — V / I / ?:** ` `
 
-This code point is not valid authored-HSON trivia.
+This code point is not valid authored-Hson trivia.
 
 **Source:**
 
@@ -1509,7 +1509,7 @@ This code point is not valid authored-HSON trivia.
 
 **Override — V / I / ?:** ` `
 
-This code point is not valid authored-HSON trivia.
+This code point is not valid authored-Hson trivia.
 
 **Source:**
 
@@ -1532,7 +1532,7 @@ This code point is not valid authored-HSON trivia.
 
 **Override — V / I / ?:** ` `
 
-This code point is not valid authored-HSON trivia.
+This code point is not valid authored-Hson trivia.
 
 **Source:**
 
@@ -1555,7 +1555,7 @@ This code point is not valid authored-HSON trivia.
 
 **Override — V / I / ?:** ` `
 
-This code point is not valid authored-HSON trivia.
+This code point is not valid authored-Hson trivia.
 
 **Source:**
 
@@ -1576,7 +1576,7 @@ This code point is not valid authored-HSON trivia.
 
 **Override — V / I / ?:** ` `
 
-This code point is not valid authored-HSON trivia.
+This code point is not valid authored-Hson trivia.
 
 **Source:**
 
@@ -1597,7 +1597,7 @@ This code point is not valid authored-HSON trivia.
 
 **Override — V / I / ?:** ` `
 
-This code point is not valid authored-HSON trivia.
+This code point is not valid authored-Hson trivia.
 
 **Source:**
 
@@ -1611,7 +1611,7 @@ This code point is not valid authored-HSON trivia.
 
 **Notes:**
 
-I can't read any of these really but I trust your judgement. if it's not JSON it's not HSON (unless it's HTML)
+I can't read any of these really but I trust your judgement. if it's not JSON it's not Hson (unless it's HTML)
 
 
 <!-- family:end unsupported-whitespace -->
@@ -1621,7 +1621,7 @@ I can't read any of these really but I trust your judgement. if it's not JSON it
 
 ### Family: Accepted ordinary quoted-string escape dispatch
 
-**Shared rule:** Each displayed JSON escape is accepted in a quoted HSON string.
+**Shared rule:** Each displayed JSON escape is accepted in a quoted Hson string.
 
 **Family verdict — V / I / ?:** `V`
 
@@ -1635,7 +1635,7 @@ Blank family and override fields mean not reviewed.
 
 **Override — V / I / ?:** ` `
 
-This displayed escape spelling is accepted inside a quoted HSON string.
+This displayed escape spelling is accepted inside a quoted Hson string.
 
 **Source:** `"\""`
 
@@ -1650,7 +1650,7 @@ This displayed escape spelling is accepted inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This displayed escape spelling is accepted inside a quoted HSON string.
+This displayed escape spelling is accepted inside a quoted Hson string.
 
 **Source:** `"\\"`
 
@@ -1665,7 +1665,7 @@ This displayed escape spelling is accepted inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This displayed escape spelling is accepted inside a quoted HSON string.
+This displayed escape spelling is accepted inside a quoted Hson string.
 
 **Source:** `"\/"`
 
@@ -1680,7 +1680,7 @@ This displayed escape spelling is accepted inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This displayed escape spelling is accepted inside a quoted HSON string.
+This displayed escape spelling is accepted inside a quoted Hson string.
 
 **Source:** `"\b"`
 
@@ -1695,7 +1695,7 @@ This displayed escape spelling is accepted inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This displayed escape spelling is accepted inside a quoted HSON string.
+This displayed escape spelling is accepted inside a quoted Hson string.
 
 **Source:** `"\f"`
 
@@ -1710,7 +1710,7 @@ This displayed escape spelling is accepted inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This displayed escape spelling is accepted inside a quoted HSON string.
+This displayed escape spelling is accepted inside a quoted Hson string.
 
 **Source:** `"\n"`
 
@@ -1725,7 +1725,7 @@ This displayed escape spelling is accepted inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This displayed escape spelling is accepted inside a quoted HSON string.
+This displayed escape spelling is accepted inside a quoted Hson string.
 
 **Source:** `"\r"`
 
@@ -1740,7 +1740,7 @@ This displayed escape spelling is accepted inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This displayed escape spelling is accepted inside a quoted HSON string.
+This displayed escape spelling is accepted inside a quoted Hson string.
 
 **Source:** `"\t"`
 
@@ -1755,7 +1755,7 @@ This displayed escape spelling is accepted inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This displayed escape spelling is accepted inside a quoted HSON string.
+This displayed escape spelling is accepted inside a quoted Hson string.
 
 **Source:** `"end\t"`
 
@@ -1770,7 +1770,7 @@ This displayed escape spelling is accepted inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This displayed escape spelling is accepted inside a quoted HSON string.
+This displayed escape spelling is accepted inside a quoted Hson string.
 
 **Source:** `<e "x\t"/>`
 
@@ -1782,7 +1782,7 @@ This displayed escape spelling is accepted inside a quoted HSON string.
 
 ### Family: Accepted quoted-string Unicode boundaries
 
-**Shared rule:** Each complete four-hex-digit Unicode escape sequence is accepted in a quoted HSON string.
+**Shared rule:** Each complete four-hex-digit Unicode escape sequence is accepted in a quoted Hson string.
 
 **Family verdict — V / I / ?:** ` `
 
@@ -1796,7 +1796,7 @@ Blank family and override fields mean not reviewed.
 
 **Override — V / I / ?:** ` `
 
-This displayed escape spelling is accepted inside a quoted HSON string.
+This displayed escape spelling is accepted inside a quoted Hson string.
 
 **Source:** `"\u0061"`
 
@@ -1811,7 +1811,7 @@ This displayed escape spelling is accepted inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This displayed escape spelling is accepted inside a quoted HSON string.
+This displayed escape spelling is accepted inside a quoted Hson string.
 
 **Source:** `"\u006A"`
 
@@ -1826,7 +1826,7 @@ This displayed escape spelling is accepted inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This displayed escape spelling is accepted inside a quoted HSON string.
+This displayed escape spelling is accepted inside a quoted Hson string.
 
 **Source:** `"\u00aF"`
 
@@ -1841,7 +1841,7 @@ This displayed escape spelling is accepted inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This displayed escape spelling is accepted inside a quoted HSON string.
+This displayed escape spelling is accepted inside a quoted Hson string.
 
 **Source:** `"\u0000"`
 
@@ -1856,7 +1856,7 @@ This displayed escape spelling is accepted inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This displayed escape spelling is accepted inside a quoted HSON string.
+This displayed escape spelling is accepted inside a quoted Hson string.
 
 **Source:** `"\u001F"`
 
@@ -1871,7 +1871,7 @@ This displayed escape spelling is accepted inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This displayed escape spelling is accepted inside a quoted HSON string.
+This displayed escape spelling is accepted inside a quoted Hson string.
 
 **Source:** `"\u007F"`
 
@@ -1886,7 +1886,7 @@ This displayed escape spelling is accepted inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This displayed escape spelling is accepted inside a quoted HSON string.
+This displayed escape spelling is accepted inside a quoted Hson string.
 
 **Source:** `"\u0080"`
 
@@ -1901,7 +1901,7 @@ This displayed escape spelling is accepted inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This displayed escape spelling is accepted inside a quoted HSON string.
+This displayed escape spelling is accepted inside a quoted Hson string.
 
 **Source:** `"\u00FF"`
 
@@ -1916,7 +1916,7 @@ This displayed escape spelling is accepted inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This displayed escape spelling is accepted inside a quoted HSON string.
+This displayed escape spelling is accepted inside a quoted Hson string.
 
 **Source:** `"\u0100"`
 
@@ -1931,7 +1931,7 @@ This displayed escape spelling is accepted inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This displayed escape spelling is accepted inside a quoted HSON string.
+This displayed escape spelling is accepted inside a quoted Hson string.
 
 **Source:** `"\u2028"`
 
@@ -1948,7 +1948,7 @@ This displayed escape spelling is accepted inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This displayed escape spelling is accepted inside a quoted HSON string.
+This displayed escape spelling is accepted inside a quoted Hson string.
 
 **Source:** `"\u2029"`
 
@@ -1965,7 +1965,7 @@ This displayed escape spelling is accepted inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This displayed escape spelling is accepted inside a quoted HSON string.
+This displayed escape spelling is accepted inside a quoted Hson string.
 
 **Source:** `"\uD800"`
 
@@ -1982,7 +1982,7 @@ This displayed escape spelling is accepted inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This displayed escape spelling is accepted inside a quoted HSON string.
+This displayed escape spelling is accepted inside a quoted Hson string.
 
 **Source:** `"\uDC00"`
 
@@ -1999,7 +1999,7 @@ This displayed escape spelling is accepted inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This displayed escape spelling is accepted inside a quoted HSON string.
+This displayed escape spelling is accepted inside a quoted Hson string.
 
 **Source:** `"\uD83D\uDE00"`
 
@@ -2014,7 +2014,7 @@ This displayed escape spelling is accepted inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This displayed escape spelling is accepted inside a quoted HSON string.
+This displayed escape spelling is accepted inside a quoted Hson string.
 
 **Source:** `"\u0041\u0042"`
 
@@ -2267,7 +2267,7 @@ Blank family and override fields mean not reviewed.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2288,7 +2288,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2309,7 +2309,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2330,7 +2330,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2351,7 +2351,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2372,7 +2372,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2393,7 +2393,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2414,7 +2414,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2435,7 +2435,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2456,7 +2456,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2477,7 +2477,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2498,7 +2498,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2519,7 +2519,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2540,7 +2540,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2561,7 +2561,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2582,7 +2582,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2603,7 +2603,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2624,7 +2624,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2645,7 +2645,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2666,7 +2666,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2687,7 +2687,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2708,7 +2708,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2729,7 +2729,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2750,7 +2750,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2771,7 +2771,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2792,7 +2792,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2813,7 +2813,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2834,7 +2834,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2855,7 +2855,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2876,7 +2876,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2897,7 +2897,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2918,7 +2918,7 @@ This raw C0 code unit is invalid inside a quoted HSON string.
 
 **Override — V / I / ?:** ` `
 
-This raw C0 code unit is invalid inside a quoted HSON string.
+This raw C0 code unit is invalid inside a quoted Hson string.
 
 **Source:**
 
@@ -2954,7 +2954,7 @@ attribute, and flag names are presently proposed invalid.
 
 **Verdict — V / I / ?:** ` V`
 
-A nonempty backtick name is admitted as an HSON element name.
+A nonempty backtick name is admitted as an Hson element name.
 
 **Source:** ``<`x y`/>``
 
@@ -3011,8 +3011,8 @@ An empty decoded object-property key is valid.
  I'm not sure why--this seems very wrong but it's also dealing with  questions of backticks and structure and so. I think we got confused here. I think we mean this:
  `<`` 1>`
  `<`tick\`name` 1>`
- and generally these examples seem valid overall. 
- HOWEVER: I am not going comment on these examples individually because the backtickspam is very confusing both to myself and possibly agents. I don't want to say 'valid' to something like this: ```<`` 1>``` and then have to spend the rest of HSON dismabiguating that this ```<`` 1>``` in fact isn't valid but it was trying to be and I knew what it meant. 
+ and generally these examples seem valid overall.
+ HOWEVER: I am not going comment on these examples individually because the backtickspam is very confusing both to myself and possibly agents. I don't want to say 'valid' to something like this: ```<`` 1>``` and then have to spend the rest of Hson dismabiguating that this ```<`` 1>``` in fact isn't valid but it was trying to be and I knew what it meant.
 
 **Family verdict — V / I / ?:** ` `
 
@@ -3136,7 +3136,7 @@ This displayed escape spelling is accepted inside a backtick object-property nam
 
 **Family verdict — V / I / ?:** `V `
 
-**USER NOTE:** --> once again the backticks are weird here; it looks like your proposals are correct but I don't want to appear to bless invalid backticks 
+**USER NOTE:** --> once again the backticks are weird here; it looks like your proposals are correct but I don't want to appear to bless invalid backticks
 
 A family verdict applies to every blank override below. An individual override wins.
 Blank family and override fields mean not reviewed.
@@ -4424,7 +4424,7 @@ This raw C0 code unit is invalid inside a backtick name.
 <!-- family:end backtick-name-raw-c0 -->
 
 
-## 17. Invalid HSON object grammar
+## 17. Invalid Hson object grammar
 
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.reject.literal.object.attribute-syntax -->
@@ -4524,7 +4524,7 @@ After some thought -- this must indeed be invalid, because then you would have t
 
 **Verdict — V / I / ?:** `I `
 
-Object-property QUIDs do not exist in authored HSON///_obj yes correct only _hson_elem
+Object-property QUIDs do not exist in authored Hson///_obj yes correct only _hson_elem
 
 **Source:** `<a @0000000000000001 1>`
 
@@ -4533,7 +4533,7 @@ Object-property QUIDs do not exist in authored HSON///_obj yes correct only _hso
 **Notes:**
 
 
-## 18. Invalid HSON array grammar
+## 18. Invalid Hson array grammar
 
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.reject.literal.array.mismatched-bracket -->
@@ -4594,7 +4594,7 @@ Two array commas cannot omit an item.
 **Notes:**
 
 
-## 19. Invalid HSON element grammar
+## 19. Invalid Hson element grammar
 
 <!-- review-meta: source=inline; review=standalone; attention=Duplicate declaration behavior. -->
 <!-- authored-case:hson.reject.literal.element.duplicate-attribute -->
@@ -4655,7 +4655,7 @@ Whitespace cannot split an element closer.
 **Current proposal:** Invalid
 
 **Notes:**
-Nah? It's just a space? this feels like trivia to me. what's the argument against this? 
+Nah? It's just a space? this feels like trivia to me. what's the argument against this?
 
 ///-> a ground rule is emerging: SPACES ARE TRIVIA HERE:
 - before: tag, attribute, flag, "content", > /// SPACE HERE ARE VALID
@@ -4755,8 +4755,8 @@ flags may never be backticked or quoted ever regardless
 ## 20. Root and structural-mode failures
 
 ```hson
-<a 1>     // current proposal: valid HSON object
-<a 1/>    // current proposal: invalid HSON element typed content
+<a 1>     // current proposal: valid Hson object
+<a 1/>    // current proposal: invalid Hson element typed content
 
 <a/><b/>  // current proposal: valid element fragment
 <a/><b 2> // current proposal: invalid mixed modes
@@ -4770,7 +4770,7 @@ versus mixed root modes visible. The exact descriptors also appear below.
 
 **Verdict — V / I / ?:** `I `
 
-An HSON object property cannot contain an element-mode value.
+An Hson object property cannot contain an element-mode value.
 
 **Source:** `<a <e/>>`
 
@@ -4787,7 +4787,7 @@ An HSON object property cannot contain an element-mode value.
 
 **Verdict — V / I / ?:** `I `
 
-Numeric typed content beneath an HSON element rejects.
+Numeric typed content beneath an Hson element rejects.
 
 **Source:** `<e 1/>`
 
@@ -4821,7 +4821,7 @@ An array cannot contain element-mode content.
 
 **Verdict — V / I / ?:** `I `
 
-An HSON element cannot contain an array.
+An Hson element cannot contain an array.
 
 **Source:** `<e [1]/>`
 
@@ -4838,7 +4838,7 @@ An HSON element cannot contain an array.
 
 **Verdict — V / I / ?:** ` I`
 
-An HSON element cannot contain object structure.
+An Hson element cannot contain object structure.
 
 **Source:** `<e <b 1>/>`
 
@@ -4881,7 +4881,7 @@ Element and object root modes cannot mix.
 **Current proposal:** Invalid
 
 **Notes:**
-I am on the fence here. I think eventually they will coexist, some day. Honestly as long as there's never any nesting of obj and elem --just neighbors I wouldn't want to rule this out totally as a whole-graph storage approach. 
+I am on the fence here. I think eventually they will coexist, some day. Honestly as long as there's never any nesting of obj and elem --just neighbors I wouldn't want to rule this out totally as a whole-graph storage approach.
 
 UNless there's a footgun I don't see
 ---

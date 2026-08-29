@@ -132,7 +132,7 @@ function mapPoint(
   });
 }
 
-/** Map authoritative HSON-relative TransformError evidence into original host source. */
+/** Map authoritative Hson-relative TransformError evidence into original host source. */
 export function map_transform_error_to_embedded_source(
   error: unknown,
   descriptor: unknown,

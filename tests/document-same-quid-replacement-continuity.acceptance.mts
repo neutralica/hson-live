@@ -465,7 +465,7 @@ check("fresh runtime may admit equal A bytes without reconstructing the old exac
   assert.equal(_lookup_livetree_runtime_test_node(freshRuntime, A), freshTree.node);
 });
 
-check("independently active runtime A blocks Reflection before projected mutation", () => {
+check("independently active runtime A blocks Reflection before data mutation", () => {
   const A = "00000820r";
   const runtime = _create_livetree_runtime_test_handle();
   const foreign = _create_livetree_for_runtime_test(runtime, projected_element(`<aside @${A}/>`));

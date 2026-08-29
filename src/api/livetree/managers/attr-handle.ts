@@ -277,7 +277,7 @@ function normalize_attr_name(tree: LiveTree, input: unknown, operation: string):
     throw attr_error(tree, LIVETREE_PROTECTED_ATTRIBUTE_ERROR_CODE, operation, key, "system metadata is protected");
   }
   if (!is_public_attr_name(key)) {
-    throw attr_error(tree, LIVETREE_INVALID_ATTRIBUTE_NAME_ERROR_CODE, operation, key, "name is not a canonical bare HSON name");
+    throw attr_error(tree, LIVETREE_INVALID_ATTRIBUTE_NAME_ERROR_CODE, operation, key, "name is not a canonical bare Hson name");
   }
   return key;
 }

@@ -389,7 +389,7 @@ await check("creation and load for one ID share one deterministic in-flight host
   await store.unload("creation-race");
 });
 
-await check("restored authority serves HSON, view-state, and replay recovery", async () => {
+await check("restored authority serves Hson, view-state, and replay recovery", async () => {
   const adapter = new MemoryPersistenceAdapter();
   const store = create_livehost_persistent_store(adapter);
   const created = await store.create("recovery-after-load", { map: element() });
@@ -481,7 +481,7 @@ await check("host destruction waits for an active durable append before releasin
   assert.equal(map.document.attrs.set(root, "released", true).rev, 2);
 });
 
-await check("ordinary constructor and projected maps cannot opt into persistence", async () => {
+await check("ordinary constructor and data maps cannot opt into persistence", async () => {
   const adapter = new MemoryPersistenceAdapter();
   assert.throws(() => hson.locus.create({ map: element(), persistence: adapter }));
   await assert.rejects(

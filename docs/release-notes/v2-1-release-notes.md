@@ -37,7 +37,7 @@ Improved
 
 HTML parsing resilience
 
-The HTML ingestion pipeline was hardened to better tolerate malformed input while still producing valid HSON structures.
+The HTML ingestion pipeline was hardened to better tolerate malformed input while still producing valid Hson structures.
 
 Improvements include:
 	•	stronger attribute parsing

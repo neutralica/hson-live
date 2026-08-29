@@ -47,7 +47,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "core.hson-number",
       subject: "Core",
-      displayName: "HSON numeric admission",
+      displayName: "Hson numeric admission",
       packageScript: "test:hson-number",
       repositoryModule: "tests/hson-number.acceptance.mts",
       runtime: "node",
@@ -56,7 +56,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "transform.hson-tokenizer",
       subject: "Transform",
-      displayName: "HSON tokenizer",
+      displayName: "Hson tokenizer",
       packageScript: "test:hson-tokenizer",
       repositoryModule: "tests/hson-tokenizer.acceptance.mts",
       runtime: "node",
@@ -65,7 +65,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "transform.hson-tagged-template",
       subject: "Transform",
-      displayName: "HSON tagged-template admission",
+      displayName: "Hson tagged-template admission",
       packageScript: "test:hson-tagged-template",
       repositoryModule: "tests/hson-tagged-template.acceptance.mts",
       runtime: "node",
@@ -74,7 +74,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "transform.embedded-hson-diagnostic-mapping",
       subject: "Transform",
-      displayName: "Embedded HSON diagnostic mapping",
+      displayName: "Embedded Hson diagnostic mapping",
       packageScript: "test:embedded-hson-diagnostic-mapping",
       repositoryModule: "tests/embedded-hson-diagnostic-mapping.acceptance.mts",
       runtime: "node",
@@ -83,7 +83,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "transform.hson-tagged-template-discovery",
       subject: "Transform",
-      displayName: "HSON tagged-template discovery",
+      displayName: "Hson tagged-template discovery",
       packageScript: "test:hson-tagged-template-discovery",
       repositoryModule: "tests/hson-tagged-template-discovery.acceptance.mts",
       runtime: "node",
@@ -92,7 +92,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "transform.hson-quoted-name-acceptance",
       subject: "Transform",
-      displayName: "HSON single-quoted name acceptance and canonicalization",
+      displayName: "Hson single-quoted name acceptance and canonicalization",
       packageScript: "test:hson-quoted-name-acceptance",
       repositoryModule: "tests/hson-quoted-name-acceptance.acceptance.mts",
       runtime: "node",
@@ -101,7 +101,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "transform.hson-quoted-name-rejection",
       subject: "Transform",
-      displayName: "HSON quoted-name rejection and legacy syntax",
+      displayName: "Hson quoted-name rejection and legacy syntax",
       packageScript: "test:hson-quoted-name-rejection",
       repositoryModule: "tests/hson-quoted-name-rejection.acceptance.mts",
       runtime: "node",
@@ -110,7 +110,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "transform.hson-structural-mode",
       subject: "Transform",
-      displayName: "HSON canonical structural mode",
+      displayName: "Hson canonical structural mode",
       packageScript: "test:hson-structural-mode",
       repositoryModule: "tests/hson-structural-mode.acceptance.mts",
       runtime: "node",
@@ -119,7 +119,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "transform.hson-root-boundary",
       subject: "Transform",
-      displayName: "HSON root detachment and source shaping",
+      displayName: "Hson root detachment and source shaping",
       packageScript: "test:hson-root-boundary",
       repositoryModule: "tests/hson-root-boundary.acceptance.mts",
       runtime: "node",
@@ -128,7 +128,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "transform.hson-source-provenance-core",
       subject: "Transform",
-      displayName: "HSON source provenance core",
+      displayName: "Hson source provenance core",
       packageScript: "test:hson-source-provenance-core",
       repositoryModule: "tests/hson-source-provenance-core.acceptance.mts",
       runtime: "node",
@@ -137,7 +137,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "transform.hson-source-provenance-parser",
       subject: "Transform",
-      displayName: "HSON source provenance parser",
+      displayName: "Hson source provenance parser",
       packageScript: "test:hson-source-provenance-parser",
       repositoryModule: "tests/hson-source-provenance-parser.acceptance.mts",
       runtime: "node",
@@ -146,7 +146,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "transform.hson-source-provenance-boundary",
       subject: "Transform",
-      displayName: "HSON source provenance boundary and canonicalization",
+      displayName: "Hson source provenance boundary and canonicalization",
       packageScript: "test:hson-source-provenance-boundary",
       repositoryModule: "tests/hson-source-provenance-boundary.acceptance.mts",
       runtime: "node",
@@ -171,15 +171,15 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       collections: ["livemap", "schema", "source-provenance", "document", "internal"],
     }),
     launcher({
-      id: "schema-hson-graph", subject: "LiveMap", displayName: "Authoritative HSON Schema graph validation",
+      id: "schema-hson-graph", subject: "LiveMap", displayName: "Authoritative Hson Schema graph validation",
       packageScript: "test:schema-hson-graph", repositoryModule: "tests/schema-hson-graph.acceptance.mts", runtime: "node", collections: ["schema", "internal"],
     }),
     launcher({
-      id: "hson-authoring-discovery", subject: "Transform", displayName: "HSON authoring binding migration",
+      id: "hson-authoring-discovery", subject: "Transform", displayName: "Hson authoring binding migration",
       packageScript: "test:hson-authoring-discovery", repositoryModule: "tests/hson-authoring-discovery.acceptance.mts", runtime: "node", collections: ["schema", "authoring", "public-boundary"],
     }),
     launcher({
-      id: "schema-hson-public", subject: "LiveMap", displayName: "HSON Schema public facade boundaries",
+      id: "schema-hson-public", subject: "LiveMap", displayName: "Hson Schema public facade boundaries",
       packageScript: "test:schema-hson-public", repositoryModule: "tests/schema-hson-public.acceptance.mts", runtime: "node", collections: ["schema", "public-boundary"],
     }),
     launcher({
@@ -227,7 +227,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:schema-d4-performance", repositoryModule: "tests/schema-d4-performance.acceptance.mts", runtime: "node", collections: ["schema", "performance", "internal"],
     }),
     launcher({
-      id: "hson-d5-mapping", subject: "Transform", displayName: "D5 generated HSON to template mapping",
+      id: "hson-d5-mapping", subject: "Transform", displayName: "D5 generated Hson to template mapping",
       packageScript: "test:hson-d5-mapping", repositoryModule: "tests/hson-d5-mapping.acceptance.mts", runtime: "node", collections: ["hson", "authoring", "internal"],
     }),
     launcher({
@@ -269,7 +269,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "transform.hson-serializer",
       subject: "Transform",
-      displayName: "HSON serializer",
+      displayName: "Hson serializer",
       packageScript: "test:hson-serializer",
       repositoryModule: "tests/hson-serializer.acceptance.mts",
       runtime: "node",
@@ -296,7 +296,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "transform.binary-hson-vectors",
       subject: "Transform",
-      displayName: "Canonical Binary HSON golden vectors",
+      displayName: "Canonical Binary Hson golden vectors",
       packageScript: "test:binary-hson-vectors",
       repositoryModule: "tests/binary-hson.acceptance.mts",
       runtime: "node",
@@ -305,7 +305,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "transform.binary-hson-rejection",
       subject: "Transform",
-      displayName: "Strict Binary HSON rejection and resource safety",
+      displayName: "Strict Binary Hson rejection and resource safety",
       packageScript: "test:binary-hson-rejection",
       repositoryModule: "tests/binary-hson-rejection.acceptance.mts",
       runtime: "node",
@@ -350,7 +350,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "core.canonical-hson-equality",
       subject: "Core",
-      displayName: "Canonical HSON equality",
+      displayName: "Canonical Hson equality",
       packageScript: "test:canonical-hson-equality",
       repositoryModule: "tests/canonical-hson-equality.acceptance.mts",
       runtime: "node",
@@ -404,7 +404,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "transform.certified-authored-hson-corpus",
       subject: "Transform",
-      displayName: "Certified authored-HSON corpus",
+      displayName: "Certified authored-Hson corpus",
       packageScript: "test:certified-authored-hson-corpus",
       repositoryModule: "tests/certified-authored-hson-corpus.acceptance.mts",
       runtime: "node",
@@ -719,7 +719,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "livemap.projected-rename-intent",
       subject: "LiveMap",
-      displayName: "Projected object rename intent",
+      displayName: "Data object rename intent",
       packageScript: "test:livemap-projected-rename-intent",
       repositoryModule: "tests/livemap-projected-rename-intent.acceptance.mts",
       runtime: "node",
@@ -728,7 +728,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "livemap.projected-array-move-intent",
       subject: "LiveMap",
-      displayName: "Projected array move intent",
+      displayName: "Data array move intent",
       packageScript: "test:livemap-projected-array-move-intent",
       repositoryModule: "tests/livemap-projected-array-move-intent.acceptance.mts",
       runtime: "node",
@@ -746,7 +746,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "livemap.projected-identity-acquisition",
       subject: "LiveMap",
-      displayName: "Internal sparse projected identity acquisition",
+      displayName: "Internal sparse data identity acquisition",
       packageScript: "test:livemap-projected-identity-acquisition",
       repositoryModule: "tests/livemap-projected-identity-acquisition.acceptance.mts",
       runtime: "node",
@@ -755,7 +755,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "livemap.projected-identity-lifecycle",
       subject: "LiveMap",
-      displayName: "Active-epoch projected identity handle lifecycle",
+      displayName: "Active-epoch data identity handle lifecycle",
       packageScript: "test:livemap-projected-identity-lifecycle",
       repositoryModule: "tests/livemap-projected-identity-lifecycle.acceptance.mts",
       runtime: "node",
@@ -764,7 +764,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "livemap.projected-identity-closure",
       subject: "LiveMap",
-      displayName: "Projected identity compatibility and system closure",
+      displayName: "Data identity compatibility and system closure",
       packageScript: "test:livemap-projected-identity-closure",
       repositoryModule: "tests/livemap-projected-identity-closure.acceptance.mts",
       runtime: "node",
@@ -1151,7 +1151,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "livemap.schema-owner-contract",
       subject: "LiveMap",
-      displayName: "Permanent projected schema owner contract",
+      displayName: "Permanent data schema owner contract",
       packageScript: "test:livemap-schema-owner-contract",
       repositoryModule: "tests/livemap-schema-owner-contract.acceptance.mts",
       runtime: "node",
@@ -1358,7 +1358,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "locus.bootstrap",
       subject: "Locus",
-      displayName: "Locus HTTP HSON bootstrap",
+      displayName: "Locus HTTP Hson bootstrap",
       packageScript: "test:locus-bootstrap",
       repositoryModule: "tests/locus-bootstrap.acceptance.mts",
       runtime: "node-real-websocket",

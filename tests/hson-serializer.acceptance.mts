@@ -143,7 +143,7 @@ function onlyElement(node: HsonNode): HsonNode {
   return node.$_content[0] as HsonNode;
 }
 
-check("official HSON serialization remains an exact primitive string", () => {
+check("official Hson serialization remains an exact primitive string", () => {
   const node = parse(`<panel "ready"/>`);
   const direct = serialize_hson(node);
   const fluent = hson.fromNode(node).toHson().serialize();
@@ -153,7 +153,7 @@ check("official HSON serialization remains an exact primitive string", () => {
   assert.deepEqual(parse(fluent), node);
 });
 
-check("canonicalize returns canonical valid HSON as a primitive string", () => {
+check("canonicalize returns canonical valid Hson as a primitive string", () => {
   const normalized = canonicalize(`<panel "ready"/>`);
   const named = canonicalize(`<panel "ready"/>`);
   assert.equal(typeof normalized, "string");
@@ -263,7 +263,7 @@ check("fromHson.toNode returns the detached semantic graph directly", () => {
   });
 });
 
-check("HSON source supports direct nodes and HSON reserialization without parse", () => {
+check("Hson source supports direct nodes and Hson reserialization without parse", () => {
   const source = hson.fromHson(`<name "Phillip">`);
   assert.equal("toNode" in source, true);
   assert.equal("toHson" in source, true);
@@ -285,7 +285,7 @@ check("normalized JSON and node sources expose direct canonical nodes", () => {
   assert.equal(nodeSource.toNode(), jsonNode);
 });
 
-check("HSON-source readable and compact serialization remain available", () => {
+check("Hson-source readable and compact serialization remain available", () => {
   const source = hson.fromHson(`<p "first" <em "middle"/> "last"/>`);
   assert.equal(
     source.toHson().serialize(),
@@ -298,7 +298,7 @@ check("HSON-source readable and compact serialization remain available", () => {
   assert.equal("parse" in source.toHson().withOptions({ noBreak: true }), false);
 });
 
-check("fromHson.toNode accepts equivalent multiline and compact HSON", () => {
+check("fromHson.toNode accepts equivalent multiline and compact Hson", () => {
   const multiline = `<p\n  "first"\n  <em "middle"/>\n  "last"\n/>`;
   const compactSource = `<p "first" <em "middle"/> "last"/>`;
   assert.deepEqual(hson.fromHson(multiline).toNode(), hson.fromHson(compactSource).toNode());
@@ -334,7 +334,7 @@ check("compact serializer output reparses through fromHson.toNode", () => {
   assert.deepEqual(reparsed, node);
 });
 
-check("HSON serialization is lazy after toHson", () => {
+check("Hson serialization is lazy after toHson", () => {
   const node = parse(`<tag "before"/>`);
   const builder = hson.fromNode(node).toHson();
   const tag = node.$_content[0] as HsonNode;
@@ -517,7 +517,7 @@ check("parsed noQuid graph equals the graph with only QUID fields removed", () =
   assert.deepEqual(parse(wire), clone_without_quids(node));
 });
 
-check("native HSON array order regenerates canonical positional indexes", () => {
+check("native Hson array order regenerates canonical positional indexes", () => {
   const node = parse(`«"a","b",<name "Ada">»`);
   const wire = hson.fromNode(node).toHson().noQuid().serialize();
   const reparsed = parse(wire);
@@ -630,7 +630,7 @@ check("attribute wire canonicalization does not mutate source values", () => {
   assert.equal(onlyElement(node).$_attrs?.missing, null);
 });
 
-check("all HSON option combinations retain quoted ordinary attributes", () => {
+check("all Hson option combinations retain quoted ordinary attributes", () => {
   const node = elementWithAttrs({
     count: 2,
     "data-user": "keep",
@@ -1158,7 +1158,7 @@ check("ordinary HTML serialization uses textual primitives and typed inline CSS 
   );
 });
 
-check("nested inline stylesheet structures fail before HSON or HTML emission", () => {
+check("nested inline stylesheet structures fail before Hson or HTML emission", () => {
   const malformed = elementWithAttrs({ style: { _hover: { color: "blue" } } });
   for (const serialize of [
     () => readable(malformed),
@@ -1205,7 +1205,7 @@ check("unsupported structural VSN metadata is rejected with its VSN and path", (
   );
 });
 
-check("unknown reserved standard-tag metadata is default-deny at every HSON boundary", () => {
+check("unknown reserved standard-tag metadata is default-deny at every Hson boundary", () => {
   const node: HsonNode = {
     $_tag: "_hson_elem",
     $_content: [{
@@ -1274,7 +1274,7 @@ check("index is string-valued only on _hson_ii and canonical position is enforce
   );
 });
 
-check("direct HSON serialization never silently omits unsupported structural metadata", () => {
+check("direct Hson serialization never silently omits unsupported structural metadata", () => {
   const node: HsonNode = {
     $_tag: "_hson_elem",
     $_content: [{
@@ -1390,7 +1390,7 @@ check("attribute and metadata names use the tokenizer's unquoted name grammar", 
     assert.throws(
       () => hson.fromNode(node).toNode(),
       (cause) => cause instanceof Error
-        && cause.message.includes(`invalid HSON attribute name`)
+        && cause.message.includes(`invalid Hson attribute name`)
         && cause.message.includes(`/tag:tag`),
     );
   }
@@ -1426,7 +1426,7 @@ check("attribute and metadata names use the tokenizer's unquoted name grammar", 
   assert.equal(compact(parse(`<'bad key' "value">`)), `<'bad key' "value">`);
 });
 
-check("finite HSON numbers round-trip and negative zero retains identity", () => {
+check("finite Hson numbers round-trip and negative zero retains identity", () => {
   for (const value of [0, -0, 1.5, Number.MAX_VALUE, Number.MIN_VALUE]) {
     const node: HsonNode = {
       $_tag: "_hson_obj",
@@ -1446,7 +1446,7 @@ check("finite HSON numbers round-trip and negative zero retains identity", () =>
   }
 });
 
-check("non-finite HSON numbers fail node, JSON, and direct serializer admission", () => {
+check("non-finite Hson numbers fail node, JSON, and direct serializer admission", () => {
   for (const value of [Number.NaN, Infinity, -Infinity]) {
     const node: HsonNode = {
       $_tag: "_hson_obj",
@@ -1466,7 +1466,7 @@ check("non-finite HSON numbers fail node, JSON, and direct serializer admission"
       assert.throws(
         operation,
         (cause) => cause instanceof Error
-          && cause.message.includes(`invalid HSON number ${String(value)}`)
+          && cause.message.includes(`invalid Hson number ${String(value)}`)
           && cause.message.includes(`numbers must be finite`),
       );
     }
@@ -1494,7 +1494,7 @@ check("cycles fail deterministically while shared acyclic references serialize b
   assert.notEqual(children[0], children[1]);
 });
 
-check("canonical closure covers every primitive HSON value without wrapper invention", () => {
+check("canonical closure covers every primitive Hson value without wrapper invention", () => {
   const fixtures: ReadonlyArray<readonly [HsonNode, string]> = [
     [{ $_tag: "_hson_str", $_content: [""] }, `""`],
     [{ $_tag: "_hson_str", $_content: ["hello"] }, `"hello"`],
@@ -1576,7 +1576,7 @@ check("canonical closure preserves ordinary attributes, structured style, and QU
   assert.deepEqual(node, before);
 });
 
-check("direct and fluent serializers have equivalent closure for every HSON option", () => {
+check("direct and fluent serializers have equivalent closure for every Hson option", () => {
   for (const node of [
     parse(`<record <name "Ada" active true> items «1,2»>`),
     parse(`<p @000000016 class="copy" "first" <em "middle"/> "last"/>`),
@@ -1657,7 +1657,7 @@ check("invalid roots and malformed structural crossings fail before compatibilit
   assert.throws(() => serialize_hson(crossing), /object property must retain/);
 });
 
-check("object member metadata and QUIDs are outside the HSON serialization domain", () => {
+check("object member metadata and QUIDs are outside the Hson serialization domain", () => {
   const member: HsonNode = {
     $_tag: "member",
     $_meta: { quid: "000000001" },
@@ -1815,7 +1815,7 @@ check("owned scalar relationship, element text, and root-fragment carriers remai
   assert.equal(canonical_hson_graph_equal(rebuilt, rootOwnedFragment), true);
 });
 
-check("direct, universal Worker-safe, and browser facade HSON paths serialize identically", () => {
+check("direct, universal Worker-safe, and browser facade Hson paths serialize identically", () => {
   for (const node of [
     parse(`<record <name "Ada" active true> items «1,2»>`),
     parse(`«<name "Ada">,<name "Lin">»`),
@@ -1847,5 +1847,5 @@ check("representative 500-property document serializes and reparses in both layo
   assert.deepEqual(parse(compact(semantic)), semantic);
 });
 
-process.stdout.write(`# ${checks} HSON serializer checks passed\n`);
+process.stdout.write(`# ${checks} Hson serializer checks passed\n`);
 emit_hson_live_test_completion("transform.hson-serializer", checks, checks, 0);

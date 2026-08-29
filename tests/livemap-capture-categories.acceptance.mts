@@ -158,12 +158,12 @@ check("unsupported admission categories fail structurally", () => {
   );
 });
 
-check("ordinary HSON remains an exact metadata-preserving format", () => {
+check("ordinary Hson remains an exact metadata-preserving format", () => {
   const source = element(`<main @${Q1}/>`);
   assert.equal(canonical_hson_graph_equal(element(captureText(source)).root(), source.root()), true);
 });
 
-check("noQuid HSON remains an identity-free projection", () => {
+check("noQuid Hson remains an identity-free projection", () => {
   const source = element(`<main @${Q1}/>`);
   const wire = hson.fromNode(source.element.node()).toHson().noQuid().serialize();
   const reparsed = element(wire);

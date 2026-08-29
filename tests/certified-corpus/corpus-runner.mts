@@ -120,12 +120,12 @@ function runAcceptedAuthored(entry: AcceptedCorpusCase, atomic: AtomicAssertions
   atomic.equal(strictEqual(actual, entry.expectedGraph), true, entry.id + ": strict expected graph");
   atomic.equal(entry.source, before, entry.id + ": input nonmutation");
   const serializedHson = transform.toHson().serialize();
-  atomic.equal(serializedHson, entry.expectedOutputs.hson, entry.id + ": exact canonical HSON");
+  atomic.equal(serializedHson, entry.expectedOutputs.hson, entry.id + ": exact canonical Hson");
   const reparsed = hsonTransform.fromHson(serializedHson).toNode();
-  atomic.equal(strictEqual(reparsed, entry.expectedGraph), true, entry.id + ": HSON reparse");
+  atomic.equal(strictEqual(reparsed, entry.expectedGraph), true, entry.id + ": Hson reparse");
   atomic.equal(canonicalize(serializedHson), serializedHson, entry.id + ": canonical HsonCanonical idempotence");
-  assertNegativeZeroPaths(atomic, entry, actual, "authored HSON admission");
-  assertNegativeZeroPaths(atomic, entry, reparsed, "canonical HSON reparse");
+  assertNegativeZeroPaths(atomic, entry, actual, "authored Hson admission");
+  assertNegativeZeroPaths(atomic, entry, reparsed, "canonical Hson reparse");
 }
 
 function runAcceptedGraph(entry: AcceptedCorpusCase, atomic: AtomicAssertions): void {
@@ -137,9 +137,9 @@ function runAcceptedGraph(entry: AcceptedCorpusCase, atomic: AtomicAssertions): 
   atomic.equal(strictEqual(admitted, entry.expectedGraph), true, entry.id + ": expected graph");
   atomic.deepEqual(entry.graphIngress, before, entry.id + ": input nonmutation");
   const hson = transform.toHson().serialize();
-  atomic.equal(hson, entry.expectedOutputs.hson, entry.id + ": HSON output");
+  atomic.equal(hson, entry.expectedOutputs.hson, entry.id + ": Hson output");
   const hsonReparsed = hsonTransform.fromHson(hson).toNode();
-  atomic.equal(strictEqual(hsonReparsed, entry.expectedGraph), true, entry.id + ": HSON reparse");
+  atomic.equal(strictEqual(hsonReparsed, entry.expectedGraph), true, entry.id + ": Hson reparse");
   const json = transform.toJson().serialize();
   atomic.equal(json, entry.expectedOutputs.json, entry.id + ": JSON output");
   const jsonReparsed = semanticNode(hsonTransform.fromJson(json).toNode());
@@ -154,7 +154,7 @@ function runAcceptedGraph(entry: AcceptedCorpusCase, atomic: AtomicAssertions): 
     entry.id + ": deterministic outputs",
   );
   assertNegativeZeroPaths(atomic, entry, admitted, "detached graph admission");
-  assertNegativeZeroPaths(atomic, entry, hsonReparsed, "HSON transport");
+  assertNegativeZeroPaths(atomic, entry, hsonReparsed, "Hson transport");
   assertNegativeZeroPaths(atomic, entry, jsonReparsed, "structural JSON transport");
   assertNegativeZeroPaths(atomic, entry, htmlReparsed, "structural HTML transport");
 }

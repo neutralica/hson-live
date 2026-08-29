@@ -1,4 +1,4 @@
-# HSON diagnostic circuit and LiveHost worker audit
+# Hson diagnostic circuit and LiveHost worker audit
 
 Status: read-only architecture and efficiency audit; no implementation is included.
 
@@ -38,7 +38,7 @@ It should not claim that the legacy circuit proves all browser and universal par
 
 ### Public entry points and primary callers
 
-`_circuit_test` and `_compare_nodes` are exported through `hson-live/diagnostics`, not the package root ([diagnostics index](../../src/diagnostics/index.ts#L1-L9), [package export](../../package.json#L61-L64)). Inside `hson-live`, `compare_nodes` is called by the circuit and the separate format test ([format-test caller](../../src/diagnostics/test-format.ts#L85-L101)); the source/reference inventory found no dedicated `hson-live` acceptance caller for `_circuit_test` beyond its export. The demo's transform suite is its substantive test consumer and calls it with explicit direction options, three laps, capture, and verbose diagnostics ([suite builder](../../../hson-demo2/tests/suites/transform/make-transform-suite.ts#L10-L97)); its deterministic hosted-suite registry installs JSON, HTML, HSON, extra, and expected-failure fixture families ([registry](../../../hson-demo2/tests/harness/hosted/deterministic-transform-test-suites.ts#L18-L33)). The generated diagnostic and hosted DOM runners execute that registry ([generated runner](../../../hson-demo2/tests/runners/diagnostics/run-generated-json.node.mts#L1-L25), [hosted compatibility runner](../../../hson-demo2/tests/runners/livehost/run-hosted-dom-compatibility.node.mts#L1-L30)). Hosted runners provide DOM globals around circuit execution, which is necessary for the current browser HTML path.
+`_circuit_test` and `_compare_nodes` are exported through `hson-live/diagnostics`, not the package root ([diagnostics index](../../src/diagnostics/index.ts#L1-L9), [package export](../../package.json#L61-L64)). Inside `hson-live`, `compare_nodes` is called by the circuit and the separate format test ([format-test caller](../../src/diagnostics/test-format.ts#L85-L101)); the source/reference inventory found no dedicated `hson-live` acceptance caller for `_circuit_test` beyond its export. The demo's transform suite is its substantive test consumer and calls it with explicit direction options, three laps, capture, and verbose diagnostics ([suite builder](../../../hson-demo2/tests/suites/transform/make-transform-suite.ts#L10-L97)); its deterministic hosted-suite registry installs JSON, HTML, Hson, extra, and expected-failure fixture families ([registry](../../../hson-demo2/tests/harness/hosted/deterministic-transform-test-suites.ts#L18-L33)). The generated diagnostic and hosted DOM runners execute that registry ([generated runner](../../../hson-demo2/tests/runners/diagnostics/run-generated-json.node.mts#L1-L25), [hosted compatibility runner](../../../hson-demo2/tests/runners/livehost/run-hosted-dom-compatibility.node.mts#L1-L30)). Hosted runners provide DOM globals around circuit execution, which is necessary for the current browser HTML path.
 
 The current parsing panel does not call the circuit. It parses the selected source once, immediately serializes the other representations, and updates on every input event without a debounce or off-main-thread boundary ([panel update path](../../../hson-demo2/src/app/demos/parse/init-pp.ts#L306-L378), [input listeners](../../../hson-demo2/src/app/demos/parse/init-pp.ts#L427-L433)). That explains why the panel can presently show a successful preview without proving reparse closure.
 
@@ -77,13 +77,13 @@ The source for this graph is concentrated in [`test-circuit.ts`](../../src/diagn
 |---|---|---|---|
 | JSON | `hson.fromNode(...).toJson().serialize()` | `hson.fromJson(...).toNode()`, then detach parser carrier | Uses the common Transform facade for JSON. |
 | HTML | `hson.fromNode(...).toHtml().serialize()` | `hson.fromTrustedHtml(...).toNode()`, then detach and normalize transport carrier | Uses the complete browser facade. The facade's trusted HTML function is supplied by `transform.browser`, not the DOM-free `/transform` subpath ([browser import](../../src/hson.ts#L1-L5), [browser constructors](../../src/api/transform/transform.browser.ts#L6-L20), [browser parser's `DOMParser`](../../src/api/transform/parsers/parse-html.ts#L105-L145)). |
-| HSON | `hson.fromNode(...).toHson().serialize()` | `hson.fromHson(...).toNode()` | Uses the common HSON parser/serializer. |
+| Hson | `hson.fromNode(...).toHson().serialize()` | `hson.fromHson(...).toNode()` | Uses the common Hson parser/serializer. |
 
 The browser constructor eventually uses the DOM-based external HTML path; the universal constructor calls `parse_html_string`, which imports `htmlparser2` and performs its own invariant admission ([universal implementation](../../src/api/transform/transform.universal.ts#L80-L107), [universal parser](../../src/api/transform/parsers/parse-html-string.ts#L1-L39)). Therefore, “the current circuit runs in Node” is only true when a DOM host such as jsdom has first installed browser globals. It is not a worker-neutral circuit.
 
 ### Transform work hidden under each emit
 
-Every `SPIN` emit starts at public `fromNode`. The universal implementation normalizes, scans QUIDs, checks invariants, and eagerly computes `JSON.stringify(node)` for the frame even when the requested output is HSON or HTML ([`transform_from_node`](../../src/api/transform/transform.universal.ts#L65-L77)). JSON output then eagerly builds a projected JSON value, while terminal text serialization walks the canonical graph again to retain property sequence ([output construction](../../src/api/transform/constructors/construct-output-2.ts#L59-L78), [JSON render](../../src/api/transform/constructors/construct-render-4.ts#L40-L52)). These costs matter because the circuit repeats them 24 times in a default successful run.
+Every `SPIN` emit starts at public `fromNode`. The universal implementation normalizes, scans QUIDs, checks invariants, and eagerly computes `JSON.stringify(node)` for the frame even when the requested output is Hson or HTML ([`transform_from_node`](../../src/api/transform/transform.universal.ts#L65-L77)). JSON output then eagerly builds a JSON value, while terminal text serialization walks the canonical graph again to retain property sequence ([output construction](../../src/api/transform/constructors/construct-output-2.ts#L59-L78), [JSON render](../../src/api/transform/constructors/construct-render-4.ts#L40-L52)). These costs matter because the circuit repeats them 24 times in a default successful run.
 
 ## 3. Exact operation graph and default count
 
@@ -94,9 +94,9 @@ Every `SPIN` emit starts at public `fromNode`. The universal implementation norm
 | `json` | A string is retained verbatim; any other accepted atom is `JSON.stringify`-ed and labeled JSON. Validation waits for `runRing` entry admission. |
 | `html` | A string is retained verbatim; an `HTMLElement` contributes `outerHTML`; other values fail resolution. |
 | `hson` | Only a string is accepted; other values fail resolution. |
-| `node` | Requires an `HsonNode`, serializes it once to HSON, and runs the ring as HSON entry. |
+| `node` | Requires an `HsonNode`, serializes it once to Hson, and runs the ring as Hson entry. |
 | `dom` | Requires an `HTMLElement`, reads `outerHTML`, and runs the ring as HTML entry. |
-| `auto` | Node → emitted HSON; element → `outerHTML`; non-string JS → `JSON.stringify`; string → JSON shape/native validation first, closing-tag HTML next, then HSON-first/HTML-fallback for other markup. |
+| `auto` | Node → emitted Hson; element → `outerHTML`; non-string JS → `JSON.stringify`; string → JSON shape/native validation first, closing-tag HTML next, then Hson-first/HTML-fallback for other markup. |
 
 The explicit coercions are implemented in [`coerce_entry`](../../src/diagnostics/diagnostics-helpers.ts#L12-L54); auto behavior is in [`resolve_entry`](../../src/diagnostics/test-circuit.ts#L329-L438). Explicit JSON coercion can accept values that `JSON.stringify` cannot faithfully transport or can return `undefined` for; that is a legacy `FixtureAtom` boundary, not a worker task schema to copy.
 
@@ -152,7 +152,7 @@ final: compare CW final node with CCW final node
 | Final CW/CCW comparison | 0 | 0 | 1 |
 | **Grand total** | **24** | **26** | **25** |
 
-For HSON entry, the two directions together perform 12 HSON serializations and 14 HSON parses (the latter includes two entry admissions), plus six serializations and six parses for each of JSON and HTML.
+For Hson entry, the two directions together perform 12 Hson serializations and 14 Hson parses (the latter includes two entry admissions), plus six serializations and six parses for each of JSON and HTML.
 
 The returned final text is the last closure text, and the returned final node is already the parse of that closure. There is no additional hidden “final reparse” after `runRing`; the required final reparses are the three per-direction closure parses ([closure assignment](../../src/diagnostics/test-circuit.ts#L123-L145)).
 
@@ -164,7 +164,7 @@ These totals are maxima for the successful path. A **main-leg** emit or parse ex
 |---|---|---|
 | JSON | `json → html → hson` | `json → hson → html` |
 | HTML | `html → hson → json` | `html → json → hson` |
-| HSON | `hson → json → html` | `hson → html → json` |
+| Hson | `hson → json → html` | `hson → html → json` |
 
 All have the same base counts. The HTML legs in this legacy implementation are browser-facade legs, regardless of the entry format.
 
@@ -179,14 +179,14 @@ Starting from the 24/26/25 base, successful auto resolution adds:
 | Auto input | Extra work before the ring | Effective parser-attempt total |
 |---|---|---:|
 | Valid JSON string | Native `JSON.parse`, then one `SPIN.json.parse` and invariant check | 27 canonical + 1 native JSON parse |
-| HSON-like string accepted as HSON | One `SPIN.hson.parse` and invariant check | 27 canonical |
+| Hson-like string accepted as Hson | One `SPIN.hson.parse` and invariant check | 27 canonical |
 | HTML containing `</` accepted as HTML | One `SPIN.html.parse` and invariant check | 27 canonical |
-| Markup where HSON probe fails and HTML fallback succeeds | One failed HSON parser attempt, then one HTML parse | 28 canonical attempts |
-| `HsonNode` | One HSON serialization to establish entry text | 25 serializations |
+| Markup where Hson probe fails and HTML fallback succeeds | One failed Hson parser attempt, then one HTML parse | 28 canonical attempts |
+| `HsonNode` | One Hson serialization to establish entry text | 25 serializations |
 | `HTMLElement` | An `outerHTML` read | Base parser count |
 | Other JSON-like JS value | One `JSON.stringify` | Base parser count |
 
-The ordering is JSON first, closing-tag HTML next, then HSON before HTML for other markup ([shape tests](../../src/diagnostics/test-circuit.ts#L284-L327), [resolution](../../src/diagnostics/test-circuit.ts#L329-L438)). Explicit-source UI jobs should never pay or depend on this heuristic.
+The ordering is JSON first, closing-tag HTML next, then Hson before HTML for other markup ([shape tests](../../src/diagnostics/test-circuit.ts#L284-L327), [resolution](../../src/diagnostics/test-circuit.ts#L329-L438)). Explicit-source UI jobs should never pay or depend on this heuristic.
 
 Even with `verbose=false`, `_circuit_test` pushes one forced debug trace entry by calling `step_ok` with a separate `{verbose:true}` options object ([forced trace](../../src/diagnostics/test-circuit.ts#L168-L176)). Therefore a “quiet” successful report still owns a trace array and exposes a trace item.
 
@@ -214,7 +214,7 @@ On a successful leg, the implementation establishes that:
 3. the resulting graph passed `assert_invariants`; and
 4. `compare_nodes` considered the previous and parsed graphs equivalent.
 
-The per-lap closure additionally proves that the graph can return to the entry representation and be parsed again. Dual mode probes path dependence by changing the order of JSON/HTML/HSON transitions and comparing final graphs ([circuit contract](../../src/diagnostics/test-circuit.ts#L152-L160), [final comparison](../../src/diagnostics/test-circuit.ts#L223-L229)). These are valuable properties. The weaknesses are in the equality definition, environment selection, failure policy, and reporting—not in the basic idea of repeated source-sensitive closure.
+The per-lap closure additionally proves that the graph can return to the entry representation and be parsed again. Dual mode probes path dependence by changing the order of JSON/HTML/Hson transitions and comparing final graphs ([circuit contract](../../src/diagnostics/test-circuit.ts#L152-L160), [final comparison](../../src/diagnostics/test-circuit.ts#L223-L229)). These are valuable properties. The weaknesses are in the equality definition, environment selection, failure policy, and reporting—not in the basic idea of repeated source-sensitive closure.
 
 ### False-success risks
 
@@ -224,11 +224,11 @@ The per-lap closure additionally proves that the graph can return to the entry r
 | Duplicate property names | Repeated tags overwrite earlier entries in those maps, so duplicate count/value changes can disappear in an already-constructed graph. | Same map construction at [lines 93–96](../../src/diagnostics/compare-nodes.test.ts#L93-L96). Current ordered JSON admission tracks order and duplicate identity so duplicates can be rejected; certification must not weaken that contract ([worker acceptance](../../tests/transform-worker.acceptance.mts#L79-L95)). |
 | Metadata and QUIDs | `compare` checks tags, attrs, and semantic children but never `$_meta`. | [`compare`](../../src/diagnostics/compare-nodes.test.ts#L154-L179). The strict comparator has metadata, QUID, and array-index difference kinds and checks metadata presence/value ([difference kinds](../../src/core/canonical-hson-equal.ts#L4-L20), [metadata comparison](../../src/core/canonical-hson-equal.ts#L201-L227)). |
 | `-0` versus `0` | Leaf and primitive comparison uses `===`; JavaScript considers the two equal. | [leaf equality](../../src/diagnostics/compare-nodes.test.ts#L41-L69), [plain primitive equality](../../src/diagnostics/compare-nodes.test.ts#L192-L210). The strict comparator uses `Object.is` and reports `negative-zero-mismatch` ([strict scalar comparison](../../src/core/canonical-hson-equal.ts#L230-L247)). |
-| CR/LF changes outside HTML | The circuit calls `compare_nodes(a,b,false)` without options, so the comparator's default `allow_html_newline_norm:true` applies to JSON and HSON legs too. | [comparator default](../../src/diagnostics/compare-nodes.test.ts#L310-L321), [circuit call](../../src/diagnostics/test-circuit.ts#L109-L116). A strict certificate should do no comparison-time normalization. |
+| CR/LF changes outside HTML | The circuit calls `compare_nodes(a,b,false)` without options, so the comparator's default `allow_html_newline_norm:true` applies to JSON and Hson legs too. | [comparator default](../../src/diagnostics/compare-nodes.test.ts#L310-L321), [circuit call](../../src/diagnostics/test-circuit.ts#L109-L116). A strict certificate should do no comparison-time normalization. |
 | Structural-mode drift | Trivial `_hson_elem` wrappers and a sole element child are treated as semantically transparent. This can hide representation changes that the current canonical contract classifies as structural-mode differences. | [wrapper helpers](../../src/diagnostics/compare-nodes.test.ts#L25-L39), [use in comparison](../../src/diagnostics/compare-nodes.test.ts#L154-L175), [strict structural mode](../../src/core/canonical-hson-equal.ts#L172-L199). |
 | Inherited/dangerous keys | Attribute and plain-object presence uses `k in object`, and object-valued attributes are copied into a normal `{}` before stringification. Inherited keys and names such as `__proto__` can make the comparison view diverge from own-field semantics. | [attribute comparison](../../src/diagnostics/compare-nodes.test.ts#L109-L139), [plain objects](../../src/diagnostics/compare-nodes.test.ts#L181-L210). The strict comparator uses `Object.hasOwn` ([strict record comparison](../../src/core/canonical-hson-equal.ts#L135-L169)). |
 | Browser/universal conflation | The circuit covers only the browser HTML admission mechanism. A passing result says nothing direct about the DOM-free worker parser. | [SPIN HTML](../../src/diagnostics/test-circuit.ts#L40-L49), [facade distinction](../../src/hson.ts#L37-L64), [universal facade promise](../../src/api/transform/transform.facade.ts#L30-L45). |
-| Non-string source admission | A Node input is first serialized to HSON; an element input is first reduced to `outerHTML`. The circuit compares from that derived text baseline, not against the complete original runtime object. | [auto resolution](../../src/diagnostics/test-circuit.ts#L338-L350), [explicit coercion](../../src/diagnostics/diagnostics-helpers.ts#L12-L50). |
+| Non-string source admission | A Node input is first serialized to Hson; an element input is first reduced to `outerHTML`. The circuit compares from that derived text baseline, not against the complete original runtime object. | [auto resolution](../../src/diagnostics/test-circuit.ts#L338-L350), [explicit coercion](../../src/diagnostics/diagnostics-helpers.ts#L12-L50). |
 
 The strict comparator already present in core is the correct starting point. It returns the first deterministic difference, preserves order, uses own-field checks, distinguishes negative zero, checks metadata/QUID/index, and explicitly performs no normalization or repair ([strict API contract](../../src/core/canonical-hson-equal.ts#L267-L285)). A new engine should depend on that internal primitive. It should not broaden the public diagnostics surface merely to reuse it.
 
@@ -236,7 +236,7 @@ The strict comparator already present in core is the correct starting point. It 
 
 1. **Wrapper collapse is internally inconsistent.** The comparator records a tag mismatch before collapsing a trivial element wrapper, so a pair documented as semantically equivalent can still retain a failure ([tag check and collapse order](../../src/diagnostics/compare-nodes.test.ts#L154-L165), [documented equivalence](../../src/diagnostics/compare-nodes.test.ts#L219-L237)).
 2. **DOM host behavior is part of the result.** Browser engines and jsdom can differ in HTML recovery, case handling, whitespace, and malformed markup. The legacy circuit has no environment identity in its certificate and no universal/browser cross-check.
-3. **Auto mode is intentionally heuristic.** Closing tags force HTML; other markup tries HSON first and HTML second. Valid-looking but ambiguous source can be assigned a mode the author did not intend ([auto resolution](../../src/diagnostics/test-circuit.ts#L352-L430)). The panel already knows its selected editor and should send that explicit format.
+3. **Auto mode is intentionally heuristic.** Closing tags force HTML; other markup tries Hson first and HTML second. Valid-looking but ambiguous source can be assigned a mode the author did not intend ([auto resolution](../../src/diagnostics/test-circuit.ts#L352-L430)). The panel already knows its selected editor and should send that explicit format.
 4. **Stop behavior is inconsistent.** The core default is false, paranoid checking separately defaults its stop expression to true, and dual mode does not stop globally ([core default](../../src/diagnostics/test-circuit.ts#L168-L178), [paranoid stop](../../src/diagnostics/test-circuit.ts#L231-L256)).
 5. **Paranoid checkpoint identity collides.** Entry admission is recorded as lap `0`, entry format, phase `parse`; the first same-format leg in lap 0 uses the same key. Map construction keeps only the later node ([entry mark and leg mark](../../src/diagnostics/test-circuit.ts#L65-L66), [checkpoint map](../../src/diagnostics/test-circuit.ts#L231-L249)).
 
@@ -255,9 +255,9 @@ The table distinguishes necessary source-sensitive work from accidental overhead
 |---|---|---|---|---|
 | Parse the same entry independently for CW and CCW | [`runRing` entry](../../src/diagnostics/test-circuit.ts#L58-L69), [dual calls](../../src/diagnostics/test-circuit.ts#L220-L221) | Redundant if parsers and the engine do not mutate the admitted graph. Preparing once changes failure reporting and could permit cross-direction contamination if mutation exists. | New engine: prepare once, freeze or assert non-mutation, and give each direction an immutable baseline. Compatibility wrapper may preserve legacy behavior. | Saves one full parser/invariant pass per dual job. |
 | Three format legs **plus** a closure leg per lap | [main loop and closure](../../src/diagnostics/test-circuit.ts#L82-L140) | Source-sensitive closure is necessary; the exact four-step scheduling is not obviously minimal. Closure to entry is followed next lap by another same-entry emit/parse. | Define modern lap semantics explicitly. Preserve the legacy wrapper. Prototype a three-transition cycle with a single end-of-cycle entry assertion, then prove it catches the same fixture failures before adoption. | Potentially removes up to one quarter of recurring emit/parse/compare work. Higher semantic risk than other optimizations. |
-| `fromNode` normalization, QUID scan, invariants, and `JSON.stringify` on every emit | [`transform_from_node`](../../src/api/transform/transform.universal.ts#L65-L77) | Public-facade coverage is valuable, but the input-string allocation is unrelated to HSON/HTML output. Bypassing all public logic could hide facade regressions. | First remove or defer unused frame text in Transform itself. If an internal engine uses direct codecs, retain a separate public-facade coverage mode. | Avoids 24 graph stringifications and repeated admission work in the requested successful run. |
-| JSON `.toJson()` creates a value projection, then `.serialize()` walks the graph separately | [JSON selection](../../src/api/transform/constructors/construct-output-2.ts#L59-L68), [JSON terminal](../../src/api/transform/constructors/construct-render-4.ts#L40-L50) | The two representations serve different public terminals, but text-only callers should not need both. | Make projection lazy or select a text-only internal terminal while preserving `.value()` behavior. | Removes six unused projections in the requested HSON-entry run. |
-| Parser invariant check plus `safe_parse` invariant check | [`safe_parse`](../../src/diagnostics/diagnostics-helpers.ts#L84-L104), [universal parser example](../../src/api/transform/parsers/parse-html-string.ts#L1-L3) | Rechecking after detach/transport normalization can be justified for JSON/HTML. An unchanged HSON result is more clearly redundant. | State an invariant boundary contract per parser. Check only after the final normalization stage, or keep an optional paranoid recheck. | One deep validation walk per parse where safely removed. |
+| `fromNode` normalization, QUID scan, invariants, and `JSON.stringify` on every emit | [`transform_from_node`](../../src/api/transform/transform.universal.ts#L65-L77) | Public-facade coverage is valuable, but the input-string allocation is unrelated to Hson/HTML output. Bypassing all public logic could hide facade regressions. | First remove or defer unused frame text in Transform itself. If an internal engine uses direct codecs, retain a separate public-facade coverage mode. | Avoids 24 graph stringifications and repeated admission work in the requested successful run. |
+| JSON `.toJson()` creates a value projection, then `.serialize()` walks the graph separately | [JSON selection](../../src/api/transform/constructors/construct-output-2.ts#L59-L68), [JSON terminal](../../src/api/transform/constructors/construct-render-4.ts#L40-L50) | The two representations serve different public terminals, but text-only callers should not need both. | Make projection lazy or select a text-only internal terminal while preserving `.value()` behavior. | Removes six unused projections in the requested Hson-entry run. |
+| Parser invariant check plus `safe_parse` invariant check | [`safe_parse`](../../src/diagnostics/diagnostics-helpers.ts#L84-L104), [universal parser example](../../src/api/transform/parsers/parse-html-string.ts#L1-L3) | Rechecking after detach/transport normalization can be justified for JSON/HTML. An unchanged Hson result is more clearly redundant. | State an invariant boundary contract per parser. Check only after the final normalization stage, or keep an optional paranoid recheck. | One deep validation walk per parse where safely removed. |
 | Comparator constructs all diffs although the circuit reads only `diffs[0]` | [full traversal](../../src/diagnostics/compare-nodes.test.ts#L72-L107), [first-only consumption](../../src/diagnostics/test-circuit.ts#L109-L113) | Not needed for pass/fail or the current report. Full diff lists can help an offline debugger. | Use `canonical_hson_graph_difference` for first deterministic failure; generate bounded expanded diagnostics only on demand. | Stops at first difference and reduces failure-path allocation. |
 | Capture stores the emitted text and a graph snapshot in `safe_emit`, then stores the same text and parsed graph again after parse | [pre-parse capture](../../src/diagnostics/diagnostics-helpers.ts#L55-L78), [post-parse capture](../../src/diagnostics/test-circuit.ts#L94-L107) | Both before/after graphs can be useful, but the schema omits direction and duplicates large strings. Closure artifacts are not captured. | New engine: one bounded per-step record with IDs, source hash/length, optional before/after witnesses, and explicit direction/phase. Keep legacy report shape in wrapper. | With `times=3, dual=true, capture=true`, avoids much of 36 artifact records' duplicate payload. |
 | Allocate top-level and per-direction arrays even when capture/paranoid are off | [top-level arrays](../../src/diagnostics/test-circuit.ts#L162-L166), [dual arrays](../../src/diagnostics/test-circuit.ts#L202-L218) | Low-risk overhead; usually small compared with parsing. | Allocate lazily only when requested. | Small allocation/GC reduction. |
@@ -269,7 +269,7 @@ The table distinguishes necessary source-sensitive work from accidental overhead
 
 The closure parse itself should **not** be removed simply because the emitted text exists. Serialization success and string equality do not prove that a source-sensitive parser reconstructs the same canonical graph. Optimize scheduling and duplicate admission around the closure, not the last required parse.
 
-The circuit does not accidentally compare detached public JSON values: its carried state remains `HsonNode` throughout. The inefficiency is that the public JSON output builder materializes a projected JavaScript value that the text-only circuit never consumes before the serializer walks the canonical graph again ([JSON builder](../../src/api/transform/constructors/construct-output-2.ts#L59-L68), [JSON serializer](../../src/api/transform/constructors/construct-render-4.ts#L40-L50)).
+The circuit does not accidentally compare detached public JSON values: its carried state remains `HsonNode` throughout. The inefficiency is that the public JSON output builder materializes a data JavaScript value that the text-only circuit never consumes before the serializer walks the canonical graph again ([JSON builder](../../src/api/transform/constructors/construct-output-2.ts#L59-L68), [JSON serializer](../../src/api/transform/constructors/construct-render-4.ts#L40-L50)).
 
 ## 6. Proposed decomposition of the diagnostic circuit
 
@@ -313,7 +313,7 @@ These are design shapes, not proposed public TypeScript names:
 | Direction result | success/failure/superseded state, final graph, final entry-format text identity, operation counts, first failure, bounded step summaries | Until dual comparison/report construction |
 | Circuit result | version/identities, source revision/hash, directional outcomes, strict final comparison, counts/timings, bounded diagnostics | Encoded to LiveHost-safe result |
 
-Only the current canonical graph, current source text while it is being parsed, immutable prepared baseline, first failure, counters/timings, and bounded report records must carry between laps. Discard parser carriers, temporary projected JavaScript values, full comparator traversals, and unrequested intermediate text immediately. A failure should be a discriminated result (`parse`, `serialize`, `invariant`, `compare`, `cancelled`, `timeout`, `internal`) with direction/lap/step/format, portable error code, original-source location when available, generated-source location when the failure belongs to an intermediate, and a bounded source witness. Generated offsets must be labeled as generated; they must not be rewritten as original-source coordinates without an explicit source map.
+Only the current canonical graph, current source text while it is being parsed, immutable prepared baseline, first failure, counters/timings, and bounded report records must carry between laps. Discard parser carriers, temporary data JavaScript values, full comparator traversals, and unrequested intermediate text immediately. A failure should be a discriminated result (`parse`, `serialize`, `invariant`, `compare`, `cancelled`, `timeout`, `internal`) with direction/lap/step/format, portable error code, original-source location when available, generated-source location when the failure belongs to an intermediate, and a bounded source witness. Generated offsets must be labeled as generated; they must not be rewritten as original-source coordinates without an explicit source map.
 
 One directional lap can be a pure, synchronous, environment-neutral state transition **if** all format codecs are injected and are non-mutating. The Node worker supplies the universal HTML codec; a browser compatibility wrapper supplies the browser HTML codec. Yield/cancel boundaries occur immediately before and after each synchronous emit, parse, invariant admission, and comparison. The engine cannot preempt inside one of those calls, so the longest individual call defines cooperative cancellation latency. Browser HTML parsing remains an injected boundary capability and must not be imported by the environment-neutral engine.
 
@@ -385,8 +385,8 @@ A normal Web Worker has no `DOMParser`, and the Node universal parser is intenti
 Minimum defensible policy:
 
 - Worker returns `expectedCanonicalHson` and `htmlBoundaryText` in a bounded, versioned envelope.
-- Browser parses `htmlBoundaryText` through the browser facade and serializes the resulting admitted graph to canonical HSON.
-- Browser compares exact canonical HSON text/graph with the worker expectation; it does not use the permissive legacy `_compare_nodes`.
+- Browser parses `htmlBoundaryText` through the browser facade and serializes the resulting admitted graph to canonical Hson.
+- Browser compares exact canonical Hson text/graph with the worker expectation; it does not use the permissive legacy `_compare_nodes`.
 - A stale revision never changes certificate state, even if the browser parse or network reply cannot be cancelled.
 
 Checking only the last HTML boundary is sufficient **only if** the worker proves that all earlier HTML boundary emissions have converged to the same canonical source/result under the strict universal engine. If distinct HTML boundary texts occur across directions/laps, return a bounded list and check each distinct source in the browser. This avoids turning “one convenient final parse” into an unsupported equivalence claim.
@@ -542,8 +542,8 @@ The goal is to compare semantics-preserving variants, not to set budgets before 
 
 ### Required input classes
 
-- tiny valid HSON;
-- tiny invalid HSON, including early and near-end failures;
+- tiny valid Hson;
+- tiny invalid Hson, including early and near-end failures;
 - ordinary JSON;
 - ordinary HTML;
 - tiny scalars: null, booleans, integers, floats, `0`, `-0`, empty/non-empty strings;
@@ -556,7 +556,7 @@ The goal is to compare semantics-preserving variants, not to set budgets before 
 - duplicate property names where source formats admit them;
 - metadata, QUID, canonical array indexes, root-carrier, and structural-mode cases;
 - HTML attributes, styles, mixed content, void tags, raw-text tags, malformed/recovery cases;
-- HSON authored syntax families and rejection fixtures;
+- Hson authored syntax families and rejection fixtures;
 - isolated high/low surrogates, astral pairs, CR/LF/CRLF, NUL and other control strings;
 - dangerous names such as `__proto__`, `constructor`, and `prototype` in every admitted position;
 - first-leg, mid-lap, closure, and final-direction mismatches;
@@ -586,13 +586,13 @@ Use warm and cold runs, fixed fixture seeds, repeated samples, and environment i
 ## 14. Unresolved decisions
 
 1. **What is one lap?** Keep legacy three legs plus closure, or define a minimal three-transition cycle? This changes operation counts and possibly detection power; decide with fault-seeded fixtures.
-2. **What is the canonical certificate operand?** Strict graph difference is the primary truth; decide whether exact canonical HSON text is also required for all steps or only for cross-runtime transport.
+2. **What is the canonical certificate operand?** Strict graph difference is the primary truth; decide whether exact canonical Hson text is also required for all steps or only for cross-runtime transport.
 3. **How many browser HTML boundaries?** One converged final boundary is cheaper; every distinct boundary is a stronger source-sensitive claim. Measure divergence and source convergence first.
 4. **Does run-global fail-fast replace exhaustive diagnostics in the panel only, or become a new general default?** Keep compatibility until explicitly chosen.
-5. **How should browser-specific normalization be represented?** It must be an explicit admission result or named exception, never a comparator default silently applied to JSON/HSON.
+5. **How should browser-specific normalization be represented?** It must be an explicit admission result or named exception, never a comparator default silently applied to JSON/Hson.
 6. **What survives disconnect?** MVP can let idempotent work finish and expose terminal dedupe status, or cancel app-owned work on session expiry. The UI must not imply resumable progress unless implemented.
 7. **What is the exact superseded outcome contract?** It should settle deterministically without being confused with user error, timeout, crash, or validation failure.
-8. **How are source locations translated after generated intermediate formats?** Store source-format/step identity and bounded snippets; do not pretend generated JSON/HTML offsets map directly to original HSON.
+8. **How are source locations translated after generated intermediate formats?** Store source-format/step identity and bounded snippets; do not pretend generated JSON/HTML offsets map directly to original Hson.
 9. **What pool size, input limit, lap limit, and timeout are appropriate?** Decide from Phase 4 measurements, not intuition.
 10. **Can Transform defer `fromNode` frame text and JSON projection without affecting public consumers?** Audit callers and add contract tests before changing those lazy/eager boundaries.
 11. **Should legacy `_compare_nodes` be repaired or frozen?** Tightening it may break tests that rely on semantic wrapper/newline tolerance. Prefer new strict engine usage first, then handle legacy behavior as an explicit compatibility decision.
@@ -602,7 +602,7 @@ Use warm and cold runs, fixed fixture seeds, repeated samples, and environment i
 
 **Do not add a generic worker/process adapter to LiveHost for this MVP.**
 
-Build the first executor inside `hson-demo2`. The parsing circuit has unusually specific semantics—latest-editor-revision wins, explicit HSON/JSON/HTML source modes, synchronous non-preemptible legs, strict graph witnesses, browser DOM boundary verification, and bounded diagnostic artifacts. Generalizing these as LiveHost semantics now would entangle application policy with transport, sessions, dedupe, authorization, and runtime-specific worker lifecycle.
+Build the first executor inside `hson-demo2`. The parsing circuit has unusually specific semantics—latest-editor-revision wins, explicit Hson/JSON/HTML source modes, synchronous non-preemptible legs, strict graph witnesses, browser DOM boundary verification, and bounded diagnostic artifacts. Generalizing these as LiveHost semantics now would entangle application policy with transport, sessions, dedupe, authorization, and runtime-specific worker lifecycle.
 
 If a second consumer appears, the extraction boundary should be:
 

@@ -109,12 +109,12 @@ check("fragment structural roots remain ineligible", () => {
   assert.throws(() => acquire_document_identity(map.document, target()), errorCode("DOCUMENT_IDENTITY_INELIGIBLE"));
 });
 
-check("projected object maps expose no document identity surface", () => {
+check("data object maps expose no document identity surface", () => {
   const map = hson.liveMap.fromJson({ value: 1 });
   assert.equal(Reflect.get(map, "document"), undefined);
 });
 
-check("projected array maps expose no document identity surface", () => {
+check("data array maps expose no document identity surface", () => {
   const map = hson.liveMap.fromJson([1, 2, 3]);
   assert.equal(Reflect.get(map, "document"), undefined);
 });

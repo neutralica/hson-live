@@ -5,7 +5,7 @@ import type { HsonNode } from "../../../../core/types.js";
 import { _throw_transform_err } from "../sys-utils/throw-transform-err.utils.js";
 
 /**
- * Detach the one semantic value carried by an internal HSON root.
+ * Detach the one semantic value carried by an internal Hson root.
  *
  * This boundary is deliberately exact: it accepts only a canonical
  * `_hson_root` with one direct node child, returns that identical child, and

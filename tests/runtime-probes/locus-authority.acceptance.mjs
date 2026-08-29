@@ -65,7 +65,7 @@ await check("every host strictly fences its map and records accepted mutation", 
   assert.equal(map.set(["value"], 3).rev, 2);
 });
 
-await check("exclusive projected mutation waits at the gate then ingests once", async () => {
+await check("exclusive data mutation waits at the gate then ingests once", async () => {
   const map = hson.liveMap.fromJson({ value: 0 });
   const gates = deferred_gates();
   const host = create_locus_internal({ map }, { authorityGate: gates.gate });

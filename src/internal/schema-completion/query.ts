@@ -22,7 +22,7 @@ export type SchemaCompletionResult = Readonly<{
 const unavailable: SchemaCompletionResult = { status: "unsupported", items: [] };
 type Draft = Omit<SchemaCompletionItem, "id" | "sortText">;
 // Raw tagged templates cannot escape JS delimiters with a backslash: it would
-// survive into HSON. Use HSON's own Unicode escapes inside serialized names/strings.
+// survive into Hson. Use Hson's own Unicode escapes inside serialized names/strings.
 const templateSafe = (text: string): string => text.replace(/`/g, "\\u0060").replace(/\$\{/g, "\\u0024{");
 const literalText = (value: OrderedProjectedValue): string => templateSafe(serialize_hson(projected_value_to_hson_node(value), { noBreak: true }));
 const snippetText = (text: string): string => text.replace(/[\\$}]/g, "\\$&");

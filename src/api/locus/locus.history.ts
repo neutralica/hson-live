@@ -82,7 +82,7 @@ function clone_projected_value(value: JsonValue, field: string): JsonValue {
       materialize_projected_value(admit_projected_value(value)),
     );
   } catch {
-    throw new Error(`Locus canonical commit ${field} is not a supported projected value.`);
+    throw new Error(`Locus canonical commit ${field} is not a supported data value.`);
   }
 }
 
@@ -103,7 +103,7 @@ function must_path(path: LivePath): LivePath {
 
 function must_json_array(values: readonly JsonValue[], field: string): readonly JsonValue[] {
   if (!Array.isArray(values)) {
-    throw new Error(`Locus canonical commit ${field} is not a projected array.`);
+    throw new Error(`Locus canonical commit ${field} is not a data array.`);
   }
   return Object.freeze(values.map((value, index) =>
     clone_projected_value(value, `${field}[${index}]`)));

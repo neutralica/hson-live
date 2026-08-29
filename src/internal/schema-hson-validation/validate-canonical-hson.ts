@@ -10,6 +10,6 @@ export function validate_canonical_hson(schema: LiveMapSchema, canonical: HsonCa
   if (typeof canonical !== "string") throw new TypeError("validate requires an HsonCanonical string.");
   const graph = detach_hson_root_value(parse_hson(canonical));
   const result = validate_schema_hson_graph(schema, graph);
-  if (!result.ok) throw new LiveMapSchemaError("HSON Schema validation failed.", result.issues[0]?.path ?? [], result.issues);
+  if (!result.ok) throw new LiveMapSchemaError("Hson Schema validation failed.", result.issues[0]?.path ?? [], result.issues);
   return canonical;
 }

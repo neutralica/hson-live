@@ -62,7 +62,7 @@ check("fragment and empty-fragment roots retain exact structure", () => {
   }
 });
 
-check("strict envelopes reject missing, extra, removed-version, and malformed HSON fields", () => {
+check("strict envelopes reject missing, extra, removed-version, and malformed Hson fields", () => {
   expect_rejection(
     { format: "hson-graph" },
     "LOCUS_GRAPH_CONTENT_ENVELOPE_INVALID",

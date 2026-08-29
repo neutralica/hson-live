@@ -362,14 +362,14 @@ function resolve_entry(
       return { fmt: "html", text: source };
     } catch (error) {
       step_fail(opt, "resolve_entry:auto", [
-        "Markup-like input failed HSON parse, then failed HTML parse.",
-        `HSON: ${err_to_string(hsonError)}`,
+        "Markup-like input failed Hson parse, then failed HTML parse.",
+        `Hson: ${err_to_string(hsonError)}`,
         `HTML: ${err_to_string(error)}`,
       ].join("\n"));
       return undefined;
     }
   }
 
-  step_fail(opt, "resolve_entry:auto", `Markup-like input failed HSON parse: ${err_to_string(hsonError)}`);
+  step_fail(opt, "resolve_entry:auto", `Markup-like input failed Hson parse: ${err_to_string(hsonError)}`);
   return undefined;
 }

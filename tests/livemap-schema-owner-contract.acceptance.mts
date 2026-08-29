@@ -210,5 +210,5 @@ await check("schema attachment has no detach reset or replacement operation", ()
   for (const name of ["clear", "drop", "reset", "replace"]) assert.equal(name in map.schema, false);
 });
 
-process.stdout.write(`# ${checks} projected schema owner-contract checks passed\n`);
+process.stdout.write(`# ${checks} data schema owner-contract checks passed\n`);
 emit_hson_live_test_completion("livemap.schema-owner-contract", checks, checks, 0);

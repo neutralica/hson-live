@@ -1,38 +1,38 @@
-# Standalone canonical HSON validation
+# Standalone canonical Hson validation
 
 ```ts
-import { HSON } from "hson-live/hson";
+import { Hson } from "hson-live/hson";
 import { hsonLiveMap } from "hson-live/livemap";
 
 const UserSchema = hsonLiveMap.schema.define(s => s.object({ user: s.object({ age: s.number }) }));
-const user = HSON`<user <age 37>>`;
-const same = HSON.validate(UserSchema, user);
+const user = Hson`<user <age 37>>`;
+const same = Hson.validate(UserSchema, user);
 // same === user; return type is HsonCanonical, not a Schema certificate.
 ```
 
-`HSON.validate`, `hsonLiveMap.schema.validate`, and
+`Hson.validate`, `hsonLiveMap.schema.validate`, and
 `hson.liveMap.schema.validate` are the same authoritative function. The latter
 two remain legitimate LiveMap-facing entrances. None allocates a map.
 
 `validate(schema: LiveMapSchema, canonical: HsonCanonical): HsonCanonical`
 validates an existing admitted canonical string without allocating a LiveMap or
-reserializing it. Complete projected, element, fragment and combined capabilities
-use the existing owned Schema validators. Root interpretation comes from HSON,
-not from the supplied Schema: ordinary `"text"` is a projected string, not a
+reserializing it. Complete data, element, fragment and combined capabilities
+use the existing owned Schema validators. Root interpretation comes from Hson,
+not from the supplied Schema: ordinary `"text"` is a data string, not a
 fragment. No element-to-fragment or scalar-to-fragment coercion occurs.
 
 Mismatches throw `LiveMapSchemaError` with structured issues; incomplete or
 unrecognized Schemas fail with `INVALID_SCHEMA`, incompatible roots with
 `TYPE_MISMATCH`. Malformed untyped strings preserve Transform errors and
-non-string misuse throws `TypeError`. Projected constraint exceptions propagate;
+non-string misuse throws `TypeError`. Data constraint exceptions propagate;
 document attribute constraints retain their existing adapter behavior.
 
 ## Trusted editor diagnostics for natural map ownership
 
-The preferred authored layout can keep HSON separate from map construction:
+The preferred authored layout can keep Hson separate from map construction:
 
 ```ts
-const source = HSON`
+const source = Hson`
   <user <age "37">>
 `;
 const map = hsonLiveMap.fromHson(source);

@@ -67,7 +67,7 @@ class AttributeProjection {
   }
 }
 
-check("HSON egress preserves canonical identity and rejects malformed spelling", () => {
+check("Hson egress preserves canonical identity and rejects malformed spelling", () => {
   const valid = element("panel", [], Q1);
   assert.equal(hson.fromNode(valid).toHson().noBreak().serialize(), `<panel @${Q1}/>`);
   for (const invalid of ["short", "000000000000010I", "000000000000010A"]) {
@@ -80,7 +80,7 @@ check("HSON egress preserves canonical identity and rejects malformed spelling",
   }
 });
 
-check("HSON egress admits semantic container QUIDs and rejects other VSNs", () => {
+check("Hson egress admits semantic container QUIDs and rejects other VSNs", () => {
   for (const [tag, expected] of [["_hson_obj", `<@${Q1}>`], ["_hson_arr", `«@${Q1}»`]] as const) {
     const semantic: HsonNode = { $_tag: tag, $_content: [], $_meta: { [HSON_META_QUID]: Q1 } };
     const wire = hson.fromNode(semantic).toHson().noBreak().serialize();
@@ -96,12 +96,12 @@ check("HSON egress admits semantic container QUIDs and rejects other VSNs", () =
   const before = structuredClone(invalid);
   assert.throws(
     () => hson.fromNode(invalid).toHson().serialize(),
-    /ineligible HSON structural node/,
+    /ineligible Hson structural node/,
   );
   assert.deepEqual(invalid, before);
 });
 
-check("HSON egress rejects object-member QUIDs even with noQuid", () => {
+check("Hson egress rejects object-member QUIDs even with noQuid", () => {
   const graph: HsonNode = {
     $_tag: "_hson_obj",
     $_content: [{
@@ -123,7 +123,7 @@ check("HSON egress rejects object-member QUIDs even with noQuid", () => {
   );
 });
 
-check("cold HSON egress preserves duplicate canonical values without mutation", () => {
+check("cold Hson egress preserves duplicate canonical values without mutation", () => {
   const graph = fragment([element("div", [], Q1), element("span", [], Q1)]);
   const before = structuredClone(graph);
   const wire = hson.fromNode(graph).toHson().noBreak().serialize();
@@ -165,7 +165,7 @@ check("HTML egress rejects malformed and VSN-hosted identity", () => {
   } satisfies HsonNode;
   assert.throws(
     () => hson.fromNode(invalid).toHtml().serialize(),
-    /ineligible HSON structural node/,
+    /ineligible Hson structural node/,
   );
 });
 

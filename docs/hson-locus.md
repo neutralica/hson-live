@@ -1,8 +1,8 @@
 #### hson-live / hson.terminalgothic.com
 
 
-<!-- 
-Locus is the authority, session, and synchronization layer for shared LiveMap state. It allows an HSON-backed graph to move beyond local application memory by placing an authority boundary around the graph. A host owns canonical state, accepts domain actions or graph-operation proposals, validates them, applies accepted changes, assigns authoritative ordering, and publishes ordered updates to remote mirrors across a transport boundary.
+<!--
+Locus is the authority, session, and synchronization layer for shared LiveMap state. It allows an Hson-backed graph to move beyond local application memory by placing an authority boundary around the graph. A host owns canonical state, accepts domain actions or graph-operation proposals, validates them, applies accepted changes, assigns authoritative ordering, and publishes ordered updates to remote mirrors across a transport boundary.
 
 Each hosted map has one authoritative host. Clients may mirror state, subscribe to paths or channels, request work, and propose changes, but they do not independently declare canonical history. This single-authority model reduces state divergence by routing accepted changes through one graph owner and one revision sequence.
 
@@ -12,17 +12,17 @@ The natural authoritative unit is a LiveMap commit. A commit advances the graph 
 
 Locus distinguishes durable state from transient events. State changes belong in commits or snapshots because a mirror must recover them after reconnecting. Events are used for ephemeral signals such as progress, presence, diagnostics, or connection-local notifications.
 
-The transport layer is intentionally narrow. WebSockets, worker ports, process IPC, in-memory test sockets, or other adapters can carry the same JSON-shaped protocol. Transport adapters may manage framing and network errors, but they do not redefine authority, revision ordering, validation, replay, or acceptance. 
+The transport layer is intentionally narrow. WebSockets, worker ports, process IPC, in-memory test sockets, or other adapters can carry the same JSON-shaped protocol. Transport adapters may manage framing and network errors, but they do not redefine authority, revision ordering, validation, replay, or acceptance.
 -->
 
 
 ## The central idea: authority over a live graph
 
-LiveMap makes an HSON graph addressable as revisioned projected state; Locus adds an authority boundary around that state.
+LiveMap makes an Hson graph addressable as revisioned data state; Locus adds an authority boundary around that state.
 
 In the intended model, each shared map has one authoritative host. That host owns:
 
-- canonical projected state;
+- canonical data state;
 - the accepted order of changes;
 - action execution;
 - schema and authorization decisions;
@@ -106,7 +106,7 @@ canonical revision.
 
 ## Snapshots, replay, and recovery
 
-A recovery snapshot is complete projected state at a known authoritative revision. The current JSON message envelope carries compact HSON text:
+A recovery snapshot is complete data state at a known authoritative revision. The current JSON message envelope carries compact Hson text:
 
 ```ts
 type LocusSnapshotEnvelope = Readonly<{
@@ -118,17 +118,17 @@ type LocusSnapshotEnvelope = Readonly<{
 ```
 
 The host obtains one atomic LiveMap capture and serializes a recovery snapshot
-at that exact revision. Projected commits and current sync routes retain
+at that exact revision. Data commits and current sync routes retain
 LiveMap's exact versioned `structural-json` payload internally; detached
 JavaScript value fields are compatibility views. Document graph content uses
-its separate versioned HSON codec. A client stages, validates, and installs a
+its separate versioned Hson codec. A client stages, validates, and installs a
 snapshot before replacing its active mirror. Malformed snapshot or exact
-projected payload data is invalid and never falls back to a legacy view.
+Data payload data is invalid and never falls back to a legacy view.
 
-This encoding does not make recovery graph-native: it transports projected JSON-compatible state and does not preserve the authoritative source graph's QUID identity.
+This encoding does not make recovery graph-native: it transports data JSON-compatible state and does not preserve the authoritative source graph's QUID identity.
 
 When a snapshot contains property names that require canonical quoting, its
-HSON payload uses single-quoted names. Backticks remain ordinary name and
+Hson payload uses single-quoted names. Backticks remain ordinary name and
 string data:
 
 ```hson
@@ -136,14 +136,14 @@ string data:
 ```
 
 An outer JavaScript template-literal delimiter, when used by an application,
-is host-language syntax and is not part of the HSON payload.
+is host-language syntax and is not part of the Hson payload.
 
 A reconnecting client can present its last confirmed revision. If the host still retains every later commit, it can replay them in order. If history is unavailable, the host sends a current snapshot. Snapshot replacement remains the source-of-truth fallback rather than an exceptional failure.
 
 The implementation has bounded canonical commit history for revision-based
 recovery. Canonical recovery chooses current, ordered replay, snapshot, or
 rejection, detects gaps and revisions ahead of authority, and installs snapshots
-atomically. A projected hello carries one current whole-state snapshot and is
+atomically. A data hello carries one current whole-state snapshot and is
 never followed by historical path sync frames. Live subscriptions still publish
 the value currently present at a subscribed path.
 
@@ -154,7 +154,7 @@ of in-memory history.
 
 ## Sessions and subscriptions
 
-A session is the host-side lifetime of one client relationship. It is distinct from a user identity, a transport connection, a host registry key, and an HSON node identity.
+A session is the host-side lifetime of one client relationship. It is distinct from a user identity, a transport connection, a host registry key, and an Hson node identity.
 
 Implemented sessions own subscribed LivePaths and a send function. A client can subscribe or unsubscribe, and a subscription immediately publishes the current value at that path. Later successful connected actions cause all subscribed values to be sent again.
 
@@ -204,7 +204,7 @@ This makes the authority model independent of WebSocket. An in-memory pair can e
 
 Transport adapters may own framing, connection state, backpressure, and network errors. They must not redefine revision ordering, acceptance, replay, or authority.
 
-Protocol framing remains JSON-shaped. Recovery snapshot state is a compact HSON string inside that JSON envelope; its logical map identity, incarnation, and revision remain ordinary JSON fields. A completed protocol still needs an explicit version strategy and strict runtime decoders for every client and server envelope.
+Protocol framing remains JSON-shaped. Recovery snapshot state is a compact Hson string inside that JSON envelope; its logical map identity, incarnation, and revision remain ordinary JSON fields. A completed protocol still needs an explicit version strategy and strict runtime decoders for every client and server envelope.
 
 ---
 
@@ -225,8 +225,8 @@ The completed boundary should validate, before state handling:
 - resource and message-size limits; and
 - safe public error information.
 
-TypeScript types are developer tooling, not security validation. Internal objects, closures, stack traces, LiveMap handles, LiveTree instances, and DOM nodes must never become protocol payloads. 
- 
+TypeScript types are developer tooling, not security validation. Internal objects, closures, stack traces, LiveMap handles, LiveTree instances, and DOM nodes must never become protocol payloads.
+
 The current `LocusSchema` is preliminary. It validates action payloads at dispatch, but its state validator does not attach a LiveMap schema or enforce subsequent map mutations. Initial state rejection also is not yet surfaced as a construction failure. Applications should not treat it as a security boundary.
 
 ---
@@ -260,15 +260,15 @@ Node LiveHost is the current concrete HTTP/WebSocket runtime.
 
 The three layers have deliberately different responsibilities:
 
-- **LiveMap** defines projected state, mutations, commits, validation, and local subscriptions.
+- **LiveMap** defines data state, mutations, commits, validation, and local subscriptions.
 - **Locus** defines authority, remote actions, sessions, transport, resume, and accepted ordering.
 - **LiveTree** defines presentation graphs, DOM projection, and explicit bindings from state into views.
 
 A client-side LiveMap can therefore be the mirrored model consumed by ordinary LiveTree bindings. Host transport does not need to know about DOM, CSS, or view objects, and presentation does not need to understand socket framing.
- 
+
 This separation makes several compelling applications plausible: shared documents, remote controls, live test execution, synchronized inspectors, collaborative authoring, server-owned simulations, streamed analysis, and reconnectable long-running work. Each can use domain actions and state schemas without weakening the single-authority core.
 
-Because Locus operates on LiveMap commits rather than framework-specific component messages, the same authoritative graph can drive DOM projections, inspectors, editors, serialized HSON, JSON views, and other clients without requiring each projection to maintain an independent state model.
+Because Locus operates on LiveMap commits rather than framework-specific component messages, the same authoritative graph can drive DOM projections, inspectors, editors, serialized Hson, JSON views, and other clients without requiring each projection to maintain an independent state model.
 
 ---
 
@@ -285,7 +285,7 @@ The host protocol must explicitly decide whether an identity is:
 - persisted across host restarts; or
 - visible on the wire.
 
-Current Locus synchronization remains projected-state transport. Recovery snapshots use HSON as the textual encoding of a captured projected value, but do not preserve HSON graph identity across snapshot replacement. Identity-aware reconciliation is roadmap work and must be coordinated with LiveMap's eventual safe canonical-node snapshot/install boundary.
+Current Locus synchronization remains data state transport. Recovery snapshots use Hson as the textual encoding of a captured data value, but do not preserve Hson graph identity across snapshot replacement. Identity-aware reconciliation is roadmap work and must be coordinated with LiveMap's eventual safe canonical-node snapshot/install boundary.
 
 ---
 
@@ -293,6 +293,6 @@ Current Locus synchronization remains projected-state transport. Recovery snapsh
 
 ## Goals
 
-The initial Locus design is focused: a clear authority boundary around LiveMap that transports serializable intent and safely orders state, and gives remote clients a deterministic way to mirror, resume, and interact with a live HSON-backed system. 
+The initial Locus design is focused: a clear authority boundary around LiveMap that transports serializable intent and safely orders state, and gives remote clients a deterministic way to mirror, resume, and interact with a live Hson-backed system.
 
 © 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0

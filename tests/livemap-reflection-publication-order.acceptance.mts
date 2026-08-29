@@ -487,7 +487,7 @@ check("replay uses the same watch-before-observer-before-Reflection publication 
   binding.dispose();
 });
 
-check("projected maps share watch-before-observer publication without a Reflection phase", () => {
+check("data maps share watch-before-observer publication without a Reflection phase", () => {
   const map = hson.liveMap.fromJson({ value: 0 });
   const order: string[] = [];
   map.at(["value"]).watch((value) => order.push(`watch:${String(value)}:${map.rev}`));

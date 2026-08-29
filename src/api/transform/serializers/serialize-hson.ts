@@ -183,7 +183,7 @@ function emitLeaf(node: HsonNode, depth: number, ctx: SerializeContext): string 
   }
   if (typeof value === "number" && !Number.isFinite(value)) {
     _throw_transform_err(
-      `serialize-hson: invalid HSON number ${String(value)}; numbers must be finite`,
+      `serialize-hson: invalid Hson number ${String(value)}; numbers must be finite`,
       "serialize_hson.emitLeaf",
     );
   }
@@ -507,7 +507,7 @@ function emitNode(
   }
 }
 
-/** Serialize a canonical HSON graph in readable (default) or compact layout. */
+/** Serialize a canonical Hson graph in readable (default) or compact layout. */
 function serialize_hson_with_ownership(
   root: HsonNode,
   inputOptions: HsonSerializeInputOptions = {},

@@ -81,7 +81,7 @@ export type LocusRecoveryRejectCode =
   | "REVISION_AHEAD_OF_AUTHORITY";
 
 
-/** Wire-safe representation of a projected value that may be absent. */
+/** Wire-safe representation of a data value that may be absent. */
 export type LocusActionPayloads = Readonly<Record<string, JsonValue | undefined>>;
 
 export type LocusDocumentActionName =

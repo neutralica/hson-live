@@ -1,23 +1,23 @@
 #### hson-live / hson.terminalgothic.com
 
 <!-- 
-LiveTree is the browser projection and interaction layer of hson-live. It provides a mutable, identity-bearing handle over an HSON node graph, allowing the same graph node to participate in traversal, mutation, DOM projection, styling, event handling, SVG/canvas access, and LiveMap binding.
+LiveTree is the browser projection and interaction layer of hson-live. It provides a mutable, identity-bearing handle over an Hson node graph, allowing the same graph node to participate in traversal, mutation, DOM projection, styling, event handling, SVG/canvas access, and LiveMap binding.
 
-A LiveTree is not a second tree model. It is a live handle to an HSON node within a host graph. Mutations update the backing graph first, and when the node is mounted, DOM-aware managers mirror those changes into the rendered document. Detached branches remain useful without DOM attachment: they can still be traversed, mutated, serialized, styled, cloned, and later grafted or projected.
+A LiveTree is not a second tree model. It is a live handle to an Hson node within a host graph. Mutations update the backing graph first, and when the node is mounted, DOM-aware managers mirror those changes into the rendered document. Detached branches remain useful without DOM attachment: they can still be traversed, mutated, serialized, styled, cloned, and later grafted or projected.
 
-LiveTree preserves node identity through QUIDs. A QUID associates an HSON node with its managed DOM element and graph-scoped CSS state, allowing targeted projection, styling, lookup, cleanup, and controlled cloning. This identity model supports graph-backed rendering without requiring the DOM itself to be the source of truth.
+LiveTree preserves node identity through QUIDs. A QUID associates an Hson node with its managed DOM element and graph-scoped CSS state, allowing targeted projection, styling, lookup, cleanup, and controlled cloning. This identity model supports graph-backed rendering without requiring the DOM itself to be the source of truth.
 
 LiveTree exposes practical authoring surfaces for content, text, attributes, flags, data attributes, IDs, class lists, inline style, managed CSS, forms, DOM reads, event listeners, SVG, and canvas. These APIs allow developers to work with document behavior through graph-aware operations rather than scattered DOM queries, string-based style manipulation, and unrelated event/state systems.
 
 LiveTree also binds presentation to LiveMap state. A tree can subscribe to LiveMap paths and project values into text, attributes, inline styles, or custom callbacks. This allows LiveMap’s validated, revisioned graph state to drive live DOM presentation while keeping state management, transport, and rendering concerns separated.
 
-In the broader architecture, LiveTree is the view/projection layer: HSON defines the graph representation, LiveMap defines validated mutation and revisioned state, Locus defines one-map authority and synchronization, applications own meaning and topology, LiveHost hosts applications, and LiveTree turns graph state into interactive browser presentation.
+In the broader architecture, LiveTree is the view/projection layer: Hson defines the graph representation, LiveMap defines validated mutation and revisioned state, Locus defines one-map authority and synchronization, applications own meaning and topology, LiveHost hosts applications, and LiveTree turns graph state into interactive browser presentation.
  -->
 
 # LiveTree
 Updated: 2026-07-13
 
-LiveTree is the mutable, identity-bearing view of an HSON node graph. It joins three concerns that otherwise remain separate in hson-live:
+LiveTree is the mutable, identity-bearing view of an Hson node graph. It joins three concerns that otherwise remain separate in hson-live:
 
 - the canonical `HsonNode` graph;
 - an optional DOM projection of that graph; and
@@ -75,7 +75,7 @@ const body = hson.liveTree.queryBody().graft();
 
 Grafting parses the selected DOM subtree, replaces it with a managed projection, and returns the controlling LiveTree. The public LiveTree facade spells the method `queryDom`, not `queryDOM`. The selected Element itself is the managed source root.
 
-When an HTML source constructor receives an `Element`, it snapshots that element as the source root, including its attributes, metadata, and descendants. It does not reinterpret the input as child-only `innerHTML`. Untrusted input passes through its sanitizer, but syntactic HSON metadata candidates remain subject to the canonical metadata registry afterward. Valid supplied root and descendant QUIDs are preserved as cold graph identity; malformed or unknown metadata rejects.
+When an HTML source constructor receives an `Element`, it snapshots that element as the source root, including its attributes, metadata, and descendants. It does not reinterpret the input as child-only `innerHTML`. Untrusted input passes through its sanitizer, but syntactic Hson metadata candidates remain subject to the canonical metadata registry afterward. Valid supplied root and descendant QUIDs are preserved as cold graph identity; malformed or unknown metadata rejects.
 
 ### Detached creation
 
@@ -85,7 +85,7 @@ When an HTML source constructor receives an `Element`, it snapshots that element
 
 ## Identity and projection
 
-QUIDs connect an HSON node to its managed DOM and CSS state. They are internal live identity, serialized in managed HTML as `hson:quid` when needed for DOM lookup and stylesheet scoping.
+QUIDs connect an Hson node to its managed DOM and CSS state. They are internal live identity, serialized in managed HTML as `hson:quid` when needed for DOM lookup and stylesheet scoping.
 
 Identity is stable through movement, detach, and reattachment, but it is not a security credential or a byte-for-byte source preservation guarantee:
 
@@ -113,7 +113,7 @@ remains absent and cannot retarget to unrelated content in the same runtime.
 
 LiveTree exposes two related traversal models.
 
-`find` and `findAll` search raw HSON nodes, including the current node itself. Their string query syntax is a deliberately small selector subset, not the browser's full CSS selector engine. Structural queries can match `tag`, `attrs`, `meta`, and text. Array queries are evaluated independently and their results are concatenated, so overlapping queries can produce duplicate handles. `byClass` compares the complete stored `class` attribute; it is not a class-token membership test.
+`find` and `findAll` search raw Hson nodes, including the current node itself. Their string query syntax is a deliberately small selector subset, not the browser's full CSS selector engine. Structural queries can match `tag`, `attrs`, `meta`, and text. Array queries are evaluated independently and their results are concatenated, so overlapping queries can produce duplicate handles. `byClass` compares the complete stored `class` attribute; it is not a class-token membership test.
 
 `content` presents an effective element-child view. It skips primitive and VSN leaf nodes and unwraps structural VSN containers. This is generally the useful view for UI composition, while `node.$_content` is the exact graph view.
 
@@ -170,9 +170,9 @@ whether the current node supports that specialized API. Their DOM-dependent read
 
 ## Styling architecture
 
-`tree.style` stores inline declarations on the HSON node and mirrors them to a mounted element. Those declarations travel with HTML serialization.
+`tree.style` stores inline declarations on the Hson node and mirrors them to a mounted element. Those declarations travel with HTML serialization.
 
-`tree.css` stores rules in the CSS manager under the node's QUID selector. It supports pseudo states, relative selectors, at-rule scopes, registered custom properties, keyframes, and animation control. This CSS is live managed state; it is not an inline attribute and is not part of ordinary HSON/HTML transform serialization.
+`tree.css` stores rules in the CSS manager under the node's QUID selector. It supports pseudo states, relative selectors, at-rule scopes, registered custom properties, keyframes, and animation control. This CSS is live managed state; it is not an inline attribute and is not part of ordinary Hson/HTML transform serialization.
 
 See `api-css-manager.md` for ownership, global-rule, rendering, and reset details.
 
@@ -184,9 +184,9 @@ LiveTree preserves the transform API's source distinction:
 
 - `fromUntrustedHtml` sanitizes external HTML and rejects external SVG;
 - `fromTrustedHtml` accepts raw trusted HTML/SVG;
-- JSON, HSON, and node sources are data paths and are not sanitized.
+- JSON, Hson, and node sources are data paths and are not sanitized.
 
-Sanitization is not a general validator for arbitrary HSON graphs. Use the untrusted HTML path for user- or third-party-authored markup.
+Sanitization is not a general validator for arbitrary Hson graphs. Use the untrusted HTML path for user- or third-party-authored markup.
 
 ---
 

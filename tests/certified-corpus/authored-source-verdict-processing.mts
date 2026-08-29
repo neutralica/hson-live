@@ -374,7 +374,7 @@ const remainingQuestionById = new Map<string, string>([
   ["hson.accept.basis.number.negative-exponent-sign", "Confirm whether authored numbers follow JSON by accepting a negative exponent sign."],
   ["hson.accept.basis.number.positive-exponent-sign", "Confirm whether authored numbers follow JSON by accepting an explicit positive exponent sign."],
   ["hson.accept.literal.primitive.exponent", "Confirm whether ordinary exponent notation is admitted under the JSON-number rule."],
-  ["hson.reject.literal.comment.block", "Decide whether block comments remain forbidden or become authored-HSON trivia."],
+  ["hson.reject.literal.comment.block", "Decide whether block comments remain forbidden or become authored-Hson trivia."],
   ["hson.reject.literal.source.comment-only", "Decide whether comment-only input is invalid because it contains no semantic root value."],
   ["hson.reject.literal.whitespace.byte-order-mark", "Decide whether U+FEFF is forbidden or admitted as source trivia."],
 ]);
@@ -389,7 +389,7 @@ export function renderReconciliation(processed: ProcessedWorksheet): string {
   const unreviewed = processed.cases.filter((entry) => entry.humanVerdict === "unreviewed");
   const renamed = processed.caseIdMigrations.filter((entry) => entry.historicalCaseId !== entry.activeCaseId);
   const lines: string[] = [
-    "# Authored-HSON source-membership reconciliation",
+    "# Authored-Hson source-membership reconciliation",
     "",
     "This amendment-aware report reconciles **human-reviewed authored-language membership**.",
     "It does not certify expected graphs, canonical output, or structured diagnostics.",
@@ -469,7 +469,7 @@ export function renderReconciliation(processed: ProcessedWorksheet): string {
   lines.push(
     "## Next focused action",
     "",
-    "The remaining authored-HSON decisions are separate from this delimiter migration:",
+    "The remaining authored-Hson decisions are separate from this delimiter migration:",
     "`.5` admission, element-closer trivia, comment syntax, and mixed-root design reservation.",
     "",
   );

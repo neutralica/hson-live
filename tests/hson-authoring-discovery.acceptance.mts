@@ -6,22 +6,22 @@ import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 let checks = 0;
 function check(name: string, run: () => void): void { run(); console.log(`ok ${++checks} - ${name}`); }
 const file = "/project/user.ts";
-const source = 'const source = HSON`<age "37">`;';
+const source = 'const source = Hson`<age "37">`;';
 const schema = 'import { Schema } from "./schema.js";';
-const author = 'import { HSON } from "hson-live/hson";';
-const validate = 'HSON.validate(Schema, source);';
+const author = 'import { Hson } from "hson-live/hson";';
+const validate = 'Hson.validate(Schema, source);';
 for (const entry of ["hson-live", "hson-live/hson"]) {
-  check(`official uppercase authoring from ${entry}`, () => assert.equal(tags(file, `import { HSON } from "${entry}";` + source).sources.length, 1));
-  check(`uppercase validation from ${entry}`, () => assert.equal(associations(file, `import { HSON } from "${entry}";` + schema + source + validate).length, 1));
+  check(`official uppercase authoring from ${entry}`, () => assert.equal(tags(file, `import { Hson } from "${entry}";` + source).sources.length, 1));
+  check(`uppercase validation from ${entry}`, () => assert.equal(associations(file, `import { Hson } from "${entry}";` + schema + source + validate).length, 1));
 }
-check("renamed uppercase authoring and validation", () => assert.equal(associations(file, (author + schema + source + validate).replaceAll("HSON", "markup").replace("{ markup }", "{ HSON as markup }")).length, 1));
+check("renamed uppercase authoring and validation", () => assert.equal(associations(file, (author + schema + source + validate).replaceAll("Hson", "markup").replace("{ markup }", "{ Hson as markup }")).length, 1));
 check("lowercase aggregate tag is retired", () => assert.equal(tags(file, 'import { hson } from "hson-live"; const source = hson`<age 1>`;').sources.length, 0));
 check("retired lowercase authoring subpath import", () => assert.equal(tags(file, 'import { hson } from "hson-live/hson"; const source = hson`<age 1>`;').sources.length, 0));
-check("local uppercase lookalike is unavailable", () => assert.equal(associations(file, 'const HSON = anything;' + schema + source + validate).length, 0));
+check("local uppercase lookalike is unavailable", () => assert.equal(associations(file, 'const Hson = anything;' + schema + source + validate).length, 0));
 check("wrong authoring package is unavailable", () => assert.equal(associations(file, author.replace('"hson-live/hson"', '"other"') + schema + source + validate).length, 0));
-check("shadowed uppercase tag is unavailable", () => assert.equal(tags(file, author + 'function f(HSON: any) {' + source + '}').sources.length, 0));
-check("shadowed uppercase validator is unavailable", () => assert.equal(associations(file, author + schema + 'function f(HSON: any) {' + source + validate + '}').length, 0));
-check("uppercase facade has no map construction identity", () => assert.equal(associations(file, author + schema + source + 'const map = HSON.liveMap.fromHson(source); map.schema.use(Schema);').length, 0));
+check("shadowed uppercase tag is unavailable", () => assert.equal(tags(file, author + 'function f(Hson: any) {' + source + '}').sources.length, 0));
+check("shadowed uppercase validator is unavailable", () => assert.equal(associations(file, author + schema + 'function f(Hson: any) {' + source + validate + '}').length, 0));
+check("uppercase facade has no map construction identity", () => assert.equal(associations(file, author + schema + source + 'const map = Hson.liveMap.fromHson(source); map.schema.use(Schema);').length, 0));
 for (const entry of ["hson-live", "hson-live/livemap"]) {
   const mapImport = `import { hsonLiveMap as maps } from "${entry}";`;
   check(`retained dedicated validation at ${entry}`, () => assert.equal(associations(file, author + mapImport + schema + source + 'maps.schema.validate(Schema, source);').length, 1));

@@ -19,8 +19,8 @@ This release reorganizes the internal source tree around the intended `core`, `t
 ### Internal architecture
 
 - Reorganized internal source ownership around:
-  - `src/core` for HSON protocol primitives, node/value guards, constants, factories, invariants, native tag support, and shared protocol types.
-  - `src/api/transform` for parsing, serialization, the constructor pipeline, tokenization, attr/style/string processing, and HTML/HSON/JSON conversion utilities.
+  - `src/core` for Hson protocol primitives, node/value guards, constants, factories, invariants, native tag support, and shared protocol types.
+  - `src/api/transform` for parsing, serialization, the constructor pipeline, tokenization, attr/style/string processing, and HTML/Hson/JSON conversion utilities.
   - `src/api/livetree` for LiveTree creation, mounted node behavior, managers, QUID handling, DOM-facing methods, and live tree utilities.
 - Moved transform parsers and serializers under `src/api/transform`.
 - Moved transform-owned utility folders under `src/api/transform/utils`.
@@ -30,7 +30,7 @@ This release reorganizes the internal source tree around the intended `core`, `t
 
 ### HsonNode internal shape
 
-Raw HSON node fields now use dollar-prefixed internal names:
+Raw Hson node fields now use dollar-prefixed internal names:
 
 ```ts
 node.$_tag
@@ -61,7 +61,7 @@ This replaces the older `_-*` system tag spellings, such as:
 node._tag === "_-elem" // old
 ```
 
-Together, the raw-node field migration and VSN tag-name migration are the largest internal compatibility changes in this release. Code using public LiveTree or transform APIs should generally not need changes, but code touching raw HSON nodes directly will need to update both field access and system tag comparisons.
+Together, the raw-node field migration and VSN tag-name migration are the largest internal compatibility changes in this release. Code using public LiveTree or transform APIs should generally not need changes, but code touching raw Hson nodes directly will need to update both field access and system tag comparisons.
 
 ### `content.markup`
 

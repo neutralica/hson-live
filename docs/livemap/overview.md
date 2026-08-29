@@ -2,10 +2,10 @@
 
 LiveMap is hson-live’s revisioned graph-state layer.
 
-It provides deterministic reads and writes over a canonical HSON graph while exposing that graph through one of two principal interfaces:
+It provides deterministic reads and writes over a canonical Hson graph while exposing that graph through one of two principal interfaces:
 
-- a **projected-data map**, which presents JSON-like values and paths;
-- a **document map**, which presents the underlying HSON document structure.
+- a **data map**, which presents JSON-like values and paths;
+- a **document map**, which presents the underlying Hson document structure.
 
 LiveMap owns local state semantics: paths, mutations, schemas, commits, revisions, batches, subscriptions, feeds, links, proxies, node handles, snapshots, restore, and replay.
 
@@ -22,11 +22,11 @@ documented separately.
 The principal hson-live layers have different responsibilities:
 
 ```text
-HSON
+Hson
   canonical structured node model and reversible notation
 
 LiveTree
-  structural interaction with an HSON graph and its renderer-facing forms
+  structural interaction with an Hson graph and its renderer-facing forms
 
 LiveMap
   revisioned state, paths, mutations, schemas, commits, subscriptions,
@@ -37,15 +37,15 @@ Locus
   and remote recovery
 ```
 
-LiveMap sits between the canonical HSON graph and systems that consume or govern changing state.
+LiveMap sits between the canonical Hson graph and systems that consume or govern changing state.
 
 Conceptually:
 
 ```text
-HSON graph
+Hson graph
     ↓
 LiveMap
-    ├── projected data
+    ├── data
     ├── document structure
     ├── subscriptions
     ├── links
@@ -53,9 +53,9 @@ LiveMap
     └── canonical commits
 ```
 
-A LiveMap does not store JSON beside HSON or maintain a separate document model. It owns one canonical graph and exposes an interface appropriate to the map kind.
+A LiveMap does not store JSON beside Hson or maintain a separate document model. It owns one canonical graph and exposes an interface appropriate to the map kind.
 
-For projected-data maps, the implementation uses a private immutable ordered
+For data maps, the implementation uses a private immutable ordered
 carrier between JavaScript admission and canonical graph construction. The
 carrier preserves exact object-entry order, dangerous names, and SameValue
 number identity while mutations, schemas, equality, feeds, links, stores, and
@@ -69,7 +69,7 @@ state beside the canonical graph.
 A LiveMap combines:
 
 ```text
-canonical HSON graph
+canonical Hson graph
 + map kind
 + path semantics
 + mutation contract
@@ -94,9 +94,9 @@ state at revision N
 
 A no-op may complete successfully without changing the graph, advancing the revision, or producing a commit.
 
-LiveMap is deterministic at its public boundaries. Given the same compatible starting state and the same ordered canonical commits, replay produces the same projected result and document structure.
+LiveMap is deterministic at its public boundaries. Given the same compatible starting state and the same ordered canonical commits, replay produces the same data result and document structure.
 
-### Projected JavaScript boundary
+### Data JavaScript boundary
 
 Supported ingress consists of strings, booleans, `null`, finite primitive
 numbers, plain/null-prototype objects, and dense ordinary arrays. Admission
@@ -112,7 +112,7 @@ plain object follows JavaScript integer-key enumeration and is therefore not an
 exact ordered persistence form. Canonical graph reads and object-handle
 `keys`/`values`/`entries` retain semantic graph order.
 
-Projected equality is ordered SameValue equality: object and array order are
+Data equality is ordered SameValue equality: object and array order are
 semantic, `0` differs from `-0`, and missing differs from every present value.
 Selector results deliberately keep their separate `Object.is` or custom
 comparator contract.
@@ -121,11 +121,11 @@ comparator contract.
 
 ## One graph, two principal views
 
-LiveMap supports two related but distinct ways of working with canonical HSON.
+LiveMap supports two related but distinct ways of working with canonical Hson.
 
-### Projected-data maps
+### data maps
 
-A projected-data map presents its graph as JSON-like application state.
+A data map presents its graph as JSON-like application state.
 
 For example:
 
@@ -139,7 +139,7 @@ For example:
 }
 ```
 
-Application code addresses values through projected paths:
+Application code addresses values through data paths:
 
 ```ts
 ["profile", "name"]
@@ -147,7 +147,7 @@ Application code addresses values through projected paths:
 ["tags", 0]
 ```
 
-The projected interface hides the physical HSON representation used to preserve object keys, array items, primitive types, ordering, and identity.
+The data interface hides the physical Hson representation used to preserve object keys, array items, primitive types, ordering, and identity.
 
 This mode is suited to:
 
@@ -160,9 +160,9 @@ This mode is suited to:
 
 ### Document maps
 
-A document map exposes the canonical HSON document graph itself.
+A document map exposes the canonical Hson document graph itself.
 
-It preserves distinctions that projected JSON cannot express completely, including:
+It preserves distinctions that data JSON cannot express completely, including:
 
 - element tags;
 - attributes;
@@ -183,13 +183,13 @@ This mode is suited to:
 - identity-preserving capture and restoration;
 - future server and client projection systems.
 
-Projected-data and document maps share revision, commit, batching, observation, capture, and replay infrastructure, but they intentionally expose different mutation surfaces.
+Data and document maps share revision, commit, batching, observation, capture, and replay infrastructure, but they intentionally expose different mutation surfaces.
 
 ---
 
-## Canonical HSON backing
+## Canonical Hson backing
 
-Every LiveMap is backed by canonical HSON nodes.
+Every LiveMap is backed by canonical Hson nodes.
 
 The current canonical node shape is based on:
 
@@ -204,14 +204,14 @@ interface HsonNode {
 
 Reserved `_hson_*` structural node forms represent distinctions required for reversible JSON and document modeling.
 
-A projected value is therefore not the stored authority. It is a typed interpretation of the canonical graph.
+A data value is therefore not the stored authority. It is a typed interpretation of the canonical graph.
 
 Conceptually:
 
 ```text
-projected object
+data object
        ↕
-canonical HSON graph
+canonical Hson graph
        ↕
 document/node access
 ```
@@ -220,8 +220,8 @@ This permits LiveMap to preserve structural information while still presenting o
 
 The projection boundary is deliberate:
 
-- projected paths describe application values;
-- node access describes physical HSON structure;
+- data paths describe application values;
+- node access describes physical Hson structure;
 - document maps expose the structure directly;
 - commits use the canonical mutation vocabulary appropriate to the map.
 
@@ -229,7 +229,7 @@ The projection boundary is deliberate:
 
 ## Map creation
 
-A LiveMap may be created from projected data or from an existing canonical node graph.
+A LiveMap may be created from data or from an existing canonical node graph.
 
 Conceptually:
 
@@ -252,18 +252,18 @@ Creation establishes:
 
 - the canonical backing graph;
 - the map kind;
-- the initial projected or document root;
+- the initial data or document root;
 - revision state;
 - graph indexes and identities;
 - any supplied schema or configuration.
 
-Creation from trusted document input differs from parsing arbitrary markup. The LiveMap boundary assumes a canonical or validated HSON graph; format parsing and transformation belong to the HSON layer.
+Creation from trusted document input differs from parsing arbitrary markup. The LiveMap boundary assumes a canonical or validated Hson graph; format parsing and transformation belong to the Hson layer.
 
 ---
 
 ## Paths
 
-Projected-data LiveMaps use paths composed of strings and numbers:
+Data LiveMaps use paths composed of strings and numbers:
 
 ```ts
 type LiveMapPath = readonly (string | number)[];
@@ -281,17 +281,17 @@ Examples:
 ["items", 2, "completed"]
 ```
 
-The empty path refers to the projected root.
+The empty path refers to the data root.
 
-Paths describe the projected data model rather than the physical wrapper nodes used by canonical HSON.
+Paths describe the data model rather than the physical wrapper nodes used by canonical Hson.
 
-This distinction matters because a projected array item may physically occupy an `_hson_*` structural node with metadata, while application code addresses it simply as:
+This distinction matters because a data array item may physically occupy an `_hson_*` structural node with metadata, while application code addresses it simply as:
 
 ```ts
 ["items", 2]
 ```
 
-LiveMap resolves projected paths into physical graph locations internally.
+LiveMap resolves data paths into physical graph locations internally.
 
 ---
 
@@ -318,14 +318,14 @@ Where APIs return paths, those paths should be treated as snapshots of the relev
 
 ## Reads
 
-Projected-data maps provide ordinary value reads through methods such as:
+Data maps provide ordinary value reads through methods such as:
 
 ```ts
 map.snap(path)
 map.at(path).snap()
 ```
 
-`snap(path)` and the path-handle `snap()` method return the projected value at
+`snap(path)` and the path-handle `snap()` method return the data value at
 the path. Missing locations return `undefined`; falsy and nullable values remain
 distinct from absence. Object handles provide `hasKey(key)` when key membership
 must be tested directly.
@@ -347,7 +347,7 @@ The exact cloning and snapshot guarantees of each getter are documented in the A
 
 ## Root reads
 
-The empty path addresses the entire projected root:
+The empty path addresses the entire data root:
 
 ```ts
 map.snap();
@@ -367,7 +367,7 @@ Repeated whole-root reads should not replace path-specific reads or subscription
 
 ## Canonical ownership
 
-LiveMap owns its canonical HSON graph for its entire lifetime. `snap(path)`
+LiveMap owns its canonical Hson graph for its entire lifetime. `snap(path)`
 returns detached application data, while `root()` returns a detached canonical
 graph. Captures and observer values are likewise detached. Locations and proxies
 are owner/path capabilities whose writes pass through LiveMap admission. No
@@ -375,13 +375,13 @@ supported public API returns a live mutable canonical node.
 
 Structural tooling that genuinely needs canonical object identity lives behind
 private implementation/test seams and is not an alternative public spelling of
-projected mutation.
+Data mutation.
 
 ---
 
 ## Mutations
 
-LiveMap provides strict mutation methods over projected paths.
+LiveMap provides strict mutation methods over data paths.
 
 Core operations include:
 
@@ -448,7 +448,7 @@ The writes form one logical mutation boundary and therefore one changed commit.
 
 ## `update`
 
-`update(path, updater)` derives a new value from the current projected value.
+`update(path, updater)` derives a new value from the current data value.
 
 Conceptually:
 
@@ -473,7 +473,7 @@ If the updater produces an unchanged equivalent value, the mutation may resolve 
 
 ## `delete`
 
-`delete(path)` removes an existing projected value according to strict endpoint semantics.
+`delete(path)` removes an existing data value according to strict endpoint semantics.
 
 Conceptually:
 
@@ -485,7 +485,7 @@ A strict delete fails for an invalid or missing target rather than silently clai
 
 Object helper APIs may separately provide no-op-on-missing deletion behavior where that is useful for idempotent domain operations.
 
-Deleting an array item changes subsequent projected indexes and produces the corresponding canonical structural operation.
+Deleting an array item changes subsequent data indexes and produces the corresponding canonical structural operation.
 
 ---
 
@@ -517,7 +517,7 @@ For document maps, structural replacement must also preserve canonical root inva
 
 ## Object helpers
 
-Projected object endpoints provide higher-level helpers for common key operations.
+Data object endpoints provide higher-level helpers for common key operations.
 
 These include operations conceptually equivalent to:
 
@@ -550,7 +550,7 @@ They still use canonical mutation, revision, and commit machinery.
 
 ## Array helpers
 
-Projected array endpoints provide structural operations such as:
+Data array endpoints provide structural operations such as:
 
 ```ts
 push
@@ -563,7 +563,7 @@ Depending on the current public surface, array helpers may additionally include 
 
 Array operations must maintain:
 
-- projected order;
+- data order;
 - canonical item wrappers;
 - index metadata;
 - path resolution;
@@ -804,7 +804,7 @@ Reentrant mutation is supported only through the map’s defined notification sc
 
 ## Schemas
 
-A projected-data LiveMap may enforce a schema over its visible state.
+A data LiveMap may enforce a schema over its visible state.
 
 Schemas can express constraints such as:
 
@@ -831,7 +831,7 @@ const User = hson.liveMap.schema.define((s) => s.object({
 }));
 ```
 
-`object` is open to extra projected keys; `exact` is closed. Callbacks return an
+`object` is open to extra data keys; `exact` is closed. Callbacks return an
 explicit expression rather than a raw object shape.
 
 Schema validation occurs before authoritative acceptance.
@@ -840,7 +840,7 @@ Recursive and forward schema references use `s.recurse(() => Schema)`.
 Document schemas use `s.empty` for exact empty content, `s.repeat(Item)` for
 zero-or-more homogeneous siblings, and `s.repeat(count, Item)` for an exact
 homogeneous cardinality. `s.tuple(...)` remains the fixed ordered product in
-both projected and document domains.
+both data and document domains.
 
 A failing mutation leaves the current graph and revision unchanged.
 
@@ -848,7 +848,7 @@ A failing mutation leaves the current graph and revision unchanged.
 
 ## Schema resolution
 
-Schemas are resolved against projected paths and values rather than by applying one undifferentiated validator only at the root.
+Schemas are resolved against data paths and values rather than by applying one undifferentiated validator only at the root.
 
 Resolution determines:
 
@@ -931,7 +931,7 @@ Those operations require an asynchronous authority layer rather than synchronous
 
 ## Proxies
 
-Projected-data maps may expose a path-oriented proxy:
+Data maps may expose a path-oriented proxy:
 
 ```ts
 const proxy = map.proxy();
@@ -984,12 +984,12 @@ That management behavior belongs to Locus; the proxy itself remains a LiveMap fe
 
 ## Handles
 
-LiveMap provides handles for working with a particular projected or physical endpoint.
+LiveMap provides handles for working with a particular data or physical endpoint.
 
 A handle may offer focused methods for:
 
 - identity;
-- projected value access;
+- data value access;
 - attributes;
 - children;
 - insertion;
@@ -1019,7 +1019,7 @@ Like proxies, handles remain governed by the current map state and management mo
 
 ## Node handles
 
-The advanced node API exposes physical HSON operations.
+The advanced node API exposes physical Hson operations.
 
 Current node-handle capabilities include operations conceptually equivalent to:
 
@@ -1032,7 +1032,7 @@ replace
 move
 ```
 
-These operations address canonical structure rather than projected JSON semantics.
+These operations address canonical structure rather than data JSON semantics.
 
 They are useful when:
 
@@ -1041,19 +1041,19 @@ They are useful when:
 - working with mixed content;
 - interacting with LiveTree;
 - building structural tooling;
-- performing operations not expressible as projected value writes.
+- performing operations not expressible as data value writes.
 
-Node-internal operations may intentionally bypass projected schemas, feeds, and subscriptions.
+Node-internal operations may intentionally bypass data schemas, feeds, and subscriptions.
 
 That is not an accidental loophole. It is a distinct low-level API with a different contract.
 
-Application code that requires projected validation and observation should use the projected mutation surface.
+Application code that requires data validation and observation should use the data mutation surface.
 
 ---
 
 ## Document maps
 
-A `DocumentLiveMap` treats canonical HSON document structure as its public state model.
+A `DocumentLiveMap` treats canonical Hson document structure as its public state model.
 
 A document may contain:
 
@@ -1087,7 +1087,7 @@ Root replacement and restoration must update as one atomic operation:
 - node indexes;
 - parent relationships;
 - QUID registry;
-- projected or document root identity;
+- data or document root identity;
 - revision state where applicable.
 
 The public root must never point at a graph that disagrees with its indexes.
@@ -1098,7 +1098,7 @@ Document root replacement is therefore not implemented as casual assignment to a
 
 ## Document identity
 
-Canonical HSON nodes may carry QUID identity.
+Canonical Hson nodes may carry QUID identity.
 
 QUIDs support stable identity across:
 
@@ -1116,7 +1116,7 @@ Moving a node changes its structural path while preserving its identity when the
 
 Replacing a node may create new identity even if the replacement has similar visible content.
 
-Projected paths alone are therefore not sufficient as durable document identities.
+Data paths alone are therefore not sufficient as durable document identities.
 
 ---
 
@@ -1136,7 +1136,7 @@ Attribute mutation preserves canonical attribute rules and produces document-awa
 
 Attributes are distinct from:
 
-- projected object properties;
+- data object properties;
 - node metadata;
 - CSS state managed by LiveTree’s CSS facilities;
 - browser DOM properties.
@@ -1173,7 +1173,7 @@ A document move is preferable to remove-plus-recreate when the same node should 
 
 ## Trusted document input
 
-A document map may be created from a trusted canonical HTML-derived or HSON-derived node.
+A document map may be created from a trusted canonical HTML-derived or Hson-derived node.
 
 The word “trusted” is significant.
 
@@ -1223,7 +1223,7 @@ These styles serve different needs.
 
 ### Value subscription
 
-A general subscription receives current or accepted projected state according to its contract.
+A general subscription receives current or accepted data state according to its contract.
 
 ### Diff subscription
 
@@ -1235,7 +1235,7 @@ A selector derives a value and notifies when the selected result changes accordi
 
 ### Path subscription
 
-A path subscription observes one projected endpoint or subtree.
+A path subscription observes one data endpoint or subtree.
 
 All subscription methods return disposers.
 
@@ -1310,7 +1310,7 @@ LiveMap may evaluate selectors after accepted changes that could affect their re
 
 Selectors are not schema validators and do not participate in mutation acceptance.
 
-Selector-result comparison is intentionally not the generic projected-value
+Selector-result comparison is intentionally not the generic data value
 comparator. The default is `Object.is`; callers may provide a comparator for the
 selector's own result domain.
 
@@ -1440,9 +1440,9 @@ LiveMap can capture its current state for later inspection or reconstruction.
 
 Different capture forms serve different purposes.
 
-A projected snapshot may preserve:
+A data snapshot may preserve:
 
-- projected root value;
+- data root value;
 - revision metadata;
 - map configuration required by the format.
 
@@ -1470,8 +1470,8 @@ Capture formats should be explicit and versioned.
 Possible forms include:
 
 ```text
-projected value
-canonical HSON
+data value
+canonical Hson
 document view-state
 snapshot envelope with revision
 ```
@@ -1480,8 +1480,8 @@ These forms are not interchangeable.
 
 For example:
 
-- projected JSON may reproduce visible data but not exact graph identity;
-- HSON may preserve document structure but omit runtime indexing details;
+- data JSON may reproduce visible data but not exact graph identity;
+- Hson may preserve document structure but omit runtime indexing details;
 - view-state may preserve exact recoverable document identity;
 - a snapshot envelope may associate one of these forms with a revision.
 
@@ -1676,7 +1676,7 @@ map.set(["profile"], {
 });
 ```
 
-may be a no-op if the existing projected value is structurally equivalent and canonicalization would produce the same graph.
+may be a no-op if the existing data value is structurally equivalent and canonicalization would produce the same graph.
 
 Change detection must respect:
 
@@ -1741,7 +1741,7 @@ LiveMap does not by itself coordinate independent asynchronous writers across pr
 
 That is an authority concern supplied by Locus or another owner.
 
-Applications should not hold a projected read, await unrelated work, and then assume the path is unchanged before writing. Use `update`, a batch, or an external authority boundary appropriate to the problem.
+Applications should not hold a data read, await unrelated work, and then assume the path is unchanged before writing. Use `update`, a batch, or an external authority boundary appropriate to the problem.
 
 ---
 
@@ -1785,7 +1785,7 @@ A map governed by another owner may have additional lifecycle restrictions impos
 
 ## Relationship to LiveTree
 
-LiveMap and LiveTree operate over related HSON graphs but solve different problems.
+LiveMap and LiveTree operate over related Hson graphs but solve different problems.
 
 LiveMap answers:
 
@@ -1805,7 +1805,7 @@ How is it projected into DOM, SVG, canvas, CSS, or another renderer?
 How do renderer-facing handles and utilities behave?
 ```
 
-For projected application data, LiveMap may exist without LiveTree.
+For data application data, LiveMap may exist without LiveTree.
 
 For a live document, a common local architecture is:
 
@@ -1884,7 +1884,7 @@ Its scope is the deterministic local graph and its accepted transitions.
 
 LiveMap currently provides a broad local-state and document foundation.
 
-### Projected data
+### data
 
 ```text
 get
@@ -2005,11 +2005,11 @@ Several principles unify the LiveMap architecture.
 
 ### One canonical graph
 
-Projected data and document access derive from one canonical HSON graph rather than competing stores.
+Data and document access derive from one canonical Hson graph rather than competing stores.
 
 ### Explicit map kinds
 
-Projected data and documents share infrastructure without pretending their state models are identical.
+Data and documents share infrastructure without pretending their state models are identical.
 
 ### Strict core operations
 
@@ -2031,7 +2031,7 @@ Every changed accepted transition advances one ordered revision.
 
 ### Structured validation
 
-Schemas resolve against canonical projected paths and return machine-readable issues.
+Schemas resolve against canonical data paths and return machine-readable issues.
 
 ### Identity distinct from path
 
@@ -2058,8 +2058,8 @@ LiveMap is the deterministic mutable graph at the center of hson-live.
 Its core model is:
 
 ```text
-canonical HSON graph
-→ projected-data or document interface
+canonical Hson graph
+→ data or document interface
 → strict atomic mutation
 → schema validation
 → staged candidate
@@ -2068,9 +2068,9 @@ canonical HSON graph
 → subscriptions, feeds, and links
 ```
 
-For projected application state, it provides JSON-like paths without surrendering canonical graph structure.
+For application data, it provides JSON-like paths without surrendering canonical graph structure.
 
-For live documents, it exposes ordered HSON nodes, attributes, content, identity, capture, restoration, and replay.
+For live documents, it exposes ordered Hson nodes, attributes, content, identity, capture, restoration, and replay.
 
 It can operate entirely on its own:
 

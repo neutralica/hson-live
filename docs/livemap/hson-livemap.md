@@ -1,11 +1,11 @@
 #### hson-live / hson.terminalgothic.com
 
 <!-- 
-LiveMap is the local state and mutation layer for hson-live. It provides a deterministic structured-state projection over an underlying HSON graph. Callers use ordinary projected paths such as ["user", "name"] rather than physical HSON wrapper paths, while the underlying graph preserves the structural information needed for HSON representation, serialization, validation, and projection.
+LiveMap is the local state and mutation layer for hson-live. It provides a deterministic structured-state projection over an underlying Hson graph. Callers use ordinary data paths such as ["user", "name"] rather than physical Hson wrapper paths, while the underlying graph preserves the structural information needed for Hson representation, serialization, validation, and projection.
 
-LiveMap mutations pass through a coordinated commit pipeline. A requested operation is resolved against a canonical projected path, checked for valid input, normalized into write intent, validated against a candidate projected root, preflighted against a cloned HSON graph, applied to the live graph only after validation succeeds, recorded as one or more semantic operations, assigned a revision when state changes, and delivered to overlapping subscribers.
+LiveMap mutations pass through a coordinated commit pipeline. A requested operation is resolved against a canonical data path, checked for valid input, normalized into write intent, validated against a candidate data root, preflighted against a cloned Hson graph, applied to the live graph only after validation succeeds, recorded as one or more semantic operations, assigned a revision when state changes, and delivered to overlapping subscribers.
 
-Each successful projected mutation produces a data-shaped commit. A commit records its previous revision, resulting revision, changed status, and semantic operations such as set, replace, delete, or splice. These commits do not contain DOM nodes, LiveTree objects, handles, proxies, or closures, making them suitable for replay, debugging, transport, and hosted authority.
+Each successful data mutation produces a data-shaped commit. A commit records its previous revision, resulting revision, changed status, and semantic operations such as set, replace, delete, or splice. These commits do not contain DOM nodes, LiveTree objects, handles, proxies, or closures, making them suitable for replay, debugging, transport, and hosted authority.
 
 LiveMap schemas combine TypeScript-inferred state structure with runtime validation. The same schema can guide TypeScript-facing APIs and validate live graph state before accepting mutations. If a proposed operation would violate expected value type, node kind, array behavior, required object structure, or document constraints, LiveMap can reject the operation before changing the authoritative graph.
 
@@ -18,14 +18,14 @@ LiveMap snapshots are local revisioned state captures. Authoritative snapshot tr
 # LiveMap
 Updated: 2026-07-17
 
-LiveMap presents a mutable HSON graph as structured projected application state.
+LiveMap presents a mutable Hson graph as structured application data.
 It is designed to make the same graph useful in three roles:
 
-- canonical structured HSON storage;
+- canonical structured Hson storage;
 - ordinary object, array, and primitive application state; and
 - a source of explicit, replayable changes for views and hosted authority.
 
-The implemented local-state core includes projected paths, atomic mutations,
+The implemented local-state core includes data paths, atomic mutations,
 commits, revisions, feeds, schema validation, path handles, proxies,
 array/object helpers, links, and capture/apply/replay.
 
@@ -60,7 +60,7 @@ called today.
 
 ## One graph, two views
 
-Every LiveMap owns a detached canonical HSON node graph. Construction clones and
+Every LiveMap owns a detached canonical Hson node graph. Construction clones and
 validates caller-owned input before selecting a data or document façade.
 
 ```ts
@@ -69,29 +69,29 @@ const map = hson.liveMap.fromJson({
   tags: ["author", "maintainer"],
 });
 
-map.snap();                    // complete projected JSON value
+map.snap();                    // complete JSON data value
 map.snap(["user", "name"]);  // "Ada"
 map.root();                    // detached canonical HsonNode clone
 ```
 
-The projected path `["user", "name"]` crosses whatever `_hson_obj`, property,
-and primitive VSN wrappers are required by the HSON graph. Callers do not need
+The data path `["user", "name"]` crosses whatever `_hson_obj`, property,
+and primitive VSN wrappers are required by the Hson graph. Callers do not need
 to encode those wrappers in a `LivePath`.
 
 This separation is fundamental for data maps:
 
-- projected operations express state meaning;
-- HSON wrappers preserve structural representation; and
+- data operations express state meaning;
+- Hson wrappers preserve structural representation; and
 - raw node operations remain available for deliberately physical graph work.
 
-The projected reader converts the current node payload into detached JSON
+The data reader converts the current node payload into detached JSON
 values. `root()` likewise returns a detached structural clone of the canonical
 graph. Public callers never receive a live mutable alias to the canonical graph.
 The former `debug.node(...)` escape hatch is removed and has no public raw-node
 replacement.
 
 Document roots are classified separately as `element` or `fragment` and do not
-expose the projected data surface. `element.node()`, `document.root()`, and
+expose the data surface. `element.node()`, `document.root()`, and
 `document.content()` return detached canonical values. Revision-coupled capture
 is discriminated by `kind: "hson-document"` and `version: 2`; version-1 captures
 reject explicitly as unsupported. Document maps support same-mode `install`,
@@ -99,7 +99,7 @@ exact-revision `restore`, graph `replay`, commit observation, and canonical
 document mutation. Attribute and content operations live under `map.document`,
 for example `map.document.attrs.set(target, name, value)` and
 `map.document.content.replace(target, index, replacement)`. There are no
-`setAttrs`-style methods and no projected data methods on document maps.
+`setAttrs`-style methods and no data methods on document maps.
 
 ---
 
@@ -115,13 +115,13 @@ type LivePath = readonly (string | number)[];
 Examples:
 
 ```ts
-[]                    // projected root
+[]                    // data root
 ["user"]              // object property
 ["items", 3, "name"] // array index followed by object property
 ```
 
 Paths are exact and unambiguous. They do not split dots, coerce strings to
-numbers, contain wildcards, or use raw HSON node positions.
+numbers, contain wildcards, or use raw Hson node positions.
 
 A path identifies a current location, not a persistent value identity. A
 cached handle for `["items", 2]` continues to address index 2 after a splice; it
@@ -129,7 +129,7 @@ does not follow the item that previously occupied that position.
 
 This distinction supports two different future references:
 
-- location handles follow projected paths; and
+- location handles follow data paths; and
 - identity references follow graph nodes.
 
 The first is implemented. Full identity-oriented node references and
@@ -139,12 +139,12 @@ identity-preserving keyed reconciliation remain roadmap work.
 
 ## The mutation pipeline
 
-Implemented projected mutations pass through one coordinated pipeline:
+Implemented data mutations pass through one coordinated pipeline:
 
 1. validate the public path and JSON input;
 2. normalize the request into write intent;
 3. project a complete candidate root for schema validation;
-4. preflight the writes against a cloned HSON graph;
+4. preflight the writes against a cloned Hson graph;
 5. mutate the live authoritative graph;
 6. create one normalized commit;
 7. advance the revision when the commit changed state; and
@@ -186,10 +186,10 @@ an existing object at `path`, can create the supplied child keys, and preserves
 other keys.
 
 `replace(path, value)` is destructive endpoint replacement. `replace(value)`
-replaces the projected root while overwriting the owned root node in place, so
+replaces the data root while overwriting the owned root node in place, so
 the Core and its existing path handles remain attached.
 
-`delete(path)` removes an existing projected property. Array structure is
+`delete(path)` removes an existing data property. Array structure is
 changed through semantic splice/array helpers rather than direct index delete.
 The empty path is not deletable.
 
@@ -201,7 +201,7 @@ already exists.
 
 ## Semantic operations and commits
 
-Every successful projected mutation returns a `LiveMapCommit`:
+Every successful data mutation returns a `LiveMapCommit`:
 
 ```ts
 type LiveMapCommit = Readonly<{
@@ -213,14 +213,14 @@ type LiveMapCommit = Readonly<{
 ```
 
 Public operations are `set`, `replace`, `delete`, and `splice`. Each records its
-projected path and previous/next value. Splice additionally records its start,
+Data path and previous/next value. Splice additionally records its start,
 removed values, and inserted values.
 
 One method call can produce several operations. Object-valued `set`,
 `setMany`, `batch`, and replay are the common examples. A feed subscriber is
 still called at most once for that commit and receives all matching operations.
 
-Projected-value equality is ordered and uses JavaScript SameValue semantics.
+Data value equality is ordered and uses JavaScript SameValue semantics.
 Object-property order and array order are semantic, and `0` differs from `-0`.
 Selector-result comparison remains a separate `Object.is` or caller-supplied
 comparator contract. A no-op commit has no operations and consumes no revision.
@@ -258,7 +258,7 @@ These operations form the implemented local foundation for Locus:
 - revision checks detect stale bases; and
 - replay conflict checks prevent applying an incompatible history.
 
-Document maps instead return a detached canonical HSON capture preserving
+Document maps instead return a detached canonical Hson capture preserving
 ordered content, attrs, metadata, and persisted element QUIDs. Their local
 `install(capture, { expectedRev? })` transition validates and clones a same-mode
 capture with optional sparse persisted identity before atomically swapping root
@@ -267,11 +267,11 @@ source `capture.rev`.
 The resulting commit contains one `{ domain: "graph", op: "replace-root" }`
 operation. `restore(capture)` replaces canonical state at the capture's exact
 revision, and `replay(commit)` validates and applies one canonical graph commit.
-Document maps do not expose the projected data-map `apply` method.
+Document maps do not expose the data-map `apply` method.
 
 Incremental document operations use a shared discriminated path-or-QUID target.
 Numeric document paths traverse physical canonical `$_content`; they are not
-projected JSON paths or DOM child indexes. Persisted-QUID targets resolve only
+Data JSON paths or DOM child indexes. Persisted-QUID targets resolve only
 through the current map's sparse index. Attribute mutation is restricted to
 ordinary elements and cannot edit `hson:*` metadata. Every `data-*` name is an
 ordinary application attribute. Content replacement swaps
@@ -305,14 +305,14 @@ The event contains:
 - the first matching operation;
 - every matching operation from the commit;
 - the complete commit; and
-- the final projected value at the subscriber's path.
+- the final data value at the subscriber's path.
 
 The `sub` surface builds store-style views over feeds:
 
 - every changed root event;
 - root before/after differences;
 - selected values; and
-- one projected path with before/after values.
+- one data path with before/after values.
 
 All current notification is synchronous after graph mutation. Disposal is a
 returned idempotent function. General lifecycle scopes that own groups of
@@ -351,8 +351,8 @@ reactivity. It is syntax over the same location semantics as `at(path)`.
 ## Schemas
 
 LiveMap schemas combine runtime validation with inferred TypeScript state
-types. A schema is attached only after the current projected root validates.
-Each later projected commit validates the complete candidate root before live
+types. A schema is attached only after the current data root validates.
+Each later data commit validates the complete candidate root before live
 mutation.
 
 ```ts
@@ -372,28 +372,28 @@ recursive references, constraints, arrays, tuples, records, open/exact object
 families, partial objects, and deep-partial objects. Tokens can be optional or
 nullable.
 
-Projected callbacks return one explicit expression: `s.object({...})` is open,
+Data callbacks return one explicit expression: `s.object({...})` is open,
 while `s.object.exact({...})` rejects unknown keys. Raw callback objects are not schema
 syntax. Declared properties of an open object keep their precise inferred types;
-undeclared keys are represented as recursively projected values plus `undefined`
+undeclared keys are represented as recursively data values plus `undefined`
 for absence. `partial` and `deepPartial` take an
 explicit object expression or compatible defined object schema.
 
 `.exact` closes an otherwise-open named keyspace. It exists on exactly the
-projected object and attrs families: `s.object.exact({...})` and
+Data object and attrs families: `s.object.exact({...})` and
 `s.attrs.exact({...})`. Thus `s.object({})` remains open while
-`s.object.exact({})` accepts only an empty projected object. Arrays, tuples,
+`s.object.exact({})` accepts only an empty data object. Arrays, tuples,
 records, tags, and repeats do not expose generic exactness.
 
-`s.array()` accepts zero or more legal projected values of any projected type,
+`s.array()` accepts zero or more legal data values of any data type,
 including nested legal arrays and plain objects. `s.array(Item)` retains its
-homogeneous item constraint. Broad arrays still reject projected-invalid values
+homogeneous item constraint. Broad arrays still reject invalid data values
 such as `undefined`, holes, non-finite numbers, bigint, functions, symbols,
 boxed primitives, cycles, and document-only values. `s.tuple()` instead means
 an exact zero-position tuple; nonempty tuples remain fixed positional schemas.
 
-Schema validation governs projected JSON state. It does not validate direct raw
-HSON node edits.
+Schema validation governs data JSON state. It does not validate direct raw
+Hson node edits.
 
 The same `schema.define(s => ...)` boundary defines document contracts. Known
 HTML and SVG tags are direct calls such as `s.div(...)` and `s.button(...)`,
@@ -402,7 +402,7 @@ text, `s.unknown` is an arbitrary legal item, `s.tuple(...)` is a closed ordered
 layout, `s.empty` is exactly zero document items, `s.repeat(item)` is
 zero-or-more siblings, `s.repeat(count, item)` is exactly `count` homogeneous
 siblings, and `s.pick(...)` combines compatible items or layouts. Shared expressions retain every truthful
-projected/document capability until an enclosing expression selects one.
+data/document capability until an enclosing expression selects one.
 
 Element schemas may take one attrs schema as their first operand:
 
@@ -422,10 +422,10 @@ equal the canonical attr name. Omitted attrs evidence remains broad. Style is a
 whole canonical attr value described with `style: s.unknown.optional` and
 mutated through attrs, not a separate LiveMap style API.
 
-Constraints are fluent projected-schema modifiers:
+Constraints are fluent data schema modifiers:
 `Base.constrain(predicate)` or `Base.constrain(label, predicate)`. They preserve
 the base evidence, run after base validation, and are available on compatible
-defined projected schemas. A following `.optional` or `.nullable` bypasses the
+defined data schemas. A following `.optional` or `.nullable` bypasses the
 predicate for absence or null. In the established modifier order,
 `OptionalBase.constrain(...)` produces a required present schema and constraining
 an already-nullable base supplies null to the predicate. Document-only schemas,
@@ -434,7 +434,7 @@ attrs-schema values, and `s.flag` are not constraint bases.
 Zero tag arguments leave descendants broad. Explicit items close the complete
 direct content, and one layout argument supplies it. Prefer `s.div(s.empty)`
 for an exact-empty element and return `s.empty` for an empty fragment.
-`s.tuple()` remains both the zero-position document layout and the projected
+`s.tuple()` remains both the zero-position document layout and the data
 empty tuple `[]`; `s.repeat(0, item)` has the same document emptiness semantics.
 Top-level nonempty `s.tuple(...)` is a multi-root layout.
 
@@ -615,7 +615,7 @@ are not goals of the initial architecture.
 
 ## Stored state and derived state
 
-LiveMap stores authoritative projected state and emits semantic changes to that
+LiveMap stores authoritative data state and emits semantic changes to that
 state. Consumers may derive display values, filtered collections, validation
 messages, or presentation graphs from snapshots and feeds, but those derived
 values are not implicitly inserted back into the map.

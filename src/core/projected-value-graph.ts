@@ -20,7 +20,7 @@ import {
 } from "./ordered-projected-value.js";
 import type { HsonNode, Primitive } from "./types.js";
 
-/** Construct one canonical HSON value node from the neutral ordered carrier. */
+/** Construct one canonical Hson value node from the neutral ordered carrier. */
 export function projected_value_to_hson_node(value: OrderedProjectedValue): HsonNode {
   assert_ordered_projected_value(value);
   if (typeof value === "string") return value_node(STR_TAG, [value]);
@@ -35,7 +35,7 @@ export function projected_value_to_hson_node(value: OrderedProjectedValue): Hson
     );
   }
   if (!is_ordered_projected_object(value)) {
-    throw new TypeError("Invalid ordered projected object carrier.");
+    throw new TypeError("Invalid ordered data object carrier.");
   }
   return value_node(
     OBJ_TAG,
@@ -73,7 +73,7 @@ export function projected_array_item_to_hson_node(
   value: OrderedProjectedValue,
 ): HsonNode {
   if (!Number.isSafeInteger(index) || index < 0) {
-    throw new TypeError(`Projected array index must be a non-negative safe integer; received ${String(index)}.`);
+    throw new TypeError(`Data array index must be a non-negative safe integer; received ${String(index)}.`);
   }
   return CREATE_NODE({
     $_tag: II_TAG,
@@ -93,12 +93,12 @@ export function is_projected_value_hson_node(node: HsonNode): boolean {
     && (child.$_tag === STR_TAG || child.$_tag === VAL_TAG || child.$_tag === OBJ_TAG || child.$_tag === ARR_TAG);
 }
 
-/** Project one canonical generic HSON value/root into the ordered carrier. */
+/** Project one canonical generic Hson value/root into the ordered carrier. */
 export function projected_value_from_hson_node(node: HsonNode): OrderedProjectedValue {
   if (node.$_tag === ROOT_TAG) {
     const [child] = node.$_content;
     if (node.$_content.length !== 1 || !is_Node(child)) {
-      throw new TypeError("Projected HSON root must contain exactly one value node.");
+      throw new TypeError("Projected Hson root must contain exactly one value node.");
     }
     return projected_value_from_hson_node(child);
   }
@@ -127,7 +127,7 @@ export function projected_value_from_hson_node(node: HsonNode): OrderedProjected
         throw new TypeError("Projected _hson_arr children must be _hson_ii nodes.");
       }
       if (wrapper.$_meta?.[HSON_META_INDEX] !== String(index)) {
-        throw new TypeError(`Projected array index metadata must match position ${index}.`);
+        throw new TypeError(`Data array index metadata must match position ${index}.`);
       }
       const [child] = wrapper.$_content;
       if (wrapper.$_content.length !== 1 || !is_Node(child)) {
@@ -138,7 +138,7 @@ export function projected_value_from_hson_node(node: HsonNode): OrderedProjected
   }
 
   if (node.$_tag !== OBJ_TAG) {
-    throw new TypeError(`Unsupported projected HSON value node <${node.$_tag}>.`);
+    throw new TypeError(`Unsupported projected Hson value node <${node.$_tag}>.`);
   }
 
   if (node.$_content.length === 1 && is_Node(node.$_content[0])) {
@@ -155,7 +155,7 @@ export function projected_value_from_hson_node(node: HsonNode): OrderedProjected
     assert_projected_object_key(property.$_tag);
     const [child] = property.$_content;
     if (property.$_content.length !== 1 || !is_Node(child)) {
-      throw new TypeError(`Projected property ${JSON.stringify(property.$_tag)} must contain exactly one value relationship.`);
+      throw new TypeError(`Data property ${JSON.stringify(property.$_tag)} must contain exactly one value relationship.`);
     }
     return [property.$_tag, projected_value_from_hson_node(child)] as const;
   }));
@@ -163,7 +163,7 @@ export function projected_value_from_hson_node(node: HsonNode): OrderedProjected
 
 function assert_projected_object_key(key: string): void {
   if (typeof key !== "string" || key.startsWith(HSON_SYS_PREFIX)) {
-    throw new TypeError(`Reserved HSON prefix ${JSON.stringify(HSON_SYS_PREFIX)} is not allowed in projected object key ${JSON.stringify(key)}.`);
+    throw new TypeError(`Reserved Hson prefix ${JSON.stringify(HSON_SYS_PREFIX)} is not allowed in data object key ${JSON.stringify(key)}.`);
   }
 }
 

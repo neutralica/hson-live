@@ -3,10 +3,10 @@
 # LiveMap Mutation Contract
 ## Status
 This document defines the normative mutation semantics of LiveMap.
-It describes projected state mutation through LiveMap. It does not define arbitrary physical HSON graph surgery.
+It describes data state mutation through LiveMap. It does not define arbitrary physical Hson graph surgery.
 ## Concepts
-LiveMap exposes projected JSON-like state backed by an HSON graph.
-A projected mutation:
+LiveMap exposes data JSON-like state backed by an Hson graph.
+A data mutation:
 1. receives a normalized path and operation;
 2. projects the complete candidate result;
 3. validates the candidate against any attached schema;
@@ -16,7 +16,7 @@ A projected mutation:
 7. advances the map revision only when state changed.
 A mutation either commits completely or has no observable effect.
 
-The canonical HSON graph is authoritative. An immutable ordered projected-value
+The canonical Hson graph is authoritative. An immutable ordered data value
 carrier is private transient machinery used for admission, planning, equality,
 schema validation, propagation, and exact transport; it is not stored as a
 second synchronized state model.
@@ -31,7 +31,7 @@ properties, custom prototypes, boxed or exotic values, holes, explicit
 structurally. Arbitrary proxies are unsupported and reflective inspection may
 execute traps.
 ## Mutation domain
-Projected mutations include:
+Data mutations include:
 - `set`
 - `setMany`
 - `replace`
@@ -40,19 +40,19 @@ Projected mutations include:
 - `batch`
 - `apply`
 - `replay`
-Projected mutations participate in:
+Data mutations participate in:
 - schema validation;
 - editor preflight;
 - commit generation;
 - revision accounting;
 - feeds and subscriptions;
 - Locus synchronization.
-Low-level physical node mutation is outside this contract unless it is explicitly converted into projected operations and committed through LiveMap.
+Low-level physical node mutation is outside this contract unless it is explicitly converted into data operations and committed through LiveMap.
 ## Paths
 Every operation targets a canonical `LivePath`.
-A path identifies a projected location, not a persistent identity.
+A path identifies a data location, not a persistent identity.
 Paths are arrays of valid path segments. String path syntaxes are not canonical mutation inputs.
-The empty path `[]` identifies the projected root.
+The empty path `[]` identifies the data root.
 ## `set`
 `set(path, value)` performs constructive assignment.
 For primitive and array endpoints, `set` ordinarily assigns the supplied value at the path.
@@ -66,10 +66,10 @@ It is not an alias for exact object replacement.
 ## `replace`
 `replace(path, value)` performs exact assignment at the endpoint.
 The previous endpoint value is replaced by the supplied value.
-`replace([], value)` replaces the projected root.
+`replace([], value)` replaces the data root.
 Use `replace` when the complete endpoint value is authoritative.
 ## `delete`
-`delete(path)` removes the projected value at the path.
+`delete(path)` removes the data value at the path.
 A committed delete operation records:
 - `kind: "delete"`
 - `path`
@@ -157,7 +157,7 @@ A multi-operation batch or replay advances the revision once.
 
 capture
 
-capture() returns detached projected state, exact structural transport, and the
+capture() returns detached data state, exact structural transport, and the
 revision at which it was observed.
 
 type LiveMapCapture = Readonly<{
@@ -178,13 +178,13 @@ A capture is observed state. It is not itself a mutation request.
 
 ## Canonical document operations
 
-Document-mode LiveMaps use a separate canonical path domain. `LiveMapDocumentPath` is a validated, detached, readonly numeric array of finite, non-negative safe-integer `$_content` indexes. It never admits projected object keys.
+Document-mode LiveMaps use a separate canonical path domain. `LiveMapDocumentPath` is a validated, detached, readonly numeric array of finite, non-negative safe-integer `$_content` indexes. It never admits data object keys.
 
 Root interpretation is exact:
 
 - element mode `[]` addresses the one public top-level ordinary element;
 - fragment mode `[]` addresses the owned `_hson_elem` cluster;
-- each segment descends through the current HSON node's `$_content`; and
+- each segment descends through the current Hson node's `$_content`; and
 - descent through a primitive or beyond content is a structured conflict.
 
 Canonical graph commits stage operations in ordinal order:
@@ -205,10 +205,10 @@ Live calls accept `LiveMapDocumentRequestTarget` (`path` or compatibility `quid`
 | `set-attr` | Ordinary element path; canonical public name/value | No path changes | Exact existing value is a no-op; wrong node kind, protected name, invalid value, path, or witness conflicts. |
 | `remove-attr` | Ordinary element path; canonical public name | No path changes | Missing attribute is a no-op; the same target/name conflicts apply. |
 | `replace-attrs` | Ordinary element path; complete canonical public bag | No path changes | Exact bag equality is a no-op; malformed/protected bags and target conflicts reject. |
-| `insert-content` | HSON-node parent path; index `0..length` at its ordinal | New subtree occupies `index`; siblings at and after it shift `+1` | Invalid insertion index/content, identity admission, mode change, path, or witness conflicts reject. |
-| `replace-content` | HSON-node parent path; existing index | Old subtree at the slot is retired; siblings retain paths; replacement owns the slot | Exact canonical replacement is a no-op; invalid slot/content, identity, mode, path, or witness conflicts reject. |
-| `remove-content` | HSON-node parent path; existing index | Removed subtree retires; later siblings shift `-1` | A missing slot conflicts; a resulting document-mode change conflicts. |
-| `move-content` | HSON-node parent path; existing `from` and `to` | Moved subtree and descendants move to final index `to`; intervening siblings shift once | `from === to` is a no-op; malformed/out-of-range indexes conflict. |
+| `insert-content` | Hson-node parent path; index `0..length` at its ordinal | New subtree occupies `index`; siblings at and after it shift `+1` | Invalid insertion index/content, identity admission, mode change, path, or witness conflicts reject. |
+| `replace-content` | Hson-node parent path; existing index | Old subtree at the slot is retired; siblings retain paths; replacement owns the slot | Exact canonical replacement is a no-op; invalid slot/content, identity, mode, path, or witness conflicts reject. |
+| `remove-content` | Hson-node parent path; existing index | Removed subtree retires; later siblings shift `-1` | A missing slot conflicts; a resulting document-mode change conflicts. |
+| `move-content` | Hson-node parent path; existing `from` and `to` | Moved subtree and descendants move to final index `to`; intervening siblings shift once | `from === to` is a no-op; malformed/out-of-range indexes conflict. |
 | `ensure-quid` | Eligible ordinary-element path; system-generated recorded QUID | Adds canonical `$_meta.quid` without structural path change | Existing same QUID is an operation-level no-op; malformed, colliding, ineligible, or different-existing claims reject. Replay never allocates. |
 | `replace-root` | No target; same document mode | Every old path retires and the supplied canonical root becomes authoritative | Exact root equality is a no-op at install; in replay it must be the sole operation and mode must match. |
 
@@ -219,12 +219,12 @@ Mutation, replay, and reflection consume the same path-authoritative operation s
 `ensure-quid` is produced only by the internal LiveMap authority in response to
 an owner-authorized continuity facility, including exact linked identity demand.
 No public LiveMap method requests it, and callers cannot select the QUID.
-Document commits use the numeric document commit target; projected commits use
+Document commits use the numeric document commit target; data commits use
 `{ kind: "path", path: LivePath, projected: true }`. Both are path-authoritative,
 and neither accepts a raw-QUID route. Candidate generation is outside replay and
 outside the canonical operation reducer. One changed registration advances the
 ordinary revision once and publishes through ordinary canonical commit and
-history observers; reuse publishes nothing. Projected value feeds, links, and
+history observers; reuse publishes nothing. Data value feeds, links, and
 stores publish nothing for metadata-only registration because their values are
 unchanged. The operation is
 additive in current exact Locus graph transport because it preserves the
@@ -236,7 +236,7 @@ Identity acquisition accepts a path-only target even though active ordinary
 document mutations retain path-or-QUID request compatibility. This fence keeps
 raw QUID bytes from becoming handle constructors. Ineligible primitives and
 structural carriers, malformed paths, and graph/overlay disagreement reject
-before publication. Projected eligibility is restricted to the semantic
+before publication. Data eligibility is restricted to the semantic
 `_hson_obj` or `_hson_arr` reached by the supplied user path; property and
 array-item wrappers are never registration targets.
 
@@ -256,9 +256,9 @@ validates and seeds a fresh ledger from active metadata. Exact same-epoch
 capture restoration retains the living monotonic ledger; it cannot roll state
 back to the capture-time issued population.
 
-### Projected rename and move intent
+### Data rename and move intent
 
-Projected object rename and array move are canonical semantic operations rather
+Data object rename and array move are canonical semantic operations rather
 than broad endpoint replacements:
 
 | Operation | Domain | Exact effect | No-op and conflict rules |
@@ -284,7 +284,7 @@ ordinary mutation never allocates a QUID.
 
 apply
 
-apply({ prevRev, value }) conditionally replaces the projected root.
+apply({ prevRev, value }) conditionally replaces the data root.
 
 The operation succeeds only when:
 
@@ -332,7 +332,7 @@ Replay is atomic across all operations.
 
 Equality
 
-Generic projected equality is ordered structural SameValue equality.
+Generic data equality is ordered structural SameValue equality.
 
 Object-property order and array order are semantic. Existing object properties
 retain their position, new properties append in admitted order, and complete
@@ -354,14 +354,14 @@ Mutating an input path, object, array, prev, next, removed, or inserted value af
 * stored operation records;
 * later feed events.
 
-Projected public objects are fresh ordinary objects built with own data
+Data public objects are fresh ordinary objects built with own data
 properties, including `__proto__`, `constructor`, and `prototype`. Mutating a
 public result cannot alter canonical state, commits, later reads, or another
 listener result.
 
 Schema behavior
 
-Schema validation examines the complete projected candidate state.
+Schema validation examines the complete data candidate state.
 
 Schema failure:
 
@@ -372,7 +372,7 @@ Schema failure:
 
 Schema concerns shape and validity. It does not redefine mutation semantics.
 
-Schema validates the same admitted projected-value domain. Optional means a
+Schema validates the same admitted data value domain. Optional means a
 property may be missing; a present `undefined` value is invalid. Schema literals
 are detached at definition and compared with ordered SameValue equality. Custom
 refinements intentionally execute on fresh detached public materializations.
@@ -396,7 +396,7 @@ Non-goals
 
 This contract does not define:
 
-* physical HSON node surgery;
+* physical Hson node surgery;
 * peer-to-peer merging;
 * CRDT behavior;
 * automatic stale-write rebasing;

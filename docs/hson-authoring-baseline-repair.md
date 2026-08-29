@@ -1,28 +1,28 @@
-# HSON authoring baseline regression repair
+# Hson authoring baseline regression repair
 
 Verified 2026-08-28. This is the focused baseline repair, not a later authoring or distribution phase.
 
 ## 1. Ordinary VS Code reproduction
 
-Reproduced on ordinary macOS VS Code **1.134.0**, using the original VSIX in an isolated installed-extension directory. The extension activated, but official `HSON` had no HSON grammar tokens and malformed HSON produced zero diagnostics. Invalid → valid → invalid remained 0 → 0 → 0.
+Reproduced on ordinary macOS VS Code **1.134.0**, using the original VSIX in an isolated installed-extension directory. The extension activated, but official `Hson` had no Hson grammar tokens and malformed Hson produced zero diagnostics. Invalid → valid → invalid remained 0 → 0 → 0.
 
 The installed everyday extension and original VSIX contained byte-identical `dist/extension.js` (SHA-256 `1e5dfe528a4881e05396cca52b116a9028c5a38760c7ca204b17f1c86e74d46f`). This ties the isolated reproduction to the actual installed artifact without changing the everyday profile.
 
 ## 2. Development-host reproduction
 
-The pre-repair current source build **did not reproduce the direct-HSON failure**. It activated, emitted HSON grammar tokens, diagnosed invalid source, cleared on an unsaved correction, and republished on another invalid edit. Both trusted and genuinely untrusted workspaces passed. There was no Schema association/provider.
+The pre-repair current source build **did not reproduce the direct-Hson failure**. It activated, emitted Hson grammar tokens, diagnosed invalid source, cleared on an unsaved correction, and republished on another invalid edit. Both trusted and genuinely untrusted workspaces passed. There was no Schema association/provider.
 
 ## 3. Highlighting root cause
 
-The installed 0.1.0 VSIX still contributed a grammar matching `hsonString`, not `HSON`. Current source had already migrated the injection to `HSON`, but that spelling-only architecture could not recognize renamed official bindings or exclude unrelated/shadowed `HSON` bindings.
+The installed 0.1.0 VSIX still contributed a grammar matching `hsonString`, not `Hson`. Current source had already migrated the injection to `Hson`, but that spelling-only architecture could not recognize renamed official bindings or exclude unrelated/shadowed `Hson` bindings.
 
-The repair retains `syntaxes/hson.tmLanguage.json` unchanged as the coloring authority. Its tokens are now published through a binding-selected semantic-token adapter with HSON scope fallbacks. The obsolete spelling-only injection is removed; no second HSON lexer/parser was introduced for coloring. This transport change is necessary because a TextMate regex cannot establish TypeScript symbol identity. VS Code continues to control semantic-token rendering through its normal theme/user preferences.
+The repair retains `syntaxes/hson.tmLanguage.json` unchanged as the coloring authority. Its tokens are now published through a binding-selected semantic-token adapter with Hson scope fallbacks. The obsolete spelling-only injection is removed; no second Hson lexer/parser was introduced for coloring. This transport change is necessary because a TextMate regex cannot establish TypeScript symbol identity. VS Code continues to control semantic-token rendering through its normal theme/user preferences.
 
 ## 4. Validity-diagnostic root cause
 
-The installed bundle's discovery still required imported name `hsonString`; official `HSON` produced no discovered source and therefore no diagnostic. Current source diagnostics were already independent of Schema/trust, but used `hson.fromHson(...).toNode()` rather than the exact authoring admission boundary.
+The installed bundle's discovery still required imported name `hsonString`; official `Hson` produced no discovered source and therefore no diagnostic. Current source diagnostics were already independent of Schema/trust, but used `hson.fromHson(...).toNode()` rather than the exact authoring admission boundary.
 
-Secure tag diagnostics now invoke the existing private `admit_hson` operation (the function underlying `HSON`). D5's raw-template newline/UTF-16 correspondence maps primary/related evidence back to the host. TypeScript determines whether cooked template segments exist; invalid cooked escapes are rejected by the real tag boundary. Readable noncanonical input is admitted and canonicalized, not rejected for differing serialization.
+Secure tag diagnostics now invoke the existing private `admit_hson` operation (the function underlying `Hson`). D5's raw-template newline/UTF-16 correspondence maps primary/related evidence back to the host. TypeScript determines whether cooked template segments exist; invalid cooked escapes are rejected by the real tag boundary. Readable noncanonical input is admitted and canonicalized, not rejected for differing serialization.
 
 The stale package also lacked the Workspace Trust declaration: it was unavailable to the Restricted Mode extension host. Building the current package exposed another concrete packaging blocker: a repository-relative README link without repository metadata caused `vsce package` to fail. That link/metadata is repaired.
 
@@ -50,21 +50,21 @@ Generated ignored artifact: `editors/vscode-hson/hson-language.vsix`.
 
 ## 7. Binding recognition
 
-Census: package root resolves to `dist/index.js`; `/hson` resolves to `dist/hson-authoring.js`. `src/index.ts` re-exports `HSON` from `src/hson-authoring.ts`; no other public index exports HSON. The lowercase aggregate facade is not a tag.
+Census: package root resolves to `dist/index.js`; `/hson` resolves to `dist/hson-authoring.js`. `src/index.ts` re-exports `Hson` from `src/hson-authoring.ts`; no other public index exports Hson. The lowercase aggregate facade is not a tag.
 
 The existing TypeScript checker/import-symbol discovery is unchanged. Direct named imports from **`hson-live` and `hson-live/hson`**, including renames, retain authority. Local names, shadows, wrong packages, wrappers, copied/extracted functions and unsupported import forms do not acquire it from spelling.
 
 ## 8. Highlighting contract
 
-Recognized valid, invalid and interpolated templates receive existing-grammar-backed HSON tokens. Direct/root/renamed imports are equivalent. Expressions retain host-language ownership. Registration does not await a provider, D1, Schema, association, runtime interpolation evidence or completion.
+Recognized valid, invalid and interpolated templates receive existing-grammar-backed Hson tokens. Direct/root/renamed imports are equivalent. Expressions retain host-language ownership. Registration does not await a provider, D1, Schema, association, runtime interpolation evidence or completion.
 
 ## 9. Secure admission contract
 
-No-substitution templates are admitted by the actual HSON tag operation, including raw-template behavior, physical newline normalization, detached/canonical output, escape handling and Unicode-safe host ranges. Invalid → valid clears and valid → invalid publishes on unsaved edits. Version guards reject stale results. Standalone `.hson` and D4 `fromHson` behavior remain separate.
+No-substitution templates are admitted by the actual Hson tag operation, including raw-template behavior, physical newline normalization, detached/canonical output, escape handling and Unicode-safe host ranges. Invalid → valid clears and valid → invalid publishes on unsaved edits. Version guards reject stale results. Standalone `.hson` and D4 `fromHson` behavior remain separate.
 
 ## 10. Restricted Mode
 
-The final installed **0.1.1** VSIX activated in an actual untrusted workspace, emitted HSON tokens, and produced diagnostic counts **1 → 0 → 1** across invalid/corrected/invalid edits. No trusted provider executed. Workspace Trust declarations and trusted execution gates remain intact.
+The final installed **0.1.1** VSIX activated in an actual untrusted workspace, emitted Hson tokens, and produced diagnostic counts **1 → 0 → 1** across invalid/corrected/invalid edits. No trusted provider executed. Workspace Trust declarations and trusted execution gates remain intact.
 
 ## 11. Interpolation / D5
 
@@ -81,18 +81,18 @@ Discovery → grammar-backed highlighting → secure tag admission run without S
 ## 14. Real VS Code integration
 
 - Ordinary VS Code **1.134.0**, development host: baseline passed in trusted and Restricted Mode workspaces.
-- Actual semantic-token API decoded direct/root/renamed tokens for valid, invalid and interpolated HSON; excluded expression ranges and unsupported bindings; reflected unsaved edits.
+- Actual semantic-token API decoded direct/root/renamed tokens for valid, invalid and interpolated Hson; excluded expression ranges and unsupported bindings; reflected unsaved edits.
 - Pinned VS Code **1.95.3**, existing full D2–D6 journey: passed, including D4–D6 Restricted Mode checks.
 - Additional ordinary-1.134.0 full D2–D6 run passed through D5 but stalled in the completion command. The isolated process was stopped. This additional run is **not claimed as a D6 pass**; pinned D6 and ordinary baseline results are separate evidence.
 
 ## 15. Final installed-VSIX smoke
 
-Built with the existing `npm run package:vsix` path. Installed into a clean extensions directory using the VS Code CLI. Only an empty test driver was a development extension; HSON loaded from the installed package, not the repository source.
+Built with the existing `npm run package:vsix` path. Installed into a clean extensions directory using the VS Code CLI. Only an empty test driver was a development extension; Hson loaded from the installed package, not the repository source.
 
 | Final 0.1.1 result | Trusted | Restricted |
 | --- | --- | --- |
 | Activated | yes | yes |
-| Grammar-backed HSON semantic tokens | yes | yes |
+| Grammar-backed Hson semantic tokens | yes | yes |
 | Invalid diagnostic | 1 | 1 |
 | Unsaved correction | 0 | 0 |
 | Invalid edit republishes | 1 | 1 |
@@ -110,7 +110,7 @@ Before and after: **186,554 raw / 99,683 minified / 27,550 gzip bytes; 51 retain
 
 - D4 editor **26/26**, performance **8/8**; static discovery and JS-literal mapping **25/25 each**.
 - D5 mapping **25/25**, runtime capture **28/28**, editor **29/29**, performance **19/19**.
-- D6 context **25/25**, projected completion **26/26**, document completion **26/26**, editor completion **29/29**, performance **6/6**.
+- D6 context **25/25**, data completion **26/26**, document completion **26/26**, editor completion **29/29**, performance **6/6**.
 - Pinned real-host D4–D6 and Restricted Mode: passed. D6 measured completion-command p50 **4.72 ms**, maximum **17.84 ms** (six samples).
 
 ## 18. Other verification
@@ -148,6 +148,6 @@ No baseline defect is known in the tested final package. The everyday profile st
 
 ## 22. Suggested commit
 
-`fix(vscode): restore binding-aware HSON authoring baseline`
+`fix(vscode): restore binding-aware Hson authoring baseline`
 
 No message-bank, settings, presentation, control-plane or exhaustive distribution phase was started.

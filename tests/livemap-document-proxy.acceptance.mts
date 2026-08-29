@@ -153,14 +153,14 @@ check("document $_ exposes the established location capability surface", () => {
   }
 });
 
-check("projected object proxy behavior remains unchanged", () => {
+check("data object proxy behavior remains unchanged", () => {
   const map = hson.liveMap.fromJson({ user: { name: "Ada" } });
   const user = Reflect.get(map.proxy(), "user");
   assert.equal(Reflect.get(user, "name").$_.snap(), "Ada");
   assert.equal(typeof user.$_.object.getKey, "function");
 });
 
-check("projected array proxy behavior remains unchanged", () => {
+check("data array proxy behavior remains unchanged", () => {
   const map = hson.liveMap.fromJson({ items: ["first"] });
   const items = Reflect.get(map.proxy(), "items");
   assert.equal(items[0].$_.snap(), "first");

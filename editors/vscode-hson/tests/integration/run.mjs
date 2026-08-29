@@ -34,24 +34,24 @@ export const trustedSchemas = { runtimeHandle: UserSchema, completion: Completio
 `;
 await writeFile(join(workspaceDir, "contracts.mjs"), contracts);
 for (const [file, schema, body] of [["completion-user.ts", "CompletionSchema", "< >"], ["completion-element.ts", "ElementSchema", "<div />"], ["completion-slow.ts", "SlowSchema", "< >"]]) {
-  await writeFile(join(workspaceDir, file), `import { HSON } from "hson-live/hson"; import { ${schema} } from "./contracts.mjs"; const value=1; const source=HSON\`${body}\`; HSON.validate(${schema},source);`);
+  await writeFile(join(workspaceDir, file), `import { Hson } from "hson-live/hson"; import { ${schema} } from "./contracts.mjs"; const value=1; const source=Hson\`${body}\`; Hson.validate(${schema},source);`);
 }
-const d3Source = 'import { HSON } from "hson-live/hson";\nimport { hsonLiveMap } from "hson-live/livemap";\nimport { UserSchema } from "./contracts.mjs";\nconst source = HSON`<user <age "37">>`;\nconst map = hsonLiveMap.fromHson(source);\nmap.schema.use(UserSchema);\n';
+const d3Source = 'import { Hson } from "hson-live/hson";\nimport { hsonLiveMap } from "hson-live/livemap";\nimport { UserSchema } from "./contracts.mjs";\nconst source = Hson`<user <age "37">>`;\nconst map = hsonLiveMap.fromHson(source);\nmap.schema.use(UserSchema);\n';
 await writeFile(join(workspaceDir, "map-user.ts"), d3Source);
 const d4Source = 'import { hsonLiveMap } from "hson-live/livemap";\nimport { UserSchema } from "./contracts.mjs";\nconst source = "<user <age \\x2237\\x22>>";\nconst map = hsonLiveMap.fromHson(source);\nmap.schema.use(UserSchema);\n';
 const d4Mutated = 'import { hsonLiveMap } from "hson-live/livemap";\nimport { UserSchema } from "./contracts.mjs";\nconst source = `<user <age "37">>`;\nconst map = hsonLiveMap.fromHson(source);\nmap.set(["user", "age"], 37);\nmap.schema.use(UserSchema);\n';
 await writeFile(join(workspaceDir, "static-map-user.ts"), d4Source);
 await writeFile(join(workspaceDir, "static-mutated.ts"), d4Mutated);
 await writeFile(join(workspaceDir, "static-syntax.ts"), 'import { hsonTransform } from "hson-live/transform";\nhsonTransform.fromHson("\\x2b1").toNode();\n');
-const d5Imports = 'import { HSON } from "hson-live/hson";\nimport { hsonLiveMap } from "hson-live/livemap";\nimport { UserSchema } from "./contracts.mjs";\nimport { getAge } from "./runtime-value.mjs";\n';
-const d5Source = d5Imports + 'const age=getAge(); const source=HSON`<user <age ${age}>>`;\nHSON.validate(UserSchema,source);';
-const d5Map = d5Imports + 'const age="37"; const source=HSON`<user <age ${age}>>`;\nconst map=hsonLiveMap.fromHson(source);\nmap.schema.use(UserSchema);';
+const d5Imports = 'import { Hson } from "hson-live/hson";\nimport { hsonLiveMap } from "hson-live/livemap";\nimport { UserSchema } from "./contracts.mjs";\nimport { getAge } from "./runtime-value.mjs";\n';
+const d5Source = d5Imports + 'const age=getAge(); const source=Hson`<user <age ${age}>>`;\nHson.validate(UserSchema,source);';
+const d5Map = d5Imports + 'const age="37"; const source=Hson`<user <age ${age}>>`;\nconst map=hsonLiveMap.fromHson(source);\nmap.schema.use(UserSchema);';
 const d5Cases = {
   'interpolated.ts': d5Source,
   'interpolated-map.ts': d5Map,
-  'interpolated-repeated.ts': d5Imports + 'function make(){ const age="37"; const source=HSON`<user <age ${age}>>`; try { HSON.validate(UserSchema,source); } catch {} } make(); make();',
-  'interpolated-literal-error.ts': d5Imports + 'const value=37; HSON`<user <age ${value}> +>`;',
-  'interpolated-value-error.ts': d5Imports + 'const value=Infinity; HSON`<user <age ${value}>>`;',
+  'interpolated-repeated.ts': d5Imports + 'function make(){ const age="37"; const source=Hson`<user <age ${age}>>`; try { Hson.validate(UserSchema,source); } catch {} } make(); make();',
+  'interpolated-literal-error.ts': d5Imports + 'const value=37; Hson`<user <age ${value}> +>`;',
+  'interpolated-value-error.ts': d5Imports + 'const value=Infinity; Hson`<user <age ${value}>>`;',
 };
 for (const [name,text] of Object.entries(d5Cases)) await writeFile(join(workspaceDir,name),text);
 await writeFile(join(workspaceDir,'runtime-age.json'),'"37"');
@@ -85,7 +85,7 @@ try { await import("data:text/javascript;base64," + Buffer.from(code).toString("
 }
 }
 `);
-await writeFile(join(workspaceDir, "user.ts"), 'import { HSON, hson } from "hson-live";\nimport { UserSchema } from "./trusted-schema.mjs";\nconst user = HSON`<user <age "37">>`;\nHSON.validate(UserSchema, user);\n');
+await writeFile(join(workspaceDir, "user.ts"), 'import { Hson, hson } from "hson-live";\nimport { UserSchema } from "./trusted-schema.mjs";\nconst user = Hson`<user <age "37">>`;\nHson.validate(UserSchema, user);\n');
 try {
   await runTests({
     extensionDevelopmentPath: resolve(here, "../.."),

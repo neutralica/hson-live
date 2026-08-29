@@ -1,4 +1,4 @@
-CERTIFIED AUTHORED-HSON CORPUS — FULLY MATERIALIZED REVIEW
+CERTIFIED AUTHORED-Hson CORPUS — FULLY MATERIALIZED REVIEW
 
 SUMMARY
 {
@@ -138,7 +138,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -204,7 +204,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -241,7 +241,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: "{\n  \"actualClassification\": \"canonical-divergence\",\n  \"case\": \"negative-zero-witness\",\n  \"expectedClassification\": \"success\",\n  \"graphFixture\": {\n    \"$_content\": [\n      {\n        \"$number\": \"-0\"\n      }\n    ],\n    \"$_tag\": \"_hson_val\"\n  },\n  \"launcher\": \"certified-authored-hson-corpus\",\n  \"operation\": \"render\",\n  \"stage\": \"canonical-comparison\"\n}"
@@ -294,7 +294,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -312,7 +312,7 @@ tags: diagnostic-circuit, baseline
 rationale: Every diagnostic route compares against the original admitted graph baseline.
 
 === graph.accept.element-string-empty ===
-claim: A detached HSON element string carrier normalizes to its empty text leaf.
+claim: A detached Hson element string carrier normalizes to its empty text leaf.
 classification: graph-ingress-accepted-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"_hson_str\",\"$_content\":[\"\"]}]}"
@@ -329,7 +329,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"\""
+exact Hson output: "\"\""
 exact JSON output: "\"\""
 exact HTML output: "<_hson_obj><_hson_str>&quot;&quot;</_hson_str></_hson_obj>"
 exact diagnostic output: —
@@ -344,10 +344,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: graph-ingress, scalar-carrier, transport
-rationale: A detached HSON element string carrier normalizes to its empty text leaf.
+rationale: A detached Hson element string carrier normalizes to its empty text leaf.
 
 === graph.accept.element-string-ordinary ===
-claim: A detached HSON element string carrier normalizes to its ordinary text leaf.
+claim: A detached Hson element string carrier normalizes to its ordinary text leaf.
 classification: graph-ingress-accepted-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"_hson_str\",\"$_content\":[\"ordinary\"]}]}"
@@ -364,7 +364,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"ordinary\""
+exact Hson output: "\"ordinary\""
 exact JSON output: "\"ordinary\""
 exact HTML output: "<_hson_obj><_hson_str>&quot;ordinary&quot;</_hson_str></_hson_obj>"
 exact diagnostic output: —
@@ -379,10 +379,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: graph-ingress, scalar-carrier, transport
-rationale: A detached HSON element string carrier normalizes to its ordinary text leaf.
+rationale: A detached Hson element string carrier normalizes to its ordinary text leaf.
 
 === graph.accept.object-false ===
-claim: A detached HSON object carrier transports false.
+claim: A detached Hson object carrier transports false.
 classification: graph-ingress-accepted-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[false]}]}"
@@ -399,7 +399,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: "false"
+exact Hson output: "false"
 exact JSON output: "false"
 exact HTML output: "<_hson_obj><_hson_val>false</_hson_val></_hson_obj>"
 exact diagnostic output: —
@@ -414,10 +414,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: graph-ingress, scalar-carrier, transport
-rationale: A detached HSON object carrier transports false.
+rationale: A detached Hson object carrier transports false.
 
 === graph.accept.object-negative-number ===
-claim: A detached HSON object carrier transports a negative finite number.
+claim: A detached Hson object carrier transports a negative finite number.
 classification: graph-ingress-accepted-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[-12.5]}]}"
@@ -434,7 +434,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: "-12.5"
+exact Hson output: "-12.5"
 exact JSON output: "-12.5"
 exact HTML output: "<_hson_obj><_hson_val>-12.5</_hson_val></_hson_obj>"
 exact diagnostic output: —
@@ -449,10 +449,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: graph-ingress, scalar-carrier, transport
-rationale: A detached HSON object carrier transports a negative finite number.
+rationale: A detached Hson object carrier transports a negative finite number.
 
 === graph.accept.object-negative-zero ===
-claim: A detached HSON object carrier transports negative zero.
+claim: A detached Hson object carrier transports negative zero.
 classification: graph-ingress-accepted-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[0]}]}"
@@ -471,7 +471,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: "-0"
+exact Hson output: "-0"
 exact JSON output: "-0"
 exact HTML output: "<_hson_obj><_hson_val>-0</_hson_val></_hson_obj>"
 exact diagnostic output: —
@@ -489,10 +489,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: graph-ingress, scalar-carrier, transport
-rationale: A detached HSON object carrier transports negative zero.
+rationale: A detached Hson object carrier transports negative zero.
 
 === graph.accept.object-null ===
-claim: A detached HSON object carrier transports null.
+claim: A detached Hson object carrier transports null.
 classification: graph-ingress-accepted-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[null]}]}"
@@ -509,7 +509,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: "null"
+exact Hson output: "null"
 exact JSON output: "null"
 exact HTML output: "<_hson_obj><_hson_val>null</_hson_val></_hson_obj>"
 exact diagnostic output: —
@@ -524,10 +524,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: graph-ingress, scalar-carrier, transport
-rationale: A detached HSON object carrier transports null.
+rationale: A detached Hson object carrier transports null.
 
 === graph.accept.object-positive-number ===
-claim: A detached HSON object carrier transports a positive finite number.
+claim: A detached Hson object carrier transports a positive finite number.
 classification: graph-ingress-accepted-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[12.5]}]}"
@@ -544,7 +544,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: "12.5"
+exact Hson output: "12.5"
 exact JSON output: "12.5"
 exact HTML output: "<_hson_obj><_hson_val>12.5</_hson_val></_hson_obj>"
 exact diagnostic output: —
@@ -559,10 +559,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: graph-ingress, scalar-carrier, transport
-rationale: A detached HSON object carrier transports a positive finite number.
+rationale: A detached Hson object carrier transports a positive finite number.
 
 === graph.accept.object-string-empty ===
-claim: A detached HSON object string carrier normalizes to its empty string leaf.
+claim: A detached Hson object string carrier normalizes to its empty string leaf.
 classification: graph-ingress-accepted-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_str\",\"$_content\":[\"\"]}]}"
@@ -579,7 +579,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"\""
+exact Hson output: "\"\""
 exact JSON output: "\"\""
 exact HTML output: "<_hson_obj><_hson_str>&quot;&quot;</_hson_str></_hson_obj>"
 exact diagnostic output: —
@@ -594,10 +594,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: graph-ingress, scalar-carrier, transport
-rationale: A detached HSON object string carrier normalizes to its empty string leaf.
+rationale: A detached Hson object string carrier normalizes to its empty string leaf.
 
 === graph.accept.object-string-ordinary ===
-claim: A detached HSON object string carrier normalizes to its ordinary string leaf.
+claim: A detached Hson object string carrier normalizes to its ordinary string leaf.
 classification: graph-ingress-accepted-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_str\",\"$_content\":[\"ordinary\"]}]}"
@@ -614,7 +614,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"ordinary\""
+exact Hson output: "\"ordinary\""
 exact JSON output: "\"ordinary\""
 exact HTML output: "<_hson_obj><_hson_str>&quot;ordinary&quot;</_hson_str></_hson_obj>"
 exact diagnostic output: —
@@ -629,10 +629,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: graph-ingress, scalar-carrier, transport
-rationale: A detached HSON object string carrier normalizes to its ordinary string leaf.
+rationale: A detached Hson object string carrier normalizes to its ordinary string leaf.
 
 === graph.accept.object-true ===
-claim: A detached HSON object carrier transports true.
+claim: A detached Hson object carrier transports true.
 classification: graph-ingress-accepted-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[true]}]}"
@@ -649,7 +649,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: "true"
+exact Hson output: "true"
 exact JSON output: "true"
 exact HTML output: "<_hson_obj><_hson_val>true</_hson_val></_hson_obj>"
 exact diagnostic output: —
@@ -664,10 +664,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: graph-ingress, scalar-carrier, transport
-rationale: A detached HSON object carrier transports true.
+rationale: A detached Hson object carrier transports true.
 
 === graph.accept.object-zero ===
-claim: A detached HSON object carrier transports zero.
+claim: A detached Hson object carrier transports zero.
 classification: graph-ingress-accepted-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[0]}]}"
@@ -684,7 +684,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: "0"
+exact Hson output: "0"
 exact JSON output: "0"
 exact HTML output: "<_hson_obj><_hson_val>0</_hson_val></_hson_obj>"
 exact diagnostic output: —
@@ -699,10 +699,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: graph-ingress, scalar-carrier, transport
-rationale: A detached HSON object carrier transports zero.
+rationale: A detached Hson object carrier transports zero.
 
 === graph.reject.direct-element-false ===
-claim: A detached HSON element carrier may not contain a typed false leaf.
+claim: A detached Hson element carrier may not contain a typed false leaf.
 classification: graph-ingress-rejected-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[false]}]}"
@@ -713,7 +713,7 @@ variation: —
 defect: direct-element-false
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -732,10 +732,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: graph-ingress, typed-value, structural-mode, rejection
-rationale: A detached HSON element carrier may not contain a typed false leaf.
+rationale: A detached Hson element carrier may not contain a typed false leaf.
 
 === graph.reject.direct-element-negative-number ===
-claim: A detached HSON element carrier may not contain a typed negative numeric leaf.
+claim: A detached Hson element carrier may not contain a typed negative numeric leaf.
 classification: graph-ingress-rejected-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[-12.5]}]}"
@@ -746,7 +746,7 @@ variation: —
 defect: direct-element-negative-number
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -765,10 +765,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: graph-ingress, typed-value, structural-mode, rejection
-rationale: A detached HSON element carrier may not contain a typed negative numeric leaf.
+rationale: A detached Hson element carrier may not contain a typed negative numeric leaf.
 
 === graph.reject.direct-element-negative-zero ===
-claim: A detached HSON element carrier may not contain a typed negative-zero leaf.
+claim: A detached Hson element carrier may not contain a typed negative-zero leaf.
 classification: graph-ingress-rejected-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[0]}]}"
@@ -779,7 +779,7 @@ variation: —
 defect: direct-element-negative-zero
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -798,10 +798,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: graph-ingress, typed-value, structural-mode, rejection
-rationale: A detached HSON element carrier may not contain a typed negative-zero leaf.
+rationale: A detached Hson element carrier may not contain a typed negative-zero leaf.
 
 === graph.reject.direct-element-null ===
-claim: A detached HSON element carrier may not contain a typed null leaf.
+claim: A detached Hson element carrier may not contain a typed null leaf.
 classification: graph-ingress-rejected-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[null]}]}"
@@ -812,7 +812,7 @@ variation: —
 defect: direct-element-null
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -831,10 +831,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: graph-ingress, typed-value, structural-mode, rejection
-rationale: A detached HSON element carrier may not contain a typed null leaf.
+rationale: A detached Hson element carrier may not contain a typed null leaf.
 
 === graph.reject.direct-element-positive-number ===
-claim: A detached HSON element carrier may not contain a typed positive numeric leaf.
+claim: A detached Hson element carrier may not contain a typed positive numeric leaf.
 classification: graph-ingress-rejected-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[12.5]}]}"
@@ -845,7 +845,7 @@ variation: —
 defect: direct-element-positive-number
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -864,10 +864,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: graph-ingress, typed-value, structural-mode, rejection
-rationale: A detached HSON element carrier may not contain a typed positive numeric leaf.
+rationale: A detached Hson element carrier may not contain a typed positive numeric leaf.
 
 === graph.reject.direct-element-true ===
-claim: A detached HSON element carrier may not contain a typed true leaf.
+claim: A detached Hson element carrier may not contain a typed true leaf.
 classification: graph-ingress-rejected-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[true]}]}"
@@ -878,7 +878,7 @@ variation: —
 defect: direct-element-true
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -897,10 +897,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: graph-ingress, typed-value, structural-mode, rejection
-rationale: A detached HSON element carrier may not contain a typed true leaf.
+rationale: A detached Hson element carrier may not contain a typed true leaf.
 
 === graph.reject.direct-element-zero ===
-claim: A detached HSON element carrier may not contain a typed zero leaf.
+claim: A detached Hson element carrier may not contain a typed zero leaf.
 classification: graph-ingress-rejected-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"_hson_val\",\"$_content\":[0]}]}"
@@ -911,7 +911,7 @@ variation: —
 defect: direct-element-zero
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -930,7 +930,7 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: graph-ingress, typed-value, structural-mode, rejection
-rationale: A detached HSON element carrier may not contain a typed zero leaf.
+rationale: A detached Hson element carrier may not contain a typed zero leaf.
 
 === graph.reject.fragment-typed-child ===
 claim: An element fragment containing one typed child rejects as a whole.
@@ -944,7 +944,7 @@ variation: —
 defect: fragment-typed-child
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -977,7 +977,7 @@ variation: —
 defect: nested-element-number
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -1016,7 +1016,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: "0.001"
+exact Hson output: "0.001"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -1051,7 +1051,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: "-1"
+exact Hson output: "-1"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -1086,7 +1086,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: "1000"
+exact Hson output: "1000"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -1121,7 +1121,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: "0.5"
+exact Hson output: "0.5"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -1156,7 +1156,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: "1000"
+exact Hson output: "1000"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -1174,7 +1174,7 @@ tags: number, json-number-grammar, exponent
 rationale: An uppercase exponent marker is accepted.
 
 === hson.accept.basis.object.primitive-looking-keys ===
-claim: true, false, and null are ordinary property keys in HSON object key position.
+claim: true, false, and null are ordinary property keys in Hson object key position.
 classification: literal-accepted-authored-hson
 ingress format: hson
 escaped input: "\"<true 1 false 2 null 3>\""
@@ -1238,7 +1238,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<\n  true 1\n  false 2\n  null 3\n>"
+exact Hson output: "<\n  true 1\n  false 2\n  null 3\n>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -1247,16 +1247,16 @@ expected string leaves: —
 negative-zero paths: —
 structured rejection: —
 origin: targeted-authored-hson-completeness-amendment
-provenance: Direct transcription of the settled authored-HSON structural-mode contract.
+provenance: Direct transcription of the settled authored-Hson structural-mode contract.
 novelty: Adds the contextual-key contrast with typed object values and element flags.
 human-review priority: medium
 specialized-test reference: —
 declared source reuse: —
 tags: object, property-key, primitive-keyword, order
-rationale: true, false, and null are ordinary property keys in HSON object key position.
+rationale: true, false, and null are ordinary property keys in Hson object key position.
 
 === hson.accept.basis.quoted-name.element-name ===
-claim: A nonempty single-quoted name is admitted as an HSON element name.
+claim: A nonempty single-quoted name is admitted as an Hson element name.
 classification: literal-accepted-authored-hson
 ingress format: hson
 escaped input: "\"<'x y'/>\""
@@ -1276,7 +1276,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: "<'x y'/>"
+exact Hson output: "<'x y'/>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -1291,7 +1291,7 @@ human-review priority: high
 specialized-test reference: —
 declared source reuse: —
 tags: element, quoted-name, authored-name
-rationale: A nonempty single-quoted name is admitted as an HSON element name.
+rationale: A nonempty single-quoted name is admitted as an Hson element name.
 
 === hson.accept.basis.root.element-fragment ===
 claim: A homogeneous root element fragment preserves sibling order.
@@ -1318,7 +1318,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: "<a/>\n<b/>"
+exact Hson output: "<a/>\n<b/>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -1327,7 +1327,7 @@ expected string leaves: —
 negative-zero paths: —
 structured rejection: —
 origin: targeted-authored-hson-completeness-amendment
-provenance: Direct transcription of the settled authored-HSON structural-mode contract.
+provenance: Direct transcription of the settled authored-Hson structural-mode contract.
 novelty: Adds the missing positive multi-element root fragment.
 human-review priority: medium
 specialized-test reference: —
@@ -1380,7 +1380,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_arr"
 }
-exact HSON output: "«\n  1,\n  2\n»"
+exact Hson output: "«\n  1,\n  2\n»"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -1415,7 +1415,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: "42"
+exact Hson output: "42"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -1475,7 +1475,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: "<widget title=\"value\" enabled\n  \"a\"\n  \"b\"\n/>"
+exact Hson output: "<widget title=\"value\" enabled\n  \"a\"\n  \"b\"\n/>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -1484,7 +1484,7 @@ expected string leaves: —
 negative-zero paths: —
 structured rejection: —
 origin: targeted-authored-hson-completeness-amendment
-provenance: The graph was newly reasoned from the settled trivia grammar; the exact canonical HSON attribute order was corrected after focused production validation.
+provenance: The graph was newly reasoned from the settled trivia grammar; the exact canonical Hson attribute order was corrected after focused production validation.
 novelty: Adds one readable basis spanning the missing element trivia slots while leaving '/>' indivisible.
 human-review priority: critical
 specialized-test reference: —
@@ -1541,7 +1541,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<\n  alpha 1\n  beta 2\n>"
+exact Hson output: "<\n  alpha 1\n  beta 2\n>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -1591,7 +1591,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<'back\\bspace' 1>"
+exact Hson output: "<'back\\bspace' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -1641,7 +1641,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<'line\\rname' 1>"
+exact Hson output: "<'line\\rname' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -1691,7 +1691,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<pairABname 1>"
+exact Hson output: "<pairABname 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -1741,7 +1741,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<'don\\'t' 1>"
+exact Hson output: "<'don\\'t' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -1791,7 +1791,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<'back\\\\slash' 1>"
+exact Hson output: "<'back\\\\slash' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -1841,7 +1841,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<'form\\ffeed' 1>"
+exact Hson output: "<'form\\ffeed' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -1891,7 +1891,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<'line\\nname' 1>"
+exact Hson output: "<'line\\nname' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -1941,7 +1941,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<'tick`name' 1>"
+exact Hson output: "<'tick`name' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -1991,7 +1991,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<'line\\tname' 1>"
+exact Hson output: "<'line\\tname' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2041,7 +2041,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<'control\\u0001name' 1>"
+exact Hson output: "<'control\\u0001name' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2091,7 +2091,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<'high\ud800name' 1>"
+exact Hson output: "<'high\ud800name' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2141,7 +2141,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<'lambdaλname' 1>"
+exact Hson output: "<'lambdaλname' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2191,7 +2191,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<'low\udc00name' 1>"
+exact Hson output: "<'low\udc00name' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2241,7 +2241,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<loweraname 1>"
+exact Hson output: "<loweraname 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2291,7 +2291,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<'mixed¯name' 1>"
+exact Hson output: "<'mixed¯name' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2341,7 +2341,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<'pair😀name' 1>"
+exact Hson output: "<'pair😀name' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2391,7 +2391,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<'nul\\u0000name' 1>"
+exact Hson output: "<'nul\\u0000name' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2441,7 +2441,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<'unit\\u001fname' 1>"
+exact Hson output: "<'unit\\u001fname' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2491,7 +2491,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<'unit\u007fname' 1>"
+exact Hson output: "<'unit\u007fname' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2541,7 +2541,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<'unit\u0080name' 1>"
+exact Hson output: "<'unit\u0080name' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2591,7 +2591,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<'unitÿname' 1>"
+exact Hson output: "<'unitÿname' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2641,7 +2641,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<'unitĀname' 1>"
+exact Hson output: "<'unitĀname' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2691,7 +2691,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<'unit\u2028name' 1>"
+exact Hson output: "<'unit\u2028name' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2741,7 +2741,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<'unit\u2029name' 1>"
+exact Hson output: "<'unit\u2029name' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2791,7 +2791,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<upperjname 1>"
+exact Hson output: "<upperjname 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2826,7 +2826,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"\\\\\""
+exact Hson output: "\"\\\\\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2861,7 +2861,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"\\b\""
+exact Hson output: "\"\\b\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2896,7 +2896,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"\\r\""
+exact Hson output: "\"\\r\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2931,7 +2931,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"AB\""
+exact Hson output: "\"AB\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2981,7 +2981,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: "<e \"x\\t\"/>"
+exact Hson output: "<e \"x\\t\"/>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -3016,7 +3016,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"end\\t\""
+exact Hson output: "\"end\\t\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -3051,7 +3051,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"\\f\""
+exact Hson output: "\"\\f\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -3086,7 +3086,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"\\n\""
+exact Hson output: "\"\\n\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -3121,7 +3121,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"\\\"\""
+exact Hson output: "\"\\\"\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -3156,7 +3156,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"/\""
+exact Hson output: "\"/\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -3191,7 +3191,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"\\t\""
+exact Hson output: "\"\\t\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -3226,7 +3226,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"\\ud800\""
+exact Hson output: "\"\\ud800\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -3261,7 +3261,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"\\udc00\""
+exact Hson output: "\"\\udc00\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -3296,7 +3296,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"a\""
+exact Hson output: "\"a\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -3331,7 +3331,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"¯\""
+exact Hson output: "\"¯\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -3366,7 +3366,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"😀\""
+exact Hson output: "\"😀\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -3401,7 +3401,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"\\u0000\""
+exact Hson output: "\"\\u0000\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -3436,7 +3436,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"\\u001f\""
+exact Hson output: "\"\\u001f\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -3471,7 +3471,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"\u007f\""
+exact Hson output: "\"\u007f\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -3506,7 +3506,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"\u0080\""
+exact Hson output: "\"\u0080\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -3541,7 +3541,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"ÿ\""
+exact Hson output: "\"ÿ\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -3576,7 +3576,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"Ā\""
+exact Hson output: "\"Ā\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -3611,7 +3611,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"\u2028\""
+exact Hson output: "\"\u2028\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -3646,7 +3646,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"\u2029\""
+exact Hson output: "\"\u2029\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -3681,7 +3681,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"j\""
+exact Hson output: "\"j\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -3714,7 +3714,7 @@ hand-authored expected graph:
   "$_content": [],
   "$_tag": "_hson_arr"
 }
-exact HSON output: "«»"
+exact Hson output: "«»"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -3747,7 +3747,7 @@ hand-authored expected graph:
   "$_content": [],
   "$_tag": "_hson_arr"
 }
-exact HSON output: "«»"
+exact Hson output: "«»"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -3811,7 +3811,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_arr"
 }
-exact HSON output: "«\n  -0,\n  0\n»"
+exact Hson output: "«\n  -0,\n  0\n»"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -3916,7 +3916,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_arr"
 }
-exact HSON output: "«\n  «\n    1\n  »,\n  «\n    2,\n    3\n  »\n»"
+exact Hson output: "«\n  «\n    1\n  »,\n  «\n    2,\n    3\n  »\n»"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -3934,7 +3934,7 @@ tags: array, nested
 rationale: Nested arrays retain indexed membership.
 
 === hson.accept.literal.array.object-item ===
-claim: An array item may be a HSON object.
+claim: An array item may be a Hson object.
 classification: literal-accepted-authored-hson
 ingress format: hson
 escaped input: "\"[<name \\\"Ada\\\">]\""
@@ -3979,7 +3979,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_arr"
 }
-exact HSON output: "«\n  <name \"Ada\">\n»"
+exact Hson output: "«\n  <name \"Ada\">\n»"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -3994,7 +3994,7 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: array, object
-rationale: An array item may be a HSON object.
+rationale: An array item may be a Hson object.
 
 === hson.accept.literal.array.primitives ===
 claim: Arrays remain comma-separated and retain primitive item order.
@@ -4069,7 +4069,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_arr"
 }
-exact HSON output: "«\n  1,\n  \"two\",\n  false,\n  null\n»"
+exact Hson output: "«\n  1,\n  \"two\",\n  false,\n  null\n»"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -4131,7 +4131,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_arr"
 }
-exact HSON output: "«\n  1,\n  2\n»"
+exact Hson output: "«\n  1,\n  2\n»"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -4193,7 +4193,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_arr"
 }
-exact HSON output: "«\n  1,\n  2\n»"
+exact Hson output: "«\n  1,\n  2\n»"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -4249,7 +4249,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: "<div\n  \"a\"\n  \"b\"\n/>"
+exact Hson output: "<div\n  \"a\"\n  \"b\"\n/>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -4290,7 +4290,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: "<input title=\"value\"/>"
+exact Hson output: "<input title=\"value\"/>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -4308,7 +4308,7 @@ tags: element, attribute
 rationale: An element attribute retains its explicit value.
 
 === hson.accept.literal.element.empty ===
-claim: A self-closing angle construct denotes an empty HSON element.
+claim: A self-closing angle construct denotes an empty Hson element.
 classification: literal-accepted-authored-hson
 ingress format: hson
 escaped input: "\"<div/>\""
@@ -4328,7 +4328,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: "<div/>"
+exact Hson output: "<div/>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -4343,7 +4343,7 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: element
-rationale: A self-closing angle construct denotes an empty HSON element.
+rationale: A self-closing angle construct denotes an empty Hson element.
 
 === hson.accept.literal.element.flag ===
 claim: A bare name in the element attribute region is a flag.
@@ -4369,7 +4369,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: "<input disabled/>"
+exact Hson output: "<input disabled/>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -4412,7 +4412,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: "<x false null true/>"
+exact Hson output: "<x false null true/>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -4484,7 +4484,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: "<p\n  \"first\"\n  <em \"middle\"/>\n  \"last\"\n/>"
+exact Hson output: "<p\n  \"first\"\n  <em \"middle\"/>\n  \"last\"\n/>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -4502,7 +4502,7 @@ tags: element, order
 rationale: Element strings and nested elements retain their order.
 
 === hson.accept.literal.element.nested ===
-claim: An HSON element may contain a nested element.
+claim: An Hson element may contain a nested element.
 classification: literal-accepted-authored-hson
 ingress format: hson
 escaped input: "\"<p <em \\\"text\\\"/>/>\""
@@ -4544,7 +4544,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: "<p\n  <em \"text\"/>\n/>"
+exact Hson output: "<p\n  <em \"text\"/>\n/>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -4559,7 +4559,7 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: element, nested
-rationale: An HSON element may contain a nested element.
+rationale: An Hson element may contain a nested element.
 
 === hson.accept.literal.element.quid ===
 claim: An element QUID remains supported.
@@ -4585,7 +4585,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: "<main @000000001/>"
+exact Hson output: "<main @000000001/>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -4603,7 +4603,7 @@ tags: element, quid
 rationale: An element QUID remains supported.
 
 === hson.accept.literal.element.text ===
-claim: An HSON element may contain quoted string content.
+claim: An Hson element may contain quoted string content.
 classification: literal-accepted-authored-hson
 ingress format: hson
 escaped input: "\"<p \\\"text\\\"/>\""
@@ -4635,7 +4635,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: "<p \"text\"/>"
+exact Hson output: "<p \"text\"/>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -4650,7 +4650,7 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: element, string
-rationale: An HSON element may contain quoted string content.
+rationale: An Hson element may contain quoted string content.
 
 === hson.accept.literal.element.three-empty-strings ===
 claim: Three adjacent empty authored string leaves remain three.
@@ -4697,7 +4697,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: "<div\n  \"\"\n  \"\"\n  \"\"\n/>"
+exact Hson output: "<div\n  \"\"\n  \"\"\n  \"\"\n/>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -4769,7 +4769,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<\n  items «\n    1,\n    2\n  »\n>"
+exact Hson output: "<\n  items «\n    1,\n    2\n  »\n>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -4835,7 +4835,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<\n  ':x' 1\n  'a.b' 2\n>"
+exact Hson output: "<\n  ':x' 1\n  'a.b' 2\n>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -4901,7 +4901,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<\n  a 1\n  b 2\n>"
+exact Hson output: "<\n  a 1\n  b 2\n>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -4919,7 +4919,7 @@ tags: object, comment, crlf
 rationale: Physical-line comments are grammar trivia between object tokens.
 
 === hson.accept.literal.object.empty ===
-claim: One angle pair denotes an empty HSON object.
+claim: One angle pair denotes an empty Hson object.
 classification: literal-accepted-authored-hson
 ingress format: hson
 escaped input: "\"<>\""
@@ -4934,7 +4934,7 @@ hand-authored expected graph:
   "$_content": [],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<>"
+exact Hson output: "<>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -4949,7 +4949,7 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: object
-rationale: One angle pair denotes an empty HSON object.
+rationale: One angle pair denotes an empty Hson object.
 
 === hson.accept.literal.object.empty-decoded-key ===
 claim: An empty decoded object-property key is valid.
@@ -4984,7 +4984,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<'' 1>"
+exact Hson output: "<'' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -5066,7 +5066,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<\n  a 1\n  b \"two\"\n  c false\n>"
+exact Hson output: "<\n  a 1\n  b \"two\"\n  c false\n>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -5118,7 +5118,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<value -0>"
+exact Hson output: "<value -0>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -5139,7 +5139,7 @@ tags: object, negative-zero
 rationale: An object property preserves negative zero.
 
 === hson.accept.literal.object.nested ===
-claim: An object property may contain a nested HSON object.
+claim: An object property may contain a nested Hson object.
 classification: literal-accepted-authored-hson
 ingress format: hson
 escaped input: "\"<record <field 2>>\""
@@ -5181,7 +5181,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<record <field 2>>"
+exact Hson output: "<record <field 2>>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -5196,7 +5196,7 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: object, nested
-rationale: An object property may contain a nested HSON object.
+rationale: An object property may contain a nested Hson object.
 
 === hson.accept.literal.object.one-property ===
 claim: An object contains a punctuation-free key/value property.
@@ -5231,7 +5231,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<a 1>"
+exact Hson output: "<a 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -5313,7 +5313,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<\n  t true\n  f false\n  n null\n>"
+exact Hson output: "<\n  t true\n  f false\n  n null\n>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -5348,7 +5348,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"\""
+exact Hson output: "\"\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -5383,7 +5383,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: "1000"
+exact Hson output: "1000"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -5418,7 +5418,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: "false"
+exact Hson output: "false"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -5453,7 +5453,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: "-12.5"
+exact Hson output: "-12.5"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -5490,7 +5490,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: "-0"
+exact Hson output: "-0"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -5528,7 +5528,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: "null"
+exact Hson output: "null"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -5563,7 +5563,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: "42"
+exact Hson output: "42"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -5598,7 +5598,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: "\"hello\""
+exact Hson output: "\"hello\""
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -5633,7 +5633,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: "true"
+exact Hson output: "true"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -5668,7 +5668,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: "0"
+exact Hson output: "0"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -5703,7 +5703,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: "42"
+exact Hson output: "42"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -5721,7 +5721,7 @@ tags: trivia, whitespace
 rationale: Grammar trivia is exactly SPACE, HT, LF, and CR.
 
 === hson.reject.basis.mode.object-element ===
-claim: An HSON object property cannot contain an element-mode value.
+claim: An Hson object property cannot contain an element-mode value.
 classification: literal-rejected-authored-hson
 ingress format: hson
 escaped input: "\"<a <e/>>\""
@@ -5732,7 +5732,7 @@ variation: —
 defect: element-beneath-object
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -5755,16 +5755,16 @@ source evidence:
 path evidence: —
 related evidence: —
 origin: targeted-authored-hson-completeness-amendment
-provenance: Direct transcription of the settled authored-HSON structural-mode contract.
+provenance: Direct transcription of the settled authored-Hson structural-mode contract.
 novelty: Adds the previously missing direct object-to-element crossing.
 human-review priority: medium
 specialized-test reference: —
 declared source reuse: —
 tags: structural-mode, object, element, rejection
-rationale: An HSON object property cannot contain an element-mode value.
+rationale: An Hson object property cannot contain an element-mode value.
 
 === hson.reject.basis.number.hexadecimal ===
-claim: Hexadecimal spelling is not JSON-compatible HSON number syntax.
+claim: Hexadecimal spelling is not JSON-compatible Hson number syntax.
 classification: literal-rejected-authored-hson
 ingress format: hson
 escaped input: "\"0x10\""
@@ -5775,7 +5775,7 @@ variation: —
 defect: unsupported-hexadecimal
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -5804,10 +5804,10 @@ human-review priority: medium
 specialized-test reference: —
 declared source reuse: —
 tags: number, json-number-grammar, rejection
-rationale: Hexadecimal spelling is not JSON-compatible HSON number syntax.
+rationale: Hexadecimal spelling is not JSON-compatible Hson number syntax.
 
 === hson.reject.basis.number.leading-plus ===
-claim: A JSON-compatible HSON number may not begin with plus.
+claim: A JSON-compatible Hson number may not begin with plus.
 classification: literal-rejected-authored-hson
 ingress format: hson
 escaped input: "\"+1\""
@@ -5818,7 +5818,7 @@ variation: —
 defect: leading-plus
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -5847,7 +5847,7 @@ human-review priority: medium
 specialized-test reference: —
 declared source reuse: —
 tags: number, json-number-grammar, rejection
-rationale: A JSON-compatible HSON number may not begin with plus.
+rationale: A JSON-compatible Hson number may not begin with plus.
 
 === hson.reject.basis.number.leading-zero ===
 claim: A nonzero integer may not begin with zero.
@@ -5861,7 +5861,7 @@ variation: —
 defect: leading-zero
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -5904,7 +5904,7 @@ variation: —
 defect: missing-exponent-digits
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -5947,7 +5947,7 @@ variation: —
 defect: missing-fraction-digits
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -5990,7 +5990,7 @@ variation: —
 defect: missing-integer-before-fraction
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -6033,7 +6033,7 @@ variation: —
 defect: missing-signed-exponent-digits
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -6076,7 +6076,7 @@ variation: —
 defect: named-nonfinite
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -6119,7 +6119,7 @@ variation: —
 defect: named-nonfinite
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -6162,7 +6162,7 @@ variation: —
 defect: named-nonfinite
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -6205,7 +6205,7 @@ variation: —
 defect: nonfinite-overflow
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -6237,7 +6237,7 @@ tags: number, nonfinite, rejection
 rationale: A syntactically valid number that overflows binary64 rejects as nonfinite.
 
 === hson.reject.basis.number.numeric-separator ===
-claim: Numeric separators are not JSON-compatible HSON number syntax.
+claim: Numeric separators are not JSON-compatible Hson number syntax.
 classification: literal-rejected-authored-hson
 ingress format: hson
 escaped input: "\"1_0\""
@@ -6248,7 +6248,7 @@ variation: —
 defect: unsupported-separator
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -6277,7 +6277,7 @@ human-review priority: medium
 specialized-test reference: —
 declared source reuse: —
 tags: number, json-number-grammar, rejection
-rationale: Numeric separators are not JSON-compatible HSON number syntax.
+rationale: Numeric separators are not JSON-compatible Hson number syntax.
 
 === hson.reject.basis.quoted-name.attribute-name ===
 claim: Single-quoted names are not admitted as element attribute names.
@@ -6291,7 +6291,7 @@ variation: —
 defect: quoted-name-role-forbidden
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -6334,7 +6334,7 @@ variation: —
 defect: quoted-name-role-forbidden
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -6377,7 +6377,7 @@ variation: —
 defect: eof
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -6420,7 +6420,7 @@ variation: —
 defect: invalid-hex-position-1
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -6463,7 +6463,7 @@ variation: —
 defect: invalid-hex-position-2
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -6506,7 +6506,7 @@ variation: —
 defect: invalid-hex-position-3
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -6549,7 +6549,7 @@ variation: —
 defect: invalid-hex-position-4
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -6592,7 +6592,7 @@ variation: —
 defect: raw-u0000
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -6635,7 +6635,7 @@ variation: —
 defect: raw-u0001
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -6678,7 +6678,7 @@ variation: —
 defect: raw-u0002
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -6721,7 +6721,7 @@ variation: —
 defect: raw-u0003
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -6764,7 +6764,7 @@ variation: —
 defect: raw-u0004
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -6807,7 +6807,7 @@ variation: —
 defect: raw-u0005
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -6850,7 +6850,7 @@ variation: —
 defect: raw-u0006
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -6893,7 +6893,7 @@ variation: —
 defect: raw-u0007
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -6936,7 +6936,7 @@ variation: —
 defect: raw-u0008
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -6979,7 +6979,7 @@ variation: —
 defect: raw-u0009
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -7022,7 +7022,7 @@ variation: —
 defect: raw-u000a
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -7065,7 +7065,7 @@ variation: —
 defect: raw-u000b
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -7108,7 +7108,7 @@ variation: —
 defect: raw-u000c
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -7151,7 +7151,7 @@ variation: —
 defect: raw-u000d
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -7194,7 +7194,7 @@ variation: —
 defect: raw-u000e
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -7237,7 +7237,7 @@ variation: —
 defect: raw-u000f
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -7280,7 +7280,7 @@ variation: —
 defect: raw-u0010
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -7323,7 +7323,7 @@ variation: —
 defect: raw-u0011
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -7366,7 +7366,7 @@ variation: —
 defect: raw-u0012
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -7409,7 +7409,7 @@ variation: —
 defect: raw-u0013
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -7452,7 +7452,7 @@ variation: —
 defect: raw-u0014
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -7495,7 +7495,7 @@ variation: —
 defect: raw-u0015
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -7538,7 +7538,7 @@ variation: —
 defect: raw-u0016
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -7581,7 +7581,7 @@ variation: —
 defect: raw-u0017
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -7624,7 +7624,7 @@ variation: —
 defect: raw-u0018
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -7667,7 +7667,7 @@ variation: —
 defect: raw-u0019
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -7710,7 +7710,7 @@ variation: —
 defect: raw-u001a
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -7753,7 +7753,7 @@ variation: —
 defect: raw-u001b
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -7796,7 +7796,7 @@ variation: —
 defect: raw-u001c
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -7839,7 +7839,7 @@ variation: —
 defect: raw-u001d
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -7882,7 +7882,7 @@ variation: —
 defect: raw-u001e
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -7925,7 +7925,7 @@ variation: —
 defect: raw-u001f
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -7968,7 +7968,7 @@ variation: —
 defect: trailing-backslash
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -8011,7 +8011,7 @@ variation: —
 defect: unicode-interrupted-apostrophe
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -8054,7 +8054,7 @@ variation: —
 defect: unicode-interrupted-backslash
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -8097,7 +8097,7 @@ variation: —
 defect: unicode-interrupted-closer
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -8140,7 +8140,7 @@ variation: —
 defect: unicode-interrupted-quote
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -8183,7 +8183,7 @@ variation: —
 defect: unicode-interrupted-space
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -8226,7 +8226,7 @@ variation: —
 defect: unicode-one-hex
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -8269,7 +8269,7 @@ variation: —
 defect: unicode-three-hex
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -8312,7 +8312,7 @@ variation: —
 defect: unicode-two-hex
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -8355,7 +8355,7 @@ variation: —
 defect: unicode-zero-hex
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -8398,7 +8398,7 @@ variation: —
 defect: unsupported-hex
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -8441,7 +8441,7 @@ variation: —
 defect: unsupported-letter
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -8484,7 +8484,7 @@ variation: —
 defect: unsupported-slash
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -8527,7 +8527,7 @@ variation: —
 defect: unsupported-zero
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -8570,7 +8570,7 @@ variation: —
 defect: eof-during-unicode
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -8613,7 +8613,7 @@ variation: —
 defect: invalid-hex-position-1
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -8656,7 +8656,7 @@ variation: —
 defect: invalid-hex-position-2
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -8699,7 +8699,7 @@ variation: —
 defect: invalid-hex-position-3
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -8742,7 +8742,7 @@ variation: —
 defect: invalid-hex-position-4
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -8785,7 +8785,7 @@ variation: —
 defect: raw-u0000
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -8828,7 +8828,7 @@ variation: —
 defect: raw-u0001
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -8871,7 +8871,7 @@ variation: —
 defect: raw-u0002
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -8914,7 +8914,7 @@ variation: —
 defect: raw-u0003
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -8957,7 +8957,7 @@ variation: —
 defect: raw-u0004
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -9000,7 +9000,7 @@ variation: —
 defect: raw-u0005
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -9043,7 +9043,7 @@ variation: —
 defect: raw-u0006
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -9086,7 +9086,7 @@ variation: —
 defect: raw-u0007
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -9129,7 +9129,7 @@ variation: —
 defect: raw-u0008
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -9172,7 +9172,7 @@ variation: —
 defect: raw-u0009
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -9215,7 +9215,7 @@ variation: —
 defect: raw-u000a
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -9258,7 +9258,7 @@ variation: —
 defect: raw-u000b
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -9301,7 +9301,7 @@ variation: —
 defect: raw-u000c
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -9344,7 +9344,7 @@ variation: —
 defect: raw-u000d
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -9387,7 +9387,7 @@ variation: —
 defect: raw-u000e
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -9430,7 +9430,7 @@ variation: —
 defect: raw-u000f
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -9473,7 +9473,7 @@ variation: —
 defect: raw-u0010
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -9516,7 +9516,7 @@ variation: —
 defect: raw-u0011
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -9559,7 +9559,7 @@ variation: —
 defect: raw-u0012
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -9602,7 +9602,7 @@ variation: —
 defect: raw-u0013
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -9645,7 +9645,7 @@ variation: —
 defect: raw-u0014
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -9688,7 +9688,7 @@ variation: —
 defect: raw-u0015
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -9731,7 +9731,7 @@ variation: —
 defect: raw-u0016
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -9774,7 +9774,7 @@ variation: —
 defect: raw-u0017
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -9817,7 +9817,7 @@ variation: —
 defect: raw-u0018
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -9860,7 +9860,7 @@ variation: —
 defect: raw-u0019
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -9903,7 +9903,7 @@ variation: —
 defect: raw-u001a
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -9946,7 +9946,7 @@ variation: —
 defect: raw-u001b
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -9989,7 +9989,7 @@ variation: —
 defect: raw-u001c
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -10032,7 +10032,7 @@ variation: —
 defect: raw-u001d
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -10075,7 +10075,7 @@ variation: —
 defect: raw-u001e
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -10118,7 +10118,7 @@ variation: —
 defect: raw-u001f
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -10161,7 +10161,7 @@ variation: —
 defect: trailing-backslash
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -10204,7 +10204,7 @@ variation: —
 defect: unicode-interrupted-backslash
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -10247,7 +10247,7 @@ variation: —
 defect: unicode-interrupted-quote
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -10290,7 +10290,7 @@ variation: —
 defect: unicode-interrupted-space
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -10333,7 +10333,7 @@ variation: —
 defect: unicode-one-hex
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -10376,7 +10376,7 @@ variation: —
 defect: unicode-three-hex
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -10419,7 +10419,7 @@ variation: —
 defect: unicode-two-hex
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -10462,7 +10462,7 @@ variation: —
 defect: unicode-zero-hex
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -10505,7 +10505,7 @@ variation: —
 defect: unsupported-letter
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -10548,7 +10548,7 @@ variation: —
 defect: unsupported-u000b
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -10591,7 +10591,7 @@ variation: —
 defect: unsupported-u000c
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -10634,7 +10634,7 @@ variation: —
 defect: unsupported-u00a0
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -10677,7 +10677,7 @@ variation: —
 defect: unsupported-u1680
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -10720,7 +10720,7 @@ variation: —
 defect: unsupported-u2000
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -10763,7 +10763,7 @@ variation: —
 defect: unsupported-u2001
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -10806,7 +10806,7 @@ variation: —
 defect: unsupported-u2002
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -10849,7 +10849,7 @@ variation: —
 defect: unsupported-u2003
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -10892,7 +10892,7 @@ variation: —
 defect: unsupported-u2004
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -10935,7 +10935,7 @@ variation: —
 defect: unsupported-u2005
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -10978,7 +10978,7 @@ variation: —
 defect: unsupported-u2006
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -11021,7 +11021,7 @@ variation: —
 defect: unsupported-u2007
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -11064,7 +11064,7 @@ variation: —
 defect: unsupported-u2008
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -11107,7 +11107,7 @@ variation: —
 defect: unsupported-u2009
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -11150,7 +11150,7 @@ variation: —
 defect: unsupported-u200a
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -11193,7 +11193,7 @@ variation: —
 defect: unsupported-u2028
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -11236,7 +11236,7 @@ variation: —
 defect: unsupported-u2029
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -11279,7 +11279,7 @@ variation: —
 defect: unsupported-u202f
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -11322,7 +11322,7 @@ variation: —
 defect: unsupported-u205f
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -11365,7 +11365,7 @@ variation: —
 defect: unsupported-u3000
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -11408,7 +11408,7 @@ variation: —
 defect: mismatched-closer
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -11451,7 +11451,7 @@ variation: —
 defect: mismatched-closer
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -11494,7 +11494,7 @@ variation: —
 defect: missing-comma
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -11537,7 +11537,7 @@ variation: —
 defect: missing-item
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -11580,7 +11580,7 @@ variation: —
 defect: authored-metadata
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -11623,7 +11623,7 @@ variation: —
 defect: block-comment
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -11666,7 +11666,7 @@ variation: —
 defect: duplicate-attribute
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -11729,7 +11729,7 @@ variation: —
 defect: duplicate-quid
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -11792,7 +11792,7 @@ variation: —
 defect: after-content
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -11835,7 +11835,7 @@ variation: —
 defect: malformed-closer
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -11878,7 +11878,7 @@ variation: —
 defect: missing-value
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -11921,7 +11921,7 @@ variation: —
 defect: missing-quid
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -11953,7 +11953,7 @@ tags: element, quid
 rationale: An element QUID marker requires a persisted QUID.
 
 === hson.reject.literal.element.numeric-content ===
-claim: Numeric typed content beneath an HSON element rejects.
+claim: Numeric typed content beneath an Hson element rejects.
 classification: literal-rejected-authored-hson
 ingress format: hson
 escaped input: "\"<e 1/>\""
@@ -11964,7 +11964,7 @@ variation: —
 defect: typed-content
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -11993,7 +11993,7 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: element, number, structural-mode
-rationale: Numeric typed content beneath an HSON element rejects.
+rationale: Numeric typed content beneath an Hson element rejects.
 
 === hson.reject.literal.empty-attribute-name ===
 claim: An empty decoded attribute name rejects.
@@ -12007,7 +12007,7 @@ variation: —
 defect: empty-decoded-name
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -12050,7 +12050,7 @@ variation: —
 defect: empty-decoded-name
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -12093,7 +12093,7 @@ variation: —
 defect: empty-decoded-name
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -12136,7 +12136,7 @@ variation: —
 defect: legacy-backtick-name
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -12179,7 +12179,7 @@ variation: —
 defect: element-in-array
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -12211,7 +12211,7 @@ tags: structural-mode
 rationale: An array cannot contain element-mode content.
 
 === hson.reject.literal.mode.element-array ===
-claim: An HSON element cannot contain an array.
+claim: An Hson element cannot contain an array.
 classification: literal-rejected-authored-hson
 ingress format: hson
 escaped input: "\"<e [1]/>\""
@@ -12222,7 +12222,7 @@ variation: —
 defect: array-beneath-element
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -12251,10 +12251,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: structural-mode
-rationale: An HSON element cannot contain an array.
+rationale: An Hson element cannot contain an array.
 
 === hson.reject.literal.mode.element-object ===
-claim: An HSON element cannot contain object structure.
+claim: An Hson element cannot contain object structure.
 classification: literal-rejected-authored-hson
 ingress format: hson
 escaped input: "\"<e <b 1>/>\""
@@ -12265,7 +12265,7 @@ variation: —
 defect: object-beneath-element
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -12294,7 +12294,7 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: structural-mode
-rationale: An HSON element cannot contain object structure.
+rationale: An Hson element cannot contain object structure.
 
 === hson.reject.literal.object.attribute-syntax ===
 claim: Object properties do not use attribute equals syntax.
@@ -12308,7 +12308,7 @@ variation: —
 defect: attribute-syntax
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -12351,7 +12351,7 @@ variation: —
 defect: comma
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -12394,7 +12394,7 @@ variation: —
 defect: duplicate-key
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -12457,7 +12457,7 @@ variation: —
 defect: extra-value
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -12500,7 +12500,7 @@ variation: —
 defect: flag
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -12543,7 +12543,7 @@ variation: —
 defect: legacy-syntax
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -12586,7 +12586,7 @@ variation: —
 defect: legacy-syntax
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -12629,7 +12629,7 @@ variation: —
 defect: missing-trivia
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -12661,7 +12661,7 @@ tags: object, grammar
 rationale: A property key and value require trivia.
 
 === hson.reject.literal.object.quid ===
-claim: Object-property QUIDs do not exist in authored HSON.
+claim: Object-property QUIDs do not exist in authored Hson.
 classification: literal-rejected-authored-hson
 ingress format: hson
 escaped input: "\"<a @000000001 1>\""
@@ -12672,7 +12672,7 @@ variation: —
 defect: object-quid
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -12701,7 +12701,7 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: object, quid
-rationale: Object-property QUIDs do not exist in authored HSON.
+rationale: Object-property QUIDs do not exist in authored Hson.
 
 === hson.reject.literal.quoted-name.raw-apostrophe ===
 claim: A literal apostrophe inside a quoted name must be escaped.
@@ -12715,7 +12715,7 @@ variation: —
 defect: raw-apostrophe
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -12758,7 +12758,7 @@ variation: —
 defect: reserved-name
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -12801,7 +12801,7 @@ variation: —
 defect: bare-name
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -12844,7 +12844,7 @@ variation: —
 defect: mixed-mode
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -12887,7 +12887,7 @@ variation: —
 defect: multiple-values
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -12930,7 +12930,7 @@ variation: —
 defect: trailing-source
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -12973,7 +12973,7 @@ variation: —
 defect: single-quoted-value
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -13016,7 +13016,7 @@ variation: —
 defect: empty-source
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -13059,7 +13059,7 @@ variation: —
 defect: empty-source
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -13102,7 +13102,7 @@ variation: —
 defect: empty-source
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -13134,7 +13134,7 @@ tags: source-admission, trivia
 rationale: Whitespace-only source has no semantic value.
 
 === hson.reject.literal.whitespace.byte-order-mark ===
-claim: U+FEFF is not authored-HSON trivia.
+claim: U+FEFF is not authored-Hson trivia.
 classification: literal-rejected-authored-hson
 ingress format: hson
 escaped input: "\"1﻿\""
@@ -13145,7 +13145,7 @@ variation: —
 defect: unsupported-u-feff
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -13174,7 +13174,7 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: trivia, unicode
-rationale: U+FEFF is not authored-HSON trivia.
+rationale: U+FEFF is not authored-Hson trivia.
 
 === html.accept.control-empty-unicode-adjacent ===
 claim: Ordinary, empty, control-bearing, and Unicode leaves remain separately ordered.
@@ -13233,7 +13233,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<div><_hson_elem><_hson_str>&quot;ordinary&quot;</_hson_str><_hson_str>&quot;&quot;</_hson_str><_hson_str>&quot;\\u0000&quot;</_hson_str><_hson_str>&quot;\\ud83d\\ude00&quot;</_hson_str><_hson_str>&quot;\\r\\n&quot;</_hson_str></_hson_elem></div>"
 exact diagnostic output: —
@@ -13302,7 +13302,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<div><_hson_elem><_hson_str>&quot;&quot;</_hson_str><_hson_str>&quot;x&quot;</_hson_str><_hson_str>&quot;&quot;</_hson_str></_hson_elem></div>"
 exact diagnostic output: —
@@ -13363,7 +13363,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<div><_hson_elem><_hson_str>&quot;same&quot;</_hson_str><_hson_str>&quot;same&quot;</_hson_str></_hson_elem></div>"
 exact diagnostic output: —
@@ -13385,7 +13385,7 @@ tags: html, transport, structural-transport
 rationale: Identical adjacent strings do not merge.
 
 === html.accept.ingress.element-string-empty ===
-claim: An HTML HSON element carrier detaches empty text.
+claim: An HTML Hson element carrier detaches empty text.
 classification: structural-html-transport
 ingress format: html
 escaped input: "\"<_hson_elem><_hson_str>&quot;&quot;</_hson_str></_hson_elem>\""
@@ -13402,7 +13402,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_str>&quot;&quot;</_hson_str></_hson_obj>"
 exact diagnostic output: —
@@ -13420,10 +13420,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, scalar-carrier
-rationale: An HTML HSON element carrier detaches empty text.
+rationale: An HTML Hson element carrier detaches empty text.
 
 === html.accept.ingress.element-string-ordinary ===
-claim: An HTML HSON element carrier detaches ordinary text.
+claim: An HTML Hson element carrier detaches ordinary text.
 classification: structural-html-transport
 ingress format: html
 escaped input: "\"<_hson_elem><_hson_str>&quot;ordinary&quot;</_hson_str></_hson_elem>\""
@@ -13440,7 +13440,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_str>&quot;ordinary&quot;</_hson_str></_hson_obj>"
 exact diagnostic output: —
@@ -13458,10 +13458,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, scalar-carrier
-rationale: An HTML HSON element carrier detaches ordinary text.
+rationale: An HTML Hson element carrier detaches ordinary text.
 
 === html.accept.ingress.object-false ===
-claim: An HTML HSON object carrier detaches typed false.
+claim: An HTML Hson object carrier detaches typed false.
 classification: structural-html-transport
 ingress format: html
 escaped input: "\"<_hson_obj><_hson_val>false</_hson_val></_hson_obj>\""
@@ -13478,7 +13478,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_val>false</_hson_val></_hson_obj>"
 exact diagnostic output: —
@@ -13493,10 +13493,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, scalar-carrier
-rationale: An HTML HSON object carrier detaches typed false.
+rationale: An HTML Hson object carrier detaches typed false.
 
 === html.accept.ingress.object-negative-number ===
-claim: An HTML HSON object carrier detaches a negative finite number.
+claim: An HTML Hson object carrier detaches a negative finite number.
 classification: structural-html-transport
 ingress format: html
 escaped input: "\"<_hson_obj><_hson_val>-12.5</_hson_val></_hson_obj>\""
@@ -13513,7 +13513,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_val>-12.5</_hson_val></_hson_obj>"
 exact diagnostic output: —
@@ -13528,10 +13528,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, scalar-carrier
-rationale: An HTML HSON object carrier detaches a negative finite number.
+rationale: An HTML Hson object carrier detaches a negative finite number.
 
 === html.accept.ingress.object-negative-zero ===
-claim: An HTML HSON object carrier detaches negative zero.
+claim: An HTML Hson object carrier detaches negative zero.
 classification: structural-html-transport
 ingress format: html
 escaped input: "\"<_hson_obj><_hson_val>-0</_hson_val></_hson_obj>\""
@@ -13550,7 +13550,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_val>-0</_hson_val></_hson_obj>"
 exact diagnostic output: —
@@ -13568,10 +13568,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, scalar-carrier
-rationale: An HTML HSON object carrier detaches negative zero.
+rationale: An HTML Hson object carrier detaches negative zero.
 
 === html.accept.ingress.object-null ===
-claim: An HTML HSON object carrier detaches typed null.
+claim: An HTML Hson object carrier detaches typed null.
 classification: structural-html-transport
 ingress format: html
 escaped input: "\"<_hson_obj><_hson_val>null</_hson_val></_hson_obj>\""
@@ -13588,7 +13588,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_val>null</_hson_val></_hson_obj>"
 exact diagnostic output: —
@@ -13603,10 +13603,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, scalar-carrier
-rationale: An HTML HSON object carrier detaches typed null.
+rationale: An HTML Hson object carrier detaches typed null.
 
 === html.accept.ingress.object-positive-number ===
-claim: An HTML HSON object carrier detaches a positive finite number.
+claim: An HTML Hson object carrier detaches a positive finite number.
 classification: structural-html-transport
 ingress format: html
 escaped input: "\"<_hson_obj><_hson_val>12.5</_hson_val></_hson_obj>\""
@@ -13623,7 +13623,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_val>12.5</_hson_val></_hson_obj>"
 exact diagnostic output: —
@@ -13638,10 +13638,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, scalar-carrier
-rationale: An HTML HSON object carrier detaches a positive finite number.
+rationale: An HTML Hson object carrier detaches a positive finite number.
 
 === html.accept.ingress.object-string-empty ===
-claim: An HTML HSON object carrier detaches an empty string.
+claim: An HTML Hson object carrier detaches an empty string.
 classification: structural-html-transport
 ingress format: html
 escaped input: "\"<_hson_obj><_hson_str>&quot;&quot;</_hson_str></_hson_obj>\""
@@ -13658,7 +13658,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_str>&quot;&quot;</_hson_str></_hson_obj>"
 exact diagnostic output: —
@@ -13676,10 +13676,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, scalar-carrier
-rationale: An HTML HSON object carrier detaches an empty string.
+rationale: An HTML Hson object carrier detaches an empty string.
 
 === html.accept.ingress.object-string-ordinary ===
-claim: An HTML HSON object carrier detaches an ordinary string.
+claim: An HTML Hson object carrier detaches an ordinary string.
 classification: structural-html-transport
 ingress format: html
 escaped input: "\"<_hson_obj><_hson_str>&quot;ordinary&quot;</_hson_str></_hson_obj>\""
@@ -13696,7 +13696,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_str>&quot;ordinary&quot;</_hson_str></_hson_obj>"
 exact diagnostic output: —
@@ -13714,10 +13714,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, scalar-carrier
-rationale: An HTML HSON object carrier detaches an ordinary string.
+rationale: An HTML Hson object carrier detaches an ordinary string.
 
 === html.accept.ingress.object-true ===
-claim: An HTML HSON object carrier detaches typed true.
+claim: An HTML Hson object carrier detaches typed true.
 classification: structural-html-transport
 ingress format: html
 escaped input: "\"<_hson_obj><_hson_val>true</_hson_val></_hson_obj>\""
@@ -13734,7 +13734,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_val>true</_hson_val></_hson_obj>"
 exact diagnostic output: —
@@ -13749,10 +13749,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, scalar-carrier
-rationale: An HTML HSON object carrier detaches typed true.
+rationale: An HTML Hson object carrier detaches typed true.
 
 === html.accept.ingress.object-zero ===
-claim: An HTML HSON object carrier detaches zero.
+claim: An HTML Hson object carrier detaches zero.
 classification: structural-html-transport
 ingress format: html
 escaped input: "\"<_hson_obj><_hson_val>0</_hson_val></_hson_obj>\""
@@ -13769,7 +13769,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_val"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_val>0</_hson_val></_hson_obj>"
 exact diagnostic output: —
@@ -13784,7 +13784,7 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, scalar-carrier
-rationale: An HTML HSON object carrier detaches zero.
+rationale: An HTML Hson object carrier detaches zero.
 
 === html.accept.ordinary-melted-text ===
 claim: One unambiguous ordinary HTML text leaf may remain melted.
@@ -13819,7 +13819,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<div>ordinary</div>"
 exact diagnostic output: —
@@ -13872,7 +13872,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<script><_hson_elem><_hson_str>&quot;const x={\\nvalue:\\&quot;&lt;&gt;&amp;/\\&quot;\\n};&quot;</_hson_str></_hson_elem></script>"
 exact diagnostic output: —
@@ -13893,7 +13893,7 @@ tags: html, transport, structural-transport
 rationale: Script text with LF uses an explicit structural carrier to preserve code units.
 
 === html.accept.script-ordinary-raw-text ===
-claim: Ordinary script raw text preserves braces, quotes, angle characters, ampersands, slashes, comments, JSON-looking text, and HSON-looking text.
+claim: Ordinary script raw text preserves braces, quotes, angle characters, ampersands, slashes, comments, JSON-looking text, and Hson-looking text.
 classification: structural-html-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"script\",\"$_content\":[{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"_hson_str\",\"$_content\":[\"const x={value:\\\"<>&/\\\",note:\\\"// /* */ <a/> «1,2»\\\"};\"]}]}]}]}"
@@ -13925,7 +13925,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<script>const x={value:\"<>&/\",note:\"// /* */ <a/> «1,2»\"};</script>"
 exact diagnostic output: —
@@ -13943,7 +13943,7 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, ordinary-html
-rationale: Ordinary script raw text preserves braces, quotes, angle characters, ampersands, slashes, comments, JSON-looking text, and HSON-looking text.
+rationale: Ordinary script raw text preserves braces, quotes, angle characters, ampersands, slashes, comments, JSON-looking text, and Hson-looking text.
 
 === html.accept.script-segmented-carrier ===
 claim: Explicit structural carriers override script raw-text melting when segmentation matters.
@@ -13990,7 +13990,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<script><_hson_elem><_hson_str>&quot;a&quot;</_hson_str><_hson_str>&quot;&quot;</_hson_str><_hson_str>&quot;b&quot;</_hson_str></_hson_elem></script>"
 exact diagnostic output: —
@@ -14030,7 +14030,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_str>&quot;&amp;&quot;</_hson_str></_hson_obj>"
 exact diagnostic output: —
@@ -14068,7 +14068,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_str>&quot;\\\\&quot;</_hson_str></_hson_obj>"
 exact diagnostic output: —
@@ -14106,7 +14106,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_str>&quot;\\b&quot;</_hson_str></_hson_obj>"
 exact diagnostic output: —
@@ -14144,7 +14144,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_str>&quot;\\u03bb\\u6f22&quot;</_hson_str></_hson_obj>"
 exact diagnostic output: —
@@ -14182,7 +14182,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_str>&quot;\\r&quot;</_hson_str></_hson_obj>"
 exact diagnostic output: —
@@ -14220,7 +14220,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_str>&quot;\\r\\n&quot;</_hson_str></_hson_obj>"
 exact diagnostic output: —
@@ -14258,7 +14258,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_str>&quot;\\f&quot;</_hson_str></_hson_obj>"
 exact diagnostic output: —
@@ -14296,7 +14296,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_str>&quot;&gt;&quot;</_hson_str></_hson_obj>"
 exact diagnostic output: —
@@ -14334,7 +14334,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_str>&quot;\\ud800&quot;</_hson_str></_hson_obj>"
 exact diagnostic output: —
@@ -14372,7 +14372,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_str>&quot;\\udc00&quot;</_hson_str></_hson_obj>"
 exact diagnostic output: —
@@ -14410,7 +14410,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_str>&quot;&lt;&quot;</_hson_str></_hson_obj>"
 exact diagnostic output: —
@@ -14448,7 +14448,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_str>&quot;\\n&quot;</_hson_str></_hson_obj>"
 exact diagnostic output: —
@@ -14486,7 +14486,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_str>&quot;\\u0000&quot;</_hson_str></_hson_obj>"
 exact diagnostic output: —
@@ -14524,7 +14524,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_str>&quot;\\&quot;&quot;</_hson_str></_hson_obj>"
 exact diagnostic output: —
@@ -14562,7 +14562,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_str>&quot;/&quot;</_hson_str></_hson_obj>"
 exact diagnostic output: —
@@ -14600,7 +14600,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_str>&quot;\\ud83d\\ude00&quot;</_hson_str></_hson_obj>"
 exact diagnostic output: —
@@ -14638,7 +14638,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_str"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<_hson_obj><_hson_str>&quot;\\t&quot;</_hson_str></_hson_obj>"
 exact diagnostic output: —
@@ -14691,7 +14691,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<style><_hson_elem><_hson_str>&quot;a{\\r\\nb:c\\r\\n}&quot;</_hson_str></_hson_elem></style>"
 exact diagnostic output: —
@@ -14712,7 +14712,7 @@ tags: html, transport, structural-transport
 rationale: Style text with CRLF uses an explicit structural carrier to preserve code units.
 
 === html.accept.style-ordinary-raw-text ===
-claim: Ordinary style raw text preserves braces, quotes, angle characters, ampersands, slashes, comments, JSON-looking text, and HSON-looking text.
+claim: Ordinary style raw text preserves braces, quotes, angle characters, ampersands, slashes, comments, JSON-looking text, and Hson-looking text.
 classification: structural-html-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"style\",\"$_content\":[{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"_hson_str\",\"$_content\":[\"a{content:\\\"<>&/\\\"}/* // */{\\\"x\\\":1}<a/>«1,2»\"]}]}]}]}"
@@ -14744,7 +14744,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<style>a{content:\"<>&/\"}/* // */{\"x\":1}<a/>«1,2»</style>"
 exact diagnostic output: —
@@ -14762,7 +14762,7 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, ordinary-html
-rationale: Ordinary style raw text preserves braces, quotes, angle characters, ampersands, slashes, comments, JSON-looking text, and HSON-looking text.
+rationale: Ordinary style raw text preserves braces, quotes, angle characters, ampersands, slashes, comments, JSON-looking text, and Hson-looking text.
 
 === html.accept.style-segmented-carrier ===
 claim: Explicit structural carriers override style raw-text melting when segmentation matters.
@@ -14809,7 +14809,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<style><_hson_elem><_hson_str>&quot;a&quot;</_hson_str><_hson_str>&quot;&quot;</_hson_str><_hson_str>&quot;b&quot;</_hson_str></_hson_elem></style>"
 exact diagnostic output: —
@@ -14876,7 +14876,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<div><_hson_elem><_hson_str>&quot;a&quot;</_hson_str><_hson_str>&quot;b&quot;</_hson_str><_hson_str>&quot;c&quot;</_hson_str></_hson_elem></div>"
 exact diagnostic output: —
@@ -14943,7 +14943,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<div><_hson_elem><_hson_str>&quot;&quot;</_hson_str><_hson_str>&quot;&quot;</_hson_str><_hson_str>&quot;&quot;</_hson_str></_hson_elem></div>"
 exact diagnostic output: —
@@ -15004,7 +15004,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: "<div><_hson_elem><_hson_str>&quot;a&quot;</_hson_str><_hson_str>&quot;b&quot;</_hson_str></_hson_elem></div>"
 exact diagnostic output: —
@@ -15026,7 +15026,7 @@ tags: html, transport, structural-transport
 rationale: Two adjacent strings remain two leaves.
 
 === html.reject.direct-element-false ===
-claim: Structural HTML forbids typed false beneath an HSON element carrier.
+claim: Structural HTML forbids typed false beneath an Hson element carrier.
 classification: structural-html-transport
 ingress format: html
 escaped input: "\"<_hson_elem><_hson_val>false</_hson_val></_hson_elem>\""
@@ -15037,7 +15037,7 @@ variation: —
 defect: direct-element-false
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -15055,10 +15055,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, typed-value, structural-mode, rejection
-rationale: Structural HTML forbids typed false beneath an HSON element carrier.
+rationale: Structural HTML forbids typed false beneath an Hson element carrier.
 
 === html.reject.direct-element-negative-number ===
-claim: Structural HTML forbids a typed negative number beneath an HSON element carrier.
+claim: Structural HTML forbids a typed negative number beneath an Hson element carrier.
 classification: structural-html-transport
 ingress format: html
 escaped input: "\"<_hson_elem><_hson_val>-12.5</_hson_val></_hson_elem>\""
@@ -15069,7 +15069,7 @@ variation: —
 defect: direct-element-negative-number
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -15087,10 +15087,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, typed-value, structural-mode, rejection
-rationale: Structural HTML forbids a typed negative number beneath an HSON element carrier.
+rationale: Structural HTML forbids a typed negative number beneath an Hson element carrier.
 
 === html.reject.direct-element-negative-zero ===
-claim: Structural HTML forbids typed negative zero beneath an HSON element carrier.
+claim: Structural HTML forbids typed negative zero beneath an Hson element carrier.
 classification: structural-html-transport
 ingress format: html
 escaped input: "\"<_hson_elem><_hson_val>-0</_hson_val></_hson_elem>\""
@@ -15101,7 +15101,7 @@ variation: —
 defect: direct-element-negative-zero
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -15119,10 +15119,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, typed-value, structural-mode, rejection
-rationale: Structural HTML forbids typed negative zero beneath an HSON element carrier.
+rationale: Structural HTML forbids typed negative zero beneath an Hson element carrier.
 
 === html.reject.direct-element-null ===
-claim: Structural HTML forbids typed null beneath an HSON element carrier.
+claim: Structural HTML forbids typed null beneath an Hson element carrier.
 classification: structural-html-transport
 ingress format: html
 escaped input: "\"<_hson_elem><_hson_val>null</_hson_val></_hson_elem>\""
@@ -15133,7 +15133,7 @@ variation: —
 defect: direct-element-null
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -15151,10 +15151,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, typed-value, structural-mode, rejection
-rationale: Structural HTML forbids typed null beneath an HSON element carrier.
+rationale: Structural HTML forbids typed null beneath an Hson element carrier.
 
 === html.reject.direct-element-true ===
-claim: Structural HTML forbids typed true beneath an HSON element carrier.
+claim: Structural HTML forbids typed true beneath an Hson element carrier.
 classification: structural-html-transport
 ingress format: html
 escaped input: "\"<_hson_elem><_hson_val>true</_hson_val></_hson_elem>\""
@@ -15165,7 +15165,7 @@ variation: —
 defect: direct-element-true
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -15183,10 +15183,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, typed-value, structural-mode, rejection
-rationale: Structural HTML forbids typed true beneath an HSON element carrier.
+rationale: Structural HTML forbids typed true beneath an Hson element carrier.
 
 === html.reject.direct-element-value ===
-claim: Structural HTML forbids a direct typed value beneath an HSON element carrier.
+claim: Structural HTML forbids a direct typed value beneath an Hson element carrier.
 classification: structural-html-transport
 ingress format: html
 escaped input: "\"<_hson_elem><_hson_val>1</_hson_val></_hson_elem>\""
@@ -15197,7 +15197,7 @@ variation: —
 defect: direct-element-value
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -15215,10 +15215,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, typed-value, structural-mode, rejection
-rationale: Structural HTML forbids a direct typed value beneath an HSON element carrier.
+rationale: Structural HTML forbids a direct typed value beneath an Hson element carrier.
 
 === html.reject.direct-element-zero ===
-claim: Structural HTML forbids typed zero beneath an HSON element carrier.
+claim: Structural HTML forbids typed zero beneath an Hson element carrier.
 classification: structural-html-transport
 ingress format: html
 escaped input: "\"<_hson_elem><_hson_val>0</_hson_val></_hson_elem>\""
@@ -15229,7 +15229,7 @@ variation: —
 defect: direct-element-zero
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -15247,7 +15247,7 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, typed-value, structural-mode, rejection
-rationale: Structural HTML forbids typed zero beneath an HSON element carrier.
+rationale: Structural HTML forbids typed zero beneath an Hson element carrier.
 
 === html.reject.nested-element-value ===
 claim: Structural HTML rejects a typed value beneath an ordinary element in element mode.
@@ -15261,7 +15261,7 @@ variation: —
 defect: nested-element-value
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -15447,7 +15447,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: "{\n  \"before\": \"first\",\n  \"items\": [\n    {\n      \"10\": \"ten\",\n      \"2\": \"two\",\n      \"1\": \"one\"\n    },\n    {\n      \"3\": \"three\",\n      \"0\": \"zero\"\n    }\n  ],\n  \"after\": \"last\"\n}"
 exact HTML output: —
 exact diagnostic output: —
@@ -15548,7 +15548,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: "{\n  \"10\": \"ten\",\n  \"2\": \"two\",\n  \"1\": \"one\"\n}"
 exact HTML output: —
 exact diagnostic output: —
@@ -15720,7 +15720,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: "{\n  \"a\": \"a\",\n  \"10\": \"ten\",\n  \"2\": \"two\",\n  \"01\": \"leading-zero\",\n  \"4294967294\": \"highest-index\",\n  \"4294967295\": \"outside-index\",\n  \"-1\": \"negative\",\n  \"b\": \"b\"\n}"
 exact HTML output: —
 exact diagnostic output: —
@@ -15835,7 +15835,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: "{\n  \"10\": \"ten\",\n  \"negative-zero\": -0,\n  \"2\": \"two\",\n  \"1\": \"one\"\n}"
 exact HTML output: —
 exact diagnostic output: —
@@ -15973,7 +15973,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: "{\n  \"outer-z\": \"first\",\n  \"inner\": {\n    \"10\": \"ten\",\n    \"2\": \"two\",\n    \"1\": \"one\"\n  },\n  \"outer-a\": \"last\"\n}"
 exact HTML output: —
 exact diagnostic output: —
@@ -16097,7 +16097,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_arr"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: "[\n  {\n    \"10\": \"ten\",\n    \"2\": \"two\",\n    \"1\": \"one\"\n  },\n  \"tail\"\n]"
 exact HTML output: —
 exact diagnostic output: —
@@ -16125,7 +16125,7 @@ tags: json, property-order, transport
 rationale: The graph, JSON text, and expected nested key sequences are handwritten in the ordered JSON fixture inventory.
 
 === json.accept.unusual-authored-keys ===
-claim: Structural JSON preserves keys whose authored-HSON canonical spelling uses single-quoted names.
+claim: Structural JSON preserves keys whose authored-Hson canonical spelling uses single-quoted names.
 classification: structural-json-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\":x\",\"$_content\":[{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_str\",\"$_content\":[\"colon\"]}]}]},{\"$_tag\":\"a.b\",\"$_content\":[{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_str\",\"$_content\":[\"dot\"]}]}]},{\"$_tag\":\"\",\"$_content\":[{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_str\",\"$_content\":[\"empty\"]}]}]}]}"
@@ -16189,7 +16189,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: —
+exact Hson output: —
 exact JSON output: "{\n  \":x\": \"colon\",\n  \"a.b\": \"dot\",\n  \"\": \"empty\"\n}"
 exact HTML output: —
 exact diagnostic output: —
@@ -16225,7 +16225,7 @@ variation: —
 defect: adjacent
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -16292,7 +16292,7 @@ variation: —
 defect: array-contained
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -16359,7 +16359,7 @@ variation: —
 defect: decoded-equivalent
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -16426,7 +16426,7 @@ variation: —
 defect: multiline-evidence
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -16493,7 +16493,7 @@ variation: —
 defect: nested
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -16560,7 +16560,7 @@ variation: —
 defect: order-coexistence
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -16627,7 +16627,7 @@ variation: —
 defect: separated
 disposition: reject
 hand-authored expected graph: —
-exact HSON output: —
+exact Hson output: —
 exact JSON output: —
 exact HTML output: —
 structured rejection:
@@ -16920,7 +16920,7 @@ tags: specialized-test, tokenizer
 rationale: Tokenizer token-array shape remains specialized ownership.
 
 === reference.wikipedia-legacy-closure ===
-claim: The Wikipedia real-world closure remains in its legacy HTML suite and is not an authored-HSON semantic case.
+claim: The Wikipedia real-world closure remains in its legacy HTML suite and is not an authored-Hson semantic case.
 classification: specialized-test-cross-reference
 ingress format: reference
 escaped input: "[\"transform/legacy/html::html__largeFormat.html_wikipedia\"]"
@@ -16943,4 +16943,4 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: specialized-test, legacy-html, performance, wikipedia
-rationale: The Wikipedia real-world closure remains in its legacy HTML suite and is not an authored-HSON semantic case.
+rationale: The Wikipedia real-world closure remains in its legacy HTML suite and is not an authored-Hson semantic case.

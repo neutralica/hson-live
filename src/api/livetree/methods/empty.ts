@@ -4,7 +4,7 @@ import { LiveTree } from "../livetree.js";
 import { empty_livetree_contents } from "../lifecycle/public-lifecycle.js";
 
 /**
- * Remove *all* children of this LiveTree’s node, both in the HSON model
+ * Remove *all* children of this LiveTree’s node, both in the Hson model
  * and in the mounted DOM.
  *
  * Behavior:

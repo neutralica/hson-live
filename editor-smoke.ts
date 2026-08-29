@@ -1,6 +1,6 @@
-import { HSON } from "hson-live/hson"
+import { Hson } from "hson-live/hson"
 
 
-const broken = HSON`
+const broken = Hson`
   <<<<<<<<<<<<<<<<
 `;

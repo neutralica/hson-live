@@ -41,7 +41,7 @@ export function format_live_path(path: LivePath): string {
 }
 
 /**
- * Return true when two projected paths can affect each other.
+ * Return true when two data paths can affect each other.
  *
  * The rule is intentionally symmetric:
  * - a parent path overlaps a child path: `["user"]` overlaps `["user", "name"]`

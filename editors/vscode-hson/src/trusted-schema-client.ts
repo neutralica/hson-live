@@ -106,7 +106,7 @@ export class TrustedSchemaClient {
             point === undefined ? { precision: "unresolved" } : { precision: "exact", ...point })
             : { kind: "substitution-expression" as const, range: template.expressions[failure.substitution]! };
           diagnostics.push({ runtimeAdmission: true, range: origin.range, hostOrigin: origin.kind, precision: origin.kind === "substitution-expression" ? "substitution-expression" : origin.kind === "literal-exact" ? "exact" : "unresolved",
-            message: failure.message, code: failure.details?.code, source: "HSON", related: [] });
+            message: failure.message, code: failure.details?.code, source: "Hson", related: [] });
           status = "current-invalid"; checked++;
         }
       }

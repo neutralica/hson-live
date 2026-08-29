@@ -47,7 +47,7 @@ check("hello rejects the removed hostId field", () => {
   assert.equal(withoutHostId.ok && withoutHostId.value.clientId, "client-a");
 });
 
-check("projected commits retain their exact data operation domain", () => {
+check("data commits retain their exact data operation domain", () => {
   const valid = decode(commit("data-object", [{
     kind: "set",
     path: ["value"],
@@ -137,7 +137,7 @@ check("QUID-only canonical recovery input rejects", () => {
   assert.equal(decoded.ok, false);
 });
 
-check("replace-root requires canonical same-mode HSON and persisted identity", () => {
+check("replace-root requires canonical same-mode Hson and persisted identity", () => {
   const valid = decode(commit("element", [{
     domain: "graph",
     op: "replace-root",

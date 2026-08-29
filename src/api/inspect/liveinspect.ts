@@ -875,9 +875,9 @@ class InspectorController {
     const node = this.canonicalNode(selected.path);
     if (node !== undefined && this.hsonMode !== "none") {
       if (this.hsonMode === "friendly") {
-        this.addDetailRow("HSON tag", node.$_tag);
-        this.addDetailRow("HSON attributes", String(Object.keys(node.$_attrs ?? {}).length));
-        this.addDetailRow("HSON ordered content", String(node.$_content.length));
+        this.addDetailRow("Hson tag", node.$_tag);
+        this.addDetailRow("Hson attributes", String(Object.keys(node.$_attrs ?? {}).length));
+        this.addDetailRow("Hson ordered content", String(node.$_content.length));
         this.addDetailRow("Canonical VSN role", node.$_tag.startsWith("_hson_") ? node.$_tag : "element/tag");
       } else {
         const pre = this.detailRegion.create.pre();

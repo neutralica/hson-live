@@ -2,7 +2,7 @@ import type { HsonNode } from "../src/core/types.js";
 import { serialize_hson } from "../src/api/transform/serializers/serialize-hson.js";
 import { hsonTransform } from "../src/api/transform/transform.facade.js";
 import { hson } from "../src/hson.js";
-import { HSON } from "../src/hson-authoring.js";
+import { Hson } from "../src/hson-authoring.js";
 import type {
   HsonCanonical,
   TransformSerialize,
@@ -21,11 +21,11 @@ declare const dynamicSerializer: TransformSerialize;
 
 const direct: HsonCanonical = serialize_hson(node);
 const normalized: HsonCanonical = hsonTransform.fromHson(arbitrary).toHson().serialize();
-const directlyTagged: HsonCanonical = HSON`<main/>`;
-const taggedNumber: HsonCanonical = HSON`${42}`;
-const taggedString: HsonCanonical = HSON`${"42"}`;
-const taggedBoolean: HsonCanonical = HSON`${true}`;
-const taggedNull: HsonCanonical = HSON`${null}`;
+const directlyTagged: HsonCanonical = Hson`<main/>`;
+const taggedNumber: HsonCanonical = Hson`${42}`;
+const taggedString: HsonCanonical = Hson`${"42"}`;
+const taggedBoolean: HsonCanonical = Hson`${true}`;
+const taggedNull: HsonCanonical = Hson`${null}`;
 const branded: HsonCanonical = normalized;
 const repeated: HsonCanonical = hsonTransform.fromHson(branded).toHson().serialize();
 const fluent: HsonCanonical = hsonTransform.fromNode(node).toHson().serialize();
@@ -44,45 +44,45 @@ hsonTransform.fromNode(node).toNode().sha256();
 const ordinary: string = direct;
 
 // @ts-expect-error Ordinary calls are unsupported, including source arrays.
-HSON(["<main/>"]);
+Hson(["<main/>"]);
 // @ts-expect-error Template-like objects are not genuine tagged-template input.
-HSON({ raw: ["<main/>"] });
+Hson({ raw: ["<main/>"] });
 // @ts-expect-error Ordinary source-string calls are unsupported.
-HSON("<main/>");
+Hson("<main/>");
 // @ts-expect-error Ordinary source-string calls are unsupported.
-HSON("37");
+Hson("37");
 // @ts-expect-error Ordinary calls are unsupported.
-HSON(42);
+Hson(42);
 // @ts-expect-error Ordinary calls are unsupported.
-HSON(true);
+Hson(true);
 // @ts-expect-error Ordinary calls are unsupported.
-HSON(null);
+Hson(null);
 // @ts-expect-error Ordinary calls are unsupported.
-HSON({});
+Hson({});
 // @ts-expect-error Tagged substitutions exclude undefined.
-HSON`${undefined}`;
+Hson`${undefined}`;
 // @ts-expect-error Tagged substitutions exclude bigint.
-HSON`${1n}`;
+Hson`${1n}`;
 // @ts-expect-error Tagged substitutions exclude symbols.
-HSON`${Symbol()}`;
+Hson`${Symbol()}`;
 // @ts-expect-error Tagged substitutions exclude objects.
-HSON`${{}}`;
+Hson`${{}}`;
 // @ts-expect-error Tagged substitutions exclude arrays.
-HSON`${[]}`;
+Hson`${[]}`;
 // @ts-expect-error Tagged substitutions exclude functions.
-HSON`${() => {}}`;
+Hson`${() => {}}`;
 // @ts-expect-error The Transform source-admission .string surface is removed.
 hson.transform.string;
 // @ts-expect-error The named Transform source-admission .string surface is removed.
 hsonTransform.string;
-// @ts-expect-error HSON finalizers serialize; they do not stringify.
+// @ts-expect-error Hson finalizers serialize; they do not stringify.
 hsonTransform.fromNode(node).toHson().string();
 
 // @ts-expect-error Ordinary strings have no official-serializer provenance.
 const invalid: HsonCanonical = arbitrary;
-// @ts-expect-error HTML serialization does not carry HSON provenance.
+// @ts-expect-error HTML serialization does not carry Hson provenance.
 const invalidHtml: HsonCanonical = html;
-// @ts-expect-error JSON serialization does not carry HSON provenance.
+// @ts-expect-error JSON serialization does not carry Hson provenance.
 const invalidJson: HsonCanonical = json;
 
 function acceptsString(value: string): void {
@@ -97,10 +97,10 @@ type HsonCanonicalProducerReturnsExactlyHsonCanonical = Expect<
   Equal<typeof normalized, HsonCanonical>
 >;
 type CallableHsonReturnsExactlyHsonCanonical = Expect<
-  Equal<ReturnType<typeof HSON>, HsonCanonical>
+  Equal<ReturnType<typeof Hson>, HsonCanonical>
 >;
 type CallableHsonTaggedValuesArePrimitive = Expect<
-  Equal<Parameters<typeof HSON>[1], string | number | boolean | null>
+  Equal<Parameters<typeof Hson>[1], string | number | boolean | null>
 >;
 type NoUnsafeHsonCast = Expect<
   Equal<"asHsonCanonical" extends keyof typeof hson ? true : false, false>

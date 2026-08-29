@@ -1,10 +1,10 @@
 #### hson-live / hson.terminalgothic.com
 
-# HSON Spec[3]
-## HTML Representation in HSON
+# Hson Spec[3]
+## HTML Representation in Hson
 Updated: 2026-07-13
 
-HTML maps into the HSON graph as ordered element content. The mapping preserves the structure required to re-emit useful equivalent markup, but it is canonicalizing rather than source-text-lossless.
+HTML maps into the Hson graph as ordered element content. The mapping preserves the structure required to re-emit useful equivalent markup, but it is canonicalizing rather than source-text-lossless.
 
 ---
 
@@ -31,9 +31,9 @@ Empty and void elements use canonical ordinary `$_content: []`; an empty `_hson_
 
 ---
 
-## HSON text for HTML graphs
+## Hson text for HTML graphs
 
-HSON uses one tag construct rather than HTML opening/closing pairs:
+Hson uses one tag construct rather than HTML opening/closing pairs:
 
 ```hson
 <main id="root"
@@ -109,7 +109,7 @@ Raw HTML-string duplicates are resolved while their original names are still vis
 
 For XML-backed string parsing, canonical-valid ordinary names that are unsafe for XML transit, such as `a:b`, are encoded into deterministic, injective, self-decoding private names. They are decoded before canonical attribute admission; the temporary spelling never enters `$_attrs`. Invalid canonical names reject rather than being made valid by transport. Literal `hson:*` candidates use their separate metadata codec and still pass through the exact registry, so `hson:unknown` rejects. Authored names in either private transit domain reject on string, `Element`, raw-node, codec, and serializer boundaries.
 
-The string preflight order is comment stripping, flag expansion, text/entity normalization, SVG namespace handling, quote normalization, duplicate resolution plus ordinary-name transit encoding, HSON metadata-name transit encoding, XML parsing, attribute enumeration, both transit decoders, canonical graph construction, and invariant validation.
+The string preflight order is comment stripping, flag expansion, text/entity normalization, SVG namespace handling, quote normalization, duplicate resolution plus ordinary-name transit encoding, Hson metadata-name transit encoding, XML parsing, attribute enumeration, both transit decoders, canonical graph construction, and invariant validation.
 
 ---
 
@@ -143,7 +143,7 @@ When a constructor receives an `Element`, the supplied element is the source roo
 
 The Transform `queryDOM(selector)` and `queryBody()` helpers are intentionally different: they snapshot selected children or body children through `innerHTML`. LiveTree `queryDom(selector).graft()` and `queryBody().graft()` instead treat the selected Element itself as the managed root.
 
-Untrusted HTML sanitization and canonical graph validation are separate stages. Sanitization removes unsafe markup behavior without silently deleting HSON metadata candidates. Valid descendant QUIDs are therefore preserved as canonical identity; malformed, unknown, misplaced, or duplicate metadata rejects. Ordinary `data-*` attributes remain application data.
+Untrusted HTML sanitization and canonical graph validation are separate stages. Sanitization removes unsafe markup behavior without silently deleting Hson metadata candidates. Valid descendant QUIDs are therefore preserved as canonical identity; malformed, unknown, misplaced, or duplicate metadata rejects. Ordinary `data-*` attributes remain application data.
 
 ---
 

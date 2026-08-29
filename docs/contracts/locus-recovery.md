@@ -173,7 +173,7 @@ A snapshot contains, semantically:
 - logical map ID;
 - incarnation ID;
 - authoritative revision;
-- complete projected value;
+- complete data value;
 - compatibility/schema identity where required.
 
 The current recovery wire envelope is:
@@ -188,12 +188,12 @@ type LocusSnapshotEnvelope = Readonly<{
 ```
 
 The outer JSON message discriminates this body as `recovery-snapshot`.
-`hson` is canonical compact HSON produced from the atomically captured
-projected `JsonValue`; identity and revision remain ordinary envelope fields.
-The JSON-encoded envelope size, including JSON escaping of the HSON string, is
+`hson` is canonical compact Hson produced from the atomically captured
+data `JsonValue`; identity and revision remain ordinary envelope fields.
+The JSON-encoded envelope size, including JSON escaping of the Hson string, is
 the value used by recovery envelope byte validation.
 
-This is projected-state transport, not graph-native recovery. Parsing the HSON
+This is data state transport, not graph-native recovery. Parsing the Hson
 reconstructs a `JsonValue` and then a replacement LiveMap, so authoritative
 source-node QUID identity is not preserved. Replay commits retain their existing
 operation encoding.
@@ -209,9 +209,9 @@ For large snapshots, transport may use multiple frames, but those frames constit
 Snapshot replacement is the correctness fallback whenever replay cannot be proven safe.
 
 The protocol decoder validates only the exact envelope shape and primitive
-field types. HSON syntax is validated while the client stages snapshot
+field types. Hson syntax is validated while the client stages snapshot
 installation: a malformed envelope is a protocol decode failure, while a valid
-envelope containing malformed HSON is an invalid recovery snapshot. Neither
+envelope containing malformed Hson is an invalid recovery snapshot. Neither
 failure may replace the current mirror or advance its cursor.
 
 The host must be capable of generating a current snapshot on demand. Cached snapshots and periodic checkpoints are optional optimizations, not initial protocol requirements.
@@ -621,7 +621,7 @@ Future patches must preserve all of the following:
 2. Revision interpretation always includes incarnation identity.
 3. Replay requires proven contiguous commit coverage.
 4. Snapshot is the correctness fallback.
-5. Snapshot projected state and revision describe the same authoritative instant.
+5. Snapshot data state and revision describe the same authoritative instant.
 6. Recovery queues all commits after its fixed cut.
 7. Client mirror local revision is not the authoritative cursor.
 8. Duplicate commits do not duplicate mutations.

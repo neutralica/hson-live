@@ -16,7 +16,7 @@ export type CanonicalPublicAttrValue = Primitive | CanonicalStyleMap;
 export type CanonicalPublicAttrs = Readonly<Record<string, CanonicalPublicAttrValue>>;
 export type BasicValue = boolean | number | null;
 
-/** Primitive value after semantic HSON numeric admission. */
+/** Primitive value after semantic Hson numeric admission. */
 export type HsonSemanticPrimitive = string | boolean | HsonNumber | null;
 
 export type JsonObj = { [key: string]: JsonValue };

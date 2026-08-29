@@ -40,9 +40,9 @@ type ReviewGroup = Readonly<{
 
 export const REVIEW_SECTIONS: readonly ReviewSection[] = Object.freeze([
   { number: 1, title: "Primitive values" },
-  { number: 2, title: "Basic HSON objects" },
-  { number: 3, title: "Basic HSON arrays" },
-  { number: 4, title: "Basic HSON elements" },
+  { number: 2, title: "Basic Hson objects" },
+  { number: 3, title: "Basic Hson arrays" },
+  { number: 4, title: "Basic Hson elements" },
   { number: 5, title: "Legal compositions" },
   {
     number: 6,
@@ -68,16 +68,16 @@ export const REVIEW_SECTIONS: readonly ReviewSection[] = Object.freeze([
   { number: 14, title: "Accepted backtick names" },
   { number: 15, title: "Malformed backtick names" },
   { number: 16, title: "Raw controls in backtick names" },
-  { number: 17, title: "Invalid HSON object grammar" },
-  { number: 18, title: "Invalid HSON array grammar" },
-  { number: 19, title: "Invalid HSON element grammar" },
+  { number: 17, title: "Invalid Hson object grammar" },
+  { number: 18, title: "Invalid Hson array grammar" },
+  { number: 19, title: "Invalid Hson element grammar" },
   {
     number: 20,
     title: "Root and structural-mode failures",
     introduction: [
       "```hson",
-      "<a 1>     // current proposal: valid HSON object",
-      "<a 1/>    // current proposal: invalid HSON element typed content",
+      "<a 1>     // current proposal: valid Hson object",
+      "<a 1/>    // current proposal: invalid Hson element typed content",
       "",
       "<a/><b/>  // current proposal: valid element fragment",
       "<a/><b 2> // current proposal: invalid mixed modes",
@@ -119,14 +119,14 @@ export const REVIEW_FAMILY_GROUPS: readonly ReviewGroup[] = Object.freeze([
     id: "quoted-string-ordinary-dispatch",
     section: 11,
     title: "Accepted ordinary quoted-string escape dispatch",
-    rule: "Each displayed JSON escape is accepted in a quoted HSON string.",
+    rule: "Each displayed JSON escape is accepted in a quoted Hson string.",
     entries: familyEntries("family.accept.quoted-string-json-escapes", (id) => !isUnicodeEscape(id)),
   },
   {
     id: "quoted-string-unicode-boundaries",
     section: 11,
     title: "Accepted quoted-string Unicode boundaries",
-    rule: "Each complete four-hex-digit Unicode escape sequence is accepted in a quoted HSON string.",
+    rule: "Each complete four-hex-digit Unicode escape sequence is accepted in a quoted Hson string.",
     entries: familyEntries("family.accept.quoted-string-json-escapes", isUnicodeEscape),
   },
   {
@@ -178,7 +178,7 @@ export const REVIEW_FAMILY_GROUPS: readonly ReviewGroup[] = Object.freeze([
     id: "unsupported-whitespace",
     section: 10,
     title: "Unsupported external whitespace",
-    rule: "Code points outside SPACE, HT, LF, and CR are not authored-HSON trivia.",
+    rule: "Code points outside SPACE, HT, LF, and CR are not authored-Hson trivia.",
     entries: familyEntries("family.reject.unsupported-whitespace"),
   },
 ]);
@@ -315,13 +315,13 @@ function attention(entry: AuthoredCase): string[] {
 
 function plainClaim(entry: AuthoredCase): string {
   if (entry.id.startsWith("hson.accept.family.quoted-string.")) {
-    return "This displayed escape spelling is accepted inside a quoted HSON string.";
+    return "This displayed escape spelling is accepted inside a quoted Hson string.";
   }
   if (entry.id.startsWith("hson.accept.family.backtick-name.")) {
     return "This displayed escape spelling is accepted inside a backtick object-property name.";
   }
   if (entry.id.startsWith("hson.reject.family.quoted-string.raw-")) {
-    return "This raw C0 code unit is invalid inside a quoted HSON string.";
+    return "This raw C0 code unit is invalid inside a quoted Hson string.";
   }
   if (entry.id.startsWith("hson.reject.family.backtick-name.raw-")) {
     return "This raw C0 code unit is invalid inside a backtick name.";
@@ -333,7 +333,7 @@ function plainClaim(entry: AuthoredCase): string {
     return "This displayed malformed or unsupported backtick-name escape is invalid.";
   }
   if (entry.id.startsWith("hson.reject.family.unsupported-whitespace.")) {
-    return "This code point is not valid authored-HSON trivia.";
+    return "This code point is not valid authored-Hson trivia.";
   }
   return entry.claim
     .replace(" with related evidence", "")
@@ -501,8 +501,8 @@ function objectElementContrast(confirmed = false): string {
     "### Matched contrast: object versus element closer",
     confirmed ? "///---> CONFIRMED" : "",
     "```hson",
-    "<a 1>   // current proposal: valid HSON object",
-    "<a 1/>  // current proposal: invalid HSON element typed content",
+    "<a 1>   // current proposal: valid Hson object",
+    "<a 1/>  // current proposal: invalid Hson element typed content",
     "```",
   ].join("\n");
 }
@@ -519,16 +519,16 @@ export const orderedAuthoredReviewCases: readonly AuthoredCase[] = Object.freeze
 
 export function renderAuthoredSourceVerdictTemplate(): string {
   const out: string[] = [
-    "# Authored-HSON source verdicts",
+    "# Authored-Hson source verdicts",
     "",
-    "This is the first-pass worksheet for the **materialized authored-HSON conformance corpus candidate**.",
-    "The primary question for every row is: **Does this exact source belong to the authored HSON language?**",
+    "This is the first-pass worksheet for the **materialized authored-Hson conformance corpus candidate**.",
+    "The primary question for every row is: **Does this exact source belong to the authored Hson language?**",
     "",
     "## Reviewer key",
     "",
     "```text",
-    "V = valid authored HSON",
-    "I = invalid authored HSON",
+    "V = valid authored Hson",
+    "I = invalid authored Hson",
     "? = uncertain or requires discussion",
     "blank = not reviewed",
     "```",
@@ -557,7 +557,7 @@ export function renderAuthoredSourceVerdictTemplate(): string {
     "",
     `- [Immutable provenance audit](evidence/authored-hson-corpus-provenance-audit.txt) — SHA-256 \`${EXPECTED_PROVENANCE_SHA256}\``,
     `- [Immutable shape preview](evidence/authored-hson-shape-coverage-preview.txt) — SHA-256 \`${EXPECTED_SHAPE_SHA256}\``,
-    "- Included here: 269 authored-HSON sources (100 proposed valid; 169 proposed invalid).",
+    "- Included here: 269 authored-Hson sources (100 proposed valid; 169 proposed invalid).",
     "- Deferred: 11 graph-only accepted transports, 9 graph-only rejected transports, 14 structural JSON transports,",
     "  49 structural HTML transports, 4 diagnostic-circuit regressions, and 10 specialized-test references.",
     "",

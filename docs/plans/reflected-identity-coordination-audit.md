@@ -41,7 +41,7 @@ Standalone construction, projection, find, graft, `.quid`, CSS, and event owners
 
 ## Unit 10R-B implementation result
 
-Linked `.quid` and existing QUID-owned CSS, event, animation, binding, canvas, and resource paths now delegate through the exact active document registration. The internal map authority resolves its current canonical path, reuses an existing claim without publication, or securely allocates one candidate with bounded canonical/runtime collision retry. Reflection supplies the sole local preflight participant, reserves without publishing, and atomically claims the recorded value on the same exact projected HSON and DOM objects after canonical acceptance.
+Linked `.quid` and existing QUID-owned CSS, event, animation, binding, canvas, and resource paths now delegate through the exact active document registration. The internal map authority resolves its current canonical path, reuses an existing claim without publication, or securely allocates one candidate with bounded canonical/runtime collision retry. Reflection supplies the sole local preflight participant, reserves without publishing, and atomically claims the recorded value on the same exact projected Hson and DOM objects after canonical acceptance.
 
 The new `ensure-quid` graph operation is path-authoritative and ordinary revisioned canonical state. The sparse overlay derives one introduced claim, replay never allocates, and current LiveHost history/protocol/recovery/persistence shapes carry the operation additively without a version change. Multi-operation replay proves registration before/after move, registration before removal, multiple registrations, and failed-later-operation atomicity.
 
@@ -62,7 +62,7 @@ Consequently, the audited pre-10R-A behavior created the misleading state:
 
 ```text
 canonical LiveMap node: QUID absent
-projected HSON node:     privately minted QUID B
+projected Hson node:     privately minted QUID B
 DOM element:             hson:quid B
 canonical sparse overlay: no entry
 ```
@@ -105,12 +105,12 @@ Unit 10R-A removes private projection minting, lets linked handles retain exact 
 
 ### Standalone LiveTree
 
-A standalone LiveTree is graph authority for the HSON graph it admits. It may:
+A standalone LiveTree is graph authority for the Hson graph it admits. It may:
 
 - adopt supplied valid QUID metadata;
 - mint a root QUID when a stable LiveTree handle is created;
 - mint QUIDs for identity-bearing runtime facilities;
-- mutate its owned HSON graph locally;
+- mutate its owned Hson graph locally;
 - project those owned claims into DOM metadata.
 
 The existing `LiveTree` constructor is designed for this mode. It calls `admit_livetree_quid_graph()`, which validates supplied claims, mints a root claim if absent, writes metadata and runtime indexes, and binds exact nodes to the runtime ([`livetree.ts`](../../src/api/livetree/livetree.ts#L211-L227), [`data-quid.ts`](../../src/api/livetree/quid/data-quid.ts#L109-L140)).
@@ -121,10 +121,10 @@ For one reflected `map.document`, the authority split is different:
 
 | Concern | Owner |
 | --- | --- |
-| Canonical HSON graph and `$_meta` | LiveMap |
+| Canonical Hson graph and `$_meta` | LiveMap |
 | Revision, commit, history, replay, recovery | LiveMap |
 | Sparse canonical `QUID ↔ current path` overlay | LiveMap |
-| Canonical-to-projected correspondence | Reflection |
+| Canonical-to-data correspondence | Reflection |
 | Exact projected JavaScript and DOM objects | LiveTree runtime |
 | CSS, events, animation, resources, lifecycle state | LiveTree runtime |
 
@@ -155,7 +155,7 @@ Reflection does not directly call the random generator. It invokes a shared crea
 
 ### Descendants at the audited baseline: DOM projection ensured every element
 
-The audited DOM projector linked the exact HSON node and DOM element, then unconditionally called `ensure_quid(n, ..., runtime)` and wrote the result to `hson:quid`. Unit 10R-A makes this helper authority-sensitive: linked projection registers only supplied claims and writes markup only when a claim exists.
+The audited DOM projector linked the exact Hson node and DOM element, then unconditionally called `ensure_quid(n, ..., runtime)` and wrote the result to `hson:quid`. Unit 10R-A makes this helper authority-sensitive: linked projection registers only supplied claims and writes markup only when a claim exists.
 
 This affects:
 
@@ -172,7 +172,7 @@ Thus the root is minted even while detached, and each rendered descendant is min
 Three independent exact-object mechanisms do not require a QUID:
 
 1. Runtime routing uses `WeakMap<HsonNode, LiveTreeRuntime>` and can bind a complete graph with `bind_graph_runtime()` without assigning metadata ([`livetree-runtime.ts`](../../src/api/livetree/runtime/livetree-runtime.ts#L38-L42), [`livetree-runtime.ts`](../../src/api/livetree/runtime/livetree-runtime.ts#L88-L107)).
-2. DOM correspondence uses bidirectional weak maps between exact HSON nodes and exact DOM elements ([`node-map-helpers.ts`](../../src/api/livetree/utils/node-map-helpers.ts#L20-L44)).
+2. DOM correspondence uses bidirectional weak maps between exact Hson nodes and exact DOM elements ([`node-map-helpers.ts`](../../src/api/livetree/utils/node-map-helpers.ts#L20-L44)).
 3. Reflection's document registration already associates an exact projected node with its canonical path and owner ([`document-binding-state.ts`](../../src/api/livetree/lifecycle/document-binding-state.ts#L22-L50)).
 
 An authority-correct linked projection can therefore:
@@ -190,7 +190,7 @@ The required construction change is not to make QUIDs optional everywhere. It is
 - linked construction binds runtime/exact-node ownership without ensuring a QUID;
 - a linked handle resolves an existing supplied identity on demand and explicitly rejects missing canonical identity until Unit 10R-B can delegate acquisition through the binding.
 
-The current reverse DOM helper is another shared standalone assumption: it reads `hson:quid`, looks up the runtime node by QUID, and creates another eager LiveTree handle ([`dom-api.ts`](../../src/api/livetree/managers/dom-api.ts#L14-L27)). Linked mode can instead recover the exact HSON node from the existing element-to-node weak map and wrap it through the linked, QUID-lazy path.
+The current reverse DOM helper is another shared standalone assumption: it reads `hson:quid`, looks up the runtime node by QUID, and creates another eager LiveTree handle ([`dom-api.ts`](../../src/api/livetree/managers/dom-api.ts#L14-L27)). Linked mode can instead recover the exact Hson node from the existing element-to-node weak map and wrap it through the linked, QUID-lazy path.
 
 Deletion and disposal already conditionally release QUID-owned artifacts only when a claim exists. Nothing in exact graph or DOM ownership makes a QUID mandatory for every rendered element.
 
@@ -236,7 +236,7 @@ The audited code conflated “has a LiveTree handle” or “has a DOM element�
 | DOM `hson:quid` | Written during all materialization | Write only when canonical q exists or has just been acquired |
 | DOM reads/layout and node↔element lookup | Conceptually exact-object based | No QUID demand |
 | attrs, text, content, id, class, data | Ordinary graph operations | Standalone mutates locally; linked mode delegates/rejects through Unit 6; no implicit identity |
-| inline `.style` | Mutates projected graph/DOM directly | Treat as canonical attribute mutation in linked mode; delegate, do not mint |
+| inline `.style` | Mutates data graph/DOM directly | Treat as canonical attribute mutation in linked mode; delegate, do not mint |
 | append/create/detach/remove | Standalone local; linked paths already delegate or reject in part | Preserve authority split; structural mutation does not imply retained identity |
 | `cloneBranch` | Fresh-mints ordinary nodes in the detached clone | Output is a new standalone graph and may receive fresh identities; cloning must not mint on the linked source ([`clone.ts`](../../src/api/livetree/methods/clone.ts#L22-L56)) |
 | dispose/removal | Releases QUID resources when present | Must continue to tolerate unquidded linked nodes |
@@ -364,7 +364,7 @@ If a linked projection somehow has a runtime QUID while the corresponding canoni
 The first public contract can remain strictly ensure-if-absent. It does not need general QUID replacement, removal, or user-selected assignment.
 
 - canonical structural removal/replacement already retires displaced overlay entries;
-- Reflection already disposes projected runtime state for removed/replaced exact nodes;
+- Reflection already disposes data runtime state for removed/replaced exact nodes;
 - a map identity handle can become inactive by observing epoch and overlay/path resolution;
 - disposing one handle must not remove canonical metadata.
 
@@ -386,7 +386,7 @@ Tests that remain correct include:
 - separate runtimes may contain equal QUID bytes without sharing exact identity;
 - standalone LiveTree construction/graft continues to ensure identity under its own authority;
 - QUID-targeted LiveMap requests lower through the canonical overlay to a path;
-- canonical structural removal/replacement retires exact projected runtime state;
+- canonical structural removal/replacement retires exact data runtime state;
 - QUID-free maps retain empty sparse overlays.
 
 Unit 10R-A checks distinguish root and descendants:
@@ -469,4 +469,4 @@ no private projection QUID
 = one canonical q, one exact projected node, no rekey
 ```
 
-Unit 11 remains deferred. This audit does not begin object/array eligibility, projected data-mode identity, QUID shortening, hashing/digests, binary HSON, SSR continuation, or broad LiveTree/LiveHost redesign.
+Unit 11 remains deferred. This audit does not begin object/array eligibility, data-mode identity, QUID shortening, hashing/digests, binary Hson, SSR continuation, or broad LiveTree/LiveHost redesign.

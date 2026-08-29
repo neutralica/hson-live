@@ -1,11 +1,11 @@
 import { admit_hson } from "./api/transform/hson-admission.js";
 import { validate_canonical_hson } from "./internal/schema-hson-validation/validate-canonical-hson.js";
 
-/** Author canonical HSON and validate it against an actual Schema.
+/** Author canonical Hson and validate it against an actual Schema.
  * Validation returns the unchanged string; it does not certify future use.
  * This entrypoint intentionally has no dependency on the aggregate facade.
  */
-export const HSON = Object.freeze(Object.assign(admit_hson, {
+export const Hson = Object.freeze(Object.assign(admit_hson, {
   validate: validate_canonical_hson,
 }));
 

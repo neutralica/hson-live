@@ -142,19 +142,19 @@ function readCanonicalStyleFromNode(node: HsonNode): CssMap {
  * - Normalizes the internal key:
  *   - Custom properties (`--*`) are kept verbatim.
  *   - Normal properties are converted from kebab-case to camelCase to
- *     match the HSON style object shape.
- * - Updates the HSON model:
+ *     match the Hson style object shape.
+ * - Updates the Hson model:
  *   - Deletes the property from `$_attrs.style`.
  *   - Removes `$_attrs.style` entirely if it becomes empty.
  * - Updates the DOM:
  *   - If an associated `HTMLElement` exists, calls
  *     `el.style.removeProperty(kebabName)`.
  *
- * @param node - The HSON node whose style should be updated.
+ * @param node - The Hson node whose style should be updated.
  * @param kebabName - The CSS property name in kebab-case (or `--var` form).
  */
 function removeStyleFromNode(node: HsonNode, kebabName: string): void {
-    // 1) Normalize internal key (HSON uses camelCase for normal props, verbatim for custom)
+    // 1) Normalize internal key (Hson uses camelCase for normal props, verbatim for custom)
     const internalKey =
         kebabName.startsWith("--")
             ? kebabName
@@ -282,14 +282,14 @@ function ensureStyleObject(a: Record<string, unknown>): Record<string, unknown> 
 }
 
 /**
- * Write a single style property to both DOM and HSON for a node.
+ * Write a single style property to both DOM and Hson for a node.
  *
  * Behavior:
  * 1. DOM:
  *    - If an `HTMLElement` is mapped for the node:
  *      - `value === ""` → `el.style.removeProperty(kebabName)`.
  *      - Otherwise → `el.style.setProperty(kebabName, value)`.
- * 2. HSON:
+ * 2. Hson:
  *    - Ensures `$_attrs` exists and normalizes `$_attrs.style` to an object
  *      via `ensureStyleObject`.
  *    - `value === ""`:
@@ -297,10 +297,10 @@ function ensureStyleObject(a: Record<string, unknown>): Record<string, unknown> 
  *    - Otherwise:
  *        - Sets `styleObj[kebabName] = value`.
  *
- * This keeps the in-memory HSON representation and the live DOM
+ * This keeps the in-memory Hson representation and the live DOM
  * element in sync for the given property.
  *
- * @param node - The HSON node to update.
+ * @param node - The Hson node to update.
  * @param kebabName - CSS property name in kebab-case (or `--var` form).
  * @param value - The string value to assign; empty string removes the property.
  * @see ensureStyleObject
@@ -331,7 +331,7 @@ function applyStyleToNode(node: HsonNode, kebabName: string, value: string): voi
  * Responsibilities:
  * - Provides a typed, DX-friendly facade over inline styles via `set`
  *   and `setProperty`.
- * - Keeps HSON `$_attrs.style` and the DOM element's `style` attribute
+ * - Keeps Hson `$_attrs.style` and the DOM element's `style` attribute
  *   in sync through helpers such as `applyStyleToNode` and
  *   `removeStyleFromNode`.
  * - Exposes runtime-derived style keys (via `keys()`) that represent
@@ -417,7 +417,7 @@ export class StyleManager<TTree extends LiveTree> {
      *   - `null` or `undefined` → treated as `""` and removes the declaration.
      *   - string/number → converted to string and applied as-is (units are
      *     the caller's responsibility).
-     * - Delegates to `applyStyleToNode`, which updates both the HSON node
+     * - Delegates to `applyStyleToNode`, which updates both the Hson node
      *   and the corresponding DOM element.
      *
      * @param propertyName - CSS property name in camelCase or kebab-case.
@@ -485,7 +485,7 @@ export class StyleManager<TTree extends LiveTree> {
      * Remove all inline style state from the current tree node.
      *
      * This clears style at both layers:
-     * - the internal HSON representation (`node.$_attrs.style`), and
+     * - the internal Hson representation (`node.$_attrs.style`), and
      * - the live DOM element’s inline `style` attribute, if present.
      *
      * This method is intentionally **destructive and local**:

@@ -1165,9 +1165,9 @@ function normalize_schema_input(input: LiveMapSchemaInput): LiveMapSchemaNode {
   const node = projected_schema_node(input);
   if (node !== undefined) return node;
   if (document_item_node(input) !== undefined || document_content_node(input) !== undefined) {
-    throw new TypeError("Projected schema composition received a document-only schema expression.");
+    throw new TypeError("Data schema composition received a document-only schema expression.");
   }
-  throw new TypeError("Projected schema composition received an unrecognized schema expression.");
+  throw new TypeError("Data schema composition received an unrecognized schema expression.");
 }
 
 function normalize_schema_draft(draft: LiveMapSchemaDraft): LiveMapSchemaNode {
@@ -1250,7 +1250,7 @@ function schema_variant_entries(variants: LiveMapSchemaVariants): readonly (read
       throw new TypeError(`LiveMap tagged schema variant ${JSON.stringify(key)} must be an enumerable data property.`);
     }
     if (!is_schema_input(descriptor.value)) {
-      throw new TypeError(`LiveMap tagged schema variant ${JSON.stringify(key)} must be a projected schema expression.`);
+      throw new TypeError(`LiveMap tagged schema variant ${JSON.stringify(key)} must be a data schema expression.`);
     }
     entries.push(Object.freeze([key, descriptor.value] as const));
   }
@@ -1414,7 +1414,7 @@ function admit_public_schema_value(
     return validation_issue(
       "TYPE_MISMATCH",
       error.path,
-      `LiveMap schema received an invalid projected value at ${format_schema_path(error.path)} (${error.code})`,
+      `LiveMap schema received an invalid data value at ${format_schema_path(error.path)} (${error.code})`,
       { received: projected_admission_received(error) },
     );
   }

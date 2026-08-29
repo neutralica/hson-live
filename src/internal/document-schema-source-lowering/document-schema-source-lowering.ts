@@ -40,7 +40,7 @@ export type DocumentSchemaSourceResolution =
 
 /**
  * Lower one document-Schema issue through the canonical logical document
- * resolver and onto immutable authored-HSON provenance.
+ * resolver and onto immutable authored-Hson provenance.
  */
 export function resolve_document_schema_issue_source(
   root: HsonNode,

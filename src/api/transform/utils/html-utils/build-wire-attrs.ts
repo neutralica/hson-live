@@ -28,7 +28,7 @@ import { serialize_style } from "../attrs-utils/serialize-style.js";
  *   earlier stages enforced the “safe” boundary (or you are building trusted DOM).
  * - Unknown or misplaced metadata rejects instead of leaking or being dropped.
  *
- * @param n - Source HSON node whose `$_attrs` and `$_meta` will be projected onto
+ * @param n - Source Hson node whose `$_attrs` and `$_meta` will be projected onto
  *            a DOM attribute dictionary.
  * @returns A string-valued attribute record representing the node’s wire attrs.
  */
@@ -62,10 +62,10 @@ export function build_wire_attrs(n: HsonNode): Record<string, string> {
     for (const [k, v] of Object.entries(m)) {
       const policy = hson_metadata_policy(n.$_tag, k);
       if (!policy.valid) {
-        throw new Error(`Invalid HSON metadata "${k}" on <${n.$_tag}>: ${policy.reason}`);
+        throw new Error(`Invalid Hson metadata "${k}" on <${n.$_tag}>: ${policy.reason}`);
       }
       if (!hson_metadata_value_is_valid(k, v)) {
-        throw new Error(`Invalid value for HSON metadata "${k}" on <${n.$_tag}>.`);
+        throw new Error(`Invalid value for Hson metadata "${k}" on <${n.$_tag}>.`);
       }
       out[policy.definition.markupName] = v;
     }

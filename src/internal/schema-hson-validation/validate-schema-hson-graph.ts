@@ -15,13 +15,13 @@ export function validate_schema_hson_graph(schema: unknown, graph: HsonNode): Li
   if (!projected && document === undefined) return failure("INVALID_SCHEMA", "a complete-root-capable owned Schema", "unsupported Schema");
   if (is_projected_value_hson_node(graph)) {
     if (projected) return validate_livemap_schema_projected_root(schema, projected_value_from_hson_node(graph));
-    return failure("TYPE_MISMATCH", `${document?.node.kind} document root`, "projected root");
+    return failure("TYPE_MISMATCH", `${document?.node.kind} document root`, "data root");
   }
   const mode = classify_live_root_mode(graph);
   if (document !== undefined && (mode === "element" || mode === "fragment")) {
     return validate_livemap_document_schema_root(document.value, graph, mode);
   }
-  return failure("TYPE_MISMATCH", "projected root", `${mode} document root`);
+  return failure("TYPE_MISMATCH", "data root", `${mode} document root`);
 }
 
 function failure(code: "INVALID_SCHEMA" | "TYPE_MISMATCH", expected: string, received: string): LiveMapSchemaValidation {

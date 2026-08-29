@@ -14,7 +14,7 @@ function throw_quid_ingress_error(
   const description = cause.code === "MALFORMED_QUID"
     ? "quid must be a canonical persisted QUID"
     : cause.code === "INELIGIBLE_QUID"
-      ? "persisted QUID on an ineligible HSON structural node"
+      ? "persisted QUID on an ineligible Hson structural node"
       : `duplicate quid "${String(cause.value)}" (Duplicate QUID claim)`;
   _throw_transform_err(
     `${description}: ${cause.message}`,

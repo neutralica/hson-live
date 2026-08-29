@@ -42,7 +42,7 @@ check("ordinary template literal CRLF normalizes to LF", () => { const found = s
 check("string line continuation creates no runtime source", () => { const found = source('"a\\\r\nb"'); assert.equal(found.runtimeText, "ab"); assert.equal(found.hostText.slice(map_static_hson_point(found, 1)!.start, map_static_hson_point(found, 1)!.end), "b"); });
 check("template line continuation creates no runtime source", () => assert.equal(source("`a\\\nb`").runtimeText, "ab"));
 check("EOF maps immediately before the JavaScript delimiter", () => { const found = source('"\\n<foo"'); assert.deepEqual(map_static_hson_point(found, found.runtimeText.length), { start: found.bodyRange.end, end: found.bodyRange.end }); });
-check("HSON escape nested inside JavaScript escaping remains exact", () => assert.equal(source('"\\\"a\\\\nb\\\""').runtimeText, '"a\\nb"'));
+check("Hson escape nested inside JavaScript escaping remains exact", () => assert.equal(source('"\\\"a\\\\nb\\\""').runtimeText, '"a\\nb"'));
 check("multi-character runtime range covers complete endpoint escapes", () => { const found = source('"\\x3cfoo\\x2f>"'); const mapped = map_static_hson_range(found, { start: 0, end: found.runtimeText.length })!; assert.equal(found.hostText.slice(mapped.start, mapped.end), "\\x3cfoo\\x2f>"); });
 check("invalid JavaScript literal syntax is rejected by TypeScript", () => { const text = `${prefix}t.fromHson("\\xZ1");`; assert.equal(discover_static_from_hson_sources("/project/source.ts", text).sources.length, 0); });
 

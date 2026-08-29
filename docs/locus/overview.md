@@ -9,12 +9,12 @@ Locus does not yet provide server-side HTML projection, DOM adoption, or LiveTre
 The principal hson-live layers have distinct responsibilities:
 
 
-HSON
+Hson
   reversible structured notation and canonical node model
 LiveTree
-  live structural and renderer-facing interaction with an HSON graph
+  live structural and renderer-facing interaction with an Hson graph
 LiveMap
-  projected data or document state, mutation semantics, revisions, commits,
+  data or document state, mutation semantics, revisions, commits,
   subscriptions, links, schemas, capture, restore, and replay
 Locus
   authority, ordering, actions, authorization, sessions, history,
@@ -91,9 +91,9 @@ Hosted map kinds
 
 Locus builds on the two principal LiveMap modes.
 
-Projected-data maps
+Data maps
 
-A projected-data LiveMap exposes JSON-like paths and values while retaining canonical HSON internally.
+A data LiveMap exposes JSON-like paths and values while retaining canonical Hson internally.
 
 Typical uses include:
 
@@ -104,13 +104,13 @@ Typical uses include:
 * path subscriptions;
 * linked maps.
 
-Projected-data maps use the same strict hosted authority as document maps.
+Data maps use the same strict hosted authority as document maps.
 
-Durable persistence for projected-data hosts is intentionally deferred until hson-live has a stable exact projected checkpoint format.
+Durable persistence for data hosts is intentionally deferred until hson-live has a stable exact data checkpoint format.
 
 Document maps
 
-A DocumentLiveMap exposes the HSON document graph directly, including:
+A DocumentLiveMap exposes the Hson document graph directly, including:
 
 * elements and fragments;
 * typed attributes;
@@ -252,7 +252,7 @@ or a complete reset when the client’s incarnation is incompatible.
 
 Document clients may negotiate supported snapshot formats. Current document recovery can use:
 
-* legacy HSON snapshots;
+* legacy Hson snapshots;
 * exact view-state version 2 snapshots (version 1 rejects as unsupported);
 * ordered canonical replay after the snapshot cut.
 
@@ -272,7 +272,7 @@ view-state checkpoint
 
 while a particular client receives:
 
-HSON snapshot
+Hson snapshot
 
 or:
 
@@ -371,7 +371,7 @@ Hosting prevents mutation bypass through references obtained before hosting.
 
 While a map is hosted, LiveMap dynamically fences public mutation routes, including:
 
-* projected setters and deletion;
+* data setters and deletion;
 * update, apply, splice, and batches;
 * object and array helpers;
 * handles and proxies;
@@ -406,7 +406,7 @@ This preserves:
 
 Source acceptance does not await or roll back because of later linked target work.
 
-Persistent managed-link behavior is currently limited by persisted map-kind support: persistence supports document hosts, while current managed links primarily target projected-data maps.
+Persistent managed-link behavior is currently limited by persisted map-kind support: persistence supports document hosts, while current managed links primarily target data maps.
 
 ⸻
 
@@ -459,7 +459,7 @@ The host must determine:
 * which transient events may be delivered;
 * which server-only state must never enter snapshots, commits, traces, or errors.
 
-Controlled Locus errors and traces avoid graph content, HSON payloads, attributes, CSS, view-state payloads, action payloads, and QUID content.
+Controlled Locus errors and traces avoid graph content, Hson payloads, attributes, CSS, view-state payloads, action payloads, and QUID content.
 
 Future server projection will require an additional distinction between authoritative state and visible projection. Authorization to mutate a document will not automatically imply authorization to receive every part of that document.
 

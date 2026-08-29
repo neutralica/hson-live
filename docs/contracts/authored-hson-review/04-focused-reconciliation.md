@@ -1,4 +1,4 @@
-# Focused authored-HSON reconciliation
+# Focused authored-Hson reconciliation
 
 ## Proposal disagreements — 3
 
@@ -11,12 +11,12 @@
 - **Original human entry:** V
 - **Original note:** “accept anything that is functionally 0.5; serialize canonically”
 - **Current candidate proposal:** Invalid — a fraction requires an integer component before the decimal point.
-- **Plain-English meaning:** Valid means HSON accepts an authored numeric spelling outside JSON lexical grammar and canonicalizes it to `0.5`. Primitive runtime types remain JSON-aligned; only the accepted source spelling expands. Invalid retains exact JSON-number lexical parity.
+- **Plain-English meaning:** Valid means Hson accepts an authored numeric spelling outside JSON lexical grammar and canonicalizes it to `0.5`. Primitive runtime types remain JSON-aligned; only the accepted source spelling expands. Invalid retains exact JSON-number lexical parity.
 - **If valid:** `.5` becomes another spelling of the finite number `0.5`.
-- **If invalid:** authors must write `0.5`; HSON and JSON keep the same number-token grammar.
+- **If invalid:** authors must write `0.5`; Hson and JSON keep the same number-token grammar.
 - **Smallest valid-side change:** extend numeric token admission for a missing integer component, migrate this corpus case to accepted, and expect canonical `0.5`.
 - **Smallest invalid-side change:** no production or corpus change; record the final human verdict as invalid.
-- **Neutral recommendation:** none. This is a deliberate choice between an HSON lexical convenience and exact JSON-number lexical parity.
+- **Neutral recommendation:** none. This is a deliberate choice between an Hson lexical convenience and exact JSON-number lexical parity.
 
 ---
 
@@ -63,7 +63,7 @@
   UNless there's a footgun I don't see”
 - **Current candidate proposal:** Invalid — element and object root modes cannot mix.
 - **Plain-English meaning:** This source mixes element and object structure at the root. Homogeneous element fragments such as `<a/><b/>` are already valid. `_hson_root` is currently an internal, nonserializable carrier, so accepting this source requires a public canonical representation for a mixed root or another foundational semantic change; it is not merely a tokenizer relaxation.
-- **If valid:** HSON gains a mixed-root semantic model whose identity, equality, serialization, projection, and round-trip behavior must be defined.
+- **If valid:** Hson gains a mixed-root semantic model whose identity, equality, serialization, projection, and round-trip behavior must be defined.
 - **If invalid:** root structure remains homogeneous: an element fragment or an object/value mode, but not both as siblings.
 - **Smallest valid-side change:** first define a public canonical mixed-root representation, then extend parsing, serialization, equality, projection, and corpus expectations around it.
 - **Smallest invalid-side change:** no production or corpus change; record the final human verdict as invalid.
@@ -80,7 +80,7 @@
 - **Original human entry:** ?
 - **Original note:** “Partially correct--only for non-string”
 - **Current candidate proposal:** Valid — one object property named `a` owns the typed numeric value `1` and the object closes with `>`.
-- **Plain-English meaning:** Under the current ownership model, this is an HSON object property, not element content: `a` owns the following typed value. This decision concerns only the exact source `<a 1>` and does not assume which broader string-valued case the note found unclear.
+- **Plain-English meaning:** Under the current ownership model, this is an Hson object property, not element content: `a` owns the following typed value. This decision concerns only the exact source `<a 1>` and does not assume which broader string-valued case the note found unclear.
 - **If valid:** the existing one-property object rule remains unchanged.
 - **If invalid:** this exact basic object form is removed despite the current key/value ownership model.
 - **Smallest valid-side change:** no production or corpus change; record the final human verdict as valid.
@@ -100,7 +100,7 @@
 - **Current candidate proposal:** Valid.
 - **Plain-English meaning:** `1e-3` is valid under the current JSON-compatible number grammar and canonicalizes numerically to `0.001`.
 - **If valid:** signed negative exponents remain ordinary finite-number spellings.
-- **If invalid:** HSON diverges from JSON number grammar by forbidding the negative exponent sign.
+- **If invalid:** Hson diverges from JSON number grammar by forbidding the negative exponent sign.
 - **Smallest valid-side change:** no production or corpus change; record the final human verdict as valid.
 - **Smallest invalid-side change:** restrict exponent-token admission and migrate this accepted case to rejection.
 - **Neutral recommendation:** valid, if JSON-number lexical compatibility remains the rule.
@@ -118,7 +118,7 @@
 - **Current candidate proposal:** Valid.
 - **Plain-English meaning:** `1e+3` is valid under the current JSON-compatible number grammar and canonicalizes numerically to `1000`.
 - **If valid:** an explicit positive exponent sign remains an ordinary finite-number spelling.
-- **If invalid:** HSON diverges from JSON number grammar by forbidding the explicit positive exponent sign.
+- **If invalid:** Hson diverges from JSON number grammar by forbidding the explicit positive exponent sign.
 - **Smallest valid-side change:** no production or corpus change; record the final human verdict as valid.
 - **Smallest invalid-side change:** restrict exponent-token admission and migrate this accepted case to rejection.
 - **Neutral recommendation:** valid, if JSON-number lexical compatibility remains the rule.
@@ -136,7 +136,7 @@
 - **Current candidate proposal:** Valid.
 - **Plain-English meaning:** `1e3` is valid under the current JSON-compatible number grammar and canonicalizes numerically to `1000`.
 - **If valid:** ordinary exponent notation remains an accepted finite-number spelling.
-- **If invalid:** HSON diverges from JSON number grammar by removing exponent notation.
+- **If invalid:** Hson diverges from JSON number grammar by removing exponent notation.
 - **Smallest valid-side change:** no production or corpus change; record the final human verdict as valid.
 - **Smallest invalid-side change:** restrict number-token admission and migrate this accepted case to rejection.
 - **Neutral recommendation:** valid, if JSON-number lexical compatibility remains the rule.
@@ -171,7 +171,7 @@
 - **Original note:** “TBD - see above”
 - **Current candidate proposal:** Invalid.
 - **Plain-English meaning:** Physical-line comments are already admitted as trivia, but a source containing only trivia has no semantic root value. The settled rule therefore rejects comment-only input, just as it rejects whitespace-only input.
-- **If valid:** HSON must define what canonical value, if any, a comment-only document represents; merely retaining comment trivia is insufficient.
+- **If valid:** Hson must define what canonical value, if any, a comment-only document represents; merely retaining comment trivia is insufficient.
 - **If invalid:** comments remain preservable only around a semantic value, and empty semantic input remains invalid.
 - **Smallest valid-side change:** define an empty/comment-only source model and its canonical representation, then change parser and corpus expectations.
 - **Smallest invalid-side change:** no production or corpus change; record the final human verdict as invalid.

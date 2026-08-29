@@ -61,7 +61,7 @@ export interface LiveTreeNodeHost {
     /**
      * Return the historic root node associated with this `LiveTree`.
      *
-     * The host root represents the top-level HSON node for the tree this
+     * The host root represents the top-level Hson node for the tree this
      * instance belongs to, even if the current node is a nested descendant.
      *
      * @returns The root `HsonNode` for this tree's context.
@@ -74,7 +74,7 @@ export interface LiveTreeAttrsAccess<TSelf> {
      * Attribute helper bound to this node.
      *
      * Use the canonical read, explicit drop, and atomic final-bag mutation family
-     * to read and mutate HSON / DOM attributes through one consistent surface.
+     * to read and mutate Hson / DOM attributes through one consistent surface.
      */
     readonly attrs: AttrHandle<TSelf>;
 }
@@ -133,7 +133,7 @@ export interface LiveTreeContent<TSelf> {
     removeChildren(): number;
 
     /**
-       * Remove this node from its parent (HSON + DOM).
+       * Remove this node from its parent (Hson + DOM).
        *
        * @returns `1` when removed, or `0` if already detached.
        * @see remove_livetree
@@ -243,7 +243,7 @@ export interface LiveTreeAttrs<TSelf>
      * Classlist helper bound to this node’s `class` attribute.
      *
      * Provides `get/has/set/add/remove/toggle/clear` in a stable, chainable
-     * API. All mutations are reflected in the underlying HSON attrs and DOM
+     * API. All mutations are reflected in the underlying Hson attrs and DOM
      * when mounted.
      */
     readonly classlist: ClassApi<TSelf>;
@@ -299,7 +299,7 @@ export interface LiveTreeText<TSelf> {
     /**
      * Text-content helper namespace for this node.
      *
-     * These methods operate on HSON text/value leaves rather than replacing the
+     * These methods operate on Hson text/value leaves rather than replacing the
      * tree object itself:
      * - `set(value)` updates existing text/value leaves while preserving element children
      * - `add(value)` appends a new text leaf

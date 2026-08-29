@@ -24,7 +24,7 @@ and make all retained handles throw `LiveTreeDisposedError`. Browser-owned
 
 The retained off-document projection keeps listeners, CSS, TreeEvents, canvas
 watches, and LiveMap bindings functional through direct reattachment. LiveMap
-updates continue to mutate the detached HSON graph, so reattachment projects the
+updates continue to mutate the detached Hson graph, so reattachment projects the
 latest state without rebinding.
 
 Continuing resources created for a LiveTree are owned by its QUID in the

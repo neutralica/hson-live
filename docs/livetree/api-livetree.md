@@ -31,16 +31,16 @@ Every transform constructor returns a normalized-source surface with:
 .toHson()
 ```
 
-HSON text parses directly to the canonical graph:
+Hson text parses directly to the canonical graph:
 
 ```ts
 const node = hson.fromHson(source).toNode();
 ```
 
-The HSON-source surface retains `.toHson().serialize()` and all other output
+The Hson-source surface retains `.toHson().serialize()` and all other output
 projections. Canonical graph access uses the source-level `.toNode()` terminal.
 
-After `toHson()`, readable HSON is the default and these HSON options compose:
+After `toHson()`, readable Hson is the default and these Hson options compose:
 
 ```ts
 .noBreak()
@@ -49,9 +49,9 @@ After `toHson()`, readable HSON is the default and these HSON options compose:
 .serialize()
 ```
 
-`noBreak` produces canonical compact HSON. `noQuid` filters only persisted
+`noBreak` produces canonical compact Hson. `noQuid` filters only persisted
 `quid` from output; it does not mutate the graph, touch the identity
-registry, or remove array `index` metadata. HSON serialization is delayed
+registry, or remove array `index` metadata. Hson serialization is delayed
 until `serialize()` so options selected after `toHson()` take effect. The former
 `spaced`, `linted`, and `lineLength` options are not part of this surface.
 
@@ -112,7 +112,7 @@ tree.bind
 - `detachContents()` removes the exact ordered contents without destroying
   identity or runtime state. It returns `DetachedLiveContent`, whose
   `appendTo(target)` transfers that content once to a new active owner.
-- `detach()` unlinks and unmounts this branch while retaining its HSON graph,
+- `detach()` unlinks and unmounts this branch while retaining its Hson graph,
   QUIDs, metadata, mappings, listeners, CSS, disposables, and current bindings.
   It returns `1` for a transition and `0` when already detached.
 - `remove()` unlinks and terminally disposes the complete subtree. It returns
@@ -126,7 +126,7 @@ than rebuilding an equivalent element. A branch has at most one parent;
 appending an attached branch throws `LiveTreeAlreadyAttachedError`. Browser-owned
 `documentElement`, `head`, and `body` roots throw `LiveTreeProtectedRootError`
 for `detach()` and `remove()`; ordinary application roots are removable. A
-`Document` is not an HSON element and therefore cannot currently be wrapped by
+`Document` is not an Hson element and therefore cannot currently be wrapped by
 LiveTree; any future document adapter is covered by the same protection policy.
 
 Reusable detach intentionally retains runtime registrations rather than
@@ -459,7 +459,7 @@ tree.attrs.replace(values)
 ```
 
 LiveTree attributes use the same canonical graph value domain as
-Document LiveMap: finite HSON primitives (`string`, `boolean`, `number`, and
+Document LiveMap: finite Hson primitives (`string`, `boolean`, `number`, and
 `null`) plus canonical structured `CssMap` for `style`. `attrs.get()` returns
 `undefined` only for absence. The values `false`, `0`, `null`, and `""` remain
 present and are returned without truthiness coercion. `attrs.must.get()` throws
@@ -480,7 +480,7 @@ ordinary attrs; `dropMany()` ignores valid absent and duplicate names;
 Bulk calls validate and derive one canonical final bag
 before changing graph or DOM state, and canonical equality is a no-op.
 
-The HSON graph owns value distinctions. DOM attributes are only a projection:
+The Hson graph owns value distinctions. DOM attributes are only a projection:
 strings and finite numbers use deterministic text, `true` projects as a present
 empty attribute, `false` and `null` have no textual DOM attribute, and
 structured style uses the established style serializer. This textual overlap
@@ -617,7 +617,7 @@ tree.css.anim.resume()
 
 ## LiveMap Binding
 
-Bindings read the current projected or document LiveMap passive location
+Bindings read the current data or document LiveMap passive location
 immediately, subscribe to later changes, and return a disposer function.
 `map.at(path)` is the source endpoint:
 
@@ -628,7 +628,7 @@ dispose();
 
 Initial synchronization is a synchronous location `snap()`. The binding then
 registers `watch(...)`, which has no initial callback of its own. Because watch
-is snapshot-aware, projected bindings converge after `restore()`; a successful
+is snapshot-aware, data bindings converge after `restore()`; a successful
 equal-value restore also reapplies the destination once.
 
 Complete surface:
@@ -648,7 +648,7 @@ tree.bind.css(location, (value, previous) => cssMap)
 tree.bind.cssPaths(locations, (values, previous) => cssMap)
 ```
 
-Each source is a genuine passive location returned by projected or document
+Each source is a genuine passive location returned by data or document
 `map.at(path)` (including the identical location returned through a proxy
 `$_` escape). Multi-source methods preserve heterogeneous tuple positions and
 may combine locations from different maps. Raw callbacks receive the source's
@@ -656,9 +656,9 @@ exact detached value domain. Document locations therefore yield
 `HsonNode | Primitive | undefined`; they retain their existing fixed-coordinate
 semantics and restore convergence supplied by `watch(...)`.
 
-The mapper is optional for projected `text` and `attr`, preserving their
-historical conversion behavior. A broad document location can contain an HSON
-node, so document `text` and `attr` require an explicit formatter. No HSON or
+The mapper is optional for data `text` and `attr`, preserving their
+historical conversion behavior. A broad document location can contain an Hson
+node, so document `text` and `attr` require an explicit formatter. No Hson or
 JSON serialization is implicit. Explicit mappers on `text`, `textPaths`,
 `attr`, `attrs`, `attrsPaths`, `css`, and `cssPaths` may inspect, extract, or
 deliberately serialize document values. When a document source is truthfully

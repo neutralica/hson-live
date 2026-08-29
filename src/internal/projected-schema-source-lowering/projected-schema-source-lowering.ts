@@ -31,7 +31,7 @@ export type ProjectedSchemaSourceResolution =
   | Readonly<{ kind: "unresolved"; issuePath: LivePath }>;
 
 /**
- * Lower a projected Schema issue onto immutable authored-HSON provenance.
+ * Lower a projected Schema issue onto immutable authored-Hson provenance.
  * Schema owns the logical issue path; this module owns wrapper/path lowering;
  * the provenance sidecar remains the only source-offset authority.
  */

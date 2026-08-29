@@ -6,7 +6,7 @@ import { is_Node } from "../../../../core/node-guards.js";
 
 
 /**
- * Unwrap a parsed HSON container shape (`_hson_root` → `_hson_elem`) into its concrete child nodes.
+ * Unwrap a parsed Hson container shape (`_hson_root` → `_hson_elem`) into its concrete child nodes.
  *
  * This normalizes inputs that may be wrapped by the parser (or produced by transforms)
  * so downstream mutators can operate on “real” nodes rather than structural wrappers.

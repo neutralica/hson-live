@@ -93,7 +93,7 @@ check("CCW independently uses its reverse rotation", () => {
   assert.deepEqual(result.direction.laps?.[0]?.legs?.map((leg) => leg.targetFormat), ["json", "hson", "html", "json"]);
 });
 
-check("explicit HSON dual three-lap accounting reuses one prepared admission", () => {
+check("explicit Hson dual three-lap accounting reuses one prepared admission", () => {
   const source = hsonTransform.fromJson(JSON_SOURCE).toHson().serialize();
   const result = execute_circuit(
     universalCircuitBoundary,
@@ -127,7 +127,7 @@ check("explicit JSON is authoritative and never redispatched as another entry", 
   assert.equal(parsed.filter((format) => format === "json").length, 3);
 });
 
-check("explicit HSON is resolved once before repeated laps", () => {
+check("explicit Hson is resolved once before repeated laps", () => {
   const source = hsonTransform.fromJson(JSON_SOURCE).toHson().serialize();
   const result = execute_circuit(universalCircuitBoundary, "hson", source, { times: 2, dual: false, direction: "cw" }, { now: () => 0 });
   assert.equal(result.ok, true);

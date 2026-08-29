@@ -461,7 +461,7 @@ export function create_locus_client<
             format: commit.format,
             payload: commit.payload,
           })
-          : (() => { throw new Error("Canonical projected commit is missing structural transport."); })();
+          : (() => { throw new Error("Canonical data commit is missing structural transport."); })();
       if (!applied.changed || map.rev !== localRevBefore + 1) {
         throw new Error("Canonical changed commit did not advance the client mirror exactly once.");
       }

@@ -338,7 +338,7 @@ await check("fragment snapshot recovery reconstructs fragment mode without JSON 
   assert.equal("value" in snapshot, false);
 });
 
-await check("an old client without capabilities receives the established HSON snapshot shape", async () => {
+await check("an old client without capabilities receives the established Hson snapshot shape", async () => {
   const authority = element(`<main/>`);
   const host = hson.locus.create({ map: authority, logicalMapId: "old-client-hson-snapshot" });
   const pair = socket_pair();
@@ -360,7 +360,7 @@ await check("an old client without capabilities receives the established HSON sn
   assert.equal(canonical_hson_graph_equal(recovered.capture().root, authority.capture().root), true);
 });
 
-await check("HSON-only capability advertisements select HSON explicitly", async () => {
+await check("Hson-only capability advertisements select Hson explicitly", async () => {
   const authority = element(`<main @000000040/>`);
   const host = hson.locus.create({ map: authority, logicalMapId: "hson-capability-selection" });
   for (const [id, capabilities] of [["hson-only", { hson: true }]]) {
@@ -717,7 +717,7 @@ await check("strict authority rejects malformed canonical state before recovery 
   let message = "";
   assert.throws(() => hson.locus.create({ map: authority }), (error) => {
     message = error.message;
-    return /malformed canonical HSON root/.test(message);
+    return /malformed canonical Hson root/.test(message);
   });
   assert.equal(message.includes(privateStyle), false);
 });

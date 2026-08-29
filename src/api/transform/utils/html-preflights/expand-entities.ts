@@ -23,7 +23,7 @@ const htmlNamedToNumeric: Record<string, string> = {
  *
  * Rationale:
  * - Numeric entities are unambiguous and safer to carry across parsing
- *   boundaries (HTML ↔ XML ↔ HSON).
+ *   boundaries (HTML ↔ XML ↔ Hson).
  * - Keeping the mapping explicit avoids silently expanding entities that
  *   may not be universally supported or desired.
  *

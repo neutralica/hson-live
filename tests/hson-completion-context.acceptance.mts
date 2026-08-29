@@ -7,7 +7,7 @@ let checks = 0;
 const check = (name: string, f: () => void) => { f(); console.log(`ok ${++checks} - ${name}`); };
 const context = (marked: string) => completion_context(marked.replace("|", ""), marked.indexOf("|"));
 const slot = (source: string, kind: string, path: readonly (string | number)[]) => { const result = context(source); assert.equal(result?.kind, kind); assert.deepEqual(result?.path, path); };
-check("empty projected member slot", () => slot("<|>", "member", []));
+check("empty data member slot", () => slot("<|>", "member", []));
 check("member slot after existing member", () => { slot("<a true |>", "member", []); assert.deepEqual(context("<a true |>")?.existing, ["a"]); });
 check("missing member value", () => slot("<a |>", "value", ["a"]));
 check("complete literal replacement", () => { slot('<a "re|d">', "value", ["a"]); assert.deepEqual(context('<a "re|d">')?.range, { start: 3, end: 8 }); });
@@ -29,7 +29,7 @@ check("duplicate attrs fail probe parsing", () => assert.equal(context('<div x="
 check("unclosed surrounding syntax is unavailable", () => assert.equal(context("<a < |"), undefined));
 check("missing array comma does not guess append", () => assert.equal(context("[true |]"), undefined));
 check("crossed structure is unavailable", () => assert.equal(context("<a <div |/>>"), undefined));
-const host = 'import { HSON } from "hson-live/hson"; import { S } from "./s.js"; const x=1; const a=HSON`<a ${x} b >`; HSON.validate(S,a);';
+const host = 'import { Hson } from "hson-live/hson"; import { S } from "./s.js"; const x=1; const a=Hson`<a ${x} b >`; Hson.validate(S,a);';
 const association = discover_schema_validation_sources('/tmp/context.ts', host)[0]!;
 check("interpolation literal mapped without runtime values", () => { const candidate = completion_source(association, host.indexOf('b >') + 2)!; const result = completion_context(candidate.source, candidate.cursor, candidate.unknownRanges); assert.deepEqual(result?.path, ["b"]); assert.deepEqual(result?.unknownPaths, [["a"]]); });
 check("interpolation expression excluded", () => assert.equal(completion_source(association, host.indexOf('${x}') + 2), undefined));

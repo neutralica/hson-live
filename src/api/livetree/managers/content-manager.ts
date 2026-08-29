@@ -16,7 +16,7 @@ type ContentItem = HsonNode | Primitive;
 /**
  * Graph-backed markup snapshot for a `ContentManager` owner node.
  *
- * These strings are serialized from the HSON node graph, not read from a
+ * These strings are serialized from the Hson node graph, not read from a
  * mounted DOM element. They are therefore available for detached branches.
  */
 export type ContentMarkupApi = Readonly<{
@@ -32,7 +32,7 @@ const LEAF_SET: ReadonlySet<string> = new Set(LEAF_NODES);
 // helper
 const is_vsn_tag = (tag: string): boolean => VSN_SET.has(tag);
 const is_leaf_vsn = (tag: string): boolean => LEAF_SET.has(tag);
-/** Serialize one content item through the canonical XML/HSON serializer. */
+/** Serialize one content item through the canonical XML/Hson serializer. */
 const serialize_content_item = (item: ContentItem): string => {
   if (is_Node(item)) collect_hson_node_quid_claims(item);
   return serialize_xml(item);
@@ -149,7 +149,7 @@ export class ContentManager {
    * Graph-backed markup strings for this tree's owner node.
    *
    * Unlike `tree.dom.innerHTML` / `tree.dom.outerHTML`, this accessor does not
-   * require a mounted DOM element. It serializes the HSON graph through the
+   * require a mounted DOM element. It serializes the Hson graph through the
    * canonical XML serializer and therefore preserves standard wire attrs such
    * as QUID metadata.
    */

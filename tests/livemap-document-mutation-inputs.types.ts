@@ -20,7 +20,7 @@ const textMap = elementMap.schema.use(TextSchema);
 const textLocation = textMap.at([0]);
 type _TextReplace = Expect<Equal<Parameters<typeof textLocation.replace>[0], string>>;
 textLocation.replace("Save");
-// @ts-expect-error Schema-proven text rejects HSON nodes.
+// @ts-expect-error Schema-proven text rejects Hson nodes.
 textLocation.replace(node);
 // @ts-expect-error Schema-proven text rejects numbers.
 textLocation.replace(1);
@@ -116,7 +116,7 @@ const RelativeListSchema = hson.liveMap.schema.define((s) => s.tag(s.tag(s.repea
 const relativeListOwner = elementMap.schema.use(RelativeListSchema).at([]).at([0]);
 type _RelativeInsert = Expect<Equal<Parameters<typeof relativeListOwner.insert>[1], string>>;
 relativeListOwner.insert(0, "relative");
-// @ts-expect-error Relative repeated-text owners reject HSON nodes.
+// @ts-expect-error Relative repeated-text owners reject Hson nodes.
 relativeListOwner.insert(0, node);
 
 export {};

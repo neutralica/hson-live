@@ -142,7 +142,7 @@ function canon_to_css_prop(propCanon: string): string {
 /**
  * Runtime-owned manager for QUID-scoped stylesheet rules.
  *
- * `CssManager` owns the “stylesheet-backed” side of styling in HSON/LiveTree.
+ * `CssManager` owns the “stylesheet-backed” side of styling in Hson/LiveTree.
  * Rather than mutating inline `style=""`, it maintains an in-memory rule model:
  *
  *   QUID → (canonicalCssProp → renderedValue)

@@ -51,12 +51,12 @@ import type {
 import type { LiveTraceSink } from "./live.trace.types.js";
 
 
-/** Wire-safe representation of a projected value that may be absent. */
+/** Wire-safe representation of a data value that may be absent. */
 export type LocusWireValue =
   | Readonly<{ present: false }>
   | Readonly<{ present: true; value: JsonValue }>;
 
-/** Exact HSON-backed representation used for graph content at Locus boundaries. */
+/** Exact Hson-backed representation used for graph content at Locus boundaries. */
 export type LocusEncodedGraphContent = Readonly<{
   format: "hson-graph";
   payload: string;

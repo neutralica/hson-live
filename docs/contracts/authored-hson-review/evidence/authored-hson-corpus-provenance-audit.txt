@@ -1,4 +1,4 @@
-MATERIALIZED AUTHORED-HSON CONFORMANCE CORPUS CANDIDATE
+MATERIALIZED AUTHORED-Hson CONFORMANCE CORPUS CANDIDATE
 READ-ONLY PROVENANCE AUDIT — ALL 339 DESCRIPTORS
 
 Audit basis: repository parents e69f924 / be37abc, corpus commit 7f0728b, supplied corpus specification, and implementation-session history.
@@ -24,15 +24,15 @@ expected graph newly reasoned by Codex: 89
 expected graph implementation-calibrated: 0
 expected graph production-derived: 0 documented
 expected graph unknown: 0
-HSON/JSON/HTML expected output fields copied existing literal: 32
-HSON/JSON/HTML expected output fields printed by production serializer and retained: 19
-HSON/JSON/HTML expected output fields newly written by Codex from specification: 118
-HSON/JSON/HTML expected output fields otherwise calibrated/generated/unknown: 0 documented
+Hson/JSON/HTML expected output fields copied existing literal: 32
+Hson/JSON/HTML expected output fields printed by production serializer and retained: 19
+Hson/JSON/HTML expected output fields newly written by Codex from specification: 118
+Hson/JSON/HTML expected output fields otherwise calibrated/generated/unknown: 0 documented
 diagnostic expected output fields newly written by Codex: 1
 rejection operation origins: settled 16; copied 6; observed 156 (total 178)
 rejection stage origins: settled 16; copied 6; observed 149; absent 7 (171 present)
 rejection code origins: settled 16; copied 6; observed 154; calibrated 2 (total 178)
-rejection coordinate origins: copied prior authored-HSON 6; copied prior JSON 3; inferred adapted JSON 4; observed 146; calibrated 2 (161 present)
+rejection coordinate origins: copied prior authored-Hson 6; copied prior JSON 3; inferred adapted JSON 4; observed 146; calibrated 2 (161 present)
 rejection path origins: copied 3; inferred 4 (7 present)
 rejection related-evidence origins: copied 5; inferred 4; observed 1 (10 present)
 new-boundary novelty: genuine semantic/rejection 0; container replay 3; new transport route 33; new exact output 7; new diagnostic evidence 4; duplicate-only 0 (total 47)
@@ -317,7 +317,7 @@ original source location or specification rule: hson-live@e69f924 (parent of cor
 input existed before corpus implementation: no exact/adapted predecessor established
 escaped input: {"$_content":[{"$_content":[{"$_content":[{"$_content":[2],"$_tag":"_hson_val"}],"$_tag":"_hson_obj"}],"$_tag":"value"}],"$_tag":"_hson_obj"}
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
-expected output origin: no HSON/JSON/HTML output expectation
+expected output origin: no Hson/JSON/HTML output expectation
 expected rejection-field origins: not applicable
 family/base/variation provenance: not applicable
 changes from predecessor fixture: —
@@ -335,7 +335,7 @@ original source location or specification rule: hson-live@e69f924 (parent of cor
 input existed before corpus implementation: no exact/adapted predecessor established
 escaped input: {"$_content":[{"$_content":[{"$_content":[{"$_content":[1],"$_tag":"_hson_val"}],"$_tag":"_hson_obj"}],"$_tag":"before"},{"$_content":[{"$_content":[{"$_content":[2],"$_tag":"_hson_val"}],"$_tag":"_hson_obj"}],"$_tag":"after"}],"$_tag":"_hson_obj"}
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
-expected output origin: no HSON/JSON/HTML output expectation
+expected output origin: no Hson/JSON/HTML output expectation
 expected rejection-field origins: not applicable
 family/base/variation provenance: not applicable
 changes from predecessor fixture: —
@@ -371,7 +371,7 @@ original source location or specification rule: hson-live@e69f924 (parent of cor
 input existed before corpus implementation: no exact/adapted predecessor established
 escaped input: {"$_content":[{"$_content":[{"$_content":[{"$_content":[1],"$_tag":"_hson_val"}],"$_tag":"_hson_obj"}],"$_tag":"value"}],"$_tag":"_hson_obj"}
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
-expected output origin: no HSON/JSON/HTML output expectation
+expected output origin: no Hson/JSON/HTML output expectation
 expected rejection-field origins: not applicable
 family/base/variation provenance: not applicable
 changes from predecessor fixture: —
@@ -382,7 +382,7 @@ human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === graph.accept.element-string-empty ===
-claim: A detached HSON element string carrier normalizes to its empty text leaf.
+claim: A detached Hson element string carrier normalizes to its empty text leaf.
 descriptor classification: graph-ingress-accepted-transport
 primary input origin: existing-exact
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-serializer.acceptance.mts:1181-1267 and tests/hson-structural-mode.acceptance.mts:165-215; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, Detached scalar HTML transport
@@ -400,7 +400,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === graph.accept.element-string-ordinary ===
-claim: A detached HSON element string carrier normalizes to its ordinary text leaf.
+claim: A detached Hson element string carrier normalizes to its ordinary text leaf.
 descriptor classification: graph-ingress-accepted-transport
 primary input origin: existing-adapted
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-serializer.acceptance.mts:1181-1267 and tests/hson-structural-mode.acceptance.mts:165-215; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, Detached scalar HTML transport
@@ -418,7 +418,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === graph.accept.object-false ===
-claim: A detached HSON object carrier transports false.
+claim: A detached Hson object carrier transports false.
 descriptor classification: graph-ingress-accepted-transport
 primary input origin: existing-exact
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-serializer.acceptance.mts:1181-1267 and tests/hson-structural-mode.acceptance.mts:165-215; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, Detached scalar HTML transport
@@ -436,7 +436,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === graph.accept.object-negative-number ===
-claim: A detached HSON object carrier transports a negative finite number.
+claim: A detached Hson object carrier transports a negative finite number.
 descriptor classification: graph-ingress-accepted-transport
 primary input origin: existing-adapted
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-serializer.acceptance.mts:1181-1267 and tests/hson-structural-mode.acceptance.mts:165-215; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, Detached scalar HTML transport
@@ -454,7 +454,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === graph.accept.object-negative-zero ===
-claim: A detached HSON object carrier transports negative zero.
+claim: A detached Hson object carrier transports negative zero.
 descriptor classification: graph-ingress-accepted-transport
 primary input origin: existing-exact
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-serializer.acceptance.mts:1181-1267 and tests/hson-structural-mode.acceptance.mts:165-215; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, Detached scalar HTML transport
@@ -472,7 +472,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === graph.accept.object-null ===
-claim: A detached HSON object carrier transports null.
+claim: A detached Hson object carrier transports null.
 descriptor classification: graph-ingress-accepted-transport
 primary input origin: existing-adapted
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-serializer.acceptance.mts:1181-1267 and tests/hson-structural-mode.acceptance.mts:165-215; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, Detached scalar HTML transport
@@ -490,7 +490,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === graph.accept.object-positive-number ===
-claim: A detached HSON object carrier transports a positive finite number.
+claim: A detached Hson object carrier transports a positive finite number.
 descriptor classification: graph-ingress-accepted-transport
 primary input origin: existing-adapted
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-serializer.acceptance.mts:1181-1267 and tests/hson-structural-mode.acceptance.mts:165-215; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, Detached scalar HTML transport
@@ -508,7 +508,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === graph.accept.object-string-empty ===
-claim: A detached HSON object string carrier normalizes to its empty string leaf.
+claim: A detached Hson object string carrier normalizes to its empty string leaf.
 descriptor classification: graph-ingress-accepted-transport
 primary input origin: existing-adapted
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-serializer.acceptance.mts:1181-1267 and tests/hson-structural-mode.acceptance.mts:165-215; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, Detached scalar HTML transport
@@ -526,7 +526,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === graph.accept.object-string-ordinary ===
-claim: A detached HSON object string carrier normalizes to its ordinary string leaf.
+claim: A detached Hson object string carrier normalizes to its ordinary string leaf.
 descriptor classification: graph-ingress-accepted-transport
 primary input origin: existing-adapted
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-serializer.acceptance.mts:1181-1267 and tests/hson-structural-mode.acceptance.mts:165-215; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, Detached scalar HTML transport
@@ -544,7 +544,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === graph.accept.object-true ===
-claim: A detached HSON object carrier transports true.
+claim: A detached Hson object carrier transports true.
 descriptor classification: graph-ingress-accepted-transport
 primary input origin: existing-adapted
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-serializer.acceptance.mts:1181-1267 and tests/hson-structural-mode.acceptance.mts:165-215; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, Detached scalar HTML transport
@@ -562,7 +562,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === graph.accept.object-zero ===
-claim: A detached HSON object carrier transports zero.
+claim: A detached Hson object carrier transports zero.
 descriptor classification: graph-ingress-accepted-transport
 primary input origin: existing-adapted
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-serializer.acceptance.mts:1181-1267 and tests/hson-structural-mode.acceptance.mts:165-215; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, Detached scalar HTML transport
@@ -580,7 +580,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === graph.reject.direct-element-false ===
-claim: A detached HSON element carrier may not contain a typed false leaf.
+claim: A detached Hson element carrier may not contain a typed false leaf.
 descriptor classification: graph-ingress-rejected-transport
 primary input origin: existing-exact
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-serializer.acceptance.mts:1181-1267 and tests/hson-structural-mode.acceptance.mts:165-215; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, Detached scalar HTML transport
@@ -598,7 +598,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === graph.reject.direct-element-negative-number ===
-claim: A detached HSON element carrier may not contain a typed negative numeric leaf.
+claim: A detached Hson element carrier may not contain a typed negative numeric leaf.
 descriptor classification: graph-ingress-rejected-transport
 primary input origin: existing-adapted
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-serializer.acceptance.mts:1181-1267 and tests/hson-structural-mode.acceptance.mts:165-215; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, Detached scalar HTML transport
@@ -616,7 +616,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === graph.reject.direct-element-negative-zero ===
-claim: A detached HSON element carrier may not contain a typed negative-zero leaf.
+claim: A detached Hson element carrier may not contain a typed negative-zero leaf.
 descriptor classification: graph-ingress-rejected-transport
 primary input origin: existing-exact
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-serializer.acceptance.mts:1181-1267 and tests/hson-structural-mode.acceptance.mts:165-215; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, Detached scalar HTML transport
@@ -634,7 +634,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === graph.reject.direct-element-null ===
-claim: A detached HSON element carrier may not contain a typed null leaf.
+claim: A detached Hson element carrier may not contain a typed null leaf.
 descriptor classification: graph-ingress-rejected-transport
 primary input origin: existing-exact
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-serializer.acceptance.mts:1181-1267 and tests/hson-structural-mode.acceptance.mts:165-215; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, Detached scalar HTML transport
@@ -652,7 +652,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === graph.reject.direct-element-positive-number ===
-claim: A detached HSON element carrier may not contain a typed positive numeric leaf.
+claim: A detached Hson element carrier may not contain a typed positive numeric leaf.
 descriptor classification: graph-ingress-rejected-transport
 primary input origin: existing-adapted
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-serializer.acceptance.mts:1181-1267 and tests/hson-structural-mode.acceptance.mts:165-215; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, Detached scalar HTML transport
@@ -670,7 +670,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === graph.reject.direct-element-true ===
-claim: A detached HSON element carrier may not contain a typed true leaf.
+claim: A detached Hson element carrier may not contain a typed true leaf.
 descriptor classification: graph-ingress-rejected-transport
 primary input origin: existing-adapted
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-serializer.acceptance.mts:1181-1267 and tests/hson-structural-mode.acceptance.mts:165-215; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, Detached scalar HTML transport
@@ -688,7 +688,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === graph.reject.direct-element-zero ===
-claim: A detached HSON element carrier may not contain a typed zero leaf.
+claim: A detached Hson element carrier may not contain a typed zero leaf.
 descriptor classification: graph-ingress-rejected-transport
 primary input origin: existing-adapted
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-serializer.acceptance.mts:1181-1267 and tests/hson-structural-mode.acceptance.mts:165-215; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, Detached scalar HTML transport
@@ -751,7 +751,7 @@ escaped input: "<`back\\bspace` 1>"
 expected graph origin: mechanically adapted/re-expressed with corpus graph helpers from an existing fixture's semantic expectation
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=backspace; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=backspace; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: No new input claim; adds corpus-wide assertion uniformity and/or a fully materialized expectation.
@@ -769,7 +769,7 @@ escaped input: "<`line\\rname` 1>"
 expected graph origin: mechanically adapted/re-expressed with corpus graph helpers from an existing fixture's semantic expectation
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=carriage-return; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=carriage-return; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: No new input claim; adds corpus-wide assertion uniformity and/or a fully materialized expectation.
@@ -787,7 +787,7 @@ escaped input: "<`pair\\u0041\\u0042name` 1>"
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=consecutive-unicode; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=consecutive-unicode; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -805,7 +805,7 @@ escaped input: "<`back\\\\slash` 1>"
 expected graph origin: mechanically adapted/re-expressed with corpus graph helpers from an existing fixture's semantic expectation
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=escaped-backslash; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=escaped-backslash; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: No new input claim; adds corpus-wide assertion uniformity and/or a fully materialized expectation.
@@ -823,7 +823,7 @@ escaped input: "<`tick\\`name` 1>"
 expected graph origin: mechanically adapted/re-expressed with corpus graph helpers from an existing fixture's semantic expectation
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=escaped-backtick; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=escaped-backtick; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: No new input claim; adds corpus-wide assertion uniformity and/or a fully materialized expectation.
@@ -841,7 +841,7 @@ escaped input: "<`form\\ffeed` 1>"
 expected graph origin: mechanically adapted/re-expressed with corpus graph helpers from an existing fixture's semantic expectation
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=form-feed; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=form-feed; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: No new input claim; adds corpus-wide assertion uniformity and/or a fully materialized expectation.
@@ -859,7 +859,7 @@ escaped input: "<`line\\nname` 1>"
 expected graph origin: mechanically adapted/re-expressed with corpus graph helpers from an existing fixture's semantic expectation
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=line-feed; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=line-feed; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: No new input claim; adds corpus-wide assertion uniformity and/or a fully materialized expectation.
@@ -877,7 +877,7 @@ escaped input: "<`line\\tname` 1>"
 expected graph origin: mechanically adapted/re-expressed with corpus graph helpers from an existing fixture's semantic expectation
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=tab; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=tab; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: No new input claim; adds corpus-wide assertion uniformity and/or a fully materialized expectation.
@@ -895,7 +895,7 @@ escaped input: "<`control\\u0001name` 1>"
 expected graph origin: mechanically adapted/re-expressed with corpus graph helpers from an existing fixture's semantic expectation
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-control; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-control; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: No new input claim; adds corpus-wide assertion uniformity and/or a fully materialized expectation.
@@ -913,7 +913,7 @@ escaped input: "<`high\\uD800name` 1>"
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-high-surrogate; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-high-surrogate; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -931,7 +931,7 @@ escaped input: "<`lambda\\u03bbname` 1>"
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-lambda; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-lambda; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -949,7 +949,7 @@ escaped input: "<`low\\uDC00name` 1>"
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-low-surrogate; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-low-surrogate; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -967,7 +967,7 @@ escaped input: "<`lower\\u0061name` 1>"
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-lowercase; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-lowercase; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -985,7 +985,7 @@ escaped input: "<`mixed\\u00aFname` 1>"
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-mixed-case; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-mixed-case; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1003,7 +1003,7 @@ escaped input: "<`pair\\uD83D\\uDE00name` 1>"
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-surrogate-pair; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-surrogate-pair; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1021,7 +1021,7 @@ escaped input: "<`nul\\u0000name` 1>"
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-u0000; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-u0000; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1039,7 +1039,7 @@ escaped input: "<`unit\\u001Fname` 1>"
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-u001f; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-u001f; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1057,7 +1057,7 @@ escaped input: "<`unit\\u007fname` 1>"
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-u007f; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-u007f; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1075,7 +1075,7 @@ escaped input: "<`unit\\u0080name` 1>"
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-u0080; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-u0080; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1093,7 +1093,7 @@ escaped input: "<`unit\\u00FFname` 1>"
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-u00ff; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-u00ff; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1111,7 +1111,7 @@ escaped input: "<`unit\\u0100name` 1>"
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-u0100; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-u0100; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1129,7 +1129,7 @@ escaped input: "<`unit\\u2028name` 1>"
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-u2028; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-u2028; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1147,7 +1147,7 @@ escaped input: "<`unit\\u2029name` 1>"
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-u2029; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-u2029; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1165,7 +1165,7 @@ escaped input: "<`upper\\u006Aname` 1>"
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-uppercase; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.backtick-name-escapes; base=<`<varied spelling/code unit>` 1>; varied slot=backtick property-key spelling; inserted variation=unicode-uppercase; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1183,7 +1183,7 @@ escaped input: "\"\\\\\""
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=backslash; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=backslash; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1201,7 +1201,7 @@ escaped input: "\"\\b\""
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=backspace; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=backspace; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1219,7 +1219,7 @@ escaped input: "\"\\r\""
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=carriage-return; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=carriage-return; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1237,7 +1237,7 @@ escaped input: "\"\\u0041\\u0042\""
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=consecutive-unicode; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=consecutive-unicode; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1255,7 +1255,7 @@ escaped input: "<e \"x\\t\"/>"
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=escape-before-container-closer; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=escape-before-container-closer; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1273,7 +1273,7 @@ escaped input: "\"end\\t\""
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=escape-before-quote; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=escape-before-quote; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1291,7 +1291,7 @@ escaped input: "\"\\f\""
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=form-feed; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=form-feed; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1309,7 +1309,7 @@ escaped input: "\"\\n\""
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=line-feed; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=line-feed; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1327,7 +1327,7 @@ escaped input: "\"\\\"\""
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=quote; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=quote; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1345,7 +1345,7 @@ escaped input: "\"\\/\""
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=slash; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=slash; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1363,7 +1363,7 @@ escaped input: "\"\\t\""
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=tab; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=tab; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1381,7 +1381,7 @@ escaped input: "\"\\uD800\""
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-high-surrogate; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-high-surrogate; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1399,7 +1399,7 @@ escaped input: "\"\\uDC00\""
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-low-surrogate; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-low-surrogate; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1417,7 +1417,7 @@ escaped input: "\"\\u0061\""
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-lowercase; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-lowercase; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1435,7 +1435,7 @@ escaped input: "\"\\u00aF\""
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-mixed-case; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-mixed-case; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1453,7 +1453,7 @@ escaped input: "\"\\uD83D\\uDE00\""
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-surrogate-pair; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-surrogate-pair; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1471,7 +1471,7 @@ escaped input: "\"\\u0000\""
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-u0000; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-u0000; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1489,7 +1489,7 @@ escaped input: "\"\\u001F\""
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-u001f; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-u001f; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1507,7 +1507,7 @@ escaped input: "\"\\u007F\""
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-u007f; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-u007f; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1525,7 +1525,7 @@ escaped input: "\"\\u0080\""
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-u0080; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-u0080; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1543,7 +1543,7 @@ escaped input: "\"\\u00FF\""
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-u00ff; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-u00ff; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1561,7 +1561,7 @@ escaped input: "\"\\u0100\""
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-u0100; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-u0100; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1579,7 +1579,7 @@ escaped input: "\"\\u2028\""
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-u2028; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-u2028; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1597,7 +1597,7 @@ escaped input: "\"\\u2029\""
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-u2029; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-u2029; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1615,7 +1615,7 @@ escaped input: "\"\\u006A\""
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
 expected output origin: hson: newly written by Codex using the settled format/transport specification
 expected rejection-field origins: not applicable
-family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-uppercase; expectation=decoded value and canonical HSON were separately authored in the visible case tuple
+family/base/variation provenance: family=family.accept.quoted-string-json-escapes; base="<varied spelling/code unit>"; varied slot=quoted-string payload/escape; inserted variation=unicode-uppercase; expectation=decoded value and canonical Hson were separately authored in the visible case tuple
 changes from predecessor fixture: —
 implementation-history evidence: no production-derived drafting step established
 novelty claim: Finite lexical variation not previously present as this exact source; systematic family coverage, not a new language rule.
@@ -1663,7 +1663,7 @@ notes: Expected literals are static after materialization, but static storage al
 claim: An array item preserves negative zero.
 descriptor classification: literal-accepted-authored-hson
 primary input origin: implementation-derived
-original source location or specification rule: supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, settled authored-HSON language / object, array, element and negative-zero boundaries
+original source location or specification rule: supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, settled authored-Hson language / object, array, element and negative-zero boundaries
 input existed before corpus implementation: no exact/adapted predecessor established
 escaped input: "[-0,0]"
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
@@ -1671,9 +1671,9 @@ expected output origin: hson: production serializer output printed during drafti
 expected rejection-field origins: not applicable
 family/base/variation provenance: not applicable
 changes from predecessor fixture: —
-implementation-history evidence: production HSON serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
+implementation-history evidence: production Hson serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
 novelty claim: Confirms current runtime behavior used during drafting; not independently authoritative until a human validates and ratifies the retained graph/output/rejection contract.
-implementation-derived or calibrated fields: exact canonical HSON output was printed from production before descriptor materialization
+implementation-derived or calibrated fields: exact canonical Hson output was printed from production before descriptor materialization
 human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
@@ -1689,14 +1689,14 @@ expected output origin: hson: production serializer output printed during drafti
 expected rejection-field origins: not applicable
 family/base/variation provenance: not applicable
 changes from predecessor fixture: —
-implementation-history evidence: production HSON serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
+implementation-history evidence: production Hson serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
 novelty claim: Confirms current runtime behavior used during drafting; not independently authoritative until a human validates and ratifies the retained graph/output/rejection contract.
-implementation-derived or calibrated fields: exact canonical HSON output was printed from production before descriptor materialization
+implementation-derived or calibrated fields: exact canonical Hson output was printed from production before descriptor materialization
 human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === hson.accept.literal.array.object-item ===
-claim: An array item may be a HSON object.
+claim: An array item may be a Hson object.
 descriptor classification: literal-accepted-authored-hson
 primary input origin: implementation-derived
 original source location or specification rule: adapted from hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-tokenizer.acceptance.mts:710-875 and tests/hson-root-boundary.acceptance.mts:154-230; exact representative selected by supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt
@@ -1707,9 +1707,9 @@ expected output origin: hson: production serializer output printed during drafti
 expected rejection-field origins: not applicable
 family/base/variation provenance: not applicable
 changes from predecessor fixture: —
-implementation-history evidence: production HSON serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
+implementation-history evidence: production Hson serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
 novelty claim: Confirms current runtime behavior used during drafting; not independently authoritative until a human validates and ratifies the retained graph/output/rejection contract.
-implementation-derived or calibrated fields: exact canonical HSON output was printed from production before descriptor materialization
+implementation-derived or calibrated fields: exact canonical Hson output was printed from production before descriptor materialization
 human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
@@ -1725,9 +1725,9 @@ expected output origin: hson: production serializer output printed during drafti
 expected rejection-field origins: not applicable
 family/base/variation provenance: not applicable
 changes from predecessor fixture: —
-implementation-history evidence: production HSON serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
+implementation-history evidence: production Hson serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
 novelty claim: Confirms current runtime behavior used during drafting; not independently authoritative until a human validates and ratifies the retained graph/output/rejection contract.
-implementation-derived or calibrated fields: exact canonical HSON output was printed from production before descriptor materialization
+implementation-derived or calibrated fields: exact canonical Hson output was printed from production before descriptor materialization
 human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
@@ -1743,9 +1743,9 @@ expected output origin: hson: production serializer output printed during drafti
 expected rejection-field origins: not applicable
 family/base/variation provenance: not applicable
 changes from predecessor fixture: —
-implementation-history evidence: production HSON serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
+implementation-history evidence: production Hson serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
 novelty claim: Confirms current runtime behavior used during drafting; not independently authoritative until a human validates and ratifies the retained graph/output/rejection contract.
-implementation-derived or calibrated fields: exact canonical HSON output was printed from production before descriptor materialization
+implementation-derived or calibrated fields: exact canonical Hson output was printed from production before descriptor materialization
 human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
@@ -1779,9 +1779,9 @@ expected output origin: hson: production serializer output printed during drafti
 expected rejection-field origins: not applicable
 family/base/variation provenance: not applicable
 changes from predecessor fixture: —
-implementation-history evidence: production HSON serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
+implementation-history evidence: production Hson serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
 novelty claim: Confirms current runtime behavior used during drafting; not independently authoritative until a human validates and ratifies the retained graph/output/rejection contract.
-implementation-derived or calibrated fields: exact canonical HSON output was printed from production before descriptor materialization
+implementation-derived or calibrated fields: exact canonical Hson output was printed from production before descriptor materialization
 human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
@@ -1789,7 +1789,7 @@ notes: Expected literals are static after materialization, but static storage al
 claim: An element attribute retains its explicit value.
 descriptor classification: literal-accepted-authored-hson
 primary input origin: new-boundary-case
-original source location or specification rule: supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, settled authored-HSON language / object, array, element and negative-zero boundaries
+original source location or specification rule: supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, settled authored-Hson language / object, array, element and negative-zero boundaries
 input existed before corpus implementation: no exact/adapted predecessor established
 escaped input: "<input title=\"value\"/>"
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
@@ -1804,7 +1804,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === hson.accept.literal.element.empty ===
-claim: A self-closing angle construct denotes an empty HSON element.
+claim: A self-closing angle construct denotes an empty Hson element.
 descriptor classification: literal-accepted-authored-hson
 primary input origin: existing-exact
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-root-boundary.acceptance.mts:176-210; tests/hson-tokenizer.acceptance.mts:989-1002; tests/hson-serializer.acceptance.mts:240-312
@@ -1851,9 +1851,9 @@ expected output origin: hson: production serializer output printed during drafti
 expected rejection-field origins: not applicable
 family/base/variation provenance: not applicable
 changes from predecessor fixture: —
-implementation-history evidence: production HSON serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
+implementation-history evidence: production Hson serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
 novelty claim: Confirms current runtime behavior used during drafting; not independently authoritative until a human validates and ratifies the retained graph/output/rejection contract.
-implementation-derived or calibrated fields: exact canonical HSON output was printed from production before descriptor materialization
+implementation-derived or calibrated fields: exact canonical Hson output was printed from production before descriptor materialization
 human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
@@ -1869,14 +1869,14 @@ expected output origin: hson: production serializer output printed during drafti
 expected rejection-field origins: not applicable
 family/base/variation provenance: not applicable
 changes from predecessor fixture: —
-implementation-history evidence: production HSON serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
+implementation-history evidence: production Hson serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
 novelty claim: Confirms current runtime behavior used during drafting; not independently authoritative until a human validates and ratifies the retained graph/output/rejection contract.
-implementation-derived or calibrated fields: exact canonical HSON output was printed from production before descriptor materialization
+implementation-derived or calibrated fields: exact canonical Hson output was printed from production before descriptor materialization
 human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === hson.accept.literal.element.nested ===
-claim: An HSON element may contain a nested element.
+claim: An Hson element may contain a nested element.
 descriptor classification: literal-accepted-authored-hson
 primary input origin: implementation-derived
 original source location or specification rule: adapted from hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-tokenizer.acceptance.mts:710-875 and tests/hson-root-boundary.acceptance.mts:154-230; exact representative selected by supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt
@@ -1887,9 +1887,9 @@ expected output origin: hson: production serializer output printed during drafti
 expected rejection-field origins: not applicable
 family/base/variation provenance: not applicable
 changes from predecessor fixture: —
-implementation-history evidence: production HSON serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
+implementation-history evidence: production Hson serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
 novelty claim: Confirms current runtime behavior used during drafting; not independently authoritative until a human validates and ratifies the retained graph/output/rejection contract.
-implementation-derived or calibrated fields: exact canonical HSON output was printed from production before descriptor materialization
+implementation-derived or calibrated fields: exact canonical Hson output was printed from production before descriptor materialization
 human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
@@ -1905,14 +1905,14 @@ expected output origin: hson: production serializer output printed during drafti
 expected rejection-field origins: not applicable
 family/base/variation provenance: not applicable
 changes from predecessor fixture: —
-implementation-history evidence: production HSON serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
+implementation-history evidence: production Hson serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
 novelty claim: Confirms current runtime behavior used during drafting; not independently authoritative until a human validates and ratifies the retained graph/output/rejection contract.
-implementation-derived or calibrated fields: exact canonical HSON output was printed from production before descriptor materialization
+implementation-derived or calibrated fields: exact canonical Hson output was printed from production before descriptor materialization
 human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === hson.accept.literal.element.text ===
-claim: An HSON element may contain quoted string content.
+claim: An Hson element may contain quoted string content.
 descriptor classification: literal-accepted-authored-hson
 primary input origin: existing-exact
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-root-boundary.acceptance.mts:176-210; tests/hson-tokenizer.acceptance.mts:989-1002; tests/hson-serializer.acceptance.mts:240-312
@@ -1941,9 +1941,9 @@ expected output origin: hson: production serializer output printed during drafti
 expected rejection-field origins: not applicable
 family/base/variation provenance: not applicable
 changes from predecessor fixture: —
-implementation-history evidence: production HSON serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
+implementation-history evidence: production Hson serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
 novelty claim: Confirms current runtime behavior used during drafting; not independently authoritative until a human validates and ratifies the retained graph/output/rejection contract.
-implementation-derived or calibrated fields: exact canonical HSON output was printed from production before descriptor materialization
+implementation-derived or calibrated fields: exact canonical Hson output was printed from production before descriptor materialization
 human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
@@ -1959,9 +1959,9 @@ expected output origin: hson: production serializer output printed during drafti
 expected rejection-field origins: not applicable
 family/base/variation provenance: not applicable
 changes from predecessor fixture: —
-implementation-history evidence: production HSON serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
+implementation-history evidence: production Hson serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
 novelty claim: Confirms current runtime behavior used during drafting; not independently authoritative until a human validates and ratifies the retained graph/output/rejection contract.
-implementation-derived or calibrated fields: exact canonical HSON output was printed from production before descriptor materialization
+implementation-derived or calibrated fields: exact canonical Hson output was printed from production before descriptor materialization
 human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
@@ -1977,9 +1977,9 @@ expected output origin: hson: production serializer output printed during drafti
 expected rejection-field origins: not applicable
 family/base/variation provenance: not applicable
 changes from predecessor fixture: —
-implementation-history evidence: production HSON serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
+implementation-history evidence: production Hson serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
 novelty claim: Confirms current runtime behavior used during drafting; not independently authoritative until a human validates and ratifies the retained graph/output/rejection contract.
-implementation-derived or calibrated fields: exact canonical HSON output was printed from production before descriptor materialization
+implementation-derived or calibrated fields: exact canonical Hson output was printed from production before descriptor materialization
 human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
@@ -1995,14 +1995,14 @@ expected output origin: hson: production serializer output printed during drafti
 expected rejection-field origins: not applicable
 family/base/variation provenance: not applicable
 changes from predecessor fixture: —
-implementation-history evidence: production HSON serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
+implementation-history evidence: production Hson serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
 novelty claim: Confirms current runtime behavior used during drafting; not independently authoritative until a human validates and ratifies the retained graph/output/rejection contract.
-implementation-derived or calibrated fields: exact canonical HSON output was printed from production before descriptor materialization
+implementation-derived or calibrated fields: exact canonical Hson output was printed from production before descriptor materialization
 human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === hson.accept.literal.object.empty ===
-claim: One angle pair denotes an empty HSON object.
+claim: One angle pair denotes an empty Hson object.
 descriptor classification: literal-accepted-authored-hson
 primary input origin: existing-exact
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-root-boundary.acceptance.mts:128-143,188-230; docs/hson-syntax.md:73
@@ -2031,9 +2031,9 @@ expected output origin: hson: production serializer output printed during drafti
 expected rejection-field origins: not applicable
 family/base/variation provenance: not applicable
 changes from predecessor fixture: —
-implementation-history evidence: production HSON serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
+implementation-history evidence: production Hson serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
 novelty claim: Confirms current runtime behavior used during drafting; not independently authoritative until a human validates and ratifies the retained graph/output/rejection contract.
-implementation-derived or calibrated fields: exact canonical HSON output was printed from production before descriptor materialization
+implementation-derived or calibrated fields: exact canonical Hson output was printed from production before descriptor materialization
 human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
@@ -2041,7 +2041,7 @@ notes: Expected literals are static after materialization, but static storage al
 claim: Object property order is retained.
 descriptor classification: literal-accepted-authored-hson
 primary input origin: implementation-derived
-original source location or specification rule: supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, settled authored-HSON language / object, array, element and negative-zero boundaries
+original source location or specification rule: supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, settled authored-Hson language / object, array, element and negative-zero boundaries
 input existed before corpus implementation: no exact/adapted predecessor established
 escaped input: "<a 1 b \"two\" c false>"
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
@@ -2049,9 +2049,9 @@ expected output origin: hson: production serializer output printed during drafti
 expected rejection-field origins: not applicable
 family/base/variation provenance: not applicable
 changes from predecessor fixture: —
-implementation-history evidence: production HSON serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
+implementation-history evidence: production Hson serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
 novelty claim: Confirms current runtime behavior used during drafting; not independently authoritative until a human validates and ratifies the retained graph/output/rejection contract.
-implementation-derived or calibrated fields: exact canonical HSON output was printed from production before descriptor materialization
+implementation-derived or calibrated fields: exact canonical Hson output was printed from production before descriptor materialization
 human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
@@ -2074,7 +2074,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === hson.accept.literal.object.nested ===
-claim: An object property may contain a nested HSON object.
+claim: An object property may contain a nested Hson object.
 descriptor classification: literal-accepted-authored-hson
 primary input origin: implementation-derived
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-root-boundary.acceptance.mts:128-143,188-230; docs/hson-syntax.md:73
@@ -2085,9 +2085,9 @@ expected output origin: hson: production serializer output printed during drafti
 expected rejection-field origins: not applicable
 family/base/variation provenance: not applicable
 changes from predecessor fixture: —
-implementation-history evidence: production HSON serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
+implementation-history evidence: production Hson serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
 novelty claim: Confirms current runtime behavior used during drafting; not independently authoritative until a human validates and ratifies the retained graph/output/rejection contract.
-implementation-derived or calibrated fields: exact canonical HSON output was printed from production before descriptor materialization
+implementation-derived or calibrated fields: exact canonical Hson output was printed from production before descriptor materialization
 human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
@@ -2103,9 +2103,9 @@ expected output origin: hson: production serializer output printed during drafti
 expected rejection-field origins: not applicable
 family/base/variation provenance: not applicable
 changes from predecessor fixture: —
-implementation-history evidence: production HSON serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
+implementation-history evidence: production Hson serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
 novelty claim: Confirms current runtime behavior used during drafting; not independently authoritative until a human validates and ratifies the retained graph/output/rejection contract.
-implementation-derived or calibrated fields: exact canonical HSON output was printed from production before descriptor materialization
+implementation-derived or calibrated fields: exact canonical Hson output was printed from production before descriptor materialization
 human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
@@ -2113,7 +2113,7 @@ notes: Expected literals are static after materialization, but static storage al
 claim: true, false, and null in object value position remain typed.
 descriptor classification: literal-accepted-authored-hson
 primary input origin: implementation-derived
-original source location or specification rule: supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, settled authored-HSON language / object, array, element and negative-zero boundaries
+original source location or specification rule: supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, settled authored-Hson language / object, array, element and negative-zero boundaries
 input existed before corpus implementation: no exact/adapted predecessor established
 escaped input: "<t true f false n null>"
 expected graph origin: newly written by Codex from semantic reasoning; no production parser callback generates it
@@ -2121,9 +2121,9 @@ expected output origin: hson: production serializer output printed during drafti
 expected rejection-field origins: not applicable
 family/base/variation provenance: not applicable
 changes from predecessor fixture: —
-implementation-history evidence: production HSON serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
+implementation-history evidence: production Hson serializer output was printed before descriptor materialization: implementation session JSONL lines 91-92 and/or 217-228
 novelty claim: Confirms current runtime behavior used during drafting; not independently authoritative until a human validates and ratifies the retained graph/output/rejection contract.
-implementation-derived or calibrated fields: exact canonical HSON output was printed from production before descriptor materialization
+implementation-derived or calibrated fields: exact canonical Hson output was printed from production before descriptor materialization
 human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
@@ -4648,7 +4648,7 @@ human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === hson.reject.literal.element.numeric-content ===
-claim: Numeric typed content beneath an HSON element rejects.
+claim: Numeric typed content beneath an Hson element rejects.
 descriptor classification: literal-rejected-authored-hson
 primary input origin: implementation-derived
 original source location or specification rule: adapted from hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-tokenizer.acceptance.mts:720-875,962-983; spelling/container changed to isolate the required defect
@@ -4738,7 +4738,7 @@ human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === hson.reject.literal.mode.element-array ===
-claim: An HSON element cannot contain an array.
+claim: An Hson element cannot contain an array.
 descriptor classification: literal-rejected-authored-hson
 primary input origin: implementation-derived
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-tokenizer.acceptance.mts:701-875 and tests/hson-root-boundary.acceptance.mts:462-470
@@ -4756,7 +4756,7 @@ human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === hson.reject.literal.mode.element-object ===
-claim: An HSON element cannot contain object structure.
+claim: An Hson element cannot contain object structure.
 descriptor classification: literal-rejected-authored-hson
 primary input origin: implementation-derived
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-tokenizer.acceptance.mts:701-875 and tests/hson-root-boundary.acceptance.mts:462-470
@@ -4918,7 +4918,7 @@ human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === hson.reject.literal.object.quid ===
-claim: Object-property QUIDs do not exist in authored HSON.
+claim: Object-property QUIDs do not exist in authored Hson.
 descriptor classification: literal-rejected-authored-hson
 primary input origin: implementation-derived
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-tokenizer.acceptance.mts:701-875 and tests/hson-root-boundary.acceptance.mts:462-470
@@ -5080,7 +5080,7 @@ human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === hson.reject.literal.whitespace.byte-order-mark ===
-claim: U+FEFF is not authored-HSON trivia.
+claim: U+FEFF is not authored-Hson trivia.
 descriptor classification: literal-rejected-authored-hson
 primary input origin: implementation-derived
 original source location or specification rule: supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, settled rejection boundary with no exact predecessor source
@@ -5152,7 +5152,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === html.accept.ingress.element-string-empty ===
-claim: An HTML HSON element carrier detaches empty text.
+claim: An HTML Hson element carrier detaches empty text.
 descriptor classification: structural-html-transport
 primary input origin: new-boundary-case
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-attribute-transport.acceptance.mts:408-455 and tests/transform-oracle.acceptance.mts:154-279; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, structural HTML totality
@@ -5170,7 +5170,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === html.accept.ingress.element-string-ordinary ===
-claim: An HTML HSON element carrier detaches ordinary text.
+claim: An HTML Hson element carrier detaches ordinary text.
 descriptor classification: structural-html-transport
 primary input origin: new-boundary-case
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-attribute-transport.acceptance.mts:408-455 and tests/transform-oracle.acceptance.mts:154-279; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, structural HTML totality
@@ -5188,7 +5188,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === html.accept.ingress.object-false ===
-claim: An HTML HSON object carrier detaches typed false.
+claim: An HTML Hson object carrier detaches typed false.
 descriptor classification: structural-html-transport
 primary input origin: existing-exact
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-attribute-transport.acceptance.mts:408-455 and tests/transform-oracle.acceptance.mts:154-279; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, structural HTML totality
@@ -5206,7 +5206,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === html.accept.ingress.object-negative-number ===
-claim: An HTML HSON object carrier detaches a negative finite number.
+claim: An HTML Hson object carrier detaches a negative finite number.
 descriptor classification: structural-html-transport
 primary input origin: new-boundary-case
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-attribute-transport.acceptance.mts:408-455 and tests/transform-oracle.acceptance.mts:154-279; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, structural HTML totality
@@ -5224,7 +5224,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === html.accept.ingress.object-negative-zero ===
-claim: An HTML HSON object carrier detaches negative zero.
+claim: An HTML Hson object carrier detaches negative zero.
 descriptor classification: structural-html-transport
 primary input origin: existing-exact
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-attribute-transport.acceptance.mts:408-455 and tests/transform-oracle.acceptance.mts:154-279; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, structural HTML totality
@@ -5242,7 +5242,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === html.accept.ingress.object-null ===
-claim: An HTML HSON object carrier detaches typed null.
+claim: An HTML Hson object carrier detaches typed null.
 descriptor classification: structural-html-transport
 primary input origin: new-boundary-case
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-attribute-transport.acceptance.mts:408-455 and tests/transform-oracle.acceptance.mts:154-279; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, structural HTML totality
@@ -5260,7 +5260,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === html.accept.ingress.object-positive-number ===
-claim: An HTML HSON object carrier detaches a positive finite number.
+claim: An HTML Hson object carrier detaches a positive finite number.
 descriptor classification: structural-html-transport
 primary input origin: new-boundary-case
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-attribute-transport.acceptance.mts:408-455 and tests/transform-oracle.acceptance.mts:154-279; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, structural HTML totality
@@ -5278,7 +5278,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === html.accept.ingress.object-string-empty ===
-claim: An HTML HSON object carrier detaches an empty string.
+claim: An HTML Hson object carrier detaches an empty string.
 descriptor classification: structural-html-transport
 primary input origin: new-boundary-case
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-attribute-transport.acceptance.mts:408-455 and tests/transform-oracle.acceptance.mts:154-279; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, structural HTML totality
@@ -5296,7 +5296,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === html.accept.ingress.object-string-ordinary ===
-claim: An HTML HSON object carrier detaches an ordinary string.
+claim: An HTML Hson object carrier detaches an ordinary string.
 descriptor classification: structural-html-transport
 primary input origin: new-boundary-case
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-attribute-transport.acceptance.mts:408-455 and tests/transform-oracle.acceptance.mts:154-279; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, structural HTML totality
@@ -5314,7 +5314,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === html.accept.ingress.object-true ===
-claim: An HTML HSON object carrier detaches typed true.
+claim: An HTML Hson object carrier detaches typed true.
 descriptor classification: structural-html-transport
 primary input origin: new-boundary-case
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-attribute-transport.acceptance.mts:408-455 and tests/transform-oracle.acceptance.mts:154-279; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, structural HTML totality
@@ -5332,7 +5332,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === html.accept.ingress.object-zero ===
-claim: An HTML HSON object carrier detaches zero.
+claim: An HTML Hson object carrier detaches zero.
 descriptor classification: structural-html-transport
 primary input origin: new-boundary-case
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-attribute-transport.acceptance.mts:408-455 and tests/transform-oracle.acceptance.mts:154-279; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, structural HTML totality
@@ -5386,7 +5386,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === html.accept.script-ordinary-raw-text ===
-claim: Ordinary script raw text preserves braces, quotes, angle characters, ampersands, slashes, comments, JSON-looking text, and HSON-looking text.
+claim: Ordinary script raw text preserves braces, quotes, angle characters, ampersands, slashes, comments, JSON-looking text, and Hson-looking text.
 descriptor classification: structural-html-transport
 primary input origin: new-boundary-case
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-attribute-transport.acceptance.mts:408-455 and tests/transform-oracle.acceptance.mts:154-279; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, structural HTML totality
@@ -5746,7 +5746,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === html.accept.style-ordinary-raw-text ===
-claim: Ordinary style raw text preserves braces, quotes, angle characters, ampersands, slashes, comments, JSON-looking text, and HSON-looking text.
+claim: Ordinary style raw text preserves braces, quotes, angle characters, ampersands, slashes, comments, JSON-looking text, and Hson-looking text.
 descriptor classification: structural-html-transport
 primary input origin: new-boundary-case
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-attribute-transport.acceptance.mts:408-455 and tests/transform-oracle.acceptance.mts:154-279; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, structural HTML totality
@@ -5836,7 +5836,7 @@ human-review priority: high
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === html.reject.direct-element-false ===
-claim: Structural HTML forbids typed false beneath an HSON element carrier.
+claim: Structural HTML forbids typed false beneath an Hson element carrier.
 descriptor classification: structural-html-transport
 primary input origin: implementation-derived
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-attribute-transport.acceptance.mts:408-455 and tests/transform-oracle.acceptance.mts:154-279; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, structural HTML totality
@@ -5854,7 +5854,7 @@ human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === html.reject.direct-element-negative-number ===
-claim: Structural HTML forbids a typed negative number beneath an HSON element carrier.
+claim: Structural HTML forbids a typed negative number beneath an Hson element carrier.
 descriptor classification: structural-html-transport
 primary input origin: implementation-derived
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-attribute-transport.acceptance.mts:408-455 and tests/transform-oracle.acceptance.mts:154-279; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, structural HTML totality
@@ -5872,7 +5872,7 @@ human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === html.reject.direct-element-negative-zero ===
-claim: Structural HTML forbids typed negative zero beneath an HSON element carrier.
+claim: Structural HTML forbids typed negative zero beneath an Hson element carrier.
 descriptor classification: structural-html-transport
 primary input origin: implementation-derived
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-attribute-transport.acceptance.mts:408-455 and tests/transform-oracle.acceptance.mts:154-279; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, structural HTML totality
@@ -5890,7 +5890,7 @@ human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === html.reject.direct-element-null ===
-claim: Structural HTML forbids typed null beneath an HSON element carrier.
+claim: Structural HTML forbids typed null beneath an Hson element carrier.
 descriptor classification: structural-html-transport
 primary input origin: implementation-derived
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-attribute-transport.acceptance.mts:408-455 and tests/transform-oracle.acceptance.mts:154-279; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, structural HTML totality
@@ -5908,7 +5908,7 @@ human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === html.reject.direct-element-true ===
-claim: Structural HTML forbids typed true beneath an HSON element carrier.
+claim: Structural HTML forbids typed true beneath an Hson element carrier.
 descriptor classification: structural-html-transport
 primary input origin: implementation-derived
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-attribute-transport.acceptance.mts:408-455 and tests/transform-oracle.acceptance.mts:154-279; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, structural HTML totality
@@ -5926,7 +5926,7 @@ human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === html.reject.direct-element-value ===
-claim: Structural HTML forbids a direct typed value beneath an HSON element carrier.
+claim: Structural HTML forbids a direct typed value beneath an Hson element carrier.
 descriptor classification: structural-html-transport
 primary input origin: implementation-derived
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-attribute-transport.acceptance.mts:408-455 and tests/transform-oracle.acceptance.mts:154-279; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, structural HTML totality
@@ -5944,7 +5944,7 @@ human-review priority: critical
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === html.reject.direct-element-zero ===
-claim: Structural HTML forbids typed zero beneath an HSON element carrier.
+claim: Structural HTML forbids typed zero beneath an Hson element carrier.
 descriptor classification: structural-html-transport
 primary input origin: implementation-derived
 original source location or specification rule: hson-live@e69f924 (parent of corpus commit 7f0728b): tests/hson-attribute-transport.acceptance.mts:408-455 and tests/transform-oracle.acceptance.mts:154-279; supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, structural HTML totality
@@ -6088,7 +6088,7 @@ human-review priority: low
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === json.accept.unusual-authored-keys ===
-claim: Structural JSON preserves keys whose authored-HSON canonical spelling uses backticks.
+claim: Structural JSON preserves keys whose authored-Hson canonical spelling uses backticks.
 descriptor classification: structural-json-transport
 primary input origin: new-boundary-case
 original source location or specification rule: supplied corpus checkpoint: attachment 347cad70…/pasted-text.txt, unusual authored keys / handwritten expected order
@@ -6394,7 +6394,7 @@ human-review priority: low
 notes: Expected literals are static after materialization, but static storage alone does not establish independent authorship. Review the cited predecessor/specification and the fully materialized graph/output/error side by side.
 
 === reference.wikipedia-legacy-closure ===
-claim: The Wikipedia real-world closure remains in its legacy HTML suite and is not an authored-HSON semantic case.
+claim: The Wikipedia real-world closure remains in its legacy HTML suite and is not an authored-Hson semantic case.
 descriptor classification: specialized-test-cross-reference
 primary input origin: existing-exact
 original source location or specification rule: the descriptor's referencedCaseIds field; specialized ownership was mandated by the supplied specification

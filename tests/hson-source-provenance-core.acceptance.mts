@@ -80,5 +80,5 @@ check("same source produces structurally identical query results", () => {
   assert.deepEqual(locations.map((x) => first.range(x)), locations.map((x) => second.range(x)));
 });
 
-process.stdout.write(`# ${checks} HSON provenance-core checks passed\n`);
+process.stdout.write(`# ${checks} Hson provenance-core checks passed\n`);
 emit_hson_live_test_completion("transform.hson-source-provenance-core", checks, checks, 0);

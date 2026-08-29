@@ -135,7 +135,7 @@ export function get_node_text_content(node: HsonNode): string {
  *
  * By default, missing DOM elements are ignored (attrs are canonical).
  *
- * @param node - The HSON node to update.
+ * @param node - The Hson node to update.
  * @param value - Form value string to store.
  * @param opts - Optional flags controlling missing DOM behavior.
  * @returns void.
@@ -166,7 +166,7 @@ export function set_form_value(node: HsonNode, value: string, opts?: SetNodeForm
 /**
  * Read a form value, preferring DOM when mounted.
  *
- * @param node - The HSON node to read from.
+ * @param node - The Hson node to read from.
  * @returns The current form value (empty string if missing).
  */
 export function get_form_value(node: HsonNode): string {
@@ -184,7 +184,7 @@ export function get_form_value(node: HsonNode): string {
 /**
  * Set the checked state for checkbox/radio inputs and mirror to the DOM.
  *
- * @param node - The HSON node to update.
+ * @param node - The Hson node to update.
  * @param checked - New checked state.
  * @param opts - Optional flags controlling missing DOM behavior.
  * @returns void.
@@ -213,7 +213,7 @@ export function set_input_checked(node: HsonNode, checked: boolean, opts?: SetNo
 /**
  * Read the checked state for checkbox/radio inputs, preferring DOM when mounted.
  *
- * @param node - The HSON node to read from.
+ * @param node - The Hson node to read from.
  * @returns True when checked, otherwise false.
  */
 export function get_input_checked(node: HsonNode): boolean {
@@ -235,7 +235,7 @@ export function get_input_checked(node: HsonNode): boolean {
  * - attrs.value: string (single select)
  * - attrs.values: readonly string[] (multi select)
  *
- * @param node - The HSON node to update.
+ * @param node - The Hson node to update.
  * @param selected - Selected value(s) for single or multi-select.
  * @param opts - Optional flags controlling missing DOM behavior.
  * @returns void.
@@ -291,7 +291,7 @@ export function set_input_selected(
 /**
  * Read selected state from a <select>, preferring DOM when mounted.
  *
- * @param node - The HSON node to read from.
+ * @param node - The Hson node to read from.
  * @returns The selected value string or array of values for multi-select.
  */
 export function get_input_selected(node: HsonNode): string | readonly string[] {

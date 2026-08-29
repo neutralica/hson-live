@@ -60,7 +60,7 @@ function readRange(value: unknown, sourceLength: number): HostSourceRange | unde
   return Object.freeze({ start, end });
 }
 
-/** Validate and freeze one exact original-host embedded HSON descriptor. */
+/** Validate and freeze one exact original-host embedded Hson descriptor. */
 export function validate_embedded_hson_source(
   value: unknown,
 ): EmbeddedHsonSourceValidation {

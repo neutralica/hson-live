@@ -1,6 +1,6 @@
 # HsonNode compact representation
 
-HSON 3.0 stores only `$_tag` and `$_content` on a node with no attributes or
+Hson 3.0 stores only `$_tag` and `$_content` on a node with no attributes or
 metadata. `$_content` remains required. `$_attrs` and `$_meta` are optional
 storage containers. Canonical no-attribute state requires `$_attrs` to be
 absent; a present empty `$_attrs` is a noncanonical candidate spelling.
@@ -37,7 +37,7 @@ empty storage container for inspection.
 
 - Canonical factory: changed to emit one of the four exact shapes: required
   fields only, attrs only, metadata only, or both.
-- HSON token, JSON, and HTML parsers: obsolete explicit empty metadata arguments
+- Hson token, JSON, and HTML parsers: obsolete explicit empty metadata arguments
   were removed; populated parser accumulators remain deliberate.
 - SVG DOM conversion: migrated its two direct node literals to `CREATE_NODE()`.
 - Root/object unwrap helpers and form VSN construction: removed explicit empty
@@ -70,7 +70,7 @@ Invariant validation rejects non-plain node objects, missing/non-array
 `$_content`, non-empty array/null/class-instance containers, malformed
 attribute or metadata values, illegal header names, legacy
 `$_meta.attrs`/`flags`, populated attrs on VSN nodes, cycles, and non-finite
-HSON numeric values. Shared acyclic references are allowed; HSON serialization
+Hson numeric values. Shared acyclic references are allowed; Hson serialization
 emits each occurrence by value and does not preserve JavaScript reference
 identity.
 
@@ -90,7 +90,7 @@ are not graph semantics. `$_meta: {}` remains a canonical presence distinction;
 `$_attrs: {}` remains noncanonical and must be omitted.
 
 Every canonical node stores `$_tag` and `$_content` as required enumerable own
-data properties. `$_content` is a dense array whose semantic slots are
+Data properties. `$_content` is a dense array whose semantic slots are
 enumerable own data properties. Inherited, accessor-backed, hidden, or sparse
 required storage rejects without executing user code. Canonical node objects
 use `Object.prototype` or `null`; writable/configurable flags and symbol
@@ -99,17 +99,17 @@ decorations remain outside graph meaning.
 Element and object structural modes apply recursively to their full branches.
 Contradictory wrappers, cross-mode ordinary children, empty retained
 `_hson_elem` nodes, and direct ordinary children beneath `_hson_ii` reject at
-admission. Direct HSON serialization validates before normalization and never
+admission. Direct Hson serialization validates before normalization and never
 uses the narrow legacy empty-element normalization to repair malformed egress.
 It does not compensate for structural crossings with explicit VSN syntax.
-Every admitted HSON-serializable semantic value reparses, detaches, and compares
+Every admitted Hson-serializable semantic value reparses, detaches, and compares
 canonically equal, including order, negative zero, array indexes, element QUIDs,
 and structural mode. `_hson_root`, object-member metadata, cross-mode arrays,
 and detached scalar carrier clusters are outside that serialization domain and
 reject rather than projecting lossily.
 
 Serializer projection is intentionally lossy only for implementation
-scaffolding that HSON syntax reconstructs: `_hson_ii` wrappers and their
+scaffolding that Hson syntax reconstructs: `_hson_ii` wrappers and their
 `index` metadata are represented by array position, and structural VSN names
 are represented by notation rather than literal tags. Ordinary attributes and
 eligible element QUID metadata retain their semantic values. `noQuid()` omits
@@ -137,7 +137,7 @@ other structural VSN metadata is invalid. Wrapper-bearing admission accepts
 only the exact complete sibling set `"0"` through
 `String(wrapperCount - 1)`, sorts a valid permutation, and rejects every
 malformed or contradictory set. Canonical physical order and index order must
-then agree. Native JSON and HSON arrays generate sequential indexes from their
+then agree. Native JSON and Hson arrays generate sequential indexes from their
 intrinsic source order.
 
 | Node category | Valid `$_meta` keys |
@@ -155,8 +155,8 @@ stored in `$_attrs`.
 
 An empty `_hson_root` remains a valid runtime fragment carrier for LiveMap and
 Locus. Populated roots also remain meaningful internal attachment carriers.
-Neither is transported HSON: `serialize_hson()` rejects every `_hson_root` and
-does not substitute, melt, or silently unwrap it. HSON-source public terminals
+Neither is transported Hson: `serialize_hson()` rejects every `_hson_root` and
+does not substitute, melt, or silently unwrap it. Hson-source public terminals
 detach exactly one validated semantic child before target projection, while
 canonical equality remains root-sensitive.
 
@@ -167,9 +167,9 @@ boundaries must establish their own canonical inputs before invoking equality.
 
 The future architecture must choose, separately, among:
 
-- adding unambiguous HSON syntax for an empty fragment/root;
+- adding unambiguous Hson syntax for an empty fragment/root;
 - migrating LiveMap and Locus away from the empty-root carrier; or
-- separating the serializable HSON graph type from the broader runtime carrier
+- separating the serializable Hson graph type from the broader runtime carrier
   type.
 
 ## Measurements

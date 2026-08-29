@@ -7,7 +7,7 @@ import { make_string } from "../../../core/stringify.js";
 /***************************************************************
  * NODE_ELEMENT_MAP / ELEMENT_NODE_MAP
  *
- * Canonical bi-directional runtime bridge between HSON nodes
+ * Canonical bi-directional runtime bridge between Hson nodes
  * and their live DOM elements.
  *
  * Invariant:
@@ -97,9 +97,9 @@ export function hasNodeForEl(el: Element): boolean {
 export type ElementLookupPolicy = "throw" | "warn" | "silent";
 
 /**
- * Resolve the DOM element mapped to a given HSON node.
+ * Resolve the DOM element mapped to a given Hson node.
  *
- * @param node - HSON node to resolve.
+ * @param node - Hson node to resolve.
  * @returns The mapped DOM element, or `undefined` if none exists.
  */
 export function get_el_for_node(node: HsonNode): Element | undefined {
@@ -113,7 +113,7 @@ export function get_node_for_el(el: Element): HsonNode | undefined {
 /**
  * Resolve the mapped DOM element and optionally assert tag invariants.
  *
- * @param node - HSON node to resolve.
+ * @param node - Hson node to resolve.
  * @param purpose - Short label included in error/warn output.
  * @param policy - Action to take when an unexpected element is found.
  * @returns The mapped DOM element, or `undefined` if none exists.
@@ -129,7 +129,7 @@ export function element_for_node_checked(
   // DOM tagName can come back uppercase in HTML.
   const tag = el.tagName;
 
-  // Invariant: no HSON virtual/internal tags should ever exist as DOM elements.
+  // Invariant: no Hson virtual/internal tags should ever exist as DOM elements.
   if (tag.toLowerCase().startsWith(HSON_SYS_PREFIX)) {
     const quid = node.$_meta?.quid ?? "<no-quid>";
     const msg = `[element_for_node_checked] unexpected DOM element tag "${tag}" for purpose="${purpose}" (node.$_tag=${node.$_tag}, quid=${quid})`;

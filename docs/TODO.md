@@ -87,7 +87,7 @@
 ~~•optional path builder - accept chained args and convert to string for d attribute~~ X NO
 
 ## 03MAY2026
-~~- 3-way test "auto" mode interprets malformed HSON as weird HTML~~
+~~- 3-way test "auto" mode interprets malformed Hson as weird HTML~~
 ~~- change VSN prefix from `_VSN` to `_-VSN` to permit underscored JSON keys ~~
   - this has been done for `$_attrs`, `$_tag`, `$_content`, and `$_meta`
   -> `$_attrs`, `$_tag`, `$_content`, `$_meta`

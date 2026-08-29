@@ -623,7 +623,7 @@ function prepare_finished_mutation<TOp extends LiveMapGraphOp>(
   try {
     assert_invariants(root, `LiveMap.${operationName}`);
   } catch (cause) {
-    throw mutation_error("INVALID_DOCUMENT_REPLACEMENT", operationName, "candidate graph violates canonical HSON invariants", cause);
+    throw mutation_error("INVALID_DOCUMENT_REPLACEMENT", operationName, "candidate graph violates canonical Hson invariants", cause);
   }
 
   const mode = classify_live_root_mode(root);
@@ -875,7 +875,7 @@ function normalize_attr_name(input: unknown, operation: DocumentOperation): stri
     throw mutation_error("PROTECTED_DOCUMENT_METADATA", operation, "system metadata cannot be mutated through ordinary attrs");
   }
   if (!is_public_document_attr_name(input)) {
-    throw mutation_error("INVALID_DOCUMENT_ATTRIBUTE_NAME", operation, "attribute name is not a canonical bare HSON name");
+    throw mutation_error("INVALID_DOCUMENT_ATTRIBUTE_NAME", operation, "attribute name is not a canonical bare Hson name");
   }
   return input;
 }
@@ -906,7 +906,7 @@ function clone_content(input: unknown, operation: DocumentOperation): LiveMapDoc
     }
   }
   if (is_finite_primitive(input)) return input;
-  throw mutation_error("INVALID_DOCUMENT_REPLACEMENT", operation, "replacement must be one canonical HSON node or primitive");
+  throw mutation_error("INVALID_DOCUMENT_REPLACEMENT", operation, "replacement must be one canonical Hson node or primitive");
 }
 
 function insertion_content(endpoint: HsonNode, content: LiveMapDocumentContent): LiveMapDocumentContent {

@@ -438,10 +438,10 @@ export function decode_locus_document_commit(
   const operations: LiveMapGraphOp[] = [];
   for (const operation of commit.ops) {
     if (!("domain" in operation)) {
-      throw new Error("Locus document commit contains a projected operation.");
+      throw new Error("Locus document commit contains a data operation.");
     }
     if (is_projected_identity_operation(operation)) {
-      throw new Error("Locus document commit contains a projected identity operation.");
+      throw new Error("Locus document commit contains a data identity operation.");
     }
     if (operation.op === "replace-root") {
       const root = decode_locus_graph_content(operation.root);

@@ -29,7 +29,7 @@ export function capture_livemap_projected(
 ): LiveMapCapture {
   const category = options?.identity ?? "preserve-metadata";
   if (category !== "same-epoch" && category !== "preserve-metadata" && category !== "strip") {
-    throw new Error(`Unsupported projected identity capture category ${JSON.stringify(category)}.`);
+    throw new Error(`Unsupported data identity capture category ${JSON.stringify(category)}.`);
   }
   const captureRoot = category === "strip"
     ? clone_hson_graph_without_quids(root)

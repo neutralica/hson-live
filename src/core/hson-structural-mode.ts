@@ -12,7 +12,7 @@ export type OrdinaryHsonStructure =
   | Readonly<{ kind: "invalid"; reason: string }>;
 
 /**
- * Classify the structural relationship retained by one ordinary HSON node.
+ * Classify the structural relationship retained by one ordinary Hson node.
  *
  * This is deliberately shallow: descendants are validated by the invariant
  * walker in their parent branch. The classifier never mutates, normalizes, or

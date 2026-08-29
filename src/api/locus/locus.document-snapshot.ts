@@ -22,7 +22,7 @@ export type LocusSnapshotCommonFields = Pick<
   "logicalMapId" | "incarnationId" | "rev" | "mode"
 >;
 
-/** @internal Ordinary-HSON snapshot body. */
+/** @internal Ordinary-Hson snapshot body. */
 export type LocusHsonSnapshotEnvelope = Extract<LocusSnapshotEnvelope, { hson: string }>;
 
 /** @internal Exact document-state snapshot body. */
@@ -157,10 +157,10 @@ export function decode_locus_document_snapshot(
       { allowTopLevelTextFragment: true },
     ));
     if (staged.mode !== "element" && staged.mode !== "fragment") {
-      throw new Error("Locus HSON document snapshot reconstructed a non-document root.");
+      throw new Error("Locus Hson document snapshot reconstructed a non-document root.");
     }
     if (staged.mode !== snapshot.mode) {
-      throw new Error("Locus HSON document snapshot mode does not match its envelope.");
+      throw new Error("Locus Hson document snapshot mode does not match its envelope.");
     }
     return Object.freeze({ ...staged.capture(), rev: snapshot.rev });
   }

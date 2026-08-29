@@ -35,7 +35,7 @@ function fixtureManifest(version = "0.1.1") {
     version,
     main: "./dist/extension.js",
     contributes: {
-      configuration: [{ title: "HSON", properties: { "hson.example": { type: "boolean", default: true } } }],
+      configuration: [{ title: "Hson", properties: { "hson.example": { type: "boolean", default: true } } }],
       languages: [{ id: "hson", configuration: "./language-configuration.json" }],
       grammars: [{ language: "hson", scopeName: "source.hson", path: "./syntaxes/hson.tmLanguage.json" }],
     },

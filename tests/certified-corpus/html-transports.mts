@@ -40,17 +40,17 @@ function htmlIngressCase(
 }
 
 export const structuralHtmlScalarIngressCases: readonly AcceptedCorpusCase[] = [
-  htmlIngressCase("object-string-ordinary", "An HTML HSON object carrier detaches an ordinary string.", "<_hson_obj><_hson_str>&quot;ordinary&quot;</_hson_str></_hson_obj>", str("ordinary"), undefined, undefined, ["ordinary"]),
-  htmlIngressCase("object-string-empty", "An HTML HSON object carrier detaches an empty string.", "<_hson_obj><_hson_str>&quot;&quot;</_hson_str></_hson_obj>", str(""), undefined, undefined, [""]),
-  htmlIngressCase("element-string-ordinary", "An HTML HSON element carrier detaches ordinary text.", "<_hson_elem><_hson_str>&quot;ordinary&quot;</_hson_str></_hson_elem>", str("ordinary"), undefined, "<_hson_obj><_hson_str>&quot;ordinary&quot;</_hson_str></_hson_obj>", ["ordinary"]),
-  htmlIngressCase("element-string-empty", "An HTML HSON element carrier detaches empty text.", "<_hson_elem><_hson_str>&quot;&quot;</_hson_str></_hson_elem>", str(""), undefined, "<_hson_obj><_hson_str>&quot;&quot;</_hson_str></_hson_obj>", [""]),
-  htmlIngressCase("object-true", "An HTML HSON object carrier detaches typed true.", "<_hson_obj><_hson_val>true</_hson_val></_hson_obj>", val(true)),
-  htmlIngressCase("object-false", "An HTML HSON object carrier detaches typed false.", "<_hson_obj><_hson_val>false</_hson_val></_hson_obj>", val(false)),
-  htmlIngressCase("object-null", "An HTML HSON object carrier detaches typed null.", "<_hson_obj><_hson_val>null</_hson_val></_hson_obj>", val(null)),
-  htmlIngressCase("object-positive-number", "An HTML HSON object carrier detaches a positive finite number.", "<_hson_obj><_hson_val>12.5</_hson_val></_hson_obj>", val(12.5)),
-  htmlIngressCase("object-negative-number", "An HTML HSON object carrier detaches a negative finite number.", "<_hson_obj><_hson_val>-12.5</_hson_val></_hson_obj>", val(-12.5)),
-  htmlIngressCase("object-zero", "An HTML HSON object carrier detaches zero.", "<_hson_obj><_hson_val>0</_hson_val></_hson_obj>", val(0)),
-  htmlIngressCase("object-negative-zero", "An HTML HSON object carrier detaches negative zero.", "<_hson_obj><_hson_val>-0</_hson_val></_hson_obj>", val(-0), ["$.$_content[0]"]),
+  htmlIngressCase("object-string-ordinary", "An HTML Hson object carrier detaches an ordinary string.", "<_hson_obj><_hson_str>&quot;ordinary&quot;</_hson_str></_hson_obj>", str("ordinary"), undefined, undefined, ["ordinary"]),
+  htmlIngressCase("object-string-empty", "An HTML Hson object carrier detaches an empty string.", "<_hson_obj><_hson_str>&quot;&quot;</_hson_str></_hson_obj>", str(""), undefined, undefined, [""]),
+  htmlIngressCase("element-string-ordinary", "An HTML Hson element carrier detaches ordinary text.", "<_hson_elem><_hson_str>&quot;ordinary&quot;</_hson_str></_hson_elem>", str("ordinary"), undefined, "<_hson_obj><_hson_str>&quot;ordinary&quot;</_hson_str></_hson_obj>", ["ordinary"]),
+  htmlIngressCase("element-string-empty", "An HTML Hson element carrier detaches empty text.", "<_hson_elem><_hson_str>&quot;&quot;</_hson_str></_hson_elem>", str(""), undefined, "<_hson_obj><_hson_str>&quot;&quot;</_hson_str></_hson_obj>", [""]),
+  htmlIngressCase("object-true", "An HTML Hson object carrier detaches typed true.", "<_hson_obj><_hson_val>true</_hson_val></_hson_obj>", val(true)),
+  htmlIngressCase("object-false", "An HTML Hson object carrier detaches typed false.", "<_hson_obj><_hson_val>false</_hson_val></_hson_obj>", val(false)),
+  htmlIngressCase("object-null", "An HTML Hson object carrier detaches typed null.", "<_hson_obj><_hson_val>null</_hson_val></_hson_obj>", val(null)),
+  htmlIngressCase("object-positive-number", "An HTML Hson object carrier detaches a positive finite number.", "<_hson_obj><_hson_val>12.5</_hson_val></_hson_obj>", val(12.5)),
+  htmlIngressCase("object-negative-number", "An HTML Hson object carrier detaches a negative finite number.", "<_hson_obj><_hson_val>-12.5</_hson_val></_hson_obj>", val(-12.5)),
+  htmlIngressCase("object-zero", "An HTML Hson object carrier detaches zero.", "<_hson_obj><_hson_val>0</_hson_val></_hson_obj>", val(0)),
+  htmlIngressCase("object-negative-zero", "An HTML Hson object carrier detaches negative zero.", "<_hson_obj><_hson_val>-0</_hson_val></_hson_obj>", val(-0), ["$.$_content[0]"]),
 ] as const;
 
 const explicitStringCases: readonly [string, string, string][] = [
@@ -91,8 +91,8 @@ const styleRaw = "a{content:\"<>&/\"}/* // */{\"x\":1}<a/>«1,2»";
 const scriptRaw = "const x={value:\"<>&/\",note:\"// /* */ <a/> «1,2»\"};";
 
 export const structuralHtmlRawTextCases: readonly AcceptedCorpusCase[] = [
-  htmlGraphCase("style-ordinary-raw-text", "Ordinary style raw text preserves braces, quotes, angle characters, ampersands, slashes, comments, JSON-looking text, and HSON-looking text.", elem(element("style", [str(styleRaw)])), "<style>" + styleRaw + "</style>", [styleRaw], undefined, "ordinary-html"),
-  htmlGraphCase("script-ordinary-raw-text", "Ordinary script raw text preserves braces, quotes, angle characters, ampersands, slashes, comments, JSON-looking text, and HSON-looking text.", elem(element("script", [str(scriptRaw)])), "<script>" + scriptRaw + "</script>", [scriptRaw], undefined, "ordinary-html"),
+  htmlGraphCase("style-ordinary-raw-text", "Ordinary style raw text preserves braces, quotes, angle characters, ampersands, slashes, comments, JSON-looking text, and Hson-looking text.", elem(element("style", [str(styleRaw)])), "<style>" + styleRaw + "</style>", [styleRaw], undefined, "ordinary-html"),
+  htmlGraphCase("script-ordinary-raw-text", "Ordinary script raw text preserves braces, quotes, angle characters, ampersands, slashes, comments, JSON-looking text, and Hson-looking text.", elem(element("script", [str(scriptRaw)])), "<script>" + scriptRaw + "</script>", [scriptRaw], undefined, "ordinary-html"),
   htmlGraphCase("style-line-ending-carrier", "Style text with CRLF uses an explicit structural carrier to preserve code units.", elem(element("style", [str("a{\r\nb:c\r\n}")])), "<style><_hson_elem><_hson_str>&quot;a{\\r\\nb:c\\r\\n}&quot;</_hson_str></_hson_elem></style>", ["a{\r\nb:c\r\n}"]),
   htmlGraphCase("script-line-ending-carrier", "Script text with LF uses an explicit structural carrier to preserve code units.", elem(element("script", [str("const x={\nvalue:\"<>&/\"\n};")])), "<script><_hson_elem><_hson_str>&quot;const x={\\nvalue:\\&quot;&lt;&gt;&amp;/\\&quot;\\n};&quot;</_hson_str></_hson_elem></script>", ["const x={\nvalue:\"<>&/\"\n};"]),
   htmlGraphCase("style-segmented-carrier", "Explicit structural carriers override style raw-text melting when segmentation matters.", elem(element("style", [str("a"), str(""), str("b")])), "<style><_hson_elem><_hson_str>&quot;a&quot;</_hson_str><_hson_str>&quot;&quot;</_hson_str><_hson_str>&quot;b&quot;</_hson_str></_hson_elem></style>", ["a", "", "b"]),
@@ -110,13 +110,13 @@ function htmlRejection(id: string, claim: string, source: string, operation: str
 }
 
 export const structuralHtmlRejectedCases: readonly RejectedCorpusCase[] = [
-  htmlRejection("direct-element-value", "Structural HTML forbids a direct typed value beneath an HSON element carrier.", "<_hson_elem><_hson_val>1</_hson_val></_hson_elem>", "parse-html-string", "TRANSFORM_ERROR"),
-  htmlRejection("direct-element-true", "Structural HTML forbids typed true beneath an HSON element carrier.", "<_hson_elem><_hson_val>true</_hson_val></_hson_elem>", "parse-html-string", "TRANSFORM_ERROR"),
-  htmlRejection("direct-element-false", "Structural HTML forbids typed false beneath an HSON element carrier.", "<_hson_elem><_hson_val>false</_hson_val></_hson_elem>", "parse-html-string", "TRANSFORM_ERROR"),
-  htmlRejection("direct-element-null", "Structural HTML forbids typed null beneath an HSON element carrier.", "<_hson_elem><_hson_val>null</_hson_val></_hson_elem>", "parse-html-string", "TRANSFORM_ERROR"),
-  htmlRejection("direct-element-negative-number", "Structural HTML forbids a typed negative number beneath an HSON element carrier.", "<_hson_elem><_hson_val>-12.5</_hson_val></_hson_elem>", "parse-html-string", "TRANSFORM_ERROR"),
-  htmlRejection("direct-element-zero", "Structural HTML forbids typed zero beneath an HSON element carrier.", "<_hson_elem><_hson_val>0</_hson_val></_hson_elem>", "parse-html-string", "TRANSFORM_ERROR"),
-  htmlRejection("direct-element-negative-zero", "Structural HTML forbids typed negative zero beneath an HSON element carrier.", "<_hson_elem><_hson_val>-0</_hson_val></_hson_elem>", "parse-html-string", "TRANSFORM_ERROR"),
+  htmlRejection("direct-element-value", "Structural HTML forbids a direct typed value beneath an Hson element carrier.", "<_hson_elem><_hson_val>1</_hson_val></_hson_elem>", "parse-html-string", "TRANSFORM_ERROR"),
+  htmlRejection("direct-element-true", "Structural HTML forbids typed true beneath an Hson element carrier.", "<_hson_elem><_hson_val>true</_hson_val></_hson_elem>", "parse-html-string", "TRANSFORM_ERROR"),
+  htmlRejection("direct-element-false", "Structural HTML forbids typed false beneath an Hson element carrier.", "<_hson_elem><_hson_val>false</_hson_val></_hson_elem>", "parse-html-string", "TRANSFORM_ERROR"),
+  htmlRejection("direct-element-null", "Structural HTML forbids typed null beneath an Hson element carrier.", "<_hson_elem><_hson_val>null</_hson_val></_hson_elem>", "parse-html-string", "TRANSFORM_ERROR"),
+  htmlRejection("direct-element-negative-number", "Structural HTML forbids a typed negative number beneath an Hson element carrier.", "<_hson_elem><_hson_val>-12.5</_hson_val></_hson_elem>", "parse-html-string", "TRANSFORM_ERROR"),
+  htmlRejection("direct-element-zero", "Structural HTML forbids typed zero beneath an Hson element carrier.", "<_hson_elem><_hson_val>0</_hson_val></_hson_elem>", "parse-html-string", "TRANSFORM_ERROR"),
+  htmlRejection("direct-element-negative-zero", "Structural HTML forbids typed negative zero beneath an Hson element carrier.", "<_hson_elem><_hson_val>-0</_hson_val></_hson_elem>", "parse-html-string", "TRANSFORM_ERROR"),
   htmlRejection("nested-element-value", "Structural HTML rejects a typed value beneath an ordinary element in element mode.", "<_hson_elem><div><_hson_val>true</_hson_val></div></_hson_elem>", "parse-html-string", "HSON_CANONICAL_INVARIANT_VIOLATION", "canonical-invariant-admission"),
 ] as const;
 

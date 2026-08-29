@@ -149,7 +149,7 @@ function normalize_read_attr_name(input: unknown, operation: LiveMapDocumentOper
     throw new LiveMapDocumentMutationError(
       "INVALID_DOCUMENT_ATTRIBUTE_NAME",
       operation,
-      "attribute name is not a canonical bare HSON name",
+      "attribute name is not a canonical bare Hson name",
     );
   }
   return input;

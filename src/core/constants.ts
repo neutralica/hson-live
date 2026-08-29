@@ -1,6 +1,6 @@
 // constants.ts
 
-// Core HSON protocol constants.
+// Core Hson protocol constants.
 
 export const $_FALSE = "_false" as const;
 export type FalseType = typeof $_FALSE;
@@ -39,11 +39,11 @@ export const ELEM_OBJ = [ELEM_TAG, OBJ_TAG];
 export type ElemObjType = typeof ELEM_TAG | typeof OBJ_TAG;
 export type ElemObjArrType = typeof ELEM_OBJ_ARR;
 
-export const $HSON = "hson" as const;
+export const $Hson = "hson" as const;
 export const $JSON = "json" as const;
 export const $HTML = "html" as const;
 export const $NODES = "nodes" as const;
-export const $RENDER = { HSON: $HSON, HTML: $HTML, JSON: $JSON, NODES: $NODES } as const;
+export const $RENDER = { Hson: $Hson, HTML: $HTML, JSON: $JSON, NODES: $NODES } as const;
 
 export const $HSON_FRAME = {
   GEN: "generate",

@@ -73,7 +73,7 @@ export function transform_from_binary(
   const node = parse_binary(input, options);
   scan_ingested_hson_node_quids(node, "fromBinary");
   const frame: TransformFrame = {
-    input: "[Binary HSON]",
+    input: "[Binary Hson]",
     node,
     meta: frame_meta("binary", unsafe),
   };

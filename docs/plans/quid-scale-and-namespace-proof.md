@@ -59,7 +59,7 @@ exhaustion is about `3.287e-210`.
 | Malformed accepted variants | None found. Wrong length, uppercase, excluded letters (`i`, `l`, `o`, `u`), non-string values, or misplaced metadata reject |
 
 One strict 9-character validator domain, `is_persisted_quid`, governs relevant syntax ingress.
-Generated values, HSON `@...`, HTML/SVG `hson:quid`, canonical
+Generated values, Hson `@...`, HTML/SVG `hson:quid`, canonical
 `$_meta.quid`, JSON/fromNode, LiveHost protocol targets/witnesses/ensure ops,
 snapshot restoration, LiveMap operations, LiveTree admission, CSS QUID access,
 and both allocators converge on it either directly or through
@@ -74,13 +74,13 @@ checks are additional, owner-specific admission rules.
   core tests. LiveTree's `mint_quid` delegates to it and every live allocation
   goes through `mint_available_quid`, checking reserved graph claims, active,
   pending, and lifetime-issued values.
-- LiveMap projected and document acquisition share
+- LiveMap data/document acquisition share
   `allocate_livemap_quid`. Their unavailable predicates include the owner
   epoch's issued ledger and active overlay; document registration additionally
   owns pending/reserved claims. Linked Reflection delegates canonical minting
   to that LiveMap authority and preflights runtime active, pending, issued, and
   batch-reserved claims before publication.
-- Supplied values enter through HSON tokenization/parsing, browser and string
+- Supplied values enter through Hson tokenization/parsing, browser and string
   HTML parsing, SVG conversion, `fromNode`/universal transform scanning,
   canonical graph metadata, LiveMap insert/replace/replay/restore/install,
   LiveTree graph/DOM/graft admission, LiveHost graph-content and protocol
@@ -294,7 +294,7 @@ QUIDs. Every shorter character saves exactly one raw byte per occurrence. The
 table reports savings from 16 characters; percentages vary because surrounding
 syntax remains fixed.
 
-| Scenario (Q/1,000) | Candidate | Raw bytes saved | Canonical HSON | Structural JSON | Structural HTML | Snapshot/LiveHost |
+| Scenario (Q/1,000) | Candidate | Raw bytes saved | Canonical Hson | Structural JSON | Structural HTML | Snapshot/LiveHost |
 |---|---:|---:|---:|---:|---:|---:|
 | Sparse (10) | 8 | 80 | 1.54% | 0.27% | 1.10% | 0.27% |
 |  | **9 selected** | 70 | 1.35% | 0.24% | 0.96% | 0.24% |
@@ -309,8 +309,8 @@ syntax remains fixed.
 |  | 10 | 6,000 | 26.08% | 9.09% | 16.66% | 9.08% |
 |  | 12 | 4,000 | 17.39% | 6.06% | 11.11% | 6.05% |
 
-Canonical readable HSON differs only in whitespace, so absolute savings are
-the same and percentages slightly lower. Compact and canonical HSON are equal
+Canonical readable Hson differs only in whitespace, so absolute savings are
+the same and percentages slightly lower. Compact and canonical Hson are equal
 for this fixture. Structural JSON represents the current explicit
 `$_meta.quid` graph shape; snapshot/persistence and representative LiveHost
 envelopes wrap that same graph, so their absolute savings are also identical.
@@ -320,10 +320,10 @@ Random-looking QUIDs remain poorly compressible, so shortening still mattered
 after compression. Across the moderate fixture, 16→8 reduced gzip by 35–42%
 and Brotli by 41–47% for the measured formats; 16→10 reduced gzip by 27–31%
 and Brotli by 29–32%; 16→12 reduced both by roughly 18–22%. The selected 16→9
-change saved 462 gzip / 465 Brotli bytes in moderate canonical HSON, 472 / 460
+change saved 462 gzip / 465 Brotli bytes in moderate canonical Hson, 472 / 460
 in structural JSON, and 458 / 464 in structural HTML. Sparse compressed
 percentages look large because the absolute payload is tiny (for example,
-canonical HSON gzip saved 56 bytes for 16→8). Compression is transport policy,
+canonical Hson gzip saved 56 bytes for 16→8). Compression is transport policy,
 not part of QUID semantics.
 
 Fresh durable captures serialize active canonical QUID metadata. They do not
@@ -352,7 +352,7 @@ not historical I.
 
 ### Formatting, protocol, persistence, and fixtures
 
-- HSON `@quid`, structural HTML `hson:quid`, structural JSON
+- Hson `@quid`, structural HTML `hson:quid`, structural JSON
   `$_meta.quid`, canonical equality, DOM attributes/CSS selectors, graph
   content, view-state, LiveHost ensure/witness/target operations, bootstrap,
   history, checkpoint, recovery, snapshots, and persistence all preserve exact
@@ -365,7 +365,7 @@ not historical I.
   `livetree-quid-eligibility`, `livetree-quid-runtime-closure`, and certified
   corpus integrity.
 - Exact 16-character fixture values occur across 80 repository test/corpus
-  files. The affected families are canonical equality; HSON tokenizer,
+  files. The affected families are canonical equality; Hson tokenizer,
   parser, serializer, tagged-template, JSON/HTML/attribute ingress/egress;
   transform worker/oracle; all LiveMap identity, overlay, capture, install,
   replay, request and staging cases; LiveTree eligibility/runtime/reuse cases;
@@ -380,7 +380,7 @@ not historical I.
   only through their owned process.
 - `hson-demo2` has no independent validator. Meaningful formatting/fixture
   dependencies occur in its QUID-selector and sanitizer fixtures/specs,
-  HSON metadata helpers/oracle, LiveMap proxy tests, LiveTree suites, unit
+  Hson metadata helpers/oracle, LiveMap proxy tests, LiveTree suites, unit
   suites, pointer demo, hosted-test display, and downstream metadata doc.
   Large HTML fixtures containing `hson:quid` must be reviewed as fixture data.
   CSS selectors are width-agnostic string interpolation, but expected literal
@@ -394,7 +394,7 @@ not historical I.
 ### Resolved Unit 13 decision: legacy 16-character admission
 
 1. **Current contract:** all generated and supplied QUIDs share one exact
-   16-character validator domain across HSON, HTML, JSON, DOM, LiveMap,
+   16-character validator domain across Hson, HTML, JSON, DOM, LiveMap,
    LiveTree, LiveHost, snapshots, and persistence.
 2. **Approved change:** generate and accept only the 9-character current form.
 3. **Rationale:** preserves old documents/snapshots/protocol payloads while
@@ -409,7 +409,7 @@ not historical I.
 
 ### Resolved Unit 13 decision: persisted and protocol readability
 
-1. **Current contract:** old snapshots, checkpoints, HSON/HTML/JSON graphs,
+1. **Current contract:** old snapshots, checkpoints, Hson/HTML/JSON graphs,
    LiveHost messages, and retained history are readable only because one
    unversioned 16-character domain governs node claims and QUID targets.
 2. **Approved change:** strict 9-character decode and a hard format break.
@@ -451,7 +451,7 @@ If shortening is explicitly approved, Unit 13 must:
 3. keep both owner allocators, 32 retries, issued ledgers, pending/reserved
    checks, atomic preflight, lifetime boundaries, provenance, and error
    distinctions unchanged;
-4. update HSON/HTML/JSON ingress and egress expectations, DOM metadata and CSS
+4. update Hson/HTML/JSON ingress and egress expectations, DOM metadata and CSS
    selector fixtures, canonical equality vectors, parser/serializer snapshots,
    public transform documentation, and declarations/entrypoint assertions;
 5. migrate or compatibly decode snapshots, LiveHost graph content, target and

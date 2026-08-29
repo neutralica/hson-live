@@ -377,7 +377,7 @@ export function make_locus_recovery_planner_internal<TMap extends LiveMapAuthori
             ));
           } else {
             if (!("payload" in capture) || typeof capture.payload !== "string" || !("root" in capture) || !is_Node(capture.root)) {
-              throw new Error("Locus recovery snapshot has no exact projected graph.");
+              throw new Error("Locus recovery snapshot has no exact data graph.");
             }
             snapshotBody = Object.freeze({
               logicalMapId: stream.logicalMapId,

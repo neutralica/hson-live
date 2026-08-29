@@ -75,12 +75,12 @@ export function construct_html_options_3(
   };
 }
 
-/** Build the composable HSON option/finalizer surface. */
+/** Build the composable Hson option/finalizer surface. */
 export function construct_hson_options_3(
-  render: TransformFrameRender<(typeof $RENDER)["HSON"]>,
+  render: TransformFrameRender<(typeof $RENDER)["Hson"]>,
 ): HsonOptionFinalizer {
   const finalize = (
-    next: TransformFrameRender<(typeof $RENDER)["HSON"]>,
+    next: TransformFrameRender<(typeof $RENDER)["Hson"]>,
   ): HsonOptionFinalizer => construct_hson_options_3(next);
 
   return {

@@ -120,7 +120,7 @@ export function normalize_hson_array_index_order(
   const complete = new WeakMap<object, HsonNode>();
 
   const fail = (path: string, message: string): never => {
-    throw new Error(`[HSON array indexes] ${message} in ${where} at ${path || "/"}`);
+    throw new Error(`[Hson array indexes] ${message} in ${where} at ${path || "/"}`);
   };
 
   const visit = (value: unknown, path: string): HsonNode => {
@@ -148,7 +148,7 @@ export function normalize_hson_array_index_order(
 
     const node = value;
     if (active.has(node)) {
-      throw new Error(`[HSON array indexes] cycle detected in ${where} at ${path}`);
+      throw new Error(`[Hson array indexes] cycle detected in ${where} at ${path}`);
     }
     const existing = complete.get(node);
     if (existing !== undefined) return existing;
@@ -168,7 +168,7 @@ export function normalize_hson_array_index_order(
       const analysis = analyze_hson_array_indexes(content);
       if (!analysis.valid) {
         throw new Error(
-          `[HSON array indexes] ${analysis.reason} in ${where} at ${path}/${tag}`,
+          `[Hson array indexes] ${analysis.reason} in ${where} at ${path}/${tag}`,
         );
       }
       if (analysis.reordered) {

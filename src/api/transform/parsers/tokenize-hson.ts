@@ -34,7 +34,7 @@ function isUnsupportedWhitespace(value: string): boolean {
 }
 
 /**
- * Tokenize HSON with one absolute, newline-agnostic source cursor.
+ * Tokenize Hson with one absolute, newline-agnostic source cursor.
  *
  * Physical line boundaries are ordinary whitespace except inside a quoted
  * string and after `//`. Nested elements, object values, and arrays recurse
@@ -131,7 +131,7 @@ class HsonScanner {
           this.fail(
             numericDefect === undefined
               ? `unexpected bare token outside tag header: "${raw}"`
-              : `invalid HSON number "${raw}"`,
+              : `invalid Hson number "${raw}"`,
             numericDefect === undefined
               ? pos
               : this.positionAt(pos.index + numericDefect.offset),
@@ -274,7 +274,7 @@ class HsonScanner {
       const first = declarations.get(name);
       if (first !== undefined) {
         this.fail(
-          `[duplicate-object-member] duplicate HSON object member "${name}"; first declared at ${first.line}:${first.col} (index ${first.index})`,
+          `[duplicate-object-member] duplicate Hson object member "${name}"; first declared at ${first.line}:${first.col} (index ${first.index})`,
           namePos,
           "HSON_OBJECT_DUPLICATE_MEMBER",
           [{ role: "first-declaration", pos: first }],
@@ -511,7 +511,7 @@ class HsonScanner {
         this.skipTrivia();
         if (name.startsWith("hson:")) {
           this.fail(
-            `authored HSON metadata must not use element attribute syntax`,
+            `authored Hson metadata must not use element attribute syntax`,
             namePos,
             "HSON_AUTHORED_METADATA_FORBIDDEN",
           );
@@ -934,7 +934,7 @@ class HsonScanner {
             const digit = this.peek();
             if (!/^[0-9A-Fa-f]$/.test(digit)) {
               this.fail(
-                `[invalid-name-escape] malformed unicode escape ${JSON.stringify(`\\u${hex}`)} in quoted HSON name`,
+                `[invalid-name-escape] malformed unicode escape ${JSON.stringify(`\\u${hex}`)} in quoted Hson name`,
                 escapePos,
                 "invalid-name-escape",
               );
@@ -955,7 +955,7 @@ class HsonScanner {
 
       if (ch.charCodeAt(0) < 0x20) {
         this.fail(
-          `raw control character is forbidden in single-quoted HSON name`,
+          `raw control character is forbidden in single-quoted Hson name`,
           this.position(),
           "HSON_NAME_CONTROL_UNESCAPED",
         );
@@ -964,7 +964,7 @@ class HsonScanner {
       tag += this.consume();
     }
 
-    this.fail(`unterminated single-quoted HSON name`, start, "HSON_NAME_UNTERMINATED");
+    this.fail(`unterminated single-quoted Hson name`, start, "HSON_NAME_UNTERMINATED");
   }
 
   private scanJsonEscape(context: string): string {
@@ -1007,7 +1007,7 @@ class HsonScanner {
     const first = declarations.get(attr.name);
     if (first !== undefined) {
       this.fail(
-        `[duplicate-attribute] duplicate HSON attribute "${attr.name}"; first declared at ${first.line}:${first.col} (index ${first.index})`,
+        `[duplicate-attribute] duplicate Hson attribute "${attr.name}"; first declared at ${first.line}:${first.col} (index ${first.index})`,
         attr.start,
         "HSON_ELEMENT_DUPLICATE_ATTRIBUTE",
         [{ role: "first-declaration", pos: first }],
@@ -1071,7 +1071,7 @@ class HsonScanner {
           if (cursor + 1 >= this.source.length || next.charCodeAt(0) < 0x20) {
             this.fail(
               quoted === `"`
-                ? `[invalid-json-escape] invalid escape termination in quoted HSON string`
+                ? `[invalid-json-escape] invalid escape termination in quoted Hson string`
                 : `[invalid-name-escape] invalid quoted-name escape termination`,
               this.positionAt(cursor),
               quoted === `"` ? "invalid-json-escape" : "invalid-name-escape",
@@ -1083,8 +1083,8 @@ class HsonScanner {
         if (ch.charCodeAt(0) < 0x20) {
           this.fail(
             quoted === `"`
-              ? `unescaped control character in quoted HSON string`
-              : `raw control character in single-quoted HSON name`,
+              ? `unescaped control character in quoted Hson string`
+              : `raw control character in single-quoted Hson name`,
             this.positionAt(cursor),
             quoted === `"` ? "HSON_STRING_CONTROL_UNESCAPED" : "HSON_NAME_CONTROL_UNESCAPED",
           );
@@ -1161,7 +1161,7 @@ class HsonScanner {
 
       if (ch === "/" && next === "*") {
         this.fail(
-          `block comments are not supported in authored HSON`,
+          `block comments are not supported in authored Hson`,
           this.positionAt(cursor),
           "HSON_BLOCK_COMMENT_UNSUPPORTED",
         );
@@ -1248,7 +1248,7 @@ class HsonScanner {
       );
     }
     if (quoted === "'") {
-      this.fail(`unterminated single-quoted HSON name`, this.positionAt(quoteStart), "HSON_NAME_UNTERMINATED");
+      this.fail(`unterminated single-quoted Hson name`, this.positionAt(quoteStart), "HSON_NAME_UNTERMINATED");
     }
     this.fail(`unterminated angle construct`, openPos, "HSON_CONTAINER_UNTERMINATED");
   }
@@ -1267,7 +1267,7 @@ class HsonScanner {
       }
       if (this.startsWith("/*")) {
         this.fail(
-          `block comments are not supported in authored HSON`,
+          `block comments are not supported in authored Hson`,
           this.position(),
           "HSON_BLOCK_COMMENT_UNSUPPORTED",
         );
@@ -1307,7 +1307,7 @@ class HsonScanner {
 
   private assertFiniteNumberLiteral(raw: string, pos: Position): void {
     if (NUMBER_LITERAL.test(raw) && !Number.isFinite(Number(raw))) {
-      this.fail(`HSON number must be finite: "${raw}"`, pos, "HSON_NUMBER_NONFINITE");
+      this.fail(`Hson number must be finite: "${raw}"`, pos, "HSON_NUMBER_NONFINITE");
     }
   }
 
@@ -1391,7 +1391,7 @@ class HsonScanner {
 
   private rejectLegacyBacktick(pos = this.position()): never {
     this.fail(
-      `legacy backtick-delimited HSON names are invalid; use a single-quoted name`,
+      `legacy backtick-delimited Hson names are invalid; use a single-quoted name`,
       pos,
       "HSON_NAME_LEGACY_BACKTICK",
     );

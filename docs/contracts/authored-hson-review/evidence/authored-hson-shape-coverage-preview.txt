@@ -1,4 +1,4 @@
-MATERIALIZED AUTHORED-HSON CONFORMANCE CORPUS CANDIDATE
+MATERIALIZED AUTHORED-Hson CONFORMANCE CORPUS CANDIDATE
 AUTHORED-SOURCE SHAPE AND COVERAGE PREVIEW — 269 SOURCES
 
 This is an orientation appendix, not a verdict checklist or certification record.
@@ -14,9 +14,9 @@ rejected finite-family expansions: 117
 
 UPDATED CONCEPTUAL SHAPE ATLAS
 root scalars: string, finite JSON number, true, false, null
-HSON objects: empty, ordered properties, nested object, array value, contextual keyword keys
-HSON arrays: bracket/guillemet, primitive/object/array items, trailing commas
-HSON elements: empty, attributes, flags, strings, nested elements, fragments, QUIDs
+Hson objects: empty, ordered properties, nested object, array value, contextual keyword keys
+Hson arrays: bracket/guillemet, primitive/object/array items, trailing commas
+Hson elements: empty, attributes, flags, strings, nested elements, fragments, QUIDs
 legal compositions: root to scalar/object/array/element-fragment; object to scalar/object/array; array to scalar/object/array; element to string/element
 forbidden compositions: object to element; element to object/array/typed primitive; array to element; mixed root modes
 names: bare and backtick object keys; bare/backtick element names; bare-only attributes and flags; empty-name role distinctions
@@ -135,7 +135,7 @@ proposed verdict: valid
 claim: Element trivia covers before-name, after-name, around equals, between header items, before and between content, and before slash.
 category: shape=element; slot=element-trivia-slots; variation/defect=element-slots
 provenance priority: critical
-provenance: The graph was newly reasoned from the settled trivia grammar; the exact canonical HSON attribute order was corrected after focused production validation.
+provenance: The graph was newly reasoned from the settled trivia grammar; the exact canonical Hson attribute order was corrected after focused production validation.
 novelty: Adds one readable basis spanning the missing element trivia slots while leaving '/>' indivisible.
 escaped display: "< \nwidget \t title \r= \n\"value\"\r\n enabled \t \"a\"// next leaf\n \"b\" \r />"
 special code units: index 1: U+0020 SPACE; index 2: U+000A unnamed; index 9: U+0020 SPACE; index 10: U+0009 unnamed; index 11: U+0020 SPACE; index 17: U+0020 SPACE; index 18: U+000D unnamed; index 20: U+0020 SPACE; index 21: U+000A unnamed; index 29: U+000D unnamed; index 30: U+000A unnamed; index 31: U+0020 SPACE; index 39: U+0020 SPACE; index 40: U+0009 unnamed; index 41: U+0020 SPACE; index 47: U+0020 SPACE; index 52: U+0020 SPACE; index 57: U+000A unnamed; index 58: U+0020 SPACE; index 62: U+0020 SPACE; index 63: U+000D unnamed; index 64: U+0020 SPACE
@@ -155,10 +155,10 @@ concrete cases: 2
 
 case ID: hson.accept.basis.object.primitive-looking-keys
 proposed verdict: valid
-claim: true, false, and null are ordinary property keys in HSON object key position.
+claim: true, false, and null are ordinary property keys in Hson object key position.
 category: shape=object; slot=property-key; variation/defect=primitive-looking-keys
 provenance priority: medium
-provenance: Direct transcription of the settled authored-HSON structural-mode contract.
+provenance: Direct transcription of the settled authored-Hson structural-mode contract.
 novelty: Adds the contextual-key contrast with typed object values and element flags.
 escaped display: "<true 1 false 2 null 3>"
 special code units: index 5: U+0020 SPACE; index 7: U+0020 SPACE; index 13: U+0020 SPACE; index 15: U+0020 SPACE; index 20: U+0020 SPACE
@@ -170,7 +170,7 @@ proposed verdict: valid
 claim: A homogeneous root element fragment preserves sibling order.
 category: shape=element-fragment; slot=root; variation/defect=element-fragment
 provenance priority: medium
-provenance: Direct transcription of the settled authored-HSON structural-mode contract.
+provenance: Direct transcription of the settled authored-Hson structural-mode contract.
 novelty: Adds the missing positive multi-element root fragment.
 exact source: <a/><b/>
 
@@ -179,7 +179,7 @@ concrete cases: 1
 
 case ID: hson.accept.basis.backtick-name.element-name
 proposed verdict: valid
-claim: A nonempty backtick name is admitted as an HSON element name.
+claim: A nonempty backtick name is admitted as an Hson element name.
 category: shape=element; slot=element-name; variation/defect=element-name
 provenance priority: high
 provenance: Direct transcription after auditing the existing authored-name role grammar.
@@ -282,7 +282,7 @@ provenance: see provenance audit
 novelty: see provenance audit
 exact source: 0
 
-ACCEPTED LITERALS — HSON OBJECTS
+ACCEPTED LITERALS — Hson OBJECTS
 concrete cases: 10
 
 case ID: hson.accept.literal.object.array-value
@@ -321,7 +321,7 @@ special code units: index 4: U+0020 SPACE; index 14: U+000A unnamed; index 15: U
 
 case ID: hson.accept.literal.object.empty
 proposed verdict: valid
-claim: One angle pair denotes an empty HSON object.
+claim: One angle pair denotes an empty Hson object.
 category: shape=object; slot=root-object; variation/defect=empty
 provenance priority: high
 provenance: see provenance audit
@@ -366,7 +366,7 @@ verbatim source:
 
 case ID: hson.accept.literal.object.nested
 proposed verdict: valid
-claim: An object property may contain a nested HSON object.
+claim: An object property may contain a nested Hson object.
 category: shape=nested-object; slot=property-value; variation/defect=nested
 provenance priority: critical
 provenance: see provenance audit
@@ -400,7 +400,7 @@ special code units: index 2: U+0020 SPACE; index 7: U+0020 SPACE; index 9: U+002
 verbatim source:
 <t true f false n null>
 
-ACCEPTED LITERALS — HSON ARRAYS
+ACCEPTED LITERALS — Hson ARRAYS
 concrete cases: 8
 
 case ID: hson.accept.literal.array.empty-bracket
@@ -441,7 +441,7 @@ exact source: [[1],«2,3»]
 
 case ID: hson.accept.literal.array.object-item
 proposed verdict: valid
-claim: An array item may be a HSON object.
+claim: An array item may be a Hson object.
 category: shape=array-of-object; slot=array-item; variation/defect=object-item
 provenance priority: critical
 provenance: see provenance audit
@@ -478,7 +478,7 @@ provenance: see provenance audit
 novelty: see provenance audit
 exact source: «1,2,»
 
-ACCEPTED LITERALS — HSON ELEMENTS
+ACCEPTED LITERALS — Hson ELEMENTS
 concrete cases: 10
 
 case ID: hson.accept.literal.element.adjacent-strings
@@ -507,7 +507,7 @@ verbatim source:
 
 case ID: hson.accept.literal.element.empty
 proposed verdict: valid
-claim: A self-closing angle construct denotes an empty HSON element.
+claim: A self-closing angle construct denotes an empty Hson element.
 category: shape=element; slot=element-name; variation/defect=empty
 provenance priority: high
 provenance: see provenance audit
@@ -552,7 +552,7 @@ verbatim source:
 
 case ID: hson.accept.literal.element.nested
 proposed verdict: valid
-claim: An HSON element may contain a nested element.
+claim: An Hson element may contain a nested element.
 category: shape=nested-element; slot=element-content; variation/defect=nested
 provenance priority: critical
 provenance: see provenance audit
@@ -576,7 +576,7 @@ verbatim source:
 
 case ID: hson.accept.literal.element.text
 proposed verdict: valid
-claim: An HSON element may contain quoted string content.
+claim: An Hson element may contain quoted string content.
 category: shape=element; slot=element-content; variation/defect=text
 provenance priority: high
 provenance: see provenance audit
@@ -1270,7 +1270,7 @@ verbatim source:
 
 case ID: hson.reject.literal.element.numeric-content
 proposed verdict: invalid
-claim: Numeric typed content beneath an HSON element rejects.
+claim: Numeric typed content beneath an Hson element rejects.
 category: shape=element; slot=element-content; variation/defect=typed-content
 provenance priority: critical
 provenance: see provenance audit
@@ -1324,7 +1324,7 @@ exact source: [<e/>]
 
 case ID: hson.reject.literal.mode.element-array
 proposed verdict: invalid
-claim: An HSON element cannot contain an array.
+claim: An Hson element cannot contain an array.
 category: shape=element; slot=element-content; variation/defect=array-beneath-element
 provenance priority: critical
 provenance: see provenance audit
@@ -1336,7 +1336,7 @@ verbatim source:
 
 case ID: hson.reject.literal.mode.element-object
 proposed verdict: invalid
-claim: An HSON element cannot contain object structure.
+claim: An Hson element cannot contain object structure.
 category: shape=element; slot=element-content; variation/defect=object-beneath-element
 provenance priority: critical
 provenance: see provenance audit
@@ -1441,7 +1441,7 @@ exact source: <a"x">
 
 case ID: hson.reject.literal.object.quid
 proposed verdict: invalid
-claim: Object-property QUIDs do not exist in authored HSON.
+claim: Object-property QUIDs do not exist in authored Hson.
 category: shape=object; slot=property-key; variation/defect=object-quid
 provenance priority: critical
 provenance: see provenance audit
@@ -1537,7 +1537,7 @@ verbatim source:
 
 case ID: hson.reject.literal.whitespace.byte-order-mark
 proposed verdict: invalid
-claim: U+FEFF is not authored-HSON trivia.
+claim: U+FEFF is not authored-Hson trivia.
 category: shape=scalar; slot=trivia; variation/defect=unsupported-u-feff
 provenance priority: critical
 provenance: see provenance audit
@@ -1552,7 +1552,7 @@ concrete cases: 12
 
 case ID: hson.reject.basis.number.hexadecimal
 proposed verdict: invalid
-claim: Hexadecimal spelling is not JSON-compatible HSON number syntax.
+claim: Hexadecimal spelling is not JSON-compatible Hson number syntax.
 category: shape=scalar; slot=root-number; variation/defect=unsupported-hexadecimal
 provenance priority: medium
 provenance: Direct transcription of the settled JSON-compatible finite-number grammar.
@@ -1561,7 +1561,7 @@ exact source: 0x10
 
 case ID: hson.reject.basis.number.leading-plus
 proposed verdict: invalid
-claim: A JSON-compatible HSON number may not begin with plus.
+claim: A JSON-compatible Hson number may not begin with plus.
 category: shape=scalar; slot=root-number; variation/defect=leading-plus
 provenance priority: medium
 provenance: Direct transcription of the settled JSON-compatible finite-number grammar.
@@ -1651,7 +1651,7 @@ exact source: 1e309
 
 case ID: hson.reject.basis.number.numeric-separator
 proposed verdict: invalid
-claim: Numeric separators are not JSON-compatible HSON number syntax.
+claim: Numeric separators are not JSON-compatible Hson number syntax.
 category: shape=scalar; slot=root-number; variation/defect=unsupported-separator
 provenance priority: medium
 provenance: Direct transcription of the settled JSON-compatible finite-number grammar.
@@ -1663,10 +1663,10 @@ concrete cases: 1
 
 case ID: hson.reject.basis.mode.object-element
 proposed verdict: invalid
-claim: An HSON object property cannot contain an element-mode value.
+claim: An Hson object property cannot contain an element-mode value.
 category: shape=object; slot=property-value; variation/defect=element-beneath-object
 provenance priority: medium
-provenance: Direct transcription of the settled authored-HSON structural-mode contract.
+provenance: Direct transcription of the settled authored-Hson structural-mode contract.
 novelty: Adds the previously missing direct object-to-element crossing.
 escaped display: "<a <e/>>"
 special code units: index 2: U+0020 SPACE

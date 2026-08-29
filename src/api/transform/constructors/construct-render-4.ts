@@ -18,7 +18,7 @@ import { materialize_projected_value } from "../../../core/projected-value-mater
 import { sha256_text } from "../sha256.js";
 
 /**
- * HSON pipeline, stage 4: finalize the selected output.
+ * Hson pipeline, stage 4: finalize the selected output.
  *
  * This is the terminal stage of the transformer chain. The incoming context
  * already contains:
@@ -30,7 +30,7 @@ import { sha256_text } from "../sha256.js";
  * - `serialize()` → string output in the chosen format
  * - JSON `value()` → the in-memory JsonValue projection
  *
- * HSON and HTML use serialization-only finalizers. Canonical graph access is
+ * Hson and HTML use serialization-only finalizers. Canonical graph access is
  * handled uniformly by the source constructor's `toNode()` terminal.
  *
  * LiveTree creation is not part of this final render stage.
@@ -54,9 +54,9 @@ function serialize_render(context: TransformFrameRender<TransformOutputRenderFor
   }
 }
 
-/** HSON output is serialization-only; graph access belongs to source `.toNode()`. */
+/** Hson output is serialization-only; graph access belongs to source `.toNode()`. */
 export function construct_hson_render_4(
-  context: TransformFrameRender<(typeof $RENDER)["HSON"]>,
+  context: TransformFrameRender<(typeof $RENDER)["Hson"]>,
 ): TransformHsonSerialize {
   const serialize = () => {
     const origin = context.frame.meta?.origin;

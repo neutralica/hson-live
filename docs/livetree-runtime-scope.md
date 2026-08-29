@@ -226,7 +226,7 @@ not QUID strings, carry runtime routing internally.
 
 The runtime is deliberately not a node-identity layer:
 
-- it is not serialized into HSON metadata;
+- it is not serialized into Hson metadata;
 - it is not exported from any public package entrypoint;
 - it never forms a composite public identifier with a QUID;
 - it adds no runtime marker, class, wrapper, attribute, or other ownership

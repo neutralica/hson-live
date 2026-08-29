@@ -10,13 +10,13 @@ export const HSON_TAGGED_TEMPLATE_DISCOVERY_PROPOSITIONS = Object.freeze([
   "physical CRLF is retained in exact template and body ranges",
   "TSX with adjacent JSX is supported while non-TS extensions fail closed",
   "compiler-host filename identity supports editor-shaped TS and TSX paths",
-  "one and multiple substitutions are classified without becoming HSON sources",
+  "one and multiple substitutions are classified without becoming Hson sources",
   "nested, multiline, and complex substitution expressions remain opaque exact ranges",
   "an unrelated recoverable parser error does not suppress a valid later template",
   "parser damage overlapping imports or tagged templates is omitted",
   "LF integration discovers, parses, and maps primary plus related declaration evidence",
   "CRLF integration maps multiple original-host templates independently",
-  "substituted discoveries remain segregated from authoritative HSON parsing",
+  "substituted discoveries remain segregated from authoritative Hson parsing",
 ] as const);
 
 export type HsonTaggedTemplateDiscoveryProposition =

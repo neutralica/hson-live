@@ -134,14 +134,14 @@ hson.liveMap.schema.define((s) => s.div(ExactAttrs, ExactAttrs));
 hson.liveMap.schema.define((s) => s.attrs({ bad: s.object({}) }));
 // @ts-expect-error The top-level constrain constructor was hard-removed.
 hson.liveMap.schema.define((s) => s.constrain(s.number, () => true));
-// @ts-expect-error Attr-schema category values are not constrainable projected values.
+// @ts-expect-error Attr-schema category values are not constrainable data values.
 ExactAttrs.constrain(() => true);
-// @ts-expect-error Document elements are not constrainable projected values.
+// @ts-expect-error Document elements are not constrainable data values.
 ExactRoot.constrain(() => true);
 hson.liveMap.schema.define((s) => {
-  // @ts-expect-error Contextual flags are not projected constraint bases.
+  // @ts-expect-error Contextual flags are not data constraint bases.
   s.flag.constrain(() => true);
-  // @ts-expect-error Document layouts are not projected constraint bases.
+  // @ts-expect-error Document layouts are not data constraint bases.
   s.repeat(s.string).constrain(() => true);
   return s.string;
 });

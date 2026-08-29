@@ -199,7 +199,7 @@ check("view-state persistence preserves exact QUID metadata", () => {
   assert.equal(target.document.byQuid(Q2)?.$_tag, "span");
 });
 
-check("ordinary HSON serialization preserves QUID metadata exactly", () => {
+check("ordinary Hson serialization preserves QUID metadata exactly", () => {
   const source = element(`<main @${Q1} <span @${Q2}/>/>`);
   const wire = hson.fromNode(source.element.node()).toHson().serialize();
   const reparsed = element(wire);

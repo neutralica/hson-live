@@ -81,7 +81,7 @@ backpressure. Those Node mechanics are not generic LiveHost API.
 
 `LiveHostConnection` is a deliberately small generic transport. It sends and
 receives only `string | Uint8Array`, reports closure, and can close the
-connection. It is not a Node WebSocket object, a Locus protocol, binary HSON,
+connection. It is not a Node WebSocket object, a Locus protocol, binary Hson,
 or a general socket framework.
 
 Node adapts physical WebSocket transport to this interface. Applications own

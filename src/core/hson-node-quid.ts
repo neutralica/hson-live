@@ -94,12 +94,12 @@ export function assert_hson_node_quid_eligible(
   if (eligible) return;
   throw new HsonNodeQuidValidationError(
     "INELIGIBLE_QUID",
-    `Cannot ${operation} QUID metadata on ineligible HSON structural node "${node.$_tag}".`,
+    `Cannot ${operation} QUID metadata on ineligible Hson structural node "${node.$_tag}".`,
     { node, value: node.$_meta?.[HSON_META_QUID] },
   );
 }
 
-/** True only for semantic projected object/array values, never carrier wrappers. */
+/** True only for semantic data object/array values, never carrier wrappers. */
 export function is_projected_container_quid_eligible(node: HsonNode): boolean {
   if (node.$_tag === ARR_TAG) return true;
   if (node.$_tag !== OBJ_TAG) return false;
@@ -185,7 +185,7 @@ export type HsonNodeQuidClaim = Readonly<{
 }>;
 
 /**
- * Validate and collect every canonical QUID claim in one HSON object graph.
+ * Validate and collect every canonical QUID claim in one Hson object graph.
  *
  * Equal values on distinct nodes are preserved as separate claims. Repeated
  * references to the same object are one graph node and are visited once.

@@ -11,7 +11,7 @@ import type { LiveTreeRuntime } from "../runtime/livetree-runtime.js";
 import { normalize_hson_array_index_order } from "../../../core/hson-array-indexes.js";
 
 /**
- * Normalize a parsed HSON root into a detached `LiveTree` branch.
+ * Normalize a parsed Hson root into a detached `LiveTree` branch.
  *
  * Structural wrapper nodes such as `_hson_root` and `_hson_elem` are unwrapped first so
  * the returned tree always points at one concrete branch root. Exactly one
@@ -20,7 +20,7 @@ import { normalize_hson_array_index_order } from "../../../core/hson-array-index
  * This is the detached-branch path used by `hson.liveTree.from*` entrypoints.
  * It does not graft into the existing live DOM.
  *
- * @param rootNode - Raw HSON root to validate and normalize.
+ * @param rootNode - Raw Hson root to validate and normalize.
  * @param opts - Internal proof that an immediately preceding parser or clone
  *               boundary already completed canonical QUID graph validation.
  * @returns A detached `LiveTree` rooted at the unwrapped concrete node.

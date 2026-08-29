@@ -71,7 +71,7 @@ function has_seen_pair(state: ComparisonState, left: object, right: object): boo
 
 function finite_number(value: unknown): void {
   if (typeof value === "number" && !Number.isFinite(value)) {
-    throw new Error(`[HSON equality] invalid HSON number ${String(value)}; numbers must be finite`);
+    throw new Error(`[Hson equality] invalid Hson number ${String(value)}; numbers must be finite`);
   }
 }
 

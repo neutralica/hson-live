@@ -81,7 +81,7 @@ import type {
 import type { LiveTraceSink } from "./live.trace.types.js";
 
 
-/** Wire-safe representation of a projected value that may be absent. */
+/** Wire-safe representation of a data value that may be absent. */
 export type LocusRecoveryRequest = Readonly<{
   logicalMapId: LocusLogicalMapId;
   incarnationId?: LocusIncarnationId;

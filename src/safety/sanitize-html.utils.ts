@@ -319,7 +319,7 @@ export function make_sanitizer(targetWindow: Window): SanitizerLike {
     const value = event.attrValue;
 
     // DOMPurify applies ALLOWED_URI_REGEXP to namespaced-looking attributes.
-    // HSON metadata is not a URL domain, so retain every syntactic candidate
+    // Hson metadata is not a URL domain, so retain every syntactic candidate
     // for the canonical registry to accept or reject after sanitization.
     if (
       hson_metadata_candidate_key(name) !== undefined

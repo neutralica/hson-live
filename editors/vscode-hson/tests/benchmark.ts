@@ -9,9 +9,9 @@ function hsonDocument(memberCount: number): string {
 function typeScriptDocument(templateCount: number): string {
   const templates = Array.from(
     { length: templateCount },
-    (_, index) => `const value${index} = HSON\`<item${index} "value ${index}">\`;`,
+    (_, index) => `const value${index} = Hson\`<item${index} "value ${index}">\`;`,
   );
-  return ['import { HSON, hson } from "hson-live";', ...templates].join("\n");
+  return ['import { Hson, hson } from "hson-live";', ...templates].join("\n");
 }
 
 function median(values: readonly number[]): number {

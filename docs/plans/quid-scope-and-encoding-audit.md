@@ -19,7 +19,7 @@ The proposed eight-character encoding does **not yet match the whole architectur
 
 Consequently, the statement “QUID serialization is not a durable application-identity mechanism” is not fully honest today. It accurately describes the intended LiveTree abstraction, but conflicts with implemented LiveHost document recovery and with public raw-QUID APIs.
 
-Current allocation is only partially lazy. Cold HSON/HTML/JSON parsing does not mint QUIDs, and LiveTree admission eagerly mints only the root while preserving supplied descendant claims. However, DOM projection/grafting recursively mints every ordinary element, cloning recursively remints every ordinary element, and construction of each child LiveTree handle mints that child immediately. The observed rule is therefore closer to “a QUID for every handled or projected ordinary element, plus every ordinary clone node” than “a QUID only for independently identity-bearing nodes.”
+Current allocation is only partially lazy. Cold Hson/HTML/JSON parsing does not mint QUIDs, and LiveTree admission eagerly mints only the root while preserving supplied descendant claims. However, DOM projection/grafting recursively mints every ordinary element, cloning recursively remints every ordinary element, and construction of each child LiveTree handle mints that child immediately. The observed rule is therefore closer to “a QUID for every handled or projected ordinary element, plus every ordinary clone node” than “a QUID only for independently identity-bearing nodes.”
 
 Eight lowercase base-32 characters provide exactly 40 random bits. With a complete, atomic namespace registry, retry-on-collision, and a defined no-reuse policy, that is mathematically adequate for active runtime routing: even with 10,000,000 already-reserved values, the next draw collides with probability about `9.095e-6` and needs only `1.0000091` expected draws. Without a registry, it is not adequate at large scale: one million random issues have about a 36.5% chance of at least one collision, and ten million are virtually certain to collide.
 
@@ -36,7 +36,7 @@ No authorization, capability, authentication, secrecy, or other security-token u
 
 ## 2. Current QUID contract
 
-A current QUID is a string stored in the `quid` member of an element node's `$_meta` object. The type alias is only `string`, not an opaque or nominal brand. Only ordinary HSON element nodes are eligible; virtual/special nodes and primitive values are not. The authoritative definition and eligibility predicate are in [`src/core/hson-node-quid.ts`](../../src/core/hson-node-quid.ts#L6), and the metadata schema registers the field in [`src/core/hson-metadata.ts`](../../src/core/hson-metadata.ts#L31). The public node shape exposes it through `HsonMeta` in [`src/core/types.ts`](../../src/core/types.ts#L46).
+A current QUID is a string stored in the `quid` member of an element node's `$_meta` object. The type alias is only `string`, not an opaque or nominal brand. Only ordinary Hson element nodes are eligible; virtual/special nodes and primitive values are not. The authoritative definition and eligibility predicate are in [`src/core/hson-node-quid.ts`](../../src/core/hson-node-quid.ts#L6), and the metadata schema registers the field in [`src/core/hson-metadata.ts`](../../src/core/hson-metadata.ts#L31). The public node shape exposes it through `HsonMeta` in [`src/core/types.ts`](../../src/core/types.ts#L46).
 
 The implementation currently gives QUIDs these overlapping meanings:
 
@@ -70,7 +70,7 @@ Those meanings are not governed by one namespace or lifetime. “Persisted QUID�
 
 The alphabet is Crockford-style rather than a complete Crockford implementation: its important machine property is simply lowercase base 32. Ambiguous letters are excluded, while the symbol count remains 32, so no entropy is lost. Casing is rejected rather than folded.
 
-Authored HSON ingress shares `assign_ingested_hson_node_quid` and performs a cold scan in [`quid-ingress.ts`](../../src/api/transform/utils/hson-utils/quid-ingress.ts#L27). HTML metadata admission goes through the same registry. Explicit structural JSON can hoist `$_meta` from element objects and then validates invariants in [`parse-json.ts`](../../src/api/transform/from/json/parse-json.ts#L374). Ordinary application JSON does not become QUID-bearing metadata merely because it contains a similarly named property.
+Authored Hson ingress shares `assign_ingested_hson_node_quid` and performs a cold scan in [`quid-ingress.ts`](../../src/api/transform/utils/hson-utils/quid-ingress.ts#L27). HTML metadata admission goes through the same registry. Explicit structural JSON can hoist `$_meta` from element objects and then validates invariants in [`parse-json.ts`](../../src/api/transform/from/json/parse-json.ts#L374). Ordinary application JSON does not become QUID-bearing metadata merely because it contains a similarly named property.
 
 Graph normalization shallow-copies `$_meta` in [`normalize-hson-graph.ts`](../../src/core/normalize-hson-graph.ts#L88); it does not fold case, widen/narrow, repair, or regenerate a QUID. Validation at the consuming boundary remains responsible for rejecting a copied malformed value.
 
@@ -109,7 +109,7 @@ The runtime allocator and admission path are in [`data-quid.ts`](../../src/api/l
 | Trigger | Owner | Eager/lazy and reach | Existing claim | Collision/external policy | Avoidable? |
 |---|---|---|---|---|---|
 | Canonical factory or bare core `ensure_hson_node_quid` | Core node helper | On explicit call; one node | Preserved | No collision check | Yes, if caller does not ensure. |
-| Authored HSON parse | Transform ingress | No mint; full cold validation | Preserved | Format/placement checked; cold duplicates allowed | Yes. |
+| Authored Hson parse | Transform ingress | No mint; full cold validation | Preserved | Format/placement checked; cold duplicates allowed | Yes. |
 | HTML parse | Transform metadata admission | No mint | Preserved | Format/placement checked; cold duplicates allowed | Yes. |
 | Structural JSON parse | JSON transform | No mint | Preserved | Format/placement checked; cold duplicates allowed | Yes. |
 | `new LiveTree` / `createLiveTree` | LiveTree runtime | Root eager; descendants sparse | Preserved | Whole graph preflight; active and local duplicate rejection | Root allocation cannot currently be avoided. |
@@ -215,7 +215,7 @@ A strict no-reuse policy requires either an issued-ever set for the whole namesp
 | Same-runtime append/insert | Validate and preserve supplied claims; projection mints missing descendants | **Validate and preserve** same-epoch nodes. |
 | Cross-runtime LiveTree append | Rejects active graph/runtime mismatch | Continue **reject duplicate/cross-runtime**, or explicitly **rekey on admission** if this feature is added. |
 | LiveTree clone | Strips all source QUIDs and recursively remints | **Strip and regenerate**; this is already the clearest ephemeral boundary. |
-| Imported canonical node/cold authored HSON/HTML/JSON | Preserves syntactically valid values; cold duplicates allowed until live admission | Default external input should **strip and lazily regenerate**, with an explicit diagnostic/same-epoch mode to **validate and preserve**. |
+| Imported canonical node/cold authored Hson/HTML/JSON | Preserves syntactically valid values; cold duplicates allowed until live admission | Default external input should **strip and lazily regenerate**, with an explicit diagnostic/same-epoch mode to **validate and preserve**. |
 | DOM graft | Preserves valid `hson:quid`; rejects active collision; then recursively ensures | **Rekey on admission** unless provenance proves the DOM belongs to the same runtime epoch. A raw value alone is not provenance. |
 | Reflect one LiveMap document into LiveTree | Preserves sparse canonical claims; projected missing nodes gain runtime-only QUIDs | **Validate and preserve** document IDs within the document epoch, but keep runtime QUID separate. |
 | LiveMap capture/install/restore/replay | Preserves QUIDs and rejects document duplicates | **Preserve within one document epoch**. External independent content should rekey or fail explicitly. |
@@ -232,10 +232,10 @@ Existing LiveTree handles can conceptually survive rekeying because they hold ex
 
 | Format/path | Current QUID behavior | Identity implication |
 |---|---|---|
-| Authored HSON parse | Preserved if valid; absent stays absent; malformed rejected; cold duplicate allowed | Admits externally supplied strings into canonical metadata. |
-| HSON serialization / `HsonCanonical` | Preserved as `@quid` by default | Observable serialized representation. |
-| HSON `noQuid` | Omitted from output | Explicit transient/authoring escape hatch; it does not mutate the graph. |
-| HSON compact / no-break modes | Preserved unless `noQuid` | Layout options do not change identity semantics. |
+| Authored Hson parse | Preserved if valid; absent stays absent; malformed rejected; cold duplicate allowed | Admits externally supplied strings into canonical metadata. |
+| Hson serialization / `HsonCanonical` | Preserved as `@quid` by default | Observable serialized representation. |
+| Hson `noQuid` | Omitted from output | Explicit transient/authoring escape hatch; it does not mutate the graph. |
+| Hson compact / no-break modes | Preserved unless `noQuid` | Layout options do not change identity semantics. |
 | Structural HTML | Preserved as `hson:quid` | Round-trippable metadata. |
 | Ordinary managed DOM / `outerHTML` | Preserved as `hson:quid` after projection | Visible/selectable despite “invisible” intent. |
 | Structural JSON element graph | Preserved in `$_meta.quid` | Explicit graph JSON carries identity. |
@@ -251,9 +251,9 @@ Existing LiveTree handles can conceptually survive rekeying because they hold ex
 | LiveHost bootstrap/recovery | Preserved | Mirrors coordinate using the document's values. |
 | LiveHost persistence/checkpoint/restart | Preserved | Explicit cross-runtime and cross-restart durability today. |
 
-HSON filtering and the `noQuid` option live in [`serialize-hson.ts`](../../src/api/transform/serializers/serialize-hson.ts#L81) and [`construct-options-3.ts`](../../src/api/transform/constructors/construct-options-3.ts#L78). HTML attribute emission is in [`build-wire-attrs.ts`](../../src/api/transform/utils/html-utils/build-wire-attrs.ts#L35). Structural JSON metadata output is in [`serialize-json.ts`](../../src/api/transform/serializers/serialize-json.ts#L150).
+Hson filtering and the `noQuid` option live in [`serialize-hson.ts`](../../src/api/transform/serializers/serialize-hson.ts#L81) and [`construct-options-3.ts`](../../src/api/transform/constructors/construct-options-3.ts#L78). HTML attribute emission is in [`build-wire-attrs.ts`](../../src/api/transform/utils/html-utils/build-wire-attrs.ts#L35). Structural JSON metadata output is in [`serialize-json.ts`](../../src/api/transform/serializers/serialize-json.ts#L150).
 
-LiveMap builds and replaces its identity index in [`livemap.document.ts`](../../src/api/livemap/livemap.document.ts#L47), exposes `byQuid`, and captures the root with identity in the same module. LiveHost graph-content encode/decode preserves and validates metadata in [`livehost.graph-content-codec.ts`](../../src/api/livehost/livehost.graph-content-codec.ts#L34). View-state codecs preserve exact node metadata in [`livemap.document.view-state-codec.ts`](../../src/api/livemap/livemap.document.view-state-codec.ts#L282). HSON and view-state snapshots preserve it in [`livehost.document-snapshot.ts`](../../src/api/livehost/livehost.document-snapshot.ts#L118), while persistence restores a checkpoint and replays commits in [`livehost.persistence.ts`](../../src/api/livehost/livehost.persistence.ts#L280).
+LiveMap builds and replaces its identity index in [`livemap.document.ts`](../../src/api/livemap/livemap.document.ts#L47), exposes `byQuid`, and captures the root with identity in the same module. LiveHost graph-content encode/decode preserves and validates metadata in [`livehost.graph-content-codec.ts`](../../src/api/livehost/livehost.graph-content-codec.ts#L34). View-state codecs preserve exact node metadata in [`livemap.document.view-state-codec.ts`](../../src/api/livemap/livemap.document.view-state-codec.ts#L282). Hson and view-state snapshots preserve it in [`livehost.document-snapshot.ts`](../../src/api/livehost/livehost.document-snapshot.ts#L118), while persistence restores a checkpoint and replays commits in [`livehost.persistence.ts`](../../src/api/livehost/livehost.persistence.ts#L280).
 
 The proposed non-durable serialization statement can be made honestly only after qualification or redesign:
 
@@ -269,7 +269,7 @@ The proposed non-durable serialization statement can be made honestly only after
 | `LiveTree.node.$_meta.quid` and exported `HsonMeta` | Accidental/structural public exposure | Yes. |
 | `find.byQuid` in [`find.ts`](../../src/api/livetree/methods/find.ts#L356) | Intentional public API | Yes; old saved inputs stop resolving/validating. |
 | `NodeRef.q` public type in [`livetree.types.ts`](../../src/types/livetree.types.ts#L36) | Compatibility/semi-public surface | Yes. |
-| HSON `@quid`, HTML `hson:quid`, structural JSON `$_meta.quid` | Compatibility surface | Yes; serialized bytes, fixtures, hashes, and old input compatibility change. |
+| Hson `@quid`, HTML `hson:quid`, structural JSON `$_meta.quid` | Compatibility surface | Yes; serialized bytes, fixtures, hashes, and old input compatibility change. |
 | DOM query such as `[hson\\:quid="…"]` | Accidental but practical public exposure | Yes. |
 | Public `CssManager` QUID methods/selectors | Intentional/semi-public API | Yes; raw keys/selectors change. Root and `/livetree` export the manager. |
 | Keyframe source strings (`global` or a `quid:<value>` form) | Intentional public type surface | Yes; embedded raw value changes. |
@@ -290,7 +290,7 @@ The DOM representation is `hson:quid="<value>"`. The CSS manager validates the v
 
 The current alphabet is safe without value escaping beyond normal quoting: lowercase ASCII letters and digits do not need CSS identifier or HTML attribute special handling. Its lowercase-only nature avoids case disagreement among validators, logs, transports, and selectors. The omitted ambiguous letters are useful for diagnostics and do not reduce entropy because the alphabet still contains 32 symbols.
 
-Expanding the alphabet would buy bits only by introducing non-base-32 symbols or mixed case. At an eight-character width, base 64 would provide 48 bits, but it would add escaping/casing/logging/cross-runtime complexity and compatibility risk across HSON, HTML, JSON, CSS, and diagnostics. The extra eight bits do not remove the need for a registry or solve merge/epoch semantics. Retaining the current 32-symbol lowercase alphabet is the better tradeoff unless measured registry scale establishes a concrete bit requirement; in that case, ten base-32 characters are simpler than a broader alphabet.
+Expanding the alphabet would buy bits only by introducing non-base-32 symbols or mixed case. At an eight-character width, base 64 would provide 48 bits, but it would add escaping/casing/logging/cross-runtime complexity and compatibility risk across Hson, HTML, JSON, CSS, and diagnostics. The extra eight bits do not remove the need for a registry or solve merge/epoch semantics. Retaining the current 32-symbol lowercase alphabet is the better tradeoff unless measured registry scale establishes a concrete bit requirement; in that case, ten base-32 characters are simpler than a broader alphabet.
 
 Stale style cleanup is coupled to lifecycle cleanup. Detach intentionally retains styles/events/resources. Terminal dispose drains owner registries and removes QUID routing. If cleanup ever misses an entry and a released string is reused, a style or resource can attach to the wrong future node. A no-reuse set prevents that ABA class during the epoch, while correct fixed-point cleanup remains necessary for memory safety.
 
@@ -300,7 +300,7 @@ Stale style cleanup is coupled to lifecycle cleanup. Detach intentionally retain
 
 - Generation, exact width/alphabet, secure source, and no random fallback: [`hson-node-quid.acceptance.mts`](../../tests/hson-node-quid.acceptance.mts#L106).
 - Cold ingress, supplied claims, sparse allocation, collision retry/exhaustion, and atomic admission: [`hson-node-quid-ingress.acceptance.mts`](../../tests/hson-node-quid-ingress.acceptance.mts#L851).
-- HSON/HTML/JSON preservation, `noQuid`, and absent-node non-minting: [`hson-node-quid-egress.acceptance.mts`](../../tests/hson-node-quid-egress.acceptance.mts#L213) and [`hson-serializer.acceptance.mts`](../../tests/hson-serializer.acceptance.mts#L422).
+- Hson/HTML/JSON preservation, `noQuid`, and absent-node non-minting: [`hson-node-quid-egress.acceptance.mts`](../../tests/hson-node-quid-egress.acceptance.mts#L213) and [`hson-serializer.acceptance.mts`](../../tests/hson-serializer.acceptance.mts#L422).
 - Runtime separation, graph/document ownership, detach, terminal release/reuse, clone identity, and CSS isolation: [`livetree-runtime-scope.acceptance.mts`](../../tests/livetree-runtime-scope.acceptance.mts#L202).
 - Eligibility and clone reminting: [`livetree-quid-eligibility.acceptance.mts`](../../tests/livetree-quid-eligibility.acceptance.mts).
 - Canonical equality includes QUID metadata: [`canonical-hson-equality.acceptance.mts`](../../tests/canonical-hson-equality.acceptance.mts#L136).
@@ -449,7 +449,7 @@ The target should explicitly say that runtime QUIDs are not security tokens and 
 ### Compatibility changes
 
 10. Document raw QUID surfaces as epoch-scoped; deprecate or replace `LiveTree.quid`, `find.byQuid`, public raw CSS methods, raw LiveMap QUID targets, direct metadata access, and demo usage as appropriate. Do not silently change their width while promising compatibility.
-11. Update authored HSON/HTML/JSON ingress defaults and provide an explicit controlled-preserve mode if required.
+11. Update authored Hson/HTML/JSON ingress defaults and provide an explicit controlled-preserve mode if required.
 12. Migrate exact fixtures, `{16}` tests, serialization snapshots, canonical digests/fingerprints, demo selectors, and documentation only after the protocol decision.
 
 ### Encoding change
@@ -470,7 +470,7 @@ Do **not** shorten QUIDs until all of these stop conditions are cleared:
 - A single field still means both ephemeral runtime routing and durable document identity.
 - Any minting path can bypass the owning collision registry.
 - No-reuse is claimed without an issued-ever mechanism or generation-aware handles.
-- External HSON/HTML/JSON/DOM provenance and duplicate policy remain implicit.
+- External Hson/HTML/JSON/DOM provenance and duplicate policy remain implicit.
 - LiveHost history/snapshot/persistence compatibility lacks a versioned migration.
 - Rekeying cannot update CSS, events, animations, resources, DOM, reflection, and retained targets atomically.
 - Public raw-QUID compatibility has not been explicitly accepted, deprecated, or migrated.

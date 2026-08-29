@@ -35,7 +35,7 @@ import {
 } from "../runtime/livetree-runtime.js";
 
 /**
- * Append one or more HSON nodes into a target node's `_hson_elem` container
+ * Append one or more Hson nodes into a target node's `_hson_elem` container
  * and mirror the change into the corresponding live DOM subtree.
  *
  * If the first child of `targetNode.$_content` is not an `_hson_elem` container,
@@ -44,13 +44,13 @@ import {
  *
  * When a bound live DOM element exists for `targetNode`, the same nodes
  * are rendered via `create_live_tree2` and inserted into the DOM at the
- * corresponding position, keeping HSON and DOM in sync.
+ * corresponding position, keeping Hson and DOM in sync.
  *
- * @param targetNode - The HSON node that will receive the new children.
- * @param nodesToAppend - The HSON nodes to append into the `_hson_elem` container.
+ * @param targetNode - The Hson node that will receive the new children.
+ * @param nodesToAppend - The Hson nodes to append into the `_hson_elem` container.
  * @param index - Optional insertion index within the `_hson_elem` content.
  *                If provided, it is normalized via `normalize_ix` and
- *                used for both HSON and DOM insertion; otherwise nodes
+ *                used for both Hson and DOM insertion; otherwise nodes
  *                are appended to the end.
  */
 function appendNodes(
@@ -76,7 +76,7 @@ function appendNodes(
   if (!containerNode.$_content) containerNode.$_content = [];
   const childContent = containerNode.$_content;
 
-  // --- HSON INSERTION --------------------------------------------------
+  // --- Hson INSERTION --------------------------------------------------
   if (typeof index === "number") {
     const insertIx = normalize_ix(index, childContent.length);
     childContent.splice(insertIx, 0, ...nodesToAppend);
@@ -114,7 +114,7 @@ const parentNs: "html" | "svg" =
 
 /**
  * Append a single `LiveTree` branch as children of the current `LiveTree`'s node,
- * preserving HSON → DOM linkage.
+ * preserving Hson → DOM linkage.
  *
  * The source branch's root `_hson_elem` wrapper is unwrapped via `unwrap_root_elem`,
  * so that only its meaningful children are appended. The source branch then

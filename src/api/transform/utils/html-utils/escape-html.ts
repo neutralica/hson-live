@@ -7,7 +7,7 @@ import { _throw_transform_err } from "../sys-utils/throw-transform-err.utils.js"
  * Escape a primitive value for safe inclusion in serialized HTML.
  *
  * Behavior:
- * - Accepts only HSON primitives (string | number | boolean | null).
+ * - Accepts only Hson primitives (string | number | boolean | null).
  * - Throws if a non-primitive value is provided, since structured values
  *   should never reach HTML text serialization directly.
  * - Non-string primitives are stringified without escaping.

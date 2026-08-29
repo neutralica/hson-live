@@ -67,11 +67,11 @@ if (documentMap.mode === "element") {
   void attrCommit.ops;
   // @ts-expect-error document proxies expose numeric structural traversal only
   documentProxy.attrs;
-  // @ts-expect-error document proxy escapes omit projected mutation capabilities
+  // @ts-expect-error document proxy escapes omit data mutation capabilities
   documentProxyLocation.set(documentMap.element.node());
-  // @ts-expect-error logical document paths do not accept projected string keys
+  // @ts-expect-error logical document paths do not accept data string keys
   documentMap.at(["content"]);
-  // @ts-expect-error document locations intentionally omit projected mutation helpers
+  // @ts-expect-error document locations intentionally omit data mutation helpers
   documentLocation.set(documentMap.element.node());
   // @ts-expect-error document locations do not gain projected update semantics
   documentLocation.update(() => documentMap.element.node());
@@ -89,7 +89,7 @@ if (documentMap.mode === "element") {
 
 // @ts-expect-error projected locations do not expose HTML ID discovery
 map.at([]).id("target");
-// @ts-expect-error projected proxy escapes remain projected path handles
+// @ts-expect-error projected proxy escapes remain data path handles
 map.proxy().$_.id("target");
 // @ts-expect-error projected locations do not expose document content ownership
 map.at([]).insert(0, true);

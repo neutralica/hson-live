@@ -23,69 +23,69 @@ hson.transform.calc(number): HsonNumber
 hson.transform.calc(() => number): HsonNumber
 ```
 
-The same numeric operation is exported as `hsonCalc`. Runtime authored-HSON text is admitted by `fromHson`.
+The same numeric operation is exported as `hsonCalc`. Runtime authored-Hson text is admitted by `fromHson`.
 
-Every constructor method parses and normalizes input to HSON's canonical node graph.
+Every constructor method parses and normalizes input to Hson's canonical node graph.
 
-## HSON authoring and HsonCanonical
+## Hson authoring and HsonCanonical
 
-`` HSON`...` `` authors canonical HSON inline. Literal template segments are HSON source;
+`` Hson`...` `` authors canonical Hson inline. Literal template segments are Hson source;
 primitive substitutions are encoded according to their JavaScript types before
-the completed HSON is validated and canonicalized.
+the completed Hson is validated and canonicalized.
 
 ```ts
-import { HSON, type HsonCanonical } from "hson-live/hson";
+import { Hson, type HsonCanonical } from "hson-live/hson";
 
-const authored: HsonCanonical = HSON`
+const authored: HsonCanonical = Hson`
   <p "first"<em "middle"/>"last"/>
 `;
 ```
 
-The narrow `/hson` entrypoint exports `HSON` and the same `HsonCanonical` type
-as `/transform`. The root also exports `HSON` for aggregate convenience.
+The narrow `/hson` entrypoint exports `Hson` and the same `HsonCanonical` type
+as `/transform`. The root also exports `Hson` for aggregate convenience.
 Lowercase `hson` is a noncallable aggregate object; the old tag has no compatibility alias.
 
 The public visual grammar is deliberately small:
 
 ```text
-HSON`...`    author canonical HSON
+Hson`...`    author canonical Hson
 hson.*       access hson-live subsystems
-HSON.validate(schema, canonical)    validate canonical HSON
-HSON(...)    unsupported ordinary source calls
+Hson.validate(schema, canonical)    validate canonical Hson
+Hson(...)    unsupported ordinary source calls
 hson(...)    unsupported; the aggregate is not callable
 ```
 
 Literal source and interpolated JavaScript data remain distinct:
 
 ```ts
-HSON`37`          // authored HSON number
-HSON`"37"`        // authored HSON string
-HSON`<foo/>`      // authored HSON element
+Hson`37`          // authored Hson number
+Hson`"37"`        // authored Hson string
+Hson`<foo/>`      // authored Hson element
 
-HSON`${37}`       // JavaScript number -> HSON number
-HSON`${"37"}`     // JavaScript string -> HSON string
-HSON`${true}`     // JavaScript boolean -> HSON boolean
+Hson`${37}`       // JavaScript number -> Hson number
+Hson`${"37"}`     // JavaScript string -> Hson string
+Hson`${true}`     // JavaScript boolean -> Hson boolean
 ```
 
 The supported substitution values are primitive JavaScript `string`, `number`,
-`boolean`, and `null`. Strings always become HSON string data; finite numbers
-retain the numeric policy (including `-0`); booleans and null become their HSON
+`boolean`, and `null`. Strings always become Hson string data; finite numbers
+retain the numeric policy (including `-0`); booleans and null become their Hson
 literals. Arrays, objects, nodes, functions, `undefined`, bigint, and symbols
 reject rather than stringify or splice source.
 
 There is no parse-success fallback and no structural/source interpolation.
 
-Raw template segments keep HSON in charge of escapes. The complete reconstructed
+Raw template segments keep Hson in charge of escapes. The complete reconstructed
 source passes through the same parser, exact root detachment, canonical graph
 admission, default serializer, and `HsonCanonical` branding path.
 
 Runtime `TemplateStringsArray.raw` must not be treated as a byte-for-byte copy of the host file. In particular, JavaScript normalizes physical CRLF template line terminators to LF. Static diagnostics that need original-file offsets must map against the original host source text rather than this runtime string.
 
-The returned spelling may differ from the source because the method reparses the source into canonical `HsonNode` state and serializes that graph with the default HSON options. It does not preserve original formatting, whitespace, line breaks, quoting, shorthand, comments, or other source-level spelling. Invalid input throws the existing parser, normalization, or invariant error. Internally the function parses one `_hson_root`, detaches its exact one semantic child, serializes that non-root node, and applies the `HsonCanonical` brand only after successful serialization.
+The returned spelling may differ from the source because the method reparses the source into canonical `HsonNode` state and serializes that graph with the default Hson options. It does not preserve original formatting, whitespace, line breaks, quoting, shorthand, comments, or other source-level spelling. Invalid input throws the existing parser, normalization, or invariant error. Internally the function parses one `_hson_root`, detaches its exact one semantic child, serializes that non-root node, and applies the `HsonCanonical` brand only after successful serialization.
 
 The return is an `HsonCanonical`, a TypeScript-branded primitive string. It does not imply sanitization, authentication, or trust. The compile-time brand is lost across untyped transport or storage.
 
-Runtime text containing arbitrary authored HSON is a separate operation:
+Runtime text containing arbitrary authored Hson is a separate operation:
 
 ```ts
 import { hsonTransform } from "hson-live/transform";
@@ -99,9 +99,9 @@ const canonical: HsonCanonical = hsonTransform
 
 Use `.toNode()` when validation is needed without serialized output. `fromHson`
 truthfully owns runtime source admission; interpolation would encode `source` as
-HSON string data.
+Hson string data.
 
-HSON string values use double quotes. Single quotes delimit authored HSON names;
+Hson string values use double quotes. Single quotes delimit authored Hson names;
 they are not an alternate string-value spelling. JavaScript double quotes,
 single quotes delimit authored names rather than string values.
 
@@ -136,7 +136,7 @@ Use `hson-live/number` when dependency weight matters. That entrypoint reaches o
 
 ## HsonNodes - the Intermediate Model
 
-All supported sources parse to `HsonNode`, HSON's graph type.
+All supported sources parse to `HsonNode`, Hson's graph type.
 
 ```ts
 type HsonNode = {
@@ -158,7 +158,7 @@ Parses external HTML through the safe HTML path.
 - A supplied `Element` is the source root. The canonical graph includes that   element itself, its attributes and metadata, and its descendants.
 - Syntactic `hson:*` candidates remain observable after sanitization and are   admitted or rejected by the same metadata registry used for trusted input.
 - A valid descendant `hson:quid` is preserved as graph identity. Malformed,   unknown, misplaced, or duplicate metadata rejects rather than disappearing.
-- `data-*` remains application-owned and is never reinterpreted as HSON   metadata.
+- `data-*` remains application-owned and is never reinterpreted as Hson   metadata.
 - External SVG markup is rejected on this safe path.
 
 This is the default choice for user-authored or third-party HTML. QUID identity is not trust, authorization, authentication, or execution capability. Existing live-graph uniqueness and ownership checks still apply when a cold parsed graph becomes active.
@@ -177,16 +177,16 @@ Normalization is lossy: duplicate attributes may be collapsed, HTML casing norma
 
 For raw HTML strings, ordinary attribute names compare case-insensitively for duplicate detection; the last ordinary value wins. Duplicate `hson:*` metadata declarations reject.
 
-Repeated `class` declarations merge unique tokens in the order encountered. Canonical-valid colonized ordinary names are carried reversibly through the XML-backed browser parser and admitted under their original semantic name. Invalid names and authored private parser-transit names reject. 
+Repeated `class` declarations merge unique tokens in the order encountered. Canonical-valid colonized ordinary names are carried reversibly through the XML-backed browser parser and admitted under their original semantic name. Invalid names and authored private parser-transit names reject.
 
 ### `hson.fromJson(input: string | JsonValue)`
 
-Parses JSON data into HSON nodes.
+Parses JSON data into Hson nodes.
 
 - Accepts a JSON string or a parsed JSON value.
 - Does not sanitize.
 - Detaches caller-owned records and arrays before normalization. Parsing never   mutates the supplied value or retains mutable aliases into canonical graph   state.
-- Metadata on an explicit `_hson_root` is invalid and rejects; it is not   ignored or filtered. An empty runtime `_hson_root` remains a separate   runtime-carrier exception outside direct HSON-text serialization.
+- Metadata on an explicit `_hson_root` is invalid and rejects; it is not   ignored or filtered. An empty runtime `_hson_root` remains a separate   runtime-carrier exception outside direct Hson-text serialization.
 - JSON string ingress preserves textual property sequence, including   integer-index property names, before constructing canonical `_hson_obj`   content.
 - JSON string ingress rejects duplicate decoded property names with   `HSON_JSON_DUPLICATE_PROPERTY` before an earlier declaration can be   overwritten. Primary and first-declaration source evidence remain   structured.
 - Already-parsed JavaScript objects admit the enumeration order the supplied   runtime value exposes. They cannot recover textual order or overwritten   duplicate declarations discarded before this API received the value.
@@ -204,12 +204,12 @@ const source = `
 const node = hson.fromHson(source).toNode();
 ```
 
-Parses HSON text into HsonNodes.
+Parses Hson text into HsonNodes.
 
 - Does not sanitize.
 - `.toNode()` returns exactly its one semantic child and never returns   `_hson_root`. Meaningful `_hson_elem`, `_hson_obj`, `_hson_arr`, `_hson_str`,   and `_hson_val` nodes remain intact.
-- Bare quoted strings, finite numbers, booleans, and `null` are valid HSON values. 
-- HSON serializes numeric values unquoted and use JSON number syntax and admit only finite   JavaScript numbers: a leading plus is forbidden, while an exponent plus is allowed (for example, `1e+3`). 
+- Bare quoted strings, finite numbers, booleans, and `null` are valid Hson values.
+- Hson serializes numeric values unquoted and use JSON number syntax and admit only finite   JavaScript numbers: a leading plus is forbidden, while an exponent plus is allowed (for example, `1e+3`).
 ### `hson.fromNode(node: HsonNode)`
 
 Parses and validates an external HsonNode graph .
@@ -225,7 +225,7 @@ All transform source constructors return a common surface:
 ```ts
 .toHtml()           // returns an HTML string
 .toJson()           // returns a JSON object or string
-.toHson()           // returns an HSON string
+.toHson()           // returns an Hson string
 .toNode()           // returns the underlying HsonNode graph (in JSON)
 .sanitizeBEWARE()   // destructive sanitizer for external non-HTML input
 ```
@@ -248,26 +248,26 @@ The raw HsonNode data type is also represented in JSON. Serialized keys beginnin
 
 ### `.toHson()`
 
-Selects HSON output.
+Selects Hson output.
 
-- `serialize()` returns `HsonCanonical`, a primitive HSON string.
+- `serialize()` returns `HsonCanonical`, a primitive Hson string.
 - Use the source constructor's `.toNode()` terminal for the canonical graph.
-- HSON text is produced lazily by `serialize()`, after HSON options have been   accumulated. The source graph is not cloned or mutated.
-- Every admitted HSON-serializable semantic value is emitted without literal structural   VSN names, raw metadata containers, or array-index metadata. Parsing that   output, detaching the parser root, and comparing canonically reconstructs the   original graph. Object-member metadata is outside this domain and rejects.   `noQuid()` applies the same rule after removing only eligible element QUID   metadata from the expected projection; it cannot legalize object metadata.
+- Hson text is produced lazily by `serialize()`, after Hson options have been   accumulated. The source graph is not cloned or mutated.
+- Every admitted Hson-serializable semantic value is emitted without literal structural   VSN names, raw metadata containers, or array-index metadata. Parsing that   output, detaching the parser root, and comparing canonically reconstructs the   original graph. Object-member metadata is outside this domain and rejects.   `noQuid()` applies the same rule after removing only eligible element QUID   metadata from the expected projection; it cannot legalize object metadata.
 - Direct `serialize_hson(node)` and `hson.fromNode(node).toHson().serialize()`   use the same canonical serializer. `noBreak` changes layout only.
-- Canonical names use the established preferred bare grammar where possible.   Names requiring quoting use apostrophe delimiters, escape apostrophes as   `\'`, and treat backticks as ordinary data. Canonical HSON never emits a   backtick-delimited name.
-- Direct or fluent HSON serialization of any caller-supplied `_hson_root`   rejects before layout and QUID options. Parser-owned JSON/HTML roots and the   HSON parser root are explicitly detached by their source pipeline first.
+- Canonical names use the established preferred bare grammar where possible.   Names requiring quoting use apostrophe delimiters, escape apostrophes as   `\'`, and treat backticks as ordinary data. Canonical Hson never emits a   backtick-delimited name.
+- Direct or fluent Hson serialization of any caller-supplied `_hson_root`   rejects before layout and QUID options. Parser-owned JSON/HTML roots and the   Hson parser root are explicitly detached by their source pipeline first.
 - `fromNode()` treats its input as a detached semantic value. Redundant detached   scalar `_hson_obj`/`_hson_elem` carriers normalize to their scalar before   output, while owned object-member carriers, element text clusters, and arrays   remain intact. Direct serialization rejects a detached carrier that bypassed   admission.
 
 ### `HsonCanonical`
 
-`HsonCanonical` is a TypeScript-only branded primitive string returned by official HSON serialization APIs. Import it as a type from `hson-live/hson` or `hson-live/transform`.
+`HsonCanonical` is a TypeScript-only branded primitive string returned by official Hson serialization APIs. Import it as a type from `hson-live/hson` or `hson-live/transform`.
 
 It is assignable to `string`, but an arbitrary `string` is not assignable to `HsonCanonical`. The brand records compile-time producer provenance only: it adds no runtime marker, wrapper, prefix, property, or other change to the serialized text. It is not a security, trust, validation-token, sanitization, authentication, or cryptographic guarantee.
 
-Transport and persistence boundaries such as HTTP, WebSocket, JSON, storage, environment variables, process boundaries, and third-party APIs typed as plain strings normally erase the brand. Receivers accept transported HSON text as an ordinary `string` and parse it normally. Parsing arbitrary text produces canonical `HsonNode` graph state after success; it does not brand the input text.
+Transport and persistence boundaries such as HTTP, WebSocket, JSON, storage, environment variables, process boundaries, and third-party APIs typed as plain strings normally erase the brand. Receivers accept transported Hson text as an ordinary `string` and parse it normally. Parsing arbitrary text produces canonical `HsonNode` graph state after success; it does not brand the input text.
 
-Readable, compact (`noBreak`), and `noQuid` HSON serialization all return `HsonCanonical`. The type does not imply that those options produce identical bytes, preserve source spelling, whitespace, quoting, comments, or formatting, or preserve JavaScript object identity for shared references. Graph carriers outside the serializable HSON-text domain, including every empty or populated `_hson_root`, remain rejected and therefore do not produce an `HsonCanonical`.
+Readable, compact (`noBreak`), and `noQuid` Hson serialization all return `HsonCanonical`. The type does not imply that those options produce identical bytes, preserve source spelling, whitespace, quoting, comments, or formatting, or preserve JavaScript object identity for shared references. Graph carriers outside the serializable Hson-text domain, including every empty or populated `_hson_root`, remain rejected and therefore do not produce an `HsonCanonical`.
 
 ### `.sanitizeBEWARE()`
 
@@ -283,11 +283,11 @@ const safeHtml = hson
 
 The current implementation serializes the current node graph to HTML, runs that HTML through the untrusted HTML parser/sanitizer, then continues from the sanitized node graph.
 
-This should only be used for HSON nodes that semantically encode HTML. It is lossy for generic JSON/HSON data because DOMPurify will strip markup it does not recognize.
+This should only be used for Hson nodes that semantically encode HTML. It is lossy for generic JSON/Hson data because DOMPurify will strip markup it does not recognize.
 
 ---
 
-## HSON Serialization Options
+## Hson Serialization Options
 
 After `toHson()`, the API exposes a composable option/finalizer surface:
 
@@ -298,7 +298,7 @@ After `toHson()`, the API exposes a composable option/finalizer surface:
 .serialize()
 ```
 
-The active HSON options are:
+The active Hson options are:
 
 ```ts
 type FrameOptions = {
@@ -307,19 +307,19 @@ type FrameOptions = {
 };
 ```
 
-Readable, two-space-indented HSON is the default. `noBreak` selects canonical compact HSON without cosmetic newlines or indentation while retaining conventional spaces between tag/header/content terms. `noQuid` omits only the persisted `quid` metadata key and does not alter live identity registration. `index` is the separate operational field on `_hson_ii`. Every `data-*` spelling is an ordinary application attribute.
+Readable, two-space-indented Hson is the default. `noBreak` selects canonical compact Hson without cosmetic newlines or indentation while retaining conventional spaces between tag/header/content terms. `noQuid` omits only the persisted `quid` metadata key and does not alter live identity registration. `index` is the separate operational field on `_hson_ii`. Every `data-*` spelling is an ordinary application attribute.
 
-Ordinary HSON attributes have string-valued wire semantics in either layout. The parser accepts both `count=2` and `count="2"` as `{ count: "2" }`, while canonical serialization emits `count="2"`. Programmatic number, boolean, and null values are likewise stringified and quoted without mutating the source graph. Presence flags are the distinct exact-equality form `{ disabled: "disabled" }` and serialize as bare `disabled`.
+Ordinary Hson attributes have string-valued wire semantics in either layout. The parser accepts both `count=2` and `count="2"` as `{ count: "2" }`, while canonical serialization emits `count="2"`. Programmatic number, boolean, and null values are likewise stringified and quoted without mutating the source graph. Presence flags are the distinct exact-equality form `{ disabled: "disabled" }` and serialize as bare `disabled`.
 
 ### Persisted QUID declarations
 
-HSON has one identity-specific header declaration: `@quid`. It maps only to canonical `$_meta["quid"]`; it is neither HTML `id`, a selector, nor a request to generate identity. Persisted QUIDs are random 45-bit identifiers: exactly 9 lowercase Base32 characters from `0123456789abcdefghjkmnpqrstvwxyz`. They are generated from the first 45 bits of 6 secure random bytes; there is no normalization, legacy-width admission, fallback format, quoted form, or `@@` form.
+Hson has one identity-specific header declaration: `@quid`. It maps only to canonical `$_meta["quid"]`; it is neither HTML `id`, a selector, nor a request to generate identity. Persisted QUIDs are random 45-bit identifiers: exactly 9 lowercase Base32 characters from `0123456789abcdefghjkmnpqrstvwxyz`. They are generated from the first 45 bits of 6 secure random bytes; there is no normalization, legacy-width admission, fallback format, quoted form, or `@@` form.
 
 ```hson
 <panel @d1r6x8qwc class="settings" "Content"/>
 ```
 
-Parsing accepts one declaration anywhere in an opening header before inline content; serialization is canonical and writes it immediately after the tag. `@` after content and duplicate declarations are errors. Attribute tokens, including `data-_quid`, are ordinary HSON attributes and never metadata. Only ordinary elements may carry persisted identity, and duplicate values across a document remain a LiveMap graph-invariant error. HTML and SVG use `hson:quid`.
+Parsing accepts one declaration anywhere in an opening header before inline content; serialization is canonical and writes it immediately after the tag. `@` after content and duplicate declarations are errors. Attribute tokens, including `data-_quid`, are ordinary Hson attributes and never metadata. Only ordinary elements may carry persisted identity, and duplicate values across a document remain a LiveMap graph-invariant error. HTML and SVG use `hson:quid`.
 
 Options compose and are idempotent:
 
@@ -355,7 +355,7 @@ The terminal vocabulary is deliberately explicit:
 source.toNode()                 // canonical HsonNode
 source.toJson().value()         // in-memory JsonValue
 source.toJson().serialize()     // JSON text
-source.toHson().serialize()     // HSON text
+source.toHson().serialize()     // Hson text
 source.toHtml().serialize()     // HTML text
 ```
 
@@ -393,7 +393,7 @@ The lower-level Transform `queryDOM(selector)` and `queryBody()` methods are int
 | `fromUntrustedHtml` | yes | external or user-authored HTML |
 | `fromTrustedHtml` | no | trusted developer-authored HTML |
 | `fromJson` | no | structured data |
-| `fromHson` | no | HSON text |
+| `fromHson` | no | Hson text |
 | `fromNode` | no | existing internal graph |
 | `sanitizeBEWARE` | yes, after source selection | explicit lossy HTML sanitation |
 

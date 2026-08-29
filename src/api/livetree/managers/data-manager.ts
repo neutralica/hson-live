@@ -25,7 +25,7 @@ export interface DataApi<TTree> {
 //  * This is conceptually similar to `HTMLElement.dataset`, but with two key
 //  * differences:
 //  *
-//  *   1. It operates on *HSON nodes*, not DOM elements.
+//  *   1. It operates on *Hson nodes*, not DOM elements.
 //  *      (When nodes are mounted, DOM attributes are also synced.)
 //  *
 //  *   2. Keys are provided in logical form (e.g. `"userId"`), and the manager

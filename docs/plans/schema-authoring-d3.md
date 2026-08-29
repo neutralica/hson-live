@@ -1,4 +1,4 @@
-> Updated for uppercase `HSON` authoring. Measurements and command results below
+> Updated for uppercase `Hson` authoring. Measurements and command results below
 > describe the original D3 run; current migration verification is recorded in
 > [the authoring migration report](hson-authoring-migration.md).
 
@@ -60,7 +60,7 @@ trusted diagnostic copy; their safety is never inferred from source shape.
 
 ## 3. Official facade identities
 
-Compiler import symbols recognize `HSON` from `hson-live` and `hson-live/hson`,
+Compiler import symbols recognize `Hson` from `hson-live` and `hson-live/hson`,
 aggregate `hson` from the root, and `hsonLiveMap` from the root and
 `hson-live/livemap`, including renamed imports. Constructor and tag runtime
 identities are also checked. `/hson` no longer exports aggregate/subsystem facades.
@@ -89,9 +89,9 @@ handle-name matching.
 
 ## 7. Inline disposition
 
-Supported: `const map = hsonLiveMap.fromHson(HSON\`...\`);` followed by
+Supported: `const map = hsonLiveMap.fromHson(Hson\`...\`);` followed by
 `map.schema.use(Schema)`. It uses the same tag occurrence and construction capture.
-Documentation still prefers a separate authored HSON block.
+Documentation still prefers a separate authored Hson block.
 
 ## 8. D1 lifecycle evidence reused
 
@@ -118,12 +118,12 @@ validation call.
 
 ## 10. Actual mutation suppression
 
-Executed projected `map.set` and document attribute mutations suppress source
+Executed data `map.set` and document attribute mutations suppress source
 association. No content diagnostic is emitted for that map.
 
 ## 11. Mutate-then-revert suppression
 
-Both projected and document mutations followed by restoration still lose
+Both data and document mutations followed by restoration still lose
 correspondence. Revision evidence wins over equality. A real mutation after
 association also invalidates the pending lifecycle at validation time.
 
@@ -151,7 +151,7 @@ idempotence nor replacement creates fresh authoring authority. A different
 Schema attempted after an initial failure can independently validate, because
 that map has not yet acquired governance. There is no last-Schema-wins rule.
 
-## 15. Projected diagnostics
+## 15. Data diagnostics
 
 The shared ordered graph validator remains authoritative, then C1 lowers issues
 against the current candidate's provenance. Exact type mismatch and missing-key
@@ -169,13 +169,13 @@ attribute/enforcement regressions pass. No `schema.document` surface was added.
 D3 explicitly preserves `fromHson` parsing with `allowTopLevelTextFragment: true`.
 Current parsed graph classification selects C1/C2, and shared graph validation
 decides root compatibility. A quoted text root stays a document fragment at this
-map boundary. A projected string Schema is not allowed to reinterpret it.
+map boundary. A data string Schema is not allowed to reinterpret it.
 Standalone `schema.validate` retains ordinary canonical parsing. No retries or
 Schema-driven coercions occur.
 
 ## 18. Exact/anchor/unresolved presentation
 
-D2 presentation is reused. Exact ranges and anchors map into the original HSON
+D2 presentation is reused. Exact ranges and anchors map into the original Hson
 body. Unresolved results remain explicitly template-level rather than fabricated
 member ranges. The use call is related information, not another primary error.
 Independent maps receive separate related use-site locations.
@@ -216,10 +216,10 @@ editor fixture generator finds 22 `hson.liveMap` and 17 `hsonLiveMap` occurrence
 This includes definitions/negative examples and is not a bundle-size measurement.
 The fixtures exercise umbrella construction, dedicated construction, dedicated
 inline/aliases, and a real-editor dedicated-facade flow. Documentation contains
-both styles and keeps standalone HSON authoring preferred.
+both styles and keeps standalone Hson authoring preferred.
 
 No public narrow LiveMap or editor path now imports the complete `hson` aggregate.
-The private runtime capture adapter checks the new `HSON` authoring identity;
+The private runtime capture adapter checks the new `Hson` authoring identity;
 D1 lifecycle/origin registration retains the existing aggregate identity; it is not imported by the editor client
 or the public LiveMap facade. No import architecture redesign or full bundle
 size audit was performed.
@@ -244,7 +244,7 @@ debounce. Representative measured medians after the final document mutation chec
 
 | Flow | Discovery | Lifecycle lookup | Associate/validate round trip | End to end |
 | --- | ---: | ---: | ---: | ---: |
-| Projected | 0.725 | 0.0018 | 0.218 | 1.047 |
+| Data | 0.725 | 0.0018 | 0.218 | 1.047 |
 | Document | 0.625 | 0.0015 | 0.225 | 0.909 |
 | One template / two maps / two Schemas | 0.725 | 0.0032 | 0.343 | 1.180 |
 
@@ -311,7 +311,7 @@ No unrelated hosted certification was run.
 
 ## 26. Public API confirmation
 
-No public API changes: no new map or Schema methods, HSON types, validation API,
+No public API changes: no new map or Schema methods, Hson types, validation API,
 entrypoints, tooling exports or provenance APIs. No public runtime source files
 were modified. LiveTree prototype/getter and runtime-identity contracts are
 untouched. Build, entrypoint, root and public-boundary checks pass.
@@ -331,6 +331,6 @@ interpolation and interprocedural flow remain separate work.
 
 ## 29. Commit suggestion
 
-`feat(schema): associate authored HSON with trusted LiveMap attachments`
+`feat(schema): associate authored Hson with trusted LiveMap attachments`
 
 Suggestion only. No commit was made.

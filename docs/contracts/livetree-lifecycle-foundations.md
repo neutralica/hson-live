@@ -4,7 +4,7 @@ LiveTree 3.0 Patch 1 defined the internal lifecycle primitives. Patch 2 now
 uses them for the public lifecycle contract described below.
 
 - `collect_subtree_nodes(root, order)` is the authoritative graph-derived
-  traversal. It includes structural HSON nodes and ignores primitives.
+  traversal. It includes structural Hson nodes and ignores primitives.
 - `detach_node_deep(root)` performs post-order runtime unmount: DOM, listeners,
   QUID-owned CSS/keyframes, lifecycle disposables, and node-element mappings are
   released while graph structure and QUID identity remain.
@@ -29,7 +29,7 @@ Public Patch 2 vocabulary:
 QUID identity follows those lifecycle boundaries. Valid supplied QUIDs remain
 cold during Transform parsing and are claimed only when a graph becomes
 actively owned. Detach and reattachment preserve the claim, cloning creates
-fresh identity, and terminal removal releases it. HSON `.noQuid()` is an output
+fresh identity, and terminal removal releases it. Hson `.noQuid()` is an output
 filter only; it does not mutate the graph or its active ownership.
 
 Release is active-state release, not namespace reuse. The owning runtime keeps

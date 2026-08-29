@@ -3,7 +3,7 @@ import { _throw_transform_err } from "./errors.js";
 declare const HSON_NUMBER_BRAND: unique symbol;
 
 /**
- * A primitive JavaScript number admitted to the universal HSON numeric domain.
+ * A primitive JavaScript number admitted to the universal Hson numeric domain.
  *
  * The brand exists only at compile time. Runtime values remain ordinary
  * numbers, and transport removes this proof until the decoded value is
@@ -18,7 +18,7 @@ export const HSON_NUMBER_NONFINITE = "HSON_NUMBER_NONFINITE" as const;
 function admitHsonNumber(value: unknown, operation: string): HsonNumber {
   if (typeof value !== "number") {
     _throw_transform_err(
-      `HSON numbers must be primitive JavaScript numbers; received ${typeof value}`,
+      `Hson numbers must be primitive JavaScript numbers; received ${typeof value}`,
       operation,
       undefined,
       undefined,
@@ -27,7 +27,7 @@ function admitHsonNumber(value: unknown, operation: string): HsonNumber {
   }
   if (!Number.isFinite(value)) {
     _throw_transform_err(
-      `invalid HSON number ${String(value)}; numbers must be finite`,
+      `invalid Hson number ${String(value)}; numbers must be finite`,
       operation,
       undefined,
       undefined,

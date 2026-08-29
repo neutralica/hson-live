@@ -72,7 +72,7 @@ check("auto entry retains JSON compatibility", () => {
   assert.equal(report.final?.fmt, "json");
 });
 
-check("auto entry retains HSON compatibility", () => {
+check("auto entry retains Hson compatibility", () => {
   const source = hsonTransform.fromJson(SOURCE).toHson().serialize();
   const report = with_browser_parser(() => _circuit_test(source, { entry: "auto", times: 1, dual: false }));
   assert.equal(report.ok, true);

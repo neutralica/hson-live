@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { HSON } from "../src/hson-authoring.ts";
+import { Hson } from "../src/hson-authoring.ts";
 import { discover_hson_tagged_templates } from "../src/internal/embedded-hson/discover-hson-tagged-templates.ts";
 import { interpolation_site, map_interpolation_range } from "../src/internal/trusted-schema-diagnostics/interpolation-source.ts";
 import { capture_interpolation, reset_interpolation_captures, read_interpolation_captures } from "../src/internal/trusted-schema-diagnostics/interpolation-capture.ts";
@@ -8,11 +8,11 @@ let checks=0;
 const check=(name:string,run:()=>void)=>{run();console.log(`ok ${++checks} - ${name}`);};
 function evaluate(body:string, values:unknown[] = [37]) {
   reset_interpolation_captures();
-  const text='import { HSON } from "hson-live/hson"; const result=HSON`'+body+'`;';
+  const text='import { Hson } from "hson-live/hson"; const result=Hson`'+body+'`;';
   const source=discover_hson_tagged_templates('/project/test.ts',text).interpolated[0]!;
   const site=interpolation_site(source,'file:///project/test.ts');
-  const tag=(strings:TemplateStringsArray,...values:readonly (string|number|boolean|null)[])=>capture_interpolation(site,HSON,strings,values).canonical;
-  try { Function('HSON','v', 'return HSON`'+body+'`;')(tag,values); } catch {}
+  const tag=(strings:TemplateStringsArray,...values:readonly (string|number|boolean|null)[])=>capture_interpolation(site,Hson,strings,values).canonical;
+  try { Function('Hson','v', 'return Hson`'+body+'`;')(tag,values); } catch {}
   const capture=read_interpolation_captures()[0]!;
   assert.ok(capture);
   const map=(start:number,end:number,precision:'exact'|'anchor'|'unresolved'='exact')=>map_interpolation_range(site,capture.segments,{start,end,precision});

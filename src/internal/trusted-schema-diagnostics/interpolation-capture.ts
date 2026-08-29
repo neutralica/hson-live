@@ -1,4 +1,4 @@
-import { HSON } from "../../hson-authoring.js";
+import { Hson } from "../../hson-authoring.js";
 import { encode_hson_template_substitution } from "../../api/transform/hson-admission.js";
 import { read_transform_error_details, type TransformErrorDetails } from "../../core/errors.js";
 import type { HsonCanonical } from "../../api/transform/transform.types.js";
@@ -25,10 +25,10 @@ export function read_interpolation_captures(): readonly InterpolationCapture[] {
 
 /** Calls the verified real tag once with the original arguments. Only afterwards
  * reuses its pure primitive encoder to record source; no expression, getter,
- * coercion, clone or second HSON parse is performed by capture. Unsupported
+ * coercion, clone or second Hson parse is performed by capture. Unsupported
  * values are neither retained nor inspected. The original exception is rethrown.
  */
-export function capture_interpolation(site: InterpolationSite, tag: typeof HSON,
+export function capture_interpolation(site: InterpolationSite, tag: typeof Hson,
   strings: TemplateStringsArray, values: readonly (string | number | boolean | null)[]): Readonly<{ canonical: HsonCanonical; capture?: InterpolationCapture }> {
   const evaluationId = `evaluation:${++nextEvaluation}`;
   let canonical: HsonCanonical | undefined;
@@ -62,7 +62,7 @@ export function capture_interpolation(site: InterpolationSite, tag: typeof HSON,
       if (!overflow) {
         capture = Object.freeze({ evaluationId, site, source, segments: Object.freeze(segments), canonical,
           timings: { admissionMs, traceMs: performance.now() - traceStart },
-          failure: failed ? { message: cause instanceof Error ? cause.message : "HSON admission failed.", details: read_transform_error_details(cause), substitution } : undefined });
+          failure: failed ? { message: cause instanceof Error ? cause.message : "Hson admission failed.", details: read_transform_error_details(cause), substitution } : undefined });
         captures.push(capture);
         totalSource += source.length;
       }

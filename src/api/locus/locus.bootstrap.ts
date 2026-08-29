@@ -235,7 +235,7 @@ function snapshot_from_bootstrap(bootstrap: LocusBootstrap): LocusBootstrapSnaps
  *
  * This deliberately knows nothing about selector routing or continuation
  * delivery. The recovery planner remains the sole source of canonical map
- * identity, revision, mode, and HSON state.
+ * identity, revision, mode, and Hson state.
  */
 function with_locus_bootstrap_snapshot<T>(
   authority: LocusBootstrapAuthority,
@@ -245,10 +245,10 @@ function with_locus_bootstrap_snapshot<T>(
   try {
     plan = authority.recovery.plan({ logicalMapId: authority.stream.logicalMapId });
     if (plan.outcome !== "snapshot") {
-      throw new Error("A bootstrap capture did not produce the required canonical HSON snapshot.");
+      throw new Error("A bootstrap capture did not produce the required canonical Hson snapshot.");
     }
     if (!("hson" in plan.body)) {
-      throw new Error("A bootstrap capture did not produce the required canonical HSON snapshot.");
+      throw new Error("A bootstrap capture did not produce the required canonical Hson snapshot.");
     }
     return useSnapshot(plan.body);
   } finally {
@@ -293,7 +293,7 @@ function map_from_snapshot(
   } catch (cause) {
     throw new LocusBootstrapError(
       "LOCUS_BOOTSTRAP_STATE_INVALID",
-      "Locus bootstrap state HSON is malformed.",
+      "Locus bootstrap state Hson is malformed.",
       cause,
     );
   }
@@ -425,7 +425,7 @@ function validate_package(
   return bootstrap;
 }
 
-/** Encode one fully validated current HTTP bootstrap package as canonical HSON text. */
+/** Encode one fully validated current HTTP bootstrap package as canonical Hson text. */
 export function encode_locus_bootstrap(
   bootstrap: LocusBootstrap,
   options: LocusBootstrapCodecOptions = {},
@@ -482,7 +482,7 @@ export function decode_locus_bootstrap(
   } catch (cause) {
     throw new LocusBootstrapError(
       "LOCUS_BOOTSTRAP_MALFORMED_HSON",
-      "Locus bootstrap package is malformed HSON.",
+      "Locus bootstrap package is malformed Hson.",
       cause,
     );
   }

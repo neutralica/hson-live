@@ -120,7 +120,7 @@ export type TokenClose = {
 export type TokenArrayOpen = {
   kind: typeof TOKEN_KIND.ARR_OPEN;
   symbol: ArraySymbol;          /* was: 'guillemet' | 'bracket' */
-  /** Header-only identity declaration for a semantic projected array. */
+  /** Header-only identity declaration for a semantic data array. */
   quid?: { value: string; start: Position; end: Position };
   pos: Position;
 };

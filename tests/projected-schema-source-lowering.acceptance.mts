@@ -151,7 +151,7 @@ check("root constraint failure resolves root container coverage", () => {
   assert_exact_slice(result, source, source);
 });
 
-check("an unknown projected schema path is explicitly unresolved", () => {
+check("an unknown data schema path is explicitly unresolved", () => {
   const parsed = parse_hson_with_provenance(`<present 1>`);
   const schema = hson.liveMap.schema.define((s) => s.object({ present: s.number }));
   const issue = schema.validateValue(["ghost"], undefined).issues[0];

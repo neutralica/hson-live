@@ -82,7 +82,7 @@ type Budget = {
   nodes: number;
 };
 
-/** @internal Encode one validated document capture as deterministic compact HSON data. */
+/** @internal Encode one validated document capture as deterministic compact Hson data. */
 export function encode_view_state_snapshot(
   capture: DocumentLiveMapCapture,
   options?: ViewStateSnapshotCodecOptions,
@@ -125,7 +125,7 @@ function encode_view_state_payload(
   return payload;
 }
 
-/** @internal Decode one canonical compact HSON payload into a detached document capture. */
+/** @internal Decode one canonical compact Hson payload into a detached document capture. */
 export function decode_view_state_snapshot(
   encoded: ViewStateSnapshotEncoding,
   options?: ViewStateSnapshotCodecOptions,
@@ -140,7 +140,7 @@ export function decode_view_state_snapshot(
   } catch (cause) {
     throw codec_error(
       "VIEW_STATE_SNAPSHOT_SYNTAX_INVALID",
-      "View-state snapshot payload is not valid HSON.",
+      "View-state snapshot payload is not valid Hson.",
       cause,
     );
   }
@@ -198,7 +198,7 @@ export function decode_view_state_snapshot(
 
 /**
  * Internal exact-value primitive shared with Locus's graph-content boundary.
- * The returned string is deterministic HSON data, not source-style document HSON.
+ * The returned string is deterministic Hson data, not source-style document Hson.
  */
 export function encode_exact_hson_value(
   value: HsonNode | Primitive,
@@ -218,7 +218,7 @@ export function encode_exact_hson_value(
   } catch (cause) {
     throw codec_error(
       "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",
-      "Exact HSON value representation could not be serialized.",
+      "Exact Hson value representation could not be serialized.",
       cause,
     );
   }
@@ -239,7 +239,7 @@ export function decode_exact_hson_value(
   } catch (cause) {
     throw codec_error(
       "VIEW_STATE_SNAPSHOT_SYNTAX_INVALID",
-      "Exact HSON value payload is not valid HSON.",
+      "Exact Hson value payload is not valid Hson.",
       cause,
     );
   }
@@ -254,7 +254,7 @@ export function decode_exact_hson_value(
   if (canonical !== payload) {
     throw codec_error(
       "VIEW_STATE_SNAPSHOT_ROUND_TRIP_MISMATCH",
-      "Exact HSON value payload is not deterministic.",
+      "Exact Hson value payload is not deterministic.",
     );
   }
   if (!is_Node(value)) return value;
@@ -263,7 +263,7 @@ export function decode_exact_hson_value(
   } catch (cause) {
     throw codec_error(
       "VIEW_STATE_SNAPSHOT_GRAPH_INVALID",
-      "Exact HSON graph content is invalid.",
+      "Exact Hson graph content is invalid.",
       cause,
     );
   }

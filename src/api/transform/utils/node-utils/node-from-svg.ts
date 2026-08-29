@@ -41,7 +41,7 @@ export const HTML_NS = "http://www.w3.org/1999/xhtml"; // unused
 export const is_svg_markup = (s: string) => /^<\s*svg[\s>]/i.test(s);
 
 /**
- * Convert an SVG DOM `Element` subtree into an HSON node tree.
+ * Convert an SVG DOM `Element` subtree into an Hson node tree.
  *
  * Namespace / intent:
  * - Intended for SVG elements (namespace-aware pipelines can route here when `el.namespaceURI === SVG_NS`
@@ -55,7 +55,7 @@ export const is_svg_markup = (s: string) => /^<\s*svg[\s>]/i.test(s);
  * - This preserves SVG-specific casing and names like `viewBox` and `stroke-width`.
  *
  * Child handling:
- * - Element children become nested HSON nodes via recursive conversion.
+ * - Element children become nested Hson nodes via recursive conversion.
  * - Text nodes become `_hson_str` leaves with the raw text content preserved (including whitespace).
  * - Other node types (comments, processing instructions, etc.) are ignored.
  *
@@ -84,7 +84,7 @@ function convert_svg_element(el: Element): HsonNode {
     const lowerName = name.toLowerCase();
     if (lowerName.startsWith(HSON_META_TRANSIT_PREFIX)) {
       _throw_transform_err(
-        `externally authored private HSON metadata transit name "${name}" is forbidden`,
+        `externally authored private Hson metadata transit name "${name}" is forbidden`,
         "node_from_svg",
       );
     }

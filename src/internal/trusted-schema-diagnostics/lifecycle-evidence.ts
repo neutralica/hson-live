@@ -1,5 +1,5 @@
 import { hson } from "../../hson.js";
-import { HSON } from "../../hson-authoring.js";
+import { Hson } from "../../hson-authoring.js";
 import { hsonLiveMap } from "../../api/livemap/livemap.facade.js";
 import type { HsonCanonical } from "../../api/transform/transform.types.js";
 import type { ClassifiedLiveMap } from "../../types/livemap.types.js";
@@ -45,7 +45,7 @@ export function capture_trusted_schema_template(strings: TemplateStringsArray, .
   if (existing !== undefined) return existing;
   const template = Object.freeze({
     kind: "tagged", templateId: `template:${++nextTemplate}`, templateRevision: 1,
-    source: strings.raw[0], canonical: HSON(strings),
+    source: strings.raw[0], canonical: Hson(strings),
   });
   TEMPLATES.set(strings, template);
   CAPTURED_TEMPLATES.add(template);

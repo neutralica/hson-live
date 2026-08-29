@@ -34,7 +34,7 @@ type ProjectionIdentityAuthority = "standalone" | "linked";
 
 
 /**
- * Materialize a new DOM subtree from a given HSON node or primitive.
+ * Materialize a new DOM subtree from a given Hson node or primitive.
  *
  * Behavior:
  * - When `node` is a primitive (not an `HsonNode`), returns a
@@ -44,8 +44,8 @@ type ProjectionIdentityAuthority = "standalone" | "linked";
  *     `_hson_obj`, `_hson_arr`, `_hson_elem` as *non-rendered* containers:
  *     they never become real DOM elements, but their children are
  *     recursively rendered.
- *   - Creates real DOM `Element` nodes for concrete HSON element tags,
- *     wiring attributes and content according to the HSON structure.
+ *   - Creates real DOM `Element` nodes for concrete Hson element tags,
+ *     wiring attributes and content according to the Hson structure.
  *   - Recursively renders children, attaching them under the newly
  *     created element or, for VSNs, under the nearest real ancestor.
  *
@@ -62,7 +62,7 @@ type ProjectionIdentityAuthority = "standalone" | "linked";
  * mint, while LiveMap-linked projection admits only canonical supplied claims.
  * Both modes establish exact node/element correspondence.
  *
- * @param node - The HSON node or primitive value to project.
+ * @param node - The Hson node or primitive value to project.
  * @param parentNs - The current namespace context (`"html"` or `"svg"`),
  *                   used to choose the appropriate element factory.
  * @returns The root DOM `Node` of the newly created subtree.
@@ -181,7 +181,7 @@ function project_livetree_with_authority(
       `[create_live_tree2] illegal DOM tag "${badTag}" (node.$_tag=${n.$_tag})`
     );
 
-  // "_hson_" prefixes are reserved for HSON virtual/internal nodes.
+  // "_hson_" prefixes are reserved for Hson virtual/internal nodes.
   // They must never be materialized as real DOM elements.
   if (tag.startsWith(HSON_SYS_PREFIX)) {
     throw illegalDomTag(tag);
@@ -197,7 +197,7 @@ function project_livetree_with_authority(
       : ownerDocument.createElement(tag);
   record_livetree_materialization("domElementsCreated");
 
-  // Belt-and-suspenders: guard against any factory emitting HSON DOM tags.
+  // Belt-and-suspenders: guard against any factory emitting Hson DOM tags.
   if (el.tagName.toLowerCase().startsWith(HSON_SYS_PREFIX)) {
     throw illegalDomTag(el.tagName);
   }

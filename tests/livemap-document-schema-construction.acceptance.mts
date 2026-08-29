@@ -247,7 +247,7 @@ check("shared tuple retains projected and document layout capabilities", () => {
 });
 
 check("cross-domain element-in-object composition rejects at runtime", () => {
-  assert.throws(() => hson.liveMap.schema.define((s) => Reflect.apply(s.object.exact, s.object, [{ child: s.div() }])), /Projected schema composition/);
+  assert.throws(() => hson.liveMap.schema.define((s) => Reflect.apply(s.object.exact, s.object, [{ child: s.div() }])), /Data schema composition/);
 });
 
 check("cross-domain number-in-element composition rejects at runtime", () => {

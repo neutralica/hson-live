@@ -1,6 +1,6 @@
 # LiveMap API reference
 
-LiveMap owns a canonical HSON graph and exposes either projected JSON-path state (`data-object`, `data-array`) or canonical document operations (`element`, `fragment`). LiveMap owns canonical state; public observations are detached or mediated and public mutation passes through LiveMap admission.
+LiveMap owns a canonical Hson graph and exposes either data JSON-path state (`data-object`, `data-array`) or canonical document operations (`element`, `fragment`). LiveMap owns canonical state; public observations are detached or mediated and public mutation passes through LiveMap admission.
 
 ```ts
 import { hson } from "hson-live";
@@ -15,11 +15,11 @@ import type { LiveMap, LiveMapCommit, LivePath } from "hson-live/livemap";
 - **Public:** `hson.liveMap.*`, `make_livemap_core`, `link_livemap`, path/feed/   proxy helpers exported by the package root, and exported LiveMap types.
 - **Experimental:** document-mode LiveMaps, capture/install/replay, graph commit   observation, links, and schema-derived typing.
 - **Internal:** editor functions, path guards, transition controllers, identity   indexes, canonical inspection, and direct graph preparation functions not   package-exported.
-- **Deferred:** primitive projected roots and transparent parity between proxy,   projected paths, document paths, and physical HSON paths.
+- **Deferred:** primitive data roots and transparent parity between proxy,   data paths, document paths, and physical Hson paths.
 
 ## Construction
 
-### Projected data
+### data
 
 ```ts
 const map = hson.liveMap.fromJson({
@@ -41,11 +41,11 @@ const authored = `<'display name' "Ada" 'preferred pronoun' "she">`;
 const classified = hson.liveMap.fromHson(authored);
 ```
 
-Quoted property names use apostrophe delimiters in authored HSON. JavaScript template-literal backticks belong to JavaScript and do not need per-name escaping.
+Quoted property names use apostrophe delimiters in authored Hson. JavaScript template-literal backticks belong to JavaScript and do not need per-name escaping.
 
-### Projected-value boundary
+### data value boundary
 
-The canonical HSON graph is the authority for a data LiveMap. Internally, LiveMap admits projected values into a private immutable ordered carrier while it plans mutations, validates schemas, compares candidates, and prepares exact transport. That carrier is transient machinery, not a second synchronized state model or a public type.
+The canonical Hson graph is the authority for a data LiveMap. Internally, LiveMap admits data values into a private immutable ordered carrier while it plans mutations, validates schemas, compares candidates, and prepares exact transport. That carrier is transient machinery, not a second synchronized state model or a public type.
 
 JavaScript-value ingress accepts only:
 
@@ -53,7 +53,7 @@ JavaScript-value ingress accepts only:
 - ordinary objects whose prototype is exactly `Object.prototype` or `null`;
 - dense ordinary arrays whose prototype is exactly `Array.prototype`.
 
-Objects must contain only enumerable own string-keyed data properties. Accessors, nonenumerable properties, symbol keys, custom prototypes, class instances, boxed primitives, and exotic built-ins are rejected. Arrays may contain only a data property for every index plus their built-in `length`; holes, explicit `undefined`, accessor indexes, symbol keys, and extra named properties are rejected. Cycles reject. Repeated acyclic references are copied structurally, so reference identity is not part of projected-value semantics. Caller mutation after admission cannot affect the candidate or committed state.
+Objects must contain only enumerable own string-keyed data properties. Accessors, nonenumerable properties, symbol keys, custom prototypes, class instances, boxed primitives, and exotic built-ins are rejected. Arrays may contain only a data property for every index plus their built-in `length`; holes, explicit `undefined`, accessor indexes, symbol keys, and extra named properties are rejected. Cycles reject. Repeated acyclic references are copied structurally, so reference identity is not part of data value semantics. Caller mutation after admission cannot affect the candidate or committed state.
 
 Ordinary accessors are rejected from their descriptors without calling their getter or setter. Arbitrary proxies are unsupported: JavaScript has no reliable general proxy detector, and reflective admission may execute proxy traps. Callers must not rely on acceptance, rejection, trap count, or side-effect-free inspection of a proxy.
 
@@ -67,23 +67,23 @@ Canonical object-property order is explicit in the graph and private carrier. Ob
 
 ### Schema and proxy
 
-Attach a defined schema with `map.schema.use(schema)`. It returns the same runtime map with a schema-derived TypeScript view. Create a proxy at any projected path with `map.proxy(path?)`.
+Attach a defined schema with `map.schema.use(schema)`. It returns the same runtime map with a schema-derived TypeScript view. Create a proxy at any data path with `map.proxy(path?)`.
 
-## Projected paths
+## data paths
 
 ```ts
 type LivePath = readonly (string | number)[];
 ```
 
-Strings address object keys and numbers address array indexes. Paths address the JSON projection, not wrapper/content locations in physical HSON. `[]` is the projected root. Inputs are validated and copied; handles return defensive path copies.
+Strings address object keys and numbers address array indexes. Paths address the JSON projection, not wrapper/content locations in physical Hson. `[]` is the data root. Inputs are validated and copied; handles return defensive path copies.
 
 Object keys are exact strings. Array path segments must be valid existing indexes for strict writes. Invalid segment types, unresolved paths, wrong container kinds, and out-of-range indexes produce path-aware errors. Paths are not auto-normalized from dotted strings or numeric strings.
 
-There is no public raw-node or graph-owner getter. Use `snap(path)` for detached projected values, `root()` for a detached canonical graph, and document APIs for document attributes/content. The former `map.debug.node(...)` escape hatch has been removed and has no public raw-node replacement.
+There is no public raw-node or graph-owner getter. Use `snap(path)` for detached data values, `root()` for a detached canonical graph, and document APIs for document attributes/content. The former `map.debug.node(...)` escape hatch has been removed and has no public raw-node replacement.
 
 Document structural targets use a separate type:
-`{ kind: "path"; path: readonly number[] } | { kind: "quid"; quid: string }`. 
-Those numbers traverse canonical `$_content`, not projected arrays.
+`{ kind: "path"; path: readonly number[] } | { kind: "quid"; quid: string }`.
+Those numbers traverse canonical `$_content`, not data arrays.
 
 ## Reads and revision
 
@@ -96,7 +96,7 @@ map.root();                   // detached HsonNode clone
 map.capture();                // { rev, value }
 ```
 
-`snap(path?)` never returns a live object/array reference. A missing projected path returns `undefined`; wrong path syntax throws. `at(path)` always creates a stable path handle, even if the path is currently missing; `handle.snap()` then returns `undefined`. There is no map-level `get`/`has` method. Use `snap`, object handle `hasKey`, schema `has`, or a proxy handle as appropriate.
+`snap(path?)` never returns a live object/array reference. A missing data path returns `undefined`; wrong path syntax throws. `at(path)` always creates a stable path handle, even if the path is currently missing; `handle.snap()` then returns `undefined`. There is no map-level `get`/`has` method. Use `snap`, object handle `hasKey`, schema `has`, or a proxy handle as appropriate.
 
 `capture()` returns the exact revision, a detached canonical `root`, and the
 current structural-JSON envelope (`format`, `payload`). The payload preserves
@@ -105,7 +105,7 @@ current structural representation. A `value` field, `formatVersion`, malformed
 transport, or an old value/op-only form rejects; there is no compatibility
 fallback.
 
-## Core projected writes
+## Core data writes
 
 Every write returns:
 
@@ -201,7 +201,7 @@ Helpers require an existing array endpoint and write through the normal pipeline
 ## Commit pipeline and observation
 
 Data ops are normalized semantic operations:
-`set`, `delete`, `replace`, `splice`, `rename`, and `move`. 
+`set`, `delete`, `replace`, `splice`, `rename`, and `move`.
 Rename and move retain movement intent plus exact before/after witnesses for deterministic replay. Multi-key and batch writes may produce many ops in one envelope. The pipeline is:
 
 1. validate and normalize intent;
@@ -252,7 +252,7 @@ The direct `s` toolkit includes:
 
 - primitives: `unknown`, `string`, `number`, `boolean`, `null`;
 - modifiers: `.optional`, `.nullable`, and
-  `.constrain(predicate)` / `.constrain(label, predicate)` on compatible   projected schema values;
+  `.constrain(predicate)` / `.constrain(label, predicate)` on compatible   data schema values;
 - choices: `literal(...values)`, `pick(...choices)`, and tagged variants;
 - structure: `array()`, `array(item)`, `tuple(...items)`, `object(shape)`,   `object.exact(shape)`, `partial(objectSchema)`, `deepPartial(objectSchema)`, and   `record(value)`;
 - recursion: `recurse(factory)`.
@@ -264,11 +264,11 @@ const Seat = hson.liveMap.schema.define((s) => s.object.exact({ connected: s.boo
 const State = hson.liveMap.schema.define((s) => s.object.exact({ left: Seat, right: Seat }));
 ```
 
-`define` callbacks return one explicit schema expression; a raw callback object is not an implicit object schema. `object` validates declared properties but allows extra string keys. Declared properties retain their precise types, while undeclared keys are typed as recursively projected primitive/readonly array/readonly object values plus `undefined` for absence. `object.exact` rejects extra keys and has no open index signature. `.exact` is family-local to the open named-keyspace families `object` and `attrs`; it is not a universal modifier. `array()` admits zero or more legal projected values of any projected type, while `array(item)` remains homogeneous. Broad arrays still reject projected-invalid values such as `undefined`, sparse holes, non-finite numbers, bigint, executable/symbol values, exotic or cyclic objects, and document-only values. `tuple()` is the exact zero-position tuple, and other tuple indexes are bounded. `Schema.constrain(...)` runs custom validation after its base succeeds and only narrows validity; it does not transform or coerce values.
+`define` callbacks return one explicit schema expression; a raw callback object is not an implicit object schema. `object` validates declared properties but allows extra string keys. Declared properties retain their precise types, while undeclared keys are typed as recursively data primitive/readonly array/readonly object values plus `undefined` for absence. `object.exact` rejects extra keys and has no open index signature. `.exact` is family-local to the open named-keyspace families `object` and `attrs`; it is not a universal modifier. `array()` admits zero or more legal data values of any data type, while `array(item)` remains homogeneous. Broad arrays still reject invalid data values such as `undefined`, sparse holes, non-finite numbers, bigint, executable/symbol values, exotic or cyclic objects, and document-only values. `tuple()` is the exact zero-position tuple, and other tuple indexes are bounded. `Schema.constrain(...)` runs custom validation after its base succeeds and only narrows validity; it does not transform or coerce values.
 
-The diagnostic label is optional. Defined projected schemas retain this modifier, so a durable `Range` may be narrowed with `Range.constrain(...)` without mutating `Range`. Document-only elements/layouts, attrs-schema values, and contextual `s.flag` do not expose it. `recurse` exists for self-recursion, mutual recursion, and forward schema references.
+The diagnostic label is optional. Defined data schemas retain this modifier, so a durable `Range` may be narrowed with `Range.constrain(...)` without mutating `Range`. Document-only elements/layouts, attrs-schema values, and contextual `s.flag` do not expose it. `recurse` exists for self-recursion, mutual recursion, and forward schema references.
 
-Constraints are admission predicates for strings, numbers, structured projected  chemas, and legal attr-value schemas:
+Constraints are admission predicates for strings, numbers, structured data  chemas, and legal attr-value schemas:
 
 ```ts
 const RoomName = hson.liveMap.schema.define((s) =>
@@ -308,11 +308,11 @@ Schema objects expose `validateRoot(value)`, `validateValue(path, value)`, `rule
 
 The first successful `map.schema.use(A)` validates current canonical state and permanently records exact schema object `A` as that owner's contract. Calling `use(A)` again, including through an ordinary alias to the same object, is an idempotent no-op. Calling `use(B)` with `B !== A` rejects even when B is structurally equivalent or accepts the current state. There is no detach, reset, or replacement operation. Attachment changes no value or revision and emits no commit, feed, or watch notification. One immutable schema object may govern any number of independent map owners.
 
-Validation returns structured issues with codes including `TYPE_MISMATCH`, `MISSING_REQUIRED`, `UNKNOWN_PATH`, `UNKNOWN_KEY`, `INVALID_LITERAL`, `INVALID_CONSTRAINT`, `INVALID_SCHEMA`, and `TUPLE_INDEX_OUT_OF_RANGE`. Issue paths are projected paths. Multi-operation validation reports the relevant operation/headline path while retaining detailed issue paths.
+Validation returns structured issues with codes including `TYPE_MISMATCH`, `MISSING_REQUIRED`, `UNKNOWN_PATH`, `UNKNOWN_KEY`, `INVALID_LITERAL`, `INVALID_CONSTRAINT`, `INVALID_SCHEMA`, and `TUPLE_INDEX_OUT_OF_RANGE`. Issue paths are data paths. Multi-operation validation reports the relevant operation/headline path while retaining detailed issue paths.
 
 ### Document schemas in the unified toolkit
 
-Mutable element and fragment maps can install a document-specific legal-state contract. Authored HSON still describes only initial state; it never becomes a schema implicitly.
+Mutable element and fragment maps can install a document-specific legal-state contract. Authored Hson still describes only initial state; it never becomes a schema implicitly.
 
 ```ts
 const Label = hson.liveMap.schema.define((s) => s.span(s.string));
@@ -330,11 +330,11 @@ const map = hson.liveMap.fromHson(`<button "Save"/>`);
 if (map.mode === "element") map.schema.use(ButtonDocument);
 ```
 
-Known HTML and SVG tags are direct builders on the same `s` toolkit and derive from the canonical `LiveTree.create` tag catalog. `s.string` is logical text; `s.unknown` is one arbitrary legal document item; `s.empty` is exactly zero document items; `s.tuple(...)` is a closed ordered layout; `s.repeat(item)` is a whole zero-or-more sibling layout; `s.repeat(count, item)` is a homogeneous exact-count layout; and `s.pick(...)` combines compatible items or compatible layouts. Shared `string`, `unknown`, `tuple`, and `pick` expressions retain projected and document capabilities until their enclosing expression selects one.
+Known HTML and SVG tags are direct builders on the same `s` toolkit and derive from the canonical `LiveTree.create` tag catalog. `s.string` is logical text; `s.unknown` is one arbitrary legal document item; `s.empty` is exactly zero document items; `s.tuple(...)` is a closed ordered layout; `s.repeat(item)` is a whole zero-or-more sibling layout; `s.repeat(count, item)` is a homogeneous exact-count layout; and `s.pick(...)` combines compatible items or compatible layouts. Shared `string`, `unknown`, `tuple`, and `pick` expressions retain data and document capabilities until their enclosing expression selects one.
 
 A first `s.attrs({...})` operand declares required and optional attrs while leaving undeclared canonical attrs open; `s.attrs.exact({...})` rejects undeclared attrs, `s.attrs({})` permits arbitrary canonical attrs, and `s.attrs.exact({})` permits no attrs. Attr schemas are immutable reusable values, valid only as the first tag operand. `s.flag` is contextual: the containing attr must equal its canonical name, while `s.flag.optional` permits absence. `s.unknown` in attr context admits any canonical value legal for that particular name, including structured canonical style for the exact `style` key.
 
-A known-tag call with no children, such as `s.div()`, leaves descendants broad. Explicit child items close the complete direct content. One layout argument supplies the complete layout. Prefer `s.div(s.empty)` for an exact-empty element and return `s.empty` for an exact-empty fragment. `s.tuple()` remains the valid zero-position document layout and, in projected composition, the exact empty tuple `[]`. `s.repeat(0, item)` is document-semantically equivalent to `s.empty`. A top-level nonempty `s.tuple(...)` is a fragment/multi-root contract. Omitting an attrs operand leaves attributes broad.
+A known-tag call with no children, such as `s.div()`, leaves descendants broad. Explicit child items close the complete direct content. One layout argument supplies the complete layout. Prefer `s.div(s.empty)` for an exact-empty element and return `s.empty` for an exact-empty fragment. `s.tuple()` remains the valid zero-position document layout and, in data composition, the exact empty tuple `[]`. `s.repeat(0, item)` is document-semantically equivalent to `s.empty`. A top-level nonempty `s.tuple(...)` is a fragment/multi-root contract. Omitting an attrs operand leaves attributes broad.
 
 Counted repeat accepts primitive finite nonnegative safe integers only. Negative, fractional, nonfinite, unsafe, boxed, bigint, boolean, and string counts reject. A dynamic `number` is supported: its exact value is captured when `define` evaluates, while TypeScript conservatively treats its coordinates as possibly absent and preserves the item evidence. Literal counts expose exact positions, so `repeat(3, Item)` has positions 0–2 and statically rejects direct path 3.
 
@@ -391,7 +391,7 @@ root.at([0, 0]).snap();    // also string
 // container.at([1]);      // compile-time error when locally impossible
 ```
 
-An absent repeated or union ancestor propagates `undefined` to its relative descendants. A dynamic relative index resolves against the local sequence or repeat evidence; a fully broad relative path stops at the same `string | HsonNode | undefined` performance boundary. Entering a deliberately broad element subtree widens locally and cannot recover precision later. 
+An absent repeated or union ancestor propagates `undefined` to its relative descendants. A dynamic relative index resolves against the local sequence or repeat evidence; a fully broad relative path stops at the same `string | HsonNode | undefined` performance boundary. Entering a deliberately broad element subtree widens locally and cannot recover precision later.
 The same retained descriptor rejects obviously incompatible authoring values:
 
 ```ts
@@ -439,12 +439,12 @@ stop();
 
 - `map.sub(listener)`: root snapshot after each changed publication.
 - `map.sub.diff(listener)`: `(next, prev)` root snapshots.
-- `map.sub.sel(selector, listener, { equal? })`: selected next/previous values   plus current root; selector results use their separate `Object.is` default or   the supplied comparator, not projected-value equality.
+- `map.sub.sel(selector, listener, { equal? })`: selected next/previous values   plus current root; selector results use their separate `Object.is` default or   the supplied comparator, not data value equality.
 - `map.sub.path(path, listener, { equal? })`: path next/previous plus feed event.
 
-Registration does **not** call listeners immediately; obtain initial state with `snap()`/`sub.snapshot` semantics (the public shorthand exposes subscriptions, while `make_livemap_store_api` exposes `snapshot`). Values are detached clones. Disposers are idempotent. One batch produces at most one subscriber publication. 
+Registration does **not** call listeners immediately; obtain initial state with `snap()`/`sub.snapshot` semantics (the public shorthand exposes subscriptions, while `make_livemap_store_api` exposes `snapshot`). Values are detached clones. Disposers are idempotent. One batch produces at most one subscriber publication.
 
-Link-applied writes use normal commits and therefore notify target subscribers. Feeds, path subscriptions, links, stores, and applicable Locus routes carry current exact projected carriers; callbacks receive detached JavaScript materializations. A rejected link write is atomic for the target, but source and target are not one distributed transaction.
+Link-applied writes use normal commits and therefore notify target subscribers. Feeds, path subscriptions, links, stores, and applicable Locus routes carry current exact data carriers; callbacks receive detached JavaScript materializations. A rejected link write is atomic for the target, but source and target are not one distributed transaction.
 
 ## Proxy API
 
@@ -456,7 +456,7 @@ proxy.user.name.$_.set("Evelyn");
 proxy.tags[0].$_.replace("systems");
 ```
 
-Ordinary property/index access extends the projected path. `$_` exits proxy traversal and returns the real path handle, whose methods perform reads/writes. There are no direct value-coercion or assignment traps: `proxy.user.name` is another proxy, and `proxy.user.name = "x"` is not a supported write.
+Ordinary property/index access extends the data path. `$_` exits proxy traversal and returns the real path handle, whose methods perform reads/writes. There are no direct value-coercion or assignment traps: `proxy.user.name` is another proxy, and `proxy.user.name = "x"` is not a supported write.
 
 Missing traversal is allowed until `$_`; reads return `undefined`, while strict writes still enforce endpoint rules. Array numeric property names become numeric path segments. Schema-bound proxies type known properties and array indexes, but runtime dynamic properties remain possible. Repeated access to the same child from one proxy is identity-stable because child proxies are cached; independently created root proxies are distinct. Symbols and reserved `$_` are special and should not be used as data traversal.
 
@@ -483,21 +483,21 @@ Link creation does **not** perform initial mirroring; initialize the target expl
 
 Links are one-way and the disposer stops propagation. There is no general bidirectional loop-prevention contract, so do not connect contradictory links in both directions. Target schema validation can reject propagation atomically.
 
-## Projected container identity
+## Data container identity
 
-Projected object and array containers can carry sparse canonical QUID metadata, but projected maps expose no public identity-acquisition method. Internal owner-authorized continuity facilities may ensure one path-authoritative claim, producing the ordinary `ensure-quid` commit and revision behavior. Application code cannot request a claim or provide its QUID.
+Data object and array containers can carry sparse canonical QUID metadata, but data maps expose no public identity-acquisition method. Internal owner-authorized continuity facilities may ensure one path-authoritative claim, producing the ordinary `ensure-quid` commit and revision behavior. Application code cannot request a claim or provide its QUID.
 
 Internally retained identity follows object-key rename, array move, ancestor movement, and insertion/removal shifts. Nested leaf mutation preserves it; deletion, replacement, or owner-epoch replacement retires it. Root objects and arrays are eligible canonical values, while primitives, property wrappers, and array-item wrappers remain ineligible.
 
 Within the current owner epoch, retired QUID bytes remain reserved in an internal issued ledger. Allocation retries those bytes, so an unrelated container cannot reactivate a stale handle. A new owner epoch starts a fresh ledger seeded from admitted active metadata; old handles remain fenced even if that epoch later uses equal bytes. Exact same-epoch restoration preserves the living ledger rather than rolling it back to capture time.
 
-The QUID is canonical HSON metadata but is not a projected property, array item, enumerable key, or schema field. `snap()`, feeds, links, selectors, and stores see the same projected value before and after acquisition. Commit observers see the identity registration. HSON snapshots preserve object/array identity in anonymous container headers, while identity-stripped capture and `noQuid` intentionally omit it.
+The QUID is canonical Hson metadata but is not a data property, array item, enumerable key, or schema field. `snap()`, feeds, links, selectors, and stores see the same data value before and after acquisition. Commit observers see the identity registration. Hson snapshots preserve object/array identity in anonymous container headers, while identity-stripped capture and `noQuid` intentionally omit it.
 
-`map.at(path)` remains a passive location: it follows whatever currently occupies that path and never mints merely because it is created, read, bound, or subscribed. Projected mode adds no `byQuid` or `fromQuid` constructor. Raw QUID bytes cannot recreate a handle or cross an owner/epoch boundary.
+`map.at(path)` remains a passive location: it follows whatever currently occupies that path and never mints merely because it is created, read, bound, or subscribed. Data mode adds no `byQuid` or `fromQuid` constructor. Raw QUID bytes cannot recreate a handle or cross an owner/epoch boundary.
 
 ## Document LiveMaps
 
-Document modes deliberately do not expose projected `snap`/`set` APIs. Common reads are `root()`, `capture()`, `document.content()`, `document.byQuid(quid)`, and document attribute reads.
+Document modes deliberately do not expose data `snap`/`set` APIs. Common reads are `root()`, `capture()`, `document.content()`, `document.byQuid(quid)`, and document attribute reads.
 
 Mutable logical document locations converge on the existing canonical document operations. An element location or the fragment root owns ordered content, so `location.insert(index, value)` and `location.move(from, to)` lower to the same content planners and final-index semantics as `document.content.insert` and `document.content.move`. Existing items remain `location.at([index]).replace(value)` / `.delete()`; there is no duplicate container `replace(index, value)` or `remove(index)`.
 
@@ -535,7 +535,7 @@ LiveMap never exposes a live mutable canonical node or graph through supported e
 
 ## LiveMap and SSR
 
-Projected and document LiveMaps are DOM-free for JSON, HSON-node, HSON-string, and HTML-string construction. Reads and writes are synchronous and deterministic given the same canonical input.
+Data and document LiveMaps are DOM-free for JSON, Hson-node, Hson-string, and HTML-string construction. Reads and writes are synchronous and deterministic given the same canonical input.
 
 ```ts
 const requestMap = hson.liveMap.fromJson({
@@ -549,13 +549,13 @@ const serialized = JSON.stringify(transfer);
 
 Use `snap()` for a detached rendering value and `capture()` when the revision must travel with it. Clone/isolate per-request state unless intentional shared mutation is required. A batch can prepare one deterministic request-scoped transition and one commit.
 
-LiveMap supplies state to a renderer; it does not render HTML. LiveTree is the DOM projection API and has different runtime constraints. A server-created data capture includes exact structural transport and a detached canonical root so hidden identity metadata can be durably restored. Document captures likewise contain HSON nodes; Locus recovery serializes durable structural form as the selected current HSON or view-state representation. Neither wire format carries the local same-epoch capability.
+LiveMap supplies state to a renderer; it does not render HTML. LiveTree is the DOM projection API and has different runtime constraints. A server-created data capture includes exact structural transport and a detached canonical root so hidden identity metadata can be durably restored. Document captures likewise contain Hson nodes; Locus recovery serializes durable structural form as the selected current Hson or view-state representation. Neither wire format carries the local same-epoch capability.
 
 Passing browser `Element` objects belongs to other hson/LiveTree construction paths and is unavailable in Node/Worker execution. Synchronization coordination between an authoritative LiveMap/Locus revision and LiveTree remains an explicit application composition.
 
 ## Errors
 
-Most invalid projected operations throw before mutation. Schema failures use the internal `LiveMapSchemaError` class (not package-root exported) but expose structured validation information through schema validation APIs. Revision conflicts throw a revision error internally. Projected identity acquisition reports `LiveMapProjectedIdentityError` with a stable reason code and path. 
+Most invalid data operations throw before mutation. Schema failures use the internal `LiveMapSchemaError` class (not package-root exported) but expose structured validation information through schema validation APIs. Revision conflicts throw a revision error internally. Data identity acquisition reports `LiveMapProjectedIdentityError` with a stable reason code and path.
 
 Public document errors include `LiveMapDocumentInstallError`, `LiveMapDocumentIdentityProvenanceError`, `LiveMapDocumentMutationError`, and `LiveMapDocumentAttributeNotFoundError`, with exported provenance, install, and mutation reason codes.
 
@@ -564,7 +564,7 @@ Normal missing reads return `undefined`; missing deletes are no-ops. Normal writ
 ## Known limitations and deferred surfaces
 
 - Data LiveMaps support object/array roots, not primitive root modes.
-- Document and projected APIs are intentionally distinct.
+- Document and data APIs are intentionally distinct.
 - Proxy assignment/value coercion is unsupported; use `$_`.
 - Unsafe node handles bypass every normal state guarantee.
 - Links are one-way and have no distributed/cross-process transport.

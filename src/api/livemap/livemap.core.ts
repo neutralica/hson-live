@@ -181,11 +181,11 @@ type BuiltLiveMapCore = Readonly<{
 /**
  * Create the first Core facade for a LiveMap graph.
  *
- * Core owns the root HSON node and exposes graph-level operations in projected
+ * Core owns the root Hson node and exposes graph-level operations in projected
  * JSON path terms. It is the layer that coordinates editor mutations, commit
  * generation, feeds, links, batching, and later transport-compatible behavior.
  *
- * `at(path)` is the projected data handle. `root()` returns a detached canonical
+ * `at(path)` is the data data handle. `root()` returns a detached canonical
  * clone. The owned canonical graph is never exposed through the public facade.
  *
  * Mutation contract:
@@ -247,7 +247,7 @@ function make_livemap_core_from_owned_root(
     ? undefined
     : must_projected_root_value(owned.root);
   const getProjectedValue = (): OrderedProjectedValue => {
-    if (currentProjectedValue === undefined) throw new Error("Projected value is unavailable in document mode.");
+    if (currentProjectedValue === undefined) throw new Error("Data value is unavailable in document mode.");
     return currentProjectedValue;
   };
   const setProjectedValue = (value: OrderedProjectedValue): void => { currentProjectedValue = value; };
@@ -268,7 +268,7 @@ function make_livemap_core_from_owned_root(
     clonePath: (path: readonly number[]): readonly number[] => Object.freeze([...path]),
     read: (path: readonly number[]) => {
       if (initialMode !== "element" && initialMode !== "fragment") {
-        throw new Error("Document location watch is unavailable in projected mode.");
+        throw new Error("Document location watch is unavailable in data mode.");
       }
       return read_livemap_document_logical_location(owned.root, initialMode, path);
     },
@@ -490,7 +490,7 @@ function make_livemap_core_from_owned_root(
     }
     transitionController.assertPublicMutationAllowed();
     if (initialMode !== "element" && initialMode !== "fragment") {
-      throw new TypeError("Document schema attachment is unavailable in projected mode.");
+      throw new TypeError("Document schema attachment is unavailable in data mode.");
     }
     const recognized = require_document_root_schema(schema);
     must_schema_validation(
@@ -584,7 +584,7 @@ function make_livemap_core_from_owned_root(
       const attached = currentSchema;
       if (attached === schema) return core as unknown as LiveMap<LiveMapSchemaValue<TSchema>>;
       if (attached !== undefined) {
-        throw new Error("LiveMap projected schema contract is already attached and cannot be replaced.");
+        throw new Error("LiveMap data schema contract is already attached and cannot be replaced.");
       }
       transitionController.assertPublicMutationAllowed();
       must_core_schema_root(schema, owned.root, initialMode);
@@ -629,7 +629,7 @@ function make_livemap_core_from_owned_root(
   ): LiveMapGraphCommit<LiveMapProjectedGraphEnsureQuidOp> => {
     transitionController.assertPublicMutationAllowed();
     if (initialMode === "element" || initialMode === "fragment") {
-      throw new Error("Projected identity acquisition is unavailable in document mode.");
+      throw new Error("Data identity acquisition is unavailable in document mode.");
     }
     const prevRev = owned.revision;
     const commit: LiveMapGraphCommit<LiveMapProjectedGraphEnsureQuidOp> = Object.freeze({
@@ -688,7 +688,7 @@ function make_livemap_core_from_owned_root(
         throw new LiveMapProjectedIdentityError(
           "PROJECTED_IDENTITY_INVARIANT",
           [],
-          "projected identity registration is malformed",
+          "data identity registration is malformed",
         );
       }
       const path = clone_live_path(operation.target.path);
@@ -750,17 +750,17 @@ function make_livemap_core_from_owned_root(
     /** Read and manage the schema currently attached to this Core, if present. */
     schema: schemaApi,
 
-    /** Create an ergonomic handle scoped to one projected path. */
+    /** Create an ergonomic handle scoped to one data path. */
     at: ((path: LivePath) => get_path_handle(path)) as unknown as LiveMapCore<JsonValue | undefined>["at"],
 
-    /** Create an ergonomic Proxy path-builder scoped to one projected path. */
+    /** Create an ergonomic Proxy path-builder scoped to one data path. */
     proxy: <const TPath extends LivePath = []>(path?: TPath) =>
       make_livemap_proxy<JsonValue | undefined, TPath>(
         core,
         path ?? ([] as unknown as TPath),
       ),
 
-    /** Set a resolved projected path; plain objects expand into shallow child sets. */
+    /** Set a resolved data path; plain objects expand into shallow child sets. */
     set: (path, value) => {
       const livePath = must_live_path(path);
       return commitOps(
@@ -806,7 +806,7 @@ function make_livemap_core_from_owned_root(
       return commitOps([op]);
     },
 
-    /** Delete a projected object-property path, emit the resulting commit, and return it. */
+    /** Delete a data object-property path, emit the resulting commit, and return it. */
     delete: (path) => {
       const livePath = must_live_path(path);
       must_resolved_path("delete", livePath, project_live_path(owned.root, livePath));
@@ -835,13 +835,13 @@ function make_livemap_core_from_owned_root(
 
     commits: Object.freeze({ observe: commitObserverHub.observe }),
 
-    /** Subscribe to projected value changes. */
+    /** Subscribe to data value changes. */
     sub: subApi,
 
     get rev() {
       return owned.revision;
     },
-    /** Capture the current projected root together with its committed revision. */
+    /** Capture the current data root together with its committed revision. */
     capture: (options?: LiveMapCaptureOptions) => {
       const projected = must_projected_root_value(owned.root);
       return capture_livemap_projected(
@@ -852,7 +852,7 @@ function make_livemap_core_from_owned_root(
         options,
       );
     },
-    /** Restore projected state and revision without a commit, feed, or increment. */
+    /** Restore data state and revision without a commit, feed, or increment. */
     restore: (capture, options): void => {
       transitionController.assertPublicMutationAllowed();
       const normalized = must_projected_capture(capture);
@@ -873,7 +873,7 @@ function make_livemap_core_from_owned_root(
       }
       const candidateProjected = must_projected_root_value(candidate);
       if (!ordered_projected_value_equal(candidateProjected, planned.value)) {
-        throw new LiveMapProjectedTransportError("restore", "canonical root and projected payload disagree");
+        throw new LiveMapProjectedTransportError("restore", "canonical root and data payload disagree");
       }
       const observedMode = classify_live_root_mode(candidate);
       if (observedMode !== initialMode) {
@@ -1686,7 +1686,7 @@ function must_projected_capture(input: unknown): Readonly<{ rev: number; value: 
     throw new LiveMapProjectedTransportError("restore", "capture is missing structural transport");
   }
   if (!Object.hasOwn(input, "root") || !is_Node(input.root)) {
-    throw new LiveMapProjectedTransportError("restore", "canonical root is not an HSON node");
+    throw new LiveMapProjectedTransportError("restore", "canonical root is not an Hson node");
   }
   return Object.freeze({
     rev: input.rev,
@@ -1872,7 +1872,7 @@ function validation_headline_path(validation: LiveMapSchemaValidation, fallbackP
 function must_projected_root_value(root: HsonNode): OrderedProjectedValue {
   const value = project_live_path(root, []);
   if (value !== undefined) return value;
-  throw new Error("LiveMap projected root does not resolve.");
+  throw new Error("LiveMap data root does not resolve.");
 }
 
 /** Preserve direct data roots unless an explicit whole-root replacement owns the change. */
@@ -1886,10 +1886,10 @@ function projected_candidate_graph(
   if (currentRoot.$_tag === ROOT_TAG || replacesRoot) return root;
   const candidate = root.$_content[0];
   if (is_Node(candidate)) return candidate;
-  throw new Error("LiveMap projected constructor did not produce a value node.");
+  throw new Error("LiveMap data constructor did not produce a value node.");
 }
 
-/** Apply accepted projected data operations without rebuilding unaffected graph branches. */
+/** Apply accepted data data operations without rebuilding unaffected graph branches. */
 function apply_materialized_projected_ops(
   root: HsonNode,
   operations: readonly LiveMapDataOp[],
@@ -1901,7 +1901,7 @@ function apply_materialized_projected_ops(
       if (operation.next === undefined) throw new Error("Projected set operation is missing its next value.");
       set_live_path(root, operation.path, operation.next);
     } else {
-      if (operation.next === undefined) throw new Error("Projected operation is missing its next value.");
+      if (operation.next === undefined) throw new Error("Data operation is missing its next value.");
       replace_live_path(root, operation.path, operation.next);
     }
   }

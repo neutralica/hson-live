@@ -11,7 +11,7 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-check("projected maps expose no public canonical debug namespace", () => {
+check("data maps expose no public canonical debug namespace", () => {
   const map = hson.liveMap.fromJson({ value: 0 });
   assert.equal("debug" in map, false);
   assert.equal("node" in map, false);
@@ -38,7 +38,7 @@ check("caller-owned JSON input is detached at construction", () => {
   assert.deepEqual(map.snap(), { nested: { value: 1 }, items: [1] });
 });
 
-check("caller-owned HSON input is detached at construction", () => {
+check("caller-owned Hson input is detached at construction", () => {
   const input = hson.fromJson({ value: 1 }).toNode();
   const map = hson.liveMap.fromNode(input);
   if (map.mode !== "data-object") throw new Error(`expected data-object, observed ${map.mode}`);
@@ -46,7 +46,7 @@ check("caller-owned HSON input is detached at construction", () => {
   assert.deepEqual(map.snap(), { value: 1 });
 });
 
-check("snap returns detached projected values", () => {
+check("snap returns detached data values", () => {
   const map = hson.liveMap.fromJson({ nested: { value: 1 } });
   const value = map.snap() as { nested: { value: number } };
   value.nested.value = 9;

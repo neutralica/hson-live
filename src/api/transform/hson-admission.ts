@@ -30,8 +30,8 @@ function encodeTemplatePrimitive(value: HsonTemplatePrimitive): string {
 export function encode_hson_template_substitution(value: unknown, index: number): string {
   if (value !== null && typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") {
     _throw_transform_err(
-      `HSON tagged-template substitutions must be primitive string, number, boolean, or null values; substitution ${index + 1} received ${typeof value}`,
-      "HSON", undefined, undefined,
+      `Hson tagged-template substitutions must be primitive string, number, boolean, or null values; substitution ${index + 1} received ${typeof value}`,
+      "Hson", undefined, undefined,
       { code: HSON_TEMPLATE_SUBSTITUTION_TYPE_REQUIRED, stage: "template-admission" },
     );
   }
@@ -55,8 +55,8 @@ function reconstructTaggedSource(
 ): string {
   if (strings.raw.length !== substitutions.length + 1) {
     _throw_transform_err(
-      "invalid HSON tagged-template segment/substitution arity",
-      "HSON",
+      "invalid Hson tagged-template segment/substitution arity",
+      "Hson",
       undefined,
       undefined,
       {
@@ -75,10 +75,10 @@ function reconstructTaggedSource(
 }
 
 /**
- * Author HSON with typed primitive substitutions.
+ * Author Hson with typed primitive substitutions.
  *
  * Tagged literal segments use their raw source spelling. Substitutions never
- * become source splices: their JavaScript types determine canonical HSON scalar
+ * become source splices: their JavaScript types determine canonical Hson scalar
  * source before the complete reconstructed source is parsed authoritatively.
  */
 export function admit_hson(
@@ -91,8 +91,8 @@ export function admit_hson(
 ): HsonCanonical {
   if (!isTemplateStringsArray(source)) {
     _throw_transform_err(
-      "HSON must be used as a tagged template: HSON`...`",
-      "HSON",
+      "Hson must be used as a tagged template: Hson`...`",
+      "Hson",
       undefined,
       undefined,
       { code: HSON_TAGGED_TEMPLATE_REQUIRED, stage: "template-admission" },

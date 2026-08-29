@@ -1,7 +1,7 @@
 {
   "name": "hson-live",
   "version": "3.3.0",
-  "description": "HSON-live 2026",
+  "description": "Hson Live 2026",
   "files": [
     "dist",
     "README.md",

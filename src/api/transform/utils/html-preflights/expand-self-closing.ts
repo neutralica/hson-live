@@ -29,7 +29,7 @@ const voidTags = [
  *   that pattern is already “nonstandard HTML”.
  *
  * Rationale:
- * - Some downstream tokenizers/serializers (including HSON-ish pipelines) find
+ * - Some downstream tokenizers/serializers (including Hson-ish pipelines) find
  *   it simpler if void elements always appear in a single, unambiguous form.
  *
  * Caveats:

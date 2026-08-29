@@ -129,7 +129,7 @@ check("empty carriers remain distinct across domains", () => {
   assert.equal(equal(emptyArray, null), false);
 });
 
-check("absent projected values differ from every present value", () => {
+check("absent data values differ from every present value", () => {
   assert.equal(optional_ordered_projected_value_equal(undefined, undefined), true);
   for (const present of [null, "", 0, -0, [], {}] as const) {
     assert.equal(optional_ordered_projected_value_equal(

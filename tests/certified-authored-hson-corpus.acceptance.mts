@@ -87,7 +87,7 @@ await check("integrity rules and the committed review artifact are deterministic
   integrityAssertions = await runCorpusIntegrityChecks();
 });
 
-process.stdout.write(`# ${checks} certified authored-HSON corpus checks passed\n`);
+process.stdout.write(`# ${checks} certified authored-Hson corpus checks passed\n`);
 process.stdout.write(`# descriptors ${JSON.stringify(corpusCounts)}\n`);
 process.stdout.write(`# observed assertions ${JSON.stringify({ acceptedAssertions, rejectedAssertions, integrityAssertions, totalAssertions: acceptedAssertions + rejectedAssertions + integrityAssertions })}\n`);
 emit_hson_live_test_completion(LAUNCHER, checks, checks, 0);

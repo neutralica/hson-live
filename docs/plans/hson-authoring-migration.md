@@ -1,20 +1,20 @@
-# Uppercase HSON authoring migration
+# Uppercase Hson authoring migration
 
 Implemented on top of the uncommitted D3 work. No commit was created.
 
 ## Public contract
 
-- `HSON` is the frozen callable authoring facade, exported from the root and
+- `Hson` is the frozen callable authoring facade, exported from the root and
   `hson-live/hson` as the same object. It accepts the established primitive
   substitutions and returns the existing `HsonCanonical` branded string.
-- `HSON.validate(schema, canonical)` is synchronous and returns that unchanged
+- `Hson.validate(schema, canonical)` is synchronous and returns that unchanged
   string on success. Failures retain the existing error class and structured
   issues. It creates neither a map nor a Schema certificate.
 - `hson` is the frozen, noncallable aggregate. Its existing properties remain.
   There is no lowercase tagged-template compatibility alias.
 - `hson.liveMap.schema.validate` and `hsonLiveMap.schema.validate` remain valid
   public entrances. All three entrances reference one private function object.
-- `/hson` is an authoring boundary, not an aggregate barrel. It exports `HSON`,
+- `/hson` is an authoring boundary, not an aggregate barrel. It exports `Hson`,
   the same `HsonCanonical` type as `/transform`, and existing Transform error
   helpers/types. It no longer exports aggregate/subsystem facades or binary types.
 - Root convenience exports now include `hsonTransform`, `hsonLiveMap`,
@@ -33,8 +33,8 @@ construction functions and Schema namespace retain shared identities.
 `src/hson-authoring.ts` imports the existing admission leaf and the new private
 `internal/schema-hson-validation/validate-canonical-hson.ts`. That private wrapper
 contains the former LiveMap facade validation body and calls the existing shared
-ordered graph-level authority. It does not materialize a projected JavaScript
-object before authoritative validation. Projected/document Schema registries,
+ordered graph-level authority. It does not materialize a data JavaScript
+object before authoritative validation. Data/document Schema registries,
 classifiers, error classes and validators have not been duplicated.
 
 `src/hson.ts` remains the internal aggregate module. The package export map points
@@ -47,25 +47,25 @@ Binding-aware discovery now distinguishes three official import identities:
 
 | Binding | Public sources |
 | --- | --- |
-| `HSON` | root, `/hson` |
+| `Hson` | root, `/hson` |
 | `hson` | root |
 | `hsonLiveMap` | root, `/livemap` |
 
 Renamed imports retain symbol identity. Lowercase tags, wrong packages,
 shadowing, local lookalikes, and retired `/hson` aggregate exports are rejected.
-D2 recognizes `HSON.validate` and both retained LiveMap validation entrances.
+D2 recognizes `Hson.validate` and both retained LiveMap validation entrances.
 Independent intentional validation calls are not ranked or collapsed.
 
 D3 keeps direct const flow, parentheses, bounded canonical/map/Schema aliases,
 inline authoring, and separate contracts for multiple maps. It still consumes
 D1 construction/revision/attachment evidence rather than inferring runtime truth
-from syntax. The two runtime authoring references now use the actual `HSON`
+from syntax. The two runtime authoring references now use the actual `Hson`
 object. D1 aggregate-origin registration remains on the same `hson` object.
 
 Mechanical runtime/editor tests retain proof of failed initial attachment,
 actual mutation and mutate/revert suppression, independent map invalidation,
 idempotent attachment, rejected replacement, ordered keys, current unsaved
-candidates, stale generations/sites/bindings, and projected/document root context.
+candidates, stale generations/sites/bindings, and data/document root context.
 Text fragments continue to use construction context; standalone validation does
 not silently adopt that interpretation. C1/C2 exact, anchor, and unresolved
 presentation and related use-site information remain unchanged.
@@ -75,7 +75,7 @@ runtime or import the project. Interpolation capture and broad dataflow remain
 unsupported. No D1/D2 architecture, map method, Schema method, lifecycle export,
 or tooling export was added.
 
-The TextMate grammar recognizes uppercase `HSON` only. Semantic alias support
+The TextMate grammar recognizes uppercase `Hson` only. Semantic alias support
 remains binding-aware. Tests prove lowercase retired syntax gets no injection.
 Root smoke fixtures and current docs use the new imports. Historical reports are
 explicitly marked as superseded where their former public surface is described.
@@ -108,7 +108,7 @@ concurrently; no ordinary warm path was multi-second):
 
 | Case | Discovery | Lifecycle lookup | Round trip | End to end |
 | --- | ---: | ---: | ---: | ---: |
-| Projected | 1.371 | 0.0027 | 0.770 | 3.410 |
+| Data | 1.371 | 0.0027 | 0.770 | 3.410 |
 | Document | 1.597 | 0.0025 | 0.650 | 2.481 |
 | One template, two maps | 1.785 | 0.0092 | 1.293 | 3.767 |
 
@@ -184,11 +184,11 @@ Documentation: root README, Transform API, LiveMap Schema API, editor/private
 runtime READMEs, D3 report, and migration notices on historical D2/release records.
 The complete worktree also includes the pre-existing uncommitted D3 implementation.
 
-Consumers must change authored tags/imports to `HSON`. Aggregate users import
+Consumers must change authored tags/imports to `Hson`. Aggregate users import
 `hson` from the root; subsystem users choose their existing dedicated subpaths or
 new root facade convenience exports. Existing LiveMap Schema validation calls do
 not need migration. Natural map-owning code does not need a redundant validation
 call. No compatibility tag alias is provided.
 
 Suggested commit, when separately authorized:
-`feat: add narrow HSON authoring facade and integrate D2/D3 diagnostics`
+`feat: add narrow Hson authoring facade and integrate D2/D3 diagnostics`

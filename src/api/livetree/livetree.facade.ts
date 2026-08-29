@@ -28,7 +28,7 @@ export const hsonLiveTree = {
   fromHson(input: string): LiveTree {
     return make_branch_from_node(
       // LiveTree retains its established parser-root construction contract;
-      // public Transform HSON terminals detach that carrier.
+      // public Transform Hson terminals detach that carrier.
       parse_hson(input),
       { quidGraphValidated: true },
     );

@@ -165,7 +165,7 @@ check("ordinary quoted names embed directly in a JavaScript template literal", (
   });
 });
 
-check("host and HSON escaping layer once when a template-literal name contains an apostrophe", () => {
+check("host and Hson escaping layer once when a template-literal name contains an apostrophe", () => {
   const source = `<'don\\'t' 1>`;
   assert.equal(firstPropertyName(source), "don't");
   assert.equal(canonicalize(source), "<'don\\'t' 1>");

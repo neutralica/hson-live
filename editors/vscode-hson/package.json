@@ -1,7 +1,7 @@
 {
   "name": "hson-language",
-  "displayName": "HSON Language",
-  "description": "Syntax highlighting and authoritative diagnostics for HSON files and supported HSON tagged templates.",
+  "displayName": "Hson Language",
+  "description": "Syntax highlighting and authoritative diagnostics for Hson files and supported `Hson` tagged templates.",
   "version": "0.1.1",
   "publisher": "terminal-gothic",
   "repository": { "type": "git", "url": "https://github.com/neutralica/hson-live.git", "directory": "editors/vscode-hson" },
@@ -48,7 +48,7 @@
   "contributes": {
     "configuration": [
       {
-        "title": "HSON › Appearance",
+        "title": "Hson › Appearance",
         "order": 10,
         "properties": {
           "hson.appearance.libraryMarkerStrength": {
@@ -69,7 +69,7 @@
             "scope": "window",
             "order": 20,
             "title": "Authoring Marker Strength",
-            "markdownDescription": "Controls the softer visual presence of the four-color marker on official literal `HSON` usage sites, including validation calls and tagged templates."
+            "markdownDescription": "Controls the softer visual presence of the four-color marker on official literal `Hson` usage sites, including validation calls and tagged templates."
           },
           "hson.appearance.blue": {
             "type": "string",
@@ -117,7 +117,7 @@
             "scope": "window",
             "order": 70,
             "title": "Color Library hson",
-            "markdownDescription": "Applies four-color branding to official lowercase `hson` usage and its first member-access period. Uppercase `HSON`, HSON bodies, diagnostics, and imports are unaffected."
+            "markdownDescription": "Applies four-color branding to official lowercase `hson` usage and its first member-access period. Uppercase `Hson`, Hson bodies, diagnostics, and imports are unaffected."
           },
           "hson.appearance.librarySeparatorColor": {
             "type": "string",
@@ -132,7 +132,7 @@
         }
       },
       {
-        "title": "HSON › Schema Diagnostics",
+        "title": "Hson › Schema Diagnostics",
         "order": 20,
         "properties": {
           "hson.trustedSchemaDiagnostics.enabled": {
@@ -141,12 +141,12 @@
             "scope": "resource",
             "order": 10,
             "title": "Trusted Execution",
-            "markdownDescription": "Allows HSON trusted Schema diagnostics to execute the selected project's code, including Schema definitions, constraints, recurse callbacks, and module initialization. Execution occurs only in a VS Code-trusted workspace, after separate HSON consent, and runs with your user permissions in a supervised separate process. This is not a security sandbox."
+            "markdownDescription": "Allows Hson trusted Schema diagnostics to execute the selected project's code, including Schema definitions, constraints, recurse callbacks, and module initialization. Execution occurs only in a VS Code-trusted workspace, after separate Hson consent, and runs with your user permissions in a supervised separate process. This is not a security sandbox."
           }
         }
       },
       {
-        "title": "HSON › Runtime / Provider",
+        "title": "Hson › Runtime / Provider",
         "order": 30,
         "properties": {
           "hson.trustedSchemaDiagnostics.module": {
@@ -162,7 +162,7 @@
             "default": "",
             "scope": "resource",
             "order": 20,
-            "title": "HSON Runtime Module",
+            "title": "Hson Runtime Module",
             "description": "Advanced: path to the project's hson.js facade, resolved relative to the containing workspace folder. It must be the same runtime instance used by the provider."
           },
           "hson.trustedSchemaDiagnostics.runtimeEntry": {
@@ -171,7 +171,7 @@
             "scope": "resource",
             "order": 30,
             "title": "Runtime Entry",
-            "description": "Advanced: private trusted-diagnostics Node entry path relative to the workspace folder. When empty, HSON uses the entry beside the configured HSON runtime module."
+            "description": "Advanced: private trusted-diagnostics Node entry path relative to the workspace folder. When empty, Hson uses the entry beside the configured Hson runtime module."
           },
           "hson.trustedSchemaDiagnostics.execArgv": {
             "type": "array",
@@ -186,16 +186,16 @@
       }
     ],
     "commands": [
-      { "command": "hson.openSettings", "title": "Open Settings", "category": "HSON" },
-      { "command": "hson.enableTrustedSchemaDiagnostics", "title": "Enable Trusted Schema Diagnostics", "category": "HSON" },
-      { "command": "hson.disableTrustedSchemaDiagnostics", "title": "Disable Trusted Schema Diagnostics", "category": "HSON" },
-      { "command": "hson.restartTrustedSchemaRuntime", "title": "Restart Trusted Schema Runtime", "category": "HSON" }
+      { "command": "hson.openSettings", "title": "Open Settings", "category": "Hson" },
+      { "command": "hson.enableTrustedSchemaDiagnostics", "title": "Enable Trusted Schema Diagnostics", "category": "Hson" },
+      { "command": "hson.disableTrustedSchemaDiagnostics", "title": "Disable Trusted Schema Diagnostics", "category": "Hson" },
+      { "command": "hson.restartTrustedSchemaRuntime", "title": "Restart Trusted Schema Runtime", "category": "Hson" }
     ],
     "languages": [
       {
         "id": "hson",
         "aliases": [
-          "HSON",
+          "Hson",
           "hson"
         ],
         "extensions": [
@@ -214,62 +214,62 @@
     "colors": [
       {
         "id": "hson.libraryMarker.h",
-        "description": "HSON library facade marker: h (strong blue).",
+        "description": "Hson library facade marker: h (strong blue).",
         "defaults": { "dark": "#00adf6", "light": "#00adf6", "highContrast": "#00adf6", "highContrastLight": "#00adf6" }
       },
       {
         "id": "hson.libraryMarker.s",
-        "description": "HSON library facade marker: s (strong yellow).",
+        "description": "Hson library facade marker: s (strong yellow).",
         "defaults": { "dark": "#c9d100", "light": "#c9d100", "highContrast": "#c9d100", "highContrastLight": "#c9d100" }
       },
       {
         "id": "hson.libraryMarker.o",
-        "description": "HSON library facade marker: o (strong pink).",
+        "description": "Hson library facade marker: o (strong pink).",
         "defaults": { "dark": "#ff4a8c", "light": "#ff4a8c", "highContrast": "#ff4a8c", "highContrastLight": "#ff4a8c" }
       },
       {
         "id": "hson.libraryMarker.n",
-        "description": "HSON library facade marker: n (strong green).",
+        "description": "Hson library facade marker: n (strong green).",
         "defaults": { "dark": "#39a500", "light": "#39a500", "highContrast": "#39a500", "highContrastLight": "#39a500" }
       },
       {
         "id": "hson.authoringMarker.h",
-        "description": "HSON notation marker: H (soft blue).",
+        "description": "Hson notation marker: H (soft blue).",
         "defaults": { "dark": "#00adf6", "light": "#00adf6", "highContrast": "#00adf6", "highContrastLight": "#00adf6" }
       },
       {
         "id": "hson.authoringMarker.s",
-        "description": "HSON notation marker: S (soft yellow).",
+        "description": "Hson notation marker: S (soft yellow).",
         "defaults": { "dark": "#c9d100", "light": "#c9d100", "highContrast": "#c9d100", "highContrastLight": "#c9d100" }
       },
       {
         "id": "hson.authoringMarker.o",
-        "description": "HSON notation marker: O (soft pink).",
+        "description": "Hson notation marker: O (soft pink).",
         "defaults": { "dark": "#ff4a8c", "light": "#ff4a8c", "highContrast": "#ff4a8c", "highContrastLight": "#ff4a8c" }
       },
       {
         "id": "hson.authoringMarker.n",
-        "description": "HSON notation marker: N (soft green).",
+        "description": "Hson notation marker: N (soft green).",
         "defaults": { "dark": "#39a500", "light": "#39a500", "highContrast": "#39a500", "highContrastLight": "#39a500" }
       },
       {
         "id": "hson.libraryMarker.separator",
-        "description": "HSON library facade first member-access separator (violet).",
+        "description": "Hson library facade first member-access separator (violet).",
         "defaults": { "dark": "#7247d4", "light": "#7247d4", "highContrast": "#7247d4", "highContrastLight": "#7247d4" }
       }
     ],
     "semanticTokenTypes": [
-      { "id": "hsonType", "superType": "type", "description": "HSON grammar name" },
-      { "id": "hsonProperty", "superType": "property", "description": "HSON grammar attribute" },
-      { "id": "hsonString", "superType": "string", "description": "HSON grammar string" },
-      { "id": "hsonNumber", "superType": "number", "description": "HSON grammar number" },
-      { "id": "hsonKeyword", "superType": "keyword", "description": "HSON grammar constant" },
-      { "id": "hsonQuid", "superType": "string", "description": "HSON QUID literal" },
-      { "id": "hsonComment", "superType": "comment", "description": "HSON grammar comment" },
-      { "id": "hsonDelimiter", "superType": "operator", "description": "HSON grammar delimiter" },
-      { "id": "hsonOperator", "superType": "operator", "description": "HSON grammar punctuation" },
-      { "id": "hsonEscape", "superType": "string", "description": "HSON grammar escape" },
-      { "id": "hsonInvalid", "description": "HSON grammar invalid token" }
+      { "id": "hsonType", "superType": "type", "description": "Hson grammar name" },
+      { "id": "hsonProperty", "superType": "property", "description": "Hson grammar attribute" },
+      { "id": "hsonString", "superType": "string", "description": "Hson grammar string" },
+      { "id": "hsonNumber", "superType": "number", "description": "Hson grammar number" },
+      { "id": "hsonKeyword", "superType": "keyword", "description": "Hson grammar constant" },
+      { "id": "hsonQuid", "superType": "string", "description": "Hson QUID literal" },
+      { "id": "hsonComment", "superType": "comment", "description": "Hson grammar comment" },
+      { "id": "hsonDelimiter", "superType": "operator", "description": "Hson grammar delimiter" },
+      { "id": "hsonOperator", "superType": "operator", "description": "Hson grammar punctuation" },
+      { "id": "hsonEscape", "superType": "string", "description": "Hson grammar escape" },
+      { "id": "hsonInvalid", "description": "Hson grammar invalid token" }
     ],
     "semanticTokenScopes": [{ "scopes": {
       "hsonType": ["entity.name.type.hson"],

@@ -267,7 +267,7 @@ check("numeric equality distinguishes negative zero and rejects non-finite value
   for (const invalid of [Number.NaN, Infinity, -Infinity]) {
     assert.throws(
       () => canonical_hson_graph_equal(graph(invalid), graph(invalid)),
-      /invalid HSON number .*numbers must be finite/,
+      /invalid Hson number .*numbers must be finite/,
     );
   }
   assert.equal(canonical_hson_graph_equal(graph(+0), graph(-0)), false);
@@ -317,5 +317,5 @@ check("first divergence classifies strict canonical identity without graph repai
   );
 });
 
-process.stdout.write(`# ${checks} canonical HSON equality checks passed\n`);
+process.stdout.write(`# ${checks} canonical Hson equality checks passed\n`);
 emit_hson_live_test_completion("core.canonical-hson-equality", checks, checks, 0);

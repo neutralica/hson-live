@@ -23,7 +23,7 @@ let completedBuilds = 0;
 let completedReconciliations = 0;
 let completedEntriesVisited = 0;
 
-/** Build sparse identity correspondence from semantic projected values only. */
+/** Build sparse identity correspondence from semantic data values only. */
 export function build_livemap_projected_identity_overlay(root: HsonNode): LiveMapProjectedIdentityOverlay {
   const allClaims = scan_hson_node_quids(root);
   const byQuid = new Map<string, LivePath>();
@@ -34,7 +34,7 @@ export function build_livemap_projected_identity_overlay(root: HsonNode): LiveMa
     const path = stack.pop();
     if (path === undefined) continue;
     const node = resolve_value_node(root, path);
-    if (node === undefined) throw new Error(`Projected identity path ${JSON.stringify(path)} does not resolve.`);
+    if (node === undefined) throw new Error(`Data identity path ${JSON.stringify(path)} does not resolve.`);
     const quid = read_hson_node_quid(node);
     if (quid !== undefined) add_entry(byQuid, byPath, quid, path);
 
@@ -94,7 +94,7 @@ export function register_livemap_projected_identity_at_path(
   }
   const existing = current.quidAtPath(path);
   if (existing !== undefined && existing !== quid) {
-    throw new Error(`Projected path ${JSON.stringify(path)} already carries a different QUID.`);
+    throw new Error(`Data path ${JSON.stringify(path)} already carries a different QUID.`);
   }
   if (existing === quid) return current;
   const byQuid = new Map(require_entries(current));
@@ -106,7 +106,7 @@ export function register_livemap_projected_identity_at_path(
   return make_overlay(byQuid, byPath);
 }
 
-/** Reinstall sparse metadata onto a freshly planned projected graph. */
+/** Reinstall sparse metadata onto a freshly planned data graph. */
 export function apply_livemap_projected_identity_overlay(
   root: HsonNode,
   overlay: LiveMapProjectedIdentityOverlay,
@@ -114,7 +114,7 @@ export function apply_livemap_projected_identity_overlay(
   for (const [quid, path] of require_entries(overlay)) {
     const node = resolve_value_node(root, path);
     if (node === undefined || !is_projected_container_quid_eligible(node)) {
-      throw new Error(`Projected identity path ${JSON.stringify(path)} no longer resolves to an eligible container.`);
+      throw new Error(`Data identity path ${JSON.stringify(path)} no longer resolves to an eligible container.`);
     }
     assign_hson_node_quid(node, quid);
   }
@@ -208,7 +208,7 @@ function add_entry(
   }
   const key = live_path_key(path);
   const priorQuid = byPath.get(key);
-  if (priorQuid !== undefined && priorQuid !== quid) throw new Error(`Projected identity collision at ${key}.`);
+  if (priorQuid !== undefined && priorQuid !== quid) throw new Error(`Data identity collision at ${key}.`);
   byQuid.set(quid, path);
   byPath.set(key, quid);
 }
@@ -229,5 +229,5 @@ function make_overlay(
 function require_entries(overlay: LiveMapProjectedIdentityOverlay): ReadonlyMap<string, LivePath> {
   const entries = entriesForOverlay.get(overlay);
   if (entries !== undefined) return entries;
-  throw new Error("Projected identity overlay is not owned by this implementation.");
+  throw new Error("Data identity overlay is not owned by this implementation.");
 }

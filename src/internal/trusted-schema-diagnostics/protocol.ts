@@ -1,5 +1,5 @@
 /**
- * Private, transport-neutral protocol for trusted authored-HSON diagnostics.
+ * Private, transport-neutral protocol for trusted authored-Hson diagnostics.
  * This is intentionally not exported from a package entrypoint.
  */
 export const TRUSTED_SCHEMA_DIAGNOSTICS_PROTOCOL_VERSION = 1;

@@ -160,5 +160,5 @@ check("projected move never mints QUID metadata", () => {
   assert.equal(JSON.stringify(target.root()).includes("quid"), false);
 });
 
-process.stdout.write(`# ${checks} projected array move-intent checks passed\n`);
+process.stdout.write(`# ${checks} data array move-intent checks passed\n`);
 emit_hson_live_test_completion("livemap.projected-array-move-intent", checks, checks, 0);

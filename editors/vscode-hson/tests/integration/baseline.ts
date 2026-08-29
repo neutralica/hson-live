@@ -78,16 +78,16 @@ export async function run(): Promise<void> {
   assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get("librarySeparatorColor"), "#7247d4");
   assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get("colorLibraryMarker"), true);
   await vscode.commands.executeCommand("hson.openSettings");
-  assert.equal(extension.isActive, true, "opening native HSON Settings must not reload the extension");
-  process.stdout.write("ok - real VS Code strengths, four shared colors, lowercase toggle, and separator color update and restore live without extension reload; contributed color overrides remain intact; HSON Settings command opens\n");
+  assert.equal(extension.isActive, true, "opening native Hson Settings must not reload the extension");
+  process.stdout.write("ok - real VS Code strengths, four shared colors, lowercase toggle, and separator color update and restore live without extension reload; contributed color overrides remain intact; Hson Settings command opens\n");
   const syntax = await vscode.commands.executeCommand("_workbench.captureSyntaxTokens", doc.uri);
   const grammarHighlighted = JSON.stringify(syntax).includes("entity.name.type.hson");
   const semantic = await vscode.commands.executeCommand<vscode.SemanticTokens>("vscode.provideDocumentSemanticTokens", doc.uri);
   const legend = await vscode.commands.executeCommand<vscode.SemanticTokensLegend>("vscode.provideDocumentSemanticTokensLegend", doc.uri);
   const semanticHighlighted = !!semantic?.data.length && !!legend?.tokenTypes.some(type => type.startsWith("hson"));
-  const diagnostics = () => vscode.languages.getDiagnostics(doc.uri).filter(d => d.source === "HSON");
+  const diagnostics = () => vscode.languages.getDiagnostics(doc.uri).filter(d => d.source === "Hson");
   const edit = async (body: string) => {
-    const text = doc.getText(), start = text.indexOf("HSON`") + 5, end = text.indexOf("`", start);
+    const text = doc.getText(), start = text.indexOf("Hson`") + 5, end = text.indexOf("`", start);
     const change = new vscode.WorkspaceEdit();
     change.replace(doc.uri, new vscode.Range(doc.positionAt(start), doc.positionAt(end)), body);
     assert.equal(await vscode.workspace.applyEdit(change), true);
@@ -100,8 +100,8 @@ export async function run(): Promise<void> {
   await edit("<thing !!!");
   const invalidCount = await waitFor(1);
   if (!probe) {
-    assert.ok(grammarHighlighted || semanticHighlighted, "official HSON must receive grammar-backed highlighting");
-    assert.equal(invalidCount, 1, "zero-Schema invalid HSON must be diagnosed");
+    assert.ok(grammarHighlighted || semanticHighlighted, "official Hson must receive grammar-backed highlighting");
+    assert.equal(invalidCount, 1, "zero-Schema invalid Hson must be diagnosed");
   }
   await edit('\n <thing "readable" >\n');
   const correctedCount = await waitFor(0);
@@ -130,27 +130,27 @@ export async function run(): Promise<void> {
       }
       return result;
     };
-    for (const [imported, tag, pkg] of [["HSON", "HSON", "hson-live/hson"], ["HSON", "HSON", "hson-live"], ["HSON as author", "author", "hson-live/hson"]]) {
+    for (const [imported, tag, pkg] of [["Hson", "Hson", "hson-live/hson"], ["Hson", "Hson", "hson-live"], ["Hson as author", "author", "hson-live/hson"]]) {
       for (const body of ['<thing 1>', '<thing !!!', '<thing ${dangerous()} other 1>']) {
         await replace(`import { ${imported} } from "${pkg}"; const value=${tag}\`${body}\`;`);
         const tokens = await hsonTokens();
-        assert.ok(tokens.some(token => token.text === 'thing'), `real HSON token: ${tag} ${body}`);
+        assert.ok(tokens.some(token => token.text === 'thing'), `real Hson token: ${tag} ${body}`);
         const hole = doc.getText().indexOf('${'), end = doc.getText().indexOf('}',hole)+1;
         if (hole >= 0) assert.ok(tokens.every(token => token.end <= hole || token.start >= end));
       }
     }
-    for (const text of ['const HSON=String.raw; HSON`<thing !!!`;',
-      'import { HSON } from "other"; HSON`<thing !!!`;',
-      'import { HSON } from "hson-live/hson"; function f(HSON:any){ HSON`<thing !!!`; }']) {
-      await replace(text); assert.deepEqual(await hsonTokens(), [], 'unsupported binding must not keep stale HSON tokens');
+    for (const text of ['const Hson=String.raw; Hson`<thing !!!`;',
+      'import { Hson } from "other"; Hson`<thing !!!`;',
+      'import { Hson } from "hson-live/hson"; function f(Hson:any){ Hson`<thing !!!`; }']) {
+      await replace(text); assert.deepEqual(await hsonTokens(), [], 'unsupported binding must not keep stale Hson tokens');
       assert.equal(await waitFor(0),0);
     }
     console.log('ok - real baseline tokens: narrow/root/alias; valid/invalid/interpolated; expressions/local/wrong-package/shadow excluded; unsaved token refresh');
   }
-  assert.equal(vscode.languages.getDiagnostics(doc.uri).filter(d => d.source === "HSON Schema").length, 0);
+  assert.equal(vscode.languages.getDiagnostics(doc.uri).filter(d => d.source === "Hson Schema").length, 0);
   await assert.rejects(Promise.resolve(vscode.workspace.fs.stat(vscode.Uri.file(join(workspace, "provider-executed")))));
   if (vscode.workspace.isTrusted) process.stdout.write("ok - checked-in trusted execution preference remains inert without the extension-owned consent receipt\n");
-  console.log("# HSON baseline " + JSON.stringify({ version: extension.packageJSON.version, extensionPath: extension.extensionPath,
+  console.log("# Hson baseline " + JSON.stringify({ version: extension.packageJSON.version, extensionPath: extension.extensionPath,
     active: extension.isActive, trusted: vscode.workspace.isTrusted, grammarHighlighted, semanticHighlighted,
     invalidCount, correctedCount, republishedCount, providerExecuted: false }));
 }

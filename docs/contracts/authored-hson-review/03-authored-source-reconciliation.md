@@ -1,4 +1,4 @@
-# Authored-HSON source-membership reconciliation
+# Authored-Hson source-membership reconciliation
 
 This amendment-aware report reconciles **human-reviewed authored-language membership**.
 It does not certify expected graphs, canonical output, or structured diagnostics.
@@ -184,7 +184,7 @@ Amendment-only active IDs:
 - Active source: `"/*x*/1"`
 - Human note:  TBD - I MAY WANT TO PRESERVE/ALLOW COMMENTS
 - Current proposal: invalid
-- Minimal remaining question: Decide whether block comments remain forbidden or become authored-HSON trivia.
+- Minimal remaining question: Decide whether block comments remain forbidden or become authored-Hson trivia.
 
 ### `hson.reject.literal.source.comment-only`
 
@@ -222,5 +222,5 @@ Amendment-only active IDs:
 
 ## Next focused action
 
-The remaining authored-HSON decisions are separate from this delimiter migration:
+The remaining authored-Hson decisions are separate from this delimiter migration:
 `.5` admission, element-closer trivia, comment syntax, and mixed-root design reservation.
