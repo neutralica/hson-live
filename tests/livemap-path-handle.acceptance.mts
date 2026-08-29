@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import * as rootExports from "../src/index.ts";
 import { hson } from "../src/hson.ts";
 import * as liveMapExports from "../src/api/livemap/index.ts";
-import { bind_livetree_text } from "../src/api/livemap/livemap.bridge-bindings.ts";
+import { bind_livetree_input_value, bind_livetree_text } from "../src/api/livemap/livemap.bridge-bindings.ts";
 import { disposables_count_for_owner } from "../src/api/livetree/managers/lifecycle-registry.ts";
 import { acquire_projected_identity } from "./helpers/livemap-identity-internal.mts";
 import type { JsonValue } from "../src/core/types.ts";
@@ -157,6 +157,32 @@ check("actual LiveTree bridge targets retain canonical lifecycle ownership", () 
   assert.equal(disposables_count_for_owner(tree.quid), before);
   map.set(["value"], "after-dispose");
   assert.equal(tree.text.get(), "updated");
+});
+
+check("input bridge unwinds its source subscription when listener acquisition fails", () => {
+  const map = hson.liveMap.fromJson({ value: "initial" });
+  let synced = "";
+  let syncCalls = 0;
+  const target = {
+    quid: "unpublished-input-bridge",
+    form: {
+      getValue: () => synced,
+      setValue: (value: JsonValue) => { syncCalls += 1; synced = String(value ?? ""); },
+    },
+    listen: {
+      onInput: (): never => { throw new Error("forced listener acquisition failure"); },
+    },
+  };
+
+  assert.throws(
+    () => bind_livetree_input_value(target, map.at(["value"])),
+    /forced listener acquisition failure/,
+  );
+  assert.equal(syncCalls, 1);
+  assert.equal(synced, "initial");
+  map.set(["value"], "after-failure");
+  assert.equal(syncCalls, 1);
+  assert.equal(disposables_count_for_owner(target.quid), 0);
 });
 
 check("projected LiveTree bindings converge across ordinary commits and snapshots", () => {

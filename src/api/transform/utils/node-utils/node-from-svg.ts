@@ -112,8 +112,8 @@ function convert_svg_element(el: Element): HsonNode {
   }
   const kids: HsonNode[] = [];
   el.childNodes.forEach(n => {
-    if (n.nodeType === Node.ELEMENT_NODE) kids.push(convert_svg_element(n as Element));
-    else if (n.nodeType === Node.TEXT_NODE && n.nodeValue) {
+    if (n.nodeType === 1) kids.push(convert_svg_element(n as Element));
+    else if (n.nodeType === 3 && n.nodeValue) {
       kids.push(CREATE_NODE({ $_tag: STR_TAG, $_content: [n.nodeValue] }));
     }
   });

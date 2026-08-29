@@ -16,6 +16,8 @@ import {
   delegate_document_text_mutation_if_bound,
   document_binding_for_node,
 } from "../lifecycle/document-binding-state.js";
+import { release_node_parent, release_subtree_ownership } from "../lifecycle/graph-ownership.js";
+import { dispose_node_deep } from "../utils/dispose-node.js";
 
 /**
  * Options for form state writers that mirror to the DOM when available.
@@ -70,32 +72,23 @@ function ensureVsn(node: HsonNode): HsonNode {
 function ensure_attrs(node: HsonNode): AttrDict {
   return ensure_node_attrs(node) as unknown as AttrDict;
 }
+function form_control_kind(el: Element): "input" | "textarea" | "select" | undefined {
+  const tag = el.tagName.toLowerCase();
+  return tag === "input" || tag === "textarea" || tag === "select" ? tag : undefined;
+}
 function resolve_form_control(el: Element): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null {
-  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
-    return el;
-  }
+  if (form_control_kind(el) !== undefined) return el as FormEl;
   // If mapping gives a wrapper element, look for the first real control inside.
   const inner = el.querySelector("input,textarea,select");
   if (!inner) return null;
-
-  if (inner instanceof HTMLInputElement || inner instanceof HTMLTextAreaElement || inner instanceof HTMLSelectElement) {
-    return inner;
-  }
-  return null;
+  return form_control_kind(inner) === undefined ? null : inner as FormEl;
 }
 
 function form_el_for_node(node: HsonNode): FormEl | null {
   const el = get_el_for_node(node);
   if (!el) return null;
 
-  if (
-    el instanceof HTMLInputElement ||
-    el instanceof HTMLTextAreaElement ||
-    el instanceof HTMLSelectElement
-  ) {
-    return el;
-  }
-  return null;
+  return form_control_kind(el) === undefined ? null : el as FormEl;
 }
 
 // optional strictness helper 
@@ -212,8 +205,8 @@ export function set_input_checked(node: HsonNode, checked: boolean, opts?: SetNo
     return;
   }
 
-  if (el instanceof HTMLInputElement) {
-    el.checked = checked;
+  if (el && form_control_kind(el) === "input") {
+    (el as HTMLInputElement).checked = checked;
   }
 }
 
@@ -225,7 +218,7 @@ export function set_input_checked(node: HsonNode, checked: boolean, opts?: SetNo
  */
 export function get_input_checked(node: HsonNode): boolean {
   const el = form_el_for_node(node);
-  if (el instanceof HTMLInputElement) return !!el.checked;
+  if (el && form_control_kind(el) === "input") return !!(el as HTMLInputElement).checked;
 
   const attrs = (node.$_attrs as unknown as AttrDict | undefined);
   const raw = attrs?.checked;
@@ -278,14 +271,15 @@ export function set_input_selected(
     return;
   }
 
-  if (el instanceof HTMLSelectElement) {
+  if (el && form_control_kind(el) === "select") {
+    const select = el as HTMLSelectElement;
     if (isMany) {
       const set = new Set(selected);
-      for (const opt of Array.from(el.options)) {
+      for (const opt of Array.from(select.options)) {
         opt.selected = set.has(opt.value);
       }
     } else {
-      el.value = String(selected);
+      select.value = String(selected);
     }
   } else {
     // If caller points this at a non-select, degrade to value semantics
@@ -303,11 +297,12 @@ export function set_input_selected(
 export function get_input_selected(node: HsonNode): string | readonly string[] {
   const el = form_el_for_node(node);
 
-  if (el instanceof HTMLSelectElement) {
-    if (el.multiple) {
-      return Array.from(el.selectedOptions).map(o => o.value);
+  if (el && form_control_kind(el) === "select") {
+    const select = el as HTMLSelectElement;
+    if (select.multiple) {
+      return Array.from(select.selectedOptions).map(o => o.value);
     }
-    return el.value ?? "";
+    return select.value ?? "";
   }
 
   const attrs = (node.$_attrs as unknown as AttrDict | undefined);
@@ -373,7 +368,7 @@ function remove_dom_text_leaves(host: Element): void {
   const toRemove: ChildNode[] = [];
 
   for (const n of Array.from(host.childNodes)) {
-    if (n.nodeType === Node.TEXT_NODE) toRemove.push(n);
+    if (n.nodeType === 3) toRemove.push(n);
   }
 
   for (const n of toRemove) host.removeChild(n);
@@ -381,7 +376,7 @@ function remove_dom_text_leaves(host: Element): void {
 
 function replace_dom_text_leaves(host: Element, value: Primitive): void {
   const nodes = Array.from(host.childNodes);
-  const firstTextIndex = nodes.findIndex((n) => n.nodeType === Node.TEXT_NODE);
+  const firstTextIndex = nodes.findIndex((n) => n.nodeType === 3);
 
   remove_dom_text_leaves(host);
 
@@ -498,7 +493,13 @@ export function overwrite_node_text_content(node: HsonNode, value: Primitive): v
 
   // always overwrite the VSN bucket, not node.$_content
   const bucket = ensureVsn(node);
+  const displacedRoots = bucket.$_content.filter(is_Node);
   bucket.$_content = [leaf];
+  for (const root of displacedRoots) release_node_parent(root, bucket);
+  for (const root of displacedRoots) {
+    dispose_node_deep(root);
+    release_subtree_ownership(root);
+  }
 
   const el = get_el_for_node(node);
   if (!el) return;

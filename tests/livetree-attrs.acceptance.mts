@@ -21,6 +21,11 @@ function check(name: string, fn: () => void): void {
 
 class AttributeProjection {
   readonly values = new Map<string, string>();
+  readonly style = {
+    values: new Map<string, string>(),
+    setProperty: (name: string, value: string): void => { this.style.values.set(name, value); },
+    removeProperty: (name: string): void => { this.style.values.delete(name); },
+  };
 
   setAttribute(name: string, value: string): void {
     this.values.set(name, value);
@@ -201,11 +206,13 @@ check("inline style accepts typed leaves and rejects stylesheet maps atomically"
 
 check("inline style manager shares typed leaf rendering and rejects nested rules before writes", () => {
   const priorElement = Reflect.get(globalThis, "Element");
-  Reflect.set(globalThis, "Element", class {});
+  Reflect.deleteProperty(globalThis, "Element");
   try {
     const value = tree();
+    const element = mount(value);
     value.style.setProp("width", { value: 2, unit: "px" });
     assert.deepEqual(value.attrs.get("style"), { width: "2px" });
+    assert.equal(element.style.values.get("width"), "2px");
     const before = JSON.stringify(value.node);
     for (const map of [
       { color: "must-not-apply", _hover: { color: "blue" } },
@@ -222,6 +229,28 @@ check("inline style manager shares typed leaf rendering and rejects nested rules
     if (priorElement === undefined) Reflect.deleteProperty(globalThis, "Element");
     else Reflect.set(globalThis, "Element", priorElement);
   }
+});
+
+check("inline style edits preserve unrelated canonical string and structured declarations", () => {
+  const value = tree();
+  value.attrs.set("style", {
+    color: "red",
+    opacity: 0.5,
+    width: { value: 2, unit: "px" },
+  });
+  value.style.set.backgroundColor("black");
+  assert.deepEqual(value.attrs.get("style"), {
+    backgroundColor: "black",
+    color: "red",
+    opacity: 0.5,
+    width: { value: 2, unit: "px" },
+  });
+  value.style.remove("color");
+  assert.deepEqual(value.attrs.get("style"), {
+    backgroundColor: "black",
+    opacity: 0.5,
+    width: { value: 2, unit: "px" },
+  });
 });
 
 check("setMany overlays atomically and canonical equality is order-insensitive", () => {

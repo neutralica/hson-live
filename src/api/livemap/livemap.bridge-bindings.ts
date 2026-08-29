@@ -79,7 +79,13 @@ export function bind_livetree_input_value(
 
   syncFromMap(location.snap());
   const disposePath = subscribe_location(location, syncFromMap);
-  const inputListener = tree.listen.onInput(syncToMap);
+  let inputListener: ReturnType<typeof tree.listen.onInput>;
+  try {
+    inputListener = tree.listen.onInput(syncToMap);
+  } catch (cause) {
+    disposePath();
+    throw cause;
+  }
 
   return owned_bridge_binding(tree, () => {
     inputListener.off();
@@ -110,7 +116,13 @@ export function bind_livetree_input_checked(
 
   syncFromMap(location.snap());
   const disposePath = subscribe_location(location, syncFromMap);
-  const inputListener = tree.listen.onInput(syncToMap);
+  let inputListener: ReturnType<typeof tree.listen.onInput>;
+  try {
+    inputListener = tree.listen.onInput(syncToMap);
+  } catch (cause) {
+    disposePath();
+    throw cause;
+  }
 
   return owned_bridge_binding(tree, () => {
     inputListener.off();
@@ -166,7 +178,13 @@ export function bind_livetree_schema_number_input(
 
   syncFromMap(location.snap());
   const disposePath = subscribe_location(location, syncFromMap);
-  const inputListener = tree.listen.onInput(syncToMap);
+  let inputListener: ReturnType<typeof tree.listen.onInput>;
+  try {
+    inputListener = tree.listen.onInput(syncToMap);
+  } catch (cause) {
+    disposePath();
+    throw cause;
+  }
 
   return owned_bridge_binding(tree, () => {
     inputListener.off();
@@ -215,7 +233,13 @@ export function bind_livetree_schema_enum_input(
 
   syncFromMap(location.snap());
   const disposePath = subscribe_location(location, syncFromMap);
-  const inputListener = tree.listen.onInput(syncToMap);
+  let inputListener: ReturnType<typeof tree.listen.onInput>;
+  try {
+    inputListener = tree.listen.onInput(syncToMap);
+  } catch (cause) {
+    disposePath();
+    throw cause;
+  }
 
   return owned_bridge_binding(tree, () => {
     inputListener.off();

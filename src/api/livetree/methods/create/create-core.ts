@@ -16,6 +16,8 @@ import { LiveTree } from "../../livetree.js";
 import { TreeSelector } from "../../creation/tree-selector.js";
 import { make_html_tree_create } from "./create-html.js";
 import { CREATE_NODE } from "../../../../core/factories.js";
+import { parent_for_node, release_subtree_ownership } from "../../lifecycle/graph-ownership.js";
+import { dispose_node_deep } from "../../utils/dispose-node.js";
 
 export type CreateNs = "html" | "svg";
 
@@ -77,11 +79,17 @@ export function build_markup_stub(tag: string, ns: CreateNs): string {
   return `<${tag}></${tag}>`;
 }
 
-function parse_trusted_markup_to_hson(source: string): HsonNode {
+type DomParserConstructor = new () => DOMParser;
+
+function parse_trusted_markup_to_hson(
+  source: string,
+  parserForTree: () => DomParserConstructor,
+): HsonNode {
   const trimmed = source.trimStart();
 
   if (is_svg_markup(trimmed)) {
-    const el = new DOMParser()
+    const Parser = parserForTree();
+    const el = new Parser()
       .parseFromString(source, "image/svg+xml")
       .documentElement;
 
@@ -102,6 +110,40 @@ export function make_create_core(tree: LiveTree): CreateCore {
     const ix = nextIndex;
     nextIndex = undefined;
     return ix;
+  };
+
+  const parserForTree = (): DomParserConstructor => {
+    const mapped = tree.dom.el();
+    if (mapped !== undefined) {
+      const Parser = mapped.ownerDocument.defaultView?.DOMParser;
+      if (Parser === undefined) {
+        throw new Error("[LiveTree.create] mapped DOM realm has no DOMParser");
+      }
+      return Parser;
+    }
+    if (typeof DOMParser !== "undefined") return DOMParser;
+    throw new Error("[LiveTree.create] DOMParser is unavailable");
+  };
+
+  const attachPrivateBranch = <TBranch extends LiveTree>(
+    branch: TBranch,
+    index?: number,
+  ): TBranch => {
+    try {
+      if (typeof index === "number") tree.append(branch, index);
+      else tree.append(branch);
+    } catch (cause) {
+      // A branch that never entered the destination graph is still exclusively
+      // owned by this factory and cannot be returned to the caller.
+      if (parent_for_node(branch.node) === undefined) {
+        dispose_node_deep(branch.node, runtime_for_tree(branch));
+        release_subtree_ownership(branch.node);
+      }
+      throw cause;
+    }
+
+    branch.adoptRoots(tree.hostRootNode());
+    return branch;
   };
 
   // unwrap element payload and keep only real element tags
@@ -139,11 +181,7 @@ export function make_create_core(tree: LiveTree): CreateCore {
       });
       const branch = create_livetree_in_runtime(node, runtime_for_tree(tree));
 
-      if (typeof insertIx === "number") tree.append(branch, insertIx);
-      else tree.append(branch);
-
-      branch.adoptRoots(tree.hostRootNode());
-      created.push(branch);
+      created.push(attachPrivateBranch(branch, insertIx));
 
       if (typeof insertIx === "number") insertIx += 1;
     }
@@ -173,7 +211,7 @@ export function make_create_core(tree: LiveTree): CreateCore {
 
     let parsed: HsonNode | HsonNode[];
     try {
-      parsed = parse_trusted_markup_to_hson(source);
+      parsed = parse_trusted_markup_to_hson(source, parserForTree);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       throw new Error(
@@ -199,11 +237,7 @@ export function make_create_core(tree: LiveTree): CreateCore {
 
     const branch = create_livetree_in_runtime(node, runtime_for_tree(tree));
 
-    if (typeof index === "number") tree.append(branch, index);
-    else tree.append(branch);
-
-    branch.adoptRoots(tree.hostRootNode());
-    return branch;
+    return attachPrivateBranch(branch, index);
   }
 
   function hasParserError(node: HsonNode): boolean {
@@ -236,7 +270,7 @@ export function make_create_core(tree: LiveTree): CreateCore {
 
     let parsed: HsonNode | HsonNode[];
     try {
-      parsed = parse_svg_fragment_to_hson(wrapped);
+      parsed = parse_svg_fragment_to_hson(wrapped, parserForTree());
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       throw new Error(
@@ -284,11 +318,7 @@ export function make_create_core(tree: LiveTree): CreateCore {
 
     const branch = create_livetree_in_runtime(node, runtime_for_tree(tree));
 
-    if (typeof index === "number") tree.append(branch, index);
-    else tree.append(branch);
-
-    branch.adoptRoots(tree.hostRootNode());
-    return branch as unknown as SvgLiveTree;
+    return attachPrivateBranch(branch, index) as unknown as SvgLiveTree;
   }
 
   return {
@@ -305,8 +335,8 @@ export function make_tree_create(tree: LiveTree): HtmlCreateHelper {
   return make_html_tree_create(tree);
 }
 
-function parse_svg_fragment_to_hson(source: string): HsonNode {
-  const doc = new DOMParser().parseFromString(source, "image/svg+xml");
+function parse_svg_fragment_to_hson(source: string, Parser: DomParserConstructor): HsonNode {
+  const doc = new Parser().parseFromString(source, "image/svg+xml");
   const root = doc.documentElement;
 
   if (!root || root.tagName === "parsererror") {

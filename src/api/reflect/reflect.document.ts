@@ -38,6 +38,7 @@ import {
   get_node_for_el,
 } from "../livetree/utils/node-map-helpers.js";
 import { dispose_node_deep } from "../livetree/utils/dispose-node.js";
+import { release_subtree_ownership } from "../livetree/lifecycle/graph-ownership.js";
 import { serialize_style } from "../transform/utils/attrs-utils/serialize-style.js";
 import {
   DOCUMENT_REFLECT_ALREADY_BOUND_ERROR_CODE,
@@ -1068,6 +1069,9 @@ export function reflect_document_in_runtime(
     offIdentityParticipant?.();
     offIdentityParticipant = undefined;
     for (const registration of registrations) unregister_document_binding_node(registration.node, owner);
+    const privateRoot = tree.node;
+    dispose_node_deep(privateRoot, runtime);
+    release_subtree_ownership(privateRoot);
     ACTIVE_DOCUMENT_BINDINGS.delete(map);
     throw as_binding_error(cause, DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE, "Document binding initialization failed.");
   }

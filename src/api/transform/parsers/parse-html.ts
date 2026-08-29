@@ -374,7 +374,7 @@ function convert(
             _throw_transform_err('<_hson_str> transport must not carry attributes or metadata', 'parse-html');
         }
         const parts = Array.from(el.childNodes);
-        if (parts.some((child) => child.nodeType !== Node.TEXT_NODE)) {
+        if (parts.some((child) => child.nodeType !== 3)) {
             _throw_transform_err('<_hson_str> transport must contain text only', 'parse-html');
         }
         return finish(CREATE_NODE({
@@ -390,7 +390,7 @@ function convert(
     const specialExceptions = ['style', 'script'];
     if (specialExceptions.includes(dec)
         && !Array.from(el.childNodes).some((child) =>
-            child.nodeType === Node.ELEMENT_NODE
+            child.nodeType === 1
             && (child as Element).tagName.toLowerCase() === ELEM_TAG
         )) {
         let text_content = el.textContent?.trim();
@@ -626,12 +626,12 @@ function elementToNode(
     const contents: (HsonNode | Primitive)[] = [];
 
     for (const item of Array.from(els)) {
-        if (item.nodeType === Node.ELEMENT_NODE) {
+        if (item.nodeType === 1) {
             contents.push(convert(item as Element, parentTag, allowHsonTransit));
             continue;
         }
 
-        if (item.nodeType === Node.TEXT_NODE) {
+        if (item.nodeType === 3) {
             const raw = item.textContent ?? "";
 
             /* handle the empty-string sentinel after trimming */

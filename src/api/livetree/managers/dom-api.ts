@@ -10,6 +10,18 @@ import { runtime_for_node, runtime_for_tree } from "../runtime/livetree-runtime.
 import { wrap_in_tree } from "../creation/create-livetree.js";
 import { get_node_for_el } from "../utils/node-map-helpers.js";
 
+const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
+
+function is_html_element(element: Element): element is HTMLElement {
+  return element.namespaceURI === HTML_NAMESPACE;
+}
+
+function is_node_like(value: unknown): value is Node {
+  return typeof value === "object"
+    && value !== null
+    && typeof (value as { nodeType?: unknown }).nodeType === "number";
+}
+
 // honest maybe-returning lookup from DOM element back to tree node
 function resolve_tree_from_el(tree: LiveTree, el: Element): LiveTree | undefined {
   const runtime = runtime_for_tree(tree);
@@ -32,9 +44,9 @@ function resolve_tree_el_must(tree: LiveTree, el: Element, label?: string): Live
 export function make_svg_manager(tree: LiveTree): LiveTreeSvgDom {
   function bbox(): SvgBox | undefined {
     const el = tree.dom.el();
-    if (!(el instanceof SVGGraphicsElement)) return undefined;
+    if (!el || typeof (el as { getBBox?: unknown }).getBBox !== "function") return undefined;
 
-    const b = el.getBBox();
+    const b = (el as SVGGraphicsElement).getBBox();
     return {
       x: b.x,
       y: b.y,
@@ -80,7 +92,7 @@ export function make_dom_api(
 
   const htmlEl = (() => {
     const e = el();
-    return (e instanceof HTMLElement) ? e : undefined;
+    return e && is_html_element(e) ? e : undefined;
   }) as (() => HTMLElement | undefined);
 
   const get_innerHTML = (): string | undefined => {
@@ -91,7 +103,11 @@ export function make_dom_api(
   const get_outerHTML = (): string | undefined => {
     const e = el();
     if (!e) return undefined;
-    return new XMLSerializer().serializeToString(e);
+    const Serializer = e.ownerDocument.defaultView?.XMLSerializer;
+    if (!Serializer) {
+      throw new Error("[LiveTree.dom.outerHtml] mapped DOM realm has no XMLSerializer");
+    }
+    return new Serializer().serializeToString(e);
   };
 
   const matches = (sel: string): boolean => {
@@ -107,7 +123,7 @@ export function make_dom_api(
   };
 
   const containsTarget = (target: EventTarget | null): boolean => {
-    if (!(target instanceof Node)) return false;
+    if (!is_node_like(target)) return false;
     return containsNode(target);
   };
 
@@ -173,7 +189,7 @@ export function make_dom_api(
   const computed = (() => {
     const e = el();
     if (!e) return undefined;
-    return getComputedStyle(e);
+    return e.ownerDocument.defaultView?.getComputedStyle(e);
   }) as (() => CSSStyleDeclaration | undefined);
 
   const computedProp = ((name: string) => {
@@ -206,13 +222,11 @@ export function make_dom_api(
 
     const elementAtPoint = (x: number, y: number): Element | undefined => {
       const hit = owner.elementFromPoint(x, y);
-      return hit instanceof Element ? hit : undefined;
+      return hit ?? undefined;
     };
 
     const elementsFromPoint = (x: number, y: number): Element[] => {
-      return owner
-        .elementsFromPoint(x, y)
-        .filter((hit): hit is Element => hit instanceof Element);
+      return owner.elementsFromPoint(x, y);
     };
 
     const treeAtPoint = (x: number, y: number): LiveTree | undefined => {
@@ -251,7 +265,7 @@ export function make_dom_api(
 
     htmlEl(label?: string): HTMLElement {
       const hit = el();
-      if (!(hit instanceof HTMLElement)) {
+      if (!hit || !is_html_element(hit)) {
         throw new Error(label ?? `[LiveTree.dom.must.html] element is not an HTMLElement`);
       }
       return hit;

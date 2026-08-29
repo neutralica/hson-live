@@ -17,6 +17,13 @@ type QueuedListener = {
 
 const TARGET_LISTENER_REG = new WeakMap<EventTarget, Set<() => void>>();
 
+function is_event_target(value: unknown): value is EventTarget {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as { addEventListener?: unknown; removeEventListener?: unknown };
+  return typeof candidate.addEventListener === "function"
+    && typeof candidate.removeEventListener === "function";
+}
+
 class ListenerSubscription implements ListenerSub {
   public count = 0;
   public ok = false;
@@ -154,15 +161,16 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
 
   const resolveAmbientTarget = (): EventTarget | null => {
     try {
-      const ownerDocument = tree.dom.el()?.ownerDocument;
+      const mappedElement = tree.dom.el();
+      const ownerDocument = mappedElement?.ownerDocument;
       if (opts.target === "window") {
-        return ownerDocument?.defaultView
-          ?? (typeof window !== "undefined" ? window : null);
+        if (ownerDocument !== undefined) return ownerDocument.defaultView;
+        return typeof window !== "undefined" ? window : null;
       }
 
       if (opts.target === "document") {
-        return ownerDocument
-          ?? (typeof document !== "undefined" ? document : null);
+        if (ownerDocument !== undefined) return ownerDocument;
+        return typeof document !== "undefined" ? document : null;
       }
 
       return null;
@@ -236,7 +244,7 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
     const targets = collectTargets();
 
     for (const tgt of targets) {
-      if (!(tgt instanceof EventTarget)) {
+      if (!is_event_target(tgt)) {
         throw new Error("listen.attach(): non-EventTarget in selection");
       }
     }

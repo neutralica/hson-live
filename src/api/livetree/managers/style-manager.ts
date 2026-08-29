@@ -2,7 +2,6 @@
 
 import { HsonAttrs, HsonNode } from "../../../core/types.js";
 import { AllowedStyleKey, CssMap, CssVarFacade } from "../../../types/css.types.js";
-import { serialize_style } from "../../transform/utils/attrs-utils/serialize-style.js";
 import { camel_to_kebab } from "../../transform/utils/attrs-utils/camel_to_kebab.js";
 import { kebab_to_camel } from "../../transform/utils/primitive-utils/kebab-to-camel.util.js";
 import { get_el_for_node } from "../utils/node-map-helpers.js";
@@ -103,31 +102,37 @@ function readStyleFromNode(node: HsonNode, propCanon: string): string | undefine
 }
 
 function readAllStyleFromNode(node: HsonNode): StyleGetMany {
-    const attrs = node.$_attrs as HsonAttrs | undefined;
-    const raw = attrs?.style;
+    const styleObj = readCanonicalStyleFromNode(node);
     const out: Record<string, string> = {};
 
+    for (const [key, value] of Object.entries(styleObj)) {
+        if (typeof value === "string") out[key] = value;
+    }
+
+    return out;
+}
+
+/** Read the complete canonical declaration bag without normalizing its values. */
+function readCanonicalStyleFromNode(node: HsonNode): CssMap {
+    const attrs = node.$_attrs as HsonAttrs | undefined;
+    const raw = attrs?.style;
+
     if (raw && typeof raw === "object") {
-        const styleObj = raw as CssMap;
-
-        for (const [key, value] of Object.entries(styleObj)) {
-            if (typeof value !== "string") continue;
-            out[key] = value;
-        }
-
-        return out;
+        return { ...(raw as CssMap) };
     }
 
     if (typeof raw === "string") {
+        const out: Record<string, string> = {};
         const map = parse_style_attr(raw);
 
         for (const [key, value] of map.entries()) {
             const storeKey = key.startsWith("--") ? key : kebab_to_camel(key);
             out[storeKey] = value;
         }
+        return out;
     }
 
-    return out;
+    return {};
 }
 
 /**
@@ -177,11 +182,11 @@ function removeStyleFromNode(node: HsonNode, kebabName: string): void {
     }
 
     // 3) Update DOM
-    const el = get_el_for_node(node) as HTMLElement | undefined;
+    const el = get_el_for_node(node) as (Element & { style?: CSSStyleDeclaration }) | undefined;
     if (!el) return;
 
     // Use DOM’s own removeProperty for the kebab name
-    el.style.removeProperty(kebabName);
+    el.style?.removeProperty(kebabName);
 }
 
 /**
@@ -234,7 +239,7 @@ function computeRuntimeKeys(): ReadonlyArray<AllowedStyleKey> {
  * @param a - Attribute bag (typically `node.$_attrs`) to normalize.
  * @returns A mutable style object with kebab property keys.
  */
-function ensureStyleObject(a: Record<string, unknown>): Record<string, string> {
+function ensureStyleObject(a: Record<string, unknown>): Record<string, unknown> {
     // prefer object going forward; upgrade string-once if present.
     const prev = a.style;
     if (typeof prev === "string") {
@@ -258,12 +263,12 @@ function ensureStyleObject(a: Record<string, unknown>): Record<string, string> {
         return out;
     }
     if (prev && typeof prev === "object") {
-        const obj = prev as Record<string, string>;
+        const obj = prev as Record<string, unknown>;
         // normalize any kebab keys to camelCase once on read
         const needsNormalize = Object.keys(obj).some(k => k.includes("-"));
         if (!needsNormalize) return obj;
 
-        const normalized: Record<string, string> = Object.create(null);
+        const normalized: Record<string, unknown> = Object.create(null);
         for (const [k, v] of Object.entries(obj)) {
             const storeKey = k.startsWith("--") ? k : kebab_to_camel(k);
             normalized[storeKey] = v;
@@ -271,7 +276,7 @@ function ensureStyleObject(a: Record<string, unknown>): Record<string, string> {
         a.style = normalized;
         return normalized;
     }
-    const fresh: Record<string, string> = Object.create(null);
+    const fresh: Record<string, unknown> = Object.create(null);
     a.style = fresh;
     return fresh;
 }
@@ -306,12 +311,10 @@ function applyStyleToNode(node: HsonNode, kebabName: string, value: string): voi
         return;
     }
 
-    const el = get_el_for_node(node);
+    const el = get_el_for_node(node) as (Element & { style?: CSSStyleDeclaration }) | undefined;
 
     // allow SVGElement too (and any Element with a style decl)
-    if (el instanceof Element) {
-        (el as any).style.setProperty(kebabName, value);
-    }
+    el?.style?.setProperty(kebabName, value);
 
     // 2) mirror into node.$_attrs.style (object form)
     const attrs = ensure_node_attrs(node) as Record<string, unknown>;
@@ -430,7 +433,7 @@ export class StyleManager<TTree extends LiveTree> {
         const val = value == null ? "" : String(value);
 
         if (document_binding_for_node(this.tree.node) !== undefined) {
-            const next = { ...readAllStyleFromNode(this.tree.node) };
+            const next = { ...readCanonicalStyleFromNode(this.tree.node) };
             const key = kebab.startsWith("--") ? kebab : kebab_to_camel(kebab);
             if (val === "") delete next[key];
             else next[key] = val;
@@ -465,7 +468,7 @@ export class StyleManager<TTree extends LiveTree> {
             : camel_to_kebab(propertyName);
 
         if (document_binding_for_node(this.tree.node) !== undefined) {
-            const next = { ...readAllStyleFromNode(this.tree.node) };
+            const next = { ...readCanonicalStyleFromNode(this.tree.node) };
             const key = kebab.startsWith("--") ? kebab : kebab_to_camel(kebab);
             delete next[key];
             if (Object.keys(next).length === 0) this.tree.attrs.drop("style");

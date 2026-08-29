@@ -306,6 +306,42 @@ check("cross-runtime append rejects without transferring either branch", () => {
   assert.equal(_lookup_livetree_runtime_test_node(right, branch.quid), branch.node);
 });
 
+check("rejected private creation unwinds its unpublished runtime claim", () => {
+  const runtime = _create_livetree_runtime_test_handle();
+  const binding = _reflect_document_for_runtime_test(runtime, elementMap(`<main/>`));
+  const before = _livetree_runtime_test_claim_count(runtime);
+  assert.throws(() => binding.tree.create.div(), /unavailable while document-bound/);
+  assert.equal(_livetree_runtime_test_claim_count(runtime), before);
+  binding.dispose();
+  assert.equal(binding.tree.remove(), 1);
+
+  const parent = runtimeTree(runtime, node("main"));
+  const beforeSuccess = _livetree_runtime_test_claim_count(runtime);
+  const child = parent.create.div();
+  assert.equal(parent.content.count(), 1);
+  assert.equal(_livetree_runtime_test_claim_count(runtime), beforeSuccess + 1);
+  assert.equal(child.isDisposed, false);
+  parent.remove();
+});
+
+check("text overwrite terminally disposes displaced descendants and leaves its owner valid", () => {
+  const runtime = _create_livetree_runtime_test_handle();
+  const parentNode = node("main");
+  const childNode = node("section", "000000rt7");
+  parentNode.$_content.push(childNode);
+  const parent = runtimeTree(runtime, parentNode);
+  const child = runtimeTree(runtime, childNode).adoptRoots(parent.hostRootNode());
+  assert.equal(_lookup_livetree_runtime_test_node(runtime, "000000rt7"), childNode);
+  assert.equal(parent.text.overwrite("replacement"), parent);
+  assert.equal(parent.text.get(), "replacement");
+  assert.equal(child.isDisposed, true);
+  assert.equal(_lookup_livetree_runtime_test_node(runtime, "000000rt7"), undefined);
+  assert.equal(child.remove(), 0);
+  assert.equal(parent.isDisposed, false);
+  assert.equal(parent.remove(), 1);
+  assert.equal(parent.remove(), 0);
+});
+
 check("QUID-owned resource kinds are isolated across equal-valued claims", () => {
   const left = _create_livetree_runtime_test_handle();
   const right = _create_livetree_runtime_test_handle();
@@ -621,6 +657,25 @@ check("Reflect same-runtime duplicate projection still rejects", () => {
   );
   binding.dispose();
   binding.tree.remove();
+});
+
+check("failed initial Reflect publication terminally unwinds its private tree", () => {
+  const runtime = _create_livetree_runtime_test_handle();
+  const source = elementMap(`<main @000000rt8/>`);
+  const failing = {
+    ...source,
+    commits: {
+      ...source.commits,
+      observe: (): never => { throw new Error("forced initial observer failure"); },
+    },
+  } as ElementLiveMap;
+  const before = _livetree_runtime_test_claim_count(runtime);
+  assert.throws(
+    () => _reflect_document_for_runtime_test(runtime, failing),
+    /Document binding initialization failed/,
+  );
+  assert.equal(_livetree_runtime_test_claim_count(runtime), before);
+  assert.equal(_lookup_livetree_runtime_test_node(runtime, "000000rt8"), undefined);
 });
 
 check("binding disposal and later tree destruction are separate and idempotent", () => {

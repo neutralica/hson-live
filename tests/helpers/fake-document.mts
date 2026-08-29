@@ -22,7 +22,7 @@ class FakeFragment extends FakeNode {
   removeChild(node: FakeNode): FakeNode { remove_child(this, node); return node; }
 }
 
-class FakeStyle {
+export class FakeStyle {
   cssText = "";
   readonly values = new Map<string, string>();
   setProperty(name: string, value: string): void { this.values.set(name, value); }
@@ -75,8 +75,14 @@ export class FakeElement extends FakeNode {
     for (const node of nodes) this.appendChild(node);
   }
 
-  setAttribute(name: string, value: string): void { this.attrs.set(name, value); }
-  removeAttribute(name: string): void { this.attrs.delete(name); }
+  setAttribute(name: string, value: string): void {
+    this.attrs.set(name, value);
+    if (name === "style") this.style.cssText = value;
+  }
+  removeAttribute(name: string): void {
+    this.attrs.delete(name);
+    if (name === "style") this.style.cssText = "";
+  }
   getAttribute(name: string): string | null { return this.attrs.get(name) ?? null; }
   getAttributeNames(): string[] { return [...this.attrs.keys()]; }
   hasAttribute(name: string): boolean { return this.attrs.has(name); }

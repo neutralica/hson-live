@@ -10,10 +10,10 @@ export function make_canvas_api<TTree extends LiveTree>(
 ): CanvasApi<TTree> {
   const el = (): HTMLCanvasElement | undefined => {
     const node = tree.dom.el();
-    if (node instanceof HTMLCanvasElement) {
-      return node;
-    }
-    return undefined;
+    if (!node || node.tagName.toLowerCase() !== "canvas") return undefined;
+    return typeof (node as { getContext?: unknown }).getContext === "function"
+      ? node as HTMLCanvasElement
+      : undefined;
   };
 
   const getNumberAttr = (name: string): number | undefined => {
@@ -74,7 +74,7 @@ export function make_canvas_api<TTree extends LiveTree>(
       return undefined;
     }
 
-    const dpr = opts?.dpr ?? globalThis.window?.devicePixelRatio ?? 1;
+    const dpr = opts?.dpr ?? canvas.ownerDocument.defaultView?.devicePixelRatio ?? 1;
 
     return {
       width: rect.width,

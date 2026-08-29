@@ -10,7 +10,7 @@ import { HsonNode } from "../../../core/types.js";
 import { SVG_NS } from "../../transform/utils/node-utils/node-from-svg.js";
 import { is_Node } from "../../../core/node-guards.js";
 import { get_el_for_node, link_node_to_el } from "../utils/node-map-helpers.js";
-import { canon_to_css_prop, normalize_css_key } from "../../transform/utils/attrs-utils/normalize-css.js";
+import { serialize_style } from "../../transform/utils/attrs-utils/serialize-style.js";
 import {
   ARR_TAG,
   ELEM_TAG,
@@ -229,14 +229,7 @@ function project_livetree_with_authority(
         if (typeof raw === "string") {
           elt.style.cssText = raw;
         } else if (raw && typeof raw === "object") {
-          const obj = raw as Record<string, string | number | null>;
-          for (const [prop, v] of Object.entries(obj)) {
-            const val = v == null ? "" : String(v);
-            const cssProp = canon_to_css_prop(normalize_css_key(prop));
-            if (!cssProp) continue;
-            if (val === "") elt.style.removeProperty(cssProp);
-            else elt.style.setProperty(cssProp, val);
-          }
+          elt.style.cssText = serialize_style(raw);
         }
         continue;
       }

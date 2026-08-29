@@ -164,6 +164,30 @@ check("bound attrs and convenience managers delegate without feedback", () => {
   binding.dispose();
 });
 
+check("bound style edits preserve unrelated structured canonical declarations", () => {
+  const map = element(`<main @000000317/>`);
+  map.document.attrs.set(path(), "style", {
+    color: "red",
+    opacity: 0.5,
+    width: { value: 2, unit: "px" },
+  });
+  const binding = hsonReflect(map);
+  binding.tree.style.set.backgroundColor("black");
+  assert.deepEqual(map.document.attrs.get(path(), "style"), {
+    backgroundColor: "black",
+    color: "red",
+    opacity: 0.5,
+    width: { value: 2, unit: "px" },
+  });
+  binding.tree.style.remove("color");
+  assert.deepEqual(map.document.attrs.get(path(), "style"), {
+    backgroundColor: "black",
+    opacity: 0.5,
+    width: { value: 2, unit: "px" },
+  });
+  binding.dispose();
+});
+
 check("multi-operation attrs replay is one projection transaction", () => {
   const map = element(`<main @000000306/>`);
   const binding = hsonReflect(map);

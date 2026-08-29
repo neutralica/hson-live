@@ -225,6 +225,40 @@ check("structural DOM failure preserves canonical commit and fails observer-side
   binding.dispose();
 });
 
+check("failed structural replacement disposes the disconnected old owned subtree", () => {
+  const map = element(`<main @000000418 <a @000000419/>/>`);
+  const binding = hsonReflect(map);
+  const rootDom = mount(binding.tree.node);
+  const displaced = raw_node(binding.tree.node, [0, 0]);
+  const displacedTree = create_livetree(displaced).adoptRoots(binding.tree.hostRootNode());
+  rootDom.failReplace = true;
+
+  const commit = map.document.content.replace(path(0), 0, projected_element(`<b @000000420/>`));
+  assert.equal(commit.changed, true);
+  assert.equal(map.rev, 1);
+  assert.equal(raw_node(map.element.node(), [0, 0]).$_tag, "b");
+  assert.equal(binding.status, "failed");
+  assert.equal(displacedTree.isDisposed, true);
+  assert.equal(displacedTree.remove(), 0);
+  binding.dispose();
+  binding.dispose();
+  assert.equal(binding.tree.remove(), 1);
+  assert.equal(binding.tree.remove(), 0);
+});
+
+check("initial and later structured style realization use one serializer", () => {
+  const value = create_livetree({
+    $_tag: "main",
+    $_attrs: { style: { opacity: 0.5, width: { value: 2, unit: "px" } } },
+    $_content: [],
+  });
+  const dom = project_livetree(value.node) as unknown as FakeElement;
+  assert.equal(dom.style.cssText, "opacity: 0.5; width: 2px");
+  value.attrs.set("style", { opacity: 0.75, width: { value: 3, unit: "em" } });
+  assert.equal(dom.style.cssText, "opacity: 0.75; width: 3em");
+  value.remove();
+});
+
 check("new-epoch snapshot restore reconstructs an incompatible exact root", () => {
   const map = element(`<main @000000416/>`);
   const binding = hsonReflect(map);
