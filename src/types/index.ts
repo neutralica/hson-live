@@ -38,7 +38,7 @@ export type {
   CollectionReflectStatus,
 } from "./reflect.types.js";
 export type * from "./locus.types.js";
-export type { LiveMapSchema, LiveMapSchemaValidation, LiveMapSchemaIssue, LiveMapSchemaValue, LiveMapSchemaRule, InferLiveMapSchema } from "../api/livemap/livemap.schema.js";
+export type { LiveMapSchema, LiveMapGraphSchema, LiveMapAttachableSchema, LiveMapSchemaValidation, LiveMapSchemaIssue, LiveMapSchemaValue, LiveMapSchemaRule, InferLiveMapSchema, LiveMapSchemaReference, LiveMapSchemaRefinementOptions, LiveMapSchemaBoundOptions, LiveMapSchemaLengthOptions, LiveMapSchemaPatternOptions } from "../api/livemap/livemap.schema.js";
 export type {
   LiveInspector,
   LiveInspectorArrayIdentity,

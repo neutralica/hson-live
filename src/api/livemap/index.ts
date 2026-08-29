@@ -56,6 +56,8 @@ export type * from "../../types/livemap.types.js";
 export type {
   InferLiveMapSchema,
   LiveMapSchema,
+  LiveMapGraphSchema,
+  LiveMapAttachableSchema,
   LiveMapSchemaIssue,
   LiveMapSchemaMustApi,
   LiveMapSchemaConstraint,

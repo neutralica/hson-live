@@ -273,6 +273,6 @@ export type * from "./types/locus.types.js";
 export type { LocusDocumentSnapshotEncoding } from "./api/locus/locus.document-snapshot.js";
 export { LiveMapSchemaError } from "./api/livemap/livemap.error.js";
 export { snap_live_path } from "./api/livemap/livemap.editor.js";
-export type { InferLiveMapSchema, LiveMapSchema, LiveMapSchemaValue, LiveMapSchemaValidation, LiveMapSchemaIssue, LiveMapSchemaRule } from "./api/livemap/livemap.schema.js";
+export type { InferLiveMapSchema, LiveMapSchema, LiveMapGraphSchema, LiveMapAttachableSchema, LiveMapSchemaValue, LiveMapSchemaValidation, LiveMapSchemaIssue, LiveMapSchemaRule, LiveMapSchemaReference, LiveMapSchemaRefinementOptions, LiveMapSchemaBoundOptions, LiveMapSchemaLengthOptions, LiveMapSchemaPatternOptions } from "./api/livemap/livemap.schema.js";
 export { ELEM_TAG, OBJ_TAG, ARR_TAG, ROOT_TAG, II_TAG, STR_TAG, VAL_TAG, ATTRS_KEY, META_KEY, TAG_KEY, CONTENT_KEY } from "./core/constants.js";
 export { make_sanitizer, type SanitizerLike } from "./safety/sanitize-html.utils.js";

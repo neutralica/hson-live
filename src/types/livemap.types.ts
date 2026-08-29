@@ -4,6 +4,7 @@ import type { CanonicalPublicAttrs, CanonicalPublicAttrValue, HsonNode, JsonValu
 import type {
   LiveMapSchema,
   LiveMapProjectedSchema,
+  LiveMapAttachableSchema,
   LiveMapSchemaResolution,
   LiveMapSchemaRule,
   LiveMapSchemaValue,
@@ -293,7 +294,7 @@ export type LiveMapCoreSchemaMustApi = Readonly<{
 
 export type LiveMapCoreSchemaApi<TValue = JsonValue | undefined> = Readonly<{
   get: () => LiveMapProjectedSchema | undefined;
-  use: <TSchema extends LiveMapProjectedSchema>(
+  use: <TSchema extends LiveMapAttachableSchema>(
     schema: TSchema,
   ) => LiveMap<LiveMapSchemaValue<TSchema>>;
   /** Return the public schema rule matching one concrete path, if attached. */

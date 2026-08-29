@@ -104,7 +104,16 @@ function projected(graph: VerifiedCanonicalSchemaGraph, ref: number, value: Proj
     const base = projected(graph, node.base, value, path, state, depth + 1);
     if (!base.ok) return base;
     if (refinement_matches(node.rule, value)) return valid();
-    return invalid([make_issue("INVALID_CONSTRAINT", path, ref, node.label ?? refinement_label(node.rule), emit_ordered_json(value), { kind: "refinement-failure", detail: node.rule.kind })]);
+    return invalid([make_issue("INVALID_CONSTRAINT", path, ref, node.label ?? refinement_label(node.rule), emit_ordered_json(value), {
+      kind: "refinement-failure",
+      detail: node.rule.kind,
+      refinement: node.rule,
+      ...((node.rule.kind === "string-length" && typeof value === "string")
+        ? { actualLength: Array.from(value).length }
+        : (node.rule.kind === "collection-length" && Array.isArray(value))
+          ? { actualLength: value.length }
+          : {}),
+    })]);
   }
   if (node.kind === "projected-array") {
     if (!Array.isArray(value)) return mismatch(graph, ref, path, projected_type(value));

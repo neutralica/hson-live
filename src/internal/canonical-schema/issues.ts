@@ -1,5 +1,5 @@
 import type { LiveMapSchemaIssueCode, LivePath } from "../../types/livemap.types.js";
-import type { CanonicalSchemaNodeRef } from "./graph.js";
+import type { CanonicalRefinementRule, CanonicalSchemaNodeRef } from "./graph.js";
 
 export type CanonicalGraphIssueEvidence = Readonly<{
   kind:
@@ -18,6 +18,8 @@ export type CanonicalGraphIssueEvidence = Readonly<{
     | "resource-limit";
   branches?: readonly CanonicalSchemaNodeRef[];
   detail?: string;
+  refinement?: CanonicalRefinementRule;
+  actualLength?: number;
 }>;
 
 export type CanonicalGraphIssue = Readonly<{

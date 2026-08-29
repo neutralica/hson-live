@@ -23,6 +23,8 @@ check("pattern data has no RegExp interpretation", () => assert.equal(evaluate("
 check("array collection length", () => assert.equal(evaluate("projected-array", { kind: "collection-length", minimum: 2, maximum: 3 }, [1]).ok, false));
 check("array uniqueness uses canonical literal equality including negative zero", () => assert.equal(evaluate("projected-array", { kind: "array-unique" }, [0, -0]).ok, true));
 check("array uniqueness detects ordered structured duplicates", () => assert.equal(evaluate("projected-array", { kind: "array-unique" }, [{ a: 1 }, { a: 1 }]).ok, false));
+check("numeric refinement failure carries the closed bound rule", () => assert.deepEqual(evaluate("projected-number", { kind: "number-lower-bound", value: 2, inclusive: false }, 2).issues[0]?.evidence.refinement, { kind: "number-lower-bound", value: 2, inclusive: false }));
+check("length refinement failure carries canonical actual code-point count", () => assert.equal(evaluate("projected-string", { kind: "string-length", maximum: 1 }, "e\u0301").issues[0]?.evidence.actualLength, 2));
 check("semantic diagnostic metadata changes expected evidence", () => {
   const verified = verify_canonical_schema_graph({ format: CANONICAL_SCHEMA_FORMAT, version: CANONICAL_SCHEMA_VERSION, capabilities: { projectedRoot: 0 }, nodes: [{ kind: "projected-number" }], semanticDiagnosticMetadata: { labels: [[0, "finite count"]] } });
   assert.equal(verified.ok, true); if (!verified.ok) return;

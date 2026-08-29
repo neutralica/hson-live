@@ -5,11 +5,14 @@ import ts from "typescript";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 
 type Category = "A" | "B" | "C" | "D" | "E";
-type CensusEntry = Readonly<{ file: string; line: number; category: Category }>;
+type FinalDestination = "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I";
+type CensusEntry = Readonly<{ file: string; line: number; category: Category; intent?: keyof typeof constrainIntents; excerpt?: string }>;
+type ConstrainOccurrence = Readonly<{ file: string; line: number; destination: FinalDestination; excerpt: string }>;
 const root = new URL("..", import.meta.url).pathname;
 const testRoot = join(root, "tests");
 const files = walk(testRoot).filter(file => /\.(?:mts|ts)$/.test(file) && !file.includes("canonical-schema-"));
 const entries: CensusEntry[] = [];
+const constrainOccurrences: ConstrainOccurrence[] = [];
 const constrainIntents: Record<string, number> = { numericBound: 0, integer: 0, stringLength: 0, stringPattern: 0, collectionLength: 0, uniqueness: 0, arbitraryBusiness: 0, sideEffectOrThrow: 0, other: 0 };
 
 for (const file of files) {
@@ -21,15 +24,22 @@ for (const file of files) {
     ts.forEachChild(node, collectAliases);
   });
   source.forEachChild(function visit(node): void {
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "constrain") {
+      const position = source.getLineAndCharacterOfPosition(node.getStart(source));
+      const excerpt = node.getText(source).replace(/\s+/g, " ").slice(0, 180);
+      constrainOccurrences.push(Object.freeze({ file: relative(root, file), line: position.line + 1, destination: finalConstrainDestination(relative(root, file), position.line + 1, excerpt), excerpt }));
+    }
     if (ts.isCallExpression(node) && (isSchemaDefineExpression(node.expression, source) || (ts.isIdentifier(node.expression) && aliases.has(node.expression.text)))) {
       const argument = node.arguments[0];
       let category: Category;
+      let intent: keyof typeof constrainIntents | undefined;
       if (argument === undefined) category = "E";
       else {
         const executable = subtreeFlags(argument);
         if (executable.constrain) {
           category = "B";
-          constrainIntents[classifyConstrainIntent(argument.getText(source))] += 1;
+          intent = classifyConstrainIntent(argument.getText(source));
+          constrainIntents[intent] += 1;
         }
         else if (executable.recurse) category = "C";
         else if (!ts.isArrowFunction(argument) && !ts.isFunctionExpression(argument)) category = "D";
@@ -37,7 +47,7 @@ for (const file of files) {
         else category = "A";
       }
       const position = source.getLineAndCharacterOfPosition(node.getStart(source));
-      entries.push(Object.freeze({ file: relative(root, file), line: position.line + 1, category }));
+      entries.push(Object.freeze({ file: relative(root, file), line: position.line + 1, category, ...(intent === undefined ? {} : { intent, excerpt: argument?.getText(source).replace(/\s+/g, " ").slice(0, 180) }) }));
     }
     ts.forEachChild(node, visit);
   });
@@ -53,6 +63,11 @@ assert.ok(counts.D > 0, "expected acquisition-only dynamic definitions");
 assert.equal(counts.E, 0, `unexpected blockers: ${JSON.stringify(entries.filter(entry => entry.category === "E"))}`);
 console.log(`# canonical Schema corpus census ${JSON.stringify({ total: entries.length, ...counts })}`);
 console.log(`# constrain intent census ${JSON.stringify(constrainIntents)}`);
+for (const entry of entries.filter((value) => value.category === "B")) console.log(`# constrain ${entry.intent} ${entry.file}:${entry.line} ${entry.excerpt}`);
+const finalDestinations: Record<FinalDestination, number> = { A: 0, B: 0, C: 0, D: 0, E: 0, F: 0, G: 0, H: 0, I: 0 };
+for (const occurrence of constrainOccurrences) finalDestinations[occurrence.destination] += 1;
+console.log(`# constrain occurrence disposition ${JSON.stringify({ total: constrainOccurrences.length, ...finalDestinations })}`);
+for (const occurrence of constrainOccurrences) console.log(`# constrain occurrence ${occurrence.destination} ${occurrence.file}:${occurrence.line} ${occurrence.excerpt}`);
 let checks = 0;
 for (const [name, run] of [
   ["all discovered callsites are classified", () => assert.ok(entries.length > 0)],
@@ -62,6 +77,7 @@ for (const [name, run] of [
   ["dynamic frontend/acquisition-only category is populated", () => assert.ok(counts.D > 0)],
   ["no unexpected blocker remains", () => assert.equal(counts.E, 0)],
   ["every constrain-bearing callsite has an intent classification", () => assert.equal(Object.values(constrainIntents).reduce((sum, count) => sum + count, 0), counts.B)],
+  ["every syntactic constrain invocation has a final Phase-3 destination", () => assert.equal(Object.values(finalDestinations).reduce((sum, count) => sum + count, 0), constrainOccurrences.length)],
 ] as const) { run(); console.log(`ok ${++checks} - ${name}`); }
 emit_hson_live_test_completion("canonical-schema-corpus-census", checks, checks, 0);
 
@@ -110,4 +126,19 @@ function classifyConstrainIntent(text: string): keyof typeof constrainIntents {
   if (/(?:=>|return)[^;{}]*(?:>=|<=|>|<)\s*-?\d/.test(text)) return "numericBound";
   if (/constrain\s*\(\s*(?:["'`][^"'`]*["'`]\s*,\s*)?[^)]*=>/.test(text)) return "arbitraryBusiness";
   return "other";
+}
+
+function finalConstrainDestination(file: string, line: number, text: string): FinalDestination {
+  if (/Number\.isInteger/.test(text)) return "B";
+  if (/\.test\s*\(/.test(text)) return "I";
+  if (/\.startsWith\s*\(|\.endsWith\s*\(|\.includes\s*\(/.test(text)) return "D";
+  if (/Number\.isFinite\(Number\(/.test(text)) return "I";
+  if (/\.length/.test(text)) return /array\(|projected-schema-source-lowering/.test(`${text} ${file}`) ? "E" : "C";
+  if (/value\.connected|value\.count\s*>/.test(text)) return "G";
+  if (/value\s*===\s*["'](?:before|10)["']/.test(text)) return "F";
+  if (/Number\.isFinite/.test(text)) return "H";
+  if (/throw\b|\+\+|--|\+=|-=|while\s*\(|calls\b|keys\s*=|received\s*=|\.field\s*=/.test(text)) return "H";
+  if (/(?:>|<)\s*-?\d/.test(text)) return "A";
+  if (file.endsWith("livemap-document-attrs-schema.types.ts") && line >= 136) return "H";
+  return "H";
 }

@@ -17,7 +17,12 @@ for (const [index, facade] of facades.entries()) check(`public facade path ${ind
   const canonical = root.Hson`37`;
   assert.equal(facade.schema.validate(schema, canonical), canonical);
 });
-check("facade namespace has only approved define and validate", () => assert.deepEqual(Object.keys(root.hson.liveMap.schema).sort(), ["define", "validate"]));
+check("facade namespace exposes callback-free constructors plus migration define and validate", () => {
+  const keys = Object.keys(root.hson.liveMap.schema);
+  for (const key of ["define", "validate", "string", "object", "optional", "minimum", "reference", "declarations", "main", "attrs"]) assert.equal(keys.includes(key), true);
+  assert.equal(keys.includes("recurse"), false);
+});
+check("public Hson validation accepts graph-backed direct Schema", () => { const schema = root.hson.liveMap.schema.object.exact({ age: root.hson.liveMap.schema.minimum(root.hson.liveMap.schema.number, 0) }); const canonical = root.Hson`<age 37>`; assert.equal(root.Hson.validate(schema, canonical), canonical); });
 check("no standalone validate helper leaked from public modules", () => { for (const module of [root, narrow, map, transform]) assert.equal(Object.hasOwn(module, "validate"), false); });
 check("compiled declaration retains branded canonical input and output", () => { const declaration = readFileSync(new URL("../dist/api/livemap/livemap.facade.d.ts", import.meta.url), "utf8"); assert.match(declaration, /validate: \(schema: LiveMapSchema, canonical: HsonCanonical\) => HsonCanonical/); assert.doesNotMatch(declaration, /TrustedSchema|validate_schema_hson_graph|Provenance/); });
 check("tag stays primitive and String prototype stays untouched", () => { assert.equal(typeof root.Hson`37`, "string"); assert.equal(Object.hasOwn(String.prototype, "validate"), false); });

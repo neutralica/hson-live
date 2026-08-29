@@ -6,6 +6,7 @@ import {
   validate_livemap_schema_projected_root,
   validate_livemap_schema_projected_value,
   type LiveMapProjectedSchema,
+  type LiveMapAttachableSchema,
   type LiveMapSchemaResolution,
   type LiveMapSchemaValidation,
   type LiveMapSchemaValue,
@@ -580,15 +581,16 @@ function make_livemap_core_from_owned_root(
   const schemaApi: LiveMapCoreSchemaApi<JsonValue | undefined> = Object.freeze({
     get: () => currentSchema,
 
-    use: <TSchema extends LiveMapProjectedSchema>(schema: TSchema) => {
+    use: <TSchema extends LiveMapAttachableSchema>(schema: TSchema) => {
+      const runtimeSchema = schema as unknown as LiveMapProjectedSchema;
       const attached = currentSchema;
-      if (attached === schema) return core as unknown as LiveMap<LiveMapSchemaValue<TSchema>>;
+      if (attached === runtimeSchema) return core as unknown as LiveMap<LiveMapSchemaValue<TSchema>>;
       if (attached !== undefined) {
         throw new Error("LiveMap data schema contract is already attached and cannot be replaced.");
       }
       transitionController.assertPublicMutationAllowed();
-      must_core_schema_root(schema, owned.root, initialMode);
-      currentSchema = schema;
+      must_core_schema_root(runtimeSchema, owned.root, initialMode);
+      currentSchema = runtimeSchema;
       transitionController.invalidate();
 
       return core as unknown as LiveMap<LiveMapSchemaValue<TSchema>>;

@@ -7,15 +7,17 @@ import type { HsonCanonical } from "../transform/transform.types.js";
 import { make_classified_livemap } from "./livemap.core.js";
 import {
   define_livemap_schema,
+  LIVEMAP_DIRECT_SCHEMA_RUNTIME,
 } from "./livemap.schema.js";
 import type {
+  LiveMapDirectSchemaBuilder,
   LiveMapSchemaBuilder,
   InternalDefinedLiveMapSchema,
   InternalLiveMapSchemaDefinition,
   LiveMapSchema,
 } from "./livemap.schema.js";
 
-type LiveMapSchemaNamespace = Readonly<{
+type LiveMapSchemaNamespace = LiveMapDirectSchemaBuilder & Readonly<{
   validate: (schema: LiveMapSchema, canonical: HsonCanonical) => HsonCanonical;
   define: <const TExpression extends InternalLiveMapSchemaDefinition>(
     define: (schema: LiveMapSchemaBuilder) => TExpression,
@@ -23,6 +25,7 @@ type LiveMapSchemaNamespace = Readonly<{
 }>;
 
 const schema: LiveMapSchemaNamespace = Object.freeze({
+  ...LIVEMAP_DIRECT_SCHEMA_RUNTIME,
   define: define_livemap_schema,
   validate: validate_canonical_hson,
 });

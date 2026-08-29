@@ -68,8 +68,10 @@ const awaitedTagFamily = await tagFamilyObject;
 const constructedTagFamily = await new Promise((resolve) => resolve(tagFamilyObject));
 const allTagFamilies = await Promise.all([tagFamilyObject, Promise.resolve(tagFamilyObject)]);
 
-check("schema facade exposes only define and approved validate", () => {
-  assert.deepEqual(Object.keys(hson.liveMap.schema), ["define", "validate"]);
+check("schema facade exposes direct constructors plus migration define and validate", () => {
+  const keys = Object.keys(hson.liveMap.schema);
+  for (const key of ["string", "object", "attrs", "main", "optional", "minimum", "reference", "declarations", "define", "validate"]) assert.equal(keys.includes(key), true);
+  assert.equal(keys.includes("recurse"), false);
 });
 
 check("define receives one direct frozen toolkit", () => {

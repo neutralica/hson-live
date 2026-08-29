@@ -116,6 +116,18 @@ export function lower_current_schema(schema: unknown): CurrentSchemaLoweringResu
         case "tuple": return put(core, { kind: "projected-tuple", items: Object.freeze((source.items ?? []).map(projected)) });
         case "record": return put(core, { kind: "projected-record", value: child(source.record, "record value") });
         case "pick": return put(core, { kind: "projected-union", choices: Object.freeze((source.choices ?? []).map(projected)) });
+        case "refinement": {
+          if (source.base === undefined || source.refinement === undefined) {
+            reason({ code: "UNSUPPORTED_CURRENT_NODE", currentKind: source.kind, detail: "Declarative refinement is missing its base or closed rule." });
+            return put(core, { kind: "projected-any" });
+          }
+          return put(core, {
+            kind: "projected-refinement",
+            base: projected(source.base),
+            rule: source.refinement,
+            ...(source.label === undefined ? {} : { label: source.label }),
+          });
+        }
         case "recurse": {
           if (source.recurse === undefined) {
             reason({ code: "UNRESOLVED_RECURSE_THUNK", currentKind: source.kind, detail: "Current recurse node has no resolver." });
@@ -127,6 +139,13 @@ export function lower_current_schema(schema: unknown): CurrentSchemaLoweringResu
             return put(core, { kind: "projected-ref", target: core });
           }
           return put(core, { kind: "projected-ref", target: projected(resolved) });
+        }
+        case "reference": {
+          if (source.referenceTarget === undefined) {
+            reason({ code: "UNSUPPORTED_CURRENT_NODE", currentKind: source.kind, detail: `Symbolic reference ${JSON.stringify(source.referenceName)} is unresolved.` });
+            return put(core, { kind: "projected-ref", target: core });
+          }
+          return put(core, { kind: "projected-ref", target: projected(source.referenceTarget) });
         }
         default:
           reason({ code: "UNSUPPORTED_CURRENT_NODE", currentKind: source.kind, detail: `Unsupported current projected node ${JSON.stringify(source.kind)}.` });
