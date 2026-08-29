@@ -246,6 +246,54 @@ the map was not mutated.
 
 ## Development
 
+### Install the current local extension
+
+From the `hson-live` repository root, use the local install authority:
+
+```sh
+npm run vscode:install
+```
+
+The install command discovers the normal Stable VS Code CLI, checks and builds
+the extension, packages current source into a new temporary VSIX, validates that
+archive, atomically promotes it to `editors/vscode-hson/hson-language.vsix`, and
+force-installs that exact artifact. It then verifies the installed extension ID,
+version, and payload when the current VS Code CLI can locate it.
+
+After a successful install, run **Developer: Reload Window** in VS Code. The
+tooling does not reload or restart VS Code automatically.
+
+Package without installing:
+
+```sh
+npm run vscode:package
+```
+
+Inspect source/package/installed-build authority:
+
+```sh
+npm run vscode:status
+```
+
+To select a different compatible VS Code CLI explicitly:
+
+```sh
+HSON_VSCODE_CLI=/absolute/path/to/code npm run vscode:install
+```
+
+An invalid explicit override fails immediately. The normal command does not
+select Insiders, create a profile, or use the isolated integration-test
+directories.
+
+Local source updates deliberately use `--force`, so replacing one `0.1.1`
+development build with another does not require an extension version bump.
+Changing HSON Appearance or trusted-diagnostics settings does not require a
+reinstall; use the normal VS Code settings lifecycle. Reinstall only after
+extension source or build inputs change.
+
+The multi-step build/development-host sequence below remains useful for extension
+debugging, but it is not the ordinary local installation workflow.
+
 1. Run `npm install` in this directory.
 2. Run `npm run build` and `npm test`.
 3. Start an Extension Development Host:

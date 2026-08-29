@@ -27,7 +27,9 @@
   ],
   "scripts": {
     "build": "node ./scripts/build.mjs",
-    "check": "tsc -p ./tsconfig.json --noEmit && node ./tests/validate-artifact.mjs",
+    "check:source": "tsc -p ./tsconfig.json --noEmit",
+    "validate:artifact": "node ./tests/validate-artifact.mjs",
+    "check": "npm run check:source && npm run build && npm run validate:artifact",
     "test": "npm run test:grammar && npm run test:unit && npm run test:settings",
     "test:grammar": "node ./tests/grammar.test.mjs && npm run test:baseline",
     "test:unit": "node ./scripts/build-tests.mjs && node ./.test-dist/unit.cjs",
@@ -38,7 +40,10 @@
     "test:baseline:installed": "npm run package:vsix && node ./scripts/build-tests.mjs && HSON_BASELINE_VSIX=hson-language.vsix node ./tests/integration/run-baseline.mjs",
     "benchmark": "node ./scripts/build-tests.mjs && node ./.test-dist/benchmark.cjs",
     "package:dry-run": "npm run build && vsce ls --tree",
-    "package:vsix": "npm run build && vsce package --no-dependencies --out hson-language.vsix"
+    "package:vsix": "node ./scripts/vscode-local.mjs package",
+    "vscode:install": "node ./scripts/vscode-local.mjs install",
+    "vscode:status": "node ./scripts/vscode-local.mjs status",
+    "test:vscode-local": "node ./tests/vscode-local.test.mjs"
   },
   "contributes": {
     "configuration": [
@@ -286,6 +291,7 @@
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.6.2",
     "esbuild": "^0.25.9",
+    "jszip": "^3.10.1",
     "typescript": "^5.9.3",
     "vscode-oniguruma": "2.0.1",
     "vscode-textmate": "9.3.2"

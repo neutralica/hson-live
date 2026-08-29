@@ -3,3 +3,5 @@ node_modules/
 .vscode-test/
 .vscode/
 *.vsix
+hson-language.authority.json
+.hson-vsix-*/

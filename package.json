@@ -89,6 +89,9 @@
     }
   },
   "scripts": {
+    "vscode:package": "npm --prefix editors/vscode-hson run package:vsix",
+    "vscode:install": "npm --prefix editors/vscode-hson run vscode:install",
+    "vscode:status": "npm --prefix editors/vscode-hson run vscode:status",
     "test:hson-completion-context": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-completion-context.acceptance.mts",
     "test:schema-projected-completion": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/schema-projected-completion.acceptance.mts",
     "test:schema-document-completion": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/schema-document-completion.acceptance.mts",
