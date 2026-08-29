@@ -377,7 +377,10 @@ the destination once.
 
 The state graph and document graph retain distinct responsibilities, but their relationship is explicit. LiveMap remains authoritative, and the reflector updates the view from observed commits.
 
-For broader graph reflection, `hson.reflect` provides an optional binding that borrows LiveMap authority and coordinates a LiveTree runtime.
+For broader graph reflection, `hson.reflect` provides an optional binding that
+borrows LiveMap authority and coordinates a LiveTree runtime. See the
+[Reflect API reference](docs/reflect/api-reflect.md) for its supported mutation,
+failure, and lifecycle boundaries.
 
 ---
 
@@ -624,15 +627,20 @@ The exact repository scripts are the source of truth for compilation, entrypoint
 
 ## Documentation
 
-The `docs/` directory contains architecture and API references for:
+The maintained current-facing references are:
 
-- Hson syntax and transformation;
-- LiveMap;
-- LiveTree;
-- Locus;
-- LiveHost and the Node runtime boundary;
-- CSS and animation management;
-- diagnostics and package entrypoints.
+- [Hson syntax](docs/hson-syntax.md) and the
+  [Transform API](docs/transform/api-transform.md), including binary transport
+  and representation digests;
+- the [LiveMap API](docs/livemap/api-livemap.md) and canonical
+  [capture/restore/replay contract](docs/livemap/capture-replay.md);
+- the [LiveTree API](docs/livetree/api-livetree.md);
+- the [Reflect API](docs/reflect/api-reflect.md);
+- the [Locus API](docs/locus/api-locus.md) and
+  [authority overview](docs/locus/overview.md);
+- the [LiveHost and Node runtime boundary](docs/livehost/overview.md); and
+- supporting contracts, CSS/animation references, diagnostics, and historical
+  release/design material under their labeled directories.
 
 Repository:
 

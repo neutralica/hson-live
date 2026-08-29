@@ -7,6 +7,12 @@ This is the current public LiveTree-facing reference. For the architecture and
 behavioral model, see `hson-livetree.md`. For stylesheet details, see
 `api-css-manager.md`.
 
+LiveTree is independently usable. Its constructors create or graft a LiveTree
+directly; LiveMap, Reflect, Locus, and LiveHost are optional integrations, not
+prerequisites. Detached construction and graph mutation work before DOM
+attachment, while DOM reads, events, canvas, and rendered CSS naturally require
+a browser document and an applicable projection.
+
 ---
 
 ## Public Constructors
@@ -853,8 +859,8 @@ tree.canvas.must.plot(fn, settings?, label?)
 type HsonNode = {
   $_tag: string;
   $_content: (HsonNode | Primitive)[];
-  $_attrs: HsonAttrs;
-  $_meta: HsonMeta;
+  $_attrs?: HsonAttrs;
+  $_meta?: HsonMeta;
 };
 ```
 

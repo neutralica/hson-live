@@ -8,14 +8,30 @@ import { hsonLiveMap, link_livemap } from "hson-live/livemap";
 import type { LiveMap, LiveMapCommit, LivePath } from "hson-live/livemap";
 ```
 
-`hson-live/livemap` is the supported subsystem entrypoint for LiveMap values, helpers, structured errors, and types. The root remains the umbrella entrypoint, and `hson-live/types` remains a broad type barrel rather than the owner of the LiveMap vocabulary.
+`hson-live/livemap` is the supported DOM-free subsystem entrypoint for LiveMap
+values, helpers, structured errors, and types. The root remains the browser
+umbrella entrypoint, and `hson-live/types` remains a broad type barrel rather
+than the owner of the LiveMap vocabulary.
 
 ## Stability boundary
 
-- **Public:** `hson.liveMap.*`, `make_livemap_core`, `link_livemap`, path/feed/   proxy helpers exported by the package root, and exported LiveMap types.
-- **Experimental:** document-mode LiveMaps, capture/install/replay, graph commit   observation, links, and schema-derived typing.
-- **Internal:** editor functions, path guards, transition controllers, identity   indexes, canonical inspection, and direct graph preparation functions not   package-exported.
-- **Deferred:** primitive data roots and transparent parity between proxy,   data paths, document paths, and physical Hson paths.
+- **Public:** `hsonLiveMap`, `hson.liveMap`, `make_classified_livemap`,
+  `make_livemap_core`, `make_livemap_store_api`, `link_livemap`, the exported
+  path/feed/proxy/binding helpers, structured errors, and LiveMap types.
+- **Experimental:** document-mode LiveMaps, capture/install/replay, graph commit
+  observation, links, and schema-derived typing.
+- **Internal:** editor functions other than the exported `snap_live_path`, path
+  guards, transition controllers, identity indexes, canonical inspection, and
+  direct graph preparation functions not package-exported.
+- **Deferred:** primitive data roots and transparent parity between proxy, data
+  paths, document paths, and physical Hson paths.
+
+The subsystem entrypoint is the complete LiveMap barrel. The root re-exports
+the established common helpers but not every narrow path utility. In
+particular, `append_live_path`, `clone_live_path`, `parent_live_path`,
+`relative_live_path`, and `paths_equal` are imported from
+`hson-live/livemap`; do not assume every subsystem export is duplicated at the
+root.
 
 ## Construction
 
@@ -61,9 +77,24 @@ Ordinary accessors are rejected from their descriptors without calling their get
 
 Canonical object-property order is explicit in the graph and private carrier. Object-handle `keys()`, `values()`, and `entries()` read that order directly; `root()` exposes it through a detached canonical graph. A public plain-object snapshot follows JavaScript's own-key enumeration rules, which reorder integer-index keys. It is therefore not an exact ordered persistence format, and re-ingressing it may adopt that JavaScript-visible integer-key order.
 
-### Documents
+### Documents and HTML import boundaries
 
-`fromTrustedHtml(string)` and `fromUntrustedHtml(string)` are public and return an `element` or `fragment` LiveMap. Trusted input is unsanitized; untrusted input is sanitized. String parsing is DOM-free. These factories do not accept an `Element`, unlike the transformer/LiveTree HTML factories.
+The narrow `hsonLiveMap` facade has exactly `fromJson`, `fromHson`, `fromNode`,
+and `schema`; it has no HTML factories. The browser umbrella adds HTML
+construction only at `hson.liveMap`:
+
+```ts
+import { hson } from "hson-live";
+
+const trusted = hson.liveMap.fromTrustedHtml("<main></main>");
+const safe = hson.liveMap.fromUntrustedHtml(userHtml);
+```
+
+Both accept strings and return an `element` or `fragment` LiveMap. Trusted
+input is unsanitized; untrusted input is sanitized. These browser factories do
+not accept an `Element`, unlike the root Transform and LiveTree HTML factories.
+Use `hsonLiveMap.fromHson(...)` or `.fromNode(...)` when a DOM-free document
+construction path is required.
 
 ### Schema and proxy
 
@@ -93,7 +124,7 @@ map.snap(["user", "name"]);   // cloned value or undefined
 map.at(["tags"]).snap();      // cloned value
 map.rev;                      // current revision
 map.root();                   // detached HsonNode clone
-map.capture();                // { rev, value }
+map.capture();                // { rev, format, payload } plus non-enumerable root
 ```
 
 `snap(path?)` never returns a live object/array reference. A missing data path returns `undefined`; wrong path syntax throws. `at(path)` always creates a stable path handle, even if the path is currently missing; `handle.snap()` then returns `undefined`. There is no map-level `get`/`has` method. Use `snap`, object handle `hasKey`, schema `has`, or a proxy handle as appropriate.
@@ -104,6 +135,10 @@ ordered object entries and `-0`. `restore`, `apply`, and `replay` require this
 current structural representation. A `value` field, `formatVersion`, malformed
 transport, or an old value/op-only form rejects; there is no compatibility
 fallback.
+
+The data and document capture shapes, identity policies, installation rules,
+and revision effects are specified mechanically in
+[Capture, restore, and replay](capture-replay.md).
 
 ## Core data writes
 
@@ -211,7 +246,11 @@ Rename and move retain movement intent plus exact before/after witnesses for det
 5. advance the revision once if changed;
 6. publish commit observers, overlapping feeds, then store subscribers.
 
-`map.commits.observe(observer)` receives successful authoritative/replay commits  nd snapshot restoration observations. Listener failures are isolated.  map.feed(path, listener)` receives only commits with overlapping data ops; its  vent contains the first matching `op`, all matching `ops`, the current cloned  value`, subscriber `path`, and full commit.
+`map.commits.observe(observer)` receives successful authoritative/replay
+commits and snapshot restoration observations. Listener failures are isolated.
+`map.feed(path, listener)` receives only commits with overlapping data ops; its
+event contains the first matching `op`, all matching `ops`, the current cloned
+`value`, subscriber `path`, and full commit.
 
 ## Batching
 
@@ -528,6 +567,12 @@ map.capture({ identity: "strip" });
 Same-epoch output is an exact local object capability; copying or serializing it removes that proof. Preserve-metadata output retains QUID bytes for durable structure but does not transfer old handles. Strip output removes QUID metadata from the detached capture without mutating or minting into the source.
 
 `install(capture, { expectedRev?, identity? })` atomically replaces a same-mode document and advances revision. `restore` installs the exact captured revision without an ordinary commit. Admission supports `same-epoch`, `preserve-metadata`, `strip`, and `reject`. The compatibility default is `preserve-metadata`: claims are validated and become fresh map-local overlay identity, not proof of the source map's epoch. `replay(commit)` validates identity witnesses, operation domain, and exact revision continuity. `commits.observe` is the supported graph publication surface.
+
+`DocumentLiveMapCapture` is deliberately unversioned and has exactly four
+enumerable fields: `kind`, `mode`, `rev`, and `root`. View-state is a separate
+format-discriminated serialization envelope used by Locus
+persistence/recovery; it also has no numeric version field and is not a field
+on a document capture.
 
 ## Canonical ownership
 

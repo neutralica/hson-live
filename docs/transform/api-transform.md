@@ -1,20 +1,39 @@
 
-#### hson-live / hson.terminalgothic.com
+# Transform API
 
-# hson-live
-## Transform API
+## Package and environment boundaries
 
-
-
-The `hson.transform` namespace is also exported as `hsonTransform`.
+The canonical Transform facade is `hsonTransform` from `hson-live/transform`.
+It is DOM-free, accepts strings for HTML ingress, and is also exposed as
+`hson.transform` by the browser umbrella:
 
 ```ts
-hson.fromUntrustedHtml(input)   // destructive sanitization applied
-hson.fromTrustedHtml(input)     // accepted and parsed as-is
+import { hsonTransform } from "hson-live/transform";
+
+hsonTransform.fromUntrustedHtml(htmlString);
+hsonTransform.fromTrustedHtml(htmlString);
+hsonTransform.fromJson(input);
+hsonTransform.fromHson(source);
+hsonTransform.fromBinary(bytes, limits);
+hsonTransform.fromNode(node);
+```
+
+The root `hson` facade adds browser `Element` overloads to its HTML shortcuts:
+
+```ts
+import { hson } from "hson-live";
+
+hson.fromUntrustedHtml(stringOrElement) // sanitized HTML
+hson.fromTrustedHtml(stringOrElement)   // unsanitized trusted HTML
+hson.fromBinary(bytes, limits)
 hson.fromJson(input)
 hson.fromHson(input)
-hson.fromNode(node)             // accepts HsonNodes (in JSON)
+hson.fromNode(node)
 ```
+
+The narrow and umbrella facades share the structural Hson, JSON, node, binary,
+and output-chain implementations. Browser-only DOM query helpers on internal
+source constructors are not package entrypoints.
 
 `hson.transform` exposes synchronous numeric admission through `calc`.
 
@@ -142,8 +161,8 @@ All supported sources parse to `HsonNode`, Hson's graph type.
 type HsonNode = {
   $_tag: string;
   $_content: (HsonNode | Primitive)[];
-  $_attrs: HsonAttrs;
-  $_meta: HsonMeta;
+  $_attrs?: HsonAttrs;
+  $_meta?: HsonMeta;
 };
 ```
 
@@ -216,6 +235,29 @@ Parses and validates an external HsonNode graph .
 
 - Does not sanitize.
 
+### `hson.fromBinary(input: Uint8Array, options?)`
+
+Decodes canonical Binary Hson into the common Transform output chain. The
+narrow spelling is `hsonTransform.fromBinary(...)`; the root `hson` facade is an
+equivalent shortcut.
+
+Only `Uint8Array` is accepted. Node `Buffer` works because it is a
+`Uint8Array` subclass. Optional limits are positive safe integers:
+
+```ts
+type BinaryDecodeOptions = Readonly<{
+  maxBytes?: number;      // default 1,048,576
+  maxGraphDepth?: number; // default 256
+  maxGraphNodes?: number; // default 100,000
+}>;
+```
+
+The decoder rejects a wrong marker, truncation, trailing bytes, unknown
+discriminators, non-finite numbers, malformed nodes, duplicate or unsorted
+attribute/metadata keys, exceeded limits, and any accepted graph whose
+re-encoded bytes differ from the input. Binary Hson has no numeric version
+field or compatibility fallback.
+
 ---
 
 ## Step 2: Output Constructor
@@ -226,6 +268,7 @@ All transform source constructors return a common surface:
 .toHtml()           // returns an HTML string
 .toJson()           // returns a JSON object or string
 .toHson()           // returns an Hson string
+.toBinary()         // returns canonical Binary Hson bytes
 .toNode()           // returns the underlying HsonNode graph (in JSON)
 .sanitizeBEWARE()   // destructive sanitizer for external non-HTML input
 ```
@@ -258,6 +301,27 @@ Selects Hson output.
 - Canonical names use the established preferred bare grammar where possible.   Names requiring quoting use apostrophe delimiters, escape apostrophes as   `\'`, and treat backticks as ordinary data. Canonical Hson never emits a   backtick-delimited name.
 - Direct or fluent Hson serialization of any caller-supplied `_hson_root`   rejects before layout and QUID options. Parser-owned JSON/HTML roots and the   Hson parser root are explicitly detached by their source pipeline first.
 - `fromNode()` treats its input as a detached semantic value. Redundant detached   scalar `_hson_obj`/`_hson_elem` carriers normalize to their scalar before   output, while owned object-member carriers, element text clusters, and arrays   remain intact. Direct serialization rejects a detached carrier that bypassed   admission.
+
+### `.toBinary()`
+
+Selects the canonical binary representation of the exact detached Hson graph:
+
+```ts
+const binary = hsonTransform.fromHson(`<note "hello"/>`).toBinary();
+const bytes: Uint8Array = binary.serialize();
+const digest: string = await binary.sha256();
+```
+
+`serialize()` returns a fresh `Uint8Array` copy each time. The bytes are
+deterministic for the admitted graph: the codec uses fixed discriminators and
+widths, preserves graph/content order and UTF-16 code units, sorts
+attribute/metadata record keys by code unit, and writes finite numbers as
+big-endian binary64. It is a graph transport, not the UTF-8 bytes of serialized
+Hson, JSON, or HTML. A `_hson_root` carrier is not a detached Binary Hson value
+and rejects.
+
+`toBinary()` snapshots the source graph when that output is selected. Later
+mutation of a caller-owned node cannot change the returned representation.
 
 ### `HsonCanonical`
 
@@ -343,6 +407,8 @@ Returns a string for the chosen output:
 - after `.toJson()` - JSON string
 - after `.toHson()` - `HsonCanonical`
 
+Binary output has its own `serialize(): Uint8Array` terminal.
+
 ### `.value()`
 
 Returns the in-memory JSON projection:
@@ -357,9 +423,26 @@ source.toJson().value()         // in-memory JsonValue
 source.toJson().serialize()     // JSON text
 source.toHson().serialize()     // Hson text
 source.toHtml().serialize()     // HTML text
+source.toBinary().serialize()   // Binary Hson Uint8Array
 ```
 
 Public output finalizers do not expose `parse()`.
+
+### `.sha256()`
+
+Every selected representation exposes asynchronous
+`sha256(): Promise<string>`. It returns a lowercase 64-character hexadecimal
+SHA-256 digest of the exact bytes emitted by that representation:
+
+- Hson, JSON, and HTML hash the UTF-8 bytes produced by `TextEncoder` from
+  their exact `serialize()` string;
+- Binary Hson hashes the exact `Uint8Array` returned by its serializer.
+
+Formatting and representation are significant. Readable and compact Hson may
+hash differently, and one graph's Hson, JSON, HTML, and binary hashes are not
+expected to match. The operation uses `globalThis.crypto.subtle.digest` with
+`SHA-256`; it rejects when WebCrypto or SHA-256 support is unavailable. This is
+a representation digest, not an authentication or trust proof.
 
 ---
 
@@ -382,7 +465,9 @@ The `from*` LiveTree methods return detached branches. The DOM query methods ret
 
 Use `queryDom`, not `queryDOM`, on the public `hson.liveTree` facade.
 
-The lower-level Transform `queryDOM(selector)` and `queryBody()` methods are intentionally child/body snapshot operations: they parse the selected element's `innerHTML`. They are distinct from direct `fromHtml(Element)` and from LiveTree grafting.
+Internal browser source constructors still contain child/body snapshot helpers,
+but they are not exported by `hson-live`, `hson-live/transform`, or the public
+`hson` facade.
 
 ---
 
@@ -401,12 +486,48 @@ Sanitization is automatic only for `fromUntrustedHtml`. Other formats are treate
 
 ---
 
+## Errors
+
+Transform parser and serializer failures generally use the exported
+`TransformError` class. Its stable readable fields are `operation`, `code`, and
+optional `stage`, source position, graph `path`, and related source positions:
+
+```ts
+import {
+  is_transform_error,
+  read_transform_error_details,
+} from "hson-live/transform";
+
+try {
+  hsonTransform.fromHson(source).toNode();
+} catch (error) {
+  if (is_transform_error(error)) {
+    console.error(read_transform_error_details(error));
+  }
+}
+```
+
+`read_transform_error_details` returns immutable structured details or
+`undefined` for another failure type. Do not parse the human message to recover
+source evidence.
+
+Not every terminal failure is a `TransformError`: Binary Hson currently throws
+ordinary `Error` values prefixed with `Binary Hson`, WebCrypto hashing rejects
+with an ordinary `Error`, and a caller's `hsonCalc` callback failure propagates
+unchanged. Consumers should classify with `is_transform_error` before relying
+on Transform fields.
+
+---
+
 ## Design Notes
 
 - Transformations normalize through `HsonNode`.
 - Transform sources do not mutate the DOM.
 - LiveTree construction is explicit and separate.
 - Public output finalizers expose no `.parse()` terminal.
+- Binary ingress accepts only canonical bytes and has no version fallback.
+- `sha256()` hashes the selected serialized representation, not an abstract
+  format-independent graph.
 - VSN tag values remain in the `_hson_` namespace; internal node fields use the   `$_` names.
 - `fromNode(node).toNode()` returns the same graph reference; it is not a clone   operation.
 

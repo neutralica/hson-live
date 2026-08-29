@@ -38,8 +38,8 @@ The current node shape is:
 type HsonNode = {
   $_tag: string;
   $_content: (HsonNode | Primitive)[];
-  $_attrs: HsonAttrs;
-  $_meta: HsonMeta;
+  $_attrs?: HsonAttrs;
+  $_meta?: HsonMeta;
 };
 ```
 

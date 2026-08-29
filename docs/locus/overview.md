@@ -1,9 +1,14 @@
 
 # Locus
-Locus is hson-live’s authoritative hosting layer for shared live state and live documents.
-It combines a `LiveMap` with ordered mutation authority, actions, authorization, sessions, recovery, persistence, and transport-facing publication. A hosted map remains the canonical application state; Locus determines how that state may change, how accepted changes are ordered, and how clients recover and continue from the same authority.
-Locus is authoritative over every hosted `LiveMap`. Hosted canonical transitions pass through one host-owned FIFO; the original map and all retained mutation surfaces are fenced for the lifetime of that ownership. Document hosts may additionally use backend-agnostic durable persistence. In that configuration, every changed commit is appended durably before it becomes visible in memory or to connected clients.
+Locus is hson-live’s one-map authority layer for shared live state and live documents.
+It combines a `LiveMap` with ordered mutation authority, actions, authorization, sessions, recovery, persistence, and transport-facing publication. An authoritative map remains the canonical application state; Locus determines how that state may change, how accepted changes are ordered, and how clients recover and continue from the same authority.
+Locus is authoritative over its owned `LiveMap`. Canonical transitions pass through one Locus-owned FIFO; the original map and all retained mutation surfaces are fenced for the lifetime of that ownership. Document authorities may additionally use backend-agnostic durable persistence. In that configuration, every changed commit is appended durably before it becomes visible in memory or to connected clients.
 Locus does not yet provide server-side HTML projection, DOM adoption, or LiveTree participation in the browser. Those systems are the next projection layer built on top of the authority, persistence, and recovery model described here.
+
+LiveHost is separate. It owns application registration, routing, HTTP/WebSocket
+runtime policy, resource limits, health, and shutdown, and may expose a bounded
+Locus registry. Locus does not interpret application topology or choose the
+application's `LocusSelector`; application/LiveHost routing supplies it.
 ---
 ## Place in hson-live
 The principal hson-live layers have distinct responsibilities:
@@ -51,14 +56,14 @@ client or server intent
 → publication
 → client recovery or continuation
 
-All public mutation is placed behind the host:
+All public mutation is placed behind the Locus authority:
 
 FIFO authority queue
 → detached preparation
 → asynchronous authority gate
 → acceptance with isolated LiveMap notification
-→ explicit Host history ingestion
-→ Host publication
+→ explicit Locus history ingestion
+→ Locus publication
 
 The original map, retained handles, proxies, document helpers, schema mutation,
 and restore/replay routes are dynamically fenced while host management is
@@ -252,8 +257,8 @@ or a complete reset when the client’s incarnation is incompatible.
 
 Document clients may negotiate supported snapshot formats. Current document recovery can use:
 
-* legacy Hson snapshots;
-* exact view-state version 2 snapshots (version 1 rejects as unsupported);
+* Hson snapshots;
+* exact `format: "view-state"` snapshots with no numeric version field;
 * ordered canonical replay after the snapshot cut.
 
 Both snapshot formats are durable structural captures. They preserve canonical
@@ -526,15 +531,19 @@ This overview introduces the complete system but does not replace focused chapte
 
 Continue with:
 
-* Authority⁠￼ — staged, managed, and persistent mutation ordering;
-* actions.md — action handlers, contexts, deduplication, and authorization;
-* sessions-and-protocol.md — connections, sessions, envelopes, and publication;
-* recovery.md — snapshots, replay, capabilities, incarnations, and cursors;
-* persistence.md — adapter semantics, checkpoints, loading, validation, and failure handling;
-* stores-and-lifecycle.md — registry ownership, creation, loading, unloading, and destruction;
-* security.md — authority, visibility, sanitization, and projection boundaries.
+* [Locus API reference](api-locus.md) — exports, facades, actions, protocol,
+  recovery, bootstrap, persistence, graph content, transports, and errors;
+* [Locus authority contract](../contracts/livemap-locus-authority.md) — one-map
+  authority and synchronization invariants;
+* [Locus recovery contract](../contracts/locus-recovery.md) — canonical history,
+  snapshot, replay, cursor, and incarnation behavior;
+* [LiveMap capture contract](../livemap/capture-replay.md) — the exact local
+  capture/install/restore boundary under Locus persistence; and
+* [LiveHost overview](../livehost/overview.md) — application and Node runtime
+  ownership outside Locus.
 
-Until those chapters exist, this overview is the canonical high-level account of Locus’s implemented architecture.
+This overview is the canonical high-level account of Locus’s implemented
+architecture; the API reference determines what can be called today.
 
 ⸻
 

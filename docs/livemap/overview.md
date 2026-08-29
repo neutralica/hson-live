@@ -1456,8 +1456,8 @@ An exact document view-state may additionally preserve:
 - canonical graph structure;
 - QUID identity;
 - document indexes;
-- exact revision cut;
-- format version.
+- exact revision cut; and
+- an explicit `format: "view-state"` discriminator.
 
 A snapshot is a point-in-time representation. It does not automatically include all later commits.
 
@@ -1465,7 +1465,8 @@ A snapshot is a point-in-time representation. It does not automatically include 
 
 ## Capture formats
 
-Capture formats should be explicit and versioned.
+Capture formats are explicit and strictly discriminated. The current public
+capture and view-state envelopes do not carry numeric version fields.
 
 Possible forms include:
 
@@ -1703,7 +1704,7 @@ Determinism requires:
 - explicit operation ordering;
 - synchronous mutation callbacks;
 - canonical commit generation;
-- versioned capture formats;
+- explicit, validated capture formats;
 - validated replay continuity.
 
 Application-provided custom validators, updater callbacks, and transformations should not introduce time-dependent or environment-dependent behavior unless that value is explicitly supplied as mutation input.
@@ -1980,16 +1981,18 @@ atomic graph/index installation
 
 This overview describes LiveMap as an independent local graph-state engine.
 
-Detailed documentation should be divided into focused chapters:
+The maintained focused documentation is:
 
-- `projected-data.md` — paths, reads, writes, objects, arrays, and batches;
-- `document-maps.md` — canonical documents, attributes, children, identity, and structure;
-- `mutations-and-commits.md` — staged transitions, revisions, operations, no-ops, and notifications;
-- `schemas.md` — schema forms, resolution, validation, and issues;
-- `feeds-subscriptions-and-links.md` — observers, subscription forms, links, and lifecycle;
-- `handles-and-proxies.md` — ergonomic and advanced access surfaces;
-- `capture-install-replay.md` — snapshots, view-state, privileged installation, restoration, and replay;
-- `identity.md` — QUIDs, path versus identity, moves, replacement, and exact reconstruction.
+- `api-livemap.md` — complete current callable surface, including data,
+  documents, schemas, feeds, commits, links, and errors;
+- `handle-proxy.md` — data paths, stable handles, and proxy access;
+- `schema.md` — standalone canonical Hson validation;
+- `capture-replay.md` — exact capture shapes, identity categories,
+  installation, restoration, replay, and persistence boundaries;
+- `../contracts/livemap-mutation.md` — mutation and canonical commit contract;
+- `../contracts/livemap-identity.md` — QUID, path, epoch, and reflection
+  identity contract; and
+- `../contracts/livemap-lifecycle.md` — shared lifecycle and cleanup contract.
 
 The exact callable surface belongs in the LiveMap API reference.
 

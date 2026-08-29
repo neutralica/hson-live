@@ -19,6 +19,9 @@ import {
   install_locus_bootstrap,
   create_locus_bootstrap_client,
   create_browser_locus_socket,
+  encode_locus_graph_content,
+  decode_locus_graph_content,
+  is_locus_encoded_graph_content,
 } from "hson-live/locus";
 
 import {
@@ -60,10 +63,12 @@ const locus = create_locus({
 });
 ```
 
-`LocusOptions<TMap, TActions>` accepts an existing authoritative map.
-`ProjectedLocusOptions<TState, TActions>` creates a data map from
-state. A Locus owns one canonical stream identified by `logicalMapId` and
-`incarnationId`; neither is its route selector or a client identity.
+`LocusOptions<TMap, TActions>` accepts an existing authoritative map. The
+public type named `ProjectedLocusOptions<TState, TActions>` creates a data map
+from state; “projected” here is the established identifier, not the prose name
+for the data side. A Locus owns one canonical stream identified by
+`logicalMapId` and `incarnationId`; neither is its route selector or a client
+identity.
 
 ## Client and protocol
 
@@ -80,6 +85,13 @@ Message discriminators such as `action`, `recover`, `commit`, and
 `session-create` remain semantic message kinds. A hello message may contain
 `type` and an optional `clientId`; the removed `hostId` field rejects.
 
+The core depends only on `LocusSocketLike`: text `send`, close, message
+subscription, and close subscription. `create_browser_locus_socket` adapts the
+browser WebSocket API and exposes `ready`, status, and idempotent disposal. It
+accepts text messages only. `create_node_locus_socket` provides the Node
+adapter from `hson-live/locus/node`; transports frame the protocol but do not
+change authority, revision, or recovery semantics.
+
 Raw-QUID request targeting remains supported for current document actions.
 The authority lowers those requests to path-authoritative canonical commits.
 Legacy QUID-only canonical commits reject.
@@ -94,6 +106,13 @@ the lower-level current/replay/snapshot machinery.
 Recovery identity uses `LocusLogicalMapId` and `LocusIncarnationId`. Client
 identity uses `LocusClientId`. Transport routing uses the distinct public
 `LocusSelector` type.
+
+The canonical stream retains a bounded commit history by count and encoded
+bytes. Recovery planning selects `current`, ordered `replay`, replacement
+`snapshot`, or `reject` from the authority incarnation, requested cursor, and
+retained history. Sessions may be reattached where policy permits, but session
+continuity is not state-recovery identity and does not replace the canonical
+revision cursor.
 
 ## Bootstrap
 
@@ -136,7 +155,53 @@ single bootstrap artifact.
 supports exact checkpoint replacement. Data persistence remains
 reserved and rejects.
 
-The multi-authority persistent store is intentionally not public in U10.
+The adapter has three asynchronous operations:
+
+```ts
+interface LocusPersistenceAdapter {
+  load(logicalMapId): Promise<LocusPersistedMapState | undefined>;
+  appendCommit(record: LocusPersistedCommit): Promise<void>;
+  replaceCheckpoint(record: LocusPersistedCheckpoint): Promise<void>;
+}
+```
+
+Document checkpoints contain `logicalMapId`, `incarnationId`,
+`mapKind: "document"`, `mode`, `rev`, and a
+`{ format: "view-state", payload }` snapshot. Neither checkpoint nor snapshot
+has a numeric version field. Exact repeated commit appends must be idempotent;
+conflicting repeats must reject. Checkpoint replacement is atomic and removes
+commits through its revision. Loaded state is validated and replayed before it
+becomes an ordinary in-memory authority.
+
+`PersistentLocus.checkpoint()` enters the same ordered authority queue,
+captures the exact current revision, replaces the durable checkpoint, and
+trims its covered tail. It does not mutate the map or publish a client commit.
+
+Multi-authority persistent stores remain internal application utilities rather
+than part of the one-map Locus package contract.
+
+## Graph-content codec
+
+Canonical document commit operations use a separate exact graph-content
+transport for inserted or replacement content:
+
+```ts
+type LocusEncodedGraphContent = Readonly<{
+  format: "hson-graph";
+  payload: string;
+}>;
+
+const encoded = encode_locus_graph_content(content);
+const decoded = decode_locus_graph_content(encoded);
+```
+
+The payload is deterministic compact Hson data representing one finite Hson
+primitive or canonical Hson node. Encoding and decoding validate graph
+invariants and QUID syntax. The decoder requires an exact two-field envelope,
+rejects an unknown format or malformed/noncanonical payload, and returns
+classified `LocusGraphContentCodecError` failures. There is no numeric version
+field or legacy decoder. `is_locus_encoded_graph_content(value)` is the
+nonthrowing predicate over that same complete admission check.
 
 ## Tracing and errors
 

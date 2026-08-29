@@ -174,6 +174,8 @@ export function reflect_document_in_runtime(
   let off: LiveMapDisposer | undefined;
   let offIdentityParticipant: (() => void) | undefined;
 
+  // Publish the fail-closed state before releasing callbacks so any cleanup
+  // reentry observes a terminal binding and cannot delegate another mutation.
   const fail = (failure: DocumentReflectError): void => {
     if (currentStatus === "failed" || currentStatus === "disposed") return;
     currentFailure = failure;
@@ -1051,6 +1053,8 @@ export function reflect_document_in_runtime(
   try {
     walk(tree.node, []);
     wholeCorrespondenceBuilds += 1;
+    // Identity preflight must exist before commit observation begins. The
+    // revision recheck then closes the capture-to-subscribe initialization gap.
     offIdentityParticipant = register_livemap_document_identity_participant(map.document, Object.freeze({
       preflight: preflight_identity_operations,
       verifyExisting: verify_existing_identity,
