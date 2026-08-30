@@ -6,8 +6,8 @@ export const trustedSchemaBindings = Object.entries({ UserSchema:'user', Documen
 export const caseFile = (name: string) => fileURLToPath(new URL(`./d6-${name}.ts`, import.meta.url));
 const imports = 'import { Hson } from "hson-live/hson"; import { TaggedSchema } from "./schema-d6-schemas.fixture.mts";';
 export const cases = {
-  fresh: imports + 'const value="a"; const source=Hson`<kind ${value} >`; try { Hson.validate(TaggedSchema,source); } catch {}',
-  repeated: imports + 'function run(){ const value="a"; const source=Hson`<kind ${value} >`; try { Hson.validate(TaggedSchema,source); } catch {} } run();run();',
+  fresh: imports + 'const value="a"; const source=Hson`<kind ${value} >`; try { Hson.certify(TaggedSchema,source); } catch {}',
+  repeated: imports + 'function run(){ const value="a"; const source=Hson`<kind ${value} >`; try { Hson.certify(TaggedSchema,source); } catch {} } run();run();',
 };
 for (const [name,text] of Object.entries(cases)) {
   const code = instrument_trusted_schema_map_sources(caseFile(name),text,new URL('../../src/internal/trusted-schema-diagnostics/source-lifecycle.ts',import.meta.url).href)

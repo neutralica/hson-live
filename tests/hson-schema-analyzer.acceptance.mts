@@ -19,22 +19,28 @@ const config = join(project, "tsconfig.json");
 writeFileSync(producer, `import { Hson, type HsonSchema } from "hson-live";\nexport const UserSchema: HsonSchema = Hson\`<type "data" content <name "string" age "number">>\`;\nthrow new Error("the analyzer must never execute this module");\n`);
 writeFileSync(consumer, `import { Hson } from "hson-live"; import { type UserSchemaHson } from "./producer.js";\nconst user: UserSchemaHson = Hson\`<name "Ada" age 37>\`; void user;\n`);
 writeFileSync(aliasSchema, `import { Hson as Author, type HsonSchema as Schema } from "hson-live";\nexport const AliasSchema: Schema = Author\`<type "data" content <ok "boolean">>\`;\n`);
-writeFileSync(documentSchema, `import { Hson, type HsonSchema } from "hson-live";\nexport const PageSchema: HsonSchema = Hson\`<type "document" tag "main" attrs <props <id "string" hidden <optional "flag">> exact true> content <sequence [<tag "header" content "empty">, <tag "section" content "string">]>>\`;\n`);
-writeFileSync(documentConsumer, `import { Hson } from "hson-live"; import type { PageSchemaHson, PageSchemaValue } from "./document-schema.js";\nconst page: PageSchemaHson = Hson\`<main id=hero <header/> <section "body"/>/>\`; void page;\ndeclare const value: PageSchemaValue; const rootTag: "main" = value.$_tag; const child = value.$_content[0].$_content[1]; const childTag: "section" = child.$_tag; void rootTag; void childTag;\n// @ts-expect-error private semantic proof prevents structural fabrication\nconst fake: PageSchemaValue = { $_tag: "main", $_attrs: { id: "hero" }, $_content: [] }; void fake;\n// @ts-expect-error object spread does not preserve private semantic proof\nconst rebuilt: PageSchemaValue = { ...value }; void rebuilt;\n`);
+writeFileSync(documentSchema, `import { Hson, type HsonSchema } from "hson-live";\nexport const PageSchema: HsonSchema = Hson\`<type "document" tag "main" attrs <props <id "string" hidden <optional "flag">> closed true> content <sequence [<tag "header" content "empty">, <tag "section" content "string">]>>\`;\n`);
+writeFileSync(documentConsumer, `import { Hson } from "hson-live"; import type { PageSchemaHson, PageSchemaType } from "./document-schema.js";\nconst page: PageSchemaHson = Hson\`<main id=hero <header/> <section "body"/>/>\`; void page;\ndeclare const value: PageSchemaType; const rootTag: "main" = value.$_tag; const child = value.$_content[0].$_content[1]; const childTag: "section" = child.$_tag; void rootTag; void childTag;\n// @ts-expect-error private semantic proof prevents structural fabrication\nconst fake: PageSchemaType = { $_tag: "main", $_attrs: { id: "hero" }, $_content: [] }; void fake;\n// @ts-expect-error object spread does not preserve private semantic proof\nconst rebuilt: PageSchemaType = { ...value }; void rebuilt;\n`);
 writeFileSync(config, JSON.stringify({ compilerOptions: { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext", declaration: true, outDir: "./out", baseUrl: ".", paths: { "hson-live": [resolve("dist/index.d.ts")], "hson-live/hson": [resolve("dist/hson-authoring.d.ts")] } }, include: ["./*.ts"] }, null, 2));
 
 const run = (mode: "generate" | "verify" | "check" | "build") => spawnSync(process.execPath, ["--loader", "ts-node/esm", "scripts/hson-schema.mts", mode, "--project", config], { cwd: root, encoding: "utf8", env: { ...process.env, TS_NODE_TRANSPILE_ONLY: "true" } });
 
 check("generation and extension-independent authoritative check pass", () => { assert.equal(run("generate").status, 0); const result = run("check"); assert.equal(result.status, 0, result.stdout + result.stderr); });
-check("official symbol resolution accepts renamed direct imports", () => assert.match(readFileSync(aliasSchema, "utf8"), /AliasSchemaValue/));
+check("official symbol resolution accepts renamed direct imports", () => assert.match(readFileSync(aliasSchema, "utf8"), /AliasSchemaType/));
 check("declaration emit preserves module reexport and private proof carrier", () => {
   const result = run("build");
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.match(readFileSync(join(project, "out/producer.d.ts"), "utf8"), /export type \{ UserSchemaValue, UserSchemaHson \}/);
+  assert.match(readFileSync(join(project, "out/producer.d.ts"), "utf8"), /export type \{ UserSchemaType, UserSchemaHson \}/);
   const generated = readFileSync(join(project, "out/producer.UserSchema.hson-schema.generated.d.ts"), "utf8");
-  assert.match(generated, /private readonly __hsonSchemaProof/); assert.match(generated, /export type UserSchemaHson/);
+  assert.match(generated, /private readonly __hsonSchemaProof/); assert.match(generated, /export type UserSchemaType/); assert.match(generated, /export type UserSchemaHson/); assert.doesNotMatch(generated, /UserSchemaValue/);
   const documentGenerated = readFileSync(join(project, "out/document-schema.PageSchema.hson-schema.generated.d.ts"), "utf8");
   assert.match(documentGenerated, /readonly \$_tag: "main"/); assert.match(documentGenerated, /readonly \$_tag: "section"/); assert.match(documentGenerated, /readonly hidden\?: "hidden"/);
+});
+check("retired generated Value evidence fails freshness", () => {
+  const artifact = join(project, "producer.UserSchema.hson-schema.generated.ts"), original = readFileSync(artifact, "utf8");
+  writeFileSync(artifact, original.replace("UserSchemaType", "UserSchemaValue"));
+  assert.notEqual(run("verify").status, 0);
+  writeFileSync(artifact, original);
 });
 check("edited generated declaration fails closed", () => {
   const artifact = join(project, "producer.UserSchema.hson-schema.generated.ts"), original = readFileSync(artifact, "utf8");
@@ -71,10 +77,16 @@ check("document static Hson rejects wrong tag, attrs, content order, and cardina
 });
 check("document optional attr omission and default-open attrs pass authoritatively", () => {
   const originalSchema = readFileSync(documentSchema, "utf8"), originalConsumer = readFileSync(documentConsumer, "utf8");
-  writeFileSync(documentSchema, originalSchema.replace(" exact true", ""));
+  writeFileSync(documentSchema, originalSchema.replace(" closed true", ""));
   writeFileSync(documentConsumer, originalConsumer.replace("id=hero", "id=hero data-extra=yes"));
   assert.equal(run("generate").status, 0); const result = run("check"); assert.equal(result.status, 0, result.stdout + result.stderr);
   writeFileSync(documentSchema, originalSchema); writeFileSync(documentConsumer, originalConsumer); assert.equal(run("generate").status, 0);
+});
+check("retired attrs exact closure spelling fails closed", () => {
+  const original = readFileSync(documentSchema, "utf8");
+  writeFileSync(documentSchema, original.replace(" closed true", " exact true"));
+  assert.notEqual(run("verify").status, 0);
+  writeFileSync(documentSchema, original);
 });
 check("static interpolation fails closed", () => {
   const original = readFileSync(consumer, "utf8"); writeFileSync(consumer, original.replace('Hson`<name "Ada" age 37>`', 'Hson`<name "Ada" age ${37}>`'));
@@ -82,7 +94,7 @@ check("static interpolation fails closed", () => {
 });
 check("wrong Schema-bound validation association fails closed", () => {
   const original = readFileSync(consumer, "utf8");
-  writeFileSync(consumer, `${original}\nimport { UserSchema } from "./producer.js"; import type { AliasSchemaHson } from "./alias-schema.js";\nconst wrong: AliasSchemaHson = Hson.validate(UserSchema, Hson\`<name "Ada" age 37>\`); void wrong;\n`);
+  writeFileSync(consumer, `${original}\nimport { UserSchema } from "./producer.js"; import type { AliasSchemaHson } from "./alias-schema.js";\nconst wrong: AliasSchemaHson = Hson.certify(UserSchema, Hson\`<name "Ada" age 37>\`); void wrong;\n`);
   const result = run("verify"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /association must use AliasSchema/); writeFileSync(consumer, original);
 });
 

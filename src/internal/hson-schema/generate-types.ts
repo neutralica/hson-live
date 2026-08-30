@@ -61,11 +61,11 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
     return `Readonly<{ readonly $_tag: ${JSON.stringify(element.tag)}; readonly $_attrs${required ? "" : "?"}: ${attrsType}; readonly $_content: ${emitDocumentContent(element.content, `${path}Content`)}; }> & ${proof(`${path}Element`)}`;
   };
 
-  const value = root.kind === "document-element" ? emitDocumentElement(root, "Root") : emitData(root, "Root");
+  const type = root.kind === "document-element" ? emitDocumentElement(root, "Root") : emitData(root, "Root");
   const hsonProof = proof("Hson");
   return Object.freeze({
     proofNodeCount,
-    declarations: `${proofDeclarations.join("\n")}\nexport type ${name}Value = ${value};\nexport type ${name}Hson = HsonCanonical & ${hsonProof};`,
+    declarations: `${proofDeclarations.join("\n")}\nexport type ${name}Type = ${type};\nexport type ${name}Hson = HsonCanonical & ${hsonProof};`,
   });
 }
 

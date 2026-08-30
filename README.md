@@ -543,7 +543,7 @@ const map = hsonLiveMap.fromHson(source);
 map.schema.use(UserSchema);
 ```
 
-For standalone validation, `Hson.validate(UserSchema, source)` returns the same
+For standalone validation, `Hson.certify(UserSchema, source)` returns the same
 canonical string or throws the existing structured Schema error. The legitimate
 `hsonLiveMap.schema.validate` and `hson.liveMap.schema.validate` entrances remain
 available and share that exact implementation. Natural map governance needs no

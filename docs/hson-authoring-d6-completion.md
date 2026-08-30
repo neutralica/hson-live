@@ -227,7 +227,7 @@ Passed with VS Code 1.95.3, both trusted and Restricted Mode extension hosts.
 Mechanically exercised manual member completion, snippets and ordering, finite
 literals, attrs/flags, child/tag choices, incomplete edits, source-update
 filtering, expression exclusion, explicit disablement, Restricted Mode absence,
-and natural `map.schema.use` completion without `Hson.validate`. A real recurse
+and natural `map.schema.use` completion without `Hson.certify`. A real recurse
 thunk signaled entry and paused; retiring its runtime while the request was
 pending prevented old completion publication. D2–D5 journeys also passed.
 

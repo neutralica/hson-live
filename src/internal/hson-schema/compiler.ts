@@ -15,7 +15,7 @@ import { evaluate_canonical_projected_schema } from "../canonical-schema/evaluat
 import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { is_public_attr_name } from "../../core/public-attrs.js";
 
-export const HSON_SCHEMA_MVP_COMPATIBILITY_VERSION = "hson-schema-mvp-2" as const;
+export const HSON_SCHEMA_MVP_COMPATIBILITY_VERSION = "hson-schema-mvp-3" as const;
 
 export type HsonSchemaIssueCode =
   | "INVALID_ROOT"
@@ -241,7 +241,7 @@ function decode_document_element(input: JsonObject, path: readonly (string | num
   let attrsExact = false;
   if ("attrs" in input) {
     const decoded = decode_document_attrs(input.attrs, [...path, "attrs"], issues, ranges, root, provenance);
-    if (decoded !== undefined) { attrs = decoded.attrs; attrsExact = decoded.exact; }
+    if (decoded !== undefined) { attrs = decoded.attrs; attrsExact = decoded.closed; }
   }
   const content = decode_document_content(input.content, [...path, "content"], issues, ranges, root, provenance);
   if (typeof input.tag !== "string" || input.tag.length === 0 || input.tag.startsWith("_hson_") || content === undefined) return undefined;
@@ -250,18 +250,18 @@ function decode_document_element(input: JsonObject, path: readonly (string | num
   return schema;
 }
 
-function decode_document_attrs(input: unknown, path: readonly (string | number)[], issues: HsonSchemaIssue[], ranges: Map<HsonSchemaSemanticNode, HsonSourceRange>, root: HsonNode, provenance: HsonSourceProvenance): Readonly<{ attrs: readonly HsonSchemaDocumentAttr[]; exact: boolean }> | undefined {
+function decode_document_attrs(input: unknown, path: readonly (string | number)[], issues: HsonSchemaIssue[], ranges: Map<HsonSchemaSemanticNode, HsonSourceRange>, root: HsonNode, provenance: HsonSourceProvenance): Readonly<{ attrs: readonly HsonSchemaDocumentAttr[]; closed: boolean }> | undefined {
   if (!is_object(input)) { issue(issues, "INVALID_SCHEMA_EXPRESSION", path, "`attrs` requires one descriptor object."); return undefined; }
-  for (const key of Object.keys(input)) if (key !== "props" && key !== "exact") issue(issues, "UNKNOWN_SCHEMA_MEMBER", [...path, key], `Unknown attrs descriptor member ${JSON.stringify(key)}.`);
+  for (const key of Object.keys(input)) if (key !== "props" && key !== "closed") issue(issues, "UNKNOWN_SCHEMA_MEMBER", [...path, key], `Unknown attrs descriptor member ${JSON.stringify(key)}.`);
   if (!("props" in input) || !is_object(input.props)) { issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, "props"], "`attrs.props` requires one object of candidate attribute Schemas."); return undefined; }
-  if (input.exact !== undefined && typeof input.exact !== "boolean") issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, "exact"], "`attrs.exact` must be boolean when present.");
+  if (input.closed !== undefined && typeof input.closed !== "boolean") issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, "closed"], "`attrs.closed` must be boolean when present.");
   const attrs: HsonSchemaDocumentAttr[] = [];
   for (const [name, value] of Object.entries(input.props)) {
     if (!is_public_attr_name(name)) { issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, "props", name], `Invalid public attribute name ${JSON.stringify(name)}.`); continue; }
     const decoded = decode_attr_expression(value, [...path, "props", name], issues, ranges, root, provenance);
     if (decoded !== undefined) attrs.push(Object.freeze({ name, ...decoded }));
   }
-  return Object.freeze({ attrs: Object.freeze(attrs), exact: input.exact === true });
+  return Object.freeze({ attrs: Object.freeze(attrs), closed: input.closed === true });
 }
 
 function decode_attr_expression(input: unknown, path: readonly (string | number)[], issues: HsonSchemaIssue[], ranges: Map<HsonSchemaSemanticNode, HsonSourceRange>, root: HsonNode, provenance: HsonSourceProvenance): Readonly<{ optional: boolean } & (Readonly<{ flag: true }> | Readonly<{ flag: false; schema: HsonSchemaDataSemanticNode }>)> | undefined {

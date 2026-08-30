@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 const imports = 'import { Hson } from "hson-live/hson";\nimport { hsonLiveMap } from "hson-live/livemap";\nimport { UserSchema, OtherSchema, DocumentSchema, ConstraintSchema, LiteralSchema } from "./schema-d5-schemas.fixture.mts";\n';
 const source = 'const age = "37"; const source = Hson`<user <age ${age}>>`;\n';
-const validate = 'Hson.validate(UserSchema, source);';
+const validate = 'Hson.certify(UserSchema, source);';
 const map = 'const map = hsonLiveMap.fromHson(source);\n';
 const use = 'map.schema.use(UserSchema);';
 export const cases: Readonly<Record<string, string>> = {
@@ -9,10 +9,10 @@ export const cases: Readonly<Record<string, string>> = {
   beforeValidate: imports + source + 'throw new Error("stopped before application validation");\n' + validate,
   valid: imports + source.replace('"37"', '37') + validate,
   literal: imports + 'const value=1; const source=Hson`<user <age "bad" unused ${value}>>`;\n' + validate,
-  document: imports + 'const value="bad"; const source=Hson`<button count=${value}/>`;\nHson.validate(DocumentSchema, source);',
-  constraint: imports + 'const value=-1; const source=Hson`<user <age ${value}>>`;\nHson.validate(ConstraintSchema, source);',
-  literalSet: imports + 'const value="pending"; const source=Hson`<user <age ${value}>>`;\nHson.validate(LiteralSchema, source);',
-  multiple: imports + source + 'try { Hson.validate(UserSchema, source); } catch {} Hson.validate(OtherSchema, source);',
+  document: imports + 'const value="bad"; const source=Hson`<button count=${value}/>`;\nHson.certify(DocumentSchema, source);',
+  constraint: imports + 'const value=-1; const source=Hson`<user <age ${value}>>`;\nHson.certify(ConstraintSchema, source);',
+  literalSet: imports + 'const value="pending"; const source=Hson`<user <age ${value}>>`;\nHson.certify(LiteralSchema, source);',
+  multiple: imports + source + 'try { Hson.certify(UserSchema, source); } catch {} Hson.certify(OtherSchema, source);',
   map: imports + source + map + use,
   mapValid: imports + source.replace('"37"', '37') + map + use,
   mapMutated: imports + source + map + 'map.set(["user","age"], 37);\n' + use,

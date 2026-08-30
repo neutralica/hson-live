@@ -10,7 +10,7 @@ const testRoot = await realpath(await mkdtemp("/tmp/hson-baseline-"));
 console.log("# baseline isolated profile: " + testRoot);
 const workspace = join(testRoot, "workspace"), extensions = join(testRoot, "extensions");
 await mkdir(workspace); await mkdir(extensions);
-await writeFile(join(workspace, "baseline.ts"), 'import { hson, hson as library, Hson, Hson as authored } from "hson-live";\nhson; hson.fromJson(""); library.liveMap;\nHson; Hson.validate(undefined, "");\nconst source = Hson`<thing "readable" >`;\nconst alias = authored`<alias 1>`;\nfunction local(Hson, hson) { Hson; hson; }\n');
+await writeFile(join(workspace, "baseline.ts"), 'import { hson, hson as library, Hson, Hson as authored } from "hson-live";\nhson; hson.fromJson(""); library.liveMap;\nHson; Hson.certify(undefined, "");\nconst source = Hson`<thing "readable" >`;\nconst alias = authored`<alias 1>`;\nfunction local(Hson, hson) { Hson; hson; }\n');
 await writeFile(join(workspace, "provider.mjs"), 'import { writeFileSync } from "node:fs"; writeFileSync(new URL("./provider-executed",import.meta.url),"unexpected");');
 await mkdir(join(workspace, ".vscode"));
 await writeFile(join(workspace, ".vscode/settings.json"), JSON.stringify({

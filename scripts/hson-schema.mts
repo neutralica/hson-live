@@ -146,7 +146,7 @@ function make_artifact(schema: SchemaDeclaration): Artifact {
   const metadata = `${JSON.stringify(metadataObject, null, 2)}\n`;
   const runtimeExtension = extension === ".mts" ? ".mjs" : extension === ".cts" ? ".cjs" : ".js";
   const generatedSpecifier = `./${stem.slice(stem.lastIndexOf(sep) + 1)}.${schema.name}.hson-schema.generated${runtimeExtension}`;
-  const reexport = `export type { ${schema.name}Value, ${schema.name}Hson } from ${JSON.stringify(generatedSpecifier)};`;
+  const reexport = `export type { ${schema.name}Type, ${schema.name}Hson } from ${JSON.stringify(generatedSpecifier)};`;
   return Object.freeze({ path: artifactPath, content, metadataPath: `${stem}.${schema.name}.hson-schema.generated.json`, metadata, reexport, generatedBytes: Buffer.byteLength(content), proofNodeCount: generated.proofNodeCount });
 }
 
@@ -181,10 +181,10 @@ function analyze_static_hson(program: ts.Program, checker: ts.TypeChecker, schem
         overlays.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(sourceFile), end: declaration.initializer.getEnd(), text: `(${declaration.initializer.getText(sourceFile)} as unknown as ${declaration.type.getText(sourceFile)})` });
         count += 1;
         if (schema.compiled.semantic.kind === "document-element") documentCount += 1;
-      } else if (ts.isCallExpression(declaration.initializer) && is_validate_call(declaration.initializer, checker)) {
-        if (declaration.initializer.typeArguments !== undefined) diagnostics.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(), message: "Explicit Hson.validate type arguments are unsupported." });
+      } else if (ts.isCallExpression(declaration.initializer) && is_certify_call(declaration.initializer, checker)) {
+        if (declaration.initializer.typeArguments !== undefined) diagnostics.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(), message: "Explicit Hson.certify type arguments are unsupported." });
         const schemaArgument = declaration.initializer.arguments[0];
-        if (schemaArgument === undefined || !ts.isIdentifier(schemaArgument) || !identifier_resolves_to(schemaArgument, checker, schema.declaration)) diagnostics.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(), message: `Hson.validate association must use ${schema.name} for ${typeName}.` });
+        if (schemaArgument === undefined || !ts.isIdentifier(schemaArgument) || !identifier_resolves_to(schemaArgument, checker, schema.declaration)) diagnostics.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(), message: `Hson.certify association must use ${schema.name} for ${typeName}.` });
         else overlays.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(sourceFile), end: declaration.initializer.getEnd(), text: `(${declaration.initializer.getText(sourceFile)} as unknown as ${declaration.type.getText(sourceFile)})` });
         count += 1;
         if (schema.compiled.semantic.kind === "document-element") documentCount += 1;
@@ -294,8 +294,8 @@ function official_binding(identifier: ts.Identifier, expected: string, checker: 
     && importedName === expected;
 }
 
-function is_validate_call(call: ts.CallExpression, checker: ts.TypeChecker): boolean {
-  return ts.isPropertyAccessExpression(call.expression) && call.expression.name.text === "validate" && ts.isIdentifier(call.expression.expression) && official_binding(call.expression.expression, "Hson", checker);
+function is_certify_call(call: ts.CallExpression, checker: ts.TypeChecker): boolean {
+  return ts.isPropertyAccessExpression(call.expression) && call.expression.name.text === "certify" && ts.isIdentifier(call.expression.expression) && official_binding(call.expression.expression, "Hson", checker);
 }
 function has_export(statement: ts.VariableStatement): boolean { return statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) === true; }
 function raw_template(node: ts.NoSubstitutionTemplateLiteral, sourceFile: ts.SourceFile): string { const text = node.getText(sourceFile); return text.slice(1, -1); }

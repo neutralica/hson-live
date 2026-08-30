@@ -25,7 +25,7 @@ The implemented expression vocabulary is deliberately small: `"string"`,
 `union`. Objects are closed and members are required unless directly wrapped in
 `optional`.
 
-Generation adds `<DeclarationName>Value` and `<DeclarationName>Hson` type exports
+Generation adds `<DeclarationName>Type` and `<DeclarationName>Hson` type exports
 to the authored module. Generated application structures are deeply readonly and
 carry inaccessible nominal evidence at every object, array, and tuple boundary.
 Their proof is lost by spread, reconstruction, and array transforms. Generated
@@ -69,20 +69,20 @@ import type { UserSchemaHson } from "./user-schema.js";
 const user: UserSchemaHson = Hson`<name "Ada" score 37>`;
 ```
 
-Dynamic canonical Hson is certified through the existing validation boundary:
+Dynamic canonical Hson is certified through the runtime proof boundary:
 
 ```ts
-const user: UserSchemaHson = Hson.validate(UserSchema, dynamicCanonicalHson);
+const user: UserSchemaHson = Hson.certify(UserSchema, dynamicCanonicalHson);
 ```
 
-Validation returns the identical immutable canonical string and fails with the
+Certification returns the identical immutable canonical string and fails with the
 existing structured Schema error behavior. Legacy LiveMap Schema validation is
 unchanged.
 
 There is intentionally no public Schema-value materializer. Existing
 `.toJson().value()` and LiveMap projections return ordinary mutable values and do
 not mint Schema proof. In this MVP, exact Schema-bound Hson is the public runtime
-certificate; `UserSchemaValue` proves generated declaration and nominal-carrier
+certificate; `UserSchemaType` proves generated declaration and nominal-carrier
 fidelity without claiming a public producer.
 
 Documents, attrs, tags, open objects, records, refinements, recursion in human

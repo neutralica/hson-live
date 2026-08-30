@@ -6,11 +6,11 @@ import { hsonLiveMap } from "hson-live/livemap";
 
 const UserSchema = hsonLiveMap.schema.define(s => s.object({ user: s.object({ age: s.number }) }));
 const user = Hson`<user <age 37>>`;
-const same = Hson.validate(UserSchema, user);
+const same = Hson.certify(UserSchema, user);
 // same === user; return type is HsonCanonical, not a Schema certificate.
 ```
 
-`Hson.validate`, `hsonLiveMap.schema.validate`, and
+`Hson.certify`, `hsonLiveMap.schema.validate`, and
 `hson.liveMap.schema.validate` are the same authoritative function. The latter
 two remain legitimate LiveMap-facing entrances. None allocates a map.
 

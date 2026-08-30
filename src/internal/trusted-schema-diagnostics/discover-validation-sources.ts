@@ -9,6 +9,7 @@ import type { TrustedSchemaMapFlow, TrustedSchemaSourceBinding } from "./protoco
 import { interpolation_site, type InterpolationSite } from "./interpolation-source.js";
 
 export type DiscoveredSchemaValidation = Readonly<{
+  operation?: "certify" | "validate";
   interpolation?: InterpolationSite;
   mapFlow?: TrustedSchemaMapFlow;
   constructionRange?: HostSourceRange;
@@ -70,12 +71,13 @@ export function discover_schema_validation_sources(fileName: string, text: strin
     return symbol !== undefined && roots.has(symbol);
   };
   const facade = (expression: ts.Expression): boolean => {
-    const schema = property(expression, "validate");
-    if (schema !== undefined && ts.isIdentifier(schema)) {
-      const symbol = checker.getSymbolAtLocation(schema);
+    const author = property(expression, "certify");
+    if (author !== undefined && ts.isIdentifier(author)) {
+      const symbol = checker.getSymbolAtLocation(author);
       if (symbol !== undefined && authors.has(symbol)) return true;
     }
-    const map = schema === undefined ? undefined : property(schema, "schema");
+    const validation = property(expression, "validate");
+    const map = validation === undefined ? undefined : property(validation, "schema");
     return map !== undefined && mapFacade(map);
   };
   const declaration = (node: ts.Identifier, use: ts.Node, seen: Set<ts.Symbol>): ts.Declaration | undefined => {
@@ -147,11 +149,15 @@ export function discover_schema_validation_sources(fileName: string, text: strin
       && !diagnostics.some(d => d.start === undefined || (d.start < node.end && d.start + (d.length ?? 0) >= node.getStart(file)))) {
       const source = canonical(node.arguments[1], node);
       const binding = schema(node.arguments[0], node);
-      if (source !== undefined && binding !== undefined) results.push({
-        templateId: `${moduleUrl}#template:${authored_hson_occurrence_range(source).start}`,
-        callId: `${moduleUrl}#validate:${node.getStart(file)}`,
-        source, binding, callRange: range(node), schemaRange: range(node.arguments[0]), schemaLabel: node.arguments[0].getText(file),
-      });
+      if (source !== undefined && binding !== undefined) {
+        const operation = property(node.expression, "certify") === undefined ? "validate" : "certify";
+        results.push({
+          operation,
+          templateId: `${moduleUrl}#template:${authored_hson_occurrence_range(source).start}`,
+          callId: `${moduleUrl}#${operation}:${node.getStart(file)}`,
+          source, binding, callRange: range(node), schemaRange: range(node.arguments[0]), schemaLabel: node.arguments[0].getText(file),
+        });
+      }
     }
     if (ts.isCallExpression(node) && standalone(node)
       && node.arguments.length === 1 && node.questionDotToken === undefined && node.typeArguments === undefined

@@ -38,7 +38,9 @@ import { validate_schema_hson_graph } from "hson-live/livemap";
 // @ts-expect-error Direct-source associations are private tooling.
 import type { TrustedSchemaDirectSource } from "hson-live/types";
 const standaloneSchema = hson.liveMap.schema.define(s => s.number);
-const standaloneCanonical: HsonCanonical = Hson.validate(standaloneSchema, Hson`37`);
+const standaloneCanonical: HsonCanonical = Hson.certify(standaloneSchema, Hson`37`);
+// @ts-expect-error Hson.validate was hard-removed in favor of Hson.certify.
+Hson.validate(standaloneSchema, Hson`37`);
 const narrowStandaloneCanonical: HsonCanonical = HsonSubpath.validate(standaloneSchema, standaloneCanonical);
 // @ts-expect-error Arbitrary strings are not branded HsonCanonical.
 hson.liveMap.schema.validate(standaloneSchema, "37");
@@ -1055,7 +1057,7 @@ import { hson as retiredSubpathAggregate } from "hson-live/hson";
 // @ts-expect-error Subsystems use their own entrypoints or the package root.
 import { hsonLiveMap as retiredAuthoringMap } from "hson-live/hson";
 // @ts-expect-error Canonical input is required at every validation entrance.
-Hson.validate(standaloneSchema, "37");
+Hson.certify(standaloneSchema, "37");
 const authoredTypeIdentity: AuthoringCanonical = standaloneCanonical;
 const originalTypeIdentity: HsonCanonical = authoredTypeIdentity;
 const sameRootMapType: typeof mapSubpath = hsonLiveMap;

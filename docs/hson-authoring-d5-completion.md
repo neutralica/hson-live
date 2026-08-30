@@ -148,7 +148,7 @@ Existing bounded source association selects one exact, current evaluation and
 the actual registered Schema. The runtime reparses the completed source with
 provenance, validates through existing graph authority, applies C1/C2, and maps
 to the host. A test explicitly stops application execution before its
-`Hson.validate` statement and still obtains the source-bound diagnostic.
+`Hson.certify` statement and still obtains the source-bound diagnostic.
 Independent Schema relationships validate independently.
 
 ## 11. D3 map/schema integration

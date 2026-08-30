@@ -15,4 +15,4 @@ export const PageSchema: HsonSchema = Hson`
 `;
 
 // @hson-schema generated type exports
-export type { PageSchemaValue, PageSchemaHson } from "./producer.PageSchema.hson-schema.generated.js";
+export type { PageSchemaType, PageSchemaHson } from "./producer.PageSchema.hson-schema.generated.js";

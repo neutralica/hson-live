@@ -4,7 +4,7 @@ This is the copy-review surface, not a proposed language redesign. Edit prose in
 
 Each `bank.*` ID is the exact exported formatter/constant name. Each entry gives the trigger, range and limitation from its immediately preceding source comment, plus authoring/Schema context and fix classification. Rendered text blocks preserve capitalization, punctuation and leading spaces. Fragments are not standalone diagnostic sentences. Missing-evidence probes do not claim that current validators emit those combinations.
 
-Current Hson syntax: `<age 37 name "Ada">` is a data object, `[1, "x"]` an array, `<button disabled/>` a document element, and `<main <button/>/>` nested content. Object members are NOT separate sibling angle pairs. In Schema examples, `define` means `hson.liveMap.schema.define`; `s` is its callback parameter. Trusted examples use a registered binding and `Hson.validate(ReviewSchema, value)` unless stated otherwise.
+Current Hson syntax: `<age 37 name "Ada">` is a data object, `[1, "x"]` an array, `<button disabled/>` a document element, and `<main <button/>/>` nested content. Object members are NOT separate sibling angle pairs. In Schema examples, `define` means `hson.liveMap.schema.define`; `s` is its callback parameter. Trusted examples use a registered binding and `Hson.certify(ReviewSchema, value)` unless stated otherwise.
 
 Precision: “exact” means a mapped span, not necessarily a single offending token. Syntax uses legacy `point`/`eof`, described as exact point/EOF; `fallback` is unresolved body/document coverage. Substitutions use `substitution-expression`: exact host expression span with semantic, NOT character-exact evaluated-value attribution. Anchors refer to existing closes/names/coverage. Infrastructure has no source squiggle. Successful exact placement adds no prose.
 
@@ -58,7 +58,7 @@ Hson admission failed.
 - Authored example: ``<age "37"> / [1] / <button count="bad"/>``.
 - Schema / infrastructure condition: `s.object({age:s.number}) / s.tuple(s.number,s.string) / s.button(s.attrs({count:s.number}))`.
 - Precision: exact / anchor / unresolved.
-- Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
+- Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
 - Future fix: none.
 - Evidence limitations: Final path component only, not a full property path; document numeric paths are printed as numbers.
 
@@ -94,7 +94,7 @@ attribute `count`
 - Authored example: ``<age "37">; <name 37>``.
 - Schema / infrastructure condition: `s.object({age:s.number}); s.object({name:s.string})`.
 - Precision: exact.
-- Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
+- Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
 - Future fix: safe under strict scalar-only conditions; otherwise suggestion only.
 - Evidence limitations: Only six recognized expected/received kind strings. No coercion implied. Attribute raw values remain strings; unquoting attributes is NOT a repair.
 
@@ -142,7 +142,7 @@ Expected this value to be a boolean, but this value is an Hson null.
 - Authored example: ``<>; [1]; <main/>; <button/>``.
 - Schema / infrastructure condition: `s.object({age:s.number}); s.tuple(s.number,s.string); s.main(s.button()); s.button(s.attrs({id:s.string}))`.
 - Precision: anchor.
-- Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
+- Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
 - Future fix: suggestion only.
 - Evidence limitations: No default value, complex missing-child description, typed count or allowed structure arrives. Shared by ordinary attributes and document content.
 
@@ -166,7 +166,7 @@ Required `1` is missing.
 - Authored example: ``<extra 1>; <button extra="x"/>``.
 - Schema / infrastructure condition: `s.object.exact({}); s.button(s.attrs.exact({}))`.
 - Precision: exact.
-- Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
+- Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
 - Future fix: suggestion only.
 - Evidence limitations: No allowed keys; removal may destroy authored data.
 
@@ -192,7 +192,7 @@ attribute `extra` is not allowed by this exact Schema.
 - Authored example: ``<state "pending">``.
 - Schema / infrastructure condition: `s.object({state:s.literal("draft","published")})`.
 - Precision: exact.
-- Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
+- Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
 - Future fix: suggestion only.
 - Evidence limitations: Expected is a rendered description, not structured alternatives. Quotes and vertical bars cannot safely be parsed into choices. Undefined-evidence variants document legacy defensive behavior, not an actual literal requirement.
 
@@ -216,7 +216,7 @@ Expected this value to equal undefined; found undefined.
 - Authored example: ``true; 1; <main "bad"/>``.
 - Schema / infrastructure condition: `s.pick(s.string,s.number); s.tuple(s.button()); s.main(s.button())`.
 - Precision: exact / unresolved.
-- Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
+- Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
 - Future fix: suggestion only (root/branch choice); none for absent evidence.
 - Evidence limitations: Branch summaries are only strings; attribute predicate exceptions lose expected/received. No type or source repair inferred.
 
@@ -240,7 +240,7 @@ Expected attribute `count`: a compatible Schema value; received an incompatible 
 - Authored example: ``[1, "extra"]; 1``.
 - Schema / infrastructure condition: `s.tuple(s.number); unsupported root capability / UNKNOWN_PATH defensive issue`.
 - Precision: exact / unresolved.
-- Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
+- Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
 - Future fix: suggestion only for surplus deletion; none for invalid Schema/path.
 - Evidence limitations: Surplus items and invalid Schema/path share the code-only fallback. Unsupported capability is normally rejected at registration before validation.
 
@@ -272,7 +272,7 @@ Schema validation failed for this value (INVALID_SCHEMA).
 - Authored example: ``<span/>``.
 - Schema / infrastructure condition: `s.button()`.
 - Precision: exact (whole element coverage).
-- Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
+- Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
 - Future fix: suggestion only.
 - Evidence limitations: Tag sidecar proves tag semantics. The current lowerer does not select just the tag name.
 
@@ -292,7 +292,7 @@ Expected element tag "button"; found "span".
 - Authored example: ``<button/>``.
 - Schema / infrastructure condition: `s.button(s.attrs({disabled:s.flag}))`.
 - Precision: anchor (usually />).
-- Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
+- Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
 - Future fix: safe under strict absent-flag / known-owner / current-Schema conditions.
 - Evidence limitations: Insertion requires a current truthful owning header; no code action implemented.
 
@@ -312,7 +312,7 @@ Required flag `disabled` is missing.
 - Authored example: ``<age -1>``.
 - Schema / infrastructure condition: `s.object({age:s.number.constrain("positive age",n=>n>0)}) / unlabeled overload`.
 - Precision: exact.
-- Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
+- Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
 - Future fix: none.
 - Evidence limitations: Label is private sidecar metadata. Empty string is a label. Base failure suppresses predicate label; false and throw follow different paths.
 
@@ -342,7 +342,7 @@ Variant `empty-label`:
 - Authored example: ``Hson`<age ${age}>` with age = "37"``.
 - Schema / infrastructure condition: `s.object({age:s.number})`.
 - Precision: exact expression span, semantic (not character-exact evaluated token).
-- Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
+- Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
 - Future fix: none.
 - Evidence limitations: Host origin scalarKind, then received, then value. Null has separate existing wording.
 
@@ -372,7 +372,7 @@ This expression evaluated to an Hson value
 - Authored example: ``Hson`<age ${age}>` with age = "37"``.
 - Schema / infrastructure condition: `s.object({age:s.number})`.
 - Precision: exact expression span, semantic.
-- Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
+- Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
 - Future fix: suggestion only.
 - Evidence limitations: Producing expression is not a string-literal Hson token; unquoting it is not a general safe repair.
 
@@ -396,7 +396,7 @@ This expression evaluated to Hson null, but the Schema requires a different valu
 - Authored example: ``Hson`<state ${state}>` with state = "pending"``.
 - Schema / infrastructure condition: `s.object({state:s.literal("draft","published")})`.
 - Precision: exact expression span, semantic.
-- Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
+- Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
 - Future fix: suggestion only.
 - Evidence limitations: No evaluated-value display or structured alternative list. Missing-evidence variant is retained defensively, not claimed as a valid literal.
 
@@ -420,7 +420,7 @@ This expression evaluated to an Hson string, but the Schema requires literal und
 - Authored example: ``Hson`<age ${age}>` with age = -1``.
 - Schema / infrastructure condition: `s.object({age:s.number.constrain("positive age",n=>n>0)}) / unlabeled`.
 - Precision: exact expression span, semantic.
-- Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
+- Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
 - Future fix: none.
 - Evidence limitations: Label does not prove a repair or permit executing the predicate to infer one.
 
@@ -444,7 +444,7 @@ This expression evaluated to an Hson number that does not satisfy its Schema con
 - Authored example: ``Hson`${value}```.
 - Schema / infrastructure condition: `synthetic unrecognized issue code for a captured scalar`.
 - Precision: exact expression span, semantic.
-- Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
+- Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
 - Future fix: none.
 - Evidence limitations: Retains code; not every fallback combination is currently emitted.
 
@@ -464,7 +464,7 @@ This expression evaluated to an Hson string that fails Schema validation (INVALI
 - Authored example: ``<>; [1]; <main/>``.
 - Schema / infrastructure condition: `required data member / tuple position / document child`.
 - Precision: anchor.
-- Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
+- Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
 - Future fix: suggestion only (flag may be conditionally safe).
 - Evidence limitations: Source precision is authoritative. No text inserted, no nonexistent token underlined.
 
@@ -484,7 +484,7 @@ Variant `anchor`:
 - Authored example: ``Hson`<age "37">`; fromHson('<age "37">')``.
 - Schema / infrastructure condition: `same mismatch with unavailable/out-of-bounds source evidence`.
 - Precision: unresolved.
-- Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
+- Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
 - Future fix: none.
 - Evidence limitations: Legacy Template-level term also covers static fromHson occurrences; standalone syntax fallback has no suffix.
 
@@ -502,7 +502,7 @@ Variant `unresolved`:
 - Authored example: ``Hson`<a ${a} b ${b}>```.
 - Schema / infrastructure condition: `constraint on a container spanning literal and substitution origins`.
 - Precision: unresolved / composite host span.
-- Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
+- Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
 - Future fix: none.
 - Evidence limitations: Mapped host extent is not character-exact reconstructed source. Composite takes priority over anchor.
 
@@ -520,7 +520,7 @@ Variant `composite`:
 - Authored example: ``Hson`<age "37">```.
 - Schema / infrastructure condition: `UserSchema requested by validate/use`.
 - Precision: exact / anchor / unresolved.
-- Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
+- Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
 - Future fix: none (wrapper only).
 - Evidence limitations: Label is discovered association metadata, not an invented identity.
 
@@ -721,10 +721,10 @@ Missing packaged Hson grammar
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:117](../editors/vscode-hson/src/diagnostic-messages.ts#L117).
 - Trigger / placement / semantic limit: Discovery proved a validate or map.schema.use association for this occurrence. Related range is the call, not the primary diagnostic or Schema declaration.
-- Authored example: ``Hson`<age "37">`; Hson.validate(UserSchema,value); map.schema.use(UserSchema)``.
+- Authored example: ``Hson`<age "37">`; Hson.certify(UserSchema,value); map.schema.use(UserSchema)``.
 - Schema / infrastructure condition: `discovered UserSchema binding`.
 - Precision: exact call range (related information).
-- Related: Schema requested by this validate call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
+- Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
 - Future fix: none.
 - Evidence limitations: Only validate and map.schema.use labels exist. No Schema-declaration related label emitted.
 
@@ -800,7 +800,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
     "message": "[ReviewSchema] Expected `age` to be a number, but this value is an Hson string.",
     "precision": "exact",
     "slice": "\"37\"",
-    "related": "Schema requested by this validate call (ReviewSchema)."
+    "related": "Schema requested by this certify call (ReviewSchema)."
   }
 ]
 ```
@@ -823,7 +823,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
     "message": "[ReviewSchema] Expected `name` to be a string, but this value is an Hson number.",
     "precision": "exact",
     "slice": "37",
-    "related": "Schema requested by this validate call (ReviewSchema)."
+    "related": "Schema requested by this certify call (ReviewSchema)."
   }
 ]
 ```
@@ -846,7 +846,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
     "message": "[ReviewSchema] Required `age` is missing. (Anchored to existing source; required structure is absent.)",
     "precision": "anchor",
     "slice": ">",
-    "related": "Schema requested by this validate call (ReviewSchema)."
+    "related": "Schema requested by this certify call (ReviewSchema)."
   }
 ]
 ```
@@ -869,7 +869,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
     "message": "[ReviewSchema] `extra` is not allowed by this exact Schema.",
     "precision": "exact",
     "slice": "extra",
-    "related": "Schema requested by this validate call (ReviewSchema)."
+    "related": "Schema requested by this certify call (ReviewSchema)."
   }
 ]
 ```
@@ -892,7 +892,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
     "message": "[ReviewSchema] Expected `state` to equal \"draft\" | \"published\"; found \"pending\".",
     "precision": "exact",
     "slice": "\"pending\"",
-    "related": "Schema requested by this validate call (ReviewSchema)."
+    "related": "Schema requested by this certify call (ReviewSchema)."
   }
 ]
 ```
@@ -915,7 +915,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
     "message": "[ReviewSchema] Required `1` is missing. (Anchored to existing source; required structure is absent.)",
     "precision": "anchor",
     "slice": "]",
-    "related": "Schema requested by this validate call (ReviewSchema)."
+    "related": "Schema requested by this certify call (ReviewSchema)."
   }
 ]
 ```
@@ -938,7 +938,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
     "message": "[ReviewSchema] Schema validation failed for `1` (TUPLE_INDEX_OUT_OF_RANGE).",
     "precision": "exact",
     "slice": "\"extra\"",
-    "related": "Schema requested by this validate call (ReviewSchema)."
+    "related": "Schema requested by this certify call (ReviewSchema)."
   }
 ]
 ```
@@ -961,7 +961,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
     "message": "[ReviewSchema] `age` does not satisfy constraint “positive age”.",
     "precision": "exact",
     "slice": "-1",
-    "related": "Schema requested by this validate call (ReviewSchema)."
+    "related": "Schema requested by this certify call (ReviewSchema)."
   }
 ]
 ```
@@ -984,7 +984,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
     "message": "[ReviewSchema] `age` does not satisfy its Schema constraint.",
     "precision": "exact",
     "slice": "-1",
-    "related": "Schema requested by this validate call (ReviewSchema)."
+    "related": "Schema requested by this certify call (ReviewSchema)."
   }
 ]
 ```
@@ -1007,7 +1007,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
     "message": "[ReviewSchema] Expected this value: string | number; received boolean.",
     "precision": "exact",
     "slice": "true",
-    "related": "Schema requested by this validate call (ReviewSchema)."
+    "related": "Schema requested by this certify call (ReviewSchema)."
   }
 ]
 ```
@@ -1030,7 +1030,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
     "message": "[ReviewSchema] Expected element tag \"button\"; found \"span\".",
     "precision": "exact",
     "slice": "<span/>",
-    "related": "Schema requested by this validate call (ReviewSchema)."
+    "related": "Schema requested by this certify call (ReviewSchema)."
   }
 ]
 ```
@@ -1053,7 +1053,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
     "message": "[ReviewSchema] Expected `0`: element; received text.",
     "precision": "exact",
     "slice": "\"bad\"",
-    "related": "Schema requested by this validate call (ReviewSchema)."
+    "related": "Schema requested by this certify call (ReviewSchema)."
   }
 ]
 ```
@@ -1076,7 +1076,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
     "message": "[ReviewSchema] Required `0` is missing. (Anchored to existing source; required structure is absent.)",
     "precision": "anchor",
     "slice": "/>",
-    "related": "Schema requested by this validate call (ReviewSchema)."
+    "related": "Schema requested by this certify call (ReviewSchema)."
   }
 ]
 ```
@@ -1099,7 +1099,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
     "message": "[ReviewSchema] Schema validation failed for this value (TUPLE_INDEX_OUT_OF_RANGE).",
     "precision": "exact",
     "slice": "<main <button/>/>",
-    "related": "Schema requested by this validate call (ReviewSchema)."
+    "related": "Schema requested by this certify call (ReviewSchema)."
   }
 ]
 ```
@@ -1122,7 +1122,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
     "message": "[ReviewSchema] Expected attribute `count` to be a number, but this value is an Hson string.",
     "precision": "exact",
     "slice": "\"bad\"",
-    "related": "Schema requested by this validate call (ReviewSchema)."
+    "related": "Schema requested by this certify call (ReviewSchema)."
   }
 ]
 ```
@@ -1145,7 +1145,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
     "message": "[ReviewSchema] attribute `extra` is not allowed by this exact Schema.",
     "precision": "exact",
     "slice": "extra",
-    "related": "Schema requested by this validate call (ReviewSchema)."
+    "related": "Schema requested by this certify call (ReviewSchema)."
   }
 ]
 ```
@@ -1168,7 +1168,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
     "message": "[ReviewSchema] Required attribute `id` is missing. (Anchored to existing source; required structure is absent.)",
     "precision": "anchor",
     "slice": "/>",
-    "related": "Schema requested by this validate call (ReviewSchema)."
+    "related": "Schema requested by this certify call (ReviewSchema)."
   }
 ]
 ```
@@ -1191,7 +1191,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
     "message": "[ReviewSchema] Required flag `disabled` is missing. (Anchored to existing source; required structure is absent.)",
     "precision": "anchor",
     "slice": "/>",
-    "related": "Schema requested by this validate call (ReviewSchema)."
+    "related": "Schema requested by this certify call (ReviewSchema)."
   }
 ]
 ```
@@ -1214,7 +1214,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
     "message": "[ReviewSchema] Required `1` is missing. (Anchored to existing source; required structure is absent.)",
     "precision": "anchor",
     "slice": "/>",
-    "related": "Schema requested by this validate call (ReviewSchema)."
+    "related": "Schema requested by this certify call (ReviewSchema)."
   }
 ]
 ```
@@ -1237,7 +1237,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
     "message": "[ReviewSchema] Schema validation failed for this value (TUPLE_INDEX_OUT_OF_RANGE).",
     "precision": "exact",
     "slice": "<div <button/> <button/>/>",
-    "related": "Schema requested by this validate call (ReviewSchema)."
+    "related": "Schema requested by this certify call (ReviewSchema)."
   }
 ]
 ```
@@ -1260,7 +1260,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
     "message": "[ReviewSchema] Expected attribute `count`: a compatible Schema value; received an incompatible value.",
     "precision": "exact",
     "slice": "\"bad\"",
-    "related": "Schema requested by this validate call (ReviewSchema)."
+    "related": "Schema requested by this certify call (ReviewSchema)."
   }
 ]
 ```
@@ -1283,7 +1283,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
     "message": "[ReviewSchema] Expected this value: fragment document root; received data root.",
     "precision": "exact",
     "slice": "1",
-    "related": "Schema requested by this validate call (ReviewSchema)."
+    "related": "Schema requested by this certify call (ReviewSchema)."
   }
 ]
 ```
@@ -1306,7 +1306,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
     "message": "[ReviewSchema] Schema validation failed for this value (INVALID_SCHEMA).",
     "precision": "exact",
     "slice": "1",
-    "related": "Schema requested by this validate call (ReviewSchema)."
+    "related": "Schema requested by this certify call (ReviewSchema)."
   }
 ]
 ```
@@ -1329,7 +1329,7 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
     "message": "[ReviewSchema] Expected `kind` to equal \"draft\"; found \"other\".",
     "precision": "exact",
     "slice": "\"other\"",
-    "related": "Schema requested by this validate call (ReviewSchema)."
+    "related": "Schema requested by this certify call (ReviewSchema)."
   }
 ]
 ```
@@ -1352,14 +1352,14 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
     "message": "[ReviewSchema] Expected `0`: an allowed document item; received element <em>.",
     "precision": "exact",
     "slice": "<em/>",
-    "related": "Schema requested by this validate call (ReviewSchema)."
+    "related": "Schema requested by this certify call (ReviewSchema)."
   },
   {
     "core": "Expected tag \"button\" at [0]; received \"em\".",
     "message": "[ReviewSchema] Expected element tag \"button\"; found \"em\".",
     "precision": "exact",
     "slice": "<em/>",
-    "related": "Schema requested by this validate call (ReviewSchema)."
+    "related": "Schema requested by this certify call (ReviewSchema)."
   }
 ]
 ```
@@ -1584,7 +1584,7 @@ All use `<age 37>` with an otherwise registered number Schema unless noted; cate
 | node-runtime-entry catch | dispatcher rejects with non-Error | Runtime failure. |
 | node-supervisor trust gate | either trust gate false when calling supervisor directly | Trusted Schema diagnostics require Workspace Trust and explicit enablement. |
 
-Timeout and crash retain `runtime-failed`, not an authored Schema violation. Error instances from Node, IPC, module loading and user predicates carry arbitrary verbatim text; their values cannot have a finite literal inventory. Non-Error values use the fixed boundary fallback. Public `Hson.validate` failure throws `Hson Schema validation failed.` from `src/internal/schema-hson-validation/validate-canonical-hson.ts:13`; that public text stays D-owned when observed through module/callback failure. Its issues are independently validated/formatted for editor diagnostics.
+Timeout and crash retain `runtime-failed`, not an authored Schema violation. Error instances from Node, IPC, module loading and user predicates carry arbitrary verbatim text; their values cannot have a finite literal inventory. Non-Error values use the fixed boundary fallback. Public `Hson.certify` failure throws `Hson Schema validation failed.` from `src/internal/schema-hson-validation/validate-canonical-hson.ts:13`; that public text stays D-owned when observed through module/callback failure. Its issues are independently validated/formatted for editor diagnostics.
 
 ### Suppressed and adapted language (reachability audit)
 

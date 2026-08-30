@@ -46,10 +46,14 @@ check("attrs default open, required, optional, flag, and optional flag semantics
   assert.equal(evaluate(source, '<main id=hero state=ready hidden=false/>').ok, false);
   assert.equal(schema('tag "main" attrs <props <count "number">> content "empty"').ok, false);
 });
-check("attrs explicit exact closure rejects undeclared attrs", () => {
-  const source = '<type "document" tag "main" attrs <props <id "string"> exact true> content "empty">';
+check("attrs explicit closed key set rejects undeclared attrs without exact-value semantics", () => {
+  const source = '<type "document" tag "main" attrs <props <id "string"> closed true> content "empty">';
   assert.equal(evaluate(source, '<main id=hero/>').ok, true);
+  assert.equal(evaluate(source, '<main id=another-value/>').ok, true);
   assert.equal(evaluate(source, '<main id=hero data-extra=yes/>').ok, false);
+});
+check("retired attrs exact closure spelling rejects", () => {
+  assert.equal(schema('tag "main" attrs <props <id "string"> exact true> content "empty"').ok, false);
 });
 check("lowering is deterministic and canonically verified", () => {
   const source = '<type "document" tag "main" attrs <props <id "string">> content <sequence [<tag "section" content "string">]>>';
@@ -64,8 +68,8 @@ check("lowering is deterministic and canonically verified", () => {
 check("runtime document certification preserves canonical string identity", () => {
   const pageSchema: HsonSchema = Hson`<type "document" tag "main" attrs <props <id "string">> content <sequence [<tag "section" content "string">]>>`;
   const candidate = Hson`<main id=hero data-extra=yes <section "body"/>/>`;
-  assert.equal(Hson.validate(pageSchema, candidate), candidate);
-  assert.throws(() => Hson.validate(pageSchema, Hson`<main id=hero <aside "body"/>/>`));
+  assert.equal(Hson.certify(pageSchema, candidate), candidate);
+  assert.throws(() => Hson.certify(pageSchema, Hson`<main id=hero <aside "body"/>/>`));
 });
 
 emit_hson_live_test_completion("hson-schema-document", checks, checks, 0);

@@ -7,7 +7,7 @@ const authored: UserSchemaHson = Hson`
 `;
 
 const dynamic: HsonCanonical = hsonTransform.fromJson({ name: "Ada", score: 37, status: "ready", zero: 0, negativeZero: -0, flags: [true], pair: ["x", 2], account: { kind: "admin", level: 3 } }).toHson().serialize();
-const certified: UserSchemaHson = Hson.validate(UserSchema, dynamic);
+const certified: UserSchemaHson = Hson.certify(UserSchema, dynamic);
 const numberEvidence: HsonNumber = hsonCalc(37);
 
 void authored;

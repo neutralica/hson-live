@@ -7,7 +7,7 @@ Implemented on top of the uncommitted D3 work. No commit was created.
 - `Hson` is the frozen callable authoring facade, exported from the root and
   `hson-live/hson` as the same object. It accepts the established primitive
   substitutions and returns the existing `HsonCanonical` branded string.
-- `Hson.validate(schema, canonical)` is synchronous and returns that unchanged
+- `Hson.certify(schema, canonical)` is synchronous and returns that unchanged
   string on success. Failures retain the existing error class and structured
   issues. It creates neither a map nor a Schema certificate.
 - `hson` is the frozen, noncallable aggregate. Its existing properties remain.
@@ -53,7 +53,7 @@ Binding-aware discovery now distinguishes three official import identities:
 
 Renamed imports retain symbol identity. Lowercase tags, wrong packages,
 shadowing, local lookalikes, and retired `/hson` aggregate exports are rejected.
-D2 recognizes `Hson.validate` and both retained LiveMap validation entrances.
+D2 recognizes `Hson.certify` and both retained LiveMap validation entrances.
 Independent intentional validation calls are not ranked or collapsed.
 
 D3 keeps direct const flow, parentheses, bounded canonical/map/Schema aliases,

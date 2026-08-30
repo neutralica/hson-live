@@ -48,6 +48,6 @@ export function present_schema_diagnostic(issue: TrustedSchemaDiagnostic, associ
     range: mapped ?? occurrenceRange,
     precision, source: "Hson", code: issue.code,
     hostOrigin: issue.hostOrigin?.kind,
-    related: [{ range: association.callRange, message: messages.schemaRequestRelated(association.mapFlow === undefined ? "validate" : "map.schema.use", association.schemaLabel) }],
+    related: [{ range: association.callRange, message: messages.schemaRequestRelated(association.mapFlow === undefined ? association.operation ?? "validate" : "map.schema.use", association.schemaLabel) }],
   };
 }

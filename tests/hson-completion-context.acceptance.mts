@@ -29,7 +29,7 @@ check("duplicate attrs fail probe parsing", () => assert.equal(context('<div x="
 check("unclosed surrounding syntax is unavailable", () => assert.equal(context("<a < |"), undefined));
 check("missing array comma does not guess append", () => assert.equal(context("[true |]"), undefined));
 check("crossed structure is unavailable", () => assert.equal(context("<a <div |/>>"), undefined));
-const host = 'import { Hson } from "hson-live/hson"; import { S } from "./s.js"; const x=1; const a=Hson`<a ${x} b >`; Hson.validate(S,a);';
+const host = 'import { Hson } from "hson-live/hson"; import { S } from "./s.js"; const x=1; const a=Hson`<a ${x} b >`; Hson.certify(S,a);';
 const association = discover_schema_validation_sources('/tmp/context.ts', host)[0]!;
 check("interpolation literal mapped without runtime values", () => { const candidate = completion_source(association, host.indexOf('b >') + 2)!; const result = completion_context(candidate.source, candidate.cursor, candidate.unknownRanges); assert.deepEqual(result?.path, ["b"]); assert.deepEqual(result?.unknownPaths, [["a"]]); });
 check("interpolation expression excluded", () => assert.equal(completion_source(association, host.indexOf('${x}') + 2), undefined));

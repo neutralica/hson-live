@@ -44,10 +44,10 @@ check("bootstrap has a deterministic authored Hson machine representation", () =
 check("runtime validation returns unchanged canonical identity", () => {
   const schema: HsonSchema = Hson`<type "data" content <name "string" score "number">>`;
   const candidate = Hson`<name "Ada" score 37>`;
-  assert.equal(Hson.validate(schema, candidate), candidate);
-  assert.throws(() => Hson.validate(schema, Hson`<name "Ada" score "37">`));
+  assert.equal(Hson.certify(schema, candidate), candidate);
+  assert.throws(() => Hson.certify(schema, Hson`<name "Ada" score "37">`));
   const dynamic = hsonTransform.fromJson({ name: "Ada", score: 37 }).toHson().serialize();
-  assert.equal(Hson.validate(schema, dynamic), dynamic);
+  assert.equal(Hson.certify(schema, dynamic), dynamic);
 });
 
 emit_hson_live_test_completion("hson-schema-mvp", checks, checks, 0);

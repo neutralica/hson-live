@@ -49,8 +49,8 @@ async function run(): Promise<void> {
     assert.equal(markers(source('<thing 1>', "Hson", "Hson", "hson-live")).length, 4);
   });
   check("Schema authoring keeps soft Hson colors while lowercase hson alone owns the violet period", () => {
-    const text = 'import { Hson, hson, type HsonSchema } from "hson-live"; const S: HsonSchema = Hson`<type "data" content <name "string">>`; Hson.validate(S, Hson`<name "Ada">`); hson.liveMap;';
-    const authoringStarts = [text.indexOf("Hson`"), text.indexOf("Hson.validate"), text.lastIndexOf("Hson`")];
+    const text = 'import { Hson, hson, type HsonSchema } from "hson-live"; const S: HsonSchema = Hson`<type "data" content <name "string">>`; Hson.certify(S, Hson`<name "Ada">`); hson.liveMap;';
+    const authoringStarts = [text.indexOf("Hson`"), text.indexOf("Hson.certify"), text.lastIndexOf("Hson`")];
     for (const start of authoringStarts) {
       const parts = referenceParts(text, "Hson", start);
       assert.deepEqual(parts.map(part => text.slice(part.range.start, part.range.end)), ["H", "s", "o", "n"]);
@@ -83,7 +83,7 @@ async function run(): Promise<void> {
     assert.deepEqual(markers('import { Hson } from "hson-live"; export default Hson;'), []);
   });
   check("official bare and member-root references receive family markers", () => {
-    const text = 'import { Hson, hson } from "hson-live"; void Hson; void hson; Hson.validate(x,y); hson.fromBinary(x); hson.liveMap;';
+    const text = 'import { Hson, hson } from "hson-live"; void Hson; void hson; Hson.certify(x,y); hson.fromBinary(x); hson.liveMap;';
     assert.equal(markers(text).length, 20);
     assert.deepEqual(referenceParts(text, 'Hson', text.indexOf('Hson', text.indexOf(';') + 1)).map(part => part.strength), ['soft', 'soft', 'soft', 'soft']);
     const hsonStart = text.indexOf('hson', text.indexOf(';') + 1);
@@ -110,12 +110,12 @@ async function run(): Promise<void> {
       'const obj={hson:{}}; obj.hson.liveMap;',
       'import { hson } from "other"; hson.liveMap;',
       'import { hson } from "hson-live";',
-      'import { Hson } from "hson-live"; Hson.validate(x,y);',
+      'import { Hson } from "hson-live"; Hson.certify(x,y);',
     ];
     for (const text of cases) assert.deepEqual(separators(text), []);
   });
   check("lowercase color toggle removes lowercase markers and separator without affecting uppercase Hson", () => {
-    const text = 'import { hson, Hson } from "hson-live"; hson.liveMap; Hson.validate(x,y);';
+    const text = 'import { hson, Hson } from "hson-live"; hson.liveMap; Hson.certify(x,y);';
     const enabled = hson_identity_presentation("/workspace/baseline.ts", text, true);
     const disabled = hson_identity_presentation("/workspace/baseline.ts", text, false);
     assert.equal(enabled.markers.length, 8); assert.equal(enabled.separators.length, 1);
@@ -132,8 +132,8 @@ async function run(): Promise<void> {
       'const hson={}; hson.fromBinary;',
       'const Hson=String.raw; Hson`x`;',
       'import { hson } from "other"; hson.liveMap;',
-      'import { Hson } from "other"; Hson.validate(x,y);',
-      'import { hson, Hson } from "hson-live"; function f(hson:any,Hson:any){ hson.liveMap; Hson.validate(x,y); }',
+      'import { Hson } from "other"; Hson.certify(x,y);',
+      'import { hson, Hson } from "hson-live"; function f(hson:any,Hson:any){ hson.liveMap; Hson.certify(x,y); }',
       'const obj={Hson:1,hson:2}; obj.Hson; obj.hson;',
       'const text="Hson hson"; // Hson hson',
     ];

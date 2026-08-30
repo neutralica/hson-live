@@ -14,7 +14,7 @@ export const PageSchema: HsonSchema = Hson`
         id "string"
         hidden <optional "flag">
       >
-      exact true
+      closed true
     >
     content <sequence [
       <tag "section" content "string">
@@ -33,17 +33,17 @@ shape without a structural-mode crossing.
 `attrs.props` separates candidate attribute names from attrs descriptor
 controls. Declared attrs are required unless wrapped in the same general
 `optional` descriptor used by data members. `flag` validates the canonical Hson
-flag spelling. Attrs are open by default; `attrs.exact true` closes them. This
+flag spelling. Attrs are open by default; `attrs.closed true` closes them. This
 slice accepts `string` and exact-string valued attrs. The canonical Hson parser
 stores authored attrs as strings, so number/boolean/null attr Schemas are not
 claimed until canonical attr decoding can be extended without changing legacy
 Schema meaning.
 
-Generated `<Name>Value` is a deeply readonly Hson-side element-node type with
+Generated `<Name>Type` is a deeply readonly Hson-side element-node type with
 exact `$_tag`, attrs and physical content structure, plus inaccessible proof at
 every semantic node. `<Name>Hson` remains the declaration-specific certified
 canonical Hson string. Static certification remains analyzer/build-authoritative;
-dynamic certification remains `Hson.validate(schema, canonical)` and returns
+dynamic certification remains `Hson.certify(schema, canonical)` and returns
 the identical canonical string.
 
 This slice does not add a builder, materializer, DOM certification, fragment,

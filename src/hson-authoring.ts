@@ -1,12 +1,12 @@
 import { admit_hson } from "./api/transform/hson-admission.js";
 import { validate_canonical_hson } from "./internal/schema-hson-validation/validate-canonical-hson.js";
 
-/** Author canonical Hson and validate it against an actual Schema.
- * Validation returns the unchanged string; it does not certify future use.
+/** Author canonical Hson and certify it against an actual Schema.
+ * Certification returns the unchanged string with Schema-bound type evidence.
  * This entrypoint intentionally has no dependency on the aggregate facade.
  */
 export const Hson = Object.freeze(Object.assign(admit_hson, {
-  validate: validate_canonical_hson,
+  certify: validate_canonical_hson,
 }));
 
 export type { HsonCanonical, HsonSchema } from "./api/transform/transform.types.js";

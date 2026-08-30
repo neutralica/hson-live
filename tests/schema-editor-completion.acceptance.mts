@@ -10,7 +10,7 @@ const options = { moduleUrl: new URL('./fixtures/schema-d6-schemas.fixture.mts',
   execArgv: ['--loader', 'ts-node/esm'], startupDeadlineMs: 10_000 };
 const fileName = fileURLToPath(new URL('./fixtures/d6-author.ts', import.meta.url));
 const doc = (text: string, version = 1) => ({ text, version, fileName, uri: pathToFileURL(fileName).href, languageId: 'typescript' });
-const authored = (body: string, schema = 'UserSchema') => `import { Hson } from "hson-live/hson"; import { ${schema} } from "./schema-d6-schemas.fixture.mts"; const value=1; const source=Hson\`${body}\`; Hson.validate(${schema},source);`;
+const authored = (body: string, schema = 'UserSchema') => `import { Hson } from "hson-live/hson"; import { ${schema} } from "./schema-d6-schemas.fixture.mts"; const value=1; const source=Hson\`${body}\`; Hson.certify(${schema},source);`;
 const client = new TrustedSchemaClient({ ...options, trust: { workspaceTrusted: true, enabled: true } });
 const complete = (marked: string, version = 1) => client.complete(doc(marked.replace('|', ''), version), marked.indexOf('|'), () => true);
 const labels = async (marked: string) => (await complete(marked)).completion?.items.map(i => i.label) ?? [];
@@ -28,7 +28,7 @@ try {
   await check('expression exclusion', async () => assert.deepEqual(await labels(authored('<enabled ${val|ue}>')), []));
   await check('unrelated expression exclusion', async () => assert.deepEqual(await labels(authored('<>').replace('value=1', 'value=|1')), []));
   await check('fromHson strings deliberately excluded', async () => { const text = authored('< |>').replace('Hson`< |>`', 'hson.liveMap.fromHson("< |>")'); assert.deepEqual(await labels(text), []); });
-  await check('two independent contracts are ambiguous', async () => assert.equal((await complete(authored('< |>') + ' Hson.validate(UserSchema,source);')).status, 'ambiguous'));
+  await check('two independent contracts are ambiguous', async () => assert.equal((await complete(authored('< |>') + ' Hson.certify(UserSchema,source);')).status, 'ambiguous'));
   await check('cancellation before request', async () => assert.equal((await client.complete(doc(authored('<>')), 0, () => false)).status, 'stale'));
   await check('superseded request never publishes', async () => { const marked = authored('< |>'); const document = doc(marked.replace('|', '')); const a = client.complete(document, marked.indexOf('|'), () => true); const b = client.complete(document, marked.indexOf('|'), () => true); assert.equal((await a).status, 'stale'); assert.ok((await b).completion?.items.length); });
   await check('source cancellation during IPC', async () => { let current = true; const marked = authored('< |>'); const pending = client.complete(doc(marked.replace('|', '')), marked.indexOf('|'), () => current); current = false; assert.equal((await pending).status, 'stale'); });

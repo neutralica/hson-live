@@ -9,7 +9,7 @@ const file = "/project/user.ts";
 const source = 'const source = Hson`<age "37">`;';
 const schema = 'import { Schema } from "./schema.js";';
 const author = 'import { Hson } from "hson-live/hson";';
-const validate = 'Hson.validate(Schema, source);';
+const validate = 'Hson.certify(Schema, source);';
 for (const entry of ["hson-live", "hson-live/hson"]) {
   check(`official uppercase authoring from ${entry}`, () => assert.equal(tags(file, `import { Hson } from "${entry}";` + source).sources.length, 1));
   check(`uppercase validation from ${entry}`, () => assert.equal(associations(file, `import { Hson } from "${entry}";` + schema + source + validate).length, 1));

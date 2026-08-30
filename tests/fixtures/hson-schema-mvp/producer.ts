@@ -18,4 +18,4 @@ export const UserSchema: HsonSchema = Hson`
 `;
 
 // @hson-schema generated type exports
-export type { UserSchemaValue, UserSchemaHson } from "./producer.UserSchema.hson-schema.generated.js";
+export type { UserSchemaType, UserSchemaHson } from "./producer.UserSchema.hson-schema.generated.js";

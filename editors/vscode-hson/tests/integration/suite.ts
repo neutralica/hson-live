@@ -260,7 +260,7 @@ export async function run(): Promise<void> {
   const natural = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace,'map-user.ts')));
   cursor = await editBody(natural,'<user < |>>');
   entries = await waitCompletion(natural,cursor,'age');
-  assert.ok(!natural.getText().includes('Hson.validate'));
+  assert.ok(!natural.getText().includes('Hson.certify'));
   assert.ok(entries.some(i=>i.label==='age'));
   const slow = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace,'completion-slow.ts')));
   const pending = schemaCompletions(slow,slow.getText().indexOf('< >')+2);

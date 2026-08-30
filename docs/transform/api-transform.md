@@ -69,7 +69,7 @@ The public visual grammar is deliberately small:
 ```text
 Hson`...`    author canonical Hson
 hson.*       access hson-live subsystems
-Hson.validate(schema, canonical)    validate canonical Hson
+Hson.certify(schema, canonical)    validate canonical Hson
 Hson(...)    unsupported ordinary source calls
 hson(...)    unsupported; the aggregate is not callable
 ```

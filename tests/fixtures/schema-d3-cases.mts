@@ -23,7 +23,7 @@ export const cases: Readonly<Record<string, string>> = {
   ordered: imports + 'const source = Hson`<\'2\' "b" \'1\' "a">`;\n' + map + 'map.schema.use(OrderedSchema);',
   // Exports let runtime tests perform a real post-association mutation as well.
   live: imports + source.replace('"37"', '37') + map + use + 'export { map };',
-  mixed: imports + source + map + use + 'try { Hson.validate(OtherSchema, source); } catch {}',
+  mixed: imports + source + map + use + 'try { Hson.certify(OtherSchema, source); } catch {}',
   repeated: imports + 'function make() {\n' + source + map + use + '} make(); make();',
   equal: imports + source + 'const equal = Hson`<user <age "37">>`;\n' + map + 'const b = hsonLiveMap.fromHson(equal);\n' + use + 'b.schema.use(OtherSchema);',
   staticDirect: imports + 'const source = `<user <age "37">>`;\n' + map + use,

@@ -112,9 +112,9 @@ export function schemaDiagnostic(label: string, message: string, locationNote: s
   return `[${label}] ${message}${locationNote}`;
 }
 
-// Discovery proved a validate or map.schema.use association for this occurrence.
+// Discovery proved a certify/legacy validate or map.schema.use association for this occurrence.
 // Related range is the call, not the primary diagnostic or Schema declaration.
-export function schemaRequestRelated(call: "validate" | "map.schema.use", label: string): string {
+export function schemaRequestRelated(call: "certify" | "validate" | "map.schema.use", label: string): string {
   return `Schema requested by this ${call} call (${label}).`;
 }
 

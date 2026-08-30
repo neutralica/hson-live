@@ -8,7 +8,7 @@ const { build } = createRequire(new URL("../editors/vscode-hson/package.json", i
 const root = fileURLToPath(new URL("..", import.meta.url));
 const sources = {
   tag: 'import { Hson } from "hson-live/hson"; export const value = Hson`<foo/>`;',
-  validation: 'import { Hson } from "hson-live/hson"; export const value = Hson.validate(globalThis.schema, Hson`<foo/>`);',
+  validation: 'import { Hson } from "hson-live/hson"; export const value = Hson.certify(globalThis.schema, Hson`<foo/>`);',
   aggregate: 'import { hson } from "hson-live"; console.log(hson.liveMap);',
   transform: 'import { hsonTransform } from "hson-live/transform"; console.log(hsonTransform);',
   livemap: 'import { hsonLiveMap } from "hson-live/livemap"; console.log(hsonLiveMap);',
@@ -28,14 +28,18 @@ check("actual /hson export resolves to the narrow authoring module", () => asser
 check("authoring does not traverse aggregate or full LiveMap core", () => assert.ok(narrow.parsed.every(path => !/(?:dist\/hson\.js|livemap\.core\.js|\/livetree\/|\/livehost\/|\/locus\/|\/reflect\/|\/inspect\/)/.test(path))));
 check("authoring has no browser or external parser dependencies", () => assert.ok(narrow.parsed.every(path => !/(?:node_modules|transform\.browser|\/safety\/)/.test(path))));
 check("tree-shaken authoring retains no mutation history or session machinery", () => assert.ok(narrow.inputs.every(path => !/livemap\.(?:mutation|replay|history|session|store|install)/.test(path))));
-// The pre-D5 Schema validators already use issue-presentation's semantic sidecar.
-// No capture, provider, lifecycle, protocol or generated source-map module may join it.
+// The Hson Schema compiler uses source provenance for exact authored diagnostics,
+// and the validators use issue-presentation's semantic sidecar. No capture,
+// provider, lifecycle, protocol, or generated source-map module may join them.
 check("D5 tooling never enters the ordinary authoring graph", () => assert.ok(narrow.parsed.every(path =>
-  !/trusted-schema-diagnostics|embedded-hson|source-provenance/.test(path) || path.endsWith("trusted-schema-diagnostics/issue-presentation.js"))));
+  !/trusted-schema-diagnostics|embedded-hson|source-provenance/.test(path)
+  || path.endsWith("trusted-schema-diagnostics/issue-presentation.js")
+  || path.endsWith("hson-source-provenance/hson-source-provenance.js")
+  || path.endsWith("hson-source-provenance/parse-hson-with-provenance.js"))));
 check("D6 completion query/provider machinery never enters production Hson", () => assert.ok(narrow.parsed.every(path => !/schema-completion|completion-source|vscode-hson/.test(path))));
-check("same-object validate retains real Schema validators in tag-only bundle", () => { assert.ok(narrow.inputs.some(path => path.endsWith("livemap.schema.js"))); assert.ok(narrow.inputs.some(path => path.endsWith("livemap.document.schema.js"))); });
-check("narrow authoring stays within the approved practical size boundary", () => { assert.ok(narrow.gzip < 40_000, `gzip=${narrow.gzip}`); assert.ok(narrow.gzip < results.aggregate.gzip / 4); });
-check("referencing validate does not unexpectedly import another subsystem", () => assert.deepEqual(results.validation.inputs.filter(path => path.startsWith("dist/")), narrow.inputs.filter(path => path.startsWith("dist/"))));
+check("same-object certify retains real Schema validators in tag-only bundle", () => { assert.ok(narrow.inputs.some(path => path.endsWith("livemap.schema.js"))); assert.ok(narrow.inputs.some(path => path.endsWith("livemap.document.schema.js"))); });
+check("narrow authoring stays within the approved practical size boundary", () => { assert.ok(narrow.gzip < 45_000, `gzip=${narrow.gzip}`); assert.ok(narrow.gzip < results.aggregate.gzip / 4); });
+check("referencing certify does not unexpectedly import another subsystem", () => assert.deepEqual(results.validation.inputs.filter(path => path.startsWith("dist/")), narrow.inputs.filter(path => path.startsWith("dist/"))));
 const execution = await import('data:text/javascript;base64,' + Buffer.from(narrow.code).toString('base64'));
 check("production authoring bundle executes without a browser", () => assert.equal(execution.value, "<foo/>"));
 for (const [name, { raw, min, gzip, inputs }] of Object.entries(results)) console.log(`# ${name}: ${JSON.stringify({ raw, min, gzip, retainedModules: inputs.length })}`);

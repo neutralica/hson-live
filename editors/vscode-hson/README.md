@@ -171,7 +171,7 @@ export const trustedSchemas = { userContract: UserSchema };
 import { Hson } from "hson-live/hson";
 import { UserSchema } from "./schema.js";
 const user = Hson`<user <age "37">>`;
-Hson.validate(UserSchema, user);
+Hson.certify(UserSchema, user);
 ```
 
 The existing `hsonLiveMap.schema.validate` and `hson.liveMap.schema.validate`
@@ -223,7 +223,7 @@ diagnostic copy, Schema errors can underline the expression inside `${...}`.
 For example: “This expression evaluated to an Hson string, but the Schema
 requires number here.” The underline identifies the code that **produced** the
 invalid value; it does not imply those JavaScript characters are an Hson token.
-This works with standalone `Hson.validate` and natural map/schema attachment.
+This works with standalone `Hson.certify` and natural map/schema attachment.
 Runtime Hson admission errors can also appear without a later Schema call.
 
 Expression or literal edits immediately retire runtime-derived diagnostics.

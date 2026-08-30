@@ -5,7 +5,7 @@ import { TrustedSchemaClient } from "../editors/vscode-hson/src/trusted-schema-c
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 const fileName = fileURLToPath(new URL('./fixtures/d6-benchmark.ts', import.meta.url));
 const doc = (schema: string, body: string) => ({ fileName, uri: pathToFileURL(fileName).href, version: 1, languageId: 'typescript',
-  text: `import { Hson } from "hson-live/hson"; import { ${schema} } from "./schema-d6-schemas.fixture.mts"; const source=Hson\`${body}\`; Hson.validate(${schema},source);` });
+  text: `import { Hson } from "hson-live/hson"; import { ${schema} } from "./schema-d6-schemas.fixture.mts"; const source=Hson\`${body}\`; Hson.certify(${schema},source);` });
 const client = new TrustedSchemaClient({ trust: { workspaceTrusted: true, enabled: true }, moduleUrl: new URL('./fixtures/schema-d6-schemas.fixture.mts', import.meta.url).href,
   hsonModuleUrl: new URL('../src/hson.ts', import.meta.url).href, runtimeEntry: fileURLToPath(new URL('../src/internal/trusted-schema-diagnostics/node-runtime-entry.ts', import.meta.url)),
   execArgv: ['--loader','ts-node/esm'], startupDeadlineMs: 10_000 });
