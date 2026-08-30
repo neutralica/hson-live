@@ -16,8 +16,8 @@ const documentSchema = join(project, "document-schema.ts");
 const documentConsumer = join(project, "document-consumer.ts");
 const config = join(project, "tsconfig.json");
 
-writeFileSync(producer, `import { Hson, type HsonSchema } from "hson-live";\nexport const UserSchema: HsonSchema = Hson\`<type "data" content <name "string" age <number <int true min 0 under 130>> code <string <len 4 prefix "ID" suffix "7" contains "-">> values <array <content "number" unique true minlen 1 maxlen 2>>>>\`;\nthrow new Error("the analyzer must never execute this module");\n`);
-writeFileSync(consumer, `import { Hson } from "hson-live"; import { type UserSchemaHson, type UserSchemaType } from "./producer.js";\nconst user: UserSchemaHson = Hson\`<name "Ada" age 37 code "ID-7" values [0, -0]>\`; void user;\ndeclare const value: UserSchemaType; const age: UserSchemaType["age"] = value.age; const code: UserSchemaType["code"] = value.code; const values: UserSchemaType["values"] = value.values; void age; void code; void values;\n// @ts-expect-error arithmetic erases integer proof\nconst changedAge: UserSchemaType["age"] = value.age + 1;\n// @ts-expect-error string transforms erase constraint proof\nconst changedCode: UserSchemaType["code"] = value.code.slice(0);\n// @ts-expect-error spread erases uniqueness proof\nconst changedValues: UserSchemaType["values"] = [...value.values];\nvoid changedAge; void changedCode; void changedValues;\n`);
+writeFileSync(producer, `import { Hson, type HsonSchema } from "hson-live";\nexport const UserSchema: HsonSchema = Hson\`<type "data" content <name "string" age <number <int true min 0 under 130>> code <string <len 4 prefix "ID" suffix "7" contains "-">> values <array <content "number" unique true minlen 1 maxlen 2>>>>\`;\nexport const TreeSchema: HsonSchema = Hson\`<type "data" defs <Age <number <int true min 0>> Leaf <content <value "string" age <ref "Age"> children <tuple []>>> Tree <content <value "string" age <ref "Age"> children <array <ref "Tree">>>>> content <ref "Tree">>\`;\nthrow new Error("the analyzer must never execute this module");\n`);
+writeFileSync(consumer, `import { Hson } from "hson-live"; import { type TreeSchemaHson, type TreeSchemaType, type UserSchemaHson, type UserSchemaType } from "./producer.js";\nconst user: UserSchemaHson = Hson\`<name "Ada" age 37 code "ID-7" values [0, -0]>\`; void user;\nconst tree: TreeSchemaHson = Hson\`<value "root" age 2 children [<value "leaf" age 0 children []>]>\`; void tree;\ndeclare const recursive: TreeSchemaType; const child: TreeSchemaType | undefined = recursive.children[0]; const recursiveAge: TreeSchemaType["age"] = recursive.age; void child; void recursiveAge;\ndeclare const value: UserSchemaType; const age: UserSchemaType["age"] = value.age; const code: UserSchemaType["code"] = value.code; const values: UserSchemaType["values"] = value.values; void age; void code; void values;\n// @ts-expect-error arithmetic erases integer proof\nconst changedAge: UserSchemaType["age"] = value.age + 1;\n// @ts-expect-error string transforms erase constraint proof\nconst changedCode: UserSchemaType["code"] = value.code.slice(0);\n// @ts-expect-error spread erases uniqueness proof\nconst changedValues: UserSchemaType["values"] = [...value.values];\n// @ts-expect-error referenced refinement proof rejects plain numbers\nconst plainRecursiveAge: TreeSchemaType["age"] = value.age;\nvoid changedAge; void changedCode; void changedValues; void plainRecursiveAge;\n`);
 writeFileSync(aliasSchema, `import { Hson as Author, type HsonSchema as Schema } from "hson-live";\nexport const AliasSchema: Schema = Author\`<type "data" content <ok "boolean">>\`;\n`);
 writeFileSync(documentSchema, `import { Hson, type HsonSchema } from "hson-live";\nexport const PageSchema: HsonSchema = Hson\`<type "document" tag "main" attrs <props <id "string" hidden <optional "flag">> closed true> content <sequence [<tag "header" content "empty">, <tag "section" content "string">]>>\`;\n`);
 writeFileSync(documentConsumer, `import { Hson } from "hson-live"; import type { PageSchemaHson, PageSchemaType } from "./document-schema.js";\nconst page: PageSchemaHson = Hson\`<main id=hero <header/> <section "body"/>/>\`; void page;\ndeclare const value: PageSchemaType; const rootTag: "main" = value.$_tag; const child = value.$_content[0].$_content[1]; const childTag: "section" = child.$_tag; void rootTag; void childTag;\n// @ts-expect-error private semantic proof prevents structural fabrication\nconst fake: PageSchemaType = { $_tag: "main", $_attrs: { id: "hero" }, $_content: [] }; void fake;\n// @ts-expect-error object spread does not preserve private semantic proof\nconst rebuilt: PageSchemaType = { ...value }; void rebuilt;\n`);
@@ -33,6 +33,8 @@ check("declaration emit preserves module reexport and private proof carrier", ()
   assert.match(readFileSync(join(project, "out/producer.d.ts"), "utf8"), /export type \{ UserSchemaType, UserSchemaHson \}/);
   const generated = readFileSync(join(project, "out/producer.UserSchema.hson-schema.generated.d.ts"), "utf8");
   assert.match(generated, /private readonly __hsonSchemaProof/); assert.match(generated, /export type UserSchemaType/); assert.match(generated, /export type UserSchemaHson/); assert.doesNotMatch(generated, /UserSchemaValue/);
+  const recursiveGenerated = readFileSync(join(project, "out/producer.TreeSchema.hson-schema.generated.d.ts"), "utf8");
+  assert.match(recursiveGenerated, /type __TreeSchemaDefinition0/); assert.match(recursiveGenerated, /ReadonlyArray<__TreeSchemaDefinition0>/); assert.match(recursiveGenerated, /private readonly __hsonSchemaProof/);
   const documentGenerated = readFileSync(join(project, "out/document-schema.PageSchema.hson-schema.generated.d.ts"), "utf8");
   assert.match(documentGenerated, /readonly \$_tag: "main"/); assert.match(documentGenerated, /readonly \$_tag: "section"/); assert.match(documentGenerated, /readonly hidden\?: "hidden"/);
 });
@@ -57,6 +59,44 @@ check("Schema edit without regeneration fails closed", () => {
 check("invalid static Hson fails with no extension", () => {
   const original = readFileSync(consumer, "utf8"); writeFileSync(consumer, original.replace("age 37", 'age "37"'));
   const result = run("verify"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /does not satisfy UserSchema/); writeFileSync(consumer, original);
+});
+check("nested recursive and referenced-refinement failures map through the static analyzer", () => {
+  const original = readFileSync(consumer, "utf8");
+  for (const candidate of [
+    '<value "root" age 2 children [<value 1 age 0 children []>]>',
+    '<value "root" age 2 children [<value "leaf" age -1 children []>]>',
+    '<value "root" age 2 children [<value "leaf" age "0" children []>]>',
+  ]) {
+    writeFileSync(consumer, original.replace('<value "root" age 2 children [<value "leaf" age 0 children []>]>', candidate));
+    const result = run("verify"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /does not satisfy TreeSchema/);
+  }
+  writeFileSync(consumer, original);
+});
+check("stale and renamed local refs fail immediately", () => {
+  const original = readFileSync(producer, "utf8");
+  writeFileSync(producer, original.replace('children <array <ref "Tree">>', 'children <array <ref "Missing">>'));
+  const stale = run("verify"); assert.notEqual(stale.status, 0); assert.match(stale.stdout + stale.stderr, /Unknown local Schema definition/);
+  writeFileSync(producer, original.replace('Tree <content', 'Branch <content'));
+  const renamed = run("verify"); assert.notEqual(renamed.status, 0); assert.match(renamed.stdout + renamed.stderr, /Unknown local Schema definition/);
+  writeFileSync(producer, original);
+});
+check("source freshness detects a definition rename even when all refs preserve graph semantics", () => {
+  const original = readFileSync(producer, "utf8");
+  writeFileSync(producer, original.replace(' Tree <content', ' Branch <content').replaceAll('ref "Tree"', 'ref "Branch"'));
+  const result = run("verify"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /Stale or edited/);
+  writeFileSync(producer, original);
+});
+check("definition bodies, ref targets, recursion topology, and root refs all participate in freshness", () => {
+  const original = readFileSync(producer, "utf8");
+  for (const changed of [
+    original.replace('Age <number <int true min 0>>', 'Age <number <int true min 1>>'),
+    original.replace('children <array <ref "Tree">>', 'children <array <ref "Leaf">>'),
+    original.replace('content <ref "Tree">>\`;', 'content <ref "Leaf">>\`;'),
+  ]) {
+    writeFileSync(producer, changed);
+    const result = run("verify"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /Stale or edited/);
+  }
+  writeFileSync(producer, original);
 });
 check("every refinement family fails invalid static authored Hson without the extension", () => {
   const original = readFileSync(consumer, "utf8");

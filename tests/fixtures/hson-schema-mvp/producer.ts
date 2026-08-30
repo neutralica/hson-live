@@ -20,5 +20,30 @@ export const UserSchema: HsonSchema = Hson`
   >>
 `;
 
+export const TreeSchema: HsonSchema = Hson`
+  <
+    type "data"
+    defs <
+      Age <number <int true min 0>>
+      Tree <content <value "string" age <ref "Age"> children <array <ref "Tree">>>>
+    >
+    content <ref "Tree">
+  >
+`;
+
+export const ReuseSchema: HsonSchema = Hson`
+  <
+    type "data"
+    defs <Left <content <value "string">> Right <content <value "string">>>
+    content <content <left <ref "Left"> right <ref "Right"> again <ref "Left">>>
+  >
+`;
+
 // @hson-schema generated type exports
 export type { UserSchemaType, UserSchemaHson } from "./producer.UserSchema.hson-schema.generated.js";
+
+// @hson-schema generated type exports
+export type { TreeSchemaType, TreeSchemaHson } from "./producer.TreeSchema.hson-schema.generated.js";
+
+// @hson-schema generated type exports
+export type { ReuseSchemaType, ReuseSchemaHson } from "./producer.ReuseSchema.hson-schema.generated.js";

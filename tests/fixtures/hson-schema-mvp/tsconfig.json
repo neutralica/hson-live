@@ -6,7 +6,8 @@
     "target": "ESNext",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "noEmit": true,
+    "declaration": true,
+    "outDir": "./out",
     "paths": {
       "hson-live": ["../../../dist/index.d.ts"],
       "hson-live/hson": ["../../../dist/hson-authoring.d.ts"]

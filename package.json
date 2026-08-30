@@ -251,6 +251,7 @@
     "test:schema-hson-graph": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/schema-hson-graph.acceptance.mts",
     "test:schema-hson-public": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/schema-hson-public.acceptance.mts",
     "test:hson-schema-mvp": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-schema-mvp.acceptance.mts",
+    "test:hson-schema-composition-recursion": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-schema-composition-recursion.acceptance.mts",
     "test:hson-schema-document": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-schema-document.acceptance.mts",
     "test:hson-schema-document-consumer": "npm run build && TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm scripts/hson-schema.mts build --project tests/fixtures/hson-schema-document/tsconfig.json",
     "test:hson-schema-consumer": "npm run build && TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm scripts/hson-schema.mts check --project tests/fixtures/hson-schema-mvp/tsconfig.json",

@@ -13,9 +13,9 @@ const documentConfig = resolve(repositoryRoot, "tests/fixtures/hson-schema-docum
 const documentConsumer = resolve(repositoryRoot, "tests/fixtures/hson-schema-document/consumer.ts");
 
 const mvp = program_for(mvpConfig, new Map());
-assert.equal(schema_assignment_errors(mvp, mvpConsumer).length, 2);
+assert.equal(schema_assignment_errors(mvp, mvpConsumer).length, 4);
 assert.equal(filtered_schema_assignment_errors(mvp, mvpConsumer).length, 0);
-assert.equal(verified_schema_assignment_ranges(ts, mvp, mvpConsumer).length, 2);
+assert.equal(verified_schema_assignment_ranges(ts, mvp, mvpConsumer).length, 4);
 
 const document = program_for(documentConfig, new Map());
 assert.equal(schema_assignment_errors(document, documentConsumer).length, 2);
@@ -24,15 +24,15 @@ assert.equal(verified_schema_assignment_ranges(ts, document, documentConsumer).l
 
 const consumerText = readFileSync(mvpConsumer, "utf8");
 const invalid = program_for(mvpConfig, new Map([[mvpConsumer, consumerText.replace('<name "Ada"', "<name 37")]]));
-assert.equal(verified_schema_assignment_ranges(ts, invalid, mvpConsumer).length, 1);
+assert.equal(verified_schema_assignment_ranges(ts, invalid, mvpConsumer).length, 3);
 assert.equal(filtered_schema_assignment_errors(invalid, mvpConsumer).length, 1);
 
 const wrongAssociation = program_for(mvpConfig, new Map([[mvpConsumer, consumerText.replace("Hson.certify(UserSchema, dynamic)", "Hson.certify(Hson, dynamic)")]]));
-assert.equal(verified_schema_assignment_ranges(ts, wrongAssociation, mvpConsumer).length, 1);
+assert.equal(verified_schema_assignment_ranges(ts, wrongAssociation, mvpConsumer).length, 3);
 assert.equal(filtered_schema_assignment_errors(wrongAssociation, mvpConsumer).length, 1);
 
 const staleGenerated = program_for(mvpConfig, new Map([[mvpGenerated, `${readFileSync(mvpGenerated, "utf8")}\n`]]));
-assert.equal(verified_schema_assignment_ranges(ts, staleGenerated, mvpConsumer).length, 0);
+assert.equal(verified_schema_assignment_ranges(ts, staleGenerated, mvpConsumer).length, 2);
 assert.equal(filtered_schema_assignment_errors(staleGenerated, mvpConsumer).length, 2);
 assert.equal(verified_schema_assignment_ranges(ts, mvp, mvpProofs).length, 0);
 

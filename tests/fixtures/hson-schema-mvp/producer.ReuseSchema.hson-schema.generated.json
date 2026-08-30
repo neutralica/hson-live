@@ -1,0 +1,8 @@
+{
+  "compatibilityVersion": "hson-schema-mvp-5",
+  "declarationIdentity": "producer.ts#ReuseSchema",
+  "sourceDigest": "ee7fc403329b42d1942ce338841c7efc2eb5f78af4ac1120aebd04a72f1764ee",
+  "semanticGraphDigest": "3e7b99bcda4d7027425fe1f9ae8862040b22cd9db659555b3c75328c4e857a37",
+  "generatedDeclarationDigest": "f1024c2d2b7adf08e6a164d0a5bafff4ca2f51163a7cacd905165b5453189cce",
+  "graphHson": "<format \"hson-canonical-schema\" version 1 capabilities <projectedRoot 0> nodes «<kind \"projected-object\" exact true properties ««\"left\",1»,«\"right\",4»,«\"again\",7»»>,<kind \"projected-ref\" target 2>,<kind \"projected-object\" exact true properties ««\"value\",3»»>,<kind \"projected-string\">,<kind \"projected-ref\" target 5>,<kind \"projected-object\" exact true properties ««\"value\",6»»>,<kind \"projected-string\">,<kind \"projected-ref\" target 2>»>"
+}

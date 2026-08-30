@@ -1,6 +1,6 @@
 import { Hson, type HsonNumber } from "hson-live";
 import type { HsonCanonical } from "hson-live/hson";
-import { UserSchema, type UserSchemaHson, type UserSchemaType } from "./producer.js";
+import { TreeSchema, UserSchema, type ReuseSchemaType, type TreeSchemaHson, type TreeSchemaType, type UserSchemaHson, type UserSchemaType } from "./producer.js";
 
 declare const certified: UserSchemaType;
 declare const canonical: HsonCanonical;
@@ -12,6 +12,11 @@ const refinedInteger: UserSchemaType["age"] = certified.age;
 const refinedBound: UserSchemaType["percent"] = certified.percent;
 const refinedString: UserSchemaType["code"] = certified.code;
 const refinedUnique: UserSchemaType["flags"] = certified.flags;
+declare const recursive: TreeSchemaType;
+declare const reuse: ReuseSchemaType;
+const recursiveChild: TreeSchemaType | undefined = recursive.children[0];
+const recursiveAge: TreeSchemaType["age"] = recursive.age;
+const sharedDefinitionCompatibility: typeof reuse.again = reuse.left;
 
 // @ts-expect-error ordinary structural objects have no composite proof
 const fabricated: UserSchemaType = { name: "Ada", score: 37, age: 37, percent: 80, code: "ID-7", flags: [true], pair: ["x", 2], account: { kind: "user", handle: "ada" } };
@@ -52,6 +57,14 @@ consumeCertified(Hson`<name "Ada">`);
 consumeCertified(Hson.certify(UserSchema, canonical));
 // @ts-expect-error optional means absence, not explicit undefined
 const explicitUndefined: UserSchemaType = { ...certified, nickname: undefined };
+// @ts-expect-error recursive generated evidence cannot be supplied structurally or through a caller generic
+const fabricatedRecursive: TreeSchemaType = { value: "root", age: hsonCalc(1), children: [] };
+// @ts-expect-error the referenced Age refinement is not obscured by ref
+const plainReferencedAge: TreeSchemaType["age"] = hsonCalc(1);
+// @ts-expect-error structurally equal but declaration-distinct definitions retain separate proof identity
+const unrelatedDefinitionProof: typeof reuse.right = reuse.left;
+// @ts-expect-error broad canonical Hson cannot impersonate recursive Schema evidence
+const broadRecursiveHson: TreeSchemaHson = canonical;
 
 void optionalRead;
 void indexedRead;
@@ -77,3 +90,11 @@ void casedString;
 void ordinaryNumber;
 void broadHson;
 void explicitUndefined;
+void recursiveChild;
+void recursiveAge;
+void sharedDefinitionCompatibility;
+void fabricatedRecursive;
+void plainReferencedAge;
+void unrelatedDefinitionProof;
+void broadRecursiveHson;
+void TreeSchema;

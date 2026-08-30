@@ -1,4 +1,4 @@
-import type { HsonSchemaDataSemanticNode, HsonSchemaDocumentContent, HsonSchemaDocumentElement, HsonSchemaDocumentItem, HsonSchemaSemanticNode } from "./compiler.js";
+import type { HsonSchemaDataSemanticNode, HsonSchemaDefinition, HsonSchemaDocumentContent, HsonSchemaDocumentElement, HsonSchemaDocumentItem, HsonSchemaSemanticNode } from "./compiler.js";
 
 export type GeneratedHsonSchemaTypes = Readonly<{
   declarations: string;
@@ -6,9 +6,35 @@ export type GeneratedHsonSchemaTypes = Readonly<{
 }>;
 
 /** Emit bounded declaration-only evidence for one verified human Schema. */
-export function generate_hson_schema_types(name: string, root: HsonSchemaSemanticNode): GeneratedHsonSchemaTypes {
+export function generate_hson_schema_types(name: string, root: HsonSchemaSemanticNode, definitions: readonly HsonSchemaDefinition[] = Object.freeze([])): GeneratedHsonSchemaTypes {
   let proofNodeCount = 0;
   const proofDeclarations: string[] = [];
+  const definitionsByName = new Map(definitions.map((definition) => [definition.name, definition]));
+  const reachableDefinitions: HsonSchemaDefinition[] = [];
+  const aliases = new Map<string, string>();
+  const visitData = (schema: HsonSchemaDataSemanticNode): void => {
+    if (schema.kind === "ref") { visitDefinition(schema.name); return; }
+    if (schema.kind === "object") schema.members.forEach((member) => visitData(member.schema));
+    else if (schema.kind === "array") visitData(schema.item);
+    else if (schema.kind === "tuple") schema.items.forEach(visitData);
+    else if (schema.kind === "union") schema.choices.forEach(visitData);
+  };
+  const visitDocument = (element: HsonSchemaDocumentElement): void => {
+    element.attrs.forEach((attr) => { if (!attr.flag) visitData(attr.schema); });
+    if (element.content.kind === "document-sequence") element.content.items.forEach((item) => {
+      if (item.kind === "document-ref") visitDefinition(item.name);
+      else if (item.kind === "document-element") visitDocument(item);
+    });
+  };
+  const visitDefinition = (definitionName: string): void => {
+    if (aliases.has(definitionName)) return;
+    const definition = definitionsByName.get(definitionName);
+    if (definition === undefined) throw new Error(`Missing generated Schema definition ${JSON.stringify(definitionName)}.`);
+    aliases.set(definitionName, `__${name}Definition${aliases.size}`);
+    reachableDefinitions.push(definition);
+    if (definition.schema.kind === "document-element") visitDocument(definition.schema); else visitData(definition.schema);
+  };
+  if (root.kind === "document-element") visitDocument(root); else visitData(root);
   const proof = (label: string): string => {
     const proofIndex = proofNodeCount;
     const className = `__${name}${label}Proof${proofIndex}`;
@@ -40,12 +66,23 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
       case "array": return refined(`ReadonlyArray<${emitData(schema.item, `${path}Item`)}> & ${proof(`${path}Array`)}`, schema, path);
       case "tuple": return refined(`readonly [${schema.items.map((item, index) => emitData(item, `${path}T${index}`)).join(", ")}] & ${proof(`${path}Tuple`)}`, schema, path);
       case "union": return schema.choices.map((choice, index) => `(${emitData(choice, `${path}U${index}`)})`).join(" | ");
+      case "ref": {
+        const alias = aliases.get(schema.name);
+        if (alias === undefined) throw new Error(`Unreachable generated Schema ref ${JSON.stringify(schema.name)}.`);
+        return alias;
+      }
     }
   };
 
-  const emitDocumentItem = (item: HsonSchemaDocumentItem, path: string): string => item.kind === "document-string"
-    ? `Readonly<{ readonly $_tag: "_hson_str"; readonly $_content: readonly [string]; }> & ${proof(`${path}Text`)}`
-    : emitDocumentElement(item, path);
+  const emitDocumentItem = (item: HsonSchemaDocumentItem, path: string): string => {
+    if (item.kind === "document-string") return `Readonly<{ readonly $_tag: "_hson_str"; readonly $_content: readonly [string]; }> & ${proof(`${path}Text`)}`;
+    if (item.kind === "document-ref") {
+      const alias = aliases.get(item.name);
+      if (alias === undefined) throw new Error(`Unreachable generated document Schema ref ${JSON.stringify(item.name)}.`);
+      return alias;
+    }
+    return emitDocumentElement(item, path);
+  };
   const emitDocumentContent = (content: HsonSchemaDocumentContent, path: string): string => {
     if (content.kind === "document-empty") return "readonly []";
     const items = content.kind === "document-string-content"
@@ -66,11 +103,17 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
     return `Readonly<{ readonly $_tag: ${JSON.stringify(element.tag)}; readonly $_attrs${required ? "" : "?"}: ${attrsType}; readonly $_content: ${emitDocumentContent(element.content, `${path}Content`)}; }> & ${proof(`${path}Element`)}`;
   };
 
+  const definitionDeclarations = reachableDefinitions.map((definition, index) => {
+    const alias = aliases.get(definition.name);
+    if (alias === undefined) throw new Error(`Missing generated alias for ${JSON.stringify(definition.name)}.`);
+    const body = definition.schema.kind === "document-element" ? emitDocumentElement(definition.schema, `D${index}`) : emitData(definition.schema, `D${index}`);
+    return `type ${alias} = (${body}) & ${proof(`D${index}Definition`)};`;
+  });
   const type = root.kind === "document-element" ? emitDocumentElement(root, "Root") : emitData(root, "Root");
   const hsonProof = proof("Hson");
   return Object.freeze({
     proofNodeCount,
-    declarations: `${proofDeclarations.join("\n")}\nexport type ${name}Type = ${type};\nexport type ${name}Hson = HsonCanonical & ${hsonProof};`,
+    declarations: `${proofDeclarations.join("\n")}\n${definitionDeclarations.join("\n")}${definitionDeclarations.length === 0 ? "" : "\n"}export type ${name}Type = ${type};\nexport type ${name}Hson = HsonCanonical & ${hsonProof};`,
   });
 }
 
