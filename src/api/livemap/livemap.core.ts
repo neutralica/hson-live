@@ -127,6 +127,7 @@ import {
   livemap_library_target,
   make_default_livemap_library,
   make_livemap_library,
+  make_livemap_library_registry,
   reject_livemap_aggregate_legacy_lowering,
   type LiveMapAggregateCommit,
   type LiveMapAggregateOperation,
@@ -266,9 +267,7 @@ function make_livemap_core_from_owned_root(
   }> = {},
 ): BuiltLiveMapCore {
   const owned = make_default_livemap_library(prepared, initial.hsonSchema);
-  const libraries = new Map<LiveMapLibraryIdentity, LiveMapLibraryState>([
-    [owned.identity, owned],
-  ]);
+  const libraryRegistry = make_livemap_library_registry(owned);
   const initialMode = owned.mode;
   if (initialMode !== "element" && initialMode !== "fragment") {
     owned.projectedValue = must_projected_root_value(owned.root);
@@ -316,7 +315,7 @@ function make_livemap_core_from_owned_root(
   );
   /** Legacy root replacement resets an identity epoch and is one-library-only. */
   const assert_legacy_identity_epoch_reset_available = (): void => {
-    if (libraries.size === 1) return;
+    if (libraryRegistry.size() === 1) return;
     throw new Error(
       "Legacy root replacement cannot reset a LiveMap-wide QUID epoch after another internal library is attached.",
     );
@@ -996,11 +995,10 @@ function make_livemap_core_from_owned_root(
   let aggregateCandidateRootsCloned = 0;
   let aggregatePublications = 0;
   let aggregateAcceptedTransitions = 0;
+  let aggregateSchemaValidations = 0;
 
   function require_library(identity: LiveMapLibraryIdentity): LiveMapLibraryState {
-    const library = libraries.get(identity);
-    if (library === undefined) throw new Error("LiveMap aggregate target belongs to another map authority.");
-    return library;
+    return libraryRegistry.require(identity);
   }
 
   function require_projected_library(library: LiveMapLibraryState): LiveMapProjectedIdentityOverlay {
@@ -1146,14 +1144,15 @@ function make_livemap_core_from_owned_root(
     }
 
     for (const candidate of candidates.values()) {
+      aggregateSchemaValidations += 1;
       must_hson_schema_projected_candidate(candidate.library.hsonSchema, candidate.value);
       const root = projected_candidate_graph(candidate.detachedRoot, candidate.value, candidate.writes);
       apply_livemap_projected_identity_overlay(root, candidate.overlay);
       candidate.nextRoot = root;
     }
 
-    const beforeActive = aggregate_quid_locations(libraries.values());
-    const afterStates = [...libraries.values()].map((library) => {
+    const beforeActive = aggregate_quid_locations(libraryRegistry.all());
+    const afterStates = libraryRegistry.all().map((library) => {
       const candidate = candidates.get(library.identity);
       if (candidate === undefined) return library;
       return {
@@ -1164,6 +1163,14 @@ function make_livemap_core_from_owned_root(
       };
     });
     const afterActive = aggregate_quid_locations(afterStates);
+    for (const [quid, beforeTarget] of beforeActive) {
+      const afterTarget = afterActive.get(quid);
+      if (afterTarget !== undefined && afterTarget.library !== beforeTarget.library) {
+        throw new Error(
+          "Cross-library QUID movement requires an explicit LiveMap transfer semantic.",
+        );
+      }
+    }
     const nextLedger = stage_livemap_identity_epoch(
       mapIdentityEpoch.issued(),
       beforeActive.keys(),
@@ -1258,6 +1265,7 @@ function make_livemap_core_from_owned_root(
 
   const aggregateAuthority: InternalLiveMapAggregateAuthority = Object.freeze({
     defaultLibrary: () => owned.identity,
+    libraries: () => Object.freeze(libraryRegistry.all().map((library) => library.identity)),
     addLibrary: (root, options) => {
       transitionController.assertPublicMutationAllowed();
       if (mapRevision !== 0) {
@@ -1269,22 +1277,22 @@ function make_livemap_core_from_owned_root(
       if (library.mode !== "element" && library.mode !== "fragment") {
         library.projectedValue = must_projected_root_value(library.root);
       }
-      const beforeActive = aggregate_quid_locations(libraries.values());
-      const afterActive = aggregate_quid_locations([...libraries.values(), library]);
+      const beforeActive = aggregate_quid_locations(libraryRegistry.all());
+      const afterActive = aggregate_quid_locations([...libraryRegistry.all(), library]);
       const nextLedger = stage_livemap_identity_epoch(
         mapIdentityEpoch.issued(),
         beforeActive.keys(),
         afterActive.keys(),
       );
       mapIdentityEpoch.install(nextLedger);
-      libraries.set(library.identity, library);
+      libraryRegistry.add(library);
       return library.identity;
     },
     target: aggregate_target,
     root: (library) => require_library(library).root,
     snap: aggregate_snap,
     handle: make_internal_path_authority,
-    resolveQuid: (quid) => aggregate_quid_locations(libraries.values()).get(quid),
+    resolveQuid: (quid) => aggregate_quid_locations(libraryRegistry.all()).get(quid),
     prepare: prepare_aggregate_transition,
     accept: transitionController.acceptAggregate,
     discard: transitionController.discardAggregate,
@@ -1321,8 +1329,18 @@ function make_livemap_core_from_owned_root(
         if (index !== -1) aggregateFeeds.splice(index, 1);
       };
     },
+    inspect: () => Object.freeze({
+      revision: mapRevision,
+      libraries: Object.freeze(libraryRegistry.all().map((library) => Object.freeze({
+        identity: library.identity,
+        mode: library.mode,
+        root: clone_live_root(library.root),
+        hsonSchemaAttached: library.hsonSchema !== undefined,
+      }))),
+    }),
     telemetry: () => Object.freeze({
       candidateRootsCloned: aggregateCandidateRootsCloned,
+      schemaValidations: aggregateSchemaValidations,
       aggregatePublications,
       acceptedTransitions: aggregateAcceptedTransitions,
     }),

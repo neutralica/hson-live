@@ -81,6 +81,23 @@ export type LiveMapLibraryState = {
   hsonSchema?: HsonSchema;
 };
 
+/**
+ * Deterministic, map-owned registry for graph-local repositories.
+ *
+ * The registry deliberately has no names, public ids, or construction policy.
+ * It is only the authority layer that keeps an opaque library identity bound to
+ * one canonical graph for the lifetime of its enclosing LiveMap.
+ * @internal
+ */
+export type LiveMapLibraryRegistry = Readonly<{
+  defaultLibrary: () => LiveMapLibraryState;
+  get: (identity: LiveMapLibraryIdentity) => LiveMapLibraryState | undefined;
+  require: (identity: LiveMapLibraryIdentity) => LiveMapLibraryState;
+  all: () => readonly LiveMapLibraryState[];
+  add: (library: LiveMapLibraryState) => void;
+  size: () => number;
+}>;
+
 /** Create the sole, stable internal library for the lifetime of this LiveMap. @internal */
 export function make_default_livemap_library(
   prepared: PreparedLiveMapRoot,
@@ -102,6 +119,43 @@ export function make_livemap_library(
     ...(prepared.projectedOverlay === undefined ? {} : { projectedOverlay: prepared.projectedOverlay }),
     ...(hsonSchema === undefined ? {} : { hsonSchema }),
   };
+}
+
+/**
+ * Make one internal registry with insertion-ordered iteration.
+ *
+ * The first registered record is the legacy default/solo library. This is an
+ * internal topology fact only: it does not choose a future public default for
+ * a multi-library LiveMap.
+ * @internal
+ */
+export function make_livemap_library_registry(
+  initialLibrary: LiveMapLibraryState,
+): LiveMapLibraryRegistry {
+  const entries = new Map<LiveMapLibraryIdentity, LiveMapLibraryState>();
+  const ordered: LiveMapLibraryState[] = [];
+
+  const add = (library: LiveMapLibraryState): void => {
+    if (entries.has(library.identity)) {
+      throw new Error("LiveMap library registry cannot register one identity twice.");
+    }
+    entries.set(library.identity, library);
+    ordered.push(library);
+  };
+
+  add(initialLibrary);
+  return Object.freeze({
+    defaultLibrary: () => initialLibrary,
+    get: (identity) => entries.get(identity),
+    require: (identity) => {
+      const library = entries.get(identity);
+      if (library !== undefined) return library;
+      throw new Error("LiveMap aggregate target belongs to another map authority.");
+    },
+    all: () => Object.freeze([...ordered]),
+    add,
+    size: () => ordered.length,
+  });
 }
 
 /** Keep structural targeting separate from a path's public spelling. @internal */

@@ -32,6 +32,8 @@ const INTERNAL_LIBRARY_OWNERS = new WeakMap<object, InternalLiveMapLibraryOwner>
 /** Non-public aggregate capability used only by architecture acceptance tests. @internal */
 export type InternalLiveMapAggregateAuthority = Readonly<{
   defaultLibrary: () => LiveMapLibraryIdentity;
+  /** Insertion-ordered opaque identities; this is an in-package test seam, not a selector API. */
+  libraries: () => readonly LiveMapLibraryIdentity[];
   addLibrary: (root: HsonNode, options?: Readonly<{ hsonSchema?: HsonSchema }>) => LiveMapLibraryIdentity;
   target: (library: LiveMapLibraryIdentity, path: LivePath) => LiveMapStructuralTarget;
   root: (library: LiveMapLibraryIdentity) => HsonNode;
@@ -59,8 +61,19 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
       value: JsonValue | undefined;
     }>) => void,
   ) => () => void;
+  /** Detached aggregate state evidence. Legacy map.capture/root still describe only the default library. */
+  inspect: () => Readonly<{
+    revision: number;
+    libraries: readonly Readonly<{
+      identity: LiveMapLibraryIdentity;
+      mode: LiveMapLibraryState["mode"];
+      root: HsonNode;
+      hsonSchemaAttached: boolean;
+    }>[];
+  }>;
   telemetry: () => Readonly<{
     candidateRootsCloned: number;
+    schemaValidations: number;
     aggregatePublications: number;
     acceptedTransitions: number;
   }>;
