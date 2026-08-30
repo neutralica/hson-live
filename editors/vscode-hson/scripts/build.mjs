@@ -22,4 +22,17 @@ await build({
   legalComments: "none",
   logLevel: "info",
 });
+await build({
+  absWorkingDir: extensionRoot,
+  entryPoints: ["src/tsserver-plugin.ts"],
+  outfile: "typescript-plugin/dist/index.cjs",
+  bundle: true,
+  format: "cjs",
+  platform: "node",
+  target: "node20",
+  sourcemap: true,
+  sourcesContent: true,
+  legalComments: "none",
+  logLevel: "info",
+});
 await copyFile(createRequire(import.meta.url).resolve("vscode-oniguruma/release/onig.wasm"), new URL("../dist/onig.wasm", import.meta.url));

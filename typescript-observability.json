@@ -1,0 +1,44 @@
+{
+  "projects": [
+    { "path": "tsconfig.json", "authority": "check:source" },
+    { "path": "tests/tsconfig.json", "authority": "check:tests" },
+    { "path": "tsconfig.tooling.json", "authority": "check:tooling" },
+    { "path": "editors/vscode-hson/tsconfig.json", "authority": "check:editor" },
+    { "path": "editors/vscode-hson/tsconfig.plugin.json", "authority": "check:editor" },
+    { "path": "tests/entrypoints/tsconfig.public.json", "authority": "check:entrypoints" },
+    { "path": "tests/entrypoints/tsconfig.hson-worker.json", "authority": "check:entrypoints" },
+    { "path": "tests/entrypoints/tsconfig.transform-worker.json", "authority": "check:entrypoints" },
+    { "path": "tests/entrypoints/tsconfig.livemap-worker.json", "authority": "check:entrypoints" },
+    { "path": "tests/entrypoints/tsconfig.locus-worker.json", "authority": "check:entrypoints" },
+    { "path": "tests/entrypoints/tsconfig.livehost-node.json", "authority": "check:entrypoints" },
+    { "path": "tests/entrypoints/tsconfig.livetree-browser.json", "authority": "check:entrypoints" },
+    { "path": "tests/fixtures/hson-schema-mvp/tsconfig.json", "authority": "check:schema-consumers" },
+    { "path": "tests/fixtures/hson-schema-document/tsconfig.json", "authority": "check:schema-consumers" }
+  ],
+  "exemptions": [
+    {
+      "file": "editors/vscode-hson/tests/fixtures/diagnostics-alias.ts",
+      "kind": "non-typechecked-artifact",
+      "authority": "npm --prefix editors/vscode-hson run test:integration",
+      "reason": "VS Code integration input is opened as external source text so the installed extension can diagnose an aliased Hson binding."
+    },
+    {
+      "file": "editors/vscode-hson/tests/fixtures/diagnostics-smoke.ts",
+      "kind": "non-typechecked-artifact",
+      "authority": "npm --prefix editors/vscode-hson run test:integration",
+      "reason": "VS Code integration input deliberately includes invalid Hson while exercising editor diagnostics against the installed extension."
+    },
+    {
+      "file": "editors/vscode-hson/tests/fixtures/injection.ts",
+      "kind": "non-typechecked-artifact",
+      "authority": "npm --prefix editors/vscode-hson run test:grammar",
+      "reason": "TextMate injection corpus intentionally contains unresolved host expressions; grammar baselines, not TypeScript semantics, are its authority."
+    },
+    {
+      "file": "editors/vscode-hson/tests/fixtures/injection.tsx",
+      "kind": "non-typechecked-artifact",
+      "authority": "npm --prefix editors/vscode-hson run test:grammar",
+      "reason": "TextMate TSX injection corpus is parsed as source text and intentionally has no JSX runtime or ambient host program."
+    }
+  ]
+}

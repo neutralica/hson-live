@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 
 const readJson = async (path) => JSON.parse(await readFile(new URL(path, import.meta.url), "utf8"));
 
@@ -45,5 +46,11 @@ assert.equal(manifest.capabilities.untrustedWorkspaces.supported, "limited");
 assert.ok(manifest.capabilities.untrustedWorkspaces.restrictedConfigurations.includes("hson.trustedSchemaDiagnostics.module"));
 assert.ok(manifest.devDependencies.esbuild);
 assert.ok(manifest.devDependencies.typescript);
+assert.deepEqual(manifest.contributes.typescriptServerPlugins, [{
+  name: "../typescript-plugin",
+  enableForWorkspaceTypeScriptVersions: true,
+}]);
+const pluginRequire = createRequire(new URL("../node_modules/__hson_plugin_probe.cjs", import.meta.url));
+assert.equal(typeof pluginRequire(manifest.contributes.typescriptServerPlugins[0].name), "function");
 
 process.stdout.write("ok - active extension manifest, language configuration, and grammar JSON are valid\n");

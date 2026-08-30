@@ -17,5 +17,6 @@
     "tests/integration/suite.ts",
     "tests/integration/baseline.ts",
     "tests/baseline.test.ts"
-  ]
+  ],
+  "exclude": ["src/tsserver-plugin.ts"]
 }

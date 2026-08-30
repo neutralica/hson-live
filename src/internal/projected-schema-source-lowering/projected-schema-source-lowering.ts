@@ -30,6 +30,8 @@ export type ProjectedSchemaSourceResolution =
     }>
   | Readonly<{ kind: "unresolved"; issuePath: LivePath }>;
 
+type ProjectedSchemaSourceIssue = Pick<LiveMapSchemaIssue, "code" | "path" | "attributeName">;
+
 /**
  * Lower a projected Schema issue onto immutable authored-Hson provenance.
  * Schema owns the logical issue path; this module owns wrapper/path lowering;
@@ -38,7 +40,7 @@ export type ProjectedSchemaSourceResolution =
 export function resolve_projected_schema_issue_source(
   root: HsonNode,
   provenance: HsonSourceProvenance,
-  issue: LiveMapSchemaIssue,
+  issue: ProjectedSchemaSourceIssue,
 ): ProjectedSchemaSourceResolution {
   if (issue.code === "MISSING_REQUIRED") {
     return resolve_missing_anchor(root, provenance, issue);
@@ -63,7 +65,7 @@ export function resolve_projected_schema_issue_source(
 function resolve_missing_anchor(
   root: HsonNode,
   provenance: HsonSourceProvenance,
-  issue: LiveMapSchemaIssue,
+  issue: ProjectedSchemaSourceIssue,
 ): ProjectedSchemaSourceResolution {
   const parentPath = Object.freeze([...issue.path.slice(0, -1)]);
   const parent = resolve_projected_hson_location(root, parentPath);

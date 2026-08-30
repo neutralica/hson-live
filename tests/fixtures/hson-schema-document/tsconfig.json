@@ -8,7 +8,6 @@
     "moduleResolution": "NodeNext",
     "declaration": true,
     "outDir": "./out",
-    "baseUrl": ".",
     "paths": {
       "hson-live": ["../../../dist/index.d.ts"],
       "hson-live/hson": ["../../../dist/hson-authoring.d.ts"]

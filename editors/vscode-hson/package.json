@@ -27,7 +27,7 @@
   ],
   "scripts": {
     "build": "node ./scripts/build.mjs",
-    "check:source": "tsc -p ./tsconfig.json --noEmit",
+    "check:source": "tsc -p ./tsconfig.json --noEmit && tsc -p ./tsconfig.plugin.json --noEmit",
     "validate:artifact": "node ./tests/validate-artifact.mjs",
     "check": "npm run check:source && npm run build && npm run validate:artifact",
     "test": "npm run test:grammar && npm run test:unit && npm run test:settings",
@@ -46,6 +46,12 @@
     "test:vscode-local": "node ./tests/vscode-local.test.mjs"
   },
   "contributes": {
+    "typescriptServerPlugins": [
+      {
+        "name": "../typescript-plugin",
+        "enableForWorkspaceTypeScriptVersions": true
+      }
+    ],
     "configuration": [
       {
         "title": "Hson › Appearance",

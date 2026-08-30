@@ -41,6 +41,7 @@ const standaloneSchema = hson.liveMap.schema.define(s => s.number);
 const standaloneCanonical: HsonCanonical = Hson.certify(standaloneSchema, Hson`37`);
 // @ts-expect-error Hson.validate was hard-removed in favor of Hson.certify.
 Hson.validate(standaloneSchema, Hson`37`);
+// @ts-expect-error The narrow authoring subpath also exposes certify, not validate.
 const narrowStandaloneCanonical: HsonCanonical = HsonSubpath.validate(standaloneSchema, standaloneCanonical);
 // @ts-expect-error Arbitrary strings are not branded HsonCanonical.
 hson.liveMap.schema.validate(standaloneSchema, "37");

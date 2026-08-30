@@ -232,7 +232,8 @@ function check_with_overlays(config: ts.ParsedCommandLine, overlays: readonly Ov
     if (sourceFile === undefined || replacements === undefined) return sourceFile;
     let text = sourceFile.text;
     for (const replacement of [...replacements].sort((left, right) => right.start - left.start)) text = text.slice(0, replacement.start) + replacement.text + text.slice(replacement.end);
-    return ts.createSourceFile(fileName, text, languageVersion, true, sourceFile.scriptKind);
+    const scriptKind = sourceFile.languageVariant === ts.LanguageVariant.JSX ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+    return ts.createSourceFile(fileName, text, languageVersion, true, scriptKind);
   };
   const checked = ts.createProgram(config.fileNames, options, host);
   const diagnostics = ts.getPreEmitDiagnostics(checked);

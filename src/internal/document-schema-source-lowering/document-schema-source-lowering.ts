@@ -38,6 +38,8 @@ export type DocumentSchemaSourceResolution =
     }>
   | Readonly<{ kind: "unresolved"; issuePath: LivePath }>;
 
+type DocumentSchemaSourceIssue = Pick<LiveMapSchemaIssue, "code" | "path" | "attributeName">;
+
 /**
  * Lower one document-Schema issue through the canonical logical document
  * resolver and onto immutable authored-Hson provenance.
@@ -46,7 +48,7 @@ export function resolve_document_schema_issue_source(
   root: HsonNode,
   mode: DocumentLiveMapMode,
   provenance: HsonSourceProvenance,
-  issue: LiveMapSchemaIssue,
+  issue: DocumentSchemaSourceIssue,
 ): DocumentSchemaSourceResolution {
   const numericPath = numeric_document_path(issue.path);
   if (numericPath === undefined) return unresolved(issue.path);
@@ -78,7 +80,7 @@ function resolve_attribute_issue(
   root: HsonNode,
   mode: DocumentLiveMapMode,
   provenance: HsonSourceProvenance,
-  issue: LiveMapSchemaIssue,
+  issue: DocumentSchemaSourceIssue,
   numericPath: readonly number[],
   attributeName: string,
 ): DocumentSchemaSourceResolution {
@@ -119,7 +121,7 @@ function resolve_missing_anchor(
   root: HsonNode,
   mode: DocumentLiveMapMode,
   provenance: HsonSourceProvenance,
-  issue: LiveMapSchemaIssue,
+  issue: DocumentSchemaSourceIssue,
   numericPath: readonly number[],
 ): DocumentSchemaSourceResolution {
   if (numericPath.length === 0) return unresolved(issue.path);
