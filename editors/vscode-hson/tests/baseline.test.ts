@@ -48,6 +48,19 @@ async function run(): Promise<void> {
   check("root Hson tag receives the same branded marker", () => {
     assert.equal(markers(source('<thing 1>', "Hson", "Hson", "hson-live")).length, 4);
   });
+  check("Schema authoring keeps soft Hson colors while lowercase hson alone owns the violet period", () => {
+    const text = 'import { Hson, hson, type HsonSchema } from "hson-live"; const S: HsonSchema = Hson`<type "data" content <name "string">>`; Hson.validate(S, Hson`<name "Ada">`); hson.liveMap;';
+    const authoringStarts = [text.indexOf("Hson`"), text.indexOf("Hson.validate"), text.lastIndexOf("Hson`")];
+    for (const start of authoringStarts) {
+      const parts = referenceParts(text, "Hson", start);
+      assert.deepEqual(parts.map(part => text.slice(part.range.start, part.range.end)), ["H", "s", "o", "n"]);
+      assert.deepEqual(parts.map(part => part.strength), ["soft", "soft", "soft", "soft"]);
+    }
+    assert.deepEqual(separators(text).map(part => part.range.start), [text.indexOf(".liveMap")]);
+    assert.ok(!separators(text).some(part => part.range.start === text.indexOf(".validate")));
+    const backticks = [...text].map((character, index) => character === "`" ? index : -1).filter(index => index >= 0);
+    assert.ok(backticks.every(index => !markers(text).some(part => part.range.start <= index && part.range.end > index)));
+  });
   check("renamed official import keeps normal tag presentation without a fabricated marker", () => {
     assert.deepEqual(markers(source('<thing 1>', "Hson as author", "author")), []);
   });

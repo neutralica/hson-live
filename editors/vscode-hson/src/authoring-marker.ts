@@ -9,9 +9,9 @@ export const hsonIdentityMarkers = [
   { publicName: "hson", letter: "o", colorId: "hson.libraryMarker.o", strength: "strong" },
   { publicName: "hson", letter: "n", colorId: "hson.libraryMarker.n", strength: "strong" },
   { publicName: "Hson", letter: "H", colorId: "hson.authoringMarker.h", strength: "soft" },
-  { publicName: "Hson", letter: "S", colorId: "hson.authoringMarker.s", strength: "soft" },
-  { publicName: "Hson", letter: "O", colorId: "hson.authoringMarker.o", strength: "soft" },
-  { publicName: "Hson", letter: "N", colorId: "hson.authoringMarker.n", strength: "soft" },
+  { publicName: "Hson", letter: "s", colorId: "hson.authoringMarker.s", strength: "soft" },
+  { publicName: "Hson", letter: "o", colorId: "hson.authoringMarker.o", strength: "soft" },
+  { publicName: "Hson", letter: "n", colorId: "hson.authoringMarker.n", strength: "soft" },
 ] as const;
 
 export const HSON_LIBRARY_SEPARATOR_COLOR_ID = "hson.libraryMarker.separator";

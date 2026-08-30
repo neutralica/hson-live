@@ -13,8 +13,9 @@ import {
 import { verify_canonical_schema_graph } from "../canonical-schema/verify.js";
 import { evaluate_canonical_projected_schema } from "../canonical-schema/evaluate.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
+import { is_public_attr_name } from "../../core/public-attrs.js";
 
-export const HSON_SCHEMA_MVP_COMPATIBILITY_VERSION = "hson-schema-mvp-1" as const;
+export const HSON_SCHEMA_MVP_COMPATIBILITY_VERSION = "hson-schema-mvp-2" as const;
 
 export type HsonSchemaIssueCode =
   | "INVALID_ROOT"
@@ -31,13 +32,37 @@ export type HsonSchemaIssue = Readonly<{
   range?: HsonSourceRange;
 }>;
 
-export type HsonSchemaSemanticNode =
+export type HsonSchemaDataSemanticNode =
   | Readonly<{ kind: "string" | "number" | "boolean" | "null" }>
   | Readonly<{ kind: "exact"; value: string | number | boolean | null }>
-  | Readonly<{ kind: "object"; members: readonly Readonly<{ name: string; optional: boolean; schema: HsonSchemaSemanticNode }>[] }>
-  | Readonly<{ kind: "array"; item: HsonSchemaSemanticNode }>
-  | Readonly<{ kind: "tuple"; items: readonly HsonSchemaSemanticNode[] }>
-  | Readonly<{ kind: "union"; choices: readonly [HsonSchemaSemanticNode, HsonSchemaSemanticNode] }>;
+  | Readonly<{ kind: "object"; members: readonly Readonly<{ name: string; optional: boolean; schema: HsonSchemaDataSemanticNode }>[] }>
+  | Readonly<{ kind: "array"; item: HsonSchemaDataSemanticNode }>
+  | Readonly<{ kind: "tuple"; items: readonly HsonSchemaDataSemanticNode[] }>
+  | Readonly<{ kind: "union"; choices: readonly [HsonSchemaDataSemanticNode, HsonSchemaDataSemanticNode] }>;
+
+export type HsonSchemaDocumentAttr = Readonly<{
+  name: string;
+  optional: boolean;
+} & (Readonly<{ flag: true }> | Readonly<{ flag: false; schema: HsonSchemaDataSemanticNode }> )>;
+
+export type HsonSchemaDocumentItem =
+  | Readonly<{ kind: "document-string" }>
+  | HsonSchemaDocumentElement;
+
+export type HsonSchemaDocumentContent =
+  | Readonly<{ kind: "document-empty" }>
+  | Readonly<{ kind: "document-string-content" }>
+  | Readonly<{ kind: "document-sequence"; items: readonly HsonSchemaDocumentItem[] }>;
+
+export type HsonSchemaDocumentElement = Readonly<{
+  kind: "document-element";
+  tag: string;
+  attrs: readonly HsonSchemaDocumentAttr[];
+  attrsExact: boolean;
+  content: HsonSchemaDocumentContent;
+}>;
+
+export type HsonSchemaSemanticNode = HsonSchemaDataSemanticNode | HsonSchemaDocumentElement;
 
 export type CompiledHsonSchema = Readonly<{
   semantic: HsonSchemaSemanticNode;
@@ -83,11 +108,18 @@ export function compile_hson_schema(source: string): HsonSchemaCompilation {
   const ranges = new Map<HsonSchemaSemanticNode, HsonSourceRange>();
   if (!is_object(materialized)) return failure("INVALID_ROOT", [], "Hson Schema root must be an object.");
   const rootKeys = Object.keys(materialized);
-  if (rootKeys.length !== 2 || rootKeys[0] !== "type" || rootKeys[1] !== "content" || materialized.type !== "data") {
-    return failure("INVALID_ROOT", [], 'Hson Schema root must contain exactly `type "data"` followed by `content`.');
+  let semantic: HsonSchemaSemanticNode | undefined;
+  if (materialized.type === "data") {
+    if (rootKeys.length !== 2 || rootKeys[0] !== "type" || rootKeys[1] !== "content") {
+      return failure("INVALID_ROOT", [], 'Data Hson Schema root must contain exactly `type "data"` followed by `content`.');
+    }
+    semantic = decode_object_members(materialized.content, ["content"], issues, ranges, parsed.value, parsed.provenance);
+  } else if (materialized.type === "document") {
+    if (rootKeys[0] !== "type") return failure("INVALID_ROOT", [], 'Document Hson Schema root must begin with `type "document"`.');
+    semantic = decode_document_element(materialized, [], true, issues, ranges, parsed.value, parsed.provenance);
+  } else {
+    return failure("INVALID_ROOT", [], 'Hson Schema root `type` must be exactly "data" or "document".');
   }
-
-  const semantic = decode_object_members(materialized.content, ["content"], issues, ranges, parsed.value, parsed.provenance);
   if (semantic === undefined || issues.length > 0) return Object.freeze({ ok: false, issues: Object.freeze(issues) });
   if (!bootstrapResult.ok) {
     const first = bootstrapResult.issues[0];
@@ -112,7 +144,7 @@ function decode_expression(
   ranges: Map<HsonSchemaSemanticNode, HsonSourceRange>,
   root: HsonNode,
   provenance: HsonSourceProvenance,
-): Readonly<{ schema: HsonSchemaSemanticNode; optional: boolean }> | undefined {
+): Readonly<{ schema: HsonSchemaDataSemanticNode; optional: boolean }> | undefined {
   if (input === "string" || input === "number" || input === "boolean" || input === "null") {
     const schema = Object.freeze({ kind: input } as const);
     bind_range(schema, path, ranges, root, provenance);
@@ -129,7 +161,7 @@ function decode_expression(
   }
   const operator = keys[0] as string;
   const operand = input[operator];
-  let schema: HsonSchemaSemanticNode | undefined;
+  let schema: HsonSchemaDataSemanticNode | undefined;
   switch (operator) {
     case "exact":
       if (!is_primitive(operand)) issue(issues, "INVALID_SCHEMA_EXPRESSION", path, "`exact` requires one finite primitive or null.");
@@ -156,7 +188,7 @@ function decode_expression(
     case "tuple": {
       if (!Array.isArray(operand)) issue(issues, "INVALID_SCHEMA_EXPRESSION", path, "`tuple` requires one Hson array.");
       else {
-        const items: HsonSchemaSemanticNode[] = [];
+        const items: HsonSchemaDataSemanticNode[] = [];
         operand.forEach((item, index) => {
           const decoded = decode_expression(item, [...path, "tuple", index], false, issues, ranges, root, provenance);
           if (decoded !== undefined) items.push(decoded.schema);
@@ -171,7 +203,7 @@ function decode_expression(
         const left = decode_expression(operand[0], [...path, "union", 0], false, issues, ranges, root, provenance);
         const right = decode_expression(operand[1], [...path, "union", 1], false, issues, ranges, root, provenance);
         if (left !== undefined && right !== undefined && distinguishable(left.schema, right.schema)) {
-          schema = Object.freeze({ kind: "union", choices: Object.freeze([left.schema, right.schema]) as readonly [HsonSchemaSemanticNode, HsonSchemaSemanticNode] });
+          schema = Object.freeze({ kind: "union", choices: Object.freeze([left.schema, right.schema]) as readonly [HsonSchemaDataSemanticNode, HsonSchemaDataSemanticNode] });
         } else if (left !== undefined && right !== undefined) issue(issues, "INVALID_UNION", path, "Union branches are not distinguishable under the MVP rule.");
       }
       break;
@@ -184,12 +216,12 @@ function decode_expression(
   return Object.freeze({ schema, optional: false });
 }
 
-function decode_object_members(input: unknown, path: readonly (string | number)[], issues: HsonSchemaIssue[], ranges: Map<HsonSchemaSemanticNode, HsonSourceRange>, root: HsonNode, provenance: HsonSourceProvenance): HsonSchemaSemanticNode | undefined {
+function decode_object_members(input: unknown, path: readonly (string | number)[], issues: HsonSchemaIssue[], ranges: Map<HsonSchemaSemanticNode, HsonSourceRange>, root: HsonNode, provenance: HsonSourceProvenance): HsonSchemaDataSemanticNode | undefined {
   if (!is_object(input)) {
     issue(issues, "INVALID_SCHEMA_EXPRESSION", path, "`content` requires one closed data object.");
     return undefined;
   }
-  const members: { name: string; optional: boolean; schema: HsonSchemaSemanticNode }[] = [];
+  const members: { name: string; optional: boolean; schema: HsonSchemaDataSemanticNode }[] = [];
   for (const [name, value] of Object.entries(input)) {
     const decoded = decode_expression(value, [...path, name], true, issues, ranges, root, provenance);
     if (decoded !== undefined) members.push(Object.freeze({ name, optional: decoded.optional, schema: decoded.schema }));
@@ -199,9 +231,76 @@ function decode_object_members(input: unknown, path: readonly (string | number)[
   return schema;
 }
 
+function decode_document_element(input: JsonObject, path: readonly (string | number)[], rootDescriptor: boolean, issues: HsonSchemaIssue[], ranges: Map<HsonSchemaSemanticNode, HsonSourceRange>, root: HsonNode, provenance: HsonSourceProvenance): HsonSchemaDocumentElement | undefined {
+  const allowed = new Set(rootDescriptor ? ["type", "tag", "attrs", "content"] : ["tag", "attrs", "content"]);
+  for (const key of Object.keys(input)) if (!allowed.has(key)) issue(issues, "UNKNOWN_SCHEMA_MEMBER", [...path, key], `Unknown document Schema member ${JSON.stringify(key)}.`);
+  if (rootDescriptor && input.type !== "document") issue(issues, "INVALID_ROOT", [...path, "type"], 'Document descriptor requires `type "document"`.');
+  if (typeof input.tag !== "string" || input.tag.length === 0 || input.tag.startsWith("_hson_")) issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, "tag"], "Document `tag` requires one ordinary exact tag string.");
+  if (!("content" in input)) issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, "content"], "Document descriptor requires explicit `content`.");
+  let attrs: readonly HsonSchemaDocumentAttr[] = Object.freeze([]);
+  let attrsExact = false;
+  if ("attrs" in input) {
+    const decoded = decode_document_attrs(input.attrs, [...path, "attrs"], issues, ranges, root, provenance);
+    if (decoded !== undefined) { attrs = decoded.attrs; attrsExact = decoded.exact; }
+  }
+  const content = decode_document_content(input.content, [...path, "content"], issues, ranges, root, provenance);
+  if (typeof input.tag !== "string" || input.tag.length === 0 || input.tag.startsWith("_hson_") || content === undefined) return undefined;
+  const schema = Object.freeze({ kind: "document-element", tag: input.tag, attrs, attrsExact, content } as const);
+  bind_range(schema, path, ranges, root, provenance);
+  return schema;
+}
+
+function decode_document_attrs(input: unknown, path: readonly (string | number)[], issues: HsonSchemaIssue[], ranges: Map<HsonSchemaSemanticNode, HsonSourceRange>, root: HsonNode, provenance: HsonSourceProvenance): Readonly<{ attrs: readonly HsonSchemaDocumentAttr[]; exact: boolean }> | undefined {
+  if (!is_object(input)) { issue(issues, "INVALID_SCHEMA_EXPRESSION", path, "`attrs` requires one descriptor object."); return undefined; }
+  for (const key of Object.keys(input)) if (key !== "props" && key !== "exact") issue(issues, "UNKNOWN_SCHEMA_MEMBER", [...path, key], `Unknown attrs descriptor member ${JSON.stringify(key)}.`);
+  if (!("props" in input) || !is_object(input.props)) { issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, "props"], "`attrs.props` requires one object of candidate attribute Schemas."); return undefined; }
+  if (input.exact !== undefined && typeof input.exact !== "boolean") issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, "exact"], "`attrs.exact` must be boolean when present.");
+  const attrs: HsonSchemaDocumentAttr[] = [];
+  for (const [name, value] of Object.entries(input.props)) {
+    if (!is_public_attr_name(name)) { issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, "props", name], `Invalid public attribute name ${JSON.stringify(name)}.`); continue; }
+    const decoded = decode_attr_expression(value, [...path, "props", name], issues, ranges, root, provenance);
+    if (decoded !== undefined) attrs.push(Object.freeze({ name, ...decoded }));
+  }
+  return Object.freeze({ attrs: Object.freeze(attrs), exact: input.exact === true });
+}
+
+function decode_attr_expression(input: unknown, path: readonly (string | number)[], issues: HsonSchemaIssue[], ranges: Map<HsonSchemaSemanticNode, HsonSourceRange>, root: HsonNode, provenance: HsonSourceProvenance): Readonly<{ optional: boolean } & (Readonly<{ flag: true }> | Readonly<{ flag: false; schema: HsonSchemaDataSemanticNode }>)> | undefined {
+  if (input === "flag") return Object.freeze({ optional: false, flag: true });
+  if (is_object(input) && Object.keys(input).length === 1 && "optional" in input) {
+    const inner = decode_attr_expression(input.optional, [...path, "optional"], issues, ranges, root, provenance);
+    if (inner === undefined) return undefined;
+    if (inner.optional) { issue(issues, "ILLEGAL_OPTIONAL", path, "Nested `optional` is not supported."); return undefined; }
+    return inner.flag ? Object.freeze({ optional: true, flag: true }) : Object.freeze({ optional: true, flag: false, schema: inner.schema });
+  }
+  const decoded = decode_expression(input, path, false, issues, ranges, root, provenance);
+  if (decoded === undefined) return undefined;
+  if (decoded.schema.kind !== "string" && !(decoded.schema.kind === "exact" && typeof decoded.schema.value === "string")) {
+    issue(issues, "INVALID_SCHEMA_EXPRESSION", path, "Authored valued attrs support `string` and exact strings in this document slice; canonical Hson stores authored attr values as strings.");
+    return undefined;
+  }
+  return Object.freeze({ optional: false, flag: false, schema: decoded.schema });
+}
+
+function decode_document_content(input: unknown, path: readonly (string | number)[], issues: HsonSchemaIssue[], ranges: Map<HsonSchemaSemanticNode, HsonSourceRange>, root: HsonNode, provenance: HsonSourceProvenance): HsonSchemaDocumentContent | undefined {
+  if (input === "empty") return Object.freeze({ kind: "document-empty" });
+  if (input === "string") return Object.freeze({ kind: "document-string-content" });
+  if (!is_object(input) || Object.keys(input).length !== 1 || !("sequence" in input) || !Array.isArray(input.sequence)) {
+    issue(issues, "INVALID_SCHEMA_EXPRESSION", path, '`content` must be exactly "empty", "string", or `<sequence [...]>` in the document MVP.');
+    return undefined;
+  }
+  const items: HsonSchemaDocumentItem[] = [];
+  input.sequence.forEach((item, index) => {
+    if (item === "string") { issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, "sequence", index], "Mixed/string sequence items are not representable by the current Hson document grammar; use exact `content \"string\"` for textual content."); return; }
+    if (!is_object(item)) { issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, "sequence", index], "Document sequence item must be `string` or an element descriptor."); return; }
+    const child = decode_document_element(item, [...path, "sequence", index], false, issues, ranges, root, provenance);
+    if (child !== undefined) items.push(child);
+  });
+  return Object.freeze({ kind: "document-sequence", items: Object.freeze(items) });
+}
+
 export function lower_hson_schema_semantic(root: HsonSchemaSemanticNode): CanonicalSchemaGraph {
   const nodes: CanonicalSchemaNode[] = [];
-  const lower = (schema: HsonSchemaSemanticNode, optional = false): number => {
+  const lower = (schema: HsonSchemaDataSemanticNode, optional = false): number => {
     const ref = nodes.length;
     nodes.push({ kind: "projected-null" });
     if (optional) {
@@ -218,12 +317,40 @@ export function lower_hson_schema_semantic(root: HsonSchemaSemanticNode): Canoni
     }
     return ref;
   };
+  const lowerDocumentItem = (item: HsonSchemaDocumentItem): number => {
+    if (item.kind === "document-string") { const ref = nodes.length; nodes.push({ kind: "document-text" }); return ref; }
+    return lowerDocumentElement(item);
+  };
+  const lowerDocumentContent = (content: HsonSchemaDocumentContent): number => {
+    const ref = nodes.length; nodes.push({ kind: "document-sequence", items: [] });
+    if (content.kind === "document-empty") nodes[ref] = { kind: "document-sequence", items: Object.freeze([]) };
+    else if (content.kind === "document-string-content") { const text = nodes.length; nodes.push({ kind: "document-text" }); nodes[ref] = { kind: "document-sequence", items: Object.freeze([text]) }; }
+    else nodes[ref] = { kind: "document-sequence", items: Object.freeze(content.items.map(lowerDocumentItem)) };
+    return ref;
+  };
+  const lowerDocumentElement = (element: HsonSchemaDocumentElement): number => {
+    const ref = nodes.length; nodes.push({ kind: "document-element", tag: element.tag, content: 0 });
+    let attrsRef: number | undefined;
+    if (element.attrs.length > 0 || element.attrsExact) {
+      attrsRef = nodes.length; nodes.push({ kind: "document-attrs", exact: element.attrsExact, properties: [] });
+      nodes[attrsRef] = { kind: "document-attrs", exact: element.attrsExact, properties: Object.freeze(element.attrs.map((attr) => attr.flag
+        ? Object.freeze({ name: attr.name, optional: attr.optional, flag: true } as const)
+        : Object.freeze({ name: attr.name, optional: attr.optional, flag: false, value: lower(attr.schema) } as const))) };
+    }
+    const content = lowerDocumentContent(element.content);
+    nodes[ref] = { kind: "document-element", tag: element.tag, ...(attrsRef === undefined ? {} : { attrs: attrsRef }), content };
+    return ref;
+  };
+  if (root.kind === "document-element") {
+    const documentElementRoot = lowerDocumentElement(root);
+    return { format: CANONICAL_SCHEMA_FORMAT, version: CANONICAL_SCHEMA_VERSION, capabilities: { documentElementRoot }, nodes: Object.freeze(nodes) };
+  }
   const projectedRoot = lower(root);
   return { format: CANONICAL_SCHEMA_FORMAT, version: CANONICAL_SCHEMA_VERSION, capabilities: { projectedRoot }, nodes: Object.freeze(nodes) };
 }
 
-function distinguishable(left: HsonSchemaSemanticNode, right: HsonSchemaSemanticNode): boolean {
-  const primitive = (value: HsonSchemaSemanticNode): string | undefined => value.kind === "exact" ? typeof value.value : ["string", "number", "boolean", "null"].includes(value.kind) ? value.kind : undefined;
+function distinguishable(left: HsonSchemaDataSemanticNode, right: HsonSchemaDataSemanticNode): boolean {
+  const primitive = (value: HsonSchemaDataSemanticNode): string | undefined => value.kind === "exact" ? typeof value.value : ["string", "number", "boolean", "null"].includes(value.kind) ? value.kind : undefined;
   const a = primitive(left), b = primitive(right);
   if (a !== undefined || b !== undefined) return a !== undefined && b !== undefined && a !== b;
   if (left.kind !== "object" || right.kind !== "object") return false;
@@ -246,31 +373,36 @@ function build_bootstrap(): VerifiedCanonicalSchemaGraph {
   // type-dependent legality and restricted-union distinguishability belong to
   // the deterministic human decoder above.
   const nodes: CanonicalSchemaNode[] = [
-    { kind: "projected-object", exact: true, properties: [["type", 1], ["content", 2]] },
+    { kind: "projected-union", choices: [1, 25] },
+    { kind: "projected-object", exact: true, properties: [["type", 2], ["content", 3]] },
     { kind: "projected-literal", values: ["data"] },
-    { kind: "projected-record", value: 3 },
-    { kind: "projected-union", choices: [4, 5, 11, 14, 16, 18, 21] },
+    { kind: "projected-record", value: 4 },
+    { kind: "projected-union", choices: [5, 6, 12, 15, 17, 19, 22] },
     { kind: "projected-literal", values: ["string", "number", "boolean", "null"] },
-    { kind: "projected-object", exact: true, properties: [["exact", 6]] },
-    { kind: "projected-union", choices: [7, 8, 9, 10] },
+    { kind: "projected-object", exact: true, properties: [["exact", 7]] },
+    { kind: "projected-union", choices: [8, 9, 10, 11] },
     { kind: "projected-string" },
     { kind: "projected-number" },
     { kind: "projected-boolean" },
     { kind: "projected-null" },
-    { kind: "projected-object", exact: true, properties: [["content", 12]] },
-    { kind: "projected-record", value: 13 },
-    { kind: "projected-ref", target: 3 },
-    { kind: "projected-object", exact: true, properties: [["optional", 15]] },
-    { kind: "projected-ref", target: 3 },
-    { kind: "projected-object", exact: true, properties: [["array", 17]] },
-    { kind: "projected-ref", target: 3 },
-    { kind: "projected-object", exact: true, properties: [["tuple", 19]] },
-    { kind: "projected-array", item: 20 },
-    { kind: "projected-ref", target: 3 },
-    { kind: "projected-object", exact: true, properties: [["union", 22]] },
-    { kind: "projected-tuple", items: [23, 24] },
-    { kind: "projected-ref", target: 3 },
-    { kind: "projected-ref", target: 3 },
+    { kind: "projected-object", exact: true, properties: [["content", 13]] },
+    { kind: "projected-record", value: 14 },
+    { kind: "projected-ref", target: 4 },
+    { kind: "projected-object", exact: true, properties: [["optional", 16]] },
+    { kind: "projected-ref", target: 4 },
+    { kind: "projected-object", exact: true, properties: [["array", 18]] },
+    { kind: "projected-ref", target: 4 },
+    { kind: "projected-object", exact: true, properties: [["tuple", 20]] },
+    { kind: "projected-array", item: 21 },
+    { kind: "projected-ref", target: 4 },
+    { kind: "projected-object", exact: true, properties: [["union", 23]] },
+    { kind: "projected-tuple", items: [24, 24] },
+    { kind: "projected-ref", target: 4 },
+    { kind: "projected-object", exact: false, properties: [["type", 26], ["tag", 27], ["content", 28], ["attrs", 29]] },
+    { kind: "projected-literal", values: ["document"] },
+    { kind: "projected-string" },
+    { kind: "projected-any" },
+    { kind: "projected-optional", base: 28 },
   ];
   const result = verify_canonical_schema_graph({ format: CANONICAL_SCHEMA_FORMAT, version: CANONICAL_SCHEMA_VERSION, capabilities: { projectedRoot: 0 }, nodes });
   if (!result.ok) throw new Error(result.issues.map((entry) => entry.message).join(" "));

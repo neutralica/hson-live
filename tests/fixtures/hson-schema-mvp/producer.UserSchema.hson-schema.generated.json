@@ -1,8 +1,8 @@
 {
-  "compatibilityVersion": "hson-schema-mvp-1",
+  "compatibilityVersion": "hson-schema-mvp-2",
   "declarationIdentity": "producer.ts#UserSchema",
   "sourceDigest": "c3cd90f5603b5a1e475f65c1686ba64fc37b113e387370b7796321b9f235a809",
   "semanticGraphDigest": "795bc730ce6a8434df57cc7b2233df8dc49d056b588283d29c85ca9e54e35a86",
-  "generatedDeclarationDigest": "77fdb7d519d0b5fd625d4246774436cc271c8e2f88f13a770e1180959043c573",
+  "generatedDeclarationDigest": "bdd8fb4314708b93ea9d98b09231ae19e2842fd0a828e1aff35ba9b00691520b",
   "graphHson": "<format \"hson-canonical-schema\" version 1 capabilities <projectedRoot 0> nodes «<kind \"projected-object\" exact true properties ««\"name\",1»,«\"nickname\",2»,«\"score\",4»,«\"status\",5»,«\"zero\",6»,«\"negativeZero\",7»,«\"flags\",8»,«\"pair\",10»,«\"account\",13»»>,<kind \"projected-string\">,<kind \"projected-optional\" base 3>,<kind \"projected-string\">,<kind \"projected-number\">,<kind \"projected-literal\" values «<type \"string\" value \"ready\">»>,<kind \"projected-literal\" values «<type \"number\" value 0>»>,<kind \"projected-literal\" values «<type \"number\" value -0>»>,<kind \"projected-array\" item 9>,<kind \"projected-boolean\">,<kind \"projected-tuple\" items «11,12»>,<kind \"projected-string\">,<kind \"projected-number\">,<kind \"projected-union\" choices «14,17»>,<kind \"projected-object\" exact true properties ««\"kind\",15»,«\"handle\",16»»>,<kind \"projected-literal\" values «<type \"string\" value \"user\">»>,<kind \"projected-string\">,<kind \"projected-object\" exact true properties ««\"kind\",18»,«\"level\",19»»>,<kind \"projected-literal\" values «<type \"string\" value \"admin\">»>,<kind \"projected-number\">»>"
 }

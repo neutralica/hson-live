@@ -6,7 +6,7 @@ import { detach_hson_root_value } from "../../api/transform/utils/node-utils/det
 import { validate_schema_hson_graph } from "./validate-schema-hson-graph.js";
 import { compile_hson_schema } from "../hson-schema/compiler.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
-import { evaluate_canonical_projected_schema } from "../canonical-schema/evaluate.js";
+import { evaluate_canonical_document_schema, evaluate_canonical_projected_schema } from "../canonical-schema/evaluate.js";
 
 const COMPILED_HSON_SCHEMAS = new Map<string, ReturnType<typeof compile_hson_schema>>();
 
@@ -23,10 +23,15 @@ export function validate_canonical_hson(schema: LiveMapSchema | HsonSchema, cano
       COMPILED_HSON_SCHEMAS.set(schema, compiled);
     }
     if (!compiled.ok) throw new LiveMapSchemaError("Hson Schema is unavailable or invalid.", [], compiled.issues.map((issue) => Object.freeze({ code: "INVALID_SCHEMA" as const, path: [], message: issue.message })));
-    let projected;
-    try { projected = projected_value_from_hson_node(graph); }
-    catch { throw new LiveMapSchemaError("Hson Schema validation failed.", [], [Object.freeze({ code: "TYPE_MISMATCH" as const, path: [], message: "Expected data Hson; received document Hson." })]); }
-    const result = evaluate_canonical_projected_schema(compiled.value.graph, projected);
+    let result;
+    if (compiled.value.semantic.kind === "document-element") {
+      result = evaluate_canonical_document_schema(compiled.value.graph, graph, "element");
+    } else {
+      let projected;
+      try { projected = projected_value_from_hson_node(graph); }
+      catch { throw new LiveMapSchemaError("Hson Schema validation failed.", [], [Object.freeze({ code: "TYPE_MISMATCH" as const, path: [], message: "Expected data Hson; received document Hson." })]); }
+      result = evaluate_canonical_projected_schema(compiled.value.graph, projected);
+    }
     if (!result.ok) throw new LiveMapSchemaError("Hson Schema validation failed.", result.issues[0]?.path ?? [], result.issues.map((issue) => Object.freeze({ code: issue.code, path: issue.path, message: `Schema validation failed at ${issue.path.join(".") || "root"}.`, ...(issue.expected === undefined ? {} : { expected: issue.expected }), ...(issue.received === undefined ? {} : { received: issue.received }) })));
     return canonical;
   }
