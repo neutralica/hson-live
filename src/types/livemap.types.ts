@@ -29,7 +29,7 @@ export type LivePath = readonly LivePathPart[];
 /** Canonical root shape owned by one LiveMap instance. */
 export type LiveMapRootMode = DataLiveMapMode | DocumentLiveMapMode;
 export type DataLiveMapMode = "data-object" | "data-array";
-export type DocumentLiveMapMode = "element" | "fragment";
+export type DocumentLiveMapMode = "document";
 
 /**
  * Runtime Proxy surface for ergonomic projected-path access.
@@ -544,7 +544,7 @@ export type DocumentLiveMapContentApi = (() => readonly NodeContent[number][]) &
   ) => LiveMapGraphCommit<LiveMapGraphMoveContentOp>;
 }>;
 
-/** Shared detached canonical reads for element and fragment capabilities. */
+/** Shared detached canonical reads for document capabilities. */
 export type LiveMapDocumentApi = Readonly<{
   /** Return a detached clone of the complete canonical root. */
   root: () => HsonNode;
@@ -561,9 +561,7 @@ export type LiveMapDocumentApi = Readonly<{
 type DocumentLiveMapForEvidence<
   TMode extends DocumentLiveMapMode,
   TEvidence,
-> = TMode extends "element"
-  ? ElementLiveMap<TEvidence>
-  : FragmentLiveMap<TEvidence>;
+> = DocumentLiveMap<TEvidence>;
 
 type DocumentLiveMapGovernanceApi<
   TMode extends DocumentLiveMapMode,
@@ -756,14 +754,7 @@ type InternalDocumentResolveRootBranch<
   TEvidence,
   TPath extends readonly number[],
 > = TEvidence extends Readonly<{
-  kind: "element";
-  content: infer TContent;
-}>
-  ? TContent extends "broad"
-    ? InternalDocumentBroadSubtree
-    : InternalDocumentResolveContentPath<TContent, TPath>
-  : TEvidence extends Readonly<{
-    kind: "fragment";
+    kind: "document";
     content: infer TContent;
   }>
     ? InternalDocumentResolveContentPath<TContent, TPath>
@@ -908,16 +899,7 @@ type InternalDocumentNotContentOwner = Readonly<{
 
 type InternalDocumentRootInsertOwner<TEvidence> =
   TEvidence extends Readonly<{
-    kind: "element";
-    content: infer TContent;
-  }>
-    ? InternalDocumentContentOwner<
-      TContent extends "broad"
-        ? string | HsonNode
-        : InternalDocumentContentWritableItems<TContent>
-    >
-    : TEvidence extends Readonly<{
-      kind: "fragment";
+      kind: "document";
       content: infer TContent;
     }>
       ? InternalDocumentContentOwner<InternalDocumentContentWritableItems<TContent>>
@@ -1270,7 +1252,7 @@ type InternalDocumentProxyContentStaticKeys<TContent> =
 
 type InternalDocumentProxyRootStaticKeys<TEvidence> =
   TEvidence extends Readonly<{
-    kind: "element" | "fragment";
+    kind: "document";
     content: infer TContent;
   }>
     ? InternalDocumentProxyContentStaticKeys<TContent>
@@ -1322,18 +1304,10 @@ type LiveMapDocumentProxy<
 }> & InternalDocumentProxyExactChildren<TDescriptor>
   & InternalDocumentProxyDynamicChildren<TDescriptor>;
 
-export type ElementLiveMap<TEvidence = unknown> = DocumentLiveMapShared<"element", TEvidence> & Readonly<{
-  readonly document: LiveMapDocumentApi;
-  /** Return a detached clone of the single top-level ordinary element. */
-  element: Readonly<{ node: () => HsonNode }>;
-}>;
-
-export type FragmentLiveMap<TEvidence = unknown> = DocumentLiveMapShared<"fragment", TEvidence> & Readonly<{
+/** One rooted document authority whose ordered content may contain zero, one, or many nodes. */
+export type DocumentLiveMap<TEvidence = unknown> = DocumentLiveMapShared<"document", TEvidence> & Readonly<{
   readonly document: LiveMapDocumentApi;
 }>;
-
-/** Shape-specific document façade with detached reads and atomic capture install. */
-export type DocumentLiveMap = ElementLiveMap | FragmentLiveMap;
 
 /** Mode-neutral authority boundary shared by schema-narrowed data and document maps. */
 export type LiveMapAuthority = Readonly<{

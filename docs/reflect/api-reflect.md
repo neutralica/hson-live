@@ -31,7 +31,7 @@ const collectionBinding = hsonReflect.collection(options);
 const sameCollectionBinding = reflect_collection(options);
 ```
 
-The callable facade accepts an `ElementLiveMap`, not a fragment or data map.
+The callable facade accepts a `DocumentLiveMap`, not a data map.
 The `.collection(...)` member accepts a keyed array projection configuration.
 
 ## Document reflection
@@ -39,7 +39,7 @@ The `.collection(...)` member accepts a keyed array projection configuration.
 ```ts
 const map = hson.liveMap.fromHson(`<main <p "hello"/>/>`);
 
-if (map.mode === "element") {
+if (map.mode === "document") {
   const reflected = hson.reflect(map);
   reflected.tree;           // LiveTree projection
   reflected.status;         // "active"
@@ -50,7 +50,7 @@ if (map.mode === "element") {
 }
 ```
 
-Construction captures the current canonical element and revision, builds a
+Construction captures the current canonical document projection and revision, builds a
 fresh LiveTree projection, establishes path/QUID correspondence, registers its
 identity participant, then subscribes to LiveMap commit observations. If the
 map changes during that initialization window, construction fails instead of
@@ -187,7 +187,7 @@ Current Reflect provides no:
 - adoption or hydration of existing DOM;
 - arbitrary DOM observation or DOM-to-Hson diffing;
 - DOM-as-authority mode;
-- fragment-document reflector;
+- separate shape-specific document reflectors;
 - universal recursive data renderer;
 - virtual DOM or component framework;
 - transport, session, history, recovery, or persistence authority; or

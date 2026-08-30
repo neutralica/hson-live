@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { hson } from "../src/index.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import type { HsonNode } from "../src/core/types.ts";
-import type { DocumentLiveMapCapture, ElementLiveMap } from "../src/types/livemap.types.ts";
+import type { DocumentLiveMapCapture, DocumentLiveMap } from "../src/types/livemap.types.ts";
 import { hsonReflect } from "../src/api/reflect/reflect.facade.ts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import { project_livetree } from "../src/api/livetree/creation/project-live-tree.ts";
@@ -19,18 +19,23 @@ function check(name: string, fn: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-function element(source: string): ElementLiveMap {
+function element(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error("Expected ElementLiveMap");
+  if (map.mode !== "document") throw new Error("Expected DocumentLiveMap");
   return map;
 }
 
 function path(...segments: number[]) {
-  return { kind: "path" as const, path: segments };
+  return { kind: "path" as const, path: [0, ...segments] };
 }
 
 function raw_node(root: HsonNode, rawPath: readonly number[]): HsonNode {
   let current = root;
+  if (current.$_tag === "_hson_root") {
+    const only = current.$_content[0];
+    if (!is_Node(only)) throw new Error("Expected one document element");
+    current = only;
+  }
   for (const segment of rawPath) {
     const child = current.$_content[segment];
     if (!is_Node(child)) throw new Error(`Expected node at ${rawPath.join("/")}`);
@@ -40,15 +45,15 @@ function raw_node(root: HsonNode, rawPath: readonly number[]): HsonNode {
 }
 
 function mount(root: HsonNode): FakeElement {
-  return project_livetree(root) as unknown as FakeElement;
+  return project_livetree(root.$_tag === "_hson_root" ? raw_node(root, []) : root) as unknown as FakeElement;
 }
 
 function with_capture(
-  map: ElementLiveMap,
-  capture: () => DocumentLiveMapCapture<"element">,
-): ElementLiveMap {
+  map: DocumentLiveMap,
+  capture: () => DocumentLiveMapCapture<"document">,
+): DocumentLiveMap {
   return {
-    mode: "element",
+    mode: "document",
     get rev() { return map.rev; },
     root: map.root,
     at: map.at,
@@ -60,7 +65,6 @@ function with_capture(
     commits: map.commits,
     schema: map.schema,
     document: map.document,
-    element: map.element,
   };
 }
 
@@ -68,7 +72,7 @@ check("mounted snapshot constructs a fresh tree and descendant identity epoch", 
   const map = element(`<main @000000601 class="old" <p @000000602 "old"/> <i/>/>`);
   const binding = hsonReflect(map);
   const tree = binding.tree;
-  const root = tree.node;
+  const root = raw_node(tree.node, []);
   const rootDom = mount(root);
   const paragraph = raw_node(root, [0, 0]);
   const paragraphDom = get_el_for_node(paragraph);
@@ -80,7 +84,7 @@ check("mounted snapshot constructs a fresh tree and descendant identity epoch", 
 
   assert.equal(binding.status, "active");
   const nextTree = binding.tree;
-  const nextRoot = nextTree.node;
+  const nextRoot = raw_node(nextTree.node, []);
   const nextParagraph = raw_node(nextRoot, [0, 0]);
   const nextRootDom = get_el_for_node(nextRoot) as FakeElement | undefined;
   assert.notEqual(nextTree, tree);
@@ -99,22 +103,22 @@ check("mounted snapshot constructs a fresh tree and descendant identity epoch", 
   assert.equal(map.document.attrs.get(path(0, 0), "after"), "snapshot");
   const inserted = raw_node(nextRoot, [0, 1]);
   create_livetree(inserted).adoptRoots(nextRoot).remove();
-  assert.equal(raw_node(map.element.node(), [0]).$_content.length, 1);
+  assert.equal(raw_node(map.root(), [0]).$_content.length, 1);
   binding.dispose();
 });
 
 check("detached QUID-less snapshot is fresh and preserves canonical identity absence", () => {
   const map = element(`<main class="old"/>`);
   const binding = hsonReflect(map);
-  const root = binding.tree.node;
+  const root = raw_node(binding.tree.node, []);
   assert.equal(root.$_meta?.["quid"], undefined);
   const restored = element(`<main class="restored" "detached"/>`);
   restored.document.attrs.set(path(), "rev", 1);
   map.restore(restored.capture());
-  assert.notEqual(binding.tree.node, root);
-  assert.equal(get_el_for_node(binding.tree.node), undefined);
-  assert.equal(binding.tree.node.$_meta?.["quid"], undefined);
-  assert.equal(map.element.node().$_meta?.["quid"], undefined);
+  assert.notEqual(raw_node(binding.tree.node, []), root);
+  assert.equal(get_el_for_node(raw_node(binding.tree.node, [])), undefined);
+  assert.equal(raw_node(binding.tree.node, []).$_meta?.["quid"], undefined);
+  assert.equal(raw_node(map.root(), []).$_meta?.["quid"], undefined);
   assert.equal(binding.sourceRevision, 1);
   binding.dispose();
 });
@@ -130,7 +134,7 @@ check("restore followed by commit projects from the exact restored revision", ()
   assert.equal(commit.prevRev, 2);
   assert.equal(commit.rev, 3);
   assert.equal(binding.sourceRevision, 3);
-  assert.equal(binding.tree.attrs.get("after"), "commit");
+  assert.equal(raw_node(binding.tree.node, []).$_attrs?.after, "commit");
   assert.equal(binding.diagnostics().updatesApplied, 2);
   binding.dispose();
 });
@@ -147,10 +151,10 @@ check("snapshot publication consumes private accepted evidence without public re
   const before = binding.tree;
   map.restore(element(`<main @000000604 class="canonical"/>`).capture());
   assert.equal(captures, 0);
-  assert.equal(map.element.node().$_attrs?.class, "canonical");
+  assert.equal(raw_node(map.root(), []).$_attrs?.class, "canonical");
   assert.notEqual(binding.tree, before);
   assert.equal(before.isDisposed, true);
-  assert.equal(binding.tree.node.$_attrs?.class, "canonical");
+  assert.equal(raw_node(binding.tree.node, []).$_attrs?.class, "canonical");
   assert.equal(binding.status, "active");
   assert.equal(binding.sourceRevision, 0);
   binding.dispose();
@@ -179,7 +183,7 @@ check("repeated snapshots independently reconstruct from accepted evidence", () 
   assert.notEqual(binding.tree, firstTree);
   assert.equal(binding.status, "active");
   assert.equal(binding.sourceRevision, 2);
-  assert.equal(binding.tree.attrs.get("state"), "second");
+  assert.equal(raw_node(binding.tree.node, []).$_attrs?.state, "second");
   assert.equal(binding.diagnostics().updatesApplied, 2);
   binding.dispose();
 });
@@ -192,7 +196,7 @@ check("new snapshot epochs admit fresh tag and root QUID transitions", () => {
   assert.equal(tagBinding.status, "active");
   assert.notEqual(tagBinding.tree, tagTree);
   assert.equal(tagTree.isDisposed, true);
-  assert.equal(tagBinding.tree.node.$_tag, "article");
+  assert.equal(raw_node(tagBinding.tree.node, []).$_tag, "article");
   tagBinding.dispose();
 
   const quidMap = element(`<main @000000607/>`);
@@ -201,7 +205,7 @@ check("new snapshot epochs admit fresh tag and root QUID transitions", () => {
   quidMap.restore(element(`<main @000000608/>`).capture());
   assert.equal(quidBinding.status, "active");
   assert.notEqual(quidBinding.tree.node, quidRoot);
-  assert.equal(quidBinding.tree.node.$_meta?.quid, "000000608");
+  assert.equal(raw_node(quidBinding.tree.node, []).$_meta?.quid, "000000608");
   quidBinding.dispose();
 });
 
@@ -217,7 +221,7 @@ check("public capture failure is outside private snapshot publication evidence",
   assert.equal(captures, 0);
   assert.equal(map.document.attrs.get(path(), "title"), "canonical");
   assert.equal(binding.status, "active");
-  assert.equal(binding.tree.attrs.get("title"), "canonical");
+  assert.equal(raw_node(binding.tree.node, []).$_attrs?.title, "canonical");
   assert.equal(binding.sourceRevision, 0);
   binding.dispose();
   assert.equal(binding.status, "disposed");
@@ -268,8 +272,8 @@ check("stale snapshot convergence hooks cannot dispose the fresh binding", () =>
   assert.notEqual(binding.tree, oldTree);
   assert.equal(oldTree.isDisposed, true);
   assert.equal(binding.sourceRevision, 0);
-  assert.equal(map.element.node().$_tag, "main");
-  binding.tree.attrs.set("local", true);
+  assert.equal(raw_node(map.root(), []).$_tag, "main");
+  create_livetree(raw_node(binding.tree.node, [])).adoptRoots(binding.tree.hostRootNode()).attrs.set("local", true);
   assert.equal(map.document.attrs.get(path(), "local"), true);
   binding.dispose();
 });

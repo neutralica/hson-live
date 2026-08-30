@@ -119,8 +119,7 @@ function assert_terminal_and_debug_surface(
 
 function assert_classified_livemap_surface(map: ClassifiedLiveMapSurface): HsonNode {
   const target = { kind: "path", path: [] } as const;
-  if (map.mode === "element") {
-    map.element.node();
+  if (map.mode === "document") {
     map.document.content();
     map.document.attrs.get(target, "id");
     map.document.attrs.must.get(target, "id");
@@ -133,21 +132,9 @@ function assert_classified_livemap_surface(map: ClassifiedLiveMapSurface): HsonN
     map.document.attrs.clear(target);
     map.document.attrs.replace(target, { title: "main" });
     map.document.content.replace(target, 0, "text");
-    // @ts-expect-error Attribute mutation belongs under the attrs namespace.
-    map.element.setAttr(target, "id", "main");
-    // @ts-expect-error Element inspection does not duplicate document operations.
-    map.element.attrs;
-    // @ts-expect-error Element inspection does not duplicate document operations.
-    map.element.content;
-  } else if (map.mode === "fragment") {
-    map.document.content();
-    map.document.attrs.get(target, "id");
-    map.document.attrs.has(target, "id");
-    map.document.attrs.keys(target);
-    map.document.attrs.set({ kind: "quid", quid: "known" }, "id", "value");
-    map.document.attrs.drop(target, "id");
-    map.document.content.replace(target, 0, "text");
-    // @ts-expect-error Fragment mode has no duplicate operation façade.
+    // @ts-expect-error Document operations have no shape-specific element façade.
+    map.element;
+    // @ts-expect-error Document operations have no shape-specific fragment façade.
     map.fragment;
   } else {
     map.snap();
@@ -183,7 +170,7 @@ function assert_document_surface(documentMap: DocumentLiveMapSurface): void {
   hson.liveMap.fromJson({}).document.attrs.set({ kind: "path", path: [] }, "id", "x");
   // @ts-expect-error Element is an instance capability, not a constructor namespace.
   hson.liveMap.element.fromTrustedHtml("<button>Save</button>");
-  // @ts-expect-error Fragment is an instance capability, not a constructor namespace.
+  // @ts-expect-error No shape-specific fragment constructor namespace exists.
   hson.liveMap.fragment.fromTrustedHtml("text");
 }
 

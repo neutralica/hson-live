@@ -374,7 +374,7 @@ check("exact graph decoding canonicalizes valid permutations and rejects malform
 check("canonical document snapshots reject array structure inside an element branch", () => {
   const capture = {
     kind: "hson-document" as const,
-    mode: "element" as const,
+    mode: "document" as const,
     rev: 4,
     root: {
       $_tag: "_hson_root",

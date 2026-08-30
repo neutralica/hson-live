@@ -131,7 +131,7 @@ import {
   type LiveMap,
   type LiveMapCommit,
   type LiveMapDocumentIdentityHandle,
-  type ElementLiveMap,
+  type DocumentLiveMap,
   type LiveMapPathHandle,
   type LivePath,
   type ProjectedValueAdmissionCode,
@@ -292,7 +292,7 @@ void (0 as unknown as LiveMapDocumentSchema);
 hson.liveMap.schema;
 declare const publicElementSchema: HsonSchema;
 const publicElementCandidate = hson.liveMap.fromHson(`<button "Save"/>`);
-if (publicElementCandidate.mode === "element") {
+if (publicElementCandidate.mode === "document") {
   const schemaBound = publicElementCandidate.schema.use(publicElementSchema);
   const sameSchema = schemaBound.schema.get();
   const exactSchema: HsonSchema | undefined = sameSchema;
@@ -766,7 +766,7 @@ declare const pathHandle: LiveMapPathHandle;
 void pathHandle.quid;
 
 const publicDocumentMap = mapSubpath.fromHson(`<main/>`);
-if (publicDocumentMap.mode === "element") {
+if (publicDocumentMap.mode === "document") {
   // @ts-expect-error Document LiveMaps expose no public live canonical-node debug escape.
   publicDocumentMap.debug.node([]);
   const documentAcquisitionIsPublic: "ensureIdentity" extends keyof typeof publicDocumentMap.document ? true : false = false;
@@ -807,7 +807,7 @@ const projectedHsonLookalike = mapSubpath.fromJson({ value: { $_tag: "projected"
 bindingTree.bind.text(projectedHsonLookalike.at(["value"]));
 bindingTree.bind.attr(projectedHsonLookalike.at(["value"]), "data-projected");
 
-type PublicDocumentLocation = ReturnType<ElementLiveMap["at"]>;
+type PublicDocumentLocation = ReturnType<DocumentLiveMap["at"]>;
 type PrimitiveDocumentLocation = Omit<PublicDocumentLocation, "snap" | "watch"> & Readonly<{
   snap: () => string | undefined;
   watch: (listener: (next: string | undefined) => void) => () => void;
@@ -816,7 +816,7 @@ declare const futurePrimitiveDocumentLocation: PrimitiveDocumentLocation;
 bindingTree.bind.text(futurePrimitiveDocumentLocation);
 bindingTree.bind.attr(futurePrimitiveDocumentLocation, "data-future");
 
-declare const readonlyDocumentMap: LocusReadonlyMap<ElementLiveMap>;
+declare const readonlyDocumentMap: LocusReadonlyMap<DocumentLiveMap>;
 // @ts-expect-error Readonly Host document locations are not part of the Host surface.
 readonlyDocumentMap.at([]);
 

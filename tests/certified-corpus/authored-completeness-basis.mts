@@ -153,13 +153,13 @@ export const completenessCompositionCases: readonly (AcceptedCorpusCase | Reject
     MODE_PROVENANCE, "Adds the previously missing direct object-to-element crossing.",
   ),
   accepted(
-    "hson.accept.basis.root.element-fragment",
-    "A homogeneous root element fragment preserves sibling order.",
+    "hson.accept.basis.root.element-sequence",
+    "A homogeneous root element sequence preserves sibling order.",
     "<a/><b/>",
     elem(element("a"), element("b")),
     "<a/>\n<b/>",
-    "element-fragment", "root", ["root-boundary", "element", "fragment", "order"],
-    MODE_PROVENANCE, "Adds the missing positive multi-element root fragment.",
+    "element-sequence", "root", ["root-boundary", "element", "order"],
+    MODE_PROVENANCE, "Adds the missing positive multi-element root sequence.",
   ),
   accepted(
     "hson.accept.basis.object.primitive-looking-keys",

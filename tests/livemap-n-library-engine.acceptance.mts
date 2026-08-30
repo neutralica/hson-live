@@ -149,7 +149,7 @@ check("data and document libraries coexist under one map authority with separate
   const document = aggregate.addLibrary(hson.fromHson("<main/>").toNode(), { hsonSchema: DocumentSchema });
   const documentRoot = aggregate.root(document);
   const before = aggregate.inspect();
-  assert.deepEqual(before.libraries.map((library) => library.mode), ["data-object", "element"]);
+  assert.deepEqual(before.libraries.map((library) => library.mode), ["data-object", "document"]);
   assert.deepEqual(before.libraries.map((library) => library.hsonSchemaAttached), [true, true]);
   aggregate.commit([{ target: aggregate.target(data, ["value"]), kind: "set", value: 2 }]);
   assert.equal(map.rev, 1);

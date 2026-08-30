@@ -48,6 +48,15 @@ function reuse(error: unknown): boolean {
     && Reflect.get(error, "code") === "LIVETREE_QUID_REUSE";
 }
 
+function reflectedSubject(
+  runtime: ReturnType<typeof _create_livetree_runtime_test_handle>,
+  binding: ReturnType<typeof _reflect_document_for_runtime_test>,
+) {
+  const subject = binding.tree.node.$_content[0];
+  if (subject === undefined || subject === null || typeof subject !== "object") throw new Error("Expected authored document root");
+  return _create_livetree_for_runtime_test(runtime, subject).adoptRoots(binding.tree.hostRootNode());
+}
+
 check("projection writes active QUID metadata to DOM", () => {
   const tree = _create_livetree_for_runtime_test(projectionRuntime, node("main", Q1));
   const dom = _project_livetree_for_runtime_test(projectionRuntime, tree, globalThis.document) as unknown as FakeElement;
@@ -141,7 +150,7 @@ check("linked canonical acquisition enters the runtime issued ledger", () => {
   const map = element("<main/>");
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
   const binding = _reflect_document_for_runtime_test(runtime, map);
-  assert.equal(binding.tree.quid, Q1);
+  assert.equal(reflectedSubject(runtime, binding).quid, Q1);
   assert.equal(_livetree_runtime_test_issued_count(runtime), 1);
   binding.dispose();
   binding.tree.remove();
@@ -154,7 +163,7 @@ check("linked allocator retries a retired runtime candidate", () => {
   let calls = 0;
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => ++calls === 1 ? Q1 : Q2);
   const binding = _reflect_document_for_runtime_test(runtime, map);
-  assert.equal(binding.tree.quid, Q2);
+  assert.equal(reflectedSubject(runtime, binding).quid, Q2);
   assert.equal(calls, 2);
   binding.dispose();
   binding.tree.remove();
@@ -166,7 +175,7 @@ check("failed linked candidate leaves no pending reservation", () => {
   const map = element("<main/>");
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
   const binding = _reflect_document_for_runtime_test(runtime, map);
-  assert.throws(() => binding.tree.quid, (error: unknown) => error instanceof Error && error.message.includes("32 secure attempts"));
+  assert.throws(() => reflectedSubject(runtime, binding).quid, (error: unknown) => error instanceof Error && error.message.includes("32 secure attempts"));
   assert.equal(_livetree_runtime_test_claim_count(runtime), 0);
   assert.equal(_livetree_runtime_test_issued_count(runtime), 1);
   binding.dispose();

@@ -1,5 +1,4 @@
 import { is_Node } from "../../core/node-guards.js";
-import { ROOT_TAG } from "../../core/constants.js";
 import {
   HsonNodeQuidValidationError,
   read_hson_node_quid,
@@ -82,13 +81,8 @@ export function build_livemap_document_identity_overlay(
   const quidToPath = new Map<string, LiveMapDocumentPath>();
   const pathToQuid = new Map<string, string>();
   const firstNodeForQuid = new Map<string, HsonNode>();
-  const emptyFragment = mode === "fragment"
-    && root.$_tag === ROOT_TAG
-    && root.$_content.length === 0;
-  const base = emptyFragment
-    ? undefined
-    : resolve_document_path(root, mode, validate_document_path([]));
-  if (base !== undefined && !is_Node(base)) {
+  const base = resolve_document_path(root, mode, validate_document_path([]));
+  if (!is_Node(base)) {
     throw new LiveMapDocumentIdentityError(
       "OVERLAY_INVARIANT",
       "LiveMap document identity path root is not a canonical Hson node.",
@@ -99,7 +93,7 @@ export function build_livemap_document_identity_overlay(
   const stack: Array<Readonly<{
     node: HsonNode;
     path: LiveMapDocumentPath | undefined;
-  }>> = [{ node: root, path: base !== undefined && root === base ? validate_document_path([]) : undefined }];
+  }>> = [{ node: root, path: root === base ? validate_document_path([]) : undefined }];
 
   while (stack.length > 0) {
     const current = stack.pop();

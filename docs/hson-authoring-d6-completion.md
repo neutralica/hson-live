@@ -147,7 +147,7 @@ spellings; those richer runtime attr values remain outside this source subset.
 
 ## 13. Document content
 
-Element and fragment tuple positions, repeats and counted repeats use logical
+Document tuple positions, repeats and counted repeats use logical
 child indexes/counts. Empty and broad omitted content provide no invented child
 choices. Traversal handles preceding text and nested elements. Unconstrained text
 does not generate prose; the existing document text node exposes no finite text

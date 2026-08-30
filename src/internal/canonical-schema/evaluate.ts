@@ -48,24 +48,15 @@ export function evaluate_canonical_projected_schema(
 export function evaluate_canonical_document_schema(
   graph: VerifiedCanonicalSchemaGraph,
   root: HsonNode,
-  mode: "element" | "fragment",
   limits?: CanonicalEvaluationLimits,
 ): CanonicalGraphEvaluation {
-  const ref = mode === "element" ? graph.capabilities.documentElementRoot : graph.capabilities.documentFragmentRoot;
-  if (ref === undefined) {
-    const expectedMode = graph.capabilities.documentElementRoot === undefined ? "fragment" : "element";
-    return invalid([make_issue("TYPE_MISMATCH", [], 0, `${expectedMode} document root`, `${mode} document root`, { kind: "type-mismatch" })]);
-  }
+  const ref = graph.capabilities.documentRoot;
+  if (ref === undefined) return invalid([make_issue("INVALID_SCHEMA", [], 0, "document root", "missing document root", { kind: "invalid-graph" })]);
   const state: EvaluationState = { steps: 0, limits: resolved_limits(limits), unionWork: 0, exhausted: false };
-  if (mode === "element") {
-    const element = root_element(root);
-    if (element === undefined) return invalid([make_issue("TYPE_MISMATCH", [], ref, "element", describe_root(root), { kind: "type-mismatch" })]);
-    return document_item(graph, ref, element, [], state);
-  }
   const children = logical_root_children(root);
-  if (children === undefined) return invalid([make_issue("TYPE_MISMATCH", [], ref, "fragment", describe_root(root), { kind: "type-mismatch" })]);
+  if (children === undefined) return invalid([make_issue("TYPE_MISMATCH", [], ref, "document root", describe_root(root), { kind: "type-mismatch" })]);
   const node = graph.nodes[ref];
-  if (node?.kind !== "document-fragment-root") return invalid([make_issue("INVALID_SCHEMA", [], ref, "fragment root", node?.kind ?? "missing", { kind: "invalid-graph" })]);
+  if (node?.kind !== "document-root") return invalid([make_issue("INVALID_SCHEMA", [], ref, "document root", node?.kind ?? "missing", { kind: "invalid-graph" })]);
   return document_content(graph, node.content, children, [], state);
 }
 
@@ -288,8 +279,16 @@ function resolved_limits(limits?: CanonicalEvaluationLimits): Required<Canonical
   });
 }
 
-function root_element(root: HsonNode): HsonNode | undefined { const cluster = root.$_tag === ELEM_TAG ? root : root.$_tag === ROOT_TAG && is_Node(root.$_content[0]) && root.$_content[0].$_tag === ELEM_TAG ? root.$_content[0] : undefined; if (cluster === undefined || cluster.$_content.length !== 1) return undefined; const only = cluster.$_content[0]; return is_ordinary_element_node(only) ? only : undefined; }
-function logical_root_children(root: HsonNode): readonly HsonNode[] | undefined { if (root.$_tag === ROOT_TAG && root.$_content.length === 0) return Object.freeze([]); const cluster = root.$_tag === ELEM_TAG ? root : root.$_tag === ROOT_TAG && is_Node(root.$_content[0]) && root.$_content[0].$_tag === ELEM_TAG ? root.$_content[0] : undefined; return cluster !== undefined && cluster.$_content.every(is_Node) ? Object.freeze([...cluster.$_content]) as readonly HsonNode[] : undefined; }
+function logical_root_children(root: HsonNode): readonly HsonNode[] | undefined {
+  if (root.$_tag === ROOT_TAG) {
+    if (root.$_content.length === 1 && is_Node(root.$_content[0]) && root.$_content[0].$_tag === ELEM_TAG) {
+      return root.$_content[0].$_content.every(is_Node) ? Object.freeze([...root.$_content[0].$_content]) as readonly HsonNode[] : undefined;
+    }
+    return root.$_content.every(is_Node) ? Object.freeze([...root.$_content]) as readonly HsonNode[] : undefined;
+  }
+  if (root.$_tag === ELEM_TAG) return root.$_content.every(is_Node) ? Object.freeze([...root.$_content]) as readonly HsonNode[] : undefined;
+  return is_ordinary_element_node(root) ? Object.freeze([root]) : undefined;
+}
 function logical_element_children(element: HsonNode): readonly HsonNode[] | undefined { if (!is_ordinary_element_node(element)) return undefined; if (element.$_content.length === 0) return Object.freeze([]); if (element.$_content.length !== 1) return undefined; const cluster = element.$_content[0]; return is_Node(cluster) && cluster.$_tag === ELEM_TAG && cluster.$_content.every(is_Node) ? Object.freeze([...cluster.$_content]) as readonly HsonNode[] : undefined; }
 function describe_item(value: HsonNode): string { return value.$_tag === STR_TAG ? "text" : !value.$_tag.startsWith("_hson_") ? `element <${value.$_tag}>` : `structural node <${value.$_tag}>`; }
 function describe_root(root: HsonNode): string { return `<${root.$_tag}>`; }

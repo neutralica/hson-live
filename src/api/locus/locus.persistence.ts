@@ -205,7 +205,7 @@ export async function create_persistent_locus_internal<
     afterDurableAppend?: (transition: PreparedLiveMapTransition) => void;
   }> = {},
 ): Promise<PersistentLocus<TMap, TActions>> {
-  if (options.map.mode !== "element" && options.map.mode !== "fragment") {
+  if (options.map.mode !== "document") {
     throw new LocusPersistenceError(
       "LOCUS_PERSISTENCE_MAP_KIND_UNSUPPORTED",
       "Locus persistence currently supports document maps only.",
@@ -302,7 +302,7 @@ function validate_persisted_state(
       || typeof checkpointValue.incarnationId !== "string"
       || checkpointValue.incarnationId.length === 0
       || checkpointValue.mapKind !== "document"
-      || (checkpointValue.mode !== "element" && checkpointValue.mode !== "fragment")
+      || (checkpointValue.mode !== "document")
       || !Number.isInteger(checkpointValue.rev)
       || (checkpointValue.rev as number) < 0) throw invalid_state();
     const snapshot = record(checkpointValue.snapshot);

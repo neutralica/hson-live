@@ -1,6 +1,6 @@
 # LiveMap API reference
 
-LiveMap owns a canonical Hson graph and exposes either data JSON-path state (`data-object`, `data-array`) or canonical document operations (`element`, `fragment`). LiveMap owns canonical state; public observations are detached or mediated and public mutation passes through LiveMap admission.
+LiveMap owns a canonical Hson graph and exposes either data JSON-path state (`data-object`, `data-array`) or canonical document operations (`document`). A document authority owns ordered content beneath one internal `_hson_root`, whether that content has zero, one, or many top-level nodes. LiveMap owns canonical state; public observations are detached or mediated and public mutation passes through LiveMap admission.
 
 ```ts
 import { hson } from "hson-live";
@@ -90,7 +90,7 @@ const trusted = hson.liveMap.fromTrustedHtml("<main></main>");
 const safe = hson.liveMap.fromUntrustedHtml(userHtml);
 ```
 
-Both accept strings and return an `element` or `fragment` LiveMap. Trusted
+Both accept strings and return a `document` LiveMap. Trusted
 input is unsanitized; untrusted input is sanitized. These browser factories do
 not accept an `Element`, unlike the root Transform and LiveTree HTML factories.
 Use `hsonLiveMap.fromHson(...)` or `.fromNode(...)` when a DOM-free document
@@ -365,7 +365,7 @@ The QUID is canonical Hson metadata but is not a data property, array item, enum
 
 Document modes deliberately do not expose data `snap`/`set` APIs. Common reads are `root()`, `capture()`, `document.content()`, `document.byQuid(quid)`, and document attribute reads.
 
-Mutable logical document locations converge on the existing canonical document operations. An element location or the fragment root owns ordered content, so `location.insert(index, value)` and `location.move(from, to)` lower to the same content planners and final-index semantics as `document.content.insert` and `document.content.move`. Existing items remain `location.at([index]).replace(value)` / `.delete()`; there is no duplicate container `replace(index, value)` or `remove(index)`.
+Mutable logical document locations converge on the existing canonical document operations. A document or element location owns ordered content, so `location.insert(index, value)` and `location.move(from, to)` lower to the same content planners and final-index semantics as `document.content.insert` and `document.content.move`. Existing items remain `location.at([index]).replace(value)` / `.delete()`; there is no duplicate container `replace(index, value)` or `remove(index)`.
 
 Ordinary element locations also expose `location.attrs` with `get`, `has`, `keys`, `must.get`, `set`, `setMany`, `drop`, `dropMany`, `replace`, and `clear`. This is the established `document.attrs` vocabulary with the location supplying the target. It is an operation capability, not structural traversal, and does not add a segment to `location.path()`. The document proxy's existing `$_` escape returns the same location, so `proxy.$_.insert(...)` and `proxy.$_.attrs.set(...)` delegate without proxy-specific mutation logic.
 

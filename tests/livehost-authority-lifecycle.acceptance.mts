@@ -525,7 +525,7 @@ check("persistent append and checkpoint work are reported as Locus activity", as
     async replaceCheckpoint() {},
   };
   const map = hson.liveMap.fromHson(`<main @000002001/>`);
-  if (map.mode !== "element") throw new Error("expected element map");
+  if (map.mode !== "document") throw new Error("expected element map");
   const host = await create_persistent_locus({
     map,
         persistence: adapter,

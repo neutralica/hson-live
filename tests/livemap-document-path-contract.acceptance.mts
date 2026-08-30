@@ -17,7 +17,7 @@ import {
   transform_document_path,
 } from "../src/api/livemap/livemap.document.path.ts";
 import { LiveMapDocumentMutationError } from "../src/api/livemap/livemap.error.ts";
-import type { ElementLiveMap, FragmentLiveMap } from "../src/types/livemap.types.ts";
+import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 
 let checks = 0;
@@ -27,15 +27,15 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-function element(source: string): ElementLiveMap {
+function element(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error("Expected element map");
+  if (map.mode !== "document") throw new Error("Expected element map");
   return map;
 }
 
-function fragment(source: string): FragmentLiveMap {
+function multiNodeDocument(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "fragment") throw new Error("Expected fragment map");
+  if (map.mode !== "document") throw new Error("Expected multiNodeDocument map");
   return map;
 }
 
@@ -101,28 +101,30 @@ check("parent returns the canonical ancestor and root has none", () => {
   assert.equal(parent_document_path(path()), undefined);
 });
 
-check("element mode empty path addresses the one public top-level element", () => {
+check("empty path addresses the internal document authority without exposing a named segment", () => {
   const map = element(`<main id="root"/>`);
   const endpoint = resolve_document_path(map.root(), map.mode, path());
-  assert.equal(typeof endpoint === "object" && endpoint !== null && endpoint.$_tag, "main");
+  assert.equal(typeof endpoint === "object" && endpoint !== null && endpoint.$_tag, "_hson_root");
 });
 
-check("element paths descend through the canonical element content cluster", () => {
+check("single-node document paths begin at the first root-content coordinate", () => {
   const map = element(`<main <section id="nested"/>/>`);
-  const cluster = resolve_document_path(map.root(), map.mode, path(0));
-  const nested = resolve_document_path(map.root(), map.mode, path(0, 0));
+  const main = resolve_document_path(map.root(), map.mode, path(0));
+  const cluster = resolve_document_path(map.root(), map.mode, path(0, 0));
+  const nested = resolve_document_path(map.root(), map.mode, path(0, 0, 0));
+  assert.equal(typeof main === "object" && main !== null && main.$_tag, "main");
   assert.equal(typeof cluster === "object" && cluster !== null && cluster.$_tag, "_hson_elem");
   assert.equal(typeof nested === "object" && nested !== null && nested.$_tag, "section");
 });
 
-check("fragment mode empty path addresses the exact _hson_elem cluster boundary", () => {
-  const map = fragment(`<a/> <b/>`);
+check("multi-node document empty path addresses the same internal root authority", () => {
+  const map = multiNodeDocument(`<a/> <b/>`);
   const endpoint = resolve_document_path(map.root(), map.mode, path());
-  assert.equal(typeof endpoint === "object" && endpoint !== null && endpoint.$_tag, "_hson_elem");
+  assert.equal(typeof endpoint === "object" && endpoint !== null && endpoint.$_tag, "_hson_root");
 });
 
-check("fragment top-level siblings use direct cluster content indexes", () => {
-  const map = fragment(`<a/> <b/>`);
+check("multiple top-level siblings use direct root content indexes", () => {
+  const map = multiNodeDocument(`<a/> <b/>`);
   const first = resolve_document_path(map.root(), map.mode, path(0));
   const second = resolve_document_path(map.root(), map.mode, path(1));
   assert.equal(typeof first === "object" && first !== null && first.$_tag, "a");
@@ -130,43 +132,43 @@ check("fragment top-level siblings use direct cluster content indexes", () => {
 });
 
 check("legal primitive leaves are addressable through owning structural carriers", () => {
-  const map = fragment(`"text" <b/>`);
+  const map = multiNodeDocument(`"text" <b/>`);
   const primitive = resolve_document_path(map.root(), map.mode, path(0, 0));
   assert.equal(primitive, "text");
 });
 
 check("descent beyond a primitive reports a distinct structured failure", () => {
-  const map = fragment(`"text" <b/>`);
+  const map = multiNodeDocument(`"text" <b/>`);
   assert.throws(() => resolve_document_path(map.root(), map.mode, path(0, 0, 0)), (error: unknown) =>
     error instanceof LiveMapDocumentPathError && error.code === "DOCUMENT_PATH_PRIMITIVE_DESCENT");
 });
 
 check("out-of-range canonical content ownership reports a distinct failure", () => {
-  const map = fragment(`<a/> <b/>`);
+  const map = multiNodeDocument(`<a/> <b/>`);
   assert.throws(() => resolve_document_path(map.root(), map.mode, path(2)), (error: unknown) =>
     error instanceof LiveMapDocumentPathError && error.code === "DOCUMENT_PATH_OUT_OF_RANGE");
 });
 
 check("attribute operations retain target-node-kind validation", () => {
   const map = element(`<main <span/>/>`);
-  assert.throws(() => map.document.attrs.set({ kind: "path", path: [0] }, "id", "bad"), (error: unknown) =>
+  assert.throws(() => map.document.attrs.set({ kind: "path", path: [] }, "id", "bad"), (error: unknown) =>
     error instanceof LiveMapDocumentMutationError && error.code === "DOCUMENT_TARGET_KIND");
 });
 
 check("exact-node discovery returns a canonical path in both modes", () => {
   const elementRoot = element(`<main <span/>/>`).root();
-  const elementTarget = resolve_document_path(elementRoot, "element", path(0, 0));
+  const elementTarget = resolve_document_path(elementRoot, "document", path(0, 0, 0));
   if (typeof elementTarget !== "object" || elementTarget === null) throw new Error("Expected node");
-  assert.deepEqual(find_document_node_path(elementRoot, "element", elementTarget), [0, 0]);
-  const fragmentRoot = fragment(`<a/> <b/>`).root();
-  const fragmentTarget = resolve_document_path(fragmentRoot, "fragment", path(1));
-  if (typeof fragmentTarget !== "object" || fragmentTarget === null) throw new Error("Expected node");
-  assert.deepEqual(find_document_node_path(fragmentRoot, "fragment", fragmentTarget), [1]);
+  assert.deepEqual(find_document_node_path(elementRoot, "document", elementTarget), [0, 0, 0]);
+  const multiNodeDocumentRoot = multiNodeDocument(`<a/> <b/>`).root();
+  const multiNodeDocumentTarget = resolve_document_path(multiNodeDocumentRoot, "document", path(1));
+  if (typeof multiNodeDocumentTarget !== "object" || multiNodeDocumentTarget === null) throw new Error("Expected node");
+  assert.deepEqual(find_document_node_path(multiNodeDocumentRoot, "document", multiNodeDocumentTarget), [1]);
 });
 
 check("exact-node discovery does not equate detached structural clones", () => {
-  const root = fragment(`<a/> <b/>`).root();
-  assert.equal(find_document_node_path(root, "fragment", { $_tag: "a", $_content: [] }), undefined);
+  const root = multiNodeDocument(`<a/> <b/>`).root();
+  assert.equal(find_document_node_path(root, "document", { $_tag: "a", $_content: [] }), undefined);
 });
 
 check("insertion shifts the inserted slot and following sibling paths", () => {

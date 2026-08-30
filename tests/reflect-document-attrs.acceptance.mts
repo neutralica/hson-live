@@ -2,7 +2,7 @@ import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { hson, validate_document_path } from "../src/index.ts";
 import type { HsonNode } from "../src/core/types.ts";
-import type { ElementLiveMap, LiveMapCommitObservation } from "../src/types/livemap.types.ts";
+import type { DocumentLiveMap, LiveMapCommitObservation } from "../src/types/livemap.types.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import { link_node_to_el } from "../src/api/livetree/utils/node-map-helpers.ts";
@@ -53,9 +53,9 @@ class AttributeProjection {
   }
 }
 
-function element(source: string): ElementLiveMap {
+function element(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error("Expected ElementLiveMap");
+  if (map.mode !== "document") throw new Error("Expected DocumentLiveMap");
   return map;
 }
 
@@ -81,12 +81,20 @@ function mount(node: HsonNode): AttributeProjection {
 }
 
 function path(...segments: number[]) {
-  return { kind: "path" as const, path: validate_document_path(segments) };
+  return { kind: "path" as const, path: validate_document_path([0, ...segments]) };
+}
+
+function document_element(root: HsonNode): HsonNode {
+  return raw_node(root, [0]);
+}
+
+function document_element_tree(binding: ReturnType<typeof hsonReflect>) {
+  return create_livetree(document_element(binding.tree.node)).adoptRoots(binding.tree.hostRootNode());
 }
 
 check("initial binding owns a detached graph and indexes raw canonical paths", () => {
   const map = element(`<main id="root" @000000301 <section @000000302 <span/>/>/>`);
-  const canonicalRead = map.element.node();
+  const canonicalRead = map.root();
   const binding = hsonReflect(map);
   assert.notEqual(binding.tree.node, canonicalRead);
   assert.deepEqual(binding.tree.node, canonicalRead);
@@ -99,16 +107,17 @@ check("initial binding owns a detached graph and indexes raw canonical paths", (
 check("canonical attrs project by raw path and QUID into graph and mounted DOM", () => {
   const map = element(`<main id="root" @000000303 <section @000000304 <span/>/>/>`);
   const binding = hsonReflect(map);
-  const rootDom = mount(binding.tree.node);
-  const sectionNode = raw_node(binding.tree.node, [0, 0]);
-  const spanNode = raw_node(binding.tree.node, [0, 0, 0, 0]);
+  const mainTree = document_element_tree(binding);
+  const rootDom = mount(mainTree.node);
+  const sectionNode = raw_node(binding.tree.node, [0, 0, 0]);
+  const spanNode = raw_node(binding.tree.node, [0, 0, 0, 0, 0]);
   const sectionDom = mount(sectionNode);
   const spanDom = mount(spanNode);
 
   map.document.attrs.set(path(), "count", 0);
   map.document.attrs.set({ kind: "quid", quid: "000000304" }, "hidden", false);
   map.document.attrs.replace(path(0, 0, 0, 0), { empty: "", nullable: null, enabled: true });
-  assert.equal(binding.tree.attrs.get("count"), 0);
+  assert.equal(mainTree.attrs.get("count"), 0);
   assert.equal(rootDom.getAttribute("count"), "0");
   assert.equal(sectionNode.$_attrs?.hidden, false);
   assert.equal(sectionDom.getAttribute("hidden"), "false");
@@ -128,16 +137,17 @@ check("canonical attrs project by raw path and QUID into graph and mounted DOM",
 check("bound attrs and convenience managers delegate without feedback", () => {
   const map = element(`<main @000000305/>`);
   const binding = hsonReflect(map);
-  const dom = mount(binding.tree.node);
+  const mainTree = document_element_tree(binding);
+  const dom = mount(mainTree.node);
   const observations: LiveMapCommitObservation[] = [];
   map.commits.observe((event) => observations.push(event));
 
-  assert.equal(binding.tree.attrs.set("title", "one"), binding.tree);
-  binding.tree.attrs.setMany({ count: 0, nullable: null });
-  binding.tree.attrs.dropMany(["nullable"]);
-  binding.tree.id.set("main");
-  binding.tree.classlist.add("ready");
-  binding.tree.data.set("userId", "42");
+  assert.equal(mainTree.attrs.set("title", "one"), mainTree);
+  mainTree.attrs.setMany({ count: 0, nullable: null });
+  mainTree.attrs.dropMany(["nullable"]);
+  mainTree.id.set("main");
+  mainTree.classlist.add("ready");
+  mainTree.data.set("userId", "42");
   assert.equal(map.document.attrs.get(path(), "title"), "one");
   assert.equal(map.document.attrs.get(path(), "count"), 0);
   assert.equal(map.document.attrs.get(path(), "id"), "main");
@@ -150,16 +160,16 @@ check("bound attrs and convenience managers delegate without feedback", () => {
   const revision = map.rev;
   const transactions = binding.diagnostics().updatesApplied;
   const writes = dom.writes;
-  binding.tree.attrs.set("title", "one");
+  mainTree.attrs.set("title", "one");
   assert.equal(map.rev, revision);
   assert.equal(binding.diagnostics().updatesApplied, transactions);
   assert.equal(dom.writes, writes);
 
-  binding.tree.attrs.clear();
+  mainTree.attrs.clear();
   assert.deepEqual(map.document.attrs.keys(path()), []);
-  binding.tree.attrs.replace({ value: "final" });
+  mainTree.attrs.replace({ value: "final" });
   assert.deepEqual(map.document.attrs.keys(path()), ["value"]);
-  binding.tree.attrs.drop("value");
+  mainTree.attrs.drop("value");
   assert.deepEqual(map.document.attrs.keys(path()), []);
   binding.dispose();
 });
@@ -172,14 +182,15 @@ check("bound style edits preserve unrelated structured canonical declarations", 
     width: { value: 2, unit: "px" },
   });
   const binding = hsonReflect(map);
-  binding.tree.style.set.backgroundColor("black");
+  const mainTree = document_element_tree(binding);
+  mainTree.style.set.backgroundColor("black");
   assert.deepEqual(map.document.attrs.get(path(), "style"), {
     backgroundColor: "black",
     color: "red",
     opacity: 0.5,
     width: { value: 2, unit: "px" },
   });
-  binding.tree.style.remove("color");
+  mainTree.style.remove("color");
   assert.deepEqual(map.document.attrs.get(path(), "style"), {
     backgroundColor: "black",
     opacity: 0.5,
@@ -191,7 +202,7 @@ check("bound style edits preserve unrelated structured canonical declarations", 
 check("multi-operation attrs replay is one projection transaction", () => {
   const map = element(`<main @000000306/>`);
   const binding = hsonReflect(map);
-  mount(binding.tree.node);
+  mount(document_element(binding.tree.node));
   const replayed = map.replay({
     changed: true,
     prevRev: 0,
@@ -202,7 +213,7 @@ check("multi-operation attrs replay is one projection transaction", () => {
     ],
   });
   assert.equal(replayed.rev, 1);
-  assert.deepEqual(binding.tree.node.$_attrs, { a: 1, b: 2 });
+  assert.deepEqual(document_element(binding.tree.node).$_attrs, { a: 1, b: 2 });
   assert.equal(binding.diagnostics().updatesApplied, 1);
   binding.dispose();
 });
@@ -214,22 +225,23 @@ check("new-epoch root replacement reconstructs and remains canonically delegated
   const replacement = element(`<article @000000316/>`);
   const commit = map.install(replacement.capture());
   assert.equal(commit.changed, true);
-  assert.equal(map.element.node().$_tag, "article");
+  assert.equal(document_element(map.root()).$_tag, "article");
   assert.notEqual(binding.tree, before);
   assert.equal(before.isDisposed, true);
-  assert.equal(binding.tree.node.$_tag, "article");
+  assert.equal(document_element(binding.tree.node).$_tag, "article");
   assert.equal(binding.status, "active");
-  binding.tree.attrs.set("id", "delegated");
+  const articleTree = document_element_tree(binding);
+  articleTree.attrs.set("id", "delegated");
   assert.equal(map.document.attrs.get(path(), "id"), "delegated");
   map.document.attrs.set(path(), "title", "canonical-only");
-  assert.equal(binding.tree.attrs.get("title"), "canonical-only");
+  assert.equal(articleTree.attrs.get("title"), "canonical-only");
   binding.dispose();
 });
 
 check("projection failure is isolated from the committed map mutation", () => {
   const map = element(`<main @000000308/>`);
   const binding = hsonReflect(map);
-  const dom = mount(binding.tree.node);
+  const dom = mount(document_element(binding.tree.node));
   dom.failOn = "boom";
   const commit = map.document.attrs.set(path(), "boom", "canonical");
   assert.equal(commit.changed, true);
@@ -243,9 +255,10 @@ check("projection failure is isolated from the committed map mutation", () => {
 check("a previously mounted node losing its DOM mapping fails closed", () => {
   const map = element(`<main @000000312/>`);
   const binding = hsonReflect(map);
-  mount(binding.tree.node);
+  const mainNode = document_element(binding.tree.node);
+  mount(mainNode);
   map.document.attrs.set(path(), "first", "projected");
-  unlinkNode(binding.tree.node);
+  unlinkNode(mainNode);
   const commit = map.document.attrs.set(path(), "second", "canonical");
   assert.equal(commit.changed, true);
   assert.equal(binding.status, "failed");
@@ -256,8 +269,9 @@ check("a previously mounted node losing its DOM mapping fails closed", () => {
 check("projected path and persisted-QUID divergence fail closed", () => {
   const quidMap = element(`<main @000000313/>`);
   const quidBinding = hsonReflect(quidMap);
-  if (quidBinding.tree.node.$_meta === undefined) throw new Error("Expected projected metadata");
-  quidBinding.tree.node.$_meta["quid"] = "000000314";
+  const quidMain = document_element(quidBinding.tree.node);
+  if (quidMain.$_meta === undefined) throw new Error("Expected projected metadata");
+  quidMain.$_meta["quid"] = "000000314";
   quidMap.document.attrs.set(path(), "canonical", "retained");
   assert.equal(quidBinding.status, "failed");
   assert.equal(quidBinding.failure?.code, DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE);
@@ -265,7 +279,7 @@ check("projected path and persisted-QUID divergence fail closed", () => {
 
   const pathMap = element(`<main @000000315 <span/>/>`);
   const pathBinding = hsonReflect(pathMap);
-  pathBinding.tree.node.$_content.length = 0;
+  document_element(pathBinding.tree.node).$_content.length = 0;
   pathMap.document.attrs.set(path(0, 0), "canonical", "retained");
   assert.equal(pathBinding.status, "failed");
   assert.equal(pathBinding.failure?.code, DOCUMENT_REFLECT_TARGET_MISSING_ERROR_CODE);
@@ -275,7 +289,8 @@ check("projected path and persisted-QUID divergence fail closed", () => {
 check("cardinality and disposal preserve authority boundaries", () => {
   const map = element(`<main @000000309/>`);
   const binding = hsonReflect(map);
-  const dom = mount(binding.tree.node);
+  const mainTree = document_element_tree(binding);
+  const dom = mount(mainTree.node);
   assert.throws(
     () => hsonReflect(map),
     (cause) => cause instanceof DocumentReflectError
@@ -290,10 +305,10 @@ check("cardinality and disposal preserve authority boundaries", () => {
       && cause.code === DOCUMENT_REFLECT_DISPOSED_ERROR_CODE,
   );
   map.document.attrs.set(path(), "canonical", "map-only");
-  assert.equal(binding.tree.attrs.get("canonical"), undefined);
+  assert.equal(mainTree.attrs.get("canonical"), undefined);
   const mapRevision = map.rev;
-  binding.tree.attrs.set("local", "tree-only");
-  assert.equal(binding.tree.attrs.get("local"), "tree-only");
+  mainTree.attrs.set("local", "tree-only");
+  assert.equal(mainTree.attrs.get("local"), "tree-only");
   assert.equal(dom.getAttribute("local"), "tree-only");
   assert.equal(map.rev, mapRevision);
   assert.equal(map.document.attrs.get(path(), "local"), undefined);
@@ -307,7 +322,7 @@ check("different maps keep binding revision and failure state isolated", () => {
   left.document.attrs.set(path(), "side", "left");
   assert.equal(leftBinding.sourceRevision, 1);
   assert.equal(rightBinding.sourceRevision, 0);
-  assert.equal(rightBinding.tree.attrs.get("side"), undefined);
+  assert.equal(document_element_tree(rightBinding).attrs.get("side"), undefined);
   leftBinding.dispose();
   rightBinding.dispose();
 });

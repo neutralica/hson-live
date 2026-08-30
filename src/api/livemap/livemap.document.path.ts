@@ -1,5 +1,5 @@
-import { ELEM_TAG, ROOT_TAG } from "../../core/constants.js";
-import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
+import { ROOT_TAG } from "../../core/constants.js";
+import { is_Node } from "../../core/node-guards.js";
 import type { HsonNode, Primitive } from "../../core/types.js";
 import type {
   DocumentLiveMapMode,
@@ -280,18 +280,8 @@ export function transform_document_path(
 }
 
 function document_path_base(root: HsonNode, mode: DocumentLiveMapMode): HsonNode {
-  const cluster = root.$_tag === ELEM_TAG
-    ? root
-    : root.$_tag === ROOT_TAG && is_Node(root.$_content[0]) && root.$_content[0].$_tag === ELEM_TAG
-      ? root.$_content[0]
-      : undefined;
-  if (cluster === undefined) {
-    throw new LiveMapDocumentPathError("DOCUMENT_ROOT_UNAVAILABLE", "the owned document content cluster is unavailable");
+  if (mode !== "document" || root.$_tag !== ROOT_TAG) {
+    throw new LiveMapDocumentPathError("DOCUMENT_ROOT_UNAVAILABLE", "the owned internal document root is unavailable");
   }
-  if (mode === "fragment") return cluster;
-  const element = cluster.$_content[0];
-  if (!is_ordinary_element_node(element)) {
-    throw new LiveMapDocumentPathError("DOCUMENT_ROOT_UNAVAILABLE", "the owned top-level ordinary element is unavailable");
-  }
-  return element;
+  return root;
 }

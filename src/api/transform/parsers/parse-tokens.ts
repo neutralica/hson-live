@@ -16,8 +16,8 @@ import { assign_ingested_hson_node_quid } from "../utils/hson-utils/quid-ingress
 import type { HsonSourceProvenanceBuilder } from "../../../internal/hson-source-provenance/hson-source-provenance.js";
 
 export type ParseTokensOptions = Readonly<{
-    /** Internal LiveMap/Locus compatibility for persisted document fragments. */
-    allowTopLevelTextFragment?: boolean;
+    /** Internal LiveMap/Locus admission for top-level authored document text. */
+    allowTopLevelDocumentText?: boolean;
 }>;
 
 
@@ -74,7 +74,7 @@ export const make_leaf = (v: HsonSemanticPrimitive): HsonNode =>
  *   - A sole primitive leaf is attached directly beneath `_hson_root`.
  *   - No nodes at all remain an internal empty-root parser state; `parse_hson`
  *     rejects trivia-only source before that state can become a source result.
- *   - Multiple top-level elements form an element fragment. Multiple top-level
+ *   - Multiple top-level elements form ordered document content. Multiple top-level
  *     object values reject because one object angle pair owns the full member
  *     collection; mixed structural modes also reject.
  *
@@ -460,7 +460,7 @@ export function parse_tokens(
             kids[0].$_tag === OBJ_TAG
             || kids[0].$_tag === ARR_TAG
             || kids[0].$_tag === ELEM_TAG
-            || (kids[0].$_tag === STR_TAG && !options.allowTopLevelTextFragment)
+            || (kids[0].$_tag === STR_TAG && !options.allowTopLevelDocumentText)
             || kids[0].$_tag === VAL_TAG
         )) {
             const child = kids[0];
@@ -487,10 +487,10 @@ export function parse_tokens(
         }
 
         // A complete bare primitive is one semantic value. Primitive leaves
-        // cannot participate in a top-level structural fragment.
+        // cannot participate in top-level document structure.
         const containsValueLeaf = kids.some((child) => child.$_tag === VAL_TAG);
         const containsStringLeaf = kids.some((child) => child.$_tag === STR_TAG);
-        if (containsValueLeaf || (containsStringLeaf && !options.allowTopLevelTextFragment)) {
+        if (containsValueLeaf || (containsStringLeaf && !options.allowTopLevelDocumentText)) {
             const second = topPositions[1] ?? topPositions[0];
             const hasStructural = kids.some((child) => child.$_tag !== VAL_TAG && child.$_tag !== STR_TAG);
             _throw_transform_err(

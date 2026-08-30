@@ -28,7 +28,7 @@ function decode(value) {
 
 function element_root(source = `<main @000000001/>`) {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error(`Expected element, observed ${map.mode}`);
+  if (map.mode !== "document") throw new Error(`Expected element, observed ${map.mode}`);
   return map.capture().root;
 }
 
@@ -66,7 +66,7 @@ check("data commits retain their exact data operation domain", () => {
 });
 
 check("document commits decode only current canonical path targets", () => {
-  const valid = decode(commit("element", [
+  const valid = decode(commit("document", [
     {
       domain: "graph",
       op: "set-attr",
@@ -117,12 +117,12 @@ check("document commits decode only current canonical path targets", () => {
   ]));
   assert.equal(valid.ok, true);
   if (!valid.ok || valid.value.type !== "commit") throw new Error("Expected decoded commit");
-  assert.equal(valid.value.commit.mode, "element");
+  assert.equal(valid.value.commit.mode, "document");
   assert.equal(valid.value.commit.ops[0].domain, "graph");
 });
 
 check("QUID-only canonical recovery input rejects", () => {
-  const legacy = commit("fragment", [{
+  const legacy = commit("document", [{
     domain: "graph",
     op: "replace-attrs",
     target: { kind: "quid", quid: "000000001" },
@@ -137,24 +137,24 @@ check("QUID-only canonical recovery input rejects", () => {
   assert.equal(decoded.ok, false);
 });
 
-check("replace-root requires canonical same-mode Hson and persisted identity", () => {
-  const valid = decode(commit("element", [{
+check("replace-root accepts any canonical document cardinality and validates identity", () => {
+  const valid = decode(commit("document", [{
     domain: "graph",
     op: "replace-root",
-    mode: "element",
+    mode: "document",
     root: encode_locus_graph_content(element_root()),
   }]));
   assert.equal(valid.ok, true);
 
-  const fragment = hson.liveMap.fromHson(`"text"`);
-  if (fragment.mode !== "fragment") throw new Error(`Expected fragment, observed ${fragment.mode}`);
-  const mismatched = decode(commit("element", [{
+  const textDocument = hson.liveMap.fromHson(`"text"`);
+  if (textDocument.mode !== "document") throw new Error(`Expected document, observed ${textDocument.mode}`);
+  const textReplacement = decode(commit("document", [{
     domain: "graph",
     op: "replace-root",
-    mode: "element",
-    root: encode_locus_graph_content(fragment.capture().root),
+    mode: "document",
+    root: encode_locus_graph_content(textDocument.capture().root),
   }]));
-  assert.equal(mismatched.ok, false);
+  assert.equal(textReplacement.ok, true);
 
   const duplicateRoot = structuredClone(element_root(`<main @000000001 <p @000000002/>/>`));
   const stack = [duplicateRoot];
@@ -166,10 +166,10 @@ check("replace-root requires canonical same-mode Hson and persisted identity", (
   const duplicatePayload = encode_locus_graph_content(
     element_root(`<main @000000001 <p @000000002/>/>`),
   );
-  const duplicate = decode(commit("element", [{
+  const duplicate = decode(commit("document", [{
     domain: "graph",
     op: "replace-root",
-    mode: "element",
+    mode: "document",
     root: {
       ...duplicatePayload,
       payload: duplicatePayload.payload.replace("000000002", "000000001"),
@@ -205,9 +205,9 @@ check("malformed graph targets, attributes, content, and mixed operations are re
     { domain: "graph", op: "move-content", target: { kind: "path", path: [] }, from: 0 },
     { domain: "graph", op: "move-content", target: { kind: "path", path: [] }, from: 0, to: 1, extra: true },
   ];
-  for (const op of invalidOps) assert.equal(decode(commit("element", [op])).ok, false);
+  for (const op of invalidOps) assert.equal(decode(commit("document", [op])).ok, false);
 
-  const mixed = decode(commit("element", [
+  const mixed = decode(commit("document", [
     { domain: "graph", op: "remove-attr", target: { kind: "path", path: [] }, name: "title" },
     { kind: "delete", path: ["value"], prev: { present: true, value: 1 }, next: { present: false } },
   ]));
@@ -218,13 +218,21 @@ check("snapshot envelopes require one stable map mode", () => {
   const base = { logicalMapId: "map", incarnationId: "inc", rev: 0, hson: "<>" };
   const missing = decode_locus_server_message(JSON.stringify({ type: "recovery-snapshot", id: "snapshot", snapshot: base }));
   assert.equal(missing.ok, false);
-  for (const mode of ["data-object", "data-array", "element", "fragment"]) {
+  for (const mode of ["data-object", "data-array", "document"]) {
     const decoded = decode_locus_server_message(JSON.stringify({
       type: "recovery-snapshot",
       id: "snapshot",
       snapshot: { ...base, mode },
     }));
     assert.equal(decoded.ok, true);
+  }
+  for (const mode of ["element", "fragment"]) {
+    const decoded = decode_locus_server_message(JSON.stringify({
+      type: "recovery-snapshot",
+      id: "obsolete-snapshot",
+      snapshot: { ...base, mode },
+    }));
+    assert.equal(decoded.ok, false);
   }
   const viewState = decode_locus_server_message(JSON.stringify({
     type: "recovery-snapshot",
@@ -233,7 +241,7 @@ check("snapshot envelopes require one stable map mode", () => {
       logicalMapId: "map",
       incarnationId: "inc",
       rev: 0,
-      mode: "element",
+      mode: "document",
       format: "view-state",
       payload: "payload",
     },

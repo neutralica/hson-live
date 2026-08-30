@@ -26,8 +26,8 @@ export function validate_hson_schema_graph(schema: HsonSchema, graph: import("..
   }
   if (!compiled.ok) throw new HsonSchemaError("Hson Schema is unavailable or invalid.", [], compiled.issues.map((issue) => Object.freeze({ code: "INVALID_SCHEMA" as const, path: [], message: issue.message })));
   let result;
-  if (compiled.value.semantic.kind === "document-element" || compiled.value.semantic.kind === "document-fragment") {
-    result = evaluate_canonical_document_schema(compiled.value.graph, graph, compiled.value.semantic.kind === "document-element" ? "element" : "fragment");
+  if (compiled.value.semantic.kind === "document") {
+    result = evaluate_canonical_document_schema(compiled.value.graph, graph);
   } else {
     let projected;
     try { projected = projected_value_from_hson_node(graph); }

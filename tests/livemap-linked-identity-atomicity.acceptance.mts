@@ -59,6 +59,11 @@ function close(binding: ReturnType<typeof reflected>["binding"]): void {
   binding.dispose();
   binding.tree.remove();
 }
+function authoredRoot(binding: ReturnType<typeof reflected>["binding"]) {
+  const node = binding.tree.node.$_content[0];
+  if (node === undefined || node === null || typeof node !== "object") throw new Error("Expected authored document root");
+  return _create_livetree_for_runtime_test(runtime, node).adoptRoots(binding.tree.hostRootNode());
+}
 function source(...values: string[]): () => string {
   let index = 0;
   return () => values[Math.min(index++, values.length - 1)]!;
@@ -74,7 +79,7 @@ check("runtime candidate collision retries inside map authority", () => {
   const occupied = _create_livetree_for_runtime_test(runtime, projected_element(`<aside @${Q1}/>`));
   const { map, binding } = reflected(`<main/>`);
   set_livemap_document_quid_candidate_source_for_tests(map.document, source(Q1, Q2));
-  assert.equal(binding.tree.quid, Q2);
+  assert.equal(authoredRoot(binding).quid, Q2);
   close(binding);
   occupied.remove();
 });
@@ -82,22 +87,23 @@ check("runtime candidate collision retries inside map authority", () => {
 check("staged canonical collision retries before participant preflight", () => {
   const { map, binding } = reflected(`<main <span @${Q1}/>/>`);
   set_livemap_document_quid_candidate_source_for_tests(map.document, source(Q1, Q2));
-  assert.equal(binding.tree.quid, Q2);
+  assert.equal(authoredRoot(binding).quid, Q2);
   close(binding);
 });
 
 check("deterministic candidate source selects the first available value", () => {
   const { map, binding } = reflected(`<main/>`);
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q3);
-  assert.equal(binding.tree.quid, Q3);
+  assert.equal(authoredRoot(binding).quid, Q3);
   close(binding);
 });
 
 check("collision exhaustion is stable and bounded", () => {
   const { map, binding } = reflected(`<main <span @${Q1}/>/>`);
+  const root = authoredRoot(binding);
   let calls = 0;
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => { calls += 1; return Q1; });
-  assert.throws(() => binding.tree.quid, (cause: unknown) =>
+  assert.throws(() => root.quid, (cause: unknown) =>
     cause instanceof LiveMapDocumentIdentityRegistrationError
       && cause.code === "LIVEMAP_IDENTITY_ALLOCATOR_EXHAUSTED");
   assert.equal(calls, LIVEMAP_DOCUMENT_QUID_MINT_RETRY_LIMIT);
@@ -106,19 +112,21 @@ check("collision exhaustion is stable and bounded", () => {
 
 check("malformed deterministic candidates exhaust without publication", () => {
   const { map, binding } = reflected(`<main/>`);
+  const root = authoredRoot(binding);
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => "bad");
-  assert.throws(() => binding.tree.quid, LiveMapDocumentIdentityRegistrationError);
+  assert.throws(() => root.quid, LiveMapDocumentIdentityRegistrationError);
   assert.equal(map.rev, 0);
-  assert.equal(map.element.node().$_meta?.quid, undefined);
+  assert.equal(map.root().$_meta?.quid, undefined);
   close(binding);
 });
 
 check("DOM preflight failure leaves canonical state unchanged", () => {
   const { map, binding } = reflected(`<main/>`);
-  const dom = mount(binding.tree.node);
+  const root = authoredRoot(binding);
+  const dom = mount(root.node);
   dom.setAttribute("hson:quid", Q1);
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q2);
-  assert.throws(() => binding.tree.quid, (cause: unknown) => Reflect.get(cause as object, "code") === "DOCUMENT_REFLECT_QUID_MISMATCH");
+  assert.throws(() => root.quid, (cause: unknown) => Reflect.get(cause as object, "code") === "DOCUMENT_REFLECT_QUID_MISMATCH");
   assert.equal(map.rev, 0);
   assert.equal(map.document.byQuid(Q2), undefined);
   close(binding);
@@ -126,22 +134,24 @@ check("DOM preflight failure leaves canonical state unchanged", () => {
 
 check("private projected metadata inconsistency fails before commit", () => {
   const { map, binding } = reflected(`<main/>`);
-  binding.tree.node.$_meta = { quid: Q1 };
+  const root = authoredRoot(binding);
+  root.node.$_meta = { quid: Q1 };
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q2);
-  assert.throws(() => binding.tree.quid, (cause: unknown) => Reflect.get(cause as object, "code") === "DOCUMENT_REFLECT_QUID_MISMATCH");
+  assert.throws(() => root.quid, (cause: unknown) => Reflect.get(cause as object, "code") === "DOCUMENT_REFLECT_QUID_MISMATCH");
   assert.equal(map.rev, 0);
   close(binding);
 });
 
 check("missing exact correspondence rejects a stale linked handle", () => {
   const { map, binding } = reflected(`<main/>`);
+  const root = authoredRoot(binding);
   const registrationOwner = (awaitOwner => awaitOwner)(
     // The exact owner is intentionally opaque; a foreign owner removes nothing.
     {},
   );
-  unregister_document_binding_node(binding.tree.node, registrationOwner);
+  unregister_document_binding_node(root.node, registrationOwner);
   binding.dispose();
-  assert.throws(() => binding.tree.quid, (cause: unknown) => Reflect.get(cause as object, "code") === LIVETREE_LINKED_IDENTITY_REQUIRED_ERROR_CODE);
+  assert.throws(() => root.quid, (cause: unknown) => Reflect.get(cause as object, "code") === LIVETREE_LINKED_IDENTITY_REQUIRED_ERROR_CODE);
   assert.equal(map.rev, 0);
   binding.tree.remove();
 });
@@ -162,7 +172,7 @@ check("malformed replayed QUID rejects atomically", () => {
 check("replayed canonical collision rejects atomically", () => {
   const map = element(`<main <a @${Q1}/> <b/>/>`);
   assert.throws(() => map.replay(replay(0, [ensure(path(0, 1), Q1)])), LiveMapDocumentStagingError);
-  assert.equal(raw_node(map.element.node(), [0, 1]).$_meta?.quid, undefined);
+  assert.equal(raw_node(map.root(), [0, 1]).$_meta?.quid, undefined);
 });
 
 check("two registrations in one replay transaction remain distinct", () => {
@@ -225,11 +235,12 @@ check("failed later staged operation preserves batch atomicity", () => {
 
 check("root preflight retains exact projected and DOM objects", () => {
   const { map, binding } = reflected(`<main/>`);
-  const node = binding.tree.node;
+  const root = authoredRoot(binding);
+  const node = root.node;
   const dom = mount(node);
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
-  void binding.tree.quid;
-  assert.equal(binding.tree.node, node);
+  void root.quid;
+  assert.equal(root.node, node);
   assert.equal(mount(node), dom);
   close(binding);
 });
@@ -249,7 +260,7 @@ check("same candidate can be used after a failed canonical transition", () => {
   assert.throws(() => map.replay(replay(0, [ensure(path(), Q1), ensure(path(), Q2)])), LiveMapDocumentStagingError);
   const binding = _reflect_document_for_runtime_test(runtime, map);
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
-  assert.equal(binding.tree.quid, Q1);
+  assert.equal(authoredRoot(binding).quid, Q1);
   close(binding);
 });
 

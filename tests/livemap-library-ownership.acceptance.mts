@@ -62,7 +62,7 @@ check("projected restore cannot bypass default-library HsonSchema admission", ()
 check("document maps retain a library-local mode without a public library selector", () => {
   const map = hson.liveMap.fromHson("<main/>");
   const ownership = internal_livemap_library_ownership(map);
-  assert.equal(ownership.mode, "element");
+  assert.equal(ownership.mode, "document");
   assert.equal("library" in map, false);
   assert.equal("lib" in map, false);
 });

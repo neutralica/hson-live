@@ -1,4 +1,4 @@
-import { ARR_TAG, ELEM_TAG, OBJ_TAG, ROOT_TAG } from "../../core/constants.js";
+import { ARR_TAG, ELEM_TAG, OBJ_TAG, ROOT_TAG, STR_TAG } from "../../core/constants.js";
 import { assert_invariants } from "../../core/assert-invariants.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { is_persisted_quid } from "../../core/persisted-quid.js";
@@ -13,8 +13,6 @@ import type {
   DocumentLiveMapCaptureOptions,
   DocumentLiveMapInstallOptions,
   DocumentLiveMapMode,
-  ElementLiveMap,
-  FragmentLiveMap,
   LiveMap,
   LiveMapCore,
   LiveMapDocumentApi,
@@ -68,10 +66,11 @@ export type PreparedLiveMapRoot = Readonly<{
 
 /** Clone, validate, classify, and establish document identity before ownership. */
 export function prepare_livemap_root(input: HsonNode): PreparedLiveMapRoot {
-  const root = normalize_hson_array_index_order(
+  const cloned = normalize_hson_array_index_order(
     clone_live_root(input),
     "prepare_livemap_root",
   );
+  const root = normalize_document_root(cloned);
   let mode: LiveMapRootMode;
   try {
     mode = classify_live_root_shape(root);
@@ -81,7 +80,7 @@ export function prepare_livemap_root(input: HsonNode): PreparedLiveMapRoot {
     mode = classify_live_root_mode(root);
   }
 
-  if (mode === "element" || mode === "fragment") {
+  if (mode === "document") {
     const documentOverlay = build_livemap_document_identity_overlay(root, mode);
     classify_live_root_mode(root);
     return {
@@ -111,15 +110,13 @@ function classify_live_root_shape(root: HsonNode): LiveMapRootMode {
 
   if (root.$_tag === OBJ_TAG) return "data-object";
   if (root.$_tag === ARR_TAG) return "data-array";
-  if (root.$_tag === ELEM_TAG) return classify_document_cluster(root);
-
   if (root.$_tag !== ROOT_TAG) {
     throw new Error(
       `LiveMap canonical root must be <${ROOT_TAG}>; observed <${root.$_tag}> with ${root.$_content.length} top-level content item(s).`,
     );
   }
 
-  if (root.$_content.length === 0) return "fragment";
+  if (root.$_content.length === 0) return "document";
 
   const cluster = root.$_content[0];
   if (!is_Node(cluster)) {
@@ -130,19 +127,22 @@ function classify_live_root_shape(root: HsonNode): LiveMapRootMode {
 
   if (cluster.$_tag === OBJ_TAG) return "data-object";
   if (cluster.$_tag === ARR_TAG) return "data-array";
-  if (cluster.$_tag !== ELEM_TAG) {
-    throw new Error(
-      `LiveMap canonical root has unsupported top-level cluster <${cluster.$_tag}>; expected <${OBJ_TAG}>, <${ARR_TAG}>, or <${ELEM_TAG}>.`,
-    );
-  }
-
-  return classify_document_cluster(cluster);
+  if (cluster.$_tag === ELEM_TAG) return "document";
+  if (cluster.$_tag === STR_TAG || is_ordinary_element_node(cluster)) return "document";
+  throw new Error(
+    "LiveMap canonical root has unsupported top-level content; expected data cluster or document content.",
+  );
 }
 
-function classify_document_cluster(cluster: HsonNode): DocumentLiveMapMode {
-  return cluster.$_content.length === 1 && is_ordinary_element_node(cluster.$_content[0])
-    ? "element"
-    : "fragment";
+/** Convert parser/detached element carriers into the one retained document root shape. */
+function normalize_document_root(root: HsonNode): HsonNode {
+  if (root.$_tag === ELEM_TAG) {
+    return { $_tag: ROOT_TAG, $_content: root.$_content.slice() };
+  }
+  if (root.$_tag !== ROOT_TAG || root.$_content.length !== 1) return root;
+  const child = root.$_content[0];
+  if (!is_Node(child) || child.$_tag !== ELEM_TAG) return root;
+  return { $_tag: ROOT_TAG, $_content: child.$_content.slice() };
 }
 
 /** Assert a classified root mode for internal construction paths that require it. */
@@ -241,60 +241,24 @@ function make_document_livemap(
     commits: controller.commits,
   };
 
-  if (mode === "element") {
-    const capture: DocumentLiveMapCaptureApi<"element"> = (
-      options?: DocumentLiveMapCaptureOptions,
-    ) => capture_livemap_document(
-      controller.identityEpoch,
-      "element",
-      core.rev,
-      core.root(),
-      options,
-    );
-    let elementMap: ElementLiveMap;
-    const schema: ElementLiveMap["schema"] = Object.freeze({
-      get: controller.getDocumentSchema,
-      use: ((documentSchema: HsonSchema) => {
-        controller.useDocumentSchema(documentSchema);
-        return elementMap;
-      }) as ElementLiveMap["schema"]["use"],
-    });
-    elementMap = Object.freeze({
-      ...shared,
-      schema,
-      mode,
-      get rev() {
-        return core.rev;
-      },
-      capture,
-      document,
-      element: Object.freeze({
-        node: () => detached_top_level_element(core.root()),
-      }),
-    });
-    register_livemap_document_identity_overlay(elementMap, controller.overlay);
-    register_livemap_identity_epoch_owner(elementMap, controller.identityEpoch);
-    return elementMap;
-  }
-
-  const capture: DocumentLiveMapCaptureApi<"fragment"> = (
+  const capture: DocumentLiveMapCaptureApi<"document"> = (
     options?: DocumentLiveMapCaptureOptions,
   ) => capture_livemap_document(
     controller.identityEpoch,
-    "fragment",
+    "document",
     core.rev,
     core.root(),
     options,
   );
-  let fragmentMap: FragmentLiveMap;
-  const schema: FragmentLiveMap["schema"] = Object.freeze({
+  let documentMap: DocumentLiveMap;
+  const schema: DocumentLiveMap["schema"] = Object.freeze({
     get: controller.getDocumentSchema,
     use: ((documentSchema: HsonSchema) => {
       controller.useDocumentSchema(documentSchema);
-        return fragmentMap;
-      }) as FragmentLiveMap["schema"]["use"],
+        return documentMap;
+      }) as DocumentLiveMap["schema"]["use"],
   });
-  fragmentMap = Object.freeze({
+  documentMap = Object.freeze({
     ...shared,
     schema,
     mode,
@@ -304,36 +268,16 @@ function make_document_livemap(
     capture,
     document,
   });
-  register_livemap_document_identity_overlay(fragmentMap, controller.overlay);
-  register_livemap_identity_epoch_owner(fragmentMap, controller.identityEpoch);
-  return fragmentMap;
+  register_livemap_document_identity_overlay(documentMap, controller.overlay);
+  register_livemap_identity_epoch_owner(documentMap, controller.identityEpoch);
+  return documentMap;
 }
 
 function detached_document_content(root: HsonNode): readonly (HsonNode | string | number | boolean | null)[] {
-  if (root.$_tag === ROOT_TAG && root.$_content.length === 0) return [];
-  const cluster = document_cluster(root);
-  if (cluster === undefined) {
-    throw new Error(`LiveMap document read expected <${ELEM_TAG}> content; observed ${describe_top_level(root)}.`);
+  if (root.$_tag !== ROOT_TAG) {
+    throw new Error(`LiveMap document read expected <${ROOT_TAG}>; observed ${describe_top_level(root)}.`);
   }
-  return cluster.$_content.slice();
-}
-
-function detached_top_level_element(root: HsonNode): HsonNode {
-  const cluster = document_cluster(root);
-  if (cluster === undefined || cluster.$_content.length !== 1) {
-    throw new Error(`LiveMap element read expected exactly one ordinary top-level element; observed ${describe_top_level(root)}.`);
-  }
-  const element = cluster.$_content[0];
-  if (!is_ordinary_element_node(element)) {
-    throw new Error(`LiveMap element read expected exactly one ordinary top-level element; observed ${describe_top_level(root)}.`);
-  }
-  return element;
-}
-
-function document_cluster(root: HsonNode): HsonNode | undefined {
-  if (root.$_tag === ELEM_TAG) return root;
-  const cluster = root.$_content[0];
-  return is_Node(cluster) && cluster.$_tag === ELEM_TAG ? cluster : undefined;
+  return root.$_content.slice();
 }
 
 function describe_top_level(root: HsonNode): string {

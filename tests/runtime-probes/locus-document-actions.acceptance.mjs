@@ -29,14 +29,20 @@ function socket_pair() {
 
 function element(source) {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error(`Expected element, observed ${map.mode}`);
+  if (map.mode !== "document") throw new Error(`Expected document, observed ${map.mode}`);
   return map;
 }
 
-function fragment(source) {
+function multiNodeDocument(source) {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "fragment") throw new Error(`Expected fragment, observed ${map.mode}`);
+  if (map.mode !== "document") throw new Error(`Expected document, observed ${map.mode}`);
   return map;
+}
+
+function documentElement(map) {
+  const node = map.root().$_content[0];
+  if (node === undefined || node === null || typeof node !== "object") throw new Error("Expected authored document element");
+  return node;
 }
 
 async function connected_document_client(host, mirror, cursor = { incarnationId: host.stream.incarnationId, lastAppliedRev: mirror.rev }) {
@@ -86,7 +92,8 @@ async function assert_single_hosted_commit({ host, client, action, payload, veri
   return result;
 }
 
-const rootPath = { kind: "path", path: [] };
+const rootPath = { kind: "path", path: [0] };
+const documentRootPath = { kind: "path", path: [] };
 
 await check("document.attrs.set lowers a QUID request before authoritative history and replay", async () => {
   const initial = `<main @000000001 <p @000000002/>/>`;
@@ -103,10 +110,10 @@ await check("document.attrs.set lowers a QUID request before authoritative histo
   });
 });
 
-await check("document.attrs.drop uses a fragment path target and flows through one authoritative commit and replay", async () => {
+await check("document.attrs.drop uses a multiNodeDocument path target and flows through one authoritative commit and replay", async () => {
   const initial = `<section id="remove"/> "tail"`;
-  const host = hson.locus.create({ map: fragment(initial), logicalMapId: "hosted-attr-drop" });
-  const client = await connected_document_client(host, fragment(initial));
+  const host = hson.locus.create({ map: multiNodeDocument(initial), logicalMapId: "hosted-attr-drop" });
+  const client = await connected_document_client(host, multiNodeDocument(initial));
   await assert_single_hosted_commit({
     host,
     client,
@@ -131,7 +138,7 @@ await check("document.attrs.setMany preserves unspecified attrs in one hosted re
       values: { id: "main", hidden: false, count: 0 },
     },
     verify() {
-      assert.deepEqual(host.map.element.node().$_attrs, {
+      assert.deepEqual(documentElement(host.map).$_attrs, {
         count: 0, hidden: false, id: "main", title: "kept",
       });
       assert.equal(host.stream.history.replay_after(0, 1)?.[0]?.ops[0]?.op, "replace-attrs");
@@ -141,8 +148,8 @@ await check("document.attrs.setMany preserves unspecified attrs in one hosted re
 
 await check("document.attrs.dropMany ignores absent and duplicate names in one hosted commit", async () => {
   const initial = `<section id="drop" class="drop" title="keep"/> "tail"`;
-  const host = hson.locus.create({ map: fragment(initial), logicalMapId: "hosted-attrs-drop-many" });
-  const client = await connected_document_client(host, fragment(initial));
+  const host = hson.locus.create({ map: multiNodeDocument(initial), logicalMapId: "hosted-attrs-drop-many" });
+  const client = await connected_document_client(host, multiNodeDocument(initial));
   await assert_single_hosted_commit({
     host,
     client,
@@ -165,7 +172,7 @@ await check("document.attrs.clear preserves persisted metadata and compacts attr
     action: "document.attrs.clear",
     payload: { target: rootPath },
     verify() {
-      const node = host.map.element.node();
+      const node = documentElement(host.map);
       assert.equal(node.$_attrs, undefined);
       assert.deepEqual(node.$_meta, { quid: "000000021" });
       assert.equal(host.map.document.byQuid("000000021")?.$_tag, "main");
@@ -199,7 +206,7 @@ await check("document.content.replace uses a path target and replays one canonic
   const client = await connected_document_client(host, element(initial));
   const replacement = {
     $_tag: "_hson_elem",
-    $_content: [element(`<article @000000004 "new"/>`).element.node()],
+    $_content: [documentElement(element(`<article @000000004 "new"/>`))],
   };
   await assert_single_hosted_commit({
     host,
@@ -213,16 +220,16 @@ await check("document.content.replace uses a path target and replays one canonic
   });
 });
 
-await check("document.content.insert uses a fragment path and publishes one canonical insertion", async () => {
+await check("document.content.insert uses a multiNodeDocument path and publishes one canonical insertion", async () => {
   const initial = `<a/> <c/>`;
-  const host = hson.locus.create({ map: fragment(initial), logicalMapId: "hosted-content-insert" });
-  const client = await connected_document_client(host, fragment(initial));
-  const content = element(`<b @00000001c/>`).element.node();
+  const host = hson.locus.create({ map: multiNodeDocument(initial), logicalMapId: "hosted-content-insert" });
+  const client = await connected_document_client(host, multiNodeDocument(initial));
+  const content = documentElement(element(`<b @00000001c/>`));
   await assert_single_hosted_commit({
     host,
     client,
     action: "document.content.insert",
-    payload: { target: rootPath, index: 1, content },
+    payload: { target: documentRootPath, index: 1, content },
     verify() {
       assert.deepEqual(host.map.document.content().map((item) => item.$_tag), ["a", "b", "c"]);
       assert.equal(host.map.document.byQuid("00000001c")?.$_tag, "b");
@@ -234,7 +241,7 @@ await check("document.content.remove lowers a QUID request to one canonical path
   const initial = `<main @00000001d/>`;
   const authority = element(initial);
   const mirror = element(initial);
-  const extra = element(`<aside "kept"/>`).element.node().$_content[0];
+  const extra = documentElement(element(`<aside "kept"/>`)).$_content[0];
   authority.document.content.insert({ kind: "quid", quid: "00000001d" }, 0, extra);
   mirror.document.content.insert({ kind: "quid", quid: "00000001d" }, 0, extra);
   const host = hson.locus.create({ map: authority, logicalMapId: "hosted-content-remove" });
@@ -245,20 +252,20 @@ await check("document.content.remove lowers a QUID request to one canonical path
     action: "document.content.remove",
     payload: { target: { kind: "quid", quid: "00000001d" }, index: 0 },
     verify() {
-      assert.equal(host.map.element.node().$_content.length, 0);
+      assert.equal(documentElement(host.map).$_content.length, 0);
     },
   });
 });
 
 await check("document.content.move uses final-position semantics in one graph operation", async () => {
   const initial = `<a/> <b @00000001e/> <c/> <d/>`;
-  const host = hson.locus.create({ map: fragment(initial), logicalMapId: "hosted-content-move" });
-  const client = await connected_document_client(host, fragment(initial));
+  const host = hson.locus.create({ map: multiNodeDocument(initial), logicalMapId: "hosted-content-move" });
+  const client = await connected_document_client(host, multiNodeDocument(initial));
   await assert_single_hosted_commit({
     host,
     client,
     action: "document.content.move",
-    payload: { target: rootPath, from: 1, to: 3 },
+    payload: { target: documentRootPath, from: 1, to: 3 },
     verify() {
       assert.deepEqual(host.map.document.content().map((item) => item.$_tag), ["a", "c", "d", "b"]);
       assert.equal(host.map.element, undefined);
@@ -271,8 +278,8 @@ await check("each hosted operation accepts its alternate path or persisted-QUID 
   const initial = `<main @000000009 id="drop" <p @00000000a "old"/>/>`;
   const host = hson.locus.create({ map: element(initial) });
   const client = await connected_document_client(host, element(initial));
-  const textCluster = element(`<p "new"/>`).element.node().$_content[0];
-  const inserted = element(`<i "inserted"/>`).element.node();
+  const textCluster = documentElement(element(`<p "new"/>`)).$_content[0];
+  const inserted = documentElement(element(`<i "inserted"/>`));
   assert.equal((await client.action("document.attrs.set", {
     target: rootPath,
     name: "class",
@@ -288,17 +295,17 @@ await check("each hosted operation accepts its alternate path or persisted-QUID 
     replacement: textCluster,
   })).type, "ack");
   assert.equal((await client.action("document.content.insert", {
-    target: { kind: "path", path: [0, 0, 0] },
+    target: { kind: "path", path: [0, 0, 0, 0] },
     index: 1,
     content: inserted,
   })).type, "ack");
   assert.equal((await client.action("document.content.move", {
-    target: { kind: "path", path: [0, 0, 0] },
+    target: { kind: "path", path: [0, 0, 0, 0] },
     from: 0,
     to: 1,
   })).type, "ack");
   assert.equal((await client.action("document.content.remove", {
-    target: { kind: "path", path: [0, 0, 0] },
+    target: { kind: "path", path: [0, 0, 0, 0] },
     index: 1,
   })).type, "ack");
   assert.equal(host.map.rev, 6);
@@ -357,7 +364,7 @@ await check("reserved document actions take precedence over same-named applicati
     value: "built-in",
   });
   assert.equal(result.type, "ack");
-  assert.equal(host.map.element.node().$_attrs?.title, "built-in");
+  assert.equal(documentElement(host.map).$_attrs?.title, "built-in");
   assert.equal(customCalls, 0);
 });
 
@@ -503,7 +510,7 @@ await check("a duplicate bulk request is deduped once for the complete request",
   assert.equal(host.map.rev, 1);
   assert.equal(host.stream.history.debug().retainedCommitCount, 1);
   assert.equal(publications, 1);
-  assert.deepEqual(host.map.element.node().$_attrs, { hidden: false, id: "new" });
+  assert.deepEqual(documentElement(host.map).$_attrs, { hidden: false, id: "new" });
 });
 
 await check("unchanged bulk actions acknowledge without revision, history or publication", async () => {
@@ -529,8 +536,8 @@ await check("unchanged bulk actions acknowledge without revision, history or pub
 
 await check("same-position hosted move acknowledges without commit, history, replay or revision", async () => {
   const initial = `<a/> <b/>`;
-  const host = hson.locus.create({ map: fragment(initial) });
-  const client = await connected_document_client(host, fragment(initial));
+  const host = hson.locus.create({ map: multiNodeDocument(initial) });
+  const client = await connected_document_client(host, multiNodeDocument(initial));
   let authoritative = 0;
   let published = 0;
   let replayed = 0;
@@ -541,7 +548,7 @@ await check("same-position hosted move acknowledges without commit, history, rep
   client.map.commits.observe((event) => {
     if (event.kind === "commit" && event.origin === "replay") replayed += 1;
   });
-  const result = await client.action("document.content.move", { target: rootPath, from: 1, to: 1 });
+  const result = await client.action("document.content.move", { target: documentRootPath, from: 1, to: 1 });
   assert.equal(result.type, "ack");
   assert.equal(result.completionRev, 0);
   assert.equal(host.map.rev, 0);
@@ -552,14 +559,14 @@ await check("same-position hosted move acknowledges without commit, history, rep
 await check("authorization denial prevents a structural document mutation", async () => {
   const initial = `<a/> <b/>`;
   const host = hson.locus.create({
-    map: fragment(initial),
+    map: multiNodeDocument(initial),
     authorizeAction(context) {
       assert.equal(context.action, "document.content.move");
       return false;
     },
   });
-  const client = await connected_document_client(host, fragment(initial));
-  const result = await client.action("document.content.move", { target: rootPath, from: 0, to: 1 });
+  const client = await connected_document_client(host, multiNodeDocument(initial));
+  const result = await client.action("document.content.move", { target: documentRootPath, from: 0, to: 1 });
   assert.equal(result.error.code, "LOCUS_ACTION_FORBIDDEN");
   assert.equal(host.map.rev, 0);
   assert.equal(host.stream.history.debug().retainedCommitCount, 0);
@@ -567,12 +574,12 @@ await check("authorization denial prevents a structural document mutation", asyn
 
 await check("a duplicate structural retry does not insert twice", async () => {
   const initial = `<a/> <c/>`;
-  const host = hson.locus.create({ map: fragment(initial) });
-  const client = await connected_document_client(host, fragment(initial));
+  const host = hson.locus.create({ map: multiNodeDocument(initial) });
+  const client = await connected_document_client(host, multiNodeDocument(initial));
   const first = client.action("document.content.insert", {
-    target: rootPath,
+    target: documentRootPath,
     index: 2,
-    content: element(`<b/>`).element.node(),
+    content: documentElement(element(`<b/>`)),
   });
   const executed = await first;
   const retried = await client.retry_action(first.request);
@@ -659,15 +666,15 @@ await check("all four bulk actions survive snapshot fallback with metadata intac
 
 await check("incremental recovery preserves an inserted node and its QUID", async () => {
   const initial = `<a/> <c/>`;
-  const host = hson.locus.create({ map: fragment(initial), logicalMapId: "hosted-structural-replay" });
-  const actor = await connected_document_client(host, fragment(initial));
+  const host = hson.locus.create({ map: multiNodeDocument(initial), logicalMapId: "hosted-structural-replay" });
+  const actor = await connected_document_client(host, multiNodeDocument(initial));
   await actor.action("document.content.insert", {
-    target: rootPath,
+    target: documentRootPath,
     index: 1,
-    content: element(`<b @00000001f/>`).element.node(),
+    content: documentElement(element(`<b @00000001f/>`)),
   });
   actor.disconnect();
-  const recovered = await connected_document_client(host, fragment(initial), {
+  const recovered = await connected_document_client(host, multiNodeDocument(initial), {
     incarnationId: host.stream.incarnationId,
     lastAppliedRev: 0,
   });
@@ -679,19 +686,19 @@ await check("incremental recovery preserves an inserted node and its QUID", asyn
 await check("snapshot fallback preserves movement order, mode, revision and QUID", async () => {
   const initial = `<a/> <b @00000001g/> <c/>`;
   const host = hson.locus.create({
-    map: fragment(initial),
+    map: multiNodeDocument(initial),
     logicalMapId: "hosted-structural-snapshot",
     history: { maxCommits: 0 },
   });
-  const actor = await connected_document_client(host, fragment(initial));
-  await actor.action("document.content.move", { target: rootPath, from: 1, to: 2 });
+  const actor = await connected_document_client(host, multiNodeDocument(initial));
+  await actor.action("document.content.move", { target: documentRootPath, from: 1, to: 2 });
   actor.disconnect();
-  const recovered = await connected_document_client(host, fragment(initial), {
+  const recovered = await connected_document_client(host, multiNodeDocument(initial), {
     incarnationId: host.stream.incarnationId,
     lastAppliedRev: 0,
   });
   assert.equal(recovered.recovery.strategy, "snapshot");
-  assert.equal(recovered.map.mode, "fragment");
+  assert.equal(recovered.map.mode, "document");
   assert.equal(recovered.map.rev, host.map.rev);
   assert.deepEqual(recovered.map.capture(), host.map.capture());
   assert.equal(recovered.map.document.byQuid("00000001g")?.$_tag, "b");

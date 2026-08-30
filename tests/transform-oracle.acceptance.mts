@@ -12,7 +12,7 @@ import {
 import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
 import {
   serialize_hson,
-  serialize_hson_owned_element_text_fragment,
+  serialize_hson_owned_document_content,
 } from "../src/api/transform/serializers/serialize-hson.ts";
 import { serialize_json_value } from "../src/api/transform/serializers/serialize-json.ts";
 import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
@@ -239,8 +239,8 @@ check("Hson, JSON, and HTML transports cover the canonical semantic graph lattic
         typeof child === "object" && child !== null && child.$_tag === "_hson_str"
       );
     if (rootOwnedText) {
-      const hson = serialize_hson_owned_element_text_fragment(admitted);
-      const reparsed = detach_hson_root_value(parse_hson(hson, { allowTopLevelTextFragment: true }));
+      const hson = serialize_hson_owned_document_content(admitted);
+      const reparsed = detach_hson_root_value(parse_hson(hson, { allowTopLevelDocumentText: true }));
       assert_canonical_oracle_graph_equal({
         launcher: LAUNCHER,
         caseId: `transport-totality:hson:${fixture.$_tag}`,

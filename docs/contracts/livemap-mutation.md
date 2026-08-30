@@ -182,9 +182,9 @@ Document-mode LiveMaps use a separate canonical path domain. `LiveMapDocumentPat
 
 Root interpretation is exact:
 
-- element mode `[]` addresses the one public top-level ordinary element;
-- fragment mode `[]` addresses the owned `_hson_elem` cluster;
-- each segment descends through the current Hson node's `$_content`; and
+- document mode `[]` addresses the internal `_hson_root` content authority;
+- `[i]` addresses top-level document node `i`;
+- each later segment descends through the current Hson node's `$_content`; and
 - descent through a primitive or beyond content is a structured conflict.
 
 Canonical graph commits stage operations in ordinal order:

@@ -48,12 +48,12 @@ check("canonical primitives round-trip without JSON-node projection", () => {
   }
 });
 
-check("fragment and empty-fragment roots retain exact structure", () => {
+check("multiNodeDocument and empty-multiNodeDocument roots retain exact structure", () => {
   for (const source of [`"before" <em "middle"/> "after"`, ``]) {
     const map = source === ""
       ? hson.liveMap.fromNode({ $_tag: "_hson_root", $_content: [] })
       : hson.liveMap.fromHson(source);
-    if (map.mode !== "element" && map.mode !== "fragment") throw new Error("Expected document map");
+    if (map.mode !== "document") throw new Error("Expected document map");
     const root = map.capture().root;
     const decoded = decode_locus_graph_content(encode_locus_graph_content(root));
     assert.equal(is_Node(decoded), true);

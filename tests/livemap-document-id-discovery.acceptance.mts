@@ -5,8 +5,6 @@ import * as publicApi from "../src/index.ts";
 import { find_internal_document_id } from "../src/api/livemap/livemap.document.id-discovery.ts";
 import type {
   DocumentLiveMap,
-  ElementLiveMap,
-  FragmentLiveMap,
   LiveMapDocumentRequestTarget,
 } from "../src/types/livemap.types.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
@@ -18,15 +16,15 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-function element(source: string): ElementLiveMap {
+function element(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error(`Expected element map; observed ${map.mode}`);
+  if (map.mode !== "document") throw new Error(`Expected element map; observed ${map.mode}`);
   return map;
 }
 
-function fragment(source: string): FragmentLiveMap {
+function multiNodeDocument(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "fragment") throw new Error(`Expected fragment map; observed ${map.mode}`);
+  if (map.mode !== "document") throw new Error(`Expected multiNodeDocument map; observed ${map.mode}`);
   return map;
 }
 
@@ -48,12 +46,12 @@ check("nested descendant discovery uses logical edges", () => {
   assert.deepEqual(find(element(`<main <section <button id="x"/>/>/>`), "x")?.path(), [0, 0]);
 });
 
-check("fragment search can match its first actual element", () => {
-  assert.deepEqual(find(fragment(`<a id="first"/> <b/>`), "first")?.path(), [0]);
+check("multiNodeDocument search can match its first actual element", () => {
+  assert.deepEqual(find(multiNodeDocument(`<a id="first"/> <b/>`), "first")?.path(), [0]);
 });
 
-check("fragment search reaches a later element in canonical order", () => {
-  assert.deepEqual(find(fragment(`"before" <a/> <b id="later"/>`), "later")?.path(), [2]);
+check("multiNodeDocument search reaches a later element in canonical order", () => {
+  assert.deepEqual(find(multiNodeDocument(`"before" <a/> <b id="later"/>`), "later")?.path(), [2]);
 });
 
 check("missing IDs return undefined", () => {
@@ -116,7 +114,7 @@ check("non-string canonical ID values are not coerced", () => {
     $_tag: "_hson_elem",
     $_content: [{ $_tag: "main", $_attrs: { id: 7 }, $_content: [] }],
   });
-  if (map.mode !== "element") throw new Error("Expected element map");
+  if (map.mode !== "document") throw new Error("Expected element map");
   assert.equal(find(map, "7"), undefined);
 });
 
@@ -134,7 +132,7 @@ check("discovery returns the same coordinate and interned location as map.at", (
 check("insertion and movement do not move an old location but fresh searches find the subject", () => {
   const map = element(`<main <a id="x"/> <b/>/>`);
   const found = find(map, "x");
-  map.document.content.insert(target(0), 0, element(`<z/>`).element.node());
+  map.document.content.insert(target(0), 0, element(`<z/>`).root());
   assert.equal(tag(found?.snap()), "z");
   assert.deepEqual(find(map, "x")?.path(), [1]);
   map.document.content.move(target(0), 1, 2);
@@ -153,7 +151,7 @@ check("removing a discovered tail makes its fixed coordinate missing", () => {
 check("replacement changes the occupant and fresh discovery sees current attrs", () => {
   const map = element(`<main <a id="x"/>/>`);
   const found = find(map, "x");
-  map.document.content.replace(target(0), 0, element(`<b id="y"/>`).element.node());
+  map.document.content.replace(target(0), 0, element(`<b id="y"/>`).root());
   assert.equal(tag(found?.snap()), "b");
   assert.equal(find(map, "x"), undefined);
   assert.equal(find(map, "y"), found);

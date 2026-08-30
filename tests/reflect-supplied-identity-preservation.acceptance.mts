@@ -56,10 +56,20 @@ function close(binding: ReturnType<typeof reflected>["binding"]): void {
   binding.tree.remove();
 }
 
+function authoredRoot(
+  binding: ReturnType<typeof _reflect_document_for_runtime_test>,
+  selectedRuntime = runtime,
+) {
+  const node = binding.tree.node.$_content[0];
+  if (node === undefined || node === null || typeof node !== "object") throw new Error("Expected authored document root");
+  return _create_livetree_for_runtime_test(selectedRuntime, node).adoptRoots(binding.tree.hostRootNode());
+}
+
 check("canonical root QUID is preserved by linked construction", () => {
   const { binding } = reflected(`<main @${Q1}/>`);
-  assert.equal(binding.tree.node.$_meta?.quid, Q1);
-  assert.equal(binding.tree.quid, Q1);
+  const root = authoredRoot(binding);
+  assert.equal(root.node.$_meta?.quid, Q1);
+  assert.equal(root.quid, Q1);
   close(binding);
 });
 
@@ -84,7 +94,7 @@ check("descendant DOM hson:quid matches canonical metadata", () => {
 
 check("runtime lookup resolves the canonical root claim", () => {
   const { binding } = reflected(`<main @${Q1}/>`);
-  assert.equal(_lookup_livetree_runtime_test_node(runtime, Q1), binding.tree.node);
+  assert.equal(_lookup_livetree_runtime_test_node(runtime, Q1), authoredRoot(binding).node);
   close(binding);
 });
 
@@ -140,9 +150,10 @@ check("DOM reverse lookup returns the supplied-QUID descendant", () => {
 
 check("delegated attributes retain the canonical claim", () => {
   const { map, binding } = reflected(`<main @${Q1}/>`);
-  binding.tree.attrs.set("title", "kept");
+  const root = authoredRoot(binding);
+  root.attrs.set("title", "kept");
   assert.equal(map.document.byQuid(Q1)?.$_attrs?.title, "kept");
-  assert.equal(binding.tree.quid, Q1);
+  assert.equal(root.quid, Q1);
   close(binding);
 });
 
@@ -188,8 +199,8 @@ check("equal canonical QUIDs admit independently in separate runtimes", () => {
   const rightRuntime = _create_livetree_runtime_test_handle();
   const left = _reflect_document_for_runtime_test(leftRuntime, element(`<main @${Q4}/>`));
   const right = _reflect_document_for_runtime_test(rightRuntime, element(`<main @${Q4}/>`));
-  assert.equal(left.tree.quid, Q4);
-  assert.equal(right.tree.quid, Q4);
+  assert.equal(authoredRoot(left, leftRuntime).quid, Q4);
+  assert.equal(authoredRoot(right, rightRuntime).quid, Q4);
   left.dispose();
   left.tree.remove();
   right.dispose();
@@ -202,8 +213,8 @@ check("durable capture preserves supplied QUID metadata", () => {
   const source = element(`<main @${Q1} <span @${Q2}/>/>`);
   const restored = element(`<main/>`);
   restored.restore(source.capture());
-  assert.equal(restored.element.node().$_meta?.quid, Q1);
-  assert.equal(raw_node(restored.element.node(), [0, 0]).$_meta?.quid, Q2);
+  assert.equal((restored.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, Q1);
+  assert.equal(raw_node(restored.root(), [0, 0]).$_meta?.quid, Q2);
 });
 
 check("durably restored QUIDs project without reminting", () => {
@@ -213,7 +224,7 @@ check("durably restored QUIDs project without reminting", () => {
   const profile = begin_livetree_materialization_profile();
   const binding = _reflect_document_for_runtime_test(runtime, restored);
   const result = profile.stop();
-  assert.equal(binding.tree.quid, Q1);
+  assert.equal(authoredRoot(binding).quid, Q1);
   assert.equal(result.quidEnsureCalls, 0);
   close(binding);
 });
@@ -223,7 +234,7 @@ check("identity-stripped capture projects with no supplied claims", () => {
   const stripped = element(`<main/>`);
   stripped.restore(source.capture({ identity: "strip" }));
   const binding = _reflect_document_for_runtime_test(runtime, stripped);
-  assert.equal(binding.tree.node.$_meta?.quid, undefined);
+  assert.equal(authoredRoot(binding).node.$_meta?.quid, undefined);
   assert.equal(raw_node(binding.tree.node, [0, 0]).$_meta?.quid, undefined);
   assert.equal(_livetree_runtime_test_claim_count(runtime), 0);
   close(binding);

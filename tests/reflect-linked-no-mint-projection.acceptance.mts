@@ -39,13 +39,19 @@ function close(binding: ReturnType<typeof reflected>["binding"]): void {
   binding.tree.remove();
 }
 
+function authoredRoot(binding: ReturnType<typeof reflected>["binding"]) {
+  const node = binding.tree.node.$_content[0];
+  if (node === undefined || node === null || typeof node !== "object") throw new Error("Expected authored document root");
+  return _create_livetree_for_runtime_test(runtime, node).adoptRoots(binding.tree.hostRootNode());
+}
+
 function assert_no_claims(): void {
   assert.equal(_livetree_runtime_test_claim_count(runtime), 0);
 }
 
 check("QUID-less reflected root preserves metadata absence", () => {
   const { binding } = reflected(`<main/>`);
-  assert.equal(binding.tree.node.$_meta?.quid, undefined);
+  assert.equal(authoredRoot(binding).node.$_meta?.quid, undefined);
   assert_no_claims();
   close(binding);
 });
@@ -114,18 +120,19 @@ check("DOM reverse lookup uses exact correspondence without minting", () => {
 
 check("attribute diagnostics do not mint an identity", () => {
   const { binding } = reflected(`<main/>`);
+  const root = authoredRoot(binding);
   assert.throws(
-    () => binding.tree.attrs.must.get("missing"),
+    () => root.attrs.must.get("missing"),
     (cause: unknown) => cause instanceof Error && Reflect.get(cause, "quid") === "<unassigned>",
   );
-  assert.equal(binding.tree.node.$_meta?.quid, undefined);
+  assert.equal(root.node.$_meta?.quid, undefined);
   assert_no_claims();
   close(binding);
 });
 
 check("delegated attribute writes do not mint", () => {
   const { map, binding } = reflected(`<main/>`);
-  binding.tree.attrs.set("title", "linked");
+  authoredRoot(binding).attrs.set("title", "linked");
   assert.equal(map.document.attrs.get(path(), "title"), "linked");
   assert_no_claims();
   close(binding);
@@ -133,7 +140,7 @@ check("delegated attribute writes do not mint", () => {
 
 check("delegated attribute removal does not mint", () => {
   const { map, binding } = reflected(`<main title="old"/>`);
-  binding.tree.attrs.drop("title");
+  authoredRoot(binding).attrs.drop("title");
   assert.equal(map.document.attrs.get(path(), "title"), undefined);
   assert_no_claims();
   close(binding);
@@ -141,7 +148,7 @@ check("delegated attribute removal does not mint", () => {
 
 check("delegated inline style writes do not mint", () => {
   const { map, binding } = reflected(`<main/>`);
-  binding.tree.style.set.color("red");
+  authoredRoot(binding).style.set.color("red");
   assert.deepEqual(map.document.attrs.get(path(), "style"), { color: "red" });
   assert_no_claims();
   close(binding);
@@ -149,8 +156,8 @@ check("delegated inline style writes do not mint", () => {
 
 check("delegated text writes do not mint", () => {
   const { map, binding } = reflected(`<main/>`);
-  binding.tree.text.set("linked");
-  assert.equal(raw_node(map.element.node(), [0, 0]).$_content[0], "linked");
+  authoredRoot(binding).text.set("linked");
+  assert.equal(raw_node(map.root(), [0, 0]).$_content[0], "linked");
   assert_no_claims();
   close(binding);
 });
@@ -201,16 +208,17 @@ check("new-epoch QUID-less root install is fresh and retains absence", () => {
   map.install(element(`<main class="new"/>`).capture());
   assert.notEqual(binding.tree.node, root);
   assert.equal(_is_livetree_node_disposed(root), true);
-  assert.equal(binding.tree.node.$_meta?.quid, undefined);
+  assert.equal(authoredRoot(binding).node.$_meta?.quid, undefined);
   assert_no_claims();
   close(binding);
 });
 
 check("linked QUID access acquires exactly one canonical claim", () => {
   const { map, binding } = reflected(`<main/>`);
-  const quid = binding.tree.quid;
-  assert.equal(binding.tree.node.$_meta?.quid, quid);
-  assert.equal(map.element.node().$_meta?.quid, quid);
+  const root = authoredRoot(binding);
+  const quid = root.quid;
+  assert.equal(root.node.$_meta?.quid, quid);
+  assert.equal((map.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, quid);
   assert.equal(_livetree_runtime_test_claim_count(runtime), 1);
   close(binding);
 });
@@ -218,8 +226,9 @@ check("linked QUID access acquires exactly one canonical claim", () => {
 check("QUID-scoped CSS and events share one authority-owned acquisition", () => {
   const profile = begin_livetree_materialization_profile();
   const { map, binding } = reflected(`<main/>`);
-  assert.ok(binding.tree.css);
-  assert.ok(binding.tree.events);
+  const root = authoredRoot(binding);
+  assert.ok(root.css);
+  assert.ok(root.events);
   const result = profile.stop();
   assert.equal(result.quidEnsureCalls, 0);
   assert.equal(result.quidRegistryWrites, 2);

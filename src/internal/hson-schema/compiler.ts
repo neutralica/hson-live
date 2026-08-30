@@ -76,12 +76,12 @@ export type HsonSchemaDocumentElement = Readonly<{
   content: HsonSchemaDocumentContent;
 }>;
 
-export type HsonSchemaDocumentFragment = Readonly<{
-  kind: "document-fragment";
+export type HsonSchemaDocument = Readonly<{
+  kind: "document";
   content: HsonSchemaDocumentContent;
 }>;
 
-export type HsonSchemaSemanticNode = HsonSchemaDataSemanticNode | HsonSchemaDocumentElement | HsonSchemaDocumentFragment;
+export type HsonSchemaSemanticNode = HsonSchemaDataSemanticNode | HsonSchemaDocumentElement | HsonSchemaDocument;
 export type HsonSchemaRangedNode = HsonSchemaSemanticNode
   | Extract<HsonSchemaDocumentItem, { kind: "document-ref" }>
   | Extract<HsonSchemaDocumentContent, { kind: "document-repeat" }>;
@@ -173,9 +173,7 @@ export function compile_hson_schema(source: string): HsonSchemaCompilation {
       : decode_object_members(materialized.content, ["content"], issues, ranges, parsed.value, parsed.provenance, definitionNames, referenceUses);
   } else if (materialized.type === "document") {
     if (rootKeys[0] !== "type") return failure("INVALID_ROOT", [], 'Document Hson Schema root must begin with `type "document"`.');
-    semantic = "tag" in materialized
-      ? decode_document_element(materialized, [], true, issues, ranges, parsed.value, parsed.provenance, definitionNames, referenceUses)
-      : decode_document_fragment(materialized, [], issues, ranges, parsed.value, parsed.provenance, definitionNames, referenceUses);
+    semantic = decode_document_schema(materialized, [], issues, ranges, parsed.value, parsed.provenance, definitionNames, referenceUses);
   } else {
     return failure("INVALID_ROOT", [], 'Hson Schema root `type` must be exactly "data" or "document".');
   }
@@ -426,14 +424,20 @@ function decode_document_element(input: JsonObject, path: readonly (string | num
   return schema;
 }
 
-function decode_document_fragment(input: JsonObject, path: readonly (string | number)[], issues: HsonSchemaIssue[], ranges: Map<HsonSchemaRangedNode, HsonSourceRange>, root: HsonNode, provenance: HsonSourceProvenance, definitionNames: ReadonlySet<string>, referenceUses: HsonSchemaReferenceUse[]): HsonSchemaDocumentFragment | undefined {
-  const allowed = new Set(["type", "defs", "content"]);
-  for (const key of Object.keys(input)) if (!allowed.has(key)) issue(issues, "UNKNOWN_SCHEMA_MEMBER", [...path, key], `Unknown fragment document Schema member ${JSON.stringify(key)}.`);
-  if (input.type !== "document") issue(issues, "INVALID_ROOT", [...path, "type"], 'Document descriptor requires `type "document"`.');
-  if (!("content" in input)) { issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, "content"], "Fragment document descriptor requires explicit `content`."); return undefined; }
-  const content = decode_document_content(input.content, [...path, "content"], issues, ranges, root, provenance, definitionNames, referenceUses);
+function decode_document_schema(input: JsonObject, path: readonly (string | number)[], issues: HsonSchemaIssue[], ranges: Map<HsonSchemaRangedNode, HsonSourceRange>, root: HsonNode, provenance: HsonSourceProvenance, definitionNames: ReadonlySet<string>, referenceUses: HsonSchemaReferenceUse[]): HsonSchemaDocument | undefined {
+  let content: HsonSchemaDocumentContent | undefined;
+  if ("tag" in input) {
+    const element = decode_document_element(input, path, true, issues, ranges, root, provenance, definitionNames, referenceUses);
+    if (element !== undefined) content = Object.freeze({ kind: "document-sequence", items: Object.freeze([element]) });
+  } else {
+    const allowed = new Set(["type", "defs", "content"]);
+    for (const key of Object.keys(input)) if (!allowed.has(key)) issue(issues, "UNKNOWN_SCHEMA_MEMBER", [...path, key], `Unknown document Schema member ${JSON.stringify(key)}.`);
+    if (input.type !== "document") issue(issues, "INVALID_ROOT", [...path, "type"], 'Document descriptor requires `type "document"`.');
+    if (!("content" in input)) issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, "content"], "Document descriptor requires explicit `content`.");
+    else content = decode_document_content(input.content, [...path, "content"], issues, ranges, root, provenance, definitionNames, referenceUses);
+  }
   if (content === undefined) return undefined;
-  const schema = Object.freeze({ kind: "document-fragment", content } as const);
+  const schema = Object.freeze({ kind: "document", content } as const);
   bind_range(schema, path, ranges, root, provenance);
   return schema;
 }
@@ -619,15 +623,19 @@ function lower_hson_schema_semantic_with_sources(root: HsonSchemaSemanticNode, d
     const content = lowerDocumentContent(element.content, element);
     nodes[ref] = { kind: "document-element", tag: element.tag, ...(attrsRef === undefined ? {} : { attrs: attrsRef }), content };
   };
-  if (root.kind === "document-element") {
-    const documentElementRoot = lowerDocumentElement(root);
-    return { graph: { format: CANONICAL_SCHEMA_FORMAT, version: CANONICAL_SCHEMA_VERSION, capabilities: { documentElementRoot }, nodes: Object.freeze(nodes) }, sources: Object.freeze(sources) };
-  }
-  if (root.kind === "document-fragment") {
-    const fragmentRoot = reserve(root);
+  if (root.kind === "document") {
+    const documentRoot = reserve(root);
     const content = lowerDocumentContent(root.content, root);
-    nodes[fragmentRoot] = { kind: "document-fragment-root", content };
-    return { graph: { format: CANONICAL_SCHEMA_FORMAT, version: CANONICAL_SCHEMA_VERSION, capabilities: { documentFragmentRoot: fragmentRoot }, nodes: Object.freeze(nodes) }, sources: Object.freeze(sources) };
+    nodes[documentRoot] = { kind: "document-root", content };
+    return { graph: { format: CANONICAL_SCHEMA_FORMAT, version: CANONICAL_SCHEMA_VERSION, capabilities: { documentRoot }, nodes: Object.freeze(nodes) }, sources: Object.freeze(sources) };
+  }
+  if (root.kind === "document-element") {
+    const documentRoot = reserve(root);
+    const content = reserve(root);
+    const item = lowerDocumentElement(root);
+    nodes[content] = { kind: "document-sequence", items: Object.freeze([item]) };
+    nodes[documentRoot] = { kind: "document-root", content };
+    return { graph: { format: CANONICAL_SCHEMA_FORMAT, version: CANONICAL_SCHEMA_VERSION, capabilities: { documentRoot }, nodes: Object.freeze(nodes) }, sources: Object.freeze(sources) };
   }
   const projectedRoot = lower(root);
   return { graph: { format: CANONICAL_SCHEMA_FORMAT, version: CANONICAL_SCHEMA_VERSION, capabilities: { projectedRoot }, nodes: Object.freeze(nodes) }, sources: Object.freeze(sources) };
@@ -674,8 +682,7 @@ function validate_document_attr_capabilities(root: HsonSchemaSemanticNode | unde
     }
     visitContent(element.content);
   };
-  if (root.kind === "document-element") visitElement(root);
-  else if (root.kind === "document-fragment") visitContent(root.content);
+  if (root.kind === "document") visitContent(root.content);
 }
 
 function validate_unions(root: HsonSchemaSemanticNode, definitions: readonly HsonSchemaDefinition[], issues: HsonSchemaIssue[]): void {
@@ -695,11 +702,11 @@ function validate_unions(root: HsonSchemaSemanticNode, definitions: readonly Hso
     const items = element.content.kind === "document-sequence" ? element.content.items : element.content.kind === "document-repeat" ? [element.content.item] : [];
     items.forEach((item) => { if (item.kind === "document-element") visitDocument(item); });
   };
-  if (root.kind === "document-element") visitDocument(root);
-  else if (root.kind === "document-fragment") {
+  if (root.kind === "document") {
     const items = root.content.kind === "document-sequence" ? root.content.items : root.content.kind === "document-repeat" ? [root.content.item] : [];
     items.forEach((item) => { if (item.kind === "document-element") visitDocument(item); });
-  } else visitData(root);
+  } else if (root.kind === "document-element") visitDocument(root);
+  else visitData(root);
 }
 
 function distinguishable(left: HsonSchemaDataSemanticNode, right: HsonSchemaDataSemanticNode, definitions: readonly HsonSchemaDefinition[] = Object.freeze([])): boolean {
@@ -763,7 +770,7 @@ function count_recursive_sccs(graph: VerifiedCanonicalSchemaGraph): number {
       case "projected-ref": return [node.target];
       case "document-element": return [node.attrs, node.content].filter((value): value is number => value !== undefined);
       case "document-repeat": return [node.item];
-      case "document-fragment-root": return [node.content];
+      case "document-root": return [node.content];
       case "document-attrs": return node.properties.flatMap((property) => property.flag ? [] : [property.value]);
       default: return [];
     }

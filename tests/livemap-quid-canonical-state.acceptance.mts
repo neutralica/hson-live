@@ -12,7 +12,7 @@ import {
 } from "../src/api/livemap/livemap.document.view-state-codec.ts";
 import type {
   DocumentLiveMapCapture,
-  ElementLiveMap,
+  DocumentLiveMap,
   LiveMapCommitObservation,
 } from "../src/types/livemap.types.ts";
 import type { HsonNode } from "../src/core/types.ts";
@@ -27,16 +27,16 @@ function check(name: string, fn: () => void): void {
 const Q1 = "000000qa1";
 const Q2 = "000000qa2";
 
-function element(source: string): ElementLiveMap {
+function element(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error(`Expected element, observed ${map.mode}`);
+  if (map.mode !== "document") throw new Error(`Expected element, observed ${map.mode}`);
   return map;
 }
 
 function withRevision(
-  capture: DocumentLiveMapCapture<"element">,
+  capture: DocumentLiveMapCapture<"document">,
   rev: number,
-): DocumentLiveMapCapture<"element"> {
+): DocumentLiveMapCapture<"document"> {
   return Object.freeze({ ...capture, rev });
 }
 
@@ -201,7 +201,7 @@ check("view-state persistence preserves exact QUID metadata", () => {
 
 check("ordinary Hson serialization preserves QUID metadata exactly", () => {
   const source = element(`<main @${Q1} <span @${Q2}/>/>`);
-  const wire = hson.fromNode(source.element.node()).toHson().serialize();
+  const wire = hson.fromNode(source.root()).toHson().serialize();
   const reparsed = element(wire);
   assert.equal(canonical_hson_graph_equal(reparsed.root(), source.root()), true);
 });
@@ -209,7 +209,7 @@ check("ordinary Hson serialization preserves QUID metadata exactly", () => {
 check("noQuid serialization omits QUIDs without mutating the source graph", () => {
   const source = element(`<main @${Q1} <span @${Q2}/>/>`);
   const before = source.capture();
-  const wire = hson.fromNode(source.element.node()).toHson().noQuid().serialize();
+  const wire = hson.fromNode(source.root()).toHson().noQuid().serialize();
   assert.equal(wire.includes(Q1), false);
   assert.equal(wire.includes(Q2), false);
   assert.equal(canonical_hson_graph_equal(source.root(), before.root), true);
@@ -218,7 +218,7 @@ check("noQuid serialization omits QUIDs without mutating the source graph", () =
 
 check("reparsing noQuid output yields an identity-stripped, not exact-equal, graph", () => {
   const source = element(`<main @${Q1} <span @${Q2}/>/>`);
-  const wire = hson.fromNode(source.element.node()).toHson().noQuid().serialize();
+  const wire = hson.fromNode(source.root()).toHson().noQuid().serialize();
   const stripped = element(wire);
   assert.equal(canonical_hson_graph_equal(stripped.root(), source.root()), false);
   assert.equal(canonical_hson_graph_difference(stripped.root(), source.root())?.kind, "metadata-presence");

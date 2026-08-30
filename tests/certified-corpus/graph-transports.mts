@@ -61,5 +61,5 @@ export const graphRejectedTransportCases: readonly RejectedCorpusCase[] = [
   rejectedCarrier("direct-element-zero", "A detached Hson element carrier may not contain a typed zero leaf.", elem(val(0))),
   rejectedCarrier("direct-element-negative-zero", "A detached Hson element carrier may not contain a typed negative-zero leaf.", elem(val(-0))),
   rejectedCarrier("nested-element-number", "An ordinary element may not retain a typed numeric leaf beneath its element content.", elem(element("div", [val(1)]))),
-  rejectedCarrier("fragment-typed-child", "An element fragment containing one typed child rejects as a whole.", elem(element("a"), val(false))),
+  rejectedCarrier("element-carrier-child", "An element content carrier containing one typed child rejects as a whole.", elem(element("a"), val(false))),
 ] as const;

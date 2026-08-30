@@ -223,7 +223,7 @@ Expected this value to equal undefined; found undefined.
 Variant `root`:
 
 ```text
-Expected this value: fragment document root; received data root.
+Expected this value: document content root; received data root.
 ```
 
 Variant `fallback`:
@@ -1279,8 +1279,8 @@ These execute the real parser, Schema validator, private sidecar, source lowerer
 ```json
 [
   {
-    "core": "Expected fragment document root; received data root.",
-    "message": "[ReviewSchema] Expected this value: fragment document root; received data root.",
+    "core": "Expected document content root; received data root.",
+    "message": "[ReviewSchema] Expected this value: document content root; received data root.",
     "precision": "exact",
     "slice": "1",
     "related": "Schema requested by this certify call (ReviewSchema)."
@@ -2559,7 +2559,7 @@ response.message
 - Rendered payload / exact formatter expression:
 
 ```ts
-"Document map schema.use(...) requires an element or fragment root schema."
+"Document map schema.use(...) requires an document root schema."
 ```
 
 - Surface: Not a normal source diagnostic; may propagate verbatim through trusted project/module or callback failure. Defensive helpers may be unreachable for admitted source.
@@ -2577,7 +2577,7 @@ response.message
 - Rendered payload / exact formatter expression:
 
 ```ts
-"Document map schema.use(...) requires an element or fragment root schema."
+"Document map schema.use(...) requires an document root schema."
 ```
 
 - Surface: Not a normal source diagnostic; may propagate verbatim through trusted project/module or callback failure. Defensive helpers may be unreachable for admitted source.
@@ -3119,7 +3119,7 @@ response.message
 - Rendered payload / exact formatter expression:
 
 ```ts
-"Expected fragment document root."
+"Expected document content root."
 ```
 
 - Surface: Adapted: issue.message is discarded; code/path/expected/received/attributeName and sidecars are authoritative.
@@ -3893,7 +3893,7 @@ error.code.toLowerCase().replaceAll("_", " ")
 - Representative authored context: ``<age 1> <name "Ada"> / <button [1]/> (root/mode family; earlier guards may win)``.
 - Schema condition: none; parser contract.
 - Owner/category: B; `src/api/transform/parsers/parse-tokens.ts:496` at pre-edit `821ab89`.
-- Trigger: `parse_tokens / containsValueLeaf || (containsStringLeaf && !options.allowTopLevelTextFragment)`; emission `_throw_transform_err`.
+- Trigger: `parse_tokens / containsValueLeaf || (containsStringLeaf && !options.allowTopLevelDocumentText)`; emission `_throw_transform_err`.
 - Rendered payload / exact formatter expression:
 
 ```ts
@@ -5903,7 +5903,7 @@ final === "'" ? `mixed quote boundary in quoted string` : `unterminated quoted s
 - Representative authored context: ``N/A for malformed internal graph/API defenses; <age 1> is admitted normally, not a reproducer``.
 - Schema condition: none; canonical graph, value, metadata/QUID or serialization contract shown below.
 - Owner/category: B; `src/api/transform/serializers/serialize-hson.ts:377` at pre-edit `821ab89`.
-- Trigger: `emitElementCluster / !(ctx.options.ownedElementTextFragment && isRootSemanticValue)     && node.$_content.length === 1     && is_Node(node.$_content[0])     && (node.$_content[0].$_tag === STR_TAG || node.$_content[0].$_tag === VAL_TAG)`; emission `_throw_transform_err`.
+- Trigger: `emitElementCluster / !(ctx.options.ownedDocumentText && isRootSemanticValue)     && node.$_content.length === 1     && is_Node(node.$_content[0])     && (node.$_content[0].$_tag === STR_TAG || node.$_content[0].$_tag === VAL_TAG)`; emission `_throw_transform_err`.
 - Rendered payload / exact formatter expression:
 
 ```ts
@@ -7912,7 +7912,7 @@ cause instanceof Error ? cause.message : "Hson admission failed."
 - Representative authored context: ``<age 37> (valid context; failure is runtime state, not these bytes)``.
 - Schema condition: registered number Schema unless configuration/capability is rejected first.
 - Owner/category: C; `src/internal/trusted-schema-diagnostics/lifecycle-evidence.ts:125` at pre-edit `821ab89`.
-- Trigger: `attempt_trusted_schema_attachment / map.mode === "element" / map.mode === "fragment" / !is_owned_projected_schema(schema)`; emission `new TypeError`.
+- Trigger: `attempt_trusted_schema_attachment / map.mode === "document" / !is_owned_projected_schema(schema)`; emission `new TypeError`.
 - Rendered payload / exact formatter expression:
 
 ```ts

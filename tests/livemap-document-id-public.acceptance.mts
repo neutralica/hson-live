@@ -2,8 +2,7 @@
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import type {
-  ElementLiveMap,
-  FragmentLiveMap,
+  DocumentLiveMap,
   LiveMapDocumentRequestTarget,
 } from "../src/types/livemap.types.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
@@ -15,15 +14,15 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-function element(source: string): ElementLiveMap {
+function element(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error(`Expected element map; observed ${map.mode}`);
+  if (map.mode !== "document") throw new Error(`Expected element map; observed ${map.mode}`);
   return map;
 }
 
-function fragment(source: string): FragmentLiveMap {
+function multiNodeDocument(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "fragment") throw new Error(`Expected fragment map; observed ${map.mode}`);
+  if (map.mode !== "document") throw new Error(`Expected multiNodeDocument map; observed ${map.mode}`);
   return map;
 }
 
@@ -46,8 +45,8 @@ check("root locations discover nested descendants", () => {
   assert.deepEqual(map.at([]).id("submit")?.path(), [0, 0]);
 });
 
-check("fragment root locations search actual fragment contents", () => {
-  const map = fragment(`"before" <section <button id="submit"/>/>`);
+check("multiNodeDocument root locations search actual multiNodeDocument contents", () => {
+  const map = multiNodeDocument(`"before" <section <button id="submit"/>/>`);
   assert.deepEqual(map.at([]).id("submit")?.path(), [1, 0]);
 });
 
@@ -113,7 +112,7 @@ check("location and proxy escape discovery return the same object", () => {
 check("insertion shifts fresh discovery without moving an old location", () => {
   const map = element(`<main <a id="x"/> <b/>/>`);
   const found = map.at([]).id("x");
-  map.document.content.insert(target(0), 0, element(`<z/>`).element.node());
+  map.document.content.insert(target(0), 0, element(`<z/>`).root());
   assert.equal(tag(found?.snap()), "z");
   assert.deepEqual(map.at([]).id("x")?.path(), [1]);
 });
@@ -144,7 +143,7 @@ check("removal leaves the old coordinate passive and fresh discovery missing", (
 check("replacement is visible to fresh public discovery", () => {
   const map = element(`<main <a id="x"/>/>`);
   const found = map.at([]).id("x");
-  map.document.content.replace(target(0), 0, element(`<b id="y"/>`).element.node());
+  map.document.content.replace(target(0), 0, element(`<b id="y"/>`).root());
   assert.equal(map.at([]).id("x"), undefined);
   assert.equal(map.at([]).id("y"), found);
 });

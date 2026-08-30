@@ -25,7 +25,7 @@ function fromHson(input: string): ClassifiedLiveMap {
   // LiveMap owns a document/data root carrier. Public Transform detaches its
   // Hson source result, so this subsystem consumes the parser-owned root
   // directly without changing LiveMap's established root contract.
-  return make_classified_livemap(parse_hson(input, { allowTopLevelTextFragment: true }));
+  return make_classified_livemap(parse_hson(input, { allowTopLevelDocumentText: true }));
 }
 
 function fromNode(node: HsonNode): ClassifiedLiveMap {

@@ -40,33 +40,33 @@ function element_capture(
   rev = 7,
   rootMeta?: HsonMeta,
   clusterMeta?: HsonMeta,
-): DocumentLiveMapCapture<"element"> {
+): DocumentLiveMapCapture<"document"> {
   return {
     kind: "hson-document",
-    mode: "element",
+    mode: "document",
     rev,
     root: node("_hson_root", [node("_hson_elem", [element], undefined, clusterMeta)], undefined, rootMeta),
   };
 }
 
-function fragment_capture(
+function multiNodeDocument_capture(
   content: HsonNode["$_content"],
   rev = 9,
   rootMeta?: HsonMeta,
   clusterMeta?: HsonMeta,
-): DocumentLiveMapCapture<"fragment"> {
+): DocumentLiveMapCapture<"document"> {
   return {
     kind: "hson-document",
-    mode: "fragment",
+    mode: "document",
     rev,
     root: node("_hson_root", [node("_hson_elem", content, undefined, clusterMeta)], undefined, rootMeta),
   };
 }
 
-function empty_fragment_capture(rev = 3): DocumentLiveMapCapture<"fragment"> {
+function empty_multiNodeDocument_capture(rev = 3): DocumentLiveMapCapture<"document"> {
   return {
     kind: "hson-document",
-    mode: "fragment",
+    mode: "document",
     rev,
     root: node("_hson_root"),
   };
@@ -213,13 +213,13 @@ check("element capture round-trips with detached nested identity and typed docum
   assert.notEqual(decoded.root.$_content[0], capture.root.$_content[0]);
 
   const target = hson.liveMap.fromNode(element_capture(node("aside"), 0).root);
-  if (target.mode !== "element") throw new Error("Expected element map.");
+  if (target.mode !== "document") throw new Error("Expected element map.");
   target.restore(decoded);
   assert.equal(canonical_hson_graph_equal(target.capture().root, capture.root), true);
 });
 
-check("nontrivial fragment capture round-trips in order", () => {
-  const capture = fragment_capture([
+check("nontrivial multiNodeDocument capture round-trips in order", () => {
+  const capture = multiNodeDocument_capture([
     node("_hson_str", ["before"]),
     node("article", [], { rank: 2 }, { quid: "000000003" }),
     node("_hson_str", ["after"]),
@@ -227,8 +227,8 @@ check("nontrivial fragment capture round-trips in order", () => {
   round_trip(capture);
 });
 
-check("empty fragment root uses a non-empty parseable codec payload", () => {
-  const capture = empty_fragment_capture();
+check("empty multiNodeDocument root uses a non-empty parseable codec payload", () => {
+  const capture = empty_multiNodeDocument_capture();
   const { encoded, decoded } = round_trip(capture);
   assert.notEqual(encoded.payload.length, 0);
   assert.deepEqual(decoded.root.$_content, []);
@@ -329,7 +329,7 @@ check("nested inline stylesheet structures fail canonical graph validation", () 
 });
 
 check("view-state preserves defined QUID metadata and ordinary data attributes exactly", () => {
-  const capture = fragment_capture([
+  const capture = multiNodeDocument_capture([
     node("_hson_str", ["before"]),
     node("span", [], { "data-user": "kept" }, { quid: "000000007" }),
   ], 4);
@@ -357,7 +357,7 @@ for (const [tag, key, content] of [
         ])]),
       ])]);
     const error = expect_codec_error(
-      () => encode_view_state_snapshot(fragment_capture([invalid])),
+      () => encode_view_state_snapshot(multiNodeDocument_capture([invalid])),
       "VIEW_STATE_SNAPSHOT_GRAPH_INVALID",
     );
     const diagnostic = String(error.cause);
@@ -367,7 +367,7 @@ for (const [tag, key, content] of [
 }
 
 check("snapshot decoding rejects unsupported structural metadata", () => {
-  const valid = encode_view_state_snapshot(fragment_capture([
+  const valid = encode_view_state_snapshot(multiNodeDocument_capture([
     node("_hson_str", ["before"]),
     node("span"),
   ]));
@@ -382,7 +382,7 @@ check("snapshot decoding rejects unsupported structural metadata", () => {
 
 check("persisted QUIDs round-trip and invalid identity is rejected", () => {
   round_trip(element_capture(node("div", [], undefined, { quid: "000000004" })));
-  const duplicate = fragment_capture([
+  const duplicate = multiNodeDocument_capture([
     node("div", [], undefined, { quid: "000000005" }),
     node("span", [], undefined, { quid: "000000005" }),
   ]);
@@ -453,9 +453,9 @@ check("record insertion order does not affect deterministic payload text", () =>
 });
 
 check("ordered content and semantic capture differences remain distinguishable", () => {
-  const first = fragment_capture([node("a"), node("b")], 12);
-  const reordered = fragment_capture([node("b"), node("a")], 12);
-  const otherRevision = fragment_capture([node("a"), node("b")], 13);
+  const first = multiNodeDocument_capture([node("a"), node("b")], 12);
+  const reordered = multiNodeDocument_capture([node("b"), node("a")], 12);
+  const otherRevision = multiNodeDocument_capture([node("a"), node("b")], 13);
   const typed = element_capture(node("div", [], { value: 0 }), 12);
   const typedString = element_capture(node("div", [], { value: "0" }), 12);
   assert.equal(canonical_hson_graph_equal(first.root, reordered.root), false);
@@ -464,7 +464,7 @@ check("ordered content and semantic capture differences remain distinguishable",
   assert.notEqual(encode_view_state_snapshot(typed).payload, encode_view_state_snapshot(typedString).payload);
   assert.notEqual(
     encode_view_state_snapshot(element_capture(node("div"), 12)).payload,
-    encode_view_state_snapshot(fragment_capture([node("div"), node("span")], 12)).payload,
+    encode_view_state_snapshot(multiNodeDocument_capture([node("div"), node("span")], 12)).payload,
   );
 });
 
@@ -550,7 +550,7 @@ check("semantically valid noncanonical Hson is rejected after deterministic re-e
 check("decode rejects duplicate and malformed persisted QUIDs without exposing identity", () => {
   const firstQuid = "000000010";
   const secondQuid = "000000011";
-  const duplicateSource = encode_view_state_snapshot(fragment_capture([
+  const duplicateSource = encode_view_state_snapshot(multiNodeDocument_capture([
     node("div", [], undefined, { quid: firstQuid }),
     node("span", [], undefined, { quid: secondQuid }),
   ]));

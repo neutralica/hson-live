@@ -16,7 +16,7 @@ function must_document_livemap(
   map: ReturnType<typeof make_classified_livemap>,
   source: string,
 ): DocumentLiveMap {
-  if (map.mode === "element" || map.mode === "fragment") return map;
+  if (map.mode === "document") return map;
   throw new Error(`LiveMap ${source} HTML construction produced unexpected root mode ${map.mode}.`);
 }
 

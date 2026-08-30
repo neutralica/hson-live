@@ -42,11 +42,9 @@ capture.root;    // detached canonical Hson graph
 ### Document capture
 
 ```ts
-type DocumentLiveMapCapture<
-  TMode extends "element" | "fragment" = "element" | "fragment",
-> = Readonly<{
+type DocumentLiveMapCapture = Readonly<{
   kind: "hson-document";
-  mode: TMode;
+  mode: "document";
   rev: number;
   root: HsonNode;
 }>;

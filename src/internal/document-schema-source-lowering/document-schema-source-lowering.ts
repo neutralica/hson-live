@@ -181,7 +181,7 @@ function provenance_path(
         ? physical.ownerPath
         : undefined;
   if (path === undefined) return undefined;
-  return Object.freeze(mode === "element" ? [0, ...path] : [...path]);
+  return Object.freeze([0, ...path]);
 }
 
 function node_range(

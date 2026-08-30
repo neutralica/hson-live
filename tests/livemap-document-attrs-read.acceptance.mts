@@ -7,8 +7,6 @@ import {
 } from "../src/index.ts";
 import type {
   DocumentLiveMap,
-  ElementLiveMap,
-  FragmentLiveMap,
   LiveMapDocumentTarget,
 } from "../src/types/livemap.types.ts";
 import { internal_livemap_root } from "../src/api/livemap/livemap.internal.ts";
@@ -20,15 +18,15 @@ function check(name: string, fn: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-function element(source: string): ElementLiveMap {
+function element(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error(`expected element, observed ${map.mode}`);
+  if (map.mode !== "document") throw new Error(`expected element, observed ${map.mode}`);
   return map;
 }
 
-function fragment(source: string): FragmentLiveMap {
+function multiNodeDocument(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "fragment") throw new Error(`expected fragment, observed ${map.mode}`);
+  if (map.mode !== "document") throw new Error(`expected multiNodeDocument, observed ${map.mode}`);
   return map;
 }
 
@@ -102,11 +100,11 @@ check("has tests own-key presence without truthiness", () => {
 
 check("keys is lexical, public-only, fresh, and does not create absent storage", () => {
   const map = element(`<main @000000102/>`);
-  assert.equal(map.element.node().$_attrs, undefined);
+  assert.equal(map.root().$_attrs, undefined);
   const first = map.document.attrs.keys(path());
   assert.deepEqual(first, []);
   assert.equal(Object.isFrozen(first), true);
-  assert.equal(map.element.node().$_attrs, undefined);
+  assert.equal(map.root().$_attrs, undefined);
 
   map.document.attrs.replace(path(), {
     zeta: 1,
@@ -169,16 +167,16 @@ check("all reads share target and name validation", () => {
   );
 });
 
-check("fragment and element modes support root, nested, path, and QUID targets", () => {
+check("multiNodeDocument and element modes support root, nested, path, and QUID targets", () => {
   const elementMap = element(`<main id="root" <p title="nested" @000000103/>/>`);
   assert.equal(elementMap.document.attrs.get(path(), "id"), "root");
   assert.equal(elementMap.document.attrs.get(path(0, 0), "title"), "nested");
   assert.equal(elementMap.document.attrs.has(quid("000000103"), "title"), true);
 
-  const fragmentMap = fragment(`<section id="first" @000000104/> <aside title="second"/>`);
-  assert.equal(fragmentMap.document.attrs.get(path(0), "id"), "first");
-  assert.deepEqual(fragmentMap.document.attrs.keys(path(1)), ["title"]);
-  assert.equal(fragmentMap.document.attrs.must.get(quid("000000104"), "id"), "first");
+  const multiNodeDocumentMap = multiNodeDocument(`<section id="first" @000000104/> <aside title="second"/>`);
+  assert.equal(multiNodeDocumentMap.document.attrs.get(path(0), "id"), "first");
+  assert.deepEqual(multiNodeDocumentMap.document.attrs.keys(path(1)), ["title"]);
+  assert.equal(multiNodeDocumentMap.document.attrs.must.get(quid("000000104"), "id"), "first");
 });
 
 check("reads over absent attrs remain complete no-ops", () => {

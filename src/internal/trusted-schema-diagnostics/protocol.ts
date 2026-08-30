@@ -33,7 +33,7 @@ export type TrustedSchemaDirectSource = Readonly<{
   binding: TrustedSchemaSourceBinding;
 }>;
 
-export type TrustedSchemaRootMode = "projected" | "element" | "fragment";
+export type TrustedSchemaRootMode = "projected" | "document";
 export type TrustedSchemaAssociationEvidence = Readonly<{
   evaluationId?: string;
   mapFlow?: TrustedSchemaMapFlow;

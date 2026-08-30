@@ -117,7 +117,7 @@ Document maps
 
 A DocumentLiveMap exposes the Hson document graph directly, including:
 
-* elements and fragments;
+* ordered document content with one or many top-level nodes;
 * typed attributes;
 * ordered content;
 * structural identity;

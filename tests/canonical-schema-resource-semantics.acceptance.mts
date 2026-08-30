@@ -55,10 +55,10 @@ check("document content traversal has an independent budget", () => {
   const graph = verified({
     format: CANONICAL_SCHEMA_FORMAT,
     version: CANONICAL_SCHEMA_VERSION,
-    capabilities: { documentFragmentRoot: 0 },
-    nodes: [{ kind: "document-fragment-root", content: 1 }, { kind: "document-repeat", item: 2 }, { kind: "document-text" }],
+    capabilities: { documentRoot: 0 },
+    nodes: [{ kind: "document-root", content: 1 }, { kind: "document-repeat", item: 2 }, { kind: "document-text" }],
   });
-  assert.equal(exhausted(evaluate_canonical_document_schema(graph, parse_hson('"a" "b"', { allowTopLevelTextFragment: true }), "fragment", { maxContentItems: 1 })), true);
+  assert.equal(exhausted(evaluate_canonical_document_schema(graph, parse_hson('"a" "b"', { allowTopLevelDocumentText: true }), { maxContentItems: 1 })), true);
 });
 
 emit_hson_live_test_completion("canonical-schema-resource-semantics", checks, checks, 0);

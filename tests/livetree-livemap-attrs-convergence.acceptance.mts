@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { hson } from "../src/index.ts";
 import type { LiveTree } from "../src/api/livetree/livetree.ts";
-import type { ElementLiveMap } from "../src/types/livemap.types.ts";
+import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 
 let checks = 0;
@@ -12,15 +12,15 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-function owners(source = `<main a="one" b="two" selected/>`): { tree: LiveTree; map: ElementLiveMap } {
+function owners(source = `<main a="one" b="two" selected/>`): { tree: LiveTree; map: DocumentLiveMap } {
   const tree = hson.liveTree.fromHson(source);
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error("Expected ElementLiveMap");
+  if (map.mode !== "document") throw new Error("Expected DocumentLiveMap");
   return { tree, map };
 }
 
-function assertAttrsEqual(tree: LiveTree, map: ElementLiveMap): void {
-  assert.deepEqual(tree.node.$_attrs, map.element.node().$_attrs);
+function assertAttrsEqual(tree: LiveTree, map: DocumentLiveMap): void {
+  assert.deepEqual(tree.node.$_attrs, map.root().$_attrs);
   assert.deepEqual(tree.attrs.keys(), map.at([]).attrs.keys());
 }
 
@@ -90,7 +90,7 @@ check("same-name attrs and flags have identical reconstructed semantics", () => 
   tree.attrs.set("selected", "selected");
   map.at([]).flags.set("selected");
   assertAttrsEqual(tree, map);
-  const reconstructed = hson.liveTree.fromNode(structuredClone(map.element.node()));
+  const reconstructed = hson.liveTree.fromNode(structuredClone(map.root()));
   assert.equal(reconstructed.flags.has("selected"), true);
   assert.equal(reconstructed.attrs.get("selected"), "selected");
 });

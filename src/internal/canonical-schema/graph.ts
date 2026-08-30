@@ -22,8 +22,7 @@ export type CanonicalSchemaCapabilities = Readonly<{
   projectedRoot?: CanonicalSchemaNodeRef;
   documentItem?: CanonicalSchemaNodeRef;
   documentContent?: CanonicalSchemaNodeRef;
-  documentElementRoot?: CanonicalSchemaNodeRef;
-  documentFragmentRoot?: CanonicalSchemaNodeRef;
+  documentRoot?: CanonicalSchemaNodeRef;
   attrs?: CanonicalSchemaNodeRef;
 }>;
 
@@ -86,7 +85,7 @@ export type CanonicalDocumentSchemaNode =
   | Readonly<{ kind: "document-sequence"; items: readonly CanonicalSchemaNodeRef[] }>
   | Readonly<{ kind: "document-repeat"; item: CanonicalSchemaNodeRef; count?: number }>
   | Readonly<{ kind: "document-content-union"; choices: readonly CanonicalSchemaNodeRef[] }>
-  | Readonly<{ kind: "document-fragment-root"; content: CanonicalSchemaNodeRef }>
+  | Readonly<{ kind: "document-root"; content: CanonicalSchemaNodeRef }>
   | Readonly<{
     kind: "document-attrs";
     exact: boolean;
@@ -121,8 +120,7 @@ export const CANONICAL_CAPABILITY_KEYS = Object.freeze([
   "projectedRoot",
   "documentItem",
   "documentContent",
-  "documentElementRoot",
-  "documentFragmentRoot",
+  "documentRoot",
   "attrs",
 ] as const);
 

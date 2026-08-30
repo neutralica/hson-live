@@ -4,7 +4,7 @@ import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { element } from "./helpers/reflect-unit6.mts";
 import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
 import type { HsonNode } from "../src/core/types.ts";
-import type { ElementLiveMap, LiveMapGraphCommit } from "../src/types/livemap.types.ts";
+import type { DocumentLiveMap, LiveMapGraphCommit } from "../src/types/livemap.types.ts";
 import { set_livemap_document_quid_candidate_source_for_tests } from "../src/api/livemap/livemap.document.registration.ts";
 
 const Q1 = "000002b01";
@@ -16,7 +16,7 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-const target = (...path: number[]) => Object.freeze({ kind: "path" as const, path: Object.freeze(path) });
+const target = (...path: number[]) => Object.freeze({ kind: "path" as const, path: Object.freeze([0, ...path]) });
 
 function ordinary(tag: string): HsonNode {
   return { $_tag: tag, $_content: [] };
@@ -28,13 +28,13 @@ function identified(source: string, ...path: number[]) {
   return { map, handle };
 }
 
-function fixedIdentity(map: ElementLiveMap): void {
+function fixedIdentity(map: DocumentLiveMap): void {
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
 }
 
 check("a new handle resolves its initial canonical path", () => {
   const { handle } = identified(`<main <a/> <b/>/>`, 0, 1);
-  assert.deepEqual(handle.path(), [0, 1]);
+  assert.deepEqual(handle.path(), [0, 0, 1]);
   assert.equal(Object.isFrozen(handle.path()), true);
 });
 
@@ -73,21 +73,21 @@ check("ordinary attribute mutation preserves handle activity", () => {
 check("insertion before an identified node shifts its resolved path", () => {
   const { map, handle } = identified(`<main <a/> <b/>/>`, 0, 1);
   map.document.content.insert(target(0), 0, ordinary("i"));
-  assert.deepEqual(handle.path(), [0, 2]);
+  assert.deepEqual(handle.path(), [0, 0, 2]);
   assert.equal(handle.snap()?.$_tag, "b");
 });
 
 check("forward move follows the same identified node", () => {
   const { map, handle } = identified(`<main <a/> <b/> <c/>/>`, 0, 0);
   map.document.content.move(target(0), 0, 2);
-  assert.deepEqual(handle.path(), [0, 2]);
+  assert.deepEqual(handle.path(), [0, 0, 2]);
   assert.equal(handle.snap()?.$_tag, "a");
 });
 
 check("backward move follows the same identified node", () => {
   const { map, handle } = identified(`<main <a/> <b/> <c/>/>`, 0, 2);
   map.document.content.move(target(0), 2, 0);
-  assert.deepEqual(handle.path(), [0, 0]);
+  assert.deepEqual(handle.path(), [0, 0, 0]);
 });
 
 check("removal retires the handle", () => {

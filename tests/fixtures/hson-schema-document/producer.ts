@@ -26,7 +26,7 @@ export const ListSchema: HsonSchema = Hson`
   >
 `;
 
-export const FragmentSchema: HsonSchema = Hson`
+export const DocumentSequenceSchema: HsonSchema = Hson`
   <
     type "document"
     defs <Item <tag "item" content "empty">>
@@ -35,8 +35,8 @@ export const FragmentSchema: HsonSchema = Hson`
 `;
 
 // @hson-schema generated type exports
-import type { FragmentSchemaType, FragmentSchemaHson } from "./producer.FragmentSchema.hson-schema.generated.js";
-export type { FragmentSchemaType, FragmentSchemaHson };
+import type { DocumentSequenceSchemaType, DocumentSequenceSchemaHson } from "./producer.DocumentSequenceSchema.hson-schema.generated.js";
+export type { DocumentSequenceSchemaType, DocumentSequenceSchemaHson };
 import type { ListSchemaType, ListSchemaHson } from "./producer.ListSchema.hson-schema.generated.js";
 export type { ListSchemaType, ListSchemaHson };
 import type { PageSchemaType, PageSchemaHson } from "./producer.PageSchema.hson-schema.generated.js";

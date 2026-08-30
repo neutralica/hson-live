@@ -30,7 +30,7 @@ The space before `/>` is optional. A construct may be inline or multiline:
 />
 ```
 
-Multiple top-level element nodes remain an `_hson_elem` fragment. Multiple top-level object values do not merge: one object pair must contain all sibling members. A sequence that mixes object and element values, such as `<a/><b 2>`, also rejects.
+Multiple top-level element nodes remain ordered document content beneath the parser-owned internal root. Multiple top-level object values do not merge: one object pair must contain all sibling members. A sequence that mixes object and element values, such as `<a/><b 2>`, also rejects.
 
 The same rule is recursive: `<wrapper <child/>/>` and `<record <field 2>>` are coherent, while object values beneath an element branch and element values beneath an object or array branch reject.
 
@@ -242,7 +242,7 @@ The former property-angle and anonymous-wrapper grammar has been removed. Adjace
 
 Serialization melts semantic `_hson_obj`, `_hson_elem`, `_hson_arr`, `_hson_ii`, `_hson_str`, and `_hson_val` nodes into syntax. `_hson_root` is different: it is an internal attachment carrier and every root rejects direct Hson serialization. Hson, JSON, and HTML source pipelines detach their parser-owned root before Hson output. A root supplied through `fromNode()` is not silently unwrapped. VSNs remain explicit in the IR and can appear literally in cross-format HTML/JSON where scaffolding is required to preserve structure.
 
-Hson output itself is VSN-free. Every semantic object value uses one object angle pair, arrays use array notation while their `_hson_ii` indexes are reconstructed from order, strings and scalar values use primitive notation, and element clusters use ordinary element-mode tags and fragments. The serializer never writes `_hson_*` tag spellings, `$_meta`, or array-index metadata as Hson source. Persisted QUID metadata is represented by the `@quid` header sigil only for eligible element nodes. Object-member metadata rejects.
+Hson output itself is VSN-free. Every semantic object value uses one object angle pair, arrays use array notation while their `_hson_ii` indexes are reconstructed from order, strings and scalar values use primitive notation, and document content uses ordinary element-mode tags in canonical order. The serializer never writes `_hson_*` tag spellings, `$_meta`, or array-index metadata as Hson source. Persisted QUID metadata is represented by the `@quid` header sigil only for eligible element nodes. Object-member metadata rejects.
 
 The canonical closure rule is semantic rather than byte-oriented:
 

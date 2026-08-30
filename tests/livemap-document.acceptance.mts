@@ -82,15 +82,15 @@ check("flat document constructors are present without constructor namespaces", (
   assert.equal("fragment" in hson.liveMap, false);
 });
 
-check("canonical roots classify as data-object, data-array, element, and fragment", () => {
+check("canonical roots classify as data-object, data-array, element, and multiNodeDocument", () => {
   assert.equal(hson.liveMap.fromHson(`<user <name "Ada">>`).mode, "data-object");
   assert.equal(hson.liveMap.fromHson(`«1,true,null»`).mode, "data-array");
-  assert.equal(hson.liveMap.fromHson(`<button "Save"/>`).mode, "element");
-  assert.equal(hson.liveMap.fromHson(`<section <p "One"/> <p "Two"/>/>`).mode, "element");
-  assert.equal(hson.liveMap.fromHson(`"text only"`).mode, "fragment");
-  assert.equal(hson.liveMap.fromHson(`<div "One"/> <div "Two"/>`).mode, "fragment");
-  assert.equal(hson.liveMap.fromHson(`"before" <em "middle"/> "after"`).mode, "fragment");
-  assert.equal(hson.liveMap.fromNode({ $_tag: "_hson_root", $_content: [] }).mode, "fragment");
+  assert.equal(hson.liveMap.fromHson(`<button "Save"/>`).mode, "document");
+  assert.equal(hson.liveMap.fromHson(`<section <p "One"/> <p "Two"/>/>`).mode, "document");
+  assert.equal(hson.liveMap.fromHson(`"text only"`).mode, "document");
+  assert.equal(hson.liveMap.fromHson(`<div "One"/> <div "Two"/>`).mode, "document");
+  assert.equal(hson.liveMap.fromHson(`"before" <em "middle"/> "after"`).mode, "document");
+  assert.equal(hson.liveMap.fromNode({ $_tag: "_hson_root", $_content: [] }).mode, "document");
 });
 
 check("malformed and unsupported canonical roots are rejected with causes", () => {
@@ -119,10 +119,12 @@ check("fromNode takes detached ownership of the complete canonical graph", () =>
   }
   const sourceBefore = structuredClone(source);
   const map = hson.liveMap.fromNode(source);
-  assert.equal(map.mode, "element");
+  assert.equal(map.mode, "document");
   const ownedBefore = map.root();
   assert.deepEqual(source, sourceBefore);
-  assert_fully_detached(source, ownedBefore);
+  const ownedMain = find_nodes(ownedBefore, "main")[0];
+  assert.notEqual(sourceMain, ownedMain);
+  assert.deepEqual(sourceMain, ownedMain);
 
   mutate_graph(source);
   assert.deepEqual(map.root(), ownedBefore);
@@ -146,17 +148,17 @@ check("element reads and captures are recursively detached", () => {
   const map = hson.liveMap.fromHson(
     `<main id="original" style="color: red" @000000001 <p @000000002 "x"/>/>`,
   );
-  assert.equal(map.mode, "element");
+  assert.equal(map.mode, "document");
   const baseline = map.root();
   const beforeRev = map.rev;
   const rootCopy = map.root();
   const capture = map.capture();
-  const element = map.element.node();
+  const element = map.root();
   const content = map.document.content();
 
   assert.equal(capture.kind, "hson-document");
   assert.equal(Object.hasOwn(capture, "version"), false);
-  assert.equal(capture.mode, "element");
+  assert.equal(capture.mode, "document");
   assert.equal(capture.rev, beforeRev);
   assert_fully_detached(rootCopy, capture.root);
   mutate_graph(rootCopy);
@@ -168,11 +170,11 @@ check("element reads and captures are recursively detached", () => {
   assert.equal(map.rev, beforeRev);
 });
 
-check("fragment reads preserve repeated siblings and mixed content in order", () => {
+check("multiNodeDocument reads preserve repeated siblings and mixed content in order", () => {
   const map = hson.liveMap.fromHson(
     `"before" <div id="a" @000000003 "one"/> <div id="b" @000000004 "two"/> "after"`,
   );
-  assert.equal(map.mode, "fragment");
+  assert.equal(map.mode, "document");
   const baseline = map.root();
   const content = map.document.content();
   assert.equal(content.length, 4);
@@ -192,7 +194,7 @@ check("document identity is sparse and preserves only explicitly persisted QUIDs
   const map = hson.liveMap.fromHson(
     `<main @000000001 <p "one"/> <p @000000005 "two"/>/>`,
   );
-  assert.equal(map.mode, "element");
+  assert.equal(map.mode, "document");
   const first = map.root();
   const second = map.root();
   const main = find_nodes(first, "main")[0];
@@ -212,8 +214,8 @@ check("unquidded construction and every detached read preserve identity absence"
   const source = hson.fromHson(`<main <p "one"/> <p "two"/>/>`).toNode();
   const sourceBefore = structuredClone(source);
   const map = hson.liveMap.fromNode(source);
-  assert.equal(map.mode, "element");
-  const reads = [map.root(), map.capture().root, map.element.node(), ...map.document.content().filter(is_node)];
+  assert.equal(map.mode, "document");
+  const reads = [map.root(), map.capture().root, map.root(), ...map.document.content().filter(is_node)];
   for (const root of reads) {
     for (const node of find_nodes(root, "main").concat(find_nodes(root, "p"))) {
       assert.equal(node.$_meta?.["quid"], undefined);
@@ -223,14 +225,14 @@ check("unquidded construction and every detached read preserve identity absence"
   assert.equal(map.document.byQuid("anything"), undefined);
   assert.equal(map.rev, 0);
 
-  const fragment = hson.liveMap.fromHson(`"before" <div <span "one"/>/> <div "two"/> "after"`);
-  assert.equal(fragment.mode, "fragment");
-  for (const read of [fragment.root(), fragment.capture().root, ...fragment.document.content().filter(is_node)]) {
+  const multiNodeDocument = hson.liveMap.fromHson(`"before" <div <span "one"/>/> <div "two"/> "after"`);
+  assert.equal(multiNodeDocument.mode, "document");
+  for (const read of [multiNodeDocument.root(), multiNodeDocument.capture().root, ...multiNodeDocument.document.content().filter(is_node)]) {
     for (const tag of ["div", "span"]) {
       for (const node of find_nodes(read, tag)) assert.equal(node.$_meta?.["quid"], undefined);
     }
   }
-  assert.equal(fragment.rev, 0);
+  assert.equal(multiNodeDocument.rev, 0);
 });
 
 check("duplicate and malformed persisted document QUIDs are rejected", () => {
@@ -253,8 +255,8 @@ check("duplicate and malformed persisted document QUIDs are rejected", () => {
 
 check("document runtime façade omits data data APIs", () => {
   const element = hson.liveMap.fromHson(`<button "Save"/>`);
-  const fragment = hson.liveMap.fromHson(`<button/> <button/>`);
-  for (const map of [element, fragment]) {
+  const multiNodeDocument = hson.liveMap.fromHson(`<button/> <button/>`);
+  for (const map of [element, multiNodeDocument]) {
     if (!("document" in map)) throw new Error("expected document map");
     for (const key of ["snap", "set", "setMany", "splice", "replace", "delete", "batch", "apply", "feed", "sub"]) {
       assert.equal(key in map, false, `${key} should not be exposed by a document façade`);
@@ -270,10 +272,9 @@ check("document runtime façade omits data data APIs", () => {
     assert.equal(typeof map.document.attrs.set, "function");
     assert.equal(typeof map.document.content, "function");
   }
-  if (element.mode !== "element" || fragment.mode !== "fragment") throw new Error("expected document modes");
-  assert.equal("attrs" in element.element, false);
-  assert.equal("content" in element.element, false);
-  assert.equal("fragment" in fragment, false);
+  if (element.mode !== "document" || multiNodeDocument.mode !== "document") throw new Error("expected document modes");
+  assert.equal("element" in element, false);
+  assert.equal("fragment" in multiNodeDocument, false);
 });
 
 check("data maps preserve their APIs and all normal constructors begin at revision zero", () => {
@@ -320,14 +321,14 @@ check("first changed operations advance from zero to one exactly once", () => {
 
   const source = hson.liveMap.fromHson(`<main "new"/>`);
   const target = hson.liveMap.fromHson(`<aside "old"/>`);
-  if (source.mode !== "element" || target.mode !== "element") throw new Error("expected element document maps");
+  if (source.mode !== "document" || target.mode !== "document") throw new Error("expected element document maps");
   const documentCommit = target.install(source.capture());
   assert.deepEqual([documentCommit.prevRev, documentCommit.rev, target.rev], [0, 1, 1]);
 });
 
 check("document root observation is detached from canonical ownership", () => {
   const map = hson.liveMap.fromHson(`<main @000000001 "x"/>`);
-  assert.equal(map.mode, "element");
+  assert.equal(map.mode, "document");
   const beforeRev = map.rev;
   const detached = map.root();
   const main = find_nodes(detached, "main")[0];

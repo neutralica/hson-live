@@ -5,11 +5,10 @@ import { is_Node } from "../src/core/node-guards.ts";
 import { LiveMapDocumentStagingError, LiveMapReplayInputError } from "../src/api/livemap/livemap.error.ts";
 import type {
   DocumentLiveMap,
-  ElementLiveMap,
-  FragmentLiveMap,
   LiveMapGraphCommit,
   LiveMapGraphOp,
 } from "../src/types/livemap.types.ts";
+import type { HsonNode } from "../src/core/types.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 
 let checks = 0;
@@ -19,15 +18,15 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-function element(source: string): ElementLiveMap {
+function element(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error("Expected element map");
+  if (map.mode !== "document") throw new Error("Expected element map");
   return map;
 }
 
-function fragment(source: string): FragmentLiveMap {
+function multiNodeDocument(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "fragment") throw new Error("Expected fragment map");
+  if (map.mode !== "document") throw new Error("Expected multiNodeDocument map");
   return map;
 }
 
@@ -45,21 +44,27 @@ function replay(map: DocumentLiveMap, ops: readonly LiveMapGraphOp[]): LiveMapGr
   }));
 }
 
-function tags(map: FragmentLiveMap): readonly string[] {
+function tags(map: DocumentLiveMap): readonly string[] {
   return map.document.content().map((item) => is_Node(item) ? item.$_tag : String(item));
 }
 
+const ordinary = (source: string): HsonNode => {
+  const value = element(source).at([]).snap();
+  if (!is_Node(value)) throw new Error("Expected ordinary document element");
+  return value;
+};
+
 check("operation zero is interpreted against commit.prevRev", () => {
-  const map = fragment(`<a/> <guard/>`);
+  const map = multiNodeDocument(`<a/> <guard/>`);
   replay(map, [{ domain: "graph", op: "set-attr", target: target(0), name: "id", value: "first" }]);
   assert.equal(map.document.attrs.get({ kind: "path", path: [0] }, "id"), "first");
   assert.equal(map.rev, 1);
 });
 
 check("insert followed by mutation resolves the inserted node at ordinal one", () => {
-  const map = fragment(`<a/> <c/>`);
+  const map = multiNodeDocument(`<a/> <c/>`);
   replay(map, [
-    { domain: "graph", op: "insert-content", target: target(), index: 1, content: element(`<b/>`).element.node() },
+    { domain: "graph", op: "insert-content", target: target(), index: 1, content: ordinary(`<b/>`) },
     { domain: "graph", op: "set-attr", target: target(1), name: "id", value: "inserted" },
   ]);
   assert.deepEqual(tags(map), ["a", "b", "c"]);
@@ -67,9 +72,9 @@ check("insert followed by mutation resolves the inserted node at ordinal one", (
 });
 
 check("insertion shifts old siblings before later ordinal paths resolve", () => {
-  const map = fragment(`<a/> <b/>`);
+  const map = multiNodeDocument(`<a/> <b/>`);
   replay(map, [
-    { domain: "graph", op: "insert-content", target: target(), index: 0, content: element(`<x/>`).element.node() },
+    { domain: "graph", op: "insert-content", target: target(), index: 0, content: ordinary(`<x/>`) },
     { domain: "graph", op: "set-attr", target: target(1), name: "id", value: "old-a" },
   ]);
   assert.deepEqual(tags(map), ["x", "a", "b"]);
@@ -77,7 +82,7 @@ check("insertion shifts old siblings before later ordinal paths resolve", () => 
 });
 
 check("delete followed by mutation resolves the shifted sibling", () => {
-  const map = fragment(`<a/> <b/> <c/>`);
+  const map = multiNodeDocument(`<a/> <b/> <c/>`);
   replay(map, [
     { domain: "graph", op: "remove-content", target: target(), index: 0 },
     { domain: "graph", op: "set-attr", target: target(0), name: "id", value: "shifted-b" },
@@ -87,7 +92,7 @@ check("delete followed by mutation resolves the shifted sibling", () => {
 });
 
 check("move followed by mutation resolves the final destination", () => {
-  const map = fragment(`<a/> <b/> <c/>`);
+  const map = multiNodeDocument(`<a/> <b/> <c/>`);
   replay(map, [
     { domain: "graph", op: "move-content", target: target(), from: 0, to: 2 },
     { domain: "graph", op: "set-attr", target: target(2), name: "id", value: "moved-a" },
@@ -97,9 +102,9 @@ check("move followed by mutation resolves the final destination", () => {
 });
 
 check("replacement followed by access to the replacement is staged", () => {
-  const map = fragment(`<a/> <c/>`);
+  const map = multiNodeDocument(`<a/> <c/>`);
   replay(map, [
-    { domain: "graph", op: "replace-content", target: target(), index: 0, replacement: element(`<b/>`).element.node() },
+    { domain: "graph", op: "replace-content", target: target(), index: 0, replacement: ordinary(`<b/>`) },
     { domain: "graph", op: "set-attr", target: target(0), name: "id", value: "replacement" },
   ]);
   assert.deepEqual(tags(map), ["b", "c"]);
@@ -107,10 +112,10 @@ check("replacement followed by access to the replacement is staged", () => {
 });
 
 check("replacement followed by access beyond its new descendants rejects", () => {
-  const map = fragment(`<a <span/>/> <c/>`);
+  const map = multiNodeDocument(`<a <span/>/> <c/>`);
   const before = map.capture();
   assert.throws(() => replay(map, [
-    { domain: "graph", op: "replace-content", target: target(), index: 0, replacement: element(`<b/>`).element.node() },
+    { domain: "graph", op: "replace-content", target: target(), index: 0, replacement: ordinary(`<b/>`) },
     { domain: "graph", op: "set-attr", target: target(0, 0), name: "id", value: "invalid" },
   ]), (error: unknown) => error instanceof LiveMapDocumentStagingError
     && error.opIndex === 1
@@ -123,8 +128,8 @@ check("replace-root is rejected when followed by another operation", () => {
   const replacement = element(`<article/>`).root();
   const before = map.capture();
   assert.throws(() => replay(map, [
-    { domain: "graph", op: "replace-root", mode: "element", root: replacement },
-    { domain: "graph", op: "set-attr", target: target(), name: "id", value: "bad" },
+    { domain: "graph", op: "replace-root", mode: "document", root: replacement },
+    { domain: "graph", op: "set-attr", target: target(0), name: "id", value: "bad" },
   ]), (error: unknown) => error instanceof LiveMapReplayInputError
     && error.opIndex === 0
     && error.reasonCode === "ROOT_OPERATION_COMPOSITION");
@@ -135,8 +140,8 @@ check("replace-root is rejected when preceded by another operation", () => {
   const map = element(`<main/>`);
   const replacement = element(`<article/>`).root();
   assert.throws(() => replay(map, [
-    { domain: "graph", op: "set-attr", target: target(), name: "id", value: "bad" },
-    { domain: "graph", op: "replace-root", mode: "element", root: replacement },
+    { domain: "graph", op: "set-attr", target: target(0), name: "id", value: "bad" },
+    { domain: "graph", op: "replace-root", mode: "document", root: replacement },
   ]), (error: unknown) => error instanceof LiveMapReplayInputError
     && error.opIndex === 1
     && error.reasonCode === "ROOT_OPERATION_COMPOSITION");
@@ -144,43 +149,43 @@ check("replace-root is rejected when preceded by another operation", () => {
 });
 
 check("forward move uses final-position-after-removal semantics", () => {
-  const map = fragment(`<a/> <b/> <c/> <d/>`);
+  const map = multiNodeDocument(`<a/> <b/> <c/> <d/>`);
   replay(map, [{ domain: "graph", op: "move-content", target: target(), from: 1, to: 3 }]);
   assert.deepEqual(tags(map), ["a", "c", "d", "b"]);
 });
 
 check("backward move uses final-position-after-removal semantics", () => {
-  const map = fragment(`<a/> <b/> <c/> <d/>`);
+  const map = multiNodeDocument(`<a/> <b/> <c/> <d/>`);
   replay(map, [{ domain: "graph", op: "move-content", target: target(), from: 3, to: 1 }]);
   assert.deepEqual(tags(map), ["a", "d", "b", "c"]);
 });
 
 check("adjacent forward move swaps the two final positions", () => {
-  const map = fragment(`<a/> <b/> <c/>`);
+  const map = multiNodeDocument(`<a/> <b/> <c/>`);
   replay(map, [{ domain: "graph", op: "move-content", target: target(), from: 0, to: 1 }]);
   assert.deepEqual(tags(map), ["b", "a", "c"]);
 });
 
 check("adjacent backward move swaps the two final positions", () => {
-  const map = fragment(`<a/> <b/> <c/>`);
+  const map = multiNodeDocument(`<a/> <b/> <c/>`);
   replay(map, [{ domain: "graph", op: "move-content", target: target(), from: 1, to: 0 }]);
   assert.deepEqual(tags(map), ["b", "a", "c"]);
 });
 
 check("first-to-last move uses the last existing index", () => {
-  const map = fragment(`<a/> <b/> <c/>`);
+  const map = multiNodeDocument(`<a/> <b/> <c/>`);
   replay(map, [{ domain: "graph", op: "move-content", target: target(), from: 0, to: 2 }]);
   assert.deepEqual(tags(map), ["b", "c", "a"]);
 });
 
 check("last-to-first move uses zero as the final destination", () => {
-  const map = fragment(`<a/> <b/> <c/>`);
+  const map = multiNodeDocument(`<a/> <b/> <c/>`);
   replay(map, [{ domain: "graph", op: "move-content", target: target(), from: 2, to: 0 }]);
   assert.deepEqual(tags(map), ["c", "a", "b"]);
 });
 
 check("same-position move is invalid inside a changed replay commit", () => {
-  const map = fragment(`<a/> <b/>`);
+  const map = multiNodeDocument(`<a/> <b/>`);
   assert.throws(() => replay(map, [
     { domain: "graph", op: "move-content", target: target(), from: 1, to: 1 },
   ]), (error: unknown) => error instanceof LiveMapReplayInputError
@@ -190,19 +195,19 @@ check("same-position move is invalid inside a changed replay commit", () => {
 });
 
 check("move preserves the complete moved subtree", () => {
-  const map = fragment(`<a <span id="child"/>/> <b/>`);
+  const map = multiNodeDocument(`<a <span id="child"/>/> <b/>`);
   replay(map, [{ domain: "graph", op: "move-content", target: target(), from: 0, to: 1 }]);
   assert.equal(map.document.attrs.get({ kind: "path", path: [1, 0, 0] }, "id"), "child");
 });
 
 check("forward move shifts each intervening sibling exactly once", () => {
-  const map = fragment(`<a id="a"/> <b id="b"/> <c id="c"/> <d id="d"/>`);
+  const map = multiNodeDocument(`<a id="a"/> <b id="b"/> <c id="c"/> <d id="d"/>`);
   replay(map, [{ domain: "graph", op: "move-content", target: target(), from: 0, to: 3 }]);
   assert.deepEqual([0, 1, 2, 3].map((index) => map.document.attrs.get({ kind: "path", path: [index] }, "id")), ["b", "c", "d", "a"]);
 });
 
 check("backward move shifts each intervening sibling exactly once", () => {
-  const map = fragment(`<a id="a"/> <b id="b"/> <c id="c"/> <d id="d"/>`);
+  const map = multiNodeDocument(`<a id="a"/> <b id="b"/> <c id="c"/> <d id="d"/>`);
   replay(map, [{ domain: "graph", op: "move-content", target: target(), from: 3, to: 0 }]);
   assert.deepEqual([0, 1, 2, 3].map((index) => map.document.attrs.get({ kind: "path", path: [index] }, "id")), ["d", "a", "b", "c"]);
 });
@@ -210,14 +215,14 @@ check("backward move shifts each intervening sibling exactly once", () => {
 check("an unchanged attribute operation is invalid inside a changed commit", () => {
   const map = element(`<main id="same"/>`);
   assert.throws(() => replay(map, [
-    { domain: "graph", op: "set-attr", target: target(), name: "id", value: "same" },
+    { domain: "graph", op: "set-attr", target: target(0), name: "id", value: "same" },
   ]), (error: unknown) => error instanceof LiveMapReplayInputError
     && error.opIndex === 0
     && error.reasonCode === "UNCHANGED_STAGED_OPERATION");
 });
 
 check("a later ordinal failure leaves every earlier staged operation unapplied", () => {
-  const map = fragment(`<a/> <b/> <c/>`);
+  const map = multiNodeDocument(`<a/> <b/> <c/>`);
   const before = map.capture();
   assert.throws(() => replay(map, [
     { domain: "graph", op: "remove-content", target: target(), index: 0 },
@@ -227,7 +232,7 @@ check("a later ordinal failure leaves every earlier staged operation unapplied",
 });
 
 check("caller paths are never silently rebased between ordinals", () => {
-  const map = fragment(`<a id="a"/> <b id="b"/> <c id="c"/>`);
+  const map = multiNodeDocument(`<a id="a"/> <b id="b"/> <c id="c"/>`);
   replay(map, [
     { domain: "graph", op: "remove-content", target: target(), index: 0 },
     { domain: "graph", op: "set-attr", target: target(0), name: "title", value: "ordinal-path" },
@@ -237,8 +242,8 @@ check("caller paths are never silently rebased between ordinals", () => {
 });
 
 check("the same staged commit replays deterministically on equal roots", () => {
-  const left = fragment(`<a/> <b/> <c/>`);
-  const right = fragment(`<a/> <b/> <c/>`);
+  const left = multiNodeDocument(`<a/> <b/> <c/>`);
+  const right = multiNodeDocument(`<a/> <b/> <c/>`);
   const commit = replay(left, [
     { domain: "graph", op: "move-content", target: target(), from: 2, to: 0 },
     { domain: "graph", op: "set-attr", target: target(0), name: "id", value: "moved" },

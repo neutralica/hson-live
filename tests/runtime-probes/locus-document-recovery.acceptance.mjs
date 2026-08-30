@@ -51,13 +51,13 @@ function socket_pair() {
 
 function element(source) {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error(`Expected element, observed ${map.mode}`);
+  if (map.mode !== "document") throw new Error(`Expected element, observed ${map.mode}`);
   return map;
 }
 
-function fragment(source) {
+function multiNodeDocument(source) {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "fragment") throw new Error(`Expected fragment, observed ${map.mode}`);
+  if (map.mode !== "document") throw new Error(`Expected multiNodeDocument, observed ${map.mode}`);
   return map;
 }
 
@@ -143,7 +143,7 @@ async function expect_scripted_snapshot_failure(snapshotBody, expectedCode, forb
   pair.server.send(JSON.stringify({
     type: "recovery-snapshot",
     id: requestId,
-    snapshot: { logicalMapId, incarnationId, rev: headRev, mode: "element", ...snapshotBody },
+    snapshot: { logicalMapId, incarnationId, rev: headRev, mode: "document", ...snapshotBody },
   }));
   let observed;
   await assert.rejects(promise, (error) => {
@@ -159,7 +159,7 @@ async function expect_scripted_snapshot_failure(snapshotBody, expectedCode, forb
     commit: {
       logicalMapId,
       incarnationId,
-      mode: "element",
+      mode: "document",
       prevRev: headRev,
       rev: headRev + 1,
       ops: rejectedTail.ops,
@@ -173,12 +173,13 @@ async function expect_scripted_snapshot_failure(snapshotBody, expectedCode, forb
   return { client, error: observed };
 }
 
-const root = { kind: "path", path: [] };
+const root = { kind: "path", path: [0] };
+const documentRoot = { kind: "path", path: [] };
 
 await check("replace-attrs canonical history is detached and published exactly once", async () => {
   let observer;
   const fakeAuthority = {
-    mode: "element",
+    mode: "document",
     rev: 0,
     commits: {
       observe(listener) {
@@ -232,13 +233,13 @@ await check("existing element authority publishes detached graph history and rep
   const sourceCommit = await host.mutate((draft) => draft.document.attrs.set({ kind: "quid", quid: "000000002" }, "title", "kept"));
   const retained = host.stream.history.replay_after(0, 1);
   assert.equal(host.map, authority);
-  assert.equal(host.stream.mode, "element");
+  assert.equal(host.stream.mode, "document");
   assert.equal(retained?.length, 1);
   assert.notEqual(retained?.[0]?.ops, sourceCommit.ops);
   assert.deepEqual(retained?.[0]?.ops, sourceCommit.ops);
   assert.deepEqual(retained?.[0]?.ops[0]?.target, {
     kind: "path",
-    path: [0, 0],
+    path: [0, 0, 0],
     witness: { quid: "000000002" },
   });
 
@@ -247,17 +248,17 @@ await check("existing element authority publishes detached graph history and rep
   const result = await client.recovery.recover();
   assert.equal(result.strategy, "replay");
   assert.equal(client.map, mirror);
-  assert.equal(client.map.mode, "element");
+  assert.equal(client.map.mode, "document");
   assert.deepEqual(client.map.capture(), authority.capture());
   assert.equal(client.map.document.byQuid("000000002")?.$_attrs?.title, "kept");
 });
 
-await check("node-bearing fragment history is detached and incremental replay preserves QUID lookup", async () => {
+await check("node-bearing multiNodeDocument history is detached and incremental replay preserves QUID lookup", async () => {
   const initial = `<section @000000003 "old"/> "tail"`;
-  const authority = fragment(initial);
-  const host = hson.locus.create({ map: authority, logicalMapId: "document-fragment-replay" });
-  const replacement = element(`<article @000000004 "new"/>`).element.node();
-  const sourceCommit = await host.mutate((draft) => draft.document.content.replace(root, 0, replacement));
+  const authority = multiNodeDocument(initial);
+  const host = hson.locus.create({ map: authority, logicalMapId: "document-multiNodeDocument-replay" });
+  const replacement = element(`<article @000000004 "new"/>`).at([]).snap();
+  const sourceCommit = await host.mutate((draft) => draft.document.content.replace(documentRoot, 0, replacement));
   const retained = host.stream.history.replay_after(0, 1)?.[0];
   const sourceOp = sourceCommit.ops[0];
   const retainedOp = retained?.ops[0];
@@ -272,20 +273,20 @@ await check("node-bearing fragment history is detached and incremental replay pr
     new TextEncoder().encode(JSON.stringify(retained)).byteLength,
   );
 
-  const mirror = fragment(initial);
+  const mirror = multiNodeDocument(initial);
   const { client } = attach(host, mirror, { incarnationId: host.stream.incarnationId, lastAppliedRev: 0 });
   assert.equal((await client.recovery.recover()).strategy, "replay");
-  assert.equal(client.map.mode, "fragment");
+  assert.equal(client.map.mode, "document");
   assert.deepEqual(client.map.capture(), authority.capture());
   assert.equal(client.map.document.byQuid("000000004")?.$_tag, "article");
 });
 
 await check("insert-content history detaches canonical nodes from source commits and live graph", async () => {
   const initial = `<a/> <c/>`;
-  const authority = fragment(initial);
+  const authority = multiNodeDocument(initial);
   const host = hson.locus.create({ map: authority, logicalMapId: "document-insert-history" });
-  const content = element(`<b @00000001h/>`).element.node();
-  const sourceCommit = await host.mutate((draft) => draft.document.content.insert(root, 1, content));
+  const content = element(`<b @00000001h/>`).at([]).snap();
+  const sourceCommit = await host.mutate((draft) => draft.document.content.insert(documentRoot, 1, content));
   const retained = host.stream.history.replay_after(0, 1)?.[0];
   const sourceOp = sourceCommit.ops[0];
   const retainedOp = retained?.ops[0];
@@ -310,27 +311,27 @@ await check("element snapshot recovery restores exact revision, mode, and persis
   const { client } = attach(host, mirror);
   assert.equal((await client.recovery.recover()).strategy, "snapshot");
   assert.equal(client.map, mirror);
-  assert.equal(client.map.mode, "element");
+  assert.equal(client.map.mode, "document");
   assert.equal(client.map.rev, host.stream.headRev);
   assert.deepEqual(client.map.capture(), authority.capture());
   assert.equal(client.map.document.byQuid("000000005")?.$_tag, "main");
   assert.equal(client.map.document.byQuid("000000006")?.$_tag, "p");
 });
 
-await check("fragment snapshot recovery reconstructs fragment mode without JSON projection", async () => {
-  const authority = fragment(`"lead" <section @000000008/>`);
-  const host = hson.locus.create({ map: authority, logicalMapId: "document-fragment-snapshot" });
-  const mirror = fragment(`<div/> "old"`);
+await check("multiNodeDocument snapshot recovery reconstructs multiNodeDocument mode without JSON projection", async () => {
+  const authority = multiNodeDocument(`"lead" <section @000000008/>`);
+  const host = hson.locus.create({ map: authority, logicalMapId: "document-multiNodeDocument-snapshot" });
+  const mirror = multiNodeDocument(`<div/> "old"`);
   const { client, pair } = attach(host, mirror);
   assert.equal((await client.recovery.recover()).strategy, "snapshot");
-  assert.equal(client.map.mode, "fragment");
+  assert.equal(client.map.mode, "document");
   assert.deepEqual(client.map.capture(), authority.capture());
   assert.equal(client.map.document.byQuid("000000008")?.$_tag, "section");
   const messages = pair.serverSent.map(JSON.parse);
   const plan = messages.find((message) => message.type === "recovery-plan");
   const snapshot = messages.find((message) => message.type === "recovery-snapshot")?.snapshot;
   assert.deepEqual(plan.snapshotEncoding, { format: "view-state" });
-  assert.equal(snapshot?.mode, "fragment");
+  assert.equal(snapshot?.mode, "document");
   assert.equal(snapshot?.format, "view-state");
   assert.equal("formatVersion" in snapshot, false);
   assert.equal(typeof snapshot?.payload, "string");
@@ -556,7 +557,7 @@ await check("view-state element snapshot recovery preserves typed document state
   assert.equal(snapshot.mode, capture.mode);
   assert.equal(snapshot.rev, capture.rev);
   assert.equal(client.map, mirror);
-  assert.equal(client.map.mode, "element");
+  assert.equal(client.map.mode, "document");
   assert.equal(client.map.rev, capture.rev);
   assert.equal(canonical_hson_graph_equal(client.map.capture().root, capture.root), true);
   const restored = find_node(client.map.capture().root, "main");
@@ -568,13 +569,13 @@ await check("view-state element snapshot recovery preserves typed document state
   assert.equal(restored.$_meta["quid"], "000000041");
 });
 
-await check("view-state empty-fragment snapshot recovery preserves an otherwise unserializable root", async () => {
-  const logicalMapId = "view-state-empty-fragment";
+await check("view-state empty-multiNodeDocument snapshot recovery preserves an otherwise unserializable root", async () => {
+  const logicalMapId = "view-state-empty-multiNodeDocument";
   const authority = hson.liveMap.fromNode({ $_tag: "_hson_root", $_content: [] });
-  assert.equal(authority.mode, "fragment");
+  assert.equal(authority.mode, "document");
   const capture = authority.capture();
-  const host = hson.locus.create({ map: authority, logicalMapId, incarnationId: "view-state-empty-fragment-incarnation" });
-  const mirror = fragment(`"old"`);
+  const host = hson.locus.create({ map: authority, logicalMapId, incarnationId: "view-state-empty-multiNodeDocument-incarnation" });
+  const mirror = multiNodeDocument(`"old"`);
   const { client, pair } = attach(host, mirror);
 
   await client.recovery.recover();
@@ -582,7 +583,7 @@ await check("view-state empty-fragment snapshot recovery preserves an otherwise 
   assert.equal(snapshot.format, "view-state");
   assert.equal("hson" in snapshot, false);
   assert.equal(client.map, mirror);
-  assert.equal(client.map.mode, "fragment");
+  assert.equal(client.map.mode, "document");
   assert.equal(client.map.rev, capture.rev);
   assert.deepEqual(client.map.capture().root.$_content, []);
   assert.equal(canonical_hson_graph_equal(client.map.capture().root, capture.root), true);
@@ -640,7 +641,7 @@ await check("view-state snapshot mode and revision mismatches fail before restor
   const encoded = encode_view_state_snapshot(capture);
 
   await expect_scripted_snapshot_failure(
-    { rev: capture.rev, mode: "fragment", ...encoded },
+    { rev: capture.rev, mode: "data-object", ...encoded },
     "LOCUS_RECOVERY_SNAPSHOT_MODE_MISMATCH",
     ["mode-revision-secret", encoded.payload],
   );
@@ -696,7 +697,7 @@ await check("view-state codec failures are translated without payload disclosure
   const { client, error } = await expect_scripted_snapshot_failure(
     {
       rev: 0,
-      mode: "element",
+      mode: "document",
       format: "view-state",
       payload: privatePayload,
     },
@@ -744,7 +745,7 @@ await check("document history gap falls back to a same-mode snapshot", async () 
   await host.mutate((draft) => draft.document.attrs.set(root, "title", "two"));
   const { client } = attach(host, mirror, { incarnationId: host.stream.incarnationId, lastAppliedRev: 0 });
   assert.equal((await client.recovery.recover()).strategy, "snapshot");
-  assert.equal(client.map.mode, "element");
+  assert.equal(client.map.mode, "document");
   assert.deepEqual(client.map.capture(), authority.capture());
   assert.equal(client.map.document.byQuid("000000009")?.$_attrs?.title, "two");
 });
@@ -796,7 +797,7 @@ await check("document tracing summarizes domain, origin, mode, revision, and rec
   assert.deepEqual(publication?.details, {
     logicalMapId: "document-trace",
     incarnationId: host.stream.incarnationId,
-    mapMode: "element",
+    mapMode: "document",
     prevRev: 0,
     rev: 1,
     revision: 1,
@@ -845,7 +846,7 @@ await check("hosted document action carries action causation into commit publica
   assert.equal(publication?.details.sourceTraceId, rootEvent?.traceId);
   assert.equal(publication?.details.logicalMapId, "document-action-trace");
   assert.equal(publication?.details.incarnationId, "document-action-incarnation");
-  assert.equal(publication?.details.mapMode, "element");
+  assert.equal(publication?.details.mapMode, "document");
   assert.equal(publication?.details.prevRev, 0);
   assert.equal(publication?.details.rev, 1);
   assert.equal(JSON.stringify(events).includes("document-private-value"), false);

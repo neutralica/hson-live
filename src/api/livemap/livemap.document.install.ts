@@ -113,7 +113,7 @@ export function prepare_document_install(
   if (capture.kind !== "hson-document") {
     throw new LiveMapDocumentInstallError(`unsupported capture kind ${JSON.stringify(capture.kind)}`);
   }
-  if (capture.mode !== "element" && capture.mode !== "fragment") {
+  if (capture.mode !== "document") {
     throw new LiveMapDocumentInstallError(`unsupported capture mode ${JSON.stringify(capture.mode)}`);
   }
   if (!Number.isInteger(capture.rev) || capture.rev < 0) {
@@ -140,7 +140,7 @@ export function prepare_document_install(
     throw new LiveMapDocumentInstallError("capture root is malformed", { cause });
   }
 
-  if (observedMode !== "element" && observedMode !== "fragment") {
+  if (observedMode !== "document") {
     throw new LiveMapDocumentInstallError(
       `capture root classifies as ${observedMode}, not a document mode`,
     );

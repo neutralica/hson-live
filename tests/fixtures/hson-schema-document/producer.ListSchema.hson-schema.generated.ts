@@ -6,12 +6,13 @@ abstract class __ListSchemaD0ElementProof2 { declare private readonly __hsonSche
 abstract class __ListSchemaD0DefinitionProof3 { declare private readonly __hsonSchemaProof3: void; }
 abstract class __ListSchemaD1PrefixR0Proof4 { declare private readonly __hsonSchemaProof4: void; }
 abstract class __ListSchemaD1DefinitionProof5 { declare private readonly __hsonSchemaProof5: void; }
-abstract class __ListSchemaRootAttrsProof6 { declare private readonly __hsonSchemaProof6: void; }
-abstract class __ListSchemaRootContentRepeatProof7 { declare private readonly __hsonSchemaProof7: void; }
-abstract class __ListSchemaRootContentClusterProof8 { declare private readonly __hsonSchemaProof8: void; }
-abstract class __ListSchemaRootElementProof9 { declare private readonly __hsonSchemaProof9: void; }
-abstract class __ListSchemaHsonProof10 { declare private readonly __hsonSchemaProof10: void; }
+abstract class __ListSchemaRootContentS0AttrsProof6 { declare private readonly __hsonSchemaProof6: void; }
+abstract class __ListSchemaRootContentS0ContentRepeatProof7 { declare private readonly __hsonSchemaProof7: void; }
+abstract class __ListSchemaRootContentS0ContentClusterProof8 { declare private readonly __hsonSchemaProof8: void; }
+abstract class __ListSchemaRootContentS0ElementProof9 { declare private readonly __hsonSchemaProof9: void; }
+abstract class __ListSchemaRootDocumentProof10 { declare private readonly __hsonSchemaProof10: void; }
+abstract class __ListSchemaHsonProof11 { declare private readonly __hsonSchemaProof11: void; }
 type __ListSchemaDefinition0 = (Readonly<{ readonly $_tag: "item"; readonly $_attrs: Readonly<{ readonly code: string & __ListSchemaD0A0Proof0; }> & Readonly<Record<string, unknown>> & __ListSchemaD0AttrsProof1; readonly $_content: readonly []; }> & __ListSchemaD0ElementProof2) & __ListSchemaD0DefinitionProof3;
 type __ListSchemaDefinition1 = (string & __ListSchemaD1PrefixR0Proof4) & __ListSchemaD1DefinitionProof5;
-export type ListSchemaType = Readonly<{ readonly $_tag: "list"; readonly $_attrs?: Readonly<{  }> & Readonly<Record<string, unknown>> & __ListSchemaRootAttrsProof6; readonly $_content: readonly [Readonly<{ readonly $_tag: "_hson_elem"; readonly $_content: readonly [__ListSchemaDefinition0, __ListSchemaDefinition0] & __ListSchemaRootContentRepeatProof7; }> & __ListSchemaRootContentClusterProof8]; }> & __ListSchemaRootElementProof9;
-export type ListSchemaHson = HsonCanonical & __ListSchemaHsonProof10;
+export type ListSchemaType = Readonly<{ readonly $_tag: "_hson_root"; readonly $_content: readonly [Readonly<{ readonly $_tag: "list"; readonly $_attrs?: Readonly<{  }> & Readonly<Record<string, unknown>> & __ListSchemaRootContentS0AttrsProof6; readonly $_content: readonly [Readonly<{ readonly $_tag: "_hson_elem"; readonly $_content: readonly [__ListSchemaDefinition0, __ListSchemaDefinition0] & __ListSchemaRootContentS0ContentRepeatProof7; }> & __ListSchemaRootContentS0ContentClusterProof8]; }> & __ListSchemaRootContentS0ElementProof9]; }> & __ListSchemaRootDocumentProof10;
+export type ListSchemaHson = HsonCanonical & __ListSchemaHsonProof11;

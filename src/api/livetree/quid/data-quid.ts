@@ -285,7 +285,9 @@ export function admit_livetree_quid_graph_preserving_absence(
   root: HsonNode,
   runtime: LiveTreeRuntime = runtime_for_operation(root),
 ): string | undefined {
-  assert_livetree_quid_eligible(root, "admit linked");
+  // A linked document authority may be the internal `_hson_root` container.
+  // Its absence of identity is intentional; supplied claims remain restricted
+  // to eligible ordinary descendants by `unique_incoming_claims`.
   const claims = preflight_livetree_quid_graph(root, runtime);
   for (const claim of claims) {
     runtime.quidToNode.set(claim.quid, claim.node);

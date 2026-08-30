@@ -29,7 +29,7 @@ function deferred_gates() {
 
 function element(source = `<main @000000001/>`) {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error("expected element map");
+  if (map.mode !== "document") throw new Error("expected document map");
   return map;
 }
 
@@ -149,7 +149,7 @@ await check("exclusive document mutations preserve typed state and identity", as
   const map = element();
   const host = hson.locus.create({ map });
   assert.throws(
-    () => map.document.attrs.set({ kind: "path", path: [] }, "direct", true),
+    () => map.document.attrs.set({ kind: "path", path: [0] }, "direct", true),
     (cause) => cause instanceof LiveMapTransitionError && cause.code === "LIVEMAP_MANAGED_MUTATION_REJECTED",
   );
   const commit = await host.mutate((draft) => draft.document.attrs.setMany(
@@ -157,8 +157,8 @@ await check("exclusive document mutations preserve typed state and identity", as
     { hidden: false, nullable: null, style: { width: { value: 2, unit: "px" } } },
   ));
   assert.equal(commit.rev, 1);
-  assert.equal(map.document.attrs.get({ kind: "path", path: [] }, "hidden"), false);
-  assert.deepEqual(map.document.attrs.get({ kind: "path", path: [] }, "style"), { width: { value: 2, unit: "px" } });
+  assert.equal(map.document.attrs.get({ kind: "path", path: [0] }, "hidden"), false);
+  assert.deepEqual(map.document.attrs.get({ kind: "path", path: [0] }, "style"), { width: { value: 2, unit: "px" } });
   assert.equal(map.document.byQuid("000000001")?.$_tag, "main");
   assert.equal(host.stream.headRev, 1);
   host.dispose();
@@ -255,14 +255,14 @@ await check("built-in document actions use the exclusive queue", async () => {
     type: "action",
     id: "document-action",
     name: "document.attrs.set",
-    payload: { target: { kind: "path", path: [] }, name: "hidden", value: false },
+    payload: { target: { kind: "path", path: [0] }, name: "hidden", value: false },
   });
   await tick();
-  assert.equal(map.document.attrs.get({ kind: "path", path: [] }, "hidden"), undefined);
+  assert.equal(map.document.attrs.get({ kind: "path", path: [0] }, "hidden"), undefined);
   gates.calls[0].resolve();
   const response = await action;
   assert.equal(response.type, "ack");
-  assert.equal(map.document.attrs.get({ kind: "path", path: [] }, "hidden"), false);
+  assert.equal(map.document.attrs.get({ kind: "path", path: [0] }, "hidden"), false);
   host.dispose();
 });
 

@@ -216,7 +216,7 @@ function decoded_action_payload(value: unknown): JsonValue {
 }
 
 function is_document_live_map(map: LiveMapAuthority): map is DocumentLiveMap {
-  return (map.mode === "element" || map.mode === "fragment") && "document" in map;
+  return (map.mode === "document") && "document" in map;
 }
 
 function document_api(map: DocumentLiveMap): LiveMapDocumentApi {

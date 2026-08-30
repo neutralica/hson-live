@@ -206,7 +206,7 @@ function is_nonnegative_safe_integer(value: unknown): value is number {
 }
 
 function decode_mode(value: unknown): LiveMapRootMode | undefined {
-  if (value === "data-object" || value === "data-array" || value === "element" || value === "fragment") {
+  if (value === "data-object" || value === "data-array" || value === "document") {
     return value;
   }
   return undefined;
@@ -393,15 +393,14 @@ function decode_canonical_commit(value: unknown): LocusCanonicalCommit | undefin
   const rev = required_rev(value.rev);
   if (!logicalMapId || !incarnationId || mode === undefined || prevRev === undefined || rev !== prevRev + 1) return undefined;
   if (transportPresent && (
-    mode === "element"
-    || mode === "fragment"
+    mode === "document"
     || value.format !== "structural-json"
     || typeof value.payload !== "string"
   )) return undefined;
   if (!Array.isArray(value.ops) || value.ops.length === 0) return undefined;
   const ops: LocusCanonicalOp[] = [];
   for (const item of value.ops) {
-    const op = mode === "element" || mode === "fragment"
+    const op = mode === "document"
       ? decode_graph_op(item, mode)
       : is_record(item) && item.domain === "graph"
         ? decode_projected_identity_op(item)
@@ -432,7 +431,7 @@ export function decode_locus_canonical_commit(value: unknown): LocusCanonicalCom
 export function decode_locus_document_commit(
   commit: LocusCanonicalCommit,
 ): LocusDecodedDocumentCommit {
-  if (commit.mode !== "element" && commit.mode !== "fragment") {
+  if (commit.mode !== "document") {
     throw new Error("Locus canonical commit is not a document commit.");
   }
   const operations: LiveMapGraphOp[] = [];

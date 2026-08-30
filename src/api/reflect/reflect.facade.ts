@@ -1,5 +1,5 @@
 import type { JsonValue } from "../../core/types.js";
-import type { ElementLiveMap } from "../../types/livemap.types.js";
+import type { DocumentLiveMap } from "../../types/livemap.types.js";
 import type {
   CollectionReflect,
   CollectionReflectOptions,
@@ -14,13 +14,13 @@ import {
 
 /** Canonical LiveMap-authoritative reflector facade. */
 export interface Reflect {
-  (map: ElementLiveMap): DocumentReflect;
+  (map: DocumentLiveMap): DocumentReflect;
   collection: <TItem extends JsonValue>(
     options: CollectionReflectOptions<TItem>,
   ) => CollectionReflect<TItem>;
 }
 
-const reflectDocument = (map: ElementLiveMap): DocumentReflect =>
+const reflectDocument = (map: DocumentLiveMap): DocumentReflect =>
   reflect_document(map);
 
 export const hsonReflect: Reflect = Object.freeze(Object.assign(

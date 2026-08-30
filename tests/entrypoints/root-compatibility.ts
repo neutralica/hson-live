@@ -159,8 +159,6 @@ import type {
   DocumentLiveMapAttrsApi,
   DocumentLiveMapContentApi,
   LiveMapDocumentApi,
-  ElementLiveMap,
-  FragmentLiveMap,
   DocumentLiveMap,
   ClassifiedLiveMap,
   LiveMapAuthority,

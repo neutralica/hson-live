@@ -169,7 +169,7 @@ check("DOM projection failure does not roll back the canonical commit", () => {
   const commit = map.document.content.insert(path(0), 1, projected_element(`<b/>`));
   assert.equal(commit.changed, true);
   assert.equal(map.rev, 1);
-  assert.equal(raw_node(map.element.node(), [0]).$_content.length, 2);
+  assert.equal(raw_node(map.root(), [0]).$_content.length, 2);
   binding.dispose();
 });
 
@@ -264,7 +264,7 @@ check("legacy QUID input is translated before Reflection observes it", () => {
   const operation = observation.commit.ops[0];
   assert.ok(operation !== undefined && is_graph_operation(operation) && operation.op !== "replace-root");
   assert.equal(operation.target.kind, "path");
-  assert.equal(binding.tree.node.$_attrs?.legacy, true);
+  assert.equal(raw_node(binding.tree.node, []).$_attrs?.legacy, true);
   binding.dispose();
 });
 

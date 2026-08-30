@@ -138,7 +138,7 @@ function verify_node(
       exact_fields(node, ["kind", "item", "count"], path, fail); ref(node.item, "item");
       if (node.count !== undefined && (!Number.isSafeInteger(node.count) || (node.count as number) < 0)) fail([...path, "count"], "Repeat count must be a nonnegative safe integer.");
       break;
-    case "document-fragment-root":
+    case "document-root":
       exact_fields(node, ["kind", "content"], path, fail); ref(node.content, "content"); break;
     case "document-attrs":
       exact_fields(node, ["kind", "exact", "properties"], path, fail);
@@ -240,8 +240,7 @@ function verify_capability_domains(capabilities: UnknownRecord, nodes: readonly 
     projectedRoot: (kind) => PROJECTED_KINDS.has(kind),
     documentItem: (kind) => DOCUMENT_ITEM_KINDS.has(kind),
     documentContent: (kind) => DOCUMENT_CONTENT_KINDS.has(kind),
-    documentElementRoot: (kind) => kind === "document-element",
-    documentFragmentRoot: (kind) => kind === "document-fragment-root",
+    documentRoot: (kind) => kind === "document-root",
     attrs: (kind) => kind === "document-attrs",
   };
   for (const key of CANONICAL_CAPABILITY_KEYS) {
@@ -266,7 +265,7 @@ function verify_capability_domains(capabilities: UnknownRecord, nodes: readonly 
     if (raw.kind === "document-content-union") (raw.choices as unknown[] | undefined)?.forEach((ref) => check(ref, DOCUMENT_CONTENT_KINDS, "choices"));
     if (raw.kind === "document-sequence") (raw.items as unknown[] | undefined)?.forEach((ref) => check(ref, DOCUMENT_ITEM_KINDS, "items"));
     if (raw.kind === "document-repeat") check(raw.item, DOCUMENT_ITEM_KINDS, "item");
-    if (raw.kind === "document-fragment-root") check(raw.content, DOCUMENT_CONTENT_KINDS, "content");
+    if (raw.kind === "document-root") check(raw.content, DOCUMENT_CONTENT_KINDS, "content");
     if (raw.kind === "document-attrs") (raw.properties as CanonicalDocumentAttrProperty[] | undefined)?.forEach((prop) => { if (!prop.flag) check(prop.value, PROJECTED_KINDS, "properties.value"); });
   });
 }
@@ -313,7 +312,7 @@ function outgoing(node: UnknownRecord): readonly (readonly [string, unknown])[] 
     return edges;
   }
   if (node.kind === "document-repeat") return [["item", node.item]];
-  if (node.kind === "document-fragment-root") return [["content", node.content]];
+  if (node.kind === "document-root") return [["content", node.content]];
   if (node.kind === "document-attrs") return Array.isArray(node.properties) ? node.properties.flatMap((prop) => is_record(prop) && prop.flag === false ? [["properties", prop.value] as const] : []) : [];
   return [];
 }
@@ -323,7 +322,7 @@ function nonconsuming(node: UnknownRecord): readonly number[] {
   if (node.kind === "projected-ref" && Number.isInteger(node.target)) return [node.target as number];
   if (["projected-union", "document-item-union", "document-content-union"].includes(String(node.kind)) && Array.isArray(node.choices)) return node.choices.filter(Number.isInteger) as number[];
   if (node.kind === "document-element") return [node.attrs, node.content].filter(Number.isInteger) as number[];
-  if (node.kind === "document-fragment-root" && Number.isInteger(node.content)) return [node.content as number];
+  if (node.kind === "document-root" && Number.isInteger(node.content)) return [node.content as number];
   return [];
 }
 

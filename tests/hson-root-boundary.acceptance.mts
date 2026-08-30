@@ -196,7 +196,7 @@ check("single tagged element-side input detaches only _hson_root", () => {
   assert.equal((value.$_content[0] as HsonNode).$_tag, "a");
 });
 
-check("multiple tagged element-side inputs retain one _hson_elem fragment", () => {
+check("multiple tagged element-side inputs retain one _hson_elem content carrier", () => {
   const value = publicNode(`<a/><b/>`);
   assert.equal(value.$_tag, "_hson_elem");
   assert.deepEqual(value.$_content.map((child) => (child as HsonNode).$_tag), ["a", "b"]);
@@ -353,9 +353,9 @@ check("exact detachment rejects nonroot input", () => {
   assert.throws(() => detach_hson_root_value(node("_hson_obj")), /expected an internal _hson_root/);
 });
 
-check("exact detachment rejects malformed semantic content", () => {
-  const malformed = root(node("ordinary"));
-  assert.throws(() => detach_hson_root_value(malformed), /_hson_root child must be one of/);
+check("exact detachment accepts one ordinary document element", () => {
+  const ordinary = node("ordinary");
+  assert.equal(detach_hson_root_value(root(ordinary)), ordinary);
 });
 
 check("exact detachment does not unwrap a meaningful element cluster", () => {
@@ -390,7 +390,7 @@ check("root containing array rejects direct and fluent Hson egress", () => {
   assertRootEgressRejects(root(node("_hson_arr")));
 });
 
-check("root containing element fragment rejects direct and fluent Hson egress", () => {
+check("root containing an element content carrier rejects direct and fluent Hson egress", () => {
   assertRootEgressRejects(root(node("_hson_elem", [node("a")])));
 });
 
@@ -470,7 +470,7 @@ check("canonical equality remains root-sensitive", () => {
   assert.equal(canonical_hson_graph_equal(root(semantic), semantic), false);
 });
 
-check("top-level primitive fragments and arbitrary bare names remain invalid", () => {
+check("top-level primitive sequences and arbitrary bare names remain invalid", () => {
   assert.throws(() => publicNode(`"x" <a/>`), /top-level primitive must be the sole/);
   assert.throws(() => publicNode(`value`), /unexpected bare token/);
 });

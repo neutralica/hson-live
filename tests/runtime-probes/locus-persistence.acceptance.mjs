@@ -19,7 +19,7 @@ async function check(name, fn) {
 }
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
-const root = { kind: "path", path: [] };
+const root = { kind: "path", path: [0] };
 
 function deferred() {
   let resolve;
@@ -30,7 +30,7 @@ function deferred() {
 
 function element(source = `<main @000001001/>`) {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error("expected element map");
+  if (map.mode !== "document") throw new Error("expected document map");
   return map;
 }
 
@@ -318,7 +318,7 @@ await check("persistent store unload and checkpoint-plus-tail reload preserve ex
   await host.checkpoint();
   const inserted = {
     $_tag: "_hson_elem",
-    $_content: [element(`<section @000001011 style="display:block"/>`).element.node()],
+    $_content: [element(`<section @000001011 style="display:block"/>`).root().$_content[0]],
   };
   await host.mutate((draft) => draft.document.content.insert(root, 0, inserted));
   const persistedTail = adapter.state("persistent-reload").commits[0];

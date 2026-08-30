@@ -1,10 +1,10 @@
-import { ELEM_TAG, STR_TAG, VAL_TAG, HSON_META_QUID } from "../../core/constants.js";
+import { ELEM_TAG, STR_TAG, VAL_TAG, HSON_META_QUID, ROOT_TAG } from "../../core/constants.js";
 import { clone_node } from "../../core/clone-node.js";
 import { canonical_public_attrs_equal, decode_public_attrs } from "../../core/public-attrs.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import type { CanonicalPublicAttrs, HsonNode } from "../../core/types.js";
 import type {
-  ElementLiveMap,
+  DocumentLiveMap,
   LiveMapCommitObservation,
   LiveMapDisposer,
   LiveMapDocumentCommitTarget,
@@ -17,6 +17,7 @@ import { project_linked_livetree } from "../livetree/creation/project-live-tree.
 import type { LiveTree } from "../livetree/livetree.js";
 import {
   document_binding_for_node,
+  LiveTreeLinkedIdentityRequiredError,
   register_document_binding_node,
   unregister_document_binding_node,
   type DocumentBindingNodeRegistration,
@@ -62,7 +63,7 @@ import {
   plan_document_structural_transaction,
 } from "./reflect.document.structure.js";
 import {
-  document_element_from_root,
+  document_root_from_root,
   plan_document_root_convergence,
   type DocumentRootMaterial,
 } from "./reflect.document.root.js";
@@ -118,40 +119,40 @@ type ProjectedRegistration = Omit<DocumentBindingNodeRegistration, "canonicalTar
   node: HsonNode;
 }>;
 
-const ACTIVE_DOCUMENT_BINDINGS = new WeakSet<ElementLiveMap>();
+const ACTIVE_DOCUMENT_BINDINGS = new WeakSet<DocumentLiveMap>();
 
-/** Internal attribute-only proof that projects one ElementLiveMap into one LiveTree. */
+/** Internal attribute-only proof that projects one DocumentLiveMap into one LiveTree. */
 export function reflect_document(
-  map: ElementLiveMap,
+  map: DocumentLiveMap,
 ): DocumentReflect {
   return reflect_document_in_runtime(map, default_livetree_runtime());
 }
 
 /** Bind a document projection into an already-selected LiveTree runtime. @internal */
 export function reflect_document_in_runtime(
-  map: ElementLiveMap,
+  map: DocumentLiveMap,
   runtime: LiveTreeRuntime,
 ): DocumentReflect {
   if (ACTIVE_DOCUMENT_BINDINGS.has(map)) {
     throw new DocumentReflectError(
       DOCUMENT_REFLECT_ALREADY_BOUND_ERROR_CODE,
-      "ElementLiveMap already has an active document projection binding.",
+      "DocumentLiveMap already has an active document projection binding.",
     );
   }
   ACTIVE_DOCUMENT_BINDINGS.add(map);
 
   let capturedRevision: number;
-  let sourceElement: HsonNode;
+  let sourceRoot: HsonNode;
   try {
     capturedRevision = map.rev;
-    sourceElement = map.element.node();
+    sourceRoot = map.root();
   } catch (cause) {
     ACTIVE_DOCUMENT_BINDINGS.delete(map);
     throw as_binding_error(cause, DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE, "Initial document binding capture failed.");
   }
   let tree: LiveTree;
   try {
-    tree = create_linked_livetree_in_runtime(sourceElement, runtime);
+    tree = create_linked_livetree_in_runtime(sourceRoot, runtime);
   } catch (cause) {
     ACTIVE_DOCUMENT_BINDINGS.delete(map);
     throw as_binding_error(cause, DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE, "Initial LiveTree projection construction failed.");
@@ -173,6 +174,7 @@ export function reflect_document_in_runtime(
   let identityEffectsConsumed = 0;
   let off: LiveMapDisposer | undefined;
   let offIdentityParticipant: (() => void) | undefined;
+  let rootRegistration: DocumentBindingNodeRegistration | undefined;
 
   // Publish the fail-closed state before releasing callbacks so any cleanup
   // reentry observes a terminal binding and cannot delegate another mutation.
@@ -226,7 +228,10 @@ export function reflect_document_in_runtime(
 
   const canonical_node_for = (registration: ProjectedRegistration): HsonNode => {
     assert_delegation_ready(registration);
-    const canonical = resolve_raw_node(map.element.node(), registration.canonicalPath);
+    const canonical = resolve_raw_node(
+      map.root(),
+      registration.canonicalPath,
+    );
     if (canonical === undefined || !is_ordinary_element_node(canonical)) {
       throw new DocumentReflectError(
         DOCUMENT_REFLECT_DELEGATION_TARGET_INVALID_ERROR_CODE,
@@ -311,6 +316,10 @@ export function reflect_document_in_runtime(
     offIdentityParticipant?.();
     offIdentityParticipant = undefined;
     for (const registration of registrations) unregister_document_binding_node(registration.node, owner);
+    if (rootRegistration !== undefined) {
+      unregister_document_binding_node(tree.node, owner);
+      rootRegistration = undefined;
+    }
     byPath.clear();
     byQuid.clear();
     ACTIVE_DOCUMENT_BINDINGS.delete(map);
@@ -338,6 +347,31 @@ export function reflect_document_in_runtime(
       DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
       `Public LiveTree structural mutation ${operation} is unavailable while document-bound.`,
     );
+  };
+
+  const register_root_lifecycle = (): void => {
+    const root = tree.node;
+    const canonicalTarget: LiveMapDocumentCommitTarget = Object.freeze({
+      kind: "path",
+      path: validate_document_path([]),
+    });
+    rootRegistration = Object.freeze({
+      owner,
+      canonicalTarget,
+      canonicalPath: canonicalTarget.path,
+      requireCanonicalIdentity: (): never => {
+        throw new LiveTreeLinkedIdentityRequiredError("QUID access on internal document root");
+      },
+      delegateAttrs: (): never => reject_structural_mutation("mutate internal document-root attributes"),
+      delegateText: (): never => reject_structural_mutation("mutate internal document-root text"),
+      delegateEmpty: (): never => reject_structural_mutation("empty internal document root"),
+      delegateRemove: (): undefined => {
+        dispose_binding();
+        return undefined;
+      },
+      rejectStructuralMutation: reject_structural_mutation,
+    });
+    register_document_binding_node(root, rootRegistration);
   };
 
   const register = (node: HsonNode, canonicalPath: readonly number[]): void => {
@@ -804,7 +838,7 @@ export function reflect_document_in_runtime(
   ): void => {
     for (const registration of registrations) validate_bound_registration(registration);
     const outgoingRoot = tree.node;
-    const incomingRoot = clone_node(document_element_from_root(canonicalMaterial.root));
+    const incomingRoot = clone_node(document_root_from_root(canonicalMaterial.root));
     try {
       preflight_livetree_quid_epoch_replacement(
         incomingRoot,
@@ -820,7 +854,7 @@ export function reflect_document_in_runtime(
       );
     }
 
-    const outgoingElement = get_el_for_node(outgoingRoot);
+    const outgoingElement = mounted_document_anchor(outgoingRoot);
     const parent = outgoingElement?.parentNode;
     const nextSibling = outgoingElement?.nextSibling;
     const ownerDocument = outgoingElement?.ownerDocument;
@@ -829,6 +863,10 @@ export function reflect_document_in_runtime(
       : "html";
 
     currentStatus = "replacing";
+    if (rootRegistration !== undefined) {
+      unregister_document_binding_node(outgoingRoot, owner);
+      rootRegistration = undefined;
+    }
     for (const registration of registrations) unregister_document_binding_node(registration.node, owner);
     registrations = [];
     byPath.clear();
@@ -839,6 +877,7 @@ export function reflect_document_in_runtime(
     if (currentStatus !== "replacing") return;
 
     tree = create_linked_livetree_in_runtime(incomingRoot, runtime);
+    register_root_lifecycle();
     walk(tree.node, []);
     wholeCorrespondenceBuilds += 1;
     if (ownerDocument !== undefined) {
@@ -906,10 +945,10 @@ export function reflect_document_in_runtime(
 
   const apply_observation = (observation: LiveMapCommitObservation<LiveMapGraphOp>): void => {
     const evidence = livemap_document_observation_evidence(observation);
-    if (evidence === undefined || evidence.mode !== "element") {
+    if (evidence === undefined || evidence.mode !== "document") {
       throw new DocumentReflectError(
         DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE,
-        "ElementLiveMap observation reached Reflection without exact accepted-state evidence.",
+        "DocumentLiveMap observation reached Reflection without exact accepted-state evidence.",
       );
     }
     if (observation.kind === "snapshot") {
@@ -987,7 +1026,7 @@ export function reflect_document_in_runtime(
       for (const registration of registrations) validate_bound_registration(registration);
       const plan = plan_document_structural_transaction(
         tree.node,
-        document_element_from_root(evidence.root),
+        document_root_from_root(evidence.root),
         commit.ops,
         (node) => {
           const registration = document_binding_for_node(node);
@@ -1063,6 +1102,7 @@ export function reflect_document_in_runtime(
   };
 
   try {
+    register_root_lifecycle();
     walk(tree.node, []);
     wholeCorrespondenceBuilds += 1;
     // Identity preflight must exist before commit observation begins. The
@@ -1075,7 +1115,7 @@ export function reflect_document_in_runtime(
     if (map.rev !== capturedRevision) {
       throw new DocumentReflectError(
         DOCUMENT_REFLECT_REVISION_GAP_ERROR_CODE,
-        "ElementLiveMap revision changed during document binding initialization.",
+        "DocumentLiveMap revision changed during document binding initialization.",
       );
     }
     currentStatus = "active";
@@ -1084,6 +1124,10 @@ export function reflect_document_in_runtime(
     off = undefined;
     offIdentityParticipant?.();
     offIdentityParticipant = undefined;
+    if (rootRegistration !== undefined) {
+      unregister_document_binding_node(tree.node, owner);
+      rootRegistration = undefined;
+    }
     for (const registration of registrations) unregister_document_binding_node(registration.node, owner);
     const privateRoot = tree.node;
     dispose_node_deep(privateRoot, runtime);
@@ -1118,7 +1162,16 @@ export function reflect_document_in_runtime(
   return binding;
 }
 
-function read_map_attrs(map: ElementLiveMap, target: LiveMapDocumentCommitTarget): CanonicalPublicAttrs {
+function mounted_document_anchor(root: HsonNode): Element | undefined {
+  if (root.$_tag === ROOT_TAG) {
+    if (root.$_content.length !== 1) return undefined;
+    const only = root.$_content[0];
+    return is_ordinary_element_node(only) ? get_el_for_node(only) : undefined;
+  }
+  return is_ordinary_element_node(root) ? get_el_for_node(root) : undefined;
+}
+
+function read_map_attrs(map: DocumentLiveMap, target: LiveMapDocumentCommitTarget): CanonicalPublicAttrs {
   const values: Record<string, unknown> = {};
   for (const name of map.document.attrs.keys(target)) values[name] = map.document.attrs.must.get(target, name);
   const attrs = decode_public_attrs(values);
@@ -1135,7 +1188,7 @@ function read_document_root_attrs(
   root: HsonNode,
   target: LiveMapDocumentCommitTarget,
 ): CanonicalPublicAttrs {
-  const node = resolve_raw_node(document_element_from_root(root), target.path);
+  const node = resolve_raw_node(document_root_from_root(root), target.path);
   if (node === undefined || !is_ordinary_element_node(node)) {
     throw new DocumentReflectError(
       DOCUMENT_REFLECT_TARGET_MISSING_ERROR_CODE,

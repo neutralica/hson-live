@@ -120,8 +120,7 @@ const textEncoder = new TextEncoder();
 function is_mode(value: unknown): value is LiveMapRootMode {
   return value === "data-object"
     || value === "data-array"
-    || value === "element"
-    || value === "fragment";
+    || value === "document";
 }
 
 function is_revision(value: unknown): value is number {
@@ -129,7 +128,7 @@ function is_revision(value: unknown): value is number {
 }
 
 function is_document_map(map: ClassifiedLiveMap): map is DocumentLiveMap {
-  return map.mode === "element" || map.mode === "fragment";
+  return map.mode === "document";
 }
 
 function is_data_map(map: ClassifiedLiveMap): map is LiveMap<JsonValue | undefined> {
@@ -289,7 +288,7 @@ function map_from_snapshot(
 ): ClassifiedLiveMap {
   let root;
   try {
-    root = parse_hson(snapshot.hson, { allowTopLevelTextFragment: true });
+    root = parse_hson(snapshot.hson, { allowTopLevelDocumentText: true });
   } catch (cause) {
     throw new LocusBootstrapError(
       "LOCUS_BOOTSTRAP_STATE_INVALID",

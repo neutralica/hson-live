@@ -346,7 +346,7 @@ check("LiveTree and LiveMap accept the same valid QUID and reject the same malfo
 
   const mapNode = node("main", [], { [HSON_META_QUID]: valid });
   const mapGraph = node("_hson_root", [node("_hson_elem", [mapNode])]);
-  assert.deepEqual(build_livemap_document_identity_overlay(mapGraph, "element").pathForQuid(valid), []);
+  assert.deepEqual(build_livemap_document_identity_overlay(mapGraph, "document").pathForQuid(valid), []);
 
   for (const malformed of ["", "short", "00000001", "0000000001", "000000000001", "0000000000000001", "00000000I", "00000000-"]) {
     const malformedTreeNode = node("tree-bad", [], { [HSON_META_QUID]: malformed });
@@ -360,7 +360,7 @@ check("LiveTree and LiveMap accept the same valid QUID and reject the same malfo
     assert.throws(
       () => build_livemap_document_identity_overlay(
         node("_hson_root", [node("_hson_elem", [malformedMapNode])]),
-        "element",
+        "document",
       ),
       (cause) => cause instanceof LiveMapDocumentIdentityError
         && cause.code === "MALFORMED_QUID",
@@ -379,7 +379,7 @@ check("LiveTree and LiveMap both reject QUID-bearing VSNs and graph-local duplic
   assert.throws(
     () => build_livemap_document_identity_overlay(
       node("_hson_root", [node("_hson_elem", [node("main", [invalidVsn])])]),
-      "element",
+      "document",
     ),
     (cause) => cause instanceof LiveMapDocumentIdentityError
       && cause.code === "MALFORMED_QUID",
@@ -400,7 +400,7 @@ check("LiveTree and LiveMap both reject QUID-bearing VSNs and graph-local duplic
     node("b", [], { [HSON_META_QUID]: duplicateQ }),
   ])]);
   assert.throws(
-    () => build_livemap_document_identity_overlay(mapSource, "fragment"),
+    () => build_livemap_document_identity_overlay(mapSource, "document"),
     (cause) => cause instanceof LiveMapDocumentIdentityError
       && cause.code === "DUPLICATE_QUID",
   );
@@ -409,7 +409,7 @@ check("LiveTree and LiveMap both reject QUID-bearing VSNs and graph-local duplic
 check("LiveMap remains non-minting while LiveTree retains canonical minting", () => {
   const mapNode = node("unquidded");
   const mapGraph = node("_hson_root", [node("_hson_elem", [mapNode])]);
-  assert.equal(build_livemap_document_identity_overlay(mapGraph, "element").size, 0);
+  assert.equal(build_livemap_document_identity_overlay(mapGraph, "document").size, 0);
   assert.equal(mapNode.$_meta?.[HSON_META_QUID], undefined);
 
   const treeNode = node("minted");

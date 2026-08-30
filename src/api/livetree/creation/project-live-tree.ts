@@ -76,7 +76,7 @@ export function project_livetree(
   ownerDocument: Document = document,
 ): Node {
   const identityAuthority: ProjectionIdentityAuthority = is_Node(node)
-    && document_binding_for_node(node) !== undefined
+    && subtree_has_document_binding(node)
     ? "linked"
     : "standalone";
   return project_livetree_with_authority(
@@ -86,6 +86,11 @@ export function project_livetree(
     ownerDocument,
     identityAuthority,
   );
+}
+
+function subtree_has_document_binding(node: HsonNode): boolean {
+  if (document_binding_for_node(node) !== undefined) return true;
+  return node.$_content.some((child) => is_Node(child) && subtree_has_document_binding(child));
 }
 
 /** Project one Reflection-owned subtree without minting missing QUIDs. @internal */

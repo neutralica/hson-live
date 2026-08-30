@@ -269,7 +269,7 @@ function make_livemap_core_from_owned_root(
   const owned = make_default_livemap_library(prepared, initial.hsonSchema);
   const libraryRegistry = make_livemap_library_registry(owned);
   const initialMode = owned.mode;
-  if (initialMode !== "element" && initialMode !== "fragment") {
+  if (initialMode !== "document") {
     owned.projectedValue = must_projected_root_value(owned.root);
   }
   // Revision, transition, publication, and QUID identity authority stay on the
@@ -296,7 +296,7 @@ function make_livemap_core_from_owned_root(
   const documentWatchHub = make_livemap_watch_hub({
     clonePath: (path: readonly number[]): readonly number[] => Object.freeze([...path]),
     read: (path: readonly number[]) => {
-      if (initialMode !== "element" && initialMode !== "fragment") {
+      if (initialMode !== "document") {
         throw new Error("Document location watch is unavailable in data mode.");
       }
       return read_livemap_document_logical_location(owned.root, initialMode, path);
@@ -362,7 +362,7 @@ function make_livemap_core_from_owned_root(
     // first; ordinary observers then run in registration order. Reflection is
     // one such observer, so callbacks before its slot can observe the new
     // canonical revision while that downstream runtime projection is older.
-    const documentEvidence = initialMode === "element" || initialMode === "fragment"
+    const documentEvidence = initialMode === "document"
       ? Object.freeze({
         mode: initialMode,
         revision: commit.rev,
@@ -376,7 +376,7 @@ function make_livemap_core_from_owned_root(
       })
       : undefined;
     enqueuePublication(() => {
-      const watchFailure = initialMode === "element" || initialMode === "fragment"
+      const watchFailure = initialMode === "document"
         ? documentWatchHub.emitCommit(commit)
         : projectedWatchHub.emitCommit(commit);
       publish_livemap_after_watch(watchFailure, () => {
@@ -394,7 +394,7 @@ function make_livemap_core_from_owned_root(
     revision: number,
     continuity?: "same-epoch" | "new-epoch",
   ): void => {
-    const documentEvidence = initialMode === "element" || initialMode === "fragment"
+    const documentEvidence = initialMode === "document"
       ? Object.freeze({
         mode: initialMode,
         revision,
@@ -403,7 +403,7 @@ function make_livemap_core_from_owned_root(
       })
       : undefined;
     enqueuePublication(() => {
-      const watchFailure = initialMode === "element" || initialMode === "fragment"
+      const watchFailure = initialMode === "document"
         ? documentWatchHub.emitSnapshot()
         : projectedWatchHub.emitSnapshot();
       publish_livemap_after_watch(
@@ -431,15 +431,14 @@ function make_livemap_core_from_owned_root(
       throw new Error(`Prepared LiveMap transition mode mismatch: expected ${initialMode}, observed ${preparedNext.mode}.`);
     }
     if (owned.hsonSchema !== undefined) must_hson_schema_root(owned.hsonSchema, preparedNext.root);
-    if ((initialMode === "element" || initialMode === "fragment")
+    if ((initialMode === "document")
       ? livemap_document_commit_continuity(commit) === "new-epoch"
       : commit.ops.some((operation) => (
         !("domain" in operation) && operation.kind === "replace" && operation.path.length === 0
       ))) {
       assert_legacy_identity_epoch_reset_available();
     }
-    const installsProjectedDelta = initialMode !== "element"
-      && initialMode !== "fragment"
+    const installsProjectedDelta = initialMode !== "document"
       && require_projected_overlay(owned.projectedOverlay).size === 0
       && require_projected_overlay(preparedNext.projectedOverlay).size === 0
       && commit.ops.every((operation) => !("domain" in operation))
@@ -450,7 +449,7 @@ function make_livemap_core_from_owned_root(
       commit,
       baseStillCurrent: () => mapRevision === commit.prevRev && canonical_graph_equal(owned.root, baseRoot),
       install: () => {
-        if (initialMode === "element" || initialMode === "fragment") {
+        if (initialMode === "document") {
           const continuity = livemap_document_commit_continuity(commit);
           if (continuity === "new-epoch") {
             mapIdentityEpoch.replace(livemap_document_identity_quids(
@@ -502,7 +501,7 @@ function make_livemap_core_from_owned_root(
       },
       notify: (acceptedCommit) => {
         publishCommitWithWatch(acceptedCommit, () => {
-          if (initialMode === "element" || initialMode === "fragment") {
+          if (initialMode === "document") {
             commitObserverHub.emitCommit(acceptedCommit, "authoritative");
           } else {
             feedHub.emitProjected(acceptedCommit as LiveMapCommit<LiveMapDataOp>, (path) => project_live_path(owned.root, path));
@@ -519,7 +518,7 @@ function make_livemap_core_from_owned_root(
       throw new Error("LiveMap document schema contract is already attached and cannot be replaced.");
     }
     transitionController.assertPublicMutationAllowed();
-    if (initialMode !== "element" && initialMode !== "fragment") {
+    if (initialMode !== "document") {
       throw new TypeError("Document schema attachment is unavailable in data mode.");
     }
     must_hson_schema_root(schema, owned.root);
@@ -628,7 +627,7 @@ function make_livemap_core_from_owned_root(
     origin: "authoritative" | "replay" = "authoritative",
   ): LiveMapGraphCommit<LiveMapProjectedGraphEnsureQuidOp> => {
     transitionController.assertPublicMutationAllowed();
-    if (initialMode === "element" || initialMode === "fragment") {
+    if (initialMode === "document") {
       throw new Error("Data identity acquisition is unavailable in document mode.");
     }
     const prevRev = mapRevision;
@@ -1002,7 +1001,7 @@ function make_livemap_core_from_owned_root(
   }
 
   function require_projected_library(library: LiveMapLibraryState): LiveMapProjectedIdentityOverlay {
-    if (library.mode === "element" || library.mode === "fragment") {
+    if (library.mode === "document") {
       throw new Error("Aggregate projected operations require a data library.");
     }
     if (library.projectedValue === undefined || library.projectedOverlay === undefined) {
@@ -1274,7 +1273,7 @@ function make_livemap_core_from_owned_root(
       const preparedLibrary = prepare_livemap_root(root);
       if (options?.hsonSchema !== undefined) must_hson_schema_root(options.hsonSchema, preparedLibrary.root);
       const library = make_livemap_library(preparedLibrary, options?.hsonSchema);
-      if (library.mode !== "element" && library.mode !== "fragment") {
+      if (library.mode !== "document") {
         library.projectedValue = must_projected_root_value(library.root);
       }
       const beforeActive = aggregate_quid_locations(libraryRegistry.all());
@@ -1346,7 +1345,7 @@ function make_livemap_core_from_owned_root(
     }),
   });
 
-  if (initialMode !== "element" && initialMode !== "fragment") {
+  if (initialMode !== "document") {
     register_livemap_projected_identity_api(core, projectedIdentityApi);
     return {
       core,
@@ -1610,7 +1609,7 @@ function make_livemap_core_from_owned_root(
     watchDocument: documentWatchHub.add,
     prepareDetachedCommit,
     prepareProjectedWriteOps: (writeOps) => {
-      if (initialMode === "element" || initialMode === "fragment") {
+      if (initialMode === "document") {
         throw new LiveMapTransitionError(
           "LIVEMAP_TRANSITION_INVALID",
           "Projected staged write operations are unavailable for document maps.",
@@ -1709,7 +1708,7 @@ function register_staged_facade<TMap extends object>(map: TMap, built: BuiltLive
           if (!active) {
             throw new LiveMapTransitionError("LIVEMAP_TRANSITION_INVALID", "Staged LiveMap draft is expired.");
           }
-          if (property === "batch" && built.core.mode !== "element" && built.core.mode !== "fragment" && fallback === undefined) {
+          if (property === "batch" && built.core.mode !== "document" && fallback === undefined) {
             return (fn: (tx: LiveMapBatchTx<JsonValue | undefined>) => void): LiveMapCommit => {
               if (fastTransition !== undefined) {
                 throw new LiveMapTransitionError("LIVEMAP_TRANSITION_INVALID", "Staged LiveMap mutation must produce exactly one commit.");

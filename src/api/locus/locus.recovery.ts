@@ -55,7 +55,7 @@ function is_document_capture(value: unknown): value is DocumentLiveMapCapture {
     && value.kind === "hson-document"
     && !("version" in value)
     && "mode" in value
-    && (value.mode === "element" || value.mode === "fragment")
+    && (value.mode === "document")
     && "rev" in value
     && typeof value.rev === "number"
     && "root" in value
@@ -363,7 +363,7 @@ export function make_locus_recovery_planner_internal<TMap extends LiveMapAuthori
           }
 
           headRev = capture.rev;
-          if (map.mode === "element" || map.mode === "fragment") {
+          if (map.mode === "document") {
             if (!is_document_capture(capture)) {
               throw new Error("Locus document capture has no canonical root.");
             }

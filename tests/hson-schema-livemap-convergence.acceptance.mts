@@ -41,13 +41,13 @@ check("one owner cannot switch Schema while independent owners can reuse it", ()
 check("document LiveMap governance consumes HsonSchema", () => {
   const schema: HsonSchema = Hson`<type "document" tag "main" content <sequence [<tag "section" content "string">]>>`;
   const map = hsonLiveMap.fromHson('<main <section "body"/>/>');
-  assert.equal(map.mode, "element");
-  if (map.mode !== "element") throw new Error("expected element map");
+  assert.equal(map.mode, "document");
+  if (map.mode !== "document") throw new Error("expected element map");
   assert.equal(map.schema.use(schema), map);
   assert.equal(map.schema.get(), schema);
   const invalid = hsonLiveMap.fromHson("<aside/>");
-  assert.equal(invalid.mode, "element");
-  if (invalid.mode !== "element") throw new Error("expected element map");
+  assert.equal(invalid.mode, "document");
+  if (invalid.mode !== "document") throw new Error("expected element map");
   assert.throws(() => invalid.schema.use(schema));
 });
 

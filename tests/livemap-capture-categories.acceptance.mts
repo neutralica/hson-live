@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
-import type { ElementLiveMap, FragmentLiveMap } from "../src/types/livemap.types.ts";
+import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
 
 const Q1 = "000000v71";
 const Q2 = "000000v72";
@@ -15,20 +15,20 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-function element(source: string): ElementLiveMap {
+function element(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error("Expected element LiveMap");
+  if (map.mode !== "document") throw new Error("Expected element LiveMap");
   return map;
 }
 
-function fragment(source: string): FragmentLiveMap {
+function multiNodeDocument(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "fragment") throw new Error("Expected fragment LiveMap");
+  if (map.mode !== "document") throw new Error("Expected multiNodeDocument LiveMap");
   return map;
 }
 
-function captureText(map: ElementLiveMap): string {
-  return hson.fromNode(map.element.node()).toHson().serialize();
+function captureText(map: DocumentLiveMap): string {
+  return hson.fromNode(map.root()).toHson().serialize();
 }
 
 check("default capture remains exact durable metadata", () => {
@@ -86,7 +86,7 @@ check("identity-free capture roots are detached", () => {
   const map = element(`<main @${Q1}/>`);
   const capture = map.capture({ identity: "strip" });
   capture.root.$_content.length = 0;
-  assert.equal(map.element.node().$_tag, "main");
+  assert.equal(map.root().$_tag, "main");
 });
 
 check("capture categories never mint into a QUID-free source", () => {
@@ -165,16 +165,16 @@ check("ordinary Hson remains an exact metadata-preserving format", () => {
 
 check("noQuid Hson remains an identity-free projection", () => {
   const source = element(`<main @${Q1}/>`);
-  const wire = hson.fromNode(source.element.node()).toHson().noQuid().serialize();
+  const wire = hson.fromNode(source.root()).toHson().noQuid().serialize();
   const reparsed = element(wire);
   assert.equal(reparsed.document.byQuid(Q1), undefined);
   assert.equal(canonical_hson_graph_equal(reparsed.root(), source.root()), false);
 });
 
-check("fragment capture categories preserve mode and strip identity", () => {
-  const map = fragment(`<a @${Q1}/><b @${Q2}/>`);
+check("multiNodeDocument capture categories preserve mode and strip identity", () => {
+  const map = multiNodeDocument(`<a @${Q1}/><b @${Q2}/>`);
   const capture = map.capture({ identity: "strip" });
-  assert.equal(capture.mode, "fragment");
+  assert.equal(capture.mode, "document");
   assert.equal(JSON.stringify(capture.root).includes("quid"), false);
 });
 

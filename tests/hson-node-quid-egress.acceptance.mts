@@ -36,7 +36,7 @@ function element(
     : { $_tag: tag, $_content: content, $_meta: { [HSON_META_QUID]: quid } };
 }
 
-function fragment(content: HsonNode["$_content"]): HsonNode {
+function elementContent(content: HsonNode["$_content"]): HsonNode {
   return {
     $_tag: "_hson_elem",
     $_content: content,
@@ -124,7 +124,7 @@ check("Hson egress rejects object-member QUIDs even with noQuid", () => {
 });
 
 check("cold Hson egress preserves duplicate canonical values without mutation", () => {
-  const graph = fragment([element("div", [], Q1), element("span", [], Q1)]);
+  const graph = elementContent([element("div", [], Q1), element("span", [], Q1)]);
   const before = structuredClone(graph);
   const wire = hson.fromNode(graph).toHson().noBreak().serialize();
   assert.equal(occurrences(wire, `@${Q1}`), 2);
@@ -169,8 +169,8 @@ check("HTML egress rejects malformed and VSN-hosted identity", () => {
   );
 });
 
-check("cold HTML fragments serialize duplicate valid identity faithfully", () => {
-  const graph = fragment([element("div", [], Q1), element("span", [], Q1)]);
+check("cold HTML document sequences serialize duplicate valid identity faithfully", () => {
+  const graph = elementContent([element("div", [], Q1), element("span", [], Q1)]);
   const wire = hson.fromNode(graph).toHtml().serialize();
   assert.equal(occurrences(wire, `hson:quid="${Q1}"`), 2);
 });
@@ -260,11 +260,11 @@ check("LiveTree graph-backed markup validates exactly the emitted scope", () => 
   }
 });
 
-check("fragment shapes remain stable across one-root, multi-root, text and mixed content", () => {
-  const one = fragment([element("p", [], Q1)]);
-  const many = fragment([element("p", [], Q1), element("hr", [], Q2)]);
-  const text = fragment([{ $_tag: "_hson_str", $_content: ["text"] }]);
-  const mixed = fragment([
+check("document-content shapes remain stable across one-root, multi-root, text and mixed content", () => {
+  const one = elementContent([element("p", [], Q1)]);
+  const many = elementContent([element("p", [], Q1), element("hr", [], Q2)]);
+  const text = elementContent([{ $_tag: "_hson_str", $_content: ["text"] }]);
+  const mixed = elementContent([
     { $_tag: "_hson_str", $_content: ["before"] },
     element("strong", [{ $_tag: "_hson_str", $_content: ["middle"] }], Q1),
     { $_tag: "_hson_str", $_content: ["after"] },
@@ -298,7 +298,7 @@ check("JSON projection validates identity after canonical empty-element normaliz
     () => hson.fromNode(element("record", [], "000000000000010A")).toJson(),
     /Invalid persisted QUID/,
   );
-  const duplicate = fragment([element("left", [], Q1), element("right", [], Q1)]);
+  const duplicate = elementContent([element("left", [], Q1), element("right", [], Q1)]);
   assert.doesNotThrow(() => hson.fromNode(duplicate).toJson().value());
 });
 

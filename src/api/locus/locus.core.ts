@@ -983,7 +983,7 @@ function create_locus_for_map<
       const signature = snapshot_capability_signature(message.snapshotCapabilities);
       const selected = select_snapshot_encoding(
         message.snapshotCapabilities,
-        map.mode === "element" || map.mode === "fragment",
+        map.mode === "document",
       );
       if (recoveryState.phase === "recovering") {
         if (recoveryState.capabilitySignature !== signature

@@ -96,8 +96,8 @@ function verified_initializer(
     if (!typescript.isIdentifier(initializer.tag) || !official_binding(typescript, checker, initializer.tag, "Hson") || !typescript.isNoSubstitutionTemplateLiteral(initializer.template)) return false;
     try {
       const parsed = parse_hson_with_provenance(raw_template(initializer.template, sourceFile));
-      const result = association.compiled.semantic.kind === "document-element" || association.compiled.semantic.kind === "document-fragment"
-        ? evaluate_canonical_document_schema(association.compiled.graph, parsed.value, association.compiled.semantic.kind === "document-element" ? "element" : "fragment")
+      const result = association.compiled.semantic.kind === "document"
+        ? evaluate_canonical_document_schema(association.compiled.graph, parsed.value)
         : evaluate_canonical_projected_schema(association.compiled.graph, projected_value_from_hson_node(parsed.value));
       return result.ok;
     } catch {

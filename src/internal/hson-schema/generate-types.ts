@@ -35,14 +35,14 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
     reachableDefinitions.push(definition);
     if (definition.schema.kind === "document-element") visitDocument(definition.schema); else visitData(definition.schema);
   };
-  if (root.kind === "document-element") visitDocument(root);
-  else if (root.kind === "document-fragment") {
+  if (root.kind === "document") {
     const items = root.content.kind === "document-sequence" ? root.content.items : root.content.kind === "document-repeat" ? [root.content.item] : [];
     items.forEach((item) => {
       if (item.kind === "document-ref") visitDefinition(item.name);
       else if (item.kind === "document-element") visitDocument(item);
     });
-  } else visitData(root);
+  } else if (root.kind === "document-element") visitDocument(root);
+  else visitData(root);
   const proof = (label: string): string => {
     const proofIndex = proofNodeCount;
     const className = `__${name}${label}Proof${proofIndex}`;
@@ -120,17 +120,33 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
     return `Readonly<{ readonly $_tag: ${JSON.stringify(element.tag)}; readonly $_attrs${required ? "" : "?"}: ${attrsType}; readonly $_content: ${emitDocumentContent(element.content, `${path}Content`)}; }> & ${proof(`${path}Element`)}`;
   };
 
+  const emitDocumentRootContent = (content: HsonSchemaDocumentContent, path: string): string => {
+    if (content.kind === "document-empty") return "readonly []";
+    if (content.kind === "document-repeat") {
+      const item = emitDocumentItem(content.item, `${path}RItem`);
+      if (content.count === undefined) return `ReadonlyArray<${item}> & ${proof(`${path}Repeat`)}`;
+      if (content.count <= EXACT_DOCUMENT_REPEAT_TUPLE_LIMIT) {
+        return `readonly [${Array.from({ length: content.count }, () => item).join(", ")}] & ${proof(`${path}Repeat`)}`;
+      }
+      return `ReadonlyArray<${item}> & ${proof(`${path}Count${content.count}`)} & ${proof(`${path}Repeat`)}`;
+    }
+    const items = content.kind === "document-string-content"
+      ? [emitDocumentItem(Object.freeze({ kind: "document-string" }), `${path}S0`)]
+      : content.items.map((item, index) => emitDocumentItem(item, `${path}S${index}`));
+    return `readonly [${items.join(", ")}]`;
+  };
+
   const definitionDeclarations = reachableDefinitions.map((definition, index) => {
     const alias = aliases.get(definition.name);
     if (alias === undefined) throw new Error(`Missing generated alias for ${JSON.stringify(definition.name)}.`);
     const body = definition.schema.kind === "document-element" ? emitDocumentElement(definition.schema, `D${index}`) : emitData(definition.schema, `D${index}`);
     return `type ${alias} = (${body}) & ${proof(`D${index}Definition`)};`;
   });
-  const type = root.kind === "document-element"
-    ? emitDocumentElement(root, "Root")
-    : root.kind === "document-fragment"
-      ? `Readonly<{ readonly $_tag: "_hson_root"; readonly $_content: ${emitDocumentContent(root.content, "RootContent")}; }> & ${proof("RootFragment")}`
-      : emitData(root, "Root");
+  const type = root.kind === "document"
+    ? `Readonly<{ readonly $_tag: "_hson_root"; readonly $_content: ${emitDocumentRootContent(root.content, "RootContent")}; }> & ${proof("RootDocument")}`
+    : root.kind === "document-element"
+      ? `Readonly<{ readonly $_tag: "_hson_root"; readonly $_content: readonly [${emitDocumentElement(root, "RootItem")}]; }> & ${proof("RootDocument")}`
+    : emitData(root, "Root");
   const hsonProof = proof("Hson");
   return Object.freeze({
     proofNodeCount,

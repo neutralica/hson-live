@@ -12,7 +12,7 @@ declare const HSON_CANONICAL_BRAND: unique symbol;
 /**
  * A JavaScript string whose contents are valid canonical serialized Hson.
  * It may represent any valid detached canonical Hson value, including a
- * primitive, object, element, array, or fragment.
+ * primitive, object, element, array, or ordered document content.
  *
  * This TypeScript-only brand has no runtime marker and is not a trust or
  * security guarantee.

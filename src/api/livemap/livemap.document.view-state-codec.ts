@@ -590,7 +590,7 @@ function validate_encoding_wrapper(encoded: ViewStateSnapshotEncoding): void {
 }
 
 function decode_mode(value: unknown): DocumentLiveMapMode {
-  if (value === "element" || value === "fragment") return value;
+  if (value === "document") return value;
   throw codec_error(
     "VIEW_STATE_SNAPSHOT_MODE_MISMATCH",
     "View-state snapshot mode is not a supported document mode.",

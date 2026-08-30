@@ -14,13 +14,13 @@ const evaluate = (source: string, candidate: string) => {
   const compiled = compile_hson_schema(source);
   assert.equal(compiled.ok, true);
   if (!compiled.ok) throw new Error("unreachable");
-  return evaluate_canonical_document_schema(compiled.value.graph, parse_hson(candidate), "element");
+  return evaluate_canonical_document_schema(compiled.value.graph, parse_hson(candidate));
 };
-const evaluateFragment = (source: string, candidate: string) => {
+const evaluateDocument = (source: string, candidate: string) => {
   const compiled = compile_hson_schema(source);
   assert.equal(compiled.ok, true);
   if (!compiled.ok) throw new Error("unreachable");
-  return evaluate_canonical_document_schema(compiled.value.graph, parse_hson(candidate), "fragment");
+  return evaluate_canonical_document_schema(compiled.value.graph, parse_hson(candidate));
 };
 
 check("exact HTML, SVG, and custom element roots compile", () => {
@@ -114,24 +114,24 @@ check("repeated generated document content is readonly, nominal, and bounded", (
   assert.match(largeTypes.declarations, /ReadonlyArray</);
   assert.ok(largeTypes.declarations.length < 10_000);
 });
-check("tagless document roots expose existing fragment sequence and repeat semantics", () => {
+check("tagless document roots expose sequence and repeat semantics", () => {
   const sequence = '<type "document" defs <Tail <tag "footer" content "empty">> content <sequence [<tag "header" content "empty">, <ref "Tail">]>>';
   const compiled = compile_hson_schema(sequence);
   assert.equal(compiled.ok, true);
   if (compiled.ok) {
-    assert.equal(compiled.value.semantic.kind, "document-fragment");
-    assert.equal(compiled.value.graph.capabilities.documentFragmentRoot, 0);
-    const generated = generate_hson_schema_types("FragmentSchema", compiled.value.semantic, compiled.value.definitions);
+    assert.equal(compiled.value.semantic.kind, "document");
+    assert.equal(compiled.value.graph.capabilities.documentRoot, 0);
+    const generated = generate_hson_schema_types("DocumentSchema", compiled.value.semantic, compiled.value.definitions);
     assert.match(generated.declarations, /readonly \$_tag: "_hson_root"/);
     assert.match(generated.declarations, /readonly \$_tag: "header"/);
     assert.match(generated.declarations, /readonly \$_tag: "footer"/);
   }
-  assert.equal(evaluateFragment(sequence, '<header/><footer/>').ok, true);
-  assert.equal(evaluateFragment(sequence, '<footer/><header/>').ok, false);
-  assert.equal(evaluateFragment(sequence, '<header/>').ok, false);
+  assert.equal(evaluateDocument(sequence, '<header/><footer/>').ok, true);
+  assert.equal(evaluateDocument(sequence, '<footer/><header/>').ok, false);
+  assert.equal(evaluateDocument(sequence, '<header/>').ok, false);
   const repeated = '<type "document" defs <Item <tag "item" content "empty">> content <repeat <ref "Item"> count 2>>';
-  assert.equal(evaluateFragment(repeated, '<item/><item/>').ok, true);
-  assert.equal(evaluateFragment(repeated, '<item/>').ok, false);
+  assert.equal(evaluateDocument(repeated, '<item/><item/>').ok, true);
+  assert.equal(evaluateDocument(repeated, '<item/>').ok, false);
   assert.equal(compile_hson_schema('<type "document" attrs <props <id "string">> content "empty">').ok, false);
 });
 check("attrs default open, required, optional, flag, and optional flag semantics", () => {
@@ -158,7 +158,7 @@ check("lowering is deterministic and canonically verified", () => {
   assert.equal(left.ok, true); assert.equal(right.ok, true);
   if (left.ok && right.ok) {
     assert.deepEqual(left.value.graph, right.value.graph);
-    assert.equal(left.value.graph.capabilities.documentElementRoot, 0);
+    assert.equal(left.value.graph.capabilities.documentRoot, 0);
     assert.equal(left.value.graph.capabilities.projectedRoot, undefined);
   }
 });
@@ -175,11 +175,11 @@ check("runtime certification uses canonical repeat and exact-count authority", (
   assert.throws(() => Hson.certify(repeatSchema, Hson`<main <item/>/>`));
   assert.throws(() => Hson.certify(repeatSchema, Hson`<main <item/> <wrong/>/>`));
 });
-check("runtime fragment certification preserves the identical canonical string", () => {
-  const fragmentSchema: HsonSchema = Hson`<type "document" defs <Item <tag "item" content "empty">> content <repeat <ref "Item"> count 2>>`;
+check("runtime multiNodeDocument certification preserves the identical canonical string", () => {
+  const multiNodeDocumentSchema: HsonSchema = Hson`<type "document" defs <Item <tag "item" content "empty">> content <repeat <ref "Item"> count 2>>`;
   const candidate = Hson`<item/><item/>`;
-  assert.equal(Hson.certify(fragmentSchema, candidate), candidate);
-  assert.throws(() => Hson.certify(fragmentSchema, Hson`<item/>`));
+  assert.equal(Hson.certify(multiNodeDocumentSchema, candidate), candidate);
+  assert.throws(() => Hson.certify(multiNodeDocumentSchema, Hson`<item/>`));
 });
 
 const performanceCases = [
@@ -197,7 +197,7 @@ const performanceTelemetry = performanceCases.map(([name, source, candidate]) =>
   if (!compiled.ok) throw new Error("unreachable");
   const generated = generate_hson_schema_types("PerformanceSchema", compiled.value.semantic, compiled.value.definitions);
   const validationStarted = performance.now();
-  assert.equal(evaluate_canonical_document_schema(compiled.value.graph, parse_hson(candidate), "element").ok, true);
+  assert.equal(evaluate_canonical_document_schema(compiled.value.graph, parse_hson(candidate)).ok, true);
   const runtimeValidationMs = performance.now() - validationStarted;
   return {
     name,

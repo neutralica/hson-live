@@ -35,7 +35,7 @@ const optionalProjectedName: string | undefined = optionalProjectedMap.proxy().u
 void optionalProjectedName;
 
 const documentMap = hsonLiveMap.fromHson(`<main @000000v01/>`);
-if (documentMap.mode === "element") {
+if (documentMap.mode === "document") {
   const documentLocation = documentMap.at([0]);
   const documentEndpoint = documentLocation.at([1]).snap();
   documentLocation.watch((next) => { void next; });
@@ -49,9 +49,9 @@ if (documentMap.mode === "element") {
   const rootedDocumentProxyLocation = documentMap.proxy([0])[1].$_;
   const discoveredDocumentLocation = documentMap.at([]).id("target");
   const proxyDiscoveredDocumentLocation = documentMap.proxy().$_.id("target");
-  const replacementCommit = documentLocation.replace(documentMap.element.node());
+  const replacementCommit = documentLocation.replace(documentMap.root());
   const deletionCommit = documentProxyLocation.delete();
-  const insertionCommit = documentMap.at([]).insert(0, documentMap.element.node());
+  const insertionCommit = documentMap.at([]).insert(0, documentMap.root());
   const movementCommit = documentMap.proxy().$_.move(0, 1);
   const attrValue = documentLocation.attrs.get("id");
   const attrCommit = documentProxyLocation.attrs.set("title", "worker");
@@ -70,13 +70,13 @@ if (documentMap.mode === "element") {
   // @ts-expect-error document proxies expose numeric structural traversal only
   documentProxy.attrs;
   // @ts-expect-error document proxy escapes omit data mutation capabilities
-  documentProxyLocation.set(documentMap.element.node());
+  documentProxyLocation.set(documentMap.root());
   // @ts-expect-error logical document paths do not accept data string keys
   documentMap.at(["content"]);
   // @ts-expect-error document locations intentionally omit data mutation helpers
-  documentLocation.set(documentMap.element.node());
+  documentLocation.set(documentMap.root());
   // @ts-expect-error document locations do not gain projected update semantics
-  documentLocation.update(() => documentMap.element.node());
+  documentLocation.update(() => documentMap.root());
   // @ts-expect-error document-specific namespaces do not duplicate passive traversal
   documentMap.document.at([0]);
   // @ts-expect-error canonical ID discovery belongs to locations, not the document façade

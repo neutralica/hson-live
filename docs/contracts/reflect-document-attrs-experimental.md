@@ -11,7 +11,7 @@ const reflect: Reflect = hsonReflect;
 const documentReflect: DocumentReflect = reflect(documentMap);
 ```
 
-`DocumentReflect` binds one `ElementLiveMap` to one separately owned, detached
+`DocumentReflect` binds one `DocumentLiveMap` to one separately owned, detached
 `LiveTree`. The Document LiveMap remains the only canonical document
 authority. Canonical attribute and raw structural-content commits update
 synchronously into the LiveTree graph and its mounted DOM; public attribute

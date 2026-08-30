@@ -1,8 +1,7 @@
 import { create_locus, create_locus_client, create_persistent_locus, hson, validate_document_path } from "../src/index.ts";
 import type {
-  ElementLiveMap,
-  LocusOptions,
-  FragmentLiveMap,
+  DocumentLiveMap,LocusOptions,
+
   Locus,
   LocusClient,
   LocusDocumentActionPayloads,
@@ -143,12 +142,12 @@ type ExistingProjectedSubscribeIsCallable = Assert<
 >;
 
 const elementCandidate = hson.liveMap.fromHson(`<main/>`);
-if (elementCandidate.mode !== "element") throw new Error("Expected element map");
+if (elementCandidate.mode !== "document") throw new Error("Expected element map");
 const elementHost = create_locus({ map: elementCandidate });
-type ElementMapIsExact = Assert<typeof elementHost.map extends LocusReadonlyMap<ElementLiveMap> ? true : false>;
+type ElementMapIsExact = Assert<typeof elementHost.map extends LocusReadonlyMap<DocumentLiveMap> ? true : false>;
 elementHost.map.document.attrs.get({ kind: "path", path: [] }, "id");
 // @ts-expect-error hosted readonly document maps expose no mutable location acquisition
-elementHost.map.at([0]).replace(elementCandidate.element.node());
+elementHost.map.at([0]).replace(elementCandidate.root());
 elementHost.mutate((draft) => draft.document.attrs.set(
   { kind: "path", path: [] },
   "id",
@@ -177,7 +176,7 @@ persistentElementHost.then((host) => {
 create_locus({ map: elementCandidate, persistence: persistenceAdapter });
 // @ts-expect-error projected-data persistence is deliberately unsupported in version one
 create_persistent_locus({ map: existingProjectedMap, persistence: persistenceAdapter });
-const elementHostAlias: Locus<ElementLiveMap> = elementHost;
+const elementHostAlias: Locus<DocumentLiveMap> = elementHost;
 const documentTarget = { kind: "path", path: [] } as const;
 const optionalAttr = elementCandidate.document.attrs.get(documentTarget, "title");
 const requiredAttr = elementCandidate.document.attrs.must.get(documentTarget, "title");
@@ -208,33 +207,33 @@ elementCandidate.document.attrs.getMany(documentTarget, ["title"]);
 // @ts-expect-error no entries reader is exposed
 elementCandidate.document.attrs.entries(documentTarget);
 
-const fragmentCandidate = hson.liveMap.fromHson(`<main/> <aside/>`);
-if (fragmentCandidate.mode !== "fragment") throw new Error("Expected fragment map");
-const fragmentHost = create_locus({
-  map: fragmentCandidate,
+const multiNodeDocumentCandidate = hson.liveMap.fromHson(`<main/> <aside/>`);
+if (multiNodeDocumentCandidate.mode !== "document") throw new Error("Expected multiNodeDocument map");
+const multiNodeDocumentHost = create_locus({
+  map: multiNodeDocumentCandidate,
   actions: {
     inspect(context) {
-      const exact: LocusReadonlyMap<FragmentLiveMap> = context.map;
+      const exact: LocusReadonlyMap<DocumentLiveMap> = context.map;
       return exact.mode;
     },
   },
 });
-type FragmentMapIsExact = Assert<typeof fragmentHost.map extends LocusReadonlyMap<FragmentLiveMap> ? true : false>;
+type DocumentSequenceMapIsExact = Assert<typeof multiNodeDocumentHost.map extends LocusReadonlyMap<DocumentLiveMap> ? true : false>;
 
 const client = create_locus_client({
   socket,
   map: elementCandidate,
 });
-type ClientElementMapIsExact = Assert<Equal<typeof client.map, ElementLiveMap>>;
+type ClientElementMapIsExact = Assert<Equal<typeof client.map, DocumentLiveMap>>;
 type DocumentSubscribeIsGated = Assert<Equal<typeof client.subscribe, never>>;
 type DocumentUnsubscribeIsGated = Assert<Equal<typeof client.unsubscribe, never>>;
 
-const fragmentClient = create_locus_client({ socket, map: fragmentCandidate });
-type FragmentSubscribeIsGated = Assert<Equal<typeof fragmentClient.subscribe, never>>;
-type FragmentUnsubscribeIsGated = Assert<Equal<typeof fragmentClient.unsubscribe, never>>;
+const multiNodeDocumentClient = create_locus_client({ socket, map: multiNodeDocumentCandidate });
+type DocumentSequenceSubscribeIsGated = Assert<Equal<typeof multiNodeDocumentClient.subscribe, never>>;
+type DocumentSequenceUnsubscribeIsGated = Assert<Equal<typeof multiNodeDocumentClient.unsubscribe, never>>;
 
-type BothForms = Readonly<{ state: { count: number }; map: ElementLiveMap }>;
-type ConstructorOptions = ProjectedLocusOptions<{ count: number }> | LocusOptions<ElementLiveMap>;
+type BothForms = Readonly<{ state: { count: number }; map: DocumentLiveMap }>;
+type ConstructorOptions = ProjectedLocusOptions<{ count: number }> | LocusOptions<DocumentLiveMap>;
 type StateAndMapAreRejected = Assert<Equal<BothForms extends ConstructorOptions ? true : false, false>>;
 
 void elementHostAlias;
@@ -245,12 +244,12 @@ type TypeAssertions =
   | ProjectedAliasSubscribeIsCallable
   | ExistingProjectedSubscribeIsCallable
   | ElementMapIsExact
-  | FragmentMapIsExact
+  | DocumentSequenceMapIsExact
   | ClientElementMapIsExact
   | DocumentSubscribeIsGated
   | DocumentUnsubscribeIsGated
-  | FragmentSubscribeIsGated
-  | FragmentUnsubscribeIsGated
+  | DocumentSequenceSubscribeIsGated
+  | DocumentSequenceUnsubscribeIsGated
   | StateAndMapAreRejected;
 const assertions: TypeAssertions = true;
 void assertions;
@@ -261,7 +260,7 @@ typedProjectedClient.subscribe(["count"]);
 typedProjectedClient.unsubscribe([]);
 typedProjectedClient.action("custom", 1);
 
-declare const typedDocumentClient: LocusClient<ElementLiveMap, CustomActions>;
+declare const typedDocumentClient: LocusClient<DocumentLiveMap, CustomActions>;
 typedDocumentClient.action("custom", 1);
 typedDocumentClient.action("document.attrs.set", {
   target: { kind: "quid", quid: "000000001" },
@@ -300,12 +299,12 @@ typedDocumentClient.action("document.attr.set", { target: { kind: "path", path: 
 typedDocumentClient.action("document.content.replace", {
   target: { kind: "path", path: [] },
   index: 0,
-  replacement: elementCandidate.element.node(),
+  replacement: elementCandidate.root(),
 });
 typedDocumentClient.action("document.content.insert", {
   target: { kind: "path", path: [] },
   index: 0,
-  content: elementCandidate.element.node(),
+  content: elementCandidate.root(),
 });
 typedDocumentClient.action("document.content.remove", {
   target: { kind: "path", path: [] },

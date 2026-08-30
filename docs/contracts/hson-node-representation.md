@@ -119,7 +119,7 @@ legalize object metadata.
 Transform `fromNode()` is a detached semantic admission boundary. It collapses
 an unowned `_hson_obj([_hson_str])`, `_hson_obj([_hson_val])`, or
 `_hson_elem([_hson_str])` to the scalar while preserving object-member scalar
-carriers, element text clusters, established root-owned text fragments, and
+carriers, element text clusters, established root-owned text content, and
 every array cluster. `_hson_elem([_hson_val])` is never a scalar carrier: it
 remains visible until canonical invariant admission rejects typed element
 content. Root detachment itself remains exact. Direct serialization rejects an
@@ -153,24 +153,22 @@ stored in `$_attrs`.
 
 ### Internal root boundary
 
-An empty `_hson_root` remains a valid runtime fragment carrier for LiveMap and
-Locus. Populated roots also remain meaningful internal attachment carriers.
-Neither is transported Hson: `serialize_hson()` rejects every `_hson_root` and
-does not substitute, melt, or silently unwrap it. Hson-source public terminals
-detach exactly one validated semantic child before target projection, while
-canonical equality remains root-sensitive.
+Every document-mode LiveMap and Locus graph is owned by an internal
+`_hson_root`. Its ordered content may be empty or contain one or many document
+nodes. The root is authority structure rather than authored Hson:
+`serialize_hson()` rejects every `_hson_root` and does not substitute, melt, or
+silently unwrap it. Hson-source public terminals detach validated semantic
+content before target projection, while canonical equality remains
+root-sensitive.
 
 Canonical equality traverses the supplied graphs directly. It does not invoke
 node normalization, rebuild indexes, sort content, detach roots, remove
 metadata, repair wrappers, or coerce attribute values. Admission and projection
 boundaries must establish their own canonical inputs before invoking equality.
 
-The future architecture must choose, separately, among:
-
-- adding unambiguous Hson syntax for an empty fragment/root;
-- migrating LiveMap and Locus away from the empty-root carrier; or
-- separating the serializable Hson graph type from the broader runtime carrier
-  type.
+The runtime root does not require authored syntax. Empty document content is a
+runtime content shape, and public Hson boundaries continue to expose only
+detached authored content.
 
 ## Measurements
 

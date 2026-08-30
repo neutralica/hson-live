@@ -72,7 +72,7 @@ Hson can represent:
 - HTML, XML, and SVG elements;
 - element attributes and eligible element metadata;
 - ordered and mixed markup content;
-- document fragments;
+- documents with zero, one, or many top-level nodes;
 - namespaces and structural wrapper nodes;
 - stable identity for eligible live document nodes.
 
@@ -137,7 +137,7 @@ The transformation system handles cases that are commonly awkward at format boun
 - boolean and structured attributes;
 - HTML void elements;
 - SVG and XML namespaces;
-- document fragments;
+- ordered document content;
 - canonical metadata;
 - persisted node identity.
 
@@ -173,7 +173,7 @@ indexes. Document paths contain numeric indexes into ordered authored content:
 ```ts
 const document = hson.liveMap.fromHson(`<main <section <p "hello"/>/>/>`);
 
-if (document.mode === "element") {
+if (document.mode === "document") {
   const paragraph = document.at([0, 0]);
   console.log(paragraph.snap());
 }
@@ -189,7 +189,7 @@ Document locations can discover the first exact canonical `id` match in their
 current logical subtree:
 
 ```ts
-if (document.mode === "element" || document.mode === "fragment") {
+if (document.mode === "document") {
   const button = document.at([]).id("submit");
   console.log(button?.snap());
 }
@@ -222,7 +222,7 @@ Document locations expose mutations for the content they own, item mutations
 for the coordinate they represent, and ordinary attrs for element endpoints:
 
 ```ts
-if (document.mode === "element" || document.mode === "fragment") {
+if (document.mode === "document") {
   const root = document.at([]);
   root.insert(0, child);
   root.move(0, 1);
@@ -242,7 +242,7 @@ if (document.mode === "element" || document.mode === "fragment") {
 ```
 
 `insert(index, value)` and `move(from, to)` act on the ordered authored content
-owned by the current element or fragment root. Item replacement and removal
+owned by the current document location. Item replacement and removal
 remain `location.at([index]).replace(value)` and `.delete()`. All locations stay
 fixed logical coordinates: after deletion or movement they do not follow the
 previous subject. The document root location `at([])` cannot itself be replaced
@@ -252,7 +252,7 @@ structural path segment, so attrs operations never extend `location.path()`.
 The existing proxy surface follows the same document coordinates:
 
 ```ts
-if (document.mode === "element") {
+if (document.mode === "document") {
   const paragraph = document.proxy()[0][0].$_;
   const submit = document.proxy().$_.id("submit");
   console.log(paragraph.snap());

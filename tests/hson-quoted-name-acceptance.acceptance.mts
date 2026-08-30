@@ -44,8 +44,8 @@ check("single-quoted object member names admit spaces", () => {
 });
 
 check("single-quoted element names admit spaces", () => {
-  const fragment = parse("<'white space' \"value\"/>");
-  const element = fragment.$_content[0];
+  const elementContent = parse("<'white space' \"value\"/>");
+  const element = elementContent.$_content[0];
   assert.ok(is_Node(element));
   assert.equal(element.$_tag, "white space");
 });

@@ -9,7 +9,7 @@ import {
   decode_locus_server_message,
 } from "../src/api/locus/locus.protocol.ts";
 import type {
-  ElementLiveMap,
+  DocumentLiveMap,
   LiveMapAuthority,
   LiveMapGraphCommit,
 } from "../src/types/livemap.types.ts";
@@ -34,15 +34,15 @@ function check(name: string, run: () => void | Promise<void>): void {
   });
 }
 
-function element(source: string): ElementLiveMap {
+function element(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error("Expected element LiveMap");
+  if (map.mode !== "document") throw new Error("Expected element LiveMap");
   return map;
 }
 
 function legacyEnvelope(
   ops: readonly unknown[],
-  mode: "element" | "fragment" = "element",
+  mode: "document" = "document",
   prevRev = 0,
 ): unknown {
   return {
@@ -133,10 +133,10 @@ check("Locus path action publishes a canonical path target", async () => {
   const map = element(`<main/>`);
   const host = hson.locus.create({ map, logicalMapId: "path-action" });
   const action = readyAction(map, "document.attrs.set", {
-    target: { kind: "path", path: [] }, name: "id", value: "path",
+    target: { kind: "path", path: [0] }, name: "id", value: "path",
   });
   await host.mutate((draft) => executeOnDraft(action, draft));
-  assert.deepEqual(operationTarget(host.stream.history.replay_after(0)?.[0]?.ops[0]), { kind: "path", path: [] });
+  assert.deepEqual(operationTarget(host.stream.history.replay_after(0)?.[0]?.ops[0]), { kind: "path", path: [0] });
   host.dispose();
 });
 
@@ -148,7 +148,7 @@ check("Locus QUID action lowers inside mutation execution", async () => {
   });
   await host.mutate((draft) => executeOnDraft(action, draft));
   assert.deepEqual(operationTarget(host.stream.history.replay_after(0)?.[0]?.ops[0]), {
-    kind: "path", path: [], witness: { quid: Q1 },
+    kind: "path", path: [0], witness: { quid: Q1 },
   });
   host.dispose();
 });
@@ -204,7 +204,7 @@ check("exclusive FIFO resolves queued QUID request after the preceding move", as
   const map = element(`<main <a @${Q1}/> <b @${Q2}/>/>`);
   const host = hson.locus.create({ map });
   const move = readyAction(map, "document.content.move", {
-    target: { kind: "path", path: [0] }, from: 0, to: 1,
+    target: { kind: "path", path: [0, 0] }, from: 0, to: 1,
   });
   const set = readyAction(map, "document.attrs.set", {
     target: { kind: "quid", quid: Q1 }, name: "id", value: "queued",
@@ -213,7 +213,7 @@ check("exclusive FIFO resolves queued QUID request after the preceding move", as
   const second = host.mutate((draft) => executeOnDraft(set, draft));
   await first;
   const accepted = await second;
-  assert.deepEqual(targetField(accepted.ops[0], "path"), [0, 1]);
+  assert.deepEqual(targetField(accepted.ops[0], "path"), [0, 0, 1]);
   host.dispose();
 });
 
@@ -338,7 +338,7 @@ check("new persistence append retains only an optional witness QUID", async () =
     { kind: "quid", quid: Q1 }, "id", "persisted",
   ));
   assert.deepEqual(operationTarget(adapter.appended[0]?.commit.ops[0]), {
-    kind: "path", path: [], witness: { quid: Q1 },
+    kind: "path", path: [0], witness: { quid: Q1 },
   });
   host.dispose();
 });

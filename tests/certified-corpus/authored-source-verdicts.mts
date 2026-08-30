@@ -79,7 +79,7 @@ export const REVIEW_SECTIONS: readonly ReviewSection[] = Object.freeze([
       "<a 1>     // current proposal: valid Hson object",
       "<a 1/>    // current proposal: invalid Hson element typed content",
       "",
-      "<a/><b/>  // current proposal: valid element fragment",
+      "<a/><b/>  // current proposal: valid element sequence",
       "<a/><b 2> // current proposal: invalid mixed modes",
       "```",
       "",
@@ -200,7 +200,7 @@ const compositionIds = new Set([
   "hson.accept.literal.array.object-item",
   "hson.accept.literal.element.nested",
   "hson.accept.literal.element.mixed-content",
-  "hson.accept.basis.root.element-fragment",
+  "hson.accept.basis.root.element-sequence",
 ]);
 
 const contextualIds = new Set([
@@ -581,7 +581,7 @@ export function renderAuthoredSourceVerdictTemplate(): string {
     "### Homogeneous versus mixed root modes",
     "",
     "```hson",
-    "<a/><b/>   // current proposal: valid element fragment",
+    "<a/><b/>   // current proposal: valid element sequence",
     "<a/><b 2>  // current proposal: invalid mixed modes",
     "```",
     "",

@@ -92,7 +92,7 @@ Both D1 and the public boundary use
 `internal/schema-hson-validation/validate-schema-hson-graph.ts`. Data graphs
 remain ordered carriers all the way into the authoritative validator; only
 constraint callbacks materialize JavaScript values. Direct D2 candidates use
-ordinary canonical parsing. D1 lifecycle fragments retain their explicit parse
+ordinary canonical parsing. D1 lifecycle inputs retain their explicit parse
 context. Neither path retries interpretations to find one a Schema accepts.
 
 ## D3 natural map association
@@ -155,10 +155,10 @@ after an initial failure can independently validate other registered Schemas.
 Map revisions are checked at association and before/after candidate validation.
 Mutate-then-revert cannot restore attribution. Each map remains independent.
 
-D3 uses the exact `fromHson` parse boundary (`allowTopLevelTextFragment: true`)
+D3 uses the exact `fromHson` parse boundary (`allowTopLevelDocumentText: true`)
 for the current candidate. It then uses the same ordered graph validator and
 C1/C2 lowering as D1/D2, with actual current root classification. A quoted text
-root is therefore a document fragment at this map boundary; standalone
+root is therefore ordered document content at this map boundary; standalone
 `schema.validate` retains ordinary canonical interpretation. No alternate parse
 is attempted to make a Schema succeed.
 

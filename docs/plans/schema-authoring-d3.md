@@ -160,15 +160,15 @@ Schema; no outer JavaScript-object materialization was introduced.
 
 ## 16. Document diagnostics
 
-C2 handles actual element and fragment roots, including exact attribute values,
-missing-flag anchors, tag mismatch and fragment layout. Document ownership and
+C2 handles document roots with one or many top-level nodes, including exact
+attribute values, missing-flag anchors, tag mismatch and sequence layout. Document ownership and
 attribute/enforcement regressions pass. No `schema.document` surface was added.
 
 ## 17. Boundary context and root interpretation
 
-D3 explicitly preserves `fromHson` parsing with `allowTopLevelTextFragment: true`.
+D3 explicitly preserves `fromHson` parsing with `allowTopLevelDocumentText: true`.
 Current parsed graph classification selects C1/C2, and shared graph validation
-decides root compatibility. A quoted text root stays a document fragment at this
+decides root compatibility. A quoted text root stays document content at this
 map boundary. A data string Schema is not allowed to reinterpret it.
 Standalone `schema.validate` retains ordinary canonical parsing. No retries or
 Schema-driven coercions occur.

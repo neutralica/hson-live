@@ -234,12 +234,12 @@ check("strict closure preserves isolated surrogate code units", () => {
   assert.equal(result.leg.failure?.difference?.kind, "scalar-value-mismatch");
 });
 
-check("strict closure distinguishes element, object, and fragment graphs", () => {
+check("strict closure distinguishes element, object, and multi-node document graphs", () => {
   const object = from_json('{"a":1}');
   const element = from_html("<a></a>");
-  const fragment = from_html("<a></a><b></b>");
+  const documentSequence = from_html("<a></a><b></b>");
   assert.equal(strict_leg(object, element).leg.comparison?.equal, false);
-  assert.equal(strict_leg(element, fragment).leg.comparison?.equal, false);
+  assert.equal(strict_leg(element, documentSequence).leg.comparison?.equal, false);
 });
 
 assert.equal(checks, 25);

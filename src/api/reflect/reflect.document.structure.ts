@@ -125,7 +125,7 @@ export function plan_document_structural_transaction(
         target.persistedQuid = operation.quid;
         break;
       case "insert-content":
-        affectedOwners.add(nearest_ordinary_owner(target));
+        add_ordinary_owner(affectedOwners, target);
         assert_insert_index(target, operation.index, operation.op);
         {
           const inserted = shadow_insert_content(target, operation.content, continuity);
@@ -134,12 +134,12 @@ export function plan_document_structural_transaction(
         }
         break;
       case "remove-content":
-        affectedOwners.add(nearest_ordinary_owner(target));
+        add_ordinary_owner(affectedOwners, target);
         assert_existing_index(target, operation.index, operation.op);
         target.content.splice(operation.index, 1);
         break;
       case "move-content": {
-        affectedOwners.add(nearest_ordinary_owner(target));
+        add_ordinary_owner(affectedOwners, target);
         assert_existing_index(target, operation.from, operation.op);
         assert_existing_index(target, operation.to, operation.op);
         const moved = target.content.splice(operation.from, 1)[0];
@@ -148,7 +148,7 @@ export function plan_document_structural_transaction(
         break;
       }
       case "replace-content": {
-        affectedOwners.add(nearest_ordinary_owner(target));
+        add_ordinary_owner(affectedOwners, target);
         assert_existing_index(target, operation.index, operation.op);
         const current = target.content[operation.index];
         const replacement = plan_replacement(target, current, operation.replacement, continuity);
@@ -271,7 +271,7 @@ function shadow_insert_content(
   content: HsonNode | Primitive,
   continuity: ContinuityPlanningContext,
 ): ShadowContent {
-  if (target.node.$_tag === ELEM_TAG && typeof content === "string") {
+  if ((target.node.$_tag === ELEM_TAG || target.node.$_tag === ROOT_TAG) && typeof content === "string") {
     return plan_continuous_content(
       target,
       undefined,
@@ -629,16 +629,15 @@ function walk_shadow(root: ShadowNode, visit: (node: ShadowNode) => void): void 
   for (const child of root.content) if (is_shadow_node(child)) walk_shadow(child, visit);
 }
 
-function nearest_ordinary_owner(target: ShadowNode): ShadowNode {
+function add_ordinary_owner(owners: Set<ShadowNode>, target: ShadowNode): void {
   let current: ShadowNode | undefined = target;
   while (current !== undefined) {
-    if (is_ordinary_element_node(current.node)) return current;
+    if (is_ordinary_element_node(current.node)) {
+      owners.add(current);
+      return;
+    }
     current = current.parent;
   }
-  throw new DocumentReflectError(
-    DOCUMENT_REFLECT_CONTENT_PATH_INVALID_ERROR_CODE,
-    "Structural target has no ordinary projected DOM owner.",
-  );
 }
 
 function is_shadow_node(input: ShadowContent | undefined): input is ShadowNode {

@@ -1,6 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { hson } from "../src/index.ts";
+import type { HsonNode } from "../src/core/types.ts";
 import {
   livemap_document_identity_accounting,
   livemap_document_identity_overlay_build_count,
@@ -11,7 +12,7 @@ import {
   LiveMapRevError,
 } from "../src/api/livemap/livemap.error.ts";
 import type {
-  ElementLiveMap,
+  DocumentLiveMap,
   LiveMapGraphCommit,
 } from "../src/types/livemap.types.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
@@ -28,13 +29,13 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-function element(source: string): ElementLiveMap {
+function element(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error("Expected element LiveMap");
+  if (map.mode !== "document") throw new Error("Expected element LiveMap");
   return map;
 }
 
-function replay(map: ElementLiveMap, ops: readonly unknown[]): LiveMapGraphCommit {
+function replay(map: DocumentLiveMap, ops: readonly unknown[]): LiveMapGraphCommit {
   return Reflect.apply(map.replay, map, [{
     changed: true,
     prevRev: map.rev,
@@ -48,14 +49,16 @@ function quidTarget(quid: string): Readonly<{ kind: "quid"; quid: string }> {
 }
 
 function pathTarget(...path: number[]): Readonly<{ kind: "path"; path: readonly number[] }> {
-  return Object.freeze({ kind: "path", path: Object.freeze(path) });
+  return Object.freeze({ kind: "path", path: Object.freeze([0, ...path]) });
 }
 
-function child(tag: string, quid: string): ReturnType<ElementLiveMap["element"]["node"]> {
-  return element(`<${tag} @${quid}/>`).element.node();
+function child(tag: string, quid: string): HsonNode {
+  const value = element(`<${tag} @${quid}/>`).root().$_content[0];
+  if (value === undefined || value === null || typeof value !== "object") throw new Error("Expected authored document child");
+  return value;
 }
 
-function stagedSource(): ElementLiveMap {
+function stagedSource(): DocumentLiveMap {
   return element(`<main @${Q1} <a @${Q2}/> <b @${Q3}/>/>`);
 }
 
@@ -76,7 +79,7 @@ check("move then QUID target resolves the moved staged path", () => {
     { domain: "graph", op: "move-content", target: pathTarget(0), from: 0, to: 1 },
     { domain: "graph", op: "set-attr", target: quidTarget(Q2), name: "id", value: "moved" },
   ]);
-  assert.deepEqual(targetField(commit, 1, "path"), [0, 1]);
+  assert.deepEqual(targetField(commit, 1, "path"), [0, 0, 1]);
 });
 
 check("move then QUID target retains evidence for the same identity", () => {
@@ -93,7 +96,7 @@ check("inserted supplied QUID is targetable at the next ordinal", () => {
     { domain: "graph", op: "insert-content", target: pathTarget(0), index: 0, content: child("i", Q4) },
     { domain: "graph", op: "set-attr", target: quidTarget(Q4), name: "id", value: "inserted" },
   ]);
-  assert.deepEqual(targetField(commit, 1, "path"), [0, 0]);
+  assert.deepEqual(targetField(commit, 1, "path"), [0, 0, 0]);
   assert.equal(map.document.byQuid(Q4)?.$_attrs?.id, "inserted");
 });
 
@@ -151,7 +154,7 @@ check("replace then new QUID target resolves replacement identity", () => {
     { domain: "graph", op: "replace-content", target: pathTarget(0), index: 0, replacement: child("i", Q4) },
     { domain: "graph", op: "set-attr", target: quidTarget(Q4), name: "id", value: "new" },
   ]);
-  assert.deepEqual(targetField(commit, 1, "path"), [0, 0]);
+  assert.deepEqual(targetField(commit, 1, "path"), [0, 0, 0]);
   assert.equal(map.document.byQuid(Q4)?.$_attrs?.id, "new");
 });
 
@@ -162,7 +165,7 @@ check("old witness at a replacement path reports conflict", () => {
     {
       domain: "graph",
       op: "set-attr",
-      target: { kind: "path", path: [0, 0], witness: { quid: Q2 } },
+      target: { kind: "path", path: [0, 0, 0], witness: { quid: Q2 } },
       name: "id",
       value: "bad",
     },
@@ -175,7 +178,7 @@ check("insertion shift is visible to later QUID lowering", () => {
     { domain: "graph", op: "insert-content", target: pathTarget(0), index: 0, content: child("i", Q4) },
     { domain: "graph", op: "set-attr", target: quidTarget(Q3), name: "id", value: "shifted" },
   ]);
-  assert.deepEqual(targetField(commit, 1, "path"), [0, 2]);
+  assert.deepEqual(targetField(commit, 1, "path"), [0, 0, 2]);
 });
 
 check("deletion shift is visible to later QUID lowering", () => {
@@ -183,7 +186,7 @@ check("deletion shift is visible to later QUID lowering", () => {
     { domain: "graph", op: "remove-content", target: pathTarget(0), index: 0 },
     { domain: "graph", op: "set-attr", target: quidTarget(Q3), name: "id", value: "shifted" },
   ]);
-  assert.deepEqual(targetField(commit, 1, "path"), [0, 0]);
+  assert.deepEqual(targetField(commit, 1, "path"), [0, 0, 0]);
 });
 
 check("backward move rewrites later QUID request coordinates", () => {
@@ -191,17 +194,17 @@ check("backward move rewrites later QUID request coordinates", () => {
     { domain: "graph", op: "move-content", target: pathTarget(0), from: 1, to: 0 },
     { domain: "graph", op: "set-attr", target: quidTarget(Q3), name: "id", value: "first" },
   ]);
-  assert.deepEqual(targetField(commit, 1, "path"), [0, 0]);
+  assert.deepEqual(targetField(commit, 1, "path"), [0, 0, 0]);
 });
 
 check("same-position move leaves the next QUID request on the same path", () => {
   const map = stagedSource();
   const beforeOverlay = livemap_document_identity_overlay_for(map);
-  const noOp = map.document.content.move({ kind: "path", path: [0] }, 0, 0);
+  const noOp = map.document.content.move({ kind: "path", path: [0, 0] }, 0, 0);
   const commit = map.document.attrs.set(quidTarget(Q2), "id", "same");
   assert.equal(noOp.changed, false);
   assert.equal(livemap_document_identity_overlay_for(map), beforeOverlay);
-  assert.deepEqual(targetField(commit, 0, "path"), [0, 0]);
+  assert.deepEqual(targetField(commit, 0, "path"), [0, 0, 0]);
 });
 
 check("successful legacy staging returns only canonical path targets", () => {

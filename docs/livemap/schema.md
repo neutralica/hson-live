@@ -15,10 +15,10 @@ distinct operation is owner governance: `map.schema.use(UserSchema)`.
 
 `Hson.certify(schema: HsonSchema, canonical: HsonCanonical): HsonCanonical`
 validates an existing admitted canonical string without allocating a LiveMap or
-reserializing it. Complete data, element, fragment and combined capabilities
+reserializing it. Complete data, document, and combined capabilities
 use the canonical HsonSchema evaluator. Root interpretation comes from Hson,
-not from the supplied Schema: ordinary `"text"` is a data string, not a
-fragment. No element-to-fragment or scalar-to-fragment coercion occurs.
+not from the supplied Schema: ordinary `"text"` is a data string, while a
+document Schema constrains ordered content beneath the internal document root.
 
 Mismatches throw the internal `HsonSchemaError` with structured issues; incomplete or
 unrecognized Schemas fail with `INVALID_SCHEMA`, incompatible roots with

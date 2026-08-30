@@ -14,7 +14,10 @@ const rejected = (value: unknown, pattern?: RegExp): void => {
 };
 
 check("minimal projected graph verifies and freezes", () => { const value = graph({ projectedRoot: 0 }, [{ kind: "projected-string" }]); const result = verify_canonical_schema_graph(value); assert.equal(result.ok, true); if (result.ok) assert.equal(Object.isFrozen(result.graph.nodes), true); });
-check("minimal element graph verifies", () => accepted(graph({ documentItem: 0, documentElementRoot: 0 }, [{ kind: "document-element", content: 1 }, { kind: "document-broad-content" }])));
+check("minimal document graph verifies", () => accepted(graph(
+  { documentRoot: 0 },
+  [{ kind: "document-root", content: 1 }, { kind: "document-sequence", items: [2] }, { kind: "document-element", content: 3 }, { kind: "document-broad-content" }],
+)));
 check("format is exact", () => rejected({ ...graph({ projectedRoot: 0 }, [{ kind: "projected-string" }]), format: "other" }, /format/i));
 check("version is supported", () => rejected({ ...graph({ projectedRoot: 0 }, [{ kind: "projected-string" }]), version: 2 }, /version/i));
 check("unknown envelope fields reject", () => rejected({ ...graph({ projectedRoot: 0 }, [{ kind: "projected-string" }]), surprise: true }, /Unknown field/));
@@ -38,7 +41,10 @@ check("first-discovery node order is canonical", () => rejected(graph({ projecte
 check("non-consuming self ref rejects", () => rejected(graph({ projectedRoot: 0 }, [{ kind: "projected-ref", target: 0 }]), /no consuming/));
 check("non-consuming union cycle rejects", () => rejected(graph({ projectedRoot: 0 }, [{ kind: "projected-union", choices: [1] }, { kind: "projected-ref", target: 0 }]), /no consuming/));
 check("object-property recursion is productive", () => accepted(graph({ projectedRoot: 0 }, [{ kind: "projected-object", exact: false, properties: [["child", 0]] }])));
-check("document child recursion is productive", () => accepted(graph({ documentItem: 0, documentElementRoot: 0 }, [{ kind: "document-element", content: 1 }, { kind: "document-sequence", items: [0] }])));
+check("document child recursion is productive", () => accepted(graph(
+  { documentRoot: 0 },
+  [{ kind: "document-root", content: 1 }, { kind: "document-sequence", items: [2] }, { kind: "document-element", content: 1 }],
+)));
 check("malformed refinement bound rejects", () => rejected(graph({ projectedRoot: 0 }, [{ kind: "projected-refinement", base: 1, rule: { kind: "number-lower-bound", value: Infinity, inclusive: true } }, { kind: "projected-number" }]), /finite/));
 check("closed deterministic pattern refinement verifies", () => accepted(graph({ projectedRoot: 0 }, [{ kind: "projected-refinement", base: 1, rule: { kind: "string-pattern", dialect: "literal-string-v1", mode: "prefix", pattern: "id_" } }, { kind: "projected-string" }])));
 check("documentation metadata unknown fields reject", () => rejected(graph({ projectedRoot: 0 }, [{ kind: "projected-string" }], { documentationMetadata: { path: "/tmp/x" } }), /Unknown field/));

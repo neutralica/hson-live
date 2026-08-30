@@ -1,7 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
-import type { ElementLiveMap, LiveMapDocumentPath } from "../src/types/livemap.types.ts";
+import type { DocumentLiveMap, LiveMapDocumentPath } from "../src/types/livemap.types.ts";
 import {
   assert_livemap_document_identity_overlay,
   livemap_document_identity_overlay_build_count,
@@ -23,11 +23,11 @@ function check(name: string, run: () => void): void {
 const Q1 = "000000101";
 const Q2 = "000000102";
 const Q3 = "000000103";
-const rootPath = validate_document_path([]);
+const rootPath = validate_document_path([0]);
 
-function element(source: string): ElementLiveMap {
+function element(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error("Expected element map");
+  if (map.mode !== "document") throw new Error("Expected element map");
   return map;
 }
 
@@ -39,7 +39,7 @@ function fakeOverlay(
   return Object.freeze({ size, pathForQuid, quidAtPath });
 }
 
-function witnessedCommit(quid: string, path: readonly number[] = []): unknown {
+function witnessedCommit(quid: string, path: readonly number[] = [0]): unknown {
   return {
     changed: true,
     prevRev: 0,
@@ -55,12 +55,12 @@ function witnessedCommit(quid: string, path: readonly number[] = []): unknown {
 }
 
 check("QUID-to-path lookup resolves the canonical root", () => {
-  assert.deepEqual(livemap_document_identity_overlay_for(element(`<main @${Q1}/>`)).pathForQuid(Q1), []);
+  assert.deepEqual(livemap_document_identity_overlay_for(element(`<main @${Q1}/>`)).pathForQuid(Q1), [0]);
 });
 
 check("QUID-to-path lookup resolves a nested canonical element", () => {
   const overlay = livemap_document_identity_overlay_for(element(`<main <span @${Q1}/>/` + `>`));
-  assert.deepEqual(overlay.pathForQuid(Q1), [0, 0]);
+  assert.deepEqual(overlay.pathForQuid(Q1), [0, 0, 0]);
 });
 
 check("path-to-QUID lookup reverses the same root correspondence", () => {
@@ -69,7 +69,7 @@ check("path-to-QUID lookup reverses the same root correspondence", () => {
 
 check("path-to-QUID lookup reverses the same nested correspondence", () => {
   const overlay = livemap_document_identity_overlay_for(element(`<main <span @${Q1}/>/` + `>`));
-  assert.equal(overlay.quidAtPath(validate_document_path([0, 0])), Q1);
+  assert.equal(overlay.quidAtPath(validate_document_path([0, 0, 0])), Q1);
 });
 
 check("missing QUID lookup returns undefined", () => {
@@ -78,7 +78,7 @@ check("missing QUID lookup returns undefined", () => {
 
 check("an unquidded canonical path has no reverse correspondence", () => {
   const overlay = livemap_document_identity_overlay_for(element(`<main @${Q1} <span/>/>`));
-  assert.equal(overlay.quidAtPath(validate_document_path([0, 0])), undefined);
+  assert.equal(overlay.quidAtPath(validate_document_path([0, 0, 0])), undefined);
 });
 
 check("document.byQuid resolves through the current overlay and returns a clone", () => {
@@ -99,7 +99,7 @@ check("repeated document.byQuid lookup performs no overlay rebuild", () => {
 check("matching witness validation reads path-to-QUID overlay evidence", () => {
   const map = element(`<main @${Q1}/>`);
   Reflect.apply(map.replay, map, [witnessedCommit(Q1)]);
-  assert.equal(map.document.attrs.get({ kind: "path", path: [] }, "title"), "seen");
+  assert.equal(map.document.attrs.get({ kind: "path", path: [0] }, "title"), "seen");
 });
 
 check("different active overlay evidence reports witness mismatch", () => {
@@ -111,7 +111,7 @@ check("different active overlay evidence reports witness mismatch", () => {
 check("missing overlay evidence remains diagnostic-only for witnesses", () => {
   const map = element(`<main/>`);
   Reflect.apply(map.replay, map, [witnessedCommit(Q1)]);
-  assert.equal(map.document.attrs.get({ kind: "path", path: [] }, "title"), "seen");
+  assert.equal(map.document.attrs.get({ kind: "path", path: [0] }, "title"), "seen");
 });
 
 check("an invalid path never reroutes through a matching QUID elsewhere", () => {
@@ -123,7 +123,7 @@ check("an invalid path never reroutes through a matching QUID elsewhere", () => 
 check("QUID requests lower from overlay path to path-authoritative commits", () => {
   const map = element(`<main <span @${Q1}/>/` + `>`);
   const commit = map.document.attrs.set({ kind: "quid", quid: Q1 }, "id", "target");
-  assert.deepEqual(commit.ops[0]?.target, { kind: "path", path: [0, 0], witness: { quid: Q1 } });
+  assert.deepEqual(commit.ops[0]?.target, { kind: "path", path: [0, 0, 0], witness: { quid: Q1 } });
 });
 
 check("unknown QUID requests fail without building an overlay", () => {

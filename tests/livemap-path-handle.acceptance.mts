@@ -9,7 +9,7 @@ import { bind_livetree_input_value, bind_livetree_text } from "../src/api/livema
 import { disposables_count_for_owner } from "../src/api/livetree/managers/lifecycle-registry.ts";
 import { acquire_projected_identity } from "./helpers/livemap-identity-internal.mts";
 import type { JsonValue } from "../src/core/types.ts";
-import type { ElementLiveMap } from "../src/types/livemap.types.ts";
+import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
 
 let checks = 0;
 
@@ -19,9 +19,9 @@ function check(name: string, fn: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-function element(source: string): ElementLiveMap {
+function element(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error(`Expected element map; observed ${map.mode}`);
+  if (map.mode !== "document") throw new Error(`Expected element map; observed ${map.mode}`);
   return map;
 }
 
@@ -311,7 +311,7 @@ check("document locations bind raw detached values and heterogeneous tuples", ()
   assert.equal(nodeTag(documentMap.at([0]).snap()), "a");
   assert.deepEqual(raw, [["a", undefined]]);
   assert.deepEqual(tuples, [[["dark", "tail"], undefined]]);
-  documentMap.at([0]).replace(element(`<b/>`).element.node());
+  documentMap.at([0]).replace(element(`<b/>`).root());
   projectedMap.set(["theme"], "light");
   assert.deepEqual(raw, [["a", undefined], ["b", "detached"]]);
   assert.deepEqual(tuples.at(-1), [["light", "tail"], ["dark", "tail"]]);
@@ -430,7 +430,7 @@ check("unmapped structured document values reject before initial mutation or sub
   documentMap.at([0]).replace("later");
   assert.equal(tree.text.get(), "stable");
 
-  documentMap.at([0]).replace(element(`<em/>`).element.node());
+  documentMap.at([0]).replace(element(`<em/>`).root());
   assert.throws(
     () => (tree.bind.attr as (source: unknown, name: string) => () => void)(documentMap.at([0]), "title"),
     /document Hson values require an explicit mapper/,
@@ -448,7 +448,7 @@ check("unmapped document primitive bindings survive structured failures and reco
   assert.equal(tree.text.get(), "ready");
 
   assert.throws(
-    () => documentMap.at([0]).replace(element(`<strong/>`).element.node()),
+    () => documentMap.at([0]).replace(element(`<strong/>`).root()),
     /document Hson values require an explicit mapper/,
   );
   assert.equal(tree.text.get(), "ready");
@@ -469,7 +469,7 @@ check("document bindings inherit fixed coordinates, attrs observation, and resto
   const initial = documentMap.capture();
   const dispose = tree.bind.path(location, (_target, value) => seen.push(nodeTag(value) ?? String(value)));
 
-  documentMap.at([]).insert(0, element(`<x/>`).element.node());
+  documentMap.at([]).insert(0, element(`<x/>`).root());
   assert.equal(nodeTag(discovered.snap()), "x");
   assert.deepEqual(documentMap.at([]).id("subject")?.path(), [1]);
   documentMap.at([]).move(0, 2);
@@ -478,7 +478,7 @@ check("document bindings inherit fixed coordinates, attrs observation, and resto
   documentMap.restore(documentMap.capture());
   const beforeRejectedRestore = seen.length;
   const incompatible = hson.liveMap.fromHson(`<a/> <b/>`);
-  if (incompatible.mode !== "fragment") throw new Error("Expected fragment map");
+  if (incompatible.mode !== "document") throw new Error("Expected multiNodeDocument map");
   assert.throws(() => documentMap.restore(incompatible.capture()));
   assert.equal(seen.length, beforeRejectedRestore);
 

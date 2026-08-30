@@ -6,8 +6,7 @@ import { is_ordinary_element_node } from "../src/core/node-guards.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import type {
   DocumentLiveMapCapture,
-  ElementLiveMap,
-  FragmentLiveMap,
+  DocumentLiveMap,
   LiveMapCommitObservation,
 } from "../src/types/livemap.types.ts";
 import {
@@ -27,15 +26,15 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-function element(source: string): ElementLiveMap {
+function element(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error("Expected element LiveMap");
+  if (map.mode !== "document") throw new Error("Expected element LiveMap");
   return map;
 }
 
-function fragment(source: string): FragmentLiveMap {
+function multiNodeDocument(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "fragment") throw new Error("Expected fragment LiveMap");
+  if (map.mode !== "document") throw new Error("Expected multiNodeDocument LiveMap");
   return map;
 }
 
@@ -51,8 +50,8 @@ function ordinaryNodes(root: HsonNode): HsonNode[] {
   return found;
 }
 
-function duplicateCapture(): DocumentLiveMapCapture<"fragment"> {
-  const capture = fragment(`<a @${Q1}/><b @${Q2}/>`).capture();
+function duplicateCapture(): DocumentLiveMapCapture<"document"> {
+  const capture = multiNodeDocument(`<a @${Q1}/><b @${Q2}/>`).capture();
   const nodes = ordinaryNodes(capture.root);
   const second = nodes.find((node) => node.$_meta?.quid === Q2);
   if (nodes.length !== 2 || second?.$_meta === undefined) throw new Error("Duplicate fixture shape changed");
@@ -69,7 +68,7 @@ check("an exact current-epoch capability installs on its owner", () => {
   const capture = map.capture({ identity: "same-epoch" });
   map.document.attrs.set({ kind: "quid", quid: Q1 }, "data-next", 1);
   map.install(capture, { identity: "same-epoch" });
-  assert.equal(map.element.node().$_attrs?.["data-next"], undefined);
+  assert.equal(map.root().$_attrs?.["data-next"], undefined);
 });
 
 check("same-epoch restore preserves the captured revision", () => {
@@ -161,7 +160,7 @@ check("identity-free captures cannot be promoted to same-epoch", () => {
 });
 
 check("duplicate preserved claims have a stable admission failure", () => {
-  const target = fragment(`<c/><d/>`);
+  const target = multiNodeDocument(`<c/><d/>`);
   assert.throws(
     () => target.install(duplicateCapture(), { identity: "preserve-metadata" }),
     (error: unknown) => typeof error === "object" && error !== null
@@ -170,13 +169,13 @@ check("duplicate preserved claims have a stable admission failure", () => {
 });
 
 check("identity stripping removes duplicates before active overlay admission", () => {
-  const target = fragment(`<c/><d/>`);
+  const target = multiNodeDocument(`<c/><d/>`);
   target.install(duplicateCapture(), { identity: "strip" });
   assert.equal(target.document.byQuid(Q1), undefined);
 });
 
 check("duplicate rejection is atomic across graph revision overlay and observations", () => {
-  const target = fragment(`<c @${Q2}/><d/>`);
+  const target = multiNodeDocument(`<c @${Q2}/><d/>`);
   const before = target.capture();
   const observations: LiveMapCommitObservation[] = [];
   target.commits.observe((event) => observations.push(event));
@@ -225,7 +224,7 @@ check("malformed capture envelopes retain a stable install failure", () => {
 
 check("ordinary durable captures remain detached and freely serializable", () => {
   const source = element(`<main @${Q1}/>`);
-  const decoded = JSON.parse(JSON.stringify(source.capture())) as DocumentLiveMapCapture<"element">;
+  const decoded = JSON.parse(JSON.stringify(source.capture())) as DocumentLiveMapCapture<"document">;
   const target = element(`<main/>`);
   target.restore(decoded, { identity: "preserve-metadata" });
   assert.equal(target.document.byQuid(Q1)?.$_tag, "main");

@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import type { HsonNode } from "../src/core/types.ts";
-import type { ElementLiveMap, LiveMapCommitObservation } from "../src/types/livemap.types.ts";
+import type { DocumentLiveMap, LiveMapCommitObservation } from "../src/types/livemap.types.ts";
 import {
   livemap_document_identity_accounting,
   livemap_document_identity_overlay_build_count,
@@ -21,11 +21,11 @@ function check(name: string, run: () => void): void {
 const Q1 = "000000201";
 const Q2 = "000000202";
 const Q3 = "000000203";
-const rootTarget = { kind: "path", path: [] } as const;
+const rootTarget = { kind: "path", path: [0] } as const;
 
-function element(source: string): ElementLiveMap {
+function element(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error("Expected element map");
+  if (map.mode !== "document") throw new Error("Expected element map");
   return map;
 }
 
@@ -35,15 +35,12 @@ function graph(tag: string, quid: string, child?: Readonly<{ tag: string; quid: 
     : [{ $_tag: "_hson_elem", $_content: [{ $_tag: child.tag, $_content: [], $_meta: { quid: child.quid } }] }];
   return {
     $_tag: "_hson_root",
-    $_content: [{
-      $_tag: "_hson_elem",
-      $_content: [{ $_tag: tag, $_content: content, $_meta: { quid } }],
-    }],
+    $_content: [{ $_tag: tag, $_content: content, $_meta: { quid } }],
   };
 }
 
 function invalidCapture(root: HsonNode): unknown {
-  return { kind: "hson-document", mode: "element", rev: 0, root };
+  return { kind: "hson-document", mode: "document", rev: 0, root };
 }
 
 check("construction completes exactly one overlay build", () => {
@@ -68,7 +65,7 @@ check("accepted attr mutation atomically retains the exact overlay with the new 
   map.document.attrs.set(rootTarget, "id", "changed");
   const after = livemap_document_identity_overlay_for(map);
   assert.equal(after, before);
-  assert.equal(after.quidAtPath(validate_document_path([])), Q1);
+  assert.equal(after.quidAtPath(validate_document_path([0])), Q1);
 });
 
 check("capture serializes graph identity but not the derived overlay", () => {
@@ -156,7 +153,7 @@ check("duplicate candidate failure leaves the exact overlay installed", () => {
   const before = livemap_document_identity_overlay_for(target);
   assert.throws(() => Reflect.apply(target.install, target, [invalidCapture(graph("main", Q2, { tag: "span", quid: Q2 }))]));
   assert.equal(livemap_document_identity_overlay_for(target), before);
-  assert.deepEqual(before.pathForQuid(Q1), []);
+  assert.deepEqual(before.pathForQuid(Q1), [0]);
 });
 
 check("duplicate candidate failure publishes no commit or snapshot", () => {
@@ -206,17 +203,17 @@ check("supplied sparse QUIDs remain exact across insertion", () => {
   });
   const overlay = livemap_document_identity_overlay_for(target);
   assert.equal(overlay.size, 2);
-  assert.deepEqual(overlay.pathForQuid(Q1), []);
-  assert.deepEqual(overlay.pathForQuid(Q2), [0, 0]);
+  assert.deepEqual(overlay.pathForQuid(Q1), [0]);
+  assert.deepEqual(overlay.pathForQuid(Q2), [0, 0, 0]);
 });
 
 check("removal retires only removed sparse identity", () => {
   const target = element(`<main @${Q1} <span @${Q2}/> <b @${Q3}/>/>`);
-  target.document.content.remove({ kind: "path", path: [0] }, 0);
+  target.document.content.remove({ kind: "path", path: [0, 0] }, 0);
   const overlay = livemap_document_identity_overlay_for(target);
   assert.equal(overlay.size, 2);
   assert.equal(overlay.pathForQuid(Q2), undefined);
-  assert.deepEqual(overlay.pathForQuid(Q3), [0, 0]);
+  assert.deepEqual(overlay.pathForQuid(Q3), [0, 0, 0]);
 });
 
 check("commit observers see the already-installed root and overlay", () => {

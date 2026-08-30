@@ -1,5 +1,5 @@
 import { Hson } from "hson-live";
-import { FragmentSchema, ListSchema, PageSchema, type FragmentSchemaHson, type ListSchemaHson, type PageSchemaHson } from "./producer.js";
+import { DocumentSequenceSchema, ListSchema, PageSchema, type DocumentSequenceSchemaHson, type ListSchemaHson, type PageSchemaHson } from "./producer.js";
 
 export const authored: PageSchemaHson = Hson`<main id=hero data-extension=yes <section "body"/>/>`;
 
@@ -8,5 +8,5 @@ export const certified: PageSchemaHson = Hson.certify(PageSchema, dynamic);
 
 export const repeated: ListSchemaHson = Hson`<list <item code=ok-one/> <item code=ok-two/>/>`;
 export const repeatedCertified: ListSchemaHson = Hson.certify(ListSchema, dynamic);
-export const fragment: FragmentSchemaHson = Hson`<item/><item/>`;
-export const fragmentCertified: FragmentSchemaHson = Hson.certify(FragmentSchema, dynamic);
+export const documentSequence: DocumentSequenceSchemaHson = Hson`<item/><item/>`;
+export const documentSequenceCertified: DocumentSequenceSchemaHson = Hson.certify(DocumentSequenceSchema, dynamic);

@@ -13,8 +13,7 @@ import {
 import { ViewStateSnapshotCodecError } from "../livemap/livemap.document.view-state-codec.error.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
 import { parse_hson } from "../transform/parsers/parse-hson.js";
-import { serialize_hson_owned_element_text_fragment } from "../transform/serializers/serialize-hson.js";
-import { detach_hson_root_value } from "../transform/utils/node-utils/detach-hson-root-value.js";
+import { serialize_hson_owned_document_content } from "../transform/serializers/serialize-hson.js";
 
 /** @internal Common outer recovery fields shared by both snapshot bodies. */
 export type LocusSnapshotCommonFields = Pick<
@@ -115,8 +114,8 @@ export function encode_locus_document_snapshot(
       ...common,
       rev: capture.rev,
       mode: capture.mode,
-      hson: serialize_hson_owned_element_text_fragment(
-        detach_hson_root_value(capture.root),
+      hson: serialize_hson_owned_document_content(
+        capture.root,
         { noBreak: true },
       ),
     });
@@ -154,9 +153,9 @@ export function decode_locus_document_snapshot(
   if ("hson" in snapshot) {
     const staged = make_classified_livemap(parse_hson(
       snapshot.hson,
-      { allowTopLevelTextFragment: true },
+      { allowTopLevelDocumentText: true },
     ));
-    if (staged.mode !== "element" && staged.mode !== "fragment") {
+    if (staged.mode !== "document") {
       throw new Error("Locus Hson document snapshot reconstructed a non-document root.");
     }
     if (staged.mode !== snapshot.mode) {

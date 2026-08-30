@@ -49,7 +49,7 @@ export type InternalDocumentPhysicalAssociation =
   }>
   | Readonly<{
     kind: "none";
-    reason: "empty-fragment" | "empty-element-content";
+    reason: "empty-element-content";
     ownerPath?: LiveMapDocumentPath;
   }>;
 
@@ -66,7 +66,7 @@ export type InternalDocumentLogicalResolution =
   }>
   | Readonly<{
     kind: "content";
-    scope: "fragment" | "element";
+    scope: "document" | "element";
     length: number;
     physical: InternalDocumentPhysicalAssociation;
   }>
@@ -152,12 +152,12 @@ type PrimitiveCursor = Readonly<{
 
 type ContentCursor = Readonly<{
   kind: "content";
-  scope: "fragment" | "element";
+  scope: "document" | "element";
   ownerPath?: LiveMapDocumentPath;
   logicalOwnerPath?: LiveMapDocumentPath;
   node?: HsonNode;
   carrierPaths: readonly LiveMapDocumentPath[];
-  emptyReason?: "empty-fragment" | "empty-element-content";
+  emptyReason?: "empty-element-content";
 }>;
 
 type FacetCursor = Extract<InternalDocumentLogicalResolution, Readonly<{ kind: "facet" }>>;
@@ -363,16 +363,12 @@ export function lower_internal_document_content_remove(
   if (resolution.physical.kind !== "direct" && resolution.physical.kind !== "carrier") {
     throw traversal_error("PHYSICAL_TARGET_UNAVAILABLE", "logical content has no materialized removal target");
   }
-  if (resolution.length > 1) {
+  if (resolution.scope === "document" || resolution.length > 1) {
     return Object.freeze({
       kind: "content-remove",
       target: Object.freeze({ kind: "path", path: resolution.physical.path }),
       index,
     });
-  }
-  if (resolution.scope === "fragment") {
-    const root: HsonNode = { $_tag: ROOT_TAG, $_content: [] };
-    return Object.freeze({ kind: "replace-root", root });
   }
   const carrierPath = resolution.physical.path;
   const carrierIndex = carrierPath[carrierPath.length - 1];
@@ -406,35 +402,25 @@ function document_root_cursor(root: HsonNode, mode: DocumentLiveMapMode): Traver
     );
   }
 
-  if (mode === "element") {
-    const endpoint = resolve_document_path(root, mode, validate_document_path([]));
-    if (!is_Node(endpoint) || !is_ordinary_element_node(endpoint)) {
-      throw traversal_error("INVALID_DOCUMENT_ROOT", "element mode has no ordinary root element");
-    }
+  const endpoint = resolve_document_path(root, mode, validate_document_path([]));
+  if (!is_Node(endpoint)) {
+    throw traversal_error("INVALID_DOCUMENT_ROOT", "document mode has no canonical document root");
+  }
+  if (endpoint.$_tag !== ROOT_TAG || endpoint !== root) {
+    throw traversal_error("INVALID_DOCUMENT_ROOT", "document mode has no canonical document authority");
+  }
+  const only = endpoint.$_content.length === 1 ? endpoint.$_content[0] : undefined;
+  if (is_ordinary_element_node(only)) {
     return Object.freeze({
       kind: "node",
-      node: endpoint,
-      path: validate_document_path([]),
+      node: only,
+      path: validate_document_path([0]),
       carrierPaths: Object.freeze([]),
     });
-  }
-
-  if (root.$_tag === ROOT_TAG && root.$_content.length === 0) {
-    return Object.freeze({
-      kind: "content",
-      scope: "fragment",
-      carrierPaths: Object.freeze([]),
-      emptyReason: "empty-fragment",
-    });
-  }
-
-  const endpoint = resolve_document_path(root, mode, validate_document_path([]));
-  if (!is_Node(endpoint) || endpoint.$_tag !== ELEM_TAG) {
-    throw traversal_error("INVALID_DOCUMENT_ROOT", "fragment mode has no canonical document content cluster");
   }
   return Object.freeze({
     kind: "content",
-    scope: "fragment",
+    scope: "document",
     ownerPath: validate_document_path([]),
     node: endpoint,
     carrierPaths: Object.freeze([]),

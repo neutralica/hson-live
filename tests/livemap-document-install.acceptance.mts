@@ -2,10 +2,8 @@ import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import type {
-  DocumentLiveMap,
   DocumentLiveMapCapture,
-  ElementLiveMap,
-  FragmentLiveMap,
+  DocumentLiveMap,
 } from "../src/index.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import { internal_livemap_node } from "../src/api/livemap/livemap.internal.ts";
@@ -17,15 +15,15 @@ function check(name: string, fn: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-function element(source: string): ElementLiveMap {
+function element(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error(`Expected element, observed ${map.mode}`);
+  if (map.mode !== "document") throw new Error(`Expected element, observed ${map.mode}`);
   return map;
 }
 
-function fragment(source: string): FragmentLiveMap {
+function multiNodeDocument(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "fragment") throw new Error(`Expected fragment, observed ${map.mode}`);
+  if (map.mode !== "document") throw new Error(`Expected multiNodeDocument, observed ${map.mode}`);
   return map;
 }
 
@@ -48,7 +46,7 @@ function quids(root: HsonNode): string[] {
 }
 
 function lookup(map: DocumentLiveMap, quid: string): HsonNode | undefined {
-  return map.mode === "element" ? map.document.byQuid(quid) : map.document.byQuid(quid);
+  return map.mode === "document" ? map.document.byQuid(quid) : map.document.byQuid(quid);
 }
 
 function assert_unchanged(
@@ -80,7 +78,7 @@ check("element install atomically replaces root, identity, revision, and returns
   assert.deepEqual(commit.ops[0], {
     domain: "graph",
     op: "replace-root",
-    mode: "element",
+    mode: "document",
     root: sourceCapture.root,
   });
   assert.deepEqual(target.root(), sourceCapture.root);
@@ -90,19 +88,19 @@ check("element install atomically replaces root, identity, revision, and returns
   assert.notEqual(commit.ops[0]?.root, target.root());
 });
 
-check("fragment install preserves canonical document varieties", () => {
-  const sources: FragmentLiveMap[] = [
+check("multiNodeDocument install preserves canonical document varieties", () => {
+  const sources: DocumentLiveMap[] = [
     (() => {
       const map = hson.liveMap.fromNode({ $_tag: "_hson_root", $_content: [] });
-      if (map.mode !== "fragment") throw new Error(`Expected fragment, observed ${map.mode}`);
+      if (map.mode !== "document") throw new Error(`Expected multiNodeDocument, observed ${map.mode}`);
       return map;
     })(),
-    fragment(`"text only"`),
-    fragment(`<div @000000003/> <div @000000004/>`),
-    fragment(`"before" <section class="x" style="color: red" data-user="kept" @000000005 <em @000000006 "middle"/>/> "after"`),
+    multiNodeDocument(`"text only"`),
+    multiNodeDocument(`<div @000000003/> <div @000000004/>`),
+    multiNodeDocument(`"before" <section class="x" style="color: red" data-user="kept" @000000005 <em @000000006 "middle"/>/> "after"`),
   ];
   for (const source of sources) {
-    const target = fragment(`"target"`);
+    const target = multiNodeDocument(`"target"`);
     const capture = source.capture();
     const commit = target.install(capture);
     assert.equal(commit.changed, true);
@@ -112,31 +110,33 @@ check("fragment install preserves canonical document varieties", () => {
   }
 });
 
-check("mode mismatches and declaration mismatches roll back completely", () => {
+check("one/many document captures interoperate and obsolete mode declarations roll back", () => {
   const target = element(`<main @00000000a/>`);
+  const commit = target.install(multiNodeDocument(`"text" <aside @00000000b/>`).capture());
+  assert.equal(commit.changed, true);
+  assert.equal(target.mode, "document");
+  assert.equal(target.document.content().length, 2);
+  assert.equal(target.document.byQuid("00000000b")?.$_tag, "aside");
+
   const before = target.capture();
   const known = quids(before.root);
-  assert.throws(() => target.install(fragment(`"text"`).capture()), /target mode element cannot install fragment/);
-  assert_unchanged(target, before, known);
-
-  const elementCapture = element(`<button @00000000b/>`).capture();
-  const falselyDeclared = { ...elementCapture, mode: "fragment" };
+  const obsoleteDeclaration = { ...element(`<button @00000000c/>`).capture(), mode: "element" };
   assert.throws(
-    () => target.install(invalid_capture(falselyDeclared)),
-    /declares mode fragment, but its root classifies as element/,
+    () => target.install(invalid_capture(obsoleteDeclaration)),
+    /unsupported capture mode "element"/,
   );
   assert_unchanged(target, before, known);
 });
 
 check("capture envelope fields are validated at runtime", () => {
-  const target = fragment(`"target"`);
+  const target = multiNodeDocument(`"target"`);
   const valid = target.capture();
   const invalid = [
     { ...valid, kind: "other" },
     { ...valid, version: 1 },
     { ...valid, rev: -1 },
     { ...valid, rev: 1.5 },
-    { ...valid, mode: "document" },
+    { ...valid, mode: "fragment" },
     { ...valid, root: null },
     { ...valid, root: { $_tag: "_hson_root", $_content: [1] } },
   ];
@@ -232,7 +232,7 @@ check("installed ownership and graph commit payload are recursively detached", (
   const main = nodes(sourceNode).find((node) => node.$_tag === "main");
   if (main !== undefined) main.$_attrs = { ...main.$_attrs, style: { color: "red" } };
   const source = hson.liveMap.fromNode(sourceNode);
-  if (source.mode !== "element") throw new Error("Expected element source");
+  if (source.mode !== "document") throw new Error("Expected element source");
   const capture = source.capture();
   const target = element(`<aside @00000000f/>`);
   const commit = target.install(capture);

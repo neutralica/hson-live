@@ -49,15 +49,20 @@ function close(binding: ReturnType<typeof reflected>["binding"]): void {
   binding.dispose();
   binding.tree.remove();
 }
+function authoredRoot(binding: ReturnType<typeof reflected>["binding"]) {
+  const node = binding.tree.node.$_content[0];
+  if (node === undefined || node === null || typeof node !== "object") throw new Error("Expected authored document root");
+  return _create_livetree_for_runtime_test(runtime, node).adoptRoots(binding.tree.hostRootNode());
+}
 
 check("capture plus replay preserves the semantic registration", () => {
   const { map, binding } = reflected(`<main/>`);
   let commit: LiveMapCommit<LiveMapAnyOp> | undefined;
   map.commits.observe((observation) => { if (observation.kind === "commit") commit = observation.commit; });
-  const quid = binding.tree.quid;
+  const quid = authoredRoot(binding).quid;
   const mirror = element(`<main/>`);
   Reflect.apply(mirror.replay, mirror, [commit]);
-  assert.equal(mirror.element.node().$_meta?.quid, quid);
+  assert.equal((mirror.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, quid);
   close(binding);
 });
 
@@ -70,14 +75,14 @@ check("replay never consults the map allocator", () => {
     rev: 1,
     ops: [{ domain: "graph", op: "ensure-quid", target: path(), quid: Q1 }],
   });
-  assert.equal(map.element.node().$_meta?.quid, Q1);
+  assert.equal((map.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, Q1);
 });
 
 check("Locus canonical history retains path and recorded QUID", () => {
   const { map, binding } = reflected(`<main/>`);
   let commit: LiveMapCommit<LiveMapAnyOp> | undefined;
   map.commits.observe((observation) => { if (observation.kind === "commit") commit = observation.commit; });
-  const quid = binding.tree.quid;
+  const quid = authoredRoot(binding).quid;
   const encoded = make_locus_canonical_commit(map, commit!, "identity-map", "identity-incarnation", 0);
   assert.deepEqual(encoded.ops[0], { domain: "graph", op: "ensure-quid", target: path(), quid });
   close(binding);
@@ -87,7 +92,7 @@ check("current Locus decoder accepts additive ensure-quid transport", () => {
   const encoded = {
     logicalMapId: "identity-map",
     incarnationId: "identity-incarnation",
-    mode: "element",
+    mode: "document",
     prevRev: 0,
     rev: 1,
     ops: [{ domain: "graph", op: "ensure-quid", target: path(), quid: Q1 }],
@@ -99,7 +104,7 @@ check("Locus decoder rejects malformed registration QUID", () => {
   const encoded = {
     logicalMapId: "identity-map",
     incarnationId: "identity-incarnation",
-    mode: "element",
+    mode: "document",
     prevRev: 0,
     rev: 1,
     ops: [{ domain: "graph", op: "ensure-quid", target: path(), quid: "bad" }],
@@ -115,7 +120,7 @@ check("decoded Locus registration replays on a document mirror", () => {
   const encoded = decode_locus_canonical_commit({
     logicalMapId: "identity-map",
     incarnationId: "identity-incarnation",
-    mode: "element",
+    mode: "document",
     prevRev: 0,
     rev: 1,
     ops: [{ domain: "graph", op: "ensure-quid", target: path(), quid: Q1 }],
@@ -129,7 +134,7 @@ check("new registration publishes exactly one authoritative observation", () => 
   const { map, binding } = reflected(`<main/>`);
   const origins: string[] = [];
   map.commits.observe((observation) => { if (observation.kind === "commit") origins.push(observation.origin); });
-  void binding.tree.quid;
+  void authoredRoot(binding).quid;
   assert.deepEqual(origins, ["authoritative"]);
   close(binding);
 });
@@ -138,30 +143,32 @@ check("existing registration suppresses observations", () => {
   const { map, binding } = reflected(`<main @${Q1}/>`);
   let count = 0;
   map.commits.observe(() => count += 1);
-  void binding.tree.quid;
+  void authoredRoot(binding).quid;
   assert.equal(count, 0);
   close(binding);
 });
 
 check("first linked CSS demand acquires canonical identity", () => {
   const { map, binding } = reflected(`<main/>`);
-  assert.ok(binding.tree.css);
+  const root = authoredRoot(binding);
+  assert.ok(root.css);
   assert.equal(map.rev, 1);
-  assert.equal(map.element.node().$_meta?.quid, binding.tree.quid);
+  assert.equal((map.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, root.quid);
   close(binding);
 });
 
 check("first linked event-registry demand acquires canonical identity", () => {
   const { map, binding } = reflected(`<main/>`);
-  assert.ok(binding.tree.events);
+  assert.ok(authoredRoot(binding).events);
   assert.equal(map.rev, 1);
   close(binding);
 });
 
 check("QUID-owned managers share one registration", () => {
   const { map, binding } = reflected(`<main/>`);
-  void binding.tree.css;
-  void binding.tree.events;
+  const root = authoredRoot(binding);
+  void root.css;
+  void root.events;
   assert.equal(map.rev, 1);
   assert.equal(_livetree_runtime_test_claim_count(runtime), 1);
   close(binding);
@@ -169,9 +176,10 @@ check("QUID-owned managers share one registration", () => {
 
 check("attribute diagnostics remain QUID-free", () => {
   const { map, binding } = reflected(`<main/>`);
-  assert.throws(() => binding.tree.attrs.must.get("missing"));
+  const root = authoredRoot(binding);
+  assert.throws(() => root.attrs.must.get("missing"));
   assert.equal(map.rev, 0);
-  assert.equal(binding.tree.node.$_meta?.quid, undefined);
+  assert.equal(root.node.$_meta?.quid, undefined);
   close(binding);
 });
 
@@ -185,9 +193,10 @@ check("linked traversal remains QUID-free", () => {
 
 check("inline style remains a canonical attribute mutation without identity", () => {
   const { map, binding } = reflected(`<main/>`);
-  binding.tree.style.set.color("red");
+  const root = authoredRoot(binding);
+  root.style.set.color("red");
   assert.equal(map.rev, 1);
-  assert.equal(map.element.node().$_meta?.quid, undefined);
+  assert.equal(map.root().$_meta?.quid, undefined);
   assert.equal(_livetree_runtime_test_claim_count(runtime), 0);
   close(binding);
 });
@@ -202,7 +211,7 @@ check("find.byQuid is lookup-only and never mints", () => {
 
 check("document.byQuid resolves through the canonical sparse overlay", () => {
   const { map, binding } = reflected(`<main/>`);
-  const quid = binding.tree.quid;
+  const quid = authoredRoot(binding).quid;
   assert.equal(map.document.byQuid(quid)?.$_meta?.quid, quid);
   close(binding);
 });
@@ -251,7 +260,10 @@ check("QUID encoding uses the strict canonical width and alphabet", () => {
 });
 
 check("standalone LiveTree retains standalone mint authority", () => {
-  const standalone = _create_livetree_for_runtime_test(runtime, element(`<aside/>`).element.node());
+  const document = element(`<aside/>`).root();
+  const authored = document.$_content[0];
+  if (authored === undefined || authored === null || typeof authored !== "object") throw new Error("Expected authored element");
+  const standalone = _create_livetree_for_runtime_test(runtime, authored);
   assert.equal(standalone.quid.length, 9);
   assert.equal(_livetree_runtime_test_claim_count(runtime), 1);
   standalone.remove();
@@ -259,8 +271,9 @@ check("standalone LiveTree retains standalone mint authority", () => {
 
 check("disposed binding cannot resurrect linked identity privately", () => {
   const { map, binding } = reflected(`<main/>`);
+  const root = authoredRoot(binding);
   binding.dispose();
-  assert.throws(() => binding.tree.quid, /active authority binding is unavailable/);
+  assert.throws(() => root.quid, /active authority binding is unavailable/);
   assert.equal(map.rev, 0);
   binding.tree.remove();
 });

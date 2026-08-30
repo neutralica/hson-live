@@ -1065,7 +1065,7 @@ check("LiveMap raw installation validates all modes, remains cold, and leaves so
   const before = structuredClone(valid);
   const map = hsonLiveMap.fromNode(valid);
   assert.deepEqual(valid, before);
-  assert.equal(map.mode, "element");
+  assert.equal(map.mode, "document");
   assert.equal(map.document.byQuid(Q1)?.$_tag, "main");
   assert.equal(map.document.byQuid(Q2)?.$_tag, "p");
   assert.equal(get_node_by_quid(Q1), undefined);
@@ -1092,8 +1092,8 @@ check("LiveMap raw installation validates all modes, remains cold, and leaves so
   const crossMapSource = document_root(element("shared", Q6));
   const firstMap = hsonLiveMap.fromNode(crossMapSource);
   const secondMap = hsonLiveMap.fromNode(crossMapSource);
-  assert.equal(firstMap.mode, "element");
-  assert.equal(secondMap.mode, "element");
+  assert.equal(firstMap.mode, "document");
+  assert.equal(secondMap.mode, "document");
   assert.equal(firstMap.document.byQuid(Q6)?.$_tag, "shared");
   assert.equal(secondMap.document.byQuid(Q6)?.$_tag, "shared");
   assert.equal(get_node_by_quid(Q6), undefined);
@@ -1101,9 +1101,9 @@ check("LiveMap raw installation validates all modes, remains cold, and leaves so
 
 check("failed document capture installation is atomic", () => {
   const target = hsonLiveMap.fromNode(document_root(element("main", Q1)));
-  if (target.mode !== "element") throw new Error("expected element LiveMap");
+  if (target.mode !== "document") throw new Error("expected element LiveMap");
   const source = hsonLiveMap.fromNode(document_root(element("section", Q2)));
-  if (source.mode !== "element") throw new Error("expected element LiveMap");
+  if (source.mode !== "document") throw new Error("expected element LiveMap");
   const invalidCapture = structuredClone(source.capture());
   const section = must_tag(invalidCapture.root, "section");
   section.$_content = [{

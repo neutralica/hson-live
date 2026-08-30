@@ -38,6 +38,12 @@ function check(name: string, run: () => void): void {
 const runtime = _create_livetree_runtime_test_handle();
 const SUPPLIED = "000001101";
 
+function authoredRoot(binding: ReturnType<typeof _reflect_document_for_runtime_test>) {
+  const node = binding.tree.node.$_content[0];
+  if (node === undefined || node === null || typeof node !== "object") throw new Error("Expected authored document root");
+  return _create_livetree_for_runtime_test(runtime, node).adoptRoots(binding.tree.hostRootNode());
+}
+
 check("standalone LiveTree construction still mints root identity", () => {
   const tree = _create_livetree_for_runtime_test(runtime, projected_element(`<main/>`));
   assert.equal(typeof tree.quid, "string");
@@ -87,7 +93,7 @@ check("standalone graft of an existing projection retains identity", () => {
 check("linked Reflection differs from standalone by preserving absence", () => {
   const map = element(`<main/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
-  assert.equal(binding.tree.node.$_meta?.quid, undefined);
+  assert.equal(authoredRoot(binding).node.$_meta?.quid, undefined);
   assert.equal(_livetree_runtime_test_claim_count(runtime), 0);
   binding.dispose();
   binding.tree.remove();
@@ -153,15 +159,15 @@ check("ordinary durable capture preserves QUID absence", () => {
   const source = element(`<main <span/>/>`);
   const restored = element(`<main/>`);
   restored.restore(source.capture());
-  assert.equal(restored.element.node().$_meta?.quid, undefined);
-  assert.equal(raw_node(restored.element.node(), [0, 0]).$_meta?.quid, undefined);
+  assert.equal(restored.root().$_meta?.quid, undefined);
+  assert.equal(raw_node(restored.root(), [0, 0]).$_meta?.quid, undefined);
 });
 
 check("same-epoch capture preserves QUID absence", () => {
   const source = element(`<main <span/>/>`);
   const target = element(`<main/>`);
   target.install(source.capture({ identity: "same-epoch" }));
-  assert.equal(target.element.node().$_meta?.quid, undefined);
+  assert.equal(target.root().$_meta?.quid, undefined);
   assert.equal(livemap_document_identity_overlay_for(target).size, 0);
 });
 
@@ -169,17 +175,18 @@ check("identity stripping remains an explicit metadata fence", () => {
   const source = element(`<main @${SUPPLIED}/>`);
   const target = element(`<main/>`);
   target.restore(source.capture({ identity: "strip" }));
-  assert.equal(target.element.node().$_meta?.quid, undefined);
+  assert.equal(target.root().$_meta?.quid, undefined);
   assert.equal(livemap_document_identity_overlay_for(target).size, 0);
 });
 
 check("linked explicit QUID demand registers exactly one canonical identity", () => {
   const map = element(`<main/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
-  const quid = binding.tree.quid;
+  const root = authoredRoot(binding);
+  const quid = root.quid;
   assert.equal(map.rev, 1);
-  assert.equal(map.element.node().$_meta?.quid, quid);
-  assert.equal(binding.tree.node.$_meta?.quid, quid);
+  assert.equal((map.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, quid);
+  assert.equal(root.node.$_meta?.quid, quid);
   assert.equal(_livetree_runtime_test_claim_count(runtime), 1);
   binding.dispose();
   binding.tree.remove();

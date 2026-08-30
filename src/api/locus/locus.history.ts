@@ -316,7 +316,7 @@ export function make_locus_canonical_commit<TMap extends LiveMapAuthority>(
   if (!Array.isArray(commit.ops) || commit.ops.length === 0) {
     throw new Error("Locus canonical changed commit must contain operations.");
   }
-  const documentMode = map.mode === "element" || map.mode === "fragment";
+  const documentMode = map.mode === "document";
   const projectedIdentityOnly = !documentMode && commit.ops.every((operation) => (
     "domain" in operation
     && operation.op === "ensure-quid"
@@ -625,7 +625,7 @@ export function make_locus_canonical_stream_runtime<TMap extends LiveMapAuthorit
   }
 
   function trace_snapshot(revision: number): void {
-    if (map.mode !== "element" && map.mode !== "fragment") return;
+    if (map.mode !== "document") return;
     const sink = options.trace;
     if (sink === undefined) return;
     const trace = create_live_trace_context(sink, `locus-stream-${logicalMapId}-snapshot-${revision}`);

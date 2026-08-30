@@ -450,7 +450,7 @@ export function create_locus_client<
 
     const localRevBefore = map.rev;
     try {
-      const applied = map.mode === "element" || map.mode === "fragment"
+      const applied = map.mode === "document"
         ? replay_locus_document_commit(map, commit)
         : projected_identity_replay(commit, localRevBefore) !== undefined
           ? map.replay(projected_identity_replay(commit, localRevBefore)!)
@@ -1240,8 +1240,8 @@ function apply_projected_message(
   })]);
 }
 
-function is_document_live_map(map: LiveMapAuthority): map is Extract<ClassifiedLiveMap, { mode: "element" | "fragment" }> {
-  return (map.mode === "element" || map.mode === "fragment")
+function is_document_live_map(map: LiveMapAuthority): map is Extract<ClassifiedLiveMap, { mode: "document" }> {
+  return (map.mode === "document")
     && "replay" in map
     && typeof map.replay === "function";
 }

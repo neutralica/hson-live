@@ -1,6 +1,7 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
+import { is_Node } from "../src/core/node-guards.ts";
 import { hson } from "../src/index.ts";
 import {
   _reflect_document_for_runtime_test,
@@ -21,7 +22,7 @@ import {
 import { assign_hson_node_quid } from "../src/core/hson-node-quid.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import type { LiveTree } from "../src/api/livetree/livetree.ts";
-import type { ElementLiveMap } from "../src/types/livemap.types.ts";
+import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
 
 let checks = 0;
 function check(name: string, fn: () => void): void {
@@ -67,9 +68,9 @@ function assertCleanProjection(root: StyleNode, authoredAttrs: readonly string[]
   }
 }
 
-function elementMap(source: string): ElementLiveMap {
+function elementMap(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error("Expected an element LiveMap.");
+  if (map.mode !== "document") throw new Error("Expected an element LiveMap.");
   return map;
 }
 
@@ -309,8 +310,11 @@ check("cross-runtime append rejects without transferring either branch", () => {
 check("rejected private creation unwinds its unpublished runtime claim", () => {
   const runtime = _create_livetree_runtime_test_handle();
   const binding = _reflect_document_for_runtime_test(runtime, elementMap(`<main/>`));
+  const mainNode = binding.tree.node.$_content[0];
+  if (!is_Node(mainNode)) throw new Error("Expected one document element");
+  const boundRoot = runtimeTree(runtime, mainNode).adoptRoots(binding.tree.hostRootNode());
   const before = _livetree_runtime_test_claim_count(runtime);
-  assert.throws(() => binding.tree.create.div(), /unavailable while document-bound/);
+  assert.throws(() => boundRoot.create.div(), /unavailable while document-bound/);
   assert.equal(_livetree_runtime_test_claim_count(runtime), before);
   binding.dispose();
   assert.equal(binding.tree.remove(), 1);
@@ -595,9 +599,11 @@ check("Reflect document and collection synchronization preserve clean projection
   const runtime = _create_livetree_runtime_test_handle();
   const map = elementMap("<main <span/>/>");
   const binding = _reflect_document_for_runtime_test(runtime, map);
-  const documentRoot = projectInto(runtime, binding.tree, document);
+  projectInto(runtime, binding.tree, document);
+  const documentRoot = document.body.children[0];
+  if (documentRoot === undefined) throw new Error("Expected projected document element");
   map.document.content.insert(
-    Object.freeze({ kind: "path", path: Object.freeze([0]) }),
+    Object.freeze({ kind: "path", path: Object.freeze([0, 0]) }),
     1,
     node("em"),
   );
@@ -636,12 +642,17 @@ check("Reflect projects equal persisted QUIDs in separate runtimes", () => {
   const rightMap = elementMap(`<main @${SAME_QUID}/>`);
   const leftBinding = _reflect_document_for_runtime_test(left, leftMap);
   const rightBinding = _reflect_document_for_runtime_test(right, rightMap);
-  assert.equal(leftBinding.tree.quid, SAME_QUID);
-  assert.equal(rightBinding.tree.quid, SAME_QUID);
+  const leftElement = leftBinding.tree.node.$_content[0];
+  const rightElement = rightBinding.tree.node.$_content[0];
+  if (leftElement === undefined || rightElement === undefined) {
+    throw new Error("Expected reflected document elements");
+  }
+  assert.equal(_lookup_livetree_runtime_test_node(left, SAME_QUID), leftElement);
+  assert.equal(_lookup_livetree_runtime_test_node(right, SAME_QUID), rightElement);
   leftBinding.dispose();
   assert.equal(leftBinding.tree.isDisposed, false);
   leftBinding.tree.remove();
-  assert.equal(_lookup_livetree_runtime_test_node(right, SAME_QUID), rightBinding.tree.node);
+  assert.equal(_lookup_livetree_runtime_test_node(right, SAME_QUID), rightElement);
   rightBinding.dispose();
   rightBinding.tree.remove();
 });
@@ -668,7 +679,7 @@ check("failed initial Reflect publication terminally unwinds its private tree", 
       ...source.commits,
       observe: (): never => { throw new Error("forced initial observer failure"); },
     },
-  } as ElementLiveMap;
+  } as DocumentLiveMap;
   const before = _livetree_runtime_test_claim_count(runtime);
   assert.throws(
     () => _reflect_document_for_runtime_test(runtime, failing),
@@ -698,7 +709,8 @@ check("borrowed tree destruction stops its bridge and later binding disposal is 
   const binding = _reflect_document_for_runtime_test(runtime, map);
   assert.equal(binding.tree.remove(), 1);
   assert.equal(binding.status, "disposed");
-  assert.equal(map.element.node().$_tag, "main");
+  const retained = map.at([]).snap();
+  assert.equal(is_Node(retained) ? retained.$_tag : undefined, "main");
   binding.dispose();
   assert.equal(_lookup_livetree_runtime_test_node(runtime, SAME_QUID), undefined);
 });

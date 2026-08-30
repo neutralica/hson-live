@@ -16,7 +16,7 @@ import { normalize_hson_array_index_order } from "../src/core/hson-array-indexes
 import { EVERY_VSN, VSN_TAGS } from "../src/core/constants.ts";
 import {
   serialize_hson,
-  serialize_hson_owned_element_text_fragment,
+  serialize_hson_owned_document_content,
 } from "../src/api/transform/serializers/serialize-hson.ts";
 import { serialize_html } from "../src/api/transform/serializers/serialize-html.ts";
 import { serialize_json } from "../src/api/transform/serializers/serialize-json.ts";
@@ -1482,11 +1482,11 @@ check("cycles fail deterministically while shared acyclic references serialize b
   );
 
   const shared: HsonNode = { $_tag: "child", $_content: [] };
-  const fragment: HsonNode = {
+  const elementCarrier: HsonNode = {
     $_tag: "_hson_elem",
     $_content: [shared, shared],
   };
-  const wire = compact(fragment);
+  const wire = compact(elementCarrier);
   assert.equal(wire, `<child/> <child/>`);
   const reparsed = parse(wire);
   const children = reparsed.$_content;
@@ -1548,7 +1548,7 @@ check("canonical closure covers arrays, reconstructed indexes, nesting, and obje
   }
 });
 
-check("canonical closure covers element text, nesting, fragments, QUIDs, and mixed content", () => {
+check("canonical closure covers element text, nesting, document sequences, QUIDs, and mixed content", () => {
   const fixtures = [
     parse(`<empty/>`),
     parse(`<p "text"/>`),
@@ -1794,7 +1794,7 @@ check("array semantic values retain valid object and element string detachment",
   }
 });
 
-check("owned scalar relationship, element text, and root-fragment carriers remain intact", () => {
+check("owned scalar relationship, element text, and document-content carriers remain intact", () => {
   const object = parse_json({ member: "value" });
   const admittedObject = hson.fromNode(detach_hson_root_value(object)).toNode();
   const member = admittedObject.$_content[0] as HsonNode;
@@ -1805,14 +1805,14 @@ check("owned scalar relationship, element text, and root-fragment carriers remai
   const ordinary = admittedElement.$_content[0] as HsonNode;
   assert.equal((ordinary.$_content[0] as HsonNode).$_tag, "_hson_elem");
 
-  const rootOwnedFragment: HsonNode = {
+  const ownedDocumentContent: HsonNode = {
     $_tag: "_hson_elem",
     $_content: [{ $_tag: "_hson_str", $_content: ["text only"] }],
   };
-  const wire = serialize_hson_owned_element_text_fragment(rootOwnedFragment, { noBreak: true });
+  const wire = serialize_hson_owned_document_content(ownedDocumentContent, { noBreak: true });
   assert.equal(wire, `"text only"`);
-  const rebuilt = detach_hson_root_value(parse_hson(wire, { allowTopLevelTextFragment: true }));
-  assert.equal(canonical_hson_graph_equal(rebuilt, rootOwnedFragment), true);
+  const rebuilt = detach_hson_root_value(parse_hson(wire, { allowTopLevelDocumentText: true }));
+  assert.equal(canonical_hson_graph_equal(rebuilt, ownedDocumentContent), true);
 });
 
 check("direct, universal Worker-safe, and browser facade Hson paths serialize identically", () => {

@@ -27,7 +27,8 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-const target = (...path: number[]) => Object.freeze({ kind: "path" as const, path: Object.freeze(path) });
+const documentTarget = (...path: number[]) => Object.freeze({ kind: "path" as const, path: Object.freeze(path) });
+const target = (...path: number[]) => documentTarget(0, ...path);
 const errorCode = (code: string) => (error: unknown) =>
   typeof error === "object" && error !== null && "code" in error && error.code === code;
 
@@ -49,7 +50,7 @@ check("document.byQuid still returns detached diagnostic material", () => {
   const node = map.document.byQuid(Q1);
   if (node === undefined) throw new Error("missing byQuid fixture");
   node.$_tag = "article";
-  assert.equal(map.element.node().$_tag, "main");
+  assert.equal((map.root().$_content[0] as { $_tag?: string } | undefined)?.$_tag, "main");
 });
 
 check("active raw-QUID mutation requests still lower to canonical paths", () => {
@@ -62,7 +63,7 @@ check("active raw-QUID mutation requests still lower to canonical paths", () => 
     }
   });
   map.document.attrs.set({ kind: "quid", quid: Q1 }, "title", "active");
-  assert.deepEqual(targetValue, { kind: "path", path: [], witness: { quid: Q1 } });
+  assert.deepEqual(targetValue, { kind: "path", path: [0], witness: { quid: Q1 } });
 });
 
 check("raw-QUID compatibility does not authorize handle reconstruction", () => {
@@ -95,18 +96,18 @@ check("existing registration publishes no feed event", () => {
   assert.equal(events, 0);
 });
 
-check("fragment ordinary elements support the same sparse API", () => {
+check("multiNodeDocument ordinary elements support the same sparse API", () => {
   const map = hson.liveMap.fromHson(`<a/><b/>`);
-  if (map.mode !== "fragment") throw new Error("expected fragment fixture");
-  const handle = acquire_document_identity(map.document, target(1));
+  if (map.mode !== "document") throw new Error("expected multiNodeDocument fixture");
+  const handle = acquire_document_identity(map.document, documentTarget(1));
   assert.equal(handle.snap()?.$_tag, "b");
   assert.deepEqual(handle.path(), [1]);
 });
 
-check("fragment structural roots remain ineligible", () => {
+check("multiNodeDocument structural roots remain ineligible", () => {
   const map = hson.liveMap.fromHson(`<a/><b/>`);
-  if (map.mode !== "fragment") throw new Error("expected fragment fixture");
-  assert.throws(() => acquire_document_identity(map.document, target()), errorCode("DOCUMENT_IDENTITY_INELIGIBLE"));
+  if (map.mode !== "document") throw new Error("expected multiNodeDocument fixture");
+  assert.throws(() => acquire_document_identity(map.document, documentTarget()), errorCode("DOCUMENT_IDENTITY_INELIGIBLE"));
 });
 
 check("data object maps expose no document identity surface", () => {
@@ -157,7 +158,10 @@ check("supported acquisition rejects an internally-created graph-overlay disagre
 check("identity-free capture output strips acquired metadata intentionally", () => {
   const map = element(`<main/>`);
   acquire_document_identity(map.document, target());
-  assert.equal(map.capture({ identity: "strip" }).root.$_meta?.quid, undefined);
+  assert.equal(
+    (map.capture({ identity: "strip" }).root.$_content[0] as { $_meta?: { quid?: string } } | undefined)?.$_meta?.quid,
+    undefined,
+  );
   const restored = element(`<main/>`);
   restored.restore(map.capture({ identity: "strip" }));
   assert.equal(livemap_document_identity_overlay_for(restored).size, 0);
@@ -189,9 +193,10 @@ check("internal acquisition coordinates with an active Reflection participant", 
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
   const binding = _reflect_document_for_runtime_test(runtime, map);
   const handle = acquire_document_identity(map.document, target());
+  const projected = binding.tree.node.$_content[0];
+  if (projected === undefined || projected === null || typeof projected !== "object") throw new Error("missing projected element");
   assert.equal(handle.snap()?.$_meta?.quid, Q1);
-  assert.equal(binding.tree.node.$_meta?.quid, Q1);
-  assert.equal(binding.tree.quid, Q1);
+  assert.equal(projected.$_meta?.quid, Q1);
   binding.dispose();
   binding.tree.remove();
   _dispose_livetree_runtime_test_handle(runtime);
@@ -201,10 +206,11 @@ check("reflected acquisition preserves the exact projected node and DOM", () => 
   const runtime = _create_livetree_runtime_test_handle();
   const map = element(`<main/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
-  const projected = binding.tree.node;
+  const projected = binding.tree.node.$_content[0];
+  if (projected === undefined || projected === null || typeof projected !== "object") throw new Error("missing projected element");
   const dom = mount(projected);
   const quid = acquire_document_identity(map.document, target()).snap()?.$_meta?.quid;
-  assert.equal(binding.tree.node, projected);
+  assert.equal(binding.tree.node.$_content[0], projected);
   assert.equal(mount(binding.tree.node), dom);
   assert.equal(dom.getAttribute("hson:quid"), quid);
   binding.dispose();
@@ -217,8 +223,10 @@ check("reflected acquisition installs one protected runtime claim", () => {
   const map = element(`<main/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
   const quid = acquire_document_identity(map.document, target()).snap()?.$_meta?.quid;
+  const projected = binding.tree.node.$_content[0];
+  if (projected === undefined || projected === null || typeof projected !== "object") throw new Error("missing projected element");
   assert.equal(_livetree_runtime_test_claim_count(runtime), 1);
-  assert.equal(_lookup_livetree_runtime_test_node(runtime, quid!), binding.tree.node);
+  assert.equal(_lookup_livetree_runtime_test_node(runtime, quid!), projected);
   binding.dispose();
   binding.tree.remove();
   _dispose_livetree_runtime_test_handle(runtime);
@@ -231,8 +239,10 @@ check("existing reflected canonical identity is reused without a commit", () => 
   let events = 0;
   map.commits.observe(() => events += 1);
   const handle = acquire_document_identity(map.document, target());
+  const projected = binding.tree.node.$_content[0];
+  if (projected === undefined || projected === null || typeof projected !== "object") throw new Error("missing projected element");
   assert.equal(handle.snap()?.$_meta?.quid, Q1);
-  assert.equal(binding.tree.quid, Q1);
+  assert.equal(projected.$_meta?.quid, Q1);
   assert.equal(events, 0);
   binding.dispose();
   binding.tree.remove();

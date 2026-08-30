@@ -124,7 +124,7 @@ type LocusBootstrap = Readonly<{
   locusSelector: string;
   logicalMapId: string;
   incarnationId: string;
-  mode: "data-object" | "data-array" | "element" | "fragment";
+  mode: "data-object" | "data-array" | "document";
   rev: number;
   state: { format: "hson"; payload: string };
   continuation: {

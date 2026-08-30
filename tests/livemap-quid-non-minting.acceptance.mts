@@ -6,7 +6,7 @@ import {
   decode_view_state_snapshot,
   encode_view_state_snapshot,
 } from "../src/api/livemap/livemap.document.view-state-codec.ts";
-import type { ElementLiveMap } from "../src/types/livemap.types.ts";
+import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
 import type { HsonNode } from "../src/core/types.ts";
 
 let checks = 0;
@@ -21,17 +21,17 @@ const Q2 = "000000qb2";
 const ROOT = { kind: "path", path: [] } as const;
 const CHILD_CLUSTER = { kind: "path", path: [0] } as const;
 
-function element(source: string): ElementLiveMap {
+function element(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error(`Expected element, observed ${map.mode}`);
+  if (map.mode !== "document") throw new Error(`Expected element, observed ${map.mode}`);
   return map;
 }
 
-function manyUnquidded(): ElementLiveMap {
+function manyUnquidded(): DocumentLiveMap {
   return element(`<main <header/> <section <p/> <p/> <aside/>/> <footer/> <nav/>/>`);
 }
 
-function sparse(): ElementLiveMap {
+function sparse(): DocumentLiveMap {
   return element(`<main @${Q1} <header/> <section @${Q2} <p/> <p/>/> <footer/>/>`);
 }
 
@@ -57,11 +57,11 @@ function quidForTag(root: HsonNode, tag: string): string | undefined {
   return nodes(root).find((node) => node.$_tag === tag)?.$_meta?.quid;
 }
 
-function assertNoQuids(map: ElementLiveMap): void {
+function assertNoQuids(map: DocumentLiveMap): void {
   assert.deepEqual(quids(map.root()), []);
 }
 
-function assertSparse(map: ElementLiveMap): void {
+function assertSparse(map: DocumentLiveMap): void {
   assert.deepEqual(quids(map.root()), [Q1, Q2]);
   assert.equal(map.document.byQuid(Q1)?.$_tag, "main");
   assert.equal(map.document.byQuid(Q2)?.$_tag, "section");
@@ -76,21 +76,21 @@ check("construction admits many eligible elements with zero QUIDs", () => {
 check("construction from a detached QUID-free node does not mint", () => {
   const root = hson.fromHson(`<main <header/> <section/> <footer/>/>`).toNode();
   const map = hson.liveMap.fromNode(root);
-  if (map.mode !== "element") throw new Error(`Expected element, observed ${map.mode}`);
+  if (map.mode !== "document") throw new Error(`Expected element, observed ${map.mode}`);
   assertNoQuids(map);
 });
 
 check("document root and element traversal do not mint", () => {
   const map = manyUnquidded();
   assert.equal(map.root().$_tag, "_hson_root");
-  assert.equal(map.element.node().$_tag, "main");
+  assert.equal(map.root().$_tag, "main");
   assertNoQuids(map);
 });
 
 check("document content traversal does not mint", () => {
   const map = manyUnquidded();
   assert.equal(map.document.content().length, 1);
-  assert.ok(nodes(map.element.node()).length >= 8);
+  assert.ok(nodes(map.root()).length >= 8);
   assertNoQuids(map);
 });
 
@@ -123,14 +123,14 @@ check("ordinary attribute removal does not mint", () => {
 
 check("ordinary content insertion does not mint existing or incoming nodes", () => {
   const map = manyUnquidded();
-  map.document.content.insert(CHILD_CLUSTER, 1, element(`<article <span/>/>`).element.node());
+  map.document.content.insert(CHILD_CLUSTER, 1, element(`<article <span/>/>`).root());
   assert.equal(nodes(map.root()).some((node) => node.$_tag === "article"), true);
   assertNoQuids(map);
 });
 
 check("ordinary content replacement does not mint", () => {
   const map = manyUnquidded();
-  map.document.content.replace(CHILD_CLUSTER, 0, element(`<article <span/>/>`).element.node());
+  map.document.content.replace(CHILD_CLUSTER, 0, element(`<article <span/>/>`).root());
   assert.equal(nodes(map.root()).some((node) => node.$_tag === "article"), true);
   assertNoQuids(map);
 });
@@ -197,7 +197,7 @@ check("sparse supplied QUIDs are admitted without filling eligible gaps", () => 
 check("sparse traversal and QUID lookup preserve untouched gaps", () => {
   const map = sparse();
   assert.equal(map.document.content().length, 1);
-  assert.ok(nodes(map.element.node()).length >= 6);
+  assert.ok(nodes(map.root()).length >= 6);
   const section = map.document.byQuid(Q2);
   if (section === undefined) throw new Error("Expected supplied section QUID");
   assert.equal(nodes(section).filter((node) => node.$_tag === "p").length, 2);
@@ -214,7 +214,7 @@ check("sparse targeted attribute mutation preserves only supplied QUIDs", () => 
 
 check("sparse insertion preserves supplied QUIDs and leaves new nodes unquidded", () => {
   const map = sparse();
-  map.document.content.insert(CHILD_CLUSTER, 1, element(`<article <span/>/>`).element.node());
+  map.document.content.insert(CHILD_CLUSTER, 1, element(`<article <span/>/>`).root());
   assertSparse(map);
   assert.equal(quidForTag(map.root(), "article"), undefined);
   assert.equal(quidForTag(map.root(), "span"), undefined);

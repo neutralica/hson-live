@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import type { HsonNode } from "../src/core/types.ts";
-import type { ElementLiveMap, LiveMapGraphCommit, LiveMapGraphOp } from "../src/types/livemap.types.ts";
+import type { DocumentLiveMap, LiveMapGraphCommit, LiveMapGraphOp } from "../src/types/livemap.types.ts";
 import {
   livemap_document_identity_accounting,
   livemap_document_identity_overlay_for,
@@ -24,11 +24,11 @@ const Q2 = "000000602";
 const Q3 = "000000603";
 const Q4 = "000000604";
 const path = (...parts: number[]) => validate_document_path(parts);
-const target = (...parts: number[]) => Object.freeze({ kind: "path" as const, path: path(...parts) });
+const target = (...parts: number[]) => Object.freeze({ kind: "path" as const, path: path(0, ...parts) });
 
-function element(source: string): ElementLiveMap {
+function element(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error("Expected element map");
+  if (map.mode !== "document") throw new Error("Expected element map");
   return map;
 }
 
@@ -40,7 +40,7 @@ function ordinary(tag: string, quid?: string): HsonNode {
   };
 }
 
-function graphCommit(map: ElementLiveMap, ops: readonly LiveMapGraphOp[]): LiveMapGraphCommit {
+function graphCommit(map: DocumentLiveMap, ops: readonly LiveMapGraphOp[]): LiveMapGraphCommit {
   return Object.freeze({
     changed: true,
     prevRev: map.rev,
@@ -49,11 +49,11 @@ function graphCommit(map: ElementLiveMap, ops: readonly LiveMapGraphOp[]): LiveM
   });
 }
 
-function replay(map: ElementLiveMap, ops: readonly LiveMapGraphOp[]): LiveMapGraphCommit {
+function replay(map: DocumentLiveMap, ops: readonly LiveMapGraphOp[]): LiveMapGraphCommit {
   return map.replay(graphCommit(map, ops));
 }
 
-function overlayPaths(map: ElementLiveMap, quids: readonly string[]) {
+function overlayPaths(map: DocumentLiveMap, quids: readonly string[]) {
   const overlay = livemap_document_identity_overlay_for(map);
   return quids.map((quid) => overlay.pathForQuid(quid));
 }
@@ -62,7 +62,7 @@ check("insert then mutate resolves the inserted QUID at the next ordinal", () =>
   const map = element(`<main @${Q1} <a @${Q2}/>/` + `>`);
   replay(map, [
     { domain: "graph", op: "insert-content", target: target(0), index: 0, content: ordinary("b", Q4) },
-    { domain: "graph", op: "set-attr", target: { kind: "path", path: path(0, 0), witness: { quid: Q4 } }, name: "id", value: "inserted" },
+    { domain: "graph", op: "set-attr", target: { kind: "path", path: path(0, 0, 0), witness: { quid: Q4 } }, name: "id", value: "inserted" },
   ]);
   assert.equal(map.document.byQuid(Q4)?.$_attrs?.id, "inserted");
 });
@@ -71,7 +71,7 @@ check("delete then mutate resolves the shifted sibling and witness", () => {
   const map = element(`<main <a @${Q2}/> <b @${Q3}/>/` + `>`);
   replay(map, [
     { domain: "graph", op: "remove-content", target: target(0), index: 0 },
-    { domain: "graph", op: "set-attr", target: { kind: "path", path: path(0, 0), witness: { quid: Q3 } }, name: "id", value: "shifted" },
+    { domain: "graph", op: "set-attr", target: { kind: "path", path: path(0, 0, 0), witness: { quid: Q3 } }, name: "id", value: "shifted" },
   ]);
   assert.equal(map.document.byQuid(Q3)?.$_attrs?.id, "shifted");
 });
@@ -80,7 +80,7 @@ check("move then mutate resolves the final destination and witness", () => {
   const map = element(`<main <a @${Q2}/> <b @${Q3}/>/` + `>`);
   replay(map, [
     { domain: "graph", op: "move-content", target: target(0), from: 0, to: 1 },
-    { domain: "graph", op: "set-attr", target: { kind: "path", path: path(0, 1), witness: { quid: Q2 } }, name: "id", value: "moved" },
+    { domain: "graph", op: "set-attr", target: { kind: "path", path: path(0, 0, 1), witness: { quid: Q2 } }, name: "id", value: "moved" },
   ]);
   assert.equal(map.document.byQuid(Q2)?.$_attrs?.id, "moved");
 });
@@ -89,9 +89,9 @@ check("later witness reads the staged overlay produced by the prior operation", 
   const map = element(`<main <a @${Q2}/> <b @${Q3}/>/` + `>`);
   replay(map, [
     { domain: "graph", op: "move-content", target: target(0), from: 0, to: 1 },
-    { domain: "graph", op: "set-attr", target: { kind: "path", path: path(0, 1), witness: { quid: Q2 } }, name: "id", value: "observed" },
+    { domain: "graph", op: "set-attr", target: { kind: "path", path: path(0, 0, 1), witness: { quid: Q2 } }, name: "id", value: "observed" },
   ]);
-  assert.deepEqual(overlayPaths(map, [Q2, Q3]), [[0, 1], [0, 0]]);
+  assert.deepEqual(overlayPaths(map, [Q2, Q3]), [[0, 0, 1], [0, 0, 0]]);
 });
 
 check("later stale witness rejects against the staged overlay", () => {
@@ -99,7 +99,7 @@ check("later stale witness rejects against the staged overlay", () => {
   const before = map.capture();
   assert.throws(() => replay(map, [
     { domain: "graph", op: "move-content", target: target(0), from: 0, to: 1 },
-    { domain: "graph", op: "set-attr", target: { kind: "path", path: path(0, 0), witness: { quid: Q2 } }, name: "id", value: "bad" },
+    { domain: "graph", op: "set-attr", target: { kind: "path", path: path(0, 0, 0), witness: { quid: Q2 } }, name: "id", value: "bad" },
   ]), (error: unknown) => error instanceof LiveMapDocumentStagingError && error.opIndex === 1);
   assert.deepEqual(map.capture(), before);
 });

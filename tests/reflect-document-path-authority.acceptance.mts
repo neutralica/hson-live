@@ -109,7 +109,7 @@ check("backward movement routes by canonical parent path", () => {
   binding.dispose();
 });
 
-check("carrier paths address fragment-style content below the element root", () => {
+check("carrier paths address multiNodeDocument-style content below the element root", () => {
   const map = element(`<main "tail"/>`);
   const binding = hsonReflect(map);
   map.document.content.insert(path(0), 0, projected_element(`<span/>`));

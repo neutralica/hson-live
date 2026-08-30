@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { hson, validate_document_path } from "../src/index.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import type { HsonNode } from "../src/core/types.ts";
-import type { ElementLiveMap } from "../src/types/livemap.types.ts";
+import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
 import { hsonReflect } from "../src/api/reflect/reflect.facade.ts";
 import {
   DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
@@ -26,18 +26,23 @@ function check(name: string, fn: () => void): void {
 
 install_fake_document();
 
-function element(source: string): ElementLiveMap {
+function element(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error("Expected ElementLiveMap");
+  if (map.mode !== "document") throw new Error("Expected DocumentLiveMap");
   return map;
 }
 
 function path(...segments: number[]) {
-  return { kind: "path" as const, path: validate_document_path(segments) };
+  return { kind: "path" as const, path: validate_document_path([0, ...segments]) };
 }
 
 function raw_node(root: HsonNode, rawPath: readonly number[]): HsonNode {
   let current = root;
+  if (current.$_tag === "_hson_root") {
+    const only = current.$_content[0];
+    if (!is_Node(only)) throw new Error("Expected one document element");
+    current = only;
+  }
   for (const segment of rawPath) {
     const child = current.$_content[segment];
     if (!is_Node(child)) throw new Error(`Expected node at ${rawPath.join("/")}`);
@@ -47,11 +52,14 @@ function raw_node(root: HsonNode, rawPath: readonly number[]): HsonNode {
 }
 
 function projected_element(source: string): HsonNode {
-  return element(source).element.node();
+  const projected = element(source).at([]).snap();
+  if (!is_Node(projected)) throw new Error("Expected projected document element");
+  return projected;
 }
 
 function mount(root: HsonNode): FakeElement {
-  return project_livetree(root) as unknown as FakeElement;
+  const projectedRoot = root.$_tag === "_hson_root" ? raw_node(root, []) : root;
+  return project_livetree(projectedRoot) as unknown as FakeElement;
 }
 
 check("nested raw insertion projects elements, QUID-less nodes, wrappers, and text", () => {
@@ -186,14 +194,15 @@ check("mixed sequential replay projects structural and attrs operations once", (
 check("bound public structural and text APIs reject until disposal", () => {
   const map = element(`<main @000000410 <a/>/>`);
   const binding = hsonReflect(map);
+  const bound = create_livetree(raw_node(binding.tree.node, [])).adoptRoots(binding.tree.hostRootNode());
   const branch = create_livetree(projected_element(`<b/>`));
   const before = structuredClone(binding.tree.node);
   for (const mutation of [
-    () => binding.tree.append(branch),
-    () => binding.tree.create.div(),
-    () => binding.tree.detachContents(),
-    () => binding.tree.removeChildren(),
-    () => binding.tree.text.overwrite("blocked"),
+    () => bound.append(branch),
+    () => bound.create.div(),
+    () => bound.detachContents(),
+    () => bound.removeChildren(),
+    () => bound.text.overwrite("blocked"),
   ]) {
     assert.throws(mutation, (cause) => cause instanceof DocumentReflectError
       && (cause.code === DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE
@@ -201,8 +210,8 @@ check("bound public structural and text APIs reject until disposal", () => {
   }
   assert.deepEqual(binding.tree.node, before);
   binding.dispose();
-  binding.tree.text.set("local");
-  assert.equal(binding.tree.text.get(), "local");
+  bound.text.set("local");
+  assert.equal(bound.text.get(), "local");
 });
 
 check("structural DOM failure preserves canonical commit and fails observer-side", () => {
@@ -221,7 +230,8 @@ check("structural DOM failure preserves canonical commit and fails observer-side
   assert.throws(() => incomingTree.attrs.set("bypass", "blocked"), DocumentReflectError);
   assert.equal(reachableIncoming.$_attrs?.bypass, undefined);
   assert.equal(map.document.attrs.get(path(0, 1), "bypass"), undefined);
-  assert.throws(() => binding.tree.empty(), DocumentReflectError);
+  const rootElementTree = create_livetree(raw_node(binding.tree.node, [])).adoptRoots(binding.tree.hostRootNode());
+  assert.throws(() => rootElementTree.empty(), DocumentReflectError);
   binding.dispose();
 });
 
@@ -236,7 +246,7 @@ check("failed structural replacement disposes the disconnected old owned subtree
   const commit = map.document.content.replace(path(0), 0, projected_element(`<b @000000420/>`));
   assert.equal(commit.changed, true);
   assert.equal(map.rev, 1);
-  assert.equal(raw_node(map.element.node(), [0, 0]).$_tag, "b");
+  assert.equal(raw_node(projected_element_from_map(map), [0, 0]).$_tag, "b");
   assert.equal(binding.status, "failed");
   assert.equal(displacedTree.isDisposed, true);
   assert.equal(displacedTree.remove(), 0);
@@ -264,11 +274,36 @@ check("new-epoch snapshot restore reconstructs an incompatible exact root", () =
   const binding = hsonReflect(map);
   const replacement = element(`<article @000000417/>`);
   map.restore(replacement.capture());
-  assert.equal(map.element.node().$_tag, "article");
-  assert.equal(binding.tree.node.$_tag, "article");
+  assert.equal(projected_element_from_map(map).$_tag, "article");
+  assert.equal(raw_node(binding.tree.node, []).$_tag, "article");
   assert.equal(binding.status, "active");
   assert.equal(binding.sourceRevision, 0);
   binding.dispose();
+});
+
+check("multi-node documents move top-level identity under one reflected root", () => {
+  const map = element(`<header @000000421/> <main @000000422/> <footer/>`);
+  const binding = hsonReflect(map);
+  const moved = binding.tree.node.$_content[0];
+  if (!is_Node(moved)) throw new Error("Expected top-level reflected element");
+
+  map.document.content.move(
+    { kind: "path", path: validate_document_path([]) },
+    0,
+    2,
+  );
+
+  assert.equal(binding.tree.node.$_tag, "_hson_root");
+  assert.equal(binding.tree.node.$_content[2], moved);
+  assert.equal(binding.tree.find.byQuid("000000421")?.node, moved);
+  assert.equal(map.document.byQuid("000000421")?.$_tag, "header");
+  const projected = project_livetree(binding.tree.node) as unknown as {
+    childNodes: readonly FakeElement[];
+  };
+  assert.deepEqual([...projected.childNodes].map((node) => node.tagName), ["main", "footer", "header"]);
+  assert.equal(binding.sourceRevision, 1);
+  binding.dispose();
+  binding.tree.remove();
 });
 
 check("disposal stops projection and restores unbound structural behavior", () => {
@@ -284,8 +319,14 @@ check("disposal stops projection and restores unbound structural behavior", () =
   local.text.set("unbound");
   assert.equal(binding.tree.content.count(), 1);
   assert.equal(local.text.get(), "unbound");
-  assert.equal(map.element.node().$_content.length, 1);
+  assert.equal(projected_element_from_map(map).$_content.length, 1);
 });
+
+function projected_element_from_map(map: DocumentLiveMap): HsonNode {
+  const projected = map.at([]).snap();
+  if (!is_Node(projected)) throw new Error("Expected projected document element");
+  return projected;
+}
 
 process.stdout.write(`# ${checks} document LiveTree structural binding checks passed\n`);
 emit_hson_live_test_completion("reflect.document-structure", checks, checks, 0);

@@ -168,7 +168,7 @@ It preserves distinctions that data JSON cannot express completely, including:
 - attributes;
 - mixed content;
 - ordered child nodes;
-- document fragments;
+- documents with multiple top-level nodes;
 - text and primitive leaves;
 - graph identity;
 - QUID metadata;

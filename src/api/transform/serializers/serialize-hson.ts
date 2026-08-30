@@ -35,7 +35,7 @@ export type HsonSerializeInputOptions = Readonly<{
 type HsonSerializeOptions = Readonly<{
   layout: HsonLayout;
   noQuid: boolean;
-  ownedElementTextFragment: boolean;
+  ownedDocumentText: boolean;
 }>;
 
 type SerializeContext = Readonly<{
@@ -369,7 +369,7 @@ function emitElementCluster(
     );
   }
   if (
-    !(ctx.options.ownedElementTextFragment && isRootSemanticValue)
+    !(ctx.options.ownedDocumentText && isRootSemanticValue)
     && node.$_content.length === 1
     && is_Node(node.$_content[0])
     && (node.$_content[0].$_tag === STR_TAG || node.$_content[0].$_tag === VAL_TAG)
@@ -511,7 +511,7 @@ function emitNode(
 function serialize_hson_with_ownership(
   root: HsonNode,
   inputOptions: HsonSerializeInputOptions = {},
-  ownedElementTextFragment = false,
+  ownedDocumentText = false,
 ): HsonCanonical {
   assert_invariants(root, "serialize_hson");
   if (!is_Node(root)) {
@@ -541,7 +541,7 @@ function serialize_hson_with_ownership(
     options: {
       layout: inputOptions.noBreak ? "compact" : "readable",
       noQuid: inputOptions.noQuid ?? false,
-      ownedElementTextFragment,
+      ownedDocumentText,
     },
     guard: cycleGuard(),
   };
@@ -556,10 +556,23 @@ export function serialize_hson(
   return serialize_hson_with_ownership(root, inputOptions, false);
 }
 
-/** @internal LiveMap/Locus ownership evidence for a root-owned text fragment. */
-export function serialize_hson_owned_element_text_fragment(
+/** @internal Serialize authored document content while detaching its internal root. */
+export function serialize_hson_owned_document_content(
   root: HsonNode,
   inputOptions: HsonSerializeInputOptions = {},
 ): HsonCanonical {
+  if (root.$_tag === ROOT_TAG) {
+    assert_invariants(root, "serialize_hson_owned_document_content");
+    const separator = inputOptions.noBreak ? " " : "\n";
+    return root.$_content.map((item) => {
+      if (!is_Node(item)) {
+        _throw_transform_err(
+          "serialize-hson: document root content must be canonical Hson nodes",
+          "serialize_hson_owned_document_content",
+        );
+      }
+      return serialize_hson_with_ownership(item, inputOptions, true);
+    }).join(separator) as HsonCanonical;
+  }
   return serialize_hson_with_ownership(root, inputOptions, true);
 }

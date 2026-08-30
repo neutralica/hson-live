@@ -8,8 +8,7 @@ import {
   LiveMapDocumentStagingError,
 } from "../src/api/livemap/livemap.error.ts";
 import type {
-  ElementLiveMap,
-  FragmentLiveMap,
+  DocumentLiveMap,
   LiveMapDocumentCommitTarget,
   LiveMapGraphOp,
 } from "../src/types/livemap.types.ts";
@@ -25,15 +24,15 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-function element(source: string): ElementLiveMap {
+function element(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error("Expected element map");
+  if (map.mode !== "document") throw new Error("Expected element map");
   return map;
 }
 
-function fragment(source: string): FragmentLiveMap {
+function multiNodeDocument(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "fragment") throw new Error("Expected fragment map");
+  if (map.mode !== "document") throw new Error("Expected multiNodeDocument map");
   return map;
 }
 
@@ -46,7 +45,7 @@ const commitTarget = (
   ...(witness === undefined ? {} : { witness: Object.freeze({ quid: witness }) }),
 });
 
-function rawReplay(map: ElementLiveMap | FragmentLiveMap, ops: readonly unknown[]): unknown {
+function rawReplay(map: DocumentLiveMap | DocumentLiveMap, ops: readonly unknown[]): unknown {
   return Reflect.apply(map.replay, map, [{
     changed: true,
     prevRev: map.rev,
@@ -55,7 +54,7 @@ function rawReplay(map: ElementLiveMap | FragmentLiveMap, ops: readonly unknown[
   }]);
 }
 
-function allQuids(root: ReturnType<ElementLiveMap["root"]>): readonly string[] {
+function allQuids(root: ReturnType<DocumentLiveMap["root"]>): readonly string[] {
   const result: string[] = [];
   const walk = (node: typeof root): void => {
     const quid = node.$_meta?.quid;
@@ -99,7 +98,7 @@ check("nested QUID lowering records the exact current canonical path", () => {
 
 check("request path arrays are detached before the commit is returned", () => {
   const input = [0];
-  const map = fragment(`<a/> <guard/>`);
+  const map = multiNodeDocument(`<a/> <guard/>`);
   const commit = map.document.attrs.set({ kind: "path", path: input }, "id", "a");
   input[0] = 9;
   const operation = commit.ops[0];
@@ -116,7 +115,7 @@ check("canonical target path and witness values are frozen", () => {
 });
 
 check("matching active witness validates but the path performs routing", () => {
-  const map = fragment(`<a @${Q1}/> <guard/>`);
+  const map = multiNodeDocument(`<a @${Q1}/> <guard/>`);
   rawReplay(map, [{
     domain: "graph", op: "set-attr", target: commitTarget([0], Q1), name: "id", value: "matched",
   }]);
@@ -124,7 +123,7 @@ check("matching active witness validates but the path performs routing", () => {
 });
 
 check("active different QUID reports a structured stale-identity conflict", () => {
-  const map = fragment(`<a @${Q2}/> <guard/>`);
+  const map = multiNodeDocument(`<a @${Q2}/> <guard/>`);
   assert.throws(() => rawReplay(map, [{
     domain: "graph", op: "set-attr", target: commitTarget([0], Q1), name: "id", value: "bad",
   }]), (error: unknown) => error instanceof LiveMapDocumentStagingError
@@ -134,7 +133,7 @@ check("active different QUID reports a structured stale-identity conflict", () =
 });
 
 check("missing witness evidence does not block path-authoritative replay", () => {
-  const map = fragment(`<a/> <guard/>`);
+  const map = multiNodeDocument(`<a/> <guard/>`);
   rawReplay(map, [{
     domain: "graph", op: "set-attr", target: commitTarget([0], Q1), name: "id", value: "identity-free",
   }]);
@@ -142,7 +141,7 @@ check("missing witness evidence does not block path-authoritative replay", () =>
 });
 
 check("a witness found elsewhere never reroutes a valid unquidded path", () => {
-  const map = fragment(`<a/> <b @${Q1}/>`);
+  const map = multiNodeDocument(`<a/> <b @${Q1}/>`);
   rawReplay(map, [{
     domain: "graph", op: "set-attr", target: commitTarget([0], Q1), name: "id", value: "path-wins",
   }]);
@@ -151,7 +150,7 @@ check("a witness found elsewhere never reroutes a valid unquidded path", () => {
 });
 
 check("an invalid path is not repaired by a matching witness elsewhere", () => {
-  const map = fragment(`<a @${Q1}/> <guard/>`);
+  const map = multiNodeDocument(`<a @${Q1}/> <guard/>`);
   assert.throws(() => rawReplay(map, [{
     domain: "graph", op: "set-attr", target: commitTarget([9], Q1), name: "id", value: "bad",
   }]), (error: unknown) => error instanceof LiveMapDocumentStagingError
@@ -159,7 +158,7 @@ check("an invalid path is not repaired by a matching witness elsewhere", () => {
 });
 
 check("witness evidence cannot make a primitive a valid attribute target", () => {
-  const map = fragment(`"text" <a @${Q1}/>`);
+  const map = multiNodeDocument(`"text" <a @${Q1}/>`);
   assert.throws(() => rawReplay(map, [{
     domain: "graph", op: "set-attr", target: commitTarget([0, 0], Q1), name: "id", value: "bad",
   }]), (error: unknown) => error instanceof LiveMapDocumentStagingError
@@ -167,7 +166,7 @@ check("witness evidence cannot make a primitive a valid attribute target", () =>
 });
 
 check("malformed witnesses reject with a stable structured reason", () => {
-  const map = fragment(`<a/> <guard/>`);
+  const map = multiNodeDocument(`<a/> <guard/>`);
   assert.throws(() => rawReplay(map, [{
     domain: "graph",
     op: "set-attr",
@@ -233,9 +232,9 @@ check("QUID compatibility requests preserve sparse gaps without minting", () => 
 });
 
 check("identity-free replay accepts a witnessed commit from a quidded source", () => {
-  const source = fragment(`<a @${Q1}/> <guard/>`);
+  const source = multiNodeDocument(`<a @${Q1}/> <guard/>`);
   const commit = source.document.attrs.set({ kind: "quid", quid: Q1 }, "id", "portable");
-  const target = fragment(`<a/> <guard/>`);
+  const target = multiNodeDocument(`<a/> <guard/>`);
   target.replay(commit);
   assert.equal(target.document.attrs.get({ kind: "path", path: [0] }, "id"), "portable");
   assert.deepEqual(allQuids(target.root()), []);
@@ -243,7 +242,7 @@ check("identity-free replay accepts a witnessed commit from a quidded source", (
 
 check("caller mutation of an operation-shaped target cannot affect accepted state", () => {
   const pathInput = [0];
-  const map = fragment(`<a/> <guard/>`);
+  const map = multiNodeDocument(`<a/> <guard/>`);
   const commit = map.document.attrs.set({ kind: "path", path: pathInput }, "id", "stable");
   pathInput.push(9);
   const operation = commit.ops[0];

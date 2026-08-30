@@ -117,7 +117,7 @@ export function completion_context(source: string, cursor: number, unknownRanges
       visit(root, []);
       if (proven.size !== unknown.length) return undefined;
     }
-    if (mode !== "element" && mode !== "fragment") return undefined;
+    if (mode !== "document") return undefined;
     const resolve = (path: readonly number[], facet = false) => {
       const edges: InternalDocumentLogicalEdge[] = path.map(index => ({ kind: "content", index }));
       if (facet) edges.push({ kind: "facet", facet: "content" });
@@ -136,7 +136,7 @@ export function completion_context(source: string, cursor: number, unknownRanges
       const physical = node.physical;
       const physicalPath = physical.kind === "direct" || physical.kind === "carrier" ? physical.path : undefined;
       if (physicalPath === undefined) return undefined;
-      const owner = mode === "element" ? [0, ...physicalPath] : physicalPath;
+      const owner = [0, ...physicalPath];
       if (selected.kind === "tag" && matches(provenance.range({ kind: "node", path: owner, role: "name" }))) return { ...base, path, existing: [] };
       if ((selected.kind === "child" || selected.kind === "value") && matches(provenance.range({ kind: "node", path: [...owner, 0], role: "value" }))) return { ...base, kind: "child", path, existing: [] };
       if (node.kind !== "node" || !is_ordinary_element_node(node.value)) return undefined;

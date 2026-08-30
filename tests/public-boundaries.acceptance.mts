@@ -174,7 +174,7 @@ check("detached public observations cannot mutate canonical ownership", () => {
 
 check("document install is present only on document runtime façades", () => {
   const document = hson.liveMap.fromHson(`<main @000000003/>`);
-  if (document.mode !== "element") throw new Error(`expected element, observed ${document.mode}`);
+  if (document.mode !== "document") throw new Error(`expected element, observed ${document.mode}`);
   assert.equal("install" in document, true);
   assert.equal(typeof document.install, "function");
   assert.equal("install" in hson.liveMap.fromJson({}), false);

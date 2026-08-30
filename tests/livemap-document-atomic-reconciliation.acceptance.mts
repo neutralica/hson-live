@@ -2,12 +2,12 @@
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import type { HsonNode } from "../src/core/types.ts";
-import type { DocumentLiveMap, ElementLiveMap, FragmentLiveMap, LiveMapCommitObservation, LiveMapGraphOp } from "../src/types/livemap.types.ts";
+import type { DocumentLiveMap, LiveMapCommitObservation, LiveMapGraphOp } from "../src/types/livemap.types.ts";
 import {
   livemap_document_identity_accounting,
   livemap_document_identity_overlay_for,
 } from "../src/api/livemap/livemap.document.identity.ts";
-import { LiveMapDocumentMutationError, LiveMapDocumentStagingError, LiveMapRevError } from "../src/api/livemap/livemap.error.ts";
+import { LiveMapDocumentStagingError, LiveMapRevError } from "../src/api/livemap/livemap.error.ts";
 import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 
@@ -22,17 +22,18 @@ const Q1 = "000000501";
 const Q2 = "000000502";
 const Q3 = "000000503";
 const path = (...parts: number[]) => validate_document_path(parts);
-const target = (...parts: number[]) => Object.freeze({ kind: "path" as const, path: path(...parts) });
+const documentTarget = (...parts: number[]) => Object.freeze({ kind: "path" as const, path: path(...parts) });
+const target = (...parts: number[]) => documentTarget(0, ...parts);
 
-function element(source: string): ElementLiveMap {
+function element(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "element") throw new Error("Expected element map");
+  if (map.mode !== "document") throw new Error("Expected element map");
   return map;
 }
 
-function fragment(source: string): FragmentLiveMap {
+function multiNodeDocument(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "fragment") throw new Error("Expected fragment map");
+  if (map.mode !== "document") throw new Error("Expected multiNodeDocument map");
   return map;
 }
 
@@ -100,7 +101,7 @@ check("active different witness rejects without rerouting", () => {
   const before = state(map);
   assert.throws(() => replay(map, [{
     domain: "graph", op: "set-attr",
-    target: { kind: "path", path: path(), witness: { quid: Q2 } },
+    target: { kind: "path", path: path(0), witness: { quid: Q2 } },
     name: "id", value: "bad",
   }]), /witness/i);
   assertState(map, before);
@@ -184,14 +185,12 @@ check("failed incoming admission retains no partial introduced claim", () => {
   assert.equal(map.document.byQuid(Q1)?.$_tag, "main");
 });
 
-check("fragment mode conflict rolls graph and overlay back", () => {
-  const map = fragment(`<a @${Q1}/> <b @${Q2}/>`);
-  const before = state(map);
-  assert.throws(
-    () => map.document.content.remove(target(), 1),
-    (error: unknown) => error instanceof LiveMapDocumentMutationError && error.code === "DOCUMENT_MODE_MISMATCH",
-  );
-  assertState(map, before);
+check("multi-node document root removal is an ordinary rooted-content mutation", () => {
+  const map = multiNodeDocument(`<a @${Q1}/> <b @${Q2}/>`);
+  map.document.content.remove(documentTarget(), 1);
+  assert.equal(map.document.byQuid(Q1)?.$_tag, "a");
+  assert.equal(map.document.byQuid(Q2), undefined);
+  assert.equal(map.rev, 1);
 });
 
 check("protected metadata mutation is inert", () => {
@@ -230,10 +229,10 @@ check("same-position move is a complete atomic no-op", () => {
 
 check("exact content replacement is a complete no-op", () => {
   const map = element(`<main <a @${Q2}/>/` + `>`);
-  const content = map.element.node().$_content[0];
+  const content = map.root().$_content[0];
   if (typeof content !== "object") throw new Error("Expected canonical branch");
   const before = state(map);
-  const commit = map.document.content.replace(target(), 0, content);
+  const commit = map.document.content.replace(documentTarget(), 0, content);
   assert.equal(commit.changed, false);
   assertState(map, before);
 });
@@ -251,17 +250,17 @@ check("duplicate whole-root install remains atomic", () => {
   const before = state(map);
   const duplicate: HsonNode = {
     $_tag: "_hson_root",
-    $_content: [{ $_tag: "_hson_elem", $_content: [ordinary("main", Q2, ordinary("b", Q2))] }],
+    $_content: [ordinary("main", Q2, ordinary("b", Q2))],
   };
-  assert.throws(() => Reflect.apply(map.install, map, [{ kind: "hson-document", mode: "element", rev: 0, root: duplicate }]));
+  assert.throws(() => Reflect.apply(map.install, map, [{ kind: "hson-document", mode: "document", rev: 0, root: duplicate }]));
   assertState(map, before);
 });
 
 check("malformed whole-root restore remains atomic", () => {
   const map = element(`<main @${Q1}/>`);
   const before = state(map);
-  const malformed: HsonNode = { $_tag: "_hson_root", $_content: [{ $_tag: "_hson_elem", $_content: [ordinary("main", "short")] }] };
-  assert.throws(() => Reflect.apply(map.restore, map, [{ kind: "hson-document", mode: "element", rev: 7, root: malformed }]));
+  const malformed: HsonNode = { $_tag: "_hson_root", $_content: [ordinary("main", "short")] };
+  assert.throws(() => Reflect.apply(map.restore, map, [{ kind: "hson-document", mode: "document", rev: 7, root: malformed }]));
   assertState(map, before);
 });
 

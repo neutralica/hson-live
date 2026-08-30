@@ -44,7 +44,7 @@ check("alternate array spelling retains bracket positions", () => {
   const p = parse_hson_with_provenance(`[1]`).provenance;
   assert.deepEqual(p.range({ kind: "node", path: [], role: "coverage" }), { start: 0, end: 3 });
 });
-check("element fragments have synthetic cluster coverage only", () => {
+check("element sequences have synthetic cluster coverage only", () => {
   const p = parse_hson_with_provenance(`<a/><b/>`).provenance;
   assert.deepEqual(p.range({ kind: "node", path: [], role: "coverage" }), { start: 0, end: 8 });
   assert.equal(p.range({ kind: "node", path: [], role: "open" }), undefined);

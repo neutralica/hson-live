@@ -23,7 +23,8 @@ import {
   _create_livetree_runtime_test_handle,
   _reflect_document_for_runtime_test,
 } from "../src/diagnostics/index.ts";
-import type { ClassifiedLiveMap, ElementLiveMap } from "../src/types/livemap.types.ts";
+import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
+import type { ClassifiedLiveMap, DocumentLiveMap } from "../src/types/livemap.types.ts";
 import { element, path, projected_element, raw_node } from "./helpers/reflect-unit6.mts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 
@@ -37,14 +38,26 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-function mustElement(map: ReturnType<typeof hson.liveMap.fromHson>): ElementLiveMap {
-  if (map.mode !== "element") throw new Error("Expected element LiveMap");
+function mustElement(map: ReturnType<typeof hson.liveMap.fromHson>): DocumentLiveMap {
+  if (map.mode !== "document") throw new Error("Expected element LiveMap");
   return map;
 }
 
-function mustClassifiedElement(map: ClassifiedLiveMap): ElementLiveMap {
-  if (map.mode !== "element") throw new Error("Expected element LiveMap");
+function mustClassifiedElement(map: ClassifiedLiveMap): DocumentLiveMap {
+  if (map.mode !== "document") throw new Error("Expected element LiveMap");
   return map;
+}
+
+function authoredTree(binding: ReturnType<typeof _reflect_document_for_runtime_test>) {
+  const subject = binding.tree.node.$_content[0];
+  if (subject === undefined || subject === null || typeof subject !== "object") throw new Error("Expected authored document root");
+  return create_livetree(subject).adoptRoots(binding.tree.hostRootNode());
+}
+
+function authoredNode(map: DocumentLiveMap) {
+  const subject = map.root().$_content[0];
+  if (subject === undefined || subject === null || typeof subject !== "object") throw new Error("Expected authored document root");
+  return subject;
 }
 
 check("view-state is a durable exact-metadata capture", () => {
@@ -133,8 +146,8 @@ check("Locus bootstrap installs metadata into a new mirror epoch", () => {
   const host = hson.locus.create({ map: source, logicalMapId: "unit7-bootstrap" });
   const bootstrap = capture_locus_bootstrap(host, "unit7:bootstrap", "/unit7");
   const installed = install_locus_bootstrap(bootstrap);
-  assert.equal(installed.map.mode, "element");
-  if (installed.map.mode !== "element") throw new Error("Expected element bootstrap mirror");
+  assert.equal(installed.map.mode, "document");
+  if (installed.map.mode !== "document") throw new Error("Expected element bootstrap mirror");
   assert.equal(installed.map.document.byQuid(Q1)?.$_tag, "main");
 });
 
@@ -158,7 +171,7 @@ check("path-authoritative replay survives an identity-free checkpoint", () => {
   const mirror = element(`<main/>`);
   mirror.restore(checkpoint, { identity: "strip" });
   mirror.replay(commit);
-  assert.equal(mirror.element.node().$_attrs?.["data-tail"], "kept");
+  assert.equal((mirror.root().$_content[0] as { $_attrs?: Record<string, unknown> }).$_attrs?.["data-tail"], "kept");
 });
 
 check("path replay does not recreate stripped identity", () => {
@@ -174,7 +187,7 @@ check("path replay does not recreate stripped identity", () => {
 check("initial reflection admits canonical QUID claims", () => {
   const map = element(`<main @${Q1}/>`);
   const binding = _reflect_document_for_runtime_test(_create_livetree_runtime_test_handle(), map);
-  assert.equal(binding.tree.quid, Q1);
+  assert.equal(authoredTree(binding).quid, Q1);
   binding.dispose();
 });
 
@@ -213,7 +226,7 @@ check("same metadata in a new mirror still supports local QUID lookup", () => {
 
 check("noQuid reparsing loses map identity continuity", () => {
   const source = element(`<main @${Q1}/>`);
-  const wire = hson.fromNode(source.element.node()).toHson().noQuid().serialize();
+  const wire = hson.fromNode(authoredNode(source)).toHson().noQuid().serialize();
   const reparsed = mustElement(hson.liveMap.fromHson(wire));
   assert.equal(reparsed.document.byQuid(Q1), undefined);
 });
@@ -221,7 +234,7 @@ check("noQuid reparsing loses map identity continuity", () => {
 check("noQuid reparsing creates a different reflected exact node", () => {
   const source = element(`<main @${Q1}/>`);
   const first = _reflect_document_for_runtime_test(_create_livetree_runtime_test_handle(), source);
-  const wire = hson.fromNode(source.element.node()).toHson().noQuid().serialize();
+  const wire = hson.fromNode(authoredNode(source)).toHson().noQuid().serialize();
   const second = _reflect_document_for_runtime_test(_create_livetree_runtime_test_handle(), mustElement(hson.liveMap.fromHson(wire)));
   assert.notEqual(first.tree.node, second.tree.node);
   first.dispose();
@@ -230,7 +243,7 @@ check("noQuid reparsing creates a different reflected exact node", () => {
 
 check("structural HTML preserves QUID metadata as detached bytes", () => {
   const source = element(`<main @${Q1}/>`);
-  const html = hson.fromNode(source.element.node()).toHtml().serialize();
+  const html = hson.fromNode(authoredNode(source)).toHtml().serialize();
   assert.equal(html.includes(`hson:quid="${Q1}"`), true);
   assert.equal(html.includes("epoch"), false);
 });
@@ -243,8 +256,9 @@ check("ordinary application JSON does not interpret a quid key as identity metad
 
 check("capture categories do not alter LiveTree clone identity semantics", () => {
   const binding = _reflect_document_for_runtime_test(_create_livetree_runtime_test_handle(), element(`<main @${Q1}/>`));
-  const clone = binding.tree.cloneBranch();
-  assert.notEqual(clone.quid, binding.tree.quid);
+  const subject = authoredTree(binding);
+  const clone = subject.cloneBranch();
+  assert.notEqual(clone.quid, subject.quid);
   binding.dispose();
 });
 

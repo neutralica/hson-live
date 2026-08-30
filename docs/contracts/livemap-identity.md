@@ -99,8 +99,8 @@ A `LiveMapDocumentPath` is a nominal, readonly array of finite, non-negative saf
 
 Path origin is mode-specific but uses one language:
 
-- in element mode, `[]` addresses the one public top-level ordinary element;
-- in fragment mode, `[]` addresses the owned `_hson_elem` content cluster;
+- in document mode, `[]` addresses the internal `_hson_root` content authority;
+- `[i]` addresses top-level document node `i`;
 - subsequent indexes descend through the current endpoint's canonical `$_content` array, including structural carriers and legal primitive leaves; and
 - a path through a primitive or beyond owned content rejects rather than coercing, scanning, or rebasing.
 

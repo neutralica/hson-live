@@ -54,8 +54,8 @@ The handle follows its stored location. It is not a document-node identity
 handle and does not silently follow a value that moves elsewhere. Removal or
 replacement changes what subsequent reads at that location observe.
 
-Document maps use their separate `document`, `element`, or `fragment`
-capabilities. They do not expose the data path-handle surface.
+Document maps use their single `document` capability. They do not expose the
+data path-handle surface.
 
 ## Watching current values
 

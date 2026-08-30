@@ -270,7 +270,7 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
         continue;
       }
 
-      if (k.$_tag === OBJ_TAG || k.$_tag === ARR_TAG || k.$_tag === II_TAG) {
+      if (k.$_tag !== STR_TAG && k.$_tag.startsWith(HSON_SYS_PREFIX)) {
         push(errs, cfg, `${childPath}: _hson_elem cannot contain ${k.$_tag} (only _hson_str or normal element tags allowed)`);
         if (cfg.throwOnFirst) return;
         continue;
@@ -285,19 +285,34 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
 
   if (n.$_tag === ROOT_TAG) {
     const kids = n.$_content;
-    if (kids.length > 1) { push(errs, cfg, `${here}: _hson_root must contain at most one child`); if (cfg.throwOnFirst) return; }
-    if (kids.length === 1) {
-      const only = kids[0] as HsonNode | Primitive;
-      if (!is_Node(only)) {
-        push(errs, cfg, `${here}: _hson_root child must be a node; found: primitive (${only})`); if (cfg.throwOnFirst) return;
-      } else if (!(only.$_tag === OBJ_TAG
-        || only.$_tag === ELEM_TAG
-        || only.$_tag === ARR_TAG
-        || only.$_tag === STR_TAG
-        || only.$_tag === VAL_TAG)) {
-        push(errs, cfg, `${here}: _hson_root child must be one of _hson_obj/_hson_elem/_hson_arr/_hson_str/_hson_val`); if (cfg.throwOnFirst) return;
-      }
+    if (kids.length === 0) return;
+    if (kids.length === 1 && is_Node(kids[0]) && (
+      kids[0].$_tag === OBJ_TAG
+      || kids[0].$_tag === ELEM_TAG
+      || kids[0].$_tag === ARR_TAG
+      || kids[0].$_tag === STR_TAG
+      || kids[0].$_tag === VAL_TAG
+    )) {
+      walk(kids[0], `${path}/_hson_root/[0]`, ROOT_TAG, cfg, errs);
+      return;
     }
+    for (let index = 0; index < kids.length; index += 1) {
+      const child = kids[index];
+      const childPath = `${path}/_hson_root/[${index}]`;
+      if (!is_Node(child)) {
+        push(errs, cfg, `${childPath}: primitive/null outside _hson_str`);
+        if (cfg.throwOnFirst) return;
+        continue;
+      }
+      if (child.$_tag !== STR_TAG && child.$_tag.startsWith(HSON_SYS_PREFIX)) {
+        push(errs, cfg, `${childPath}: document root content must be _hson_str or an ordinary element`);
+        if (cfg.throwOnFirst) return;
+        continue;
+      }
+      walk(child, childPath, ELEM_TAG, cfg, errs);
+      if (cfg.throwOnFirst && errs.length) return;
+    }
+    return;
   }
 
   if (n.$_tag === OBJ_TAG) {

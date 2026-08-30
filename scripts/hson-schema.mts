@@ -205,14 +205,14 @@ function analyze_static_hson(program: ts.Program, checker: ts.TypeChecker, schem
         validate_candidate(schema, raw_template(declaration.initializer.template, sourceFile), sourceFile, declaration.initializer, diagnostics);
         overlays.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(sourceFile), end: declaration.initializer.getEnd(), text: `(${declaration.initializer.getText(sourceFile)} as unknown as ${declaration.type.getText(sourceFile)})` });
         count += 1;
-        if (schema.compiled.semantic.kind === "document-element" || schema.compiled.semantic.kind === "document-fragment") documentCount += 1;
+        if (schema.compiled.semantic.kind === "document") documentCount += 1;
       } else if (ts.isCallExpression(declaration.initializer) && is_certify_call(declaration.initializer, checker)) {
         if (declaration.initializer.typeArguments !== undefined) diagnostics.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(), message: "Explicit Hson.certify type arguments are unsupported." });
         const schemaArgument = declaration.initializer.arguments[0];
         if (schemaArgument === undefined || !ts.isIdentifier(schemaArgument) || !identifier_resolves_to(schemaArgument, checker, schema.declaration)) diagnostics.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(), message: `Hson.certify association must use ${schema.name} for ${typeName}.` });
         else overlays.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(sourceFile), end: declaration.initializer.getEnd(), text: `(${declaration.initializer.getText(sourceFile)} as unknown as ${declaration.type.getText(sourceFile)})` });
         count += 1;
-        if (schema.compiled.semantic.kind === "document-element" || schema.compiled.semantic.kind === "document-fragment") documentCount += 1;
+        if (schema.compiled.semantic.kind === "document") documentCount += 1;
       }
     }
   }
@@ -272,13 +272,13 @@ function format_ts_diagnostic(diagnostic: ts.Diagnostic): string {
 function validate_candidate(schema: SchemaDeclaration, source: string, sourceFile: ts.SourceFile, node: ts.Node, diagnostics: Diagnostic[]): void {
   try {
     const parsed = parse_hson_with_provenance(source);
-    const result = schema.compiled.semantic.kind === "document-element" || schema.compiled.semantic.kind === "document-fragment"
-      ? evaluate_canonical_document_schema(schema.compiled.graph, parsed.value, schema.compiled.semantic.kind === "document-element" ? "element" : "fragment")
+    const result = schema.compiled.semantic.kind === "document"
+      ? evaluate_canonical_document_schema(schema.compiled.graph, parsed.value)
       : evaluate_canonical_projected_schema(schema.compiled.graph, projected_value_from_hson_node(parsed.value));
     if (!result.ok) {
       const first = result.issues[0];
-      const resolution = first === undefined ? undefined : schema.compiled.semantic.kind === "document-element" || schema.compiled.semantic.kind === "document-fragment"
-        ? resolve_document_schema_issue_source(parsed.value, schema.compiled.semantic.kind === "document-element" ? "element" : "fragment", parsed.provenance, first)
+      const resolution = first === undefined ? undefined : schema.compiled.semantic.kind === "document"
+        ? resolve_document_schema_issue_source(parsed.value, "document", parsed.provenance, first)
         : resolve_projected_schema_issue_source(parsed.value, parsed.provenance, first);
       const relativeStart = resolution === undefined || resolution.kind === "unresolved" ? 0 : resolution.range.start;
       diagnostics.push({ file: sourceFile.fileName, start: node.getStart() + 1 + relativeStart, message: `Static Hson does not satisfy ${schema.name}: ${first?.code ?? "validation failed"} at ${first?.path.join(".") || "root"}.` });

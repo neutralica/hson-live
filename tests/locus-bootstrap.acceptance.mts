@@ -323,7 +323,7 @@ check("malformed graph and duplicate document QUIDs reject", () => {
   });
   assert.equal(error_code(() => install_locus_bootstrap(malformed)), "LOCUS_BOOTSTRAP_STATE_INVALID");
   const duplicate = replace_package(base.bootstrap, {
-    mode: "fragment",
+    mode: "document",
     state: {
       format: "hson",
       payload: `<div @000000001/> <span @000000001/>`,
@@ -366,8 +366,8 @@ check("element bootstrap installs exact state and revision", () => {
   }));
 });
 
-check("fragment bootstrap installs exact state and revision", () => {
-  verify_mode("fragment", create_locus({
+check("multiNodeDocument bootstrap installs exact state and revision", () => {
+  verify_mode("multiNodeDocument", create_locus({
     map: hson.liveMap.fromHson(`"before" <em @000000002 "middle"/>`),
   }));
 });

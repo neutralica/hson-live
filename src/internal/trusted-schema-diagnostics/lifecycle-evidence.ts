@@ -98,7 +98,7 @@ export function attempt_trusted_schema_attachment(application: TrustedSchemaAppl
   if (constructedRevision === undefined) throw new Error("Unknown D1 direct application.");
   const { map, template } = application;
   const attemptRevision = map.rev;
-  const rootMode = map.mode === "element" || map.mode === "fragment" ? map.mode : "projected";
+  const rootMode = map.mode === "document" ? map.mode : "projected";
   const associationId = `association:${++nextAttempt}`;
   const base: Omit<TrustedSchemaAssociationEvidence, "correspondence" | "attachment"> = {
     mapFlow: source === undefined ? undefined : Object.freeze({ ...source.mapFlow }),

@@ -236,10 +236,12 @@ check("root replacement is an admitted whole-correspondence rebuild boundary", (
 
 check("bound direct structural mutation is rejected before drift", () => {
   const map = element(`<main @${Q1} <a/>/>`);
-  const { binding } = reflected(map);
+  const { runtime, binding } = reflected(map);
+  const rootTree = _create_livetree_for_runtime_test(runtime, raw_node(binding.tree.node, []))
+    .adoptRoots(binding.tree.hostRootNode());
   const before = structuredClone(binding.tree.node);
   assert.throws(
-    () => binding.tree.detachContents(),
+    () => rootTree.detachContents(),
     (cause) => cause instanceof DocumentReflectError
       && cause.code === DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
   );
@@ -252,9 +254,11 @@ check("unbound detach and reinsert semantics remain unchanged after disposal", (
   const { runtime, binding } = reflected(map);
   const childNode = raw_node(binding.tree.node, [0, 0]);
   const child = _create_livetree_for_runtime_test(runtime, childNode).adoptRoots(binding.tree.hostRootNode());
+  const rootTree = _create_livetree_for_runtime_test(runtime, raw_node(binding.tree.node, []))
+    .adoptRoots(binding.tree.hostRootNode());
   binding.dispose();
   assert.equal(child.detach(), 1);
-  assert.equal(binding.tree.append(child), binding.tree);
+  assert.equal(rootTree.append(child), rootTree);
   assert.equal(raw_node(binding.tree.node, [0, 0]), childNode);
 });
 

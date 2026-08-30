@@ -33,6 +33,9 @@ const tag = (value: unknown): string | undefined =>
     ? String(value.$_tag)
     : undefined;
 
+const authoredTree = (binding: ReturnType<typeof hsonReflect>) =>
+  create_livetree(raw_node(binding.tree.node, [])).adoptRoots(binding.tree.hostRootNode());
+
 check("document watch sees canonical revision n+1 before Reflection revision advances", () => {
   const map = element(`<main <a/>/>`);
   const binding = hsonReflect(map);
@@ -237,7 +240,7 @@ check("nested mutation from a pre-Reflection watch accepts immediately but publi
   });
   map.commits.observe((observation) => {
     if (observation.kind === "commit") {
-      order.push(`observer:${observation.commit.rev}:${binding.sourceRevision}:${String(binding.tree.attrs.get("phase"))}`);
+      order.push(`observer:${observation.commit.rev}:${binding.sourceRevision}:${String(authoredTree(binding).attrs.get("phase"))}`);
     }
   });
   map.document.attrs.set(path(), "phase", "outer");
@@ -251,7 +254,7 @@ check("nested mutation from a pre-Reflection watch accepts immediately but publi
   ]);
   assert.equal(binding.status, "active");
   assert.equal(binding.sourceRevision, 2);
-  assert.equal(binding.tree.attrs.get("phase"), "nested");
+  assert.equal(authoredTree(binding).attrs.get("phase"), "nested");
   binding.dispose();
 });
 
@@ -299,8 +302,8 @@ check("nested mutation from an observer before Reflection preserves FIFO revisio
   assert.deepEqual(order, ["before:1", "after:1:1", "before:2", "after:2:2"]);
   assert.equal(binding.status, "active");
   assert.equal(binding.sourceRevision, 2);
-  assert.equal(binding.tree.attrs.get("outer"), true);
-  assert.equal(binding.tree.attrs.get("nested"), true);
+  assert.equal(authoredTree(binding).attrs.get("outer"), true);
+  assert.equal(authoredTree(binding).attrs.get("nested"), true);
   binding.dispose();
 });
 
@@ -317,8 +320,8 @@ check("nested mutation from an observer after Reflection preserves ordered conve
   assert.equal(map.rev, 2);
   assert.equal(binding.status, "active");
   assert.equal(binding.sourceRevision, 2);
-  assert.equal(binding.tree.attrs.get("outer"), true);
-  assert.equal(binding.tree.attrs.get("nested"), true);
+  assert.equal(authoredTree(binding).attrs.get("outer"), true);
+  assert.equal(authoredTree(binding).attrs.get("nested"), true);
   binding.dispose();
 });
 
@@ -331,7 +334,7 @@ check("a throwing document watch does not prevent Reflection or later observers"
   assert.throws(() => map.document.attrs.set(path(), "title", "next"), /watch failure/);
   assert.equal(map.rev, 1);
   assert.equal(binding.sourceRevision, 1);
-  assert.equal(binding.tree.attrs.get("title"), "next");
+  assert.equal(authoredTree(binding).attrs.get("title"), "next");
   assert.equal(later, 1);
   binding.dispose();
 });
@@ -346,13 +349,13 @@ check("an observer throwing before Reflection is isolated from Reflection and la
   assert.equal(map.rev, 1);
   assert.equal(binding.status, "active");
   assert.equal(binding.sourceRevision, 1);
-  assert.equal(binding.tree.attrs.get("one"), true);
+  assert.equal(authoredTree(binding).attrs.get("one"), true);
   assert.equal(later, 1);
   off();
   map.document.attrs.set(path(), "two", true);
   assert.equal(binding.status, "active");
   assert.equal(binding.sourceRevision, 2);
-  assert.equal(binding.tree.attrs.get("two"), true);
+  assert.equal(authoredTree(binding).attrs.get("two"), true);
   assert.equal(later, 2);
   binding.dispose();
 });
@@ -365,7 +368,7 @@ check("an observer throwing after Reflection leaves Reflection current", () => {
   assert.equal(map.rev, 1);
   assert.equal(binding.status, "active");
   assert.equal(binding.sourceRevision, 1);
-  assert.equal(binding.tree.attrs.get("title"), "next");
+  assert.equal(authoredTree(binding).attrs.get("title"), "next");
   binding.dispose();
 });
 
@@ -397,7 +400,7 @@ check("a failed Reflection binding remains failed while future canonical commits
   assert.equal(map.rev, 2);
   assert.equal(binding.status, "failed");
   assert.equal(binding.sourceRevision, 0);
-  assert.equal(binding.tree.attrs.get("later"), undefined);
+  assert.equal(authoredTree(binding).attrs.get("later"), undefined);
   binding.dispose();
 });
 
@@ -412,7 +415,7 @@ check("a fresh binding reconstructs current canonical state after failed binding
   failed.dispose();
   const fresh = hsonReflect(map);
   assert.equal(fresh.sourceRevision, 2);
-  assert.equal(fresh.tree.attrs.get("later"), true);
+  assert.equal(authoredTree(fresh).attrs.get("later"), true);
   assert.equal(raw_node(fresh.tree.node, [0]).$_content.length, 2);
   fresh.dispose();
 });
@@ -458,8 +461,8 @@ check("a retained outer observer error escapes only after queued publication dra
   assert.deepEqual(order, ["before:1", "after:1", "before:2", "after:2"]);
   assert.equal(binding.status, "active");
   assert.equal(binding.sourceRevision, 2);
-  assert.equal(binding.tree.attrs.get("outer"), true);
-  assert.equal(binding.tree.attrs.get("nested"), true);
+  assert.equal(authoredTree(binding).attrs.get("outer"), true);
+  assert.equal(authoredTree(binding).attrs.get("nested"), true);
   binding.dispose();
 });
 
@@ -483,7 +486,7 @@ check("replay uses the same watch-before-observer-before-Reflection publication 
   target.at([]).watch(() => order.push(`watch:${binding.sourceRevision}`));
   target.replay(commit);
   assert.deepEqual(order, ["watch:0", "before:0", "after:1"]);
-  assert.equal(binding.tree.attrs.get("replayed"), true);
+  assert.equal(authoredTree(binding).attrs.get("replayed"), true);
   binding.dispose();
 });
 

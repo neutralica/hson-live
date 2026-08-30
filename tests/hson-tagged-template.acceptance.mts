@@ -125,9 +125,9 @@ check("multiple primitive substitutions reconstruct one complete Hson source", (
 
 check("Hson-looking interpolated strings remain string data", () => {
   const value = `<foo "evil"/>`;
-  const brandedFragment = canonicalize(value);
+  const brandedSource = canonicalize(value);
   assert.equal(Hson`${value}`, JSON.stringify(value));
-  assert.equal(Hson`${brandedFragment}`, JSON.stringify(value));
+  assert.equal(Hson`${brandedSource}`, JSON.stringify(value));
   assert.equal(canonicalize(value), `<foo "evil"/>`);
   assert.notEqual(Hson`${value}`, canonicalize(value));
 });

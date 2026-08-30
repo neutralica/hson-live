@@ -16,7 +16,7 @@ const Q3 = "000004p03";
 let checks = 0;
 const check = (name: string, run: () => void) => { run(); checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); };
 const map = (value: unknown) => hson.liveMap.fromJson(value as never);
-const target = (...path: number[]) => Object.freeze({ kind: "path" as const, path: Object.freeze(path) });
+const target = (...path: number[]) => Object.freeze({ kind: "path" as const, path: Object.freeze([0, ...path]) });
 const active = (owner: { root: () => HsonNode }) => collect_hson_node_quid_claims(owner.root()).length;
 const state = (owner: object) => livemap_identity_epoch_accounting(owner);
 
