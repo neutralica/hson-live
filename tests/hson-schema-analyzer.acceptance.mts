@@ -19,8 +19,8 @@ const config = join(project, "tsconfig.json");
 writeFileSync(producer, `import { Hson, type HsonSchema } from "hson-live";\nexport const UserSchema: HsonSchema = Hson\`<type "data" content <name "string" age <number <int true min 0 under 130>> code <string <len 4 prefix "ID" suffix "7" contains "-">> values <array <content "number" unique true minlen 1 maxlen 2>>>>\`;\nexport const TreeSchema: HsonSchema = Hson\`<type "data" defs <Age <number <int true min 0>> Leaf <content <value "string" age <ref "Age"> children <tuple []>>> Tree <content <value "string" age <ref "Age"> children <array <ref "Tree">>>>> content <ref "Tree">>\`;\nthrow new Error("the analyzer must never execute this module");\n`);
 writeFileSync(consumer, `import { Hson } from "hson-live"; import { type TreeSchemaHson, type TreeSchemaType, type UserSchemaHson, type UserSchemaType } from "./producer.js";\nconst user: UserSchemaHson = Hson\`<name "Ada" age 37 code "ID-7" values [0, -0]>\`; void user;\nconst tree: TreeSchemaHson = Hson\`<value "root" age 2 children [<value "leaf" age 0 children []>]>\`; void tree;\ndeclare const recursive: TreeSchemaType; const child: TreeSchemaType | undefined = recursive.children[0]; const recursiveAge: TreeSchemaType["age"] = recursive.age; void child; void recursiveAge;\ndeclare const value: UserSchemaType; const age: UserSchemaType["age"] = value.age; const code: UserSchemaType["code"] = value.code; const values: UserSchemaType["values"] = value.values; void age; void code; void values;\n// @ts-expect-error arithmetic erases integer proof\nconst changedAge: UserSchemaType["age"] = value.age + 1;\n// @ts-expect-error string transforms erase constraint proof\nconst changedCode: UserSchemaType["code"] = value.code.slice(0);\n// @ts-expect-error spread erases uniqueness proof\nconst changedValues: UserSchemaType["values"] = [...value.values];\n// @ts-expect-error referenced refinement proof rejects plain numbers\nconst plainRecursiveAge: TreeSchemaType["age"] = value.age;\nvoid changedAge; void changedCode; void changedValues; void plainRecursiveAge;\n`);
 writeFileSync(aliasSchema, `import { Hson as Author, type HsonSchema as Schema } from "hson-live";\nexport const AliasSchema: Schema = Author\`<type "data" content <ok "boolean">>\`;\n`);
-writeFileSync(documentSchema, `import { Hson, type HsonSchema } from "hson-live";\nexport const PageSchema: HsonSchema = Hson\`<type "document" tag "main" attrs <props <id "string" hidden <optional "flag">> closed true> content <sequence [<tag "header" content "empty">, <tag "section" content "string">]>>\`;\n`);
-writeFileSync(documentConsumer, `import { Hson } from "hson-live"; import type { PageSchemaHson, PageSchemaType } from "./document-schema.js";\nconst page: PageSchemaHson = Hson\`<main id=hero <header/> <section "body"/>/>\`; void page;\ndeclare const value: PageSchemaType; const rootTag: "main" = value.$_tag; const child = value.$_content[0].$_content[1]; const childTag: "section" = child.$_tag; void rootTag; void childTag;\n// @ts-expect-error private semantic proof prevents structural fabrication\nconst fake: PageSchemaType = { $_tag: "main", $_attrs: { id: "hero" }, $_content: [] }; void fake;\n// @ts-expect-error object spread does not preserve private semantic proof\nconst rebuilt: PageSchemaType = { ...value }; void rebuilt;\n`);
+writeFileSync(documentSchema, `import { Hson, type HsonSchema } from "hson-live";\nexport const PageSchema: HsonSchema = Hson\`<type "document" tag "main" attrs <props <id "string" hidden <optional "flag">> closed true> content <sequence [<tag "header" content "empty">, <tag "section" content "string">]>>\`;\nexport const RepeatSchema: HsonSchema = Hson\`<type "document" defs <Code <string <prefix "ok-">> Item <tag "item" attrs <props <code <ref "Code">>> content "empty">> tag "list" content <repeat <ref "Item"> count 2>>\`;\nexport const FragmentSchema: HsonSchema = Hson\`<type "document" defs <Item <tag "item" content "empty">> content <repeat <ref "Item"> count 2>>\`;\n`);
+writeFileSync(documentConsumer, `import { Hson } from "hson-live"; import type { FragmentSchemaHson, PageSchemaHson, PageSchemaType, RepeatSchemaHson, RepeatSchemaType } from "./document-schema.js";\nconst page: PageSchemaHson = Hson\`<main id=hero <header/> <section "body"/>/>\`; void page;\nconst repeated: RepeatSchemaHson = Hson\`<list <item code=ok-one/> <item code=ok-two/>/>\`; void repeated;\nconst fragment: FragmentSchemaHson = Hson\`<item/><item/>\`; void fragment;\ndeclare const value: PageSchemaType; const rootTag: "main" = value.$_tag; const child = value.$_content[0].$_content[1]; const childTag: "section" = child.$_tag; void rootTag; void childTag;\ndeclare const repeatValue: RepeatSchemaType; const repeatedChild = repeatValue.$_content[0].$_content[0]; const repeatedTag: "item" = repeatedChild.$_tag; void repeatedTag;\n// @ts-expect-error a plain array cannot impersonate certified repeated content\nconst plainRepeated: RepeatSchemaType["$_content"][0]["$_content"] = [repeatedChild, repeatedChild]; void plainRepeated;\n// @ts-expect-error private semantic proof prevents structural fabrication\nconst fake: PageSchemaType = { $_tag: "main", $_attrs: { id: "hero" }, $_content: [] }; void fake;\n// @ts-expect-error object spread does not preserve private semantic proof\nconst rebuilt: PageSchemaType = { ...value }; void rebuilt;\n`);
 writeFileSync(config, JSON.stringify({ compilerOptions: { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext", declaration: true, outDir: "./out", baseUrl: ".", paths: { "hson-live": [resolve("dist/index.d.ts")], "hson-live/hson": [resolve("dist/hson-authoring.d.ts")] } }, include: ["./*.ts"] }, null, 2));
 
 const run = (mode: "generate" | "verify" | "check" | "build") => spawnSync(process.execPath, ["--loader", "ts-node/esm", "scripts/hson-schema.mts", mode, "--project", config], { cwd: root, encoding: "utf8", env: { ...process.env, TS_NODE_TRANSPILE_ONLY: "true" } });
@@ -37,6 +37,10 @@ check("declaration emit preserves module reexport and private proof carrier", ()
   assert.match(recursiveGenerated, /type __TreeSchemaDefinition0/); assert.match(recursiveGenerated, /ReadonlyArray<__TreeSchemaDefinition0>/); assert.match(recursiveGenerated, /private readonly __hsonSchemaProof/);
   const documentGenerated = readFileSync(join(project, "out/document-schema.PageSchema.hson-schema.generated.d.ts"), "utf8");
   assert.match(documentGenerated, /readonly \$_tag: "main"/); assert.match(documentGenerated, /readonly \$_tag: "section"/); assert.match(documentGenerated, /readonly hidden\?: "hidden"/);
+  const repeatGenerated = readFileSync(join(project, "out/document-schema.RepeatSchema.hson-schema.generated.d.ts"), "utf8");
+  assert.match(repeatGenerated, /readonly \$_tag: "item"/); assert.match(repeatGenerated, /readonly \[[^\]]+, [^\]]+\]/); assert.match(repeatGenerated, /private readonly __hsonSchemaProof/);
+  const fragmentGenerated = readFileSync(join(project, "out/document-schema.FragmentSchema.hson-schema.generated.d.ts"), "utf8");
+  assert.match(fragmentGenerated, /readonly \$_tag: "_hson_root"/); assert.match(fragmentGenerated, /readonly \$_tag: "item"/);
 });
 check("retired generated Value evidence fails freshness", () => {
   const artifact = join(project, "producer.UserSchema.hson-schema.generated.ts"), original = readFileSync(artifact, "utf8");
@@ -134,6 +138,43 @@ check("document static Hson rejects wrong tag, attrs, content order, and cardina
     const result = run("verify"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /does not satisfy PageSchema/);
   }
   writeFileSync(documentConsumer, original);
+});
+check("static repeated Hson enforces exact count, child shape, and referenced refinements", () => {
+  const original = readFileSync(documentConsumer, "utf8");
+  const valid = '<list <item code=ok-one/> <item code=ok-two/>/>';
+  for (const candidate of [
+    '<list/>',
+    '<list <item code=ok-one/>/>',
+    '<list <item code=ok-one/> <item code=ok-two/> <item code=ok-three/>/>',
+    '<list <item code=ok-one/> <wrong code=ok-two/>/>',
+    '<list <item code=bad/> <item code=ok-two/>/>',
+    '<list <item/> <item code=ok-two/>/>',
+  ]) {
+    writeFileSync(documentConsumer, original.replace(valid, candidate));
+    const result = run("verify"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /does not satisfy RepeatSchema/);
+  }
+  writeFileSync(documentConsumer, original);
+});
+check("static fragment Hson enforces multi-root cardinality and item shape", () => {
+  const original = readFileSync(documentConsumer, "utf8");
+  const valid = '<item/><item/>';
+  for (const candidate of ['<item/>', '<item/><item/><item/>', '<item/><wrong/>']) {
+    writeFileSync(documentConsumer, original.replace(valid, candidate));
+    const result = run("verify"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /does not satisfy FragmentSchema/);
+  }
+  writeFileSync(documentConsumer, original);
+});
+check("repeat body, count, and repeated ref target participate in freshness", () => {
+  const original = readFileSync(documentSchema, "utf8");
+  for (const changed of [
+    original.replace('count 2', 'count 3'),
+    original.replace('tag "item"', 'tag "entry"'),
+    original.replace('ref "Item"', 'ref "Renamed"'),
+  ]) {
+    writeFileSync(documentSchema, changed);
+    const result = run("verify"); assert.notEqual(result.status, 0);
+  }
+  writeFileSync(documentSchema, original);
 });
 check("document optional attr omission and default-open attrs pass authoritatively", () => {
   const originalSchema = readFileSync(documentSchema, "utf8"), originalConsumer = readFileSync(documentConsumer, "utf8");

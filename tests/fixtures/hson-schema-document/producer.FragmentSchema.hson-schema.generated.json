@@ -1,0 +1,8 @@
+{
+  "compatibilityVersion": "hson-schema-mvp-6",
+  "declarationIdentity": "producer.ts#FragmentSchema",
+  "sourceDigest": "37c9d763e9406e3194f09f0453ba98181686370710fd605dbfdc0544d779a99c",
+  "semanticGraphDigest": "0fbb534b2fe1371bbac37c5a7664082244a8c7ed064ccf19e1077eb0a83c652e",
+  "generatedDeclarationDigest": "c3a59d215ad6e61adffdaf4dc061dd8fb392bff35b6710c46f390f705d14f42d",
+  "graphHson": "<format \"hson-canonical-schema\" version 1 capabilities <documentFragmentRoot 0> nodes «<kind \"document-fragment-root\" content 1>,<kind \"document-repeat\" item 2 count 2>,<kind \"document-element\" tag \"item\" content 3>,<kind \"document-sequence\" items «»>»>"
+}

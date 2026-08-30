@@ -24,8 +24,8 @@ export function validate_canonical_hson(schema: LiveMapSchema | HsonSchema, cano
     }
     if (!compiled.ok) throw new LiveMapSchemaError("Hson Schema is unavailable or invalid.", [], compiled.issues.map((issue) => Object.freeze({ code: "INVALID_SCHEMA" as const, path: [], message: issue.message })));
     let result;
-    if (compiled.value.semantic.kind === "document-element") {
-      result = evaluate_canonical_document_schema(compiled.value.graph, graph, "element");
+    if (compiled.value.semantic.kind === "document-element" || compiled.value.semantic.kind === "document-fragment") {
+      result = evaluate_canonical_document_schema(compiled.value.graph, graph, compiled.value.semantic.kind === "document-element" ? "element" : "fragment");
     } else {
       let projected;
       try { projected = projected_value_from_hson_node(graph); }

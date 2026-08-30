@@ -1,8 +1,8 @@
 {
-  "compatibilityVersion": "hson-schema-mvp-5",
+  "compatibilityVersion": "hson-schema-mvp-6",
   "declarationIdentity": "producer.ts#PageSchema",
   "sourceDigest": "fd2f7bce74ff21d82ff62613e9b7580a04af9a94d481da8e764e7ed63749da7d",
   "semanticGraphDigest": "3bd24f23a9fccd592a6520869de891a5887c2594506642695f7275ed2a060a7e",
-  "generatedDeclarationDigest": "8ff3e37756e8ff91ae47519a2af5e61f0568e8f94986b4f1b01575e0ded2f5bf",
+  "generatedDeclarationDigest": "2ef927e5a7482ff4049b625ee4984deb0c597a98c14b0a422b821588809f8061",
   "graphHson": "<format \"hson-canonical-schema\" version 1 capabilities <documentElementRoot 0> nodes «<kind \"document-element\" tag \"main\" attrs 1 content 3>,<kind \"document-attrs\" exact false properties «<name \"id\" optional false flag false value 2>,<name \"hidden\" optional true flag true>»>,<kind \"projected-string\">,<kind \"document-sequence\" items «4»>,<kind \"document-element\" tag \"section\" content 5>,<kind \"document-sequence\" items «6»>,<kind \"document-text\">»>"
 }

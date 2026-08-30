@@ -21,7 +21,8 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
   };
   const visitDocument = (element: HsonSchemaDocumentElement): void => {
     element.attrs.forEach((attr) => { if (!attr.flag) visitData(attr.schema); });
-    if (element.content.kind === "document-sequence") element.content.items.forEach((item) => {
+    const items = element.content.kind === "document-sequence" ? element.content.items : element.content.kind === "document-repeat" ? [element.content.item] : [];
+    items.forEach((item) => {
       if (item.kind === "document-ref") visitDefinition(item.name);
       else if (item.kind === "document-element") visitDocument(item);
     });
@@ -34,7 +35,14 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
     reachableDefinitions.push(definition);
     if (definition.schema.kind === "document-element") visitDocument(definition.schema); else visitData(definition.schema);
   };
-  if (root.kind === "document-element") visitDocument(root); else visitData(root);
+  if (root.kind === "document-element") visitDocument(root);
+  else if (root.kind === "document-fragment") {
+    const items = root.content.kind === "document-sequence" ? root.content.items : root.content.kind === "document-repeat" ? [root.content.item] : [];
+    items.forEach((item) => {
+      if (item.kind === "document-ref") visitDefinition(item.name);
+      else if (item.kind === "document-element") visitDocument(item);
+    });
+  } else visitData(root);
   const proof = (label: string): string => {
     const proofIndex = proofNodeCount;
     const className = `__${name}${label}Proof${proofIndex}`;
@@ -85,6 +93,15 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
   };
   const emitDocumentContent = (content: HsonSchemaDocumentContent, path: string): string => {
     if (content.kind === "document-empty") return "readonly []";
+    if (content.kind === "document-repeat") {
+      const item = emitDocumentItem(content.item, `${path}RItem`);
+      const repeated = content.count === undefined
+        ? `ReadonlyArray<${item}>`
+        : content.count <= EXACT_DOCUMENT_REPEAT_TUPLE_LIMIT
+          ? `readonly [${Array.from({ length: content.count }, () => item).join(", ")}]`
+          : `ReadonlyArray<${item}> & ${proof(`${path}Count${content.count}`)}`;
+      return `readonly [Readonly<{ readonly $_tag: "_hson_elem"; readonly $_content: ${repeated} & ${proof(`${path}Repeat`)}; }> & ${proof(`${path}Cluster`)}]`;
+    }
     const items = content.kind === "document-string-content"
       ? [emitDocumentItem(Object.freeze({ kind: "document-string" }), `${path}S0`)]
       : content.items.map((item, index) => emitDocumentItem(item, `${path}S${index}`));
@@ -109,13 +126,20 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
     const body = definition.schema.kind === "document-element" ? emitDocumentElement(definition.schema, `D${index}`) : emitData(definition.schema, `D${index}`);
     return `type ${alias} = (${body}) & ${proof(`D${index}Definition`)};`;
   });
-  const type = root.kind === "document-element" ? emitDocumentElement(root, "Root") : emitData(root, "Root");
+  const type = root.kind === "document-element"
+    ? emitDocumentElement(root, "Root")
+    : root.kind === "document-fragment"
+      ? `Readonly<{ readonly $_tag: "_hson_root"; readonly $_content: ${emitDocumentContent(root.content, "RootContent")}; }> & ${proof("RootFragment")}`
+      : emitData(root, "Root");
   const hsonProof = proof("Hson");
   return Object.freeze({
     proofNodeCount,
     declarations: `${proofDeclarations.join("\n")}\n${definitionDeclarations.join("\n")}${definitionDeclarations.length === 0 ? "" : "\n"}export type ${name}Type = ${type};\nexport type ${name}Hson = HsonCanonical & ${hsonProof};`,
   });
 }
+
+/** Prevent pathological declarations while exact runtime cardinality remains canonical. */
+const EXACT_DOCUMENT_REPEAT_TUPLE_LIMIT = 32;
 
 function property_name(name: string): string {
   return /^[$A-Z_a-z][$\w]*$/.test(name) ? name : JSON.stringify(name);

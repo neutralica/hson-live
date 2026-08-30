@@ -14,5 +14,27 @@ export const PageSchema: HsonSchema = Hson`
   >
 `;
 
+export const ListSchema: HsonSchema = Hson`
+  <
+    type "document"
+    defs <
+      Code <string <prefix "ok-">>
+      Item <tag "item" attrs <props <code <ref "Code">>> content "empty">
+    >
+    tag "list"
+    content <repeat <ref "Item"> count 2>
+  >
+`;
+
+export const FragmentSchema: HsonSchema = Hson`
+  <
+    type "document"
+    defs <Item <tag "item" content "empty">>
+    content <repeat <ref "Item"> count 2>
+  >
+`;
+
 // @hson-schema generated type exports
 export type { PageSchemaType, PageSchemaHson } from "./producer.PageSchema.hson-schema.generated.js";
+export type { ListSchemaType, ListSchemaHson } from "./producer.ListSchema.hson-schema.generated.js";
+export type { FragmentSchemaType, FragmentSchemaHson } from "./producer.FragmentSchema.hson-schema.generated.js";

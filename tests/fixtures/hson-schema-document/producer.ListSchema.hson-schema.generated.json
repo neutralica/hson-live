@@ -1,0 +1,8 @@
+{
+  "compatibilityVersion": "hson-schema-mvp-6",
+  "declarationIdentity": "producer.ts#ListSchema",
+  "sourceDigest": "dbfcb8c77259a8c5b8b97da872d559515cf1fac2a2ec6dfe380c2c2b83dddba0",
+  "semanticGraphDigest": "faece14d061dd99ffdd7e981b2c8ab9e867f36feeced691cae4f60b2df24762d",
+  "generatedDeclarationDigest": "cd49b7136d988de26896077373e0c14733a4161b1eed811b929c859b81c72384",
+  "graphHson": "<format \"hson-canonical-schema\" version 1 capabilities <documentElementRoot 0> nodes «<kind \"document-element\" tag \"list\" content 1>,<kind \"document-repeat\" item 2 count 2>,<kind \"document-element\" tag \"item\" attrs 3 content 7>,<kind \"document-attrs\" exact false properties «<name \"code\" optional false flag false value 4>»>,<kind \"projected-ref\" target 5>,<kind \"projected-refinement\" base 6 rule <kind \"string-pattern\" dialect \"literal-string-v1\" mode \"prefix\" pattern \"ok-\"> label \"prefix\">,<kind \"projected-string\">,<kind \"document-sequence\" items «»>»>"
+}

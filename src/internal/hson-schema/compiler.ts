@@ -17,7 +17,7 @@ import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { is_public_attr_name } from "../../core/public-attrs.js";
 import { resolve_projected_hson_location } from "../../api/livemap/livemap.editor.js";
 
-export const HSON_SCHEMA_MVP_COMPATIBILITY_VERSION = "hson-schema-mvp-5" as const;
+export const HSON_SCHEMA_MVP_COMPATIBILITY_VERSION = "hson-schema-mvp-6" as const;
 
 export type HsonSchemaIssueCode =
   | "INVALID_ROOT"
@@ -65,7 +65,8 @@ export type HsonSchemaDocumentItem =
 export type HsonSchemaDocumentContent =
   | Readonly<{ kind: "document-empty" }>
   | Readonly<{ kind: "document-string-content" }>
-  | Readonly<{ kind: "document-sequence"; items: readonly HsonSchemaDocumentItem[] }>;
+  | Readonly<{ kind: "document-sequence"; items: readonly HsonSchemaDocumentItem[] }>
+  | Readonly<{ kind: "document-repeat"; item: HsonSchemaDocumentItem; count?: number }>;
 
 export type HsonSchemaDocumentElement = Readonly<{
   kind: "document-element";
@@ -75,12 +76,19 @@ export type HsonSchemaDocumentElement = Readonly<{
   content: HsonSchemaDocumentContent;
 }>;
 
-export type HsonSchemaSemanticNode = HsonSchemaDataSemanticNode | HsonSchemaDocumentElement;
-export type HsonSchemaRangedNode = HsonSchemaSemanticNode | Extract<HsonSchemaDocumentItem, { kind: "document-ref" }>;
+export type HsonSchemaDocumentFragment = Readonly<{
+  kind: "document-fragment";
+  content: HsonSchemaDocumentContent;
+}>;
+
+export type HsonSchemaSemanticNode = HsonSchemaDataSemanticNode | HsonSchemaDocumentElement | HsonSchemaDocumentFragment;
+export type HsonSchemaRangedNode = HsonSchemaSemanticNode
+  | Extract<HsonSchemaDocumentItem, { kind: "document-ref" }>
+  | Extract<HsonSchemaDocumentContent, { kind: "document-repeat" }>;
 
 export type HsonSchemaDefinition = Readonly<{
   name: string;
-  schema: HsonSchemaSemanticNode;
+  schema: HsonSchemaDataSemanticNode | HsonSchemaDocumentElement;
   range: HsonSourceRange;
 }>;
 
@@ -99,6 +107,8 @@ export type CompiledHsonSchema = Readonly<{
   semanticRanges: ReadonlyMap<HsonSchemaRangedNode, HsonSourceRange>;
   canonicalNodeCount: number;
   canonicalRefCount: number;
+  documentRepeatCount: number;
+  documentExactCountCount: number;
   recursiveSccCount: number;
 }>;
 
@@ -147,7 +157,7 @@ export function compile_hson_schema(source: string): HsonSchemaCompilation {
   const definitions: HsonSchemaDefinition[] = [];
   for (const [name, input] of Object.entries(definitionsInput ?? {})) {
     const path = ["defs", name] as const;
-    let schema: HsonSchemaSemanticNode | undefined;
+    let schema: HsonSchemaDataSemanticNode | HsonSchemaDocumentElement | undefined;
     if (is_object(input) && "tag" in input) schema = decode_document_element(input, path, false, issues, ranges, parsed.value, parsed.provenance, definitionNames, referenceUses);
     else schema = decode_expression(input, path, false, issues, ranges, parsed.value, parsed.provenance, definitionNames, referenceUses)?.schema;
     if (schema !== undefined) definitions.push(Object.freeze({ name, schema, range: source_range(path, "name", parsed.value, parsed.provenance) }));
@@ -163,11 +173,14 @@ export function compile_hson_schema(source: string): HsonSchemaCompilation {
       : decode_object_members(materialized.content, ["content"], issues, ranges, parsed.value, parsed.provenance, definitionNames, referenceUses);
   } else if (materialized.type === "document") {
     if (rootKeys[0] !== "type") return failure("INVALID_ROOT", [], 'Document Hson Schema root must begin with `type "document"`.');
-    semantic = decode_document_element(materialized, [], true, issues, ranges, parsed.value, parsed.provenance, definitionNames, referenceUses);
+    semantic = "tag" in materialized
+      ? decode_document_element(materialized, [], true, issues, ranges, parsed.value, parsed.provenance, definitionNames, referenceUses)
+      : decode_document_fragment(materialized, [], issues, ranges, parsed.value, parsed.provenance, definitionNames, referenceUses);
   } else {
     return failure("INVALID_ROOT", [], 'Hson Schema root `type` must be exactly "data" or "document".');
   }
   validate_reference_capabilities(semantic, definitions, referenceUses, issues);
+  validate_document_attr_capabilities(semantic, definitions, ranges, issues);
   if (semantic !== undefined) validate_unions(semantic, definitions, issues);
   for (const definition of definitions) validate_unions(definition.schema, definitions, issues);
   if (semantic === undefined || issues.length > 0) return Object.freeze({ ok: false, issues: Object.freeze(issues.map((entry) => with_issue_range(entry, parsed.value, parsed.provenance))) });
@@ -190,7 +203,19 @@ export function compile_hson_schema(source: string): HsonSchemaCompilation {
   const recursiveSccCount = count_recursive_sccs(verified.graph);
   return Object.freeze({
     ok: true,
-    value: Object.freeze({ semantic, definitions: Object.freeze(definitions), referenceUses: Object.freeze(referenceUses), graph: verified.graph, provenance: parsed.provenance, semanticRanges: ranges, canonicalNodeCount: verified.graph.nodes.length, canonicalRefCount: verified.graph.nodes.filter((node) => node.kind === "projected-ref").length, recursiveSccCount }),
+      value: Object.freeze({
+        semantic,
+        definitions: Object.freeze(definitions),
+        referenceUses: Object.freeze(referenceUses),
+        graph: verified.graph,
+        provenance: parsed.provenance,
+        semanticRanges: ranges,
+        canonicalNodeCount: verified.graph.nodes.length,
+        canonicalRefCount: verified.graph.nodes.filter((node) => node.kind === "projected-ref").length,
+        documentRepeatCount: verified.graph.nodes.filter((node) => node.kind === "document-repeat").length,
+        documentExactCountCount: verified.graph.nodes.filter((node) => node.kind === "document-repeat" && node.count !== undefined).length,
+        recursiveSccCount,
+      }),
   });
 }
 
@@ -401,6 +426,18 @@ function decode_document_element(input: JsonObject, path: readonly (string | num
   return schema;
 }
 
+function decode_document_fragment(input: JsonObject, path: readonly (string | number)[], issues: HsonSchemaIssue[], ranges: Map<HsonSchemaRangedNode, HsonSourceRange>, root: HsonNode, provenance: HsonSourceProvenance, definitionNames: ReadonlySet<string>, referenceUses: HsonSchemaReferenceUse[]): HsonSchemaDocumentFragment | undefined {
+  const allowed = new Set(["type", "defs", "content"]);
+  for (const key of Object.keys(input)) if (!allowed.has(key)) issue(issues, "UNKNOWN_SCHEMA_MEMBER", [...path, key], `Unknown fragment document Schema member ${JSON.stringify(key)}.`);
+  if (input.type !== "document") issue(issues, "INVALID_ROOT", [...path, "type"], 'Document descriptor requires `type "document"`.');
+  if (!("content" in input)) { issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, "content"], "Fragment document descriptor requires explicit `content`."); return undefined; }
+  const content = decode_document_content(input.content, [...path, "content"], issues, ranges, root, provenance, definitionNames, referenceUses);
+  if (content === undefined) return undefined;
+  const schema = Object.freeze({ kind: "document-fragment", content } as const);
+  bind_range(schema, path, ranges, root, provenance);
+  return schema;
+}
+
 function decode_document_attrs(input: unknown, path: readonly (string | number)[], issues: HsonSchemaIssue[], ranges: Map<HsonSchemaRangedNode, HsonSourceRange>, root: HsonNode, provenance: HsonSourceProvenance, definitionNames: ReadonlySet<string>, referenceUses: HsonSchemaReferenceUse[]): Readonly<{ attrs: readonly HsonSchemaDocumentAttr[]; closed: boolean }> | undefined {
   if (!is_object(input)) { issue(issues, "INVALID_SCHEMA_EXPRESSION", path, "`attrs` requires one descriptor object."); return undefined; }
   for (const key of Object.keys(input)) if (key !== "props" && key !== "closed") issue(issues, "UNKNOWN_SCHEMA_MEMBER", [...path, key], `Unknown attrs descriptor member ${JSON.stringify(key)}.`);
@@ -425,7 +462,7 @@ function decode_attr_expression(input: unknown, path: readonly (string | number)
   }
   const decoded = decode_expression(input, path, false, issues, ranges, root, provenance, definitionNames, referenceUses);
   if (decoded === undefined) return undefined;
-  if (decoded.schema.kind !== "string" && !(decoded.schema.kind === "exact" && typeof decoded.schema.value === "string")) {
+  if (decoded.schema.kind !== "string" && decoded.schema.kind !== "ref" && !(decoded.schema.kind === "exact" && typeof decoded.schema.value === "string")) {
     issue(issues, "INVALID_SCHEMA_EXPRESSION", path, "Authored valued attrs support `string` and exact strings in this document slice; canonical Hson stores authored attr values as strings.");
     return undefined;
   }
@@ -435,30 +472,57 @@ function decode_attr_expression(input: unknown, path: readonly (string | number)
 function decode_document_content(input: unknown, path: readonly (string | number)[], issues: HsonSchemaIssue[], ranges: Map<HsonSchemaRangedNode, HsonSourceRange>, root: HsonNode, provenance: HsonSourceProvenance, definitionNames: ReadonlySet<string>, referenceUses: HsonSchemaReferenceUse[]): HsonSchemaDocumentContent | undefined {
   if (input === "empty") return Object.freeze({ kind: "document-empty" });
   if (input === "string") return Object.freeze({ kind: "document-string-content" });
-  if (!is_object(input) || Object.keys(input).length !== 1 || !("sequence" in input) || !Array.isArray(input.sequence)) {
-    issue(issues, "INVALID_SCHEMA_EXPRESSION", path, '`content` must be exactly "empty", "string", or `<sequence [...]>` in the document MVP.');
+  if (!is_object(input)) {
+    issue(issues, "INVALID_SCHEMA_EXPRESSION", path, '`content` must be exactly "empty", "string", `<sequence [...]>`, or `<repeat <...>>`.');
+    return undefined;
+  }
+  if ("repeat" in input) {
+    for (const key of Object.keys(input)) if (key !== "repeat" && key !== "count") issue(issues, "UNKNOWN_SCHEMA_MEMBER", [...path, key], `Unknown repeat descriptor member ${JSON.stringify(key)}.`);
+    let count: number | undefined;
+    if ("count" in input) {
+      if (!Number.isSafeInteger(input.count) || (input.count as number) < 0) issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, "count"], "`count` requires one nonnegative safe integer.");
+      else count = input.count as number;
+    }
+    const item = decode_document_item(input.repeat, [...path, "repeat"], issues, ranges, root, provenance, definitionNames, referenceUses);
+    if (item === undefined) return undefined;
+    const schema = Object.freeze({ kind: "document-repeat", item, ...(count === undefined ? {} : { count }) } as const);
+    bind_range(schema, path, ranges, root, provenance);
+    return schema;
+  }
+  if (Object.keys(input).length !== 1 || !("sequence" in input) || !Array.isArray(input.sequence)) {
+    issue(issues, "INVALID_SCHEMA_EXPRESSION", path, '`content` must be exactly "empty", "string", `<sequence [...]>`, or `<repeat <...>>`.');
     return undefined;
   }
   const items: HsonSchemaDocumentItem[] = [];
   input.sequence.forEach((item, index) => {
-    if (item === "string") { issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, "sequence", index], "Mixed/string sequence items are not representable by the current Hson document grammar; use exact `content \"string\"` for textual content."); return; }
-    if (is_ref_descriptor(item)) {
-      const name = item.ref;
-      if (typeof name !== "string" || name.length === 0) issue(issues, "INVALID_REFERENCE", [...path, "sequence", index, "ref"], "`ref` requires exactly one literal definition-name string.");
-      else if (!definitionNames.has(name)) issue(issues, "INVALID_REFERENCE", [...path, "sequence", index, "ref"], `Unknown local Schema definition ${JSON.stringify(name)}.`);
-      else {
-        const schema = Object.freeze({ kind: "document-ref", name } as const);
-        bind_range(schema, [...path, "sequence", index], ranges, root, provenance);
-        referenceUses.push(Object.freeze({ name, schema, range: ranges.get(schema) ?? provenance.sourceRange }));
-        items.push(schema);
-      }
-      return;
-    }
-    if (!is_object(item)) { issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, "sequence", index], "Document sequence item must be `string` or an element descriptor."); return; }
-    const child = decode_document_element(item, [...path, "sequence", index], false, issues, ranges, root, provenance, definitionNames, referenceUses);
-    if (child !== undefined) items.push(child);
+    const decoded = decode_document_item(item, [...path, "sequence", index], issues, ranges, root, provenance, definitionNames, referenceUses);
+    if (decoded !== undefined) items.push(decoded);
   });
   return Object.freeze({ kind: "document-sequence", items: Object.freeze(items) });
+}
+
+function decode_document_item(input: unknown, path: readonly (string | number)[], issues: HsonSchemaIssue[], ranges: Map<HsonSchemaRangedNode, HsonSourceRange>, root: HsonNode, provenance: HsonSourceProvenance, definitionNames: ReadonlySet<string>, referenceUses: HsonSchemaReferenceUse[]): HsonSchemaDocumentItem | undefined {
+  if (input === "string") {
+    issue(issues, "INVALID_SCHEMA_EXPRESSION", path, "Mixed/string document items are not representable by the current Hson document grammar; use exact `content \"string\"` for textual content.");
+    return undefined;
+  }
+  if (is_ref_descriptor(input)) {
+    const name = input.ref;
+    if (typeof name !== "string" || name.length === 0) issue(issues, "INVALID_REFERENCE", [...path, "ref"], "`ref` requires exactly one literal definition-name string.");
+    else if (!definitionNames.has(name)) issue(issues, "INVALID_REFERENCE", [...path, "ref"], `Unknown local Schema definition ${JSON.stringify(name)}.`);
+    else {
+      const schema = Object.freeze({ kind: "document-ref", name } as const);
+      bind_range(schema, path, ranges, root, provenance);
+      referenceUses.push(Object.freeze({ name, schema, range: ranges.get(schema) ?? provenance.sourceRange }));
+      return schema;
+    }
+    return undefined;
+  }
+  if (!is_object(input)) {
+    issue(issues, "INVALID_SCHEMA_EXPRESSION", path, "Document item must be an exact element descriptor or `ref`.");
+    return undefined;
+  }
+  return decode_document_element(input, path, false, issues, ranges, root, provenance, definitionNames, referenceUses);
 }
 
 export function lower_hson_schema_semantic(root: HsonSchemaSemanticNode, definitions: readonly HsonSchemaDefinition[] = Object.freeze([])): CanonicalSchemaGraph {
@@ -515,16 +579,17 @@ function lower_hson_schema_semantic_with_sources(root: HsonSchemaSemanticNode, d
       case "ref": nodes[ref] = { kind: "projected-ref", target: lowerDefinition(schema.name) }; break;
     }
   };
-  const lowerDocumentItem = (item: HsonSchemaDocumentItem, source: HsonSchemaDocumentElement): number => {
+  const lowerDocumentItem = (item: HsonSchemaDocumentItem, source: HsonSchemaRangedNode): number => {
     if (item.kind === "document-string") { const ref = reserve(source); nodes[ref] = { kind: "document-text" }; return ref; }
     if (item.kind === "document-ref") return lowerDocumentDefinition(item.name);
     return lowerDocumentElement(item);
   };
-  const lowerDocumentContent = (content: HsonSchemaDocumentContent, source: HsonSchemaDocumentElement): number => {
-    const ref = reserve(source); nodes[ref] = { kind: "document-sequence", items: [] };
+  const lowerDocumentContent = (content: HsonSchemaDocumentContent, source: HsonSchemaRangedNode): number => {
+    const ref = reserve(content.kind === "document-repeat" ? content : source); nodes[ref] = { kind: "document-sequence", items: [] };
     if (content.kind === "document-empty") nodes[ref] = { kind: "document-sequence", items: Object.freeze([]) };
     else if (content.kind === "document-string-content") { const text = reserve(source); nodes[text] = { kind: "document-text" }; nodes[ref] = { kind: "document-sequence", items: Object.freeze([text]) }; }
-    else nodes[ref] = { kind: "document-sequence", items: Object.freeze(content.items.map((item) => lowerDocumentItem(item, source))) };
+    else if (content.kind === "document-sequence") nodes[ref] = { kind: "document-sequence", items: Object.freeze(content.items.map((item) => lowerDocumentItem(item, source))) };
+    else nodes[ref] = { kind: "document-repeat", item: lowerDocumentItem(content.item, source), ...(content.count === undefined ? {} : { count: content.count }) };
     return ref;
   };
   const lowerDocumentElement = (element: HsonSchemaDocumentElement): number => {
@@ -558,6 +623,12 @@ function lower_hson_schema_semantic_with_sources(root: HsonSchemaSemanticNode, d
     const documentElementRoot = lowerDocumentElement(root);
     return { graph: { format: CANONICAL_SCHEMA_FORMAT, version: CANONICAL_SCHEMA_VERSION, capabilities: { documentElementRoot }, nodes: Object.freeze(nodes) }, sources: Object.freeze(sources) };
   }
+  if (root.kind === "document-fragment") {
+    const fragmentRoot = reserve(root);
+    const content = lowerDocumentContent(root.content, root);
+    nodes[fragmentRoot] = { kind: "document-fragment-root", content };
+    return { graph: { format: CANONICAL_SCHEMA_FORMAT, version: CANONICAL_SCHEMA_VERSION, capabilities: { documentFragmentRoot: fragmentRoot }, nodes: Object.freeze(nodes) }, sources: Object.freeze(sources) };
+  }
   const projectedRoot = lower(root);
   return { graph: { format: CANONICAL_SCHEMA_FORMAT, version: CANONICAL_SCHEMA_VERSION, capabilities: { projectedRoot }, nodes: Object.freeze(nodes) }, sources: Object.freeze(sources) };
 }
@@ -570,6 +641,41 @@ function validate_reference_capabilities(root: HsonSchemaSemanticNode | undefine
     const compatible = use.schema.kind === "ref" ? target !== undefined && target.kind !== "document-element" : target?.kind === "document-element";
     if (!compatible) issues.push(Object.freeze({ code: "INVALID_REFERENCE", path: Object.freeze([]), message: `Definition ${JSON.stringify(use.name)} does not provide the ${use.schema.kind === "ref" ? "data" : "document-item"} capability required at this ref.`, range: use.range }));
   }
+}
+
+function validate_document_attr_capabilities(root: HsonSchemaSemanticNode | undefined, definitions: readonly HsonSchemaDefinition[], ranges: ReadonlyMap<HsonSchemaRangedNode, HsonSourceRange>, issues: HsonSchemaIssue[]): void {
+  if (root === undefined) return;
+  const byName = new Map(definitions.map((definition) => [definition.name, definition.schema]));
+  const attrCompatible = (schema: HsonSchemaDataSemanticNode, seen = new Set<string>()): boolean => {
+    if (schema.kind === "string" || schema.kind === "exact" && typeof schema.value === "string") return true;
+    if (schema.kind !== "ref" || seen.has(schema.name)) return false;
+    seen.add(schema.name);
+    const target = byName.get(schema.name);
+    return target !== undefined && target.kind !== "document-element" && attrCompatible(target, seen);
+  };
+  const seenElements = new Set<HsonSchemaDocumentElement>();
+  const visitItem = (item: HsonSchemaDocumentItem): void => {
+    if (item.kind === "document-element") visitElement(item);
+    else if (item.kind === "document-ref") {
+      const target = byName.get(item.name);
+      if (target?.kind === "document-element") visitElement(target);
+    }
+  };
+  const visitContent = (content: HsonSchemaDocumentContent): void => {
+    const items = content.kind === "document-sequence" ? content.items : content.kind === "document-repeat" ? [content.item] : [];
+    items.forEach(visitItem);
+  };
+  const visitElement = (element: HsonSchemaDocumentElement): void => {
+    if (seenElements.has(element)) return;
+    seenElements.add(element);
+    for (const attr of element.attrs) if (!attr.flag && !attrCompatible(attr.schema)) {
+      const range = ranges.get(attr.schema);
+      issues.push(Object.freeze({ code: "INVALID_REFERENCE", path: Object.freeze([]), message: "Authored valued attrs require a string-capable Schema, including through `ref`.", ...(range === undefined ? {} : { range }) }));
+    }
+    visitContent(element.content);
+  };
+  if (root.kind === "document-element") visitElement(root);
+  else if (root.kind === "document-fragment") visitContent(root.content);
 }
 
 function validate_unions(root: HsonSchemaSemanticNode, definitions: readonly HsonSchemaDefinition[], issues: HsonSchemaIssue[]): void {
@@ -586,9 +692,14 @@ function validate_unions(root: HsonSchemaSemanticNode, definitions: readonly Hso
   const visitDocument = (element: HsonSchemaDocumentElement): void => {
     if (seen.has(element)) return; seen.add(element);
     element.attrs.forEach((attr) => { if (!attr.flag) visitData(attr.schema); });
-    if (element.content.kind === "document-sequence") element.content.items.forEach((item) => { if (item.kind === "document-element") visitDocument(item); });
+    const items = element.content.kind === "document-sequence" ? element.content.items : element.content.kind === "document-repeat" ? [element.content.item] : [];
+    items.forEach((item) => { if (item.kind === "document-element") visitDocument(item); });
   };
-  if (root.kind === "document-element") visitDocument(root); else visitData(root);
+  if (root.kind === "document-element") visitDocument(root);
+  else if (root.kind === "document-fragment") {
+    const items = root.content.kind === "document-sequence" ? root.content.items : root.content.kind === "document-repeat" ? [root.content.item] : [];
+    items.forEach((item) => { if (item.kind === "document-element") visitDocument(item); });
+  } else visitData(root);
 }
 
 function distinguishable(left: HsonSchemaDataSemanticNode, right: HsonSchemaDataSemanticNode, definitions: readonly HsonSchemaDefinition[] = Object.freeze([])): boolean {
@@ -776,7 +887,9 @@ function build_bootstrap(): VerifiedCanonicalSchemaGraph {
 
   const document = reserve();
   const documentType = literal("document");
-  const tag = add({ kind: "projected-string" });
+  const tag = reserve();
+  const tagValue = add({ kind: "projected-string" });
+  nodes[tag] = { kind: "projected-optional", base: tagValue };
   const documentAny = add({ kind: "projected-any" });
   const optionalAttrs = optional(documentAny);
   nodes[document] = { kind: "projected-object", exact: false, properties: [["type", documentType], ["tag", tag], ["content", documentAny], ["attrs", optionalAttrs], ["defs", optionalDefinitions]] };

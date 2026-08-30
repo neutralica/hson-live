@@ -18,9 +18,9 @@ assert.equal(filtered_schema_assignment_errors(mvp, mvpConsumer).length, 0);
 assert.equal(verified_schema_assignment_ranges(ts, mvp, mvpConsumer).length, 4);
 
 const document = program_for(documentConfig, new Map());
-assert.equal(schema_assignment_errors(document, documentConsumer).length, 2);
+assert.equal(schema_assignment_errors(document, documentConsumer).length, 6);
 assert.equal(filtered_schema_assignment_errors(document, documentConsumer).length, 0);
-assert.equal(verified_schema_assignment_ranges(ts, document, documentConsumer).length, 2);
+assert.equal(verified_schema_assignment_ranges(ts, document, documentConsumer).length, 6);
 
 const consumerText = readFileSync(mvpConsumer, "utf8");
 const invalid = program_for(mvpConfig, new Map([[mvpConsumer, consumerText.replace('<name "Ada"', "<name 37")]]));
