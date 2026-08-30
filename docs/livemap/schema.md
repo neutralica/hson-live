@@ -1,31 +1,31 @@
 # Standalone canonical Hson validation
 
 ```ts
-import { Hson } from "hson-live/hson";
+import { Hson, type HsonSchema } from "hson-live/hson";
 import { hsonLiveMap } from "hson-live/livemap";
 
-const UserSchema = hsonLiveMap.schema.define(s => s.object({ user: s.object({ age: s.number }) }));
+const UserSchema: HsonSchema = Hson`<type "data" content <user <content <age "number">>>>`;
 const user = Hson`<user <age 37>>`;
 const same = Hson.certify(UserSchema, user);
 // same === user; return type is HsonCanonical, not a Schema certificate.
 ```
 
-`Hson.certify`, `hsonLiveMap.schema.validate`, and
-`hson.liveMap.schema.validate` are the same authoritative function. The latter
-two remain legitimate LiveMap-facing entrances. None allocates a map.
+`Hson.certify` is the sole generic dynamic certification operation. LiveMap's
+distinct operation is owner governance: `map.schema.use(UserSchema)`.
 
-`validate(schema: LiveMapSchema, canonical: HsonCanonical): HsonCanonical`
+`Hson.certify(schema: HsonSchema, canonical: HsonCanonical): HsonCanonical`
 validates an existing admitted canonical string without allocating a LiveMap or
 reserializing it. Complete data, element, fragment and combined capabilities
-use the existing owned Schema validators. Root interpretation comes from Hson,
+use the canonical HsonSchema evaluator. Root interpretation comes from Hson,
 not from the supplied Schema: ordinary `"text"` is a data string, not a
 fragment. No element-to-fragment or scalar-to-fragment coercion occurs.
 
-Mismatches throw `LiveMapSchemaError` with structured issues; incomplete or
+Mismatches throw the internal `HsonSchemaError` with structured issues; incomplete or
 unrecognized Schemas fail with `INVALID_SCHEMA`, incompatible roots with
 `TYPE_MISMATCH`. Malformed untyped strings preserve Transform errors and
-non-string misuse throws `TypeError`. Data constraint exceptions propagate;
-document attribute constraints retain their existing adapter behavior.
+non-string misuse throws `TypeError`. Approved declarative refinements are
+evaluated by the canonical graph authority; executable callback constraints are
+not a Schema feature.
 
 ## Trusted editor diagnostics for natural map ownership
 
@@ -47,6 +47,7 @@ mutate-then-revert, prevents attribution; rejected initial attachment remains
 diagnosable. Two maps can independently govern one template. The dedicated
 `hsonLiveMap.fromHson` public facade is equally supported.
 
-Standalone `schema.validate` remains useful for fixtures, static configuration,
-build/CI, and validation without a map. Its canonical interpretation is unchanged;
-map-flow candidates preserve `fromHson`'s existing document-text interpretation.
+Static authored source uses generated `<Name>Hson` annotations and the headless
+Schema analyzer; it does not call `Hson.certify`. Dynamic ingress uses
+`Hson.certify`. Map-owned state uses `map.schema.use` and is revalidated before
+mutation commits.

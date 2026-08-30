@@ -15,7 +15,6 @@ export {
   LiveMapReplayError,
   LiveMapReplayInputError,
   LiveMapRevError,
-  LiveMapSchemaError,
 } from "./livemap.error.js";
 export {
   append_live_path,
@@ -53,19 +52,6 @@ export type {
 } from "./livemap.error.js";
 export type { LiveMapDocumentPathFailureCode } from "./livemap.document.path.js";
 export type * from "../../types/livemap.types.js";
-export type {
-  InferLiveMapSchema,
-  LiveMapSchema,
-  LiveMapGraphSchema,
-  LiveMapAttachableSchema,
-  LiveMapSchemaIssue,
-  LiveMapSchemaMustApi,
-  LiveMapSchemaConstraint,
-  LiveMapSchemaResolution,
-  LiveMapSchemaRule,
-  LiveMapSchemaValidation,
-  LiveMapSchemaValue,
-} from "./livemap.schema.js";
 export type {
   ProjectedValueAdmissionCode,
   ProjectedValuePath,

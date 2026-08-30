@@ -30,7 +30,9 @@ export function tracked_typescript_files(repositoryRoot: string): readonly strin
     encoding: "utf8",
   });
   if (command.status !== 0) throw new Error(command.stderr || "git ls-files failed.");
-  return Object.freeze(command.stdout.split("\0").filter((file) => TYPESCRIPT_FAMILY.test(file)).sort());
+  return Object.freeze(command.stdout.split("\0")
+    .filter((file) => TYPESCRIPT_FAMILY.test(file) && existsSync(resolve(repositoryRoot, file)))
+    .sort());
 }
 
 export function read_observability_manifest(path: string): ObservabilityManifest {

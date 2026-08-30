@@ -15,6 +15,7 @@ import {
   type LiveMapProjectedMutationErrorCode,
   type LiveMapRenameOp,
 } from "hson-live/livemap";
+import type { HsonSchema } from "hson-live/hson";
 
 const map = hsonLiveMap.fromJson({ ready: true });
 void map.snap();
@@ -26,7 +27,8 @@ void projectedAcquisitionIsPublic;
 void projectedCapture.root;
 void hsonLiveMap.fromHson(`<worker <ready true>>`);
 void hsonLiveMap.fromNode(map.root());
-void hsonLiveMap.schema.define((shape) => shape.object({ ready: shape.boolean }));
+declare const workerSchema: HsonSchema;
+void map.schema.use(workerSchema);
 
 declare const optionalProjectedMap: LiveMap<Readonly<{ user?: Readonly<{ name: string }> }>>;
 const optionalProjectedName: string | undefined = optionalProjectedMap.proxy().user.name.$_.snap();

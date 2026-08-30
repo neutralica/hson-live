@@ -19,10 +19,3 @@ export type {
   LivePath,
   LivePathPart,
 } from "../../types/livemap.types.js";
-
-export type {
-  InferLiveMapSchema,
-  LiveMapSchema,
-  LiveMapSchemaIssue,
-  LiveMapSchemaValidation,
-} from "./livemap.schema.js";

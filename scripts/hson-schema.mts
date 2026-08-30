@@ -1,22 +1,30 @@
+#!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { performance } from "node:perf_hooks";
-import ts from "typescript";
-import { compile_hson_schema, HSON_SCHEMA_MVP_COMPATIBILITY_VERSION, type CompiledHsonSchema } from "../src/internal/hson-schema/compiler.ts";
-import { encode_canonical_schema_graph_hson } from "../src/internal/canonical-schema/encode-hson.ts";
-import { generate_hson_schema_types } from "../src/internal/hson-schema/generate-types.ts";
-import { projected_value_from_hson_node } from "../src/core/projected-value-graph.ts";
-import { evaluate_canonical_document_schema, evaluate_canonical_projected_schema } from "../src/internal/canonical-schema/evaluate.ts";
-import { parse_hson_with_provenance } from "../src/internal/hson-source-provenance/parse-hson-with-provenance.ts";
-import { resolve_projected_schema_issue_source } from "../src/internal/projected-schema-source-lowering/projected-schema-source-lowering.ts";
-import { resolve_document_schema_issue_source } from "../src/internal/document-schema-source-lowering/document-schema-source-lowering.ts";
+import * as ts from "typescript";
+import type { CompiledHsonSchema } from "../src/internal/hson-schema/compiler.ts";
+
+const packagedRuntime = existsSync(new URL("../dist/internal/hson-schema/compiler.js", import.meta.url));
+const runtimeBase = packagedRuntime ? "../dist" : "../src";
+const { compile_hson_schema, HSON_SCHEMA_MVP_COMPATIBILITY_VERSION } = await import(`${runtimeBase}/internal/hson-schema/compiler.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/compiler.ts");
+const { encode_canonical_schema_graph_hson } = await import(`${runtimeBase}/internal/canonical-schema/encode-hson.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/canonical-schema/encode-hson.ts");
+const { generate_hson_schema_types } = await import(`${runtimeBase}/internal/hson-schema/generate-types.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/generate-types.ts");
+const { projected_value_from_hson_node } = await import(`${runtimeBase}/core/projected-value-graph.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/core/projected-value-graph.ts");
+const { evaluate_canonical_document_schema, evaluate_canonical_projected_schema } = await import(`${runtimeBase}/internal/canonical-schema/evaluate.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/canonical-schema/evaluate.ts");
+const { parse_hson_with_provenance } = await import(`${runtimeBase}/internal/hson-source-provenance/parse-hson-with-provenance.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-source-provenance/parse-hson-with-provenance.ts");
+const { resolve_projected_schema_issue_source } = await import(`${runtimeBase}/internal/projected-schema-source-lowering/projected-schema-source-lowering.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/projected-schema-source-lowering/projected-schema-source-lowering.ts");
+const { resolve_document_schema_issue_source } = await import(`${runtimeBase}/internal/document-schema-source-lowering/document-schema-source-lowering.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/document-schema-source-lowering/document-schema-source-lowering.ts");
 
 type Mode = "generate" | "verify" | "check" | "build" | "watch";
 type SchemaDeclaration = Readonly<{ sourceFile: ts.SourceFile; statement: ts.VariableStatement; declaration: ts.VariableDeclaration; name: string; source: string; compiled: CompiledHsonSchema }>;
 type Artifact = Readonly<{ path: string; content: string; metadataPath: string; metadata: string; reexport: string; generatedBytes: number; proofNodeCount: number }>;
 type Diagnostic = Readonly<{ file?: string; start?: number; message: string }>;
 type Overlay = Readonly<{ file: string; start: number; end: number; text: string }>;
+
+const GENERATED_EXPORTS_START = "// @hson-schema generated type exports";
+const GENERATED_EXPORTS_END = "// @hson-schema end generated type exports";
 
 const args = process.argv.slice(2);
 const mode = (args[0] ?? "verify") as Mode;
@@ -51,6 +59,7 @@ function run_cycle(selected: Exclude<Mode, "watch">): void {
   }
   const artifacts = schemaDeclarations.map(make_artifact);
   const diagnostics: Diagnostic[] = [];
+  reconcile_generated_lifecycle(config, schemaDeclarations, artifacts, selected, diagnostics);
 
   for (let index = 0; index < schemaDeclarations.length; index += 1) {
     const declaration = schemaDeclarations[index] as SchemaDeclaration;
@@ -58,7 +67,6 @@ function run_cycle(selected: Exclude<Mode, "watch">): void {
     if (selected === "generate") {
       write_if_changed(artifact.path, artifact.content);
       write_if_changed(artifact.metadataPath, artifact.metadata);
-      install_reexport(declaration.sourceFile.fileName, artifact.reexport);
     } else {
       verify_artifact(declaration, artifact, diagnostics);
     }
@@ -110,7 +118,7 @@ function discover_schemas(program: ts.Program, checker: ts.TypeChecker): SchemaD
   for (const sourceFile of program.getSourceFiles()) {
     if (sourceFile.isDeclarationFile || sourceFile.fileName.includes(`${sep}node_modules${sep}`) || sourceFile.fileName.includes(".hson-schema.generated.")) continue;
     for (const statement of sourceFile.statements) {
-      if (!ts.isVariableStatement(statement) || !has_export(statement) || (statement.declarationList.flags & ts.NodeFlags.Const) === 0 || statement.declarationList.declarations.length !== 1) continue;
+      if (!ts.isVariableStatement(statement) || (statement.declarationList.flags & ts.NodeFlags.Const) === 0 || statement.declarationList.declarations.length !== 1) continue;
       const declaration = statement.declarationList.declarations[0];
       if (declaration === undefined || !ts.isIdentifier(declaration.name) || declaration.type === undefined || !ts.isTypeReferenceNode(declaration.type) || !ts.isIdentifier(declaration.type.typeName)) continue;
       if (!official_binding(declaration.type.typeName, "HsonSchema", checker)) continue;
@@ -159,7 +167,11 @@ function make_artifact(schema: SchemaDeclaration): Artifact {
   const metadata = `${JSON.stringify(metadataObject, null, 2)}\n`;
   const runtimeExtension = extension === ".mts" ? ".mjs" : extension === ".cts" ? ".cjs" : ".js";
   const generatedSpecifier = `./${stem.slice(stem.lastIndexOf(sep) + 1)}.${schema.name}.hson-schema.generated${runtimeExtension}`;
-  const reexport = `export type { ${schema.name}Type, ${schema.name}Hson } from ${JSON.stringify(generatedSpecifier)};`;
+  const generatedNames = `${schema.name}Type, ${schema.name}Hson`;
+  const localBinding = `import type { ${generatedNames} } from ${JSON.stringify(generatedSpecifier)};`;
+  const reexport = has_export(schema.statement)
+    ? `${localBinding}\nexport type { ${generatedNames} };`
+    : localBinding;
   return Object.freeze({ path: artifactPath, content, metadataPath: `${stem}.${schema.name}.hson-schema.generated.json`, metadata, reexport, generatedBytes: Buffer.byteLength(content), proofNodeCount: generated.proofNodeCount });
 }
 
@@ -279,18 +291,84 @@ function validate_candidate(schema: SchemaDeclaration, source: string, sourceFil
 function verify_artifact(schema: SchemaDeclaration, artifact: Artifact, diagnostics: Diagnostic[]): void {
   const checks = [[artifact.path, artifact.content, "generated declaration"], [artifact.metadataPath, artifact.metadata, "freshness evidence"]] as const;
   for (const [path, expected, label] of checks) {
-    if (!existsSync(path)) diagnostics.push({ file: schema.sourceFile.fileName, start: schema.declaration.getStart(), message: `Missing ${label} for ${schema.name}. Run hson-schema:generate.` });
-    else if (readFileSync(path, "utf8") !== expected) diagnostics.push({ file: path, message: `Stale or edited ${label} for ${schema.name}.` });
+    if (!existsSync(path)) diagnostics.push({ file: schema.sourceFile.fileName, start: schema.declaration.getStart(), message: `Generated Hson Schema types for ${schema.name} are missing (${label}). Run hson-schema generate --project ${projectArg}.` });
+    else if (readFileSync(path, "utf8") !== expected) diagnostics.push({ file: path, message: `Stale or edited generated Hson Schema types for ${schema.name} (${label}). Run hson-schema generate --project ${projectArg}.` });
   }
-  if (!schema.sourceFile.text.includes(artifact.reexport)) diagnostics.push({ file: schema.sourceFile.fileName, message: `Missing generated type reexport for ${schema.name}. Run hson-schema:generate.` });
 }
 
-function install_reexport(path: string, reexport: string): void {
-  const source = readFileSync(path, "utf8");
-  if (source.includes(reexport)) return;
-  const marker = "// @hson-schema generated type exports";
-  const next = `${source.trimEnd()}\n\n${marker}\n${reexport}\n`;
-  writeFileSync(path, next);
+function reconcile_generated_lifecycle(
+  config: ts.ParsedCommandLine,
+  schemas: readonly SchemaDeclaration[],
+  artifacts: readonly Artifact[],
+  selected: Exclude<Mode, "watch">,
+  diagnostics: Diagnostic[],
+): void {
+  const expectedArtifacts = new Set(artifacts.flatMap((artifact) => [resolve(artifact.path), resolve(artifact.metadataPath)]));
+  for (const path of generated_artifact_paths(config)) {
+    if (expectedArtifacts.has(resolve(path))) continue;
+    if (selected === "generate") unlinkSync(path);
+    else diagnostics.push({ file: path, message: `Stale generated Hson Schema artifact has no current declaration. Run hson-schema generate --project ${projectArg}.` });
+  }
+
+  const exportsBySource = new Map<string, string[]>();
+  for (let index = 0; index < schemas.length; index += 1) {
+    const schema = schemas[index] as SchemaDeclaration;
+    const artifact = artifacts[index] as Artifact;
+    const entries = exportsBySource.get(schema.sourceFile.fileName) ?? [];
+    entries.push(artifact.reexport);
+    exportsBySource.set(schema.sourceFile.fileName, entries);
+  }
+  for (const fileName of config.fileNames) {
+    if (!/\.[cm]?tsx?$/.test(fileName) || fileName.includes(".hson-schema.generated.")) continue;
+    const source = readFileSync(fileName, "utf8");
+    const expected = generated_exports_block(exportsBySource.get(fileName) ?? []);
+    const actual = generated_exports_block_from_source(source);
+    if (selected === "generate") {
+      if (actual === expected) continue;
+      const without = remove_generated_exports_block(source).trimEnd();
+      const next = expected === "" ? `${without}\n` : `${without}\n\n${expected}`;
+      if (next !== source) writeFileSync(fileName, next);
+    } else if (actual !== expected) {
+      diagnostics.push({ file: fileName, message: `Generated Hson Schema type exports are missing or stale. Run hson-schema generate --project ${projectArg}.` });
+    }
+  }
+}
+
+function generated_exports_block(exports: readonly string[]): string {
+  if (exports.length === 0) return "";
+  return `${GENERATED_EXPORTS_START}\n${[...exports].sort().join("\n")}\n${GENERATED_EXPORTS_END}\n`;
+}
+
+function generated_exports_block_from_source(source: string): string {
+  const start = source.indexOf(GENERATED_EXPORTS_START);
+  if (start < 0) return "";
+  const end = source.indexOf(GENERATED_EXPORTS_END, start);
+  if (end >= 0) return source.slice(start, end + GENERATED_EXPORTS_END.length + (source[end + GENERATED_EXPORTS_END.length] === "\n" ? 1 : 0));
+  const legacy = source.slice(start).match(/^\/\/ @hson-schema generated type exports\n(?:export type \{[^\n]+\} from [^\n]+;\n?)*/)?.[0];
+  return legacy ?? "";
+}
+
+function remove_generated_exports_block(source: string): string {
+  const block = generated_exports_block_from_source(source);
+  return block === "" ? source : source.replace(block, "");
+}
+
+function generated_artifact_paths(config: ts.ParsedCommandLine): readonly string[] {
+  const output: string[] = [];
+  const sourceStems = config.fileNames
+    .filter((fileName) => /\.[cm]?tsx?$/.test(fileName) && !fileName.includes(".hson-schema.generated."))
+    .map((fileName) => fileName.slice(0, -extname(fileName).length));
+  const visit = (path: string): void => {
+    for (const name of readdirSync(path)) {
+      if (["node_modules", "dist", ".git"].includes(name)) continue;
+      const child = join(path, name);
+      const stat = statSync(child);
+      if (stat.isDirectory()) visit(child);
+      else if (/\.hson-schema\.generated\.(?:ts|json)$/.test(name) && sourceStems.some((stem) => child.startsWith(`${stem}.`))) output.push(child);
+    }
+  };
+  visit(dirname(projectPath));
+  return Object.freeze(output);
 }
 
 function official_binding(identifier: ts.Identifier, expected: string, checker: ts.TypeChecker): boolean {

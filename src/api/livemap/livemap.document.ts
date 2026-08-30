@@ -3,6 +3,7 @@ import { assert_invariants } from "../../core/assert-invariants.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { is_persisted_quid } from "../../core/persisted-quid.js";
 import type { HsonNode } from "../../core/types.js";
+import type { HsonSchema } from "../transform/transform.types.js";
 import type {
   ClassifiedLiveMap,
   DataLiveMapMode,
@@ -56,13 +57,7 @@ import { register_livemap_identity_epoch_owner } from "./livemap.identity-epoch.
 import { make_livemap_document_location_factory } from "./livemap.document.location.js";
 import { make_livemap_document_proxy } from "./livemap.proxy.js";
 import type { LiveMapDocumentWatchRegistration } from "./livemap.watch.js";
-import type {
-  InternalDocumentElementSchema,
-  InternalDocumentFragmentSchema,
-  InternalDocumentSchemaEvidence,
-  InternalDocumentSchemaController,
-} from "./livemap.document.schema.js";
-import { require_document_root_schema } from "./livemap.document.schema.js";
+import type { InternalDocumentSchemaController } from "./livemap.document.schema.js";
 
 export type PreparedLiveMapRoot = Readonly<{
   root: HsonNode;
@@ -258,18 +253,11 @@ function make_document_livemap(
     );
     let elementMap: ElementLiveMap;
     const schema: ElementLiveMap["schema"] = Object.freeze({
-      get: () => {
-        const attached = controller.getDocumentSchema();
-        return attached === undefined
-          ? undefined
-          : require_document_root_schema(attached, "element").value;
-      },
-      use: <TSchema extends InternalDocumentElementSchema>(documentSchema: TSchema) => {
+      get: controller.getDocumentSchema,
+      use: ((documentSchema: HsonSchema) => {
         controller.useDocumentSchema(documentSchema);
-        // Schema admission permanently establishes the evidence represented by
-        // this same runtime map object; the generic is a read-only typed view.
-        return elementMap as ElementLiveMap<InternalDocumentSchemaEvidence<TSchema>>;
-      },
+        return elementMap;
+      }) as ElementLiveMap["schema"]["use"],
     });
     elementMap = Object.freeze({
       ...shared,
@@ -300,18 +288,11 @@ function make_document_livemap(
   );
   let fragmentMap: FragmentLiveMap;
   const schema: FragmentLiveMap["schema"] = Object.freeze({
-    get: () => {
-      const attached = controller.getDocumentSchema();
-      return attached === undefined
-        ? undefined
-        : require_document_root_schema(attached, "fragment").value;
-    },
-    use: <TSchema extends InternalDocumentFragmentSchema>(documentSchema: TSchema) => {
+    get: controller.getDocumentSchema,
+    use: ((documentSchema: HsonSchema) => {
       controller.useDocumentSchema(documentSchema);
-      // Schema admission permanently establishes the evidence represented by
-      // this same runtime map object; the generic is a read-only typed view.
-      return fragmentMap as FragmentLiveMap<InternalDocumentSchemaEvidence<TSchema>>;
-    },
+        return fragmentMap;
+      }) as FragmentLiveMap["schema"]["use"],
   });
   fragmentMap = Object.freeze({
     ...shared,

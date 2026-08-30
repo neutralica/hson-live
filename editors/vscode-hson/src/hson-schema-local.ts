@@ -15,7 +15,7 @@ export function local_hson_schema_diagnostics(fileName: string, text: string): r
     }
   }
   const diagnostics: LocalHsonSchemaDiagnostic[] = [];
-  const declarationPattern = /export\s+const\s+([$\w]+)\s*:\s*([$\w]+)\s*=\s*([$\w]+)\s*`([\s\S]*?)`\s*;/g;
+  const declarationPattern = /(?:export\s+)?const\s+([$\w]+)\s*:\s*([$\w]+)\s*=\s*([$\w]+)\s*`([\s\S]*?)`\s*;/g;
   for (const match of text.matchAll(declarationPattern)) {
     const schemaType = match[2], tag = match[3], sourceText = match[4] ?? "", start = match.index;
     if (schemaType === undefined || !officialSchema.has(schemaType)) continue;

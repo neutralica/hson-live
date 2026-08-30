@@ -268,203 +268,30 @@ If the callback throws or any staged operation/schema check fails, nothing is ap
 
 ## Schema
 
-```ts
-const userSchema = hson.liveMap.schema.define((s) =>
-  s.object.exact({
-    user: s.object({
-      name: s.string,
-      age: s.number.optional,
-      role: s.literal("admin", "reader"),
-    }),
-    tags: s.array(s.string),
-  }),
-);
-
-const typed = hson.liveMap
-  .fromJson({ user: { name: "Ada", role: "admin" }, tags: [] })
-  .schema.use(userSchema);
-
-typed.at(["user", "name"]).set("Grace");
-```
-
-The direct `s` toolkit includes:
-
-- primitives: `unknown`, `string`, `number`, `boolean`, `null`;
-- modifiers: `.optional`, `.nullable`, and
-  `.constrain(predicate)` / `.constrain(label, predicate)` on compatible   data schema values;
-- choices: `literal(...values)`, `pick(...choices)`, and tagged variants;
-- structure: `array()`, `array(item)`, `tuple(...items)`, `object(shape)`,   `object.exact(shape)`, `partial(objectSchema)`, `deepPartial(objectSchema)`, and   `record(value)`;
-- recursion: `recurse(factory)`.
-
-Every `define` call returns a distinct immutable schema. Defined schemas retain their exact evidence and can be used anywhere a compatible inline expression can be used:
+HsonSchema is the only Schema authoring and authority system.
 
 ```ts
-const Seat = hson.liveMap.schema.define((s) => s.object.exact({ connected: s.boolean }));
-const State = hson.liveMap.schema.define((s) => s.object.exact({ left: Seat, right: Seat }));
+import { Hson, type HsonSchema } from "hson-live";
+
+const UserSchema: HsonSchema = Hson`
+  <type "data" content <user <content <
+    name "string"
+    age <optional "number">
+  >>>>
+`;
+
+const map = hson.liveMap.fromJson({ user: { name: "Ada", age: 37 } });
+map.schema.use(UserSchema);
 ```
 
-`define` callbacks return one explicit schema expression; a raw callback object is not an implicit object schema. `object` validates declared properties but allows extra string keys. Declared properties retain their precise types, while undeclared keys are typed as recursively data primitive/readonly array/readonly object values plus `undefined` for absence. `object.exact` rejects extra keys and has no open index signature. `.exact` is family-local to the open named-keyspace families `object` and `attrs`; it is not a universal modifier. `array()` admits zero or more legal data values of any data type, while `array(item)` remains homogeneous. Broad arrays still reject invalid data values such as `undefined`, sparse holes, non-finite numbers, bigint, executable/symbol values, exotic or cyclic objects, and document-only values. `tuple()` is the exact zero-position tuple, and other tuple indexes are bounded. `Schema.constrain(...)` runs custom validation after its base succeeds and only narrows validity; it does not transform or coerce values.
+`map.schema.get()` returns the attached HsonSchema and `map.schema.use(schema)`
+attaches it once to that owner. Attachment validates the current root; later
+mutations, restore, and replay validate before publication. Generic dynamic Hson
+certification is `Hson.certify`; LiveMap exposes no separate authoring or
+certification facade.
 
-The diagnostic label is optional. Defined data schemas retain this modifier, so a durable `Range` may be narrowed with `Range.constrain(...)` without mutating `Range`. Document-only elements/layouts, attrs-schema values, and contextual `s.flag` do not expose it. `recurse` exists for self-recursion, mutual recursion, and forward schema references.
-
-Constraints are admission predicates for strings, numbers, structured data  chemas, and legal attr-value schemas:
-
-```ts
-const RoomName = hson.liveMap.schema.define((s) =>
-  s.string.constrain((value) => value.startsWith("room:")),
-);
-
-const Count = hson.liveMap.schema.define((s) =>
-  s.number.constrain((value) => Number.isInteger(value) && value >= 0),
-);
-
-const Range = hson.liveMap.schema.define((s) =>
-  s.object.exact({
-    min: s.number,
-    max: s.number,
-  }).constrain((value) => value.min <= value.max),
-);
-
-const CodedAttrs = hson.liveMap.schema.define((s) => s.attrs({
-  code: s.string.constrain((value) => /^[A-Z]{3}-\d{4}$/.test(value)),
-}));
-```
-
-`constrain` narrows admission without changing the value. For example, a predicate may admit only strings that are numerically parseable, but the retained value is still the exact original string; `constrain` does not parse, trim, normalize, coerce, or replace it. An ordinary boolean string predicate therefore still infers `string` rather than a transformed or refined type.
-
-`partial` and `deepPartial` accept an explicit object expression or compatible defined object schema and preserve whether the operand is open or exact. Tagged variant tables likewise contain explicit object schema expressions:
-
-```ts
-const Event = hson.liveMap.schema.define((s) => s.tagged("kind", {
-  changed: s.object.exact({ value: s.string }),
-  cleared: s.object({}),
-}));
-```
-
-Schema values use the same admission domain as mutations. `optional` means the property may be missing; a present property whose value is `undefined` is invalid. Literal values are admitted and detached when the schema is defined, then compared using ordered SameValue semantics. Constraint callbacks receive fresh detached JavaScript materializations, so mutating one callback's input cannot alter the candidate or another constraint.
-
-Schema objects expose `validateRoot(value)`, `validateValue(path, value)`, `rules`, `match(path)`, `resolve(path)`, `has(path)`, and throwing `must.resolve` inspection. Attached maps mirror lookup through `map.schema`; `get()` returns the attached schema.
-
-The first successful `map.schema.use(A)` validates current canonical state and permanently records exact schema object `A` as that owner's contract. Calling `use(A)` again, including through an ordinary alias to the same object, is an idempotent no-op. Calling `use(B)` with `B !== A` rejects even when B is structurally equivalent or accepts the current state. There is no detach, reset, or replacement operation. Attachment changes no value or revision and emits no commit, feed, or watch notification. One immutable schema object may govern any number of independent map owners.
-
-Validation returns structured issues with codes including `TYPE_MISMATCH`, `MISSING_REQUIRED`, `UNKNOWN_PATH`, `UNKNOWN_KEY`, `INVALID_LITERAL`, `INVALID_CONSTRAINT`, `INVALID_SCHEMA`, and `TUPLE_INDEX_OUT_OF_RANGE`. Issue paths are data paths. Multi-operation validation reports the relevant operation/headline path while retaining detailed issue paths.
-
-### Document schemas in the unified toolkit
-
-Mutable element and fragment maps can install a document-specific legal-state contract. Authored Hson still describes only initial state; it never becomes a schema implicitly.
-
-```ts
-const Label = hson.liveMap.schema.define((s) => s.span(s.string));
-const ButtonAttrs = hson.liveMap.schema.define((s) => s.attrs({
-  id: s.string,
-  tabindex: s.number.constrain((value) => Number.isInteger(value) && value >= -1),
-  selected: s.flag.optional,
-  style: s.unknown.optional,
-}));
-const ButtonDocument = hson.liveMap.schema.define((s) =>
-  s.button(ButtonAttrs, Label),
-);
-
-const map = hson.liveMap.fromHson(`<button "Save"/>`);
-if (map.mode === "element") map.schema.use(ButtonDocument);
-```
-
-Known HTML and SVG tags are direct builders on the same `s` toolkit and derive from the canonical `LiveTree.create` tag catalog. `s.string` is logical text; `s.unknown` is one arbitrary legal document item; `s.empty` is exactly zero document items; `s.tuple(...)` is a closed ordered layout; `s.repeat(item)` is a whole zero-or-more sibling layout; `s.repeat(count, item)` is a homogeneous exact-count layout; and `s.pick(...)` combines compatible items or compatible layouts. Shared `string`, `unknown`, `tuple`, and `pick` expressions retain data and document capabilities until their enclosing expression selects one.
-
-A first `s.attrs({...})` operand declares required and optional attrs while leaving undeclared canonical attrs open; `s.attrs.exact({...})` rejects undeclared attrs, `s.attrs({})` permits arbitrary canonical attrs, and `s.attrs.exact({})` permits no attrs. Attr schemas are immutable reusable values, valid only as the first tag operand. `s.flag` is contextual: the containing attr must equal its canonical name, while `s.flag.optional` permits absence. `s.unknown` in attr context admits any canonical value legal for that particular name, including structured canonical style for the exact `style` key.
-
-A known-tag call with no children, such as `s.div()`, leaves descendants broad. Explicit child items close the complete direct content. One layout argument supplies the complete layout. Prefer `s.div(s.empty)` for an exact-empty element and return `s.empty` for an exact-empty fragment. `s.tuple()` remains the valid zero-position document layout and, in data composition, the exact empty tuple `[]`. `s.repeat(0, item)` is document-semantically equivalent to `s.empty`. A top-level nonempty `s.tuple(...)` is a fragment/multi-root contract. Omitting an attrs operand leaves attributes broad.
-
-Counted repeat accepts primitive finite nonnegative safe integers only. Negative, fractional, nonfinite, unsafe, boxed, bigint, boolean, and string counts reject. A dynamic `number` is supported: its exact value is captured when `define` evaluates, while TypeScript conservatively treats its coordinates as possibly absent and preserves the item evidence. Literal counts expose exact positions, so `repeat(3, Item)` has positions 0–2 and statically rejects direct path 3.
-
-Arbitrary tags use the callable tag family with the same child grammar:
-
-```ts
-const AnyElement = hson.liveMap.schema.define((s) => s.tag());
-const AnyTextElement = hson.liveMap.schema.define((s) => s.tag(s.string));
-const Widget = hson.liveMap.schema.define((s) => s.tag.widget(s.string));
-const Hyphenated = hson.liveMap.schema.define((s) => s.tag["my-widget"](s.string));
-
-const name: string = getRuntimeTagName();
-const Dynamic = hson.liveMap.schema.define((s) => s.tag[name](s.string));
-```
-
-Property and bracket forms record the exact runtime tag, and a dynamic name is captured while `define` evaluates. TypeScript retains exact child/layout evidence but conservatively represents an arbitrary or unregistered custom tag name as `string`. Known direct builders such as `s.div(...)` retain literal tag evidence. The former string-taking `s.tag("my-widget", ...)` form is not part of the public surface.
-
-`map.schema.use(schema)` validates the current canonical document synchronously and returns the same map object. A successful first attachment is permanent for the owner: reusing the identical schema object is idempotent, while replacing or removing it is unsupported. All aliases, local mutations, installs, restores, replays, and staged authoritative candidates are governed by the same owner contract. Attachment itself changes neither graph, revision, nor observations.
-
-Canonical graph ownership is private before and after attachment, so attachment only validates current state and records governance; it does not clone or reconcile the graph.
-
-The returned schema-bound map uses that permanent evidence for top-level logical `at(...)` reads:
-
-```ts
-if (map.mode === "element") {
-  const typed = map.schema.use(ButtonDocument);
-
-  typed.at([0]).snap();       // string
-  typed.at([0]).watch((next) => {
-    next.toUpperCase();       // next is string
-  });
-
-  tree.bind.text(typed.at([0])); // no formatter needed
-  // typed.at([1]);             // compile-time error: impossible exact path
-}
-```
-
-Exact fixed coordinates, including literal counted-repeat coordinates, resolve from the schema. Text endpoints are `string`; structured endpoints remain `HsonNode`. Repeated positions and dynamic numeric indexes include `undefined` because the requested coordinate may be absent. Layout picks combine the endpoints of branches that contain a coordinate and add `undefined` for legal branches that do not. Descendants of a broad tag whose content was deliberately omitted widen to `string | HsonNode | undefined`.
-
-A completely dynamic schema-aware path also has that schema-derived broad domain. A map without a document schema retains the historical `HsonNode | Primitive | undefined` location domain for compatibility.
-
-Relative `location.at(...)` consumes the descriptor retained by its base location. Direct and relative paths therefore infer the same endpoint:
-
-```ts
-const root = nestedTyped.at([]);
-const container = root.at([0]);
-const label = container.at([0]);
-
-label.snap();              // string
-label.replace("Save");
-tree.bind.text(label);     // no formatter needed
-
-root.at([0, 0]).snap();    // also string
-// container.at([1]);      // compile-time error when locally impossible
-```
-
-An absent repeated or union ancestor propagates `undefined` to its relative descendants. A dynamic relative index resolves against the local sequence or repeat evidence; a fully broad relative path stops at the same `string | HsonNode | undefined` performance boundary. Entering a deliberately broad element subtree widens locally and cannot recover precision later.
-The same retained descriptor rejects obviously incompatible authoring values:
-
-```ts
-const text = typed.at([0]);
-text.replace("Save");       // accepted
-// text.replace(node);      // type error: this slot is text
-
-const TextList = hson.liveMap.schema.define((s) => s.repeat(s.string));
-const list = fragmentMap.schema.use(TextList);
-list.at([]).insert(0, "item");
-// list.at([]).insert(0, node); // type error: repeated text accepts strings
-```
-
-Text positions accept `string`, element positions accept `HsonNode`, and item unions accept their corresponding union. `undefined` in a repeated or layout read describes absence; it is not a writable document value. Broad schema-aware content accepts `string | HsonNode`, while schema-less maps keep their historical broad mutation inputs.
-
-These types only constrain the source value. Exact element tags and content, fixed-sequence insertion, index validity, delete, and move remain validated by the permanent runtime schema against the complete candidate. Relative typing does not change coordinates or allocate wrappers: `map.at([0, 0]) === map.at([0]).at([0])` under the existing interner.
-
-Schema-aware numeric proxies consume the same retained descriptor:
-
-```ts
-const direct = nestedTyped.at([0, 1]);
-const relative = nestedTyped.at([0]).at([1]);
-const proxied = nestedTyped.proxy()[0][1].$_;
-
-// direct, relative, and proxied expose the same endpoint type
-tree.bind.text(nestedTyped.proxy()[0][0].$_);
-```
-
-Numeric properties are logical document coordinates. Fixed known positions are precise; repeated and dynamic positions put possible absence in the escaped location value, not in the proxy object. That keeps a missing coordinate usable as a fixed authoring handle. Structured endpoints retain their child descriptor, so traversal can remain precise beneath a public `HsonNode`. Entering an broad-tag subtree widens only that subtree to `string | HsonNode | undefined`.
-
-TypeScript bracket indexing cannot both reject every out-of-range numeric literal and retain a truthful dynamic-number signature on this existing proxy shape. Known in-range literals stay precise; other numeric keys use the local missing-aware dynamic type. Exact `at(...)` and explicit `proxy([path])` calls continue to reject impossible fixed paths.
-
-The `$_` escape is the existing interned location, so its `snap`, `watch`, `replace`, content-owner `insert`, relative `at`, attrs, and binding behavior all use the same evidence. Runtime proxy grammar and behavior are unchanged. Schema-less proxies keep their historical broad domain. Attributes remain schema-open.
-
+See [Schema](./schema.md) for authored data/document forms, generated TypeScript
+evidence, and tooling.
 ## Subscriptions
 
 ```ts
@@ -600,7 +427,7 @@ Passing browser `Element` objects belongs to other hson/LiveTree construction pa
 
 ## Errors
 
-Most invalid data operations throw before mutation. Schema failures use the internal `LiveMapSchemaError` class (not package-root exported) but expose structured validation information through schema validation APIs. Revision conflicts throw a revision error internally. Data identity acquisition reports `LiveMapProjectedIdentityError` with a stable reason code and path.
+Most invalid data operations throw before mutation. HsonSchema governance failures use the internal `HsonSchemaError` class and carry structured issues. Revision conflicts throw a revision error internally. Data identity acquisition reports `LiveMapProjectedIdentityError` with a stable reason code and path.
 
 Public document errors include `LiveMapDocumentInstallError`, `LiveMapDocumentIdentityProvenanceError`, `LiveMapDocumentMutationError`, and `LiveMapDocumentAttributeNotFoundError`, with exported provenance, install, and mutation reason codes.
 

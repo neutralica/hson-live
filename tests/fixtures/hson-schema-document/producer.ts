@@ -35,6 +35,10 @@ export const FragmentSchema: HsonSchema = Hson`
 `;
 
 // @hson-schema generated type exports
-export type { PageSchemaType, PageSchemaHson } from "./producer.PageSchema.hson-schema.generated.js";
-export type { ListSchemaType, ListSchemaHson } from "./producer.ListSchema.hson-schema.generated.js";
-export type { FragmentSchemaType, FragmentSchemaHson } from "./producer.FragmentSchema.hson-schema.generated.js";
+import type { FragmentSchemaType, FragmentSchemaHson } from "./producer.FragmentSchema.hson-schema.generated.js";
+export type { FragmentSchemaType, FragmentSchemaHson };
+import type { ListSchemaType, ListSchemaHson } from "./producer.ListSchema.hson-schema.generated.js";
+export type { ListSchemaType, ListSchemaHson };
+import type { PageSchemaType, PageSchemaHson } from "./producer.PageSchema.hson-schema.generated.js";
+export type { PageSchemaType, PageSchemaHson };
+// @hson-schema end generated type exports

@@ -2,33 +2,13 @@ import type { HsonNode, JsonValue } from "../../core/types.js";
 import type { ClassifiedLiveMap, LiveMap } from "../../types/livemap.types.js";
 import { hsonTransform } from "../transform/transform.facade.js";
 import { parse_hson } from "../transform/parsers/parse-hson.js";
-import { validate_canonical_hson } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
-import type { HsonCanonical } from "../transform/transform.types.js";
 import { make_classified_livemap } from "./livemap.core.js";
-import {
-  define_livemap_schema,
-  LIVEMAP_DIRECT_SCHEMA_RUNTIME,
-} from "./livemap.schema.js";
-import type {
-  LiveMapDirectSchemaBuilder,
-  LiveMapSchemaBuilder,
-  InternalDefinedLiveMapSchema,
-  InternalLiveMapSchemaDefinition,
-  LiveMapSchema,
-} from "./livemap.schema.js";
 
-type LiveMapSchemaNamespace = LiveMapDirectSchemaBuilder & Readonly<{
-  validate: (schema: LiveMapSchema, canonical: HsonCanonical) => HsonCanonical;
-  define: <const TExpression extends InternalLiveMapSchemaDefinition>(
-    define: (schema: LiveMapSchemaBuilder) => TExpression,
-  ) => InternalDefinedLiveMapSchema<TExpression>;
-}>;
-
-const schema: LiveMapSchemaNamespace = Object.freeze({
-  ...LIVEMAP_DIRECT_SCHEMA_RUNTIME,
-  define: define_livemap_schema,
-  validate: validate_canonical_hson,
-});
+export interface HsonLiveMapFacade {
+  readonly fromJson: typeof fromJson;
+  readonly fromHson: typeof fromHson;
+  readonly fromNode: typeof fromNode;
+}
 
 function must_data_livemap(map: ClassifiedLiveMap): LiveMap {
   if (map.mode === "data-object" || map.mode === "data-array") return map;
@@ -52,9 +32,8 @@ function fromNode(node: HsonNode): ClassifiedLiveMap {
   return make_classified_livemap(node);
 }
 
-/** Canonical DOM-free LiveMap construction and schema facade. */
-export const hsonLiveMap = Object.freeze({
-  schema,
+/** Canonical DOM-free LiveMap construction facade. */
+export const hsonLiveMap: HsonLiveMapFacade = Object.freeze({
   fromJson,
   fromHson,
   fromNode,

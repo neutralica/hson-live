@@ -40,10 +40,10 @@ export const ReuseSchema: HsonSchema = Hson`
 `;
 
 // @hson-schema generated type exports
-export type { UserSchemaType, UserSchemaHson } from "./producer.UserSchema.hson-schema.generated.js";
-
-// @hson-schema generated type exports
-export type { TreeSchemaType, TreeSchemaHson } from "./producer.TreeSchema.hson-schema.generated.js";
-
-// @hson-schema generated type exports
-export type { ReuseSchemaType, ReuseSchemaHson } from "./producer.ReuseSchema.hson-schema.generated.js";
+import type { ReuseSchemaType, ReuseSchemaHson } from "./producer.ReuseSchema.hson-schema.generated.js";
+export type { ReuseSchemaType, ReuseSchemaHson };
+import type { TreeSchemaType, TreeSchemaHson } from "./producer.TreeSchema.hson-schema.generated.js";
+export type { TreeSchemaType, TreeSchemaHson };
+import type { UserSchemaType, UserSchemaHson } from "./producer.UserSchema.hson-schema.generated.js";
+export type { UserSchemaType, UserSchemaHson };
+// @hson-schema end generated type exports

@@ -5,7 +5,7 @@ import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { is_ordered_projected_object, ordered_projected_value_equal, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import type { HsonNode } from "../../core/types.js";
-import type { LiveMapSchemaIssueCode, LivePath } from "../../types/livemap.types.js";
+import type { HsonSchemaIssueCode, LivePath } from "../../types/livemap.types.js";
 import type {
   CanonicalDocumentAttrProperty,
   CanonicalRefinementRule,
@@ -80,15 +80,6 @@ function projected(graph: VerifiedCanonicalSchemaGraph, ref: number, value: Proj
   if (node.kind === "projected-optional") return projected(graph, node.base, value, path, state, depth + 1);
   if (node.kind === "projected-nullable") return value === null ? valid() : projected(graph, node.base, value, path, state, depth + 1);
   if (node.kind === "projected-ref") return projected(graph, node.target, value, path, state, depth + 1);
-  if (value === null) {
-    if (node.kind === "projected-null" || node.kind === "projected-any") return valid();
-    return mismatch(graph, ref, path, "null");
-  }
-  if (node.kind === "projected-any") return valid();
-  if (node.kind === "projected-literal") {
-    if (node.values.some((literal) => ordered_projected_value_equal(literal, value))) return valid();
-    return invalid([make_issue("INVALID_LITERAL", path, ref, projected_label(graph, ref), emit_ordered_json(value), { kind: "literal-mismatch" })]);
-  }
   if (node.kind === "projected-union") {
     if (!add_union_work(state, node.choices.length)) return resource(ref, path);
     const branches = node.choices.map((choice) => projected(graph, choice, value, path, state, depth + 1));
@@ -99,6 +90,15 @@ function projected(graph: VerifiedCanonicalSchemaGraph, ref: number, value: Proj
       if (closest !== undefined && closest.issues.length > 0) return closest;
     }
     return invalid([make_issue("TYPE_MISMATCH", path, ref, projected_label(graph, ref), projected_type(value), { kind: "union-failure", branches: node.choices })]);
+  }
+  if (value === null) {
+    if (node.kind === "projected-null" || node.kind === "projected-any") return valid();
+    return mismatch(graph, ref, path, "null");
+  }
+  if (node.kind === "projected-any") return valid();
+  if (node.kind === "projected-literal") {
+    if (node.values.some((literal) => ordered_projected_value_equal(literal, value))) return valid();
+    return invalid([make_issue("INVALID_LITERAL", path, ref, projected_label(graph, ref), emit_ordered_json(value), { kind: "literal-mismatch" })]);
   }
   if (node.kind === "projected-refinement") {
     const base = projected(graph, node.base, value, path, state, depth + 1);
@@ -268,7 +268,7 @@ function refinement_label(rule: CanonicalRefinementRule): string { return rule.k
 function projected_type(value: OrderedProjectedValue): string { return value === null ? "null" : Array.isArray(value) ? "array" : typeof value; }
 function unwrap(graph: VerifiedCanonicalSchemaGraph, ref: number, seen = new Set<number>()): number { if (seen.has(ref)) return ref; seen.add(ref); const node = graph.nodes[ref]; return node?.kind === "projected-optional" || node?.kind === "projected-nullable" || node?.kind === "projected-refinement" ? unwrap(graph, node.base, seen) : node?.kind === "projected-ref" ? unwrap(graph, node.target, seen) : ref; }
 
-function make_issue(code: LiveMapSchemaIssueCode, path: LivePath, schemaNode: number, expected: string | undefined, received: string | undefined, evidence: CanonicalGraphIssueEvidence, attributeName?: string): CanonicalGraphIssue {
+function make_issue(code: HsonSchemaIssueCode, path: LivePath, schemaNode: number, expected: string | undefined, received: string | undefined, evidence: CanonicalGraphIssueEvidence, attributeName?: string): CanonicalGraphIssue {
   return Object.freeze({ code, path: Object.freeze([...path]), schemaNode, ...(expected === undefined ? {} : { expected }), ...(received === undefined ? {} : { received }), ...(attributeName === undefined ? {} : { attributeName }), evidence: Object.freeze(evidence) });
 }
 function valid(): CanonicalGraphEvaluation { return Object.freeze({ ok: true, issues: Object.freeze([]) }); }

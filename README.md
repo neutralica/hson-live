@@ -534,20 +534,22 @@ Browser and Worker-facing parts of the package do not import the Node host.
 Author canonical Hson through the narrow authoring entrypoint:
 
 ```ts
-import { Hson, type HsonCanonical } from "hson-live/hson";
+import { Hson, type HsonSchema } from "hson-live/hson";
 import { hsonLiveMap } from "hson-live/livemap";
 
-const UserSchema = hsonLiveMap.schema.define(s => s.object({ age: s.number }));
-const source: HsonCanonical = Hson`<age 37>`;
+const UserSchema: HsonSchema = Hson`<type "data" content <age "number">>`;
+const source: UserSchemaHson = Hson`<age 37>`;
 const map = hsonLiveMap.fromHson(source);
 map.schema.use(UserSchema);
 ```
 
-For standalone validation, `Hson.certify(UserSchema, source)` returns the same
-canonical string or throws the existing structured Schema error. The legitimate
-`hsonLiveMap.schema.validate` and `hson.liveMap.schema.validate` entrances remain
-available and share that exact implementation. Natural map governance needs no
-redundant standalone validation for trusted editor diagnostics.
+The Hson Schema check generates the real `UserSchemaType` and `UserSchemaHson`
+workspace symbols and validates the static assignment without a runtime call.
+Use the package CLI in headless development and CI: `hson-schema generate`
+after declaration changes, then `hson-schema check --project tsconfig.json` for
+Schema discovery, freshness, static Hson validation, and TypeScript checking.
+For genuinely dynamic values, `Hson.certify(UserSchema, source)` returns the
+same canonical string or throws the structured Schema error.
 
 `Hson` is the notation/authoring facility. Lowercase `hson` is a noncallable
 aggregate; the retired lowercase tag has no compatibility alias. `/hson` exports

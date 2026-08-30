@@ -17,10 +17,10 @@ export type LiveMapBridgeBindingGroup = Readonly<{
 }>;
 // Schema-control contracts
 
-export type LiveMapSchemaControlKind = "string" | "number" | "boolean" | "enum";
+export type LiveMapControlKind = "string" | "number" | "boolean" | "enum";
 
-export type LiveMapSchemaControlNode = Readonly<{
-  kind?: LiveMapSchemaControlKind;
+export type LiveMapControlNode = Readonly<{
+  kind?: LiveMapControlKind;
   label?: string;
   description?: string;
   min?: number;
@@ -29,7 +29,7 @@ export type LiveMapSchemaControlNode = Readonly<{
   choices?: readonly string[];
 }>;
 
-export type LiveMapSchemaControlSpec = Readonly<Record<string, LiveMapSchemaControlNode>>;
+export type LiveMapControlSpec = Readonly<Record<string, LiveMapControlNode>>;
 // LiveTree target contracts
 
 export type LiveTextBridgeTarget = Readonly<{

@@ -1,8 +1,7 @@
-import { Hson, type HsonCanonical } from "hson-live/hson";
+import { Hson, type HsonCanonical, type HsonSchema } from "hson-live/hson";
 import type { HsonCanonical as TransformCanonical } from "hson-live/transform";
-import type { LiveMapSchema } from "hson-live/livemap";
 
-declare const schema: LiveMapSchema;
+declare const schema: HsonSchema;
 const authored: HsonCanonical = Hson`<age 37>`;
 const sameBrand: TransformCanonical = authored;
 const checked: HsonCanonical = Hson.certify(schema, sameBrand);

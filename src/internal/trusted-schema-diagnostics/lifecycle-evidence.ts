@@ -3,8 +3,6 @@ import { Hson } from "../../hson-authoring.js";
 import { hsonLiveMap } from "../../api/livemap/livemap.facade.js";
 import type { HsonCanonical } from "../../api/transform/transform.types.js";
 import type { ClassifiedLiveMap } from "../../types/livemap.types.js";
-import { require_document_root_schema } from "../../api/livemap/livemap.document.schema.js";
-import { is_owned_projected_schema } from "../../api/livemap/livemap.schema.js";
 import type { TrustedSchemaAssociationEvidence, TrustedSchemaMapFlow, TrustedSchemaSourceBinding } from "./protocol.js";
 import type { InterpolationCapture } from "./interpolation-capture.js";
 
@@ -117,15 +115,8 @@ export function attempt_trusted_schema_attachment(application: TrustedSchemaAppl
     evidence: Object.freeze({ ...base, correspondence, attachment: "attempted" }),
   }));
   let error: unknown;
-  let attachment: "attached" | "rejected" = "attached";
-  try {
-    if (map.mode === "element") map.schema.use(require_document_root_schema(schema, "element").value);
-    else if (map.mode === "fragment") map.schema.use(require_document_root_schema(schema, "fragment").value);
-    else {
-      if (!is_owned_projected_schema(schema)) throw new TypeError("Unrecognized projected Schema capability.");
-      map.schema.use(schema);
-    }
-  } catch (cause) { attachment = "rejected"; error = cause; }
+  const attachment: "rejected" = "rejected";
+  error = new TypeError("Historical callback-authored Schema attachments are retired; use HsonSchema.");
   const result: TrustedSchemaAttachment = Object.freeze({ schema, origin: hson, error, isCurrent: () => map.rev === attemptRevision,
     evidence: Object.freeze({ ...base, attachment,
       correspondence: correspondence === "direct" && map.rev === attemptRevision ? "direct" : "unavailable",

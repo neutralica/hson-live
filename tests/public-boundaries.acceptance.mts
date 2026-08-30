@@ -36,7 +36,8 @@ check("canonical facade runtime identities remain stable", () => {
   assert.equal(hson.liveMap.fromHson, hsonLiveMap.fromHson);
   assert.equal(hson.liveMap.fromJson, hsonLiveMap.fromJson);
   assert.equal(hson.liveMap.fromNode, hsonLiveMap.fromNode);
-  assert.equal(hson.liveMap.schema, hsonLiveMap.schema);
+  assert.equal("schema" in hson.liveMap, false);
+  assert.equal("schema" in hsonLiveMap, false);
 });
 
 function is_node(value: HsonNode | Primitive): value is HsonNode {

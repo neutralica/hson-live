@@ -117,132 +117,30 @@ imports, properties, `let`/`var`, and runtime file/network input remain
 runtime-only. Recognition follows official import binding identity; unrelated
 methods that merely share the name `fromHson` are ignored.
 
-## Trusted Schema completion (D6)
+## HsonSchema authoring and diagnostics
 
-Use **Trigger Suggest** inside `Hson` template literal segments for declared
-members, finite literals, document tags, attrs, flags, and known child positions.
-Completions come from the **actual current runtime Schema**, require Workspace
-Trust plus trusted Schema diagnostics enablement, and become available after
-that runtime has warmed up. Completion never starts or reloads the provider.
-Required declarations sort first; missing values use blank snippet placeholders,
-not invented defaults. Arbitrary constraints remain validation-only.
-
-Multiple governing contracts, stale runtime-dependent values, ambiguous branches,
-or syntax that cannot establish a cursor slot may temporarily give no completion.
-`${...}` remains ordinary TypeScript expression editing. D6 is manual-invocation
-only and deliberately does **not** provide Schema completion in ordinary
-`fromHson(...)` strings/templates: use `Hson` for rich interactive authoring,
-and `fromHson` when you already have Hson source.
-
-## Trusted Schema diagnostics (D2, opt in)
-
-VS Code Workspace Trust, `hson.trustedSchemaDiagnostics.enabled: true`, and a
-separate Hson consent receipt for the containing workspace folder and exact
-provider/runtime configuration are all required. Workspace Trust alone never
-enables project execution. A checked-in workspace setting can express preference
-but cannot create the consent receipt, so it remains inert until the user accepts
-the Hson execution warning or runs **Hson: Enable Trusted Schema Diagnostics**.
-Changing a provider path, runtime path, runtime entry, or Node argument invalidates
-the receipt and requires consent for the new configuration. Restricted Mode
-retains highlighting and secure syntax diagnostics. This is trusted Node
-execution with the user's permissions in a supervised separate process, not a
-security sandbox.
-
-The status-bar item reports `off`, `waiting`, `current-valid`, `current-invalid`,
-`stale`, `ambiguous`, `unavailable`, or `runtime-failed`; its tooltip explains
-the active document's state and never treats “no diagnostic” as proof of
-validity. Use **Hson: Disable Trusted Schema Diagnostics** to stop new trusted
-work, clear trusted diagnostics, and dispose the runtime. Use **Hson: Restart
-Trusted Schema Runtime** after an external provider repair; restart is available
-only while the exact configuration is trusted and authorized.
-
-Configure a Schema-only registration module, **not the application entrypoint**:
-
-```js
-// schema.js — compiled project module using this project's hson-live instance
-import { hson } from "hson-live";
-export { hson }; // explicit runtime-origin evidence
-export const UserSchema = hson.liveMap.schema.define(s =>
-  s.object({ user: s.object({ age: s.number }) }));
-export const trustedSchemas = { userContract: UserSchema };
-```
+Declare the Schema as canonical Hson and use `Hson.certify` for dynamic
+certification or `map.schema.use` for LiveMap governance:
 
 ```ts
-import { Hson } from "hson-live/hson";
-import { UserSchema } from "./schema.js";
-const user = Hson`<user <age "37">>`;
+import { Hson, type HsonSchema } from "hson-live/hson";
+import { hsonLiveMap } from "hson-live/livemap";
+
+export const UserSchema: HsonSchema = Hson`
+  <type "data" content <user <content <age "number">>>>
+`;
+
+const user = Hson`<user <age 37>>`;
 Hson.certify(UserSchema, user);
+hsonLiveMap.fromHson(user).schema.use(UserSchema);
 ```
 
-The existing `hsonLiveMap.schema.validate` and `hson.liveMap.schema.validate`
-entrances also remain supported, using their official subsystem/root imports.
-
-The earlier `"37"` receives: “Expected `age` to be a number, but this value is
-an Hson string.” Fixing it to `37` updates the diagnostics while still unsaved.
-The application entrypoint and its `validate` statement need not execute.
-The editor independently asks the actual registered Schema about this candidate.
-Arbitrary stateful predicates may give different answers later.
-
-Example workspace settings (paths relative to the workspace folder):
-
-```json
-{
-  "hson.trustedSchemaDiagnostics.enabled": true,
-  "hson.trustedSchemaDiagnostics.module": "schema.js",
-  "hson.trustedSchemaDiagnostics.hsonModule": "node_modules/hson-live/dist/hson.js"
-}
-```
-
-`runtimeEntry` defaults to the private D1 entry beside that `hson.js`, under
-`internal/trusted-schema-diagnostics/node-runtime-entry.js`. Both must belong to
-the same runtime instance as the registered Schemas. `execArgv` optionally
-configures an explicit Node loader for development TypeScript modules. No
-runtime entry, registry, or protocol is added to package exports.
-
-The source import must resolve to the registered module URL. Initial discovery
-supports relative named imports, renamed official `Hson` imports, local `const`
-Schema bindings with explicit private registration metadata, parentheses, and
-acyclic identifier-only `const` aliases (at most 32 hops). Canonical declarations
-must precede their use in the same module/function-body statement domain.
-No namespace imports, re-export/path-alias inference, extracted validators,
-mutable aliases or helper transformations are attempted. Interpolation requires
-actual trusted provider capture as described below.
-Multiple validation statements run independently, including stateful predicates.
-
-The status bar distinguishes off, waiting, valid, invalid, stale, ambiguous,
-unavailable, and runtime failure. No squiggle is not a claim of validity.
-
-### Evaluated Hson substitutions (D5)
-
-`Hson` preserves JavaScript primitive types: strings become quoted Hson strings,
-numbers remain numbers (including `-0`), booleans remain booleans, and `null`
-remains null. Substitutions are values, not structural source splices.
-
-When your explicitly configured trusted provider evaluates an instrumented
-diagnostic copy, Schema errors can underline the expression inside `${...}`.
-For example: “This expression evaluated to an Hson string, but the Schema
-requires number here.” The underline identifies the code that **produced** the
-invalid value; it does not imply those JavaScript characters are an Hson token.
-This works with standalone `Hson.certify` and natural map/schema attachment.
-Runtime Hson admission errors can also appear without a later Schema call.
-
-Expression or literal edits immediately retire runtime-derived diagnostics.
-Unsaved changes wait for fresh provider evaluation; old values are never combined
-with newly edited source. Save/reload through the existing provider lifecycle
-to obtain new evidence. Repeated evaluations without a unique association are
-ambiguous, not “last value wins.” Secure mode never executes expressions and
-does not claim an interpolated template is valid. A Schema-only provider that
-does not evaluate the template cannot supply its runtime values.
-The output channel contains stage timings, not candidate source. Edits clear
-old Schema diagnostics immediately; validation is debounced by 150 ms.
-Provider changes retire the runtime; unsaved provider changes outside recognized
-template bodies remain stale until saved. Reloads use D1's finite replacement
-budget (one replacement); after exhaustion, reload the extension window or
-explicitly reconfigure to create a new owner. This is not hot module reload.
-
-`map.schema.use` backward association is provided by the D3/D4 lifecycle path
-below and requires real construction/revision evidence, not an assumption that
-the map was not mutated.
+The extension discovers static `HsonSchema` declarations and generated evidence.
+It provides Schema-aware diagnostics and completion without executing callback
+validators. Run `hson-schema generate --project tsconfig.json` after adding or
+renaming a Schema, or keep `hson-schema watch --project tsconfig.json` running
+while editing. Interpolations remain ordinary TypeScript expressions; runtime
+values can be certified explicitly with `Hson.certify`.
 
 ## Development
 

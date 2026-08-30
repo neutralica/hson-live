@@ -3,7 +3,7 @@ import {
   resolve_projected_hson_location,
   type InternalProjectedHsonLocation,
 } from "../../api/livemap/livemap.editor.js";
-import type { LiveMapSchemaIssue } from "../../api/livemap/livemap.schema.js";
+import type { HsonSchemaIssue } from "../../api/livemap/livemap.error.js";
 import type { LivePath } from "../../types/livemap.types.js";
 import type {
   HsonNodeSourceRole,
@@ -30,7 +30,7 @@ export type ProjectedSchemaSourceResolution =
     }>
   | Readonly<{ kind: "unresolved"; issuePath: LivePath }>;
 
-type ProjectedSchemaSourceIssue = Pick<LiveMapSchemaIssue, "code" | "path" | "attributeName">;
+type ProjectedSchemaSourceIssue = Pick<HsonSchemaIssue, "code" | "path" | "attributeName">;
 
 /**
  * Lower a projected Schema issue onto immutable authored-Hson provenance.

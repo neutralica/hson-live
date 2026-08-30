@@ -1,10 +1,2 @@
-import { hson } from "../../src/hson.ts";
-export { hson };
-export const UserSchema = hson.liveMap.schema.define(s => s.object({ user: s.object({ age: s.number }) }));
-export const OtherSchema = hson.liveMap.schema.define(s => s.object({ user: s.object({ age: s.literal(42) }) }));
-export const DocumentSchema = hson.liveMap.schema.define(s => s.button(s.attrs({ count: s.number.optional, disabled: s.flag })));
-export const FragmentSchema = hson.liveMap.schema.define(s => s.tuple(s.a(), s.b()));
-export const TextSchema = hson.liveMap.schema.define(s => s.tuple(s.string));
-export const StringSchema = hson.liveMap.schema.define(s => s.string);
-export const OrderedSchema = hson.liveMap.schema.define(s => s.literal({ "1": "a", "2": "b" }));
-export const trustedSchemas = { user: UserSchema, other: OtherSchema, document: DocumentSchema, fragment: FragmentSchema, text: TextSchema, string: StringSchema, ordered: OrderedSchema };
+// Retired callback/builder Schema coverage removed by the HsonSchema hard cut.
+export {};

@@ -1,16 +1,9 @@
 // core.ts
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
+import type { HsonSchema } from "../transform/transform.types.js";
+import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
 import type { ClassifiedLiveMap, LiveMap, LiveMapAnyOp, LiveMapCommit, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapDataOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapCaptureOptions, LiveMapApply, LiveMapGraphCommit, LiveMapProjectedGraphEnsureQuidOp, LiveMapGraphOp, LiveMapGraphReplaceRootOp, LiveMapRootMode } from "../../types/livemap.types.js";
-import {
-  validate_livemap_schema_projected_root,
-  validate_livemap_schema_projected_value,
-  type LiveMapProjectedSchema,
-  type LiveMapAttachableSchema,
-  type LiveMapSchemaResolution,
-  type LiveMapSchemaValidation,
-  type LiveMapSchemaValue,
-} from "./livemap.schema.js";
 import {
   clone_live_root,
   delete_live_path,
@@ -30,7 +23,7 @@ import { make_livemap_proxy } from "./livemap.proxy.js";
 import { make_livemap_store_api } from "./livemap.store.js";
 import { must_feed_listener, must_live_path, must_ordered_projected_object, must_ordered_projected_value, path_kind_error } from "./livemap.guard.js";
 import { append_live_path, clone_live_path, format_live_path, live_path_key, paths_overlap } from "./livemap.path.js";
-import { LiveMapDocumentMutationError, LiveMapProjectedIdentityError, LiveMapProjectedMutationError, LiveMapProjectedTransportError, LiveMapReplayError, LiveMapRevError, LiveMapSchemaError, } from "./livemap.error.js";
+import { LiveMapDocumentMutationError, LiveMapProjectedIdentityError, LiveMapProjectedMutationError, LiveMapProjectedTransportError, LiveMapReplayError, LiveMapRevError, } from "./livemap.error.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import {
   is_ordered_projected_object,
@@ -66,12 +59,7 @@ import { classify_live_root_mode, facade_for_livemap_root, prepare_livemap_root 
 import { canonical_graph_equal, type LiveMapDocumentInstallController, type PreparedDocumentInstall } from "./livemap.document.install.js";
 import type { LiveMapDocumentMutationController, PreparedDocumentMutation } from "./livemap.document.mutation.js";
 import type { LiveMapDocumentReplayController, PreparedDocumentReplay } from "./livemap.document.replay.js";
-import {
-  require_document_root_schema,
-  validate_livemap_document_schema_root,
-  type InternalDocumentRootSchema,
-  type InternalDocumentSchemaController,
-} from "./livemap.document.schema.js";
+import type { InternalDocumentSchemaController } from "./livemap.document.schema.js";
 import { register_livemap_document_identity_candidate_commit } from "./livemap.document.registration.js";
 import {
   LiveMapTransitionError,
@@ -164,8 +152,7 @@ type BuiltLiveMapCore = Readonly<{
   document?: LiveMapDocumentInstallController & LiveMapDocumentMutationController & LiveMapDocumentReplayController & InternalDocumentSchemaController;
   transitionController: LiveMapTransitionController;
   currentRoot: () => HsonNode;
-  currentSchema: () => LiveMapProjectedSchema | undefined;
-  currentDocumentSchema: () => InternalDocumentRootSchema | undefined;
+  currentHsonSchema: () => HsonSchema | undefined;
   currentPreparedRoot: () => ReturnType<typeof prepare_livemap_root>;
   watchDocument: LiveMapDocumentWatchRegistration;
   prepareDetachedCommit: (
@@ -233,8 +220,7 @@ function make_livemap_core_from_owned_root(
   prepared: ReturnType<typeof prepare_livemap_root>,
   initial: Readonly<{
     revision?: number;
-    schema?: LiveMapProjectedSchema;
-    documentSchema?: InternalDocumentRootSchema;
+    hsonSchema?: HsonSchema;
   }> = {},
 ): BuiltLiveMapCore {
   const initialMode = prepared.mode;
@@ -282,11 +268,7 @@ function make_livemap_core_from_owned_root(
       ? livemap_projected_identity_quids(require_projected_overlay(prepared.projectedOverlay))
       : livemap_document_identity_quids(prepared.documentOverlay),
   );
-  // This closure-local schema is fine for the first enforcement pass. Revisit
-  // once the Core facade grows: schema attachment may want an immutable facade
-  // wrapper or shared Core state object instead of mutating closure-local state.
-  let currentSchema: LiveMapProjectedSchema | undefined = initial.schema;
-  let currentDocumentSchema: InternalDocumentRootSchema | undefined = initial.documentSchema;
+  let currentHsonSchema: HsonSchema | undefined = initial.hsonSchema;
   /** Revision zero represents the initial graph before any changed commit. */
   const transitionController = make_livemap_transition_controller(initialMode, () => owned.revision);
   const publicationQueue: Array<() => void> = [];
@@ -397,18 +379,7 @@ function make_livemap_core_from_owned_root(
     if (preparedNext.mode !== initialMode) {
       throw new Error(`Prepared LiveMap transition mode mismatch: expected ${initialMode}, observed ${preparedNext.mode}.`);
     }
-    if ((initialMode === "element" || initialMode === "fragment")
-      && currentDocumentSchema !== undefined) {
-      must_schema_validation(
-        validate_livemap_document_schema_root(
-          currentDocumentSchema,
-          preparedNext.root,
-          initialMode,
-        ),
-        [],
-        "issue",
-      );
-    }
+    if (currentHsonSchema !== undefined) must_hson_schema_root(currentHsonSchema, preparedNext.root);
     const installsProjectedDelta = initialMode !== "element"
       && initialMode !== "fragment"
       && require_projected_overlay(owned.projectedOverlay).size === 0
@@ -483,23 +454,17 @@ function make_livemap_core_from_owned_root(
     });
   }
 
-  function useDocumentSchema(schema: InternalDocumentRootSchema): void {
-    const attached = currentDocumentSchema;
-    if (attached === schema) return;
-    if (attached !== undefined) {
+  function useDocumentSchema(schema: HsonSchema): void {
+    if (currentHsonSchema === schema) return;
+    if (currentHsonSchema !== undefined) {
       throw new Error("LiveMap document schema contract is already attached and cannot be replaced.");
     }
     transitionController.assertPublicMutationAllowed();
     if (initialMode !== "element" && initialMode !== "fragment") {
       throw new TypeError("Document schema attachment is unavailable in data mode.");
     }
-    const recognized = require_document_root_schema(schema);
-    must_schema_validation(
-      validate_livemap_document_schema_root(recognized.value, owned.root, initialMode),
-      [],
-      "issue",
-    );
-    currentDocumentSchema = recognized.value;
+    must_hson_schema_root(schema, owned.root);
+    currentHsonSchema = schema;
     transitionController.invalidate();
   }
   let storeApi: LiveMapStoreApi<JsonValue | undefined> | undefined;
@@ -514,7 +479,7 @@ function make_livemap_core_from_owned_root(
         owned.root,
         getProjectedValue,
         setProjectedValue,
-        currentSchema,
+        currentHsonSchema,
         feedHub,
         () => owned.revision,
         (revision) => { owned = { ...owned, revision }; },
@@ -530,7 +495,7 @@ function make_livemap_core_from_owned_root(
       owned.root,
       getProjectedValue,
       setProjectedValue,
-      currentSchema,
+      currentHsonSchema,
       feedHub,
       () => owned.revision,
       (revision) => { owned = { ...owned, revision }; },
@@ -579,48 +544,19 @@ function make_livemap_core_from_owned_root(
   });
 
   const schemaApi: LiveMapCoreSchemaApi<JsonValue | undefined> = Object.freeze({
-    get: () => currentSchema,
+    get: () => currentHsonSchema,
 
-    use: <TSchema extends LiveMapAttachableSchema>(schema: TSchema) => {
-      const runtimeSchema = schema as unknown as LiveMapProjectedSchema;
-      const attached = currentSchema;
-      if (attached === runtimeSchema) return core as unknown as LiveMap<LiveMapSchemaValue<TSchema>>;
-      if (attached !== undefined) {
+    use: ((schema: HsonSchema) => {
+      if (currentHsonSchema === schema) return core;
+      if (currentHsonSchema !== undefined) {
         throw new Error("LiveMap data schema contract is already attached and cannot be replaced.");
       }
       transitionController.assertPublicMutationAllowed();
-      must_core_schema_root(runtimeSchema, owned.root, initialMode);
-      currentSchema = runtimeSchema;
+      must_hson_schema_root(schema, owned.root);
+      currentHsonSchema = schema;
       transitionController.invalidate();
-
-      return core as unknown as LiveMap<LiveMapSchemaValue<TSchema>>;
-    },
-
-    // CHANGED: attached-schema inspection delegates to the schema's single
-    // authoritative matcher and resolver rather than reimplementing them.
-    match: (path: LivePath) => {
-      return currentSchema?.match(must_live_path(path));
-    },
-
-    resolve: (path: LivePath) => {
-      return currentSchema?.resolve(must_live_path(path));
-    },
-
-    has: (path: LivePath) => {
-      return currentSchema?.has(must_live_path(path)) ?? false;
-    },
-
-    must: Object.freeze({
-      resolve: (path: LivePath): LiveMapSchemaResolution => {
-        const schema = currentSchema;
-
-        if (schema === undefined) {
-          throw new Error("LiveMap has no schema attached");
-        }
-
-        return schema.must.resolve(must_live_path(path));
-      },
-    }),
+      return core;
+    }) as LiveMapCoreSchemaApi<JsonValue | undefined>["use"],
   });
 
   const applyProjectedIdentityTransition = (
@@ -863,8 +799,8 @@ function make_livemap_core_from_owned_root(
         path: [],
         value: normalized.value,
       };
-      must_core_schema_write_ops(currentSchema, owned.root, [operation]);
       const planned = plan_write_ops(must_projected_root_value(owned.root), [operation]);
+      must_hson_schema_projected_candidate(currentHsonSchema, planned.value);
       let candidate = clone_live_root(normalized.root);
       if (options?.identity === "strip") candidate = clone_hson_graph_without_quids(candidate);
       if (options?.identity === "reject") {
@@ -958,8 +894,7 @@ function make_livemap_core_from_owned_root(
       projected,
       transitionController,
       currentRoot: () => owned.root,
-      currentSchema: () => currentSchema,
-      currentDocumentSchema: () => currentDocumentSchema,
+      currentHsonSchema: () => currentHsonSchema,
       currentPreparedRoot: () => ({
         root: owned.root,
         mode: initialMode,
@@ -971,7 +906,7 @@ function make_livemap_core_from_owned_root(
         owned.root,
         getProjectedValue,
         setProjectedValue,
-        currentSchema,
+        currentHsonSchema,
         feedHub,
         () => owned.revision,
         (revision) => { owned = { ...owned, revision }; },
@@ -992,7 +927,7 @@ function make_livemap_core_from_owned_root(
           owned.root,
           getProjectedValue,
           setProjectedValue,
-          currentSchema,
+          currentHsonSchema,
           feedHub,
           () => owned.revision,
           (revision) => { owned = { ...owned, revision }; },
@@ -1021,20 +956,14 @@ function make_livemap_core_from_owned_root(
     },
     commits: Object.freeze({ observe: commitObserverHub.observe }),
     identityEpoch: documentIdentityEpoch,
-    getDocumentSchema: () => currentDocumentSchema,
+    getDocumentSchema: () => currentHsonSchema,
     useDocumentSchema,
     apply: (
       candidate: PreparedDocumentInstall,
       continuity: "same-epoch" | "new-epoch",
     ): LiveMapGraphCommit<LiveMapGraphReplaceRootOp> => {
       transitionController.assertPublicMutationAllowed();
-      if (currentDocumentSchema !== undefined) {
-        must_schema_validation(
-          validate_livemap_document_schema_root(currentDocumentSchema, candidate.root, initialMode),
-          [],
-          "issue",
-        );
-      }
+      if (currentHsonSchema !== undefined) must_hson_schema_root(currentHsonSchema, candidate.root);
       const prevRev = owned.revision;
       const unchanged = canonical_graph_equal(owned.root, candidate.root);
       const commit: LiveMapGraphCommit<LiveMapGraphReplaceRootOp> = unchanged
@@ -1090,13 +1019,7 @@ function make_livemap_core_from_owned_root(
       continuity: "same-epoch" | "new-epoch",
     ): void => {
       transitionController.assertPublicMutationAllowed();
-      if (currentDocumentSchema !== undefined) {
-        must_schema_validation(
-          validate_livemap_document_schema_root(currentDocumentSchema, candidate.root, initialMode),
-          [],
-          "issue",
-        );
-      }
+      if (currentHsonSchema !== undefined) must_hson_schema_root(currentHsonSchema, candidate.root);
       const candidateQuids = livemap_document_identity_quids(candidate.overlay);
       if (continuity === "new-epoch") {
         documentIdentityEpoch.replace(candidateQuids);
@@ -1117,13 +1040,7 @@ function make_livemap_core_from_owned_root(
     },
     applyMutation: <TOp extends LiveMapGraphOp>(candidate: PreparedDocumentMutation<TOp>): LiveMapGraphCommit<TOp> => {
       transitionController.assertPublicMutationAllowed();
-      if (currentDocumentSchema !== undefined) {
-        must_schema_validation(
-          validate_livemap_document_schema_root(currentDocumentSchema, candidate.root, initialMode),
-          [],
-          "issue",
-        );
-      }
+      if (currentHsonSchema !== undefined) must_hson_schema_root(currentHsonSchema, candidate.root);
       let nextLedger;
       try {
         nextLedger = stage_livemap_identity_epoch(
@@ -1177,13 +1094,7 @@ function make_livemap_core_from_owned_root(
     },
     applyReplay: (candidate: PreparedDocumentReplay): LiveMapGraphCommit => {
       transitionController.assertPublicMutationAllowed();
-      if (currentDocumentSchema !== undefined) {
-        must_schema_validation(
-          validate_livemap_document_schema_root(currentDocumentSchema, candidate.root, initialMode),
-          [],
-          "issue",
-        );
-      }
+      if (currentHsonSchema !== undefined) must_hson_schema_root(currentHsonSchema, candidate.root);
       register_livemap_document_identity_effects(candidate.commit, candidate.identityEffects);
       if (candidate.commit.ops[0]?.op === "replace-root") {
         documentIdentityEpoch.replace(livemap_document_identity_quids(candidate.overlay));
@@ -1211,8 +1122,7 @@ function make_livemap_core_from_owned_root(
     document,
     transitionController,
     currentRoot: () => owned.root,
-    currentSchema: () => currentSchema,
-    currentDocumentSchema: () => currentDocumentSchema,
+    currentHsonSchema: () => currentHsonSchema,
     currentPreparedRoot: () => ({
       root: owned.root,
       mode: initialMode,
@@ -1232,7 +1142,7 @@ function make_livemap_core_from_owned_root(
         owned.root,
         getProjectedValue,
         setProjectedValue,
-        currentSchema,
+        currentHsonSchema,
         feedHub,
         () => owned.revision,
         (revision) => { owned = { ...owned, revision }; },
@@ -1282,10 +1192,7 @@ function register_staged_facade<TMap extends object>(map: TMap, built: BuiltLive
         const preparedDraft = prepare_livemap_root(built.currentRoot());
         const draftBuilt = make_livemap_core_from_owned_root(preparedDraft, {
           revision: built.core.rev,
-          ...(built.currentSchema() !== undefined ? { schema: built.currentSchema() } : {}),
-          ...(built.currentDocumentSchema() !== undefined
-            ? { documentSchema: built.currentDocumentSchema() }
-            : {}),
+          ...(built.currentHsonSchema() !== undefined ? { hsonSchema: built.currentHsonSchema() } : {}),
         });
         const draft = facade_for_livemap_root(
           draftBuilt.core,
@@ -1830,46 +1737,19 @@ function normalize_splice_delete_count(length: number, start: number, deleteCoun
 }
 
 
-/** Validate the current root before attaching a schema-bound map view. */
-function must_core_schema_root(schema: LiveMapProjectedSchema, root: HsonNode, mode: LiveMapRootMode): void {
-  if (mode === "element" || mode === "fragment") {
-    must_schema_validation(schema.validateRoot(snap_live_path(root, [])), []);
-    return;
-  }
-  must_schema_validation(
-    validate_livemap_schema_projected_root(schema, must_projected_root_value(root)),
-    [],
-  );
+/** Enforce the sole public Schema authority against one complete canonical root. */
+function must_hson_schema_root(schema: HsonSchema, root: HsonNode): void {
+  validate_hson_schema_graph(schema, root);
 }
 
-
-function must_schema_validation(
-  validation: LiveMapSchemaValidation,
-  path: LivePath,
-  headlineMode: "path" | "issue" = "path",
+function must_hson_schema_projected_candidate(
+  schema: HsonSchema | undefined,
+  candidate: OrderedProjectedValue,
 ): void {
-  if (validation.ok) return;
-
-  const headlinePath = headlineMode === "issue"
-    ? validation_headline_path(validation, path)
-    : path;
-
-  throw new LiveMapSchemaError(
-    format_schema_validation_error(validation, headlinePath),
-    headlinePath,
-    validation.issues,
-  );
+  if (schema === undefined) return;
+  must_hson_schema_root(schema, projected_value_to_hson_root(candidate));
 }
 
-function format_schema_validation_error(validation: LiveMapSchemaValidation, path: LivePath): string {
-  const issueLines = validation.issues.map((issue) => `- ${issue.message}`);
-
-  return [`LiveMap schema rejected value at ${JSON.stringify(path)}:`, ...issueLines].join("\n");
-}
-
-function validation_headline_path(validation: LiveMapSchemaValidation, fallbackPath: LivePath): LivePath {
-  return validation.issues[0]?.path ?? fallbackPath;
-}
 
 function must_projected_root_value(root: HsonNode): OrderedProjectedValue {
   const value = project_live_path(root, []);
@@ -1931,7 +1811,7 @@ function prepare_projected_transition(
   root: HsonNode,
   getProjectedValue: () => OrderedProjectedValue,
   setProjectedValue: (value: OrderedProjectedValue) => void,
-  schema: LiveMapProjectedSchema | undefined,
+  hsonSchema: HsonSchema | undefined,
   feedHub: ReturnType<typeof make_livemap_feed_hub>,
   getRev: () => number,
   setRev: (rev: number) => void,
@@ -1948,7 +1828,7 @@ function prepare_projected_transition(
     writeOps,
     currentOverlay,
   );
-  must_core_schema_candidate(schema, planned.value, writeOps);
+  must_hson_schema_projected_candidate(hsonSchema, planned.value);
   const nextOverlay = reconcile_livemap_projected_identity_overlay(currentOverlay, planned.transportOps);
   const replacesRoot = planned.changed
     && writeOps.some((op) => op.kind === "replace" && op.path.length === 0);
@@ -2003,7 +1883,7 @@ function apply_replay_ops(
   root: HsonNode,
   getProjectedValue: () => OrderedProjectedValue,
   setProjectedValue: (value: OrderedProjectedValue) => void,
-  schema: LiveMapProjectedSchema | undefined,
+  hsonSchema: HsonSchema | undefined,
   feedHub: ReturnType<typeof make_livemap_feed_hub>,
   getRev: () => number,
   setRev: (rev: number) => void,
@@ -2019,7 +1899,7 @@ function apply_replay_ops(
     writeOps,
     currentOverlay,
   );
-  must_core_schema_candidate(schema, planned.value, writeOps);
+  must_hson_schema_projected_candidate(hsonSchema, planned.value);
   const prevRev = getRev();
   const rev = planned.changed ? prevRev + 1 : prevRev;
   if (planned.changed) {
@@ -2312,68 +2192,6 @@ function plan_constructive_set_write_op(
   }
 
   return Object.freeze({ value: candidate, ops: Object.freeze(ops) });
-}
-
-function must_core_schema_write_ops(
-  schema: LiveMapProjectedSchema | undefined,
-  root: HsonNode,
-  writeOps: readonly LiveMapCoreWriteOp[],
-): void {
-  if (schema === undefined) return;
-  const candidate = plan_write_ops(must_projected_root_value(root), writeOps).value;
-  must_core_schema_candidate(schema, candidate, writeOps);
-}
-
-/** Validate the completed immutable candidate through the shared carrier domain. */
-function must_core_schema_candidate(
-  schema: LiveMapProjectedSchema | undefined,
-  candidate: OrderedProjectedValue,
-  writeOps: readonly LiveMapCoreWriteOp[],
-): void {
-  if (schema === undefined) return;
-  const paths = writeOps.map((operation) => operation.path);
-  const requiresRootValidation = paths.some((path) => path.length === 0)
-    || schema.rules.some((rule) => rule.kind === "constrain" && paths.some((path) => (
-      rule.path.length < path.length
-      && rule.path.every((part, index) => part === path[index] || part === "*")
-    )));
-  if (!requiresRootValidation) {
-    const validationPaths = paths.map((path) => {
-      let resolved = path;
-      while (resolved.length > 0 && !schema.has(resolved)) resolved = resolved.slice(0, -1);
-      return resolved;
-    });
-    const uniquePaths = new Map(validationPaths.map((path) => [live_path_key(path), path]));
-    const validations = [...uniquePaths.values()].map((path) => (
-      validate_livemap_schema_projected_value(schema, path, ordered_projected_value_at(candidate, path))
-    ));
-    const failed = validations.find((validation) => !validation.ok);
-    if (failed === undefined) return;
-    must_schema_validation(
-      failed,
-      write_op_path(writeOps[0]),
-      schema_headline_mode_for_write_ops(writeOps),
-    );
-    return;
-  }
-  must_schema_validation(
-    validate_livemap_schema_projected_root(schema, candidate),
-    write_op_path(writeOps[0]),
-    schema_headline_mode_for_write_ops(writeOps)
-  );
-}
-
-/**
- * Choose the schema error headline path.
- *
- * Single endpoint operations report the operation path. Multi-op object writes
- * report the first schema issue path so `setMany` and constructive object `set`
- * point at the field that actually failed.
- */
-function schema_headline_mode_for_write_ops(writeOps: readonly LiveMapCoreWriteOp[]): "path" | "issue" {
-  if (writeOps.some((op) => op.kind === "constructive-set")) return "issue";
-  if (writeOps.length > 1) return "issue";
-  return "path";
 }
 
 /** Enforce strict resolved-path semantics for endpoint operations. */

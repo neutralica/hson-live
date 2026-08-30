@@ -1,17 +1,8 @@
 // livemap.types.ts
 
 import type { CanonicalPublicAttrs, CanonicalPublicAttrValue, HsonNode, JsonValue, NodeContent, Primitive } from "../core/types.js";
+import type { HsonSchema } from "../api/transform/transform.types.js";
 import type {
-  LiveMapSchema,
-  LiveMapProjectedSchema,
-  LiveMapAttachableSchema,
-  LiveMapSchemaResolution,
-  LiveMapSchemaRule,
-  LiveMapSchemaValue,
-} from "../api/livemap/livemap.schema.js";
-import type {
-  InternalDocumentRootSchemaForMode,
-  InternalDocumentSchemaEvidence,
   DocumentAttrsEvidence,
   DocumentAttrValueEvidence,
 } from "../api/livemap/livemap.document.schema.js";
@@ -275,36 +266,15 @@ export type LiveMapBatchTx<TValue = JsonValue | undefined> = Readonly<{
 /**
  * Schema attachment surface for a LiveMap.
  *
- * `schema.use(schema)` returns the same runtime map object as a schema-bound
- * TypeScript view. The static value type is preserved only when the schema value
- * still carries its generic, usually by allowing `hson.liveMap.schema.define(...)`
- * to infer the schema variable type.
- *
- * Avoid widening schemas to bare `LiveMapSchema` before passing them to `use`.
- * A bare `LiveMapSchema` means `LiveMapSchema<unknown>`, so the resulting map is
- * correctly typed as `LiveMap<unknown>`.
+ * `schema.use(schema)` validates the current canonical root and returns the same
+ * runtime map object. HsonSchema is the sole public Schema authority.
  *
  * The first successful attachment permanently governs that owner. Reusing the
  * same schema object is idempotent; any distinct schema object rejects.
  */
-/** Throwing inspection surface for the schema attached to a LiveMap Core. */
-export type LiveMapCoreSchemaMustApi = Readonly<{
-  resolve: (path: LivePath) => LiveMapSchemaResolution;
-}>;
-
 export type LiveMapCoreSchemaApi<TValue = JsonValue | undefined> = Readonly<{
-  get: () => LiveMapProjectedSchema | undefined;
-  use: <TSchema extends LiveMapAttachableSchema>(
-    schema: TSchema,
-  ) => LiveMap<LiveMapSchemaValue<TSchema>>;
-  /** Return the public schema rule matching one concrete path, if attached. */
-  match: (path: LivePath) => LiveMapSchemaRule | undefined;
-  /** Resolve one concrete path through the attached schema, if present. */
-  resolve: (path: LivePath) => LiveMapSchemaResolution | undefined;
-  /** Return whether the attached schema resolves one concrete path. */
-  has: (path: LivePath) => boolean;
-  /** Throwing attached-schema inspection surface. */
-  must: LiveMapCoreSchemaMustApi;
+  get: () => HsonSchema | undefined;
+  use: <TGoverned = TValue>(schema: HsonSchema) => LiveMap<TGoverned>;
 }>;
 
 export type LiveMapCore<
@@ -355,9 +325,8 @@ export type LiveMapCore<
  * Public LiveMap surface.
  *
  * `TValue` is the current data root value type. A map created without a
- * schema starts as `LiveMap<JsonValue | undefined>`. After attaching an inferred
- * schema with `map.schema.use(schema)`, the returned
- * map view becomes `LiveMap<LiveMapSchemaValue<typeof schema>>`.
+ * schema starts as `LiveMap<JsonValue | undefined>`. HsonSchema governance is
+ * attached with `map.schema.use(schema)`.
  */
 export type LiveMap<TValue = JsonValue | undefined> = Readonly<
   Omit<LiveMapCore<TValue, LiveMapRootMode>, "mode"> & {
@@ -596,13 +565,11 @@ type DocumentLiveMapForEvidence<
   ? ElementLiveMap<TEvidence>
   : FragmentLiveMap<TEvidence>;
 
-type DocumentLiveMapSchemaApi<
+type DocumentLiveMapGovernanceApi<
   TMode extends DocumentLiveMapMode,
 > = Readonly<{
-  get: () => InternalDocumentRootSchemaForMode<TMode> | undefined;
-  use: <TSchema extends InternalDocumentRootSchemaForMode<TMode>>(
-    schema: TSchema,
-  ) => DocumentLiveMapForEvidence<TMode, InternalDocumentSchemaEvidence<TSchema>>;
+  get: () => HsonSchema | undefined;
+  use: (schema: HsonSchema) => DocumentLiveMapForEvidence<TMode, unknown>;
 }>;
 
 declare const LIVEMAP_DOCUMENT_INVALID_STATIC_PATH: unique symbol;
@@ -1211,7 +1178,7 @@ type DocumentLiveMapShared<
   /** Observe successful canonical graph commits without data path coercion. */
   commits: LiveMapCommitObserverApi;
   /** Permanent owner-level document schema attachment. */
-  schema: DocumentLiveMapSchemaApi<TMode>;
+  schema: DocumentLiveMapGovernanceApi<TMode>;
 }>;
 
 /** Structural return type for document `at(...)`; intentionally not exported. */
@@ -1804,7 +1771,7 @@ export type LiveMapPathArrayApi<TValue = JsonValue | undefined> = Readonly<{
   removeAll: (value: JsonValue) => LiveMapCommit<LiveMapDataOp>;
 }>;
 
-export type LiveMapSchemaIssueCode =
+export type HsonSchemaIssueCode =
   | "TYPE_MISMATCH"
   | "MISSING_REQUIRED"
   | "UNKNOWN_PATH"

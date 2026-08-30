@@ -92,15 +92,14 @@ async function run(): Promise<void> {
     assert.deepEqual(lower.map(part => part.range), [0, 1, 2, 3].map(index => ({ start: hsonStart + index, end: hsonStart + index + 1 })));
   });
   check("only the first official lowercase member period receives the violet separator identity", () => {
-    const text = 'import { hson } from "hson-live"; hson.liveMap.schema.validate(x); hson.fromJson("{}"); hson.transform;';
+    const text = 'import { hson } from "hson-live"; hson.liveMap.fromJson(x); hson.fromJson("{}"); hson.transform;';
     const parts = separators(text);
     assert.deepEqual(parts.map(part => text.slice(part.range.start, part.range.end)), [".", ".", "."]);
     assert.deepEqual(parts.map(part => part.range.start), [
       text.indexOf(".liveMap"), text.indexOf(".fromJson"), text.indexOf(".transform"),
     ]);
     assert.ok(parts.every(part => part.colorId === HSON_LIBRARY_SEPARATOR_COLOR_ID && part.strength === "strong"));
-    assert.ok(!parts.some(part => part.range.start === text.indexOf(".schema")));
-    assert.ok(!parts.some(part => part.range.start === text.indexOf(".validate")));
+    assert.ok(!parts.some(part => part.range.start === text.indexOf(".fromJson")));
   });
   check("separator authority excludes aliases, fakes, shadows, properties, wrong packages, imports, and uppercase Hson", () => {
     const cases = [

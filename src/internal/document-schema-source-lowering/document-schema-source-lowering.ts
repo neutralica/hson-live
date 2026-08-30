@@ -7,7 +7,7 @@ import {
   type InternalDocumentLogicalResolution,
   type InternalDocumentPhysicalAssociation,
 } from "../../api/livemap/livemap.document.logical.js";
-import type { LiveMapSchemaIssue } from "../../api/livemap/livemap.schema.js";
+import type { HsonSchemaIssue } from "../../api/livemap/livemap.error.js";
 import type { DocumentLiveMapMode, LivePath } from "../../types/livemap.types.js";
 import type {
   HsonAttributeSourceRole,
@@ -38,7 +38,7 @@ export type DocumentSchemaSourceResolution =
     }>
   | Readonly<{ kind: "unresolved"; issuePath: LivePath }>;
 
-type DocumentSchemaSourceIssue = Pick<LiveMapSchemaIssue, "code" | "path" | "attributeName">;
+type DocumentSchemaSourceIssue = Pick<HsonSchemaIssue, "code" | "path" | "attributeName">;
 
 /**
  * Lower one document-Schema issue through the canonical logical document

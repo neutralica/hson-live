@@ -2,7 +2,7 @@
 /* ***DO NOT IMPORT FROM bridge.ts - keep deps one-way*** */
 
 import type { JsonValue } from "../../core/types.js";
-import type { LiveTextBridgeTarget, LiveMapBridgeBinding, LiveAttrBridgeTarget, LiveInputBridgeTarget, LiveMapSchemaControlNode } from "../../types/bridge.types.js";
+import type { LiveTextBridgeTarget, LiveMapBridgeBinding, LiveAttrBridgeTarget, LiveInputBridgeTarget, LiveMapControlNode } from "../../types/bridge.types.js";
 import type { LiveMapPathHandle } from "../../types/livemap.types.js";
 import { LiveTree } from "../livetree/livetree.js";
 import { own_disposable_for_owner } from "../livetree/managers/lifecycle-registry.js";
@@ -133,7 +133,7 @@ export function bind_livetree_input_checked(
 export function bind_livetree_schema_number_input(
   tree: LiveInputBridgeTarget & LiveAttrBridgeTarget,
   location: LiveMapPathHandle,
-  schema: LiveMapSchemaControlNode | undefined
+  schema: LiveMapControlNode | undefined
 ): LiveMapBridgeBinding {
   let isSyncingFromMap = false;
 
@@ -195,7 +195,7 @@ export function bind_livetree_schema_number_input(
 export function bind_livetree_schema_enum_input(
   tree: LiveInputBridgeTarget & LiveAttrBridgeTarget,
   location: LiveMapPathHandle,
-  schema: LiveMapSchemaControlNode | undefined
+  schema: LiveMapControlNode | undefined
 ): LiveMapBridgeBinding {
   let isSyncingFromMap = false;
 

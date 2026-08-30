@@ -1,7 +1,7 @@
 import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { WebSocket, WebSocketServer } from "ws";
-import { decode_locus_server_message, LocusClientRecoveryError, hson } from "../../src/index.ts";
+import { decode_locus_server_message, Hson, LocusClientRecoveryError, hson } from "../../src/index.ts";
 import { acquire_projected_identity } from "../helpers/livemap-identity-internal.mts";
 import { create_locus_internal } from "../../src/api/locus/locus.core.ts";
 import { make_locus_canonical_commit } from "../../src/api/locus/locus.history.ts";
@@ -211,7 +211,7 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
   const trace = trace_sink(events);
   const host = hson.locus.create({ state: { value: 7 }, logicalMapId: "map-snapshot", trace });
   await host.mutate((draft) => draft.set(["value"], 8));
-  const schema = hson.liveMap.schema.define((shape) => shape.object({ value: shape.number }));
+  const schema = Hson`<type "data" content <value "number">>`;
   const mirror = hson.liveMap.fromJson({ value: 0 });
   const watched = [];
   mirror.at(["value"]).watch((next) => watched.push(next));
@@ -771,7 +771,7 @@ await check("malformed snapshot Hson fails installation without advancing state"
 
 await check("valid Hson rejected by the active schema does not replace the mirror", async () => {
   const pair = socket_pair();
-  const schema = hson.liveMap.schema.define((shape) => shape.object({ value: shape.number }));
+  const schema = Hson`<type "data" content <value "number">>`;
   const mirror = hson.liveMap.fromJson({ value: 1 });
   restore_projected_revision(mirror, 4);
   mirror.schema.use(schema);

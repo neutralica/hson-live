@@ -95,7 +95,6 @@ import {
   encode_locus_message,
   create_locus,
   LocusAuthorityError,
-  LiveMapSchemaError,
   snap_live_path,
   ELEM_TAG,
   OBJ_TAG,
@@ -383,12 +382,6 @@ import type {
   PersistentLocus,
   LocusValidator,
   LocusWireValue,
-  InferLiveMapSchema,
-  LiveMapSchema,
-  LiveMapSchemaValue,
-  LiveMapSchemaValidation,
-  LiveMapSchemaIssue,
-  LiveMapSchemaRule,
   SanitizerLike,
 } from "../src/index.ts";
 
@@ -488,7 +481,6 @@ const compatibilityValues = {
   encode_locus_message,
   create_locus,
   LocusAuthorityError,
-  LiveMapSchemaError,
   snap_live_path,
   ELEM_TAG,
   OBJ_TAG,

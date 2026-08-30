@@ -1,5 +1,5 @@
 import { performance } from "node:perf_hooks";
-import { type LiveMapSchemaIssue } from "../../api/livemap/livemap.schema.js";
+import type { HsonSchemaIssue } from "../../api/livemap/livemap.error.js";
 import { validate_schema_hson_graph } from "../schema-hson-validation/validate-schema-hson-graph.js";
 import { is_projected_value_hson_node } from "../../core/projected-value-graph.js";
 import { classify_live_root_mode } from "../../api/livemap/livemap.document.js";
@@ -203,7 +203,7 @@ export class TrustedSchemaDiagnosticRuntime {
       if (mode === "element" || mode === "fragment") rootMode = mode;
     }
     const validateStart = performance.now();
-    let issues: readonly LiveMapSchemaIssue[];
+    let issues: readonly HsonSchemaIssue[];
     try {
       issues = validate_schema_hson_graph(schema, parsed.value).issues;
     } catch (cause) { return this.error(request, "VALIDATION_THROW", cause instanceof Error ? cause.message : "Schema validation threw unexpectedly."); }

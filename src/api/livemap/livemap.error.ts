@@ -5,7 +5,7 @@ import {
   clone_live_path,
   format_live_path,
 } from "./livemap.path.js";
-import type { LiveMapSchemaIssue } from "./livemap.schema.js";
+import type { HsonSchemaIssueCode } from "../../types/livemap.types.js";
 import type { JsonValue } from "../../core/types.js";
 import type { LiveMapDocumentTarget } from "../../types/livemap.types.js";
 import type {
@@ -85,19 +85,28 @@ export class LiveMapProjectedIdentityError extends Error {
   }
 }
 
-export class LiveMapSchemaError extends Error {
+export type HsonSchemaIssue = Readonly<{
+  code: HsonSchemaIssueCode;
+  path: LivePath;
+  message: string;
+  expected?: string;
+  received?: string;
+  attributeName?: string;
+}>;
+
+export class HsonSchemaError extends Error {
   readonly code = "SCHEMA_VALIDATION" as const;
   readonly path: LivePath;
-  readonly issues: readonly LiveMapSchemaIssue[];
+  readonly issues: readonly HsonSchemaIssue[];
 
   constructor(
     message: string,
     path: LivePath,
-    issues: readonly LiveMapSchemaIssue[],
+    issues: readonly HsonSchemaIssue[],
   ) {
     super(message);
 
-    this.name = "LiveMapSchemaError";
+    this.name = "HsonSchemaError";
     this.path = clone_live_path(path);
     this.issues = Object.freeze([...issues]);
   }

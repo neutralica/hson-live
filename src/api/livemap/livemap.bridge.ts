@@ -12,7 +12,7 @@
 import type { JsonValue } from "../../core/types.js";
 import { bind_livetree_input_checked, bind_livetree_schema_enum_input, bind_livetree_schema_number_input, bind_livetree_input_value, value_to_text } from "./livemap.bridge-bindings.js";
 import type { LiveMap, LivePath } from "../../types/livemap.types.js";
-import type { LiveTextBridgeTarget, LiveSnapViewBridgeTarget, LiveControlViewBridgeTarget, LiveMapBridgeBindingGroup, LiveMapBridgeBinding, LiveMapSchemaControlSpec, BridgePathParts, LiveMapSchemaControlNode, LiveAttrBridgeTarget } from "../../types/bridge.types.js";
+import type { LiveTextBridgeTarget, LiveSnapViewBridgeTarget, LiveControlViewBridgeTarget, LiveMapBridgeBindingGroup, LiveMapBridgeBinding, LiveMapControlSpec, BridgePathParts, LiveMapControlNode, LiveAttrBridgeTarget } from "../../types/bridge.types.js";
 
 // PROPOSED FILE GROUP: bridge.ts
 //
@@ -57,7 +57,7 @@ export function render_livemap_controls_snap(
 export function render_livemap_schema_controls_snap(
   map: LiveMap,
   tree: LiveControlViewBridgeTarget,
-  schema: LiveMapSchemaControlSpec,
+  schema: LiveMapControlSpec,
   path: LivePath = [],
 ): LiveMapBridgeBindingGroup {
   const bindings: LiveMapBridgeBinding[] = [];
@@ -235,7 +235,7 @@ function render_schema_control_value(
   tree: LiveControlViewBridgeTarget,
   value: JsonValue | undefined,
   path: readonly string[],
-  schema: LiveMapSchemaControlSpec,
+  schema: LiveMapControlSpec,
   bindings: LiveMapBridgeBinding[],
 ): void {
   tree.attrs.set("data-livemap-control-path", bridge_path_attr(path));
@@ -284,7 +284,7 @@ function render_schema_control_primitive(
   tree: LiveControlViewBridgeTarget,
   value: JsonValue | undefined,
   path: readonly string[],
-  schema: LiveMapSchemaControlNode | undefined,
+  schema: LiveMapControlNode | undefined,
   bindings: LiveMapBridgeBinding[],
 ): void {
   render_schema_control_meta(tree, schema);
@@ -324,7 +324,7 @@ function render_schema_enum_control(
   tree: LiveControlViewBridgeTarget,
   value: JsonValue | undefined,
   path: readonly string[],
-  schema: LiveMapSchemaControlNode,
+  schema: LiveMapControlNode,
   bindings: LiveMapBridgeBinding[],
 ): void {
   const select = tree.create.tag("select");
@@ -343,7 +343,7 @@ function render_schema_enum_control(
   bindings.push(bind_livetree_schema_enum_input(select, map.at(path_to_live_path(path)), schema));
 }
 
-function render_schema_control_meta(tree: LiveControlViewBridgeTarget, schema: LiveMapSchemaControlNode | undefined): void {
+function render_schema_control_meta(tree: LiveControlViewBridgeTarget, schema: LiveMapControlNode | undefined): void {
   if (schema?.label !== undefined) {
     const label = tree.create.div();
     label.attrs.set("data-livemap-control-role", "label");
@@ -359,27 +359,27 @@ function render_schema_control_meta(tree: LiveControlViewBridgeTarget, schema: L
 
 function apply_schema_control_meta(
   tree: LiveAttrBridgeTarget,
-  schema: LiveMapSchemaControlNode | undefined,
+  schema: LiveMapControlNode | undefined,
 ): void {
   if (schema?.label !== undefined) tree.attrs.set("data-livemap-control-label", schema.label);
   if (schema?.description !== undefined) tree.attrs.set("data-livemap-control-description", schema.description);
 }
 
-function apply_schema_number_attrs(tree: LiveAttrBridgeTarget, schema: LiveMapSchemaControlNode | undefined): void {
+function apply_schema_number_attrs(tree: LiveAttrBridgeTarget, schema: LiveMapControlNode | undefined): void {
   if (schema?.min !== undefined) tree.attrs.set("min", String(schema.min));
   if (schema?.max !== undefined) tree.attrs.set("max", String(schema.max));
   if (schema?.step !== undefined) tree.attrs.set("step", String(schema.step));
 }
 
-function schema_control_kind(value: JsonValue | undefined, schema: LiveMapSchemaControlNode | undefined): string {
+function schema_control_kind(value: JsonValue | undefined, schema: LiveMapControlNode | undefined): string {
   if (schema?.kind !== undefined) return schema.kind;
   return primitive_snap_kind(value);
 }
 
 function schema_control_node_for_path(
-  schema: LiveMapSchemaControlSpec,
+  schema: LiveMapControlSpec,
   path: readonly string[],
-): LiveMapSchemaControlNode | undefined {
+): LiveMapControlNode | undefined {
   const fullPath = path.join(".");
   return schema[fullPath] ?? schema[path[path.length - 1] ?? ""];
 }

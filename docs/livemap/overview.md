@@ -804,131 +804,27 @@ Reentrant mutation is supported only through the map’s defined notification sc
 
 ## Schemas
 
-A data LiveMap may enforce a schema over its visible state.
-
-Schemas can express constraints such as:
-
-- object structure;
-- exact or open object behavior;
-- required and optional properties;
-- nullable values;
-- primitive types;
-- literal values;
-- finite choices;
-- arrays and item schemas;
-- fixed item positions;
-- records;
-- recursive schemas;
-- predicate constraints that narrow admitted values without transforming them.
-
-For example:
+LiveMap governance accepts authored HsonSchema only:
 
 ```ts
-const User = hson.liveMap.schema.define((s) => s.object({
-  name: s.string,
-  active: s.boolean,
-  role: s.literal("reader", "editor"),
-}));
+import { Hson, type HsonSchema } from "hson-live";
+
+const UserSchema: HsonSchema = Hson`
+  <type "data" content <user <content <
+    name "string"
+    age <optional "number">
+  >>>>
+`;
+
+const map = hson.liveMap.fromJson({ user: { name: "Ada" } });
+map.schema.use(UserSchema);
 ```
 
-`object` is open to extra data keys; `exact` is closed. Callbacks return an
-explicit expression rather than a raw object shape.
-
-Schema validation occurs before authoritative acceptance.
-
-Recursive and forward schema references use `s.recurse(() => Schema)`.
-Document schemas use `s.empty` for exact empty content, `s.repeat(Item)` for
-zero-or-more homogeneous siblings, and `s.repeat(count, Item)` for an exact
-homogeneous cardinality. `s.tuple(...)` remains the fixed ordered product in
-both data and document domains.
-
-A failing mutation leaves the current graph and revision unchanged.
-
----
-
-## Schema resolution
-
-Schemas are resolved against data paths and values rather than by applying one undifferentiated validator only at the root.
-
-Resolution determines:
-
-- which schema governs an endpoint;
-- whether a missing property may be created;
-- whether a property is optional;
-- whether a value may be null;
-- which item schema governs an array index;
-- whether exact-object restrictions permit a key;
-- which custom validator applies.
-
-Path and schema resolution use the same canonical path model as reads and mutations.
-
-This avoids disagreements where a path is valid for reading but interpreted differently for validation.
-
----
-
-## Validation errors
-
-Schema failures use structured validation results and error codes rather than relying only on human-readable strings.
-
-A validation issue can identify:
-
-- error code;
-- failing path;
-- message;
-- expected constraint;
-- received value category;
-- operation context.
-
-For multi-operation mutations, the headline error path is the path of the failing issue rather than merely the batch root.
-
-Structured errors allow:
-
-- precise tests;
-- editor and UI diagnostics;
-- safe application messages;
-- future protocol encoding;
-- stable handling independent of message wording.
-
-Validation errors should avoid exposing unrelated document or application content.
-
----
-
-## Schema timing
-
-Schema preview occurs against the proposed candidate.
-
-This matters for combined operations.
-
-For example, a batch may:
-
-1. create a required sibling;
-2. update another value;
-3. leave the final object valid.
-
-Validating each operation only against the original state could reject a valid atomic transition. Validating only after mutating the live graph could expose invalid intermediate state.
-
-LiveMap instead validates a detached combined candidate before acceptance.
-
----
-
-## Custom validation
-
-Schemas may include custom validation logic for domain rules not captured by structural types.
-
-A custom validator should be:
-
-- deterministic;
-- synchronous unless explicitly supported otherwise;
-- free of authoritative side effects;
-- safe to run against detached candidates;
-- explicit about its issue path.
-
-External I/O, remote authorization, and persistence do not belong inside a LiveMap schema validator.
-
-Those operations require an asynchronous authority layer rather than synchronous graph validation.
-
----
-
+The owner retains the identical HsonSchema through `map.schema.get()`.
+Attachment validates the current canonical root, and governed mutation, restore,
+and replay validate before publication. `Hson.certify` is the separate generic
+dynamic certification entrance. Callback authoring and schema-path resolver
+helpers are not part of the LiveMap API.
 ## Proxies
 
 Data maps may expose a path-oriented proxy:

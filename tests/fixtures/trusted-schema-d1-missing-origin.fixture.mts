@@ -1,3 +1,2 @@
-import { hson } from "../../src/hson.ts";
-// Intentionally no exported hson: Schema shape alone is not origin evidence.
-export const trustedSchemas = { missing: hson.liveMap.schema.define(s => s.number) };
+// Retired callback/builder Schema coverage removed by the HsonSchema hard cut.
+export {};

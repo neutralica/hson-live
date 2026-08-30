@@ -6,6 +6,7 @@ import {
   hsonLiveTree,
   hsonInspect,
   hsonCalc,
+  type HsonSchema,
   type HsonNumber,
 } from "hson-live";
 import {
@@ -37,7 +38,7 @@ import { validate } from "hson-live";
 import { validate_schema_hson_graph } from "hson-live/livemap";
 // @ts-expect-error Direct-source associations are private tooling.
 import type { TrustedSchemaDirectSource } from "hson-live/types";
-const standaloneSchema = hson.liveMap.schema.define(s => s.number);
+declare const standaloneSchema: HsonSchema;
 const standaloneCanonical: HsonCanonical = Hson.certify(standaloneSchema, Hson`37`);
 // @ts-expect-error Hson.validate was hard-removed in favor of Hson.certify.
 Hson.validate(standaloneSchema, Hson`37`);
@@ -127,15 +128,11 @@ import {
   LiveMapRevError,
   hsonLiveMap as mapSubpath,
   make_livemap_core,
-  type InferLiveMapSchema,
   type LiveMap,
   type LiveMapCommit,
   type LiveMapDocumentIdentityHandle,
   type ElementLiveMap,
   type LiveMapPathHandle,
-  type LiveMapSchemaConstraint,
-  type LiveMapSchemaResolution,
-  type LiveMapSchemaValue,
   type LivePath,
   type ProjectedValueAdmissionCode,
   type ProjectedValuePath,
@@ -291,103 +288,20 @@ void ensure_livemap_quid;
 void construct_tree;
 void (0 as unknown as LiveMapDocumentSchema);
 
-// @ts-expect-error The separate document authoring namespace was hard-removed.
-hson.liveMap.schema.document;
-const publicElementSchema = hson.liveMap.schema.define((s) => s.button(s.string));
-const publicButtonAttrs = hson.liveMap.schema.define((s) => s.attrs.exact({
-  id: s.string,
-  selected: s.flag.optional,
-  style: s.unknown.optional,
-}));
-const publicAttributedElementSchema = hson.liveMap.schema.define((s) =>
-  s.button(publicButtonAttrs, s.string),
-);
-const publicCustomElementSchema = hson.liveMap.schema.define((s) => s.tag["my-widget"](s.string));
-declare const publicDynamicTagName: string;
-const publicDynamicElementSchema = hson.liveMap.schema.define((s) => s.tag[publicDynamicTagName](s.string));
-const publicFragmentSchema = hson.liveMap.schema.define((s) => s.repeat(
-  s.pick(s.string, s.tag()),
-));
-const publicEmptySchema = hson.liveMap.schema.define((s) => s.empty);
-const publicCountedSchema = hson.liveMap.schema.define((s) => s.repeat(3, s.string));
-declare const publicDynamicRepeatCount: number;
-const publicDynamicCountedSchema = hson.liveMap.schema.define((s) => s.repeat(publicDynamicRepeatCount, s.string));
-const publicConstrainedSchema = hson.liveMap.schema.define((s) =>
-  s.number.constrain((value) => Number.isFinite(value)),
-);
-const publicStringConstrainedSchema = hson.liveMap.schema.define((s) =>
-  s.string.constrain((value) => value.startsWith("sys_id_no_")),
-);
-const publicBroadArraySchema = hson.liveMap.schema.define((s) => s.array());
-const publicExactObjectSchema = hson.liveMap.schema.define((s) => s.object.exact({ id: s.string }));
-// @ts-expect-error Exact projected objects are exposed only through the object family.
-hson.liveMap.schema.define((s) => s.exact({ id: s.string }));
-// @ts-expect-error Array exactness is not a public family member.
-hson.liveMap.schema.define((s) => s.array.exact(s.string));
-// @ts-expect-error Tuple exactness is not a public family member.
-hson.liveMap.schema.define((s) => s.tuple.exact(s.string));
-// @ts-expect-error Record exactness is not a public family member.
-hson.liveMap.schema.define((s) => s.record.exact(s.string));
-const publicDefinedConstraint = hson.liveMap.schema.define(() =>
-  publicConstrainedSchema.constrain("positive", (value) => value > 0),
-);
-// @ts-expect-error constrain is a schema-value modifier, not a toolkit constructor.
-hson.liveMap.schema.define((s) => s.constrain(s.number, "positive", (value: number) => value > 0));
-// @ts-expect-error The old predicate-narrowing operator is hard-removed.
-hson.liveMap.schema.define((s) => s.refine(s.number, "positive", (value: number) => value > 0));
-// @ts-expect-error The old recursive-reference operator is hard-removed.
-hson.liveMap.schema.define((s) => s.lazy(() => s.string));
-// @ts-expect-error Exact arbitrary tags use the tag-family property grammar.
-hson.liveMap.schema.define((s) => s.tag("legacy-widget"));
-// @ts-expect-error Callable tag(...) already covers any-element schemas.
-hson.liveMap.schema.define((s) => s.element());
-void publicCustomElementSchema;
-void publicStringConstrainedSchema;
-void publicBroadArraySchema;
-void publicExactObjectSchema;
-void publicAttributedElementSchema;
-void publicDynamicElementSchema;
-void publicEmptySchema;
-void publicCountedSchema;
-void publicDynamicCountedSchema;
-void publicDefinedConstraint;
+// @ts-expect-error LiveMap exposes governance through each map, not a second authoring facade.
+hson.liveMap.schema;
+declare const publicElementSchema: HsonSchema;
 const publicElementCandidate = hson.liveMap.fromHson(`<button "Save"/>`);
 if (publicElementCandidate.mode === "element") {
   const schemaBound = publicElementCandidate.schema.use(publicElementSchema);
   const sameSchema = schemaBound.schema.get();
-  const typedDocumentText = schemaBound.at([0]).snap();
-  type PublicTypedDocumentText = Expect<Equal<typeof typedDocumentText, string>>;
-  schemaBound.at([0]).replace("Open");
-  // @ts-expect-error Schema-proven document text rejects structured authoring.
-  schemaBound.at([0]).replace(publicElementCandidate.element.node());
-  // @ts-expect-error Missing-read undefined is not a document authoring value.
-  schemaBound.at([0]).replace(undefined);
-  // @ts-expect-error The one-item closed document schema has no coordinate 1.
-  schemaBound.at([1]);
+  const exactSchema: HsonSchema | undefined = sameSchema;
+  // @ts-expect-error Schema detachment is not a governance operation.
+  schemaBound.schema.use(undefined);
+  // @ts-expect-error LiveMap governance accepts only HsonSchema.
+  schemaBound.schema.use({});
+  void exactSchema;
   void sameSchema;
-}
-const publicAttributedCandidate = hson.liveMap.fromHson(`<button id="save" selected "Save"/>`);
-if (publicAttributedCandidate.mode === "element") {
-  const schemaBound = publicAttributedCandidate.schema.use(publicAttributedElementSchema);
-  const root = schemaBound.at([]);
-  const id = root.attrs.get("id");
-  const selected = root.attrs.get("selected");
-  type PublicRequiredAttr = Expect<Equal<typeof id, string>>;
-  type PublicOptionalFlagAttr = Expect<Equal<typeof selected, "selected" | undefined>>;
-  root.flags.has("selected");
-  root.flags.set("selected");
-  root.flags.clear("selected");
-  schemaBound.document.flags.has({ kind: "path", path: [] }, "selected");
-  schemaBound.document.flags.set({ kind: "path", path: [] }, "selected");
-  schemaBound.document.flags.clear({ kind: "path", path: [] }, "selected");
-}
-const publicFragmentCandidate = mapSubpath.fromHson(`"before" <em/>`);
-if (publicFragmentCandidate.mode === "fragment") {
-  const schemaBound = publicFragmentCandidate.schema.use(publicFragmentSchema);
-  schemaBound.at([]).insert(0, "text");
-  schemaBound.at([]).insert(0, hson.liveMap.fromHson(`<strong/>`).root());
-  // @ts-expect-error Schema-aware document insertion excludes legacy numeric content.
-  schemaBound.at([]).insert(0, 1);
 }
 
 const reflectFacade: ReflectFacade = reflectSubpath;
@@ -431,41 +345,6 @@ type ProjectedPathTruth = Readonly<{
 declare const projectedPathMap: LiveMap<ProjectedPathTruth>;
 declare const bindingTree: LiveTree;
 
-const typedRelativeDocumentCandidate = mapSubpath.fromHson(`<main <label "Save"/>/>`);
-if (typedRelativeDocumentCandidate.mode === "element") {
-  const typedRelativeSchema = mapSubpath.schema.define((s) => s.tag(s.label(s.string)));
-  const typedRelativeDocument = typedRelativeDocumentCandidate.schema.use(
-    typedRelativeSchema,
-  );
-  const relativeLabel = typedRelativeDocument.at([]).at([0]).at([0]);
-  const proxiedLabel = typedRelativeDocument.proxy()[0][0].$_;
-  const relativeLabelValue = relativeLabel.snap();
-  const proxiedLabelValue = proxiedLabel.snap();
-  type PublicRelativeDocumentText = Expect<Equal<typeof relativeLabelValue, string>>;
-  type PublicProxyDocumentText = Expect<Equal<typeof proxiedLabelValue, string>>;
-  type PublicDirectRelativeProxyText = Expect<Equal<
-    typeof proxiedLabelValue,
-    ReturnType<ReturnType<typeof typedRelativeDocument.at<[0, 0]>>["snap"]>
-  >>;
-  relativeLabel.replace("Open");
-  proxiedLabel.replace("Save");
-  bindingTree.bind.text(relativeLabel);
-  bindingTree.bind.text(proxiedLabel);
-  // @ts-expect-error Relative schema-proven text rejects structured authoring.
-  relativeLabel.replace(typedRelativeDocumentCandidate.element.node());
-  // @ts-expect-error Proxied schema-proven text rejects structured authoring.
-  proxiedLabel.replace(typedRelativeDocumentCandidate.element.node());
-  // @ts-expect-error The nested label element has no coordinate 1.
-  typedRelativeDocument.at([0]).at([1]);
-}
-
-const typedBindingDocumentCandidate = mapSubpath.fromHson(`<button "Save"/>`);
-if (typedBindingDocumentCandidate.mode === "element") {
-  const typedBindingDocument = typedBindingDocumentCandidate.schema.use(publicElementSchema);
-  bindingTree.bind.text(typedBindingDocument.at([0]));
-  // @ts-expect-error The structured document root still requires explicit conversion.
-  bindingTree.bind.text(typedBindingDocument.at([]));
-}
 declare const mixedBindingMap: LiveMap<Readonly<{ count: number }>>;
 declare const readonlyBindingMap: LocusReadonlyMap<LiveMap<ProjectedPathTruth>>;
 declare const dynamicPath: LivePath;
@@ -664,8 +543,6 @@ type PublicLiveTreeClosure =
   | PropertyRegistration
   | TreeEvents;
 type PublicLiveMapClosure =
-  | LiveMapSchemaResolution
-  | LiveMapSchemaConstraint
   | ProjectedValueAdmissionCode
   | ProjectedValuePath;
 type PublicLocusClosure =
@@ -680,119 +557,16 @@ declare const publicDeclarationClosure:
   | PublicLocusClosure;
 void publicDeclarationClosure;
 
-const declarationTruthSchema = mapSubpath.schema.define((schema) => schema.object.exact({
-  optionalObject: schema.number.optional,
-  optionalBranch: schema.object({ name: schema.string }).optional,
-  nullableBranch: schema.object({ name: schema.string }).nullable,
-  optionalNullableBranch: schema.object({ name: schema.string }).nullable.optional,
-  array: schema.array(schema.number.optional),
-  arrayToken: schema.array(schema.number.optional),
-  tupleTrailing: schema.tuple(schema.string, schema.number.optional),
-  tupleNonTrailing: schema.tuple(schema.number.optional, schema.string),
-  nested: schema.array(schema.tuple(schema.number, schema.string.optional)),
-  nullable: schema.string.nullable,
-  literal: schema.literal("draft", "ready"),
-  mutableValue: schema.number,
-  record: schema.record(schema.number.optional),
-  picked: schema.pick(schema.number.optional, "auto"),
-  recursive: schema.recurse(() => schema.number.optional),
-  constrained: schema.number.optional.constrain("finite", Number.isFinite),
-  constrainedString: schema.string.constrain((value) => value.length >= 3),
-  deep: schema.deepPartial(schema.object.exact({
-    child: schema.object.exact({ count: schema.number }),
-    tuple: schema.tuple(schema.string, schema.number),
-    list: schema.array(schema.object.exact({ id: schema.number })),
-  })),
-}));
-
-type DeclarationTruth = InferLiveMapSchema<typeof declarationTruthSchema>;
-type OptionalObjectIsOptional = Expect<
-  Equal<{} extends Pick<DeclarationTruth, "optionalObject"> ? true : false, true>
->;
-type OptionalObjectPresentValue = Expect<
-  Equal<Exclude<DeclarationTruth["optionalObject"], undefined>, number>
->;
-type ArrayPresentItem = Expect<Equal<DeclarationTruth["array"][number], number>>;
-type ArrayTokenPresentItem = Expect<Equal<DeclarationTruth["arrayToken"][number], number>>;
-type TrailingOptionalTuple = Expect<
-  Equal<DeclarationTruth["tupleTrailing"], readonly [string, number?]>
->;
-type NonTrailingOptionalTuple = Expect<
-  Equal<DeclarationTruth["tupleNonTrailing"], readonly [number, string]>
->;
-type NestedArrayTuple = Expect<
-  Equal<DeclarationTruth["nested"][number], readonly [number, string?]>
->;
-type NullableRemainsDistinct = Expect<Equal<DeclarationTruth["nullable"], string | null>>;
-type LiteralUnionPreserved = Expect<Equal<DeclarationTruth["literal"], "draft" | "ready">>;
-type MutableValue = Expect<Equal<DeclarationTruth["mutableValue"], number>>;
-type RecordPresentValue = Expect<Equal<DeclarationTruth["record"][string], number>>;
-type PickPresentValue = Expect<Equal<DeclarationTruth["picked"], number | "auto">>;
-type RecursivePresentValue = Expect<Equal<DeclarationTruth["recursive"], number>>;
-type ConstrainedPresentValue = Expect<Equal<DeclarationTruth["constrained"], number>>;
-type ConstrainedStringValue = Expect<Equal<DeclarationTruth["constrainedString"], string>>;
-type DeepPartialTuple = Expect<
-  Equal<NonNullable<DeclarationTruth["deep"]["tuple"]>, readonly [string?, number?]>
->;
-type DeepPartialArrayItem = Expect<
-  Equal<NonNullable<DeclarationTruth["deep"]["list"]>[number], { id?: number }>
->;
-type RootExcludesUndefined = Expect<Equal<undefined extends DeclarationTruth ? true : false, false>>;
-type SchemaValueAliasAgrees = Expect<
-  Equal<LiveMapSchemaValue<typeof declarationTruthSchema>, DeclarationTruth>
->;
-
-const schemaBoundMap = mapSubpath.fromJson({}).schema.use(declarationTruthSchema);
+declare const governanceSchema: HsonSchema;
+const schemaBoundMap = mapSubpath.fromJson({}).schema.use(governanceSchema);
 // @ts-expect-error LiveMap exposes no public live canonical-node debug escape.
 schemaBoundMap.debug.node([]);
 // @ts-expect-error Schema detachment through undefined is not part of the owner contract.
 schemaBoundMap.schema.use(undefined);
 // @ts-expect-error Schema owner contracts expose no reset operation.
 schemaBoundMap.schema.reset();
-const typedTupleItem = schemaBoundMap.at(["tupleTrailing", 0]).snap();
-const typedOptionalTupleItem = schemaBoundMap.at(["tupleTrailing", 1]).snap();
-const typedArrayItem = schemaBoundMap.at(["array", 0]).snap();
-const typedOptionalBranch = schemaBoundMap.at(["optionalBranch", "name"]).snap();
-const typedNullableBranch = schemaBoundMap.at(["nullableBranch", "name"]).snap();
-const typedOptionalNullableBranch = schemaBoundMap.at(["optionalNullableBranch", "name"]).snap();
-const typedSchemaLiteral = schemaBoundMap.at(["literal"]).snap();
-bindingTree.bind.text(schemaBoundMap.at(["literal"]), (value) => {
-  type SchemaLiteralBinding = Expect<Equal<typeof value, "draft" | "ready">>;
-  return value;
-});
-schemaBoundMap.at(["mutableValue"]).set(1);
-type LiteralTuplePathRemainsExact = Expect<Equal<typeof typedTupleItem, string>>;
-type OptionalTuplePathRemainsExact = Expect<Equal<typeof typedOptionalTupleItem, number | undefined>>;
-type ArrayPathIncludesRuntimeAbsence = Expect<Equal<typeof typedArrayItem, number | undefined>>;
-type SchemaOptionalBranchReachability = Expect<Equal<typeof typedOptionalBranch, string | undefined>>;
-type SchemaNullableBranchReachability = Expect<Equal<typeof typedNullableBranch, string | undefined>>;
-type SchemaOptionalNullableBranchReachability = Expect<Equal<typeof typedOptionalNullableBranch, string | undefined>>;
-type SchemaLiteralPathRemainsExact = Expect<Equal<typeof typedSchemaLiteral, "draft" | "ready">>;
-// @ts-expect-error Schema evidence rejects keys absent from the exact inferred shape.
-schemaBoundMap.at(["missingSchemaKey"]);
-
-const validOptionalObject: Pick<DeclarationTruth, "optionalObject"> = {};
-const validOptionalTuple: DeclarationTruth["tupleTrailing"] = ["ready"];
-const validNullable: DeclarationTruth["nullable"] = null;
-// @ts-expect-error Explicit undefined is not an admitted present optional object value.
-const invalidOptionalObject: Pick<DeclarationTruth, "optionalObject"> = { optionalObject: undefined };
-// @ts-expect-error Explicit undefined is not an admitted present array item.
-const invalidArrayItem: DeclarationTruth["array"] = [1, undefined];
-// @ts-expect-error Explicit undefined is not an admitted present optional tuple item.
-const invalidTupleItem: DeclarationTruth["tupleTrailing"] = ["ready", undefined];
-// @ts-expect-error Nullability does not imply optionality or admit undefined.
-const invalidNullable: DeclarationTruth["nullable"] = undefined;
-// @ts-expect-error The public schema facade rejects a non-schema input.
-mapSubpath.schema.make(42);
-// @ts-expect-error The public schema facade requires its factory to return a schema input.
-mapSubpath.schema.define(() => 42);
-void validOptionalObject;
-void validOptionalTuple;
-void validNullable;
-void invalidOptionalObject;
-void invalidArrayItem;
-void invalidTupleItem;
-void invalidNullable;
+const attachedSchema: HsonSchema | undefined = schemaBoundMap.schema.get();
+void attachedSchema;
 
 declare const node: HsonNode;
 declare const arbitrary: string;

@@ -1,4 +1,4 @@
-import type { LiveMapSchemaIssueCode, LivePath } from "../../types/livemap.types.js";
+import type { HsonSchemaIssueCode, LivePath } from "../../types/livemap.types.js";
 import type { CanonicalRefinementRule, CanonicalSchemaNodeRef } from "./graph.js";
 
 export type CanonicalGraphIssueEvidence = Readonly<{
@@ -23,7 +23,7 @@ export type CanonicalGraphIssueEvidence = Readonly<{
 }>;
 
 export type CanonicalGraphIssue = Readonly<{
-  code: LiveMapSchemaIssueCode;
+  code: HsonSchemaIssueCode;
   path: LivePath;
   schemaNode: CanonicalSchemaNodeRef;
   expected?: string;

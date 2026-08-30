@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
-import { hson } from "../../src/hson.ts";
+import { Hson, hson } from "../../src/index.ts";
 import { link_livemap } from "../../src/api/livemap/livemap.link.ts";
 import { make_livemap_store_api } from "../../src/api/livemap/livemap.store.ts";
-import { define_livemap_schema } from "../../src/api/livemap/livemap.schema.ts";
 import type { JsonValue, LiveMapCore } from "../../src/types/index.ts";
 
 export type OperatorClassification = "accept" | "no-op" | "change" | "conflict" | "rejection";
@@ -175,7 +174,7 @@ export function error_code(error: unknown): string {
 
 export function schema_number_map(): Map {
   const map = hson.liveMap.fromJson({ value: 1 });
-  map.schema.use(define_livemap_schema((s) => s.object({ value: s.number })));
+  map.schema.use(Hson`<type "data" content <value "number">>`);
   return map;
 }
 

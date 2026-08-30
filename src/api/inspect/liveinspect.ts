@@ -518,22 +518,7 @@ class InspectorController {
 
   public effectiveSchemaSummary(path: LivePath): string | undefined {
     if (!this.showSchema) return undefined;
-    const map = this.currentSource().map;
-    if (map === undefined) return undefined;
-    const resolution = map.schema.resolve(path);
-    if (resolution === undefined) return undefined;
-    const rule = resolution.rule;
-    const facets = [
-      rule.kind,
-      rule.optional ? "optional" : "required",
-      rule.nullable ? "nullable" : undefined,
-      rule.exact ? "exact" : undefined,
-      rule.literals?.length ? `choices: ${rule.literals.map((value) => JSON.stringify(value)).join(" | ")}` : undefined,
-    ].filter((value): value is string => value !== undefined);
-    const schema = map.schema.get();
-    const valid = schema?.validateValue(path, map.snap(path)).ok;
-    if (valid !== undefined) facets.push(valid ? "valid" : "invalid");
-    return facets.join(" · ");
+    return undefined;
   }
 
   public semanticContext(branch: BranchController): LiveInspectorSemanticContext {

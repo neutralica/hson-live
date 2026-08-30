@@ -248,7 +248,7 @@ type LocusReadonlyDataMap<TValue, TMap extends LiveMap<TValue>> = Pick<
   TMap,
   "mode" | "rev" | "root" | "snap" | "capture" | "commits" | "feed" | "sub"
 > & Readonly<{
-  schema: Pick<LiveMapCoreSchemaApi<TValue>, "get" | "match" | "resolve" | "has" | "must">;
+  schema: Pick<LiveMapCoreSchemaApi<TValue>, "get">;
   at: <const TPath extends LivePath>(
     path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
   ) => LocusReadonlyPathHandle<LiveMapPathValue<TValue, TPath>>;

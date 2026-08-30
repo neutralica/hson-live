@@ -1,24 +1,2 @@
-import { hson } from "../../src/hson.ts";
-import { capture_trusted_schema_template as capture, construct_trusted_schema_application as construct, attempt_trusted_schema_attachment as attempt } from "../../src/internal/trusted-schema-diagnostics/lifecycle-evidence.ts";
-export { hson };
-const define = hson.liveMap.schema.define;
-export const integer = define(s => s.literal({ "1": "a", "2": "b" }));
-export const ordinary = define(s => s.literal({ a: 1, b: 2 }));
-export const nested = define(s => s.object({ value: s.literal({ a: 1, b: 2 }) }));
-export const zero = define(s => s.literal(0));
-export const negativeZero = define(s => s.literal(-0));
-export const exact = define(s => s.object.exact({ age: s.number }));
-export const open = define(s => s.object({ age: s.number }));
-export const constrained = define(s => s.object({ age: s.number.constrain("positive age", n => n > 0) }));
-export const recursive = define(s => s.recurse(() => open));
-export const element = define(s => s.button());
-export const fragment = define(s => s.tuple(s.a(), s.b()));
-export const attrs = define(s => s.button(s.attrs({ count: s.number.optional, disabled: s.flag })));
-export const tuple = define(s => s.tuple(s.number, s.string));
-export const pick = define(s => s.pick(s.number, s.string));
-export const tagged = define(s => s.tagged("kind", { user: s.object({ age: s.number }) }));
-export const unknown = define(s => s.unknown);
-export const text = define(s => s.string);
-export const throwing = define(s => s.number.constrain(() => { throw new Error("constraint sentinel"); }));
-export const trustedSchemas = { integer, ordinary, nested, zero, negativeZero, exact, open, constrained, recursive, element, fragment, attrs, tuple, pick, tagged, unknown, text, throwing };
-attempt(construct(capture`<'2' "b" '1' "a">`), "integer", integer);
+// Retired callback/builder Schema coverage removed by the HsonSchema hard cut.
+export {};

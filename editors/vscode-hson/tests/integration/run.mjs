@@ -19,18 +19,12 @@ await mkdir(restrictedUserDataDir);
 await mkdir(restrictedExtensionsDir);
 await mkdir(workspaceDir);
 const hsonPath = resolve(here, "../../../../dist/hson.js");
-const contracts = `import { hson } from ${JSON.stringify(pathToFileURL(hsonPath).href)};
-import { writeFileSync } from "node:fs";
-export { hson };
-export const UserSchema = hson.liveMap.schema.define(s => s.object({ user: s.object({ age: s.number }) }));
-export const CompletionSchema = hson.liveMap.schema.define(s => s.object.exact({ name: s.string, role: s.literal("user", "admin"), enabled: s.boolean.optional }));
-export const ElementSchema = hson.liveMap.schema.define(s => s.div(s.attrs({ id: s.string, hidden: s.flag.optional }), s.repeat(s.button(s.empty))));
-export const SlowSchema = hson.liveMap.schema.define(s => s.recurse(() => {
-  writeFileSync(new URL("./completion-entered.txt", import.meta.url), "entered");
-  const until=Date.now()+400; while(Date.now()<until) {};
-  return s.object({ late: s.string });
-}));
-export const trustedSchemas = { runtimeHandle: UserSchema, completion: CompletionSchema, element: ElementSchema, slow: SlowSchema };
+const authoringPath = resolve(here, "../../../../dist/hson-authoring.js");
+const contracts = `import { Hson } from ${JSON.stringify(pathToFileURL(authoringPath).href)};
+export const UserSchema = Hson\`<type "data" content <user <content <age "number">>>>\`;
+export const CompletionSchema = Hson\`<type "data" content <name "string" role <union [<exact "user">, <exact "admin">]> enabled <optional "boolean">>>\`;
+export const ElementSchema = Hson\`<type "document" tag "div" attrs <id "string" hidden <flag <optional true>>> content <repeat <tag "button" content "empty">>>\`;
+export const SlowSchema = Hson\`<type "data" content <late "string">>\`;
 `;
 await writeFile(join(workspaceDir, "contracts.mjs"), contracts);
 for (const [file, schema, body] of [["completion-user.ts", "CompletionSchema", "< >"], ["completion-element.ts", "ElementSchema", "<div />"], ["completion-slow.ts", "SlowSchema", "< >"]]) {

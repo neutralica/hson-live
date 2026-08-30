@@ -1,6 +1,6 @@
 import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import assert from "node:assert/strict";
-import { hson } from "../../src/index.ts";
+import { Hson, hson } from "../../src/index.ts";
 import { create_locus_internal } from "../../src/api/locus/locus.core.ts";
 import { LocusAuthorityError } from "../../src/api/locus/locus.authority.ts";
 import { create_live_trace_collector } from "../../src/diagnostics/index.ts";
@@ -179,7 +179,7 @@ await check("retained mediated references and privileged mutation APIs are fence
   rejected(() => proxy.$_.set(1));
   rejected(() => array.push(2));
   assert.equal("debug" in map, false);
-  rejected(() => map.schema.use(hson.liveMap.schema.define((shape) => shape.object({ value: shape.number, items: shape.array(shape.number) }))));
+  rejected(() => map.schema.use(Hson`<type "data" content <value "number" items <array "number">>>`));
   rejected(() => map.restore(capture));
   rejected(() => map.replay(replayCommit));
   assert.deepEqual(map.snap(), { value: 0, items: [1] });
