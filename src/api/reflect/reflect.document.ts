@@ -555,6 +555,13 @@ export function reflect_document_in_runtime(
           throw cause;
         }
       },
+      rollback(): void {
+        if (!applied) return;
+        for (const claim of claimed.reverse()) claim.reservation.rollback();
+        claimed.length = 0;
+        appliedClaims.length = 0;
+        applied = false;
+      },
       release(): void {
         for (const claim of claims) claim.reservation.release();
       },
@@ -987,16 +994,21 @@ export function reflect_document_in_runtime(
           return registration?.owner === owner ? registration.persistedQuid : undefined;
         },
       );
+      let appliedIdentityClaims: readonly LiveMapDocumentIdentityAppliedClaim[] = Object.freeze([]);
       try {
         apply_document_structural_transaction(plan, () => {
+          // The final canonical overlay is already installed at publication.
+          // A structural reconciliation may re-register a moved subject against
+          // that overlay, so its preflighted runtime QUID must be present first.
+          appliedIdentityClaims = identityReservation?.apply() ?? Object.freeze([]);
           reconcile_correspondence_incrementally(commit.ops);
         });
-        identityReservation?.apply();
       } catch (cause) {
+        identityReservation?.rollback();
         prune_removed_registrations(plan.finalNodes);
         throw cause;
       }
-      for (const claim of identityReservation?.apply() ?? []) {
+      for (const claim of appliedIdentityClaims) {
         refresh_registration_at_path(claim.path);
       }
       for (const registration of registrations) validate_bound_registration(registration);

@@ -1,5 +1,6 @@
 import { clone_node } from "../../core/clone-node.js";
 import type { LiveMapAnyOp, LiveMapCommit, LiveMapRootMode } from "../../types/livemap.types.js";
+import type { LiveMapAggregateCommit } from "./livemap.library.js";
 
 export type LiveMapTransitionNotificationPolicy = "legacy" | "isolate";
 
@@ -11,8 +12,23 @@ export type PreparedLiveMapTransition = Readonly<{
   readonly mode: LiveMapRootMode;
 }>;
 
+/** Opaque prepared aggregate transition; never accepted by the legacy Locus boundary. @internal */
+export type PreparedLiveMapAggregateTransition = Readonly<{
+  readonly kind: "aggregate";
+  readonly commit: LiveMapAggregateCommit;
+  readonly baseRevision: number;
+  readonly nextRevision: number;
+  readonly libraryModes: readonly LiveMapRootMode[];
+}>;
+
 export type LiveMapTransitionAcceptance = Readonly<{
   commit: LiveMapCommit<LiveMapAnyOp>;
+  notificationFailureCount: number;
+}>;
+
+/** Internal acceptance result retaining the non-serializable aggregate commit. @internal */
+export type LiveMapAggregateTransitionAcceptance = Readonly<{
+  commit: LiveMapAggregateCommit;
   notificationFailureCount: number;
 }>;
 
@@ -48,6 +64,16 @@ type TransitionRecord = {
   notify: (commit: LiveMapCommit<LiveMapAnyOp>) => void;
 };
 
+type AggregateTransitionRecord = {
+  state: TransitionState;
+  baseRevision: number;
+  generation: number;
+  commit: LiveMapAggregateCommit;
+  baseStillCurrent: () => boolean;
+  install: () => void;
+  notify: (commit: LiveMapAggregateCommit) => void;
+};
+
 export type LiveMapTransitionPreparation = Readonly<{
   commit: LiveMapCommit<LiveMapAnyOp>;
   baseStillCurrent: () => boolean;
@@ -55,13 +81,33 @@ export type LiveMapTransitionPreparation = Readonly<{
   notify: (commit: LiveMapCommit<LiveMapAnyOp>) => void;
 }>;
 
+/** Internal aggregate preparation accepted by the same map-wide controller. @internal */
+export type LiveMapAggregateTransitionPreparation = Readonly<{
+  commit: LiveMapAggregateCommit;
+  libraryModes: readonly LiveMapRootMode[];
+  baseStillCurrent: () => boolean;
+  install: () => void;
+  notify: (commit: LiveMapAggregateCommit) => void;
+}>;
+
 export type LiveMapTransitionController = Readonly<{
   prepare: (preparation: LiveMapTransitionPreparation) => PreparedLiveMapTransition;
+  /** @internal */
+  prepareAggregate: (
+    preparation: LiveMapAggregateTransitionPreparation,
+  ) => PreparedLiveMapAggregateTransition;
   accept: (
     transition: PreparedLiveMapTransition,
     policy?: LiveMapTransitionNotificationPolicy,
   ) => LiveMapTransitionAcceptance;
+  /** @internal */
+  acceptAggregate: (
+    transition: PreparedLiveMapAggregateTransition,
+    policy?: LiveMapTransitionNotificationPolicy,
+  ) => LiveMapAggregateTransitionAcceptance;
   discard: (transition: PreparedLiveMapTransition) => void;
+  /** @internal */
+  discardAggregate: (transition: PreparedLiveMapAggregateTransition) => void;
   invalidate: () => void;
   assertPublicMutationAllowed: () => void;
   claimManagement: (owner: object, schedule: LiveMapManagedMutationScheduler<object>) => void;
@@ -93,6 +139,7 @@ export function make_livemap_transition_controller(
   getRevision: () => number,
 ): LiveMapTransitionController {
   const records = new WeakMap<PreparedLiveMapTransition, TransitionRecord>();
+  const aggregateRecords = new WeakMap<PreparedLiveMapAggregateTransition, AggregateTransitionRecord>();
   let generation = 0;
   let management: Readonly<{
     owner: object;
@@ -136,6 +183,49 @@ export function make_livemap_transition_controller(
       "LIVEMAP_TRANSITION_FOREIGN",
       "Prepared LiveMap transition belongs to another authority.",
     );
+  }
+
+  function aggregate_record_for(
+    transition: PreparedLiveMapAggregateTransition,
+  ): AggregateTransitionRecord {
+    const record = aggregateRecords.get(transition);
+    if (record !== undefined) return record;
+    throw new LiveMapTransitionError(
+      "LIVEMAP_TRANSITION_FOREIGN",
+      "Prepared aggregate LiveMap transition belongs to another authority.",
+    );
+  }
+
+  function prepareAggregate(
+    preparation: LiveMapAggregateTransitionPreparation,
+  ): PreparedLiveMapAggregateTransition {
+    const baseRevision = getRevision();
+    const commit = preparation.commit;
+    if (commit.prevRev !== baseRevision
+      || commit.rev !== (commit.changed ? baseRevision + 1 : baseRevision)
+      || preparation.libraryModes.length === 0) {
+      throw new LiveMapTransitionError(
+        "LIVEMAP_TRANSITION_INVALID",
+        "Prepared aggregate LiveMap transition revisions or libraries are invalid.",
+      );
+    }
+    const token = Object.freeze({
+      kind: "aggregate" as const,
+      commit,
+      baseRevision,
+      nextRevision: commit.rev,
+      libraryModes: Object.freeze([...preparation.libraryModes]),
+    });
+    aggregateRecords.set(token, {
+      state: "pending",
+      baseRevision,
+      generation,
+      commit,
+      baseStillCurrent: preparation.baseStillCurrent,
+      install: preparation.install,
+      notify: preparation.notify,
+    });
+    return token;
   }
 
   function accept(
@@ -212,10 +302,79 @@ export function make_livemap_transition_controller(
     record.state = "discarded";
   }
 
+  function acceptAggregate(
+    transition: PreparedLiveMapAggregateTransition,
+    policy: LiveMapTransitionNotificationPolicy = "legacy",
+  ): LiveMapAggregateTransitionAcceptance {
+    const record = aggregate_record_for(transition);
+    if (record.state === "accepted") {
+      throw new LiveMapTransitionError(
+        "LIVEMAP_TRANSITION_ALREADY_ACCEPTED",
+        "Prepared aggregate LiveMap transition was already accepted.",
+      );
+    }
+    if (record.state === "discarded") {
+      throw new LiveMapTransitionError(
+        "LIVEMAP_TRANSITION_DISCARDED",
+        "Prepared aggregate LiveMap transition was discarded.",
+      );
+    }
+    if (record.baseRevision !== getRevision()
+      || record.generation !== generation
+      || !record.baseStillCurrent()) {
+      throw new LiveMapTransitionError(
+        "LIVEMAP_TRANSITION_STALE",
+        "Prepared aggregate LiveMap transition is stale.",
+      );
+    }
+    if (record.commit.changed) {
+      try {
+        record.install();
+      } catch (cause) {
+        record.state = "discarded";
+        generation += 1;
+        throw new LiveMapTransitionError(
+          "LIVEMAP_TRANSITION_INVALID",
+          "Prepared aggregate LiveMap transition installation failed.",
+          { cause },
+        );
+      }
+      generation += 1;
+    }
+    record.state = "accepted";
+    let notificationFailureCount = 0;
+    if (record.commit.changed) {
+      if (policy === "legacy") {
+        record.notify(record.commit);
+      } else {
+        try {
+          record.notify(record.commit);
+        } catch {
+          notificationFailureCount = 1;
+        }
+      }
+    }
+    return Object.freeze({ commit: record.commit, notificationFailureCount });
+  }
+
+  function discardAggregate(transition: PreparedLiveMapAggregateTransition): void {
+    const record = aggregate_record_for(transition);
+    if (record.state === "accepted") {
+      throw new LiveMapTransitionError(
+        "LIVEMAP_TRANSITION_ALREADY_ACCEPTED",
+        "Accepted aggregate LiveMap transition cannot be discarded.",
+      );
+    }
+    if (record.state !== "discarded") record.state = "discarded";
+  }
+
   return Object.freeze({
     prepare,
+    prepareAggregate,
     accept,
+    acceptAggregate,
     discard,
+    discardAggregate,
     invalidate(): void {
       generation += 1;
     },

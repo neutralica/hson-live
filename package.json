@@ -201,6 +201,8 @@
     "test:livemap-projected-identity-lifecycle": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-projected-identity-lifecycle.acceptance.mts",
     "test:livemap-projected-identity-closure": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-projected-identity-closure.acceptance.mts",
     "test:livemap-issued-quid-ledger": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-issued-quid-ledger.acceptance.mts",
+    "test:livemap-library-ownership": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-library-ownership.acceptance.mts",
+    "test:livemap-aggregate-library-transitions": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-aggregate-library-transitions.acceptance.mts",
     "test:livemap-identity-aba-prevention": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-identity-aba-prevention.acceptance.mts",
     "test:livemap-identity-replay-provenance": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-identity-replay-provenance.acceptance.mts",
     "test:livemap-document": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-document.acceptance.mts",

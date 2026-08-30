@@ -37,6 +37,8 @@ export type LiveMapDocumentIdentityAppliedClaim = Readonly<{
 export type LiveMapDocumentIdentityCommitReservation = Readonly<{
   readonly applied: boolean;
   apply: () => readonly LiveMapDocumentIdentityAppliedClaim[];
+  /** Undo claims installed for an observer path that did not complete. */
+  rollback: () => void;
   release: () => void;
 }>;
 
