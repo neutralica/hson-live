@@ -76,20 +76,28 @@ function run_cycle(selected: Exclude<Mode, "watch">): void {
   if (diagnostics.length > 0) report_and_fail(diagnostics);
 
   let tsMs = 0;
+  let tsIncrementalMs = 0;
   if (selected === "check" || selected === "build") {
     const tsStarted = performance.now();
     const command = check_with_overlays(config, staticAnalysis.overlays, selected === "build");
     tsMs = performance.now() - tsStarted;
     if (!command.ok) fail(command.message);
+    if (selected === "check") {
+      const incrementalStarted = performance.now();
+      const incremental = ts.getPreEmitDiagnostics(command.program);
+      tsIncrementalMs = performance.now() - incrementalStarted;
+      if (incremental.length > 0) fail(incremental.map((entry) => format_ts_diagnostic(entry)).join("\n"));
+    }
   }
   const graphNodes = schemaDeclarations.reduce((count, declaration) => count + declaration.compiled.canonicalNodeCount, 0);
   const documentGraphNodes = schemaDeclarations.reduce((count, declaration) => count + declaration.compiled.graph.nodes.filter((node) => node.kind.startsWith("document-")).length, 0);
   const generatedBytes = artifacts.reduce((count, artifact) => count + artifact.generatedBytes, 0);
   const proofNodes = artifacts.reduce((count, artifact) => count + artifact.proofNodeCount, 0);
+  const refinementCount = schemaDeclarations.reduce((count, declaration) => count + declaration.compiled.graph.nodes.filter((node) => node.kind === "projected-refinement").length, 0);
   const freshnessBytes = artifacts.reduce((count, artifact) => count + Buffer.byteLength(artifact.metadata), 0);
   const memory = process.memoryUsage();
   const sourceProvenanceBytes = schemaDeclarations.reduce((count, declaration) => count + Buffer.byteLength(declaration.source), 0);
-  console.log(JSON.stringify({ hsonSchema: selected, schemas: schemaDeclarations.length, canonicalNodes: graphNodes, canonicalDocumentNodes: documentGraphNodes, generatedDeclarationBytes: generatedBytes, proofNodes, staticHsonValidations: staticCount, staticDocumentValidations: staticAnalysis.documentCount, analyzerColdMs: round(performance.now() - coldStart), analyzerWarmMs: round(analyzerWarmMs), staticValidationMs: round(staticMs), typescriptColdMs: round(tsMs), checkerHeapBytes: memory.heapUsed, checkerRssBytes: memory.rss, freshnessArtifactBytes: freshnessBytes, sourceProvenanceBytes, totalMs: round(performance.now() - started) }));
+  console.log(JSON.stringify({ hsonSchema: selected, schemas: schemaDeclarations.length, canonicalNodes: graphNodes, canonicalDocumentNodes: documentGraphNodes, refinementCount, generatedDeclarationBytes: generatedBytes, proofNodes, staticHsonValidations: staticCount, staticDocumentValidations: staticAnalysis.documentCount, analyzerColdMs: round(performance.now() - coldStart), analyzerWarmMs: round(analyzerWarmMs), staticValidationMs: round(staticMs), typescriptColdMs: round(tsMs), typescriptIncrementalMs: round(tsIncrementalMs), checkerHeapBytes: memory.heapUsed, checkerRssBytes: memory.rss, freshnessArtifactBytes: freshnessBytes, sourceProvenanceBytes, totalMs: round(performance.now() - started) }));
 }
 
 function discover_schemas(program: ts.Program, checker: ts.TypeChecker): SchemaDeclaration[] {
@@ -212,7 +220,7 @@ function identifier_resolves_to(identifier: ts.Identifier, checker: ts.TypeCheck
   return symbol?.declarations?.includes(expected) === true;
 }
 
-function check_with_overlays(config: ts.ParsedCommandLine, overlays: readonly Overlay[], emit: boolean): Readonly<{ ok: true } | { ok: false; message: string }> {
+function check_with_overlays(config: ts.ParsedCommandLine, overlays: readonly Overlay[], emit: boolean): Readonly<{ ok: true; program: ts.Program } | { ok: false; message: string }> {
   const grouped = new Map<string, Overlay[]>();
   for (const overlay of overlays) { const group = grouped.get(resolve(overlay.file)) ?? []; group.push(overlay); grouped.set(resolve(overlay.file), group); }
   const options: ts.CompilerOptions = { ...config.options, noEmit: !emit };
@@ -233,7 +241,7 @@ function check_with_overlays(config: ts.ParsedCommandLine, overlays: readonly Ov
     const result = checked.emit();
     if (result.emitSkipped) return { ok: false, message: result.diagnostics.map((entry) => format_ts_diagnostic(entry)).join("\n") || "TypeScript emit was skipped." };
   }
-  return { ok: true };
+  return { ok: true, program: checked };
 }
 
 function format_ts_diagnostic(diagnostic: ts.Diagnostic): string {

@@ -5,10 +5,13 @@ export const UserSchema: HsonSchema = Hson`
     name "string"
     nickname <optional "string">
     score "number"
+    age <number <int true min 0 under 130>>
+    percent <number <min 0 max 100>>
+    code <string <len 4 prefix "ID" contains "-" suffix "7">>
     status <exact "ready">
     zero <exact 0>
     negativeZero <exact -0>
-    flags <array "boolean">
+    flags <array <content "boolean" unique true minlen 1 maxlen 3>>
     pair <tuple ["string", "number"]>
     account <union [
       <content <kind <exact "user"> handle "string">>,

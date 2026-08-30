@@ -41,6 +41,75 @@ check("bootstrap has a deterministic authored Hson machine representation", () =
   const decoded = decode_canonical_schema_graph_hson(authored);
   assert.equal(decoded.ok, true); if (decoded.ok) assert.deepEqual(decoded.graph, HSON_SCHEMA_MVP_BOOTSTRAP);
 });
+check("approved refinements lower directly to canonical rules", () => {
+  const source = 'age <number <int true min 0 max 130 over -1 under 131>> code <string <len 4 prefix "ID" suffix "7" contains "-">> names <array <content "string" unique true minlen 1 maxlen 3>> pair <tuple <content ["string", "number"] len 2>>';
+  const result = compile(source), repeated = compile(source);
+  assert.equal(result.ok, true);
+  assert.equal(repeated.ok, true);
+  if (result.ok && repeated.ok) {
+    assert.deepEqual(result.value.graph, repeated.value.graph);
+    assert.deepEqual(result.value.graph.nodes.filter((node) => node.kind === "projected-refinement").map((node) => node.kind === "projected-refinement" ? node.rule : undefined), [
+    { kind: "integer" },
+    { kind: "number-lower-bound", value: 0, inclusive: true },
+    { kind: "number-upper-bound", value: 130, inclusive: true },
+    { kind: "number-lower-bound", value: -1, inclusive: false },
+    { kind: "number-upper-bound", value: 131, inclusive: false },
+    { kind: "string-pattern", dialect: "literal-string-v1", mode: "prefix", pattern: "ID" },
+    { kind: "string-pattern", dialect: "literal-string-v1", mode: "suffix", pattern: "7" },
+    { kind: "string-pattern", dialect: "literal-string-v1", mode: "contains", pattern: "-" },
+    { kind: "string-length", minimum: 4, maximum: 4 },
+    { kind: "array-unique" },
+    { kind: "collection-length", minimum: 1, maximum: 3 },
+    { kind: "collection-length", minimum: 2, maximum: 2 },
+    ]);
+  }
+});
+check("refinement grammar rejects illegal domains and malformed operands", () => {
+  for (const body of [
+    'x <number <prefix "x">>', 'x <string <int true>>', 'x <array <content "string" prefix "x">>',
+    'x <tuple <content ["string"] unique true>>', 'x <number <int false>>', 'x <number <min "0">>',
+    'x <string <len -1>>', 'x <string <minlen 3 maxlen 2>>', 'x <string <len 2 minlen 1>>',
+    'x <array <unique true>>', 'x <number <minimum 0>>', 'x <number <min 2 under 2>>',
+    'x <number <int true over 0 under 1>>', 'x <string <prefix <exact "x">>>',
+  ]) assert.equal(compile(body).ok, false, body);
+});
+check("duplicate refinement members fail in the Hson parser", () => assert.equal(compile('x <number <min 0 min 1>>').ok, false));
+check("refinement diagnostics retain exact authored source provenance", () => {
+  const result = compile('x <number <min "bad">>');
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.deepEqual(result.issues[0]?.path, ["content", "x", "number", "min"]);
+    assert.ok(result.issues[0]?.range !== undefined);
+  }
+});
+check("refinement evaluation covers numeric, Unicode, literals, length, and uniqueness", () => {
+  const schema: HsonSchema = Hson`<type "data" content <age <number <int true min 0 under 130>> code <string <len 4 prefix "ID" suffix "7" contains "-">> glyph <string <len 1>> values <array <content "number" unique true minlen 1 maxlen 2>>>>`;
+  const valid = Hson`<age 0 code "ID-7" glyph "😀" values [0, -0]>`;
+  assert.equal(Hson.certify(schema, valid), valid);
+  const dynamic = hsonTransform.fromJson({ age: 12, code: "ID-7", glyph: "😀", values: [1, 2] }).toHson().serialize();
+  assert.equal(Hson.certify(schema, dynamic), dynamic);
+  const invalidDynamic = hsonTransform.fromJson({ age: 12.5, code: "ID-7", glyph: "😀", values: [1, 1] }).toHson().serialize();
+  assert.throws(() => Hson.certify(schema, invalidDynamic));
+  for (const invalid of [
+    Hson`<age 1.5 code "ID-7" glyph "😀" values [1]>`,
+    Hson`<age -1 code "ID-7" glyph "😀" values [1]>`,
+    Hson`<age 130 code "ID-7" glyph "😀" values [1]>`,
+    Hson`<age 1 code "XX-7" glyph "😀" values [1]>`,
+    Hson`<age 1 code "ID-X" glyph "😀" values [1]>`,
+    Hson`<age 1 code "ID77" glyph "😀" values [1]>`,
+    Hson`<age 1 code "ID--7" glyph "😀" values [1]>`,
+    Hson`<age 1 code "ID-7" glyph "é" values [1]>`,
+    Hson`<age 1 code "ID-7" glyph "😀" values []>`,
+    Hson`<age 1 code "ID-7" glyph "😀" values [1, 1]>`,
+  ]) assert.throws(() => Hson.certify(schema, invalid));
+  const bounds: HsonSchema = Hson`<type "data" content <n <number <over 0 max 2>>>>`;
+  assert.doesNotThrow(() => Hson.certify(bounds, Hson`<n 1>`));
+  assert.doesNotThrow(() => Hson.certify(bounds, Hson`<n 2>`));
+  assert.throws(() => Hson.certify(bounds, Hson`<n 0>`));
+  assert.throws(() => Hson.certify(bounds, Hson`<n 3>`));
+  const empty: HsonSchema = Hson`<type "data" content <s <string <len 0 prefix "" suffix "" contains "">> xs <array <content "number" len 0 unique true>>>>`;
+  assert.doesNotThrow(() => Hson.certify(empty, Hson`<s "" xs []>`));
+});
 check("runtime validation returns unchanged canonical identity", () => {
   const schema: HsonSchema = Hson`<type "data" content <name "string" score "number">>`;
   const candidate = Hson`<name "Ada" score 37>`;

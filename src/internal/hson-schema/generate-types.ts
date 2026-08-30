@@ -10,15 +10,20 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
   let proofNodeCount = 0;
   const proofDeclarations: string[] = [];
   const proof = (label: string): string => {
-    const className = `__${name}${label}Proof${proofNodeCount}`;
+    const proofIndex = proofNodeCount;
+    const className = `__${name}${label}Proof${proofIndex}`;
     proofNodeCount += 1;
-    proofDeclarations.push(`abstract class ${className} { declare private readonly __hsonSchemaProof: void; }`);
+    proofDeclarations.push(`abstract class ${className} { declare private readonly __hsonSchemaProof${proofIndex}: void; }`);
     return className;
   };
+  const refined = (base: string, schema: Extract<HsonSchemaDataSemanticNode, { refinements: readonly unknown[] }>, path: string): string => schema.refinements.reduce(
+    (type, refinement, index) => `${type} & ${proof(`${path}${refinement.member[0]?.toUpperCase() ?? "R"}${refinement.member.slice(1)}R${index}`)}`,
+    base,
+  );
   const emitData = (schema: HsonSchemaDataSemanticNode, path: string): string => {
     switch (schema.kind) {
-      case "string": return "string";
-      case "number": return "HsonNumber";
+      case "string": return refined("string", schema, path);
+      case "number": return refined("HsonNumber", schema, path);
       case "boolean": return "boolean";
       case "null": return "null";
       case "exact": {
@@ -32,8 +37,8 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
         const fields = schema.members.map((member, index) => `readonly ${property_name(member.name)}${member.optional ? "?" : ""}: ${emitData(member.schema, `${path}M${index}`)};`).join(" ");
         return `Readonly<{ ${fields} }> & ${proof(`${path}Object`)}`;
       }
-      case "array": return `ReadonlyArray<${emitData(schema.item, `${path}Item`)}> & ${proof(`${path}Array`)}`;
-      case "tuple": return `readonly [${schema.items.map((item, index) => emitData(item, `${path}T${index}`)).join(", ")}] & ${proof(`${path}Tuple`)}`;
+      case "array": return refined(`ReadonlyArray<${emitData(schema.item, `${path}Item`)}> & ${proof(`${path}Array`)}`, schema, path);
+      case "tuple": return refined(`readonly [${schema.items.map((item, index) => emitData(item, `${path}T${index}`)).join(", ")}] & ${proof(`${path}Tuple`)}`, schema, path);
       case "union": return schema.choices.map((choice, index) => `(${emitData(choice, `${path}U${index}`)})`).join(" | ");
     }
   };
