@@ -6,6 +6,7 @@ import { TrustedSchemaClient, type SchemaStatus } from "./trusted-schema-client.
 import { start_schema_diagnostics } from "./schema-diagnostics.js";
 import { TrustedSchemaInfrastructureError } from "../../../src/internal/trusted-schema-diagnostics/node-supervisor.js";
 import { schema_provider_source_changed } from "./schema-source-revision.js";
+import { local_hson_schema_diagnostics } from "./hson-schema-local.js";
 
 import {
   start_diagnostics,
@@ -67,6 +68,20 @@ function explicitAppearanceColor(
 export function activate(context: vscode.ExtensionContext): void {
   const collection = vscode.languages.createDiagnosticCollection("hson");
   context.subscriptions.push(collection);
+
+  const localSchemaCollection = vscode.languages.createDiagnosticCollection("hson-schema-authoring");
+  const publishLocalSchema = (document: vscode.TextDocument): void => {
+    if (document.languageId !== "typescript" && document.languageId !== "typescriptreact") return;
+    localSchemaCollection.set(document.uri, local_hson_schema_diagnostics(document.fileName, document.getText()).map(spec => {
+      const diagnostic = new vscode.Diagnostic(new vscode.Range(document.positionAt(spec.start), document.positionAt(spec.end)), spec.message, vscode.DiagnosticSeverity.Error);
+      diagnostic.source = "Hson Schema"; diagnostic.code = spec.code; return diagnostic;
+    }));
+  };
+  for (const document of vscode.workspace.textDocuments) publishLocalSchema(document);
+  context.subscriptions.push(localSchemaCollection,
+    vscode.workspace.onDidOpenTextDocument(publishLocalSchema),
+    vscode.workspace.onDidChangeTextDocument(event => publishLocalSchema(event.document)),
+    vscode.workspace.onDidCloseTextDocument(document => localSchemaCollection.delete(document.uri)));
 
   const host: DiagnosticHost = {
     openDocuments: () => vscode.workspace.textDocuments.map(adaptDocument),

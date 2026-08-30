@@ -18,6 +18,7 @@
     "../dist",
     "../node_modules",
     "../src/_refactor/**/*",
+    "./fixtures/hson-schema-mvp/**/*",
     "./entrypoints/**/*",
     "./runtime-probes/**/*"
   ]

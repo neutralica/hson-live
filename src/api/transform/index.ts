@@ -10,6 +10,7 @@ export {
 export type {
   BinaryDecodeOptions,
   HsonCanonical,
+  HsonSchema,
   HsonTransformSource,
   OutputConstructor_2,
   TransformFrameOptions,

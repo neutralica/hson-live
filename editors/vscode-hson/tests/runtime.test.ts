@@ -14,6 +14,7 @@ import {
   type DiagnosticPublisher,
   type Disposable,
 } from "../src/diagnostics.js";
+import { local_hson_schema_diagnostics } from "../src/hson-schema-local.js";
 
 let checks = 0;
 function check(name: string, body: () => void): void {
@@ -99,6 +100,13 @@ check("standalone astral point spans the complete surrogate pair", () => {
 });
 
 const officialImport = 'import { Hson, hson } from "hson-live";';
+
+check("local Hson Schema diagnostics reuse the proof compiler without workspace execution", () => {
+  const valid = 'import { Hson, type HsonSchema } from "hson-live"; export const S: HsonSchema = Hson`<type "data" content <name "string">>`; throw new Error("not executed");';
+  const invalid = valid.replace('name "string"', 'name <literal "x">');
+  assert.deepEqual(local_hson_schema_diagnostics("/workspace/schema.ts", valid), []);
+  assert.equal(local_hson_schema_diagnostics("/workspace/schema.ts", invalid)[0]?.code, "UNKNOWN_SCHEMA_MEMBER");
+});
 
 check("valid direct official template has no diagnostics", () => {
   const text = `${officialImport}\nconst page = Hson\`<main\n  <h1 "Hello">\n>\`;`;

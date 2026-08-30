@@ -9,6 +9,6 @@ export const Hson = Object.freeze(Object.assign(admit_hson, {
   validate: validate_canonical_hson,
 }));
 
-export type { HsonCanonical } from "./api/transform/transform.types.js";
+export type { HsonCanonical, HsonSchema } from "./api/transform/transform.types.js";
 export { TransformError, is_transform_error, read_transform_error_details } from "./core/errors.js";
 export type { TransformErrorDetails, TransformErrorRelated, TransformErrorSource } from "./core/errors.js";

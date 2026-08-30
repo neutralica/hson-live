@@ -5,6 +5,7 @@ export { hson, hsonCalc, hsonLocus, hsonTransform, hsonLiveMap, hsonLiveTree, hs
 export type {
     BinaryDecodeOptions,
     TransformBinarySerialize,
+    HsonSchema,
 } from "./api/transform/transform.types.js";
 export {
     TransformError,

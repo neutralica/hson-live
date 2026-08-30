@@ -21,6 +21,17 @@ export type HsonCanonical = string & {
   readonly [HSON_CANONICAL_BRAND]: true;
 };
 
+declare const HSON_SCHEMA_SOURCE_DESIGNATION: unique symbol;
+
+/**
+ * Canonical Hson source designated for authoritative Hson Schema checking.
+ * The optional marker deliberately does not certify the source at runtime;
+ * certification is established by the supported Schema analyzer/build.
+ */
+export type HsonSchema = HsonCanonical & {
+  readonly [HSON_SCHEMA_SOURCE_DESIGNATION]?: never;
+};
+
 export type TransformRenderFormat = (typeof $RENDER)[keyof typeof $RENDER];
 export type TransformOutputRenderFormat =
   | (typeof $RENDER)["JSON"]
