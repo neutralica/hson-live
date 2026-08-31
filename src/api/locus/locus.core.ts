@@ -37,6 +37,7 @@ import { decode_locus_message, encode_locus_message, is_locus_json_value } from 
 import { make_locus_sync_manager } from "./locus.sync.js";
 import { make_locus_canonical_stream_runtime } from "./locus.history.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
+import { is_public_multi_library_livemap } from "../livemap/livemap.libraries.js";
 import { livemap_projected_propagation } from "../livemap/livemap.projected-propagation.js";
 import { encode_projected_value_transport } from "../livemap/livemap.transport.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
@@ -224,6 +225,9 @@ export function create_locus(
   }
   const options = input as ProjectedLocusOptions | LocusOptions<LiveMapAuthority>;
   if ("map" in options && options.map !== undefined) {
+    if (is_public_multi_library_livemap(options.map)) {
+      throw new Error("Hosted/Locus multi-library LiveMap support is not yet available.");
+    }
     if ("state" in options) {
       throw new TypeError("Locus options state and map are mutually exclusive.");
     }
@@ -269,6 +273,9 @@ function create_locus_for_map<
     initialHistory?: Readonly<{ baseRevision: number; commits: readonly LocusCanonicalCommit[] }>;
   }> = {},
 ): Locus<TMap, TActions> {
+  if (is_public_multi_library_livemap(map)) {
+    throw new Error("Hosted/Locus multi-library LiveMap support is not yet available.");
+  }
   const locusOwner = Object.freeze({});
   const readonlyMap = map as Locus<TMap, TActions>["map"];
   const activity = make_locus_activity_controller();

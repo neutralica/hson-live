@@ -19,7 +19,7 @@ const { resolve_document_schema_issue_source } = await import(`${runtimeBase}/in
 
 type Mode = "generate" | "verify" | "check" | "build" | "watch";
 type SchemaDeclaration = Readonly<{ sourceFile: ts.SourceFile; statement: ts.VariableStatement; declaration: ts.VariableDeclaration; name: string; source: string; compiled: CompiledHsonSchema }>;
-type Artifact = Readonly<{ path: string; content: string; metadataPath: string; metadata: string; reexport: string; generatedBytes: number; proofNodeCount: number }>;
+type Artifact = Readonly<{ path: string; content: string; metadataPath: string; metadata: string; reexport: string; schemaAssociation: string; generatedBytes: number; proofNodeCount: number }>;
 type Diagnostic = Readonly<{ file?: string; start?: number; message: string }>;
 type Overlay = Readonly<{ file: string; start: number; end: number; text: string }>;
 
@@ -172,7 +172,21 @@ function make_artifact(schema: SchemaDeclaration): Artifact {
   const reexport = has_export(schema.statement)
     ? `${localBinding}\nexport type { ${generatedNames} };`
     : localBinding;
-  return Object.freeze({ path: artifactPath, content, metadataPath: `${stem}.${schema.name}.hson-schema.generated.json`, metadata, reexport, generatedBytes: Buffer.byteLength(content), proofNodeCount: generated.proofNodeCount });
+  const annotation = schema_annotation(schema);
+  const schemaAssociation = `${annotation.typeName.getText(schema.sourceFile)}<${schema.name}Type, ${JSON.stringify(schema_mode(schema))}>`;
+  return Object.freeze({ path: artifactPath, content, metadataPath: `${stem}.${schema.name}.hson-schema.generated.json`, metadata, reexport, schemaAssociation, generatedBytes: Buffer.byteLength(content), proofNodeCount: generated.proofNodeCount });
+}
+
+function schema_mode(schema: SchemaDeclaration): "data" | "document" {
+  return schema.compiled.semantic.kind === "document" || schema.compiled.semantic.kind === "document-element"
+    ? "document"
+    : "data";
+}
+
+function schema_annotation(schema: SchemaDeclaration): ts.TypeReferenceNode {
+  const annotation = schema.declaration.type;
+  if (annotation !== undefined && ts.isTypeReferenceNode(annotation)) return annotation;
+  throw new Error(`${schema.sourceFile.fileName}: ${schema.name} lost its HsonSchema annotation.`);
 }
 
 function artifact_source_path(schema: SchemaDeclaration): string {
@@ -311,27 +325,55 @@ function reconcile_generated_lifecycle(
   }
 
   const exportsBySource = new Map<string, string[]>();
+  const associationsBySource = new Map<string, Array<Readonly<{ declaration: ts.VariableDeclaration; text: string }>>>();
   for (let index = 0; index < schemas.length; index += 1) {
     const schema = schemas[index] as SchemaDeclaration;
     const artifact = artifacts[index] as Artifact;
     const entries = exportsBySource.get(schema.sourceFile.fileName) ?? [];
     entries.push(artifact.reexport);
     exportsBySource.set(schema.sourceFile.fileName, entries);
+    const associations = associationsBySource.get(schema.sourceFile.fileName) ?? [];
+    associations.push(Object.freeze({ declaration: schema.declaration, text: artifact.schemaAssociation }));
+    associationsBySource.set(schema.sourceFile.fileName, associations);
   }
   for (const fileName of config.fileNames) {
     if (!/\.[cm]?tsx?$/.test(fileName) || fileName.includes(".hson-schema.generated.")) continue;
     const source = readFileSync(fileName, "utf8");
+    const associated = apply_generated_schema_associations(
+      source,
+      associationsBySource.get(fileName) ?? [],
+    );
     const expected = generated_exports_block(exportsBySource.get(fileName) ?? []);
     const actual = generated_exports_block_from_source(source);
     if (selected === "generate") {
-      if (actual === expected) continue;
-      const without = remove_generated_exports_block(source).trimEnd();
+      if (source === associated && actual === expected) continue;
+      const without = remove_generated_exports_block(associated).trimEnd();
       const next = expected === "" ? `${without}\n` : `${without}\n\n${expected}`;
       if (next !== source) writeFileSync(fileName, next);
-    } else if (actual !== expected) {
-      diagnostics.push({ file: fileName, message: `Generated Hson Schema type exports are missing or stale. Run hson-schema generate --project ${projectArg}.` });
+    } else {
+      if (source !== associated) {
+        diagnostics.push({ file: fileName, message: `Generated Hson Schema value associations are missing or stale. Run hson-schema generate --project ${projectArg}.` });
+      }
+      if (actual !== expected) {
+        diagnostics.push({ file: fileName, message: `Generated Hson Schema type exports are missing or stale. Run hson-schema generate --project ${projectArg}.` });
+      }
     }
   }
+}
+
+function apply_generated_schema_associations(
+  source: string,
+  associations: readonly Readonly<{ declaration: ts.VariableDeclaration; text: string }>[],
+): string {
+  let output = source;
+  for (const association of [...associations].sort((left, right) => (
+    (right.declaration.type?.getStart() ?? -1) - (left.declaration.type?.getStart() ?? -1)
+ ))) {
+    const annotation = association.declaration.type;
+    if (annotation === undefined) continue;
+    output = output.slice(0, annotation.getStart()) + association.text + output.slice(annotation.getEnd());
+  }
+  return output;
 }
 
 function generated_exports_block(exports: readonly string[]): string {

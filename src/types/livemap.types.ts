@@ -1,7 +1,7 @@
 // livemap.types.ts
 
 import type { CanonicalPublicAttrs, CanonicalPublicAttrValue, HsonNode, JsonValue, NodeContent, Primitive } from "../core/types.js";
-import type { HsonSchema } from "../api/transform/transform.types.js";
+import type { HsonSchema, HsonSchemaMode } from "../api/transform/transform.types.js";
 import type {
   DocumentAttrsEvidence,
   DocumentAttrValueEvidence,
@@ -1321,6 +1321,139 @@ export type LiveMapAuthority = Readonly<{
 
 /** Result of Hson/node construction after canonical root classification. */
 export type ClassifiedLiveMap = LiveMap | DocumentLiveMap;
+
+/** One explicit initial library input for a public multi-library LiveMap. */
+export type LiveMapDataLibraryInput<
+  TSchema extends HsonSchema<unknown, HsonSchemaMode> = HsonSchema<unknown, HsonSchemaMode>,
+> = Readonly<{
+  /** Existing `fromJson` input: a JSON value or JSON source text. */
+  data: JsonValue | string;
+  schema: TSchema;
+  document?: never;
+}>;
+
+/** One explicit initial document library input for a public multi-library LiveMap. */
+export type LiveMapDocumentLibraryInput<
+  TSchema extends HsonSchema<unknown, HsonSchemaMode> = HsonSchema<unknown, HsonSchemaMode>,
+> = Readonly<{
+  /** Existing `fromHson`/`fromNode` material: Hson source text or a canonical node. */
+  document: string | HsonNode;
+  schema: TSchema;
+  data?: never;
+}>;
+
+/** Discriminated initial material for one statically named Library. */
+export type LiveMapLibraryInput =
+  | LiveMapDataLibraryInput
+  | LiveMapDocumentLibraryInput;
+
+/** The complete static registry accepted by `hsonLiveMap.fromLibraries(...)`. */
+export type LiveMapLibrariesInput = Readonly<Record<string, LiveMapLibraryInput>>;
+
+/** Recover the generated value type mechanically associated with a Schema. */
+export type HsonSchemaValue<TSchema extends HsonSchema> =
+  TSchema extends HsonSchema<infer TValue, HsonSchemaMode>
+    ? TValue
+    : unknown;
+
+/** One publicly named operation in the map-wide ordered commit stream. */
+export type LiveMapLibraryOperation<
+  TLibrary extends string = string,
+  TOperation extends LiveMapAnyOp = LiveMapAnyOp,
+> = Readonly<{
+  library: TLibrary;
+  operation: TOperation;
+}>;
+
+/**
+ * A truthful local multi-library commit. `operations` is one ordered stream;
+ * it may contain one or several library names and always advances one map-wide
+ * revision.
+ */
+export type LiveMapMultiLibraryCommit<
+  TLibrary extends string = string,
+  TOperation extends LiveMapAnyOp = LiveMapAnyOp,
+> = Readonly<{
+  kind: "multi-library";
+  changed: boolean;
+  prevRev: number;
+  rev: number;
+  operations: readonly LiveMapLibraryOperation<TLibrary, TOperation>[];
+}>;
+
+/** One selected data handle relative to its Library, never to a library name path segment. */
+export type LiveMapLibraryPathHandle<
+  TValue = JsonValue | undefined,
+  TLibrary extends string = string,
+> = Readonly<{
+  readonly rev: number;
+  path: () => LivePath;
+  snap: () => TValue;
+  at: <const TPath extends LivePath>(
+    path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
+  ) => LiveMapLibraryPathHandle<LiveMapPathValue<TValue, TPath>, TLibrary>;
+  set: (value: LiveMapSetValue<TValue>) => LiveMapMultiLibraryCommit<TLibrary, LiveMapDataOp>;
+  replace: (value: LiveMapWriteValue<TValue>) => LiveMapMultiLibraryCommit<TLibrary, LiveMapDataOp>;
+  delete: () => LiveMapMultiLibraryCommit<TLibrary, LiveMapDataOp>;
+  update: (updater: (value: TValue) => LiveMapSetValue<TValue>) => LiveMapMultiLibraryCommit<TLibrary, LiveMapDataOp>;
+}>;
+
+/** Read authority for one selected data Library. */
+export type LiveMapDataLibrary<
+  TValue = JsonValue | undefined,
+  TLibrary extends string = string,
+  TSchema extends HsonSchema = HsonSchema,
+> = Readonly<{
+  readonly mode: DataLiveMapMode;
+  readonly rev: number;
+  root: () => HsonNode;
+  snap: {
+    (): TValue;
+    <const TPath extends LivePath>(
+      path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
+    ): LiveMapPathValue<TValue, TPath>;
+  };
+  at: <const TPath extends LivePath>(
+    path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
+  ) => LiveMapLibraryPathHandle<LiveMapPathValue<TValue, TPath>, TLibrary>;
+  schema: Readonly<{ get: () => TSchema }>;
+}>;
+
+/** Read authority for one selected document Library. Document controllers remain solo-only. */
+export type LiveMapDocumentLibrary<
+  TValue = unknown,
+  TSchema extends HsonSchema = HsonSchema,
+> = Readonly<{
+  readonly mode: DocumentLiveMapMode;
+  readonly rev: number;
+  root: () => HsonNode;
+  schema: Readonly<{ get: () => TSchema }>;
+}>;
+
+type LiveMapLibraryFacadeForInput<TInput, TLibrary extends string> =
+  TInput extends LiveMapDataLibraryInput<infer TSchema>
+    ? LiveMapDataLibrary<HsonSchemaValue<TSchema>, TLibrary, TSchema>
+    : TInput extends LiveMapDocumentLibraryInput<infer TSchema>
+      ? LiveMapDocumentLibrary<HsonSchemaValue<TSchema>, TSchema>
+      : never;
+
+/** The single global observer surface for a local multi-library LiveMap. */
+export type LiveMapMultiLibraryCommitObserverApi<TLibrary extends string = string> = Readonly<{
+  observe: (listener: (commit: LiveMapMultiLibraryCommit<TLibrary>) => void) => LiveMapDisposer;
+}>;
+
+/**
+ * A statically established collection of canonical Libraries. It has no
+ * default root and intentionally exposes neither topology mutation nor Locus
+ * authority in this first local release.
+ */
+export type LiveMapLibraries<TLibraries extends LiveMapLibrariesInput = LiveMapLibrariesInput> = Readonly<{
+  readonly rev: number;
+  lib: <TLibrary extends Extract<keyof TLibraries, string>>(
+    name: TLibrary,
+  ) => LiveMapLibraryFacadeForInput<TLibraries[TLibrary], TLibrary>;
+  commits: LiveMapMultiLibraryCommitObserverApi<Extract<keyof TLibraries, string>>;
+}>;
 
 /**
  * Normalized set operation emitted by a LiveMap mutation.

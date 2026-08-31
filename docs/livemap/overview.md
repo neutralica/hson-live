@@ -1,5 +1,7 @@
 # LiveMap
 
+For a fixed local collection of independently typed graphs, see [local multi-library LiveMap](./multi-library.md). Solo construction remains the default for one data or document graph.
+
 LiveMap is hson-live’s revisioned graph-state layer.
 
 It provides deterministic reads and writes over a canonical Hson graph while exposing that graph through one of two principal interfaces:

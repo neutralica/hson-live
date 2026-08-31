@@ -1,6 +1,6 @@
 import { Hson, type HsonSchema } from "hson-live";
 
-export const PageSchema: HsonSchema = Hson`
+export const PageSchema: HsonSchema<PageSchemaType, "document"> = Hson`
   <
     type "document"
     tag "main"
@@ -14,7 +14,7 @@ export const PageSchema: HsonSchema = Hson`
   >
 `;
 
-export const ListSchema: HsonSchema = Hson`
+export const ListSchema: HsonSchema<ListSchemaType, "document"> = Hson`
   <
     type "document"
     defs <
@@ -26,7 +26,7 @@ export const ListSchema: HsonSchema = Hson`
   >
 `;
 
-export const DocumentSequenceSchema: HsonSchema = Hson`
+export const DocumentSequenceSchema: HsonSchema<DocumentSequenceSchemaType, "document"> = Hson`
   <
     type "document"
     defs <Item <tag "item" content "empty">>

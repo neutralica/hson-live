@@ -22,14 +22,29 @@ export type HsonCanonical = string & {
 };
 
 declare const HSON_SCHEMA_SOURCE_DESIGNATION: unique symbol;
+declare const HSON_SCHEMA_VALUE_ASSOCIATION: unique symbol;
+
+/** Static root domain established by the generated Hson Schema analyzer. */
+export type HsonSchemaMode = "data" | "document";
 
 /**
  * Canonical Hson source designated for authoritative Hson Schema checking.
  * The optional marker deliberately does not certify the source at runtime;
  * certification is established by the supported Schema analyzer/build.
  */
-export type HsonSchema = HsonCanonical & {
+export type HsonSchema<
+  TValue = unknown,
+  TMode extends HsonSchemaMode = HsonSchemaMode,
+> = HsonCanonical & {
   readonly [HSON_SCHEMA_SOURCE_DESIGNATION]?: never;
+  /**
+   * Declaration-only association installed by the Hson Schema generator.
+   * It has no runtime representation and never certifies untrusted input.
+   */
+  readonly [HSON_SCHEMA_VALUE_ASSOCIATION]?: Readonly<{
+    value: TValue;
+    mode: TMode;
+  }>;
 };
 
 export type TransformRenderFormat = (typeof $RENDER)[keyof typeof $RENDER];

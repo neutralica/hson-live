@@ -12,6 +12,7 @@ import type {
 import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { parse_json } from "../transform/parsers/parse-json.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
+import { is_public_multi_library_livemap } from "../livemap/livemap.libraries.js";
 import { decode_projected_value_payload } from "../livemap/livemap.transport.js";
 import { livemap_projected_propagation } from "../livemap/livemap.projected-propagation.js";
 import type {
@@ -263,6 +264,9 @@ export function create_locus_client<
 export function create_locus_client<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(options: LocusClientOptions<LiveMapAuthority>): unknown {
+  if (options.map !== undefined && is_public_multi_library_livemap(options.map)) {
+    throw new Error("Hosted/Locus multi-library LiveMap support is not yet available.");
+  }
   if (options.recovery?.cursor && !options.map) {
     throw new Error("Locus recovery cursor requires the exact corresponding mirror.");
   }

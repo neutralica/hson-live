@@ -1,6 +1,6 @@
 import { Hson, type HsonSchema } from "hson-live";
 
-export const UserSchema: HsonSchema = Hson`
+export const UserSchema: HsonSchema<UserSchemaType, "data"> = Hson`
   <type "data" content <
     name "string"
     nickname <optional "string">
@@ -20,7 +20,7 @@ export const UserSchema: HsonSchema = Hson`
   >>
 `;
 
-export const TreeSchema: HsonSchema = Hson`
+export const TreeSchema: HsonSchema<TreeSchemaType, "data"> = Hson`
   <
     type "data"
     defs <
@@ -31,7 +31,7 @@ export const TreeSchema: HsonSchema = Hson`
   >
 `;
 
-export const ReuseSchema: HsonSchema = Hson`
+export const ReuseSchema: HsonSchema<ReuseSchemaType, "data"> = Hson`
   <
     type "data"
     defs <Left <content <value "string">> Right <content <value "string">>>

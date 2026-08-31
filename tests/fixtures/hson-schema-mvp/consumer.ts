@@ -1,4 +1,4 @@
-import { Hson, hsonCalc, hsonTransform, type HsonNumber } from "hson-live";
+import { Hson, hsonCalc, hsonLiveMap, hsonLocus, hsonTransform, type HsonNumber } from "hson-live";
 import type { HsonCanonical } from "hson-live/hson";
 import { TreeSchema, UserSchema, type TreeSchemaHson, type UserSchemaHson } from "./producer.js";
 
@@ -13,8 +13,30 @@ const recursiveAuthored: TreeSchemaHson = Hson`<value "root" age 2 children [<va
 const recursiveDynamic: HsonCanonical = hsonTransform.fromJson({ value: "root", age: 3, children: [{ value: "leaf", age: 1, children: [] }] }).toHson().serialize();
 const recursiveCertified: TreeSchemaHson = Hson.certify(TreeSchema, recursiveDynamic);
 
+const libraries = hsonLiveMap.fromLibraries({
+  user: {
+    data: { name: "Ada", score: 37, age: 37, percent: 80, code: "ID-7", status: "ready", zero: 0, negativeZero: -0, flags: [true], pair: ["x", 2], account: { kind: "admin", level: 3 } },
+    schema: UserSchema,
+  },
+  tree: {
+    data: { value: "root", age: 2, children: [] },
+    schema: TreeSchema,
+  },
+});
+const libraryName: string = libraries.lib("user").at(["name"]).snap();
+const librarySchema: typeof UserSchema = libraries.lib("user").schema.get();
+libraries.lib("user").at(["name"]).set("Grace");
+// @ts-expect-error Generated Schema-derived handle rejects a wrong value.
+libraries.lib("user").at(["name"]).set(37);
+// @ts-expect-error Statically declared Library names reject typos.
+libraries.lib("users");
+// @ts-expect-error Current Locus accepts only single-root LiveMap authorities.
+hsonLocus.create({ map: libraries });
+
 void authored;
 void certified;
 void numberEvidence;
 void recursiveAuthored;
 void recursiveCertified;
+void libraryName;
+void librarySchema;

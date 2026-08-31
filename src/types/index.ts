@@ -22,6 +22,20 @@ export type * from "./listen.types.js";
 export type { LivePath, LivePathPart, LiveMapEditResult, LiveMapCommit, LiveMapOp, LiveMapAnyOp, LiveMapDataOp, LiveMapGraphOp, LiveMapGraphReplaceRootOp, LiveMapGraphSetAttrOp, LiveMapGraphRemoveAttrOp, LiveMapGraphReplaceAttrsOp, LiveMapGraphReplaceContentOp, LiveMapGraphInsertContentOp, LiveMapGraphRemoveContentOp, LiveMapGraphMoveContentOp, LiveMapGraphEnsureQuidOp, LiveMapProjectedGraphEnsureQuidOp, LiveMapGraphCommit, LiveMapCommitOrigin, LiveMapCommitObservation, LiveMapCommitObserver, LiveMapCommitObserverApi, LiveMapFeedEvent, LiveMapFeedListener, LiveMapDisposer, LiveMapCore, LiveMapPathHandle, LiveMapProxy, LiveMapProjectedIdentityHandle, LiveMapProjectedIdentityCommitTarget, LiveMap, LiveMapSubApi, LiveMapRootMode, DataLiveMapMode, DocumentLiveMapMode, DocumentLiveMapCapture, DocumentLiveMapCaptureApi, DocumentLiveMapCaptureIdentity, DocumentLiveMapCaptureOptions, DocumentLiveMapInstallIdentity, DocumentLiveMapInstallOptions, LiveMapDocumentPath, LiveMapDocumentPathInput, LiveMapDocumentIdentityHandle, LiveMapDocumentRequestTarget, LiveMapDocumentCommitTarget, LiveMapDocumentTargetWitness, LiveMapDocumentTarget, LiveMapDocumentAttributeValue, LiveMapDocumentAttrs, LiveMapDocumentContent, DocumentLiveMapAttrsMustApi, DocumentLiveMapAttrsReadApi, DocumentLiveMapAttrsMutationApi, DocumentLiveMapAttrsApi, DocumentLiveMapContentApi, LiveMapDocumentApi, DocumentLiveMap, LiveMapAuthority, ClassifiedLiveMap } from "./livemap.types.js";
 export type { LiveMapRenameOp, LiveMapMoveOp } from "./livemap.types.js";
 export type {
+  HsonSchemaValue,
+  LiveMapLibraries,
+  LiveMapLibrariesInput,
+  LiveMapLibraryInput,
+  LiveMapDataLibraryInput,
+  LiveMapDocumentLibraryInput,
+  LiveMapDataLibrary,
+  LiveMapDocumentLibrary,
+  LiveMapLibraryPathHandle,
+  LiveMapLibraryOperation,
+  LiveMapMultiLibraryCommit,
+  LiveMapMultiLibraryCommitObserverApi,
+} from "./livemap.types.js";
+export type {
   CollectionReflect,
   CollectionReflectOptions,
   CollectionReflectChange,
