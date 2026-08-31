@@ -205,6 +205,7 @@
     "test:livemap-aggregate-library-transitions": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-aggregate-library-transitions.acceptance.mts",
     "test:livemap-n-library-engine": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-n-library-engine.acceptance.mts",
     "test:livemap-public-libraries": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-public-libraries.acceptance.mts",
+    "test:livemap-hosted-multi-library-h1": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-hosted-multi-library-h1.acceptance.mts",
     "test:livemap-identity-aba-prevention": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-identity-aba-prevention.acceptance.mts",
     "test:livemap-identity-replay-provenance": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-identity-replay-provenance.acceptance.mts",
     "test:livemap-document": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-document.acceptance.mts",

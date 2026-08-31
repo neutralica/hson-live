@@ -121,13 +121,33 @@ import {
   type InternalLiveMapAggregateAuthority,
 } from "./livemap.internal.js";
 import {
+  enumerate_livemap_issued_quids,
   type LiveMapIdentityEpochController,
   LiveMapIdentityEpochError,
+  make_livemap_issued_quid_ledger,
   make_livemap_identity_epoch,
   register_livemap_identity_epoch_owner,
   retain_livemap_identity_epoch,
   stage_livemap_identity_epoch,
 } from "./livemap.identity-epoch.js";
+import {
+  HOSTED_MAX_ISSUED_QUIDS,
+  HOSTED_SNAPSHOT_FORMAT,
+  assert_hosted_snapshot_bound,
+  assert_hosted_snapshot_shape,
+  decode_hosted_commit,
+  decode_hosted_root,
+  encode_hosted_root,
+  hosted_sha256,
+  make_hosted_authority_fence,
+  make_hosted_commit,
+  make_hosted_registry,
+  type HostedAggregateCommit,
+  type HostedAggregateSnapshot,
+  type HostedAuthorityFence,
+  type HostedRegistry,
+  type HostedRegistryBinding,
+} from "./livemap.hosted.js";
 import {
   livemap_library_target,
   make_default_livemap_library,
@@ -1014,6 +1034,45 @@ function make_livemap_core_from_owned_root(
   // inventing a document-local revision stream.
   const documentCommitByAggregate = new WeakMap<LiveMapAggregateCommit, Map<LiveMapLibraryIdentity, LiveMapGraphCommit>>();
   const aggregateByDocumentCommit = new WeakMap<LiveMapGraphCommit, LiveMapAggregateCommit>();
+  let hostedRegistry: HostedRegistry | undefined;
+  let hostedFence: HostedAuthorityFence | undefined;
+  let hostedBindingsByIdentity: ReadonlyMap<LiveMapLibraryIdentity, HostedRegistryBinding> | undefined;
+  let hostedBindingsByName: ReadonlyMap<string, HostedRegistryBinding> | undefined;
+
+  function require_hosted_state(): Readonly<{
+    registry: HostedRegistry;
+    fence: HostedAuthorityFence;
+    byIdentity: ReadonlyMap<LiveMapLibraryIdentity, HostedRegistryBinding>;
+    byName: ReadonlyMap<string, HostedRegistryBinding>;
+  }> {
+    if (hostedRegistry === undefined || hostedFence === undefined
+      || hostedBindingsByIdentity === undefined || hostedBindingsByName === undefined) {
+      throw new Error("LiveMap hosted aggregate registry is unavailable.");
+    }
+    return Object.freeze({
+      registry: hostedRegistry,
+      fence: hostedFence,
+      byIdentity: hostedBindingsByIdentity,
+      byName: hostedBindingsByName,
+    });
+  }
+
+  function hosted_commit_fields(
+    changed: boolean,
+    prevRev: number,
+    rev: number,
+    operations: readonly LiveMapAggregateOperation[],
+  ): Readonly<{ hosted?: HostedAggregateCommit }> {
+    if (hostedRegistry === undefined || hostedFence === undefined || hostedBindingsByIdentity === undefined) return {};
+    return {
+      hosted: make_hosted_commit(hostedFence, hostedRegistry, hostedBindingsByIdentity, {
+        changed,
+        prevRev,
+        rev,
+        operations,
+      }),
+    };
+  }
 
   function require_library(identity: LiveMapLibraryIdentity): LiveMapLibraryState {
     return libraryRegistry.require(identity);
@@ -1109,7 +1168,7 @@ function make_livemap_core_from_owned_root(
   }
 
   function aggregate_write_ops(
-    write: Exclude<LiveMapAggregateWrite, { kind: "ensure-quid" }>,
+    write: Extract<LiveMapAggregateWrite, { kind: "set" | "replace" | "delete" }>,
     value: OrderedProjectedValue,
   ): readonly LiveMapCoreWriteOp[] {
     const path = clone_live_path(must_live_path(write.target.path));
@@ -1201,6 +1260,22 @@ function make_livemap_core_from_owned_root(
         }));
         continue;
       }
+      if (write.kind === "replay-data") {
+        const currentValue = ordered_projected_value_at(candidate.value, write.operation.path);
+        must_replay_value(write.operation.path, write.operation.prev, currentValue);
+        const localWrite = projected_write_op_from_transport(write.operation);
+        const planned = plan_write_ops_with_identity(candidate.value, [localWrite], candidate.overlay);
+        const nextValue = ordered_projected_value_at(planned.value, write.operation.path);
+        must_replay_value(write.operation.path, write.operation.next, nextValue);
+        if (planned.transportOps.length !== 1) {
+          throw new Error("Hosted replay operation did not produce one exact aggregate transition operation.");
+        }
+        candidate.value = planned.value;
+        candidate.writes.push(localWrite);
+        candidate.overlay = reconcile_livemap_projected_identity_overlay(candidate.overlay, planned.transportOps);
+        operations.push(Object.freeze({ target, operation: materialize_livemap_projected_op(write.operation) }));
+        continue;
+      }
       const localWrites = aggregate_write_ops(write, candidate.value);
       const planned = plan_write_ops_with_identity(candidate.value, localWrites, candidate.overlay);
       candidate.value = planned.value;
@@ -1251,12 +1326,14 @@ function make_livemap_core_from_owned_root(
       afterActive.keys(),
     );
     const changed = operations.length > 0;
+    const rev = changed ? prevRev + 1 : prevRev;
     const commit: LiveMapAggregateCommit = Object.freeze({
       kind: "aggregate",
       changed,
       prevRev,
-      rev: changed ? prevRev + 1 : prevRev,
+      rev,
       operations: Object.freeze(operations),
+      ...hosted_commit_fields(changed, prevRev, rev, operations),
     });
     const documentCommits = new Map<LiveMapLibraryIdentity, LiveMapGraphCommit>();
     for (const candidate of candidates.values()) {
@@ -1400,6 +1477,17 @@ function make_livemap_core_from_owned_root(
           operation: candidate.operation,
         })])
         : Object.freeze([]),
+      ...hosted_commit_fields(
+        changed,
+        prevRev,
+        documentCommit.rev,
+        changed
+          ? [Object.freeze({
+            target: aggregate_target(library.identity, document_operation_path(candidate.operation)),
+            operation: candidate.operation,
+          })]
+          : [],
+      ),
     });
     if (changed) {
       documentCommitByAggregate.set(aggregateCommit, new Map([[library.identity, documentCommit]]));
@@ -1464,11 +1552,209 @@ function make_livemap_core_from_owned_root(
     return authority;
   }
 
+  function configure_hosted_registry(bindingsInput: readonly HostedRegistryBinding[]): HostedRegistry {
+    transitionController.assertPublicMutationAllowed();
+    if (hostedRegistry !== undefined) throw new Error("LiveMap hosted registry is already fixed.");
+    if (mapRevision !== 0) throw new Error("LiveMap hosted registry must be fixed before the first transition.");
+    const states = libraryRegistry.all();
+    if (bindingsInput.length !== states.length) {
+      throw new Error("LiveMap hosted registry must name every static Library exactly once.");
+    }
+    const byIdentity = new Map<LiveMapLibraryIdentity, HostedRegistryBinding>();
+    const byName = new Map<string, HostedRegistryBinding>();
+    const bindings = bindingsInput.map((raw, index): HostedRegistryBinding => {
+      const state = states[index];
+      if (state === undefined || raw.identity !== state.identity || raw.mode !== state.mode
+        || raw.schema !== state.hsonSchema) {
+        throw new Error("LiveMap hosted registry order, mode, or Schema disagrees with aggregate authority.");
+      }
+      const binding = Object.freeze({ ...raw });
+      if (byIdentity.has(binding.identity) || byName.has(binding.name)) {
+        throw new Error("LiveMap hosted registry contains a duplicate Library.");
+      }
+      byIdentity.set(binding.identity, binding);
+      byName.set(binding.name, binding);
+      return binding;
+    });
+    const registry = make_hosted_registry(bindings);
+    hostedRegistry = registry;
+    hostedFence = make_hosted_authority_fence();
+    hostedBindingsByIdentity = byIdentity;
+    hostedBindingsByName = byName;
+    return registry;
+  }
+
+  function capture_hosted_aggregate(): HostedAggregateSnapshot {
+    const hosted = require_hosted_state();
+    const libraries = hosted.registry.libraries.map((entry) => {
+      const binding = hosted.byName.get(entry.name);
+      if (binding === undefined) throw new Error("Hosted registry binding is unavailable during aggregate capture.");
+      const state = require_library(binding.identity);
+      return Object.freeze({
+        name: entry.name,
+        mode: entry.mode,
+        schema: entry.schema,
+        schemaDigest: entry.schemaDigest,
+        root: encode_hosted_root(clone_live_root(state.root)),
+      });
+    });
+    const issuedQuids = enumerate_livemap_issued_quids(mapIdentityEpoch.issued());
+    if (issuedQuids.length > HOSTED_MAX_ISSUED_QUIDS) {
+      throw new Error("Hosted aggregate issued-QUID ledger exceeds its supported bound.");
+    }
+    const snapshot: HostedAggregateSnapshot = Object.freeze({
+      format: HOSTED_SNAPSHOT_FORMAT,
+      authority: hosted.fence,
+      revision: mapRevision,
+      registry: hosted.registry,
+      registryDigest: hosted.registry.digest,
+      libraries: Object.freeze(libraries),
+      identity: Object.freeze({
+        epoch: mapIdentityEpoch.current(),
+        issuedQuids,
+      }),
+    });
+    assert_hosted_snapshot_bound(snapshot);
+    return snapshot;
+  }
+
+  function restore_hosted_aggregate(snapshot: HostedAggregateSnapshot): void {
+    transitionController.assertPublicMutationAllowed();
+    const hosted = require_hosted_state();
+    assert_hosted_snapshot_shape(snapshot);
+    assert_hosted_snapshot_bound(snapshot);
+    if (snapshot.format !== HOSTED_SNAPSHOT_FORMAT
+      || snapshot.registryDigest !== hosted.registry.digest
+      || snapshot.registry.digest !== hosted.registry.digest
+      || JSON.stringify(snapshot.registry) !== JSON.stringify(hosted.registry)) {
+      throw new Error("Hosted aggregate snapshot registry is incompatible with this LiveMap.");
+    }
+    if (!Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0
+      || !Number.isSafeInteger(snapshot.identity?.epoch) || snapshot.identity.epoch < 0
+      || !Array.isArray(snapshot.identity?.issuedQuids)
+      || snapshot.identity.issuedQuids.length > HOSTED_MAX_ISSUED_QUIDS
+      || typeof snapshot.authority?.logicalMapId !== "string"
+      || snapshot.authority.logicalMapId.length === 0
+      || typeof snapshot.authority?.incarnationId !== "string"
+      || snapshot.authority.incarnationId.length === 0
+      || !Array.isArray(snapshot.libraries)
+      || snapshot.libraries.length !== hosted.registry.libraries.length) {
+      throw new Error("Hosted aggregate snapshot envelope is malformed.");
+    }
+
+    const issuedLedger = make_livemap_issued_quid_ledger(snapshot.identity.issuedQuids);
+    if (issuedLedger.size !== snapshot.identity.issuedQuids.length) {
+      throw new Error("Hosted aggregate snapshot issued-QUID ledger contains duplicates.");
+    }
+    const candidates: Array<Readonly<{
+      library: LiveMapLibraryState;
+      root: HsonNode;
+      mode: LiveMapLibraryState["mode"];
+      documentOverlay?: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay;
+      projectedOverlay?: LiveMapProjectedIdentityOverlay;
+      projectedValue?: OrderedProjectedValue;
+    }>> = [];
+    for (let index = 0; index < snapshot.libraries.length; index += 1) {
+      const encoded = snapshot.libraries[index];
+      const entry = hosted.registry.libraries[index];
+      if (encoded === undefined || entry === undefined
+        || encoded.name !== entry.name || encoded.mode !== entry.mode
+        || encoded.schema !== entry.schema || encoded.schemaDigest !== entry.schemaDigest
+        || hosted_sha256(encoded.schema) !== encoded.schemaDigest) {
+        throw new Error("Hosted aggregate snapshot Library metadata disagrees with its registry.");
+      }
+      const binding = hosted.byName.get(entry.name);
+      if (binding === undefined) throw new Error("Hosted aggregate snapshot Library binding is unavailable.");
+      const root = decode_hosted_root(encoded.root);
+      const prepared = prepare_livemap_root(root);
+      if (prepared.mode !== entry.mode) throw new Error("Hosted aggregate snapshot root mode disagrees with its registry.");
+      must_hson_schema_root(entry.schema, prepared.root);
+      candidates.push(Object.freeze({
+        library: require_library(binding.identity),
+        root: prepared.root,
+        mode: prepared.mode,
+        ...(prepared.documentOverlay === undefined ? {} : { documentOverlay: prepared.documentOverlay }),
+        ...(prepared.projectedOverlay === undefined ? {} : {
+          projectedOverlay: prepared.projectedOverlay,
+          projectedValue: must_projected_root_value(prepared.root),
+        }),
+      }));
+    }
+    const candidateStates = candidates.map((candidate) => ({
+      ...candidate.library,
+      root: candidate.root,
+      mode: candidate.mode,
+      documentOverlay: candidate.documentOverlay,
+      projectedOverlay: candidate.projectedOverlay,
+      projectedValue: candidate.projectedValue,
+    }));
+    const active = aggregate_quid_locations(candidateStates);
+    for (const quid of active.keys()) {
+      if (!issuedLedger.has(quid)) {
+        throw new Error("Hosted aggregate snapshot active QUID is absent from its issued ledger.");
+      }
+    }
+
+    // All fallible decoding, compilation, Schema, mode, identity, and bound checks
+    // are complete before this single installation section begins.
+    for (const candidate of candidates) {
+      Object.assign(candidate.library, {
+        root: candidate.root,
+        documentOverlay: candidate.documentOverlay,
+        projectedOverlay: candidate.projectedOverlay,
+        projectedValue: candidate.projectedValue,
+      });
+    }
+    mapIdentityEpoch.hydrate(snapshot.identity.epoch, issuedLedger);
+    mapRevision = snapshot.revision;
+    hostedFence = Object.freeze({
+      logicalMapId: snapshot.authority.logicalMapId,
+      incarnationId: snapshot.authority.incarnationId,
+    });
+    transitionController.invalidate();
+  }
+
+  function replay_hosted_aggregate(input: HostedAggregateCommit): LiveMapAggregateCommit {
+    transitionController.assertPublicMutationAllowed();
+    const hosted = require_hosted_state();
+    const decoded = decode_hosted_commit(input, hosted.registry, hosted.byName);
+    if (input.authority.logicalMapId !== hosted.fence.logicalMapId
+      || input.authority.incarnationId !== hosted.fence.incarnationId) {
+      throw new Error("Hosted aggregate commit authority fence is incompatible.");
+    }
+    if (input.prevRev !== mapRevision) {
+      throw new LiveMapRevError(input.prevRev, mapRevision);
+    }
+    const writes: LiveMapAggregateWrite[] = decoded.map((entry): LiveMapAggregateWrite => {
+      const target = aggregate_target(entry.library.identity, "path" in entry.semantic ? entry.semantic.path : (
+        "target" in entry.semantic ? entry.semantic.target.path : []
+      ));
+      if (entry.projected !== undefined) {
+        return Object.freeze({ target, kind: "replay-data", operation: entry.projected });
+      }
+      const operation = entry.graph;
+      if (operation === undefined) throw new Error("Hosted replay operation has no decoded machine evidence.");
+      if (operation.op === "ensure-quid" && "projected" in operation.target && operation.target.projected === true) {
+        return Object.freeze({ target, kind: "ensure-quid", quid: operation.quid });
+      }
+      return Object.freeze({ target, kind: "graph", operation: operation as LiveMapGraphOp });
+    });
+    const transition = prepare_aggregate_transition(writes);
+    if (transition.commit.hosted === undefined || JSON.stringify(transition.commit.hosted) !== JSON.stringify(input)) {
+      transitionController.discardAggregate(transition);
+      throw new Error("Hosted aggregate replay did not reproduce its exact semantic commit envelope.");
+    }
+    return transitionController.acceptAggregate(transition).commit;
+  }
+
   const aggregateAuthority: InternalLiveMapAggregateAuthority = Object.freeze({
     defaultLibrary: () => owned.identity,
     libraries: () => Object.freeze(libraryRegistry.all().map((library) => library.identity)),
     addLibrary: (root, options) => {
       transitionController.assertPublicMutationAllowed();
+      if (hostedRegistry !== undefined) {
+        throw new Error("Hosted LiveMap topology is immutable after registry construction.");
+      }
       if (mapRevision !== 0) {
         throw new Error("Internal libraries may be attached only before the LiveMap accepts a transition.");
       }
@@ -1489,6 +1775,11 @@ function make_livemap_core_from_owned_root(
       libraryRegistry.add(library);
       return library.identity;
     },
+    configureHostedRegistry: configure_hosted_registry,
+    hostedRegistry: () => require_hosted_state().registry,
+    captureHosted: capture_hosted_aggregate,
+    restoreHosted: restore_hosted_aggregate,
+    replayHosted: replay_hosted_aggregate,
     target: aggregate_target,
     root: (library) => require_library(library).root,
     documentOverlay: (library) => {

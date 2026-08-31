@@ -5,6 +5,7 @@ import type { PreparedLiveMapRoot } from "./livemap.document.js";
 import type { LiveMapDocumentIdentityOverlay } from "./livemap.document.identity.js";
 import type { LiveMapProjectedIdentityOverlay } from "./livemap.projected.identity.js";
 import type { OrderedProjectedValue } from "../../core/ordered-projected-value.js";
+import type { HostedAggregateCommit } from "./livemap.hosted.js";
 
 /**
  * Opaque, map-local library authority. It intentionally has no string form:
@@ -39,6 +40,8 @@ export type LiveMapAggregateCommit = Readonly<{
   prevRev: number;
   rev: number;
   operations: readonly LiveMapAggregateOperation[];
+  /** Exact named replay envelope when this aggregate has a configured hosted registry. @internal */
+  hosted?: HostedAggregateCommit;
 }>;
 
 /** Narrow internal write request used only by aggregate-library tests. @internal */
@@ -57,6 +60,11 @@ export type LiveMapAggregateWrite =
     target: LiveMapStructuralTarget;
     kind: "graph";
     operation: import("../../types/livemap.types.js").LiveMapGraphOp;
+  }>
+  | Readonly<{
+    target: LiveMapStructuralTarget;
+    kind: "replay-data";
+    operation: import("./livemap.transport.js").LiveMapProjectedDataOp;
   }>;
 
 /** Reject accidental lowering of an aggregate commit into the path-only legacy envelope. @internal */

@@ -16,6 +16,12 @@ import type {
   LiveMapTransitionController,
 } from "./livemap.authority.js";
 import type { PreparedDocumentMutation } from "./livemap.document.mutation.js";
+import type {
+  HostedAggregateCommit,
+  HostedAggregateSnapshot,
+  HostedRegistry,
+  HostedRegistryBinding,
+} from "./livemap.hosted.js";
 
 type InternalLiveMapOwner = Readonly<{
   root: () => HsonNode;
@@ -37,6 +43,12 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   /** Insertion-ordered opaque identities; this is an in-package test seam, not a selector API. */
   libraries: () => readonly LiveMapLibraryIdentity[];
   addLibrary: (root: HsonNode, options?: Readonly<{ hsonSchema?: HsonSchema }>) => LiveMapLibraryIdentity;
+  /** Fix public names and exact Schema sources before hosted capture/replay. @internal */
+  configureHostedRegistry: (bindings: readonly HostedRegistryBinding[]) => HostedRegistry;
+  hostedRegistry: () => HostedRegistry;
+  captureHosted: () => HostedAggregateSnapshot;
+  restoreHosted: (snapshot: HostedAggregateSnapshot) => void;
+  replayHosted: (commit: HostedAggregateCommit) => LiveMapAggregateCommit;
   target: (library: LiveMapLibraryIdentity, path: LivePath) => LiveMapStructuralTarget;
   root: (library: LiveMapLibraryIdentity) => HsonNode;
   documentOverlay: (library: LiveMapLibraryIdentity) => LiveMapDocumentIdentityOverlay;

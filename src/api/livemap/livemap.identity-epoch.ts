@@ -12,6 +12,8 @@ export type LiveMapIdentityEpochController = Readonly<{
   issued: () => LiveMapIssuedQuidLedger;
   install: (ledger: LiveMapIssuedQuidLedger) => void;
   replace: (activeQuids: Iterable<string>) => void;
+  /** Privileged durable restoration after all aggregate state has validated. @internal */
+  hydrate: (epoch: number, ledger: LiveMapIssuedQuidLedger) => void;
 }>;
 
 export type LiveMapIdentityEpochAccounting = Readonly<{
@@ -56,8 +58,26 @@ export function make_livemap_identity_epoch(
       epoch = nextEpoch;
       issued = nextIssued;
     },
+    hydrate: (nextEpoch, nextIssued) => {
+      if (!Number.isSafeInteger(nextEpoch) || nextEpoch < 0) {
+        throw new LiveMapIdentityEpochError(
+          "IDENTITY_EPOCH_INVARIANT",
+          "LiveMap identity epoch hydration requires a non-negative safe integer.",
+        );
+      }
+      require_ledger_entries(nextIssued);
+      epoch = nextEpoch;
+      issued = nextIssued;
+    },
   });
   return controller;
+}
+
+/** Exact deterministic enumeration for aggregate checkpoint persistence. @internal */
+export function enumerate_livemap_issued_quids(
+  ledger: LiveMapIssuedQuidLedger,
+): readonly string[] {
+  return Object.freeze([...require_ledger_entries(ledger)].sort());
 }
 
 /** Build one immutable ledger without retaining graph nodes or handles. */

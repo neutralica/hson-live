@@ -97,6 +97,20 @@ export function make_livemap_libraries<const TLibraries extends LiveMapLibraries
     add(name, input, identity);
   }
 
+  const inspectedByIdentity = new Map(
+    aggregate.inspect().libraries.map((entry) => [entry.identity, entry] as const),
+  );
+  aggregate.configureHostedRegistry([...named.values()].map((entry) => {
+    const inspected = inspectedByIdentity.get(entry.identity);
+    if (inspected === undefined) throw new Error("Hosted LiveMap Library inspection is unavailable.");
+    return Object.freeze({
+      name: entry.name,
+      identity: entry.identity,
+      mode: inspected.mode,
+      schema: entry.input.schema,
+    });
+  }));
+
   const public_commit = (commit: LiveMapAggregateCommit): LiveMapMultiLibraryCommit => Object.freeze({
     kind: "multi-library" as const,
     changed: commit.changed,
