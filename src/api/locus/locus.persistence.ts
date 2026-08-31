@@ -3,6 +3,7 @@ import type {
   LiveMapAnyOp,
   LiveMapCommit,
 } from "../../types/livemap.types.js";
+import { is_public_multi_library_livemap } from "../livemap/livemap.libraries.js";
 import type {
   Locus,
 } from "../../types/locus.core.types.js";
@@ -37,6 +38,11 @@ import { LocusPersistenceError } from "./locus.persistence.error.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
 import { acquire_locus_internal_activity } from "./locus.activity.js";
 import type { PreparedLiveMapTransition } from "../livemap/livemap.authority.js";
+import type {
+  PersistentLocusMultiLibrary,
+  PersistentLocusMultiLibraryOptions,
+} from "../../types/locus.types.js";
+import { create_persistent_multi_library_locus } from "./locus.multi-library.persistence.js";
 export { LocusPersistenceError } from "./locus.persistence.error.js";
 
 type PersistentLocusInternals = Readonly<{ authorityLocus: object }>;
@@ -185,14 +191,26 @@ function persistent_locus_view<TMap extends DocumentLiveMap, TActions extends Lo
   return locus;
 }
 
-/** Create a document authority only after its exact initial checkpoint is durable. */
+/** Create an authority only after its exact initial checkpoint is durable. */
+export async function create_persistent_locus<
+  TMap extends import("../../types/livemap.types.js").LiveMapLibraries,
+  TActions extends LocusActionPayloads = LocusActionPayloads,
+>(
+  options: PersistentLocusMultiLibraryOptions<TMap, TActions>,
+): Promise<PersistentLocusMultiLibrary<TMap, TActions>>;
 export async function create_persistent_locus<
   TMap extends DocumentLiveMap,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(
   options: PersistentDocumentLocusOptions<TMap, TActions>,
-): Promise<PersistentLocus<TMap, TActions>> {
-  return create_persistent_locus_internal(options);
+): Promise<PersistentLocus<TMap, TActions>>;
+export async function create_persistent_locus(
+  options: unknown,
+): Promise<unknown> {
+  if (typeof options === "object" && options !== null && "map" in options && is_public_multi_library_livemap(options.map)) {
+    return create_persistent_multi_library_locus(options as never);
+  }
+  return create_persistent_locus_internal(options as PersistentDocumentLocusOptions);
 }
 
 /** @internal Synthetic post-append failure seam for authority invariant tests. */

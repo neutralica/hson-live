@@ -1600,12 +1600,16 @@ export type LiveMapMultiLibraryCommitObserverApi<TLibrary extends string = strin
   observe: (listener: (commit: LiveMapMultiLibraryCommit<TLibrary>) => void) => LiveMapDisposer;
 }>;
 
+declare const liveMapLibrariesType: unique symbol;
+
 /**
  * A statically established collection of canonical Libraries. It has no
  * default root and intentionally exposes neither topology mutation nor Locus
  * authority in this first local release.
  */
 export type LiveMapLibraries<TLibraries extends LiveMapLibrariesInput = LiveMapLibrariesInput> = Readonly<{
+  /** Private type evidence; it has no runtime property or public selector. */
+  readonly [liveMapLibrariesType]: TLibraries;
   readonly rev: number;
   lib: <TLibrary extends Extract<keyof TLibraries, string>>(
     name: TLibrary,

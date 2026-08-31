@@ -269,12 +269,12 @@ check("the public commit family preserves future cross-library operation order",
   assert.deepEqual(proof.operations.map((entry) => entry.library), ["state", "colors", "state"]);
 });
 
-check("current Locus rejects a public multi-library map before claiming management", () => {
+check("ordinary Locus accepts and exclusively manages a public multi-library map", () => {
   const map = create_map();
-  assert.throws(
-    () => hsonLocus.create({ map: map as never }),
-    /multi-library LiveMap support is not yet available/i,
-  );
+  const locus = hsonLocus.create({ map });
+  assert.equal(locus.map, map);
+  assert.throws(() => map.lib("state").at(["count"]).set(2), /exclusive Locus authority/i);
+  locus.dispose();
   assert.equal(map.lib("state").at(["count"]).set(2).rev, 1);
 });
 

@@ -48,7 +48,11 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   hostedRegistry: () => HostedRegistry;
   captureHosted: () => HostedAggregateSnapshot;
   restoreHosted: (snapshot: HostedAggregateSnapshot) => void;
+  /** Apply a transport snapshot while this aggregate is client-managed. @internal */
+  restoreHostedManaged: (owner: object, snapshot: HostedAggregateSnapshot) => void;
   replayHosted: (commit: HostedAggregateCommit) => LiveMapAggregateCommit;
+  /** Apply a transport commit while this aggregate is client-managed. @internal */
+  replayHostedManaged: (owner: object, commit: HostedAggregateCommit) => LiveMapAggregateCommit;
   target: (library: LiveMapLibraryIdentity, path: LivePath) => LiveMapStructuralTarget;
   root: (library: LiveMapLibraryIdentity) => HsonNode;
   documentOverlay: (library: LiveMapLibraryIdentity) => LiveMapDocumentIdentityOverlay;

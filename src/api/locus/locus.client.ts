@@ -13,6 +13,7 @@ import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { parse_json } from "../transform/parsers/parse-json.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
 import { is_public_multi_library_livemap } from "../livemap/livemap.libraries.js";
+import { create_multi_library_locus_client } from "./locus.multi-library.js";
 import { decode_projected_value_payload } from "../livemap/livemap.transport.js";
 import { livemap_projected_propagation } from "../livemap/livemap.projected-propagation.js";
 import type {
@@ -22,6 +23,8 @@ import type {
   LocusActionStatusId,
   LocusCanonicalCommit,
   LocusClient,
+  LocusMultiLibraryClient,
+  LocusMultiLibraryClientOptions,
   LocusClientActionMessage,
   LocusClientActionPromise,
   LocusClientActionRequest,
@@ -254,6 +257,10 @@ function clone_action_payload(value: JsonValue): JsonValue {
 }
 
 export function create_locus_client<
+  TMap extends import("../../types/livemap.types.js").LiveMapLibraries,
+  TActions extends LocusActionPayloads = LocusActionPayloads,
+>(options: LocusMultiLibraryClientOptions<TMap>): LocusMultiLibraryClient<TMap, TActions>;
+export function create_locus_client<
   TState extends JsonValue | undefined = JsonValue | undefined,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(options: LocusClientOptions<LiveMap<TState>>): LocusClient<LiveMap<TState>, TActions>;
@@ -263,10 +270,11 @@ export function create_locus_client<
 >(options: LocusClientOptions<TMap> & Readonly<{ map: TMap }>): LocusClient<TMap, TActions>;
 export function create_locus_client<
   TActions extends LocusActionPayloads = LocusActionPayloads,
->(options: LocusClientOptions<LiveMapAuthority>): unknown {
-  if (options.map !== undefined && is_public_multi_library_livemap(options.map)) {
-    throw new Error("Hosted/Locus multi-library LiveMap support is not yet available.");
+>(input: LocusClientOptions<LiveMapAuthority> | LocusMultiLibraryClientOptions<import("../../types/livemap.types.js").LiveMapLibraries>): unknown {
+  if (input.map !== undefined && is_public_multi_library_livemap(input.map)) {
+    return create_multi_library_locus_client(input as never);
   }
+  const options = input as LocusClientOptions<LiveMapAuthority>;
   if (options.recovery?.cursor && !options.map) {
     throw new Error("Locus recovery cursor requires the exact corresponding mirror.");
   }

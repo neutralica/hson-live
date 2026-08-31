@@ -1,6 +1,6 @@
 # Locus API reference
 
-Locus makes exactly one `LiveMap` authoritative. It owns ordered mutation,
+Locus makes one `LiveMap` authority authoritative. That authority is either one solo data/document map or one fixed multi-library map. It owns ordered mutation,
 actions, authorization, sessions, recovery, publication, and optional document
 persistence. Applications compose zero or more Loci; the Node application host
 is a separate runtime boundary.
@@ -69,6 +69,18 @@ from state; “projected” here is the established identifier, not the prose na
 for the data side. A Locus owns one canonical stream identified by
 `logicalMapId` and `incarnationId`; neither is its route selector or a client
 identity.
+
+### Fixed multi-library construction
+
+`hsonLocus.create({ map })` also accepts the public result of
+`hsonLiveMap.fromLibraries(...)`. The map keeps its literal Library names and
+per-Library HsonSchemas. Actions use the same `context.mutate(...)` model, with
+`draft.lib("name")` selecting the Library for that one atomic global action.
+There is still one revision cursor and one ordered commit stream, not a stream
+per Library. The normal `hsonLocus.client({ map, socket, recovery })` route
+bootstraps and recovers one complete same-topology mirror; data subscriptions
+are library-qualified. Named document Libraries work with `hsonReflect` across
+live updates and in-place replacement recovery.
 
 ## Client and protocol
 
@@ -150,7 +162,7 @@ single bootstrap artifact.
 
 ## Persistence
 
-`create_persistent_locus` is the document persistence constructor. It uses a
+`create_persistent_locus` supports document maps and fixed multi-library maps. It uses a
 `LocusPersistenceAdapter`, appends each changed commit before visibility, and
 supports exact checkpoint replacement. Data persistence remains
 reserved and rejects.
@@ -177,8 +189,11 @@ becomes an ordinary in-memory authority.
 captures the exact current revision, replaces the durable checkpoint, and
 trims its covered tail. It does not mutate the map or publish a client commit.
 
-Multi-authority persistent stores remain internal application utilities rather
-than part of the one-map Locus package contract.
+For a fixed multi-library map, the adapter stores opaque aggregate records.
+Calling `create_persistent_locus({ map, logicalMapId, persistence })` again
+after restart reconstructs the fixed registry through that same production
+recovery boundary. Dynamic Library topology and cross-Library QUID transfer
+remain unsupported.
 
 ## Graph-content codec
 

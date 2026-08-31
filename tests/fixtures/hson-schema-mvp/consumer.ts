@@ -30,8 +30,19 @@ libraries.lib("user").at(["name"]).set("Grace");
 libraries.lib("user").at(["name"]).set(37);
 // @ts-expect-error Statically declared Library names reject typos.
 libraries.lib("users");
-// @ts-expect-error Current Locus accepts only single-root LiveMap authorities.
-hsonLocus.create({ map: libraries });
+const hostedLibraries = hsonLocus.create({
+  map: libraries,
+  actions: {
+    async rename(context) {
+      await context.mutate((draft) => {
+        draft.lib("user").at(["name"]).set("Lin");
+        // @ts-expect-error Hosted managed drafts retain generated Schema mutation types.
+        draft.lib("user").at(["name"]).set(37);
+      });
+    },
+  },
+});
+const hostedLibraryName: string = hostedLibraries.map.lib("user").at(["name"]).snap();
 
 void authored;
 void certified;
@@ -40,3 +51,4 @@ void recursiveAuthored;
 void recursiveCertified;
 void libraryName;
 void librarySchema;
+void hostedLibraryName;

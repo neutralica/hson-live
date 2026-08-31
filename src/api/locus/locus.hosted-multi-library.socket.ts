@@ -44,7 +44,7 @@ import {
   type LocusHostedAggregateWireEnvelope,
 } from "./locus.hosted-multi-library.js";
 
-/** Internal H3 socket protocol discriminator. It never alters H1/H2 evidence. */
+/** Internal aggregate socket protocol discriminator. It never alters commit evidence. */
 export const LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT = "hson-locus-hosted-aggregate-h3" as const;
 /** The established Locus retained live-history budget. */
 export const DEFAULT_LOCUS_HOSTED_AGGREGATE_HISTORY_BYTES = 4 * 1_024 * 1_024;
@@ -92,7 +92,7 @@ export type LocusHostedAggregateSocketOptions = Readonly<{
   gate?: (input: LocusHostedAggregateGateInput) => void | Promise<void>;
   maxWireBytes?: number;
   maxHistoryBytes?: number;
-  /** Internal deterministic interleave seam for the H3 pending-live proof. */
+  /** Internal deterministic interleave seam for pending-live proof coverage. */
   internal?: Readonly<{
     afterRecoveryCut?: () => void | Promise<void>;
   }>;
@@ -107,6 +107,8 @@ export type LocusHostedAggregateSocketServer = Readonly<{
   connect: (socket: LocusSocketLike) => LocusDisposer;
   mutate: LocusHostedAggregate["mutate"];
   dispatch_action: LocusHostedAggregate["dispatch_action"];
+  /** Ordered internal barrier used by persistence checkpointing. */
+  run_exclusive: LocusHostedAggregate["run_exclusive"];
   debug: () => Readonly<{
     historyBaseRevision: number;
     retainedHistoryBytes: number;
@@ -123,7 +125,7 @@ export type LocusHostedAggregateSocketClientOptions = Readonly<{
   socket: LocusSocketLike;
   /** Required for an unbootstrapped client; an existing mirror supplies it. */
   logicalMapId?: string;
-  /** An existing H1 mirror is restored in place during snapshot recovery. */
+  /** An existing aggregate mirror is restored in place during snapshot recovery. */
   map?: LiveMapLibraries;
 }>;
 
@@ -133,7 +135,7 @@ export type LocusHostedAggregateSocketRecovery = Readonly<{
 }>;
 
 export type LocusHostedAggregateSocketClient = Readonly<{
-  /** Undefined until an aggregate bootstrap snapshot has passed every H1 check. */
+  /** Undefined until an aggregate bootstrap snapshot has passed every validation check. */
   readonly map: LiveMapLibraries | undefined;
   readonly logicalMapId: string;
   readonly incarnationId: string | undefined;
@@ -154,7 +156,7 @@ export type LocusHostedAggregateSocketClient = Readonly<{
 }>;
 
 /**
- * Real H3 hosted transport authority.  It deliberately owns one H2 aggregate
+ * Aggregate transport authority. It deliberately owns one aggregate
  * Locus, one global retained history and one map-wide recovery cut; it does
  * not route a library through the legacy solo Locus representation.
  */
@@ -194,7 +196,7 @@ export function create_locus_hosted_aggregate_socket_internal(
 
   const stopWire = locus.on_wire((wire) => {
     if (disposed) return;
-    const envelope = h2_envelope_from_wire(wire, locus);
+    const envelope = aggregate_envelope_from_wire(wire, locus);
     append_history(envelope);
     for (const connection of [...connections]) {
       if (connection.closed) continue;
@@ -451,7 +453,7 @@ export function create_locus_hosted_aggregate_socket_internal(
       return;
     }
     if (entry.mode === "document") {
-      reject(connection, "LOCUS_PROJECTED_SUBSCRIPTION_UNSUPPORTED", "Document library subscriptions are not implemented for hosted H3.");
+      reject(connection, "LOCUS_PROJECTED_SUBSCRIPTION_UNSUPPORTED", "Document library subscriptions are not implemented for hosted multi-library Locus.");
       return;
     }
     const subscription = Object.freeze({ library: request.library, path: clone_path(request.path) });
@@ -521,6 +523,7 @@ export function create_locus_hosted_aggregate_socket_internal(
     connect,
     mutate: locus.mutate,
     dispatch_action: locus.dispatch_action,
+    run_exclusive: locus.run_exclusive,
     debug: () => Object.freeze({
       historyBaseRevision,
       retainedHistoryBytes: retainedBytes,
@@ -549,15 +552,13 @@ export function create_locus_hosted_aggregate_socket_internal(
   });
 }
 
-/**
- * H3 client using the normal text socket abstraction.  It is intentionally
- * internal until H5 removes the public hosted-multi-library construction
- * guard, but it exercises the same client mirror identity and recovery rules.
- */
+/** Internal aggregate client over the normal text socket abstraction. */
 export function create_locus_hosted_aggregate_socket_client_internal(
   options: LocusHostedAggregateSocketClientOptions,
 ): LocusHostedAggregateSocketClient {
   let map = options.map;
+  const mirrorOwner = Object.freeze({});
+  let mirrorClaimed = false;
   let logicalMapId = options.logicalMapId;
   let incarnationId: string | undefined;
   let registryDigest: string | undefined;
@@ -568,6 +569,8 @@ export function create_locus_hosted_aggregate_socket_client_internal(
     incarnationId = snapshot.authority.incarnationId;
     registryDigest = snapshot.registryDigest;
     lastAppliedRev = snapshot.revision;
+    internal_livemap_aggregate_authority(map).claimManagement(mirrorOwner);
+    mirrorClaimed = true;
   }
   if (logicalMapId === undefined || logicalMapId.length === 0) {
     throw new Error("Hosted aggregate socket client requires logicalMapId before bootstrap.");
@@ -640,9 +643,6 @@ export function create_locus_hosted_aggregate_socket_client_internal(
     if (recovery !== undefined) return Promise.reject(new Error("Hosted aggregate recovery is already in progress."));
     if (map !== undefined) {
       const snapshot = internal_livemap_aggregate_authority(map).captureHosted();
-      if (snapshot.authority.logicalMapId !== clientLogicalMapId) {
-        return Promise.reject(new Error("Hosted aggregate mirror logical map ID is incompatible with its client."));
-      }
       incarnationId = snapshot.authority.incarnationId;
       registryDigest = snapshot.registryDigest;
       lastAppliedRev = snapshot.revision;
@@ -754,12 +754,14 @@ export function create_locus_hosted_aggregate_socket_client_internal(
       throw new Error("Hosted aggregate snapshot changes an existing registry topology.");
     }
     if (map === undefined) {
-      // Construction occurs only after complete H1 snapshot validation.
+      // Construction occurs only after complete snapshot validation.
       map = make_livemap_hosted_mirror_from_snapshot_internal(snapshot);
+      internal_livemap_aggregate_authority(map).claimManagement(mirrorOwner);
+      mirrorClaimed = true;
     } else {
-      // H1 validates all roots, Schemas and map-wide QUID state before this
+      // Aggregate recovery validates all roots, Schemas and map-wide QUID state before this
       // single in-place install; retained library handles keep their closure.
-      internal_livemap_aggregate_authority(map).restoreHosted(snapshot);
+      internal_livemap_aggregate_authority(map).restoreHostedManaged(mirrorOwner, snapshot);
     }
     incarnationId = snapshot.authority.incarnationId;
     registryDigest = snapshot.registryDigest;
@@ -776,7 +778,7 @@ export function create_locus_hosted_aggregate_socket_client_internal(
       registryDigest,
       maxWireBytes: DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES,
     }));
-    const accepted = internal_livemap_aggregate_authority(map).replayHosted(commit);
+    const accepted = internal_livemap_aggregate_authority(map).replayHostedManaged(mirrorOwner, commit);
     lastAppliedRev = accepted.rev;
   }
 
@@ -817,7 +819,7 @@ export function create_locus_hosted_aggregate_socket_client_internal(
       throw new Error(`Unknown hosted Library ${JSON.stringify(library)}.`);
     }
     if (!("snap" in selected)) {
-      throw new Error("Hosted document library subscriptions are not implemented for H3.");
+      throw new Error("Hosted document library subscriptions are not implemented for multi-library Locus.");
     }
     const stablePath = clone_path(path);
     const key = subscription_key(library, stablePath);
@@ -872,6 +874,10 @@ export function create_locus_hosted_aggregate_socket_client_internal(
       pendingActions.clear();
       pendingSync.clear();
       subscriptions.clear();
+      if (map !== undefined && mirrorClaimed) {
+        internal_livemap_aggregate_authority(map).releaseManagement(mirrorOwner);
+        mirrorClaimed = false;
+      }
     },
     diagnostics: () => Object.freeze({
       status,
@@ -886,11 +892,11 @@ export function create_locus_hosted_aggregate_socket_client_internal(
   });
 }
 
-function h2_envelope_from_wire(wire: string, locus: LocusHostedAggregate): LocusHostedAggregateWireEnvelope {
+function aggregate_envelope_from_wire(wire: string, locus: LocusHostedAggregate): LocusHostedAggregateWireEnvelope {
   const parsed = JSON.parse(wire) as unknown;
-  const message = exact_record(parsed, "Hosted aggregate H2 wire");
-  exact_keys(message, ["type", "id", "commit"], "Hosted aggregate H2 wire");
-  if (message.type !== "commit" || message.id !== "hosted-aggregate") throw new Error("Hosted aggregate H2 wire routing is invalid.");
+  const message = exact_record(parsed, "Hosted aggregate wire");
+  exact_keys(message, ["type", "id", "commit"], "Hosted aggregate wire");
+  if (message.type !== "commit" || message.id !== "hosted-aggregate") throw new Error("Hosted aggregate wire routing is invalid.");
   const envelope = message.commit as LocusHostedAggregateWireEnvelope;
   decode_locus_hosted_aggregate_envelope(envelope, Object.freeze({
     logicalMapId: locus.logicalMapId,

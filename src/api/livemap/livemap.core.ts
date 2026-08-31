@@ -1804,7 +1804,15 @@ function make_livemap_core_from_owned_root(
     hostedRegistry: () => require_hosted_state().registry,
     captureHosted: capture_hosted_aggregate,
     restoreHosted: restore_hosted_aggregate,
+    restoreHostedManaged: (owner, snapshot) => transitionController.runManaged(
+      owner,
+      () => restore_hosted_aggregate(snapshot),
+    ),
     replayHosted: replay_hosted_aggregate,
+    replayHostedManaged: (owner, commit) => transitionController.runManaged(
+      owner,
+      () => replay_hosted_aggregate(commit),
+    ),
     target: aggregate_target,
     root: (library) => require_library(library).root,
     documentOverlay: (library) => {

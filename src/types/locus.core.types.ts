@@ -12,7 +12,11 @@ import type {
   LiveMapDocumentContent,
   LiveMapDocumentCommitTarget,
   LiveMapDocumentTarget,
+  LiveMapDataLibraryInput,
   LiveMapGraphOp,
+  HsonSchemaValue,
+  LiveMapLibraries,
+  LiveMapLibrariesInput,
   LiveMapProjectedGraphEnsureQuidOp,
   LiveMapAnyOp,
   LiveMapCommit,
@@ -23,6 +27,8 @@ import type {
   LiveMapPathHandle,
   LiveMapPathObjectApi,
   LiveMapPathValue,
+  LiveMapSetValue,
+  LiveMapWriteValue,
   LivePath,
   LiveMapOp,
   LiveMapStructuralJsonEnvelope,
@@ -317,6 +323,108 @@ export type LocusOptions<
 > = LocusSharedOptions<TMap, TActions> & Readonly<{
   map: TMap;
   state?: never;
+}>;
+
+type MultiLibraryDataMutationHandle<TValue> = Readonly<{
+  at: <const TPath extends LivePath>(
+    path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
+  ) => MultiLibraryDataMutationHandle<LiveMapPathValue<TValue, TPath>>;
+  set: (value: LiveMapSetValue<TValue>) => void;
+  replace: (value: LiveMapWriteValue<TValue>) => void;
+  delete: () => void;
+  ensureQuid: (quid: string) => void;
+}>;
+
+type MultiLibraryDataMutationDraft<TValue> = Readonly<{
+  at: <const TPath extends LivePath>(
+    path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
+  ) => MultiLibraryDataMutationHandle<LiveMapPathValue<TValue, TPath>>;
+}>;
+
+type MultiLibraryDataMutationDraftForInput<TInput> =
+  TInput extends LiveMapDataLibraryInput<infer TSchema>
+    ? MultiLibraryDataMutationDraft<HsonSchemaValue<TSchema>>
+    : never;
+
+type MultiLibraryBroadDataMutationDraft = Readonly<{
+  at: (path: LivePath) => Readonly<{
+    set: (value: JsonValue) => void;
+    replace: (value: JsonValue) => void;
+    delete: () => void;
+    ensureQuid: (quid: string) => void;
+  }>;
+}>;
+
+type MultiLibraryDocumentMutationDraft = Readonly<{
+  graph: (operation: LiveMapGraphOp) => void;
+  attrs: Readonly<{
+    set: (target: LiveMapDocumentCommitTarget, name: string, value: LiveMapDocumentAttributeValue) => void;
+    drop: (target: LiveMapDocumentCommitTarget, name: string) => void;
+    replace: (target: LiveMapDocumentCommitTarget, attrs: LiveMapDocumentAttrs) => void;
+  }>;
+  content: Readonly<{
+    replace: (target: LiveMapDocumentCommitTarget, index: number, replacement: LiveMapDocumentContent) => void;
+    insert: (target: LiveMapDocumentCommitTarget, index: number, content: LiveMapDocumentContent) => void;
+    remove: (target: LiveMapDocumentCommitTarget, index: number) => void;
+    move: (target: LiveMapDocumentCommitTarget, from: number, to: number) => void;
+  }>;
+}>;
+
+type MultiLibraryMutationDraftForInput<TInput> =
+  TInput extends LiveMapDataLibraryInput
+    ? MultiLibraryDataMutationDraftForInput<TInput>
+    : TInput extends Readonly<{ document: string | import("../core/types.js").HsonNode }>
+      ? MultiLibraryDocumentMutationDraft
+      : MultiLibraryBroadDataMutationDraft | MultiLibraryDocumentMutationDraft;
+
+/** Inferred only inside a multi-library Locus mutation callback. */
+type MultiLibraryMutationDraft<TLibraries extends LiveMapLibrariesInput> = Readonly<{
+  lib: <TLibrary extends Extract<keyof TLibraries, string>>(
+    name: TLibrary,
+  ) => MultiLibraryMutationDraftForInput<TLibraries[TLibrary]>;
+}>;
+
+type MultiLibraryInputs<TMap extends LiveMapLibraries> =
+  TMap extends LiveMapLibraries<infer TLibraries> ? TLibraries : LiveMapLibrariesInput;
+
+/** Ordinary Locus action context for one fixed multi-library LiveMap. */
+export type LocusMultiLibraryActionContext<
+  TMap extends LiveMapLibraries = LiveMapLibraries,
+> = Readonly<{
+  map: TMap;
+  mutate: (mutation: (draft: MultiLibraryMutationDraft<MultiLibraryInputs<TMap>>) => void) => Promise<void>;
+  seq: LocusSeq;
+  origin: LocusActionOrigin;
+  emit_event: (event: string, payload: JsonValue) => boolean;
+}>;
+
+export type LocusMultiLibraryActionHandler<
+  TPayload extends JsonValue | undefined = JsonValue | undefined,
+  TMap extends LiveMapLibraries = LiveMapLibraries,
+  TActions extends LocusActionPayloads = LocusActionPayloads,
+> = (
+  ctx: LocusMultiLibraryActionContext<TMap>,
+  payload: TPayload,
+  message: LocusClientActionMessage<TActions>,
+) => JsonValue | void | Promise<JsonValue | void>;
+
+export type LocusMultiLibraryActions<
+  TMap extends LiveMapLibraries = LiveMapLibraries,
+  TActions extends LocusActionPayloads = LocusActionPayloads,
+> = Readonly<{
+  [TName in keyof TActions & string]: LocusMultiLibraryActionHandler<TActions[TName], TMap, TActions>;
+}>;
+
+/** Existing Locus construction options when `map` is a fixed public Library registry. */
+export type LocusMultiLibraryOptions<
+  TMap extends LiveMapLibraries,
+  TActions extends LocusActionPayloads = LocusActionPayloads,
+> = Readonly<{
+  map: TMap;
+  state?: never;
+  actions?: Partial<LocusMultiLibraryActions<NoInfer<TMap>, TActions>>;
+  logicalMapId?: LocusLogicalMapId;
+  incarnationId?: LocusIncarnationId;
 }>;
 
 export type LocusActionDedupeSchedule = (
@@ -615,6 +723,43 @@ export type LocusClientOptions<
   trace?: LiveTraceSink;
 }>;
 
+/** Existing Locus client options when bootstrapping a fixed public Library registry. */
+export type LocusMultiLibraryClientOptions<
+  TMap extends LiveMapLibraries,
+> = Readonly<{
+  socket: LocusSocketLike;
+  /** A same-topology local mirror; bootstrap replaces it atomically in place. */
+  map: TMap;
+  recovery: LocusClientRecoveryOptions;
+}>;
+
+export type LocusMultiLibraryClientRecovery = Readonly<{
+  outcome: "current" | "replay" | "snapshot";
+  revision: number;
+}>;
+
+/** One complete client mirror with library-qualified value subscriptions. */
+export type LocusMultiLibraryClient<
+  TMap extends LiveMapLibraries = LiveMapLibraries,
+  TActions extends LocusActionPayloads = LocusActionPayloads,
+> = Readonly<{
+  map: TMap;
+  logicalMapId: LocusLogicalMapId;
+  readonly incarnationId: LocusIncarnationId | undefined;
+  readonly lastAppliedRev: number | undefined;
+  connect: () => Promise<LocusMultiLibraryClientRecovery>;
+  recover: () => Promise<LocusMultiLibraryClientRecovery>;
+  subscribe: (library: Extract<keyof MultiLibraryInputs<TMap>, string>, path: LivePath, listener: (value: JsonValue | undefined, revision: number) => void) => LocusDisposer;
+  unsubscribe: (library: Extract<keyof MultiLibraryInputs<TMap>, string>, path: LivePath) => void;
+  action: <TName extends keyof TActions & string>(
+    name: TName,
+    ...args: undefined extends TActions[TName]
+      ? [payload?: TActions[TName]]
+      : [payload: TActions[TName]]
+  ) => Promise<JsonValue | undefined>;
+  close: () => void;
+}>;
+
 export type LocusClient<
   TMap extends LiveMapAuthority = LiveMap<JsonValue | undefined>,
   TActions extends LocusActionPayloads = LocusActionPayloads,
@@ -655,6 +800,43 @@ export type Locus<
   dispatch_action: (message: LocusClientActionMessage<TActions>) => Promise<LocusServerMessage<LocusMapValue<TMap>>>;
   connect: (socket: LocusSocketLike, context?: LocusConnectionContext) => LocusConnection;
   dispose: LocusDisposer;
+}>;
+
+/** Locus result for the normal fixed multi-library construction surface. */
+export type LocusMultiLibrary<
+  TMap extends LiveMapLibraries = LiveMapLibraries,
+  TActions extends LocusActionPayloads = LocusActionPayloads,
+> = Readonly<{
+  map: TMap;
+  readonly logicalMapId: LocusLogicalMapId;
+  readonly incarnationId: LocusIncarnationId;
+  readonly rev: number;
+  activity: LocusActivity;
+  mutate: (mutation: (draft: MultiLibraryMutationDraft<MultiLibraryInputs<TMap>>) => void | Promise<void>) => Promise<void>;
+  dispatch_action: (message: LocusClientActionMessage<TActions>) => Promise<LocusServerMessage<JsonValue | undefined>>;
+  connect: (socket: LocusSocketLike, context?: LocusConnectionContext) => LocusConnection;
+  dispose: LocusDisposer;
+}>;
+
+/** Opaque durable-record port for a fixed hosted Library registry. */
+export interface LocusMultiLibraryPersistenceAdapter {
+  load(logicalMapId: LocusLogicalMapId): Promise<unknown | undefined>;
+  appendCommit(record: unknown): Promise<void>;
+  replaceCheckpoint(record: unknown): Promise<void>;
+}
+
+export type PersistentLocusMultiLibraryOptions<
+  TMap extends LiveMapLibraries,
+  TActions extends LocusActionPayloads = LocusActionPayloads,
+> = LocusMultiLibraryOptions<TMap, TActions> & Readonly<{
+  persistence: LocusMultiLibraryPersistenceAdapter;
+}>;
+
+export type PersistentLocusMultiLibrary<
+  TMap extends LiveMapLibraries = LiveMapLibraries,
+  TActions extends LocusActionPayloads = LocusActionPayloads,
+> = LocusMultiLibrary<TMap, TActions> & Readonly<{
+  checkpoint: () => Promise<void>;
 }>;
 
 export type LocusActivityKind =

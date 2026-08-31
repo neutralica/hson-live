@@ -16,7 +16,7 @@ import {
 } from "./locus.hosted-multi-library.js";
 import { LocusPersistenceError } from "./locus.persistence.error.js";
 
-/** Internal storage wrapper around the exact H1 aggregate capture. */
+/** Internal storage wrapper around one exact aggregate capture. */
 export type LocusHostedAggregatePersistedCheckpoint = Readonly<{
   logicalMapId: string;
   incarnationId: string;
@@ -26,7 +26,7 @@ export type LocusHostedAggregatePersistedCheckpoint = Readonly<{
   snapshot: HostedAggregateSnapshot;
 }>;
 
-/** Internal storage wrapper around one exact H1/H2/H3 aggregate commit. */
+/** Internal storage wrapper around one exact aggregate commit. */
 export type LocusHostedAggregatePersistedCommit = Readonly<{
   logicalMapId: string;
   incarnationId: string;
@@ -35,7 +35,7 @@ export type LocusHostedAggregatePersistedCommit = Readonly<{
   commit: HostedAggregateCommit;
 }>;
 
-/** Internal H4 adapter port; it stores opaque authoritative aggregate records. */
+/** Internal adapter port; it stores opaque authoritative aggregate records. */
 export interface LocusHostedAggregatePersistenceAdapter {
   load(logicalMapId: string): Promise<LocusHostedAggregatePersistedState | undefined>;
   appendCommit(record: LocusHostedAggregatePersistedCommit): Promise<void>;
@@ -43,18 +43,18 @@ export interface LocusHostedAggregatePersistenceAdapter {
   replaceCheckpoint(record: LocusHostedAggregatePersistedCheckpoint): Promise<void>;
 }
 
-/** Internal aggregate state returned verbatim by an H4 storage adapter. */
+/** Internal aggregate state returned verbatim by the storage adapter. */
 export type LocusHostedAggregatePersistedState = Readonly<{
   checkpoint: LocusHostedAggregatePersistedCheckpoint;
   commits: readonly LocusHostedAggregatePersistedCommit[];
 }>;
 
-/** Internal durable H4 authority; it never lowers an aggregate into solo Locus. */
+/** Internal durable aggregate authority; it never lowers into solo Locus. */
 export type PersistentLocusHostedAggregate = Omit<LocusHostedAggregate, "run_exclusive"> & Readonly<{
   checkpoint: () => Promise<void>;
 }>;
 
-/** Internal H4 construction options for one fixed, already-hosted registry. */
+/** Internal construction options for one fixed, already-hosted registry. */
 export type PersistentLocusHostedAggregateOptions = Omit<LocusHostedAggregateOptions, "gate"> & Readonly<{
   persistence: LocusHostedAggregatePersistenceAdapter;
   /** Optional storage identity override for a new, revision-zero hosted map. */
@@ -63,7 +63,7 @@ export type PersistentLocusHostedAggregateOptions = Omit<LocusHostedAggregateOpt
   incarnationId?: string;
 }>;
 
-/** Internal H4 restore options. Topology and identity come only from the checkpoint. */
+/** Internal restore options. Topology and identity come only from the checkpoint. */
 export type RestorePersistentLocusHostedAggregateOptions = Omit<
   PersistentLocusHostedAggregateOptions,
   "map" | "logicalMapId" | "incarnationId"
@@ -216,7 +216,7 @@ function validate_hosted_aggregate_state(
     const snapshot = assert_snapshot_fence(checkpoint);
     if (!Array.isArray(state.commits)) throw invalid_state();
 
-    // H1 reconstructs the static registry, compiles each exact Schema source,
+    // Aggregate reconstruction compiles each exact Schema source,
     // validates every decoded root, hydrates the complete issued ledger, and
     // rebuilds all derivable overlays before this map is admitted.
     const map = make_livemap_hosted_mirror_from_snapshot_internal(snapshot);
@@ -226,7 +226,7 @@ function validate_hosted_aggregate_state(
     let expectedPrevRev = checkpoint.rev;
     for (const item of state.commits) {
       const commit = assert_commit_fence(item, checkpoint, expectedPrevRev);
-      // H1 validates semantic/replay agreement, the registry fence, every
+      // Aggregate replay validates semantic/replay agreement, the registry fence, every
       // library Schema, global QUID ownership, and atomic installation.
       aggregate.replayHosted(commit);
       expectedPrevRev += 1;
@@ -309,7 +309,7 @@ function persistent_view(
 }
 
 /**
- * Create the internal H4 persistent hosted authority only after its one exact
+ * Create the internal persistent hosted authority only after its one exact
  * aggregate checkpoint has been durably installed.
  */
 export async function create_persistent_locus_hosted_aggregate_internal(
@@ -336,8 +336,8 @@ export async function create_persistent_locus_hosted_aggregate_internal(
 }
 
 /**
- * Rebuild one H4 authority from a fenced aggregate checkpoint and its ordered
- * exact H1 tail. This never rewrites or checkpoints the loaded state.
+ * Rebuild one aggregate authority from a fenced aggregate checkpoint and its ordered
+ * exact aggregate tail. This never rewrites or checkpoints the loaded state.
  */
 export async function restore_persistent_locus_hosted_aggregate_internal(
   logicalMapId: string,
@@ -361,7 +361,7 @@ export async function restore_persistent_locus_hosted_aggregate_internal(
   return persistent_view(locus, persistence);
 }
 
-/** Load one H4 aggregate state through its adapter, then reconstruct it atomically. */
+/** Load one aggregate state through its adapter, then reconstruct it atomically. */
 export async function load_persistent_locus_hosted_aggregate_internal(
   logicalMapId: string,
   options: RestorePersistentLocusHostedAggregateOptions,

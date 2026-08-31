@@ -25,9 +25,9 @@ import {
 import { make_livemap_hosted_mirror_from_snapshot_internal } from "../livemap/livemap.libraries.js";
 import type { PreparedLiveMapAggregateTransition } from "../livemap/livemap.authority.js";
 
-/** Internal H2 wire marker. The enclosed commit is the exact H1 commit. */
+/** Internal routing marker. The enclosed commit is exact aggregate evidence. */
 export const LOCUS_HOSTED_AGGREGATE_WIRE_FORMAT = "hson-locus-hosted-aggregate-h2" as const;
-/** Keep the H2 live path inside the existing Locus four-megabyte history budget. */
+/** Keep aggregate live traffic inside the existing Locus four-megabyte history budget. */
 export const DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES = 4 * 1_024 * 1_024;
 
 export type LocusHostedAggregateWireEnvelope = Readonly<{
@@ -128,8 +128,8 @@ export type LocusHostedAggregateClient = Readonly<{
 }>;
 
 /**
- * Internal H2 server authority. It owns one existing aggregate LiveMap and
- * lowers every action into exactly one H1 aggregate transition.
+ * Internal aggregate server authority. It owns one existing aggregate LiveMap
+ * and lowers every action into exactly one exact aggregate transition.
  */
 export function create_locus_hosted_aggregate_internal(
   options: LocusHostedAggregateOptions,
@@ -163,7 +163,7 @@ export function create_locus_hosted_aggregate_internal(
       const hosted = transition.commit.hosted;
       if (hosted === undefined) {
         aggregate.discard(transition);
-        throw new Error("Hosted aggregate transition did not produce H1 replay evidence.");
+        throw new Error("Hosted aggregate transition did not produce exact replay evidence.");
       }
       let wire: string;
       try {
@@ -243,9 +243,8 @@ export function create_locus_hosted_aggregate_internal(
 }
 
 /**
- * Internal H2 client bootstrap seam. H3 will connect this representation to
- * recovery/snapshot replacement; H2 only accepts a seeded mirror plus live
- * aggregate commit replay.
+ * Internal client bootstrap seam for a seeded mirror plus live aggregate
+ * commit replay.
  */
 export function create_locus_hosted_aggregate_client_internal(
   snapshot: HostedAggregateSnapshot,
@@ -273,14 +272,14 @@ export function create_locus_hosted_aggregate_client_internal(
           maxWireBytes,
         }),
       );
-      // H1 performs exact semantic/replay reconciliation, library-mode,
+      // The aggregate engine performs exact semantic/replay reconciliation, library-mode,
       // schema, QUID-ledger, and revision validation before its one install.
       return aggregate.replayHosted(commit);
     },
   });
 }
 
-/** Encode the normal Locus `commit` message with an H1 aggregate payload. */
+/** Encode the normal Locus `commit` message with an exact aggregate payload. */
 export function encode_locus_hosted_aggregate_wire(
   commit: HostedAggregateCommit,
   maxWireBytes = DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES,
@@ -303,7 +302,7 @@ export function encode_locus_hosted_aggregate_wire(
   return encoded;
 }
 
-/** Strict envelope decoder; H1 then validates the enclosed exact payload. */
+/** Strict envelope decoder; the aggregate engine then validates the enclosed exact payload. */
 export function decode_locus_hosted_aggregate_wire(
   wire: string,
   expected: Readonly<{
@@ -329,7 +328,7 @@ export function decode_locus_hosted_aggregate_wire(
 }
 
 /**
- * Strictly decode the reusable H2 routing envelope without fabricating a
+ * Strictly decode the reusable aggregate routing envelope without fabricating a
  * legacy solo commit.  Recovery carries this same object as its commit body.
  */
 export function decode_locus_hosted_aggregate_envelope(
@@ -349,11 +348,11 @@ export function decode_locus_hosted_aggregate_envelope(
     || envelope.registryDigest !== expected.registryDigest) {
     throw new Error("Hosted aggregate Locus wire fence is incompatible with this mirror.");
   }
-  const commit = exact_record(envelope.commit, "Hosted aggregate H1 commit") as HostedAggregateCommit;
+  const commit = exact_record(envelope.commit, "Hosted aggregate commit") as HostedAggregateCommit;
   if (commit.authority?.logicalMapId !== envelope.logicalMapId
     || commit.authority?.incarnationId !== envelope.incarnationId
     || commit.registryDigest !== envelope.registryDigest) {
-    throw new Error("Hosted aggregate Locus routing envelope disagrees with its H1 commit.");
+    throw new Error("Hosted aggregate Locus routing envelope disagrees with its exact commit.");
   }
   return commit;
 }

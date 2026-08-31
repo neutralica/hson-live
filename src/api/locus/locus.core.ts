@@ -22,6 +22,8 @@ import type {
   LocusOptions,
   ProjectedLocusOptions,
   LocusMapValue,
+  LocusMultiLibrary,
+  LocusMultiLibraryOptions,
   LocusMutationDraft,
   LocusSchemaDecoder,
   LocusSchemaResult,
@@ -38,6 +40,7 @@ import { make_locus_sync_manager } from "./locus.sync.js";
 import { make_locus_canonical_stream_runtime } from "./locus.history.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
 import { is_public_multi_library_livemap } from "../livemap/livemap.libraries.js";
+import { create_multi_library_locus } from "./locus.multi-library.js";
 import { livemap_projected_propagation } from "../livemap/livemap.projected-propagation.js";
 import { encode_projected_value_transport } from "../livemap/livemap.transport.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
@@ -207,6 +210,10 @@ function clone_action_payload(value: JsonValue | undefined, frozen: boolean): Js
 }
 
 export function create_locus<
+  TMap extends import("../../types/livemap.types.js").LiveMapLibraries,
+  TActions extends LocusActionPayloads = LocusActionPayloads,
+>(options: LocusMultiLibraryOptions<TMap, TActions>): LocusMultiLibrary<TMap, TActions>;
+export function create_locus<
   TState extends JsonValue | undefined = JsonValue | undefined,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(options?: ProjectedLocusOptions<TState, TActions>): Locus<LiveMap<TState>, TActions>;
@@ -226,7 +233,7 @@ export function create_locus(
   const options = input as ProjectedLocusOptions | LocusOptions<LiveMapAuthority>;
   if ("map" in options && options.map !== undefined) {
     if (is_public_multi_library_livemap(options.map)) {
-      throw new Error("Hosted/Locus multi-library LiveMap support is not yet available.");
+      return create_multi_library_locus(options as never);
     }
     if ("state" in options) {
       throw new TypeError("Locus options state and map are mutually exclusive.");
@@ -273,9 +280,6 @@ function create_locus_for_map<
     initialHistory?: Readonly<{ baseRevision: number; commits: readonly LocusCanonicalCommit[] }>;
   }> = {},
 ): Locus<TMap, TActions> {
-  if (is_public_multi_library_livemap(map)) {
-    throw new Error("Hosted/Locus multi-library LiveMap support is not yet available.");
-  }
   const locusOwner = Object.freeze({});
   const readonlyMap = map as Locus<TMap, TActions>["map"];
   const activity = make_locus_activity_controller();

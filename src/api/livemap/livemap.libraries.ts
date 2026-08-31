@@ -156,9 +156,8 @@ export function make_livemap_libraries<const TLibraries extends LiveMapLibraries
 }
 
 /**
- * Construct an internal, fixed-registry client mirror from H1 snapshot
- * evidence.  This deliberately remains outside the public facade: H3 owns
- * recovery/bootstrap protocol exposure.
+ * Construct an internal, fixed-registry client mirror from an exact aggregate
+ * snapshot. The Locus client owns recovery/bootstrap protocol exposure.
  */
 export function make_livemap_hosted_mirror_from_snapshot_internal(
   snapshot: HostedAggregateSnapshot,
