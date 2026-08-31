@@ -112,6 +112,8 @@ export type LocusHostedAggregate = Readonly<{
   readonly rev: number;
   mutate: (mutation: (draft: LocusHostedAggregateDraft) => void | Promise<void>) => Promise<HostedAggregateCommit | undefined>;
   dispatch_action: (name: string, payload?: JsonValue) => Promise<JsonValue | void>;
+  /** @internal Ordered non-mutation barrier shared with aggregate mutations. */
+  run_exclusive: <TResult>(operation: () => TResult | Promise<TResult>) => Promise<TResult>;
   on_wire: (listener: (wire: string) => void) => () => void;
   dispose: () => void;
 }>;
@@ -218,6 +220,15 @@ export function create_locus_hosted_aggregate_internal(
         });
         return action(context, payload);
       })).result;
+    },
+    run_exclusive<TResult>(operation: () => TResult | Promise<TResult>): Promise<TResult> {
+      const run = async (): Promise<TResult> => {
+        if (disposed) throw new Error("Hosted aggregate Locus authority is closed.");
+        return operation();
+      };
+      const next = tail.then(run, run);
+      tail = next.then(() => undefined, () => undefined);
+      return next;
     },
     on_wire(listener) {
       listeners.add(listener);
