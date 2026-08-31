@@ -5,6 +5,7 @@ import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import type { CanonicalPublicAttrs, HsonNode } from "../../core/types.js";
 import type {
   DocumentLiveMap,
+  LiveMapDocumentLibrary,
   LiveMapCommitObservation,
   LiveMapDisposer,
   LiveMapDocumentCommitTarget,
@@ -119,18 +120,20 @@ type ProjectedRegistration = Omit<DocumentBindingNodeRegistration, "canonicalTar
   node: HsonNode;
 }>;
 
-const ACTIVE_DOCUMENT_BINDINGS = new WeakSet<DocumentLiveMap>();
+type ReflectableDocumentMap = DocumentLiveMap | LiveMapDocumentLibrary;
+
+const ACTIVE_DOCUMENT_BINDINGS = new WeakSet<object>();
 
 /** Internal attribute-only proof that projects one DocumentLiveMap into one LiveTree. */
 export function reflect_document(
-  map: DocumentLiveMap,
+  map: ReflectableDocumentMap,
 ): DocumentReflect {
   return reflect_document_in_runtime(map, default_livetree_runtime());
 }
 
 /** Bind a document projection into an already-selected LiveTree runtime. @internal */
 export function reflect_document_in_runtime(
-  map: DocumentLiveMap,
+  map: ReflectableDocumentMap,
   runtime: LiveTreeRuntime,
 ): DocumentReflect {
   if (ACTIVE_DOCUMENT_BINDINGS.has(map)) {
@@ -982,7 +985,13 @@ export function reflect_document_in_runtime(
         `Document binding expected revision ${currentRevision}, but commit began at ${commit.prevRev}.`,
       );
     }
-    if (!commit.changed || commit.ops.length === 0) return;
+    // A selected document binding observes the map-wide revision stream.  A
+    // commit to another Library deliberately has no graph work here, but it is
+    // still continuity evidence for this binding's next selected transition.
+    if (!commit.changed || commit.ops.length === 0) {
+      currentRevision = commit.rev;
+      return;
+    }
     consume_identity_effects(commit);
     const hasIdentityRegistration = commit.ops.some((operation) => operation.op === "ensure-quid");
     const identityReservation = livemap_document_identity_reservation_for(commit);
@@ -1171,7 +1180,7 @@ function mounted_document_anchor(root: HsonNode): Element | undefined {
   return is_ordinary_element_node(root) ? get_el_for_node(root) : undefined;
 }
 
-function read_map_attrs(map: DocumentLiveMap, target: LiveMapDocumentCommitTarget): CanonicalPublicAttrs {
+function read_map_attrs(map: ReflectableDocumentMap, target: LiveMapDocumentCommitTarget): CanonicalPublicAttrs {
   const values: Record<string, unknown> = {};
   for (const name of map.document.attrs.keys(target)) values[name] = map.document.attrs.must.get(target, name);
   const attrs = decode_public_attrs(values);

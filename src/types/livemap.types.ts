@@ -1440,14 +1440,151 @@ export type LiveMapDataLibrary<
   schema: Readonly<{ get: () => TSchema }>;
 }>;
 
-/** Read authority for one selected document Library. Document controllers remain solo-only. */
+type LiveMapLibraryDocumentCommit<
+  TLibrary extends string,
+  TOperation extends LiveMapGraphOp = LiveMapGraphOp,
+> = LiveMapMultiLibraryCommit<TLibrary, TOperation>;
+
+type LiveMapLibraryDocumentAttrsApi<TLibrary extends string> = DocumentLiveMapAttrsReadApi & Readonly<{
+  set: (target: LiveMapDocumentRequestTarget, name: string, value: LiveMapDocumentAttributeValue) =>
+    LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphSetAttrOp>;
+  drop: (target: LiveMapDocumentRequestTarget, name: string) =>
+    LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphRemoveAttrOp>;
+  setMany: (target: LiveMapDocumentRequestTarget, values: LiveMapDocumentAttrs) =>
+    LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceAttrsOp>;
+  dropMany: (target: LiveMapDocumentRequestTarget, names: readonly string[]) =>
+    LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceAttrsOp>;
+  clear: (target: LiveMapDocumentRequestTarget) =>
+    LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceAttrsOp>;
+  replace: (target: LiveMapDocumentRequestTarget, values: LiveMapDocumentAttrs) =>
+    LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceAttrsOp>;
+}>;
+
+type LiveMapLibraryDocumentFlagsApi<TLibrary extends string> = DocumentLiveMapFlagsReadApi & Readonly<{
+  set: (target: LiveMapDocumentRequestTarget, ...names: string[]) =>
+    LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceAttrsOp>;
+  clear: (target: LiveMapDocumentRequestTarget, ...names: string[]) =>
+    LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceAttrsOp>;
+}>;
+
+type LiveMapLibraryDocumentLocation<
+  TLibrary extends string,
+  TValue = InternalDocumentLegacyEndpoint,
+  TDescriptor = unknown,
+> = Readonly<{
+  readonly rev: number;
+  path: () => readonly number[];
+  snap: () => TValue;
+  watch: (listener: (next: TValue) => void) => LiveMapDisposer;
+  at<const TPath extends readonly number[]>(
+    path: TPath & ([InternalDocumentDescriptorEndpoint<
+      InternalDocumentResolveDescriptorPath<TDescriptor, TPath>
+    >] extends [never]
+      ? never
+      : unknown),
+  ): LiveMapLibraryDocumentLocation<
+    TLibrary,
+    InternalDocumentDescriptorEndpoint<
+      InternalDocumentResolveDescriptorPath<TDescriptor, TPath>
+    >,
+    InternalDocumentResolveDescriptorPath<TDescriptor, TPath>
+  >;
+  id: (value: string) => LiveMapLibraryDocumentLocation<TLibrary> | undefined;
+  replace: (
+    value: InternalDocumentWritableItem<TDescriptor>,
+  ) => LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceContentOp>;
+  delete: () => LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphRemoveContentOp>;
+  insert: (index: number, value: InternalDocumentInsertItem<TDescriptor>) =>
+    LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphInsertContentOp>;
+  move: (from: number, to: number) => LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphMoveContentOp>;
+  attrs: InternalDocumentLocationAttrsEvidence<TDescriptor> extends infer TAttrs
+    ? Readonly<{
+        get: <const TName extends InternalAttrsName<TAttrs>>(name: TName) => InternalAttrRead<TAttrs, TName>;
+        has: <const TName extends InternalAttrsName<TAttrs>>(name: TName) => boolean;
+        keys: () => readonly InternalAttrsKeys<TAttrs>[];
+        must: Readonly<{
+          get: <const TName extends InternalAttrsName<TAttrs>>(name: TName) => Exclude<InternalAttrRead<TAttrs, TName>, undefined>;
+        }>;
+        set: <const TName extends InternalAttrsName<TAttrs>>(
+          name: TName,
+          value: NoInfer<InternalAttrWriteValue<TAttrs, TName>>,
+        ) => LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphSetAttrOp>;
+        drop: <const TName extends InternalAttrsName<TAttrs>>(name: TName) =>
+          LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphRemoveAttrOp>;
+        setMany: (values: InternalAttrsSetManyInput<TAttrs>) =>
+          LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceAttrsOp>;
+        dropMany: (names: readonly InternalAttrsName<TAttrs>[]) =>
+          LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceAttrsOp>;
+        clear: () => LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceAttrsOp>;
+        replace: (values: InternalAttrsReplaceInput<TAttrs>) =>
+          LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceAttrsOp>;
+      }>
+    : never;
+  flags: InternalDocumentLocationAttrsEvidence<TDescriptor> extends infer TAttrs
+    ? Readonly<{
+        has: <const TName extends string>(name: TName & InternalFlagNameAllowed<TAttrs, TName>) => boolean;
+        set: <const TNames extends string[]>(...names: TNames & {
+          [TIndex in keyof TNames]: TNames[TIndex] extends string
+            ? InternalFlagNameAllowed<TAttrs, TNames[TIndex]>
+            : never;
+        }) => LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceAttrsOp>;
+        clear: <const TNames extends string[]>(...names: TNames & {
+          [TIndex in keyof TNames]: TNames[TIndex] extends string
+            ? InternalFlagNameAllowed<TAttrs, TNames[TIndex]>
+            : never;
+        }) => LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceAttrsOp>;
+      }>
+    : never;
+}>;
+
+/** One selected named document authority. Its writes retain the map-global commit envelope. */
 export type LiveMapDocumentLibrary<
-  TValue = unknown,
+  TEvidence = unknown,
+  TLibrary extends string = string,
   TSchema extends HsonSchema = HsonSchema,
 > = Readonly<{
   readonly mode: DocumentLiveMapMode;
   readonly rev: number;
   root: () => HsonNode;
+  at<const TPath extends readonly number[]>(
+    path: TPath & ([InternalDocumentLogicalPathEndpoint<TEvidence, TPath>] extends [never]
+      ? never
+      : unknown),
+  ): LiveMapLibraryDocumentLocation<
+    TLibrary,
+    InternalDocumentLogicalPathEndpoint<TEvidence, TPath>,
+    InternalDocumentLogicalPathDescriptor<TEvidence, TPath>
+  >;
+  proxy: <const TPath extends readonly number[] = []>(
+    path?: TPath & ([InternalDocumentLogicalPathEndpoint<TEvidence, TPath>] extends [never]
+      ? never
+      : unknown),
+  ) => Readonly<{
+    readonly $_: LiveMapLibraryDocumentLocation<
+      TLibrary,
+      InternalDocumentDescriptorEndpoint<InternalDocumentLogicalPathDescriptor<TEvidence, TPath>>,
+      InternalDocumentLogicalPathDescriptor<TEvidence, TPath>
+    >;
+  }>;
+  capture: DocumentLiveMapCaptureApi<"document">;
+  document: Readonly<{
+    root: () => HsonNode;
+    content: (() => readonly NodeContent[number][]) & Readonly<{
+      replace: (target: LiveMapDocumentRequestTarget, index: number, replacement: LiveMapDocumentContent) =>
+        LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceContentOp>;
+      insert: (target: LiveMapDocumentRequestTarget, index: number, content: LiveMapDocumentContent) =>
+        LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphInsertContentOp>;
+      remove: (target: LiveMapDocumentRequestTarget, index: number) =>
+        LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphRemoveContentOp>;
+      move: (target: LiveMapDocumentRequestTarget, from: number, to: number) =>
+        LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphMoveContentOp>;
+    }>;
+    byQuid: (quid: string) => HsonNode | undefined;
+    attrs: LiveMapLibraryDocumentAttrsApi<TLibrary>;
+    flags: LiveMapLibraryDocumentFlagsApi<TLibrary>;
+  }>;
+  /** Global-revision selected-document observations used by one Reflect binding. */
+  commits: LiveMapCommitObserverApi;
   schema: Readonly<{ get: () => TSchema }>;
 }>;
 
@@ -1455,7 +1592,7 @@ type LiveMapLibraryFacadeForInput<TInput, TLibrary extends string> =
   TInput extends LiveMapDataLibraryInput<infer TSchema>
     ? LiveMapDataLibrary<HsonSchemaValue<TSchema>, TLibrary, TSchema>
     : TInput extends LiveMapDocumentLibraryInput<infer TSchema>
-      ? LiveMapDocumentLibrary<HsonSchemaValue<TSchema>, TSchema>
+      ? LiveMapDocumentLibrary<HsonSchemaValue<TSchema>, TLibrary, TSchema>
       : never;
 
 /** The single global observer surface for a local multi-library LiveMap. */

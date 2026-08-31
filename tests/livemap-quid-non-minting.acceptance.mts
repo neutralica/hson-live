@@ -8,6 +8,7 @@ import {
 } from "../src/api/livemap/livemap.document.view-state-codec.ts";
 import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
 import type { HsonNode } from "../src/core/types.ts";
+import { is_Node } from "../src/core/node-guards.ts";
 
 let checks = 0;
 function check(name: string, fn: () => void): void {
@@ -18,8 +19,8 @@ function check(name: string, fn: () => void): void {
 
 const Q1 = "000000qb1";
 const Q2 = "000000qb2";
-const ROOT = { kind: "path", path: [] } as const;
-const CHILD_CLUSTER = { kind: "path", path: [0] } as const;
+const ROOT = { kind: "path", path: [0] } as const;
+const CHILD_CLUSTER = { kind: "path", path: [0, 0] } as const;
 
 function element(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
@@ -33,6 +34,12 @@ function manyUnquidded(): DocumentLiveMap {
 
 function sparse(): DocumentLiveMap {
   return element(`<main @${Q1} <header/> <section @${Q2} <p/> <p/>/> <footer/>/>`);
+}
+
+function ordinary(source: string): HsonNode {
+  const value = element(source).at([]).snap();
+  if (!is_Node(value)) throw new Error("Expected ordinary document element");
+  return value;
 }
 
 function nodes(root: HsonNode): HsonNode[] {
@@ -83,7 +90,6 @@ check("construction from a detached QUID-free node does not mint", () => {
 check("document root and element traversal do not mint", () => {
   const map = manyUnquidded();
   assert.equal(map.root().$_tag, "_hson_root");
-  assert.equal(map.root().$_tag, "main");
   assertNoQuids(map);
 });
 
@@ -123,14 +129,14 @@ check("ordinary attribute removal does not mint", () => {
 
 check("ordinary content insertion does not mint existing or incoming nodes", () => {
   const map = manyUnquidded();
-  map.document.content.insert(CHILD_CLUSTER, 1, element(`<article <span/>/>`).root());
+  map.document.content.insert(CHILD_CLUSTER, 1, ordinary(`<article <span/>/>`));
   assert.equal(nodes(map.root()).some((node) => node.$_tag === "article"), true);
   assertNoQuids(map);
 });
 
 check("ordinary content replacement does not mint", () => {
   const map = manyUnquidded();
-  map.document.content.replace(CHILD_CLUSTER, 0, element(`<article <span/>/>`).root());
+  map.document.content.replace(CHILD_CLUSTER, 0, ordinary(`<article <span/>/>`));
   assert.equal(nodes(map.root()).some((node) => node.$_tag === "article"), true);
   assertNoQuids(map);
 });
@@ -214,7 +220,7 @@ check("sparse targeted attribute mutation preserves only supplied QUIDs", () => 
 
 check("sparse insertion preserves supplied QUIDs and leaves new nodes unquidded", () => {
   const map = sparse();
-  map.document.content.insert(CHILD_CLUSTER, 1, element(`<article <span/>/>`).root());
+  map.document.content.insert(CHILD_CLUSTER, 1, ordinary(`<article <span/>/>`));
   assertSparse(map);
   assert.equal(quidForTag(map.root(), "article"), undefined);
   assert.equal(quidForTag(map.root(), "span"), undefined);

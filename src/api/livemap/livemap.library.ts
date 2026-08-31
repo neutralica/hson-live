@@ -52,6 +52,11 @@ export type LiveMapAggregateWrite =
     target: LiveMapStructuralTarget;
     kind: "ensure-quid";
     quid: string;
+  }>
+  | Readonly<{
+    target: LiveMapStructuralTarget;
+    kind: "graph";
+    operation: import("../../types/livemap.types.js").LiveMapGraphOp;
   }>;
 
 /** Reject accidental lowering of an aggregate commit into the path-only legacy envelope. @internal */

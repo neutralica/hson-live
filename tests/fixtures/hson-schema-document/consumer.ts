@@ -16,7 +16,9 @@ const libraries = hsonLiveMap.fromLibraries({
   sequence: { document: "<item/><item/>", schema: DocumentSequenceSchema },
 });
 const pageMode: "document" = libraries.lib("page").mode;
-// @ts-expect-error A selected document Library has no deprecated Fragment or document controller facade.
-libraries.lib("page").document;
+const selectedPageRoot = libraries.lib("page").document.root();
+// @ts-expect-error The selected Page document has exactly one top-level main node.
+libraries.lib("page").at([1]);
 
 void pageMode;
+void selectedPageRoot;

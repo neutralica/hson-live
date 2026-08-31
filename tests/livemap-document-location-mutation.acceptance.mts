@@ -118,7 +118,7 @@ check("Reflection consumes location replacement without a special case", () => {
   const map = reflectedElement(`<main <a/>/>`);
   const binding = _reflect_document_for_runtime_test(_create_livetree_runtime_test_handle(), map);
   map.at([0]).replace(ordinary(`<x/>`));
-  assert.equal(raw_node(binding.tree.node, [0, 0, 0]).$_tag, "x");
+  assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "x");
   binding.dispose();
 });
 
@@ -194,7 +194,7 @@ check("Reflection consumes location deletion without a special case", () => {
   const map = reflectedElement(`<main <a/> <b/>/>`);
   const binding = _reflect_document_for_runtime_test(_create_livetree_runtime_test_handle(), map);
   map.at([0]).delete();
-  assert.equal(raw_node(binding.tree.node, [0, 0, 0]).$_tag, "b");
+  assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "b");
   binding.dispose();
 });
 

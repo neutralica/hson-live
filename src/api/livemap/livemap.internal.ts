@@ -1,8 +1,9 @@
 import type { HsonNode, JsonValue } from "../../core/types.js";
 import type { HsonSchema } from "../transform/transform.types.js";
-import type { LivePath } from "../../types/livemap.types.js";
+import type { LiveMapGraphCommit, LiveMapGraphOp, LivePath } from "../../types/livemap.types.js";
 import { resolveLiveMapNode } from "./livemap.node.js";
 import type { LiveMapIdentityEpochController } from "./livemap.identity-epoch.js";
+import type { LiveMapDocumentIdentityOverlay } from "./livemap.document.identity.js";
 import type {
   LiveMapAggregateCommit,
   LiveMapAggregateWrite,
@@ -14,6 +15,7 @@ import type {
   PreparedLiveMapAggregateTransition,
   LiveMapTransitionController,
 } from "./livemap.authority.js";
+import type { PreparedDocumentMutation } from "./livemap.document.mutation.js";
 
 type InternalLiveMapOwner = Readonly<{
   root: () => HsonNode;
@@ -37,6 +39,8 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   addLibrary: (root: HsonNode, options?: Readonly<{ hsonSchema?: HsonSchema }>) => LiveMapLibraryIdentity;
   target: (library: LiveMapLibraryIdentity, path: LivePath) => LiveMapStructuralTarget;
   root: (library: LiveMapLibraryIdentity) => HsonNode;
+  documentOverlay: (library: LiveMapLibraryIdentity) => LiveMapDocumentIdentityOverlay;
+  identityEpoch: () => LiveMapIdentityEpochController;
   snap: (library: LiveMapLibraryIdentity, path?: LivePath) => JsonValue | undefined;
   handle: (library: LiveMapLibraryIdentity, path: LivePath) => InternalLiveMapPathAuthority;
   resolveQuid: (quid: string) => LiveMapStructuralTarget | undefined;
@@ -44,6 +48,18 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   accept: LiveMapTransitionController["acceptAggregate"];
   discard: LiveMapTransitionController["discardAggregate"];
   commit: (writes: readonly LiveMapAggregateWrite[]) => LiveMapAggregateCommit;
+  /** Commit one already-planned document candidate through the map-global transition. */
+  commitDocumentMutation: <TOp extends LiveMapGraphOp>(
+    library: LiveMapLibraryIdentity,
+    candidate: PreparedDocumentMutation<TOp>,
+  ) => LiveMapGraphCommit<TOp>;
+  /** Exact selected-document evidence carried by one accepted aggregate commit. */
+  documentCommitFor: (
+    library: LiveMapLibraryIdentity,
+    commit: LiveMapAggregateCommit,
+  ) => LiveMapGraphCommit | undefined;
+  /** Recover the aggregate envelope that accepted one selected-document commit. */
+  aggregateCommitForDocument: (commit: LiveMapGraphCommit) => LiveMapAggregateCommit | undefined;
   lowerForLegacy: (commit: LiveMapAggregateCommit) => never;
   observe: (listener: (commit: LiveMapAggregateCommit) => void) => () => void;
   watch: (
