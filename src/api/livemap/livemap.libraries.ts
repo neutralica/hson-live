@@ -268,31 +268,73 @@ function make_document_library(
 
   const root = (): HsonNode => aggregate.root(library.identity);
   const document_commits = Object.freeze({
-    observe: (listener: (observation: LiveMapCommitObservation) => void) => aggregate.observe((aggregateCommit) => {
-      const mapped = aggregate.documentCommitFor(library.identity, aggregateCommit);
-      const selectedOperations = aggregateCommit.operations
-        .filter((entry) => entry.target.library === library.identity)
-        .map((entry) => entry.operation)
-        .filter((operation): operation is LiveMapGraphOp => "domain" in operation && operation.domain === "graph");
-      const commit: LiveMapGraphCommit = mapped ?? Object.freeze({
-        changed: selectedOperations.length > 0,
-        prevRev: aggregateCommit.prevRev,
-        rev: aggregateCommit.rev,
-        ops: Object.freeze(selectedOperations),
+    observe: (listener: (observation: LiveMapCommitObservation) => void) => {
+      const stopCommit = aggregate.observe((aggregateCommit) => {
+        const mapped = aggregate.documentCommitFor(library.identity, aggregateCommit);
+        const selectedOperations = aggregateCommit.operations
+          .filter((entry) => entry.target.library === library.identity)
+          .map((entry) => entry.operation)
+          .filter((operation): operation is LiveMapGraphOp => "domain" in operation && operation.domain === "graph");
+        const commit: LiveMapGraphCommit = mapped ?? Object.freeze({
+          changed: selectedOperations.length > 0,
+          prevRev: aggregateCommit.prevRev,
+          rev: aggregateCommit.rev,
+          ops: Object.freeze(selectedOperations),
+        });
+        const observation: LiveMapCommitObservation = Object.freeze({
+          kind: "commit" as const,
+          commit,
+          origin: "authoritative" as const,
+        });
+        register_livemap_document_observation_evidence(observation, Object.freeze({
+          mode: "document" as const,
+          revision: aggregateCommit.rev,
+          root: root(),
+          continuity: "same-epoch" as const,
+        }));
+        listener(observation);
       });
-      const observation: LiveMapCommitObservation = Object.freeze({
-        kind: "commit" as const,
-        commit,
-        origin: "authoritative" as const,
+      const stopRestore = aggregate.observeRestore((event) => {
+        if (!event.libraries.includes(library.identity)) return;
+        if (!event.changedLibraries.includes(library.identity)) {
+          const commit: LiveMapGraphCommit = Object.freeze({
+            changed: false,
+            prevRev: event.previousRevision,
+            rev: event.revision,
+            ops: Object.freeze([]),
+          });
+          const observation: LiveMapCommitObservation = Object.freeze({
+            kind: "commit" as const,
+            origin: "replay" as const,
+            commit,
+          });
+          register_livemap_document_observation_evidence(observation, Object.freeze({
+            mode: "document" as const,
+            revision: event.revision,
+            root: root(),
+            continuity: "same-epoch" as const,
+          }));
+          listener(observation);
+          return;
+        }
+        const observation: LiveMapCommitObservation = Object.freeze({
+          kind: "snapshot" as const,
+          origin: "snapshot" as const,
+          revision: event.revision,
+        });
+        register_livemap_document_observation_evidence(observation, Object.freeze({
+          mode: "document" as const,
+          revision: event.revision,
+          root: root(),
+          continuity: "same-epoch" as const,
+        }));
+        listener(observation);
       });
-      register_livemap_document_observation_evidence(observation, Object.freeze({
-        mode: "document" as const,
-        revision: aggregateCommit.rev,
-        root: root(),
-        continuity: "same-epoch" as const,
-      }));
-      listener(observation);
-    }),
+      return () => {
+        stopCommit();
+        stopRestore();
+      };
+    },
   });
 
   const controller = Object.freeze({
@@ -345,10 +387,20 @@ function make_document_library(
       insert: mutation.insertContent,
       move: mutation.moveContent,
     }),
-    (path, listener) => aggregate.observe((commit) => {
-      if (!commit.operations.some((operation) => operation.target.library === library.identity)) return;
-      listener(read_livemap_document_logical_location(root(), "document", path));
-    }),
+    (path, listener) => {
+      const stopCommit = aggregate.observe((commit) => {
+        if (!commit.operations.some((operation) => operation.target.library === library.identity)) return;
+        listener(read_livemap_document_logical_location(root(), "document", path));
+      });
+      const stopRestore = aggregate.observeRestore((event) => {
+        if (!event.libraries.includes(library.identity)) return;
+        listener(read_livemap_document_logical_location(root(), "document", path));
+      });
+      return () => {
+        stopCommit();
+        stopRestore();
+      };
+    },
   );
   const wrappedLocations = new WeakMap<object, object>();
   const wrap_location = (raw: ReturnType<typeof raw_at>): ReturnType<LiveMapDocumentLibrary["at"]> => {

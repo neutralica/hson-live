@@ -1022,6 +1022,12 @@ function make_livemap_core_from_owned_root(
   }>;
 
   const aggregateObservers: Array<(commit: LiveMapAggregateCommit) => void> = [];
+  const aggregateRestoreObservers: Array<(event: Readonly<{
+    previousRevision: number;
+    revision: number;
+    libraries: readonly LiveMapLibraryIdentity[];
+    changedLibraries: readonly LiveMapLibraryIdentity[];
+  }>) => void> = [];
   const aggregateWatches: AggregateWatch[] = [];
   const aggregateFeeds: AggregateFeed[] = [];
   const internalPathAuthorities = new WeakMap<object, Map<string, ReturnType<typeof make_internal_path_authority>>>();
@@ -1697,6 +1703,10 @@ function make_livemap_core_from_owned_root(
 
     // All fallible decoding, compilation, Schema, mode, identity, and bound checks
     // are complete before this single installation section begins.
+    const previousRevision = mapRevision;
+    const changedLibraries = Object.freeze(candidates
+      .filter((candidate) => !canonical_graph_equal(candidate.library.root, candidate.root))
+      .map((candidate) => candidate.library.identity));
     for (const candidate of candidates) {
       Object.assign(candidate.library, {
         root: candidate.root,
@@ -1712,6 +1722,21 @@ function make_livemap_core_from_owned_root(
       incarnationId: snapshot.authority.incarnationId,
     });
     transitionController.invalidate();
+    // A hosted recovery snapshot is an atomic replacement boundary, not a
+    // fabricated operation commit.  Selected document libraries use this to
+    // deliver their normal in-place snapshot observation to Reflect while
+    // retained data/document handles continue to resolve through the same
+    // stable library records above.
+    const restored = Object.freeze(libraryRegistry.all().map((library) => library.identity));
+    const event = Object.freeze({
+      previousRevision,
+      revision: snapshot.revision,
+      libraries: restored,
+      changedLibraries,
+    });
+    enqueuePublication(() => {
+      for (const observer of [...aggregateRestoreObservers]) observer(event);
+    });
   }
 
   function replay_hosted_aggregate(input: HostedAggregateCommit): LiveMapAggregateCommit {
@@ -1816,6 +1841,13 @@ function make_livemap_core_from_owned_root(
       return () => {
         const index = aggregateObservers.indexOf(listener);
         if (index !== -1) aggregateObservers.splice(index, 1);
+      };
+    },
+    observeRestore: (listener) => {
+      aggregateRestoreObservers.push(listener);
+      return () => {
+        const index = aggregateRestoreObservers.indexOf(listener);
+        if (index !== -1) aggregateRestoreObservers.splice(index, 1);
       };
     },
     watch: (library, path, listener) => {

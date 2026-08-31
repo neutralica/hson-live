@@ -314,7 +314,23 @@ export function decode_locus_hosted_aggregate_wire(
   if (message.type !== "commit" || message.id !== "hosted-aggregate") {
     throw new Error("Hosted aggregate Locus wire message has an invalid routing envelope.");
   }
-  const envelope = exact_record(message.commit, "Hosted aggregate Locus commit envelope");
+  return decode_locus_hosted_aggregate_envelope(message.commit, expected);
+}
+
+/**
+ * Strictly decode the reusable H2 routing envelope without fabricating a
+ * legacy solo commit.  Recovery carries this same object as its commit body.
+ */
+export function decode_locus_hosted_aggregate_envelope(
+  input: unknown,
+  expected: Readonly<{
+    logicalMapId: string;
+    incarnationId: string;
+    registryDigest: string;
+    maxWireBytes?: number;
+  }>,
+): HostedAggregateCommit {
+  const envelope = exact_record(input, "Hosted aggregate Locus commit envelope");
   exact_keys(envelope, ["format", "logicalMapId", "incarnationId", "registryDigest", "commit"], "Hosted aggregate Locus commit envelope");
   if (envelope.format !== LOCUS_HOSTED_AGGREGATE_WIRE_FORMAT
     || envelope.logicalMapId !== expected.logicalMapId

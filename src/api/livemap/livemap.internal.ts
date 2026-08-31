@@ -82,6 +82,19 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   aggregateCommitForDocument: (commit: LiveMapGraphCommit) => LiveMapAggregateCommit | undefined;
   lowerForLegacy: (commit: LiveMapAggregateCommit) => never;
   observe: (listener: (commit: LiveMapAggregateCommit) => void) => () => void;
+  /**
+   * Observe one atomic hosted aggregate replacement.  This is deliberately a
+   * recovery boundary, not a synthetic commit: a snapshot may jump several
+   * global revisions and has no operation sequence to replay.
+   * @internal
+   */
+  observeRestore: (listener: (event: Readonly<{
+    previousRevision: number;
+    revision: number;
+    libraries: readonly LiveMapLibraryIdentity[];
+    /** Libraries whose canonical roots actually changed at this boundary. */
+    changedLibraries: readonly LiveMapLibraryIdentity[];
+  }>) => void) => () => void;
   watch: (
     library: LiveMapLibraryIdentity,
     path: LivePath,
