@@ -1,7 +1,7 @@
 import { compile_hson_schema } from "../../../src/internal/hson-schema/compiler.js";
 
 export type LocalHsonSchemaDiagnostic = Readonly<{ start: number; end: number; code: string; message: string }>;
-export type LocalHsonSchemaDeclaration = Readonly<{ name: string; start: number; end: number; template: string }>;
+export type LocalHsonSchemaDeclaration = Readonly<{ name: string; start: number; end: number; template: string; templateStart: number; templateEnd: number }>;
 
 /** Fast authoring feedback backed by the same pure compiler as the build analyzer. */
 export function local_hson_schema_diagnostics(fileName: string, text: string): readonly LocalHsonSchemaDiagnostic[] {
@@ -32,7 +32,8 @@ export function local_hson_schema_declarations(text: string): readonly LocalHson
     const name = match[1], schemaType = match[2], tag = match[3], template = match[4] ?? "", start = match.index;
     if (name === undefined || schemaType === undefined || tag === undefined || start === undefined) continue;
     if (officialSchema.has(schemaType) && officialHson.has(tag) && !template.includes("${")) {
-      declarations.push(Object.freeze({ name, start, end: start + match[0].length, template }));
+      const templateStart = start + match[0].indexOf("`") + 1;
+      declarations.push(Object.freeze({ name, start, end: start + match[0].length, template, templateStart, templateEnd: templateStart + template.length }));
     }
   }
   return Object.freeze(declarations);

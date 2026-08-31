@@ -47,6 +47,25 @@ check("forward, backward, and case-sensitive local refs resolve deterministicall
   assert.equal(compile(`<type "data" defs <Name "string"> content <ref "name">>`).ok, false);
 });
 
+check("compiler exposes stable authored def/ref facts for editor-neutral tooling", () => {
+  const source = `<type "data" defs <'display name' <content <next <ref "display name">>> Later "string"> content <ref "Later">>`;
+  const result = compile(source);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  const definition = result.value.symbols.definitions.find(symbol => symbol.name === "display name");
+  assert.ok(definition);
+  assert.equal(source.slice(definition.declarationRange.start, definition.declarationRange.end), "'display name'");
+  assert.equal(definition.referenceRanges.length, 1);
+  assert.equal(source.slice(definition.referenceRanges[0]!.start, definition.referenceRanges[0]!.end), '"display name"');
+  assert.equal(result.value.symbols.references.every(reference => reference.targetId !== undefined), true);
+  const unresolved = compile(`<type "data" defs <Known "string"> content <ref "Missing">>`);
+  assert.equal(unresolved.ok, false);
+  if (!unresolved.ok) {
+    assert.equal(unresolved.symbols?.definitions[0]?.name, "Known");
+    assert.equal(unresolved.symbols?.references[0]?.targetId, undefined);
+  }
+});
+
 check("malformed, missing, nested, and extra-member refs reject with source ranges", () => {
   for (const source of [
     `<type "data" defs <Known "string"> content <ref "Missing">>`,

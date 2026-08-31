@@ -12,6 +12,11 @@ async function schemaCompletions(document: vscode.TextDocument, offset: number):
   return items;
 }
 
+async function localSchemaCompletions(document: vscode.TextDocument, offset: number): Promise<vscode.CompletionItem[]> {
+  const result = await vscode.commands.executeCommand<vscode.CompletionList>('vscode.executeCompletionItemProvider', document.uri, document.positionAt(offset));
+  return result?.items.filter(item => item.detail === 'Hson Schema definition') ?? [];
+}
+
 async function diagnosticsFor(
   uri: vscode.Uri,
   count: number,
@@ -31,6 +36,8 @@ export async function run(): Promise<void> {
   const extension = vscode.extensions.getExtension("terminal-gothic.hson-language");
   assert.ok(extension, "Hson extension was not discovered by the extension host");
   await extension.activate();
+  const workspace = process.env.HSON_D2_TEST_WORKSPACE;
+  const hsonModule = process.env.HSON_D2_TEST_HSON;
 
   if (process.env.HSON_D4_RESTRICTED === "1") {
     assert.equal(vscode.workspace.isTrusted, false, "restricted integration workspace must remain untrusted");
@@ -63,6 +70,30 @@ export async function run(): Promise<void> {
   assert.equal(standaloneDiagnostics[0]?.source, "Hson");
   assert.equal(standaloneDiagnostics[0]?.range.start.character, 0);
 
+  assert.ok(workspace);
+  const symbolDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace, "schema-symbols.ts")));
+  await vscode.window.showTextDocument(symbolDocument);
+  const ageDefinition = symbolDocument.getText().indexOf('Age <number');
+  const ageReference = symbolDocument.getText().indexOf('"Age"') + 2;
+  assert.deepEqual((await localSchemaCompletions(symbolDocument, ageReference)).map(item => item.label), ["Age", "User"]);
+  const definitions = await vscode.commands.executeCommand<vscode.Location[]>('vscode.executeDefinitionProvider', symbolDocument.uri, symbolDocument.positionAt(ageReference));
+  assert.equal(symbolDocument.getText(definitions?.[0]?.range), "Age");
+  const references = await vscode.commands.executeCommand<vscode.Location[]>('vscode.executeReferenceProvider', symbolDocument.uri, symbolDocument.positionAt(ageDefinition));
+  assert.equal(references?.filter(location => symbolDocument.getText(location.range) === '"Age"').length, 1);
+  const hover = await vscode.commands.executeCommand<vscode.Hover[]>('vscode.executeHoverProvider', symbolDocument.uri, symbolDocument.positionAt(ageReference));
+  const hoverContent = hover?.[0]?.contents[0];
+  assert.ok(hoverContent instanceof vscode.MarkdownString);
+  assert.match(hoverContent.value, /Age/);
+  const rename = await vscode.commands.executeCommand<vscode.WorkspaceEdit>('vscode.executeDocumentRenameProvider', symbolDocument.uri, symbolDocument.positionAt(ageDefinition), "Years");
+  assert.ok(rename);
+  assert.equal(await vscode.workspace.applyEdit(rename), true);
+  assert.match(symbolDocument.getText(), /Years <number/);
+  assert.match(symbolDocument.getText(), /<ref "Years">/);
+  assert.match(symbolDocument.getText(), /const ordinary = "Age"/);
+  const generated = vscode.Uri.file(join(workspace, "schema-symbols.SymbolSchema.hson-schema.generated.ts"));
+  assert.equal(Buffer.from(await vscode.workspace.fs.readFile(generated)).toString(), "export {};\n");
+  process.stdout.write("ok - real VS Code Schema defs/ref: completion, definition, references, rename, hover, and generated source remains untouched\n");
+
   const fixturePath = join(__dirname, "..", "tests", "fixtures", "diagnostics-alias.ts");
   const alias = await vscode.workspace.openTextDocument(vscode.Uri.file(fixturePath));
   await vscode.window.showTextDocument(alias);
@@ -82,8 +113,6 @@ export async function run(): Promise<void> {
     && smokeDiagnostics[0].range.start.line >= 8
     && smokeDiagnostics[0].range.end.line <= 10);
 
-  const workspace = process.env.HSON_D2_TEST_WORKSPACE;
-  const hsonModule = process.env.HSON_D2_TEST_HSON;
   assert.ok(workspace && hsonModule);
   const user = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace, "user.ts")));
   await vscode.window.showTextDocument(user);

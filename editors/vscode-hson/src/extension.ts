@@ -9,6 +9,13 @@ import { start_schema_diagnostics } from "./schema-diagnostics.js";
 import { TrustedSchemaInfrastructureError } from "../../../src/internal/trusted-schema-diagnostics/node-supervisor.js";
 import { schema_provider_source_changed } from "./schema-source-revision.js";
 import { local_hson_schema_declarations, local_hson_schema_diagnostics } from "./hson-schema-local.js";
+import {
+  local_hson_schema_completion,
+  local_hson_schema_symbols,
+  rename_hson_schema_definition,
+  schema_ref_completion_range,
+  schema_target_at,
+} from "./hson-schema-symbols.js";
 import { discover_schema_project, resolve_workspace_hson_schema_tool } from "./schema-tooling.js";
 
 import {
@@ -113,6 +120,68 @@ export function activate(context: vscode.ExtensionContext): void {
       publishLocalSchema(event.document); publishSchemaEvidence(event.document);
     }),
     vscode.workspace.onDidCloseTextDocument(document => { localSchemaCollection.delete(document.uri); schemaEvidenceCollection.delete(document.uri); staleSchemaEvidence.delete(document.uri.toString()); schemaDeclarationSnapshots.delete(document.uri.toString()); }));
+
+  // Secure local defs/ref tooling deliberately shares the pure compiler with
+  // authoring diagnostics. It never asks the trusted runtime to load a project.
+  const localSchemaSelector = ["typescript", "typescriptreact"];
+  const localSymbols = (document: vscode.TextDocument) => local_hson_schema_symbols(document.fileName, document.getText());
+  context.subscriptions.push(
+    vscode.languages.registerCompletionItemProvider(localSchemaSelector, {
+      provideCompletionItems(document, position) {
+        const offset = document.offsetAt(position);
+        const range = schema_ref_completion_range(document.getText(), offset);
+        if (range === undefined) return [];
+        return local_hson_schema_completion(document.fileName, document.getText(), offset).map(symbol => {
+          const item = new vscode.CompletionItem(symbol.name, vscode.CompletionItemKind.Reference);
+          item.detail = symbol.capability === "data" ? "Hson Schema definition" : "Hson Schema document definition";
+          item.range = new vscode.Range(document.positionAt(range.start), document.positionAt(range.end));
+          item.insertText = JSON.stringify(symbol.name).slice(1, -1);
+          return item;
+        });
+      },
+    }),
+    vscode.languages.registerDefinitionProvider(localSchemaSelector, {
+      provideDefinition(document, position) {
+        const target = schema_target_at(localSymbols(document), document.offsetAt(position));
+        return target === undefined ? undefined : new vscode.Location(document.uri, new vscode.Range(document.positionAt(target.range.start), document.positionAt(target.range.end)));
+      },
+    }),
+    vscode.languages.registerReferenceProvider(localSchemaSelector, {
+      provideReferences(document, position, referenceContext) {
+        const symbols = localSymbols(document);
+        const target = schema_target_at(symbols, document.offsetAt(position));
+        if (target === undefined) return [];
+        const locations = target.references.map(range => new vscode.Location(document.uri, new vscode.Range(document.positionAt(range.start), document.positionAt(range.end))));
+        if (referenceContext.includeDeclaration) locations.unshift(new vscode.Location(document.uri, new vscode.Range(document.positionAt(target.range.start), document.positionAt(target.range.end))));
+        return locations;
+      },
+    }),
+    vscode.languages.registerRenameProvider(localSchemaSelector, {
+      prepareRename(document, position) {
+        const target = schema_target_at(localSymbols(document), document.offsetAt(position));
+        return target === undefined ? undefined : new vscode.Range(document.positionAt(target.range.start), document.positionAt(target.range.end));
+      },
+      provideRenameEdits(document, position, newName) {
+        const renamed = rename_hson_schema_definition(localSymbols(document), document.offsetAt(position), newName);
+        if (renamed === undefined) return undefined;
+        const edit = new vscode.WorkspaceEdit();
+        for (const change of renamed.edits) edit.replace(document.uri, new vscode.Range(document.positionAt(change.start), document.positionAt(change.end)), change.text);
+        return edit;
+      },
+    }),
+    vscode.languages.registerHoverProvider(localSchemaSelector, {
+      provideHover(document, position) {
+        const symbols = localSymbols(document);
+        const target = schema_target_at(symbols, document.offsetAt(position));
+        if (target === undefined) return undefined;
+        const content = new vscode.MarkdownString();
+        content.appendCodeblock(target.name, "hson");
+        content.appendMarkdown(`Hson Schema ${target.capability === "data" ? "definition" : "document definition"}`);
+        if (target.references.length > 0) content.appendMarkdown(`  \n${target.references.length} local reference${target.references.length === 1 ? "" : "s"}`);
+        return new vscode.Hover(content, new vscode.Range(document.positionAt(target.range.start), document.positionAt(target.range.end)));
+      },
+    }),
+  );
 
   const host: DiagnosticHost = {
     openDocuments: () => vscode.workspace.textDocuments.map(adaptDocument),

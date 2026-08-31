@@ -139,6 +139,14 @@ The extension discovers static `HsonSchema` declarations and generated evidence.
 It provides Schema-aware diagnostics and completion without executing callback
 validators.
 
+Local Schema definitions are editor symbols: inside `<ref "…">`, completion
+offers the current declaration's `defs`; **Go to Definition**, **Find
+References**, **Rename Symbol**, and hover follow only those semantic local
+references. Rename changes the authored Schema declaration and its resolved ref
+strings as one editor edit; it never edits generated files. Use Schema Watch or
+**Hson: Generate Schema Types** afterward to reconcile generated evidence (the
+usual stale-evidence quick fixes remain available).
+
 For headless development and CI, the package remains authoritative:
 
 ```sh

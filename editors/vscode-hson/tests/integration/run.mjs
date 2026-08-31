@@ -80,6 +80,9 @@ try { await import("data:text/javascript;base64," + Buffer.from(code).toString("
 }
 `);
 await writeFile(join(workspaceDir, "user.ts"), 'import { Hson, hson } from "hson-live";\nimport { UserSchema } from "./trusted-schema.mjs";\nconst user = Hson`<user <age "37">>`;\nHson.certify(UserSchema, user);\n');
+await writeFile(join(workspaceDir, "schema-symbols.ts"), 'import { Hson, type HsonSchema } from "hson-live";\nexport const SymbolSchema: HsonSchema = Hson`<type "data" defs <Age <number <int true min 0>> User <content <age <ref "Age">>>> content <ref "User">>`;\nconst ordinary = "Age";\n');
+await writeFile(join(workspaceDir, "schema-symbols.SymbolSchema.hson-schema.generated.ts"), "export {};\n");
+await writeFile(join(workspaceDir, "schema-symbols.SymbolSchema.hson-schema.generated.json"), "{}\n");
 try {
   await runTests({
     extensionDevelopmentPath: resolve(here, "../.."),

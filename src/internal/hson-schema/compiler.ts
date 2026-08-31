@@ -98,10 +98,36 @@ export type HsonSchemaReferenceUse = Readonly<{
   range: HsonSourceRange;
 }>;
 
+/**
+ * Source-semantic facts for editor tooling. These deliberately identify a
+ * definition by its authored declaration range rather than a lowered graph
+ * node: graph indices are an implementation detail and can change on edits.
+ */
+export type HsonSchemaDefinitionSymbol = Readonly<{
+  id: string;
+  name: string;
+  declarationRange: HsonSourceRange;
+  capability: "data" | "document-item";
+  referenceRanges: readonly HsonSourceRange[];
+}>;
+
+export type HsonSchemaReferenceSymbol = Readonly<{
+  name: string;
+  range: HsonSourceRange;
+  requiredCapability: "data" | "document-item";
+  targetId?: string;
+}>;
+
+export type HsonSchemaSymbolTable = Readonly<{
+  definitions: readonly HsonSchemaDefinitionSymbol[];
+  references: readonly HsonSchemaReferenceSymbol[];
+}>;
+
 export type CompiledHsonSchema = Readonly<{
   semantic: HsonSchemaSemanticNode;
   definitions: readonly HsonSchemaDefinition[];
   referenceUses: readonly HsonSchemaReferenceUse[];
+  symbols: HsonSchemaSymbolTable;
   graph: VerifiedCanonicalSchemaGraph;
   provenance: HsonSourceProvenance;
   semanticRanges: ReadonlyMap<HsonSchemaRangedNode, HsonSourceRange>;
@@ -114,7 +140,7 @@ export type CompiledHsonSchema = Readonly<{
 
 export type HsonSchemaCompilation =
   | Readonly<{ ok: true; value: CompiledHsonSchema }>
-  | Readonly<{ ok: false; issues: readonly HsonSchemaIssue[] }>;
+  | Readonly<{ ok: false; issues: readonly HsonSchemaIssue[]; symbols?: HsonSchemaSymbolTable }>;
 
 type JsonObject = Record<string, unknown>;
 
@@ -181,12 +207,12 @@ export function compile_hson_schema(source: string): HsonSchemaCompilation {
   validate_document_attr_capabilities(semantic, definitions, ranges, issues);
   if (semantic !== undefined) validate_unions(semantic, definitions, issues);
   for (const definition of definitions) validate_unions(definition.schema, definitions, issues);
-  if (semantic === undefined || issues.length > 0) return Object.freeze({ ok: false, issues: Object.freeze(issues.map((entry) => with_issue_range(entry, parsed.value, parsed.provenance))) });
+  if (semantic === undefined || issues.length > 0) return Object.freeze({ ok: false, issues: Object.freeze(issues.map((entry) => with_issue_range(entry, parsed.value, parsed.provenance))), symbols: hson_schema_symbols(definitions, referenceUses) });
   if (!bootstrapResult.ok) {
     const first = bootstrapResult.issues[0];
-    return failure("INVALID_SCHEMA_EXPRESSION", first?.path ?? [], first === undefined
+    return Object.freeze({ ok: false, issues: Object.freeze([Object.freeze({ code: "INVALID_SCHEMA_EXPRESSION", path: Object.freeze(first?.path ?? []), message: first === undefined
       ? "Schema does not match the MVP bootstrap language."
-      : `Schema does not match the MVP bootstrap language (${first.code}${first.expected === undefined ? "" : `: expected ${first.expected}`}).`);
+      : `Schema does not match the MVP bootstrap language (${first.code}${first.expected === undefined ? "" : `: expected ${first.expected}`}).` })]), symbols: hson_schema_symbols(definitions, referenceUses) });
   }
   const lowered = lower_hson_schema_semantic_with_sources(semantic, definitions);
   const verified = verify_canonical_schema_graph(lowered.graph);
@@ -196,7 +222,7 @@ export function compile_hson_schema(source: string): HsonSchemaCompilation {
     const source = nodeIndex === undefined ? undefined : lowered.sources[nodeIndex];
     const range = source === undefined ? undefined : ranges.get(source);
     const label = source?.kind === "ref" || source?.kind === "document-ref" ? ` Reference ${JSON.stringify(source.name)} is involved.` : "";
-    return Object.freeze({ ok: false, issues: Object.freeze([Object.freeze({ code: "INVALID_SCHEMA_GRAPH", path: Object.freeze([]), message: `${verified.issues.map((entry) => entry.message).join(" ")}${label}`, ...(range === undefined ? {} : { range }) })]) });
+    return Object.freeze({ ok: false, issues: Object.freeze([Object.freeze({ code: "INVALID_SCHEMA_GRAPH", path: Object.freeze([]), message: `${verified.issues.map((entry) => entry.message).join(" ")}${label}`, ...(range === undefined ? {} : { range }) })]), symbols: hson_schema_symbols(definitions, referenceUses) });
   }
   const recursiveSccCount = count_recursive_sccs(verified.graph);
   return Object.freeze({
@@ -205,6 +231,7 @@ export function compile_hson_schema(source: string): HsonSchemaCompilation {
         semantic,
         definitions: Object.freeze(definitions),
         referenceUses: Object.freeze(referenceUses),
+        symbols: hson_schema_symbols(definitions, referenceUses),
         graph: verified.graph,
         provenance: parsed.provenance,
         semanticRanges: ranges,
@@ -250,8 +277,10 @@ function decode_expression(
   switch (operator) {
     case "ref":
       if (typeof operand !== "string" || operand.length === 0) issue(issues, "INVALID_REFERENCE", [...path, "ref"], "`ref` requires exactly one literal definition-name string.");
-      else if (!definitionNames.has(operand)) issue(issues, "INVALID_REFERENCE", [...path, "ref"], `Unknown local Schema definition ${JSON.stringify(operand)}.`);
-      else schema = Object.freeze({ kind: "ref", name: operand });
+      else {
+        if (!definitionNames.has(operand)) issue(issues, "INVALID_REFERENCE", [...path, "ref"], `Unknown local Schema definition ${JSON.stringify(operand)}.`);
+        schema = Object.freeze({ kind: "ref", name: operand });
+      }
       break;
     case "number":
       schema = decode_refined_primitive("number", operand, path, issues);
@@ -313,7 +342,7 @@ function decode_expression(
   }
   if (schema === undefined) return undefined;
   bind_range(schema, path, ranges, root, provenance);
-  if (schema.kind === "ref") referenceUses.push(Object.freeze({ name: schema.name, schema, range: ranges.get(schema) ?? provenance.sourceRange }));
+  if (schema.kind === "ref") referenceUses.push(Object.freeze({ name: schema.name, schema, range: scalar_source_range([...path, "ref"], root, provenance) ?? ranges.get(schema) ?? provenance.sourceRange }));
   return Object.freeze({ schema, optional: false });
 }
 
@@ -513,11 +542,11 @@ function decode_document_item(input: unknown, path: readonly (string | number)[]
   if (is_ref_descriptor(input)) {
     const name = input.ref;
     if (typeof name !== "string" || name.length === 0) issue(issues, "INVALID_REFERENCE", [...path, "ref"], "`ref` requires exactly one literal definition-name string.");
-    else if (!definitionNames.has(name)) issue(issues, "INVALID_REFERENCE", [...path, "ref"], `Unknown local Schema definition ${JSON.stringify(name)}.`);
     else {
+      if (!definitionNames.has(name)) issue(issues, "INVALID_REFERENCE", [...path, "ref"], `Unknown local Schema definition ${JSON.stringify(name)}.`);
       const schema = Object.freeze({ kind: "document-ref", name } as const);
       bind_range(schema, path, ranges, root, provenance);
-      referenceUses.push(Object.freeze({ name, schema, range: ranges.get(schema) ?? provenance.sourceRange }));
+      referenceUses.push(Object.freeze({ name, schema, range: scalar_source_range([...path, "ref"], root, provenance) ?? ranges.get(schema) ?? provenance.sourceRange }));
       return schema;
     }
     return undefined;
@@ -646,6 +675,7 @@ function validate_reference_capabilities(root: HsonSchemaSemanticNode | undefine
   const byName = new Map(definitions.map((definition) => [definition.name, definition.schema]));
   for (const use of uses) {
     const target = byName.get(use.name);
+    if (target === undefined) continue; // The decoder already owns unresolved-ref diagnostics.
     const compatible = use.schema.kind === "ref" ? target !== undefined && target.kind !== "document-element" : target?.kind === "document-element";
     if (!compatible) issues.push(Object.freeze({ code: "INVALID_REFERENCE", path: Object.freeze([]), message: `Definition ${JSON.stringify(use.name)} does not provide the ${use.schema.kind === "ref" ? "data" : "document-item"} capability required at this ref.`, range: use.range }));
   }
@@ -747,6 +777,38 @@ function source_range(path: readonly (string | number)[], role: "name" | "covera
   const location = resolve_projected_hson_location(root, path);
   if (location === undefined) return provenance.sourceRange;
   return provenance.range({ kind: "node", path: role === "name" ? location.wrapperPath : location.valuePath, role }) ?? provenance.sourceRange;
+}
+function scalar_source_range(path: readonly (string | number)[], root: HsonNode, provenance: HsonSourceProvenance): HsonSourceRange | undefined {
+  const location = resolve_projected_hson_location(root, path);
+  return location?.scalarValuePath === undefined ? undefined : provenance.range({ kind: "node", path: location.scalarValuePath, role: "value" });
+}
+
+function hson_schema_symbols(definitions: readonly HsonSchemaDefinition[], uses: readonly HsonSchemaReferenceUse[]): HsonSchemaSymbolTable {
+  const byName = new Map<string, HsonSchemaDefinitionSymbol>();
+  for (const definition of definitions) {
+    const id = `definition:${definition.range.start}:${definition.range.end}`;
+    byName.set(definition.name, Object.freeze({
+      id,
+      name: definition.name,
+      declarationRange: definition.range,
+      capability: definition.schema.kind === "document-element" ? "document-item" : "data",
+      referenceRanges: Object.freeze([]),
+    }));
+  }
+  const references = uses.map((use): HsonSchemaReferenceSymbol => {
+    const target = byName.get(use.name);
+    return Object.freeze({
+      name: use.name,
+      range: use.range,
+      requiredCapability: use.schema.kind === "document-ref" ? "document-item" : "data",
+      ...(target === undefined ? {} : { targetId: target.id }),
+    });
+  });
+  const definitionsWithReferences = [...byName.values()].map((definition): HsonSchemaDefinitionSymbol => Object.freeze({
+    ...definition,
+    referenceRanges: Object.freeze(references.filter(reference => reference.targetId === definition.id).map(reference => reference.range)),
+  }));
+  return Object.freeze({ definitions: Object.freeze(definitionsWithReferences), references: Object.freeze(references) });
 }
 function with_issue_range(value: HsonSchemaIssue, root: HsonNode, provenance: HsonSourceProvenance): HsonSchemaIssue {
   if (value.range !== undefined) return value;

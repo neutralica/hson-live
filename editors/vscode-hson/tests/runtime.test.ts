@@ -18,6 +18,12 @@ import {
   type Disposable,
 } from "../src/diagnostics.js";
 import { local_hson_schema_declarations, local_hson_schema_diagnostics } from "../src/hson-schema-local.js";
+import {
+  local_hson_schema_completion,
+  local_hson_schema_symbols,
+  rename_hson_schema_definition,
+  schema_target_at,
+} from "../src/hson-schema-symbols.js";
 import { discover_schema_project, resolve_workspace_hson_schema_tool, schema_tool_arguments } from "../src/schema-tooling.js";
 
 let checks = 0;
@@ -138,6 +144,67 @@ check("Schema evidence discovery stays binding-aware and does not generate", () 
   const source = 'import { Hson, type HsonSchema } from "hson-live"; export const UserSchema: HsonSchema = Hson`<type "data" content "string">`;';
   assert.deepEqual(local_hson_schema_declarations(source).map(declaration => declaration.name), ["UserSchema"]);
   assert.deepEqual(local_hson_schema_declarations(source.replace('from "hson-live"', 'from "other"')), []);
+});
+
+check("local defs/ref symbols are compiler-resolved, scoped, and source-exact", () => {
+  const text = `import { Hson, type HsonSchema } from "hson-live";
+const FooSchema: HsonSchema = Hson\`<type "data" defs <Age <number <int true min 0>> User <content <age <ref "Age">>>> content <ref "User">>\`;
+const BarSchema: HsonSchema = Hson\`<type "data" defs <Age "string"> content <ref "Age">>\`;
+const ordinary = "Age";`;
+  const symbols = local_hson_schema_symbols("/workspace/schema.ts", text);
+  assert.equal(symbols.definitions.length, 3);
+  assert.equal(symbols.references.length, 3);
+  const fooAge = symbols.definitions.find(symbol => symbol.name === "Age" && symbol.schemaId.includes(":51:"));
+  assert.ok(fooAge);
+  assert.equal(fooAge.references.length, 1);
+  const fooUse = symbols.references.find(symbol => symbol.targetId === fooAge.id);
+  assert.ok(fooUse);
+  assert.equal(text.slice(fooUse.range.start, fooUse.range.end), '"Age"');
+  assert.equal(schema_target_at(symbols, fooUse.range.start + 1)?.id, fooAge.id);
+  assert.equal(symbols.references.filter(symbol => symbol.name === "Age" && symbol.targetId === fooAge.id).length, 1);
+});
+
+check("local ref completion and rename use compiler facts without executing workspace code", () => {
+  const text = `import { Hson, type HsonSchema } from "hson-live";
+const TreeSchema: HsonSchema = Hson\`<type "data" defs <Tree <content <children <array <ref "Tree">>>> 'display name' "string"> content <ref "Tree">>\`;
+const ordinary = "Tree";`;
+  const cursor = text.indexOf('"Tree"') + 2;
+  assert.deepEqual(local_hson_schema_completion("/workspace/tree.ts", text, cursor).map(symbol => symbol.name), ["Tree", "display name"]);
+  const symbols = local_hson_schema_symbols("/workspace/tree.ts", text);
+  const tree = symbols.definitions.find(symbol => symbol.name === "Tree");
+  assert.ok(tree);
+  const renamed = rename_hson_schema_definition(symbols, tree.range.start, 'display "years"');
+  assert.ok(renamed);
+  const next = renamed.edits.reduceRight((current, edit) => current.slice(0, edit.start) + edit.text + current.slice(edit.end), text);
+  assert.match(next, /'display "years"'/);
+  assert.match(next, /<ref "display \\"years\\"">/);
+  assert.match(next, /const ordinary = "Tree"/);
+  assert.equal(rename_hson_schema_definition(symbols, tree.range.start, "display name"), undefined);
+  assert.equal(rename_hson_schema_definition(symbols, tree.range.start, "_hson_private"), undefined);
+});
+
+check("half-written ref completion recovers delimiters only before compiling", () => {
+  const text = `import { Hson, type HsonSchema } from "hson-live";
+const S: HsonSchema = Hson\`<type "data" defs <Age "number" Address "string"> content <ref "Ag\`;`;
+  const cursor = text.lastIndexOf("Ag") + 2;
+  assert.deepEqual(local_hson_schema_completion("/workspace/incomplete.ts", text, cursor).map(symbol => symbol.name), ["Age", "Address"]);
+});
+
+check("local defs/ref symbol queries remain interactive for a moderate namespace", () => {
+  const definitions = Array.from({ length: 100 }, (_, index) => `D${index} "string"`).join(" ");
+  const text = `import { Hson, type HsonSchema } from "hson-live";
+const Large: HsonSchema = Hson\`<type "data" defs <${definitions}> content <ref "D0">>\`;`;
+  const offset = text.indexOf('"D0"') + 2;
+  const started = performance.now();
+  const symbols = local_hson_schema_symbols("/workspace/large.ts", text);
+  const completion = local_hson_schema_completion("/workspace/large.ts", text, offset);
+  const definition = schema_target_at(symbols, offset);
+  const rename = definition === undefined ? undefined : rename_hson_schema_definition(symbols, definition.range.start, "Renamed");
+  const elapsed = performance.now() - started;
+  assert.equal(completion.length, 100);
+  assert.ok(definition); assert.ok(rename);
+  assert.ok(elapsed < 1_000, `defs/ref local tooling took ${elapsed}ms`);
+  process.stdout.write(`${JSON.stringify({ schemaRefToolingMs: Math.round(elapsed * 100) / 100, definitions: completion.length, references: symbols.references.length })}\n`);
 });
 
 check("valid direct official template has no diagnostics", () => {
