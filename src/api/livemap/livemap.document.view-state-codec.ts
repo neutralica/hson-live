@@ -1,5 +1,6 @@
 import { assert_invariants } from "../../core/assert-invariants.js";
 import { normalize_hson_array_index_order } from "../../core/hson-array-indexes.js";
+import { normalize_empty_hson_metadata } from "../../core/normalize-hson-graph.js";
 import { is_Node } from "../../core/node-guards.js";
 import type { HsonAttrs, HsonMeta, HsonNode, JsonValue, Primitive } from "../../core/types.js";
 import {
@@ -99,13 +100,14 @@ export function encode_view_state_snapshot(
 function encode_view_state_payload(
   capture: DocumentLiveMapCapture,
   limits: CodecLimits,
+  preserveEmptyMetadata = false,
 ): string {
   const budget: Budget = { nodes: 0 };
   const payloadValue: CodecPayload = {
     captureKind: CAPTURE_KIND,
     mode: capture.mode,
     revision: capture.rev,
-    root: encode_value(capture.root, 1, budget, limits),
+    root: encode_value(capture.root, 1, budget, limits, preserveEmptyMetadata),
   };
 
   let payload: string;
@@ -166,6 +168,7 @@ export function decode_view_state_snapshot(
   const deterministicInputPayload = encode_view_state_payload(
     decodedInput,
     limits,
+    true,
   );
   if (deterministicInputPayload !== encoded.payload) {
     throw codec_error(
@@ -176,7 +179,7 @@ export function decode_view_state_snapshot(
   let normalizedRoot: HsonNode;
   try {
     normalizedRoot = normalize_hson_array_index_order(
-      payload.root,
+      normalize_empty_hson_metadata(payload.root),
       "decode_view_state_snapshot",
     );
   } catch (cause) {
@@ -205,9 +208,17 @@ export function encode_exact_hson_value(
   options?: ViewStateSnapshotCodecOptions,
 ): string {
   const limits = codec_limits(options);
+  return encode_exact_hson_value_representation(value, limits);
+}
+
+function encode_exact_hson_value_representation(
+  value: HsonNode | Primitive,
+  limits: CodecLimits,
+  preserveEmptyMetadata = false,
+): string {
   const payloadValue: ExactValuePayload = {
     valueKind: "canonical-graph-content",
-    value: encode_value(value, 1, { nodes: 0 }, limits),
+    value: encode_value(value, 1, { nodes: 0 }, limits, preserveEmptyMetadata),
   };
   let payload: string;
   try {
@@ -250,8 +261,8 @@ export function decode_exact_hson_value(
   }
   const value = decode_value(record.value, 1, { nodes: 0 }, limits);
   if (!is_Node(value) && !is_primitive(value)) throw invalid_representation();
-  const canonical = encode_exact_hson_value(value, limits);
-  if (canonical !== payload) {
+  const deterministicInput = encode_exact_hson_value_representation(value, limits, true);
+  if (deterministicInput !== payload) {
     throw codec_error(
       "VIEW_STATE_SNAPSHOT_ROUND_TRIP_MISMATCH",
       "Exact Hson value payload is not deterministic.",
@@ -259,7 +270,12 @@ export function decode_exact_hson_value(
   }
   if (!is_Node(value)) return value;
   try {
-    return normalize_hson_array_index_order(value, "decode_exact_hson_value");
+    const normalized = normalize_hson_array_index_order(
+      normalize_empty_hson_metadata(value),
+      "decode_exact_hson_value",
+    );
+    assert_invariants(normalized, "decode_exact_hson_value");
+    return normalized;
   } catch (cause) {
     throw codec_error(
       "VIEW_STATE_SNAPSHOT_GRAPH_INVALID",
@@ -274,6 +290,7 @@ function encode_value(
   depth: number,
   budget: Budget,
   limits: CodecLimits,
+  preserveEmptyMetadata = false,
 ): CodecValue {
   assert_depth(depth, limits);
   if (is_Node(value)) {
@@ -287,9 +304,9 @@ function encode_value(
     return {
       type: "node",
       tag: value.$_tag,
-      attrs: encode_bag(value, "$_attrs", value.$_attrs, depth + 1, budget, limits),
-      meta: encode_bag(value, "$_meta", value.$_meta, depth + 1, budget, limits),
-      content: value.$_content.map((item) => encode_value(item, depth + 1, budget, limits)),
+      attrs: encode_bag(value, "$_attrs", value.$_attrs, depth + 1, budget, limits, preserveEmptyMetadata),
+      meta: encode_bag(value, "$_meta", value.$_meta, depth + 1, budget, limits, preserveEmptyMetadata),
+      content: value.$_content.map((item) => encode_value(item, depth + 1, budget, limits, preserveEmptyMetadata)),
     };
   }
   if (typeof value === "string") return { type: "string", value };
@@ -305,7 +322,7 @@ function encode_value(
   if (typeof value === "boolean") return { type: "boolean", value };
   if (value === null) return { type: "null" };
   if (Array.isArray(value)) {
-    return { type: "array", items: value.map((item) => encode_value(item, depth + 1, budget, limits)) };
+    return { type: "array", items: value.map((item) => encode_value(item, depth + 1, budget, limits, preserveEmptyMetadata)) };
   }
   if (is_plain_record(value)) {
     return { type: "record", entries: encode_entries(value, depth + 1, budget, limits) };
@@ -323,6 +340,7 @@ function encode_bag(
   depth: number,
   budget: Budget,
   limits: CodecLimits,
+  preserveEmptyMetadata: boolean,
 ): CodecBag {
   if (!Object.hasOwn(owner, key)) return { presence: "absent" };
   if (!is_plain_record(value)) {
@@ -330,6 +348,9 @@ function encode_bag(
       "VIEW_STATE_SNAPSHOT_GRAPH_INVALID",
       "View-state snapshot graph contains an invalid field bag.",
     );
+  }
+  if (key === "$_meta" && !preserveEmptyMetadata && Object.keys(value).length === 0) {
+    return { presence: "absent" };
   }
   assert_depth(depth, limits);
   return { presence: "present", entries: encode_entries(value, depth + 1, budget, limits) };

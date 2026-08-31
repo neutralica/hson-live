@@ -214,7 +214,7 @@ check("authored object order survives admission, serialization, and reparsing", 
   assert.equal(canonical_hson_graph_equal(admitted, hsonTransform.fromHson(serialized).toNode()), true);
 });
 
-check("strict equality distinguishes absent optional fields from present empty fields", () => {
+check("admission canonicalizes empty metadata before strict equality", () => {
   const absent = document(node("div"));
   const emptyAttrs = document(node("div", [], {}));
   const emptyMeta = document(node("div", [], undefined, {}));
@@ -224,8 +224,19 @@ check("strict equality distinguishes absent optional fields from present empty f
   assert.equal(canonical_hson_graph_difference(absent, emptyMeta)?.kind, "metadata-presence");
 
   const admittedEmptyMeta = hsonTransform.fromNode(emptyMeta).toNode();
-  assert.equal(canonical_hson_graph_equal(admittedEmptyMeta, emptyMeta), true);
-  assert.equal(canonical_hson_graph_equal(admittedEmptyMeta, absent), false);
+  assert.equal(canonical_hson_graph_equal(admittedEmptyMeta, emptyMeta), false);
+  assert.equal(canonical_hson_graph_equal(admittedEmptyMeta, absent), true);
+  assert.throws(
+    () => assert_invariants(emptyMeta, "empty-metadata candidate"),
+    (error) => error instanceof Error && "code" in error && error.code === "HSON_EMPTY_METADATA",
+  );
+
+  const structuralCandidate = node("_hson_str", ["value"], undefined, {});
+  const structuralBefore = structuredClone(structuralCandidate);
+  const admittedStructural = hsonTransform.fromNode(structuralCandidate).toNode();
+  assert.deepEqual(structuralCandidate, structuralBefore, "VSN admission must not mutate caller input");
+  assert.equal(Object.hasOwn(admittedStructural, "$_meta"), false);
+  assert.doesNotThrow(() => assert_invariants(admittedStructural, "admitted structural empty metadata"));
 });
 
 check("candidate admission removes empty attributes and direct invariant admission rejects them", () => {

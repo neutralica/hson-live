@@ -1,4 +1,4 @@
-import { isTag, isText, type ChildNode, type Element } from "domhandler";
+import { isComment, isTag, isText, type ChildNode, type Element } from "domhandler";
 import { parseDocument } from "htmlparser2";
 import { assert_invariants } from "../../../core/assert-invariants.js";
 import {
@@ -247,7 +247,8 @@ function element_to_hson(
         "parse-html-string",
       );
     }
-    if (element.children.some((child) => !isText(child))) {
+    const carrierChildren = element.children.filter((child) => !isComment(child));
+    if (carrierChildren.some((child) => !isText(child))) {
       _throw_transform_err(
         "<_hson_str> transport must contain text only",
         "parse-html-string",
@@ -256,7 +257,7 @@ function element_to_hson(
     return finish(CREATE_NODE({
       $_tag: STR_TAG,
       $_content: [decode_html_string_transport(
-        element.children.map((child) => isText(child) ? child.data : "").join(""),
+        carrierChildren.map((child) => isText(child) ? child.data : "").join(""),
         "parse-html-string",
       )],
     }));

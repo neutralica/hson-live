@@ -1,12 +1,9 @@
 import {
-  EVERY_VSN,
   HSON_SYS_PREFIX,
   HSON_META_INDEX,
   HSON_META_MARKUP_PREFIX,
   HSON_META_QUID,
   II_TAG,
-  OBJ_TAG,
-  ARR_TAG,
 } from "./constants.js";
 import { is_persisted_quid } from "./persisted-quid.js";
 import type { HsonMeta } from "./types.js";
@@ -14,27 +11,22 @@ import type { HsonMeta } from "./types.js";
 export type HsonMetadataKey = keyof HsonMeta;
 export type HsonMetadataValueMode = "valued" | "flag";
 export type HsonMetadataHsonProjection = "quid-sigil" | "array-order";
-export type HsonMetadataNodeKind = "ordinary-element" | "array-item-wrapper" | "projected-container";
-
 export type HsonMetadataDefinition = Readonly<{
   key: HsonMetadataKey;
   markupName: `${typeof HSON_META_MARKUP_PREFIX}${HsonMetadataKey}`;
-  allowedNodeKinds: readonly HsonMetadataNodeKind[];
+  allowsNodeTag(nodeTag: string): boolean;
   valueMode: HsonMetadataValueMode;
   hsonProjection: HsonMetadataHsonProjection;
   validateValue(value: unknown): value is string;
 }>;
 
-const QUID_NODE_KINDS: readonly HsonMetadataNodeKind[] =
-  Object.freeze(["ordinary-element", "projected-container"]);
-const ARRAY_ITEM_WRAPPER_NODE_KINDS: readonly HsonMetadataNodeKind[] =
-  Object.freeze(["array-item-wrapper"]);
-
 const DEFINITIONS = {
   [HSON_META_QUID]: Object.freeze({
     key: HSON_META_QUID,
     markupName: `${HSON_META_MARKUP_PREFIX}${HSON_META_QUID}`,
-    allowedNodeKinds: QUID_NODE_KINDS,
+    // Prefix-based by design: every present and future virtual structural
+    // node is QUID-ineligible without requiring an inventory update.
+    allowsNodeTag: (nodeTag: string): boolean => !nodeTag.startsWith(HSON_SYS_PREFIX),
     valueMode: "valued",
     hsonProjection: "quid-sigil",
     validateValue: (value: unknown): value is string =>
@@ -43,7 +35,7 @@ const DEFINITIONS = {
   [HSON_META_INDEX]: Object.freeze({
     key: HSON_META_INDEX,
     markupName: `${HSON_META_MARKUP_PREFIX}${HSON_META_INDEX}`,
-    allowedNodeKinds: ARRAY_ITEM_WRAPPER_NODE_KINDS,
+    allowsNodeTag: (nodeTag: string): boolean => nodeTag === II_TAG,
     valueMode: "valued",
     hsonProjection: "array-order",
     // Sibling-dependent spelling, uniqueness, contiguity, and position checks
@@ -87,15 +79,6 @@ export function hson_metadata_candidate_key(
     : undefined;
 }
 
-function node_kind_for_tag(nodeTag: string): HsonMetadataNodeKind | undefined {
-  if (nodeTag === II_TAG) return "array-item-wrapper";
-  if (nodeTag === OBJ_TAG || nodeTag === ARR_TAG) return "projected-container";
-  if (!nodeTag.startsWith(HSON_SYS_PREFIX) && !EVERY_VSN.includes(nodeTag)) {
-    return "ordinary-element";
-  }
-  return undefined;
-}
-
 export type HsonMetadataPolicyResult =
   | Readonly<{ valid: true; definition: HsonMetadataDefinition }>
   | Readonly<{ valid: false; reason: string }>;
@@ -109,8 +92,7 @@ export function hson_metadata_policy(
     return { valid: false, reason: "unknown canonical metadata key" };
   }
 
-  const nodeKind = node_kind_for_tag(nodeTag);
-  if (nodeKind === undefined || !definition.allowedNodeKinds.includes(nodeKind)) {
+  if (!definition.allowsNodeTag(nodeTag)) {
     return {
       valid: false,
       reason: `metadata "${key}" is not defined for node "${nodeTag}"`,

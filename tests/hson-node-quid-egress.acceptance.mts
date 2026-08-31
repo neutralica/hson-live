@@ -80,13 +80,11 @@ check("Hson egress preserves canonical identity and rejects malformed spelling",
   }
 });
 
-check("Hson egress admits semantic container QUIDs and rejects other VSNs", () => {
-  for (const [tag, expected] of [["_hson_obj", `<@${Q1}>`], ["_hson_arr", `«@${Q1}»`]] as const) {
+check("Hson egress rejects QUIDs on every VSN", () => {
+  for (const tag of ["_hson_obj", "_hson_arr"] as const) {
     const semantic: HsonNode = { $_tag: tag, $_content: [], $_meta: { [HSON_META_QUID]: Q1 } };
-    const wire = hson.fromNode(semantic).toHson().noBreak().serialize();
-    assert.equal(wire, expected);
-    assert.equal(read_hson_node_quid(hson.fromHson(wire).toNode()), Q1);
-    assert.equal(hson.fromNode(semantic).toHson().noBreak().noQuid().serialize(), tag === "_hson_obj" ? "<>" : "«»");
+    assert.throws(() => hson.fromNode(semantic).toHson().noBreak().serialize(), /ineligible Hson structural node/);
+    assert.throws(() => hson.fromNode(semantic).toHson().noBreak().noQuid().serialize(), /ineligible Hson structural node/);
   }
   const invalid = {
     $_tag: "_hson_elem",

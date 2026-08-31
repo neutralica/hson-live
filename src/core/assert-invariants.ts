@@ -82,6 +82,20 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
     if (cfg.throwOnFirst) return;
   }
 
+  if (
+    Object.hasOwn(n, "$_meta")
+    && is_plain_record(n.$_meta)
+    && Object.keys(n.$_meta).length === 0
+  ) {
+    push(
+      errs,
+      cfg,
+      `${here}: empty $_meta is not canonical; omit the metadata container`,
+      { code: "HSON_EMPTY_METADATA", path: `${here}/$_meta` },
+    );
+    if (cfg.throwOnFirst) return;
+  }
+
   if (n.$_tag.startsWith(HSON_SYS_PREFIX) && !EVERY_VSN.includes(n.$_tag)) {
     push(errs, cfg, `${here}: unknown VSN-like tag "${n.$_tag}"`); if (cfg.throwOnFirst) return;
   }

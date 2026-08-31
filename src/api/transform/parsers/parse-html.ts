@@ -373,7 +373,7 @@ function convert(
         if (Object.keys(sortedAcc).length > 0 || (metaAcc && Object.keys(metaAcc).length > 0)) {
             _throw_transform_err('<_hson_str> transport must not carry attributes or metadata', 'parse-html');
         }
-        const parts = Array.from(el.childNodes);
+        const parts = Array.from(el.childNodes).filter((child) => child.nodeType !== 8);
         if (parts.some((child) => child.nodeType !== 3)) {
             _throw_transform_err('<_hson_str> transport must contain text only', 'parse-html');
         }

@@ -194,6 +194,13 @@ function add_root_structural_metadata(value: JsonValue): JsonValue {
   return copy;
 }
 
+function add_empty_root_metadata(value: JsonValue): JsonValue {
+  const copy: JsonValue = structuredClone(value);
+  if (!is_record(copy) || !is_record(copy.root)) throw new Error("Expected encoded root.");
+  copy.root.meta = { presence: "present", entries: [] };
+  return copy;
+}
+
 check("element capture round-trips with detached nested identity and typed document data", () => {
   const capture = element_capture(node(
     "main",
@@ -349,19 +356,25 @@ for (const [tag, key, content] of [
   ["_hson_elem", "data-_custom", []],
 ] as const) {
   check(`${key} is rejected on ${tag} with its exact graph path`, () => {
-    const invalid = tag === "_hson_root"
-      ? node(tag, [...content], undefined, { [key]: "invalid" } as unknown as HsonMeta)
-      : node("_hson_root", [node("_hson_elem", [
-        node("section", [node("_hson_elem", [
-          node(tag, [...content], undefined, { [key]: "invalid" } as unknown as HsonMeta),
-        ])]),
-      ])]);
+    const invalidMeta = { [key]: "invalid" } as unknown as HsonMeta;
+    const invalidRoot = tag === "_hson_root"
+      ? node("_hson_root", [node("_hson_elem", [])], undefined, invalidMeta)
+      : tag === "_hson_elem"
+        ? node("_hson_root", [node("_hson_elem", [...content], undefined, invalidMeta)])
+        : node("_hson_root", [node("_hson_elem", [
+          node(tag, [...content], undefined, invalidMeta),
+        ])]);
     const error = expect_codec_error(
-      () => encode_view_state_snapshot(multiNodeDocument_capture([invalid])),
+      () => encode_view_state_snapshot({
+        kind: "hson-document",
+        mode: "document",
+        rev: 9,
+        root: invalidRoot,
+      }),
       "VIEW_STATE_SNAPSHOT_GRAPH_INVALID",
     );
     const diagnostic = String(error.cause);
-    assert.match(diagnostic, new RegExp(`${tag}.*${key}|${key}.*${tag}`));
+    assert.match(diagnostic, new RegExp(`${tag}[\\s\\S]*${key}|${key}[\\s\\S]*${tag}`));
     assert.match(diagnostic, /unknown canonical metadata key/);
   });
 }
@@ -404,7 +417,7 @@ check("persisted QUIDs round-trip and invalid identity is rejected", () => {
   );
 });
 
-check("view-state requires canonical empty attributes and preserves metadata presence exactly", () => {
+check("view-state requires canonical empty bags and canonicalizes legacy empty metadata", () => {
   const absent = round_trip(element_capture(node("div"))).decoded;
   const emptyAttrsCandidate = element_capture(node("div", [], {}));
   expect_codec_error(
@@ -413,7 +426,13 @@ check("view-state requires canonical empty attributes and preserves metadata pre
   );
   const admittedRoot = hson.fromNode(emptyAttrsCandidate.root).toNode();
   const admitted = round_trip({ ...emptyAttrsCandidate, root: admittedRoot }).decoded;
-  const emptyMeta = round_trip(element_capture(node("div", [], undefined, {}))).decoded;
+  const emptyMetaCandidate = element_capture(node("div", [], undefined, {}));
+  expect_codec_error(
+    () => encode_view_state_snapshot(emptyMetaCandidate),
+    "VIEW_STATE_SNAPSHOT_GRAPH_INVALID",
+  );
+  const admittedMetaRoot = hson.fromNode(emptyMetaCandidate.root).toNode();
+  const emptyMeta = round_trip({ ...emptyMetaCandidate, root: admittedMetaRoot }).decoded;
   const rootOf = (capture: DocumentLiveMapCapture): HsonNode => {
     const cluster = capture.root.$_content[0];
     if (typeof cluster !== "object" || cluster === null) throw new Error("Expected cluster.");
@@ -424,10 +443,18 @@ check("view-state requires canonical empty attributes and preserves metadata pre
   assert.equal(Object.hasOwn(rootOf(absent), "$_attrs"), false);
   assert.equal(Object.hasOwn(rootOf(admitted), "$_attrs"), false);
   assert.equal(Object.hasOwn(rootOf(absent), "$_meta"), false);
-  assert.equal(Object.hasOwn(rootOf(emptyMeta), "$_meta"), true);
-  assert.deepEqual(rootOf(emptyMeta).$_meta, {});
+  assert.equal(Object.hasOwn(rootOf(emptyMeta), "$_meta"), false);
   assert.equal(canonical_hson_graph_equal(absent.root, admitted.root), true);
-  assert.equal(canonical_hson_graph_equal(absent.root, emptyMeta.root), false);
+  assert.equal(canonical_hson_graph_equal(absent.root, emptyMeta.root), true);
+
+  const encodedAbsent = encode_view_state_snapshot(absent);
+  const legacyEmpty = encoding_with_payload(
+    add_empty_root_metadata(decoded_payload_value(encodedAbsent)),
+  );
+  const decodedLegacy = decode_view_state_snapshot(legacyEmpty);
+  assert.equal(Object.hasOwn(decodedLegacy.root, "$_meta"), false);
+  assert.equal(canonical_hson_graph_equal(decodedLegacy.root, absent.root), true);
+  assert.equal(encode_view_state_snapshot(decodedLegacy).payload, encodedAbsent.payload);
 });
 
 check("record insertion order does not affect deterministic payload text", () => {

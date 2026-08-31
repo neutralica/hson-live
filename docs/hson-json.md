@@ -20,7 +20,7 @@ Every parsed JSON value is placed under `_hson_root`, whose one child is a clust
 
 JSON property names become ordinary `$_tag` values. The `_hson_` prefix is reserved for structural keys and is rejected in ordinary user JSON, apart from the parser's explicit structural `_hson_elem` interchange form.
 
-The explicit `_hson_root` interchange form may omit `$_meta` or use a neutral empty optional record. Populated or malformed root metadata is invalid and rejects rather than being ignored. The empty `_hson_root` runtime carrier is a separate exception and remains outside direct Hson-text serialization.
+The explicit `_hson_root` interchange form may omit `$_meta` or supply a neutral empty optional record as a compatibility candidate. Admission canonicalizes the empty record to absence; populated or malformed root metadata is invalid and rejects rather than being ignored. The empty `_hson_root` runtime carrier is a separate exception and remains outside direct Hson-text serialization.
 
 ---
 

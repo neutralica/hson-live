@@ -44,7 +44,7 @@ import {
 import { projected_value_to_hson_root } from "../../core/projected-value-graph.js";
 import { ROOT_TAG } from "../../core/constants.js";
 import { is_Node } from "../../core/node-guards.js";
-import { assign_hson_node_quid, is_persisted_quid, is_projected_container_quid_eligible, read_hson_node_quid } from "../../core/hson-node-quid.js";
+import { is_persisted_quid } from "../../core/hson-node-quid.js";
 import { must_livemap_replay } from "./livemap.replay.js";
 import {
   decode_projected_value_payload,
@@ -101,10 +101,15 @@ import {
   reconcile_livemap_projected_identity_overlay,
   register_livemap_projected_identity_at_path,
   livemap_projected_identity_has_at_or_below,
+  is_livemap_projected_identity_target,
   type LiveMapProjectedIdentityOverlay,
 } from "./livemap.projected.identity.js";
 import { make_livemap_projected_identity_api, register_livemap_projected_identity_api } from "./livemap.projected.identity-handle.js";
-import { capture_livemap_projected, projected_capture_continuity } from "./livemap.projected.capture.js";
+import {
+  capture_livemap_projected,
+  projected_capture_continuity,
+  projected_capture_identity_overlay,
+} from "./livemap.projected.capture.js";
 import { clone_hson_graph_without_quids } from "./livemap.document.capture.js";
 import { read_livemap_document_logical_location } from "./livemap.document.location.js";
 import {
@@ -719,14 +724,14 @@ function make_livemap_core_from_owned_root(
       const path = clone_live_path(operation.target.path);
       const nextRoot = clone_live_root(owned.root);
       const endpoint = resolve_value_node(nextRoot, path);
-      if (endpoint === undefined || !is_projected_container_quid_eligible(endpoint)) {
+      if (endpoint === undefined || !is_livemap_projected_identity_target(endpoint)) {
         throw new LiveMapProjectedIdentityError(
           "PROJECTED_IDENTITY_INELIGIBLE",
           path,
           "replay target is ineligible",
         );
       }
-      if (read_hson_node_quid(endpoint) !== undefined) {
+      if (require_projected_overlay(owned.projectedOverlay).quidAtPath(path) !== undefined) {
         throw new LiveMapProjectedIdentityError(
           "PROJECTED_IDENTITY_COLLISION",
           path,
@@ -747,7 +752,6 @@ function make_livemap_core_from_owned_root(
           "replay cannot reuse a retired QUID in the same owner epoch",
         );
       }
-      assign_hson_node_quid(endpoint, operation.quid);
       const nextOverlay = register_livemap_projected_identity_at_path(
         require_projected_overlay(owned.projectedOverlay),
         operation.quid,
@@ -874,6 +878,7 @@ function make_livemap_core_from_owned_root(
         mapRevision,
         owned.root,
         projected,
+        require_projected_overlay(owned.projectedOverlay),
         options,
       );
     },
@@ -909,8 +914,19 @@ function make_livemap_core_from_owned_root(
       const preparedCandidate = prepare_livemap_root(candidate);
       if (owned.hsonSchema !== undefined) must_hson_schema_root(owned.hsonSchema, preparedCandidate.root);
       const continuity = projected_capture_continuity(mapIdentityEpoch, capture as object, options);
+      const capturedOverlay = projected_capture_identity_overlay(capture as object);
+      if (options?.identity === "reject" && (capturedOverlay?.size ?? 0) !== 0) {
+        throw new Error("Projected restore rejected out-of-band identity claims.");
+      }
+      const restoredOverlay = options?.identity === "strip"
+        ? preparedCandidate.projectedOverlay
+        : capturedOverlay ?? preparedCandidate.projectedOverlay;
+      if (restoredOverlay === undefined) {
+        throw new Error("Same-epoch projected capture lost its identity overlay capability.");
+      }
+      apply_livemap_projected_identity_overlay(preparedCandidate.root, restoredOverlay);
       const restoredQuids = livemap_projected_identity_quids(
-        require_projected_overlay(preparedCandidate.projectedOverlay),
+        restoredOverlay,
       );
       if (continuity === "new-epoch") {
         mapIdentityEpoch.replace(restoredQuids);
@@ -923,7 +939,7 @@ function make_livemap_core_from_owned_root(
       Object.assign(owned, {
         root: preparedCandidate.root,
         documentOverlay: undefined,
-        projectedOverlay: preparedCandidate.projectedOverlay,
+        projectedOverlay: restoredOverlay,
       });
       mapRevision = normalized.rev;
       owned.projectedValue = planned.value;
@@ -1245,15 +1261,14 @@ function make_livemap_core_from_owned_root(
         const candidateRoot = projected_candidate_graph(candidate.detachedRoot, candidate.value, candidate.writes);
         apply_livemap_projected_identity_overlay(candidateRoot, candidate.overlay);
         const endpoint = resolve_value_node(candidateRoot, target.path);
-        if (endpoint === undefined || !is_projected_container_quid_eligible(endpoint)) {
+        if (endpoint === undefined || !is_livemap_projected_identity_target(endpoint)) {
           throw new Error("Aggregate QUID registration target is ineligible.");
         }
-        const existing = read_hson_node_quid(endpoint);
+        const existing = candidate.overlay.quidAtPath(target.path);
         if (existing === write.quid) continue;
         if (existing !== undefined || candidate.overlay.pathForQuid(write.quid) !== undefined) {
           throw new Error("Aggregate QUID registration collides with an active library claim.");
         }
-        assign_hson_node_quid(endpoint, write.quid);
         candidate.overlay = register_livemap_projected_identity_at_path(candidate.overlay, write.quid, target.path);
         operations.push(Object.freeze({
           target,

@@ -80,8 +80,7 @@ General HTML parsing trims each non-empty text node and drops layout-only whites
 
 records `"Hello"`, not `"Hello "`, on the general parser path. Text is neither fully whitespace-lossless nor guaranteed to reproduce the exact original `textContent` around element boundaries.
 
-`style` and `script` content is also trimmed and stored as one `_hson_str` leaf, with a recognized CDATA wrapper removed. Comments and non-element,
-non-text DOM nodes are ignored.
+`style` and `script` content is also trimmed and stored as one `_hson_str` leaf, with a recognized CDATA wrapper removed. HTML comments are ingress trivia and are ignored on string, direct-DOM, and Worker-safe paths, including between otherwise valid `_hson_str` carrier text parts. They never become Hson nodes or metadata and are never emitted. Other non-element, non-text DOM nodes are ignored where the ingress route exposes them.
 
 There are specialized SVG ingestion paths whose text handling differs and can retain raw SVG text-node whitespace. Code that depends on whitespace should test the exact source constructor and format route it uses.
 
@@ -97,7 +96,7 @@ The parser canonicalizes them:
 - `style` is parsed into a structured CSS map rather than retained as one raw string.
 - `xmlns`, `xmlns:*`, and `xml:*` namespace plumbing is dropped.
 - SVG `xlink:href` is mapped to `href` when no `href` is already present.
-- Registered `hson:index` and `hson:quid` names are routed to `$_meta`, not `$_attrs`; unknown `hson:*` names reject.
+- Registered `hson:index` and `hson:quid` names are routed to `$_meta`, not `$_attrs`; each member retains its own placement rule, and unknown `hson:*` names reject. `hson:quid` is never legal on an `_hson_*` carrier; `hson:index` is legal only on `_hson_ii`.
 - Private transit names are rejected at public ingress and never enter the canonical graph.
 - Every `data-*` attribute is routed to `$_attrs` as application data, including the literal name `data--attrmap`.
 - other attribute whitespace is normalized.

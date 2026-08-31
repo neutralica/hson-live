@@ -70,6 +70,9 @@ export function prepare_livemap_root(input: HsonNode): PreparedLiveMapRoot {
     clone_live_root(input),
     "prepare_livemap_root",
   );
+  // Validate before carrier normalization so nonempty metadata on a discarded
+  // structural wrapper can never disappear during LiveMap admission.
+  assert_invariants(cloned, "prepare_livemap_root");
   const root = normalize_document_root(cloned);
   let mode: LiveMapRootMode;
   try {

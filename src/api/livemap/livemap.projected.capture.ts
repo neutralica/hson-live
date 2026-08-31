@@ -9,6 +9,7 @@ import type { OrderedProjectedValue } from "../../core/ordered-projected-value.j
 import { clone_hson_graph_without_quids, type LiveMapDocumentIdentityEpochController } from "./livemap.document.capture.js";
 import { clone_live_root } from "./livemap.editor.js";
 import { encode_projected_value_transport } from "./livemap.transport.js";
+import type { LiveMapProjectedIdentityOverlay } from "./livemap.projected.identity.js";
 
 type Provenance = Readonly<{
   owner: object;
@@ -16,15 +17,18 @@ type Provenance = Readonly<{
   category: LiveMapCaptureOptions["identity"];
   root: HsonNode;
   rev: number;
+  overlay: LiveMapProjectedIdentityOverlay;
 }>;
 
 const provenance = new WeakMap<object, Provenance>();
+const captureIdentityOverlay = new WeakMap<object, LiveMapProjectedIdentityOverlay>();
 
 export function capture_livemap_projected(
   controller: LiveMapDocumentIdentityEpochController,
   rev: number,
   root: HsonNode,
   projected: OrderedProjectedValue,
+  overlay: LiveMapProjectedIdentityOverlay,
   options?: LiveMapCaptureOptions,
 ): LiveMapCapture {
   const category = options?.identity ?? "preserve-metadata";
@@ -41,6 +45,7 @@ export function capture_livemap_projected(
   };
   Object.defineProperty(capture, "root", { enumerable: false });
   Object.freeze(capture);
+  if (category !== "strip") captureIdentityOverlay.set(capture, overlay);
   if (options !== undefined) {
     provenance.set(capture, Object.freeze({
       owner: controller.owner,
@@ -48,9 +53,17 @@ export function capture_livemap_projected(
       category,
       root: clone_live_root(captureRoot),
       rev,
+      overlay,
     }));
   }
   return capture;
+}
+
+/** Return the immutable out-of-band claims carried by an exact capture capability. */
+export function projected_capture_identity_overlay(
+  capture: object,
+): LiveMapProjectedIdentityOverlay | undefined {
+  return captureIdentityOverlay.get(capture);
 }
 
 /** Return whether exact-object provenance permits retaining the owner epoch. */

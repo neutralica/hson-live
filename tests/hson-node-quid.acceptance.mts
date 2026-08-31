@@ -53,6 +53,10 @@ const {
   build_livemap_document_identity_overlay,
   LiveMapDocumentIdentityError,
 } = await import("../src/api/livemap/livemap.document.identity.ts");
+const {
+  HSON_METADATA_REGISTRY,
+  hson_metadata_policy,
+} = await import("../src/core/hson-metadata.ts");
 
 let checks = 0;
 function check(name: string, fn: () => void): void {
@@ -162,8 +166,8 @@ check("secure minting uses exactly six bytes, stays lowercase, and fails without
   });
 });
 
-check("only semantic projected containers expand the established VSN eligibility boundary", () => {
-  for (const tag of [...EVERY_VSN.filter((tag) => tag !== "_hson_obj" && tag !== "_hson_arr"), "_hson_future"]) {
+check("every present and future VSN is QUID-ineligible", () => {
+  for (const tag of [...EVERY_VSN, "_hson_future"]) {
     const value = node(tag, [], tag === "_hson_ii" ? { [HSON_META_INDEX]: "0" } : undefined);
     const before = structuredClone(value);
     assert.equal(read_hson_node_quid(value), undefined);
@@ -182,18 +186,26 @@ check("only semantic projected containers expand the established VSN eligibility
       assert.deepEqual(value, before);
     }
   }
-  for (const value of [node("_hson_obj"), node("_hson_arr")]) {
-    assert.equal(assign_hson_node_quid(value, q(1000)), q(1000));
-    assert.equal(remove_hson_node_quid(value), q(1000));
-  }
-  const transparent = node("_hson_obj", [node("_hson_val", [true])]);
-  assert.throws(() => assign_hson_node_quid(transparent, q(1001)), (cause) => (
-    cause instanceof HsonNodeQuidValidationError && cause.code === "INELIGIBLE_QUID"
-  ));
 });
 
-check("QUID-bearing ineligible VSN metadata is rejected while semantic containers preserve it", () => {
-  for (const [index, tag] of [...EVERY_VSN.filter((tag) => tag !== "_hson_obj" && tag !== "_hson_arr"), "_hson_future"].entries()) {
+check("metadata registry is closed and placement remains member-partitioned", () => {
+  assert.deepEqual(Object.keys(HSON_METADATA_REGISTRY).sort(), [HSON_META_INDEX, HSON_META_QUID]);
+  assert.equal(hson_metadata_policy("main", HSON_META_QUID).valid, true);
+  for (const tag of [...EVERY_VSN, "_hson_future"]) {
+    assert.equal(hson_metadata_policy(tag, HSON_META_QUID).valid, false);
+  }
+  assert.equal(hson_metadata_policy("_hson_ii", HSON_META_INDEX).valid, true);
+  for (const tag of ["main", "_hson_root", "_hson_obj", "_hson_arr", "_hson_future"]) {
+    assert.equal(hson_metadata_policy(tag, HSON_META_INDEX).valid, false);
+  }
+  assert.deepEqual(hson_metadata_policy("main", "unknown"), {
+    valid: false,
+    reason: "unknown canonical metadata key",
+  });
+});
+
+check("QUID-bearing present and future VSN metadata is rejected", () => {
+  for (const [index, tag] of [...EVERY_VSN, "_hson_future"].entries()) {
     const persisted = q(1100 + index);
     const value = node(tag, [], { [HSON_META_QUID]: persisted });
     for (const operation of [
@@ -210,10 +222,6 @@ check("QUID-bearing ineligible VSN metadata is rejected while semantic container
       );
       assert.equal(value.$_meta?.[HSON_META_QUID], persisted);
     }
-  }
-  for (const [index, tag] of ["_hson_obj", "_hson_arr"].entries()) {
-    const persisted = q(1300 + index);
-    assert.equal(read_hson_node_quid(node(tag, [], { [HSON_META_QUID]: persisted })), persisted);
   }
 });
 
@@ -346,7 +354,7 @@ check("LiveTree and LiveMap accept the same valid QUID and reject the same malfo
 
   const mapNode = node("main", [], { [HSON_META_QUID]: valid });
   const mapGraph = node("_hson_root", [node("_hson_elem", [mapNode])]);
-  assert.deepEqual(build_livemap_document_identity_overlay(mapGraph, "document").pathForQuid(valid), []);
+  assert.deepEqual(build_livemap_document_identity_overlay(mapGraph, "document").pathForQuid(valid), [0, 0]);
 
   for (const malformed of ["", "short", "00000001", "0000000001", "000000000001", "0000000000000001", "00000000I", "00000000-"]) {
     const malformedTreeNode = node("tree-bad", [], { [HSON_META_QUID]: malformed });

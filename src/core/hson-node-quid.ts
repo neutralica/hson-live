@@ -1,5 +1,6 @@
-import { ARR_TAG, HSON_META_QUID, OBJ_TAG, STR_TAG, VAL_TAG } from "./constants.js";
-import { is_Node, is_ordinary_element_node } from "./node-guards.js";
+import { HSON_META_QUID } from "./constants.js";
+import { is_Node } from "./node-guards.js";
+import { hson_metadata_policy } from "./hson-metadata.js";
 import { ensure_node_meta, prune_empty_node_meta } from "./node-storage.js";
 import type { HsonNode } from "./types.js";
 
@@ -89,29 +90,12 @@ export function assert_hson_node_quid_eligible(
   node: HsonNode,
   operation: string,
 ): void {
-  const eligible: boolean = is_ordinary_element_node(node)
-    || is_projected_container_quid_eligible(node);
-  if (eligible) return;
+  if (hson_metadata_policy(node.$_tag, HSON_META_QUID).valid) return;
   throw new HsonNodeQuidValidationError(
     "INELIGIBLE_QUID",
     `Cannot ${operation} QUID metadata on ineligible Hson structural node "${node.$_tag}".`,
     { node, value: node.$_meta?.[HSON_META_QUID] },
   );
-}
-
-/** True only for semantic data object/array values, never carrier wrappers. */
-export function is_projected_container_quid_eligible(node: HsonNode): boolean {
-  if (node.$_tag === ARR_TAG) return true;
-  if (node.$_tag !== OBJ_TAG) return false;
-  if (node.$_content.length !== 1) return true;
-  const only = node.$_content[0];
-  if (!is_Node(only)) return true;
-  // A single structural value child is the transform's transparent scalar
-  // carrier, not a user-visible object value.
-  return only.$_tag !== STR_TAG
-    && only.$_tag !== VAL_TAG
-    && only.$_tag !== ARR_TAG
-    && only.$_tag !== OBJ_TAG;
 }
 
 /**

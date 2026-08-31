@@ -351,13 +351,19 @@ Links are one-way and the disposer stops propagation. There is no general bidire
 
 ## Data container identity
 
-Data object and array containers can carry sparse canonical QUID metadata, but data maps expose no public identity-acquisition method. Internal owner-authorized continuity facilities may ensure one path-authoritative claim, producing the ordinary `ensure-quid` commit and revision behavior. Application code cannot request a claim or provide its QUID.
+Data object and array containers never carry canonical QUID metadata because
+all `_hson_*` nodes are QUID-ineligible. Data maps expose no public
+identity-acquisition method. Internal owner-authorized continuity facilities
+may ensure one path-authoritative claim in the map-local sparse overlay,
+producing the established `ensure-quid` commit and revision behavior without
+mutating the canonical graph. Application code cannot request a claim or
+provide its QUID.
 
-Internally retained identity follows object-key rename, array move, ancestor movement, and insertion/removal shifts. Nested leaf mutation preserves it; deletion, replacement, or owner-epoch replacement retires it. Root objects and arrays are eligible canonical values, while primitives, property wrappers, and array-item wrappers remain ineligible.
+Internally retained overlay identity follows object-key rename, array move, ancestor movement, and insertion/removal shifts. Nested leaf mutation preserves it; deletion, replacement, or owner-epoch replacement retires it. Semantic data objects and arrays are eligible map-local targets, while primitives and property/scalar carriers remain ineligible. This target rule is not canonical QUID eligibility.
 
-Within the current owner epoch, retired QUID bytes remain reserved in an internal issued ledger. Allocation retries those bytes, so an unrelated container cannot reactivate a stale handle. A new owner epoch starts a fresh ledger seeded from admitted active metadata; old handles remain fenced even if that epoch later uses equal bytes. Exact same-epoch restoration preserves the living ledger rather than rolling it back to capture time.
+Within the current owner epoch, retired QUID bytes remain reserved in an internal issued ledger. Allocation retries those bytes, so an unrelated container cannot reactivate a stale handle. A new owner epoch starts a fresh ledger seeded from active claims carried by an exact capture capability; old handles remain fenced even if that epoch later uses equal bytes. Exact same-epoch restoration preserves the living ledger rather than rolling it back to capture time.
 
-The QUID is canonical Hson metadata but is not a data property, array item, enumerable key, or schema field. `snap()`, feeds, links, selectors, and stores see the same data value before and after acquisition. Commit observers see the identity registration. Hson snapshots preserve object/array identity in anonymous container headers, while identity-stripped capture and `noQuid` intentionally omit it.
+The claim is map-local overlay state, not canonical Hson metadata, a data property, array item, enumerable key, or schema field. `snap()`, `root()`, feeds, links, selectors, serializers, and stores see the same canonical graph/data value before and after acquisition. Commit observers still see the identity registration. Exact live capture capabilities privately carry active overlay claims; copied or serialized Hson/HTML/JSON/binary graph representations do not.
 
 `map.at(path)` remains a passive location: it follows whatever currently occupies that path and never mints merely because it is created, read, bound, or subscribed. Data mode adds no `byQuid` or `fromQuid` constructor. Raw QUID bytes cannot recreate a handle or cross an owner/epoch boundary.
 

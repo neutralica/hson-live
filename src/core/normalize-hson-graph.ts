@@ -58,7 +58,7 @@ function optional_record(
   if (entries === undefined) {
     return fail(where, path, `${field} entries must be enumerable own data properties`);
   }
-  return entries.length === 0 && field === "$_attrs" ? undefined : { entries };
+  return entries.length === 0 ? undefined : { entries };
 }
 
 /**
@@ -265,4 +265,36 @@ export function normalize_hson_graph(input: HsonNode, where: string): HsonNode {
   const normalized = visit(input, "", null);
   if (changed) return normalized;
   return input;
+}
+
+/**
+ * Normalize the sole legacy exact-codec metadata spelling without applying
+ * the broader permissive node-ingress coercions. The decoded exact graph is
+ * already detached; only affected nodes and their ancestors are copied.
+ */
+export function normalize_empty_hson_metadata(input: HsonNode): HsonNode {
+  const complete = new WeakMap<HsonNode, HsonNode>();
+  const visit = (node: HsonNode): HsonNode => {
+    const existing = complete.get(node);
+    if (existing !== undefined) return existing;
+    const content = node.$_content.map((child) => is_Node(child) ? visit(child) : child);
+    const metaProperty = own_enumerable_data_property(
+      node as unknown as Readonly<Record<string, unknown>>,
+      "$_meta",
+    );
+    const metaEntries = metaProperty?.present && is_plain_record(metaProperty.value)
+      ? enumerable_own_data_entries(metaProperty.value)
+      : undefined;
+    const emptyMeta = metaEntries?.length === 0;
+    const contentChanged = content.some((child, index) => child !== node.$_content[index]);
+    if (!emptyMeta && !contentChanged) {
+      complete.set(node, node);
+      return node;
+    }
+    const normalized: HsonNode = { ...node, $_content: content };
+    if (emptyMeta) delete normalized.$_meta;
+    complete.set(node, normalized);
+    return normalized;
+  };
+  return visit(input);
 }

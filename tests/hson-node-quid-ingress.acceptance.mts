@@ -1039,12 +1039,12 @@ check("cloneBranch keeps fresh identity semantics independently of Element inges
   });
 });
 
-check("VSN eligibility expands only to semantic projected containers", () => {
+check("VSN QUID eligibility has no projected-container exception", () => {
   const cleanVsn: HsonNode = { $_tag: "_hson_future", $_content: [] };
   assert.equal(read_hson_node_quid(cleanVsn), undefined);
   assert.throws(() => ensure_quid(cleanVsn), /ineligible/i);
-  assert.equal(read_hson_node_quid(hsonTransform.fromHson(`<@${Q5}>`).toNode()), Q5);
-  assert.equal(read_hson_node_quid(hsonTransform.fromHson(`«@${Q5}»`).toNode()), Q5);
+  assert.throws(() => hsonTransform.fromHson(`<@${Q5}>`).toNode(), /ineligible Hson structural node/);
+  assert.throws(() => hsonTransform.fromHson(`«@${Q5}»`).toNode(), /ineligible Hson structural node/);
 
   const validRaw = document_root(element("main", Q6));
   assert.equal(
@@ -1086,7 +1086,8 @@ check("LiveMap raw installation validates all modes, remains cold, and leaves so
   assert.throws(
     () => hsonLiveMap.fromNode(invalidVsn),
     (error) => error instanceof Error
-      && validation_cause(error)?.code === "INELIGIBLE_QUID",
+      && (validation_cause(error)?.code === "INELIGIBLE_QUID"
+        || /quid must be a canonical persisted QUID on an eligible standard tag/.test(error.message)),
   );
 
   const crossMapSource = document_root(element("shared", Q6));

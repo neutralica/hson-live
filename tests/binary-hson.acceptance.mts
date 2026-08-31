@@ -302,7 +302,14 @@ await check("an array preserves canonical item indexes", () => assertGolden(inde
 await check("an empty ordinary element has its fixed Binary Hson vector", () => assertGolden(emptyElement, GOLDEN_EMPTY_ELEMENT));
 await check("element content preserves ordering, adjacent text, and empty text", () => assertGolden(orderedElement, GOLDEN_ORDERED_ELEMENT_CONTENT));
 await check("ordinary attributes sort their keys without changing values", () => assertGolden(attrsElement, GOLDEN_ATTRS));
-await check("present-empty metadata remains distinct from absent metadata", () => assertGolden(str("m", {}), GOLDEN_PRESENT_EMPTY_META));
+await check("legacy present-empty metadata decodes to canonical absence", () => {
+  const candidate = str("m", {});
+  const encoded = hsonTransform.fromNode(candidate).toBinary().serialize();
+  assert.deepEqual(encoded, GOLDEN_ASCII.map((byte, index) => index === GOLDEN_ASCII.length - 1 ? "m".charCodeAt(0) : byte));
+  const decoded = hsonTransform.fromBinary(GOLDEN_PRESENT_EMPTY_META).toNode();
+  assert.equal(Object.hasOwn(decoded, "$_meta"), false);
+  assert.deepEqual(hsonTransform.fromNode(decoded).toBinary().serialize(), encoded);
+});
 await check("QUID metadata uses the ordinary metadata string grammar", () => assertGolden(quidElement, GOLDEN_QUID));
 await check("a raw style string uses the ordinary string attribute grammar", () => assertGolden(rawStyleElement, GOLDEN_RAW_STYLE));
 await check("0x26 contains a primitive structured-style entry", () => assertGolden(primitiveStyleElement, GOLDEN_PRIMITIVE_STYLE));

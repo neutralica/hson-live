@@ -147,11 +147,12 @@ leaf mutation leaves ancestor-container identity intact. Whole-root admission
 may perform a complete validation scan; ordinary reconciliation visits sparse
 entries and never mints.
 
-Canonical metadata on `_hson_obj` and `_hson_arr` is hidden from data
-JavaScript values, schema fields, links, selectors, and stores. Canonical Hson
-uses additive anonymous-container headers (`<@quid ...>` and `«@quid ...»`) so
-durable Hson snapshots preserve the exact graph without exposing a data
-property or array item. `noQuid`/identity stripping omits those headers.
+`_hson_obj` and `_hson_arr` never carry canonical QUID metadata. The sparse
+data overlay remains hidden from JavaScript values, schema fields, links,
+selectors, stores, and canonical graph serializers. Its claims are map-local
+continuity state, not data properties, array items, or a relaxation of QUID
+placement. Exact live capture capabilities may carry the overlay privately;
+copied or serialized Hson/HTML/JSON/binary graphs do not.
 
 ## Sparse document identity overlay
 
@@ -247,11 +248,13 @@ target. The data handle machinery has the same
 a detached data object or array rather than an Hson element node.
 
 The handle follows object-key rename, array move, ancestor movement, and index
-shifts through the data sparse overlay. It survives nested value changes
+shifts through the data sparse overlay. Registration never writes
+`$_meta.quid` to `_hson_obj` or `_hson_arr`; canonical graph equality and every
+graph serializer remain unchanged. It survives nested value changes
 but becomes inactive on direct or ancestor replacement/deletion, whole-root
 replacement, durable epoch replacement, or disposal. Same-epoch data
 capture/restore continuity requires the exact owner-scoped capture capability.
-Multiple handles may share a claim; disposal does not retire metadata. The
+Multiple handles may share a claim; disposal does not retire the overlay claim. The
 shared `ensure-quid` operation and shared map-owned collision-aware allocator
 are used by both document and data acquisition, and replay never invokes
 the allocator.
@@ -295,8 +298,8 @@ unrelated nodes.
 
 Every controlled boundary has one of four meanings:
 
-1. **Same-epoch live capture** preserves canonical QUID metadata and carries an opaque exact-object capability issued by the same active map epoch. `capture({ identity: "same-epoch" })` creates that local capability. `install` or `restore` must explicitly request `identity: "same-epoch"`; copied, spread, JSON-round-tripped, view-state-decoded, stale, mutated, or foreign captures reject. The capability is held out of band in a `WeakMap`, has no enumerable or serialized field, authorizes nothing, and becomes stale when a changed durable install or durable restore replaces the map epoch.
-2. **Durable structural capture** preserves the exact canonical graph, QUID metadata, and revision. Existing `capture()` retains this compatibility meaning; `capture({ identity: "preserve-metadata" })` is its explicit form. View-state, graph-content, Locus snapshots, bootstrap, recovery, and persistence checkpoints use this category. Installation validates all claims and admits preserved strings as fresh map-local active overlay claims. It does not prove continuity with handles from the source map, process, mirror, or LiveTree runtime.
+1. **Same-epoch live capture** preserves canonical ordinary-element QUID metadata and privately carries any data-overlay claims in an opaque exact-object capability issued by the same active map epoch. `capture({ identity: "same-epoch" })` creates that local capability. `install` or `restore` must explicitly request `identity: "same-epoch"`; copied, spread, JSON-round-tripped, view-state-decoded, stale, mutated, or foreign captures reject. The capability is held out of band in a `WeakMap`, has no enumerable or serialized field, authorizes nothing, and becomes stale when a changed durable install or durable restore replaces the map epoch.
+2. **Durable structural capture** preserves the exact canonical graph, ordinary-element QUID metadata, and revision. An exact in-memory data capture also carries active map-local overlay claims out of band so a new owner epoch can be seeded without placing QUIDs on structural nodes; copying or serialization loses that private carrier. Existing `capture()` retains this compatibility meaning; `capture({ identity: "preserve-metadata" })` is its explicit form. View-state, graph-content, Locus snapshots, bootstrap, recovery, and persistence checkpoints validate only identity representable by their documented canonical formats. Installation of preserved claims creates fresh map-local identity and does not prove continuity with handles from the source map, process, mirror, or LiveTree runtime.
 3. **Identity-free projection** intentionally removes QUID metadata. `capture({ identity: "strip" })`, install/restore with `identity: "strip"`, Hson `noQuid`, and ordinary application JSON are examples. The source is unchanged, the installed overlay is empty or reduced to remaining claims, and exact canonical equality is lost when metadata was removed. This is valid projection, not corruption.
 4. **External graph admission** covers every graph without trusted same-epoch provenance, including syntactically valid serialized QUIDs. Install/restore policy is explicit: `preserve-metadata` validates and admits claims as fresh local identity, `strip` removes them before ownership, and `reject` refuses QUID-bearing input. Internal owner-authorized acquisition remains ensure-if-absent only; no public acquisition, rekey, raw assignment, replacement, or retirement API is exposed. Construction, authored transforms, graph-content insertion, LiveTree import, and graft retain their existing collision-aware admission rules and never treat the bytes as proof of prior handle continuity.
 

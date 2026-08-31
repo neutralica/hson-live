@@ -14,6 +14,7 @@ import { sha256_bytes } from "../sha256.js";
 import { ROOT_TAG } from "../../../core/constants.js";
 import { detach_hson_root_value } from "../utils/node-utils/detach-hson-root-value.js";
 import { is_Node } from "../../../core/node-guards.js";
+import { normalize_empty_hson_metadata } from "../../../core/normalize-hson-graph.js";
 
 type TransformHtmlSanitizer = (html: string) => TransformFrame["node"];
 let transformHtmlSanitizer: TransformHtmlSanitizer | undefined;
@@ -57,7 +58,7 @@ export function construct_output_2(frame: TransformFrame): TransformOutput {
           || origin === "html-sanitized-from-node";
         const retainedBinaryNode = currentFrame.meta?.binaryNode;
         const node = is_Node(retainedBinaryNode)
-          ? retainedBinaryNode
+          ? normalize_empty_hson_metadata(retainedBinaryNode)
           : parserOwnsRoot && currentFrame.node.$_tag === ROOT_TAG
             ? detach_hson_root_value(currentFrame.node)
             : currentFrame.node;

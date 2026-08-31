@@ -1138,7 +1138,10 @@ check("ordinary attrs and metadata preserve portable data semantics", () => {
   assert.doesNotThrow(() => assert_invariants(array, "fixed array-index metadata"));
   assert.equal(hsonTransform.fromNode(array).toHson().noBreak().serialize(), `«1»`);
 
-  assert.doesNotThrow(() => assert_invariants({ $_tag: "_hson_str", $_meta: {}, $_content: ["m"] }, "present-empty metadata"));
+  assert.throws(
+    () => assert_invariants({ $_tag: "_hson_str", $_meta: {}, $_content: ["m"] }, "present-empty metadata"),
+    (error) => error instanceof Error && "code" in error && error.code === "HSON_EMPTY_METADATA",
+  );
   assert.throws(() => assert_invariants(elementWithAttrs({}), "empty attrs"), /empty \$_attrs/);
 });
 

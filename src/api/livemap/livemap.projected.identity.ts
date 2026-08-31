@@ -1,10 +1,5 @@
 import { ARR_TAG, OBJ_TAG } from "../../core/constants.js";
-import {
-  assign_hson_node_quid,
-  is_projected_container_quid_eligible,
-  read_hson_node_quid,
-  scan_hson_node_quids,
-} from "../../core/hson-node-quid.js";
+import { scan_hson_node_quids } from "../../core/hson-node-quid.js";
 import { is_Node } from "../../core/node-guards.js";
 import type { HsonNode } from "../../core/types.js";
 import type { LivePath } from "../../types/livemap.types.js";
@@ -18,6 +13,19 @@ export type LiveMapProjectedIdentityOverlay = Readonly<{
   quidAtPath: (path: LivePath) => string | undefined;
 }>;
 
+/** LiveMap-local data identity target; this is not canonical QUID eligibility. */
+export function is_livemap_projected_identity_target(node: HsonNode): boolean {
+  if (node.$_tag === ARR_TAG) return true;
+  if (node.$_tag !== OBJ_TAG) return false;
+  if (node.$_content.length !== 1) return true;
+  const only = node.$_content[0];
+  return !is_Node(only)
+    || (only.$_tag !== "_hson_str"
+      && only.$_tag !== "_hson_val"
+      && only.$_tag !== ARR_TAG
+      && only.$_tag !== OBJ_TAG);
+}
+
 const entriesForOverlay = new WeakMap<LiveMapProjectedIdentityOverlay, ReadonlyMap<string, LivePath>>();
 let completedBuilds = 0;
 let completedReconciliations = 0;
@@ -28,34 +36,8 @@ export function build_livemap_projected_identity_overlay(root: HsonNode): LiveMa
   const allClaims = scan_hson_node_quids(root);
   const byQuid = new Map<string, LivePath>();
   const byPath = new Map<string, string>();
-  const stack: LivePath[] = [Object.freeze([])];
-
-  while (stack.length > 0) {
-    const path = stack.pop();
-    if (path === undefined) continue;
-    const node = resolve_value_node(root, path);
-    if (node === undefined) throw new Error(`Data identity path ${JSON.stringify(path)} does not resolve.`);
-    const quid = read_hson_node_quid(node);
-    if (quid !== undefined) add_entry(byQuid, byPath, quid, path);
-
-    if (node.$_tag === ARR_TAG) {
-      for (let index = node.$_content.length - 1; index >= 0; index -= 1) {
-        stack.push(clone_live_path([...path, index]));
-      }
-      continue;
-    }
-    if (node.$_tag === OBJ_TAG && is_projected_container_quid_eligible(node)) {
-      for (let index = node.$_content.length - 1; index >= 0; index -= 1) {
-        const child = node.$_content[index];
-        if (is_Node(child) && !child.$_tag.startsWith("_hson_")) {
-          stack.push(clone_live_path([...path, child.$_tag]));
-        }
-      }
-    }
-  }
-
-  if (byQuid.size !== allClaims.size) {
-    throw new Error("Projected LiveMap contains a QUID outside a semantic object/array value.");
+  if (allClaims.size !== 0) {
+    throw new Error("Projected LiveMap canonical data cannot carry QUID metadata.");
   }
   completedBuilds += 1;
   return make_overlay(byQuid, byPath);
@@ -106,17 +88,17 @@ export function register_livemap_projected_identity_at_path(
   return make_overlay(byQuid, byPath);
 }
 
-/** Reinstall sparse metadata onto a freshly planned data graph. */
+/** Validate sparse out-of-band paths against a freshly planned data graph. */
 export function apply_livemap_projected_identity_overlay(
   root: HsonNode,
   overlay: LiveMapProjectedIdentityOverlay,
 ): void {
   for (const [quid, path] of require_entries(overlay)) {
     const node = resolve_value_node(root, path);
-    if (node === undefined || !is_projected_container_quid_eligible(node)) {
+    if (node === undefined || !is_livemap_projected_identity_target(node)) {
       throw new Error(`Data identity path ${JSON.stringify(path)} no longer resolves to an eligible container.`);
     }
-    assign_hson_node_quid(node, quid);
+    void quid;
   }
 }
 

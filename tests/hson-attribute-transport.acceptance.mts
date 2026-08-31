@@ -405,6 +405,44 @@ check("transport-sensitive attrs retain canonical equality through Hson text", (
   assert.equal(must_tag(reparsed, "main").$_attrs?.a__colon__b, "2");
 });
 
+check("HTML comments are ingress trivia inside _hson_str across all parser paths", () => {
+  const source = `<_hson_str>&quot;a<!-- ignored -->b&quot;</_hson_str>`;
+  const direct = parse_html(parser_document(source).documentElement);
+  for (const root of [worker(source), browser(source), direct]) {
+    assert.deepEqual(must_tag(root, "_hson_str").$_content, ["ab"]);
+  }
+  const meaningfulChild = `<_hson_str>&quot;a&quot;<span/></_hson_str>`;
+  assert_rejects_both(meaningfulChild, /_hson_str.*text only/);
+  assert.throws(
+    () => parse_html(parser_document(meaningfulChild).documentElement),
+    /_hson_str.*text only/,
+  );
+  const dangling = `<main/><!--`;
+  assert_worker_browser_equal(
+    "dangling-html-comment-parity",
+    worker(dangling),
+    browser(dangling),
+  );
+});
+
+check("HTML QUID ingress rejects every structural carrier on all parser paths", () => {
+  const cases = [
+    `<_hson_root hson:quid="${Q1}"></_hson_root>`,
+    `<_hson_obj hson:quid="${Q1}"></_hson_obj>`,
+    `<_hson_elem hson:quid="${Q1}"></_hson_elem>`,
+    `<_hson_arr hson:quid="${Q1}"></_hson_arr>`,
+    `<_hson_ii hson:quid="${Q1}" hson:index="0"><_hson_val>1</_hson_val></_hson_ii>`,
+    `<_hson_str hson:quid="${Q1}">&quot;x&quot;</_hson_str>`,
+    `<_hson_val hson:quid="${Q1}">1</_hson_val>`,
+  ];
+  for (const source of cases) {
+    const placement = /ineligible Hson structural node|metadata "quid" is not defined/;
+    assert.throws(() => worker(source), placement);
+    assert.throws(() => browser(source), placement);
+    assert.throws(() => parse_html(parser_document(source).documentElement), placement);
+  }
+});
+
 check("structural HTML typed scalars use only the detached object carrier", () => {
   for (const [source, expected] of [
     [`<_hson_obj><_hson_val>false</_hson_val></_hson_obj>`, false],

@@ -5,7 +5,9 @@ metadata. `$_content` remains required. `$_attrs` and `$_meta` are optional
 storage containers. Canonical no-attribute state requires `$_attrs` to be
 absent; a present empty `$_attrs` is a noncanonical candidate spelling.
 Candidate admission removes it without mutating caller input. Empty metadata
-remains a distinct present field and strict equality observes that presence.
+uses the same compatibility rule: candidate admission accepts `$_meta: {}`
+and canonicalizes it to absence. Absence is the sole canonical no-metadata
+state.
 
 ## Construction and mutation rules
 
@@ -82,12 +84,13 @@ getter. Writable and configurable descriptor flags are not graph semantics.
 The three value states `unit` absent, own-present `undefined`, and own-present
 string remain distinct canonical states.
 
-The optional `$_attrs` and `$_meta` fields, when present, and every string-keyed
+The optional `$_attrs` and `$_meta` fields, when present and populated, and every string-keyed
 entry within their record values are likewise enumerable own data properties.
 Accessor-backed, non-enumerable, or custom-prototype record state rejects before
 any getter can run. Symbol properties and writable/configurable descriptor flags
-are not graph semantics. `$_meta: {}` remains a canonical presence distinction;
-`$_attrs: {}` remains noncanonical and must be omitted.
+are not graph semantics. `$_meta: {}` and `$_attrs: {}` are compatible candidate
+spellings only; admission omits both, and an already-canonical invariant
+assertion rejects either present empty bag.
 
 Every canonical node stores `$_tag` and `$_content` as required enumerable own
 Data properties. `$_content` is a dense array whose semantic slots are
@@ -125,15 +128,18 @@ remains visible until canonical invariant admission rejects typed element
 content. Root detachment itself remains exact. Direct serialization rejects an
 unadmitted detached carrier.
 
-The legacy empty-array optional-container spelling does not apply to
-`_hson_root.$_meta`: root metadata must be absent, `undefined`, or an empty
-plain object. Populated or malformed root metadata rejects and is never ignored
-or filtered. The empty-root runtime carrier remains a separate content-shape
-exception and does not permit root metadata.
+The legacy empty-array optional-container spelling does not apply to metadata.
+An empty plain `_hson_root.$_meta` candidate is accepted and normalized to
+absence by ordinary admission; populated or malformed root metadata rejects and
+is never ignored or filtered. The empty-root runtime carrier remains a separate
+content-shape exception and does not permit populated root metadata.
 
-Structural VSN metadata is allowlisted rather than being a general user-data
-channel. `_hson_ii` must carry canonical string ordering metadata at `index`;
-other structural VSN metadata is invalid. Wrapper-bearing admission accepts
+`$_meta` is a reserved, closed, internally extensible metadata plane. Each
+registered member defines its own value domain and exact node placement;
+unknown members reject. Structural VSN metadata is therefore an explicit
+member exception rather than a general user-data channel. `_hson_ii` must carry
+canonical string ordering metadata at `index`; other currently registered
+structural VSN metadata is invalid. Wrapper-bearing admission accepts
 only the exact complete sibling set `"0"` through
 `String(wrapperCount - 1)`, sorts a valid permutation, and rejects every
 malformed or contradictory set. Canonical physical order and index order must
@@ -142,14 +148,22 @@ intrinsic source order.
 
 | Node category | Valid `$_meta` keys |
 | --- | --- |
-| Eligible standard tag | `$_meta.quid`, projected as `hson:quid`, with the canonical QUID placement and value contract |
+| Eligible non-VSN ordinary tag | `$_meta.quid`, projected as `hson:quid`, with the canonical QUID placement and value contract |
 | `_hson_ii` | Required `$_meta.index`, projected as `hson:index`, using exact canonical zero-based decimal spelling |
 | `_hson_root`, `_hson_elem`, `_hson_obj`, `_hson_arr`, `_hson_str`, `_hson_val` | None |
 
 Metadata validity is authorized only by the exact table above. Unknown
 `$_meta` keys and unknown `hson:*` markup names reject. Every `data-*` name,
 including names beginning with `data-_`, is an ordinary application attribute
-stored in `$_attrs`.
+stored in `$_attrs`. QUID is categorically unavailable on every `_hson_*` tag,
+including future structural tags; `_hson_ii.index` is the narrow current VSN
+metadata exception. Future metadata members are added centrally with their own
+value and placement rules rather than inheriting placement from `quid` or
+`index`.
+
+Hson `//` comments and HTML `<!-- ... -->` comments are ingress/source trivia.
+Neither creates a graph node or metadata, participates in equality, survives
+serialization, or changes this registry.
 
 ### Internal root boundary
 

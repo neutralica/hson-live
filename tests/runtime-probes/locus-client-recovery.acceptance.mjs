@@ -275,7 +275,7 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
   assert.equal((await identityClient.recovery.recover()).strategy, "snapshot");
   const identityRev = identityClient.map.rev;
   assert.equal(acquire_projected_identity(identityClient.map, ["container"]).active, true);
-  assert.equal(identityClient.map.rev, identityRev);
+  assert.equal(identityClient.map.rev, identityRev + 1, "serialized recovery cannot carry map-local data overlay claims");
 
   const equalHost = hson.locus.create({ state: { value: 5 }, logicalMapId: "map-equal-snapshot" });
   const equalMirror = hson.liveMap.fromJson({ value: 5 });

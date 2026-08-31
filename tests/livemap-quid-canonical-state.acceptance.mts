@@ -201,7 +201,9 @@ check("view-state persistence preserves exact QUID metadata", () => {
 
 check("ordinary Hson serialization preserves QUID metadata exactly", () => {
   const source = element(`<main @${Q1} <span @${Q2}/>/>`);
-  const wire = hson.fromNode(source.root()).toHson().serialize();
+  const semanticRoot = source.document.byQuid(Q1);
+  assert.ok(semanticRoot);
+  const wire = hson.fromNode(semanticRoot).toHson().serialize();
   const reparsed = element(wire);
   assert.equal(canonical_hson_graph_equal(reparsed.root(), source.root()), true);
 });
@@ -209,7 +211,9 @@ check("ordinary Hson serialization preserves QUID metadata exactly", () => {
 check("noQuid serialization omits QUIDs without mutating the source graph", () => {
   const source = element(`<main @${Q1} <span @${Q2}/>/>`);
   const before = source.capture();
-  const wire = hson.fromNode(source.root()).toHson().noQuid().serialize();
+  const semanticRoot = source.document.byQuid(Q1);
+  assert.ok(semanticRoot);
+  const wire = hson.fromNode(semanticRoot).toHson().noQuid().serialize();
   assert.equal(wire.includes(Q1), false);
   assert.equal(wire.includes(Q2), false);
   assert.equal(canonical_hson_graph_equal(source.root(), before.root), true);
@@ -218,7 +222,9 @@ check("noQuid serialization omits QUIDs without mutating the source graph", () =
 
 check("reparsing noQuid output yields an identity-stripped, not exact-equal, graph", () => {
   const source = element(`<main @${Q1} <span @${Q2}/>/>`);
-  const wire = hson.fromNode(source.root()).toHson().noQuid().serialize();
+  const semanticRoot = source.document.byQuid(Q1);
+  assert.ok(semanticRoot);
+  const wire = hson.fromNode(semanticRoot).toHson().noQuid().serialize();
   const stripped = element(wire);
   assert.equal(canonical_hson_graph_equal(stripped.root(), source.root()), false);
   assert.equal(canonical_hson_graph_difference(stripped.root(), source.root())?.kind, "metadata-presence");

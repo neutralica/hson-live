@@ -1,8 +1,3 @@
-import {
-  assign_hson_node_quid,
-  is_projected_container_quid_eligible,
-  read_hson_node_quid,
-} from "../../core/hson-node-quid.js";
 import type { HsonNode } from "../../core/types.js";
 import type {
   LiveMapGraphCommit,
@@ -16,6 +11,7 @@ import { LiveMapProjectedIdentityError } from "./livemap.error.js";
 import { clone_live_path, live_path_key } from "./livemap.path.js";
 import {
   register_livemap_projected_identity_at_path,
+  is_livemap_projected_identity_target,
   type LiveMapProjectedIdentityOverlay,
 } from "./livemap.projected.identity.js";
 import {
@@ -96,19 +92,17 @@ function current_claim(
       "path does not resolve",
     );
   }
-  if (!is_projected_container_quid_eligible(endpoint)) {
+  if (!is_livemap_projected_identity_target(endpoint)) {
     throw new LiveMapProjectedIdentityError(
       "PROJECTED_IDENTITY_INELIGIBLE",
       path,
       "target must be a semantic data object or array container",
     );
   }
-  const existing = read_hson_node_quid(endpoint);
-  const indexed = controller.overlay().quidAtPath(path);
+  const existing = controller.overlay().quidAtPath(path);
   const indexedPath = existing === undefined ? undefined : controller.overlay().pathForQuid(existing);
-  if (existing !== indexed
-    || (existing !== undefined
-      && (indexedPath === undefined || live_path_key(indexedPath) !== live_path_key(path)))) {
+  if (existing !== undefined
+    && (indexedPath === undefined || live_path_key(indexedPath) !== live_path_key(path))) {
     throw new LiveMapProjectedIdentityError(
       "PROJECTED_IDENTITY_INVARIANT",
       path,
@@ -130,7 +124,7 @@ function allocate_and_commit(
     (quid) => {
       const root = clone_live_root(controller.root());
       const endpoint = resolve_value_node(root, path);
-      if (endpoint === undefined || !is_projected_container_quid_eligible(endpoint)) {
+      if (endpoint === undefined || !is_livemap_projected_identity_target(endpoint)) {
         throw new LiveMapProjectedIdentityError(
           "PROJECTED_IDENTITY_INELIGIBLE",
           path,
@@ -138,7 +132,6 @@ function allocate_and_commit(
         );
       }
       try {
-        assign_hson_node_quid(endpoint, quid);
         const overlay = register_livemap_projected_identity_at_path(controller.overlay(), quid, path);
         const operation: LiveMapProjectedGraphEnsureQuidOp = Object.freeze({
           domain: "graph",
@@ -187,8 +180,7 @@ function make_handle(
     if (path === undefined || controller.overlay().quidAtPath(path) !== quid) return undefined;
     const endpoint = resolve_value_node(controller.root(), path);
     if (endpoint === undefined
-      || !is_projected_container_quid_eligible(endpoint)
-      || read_hson_node_quid(endpoint) !== quid) return undefined;
+      || !is_livemap_projected_identity_target(endpoint)) return undefined;
     return clone_live_path(path);
   };
   return Object.freeze({

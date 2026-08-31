@@ -9,6 +9,7 @@ import {
   VAL_TAG,
 } from "../../../core/constants.js";
 import { is_typed_css_value } from "../../../core/inline-style.js";
+import { normalize_empty_hson_metadata } from "../../../core/normalize-hson-graph.js";
 import type { HsonAttrs, HsonMeta, HsonNode } from "../../../core/types.js";
 import type { BinaryDecodeOptions } from "../transform.types.js";
 
@@ -225,13 +226,17 @@ function write_node(writer: BinaryWriter, node: HsonNode): void {
   write_content(writer, node.$_content);
 }
 
-export function serialize_binary(node: HsonNode): Uint8Array {
-  assert_invariants(node, "toBinary");
+function serialize_binary_representation(node: HsonNode): Uint8Array {
   if (node.$_tag === ROOT_TAG) fail("_hson_root is not a detached Binary Hson value");
   const writer = new BinaryWriter();
   for (const byte of MARKER) writer.byte(byte);
   write_node(writer, node);
   return writer.finish();
+}
+
+export function serialize_binary(node: HsonNode): Uint8Array {
+  assert_invariants(node, "toBinary");
+  return serialize_binary_representation(node);
 }
 
 type Limits = Readonly<{
@@ -461,10 +466,11 @@ export function parse_binary(input: Uint8Array, options: BinaryDecodeOptions = {
   for (const expected of MARKER) {
     if (reader.byte("marker") !== expected) fail("marker mismatch");
   }
-  const node = reader.node(0);
+  const decoded = reader.node(0);
   if (!reader.at_end()) fail("trailing bytes");
-  assert_invariants(node, "fromBinary");
-  const canonical = serialize_binary(node);
+  const canonical = serialize_binary_representation(decoded);
   if (!same_bytes(canonical, input)) fail("accepted bytes are not canonically spelled");
+  const node = normalize_empty_hson_metadata(decoded);
+  assert_invariants(node, "fromBinary");
   return node;
 }
