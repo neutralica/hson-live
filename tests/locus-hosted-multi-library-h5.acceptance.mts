@@ -165,6 +165,7 @@ await check("the public Locus and client paths bootstrap one typed aggregate mir
   });
   const started = performance.now();
   const bootstrap = await client.connect();
+  const bootstrapMs = performance.now() - started;
   assert.equal(bootstrap.outcome, "snapshot");
   assert.equal(client.map, clientMap);
   assert.equal(client.map.rev, 0);
@@ -189,7 +190,9 @@ await check("the public Locus and client paths bootstrap one typed aggregate mir
   const colorsValues: unknown[] = [];
   const stopState = client.subscribe("state", ["theme"], (value, revision) => stateValues.push([value, revision]));
   const stopColors = client.subscribe("colors", ["theme"], (value, revision) => colorsValues.push([value, revision]));
+  const aggregateStarted = performance.now();
   assert.equal(await client.action("theme.all"), "ok");
+  const stateColorsPageMs = performance.now() - aggregateStarted;
   assert.deepEqual([serverMap.rev, clientMap.rev], [1, 1]);
   assert.equal(clientMap.lib("state").snap(["theme"]), "dark");
   assert.equal(clientMap.lib("colors").snap(["theme"]), "blue");
@@ -203,14 +206,16 @@ await check("the public Locus and client paths bootstrap one typed aggregate mir
     .find((message) => message.type === "commit") as Record<string, any> | undefined;
   assert.deepEqual(published?.commit?.commit?.operations?.map((operation: { library: string }) => operation.library), ["state", "colors", "page"]);
   assert.deepEqual([published?.commit?.commit?.prevRev, published?.commit?.commit?.rev], [0, 1]);
+  const stateOnlyStarted = performance.now();
   await client.action("state.only");
+  const stateOnlyMs = performance.now() - stateOnlyStarted;
   assert.equal(reflection.sourceRevision, 2);
   assert.equal(reflection.diagnostics().updatesApplied, 1);
   assert.equal(client.lastAppliedRev, 2);
   stopState();
   client.unsubscribe("colors", ["theme"]);
   reflection.dispose();
-  process.stdout.write(`# telemetry ${JSON.stringify({ bootstrapMs: performance.now() - started })}\n`);
+  process.stdout.write(`# telemetry ${JSON.stringify({ bootstrapMs, stateOnlyMs, stateColorsPageMs, aggregateCommitBytes: new TextEncoder().encode(JSON.stringify(published)).byteLength })}\n`);
   client.close();
   locus.dispose();
 });
@@ -234,7 +239,9 @@ await check("public recovery replays retained history, replaces one complete mir
     map: staleMap,
     recovery: { logicalMapId: locus.logicalMapId },
   });
+  const snapshotStarted = performance.now();
   assert.equal((await snapshotClient.connect()).outcome, "snapshot");
+  const snapshotReplacementMs = performance.now() - snapshotStarted;
   assert.equal(snapshotClient.map, staleMap);
   assert.equal(stateHandle.snap(), "dark");
   assert.equal(staleMap.lib("page").document.byQuid(RECOVERY_QUID)?.$_tag, "item");
@@ -253,13 +260,16 @@ await check("public recovery replays retained history, replaces one complete mir
     map: staleMap,
     recovery: { logicalMapId: locus.logicalMapId },
   });
+  const replayStarted = performance.now();
   assert.equal((await replayClient.connect()).outcome, "replay");
+  const retainedReplayMs = performance.now() - replayStarted;
   assert.deepEqual([staleMap.rev, stateHandle.snap(), reflection.sourceRevision], [2, "dark", 2]);
   assert.equal(staleMap.lib("page").document.byQuid(RECOVERY_NEXT_QUID)?.$_tag, "item");
   const values: unknown[] = [];
   replayClient.subscribe("state", ["theme"], (value, revision) => values.push([value, revision]));
   assert.equal((await replayClient.recover()).outcome, "current");
   assert.deepEqual(values, [["dark", 2], ["dark", 2]]);
+  process.stdout.write(`# telemetry ${JSON.stringify({ snapshotReplacementMs, retainedReplayMs })}\n`);
   reflection.dispose();
   replayClient.close();
   locus.dispose();
@@ -347,11 +357,14 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   await client.action("page.retire");
   assert.equal(clientMap.rev, 2);
   assert.equal(clientMap.lib("page").document.byQuid(PERSISTED_QUID), undefined);
+  const checkpointStarted = performance.now();
   await host.checkpoint();
+  const checkpointMs = performance.now() - checkpointStarted;
   host.dispose();
   client.close();
 
   const restoredMap = make_map();
+  const restartStarted = performance.now();
   const restored = await create_persistent_locus({
     map: restoredMap,
     logicalMapId: "h5-persisted-map",
@@ -368,21 +381,27 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
       },
     },
   });
+  const restartLoadMs = performance.now() - restartStarted;
   assert.ok(restored);
   assert.equal(restored.map, restoredMap);
   assert.equal(restoredMap.rev, 2);
   const second = socket_pair();
   restored.connect(second.server);
   const recovered = hsonLocus.client({ socket: second.client, map: clientMap, recovery: { logicalMapId: restored.logicalMapId } });
+  const reconnectStarted = performance.now();
   assert.equal((await recovered.connect()).outcome, "current");
+  const reconnectMs = performance.now() - reconnectStarted;
   assert.equal(clientMap.lib("page").document.byQuid(PERSISTED_QUID), undefined);
   assert.equal(reflection.sourceRevision, 2);
   await assert.rejects(() => recovered.action("reuse"), /QUID|reuse|identity/i);
   assert.equal(clientMap.rev, 2);
+  const continuedStatePageStarted = performance.now();
   await recovered.action("state.page");
+  const continuedStatePageMs = performance.now() - continuedStatePageStarted;
   assert.deepEqual([restored.rev, clientMap.rev, clientMap.lib("state").snap(["count"])], [3, 3, 3]);
   assert.equal(clientMap.lib("page").document.byQuid(PERSISTED_NEXT_QUID)?.$_tag, "item");
   assert.equal(reflection.sourceRevision, 3);
+  process.stdout.write(`# telemetry ${JSON.stringify({ checkpointMs, restartLoadMs, reconnectMs, continuedStatePageMs })}\n`);
   recovered.close();
   reflection.dispose();
   restored.dispose();
