@@ -1792,8 +1792,20 @@ function make_livemap_core_from_owned_root(
     handle: make_internal_path_authority,
     resolveQuid: (quid) => aggregate_quid_locations(libraryRegistry.all()).get(quid),
     prepare: prepare_aggregate_transition,
+    prepareManaged: (owner, writes) => transitionController.runManaged(
+      owner,
+      () => prepare_aggregate_transition(writes),
+    ),
     accept: transitionController.acceptAggregate,
     discard: transitionController.discardAggregate,
+    claimManagement: (owner) => transitionController.claimManagement(
+      owner,
+      () => Promise.reject(new LiveMapTransitionError(
+        "LIVEMAP_MANAGED_MUTATION_REJECTED",
+        "Aggregate LiveMap mutation is controlled by an exclusive Locus authority.",
+      )),
+    ),
+    releaseManagement: transitionController.releaseManagement,
     commit: (writes) => transitionController.acceptAggregate(prepare_aggregate_transition(writes)).commit,
     commitDocumentMutation: commit_aggregate_document_mutation,
     documentCommitFor: (library, commit) => documentCommitByAggregate.get(commit)?.get(library),

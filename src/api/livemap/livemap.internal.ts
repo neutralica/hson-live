@@ -57,8 +57,16 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   handle: (library: LiveMapLibraryIdentity, path: LivePath) => InternalLiveMapPathAuthority;
   resolveQuid: (quid: string) => LiveMapStructuralTarget | undefined;
   prepare: (writes: readonly LiveMapAggregateWrite[]) => PreparedLiveMapAggregateTransition;
+  /** Prepare through the Locus-owned management claim. @internal */
+  prepareManaged: (
+    owner: object,
+    writes: readonly LiveMapAggregateWrite[],
+  ) => PreparedLiveMapAggregateTransition;
   accept: LiveMapTransitionController["acceptAggregate"];
   discard: LiveMapTransitionController["discardAggregate"];
+  /** Claim/release the same exclusive mutation boundary used by solo Locus. @internal */
+  claimManagement: (owner: object) => void;
+  releaseManagement: (owner: object) => void;
   commit: (writes: readonly LiveMapAggregateWrite[]) => LiveMapAggregateCommit;
   /** Commit one already-planned document candidate through the map-global transition. */
   commitDocumentMutation: <TOp extends LiveMapGraphOp>(

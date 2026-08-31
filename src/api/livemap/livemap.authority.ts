@@ -112,6 +112,8 @@ export type LiveMapTransitionController = Readonly<{
   assertPublicMutationAllowed: () => void;
   claimManagement: (owner: object, schedule: LiveMapManagedMutationScheduler<object>) => void;
   releaseManagement: (owner: object) => void;
+  /** Run a preparation owned by the current exclusive manager. @internal */
+  runManaged: <T>(owner: object, operation: () => T) => T;
   scheduleManaged: (
     mutation: (draft: object) => LiveMapCommit<LiveMapAnyOp>,
   ) => Promise<LiveMapCommit<LiveMapAnyOp>> | undefined;
@@ -145,6 +147,7 @@ export function make_livemap_transition_controller(
     owner: object;
     schedule: LiveMapManagedMutationScheduler<object>;
   }> | undefined;
+  let managedExecutionOwner: object | undefined;
 
   function prepare(preparation: LiveMapTransitionPreparation): PreparedLiveMapTransition {
     const baseRevision = getRevision();
@@ -379,7 +382,7 @@ export function make_livemap_transition_controller(
       generation += 1;
     },
     assertPublicMutationAllowed(): void {
-      if (management === undefined) return;
+      if (management === undefined || managedExecutionOwner === management.owner) return;
       throw new LiveMapTransitionError(
         "LIVEMAP_MANAGED_MUTATION_REJECTED",
         "LiveMap mutation is controlled by an exclusive Locus authority.",
@@ -396,6 +399,21 @@ export function make_livemap_transition_controller(
     },
     releaseManagement(owner): void {
       if (management?.owner === owner) management = undefined;
+    },
+    runManaged<T>(owner: object, operation: () => T): T {
+      if (management?.owner !== owner) {
+        throw new LiveMapTransitionError(
+          "LIVEMAP_MANAGED_MUTATION_REJECTED",
+          "LiveMap managed preparation belongs to another authority.",
+        );
+      }
+      const previous = managedExecutionOwner;
+      managedExecutionOwner = owner;
+      try {
+        return operation();
+      } finally {
+        managedExecutionOwner = previous;
+      }
     },
     scheduleManaged(mutation) {
       return management?.schedule(mutation);

@@ -47,6 +47,13 @@ import {
 import { register_livemap_document_identity_overlay } from "./livemap.document.identity.js";
 import { register_livemap_document_identity_authority } from "./livemap.document.registration.js";
 import { register_livemap_identity_epoch_owner } from "./livemap.identity-epoch.js";
+import {
+  assert_hosted_snapshot_bound,
+  assert_hosted_snapshot_shape,
+  decode_hosted_root,
+  type HostedAggregateSnapshot,
+} from "./livemap.hosted.js";
+import { node_to_json_value } from "./livemap.editor.js";
 
 type NamedLibrary = Readonly<{
   name: string;
@@ -146,6 +153,43 @@ export function make_livemap_libraries<const TLibraries extends LiveMapLibraries
   register_internal_livemap_aggregate_owner(libraries, aggregate);
   PUBLIC_MULTI_LIBRARY_MAPS.add(libraries);
   return libraries as unknown as LiveMapLibraries<TLibraries>;
+}
+
+/**
+ * Construct an internal, fixed-registry client mirror from H1 snapshot
+ * evidence.  This deliberately remains outside the public facade: H3 owns
+ * recovery/bootstrap protocol exposure.
+ */
+export function make_livemap_hosted_mirror_from_snapshot_internal(
+  snapshot: HostedAggregateSnapshot,
+): LiveMapLibraries {
+  assert_hosted_snapshot_shape(snapshot);
+  assert_hosted_snapshot_bound(snapshot);
+  if (snapshot.registryDigest !== snapshot.registry.digest
+    || snapshot.libraries.length !== snapshot.registry.libraries.length) {
+    throw new Error("Hosted aggregate mirror snapshot registry is malformed.");
+  }
+
+  const inputs: Record<string, LiveMapLibraryInput> = {};
+  for (let index = 0; index < snapshot.registry.libraries.length; index += 1) {
+    const registry = snapshot.registry.libraries[index];
+    const library = snapshot.libraries[index];
+    if (registry === undefined || library === undefined
+      || registry.name !== library.name
+      || registry.mode !== library.mode
+      || registry.schema !== library.schema
+      || registry.schemaDigest !== library.schemaDigest) {
+      throw new Error("Hosted aggregate mirror snapshot Library metadata is malformed.");
+    }
+    const root = decode_hosted_root(library.root);
+    inputs[registry.name] = registry.mode === "document"
+      ? { document: root, schema: registry.schema }
+      : { data: node_to_json_value(root), schema: registry.schema };
+  }
+
+  const mirror = make_livemap_libraries(inputs);
+  internal_livemap_aggregate_authority(mirror).restoreHosted(snapshot);
+  return mirror;
 }
 
 function make_data_library(
