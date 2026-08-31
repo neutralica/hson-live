@@ -6,8 +6,6 @@
   "files": [
     "./scripts/hson-schema.mts",
     "./scripts/typescript-observability.mts",
-    "./editor-smoke.ts",
-    "./editor-test.ts"
   ],
   "include": []
 }
