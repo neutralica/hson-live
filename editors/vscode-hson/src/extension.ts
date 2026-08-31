@@ -1,12 +1,15 @@
 import * as messages from "./diagnostic-messages.js";
 import * as vscode from "vscode";
-import { resolve, dirname } from "node:path";
+import { existsSync } from "node:fs";
+import { spawn, type ChildProcess } from "node:child_process";
+import { resolve, dirname, extname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { TrustedSchemaClient, type SchemaStatus } from "./trusted-schema-client.js";
 import { start_schema_diagnostics } from "./schema-diagnostics.js";
 import { TrustedSchemaInfrastructureError } from "../../../src/internal/trusted-schema-diagnostics/node-supervisor.js";
 import { schema_provider_source_changed } from "./schema-source-revision.js";
-import { local_hson_schema_diagnostics } from "./hson-schema-local.js";
+import { local_hson_schema_declarations, local_hson_schema_diagnostics } from "./hson-schema-local.js";
+import { discover_schema_project, resolve_workspace_hson_schema_tool } from "./schema-tooling.js";
 
 import {
   start_diagnostics,
@@ -70,6 +73,29 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(collection);
 
   const localSchemaCollection = vscode.languages.createDiagnosticCollection("hson-schema-authoring");
+  const schemaEvidenceCollection = vscode.languages.createDiagnosticCollection("hson-schema-evidence");
+  const staleSchemaEvidence = new Set<string>();
+  const schemaDeclarationSnapshots = new Map<string, string>();
+  const publishSchemaEvidence = (document: vscode.TextDocument): void => {
+    if (document.languageId !== "typescript" && document.languageId !== "typescriptreact") return;
+    const declarations = local_hson_schema_declarations(document.getText());
+    const stale = staleSchemaEvidence.has(document.uri.toString());
+    const diagnostics: vscode.Diagnostic[] = [];
+    for (const declaration of declarations) {
+      const generated = resolve(document.fileName.slice(0, -extname(document.fileName).length) + `.${declaration.name}.hson-schema.generated.ts`);
+      const metadata = generated.slice(0, -3) + "json";
+      const range = new vscode.Range(document.positionAt(declaration.start), document.positionAt(declaration.end));
+      if (!existsSync(generated) || !existsSync(metadata)) {
+        const diagnostic = new vscode.Diagnostic(range, `Generated Hson Schema types for ${declaration.name} are missing. Generate Schema Types or start Hson Schema watch.`, vscode.DiagnosticSeverity.Warning);
+        diagnostic.source = "Hson Schema"; diagnostic.code = "HSON_SCHEMA_GENERATED_EVIDENCE_MISSING"; diagnostics.push(diagnostic);
+      } else if (stale) {
+        const diagnostic = new vscode.Diagnostic(range, `Generated Hson Schema types for ${declaration.name} may be stale after this Schema edit. Generate Schema Types or start Hson Schema watch.`, vscode.DiagnosticSeverity.Warning);
+        diagnostic.source = "Hson Schema"; diagnostic.code = "HSON_SCHEMA_GENERATED_EVIDENCE_STALE"; diagnostics.push(diagnostic);
+      }
+    }
+    schemaEvidenceCollection.set(document.uri, diagnostics);
+    schemaDeclarationSnapshots.set(document.uri.toString(), JSON.stringify(declarations.map(declaration => [declaration.name, declaration.template])));
+  };
   const publishLocalSchema = (document: vscode.TextDocument): void => {
     if (document.languageId !== "typescript" && document.languageId !== "typescriptreact") return;
     localSchemaCollection.set(document.uri, local_hson_schema_diagnostics(document.fileName, document.getText()).map(spec => {
@@ -77,11 +103,16 @@ export function activate(context: vscode.ExtensionContext): void {
       diagnostic.source = "Hson Schema"; diagnostic.code = spec.code; return diagnostic;
     }));
   };
-  for (const document of vscode.workspace.textDocuments) publishLocalSchema(document);
-  context.subscriptions.push(localSchemaCollection,
-    vscode.workspace.onDidOpenTextDocument(publishLocalSchema),
-    vscode.workspace.onDidChangeTextDocument(event => publishLocalSchema(event.document)),
-    vscode.workspace.onDidCloseTextDocument(document => localSchemaCollection.delete(document.uri)));
+  for (const document of vscode.workspace.textDocuments) { publishLocalSchema(document); publishSchemaEvidence(document); }
+  context.subscriptions.push(localSchemaCollection, schemaEvidenceCollection,
+    vscode.workspace.onDidOpenTextDocument(document => { publishLocalSchema(document); publishSchemaEvidence(document); }),
+    vscode.workspace.onDidChangeTextDocument(event => {
+      const before = schemaDeclarationSnapshots.get(event.document.uri.toString());
+      const after = JSON.stringify(local_hson_schema_declarations(event.document.getText()).map(declaration => [declaration.name, declaration.template]));
+      if (before !== undefined && before !== after) staleSchemaEvidence.add(event.document.uri.toString());
+      publishLocalSchema(event.document); publishSchemaEvidence(event.document);
+    }),
+    vscode.workspace.onDidCloseTextDocument(document => { localSchemaCollection.delete(document.uri); schemaEvidenceCollection.delete(document.uri); staleSchemaEvidence.delete(document.uri.toString()); schemaDeclarationSnapshots.delete(document.uri.toString()); }));
 
   const host: DiagnosticHost = {
     openDocuments: () => vscode.workspace.textDocuments.map(adaptDocument),
@@ -367,6 +398,113 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     await requestConsent(folder, resource);
   };
+  type ManagedSchemaWatch = Readonly<{ folder: vscode.WorkspaceFolder; project: string; child: ChildProcess }>;
+  const schemaToolOutput = vscode.window.createOutputChannel("Hson Schema");
+  const schemaToolStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 11);
+  const schemaWatches = new Map<string, ManagedSchemaWatch>();
+  const schemaToolStates = new Map<string, "stopped" | "watching" | "error">();
+  const schemaWatchKey = (folder: vscode.WorkspaceFolder, project: string): string => `${folder.uri.toString()}::${project}`;
+  const schemaToolFolder = async (requested?: vscode.Uri): Promise<vscode.WorkspaceFolder | undefined> => {
+    const direct = requested === undefined ? vscode.window.activeTextEditor?.document.uri : requested;
+    const activeFolder = direct === undefined ? undefined : vscode.workspace.getWorkspaceFolder(direct);
+    if (activeFolder !== undefined) return activeFolder;
+    const candidates = (vscode.workspace.workspaceFolders ?? []).filter(folder => {
+      try { discover_schema_project(folder.uri.fsPath); return true; } catch { return false; }
+    });
+    if (candidates.length === 1) return candidates[0];
+    if (candidates.length === 0) {
+      void vscode.window.showWarningMessage("No workspace folder with tsconfig.json is available for Hson Schema tooling.");
+      return undefined;
+    }
+    const choice = await vscode.window.showQuickPick(candidates.map(folder => ({ label: folder.name, description: discover_schema_project(folder.uri.fsPath), folder })), { placeHolder: "Choose the workspace project for Hson Schema tooling" });
+    return choice?.folder;
+  };
+  const updateSchemaToolStatus = (): void => {
+    const folder = vscode.window.activeTextEditor === undefined ? undefined : vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor.document.uri);
+    const entry = folder === undefined ? undefined : [...schemaToolStates.entries()].find(([key]) => key.startsWith(`${folder.uri.toString()}::`));
+    const state = entry?.[1] ?? "stopped";
+    schemaToolStatus.text = state === "watching" ? "Hson Schema: Watching" : state === "error" ? "Hson Schema: Error" : "Hson Schema: Stopped";
+    schemaToolStatus.tooltip = state === "watching" ? "An extension-managed workspace hson-schema watch process is running."
+      : state === "error" ? "The extension-managed Hson Schema command failed. Select to generate, watch, stop, or show output."
+      : "No extension-managed Hson Schema watch process is running. An external terminal watcher may still exist.";
+    schemaToolStatus.show();
+  };
+  const appendProcessOutput = (child: ChildProcess): void => {
+    child.stdout?.on("data", chunk => schemaToolOutput.append(String(chunk)));
+    child.stderr?.on("data", chunk => schemaToolOutput.append(String(chunk)));
+  };
+  const refreshSchemaEvidence = (): void => {
+    for (const document of vscode.workspace.textDocuments) {
+      if (!document.isDirty) staleSchemaEvidence.delete(document.uri.toString());
+      publishSchemaEvidence(document);
+    }
+  };
+  const stopSchemaWatch = async (requested?: vscode.Uri): Promise<void> => {
+    const folder = await schemaToolFolder(requested);
+    if (folder === undefined) return;
+    const matches = [...schemaWatches.entries()].filter(([, watch]) => watch.folder.uri.toString() === folder.uri.toString());
+    if (matches.length === 0) { schemaToolStates.set(`${folder.uri.toString()}::none`, "stopped"); updateSchemaToolStatus(); return; }
+    for (const [key, watch] of matches) {
+      schemaToolOutput.appendLine(`Stopping extension-managed hson-schema watch for ${watch.project}.`);
+      terminate_schema_process(watch.child);
+      schemaWatches.delete(key); schemaToolStates.set(key, "stopped");
+    }
+    updateSchemaToolStatus();
+  };
+  const prepareSchemaTool = async (requested?: vscode.Uri): Promise<Readonly<{ folder: vscode.WorkspaceFolder; project: string; executable: string }> | undefined> => {
+    if (!vscode.workspace.isTrusted) {
+      void vscode.window.showWarningMessage("Hson Schema commands do not run in Restricted Mode. Trust this workspace through VS Code Workspace Trust, then run the command again.");
+      return undefined;
+    }
+    const folder = await schemaToolFolder(requested);
+    if (folder === undefined) return undefined;
+    try {
+      const active = requested ?? vscode.window.activeTextEditor?.document.uri;
+      const project = discover_schema_project(folder.uri.fsPath, active?.fsPath);
+      const tool = resolve_workspace_hson_schema_tool(folder.uri.fsPath);
+      return Object.freeze({ folder, project, executable: tool.executable });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not resolve workspace-local hson-schema tooling.";
+      schemaToolOutput.appendLine(`Hson Schema setup failed: ${message}`); schemaToolOutput.show(true);
+      void vscode.window.showErrorMessage(message, "Show Hson Output").then(action => action === "Show Hson Output" && schemaToolOutput.show(true));
+      return undefined;
+    }
+  };
+  const runSchemaOnce = async (mode: "generate" | "check", requested?: vscode.Uri): Promise<void> => {
+    const prepared = await prepareSchemaTool(requested);
+    if (prepared === undefined) return;
+    const key = schemaWatchKey(prepared.folder, prepared.project);
+    const started = performance.now();
+    schemaToolOutput.appendLine(`hson-schema ${mode} --project ${prepared.project}`);
+    const child = spawn(process.execPath, [prepared.executable, mode, "--project", prepared.project], { cwd: prepared.folder.uri.fsPath, stdio: ["ignore", "pipe", "pipe"] });
+    appendProcessOutput(child);
+    await new Promise<void>(resolveOnce => {
+      child.once("error", error => { schemaToolOutput.appendLine(`Hson Schema ${mode} failed to start: ${error.message}`); schemaToolStates.set(key, "error"); updateSchemaToolStatus(); resolveOnce(); });
+      child.once("close", code => {
+        if (code === 0) { schemaToolOutput.appendLine(`Hson Schema ${mode} completed in ${Math.round(performance.now() - started)}ms.`); schemaToolStates.set(key, "stopped"); refreshSchemaEvidence(); }
+        else { schemaToolOutput.appendLine(`Hson Schema ${mode} exited with code ${code ?? "unknown"}.`); schemaToolStates.set(key, "error"); void vscode.window.showErrorMessage(`Hson Schema ${mode} failed.`, "Show Hson Output").then(action => action === "Show Hson Output" && schemaToolOutput.show(true)); }
+        updateSchemaToolStatus(); resolveOnce();
+      });
+    });
+  };
+  const startSchemaWatch = async (requested?: vscode.Uri): Promise<void> => {
+    const prepared = await prepareSchemaTool(requested);
+    if (prepared === undefined) return;
+    const key = schemaWatchKey(prepared.folder, prepared.project);
+    if (schemaWatches.has(key)) { schemaToolOutput.appendLine(`Hson Schema watch is already running for ${prepared.project}.`); updateSchemaToolStatus(); return; }
+    schemaToolOutput.appendLine(`Starting hson-schema watch --project ${prepared.project}`);
+    const child = spawn(process.execPath, [prepared.executable, "watch", "--project", prepared.project], { cwd: prepared.folder.uri.fsPath, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
+    const watch = Object.freeze({ folder: prepared.folder, project: prepared.project, child });
+    schemaWatches.set(key, watch); schemaToolStates.set(key, "watching"); appendProcessOutput(child); updateSchemaToolStatus();
+    child.once("error", error => { schemaToolOutput.appendLine(`Hson Schema watch failed to start: ${error.message}`); schemaWatches.delete(key); schemaToolStates.set(key, "error"); updateSchemaToolStatus(); });
+    child.once("close", code => {
+      const managed = schemaWatches.delete(key);
+      if (managed) { schemaToolStates.set(key, code === 0 ? "stopped" : "error"); schemaToolOutput.appendLine(`Hson Schema watch exited with code ${code ?? "unknown"}.`); if (code !== 0) void vscode.window.showErrorMessage("Hson Schema watch stopped unexpectedly.", "Show Hson Output").then(action => action === "Show Hson Output" && schemaToolOutput.show(true)); }
+      updateSchemaToolStatus(); refreshSchemaEvidence();
+    });
+  };
+  schemaToolStatus.command = "hson.schemaToolActions";
+  updateSchemaToolStatus();
   statusBar.command = "hson.openSettings";
   context.subscriptions.push(
     vscode.commands.registerCommand("hson.openSettings", () => vscode.commands.executeCommand("workbench.action.openSettings", HSON_SETTINGS_QUERY)),
@@ -381,7 +519,33 @@ export function activate(context: vscode.ExtensionContext): void {
       reconfigure();
       void vscode.window.showInformationMessage("Hson trusted Schema runtime restarted.");
     }),
+    vscode.commands.registerCommand("hson.generateSchemaTypes", (uri?: vscode.Uri) => runSchemaOnce("generate", uri)),
+    vscode.commands.registerCommand("hson.checkSchemas", (uri?: vscode.Uri) => runSchemaOnce("check", uri)),
+    vscode.commands.registerCommand("hson.startSchemaWatch", (uri?: vscode.Uri) => startSchemaWatch(uri)),
+    vscode.commands.registerCommand("hson.stopSchemaWatch", (uri?: vscode.Uri) => stopSchemaWatch(uri)),
+    vscode.commands.registerCommand("hson.showSchemaOutput", () => schemaToolOutput.show(true)),
+    vscode.commands.registerCommand("hson.schemaToolActions", async () => {
+      const action = await vscode.window.showQuickPick([
+        { label: "Generate Schema Types", command: "hson.generateSchemaTypes" },
+        { label: "Start Schema Watch", command: "hson.startSchemaWatch" },
+        { label: "Stop Schema Watch", command: "hson.stopSchemaWatch" },
+        { label: "Check Schemas", command: "hson.checkSchemas" },
+        { label: "Show Hson Output", command: "hson.showSchemaOutput" },
+      ], { placeHolder: "Hson Schema tooling" });
+      if (action !== undefined) await vscode.commands.executeCommand(action.command);
+    }),
   );
+  context.subscriptions.push(vscode.languages.registerCodeActionsProvider(["typescript", "typescriptreact"], {
+    provideCodeActions(document, _range, codeActionContext) {
+      const evidence = codeActionContext.diagnostics.filter(diagnostic => diagnostic.code === "HSON_SCHEMA_GENERATED_EVIDENCE_MISSING" || diagnostic.code === "HSON_SCHEMA_GENERATED_EVIDENCE_STALE");
+      if (evidence.length === 0) return [];
+      const generate = new vscode.CodeAction("Generate Hson Schema types", vscode.CodeActionKind.QuickFix);
+      generate.diagnostics = evidence; generate.command = { command: "hson.generateSchemaTypes", title: "Generate Hson Schema types", arguments: [document.uri] };
+      const watch = new vscode.CodeAction("Start Hson Schema watch", vscode.CodeActionKind.QuickFix);
+      watch.diagnostics = evidence; watch.command = { command: "hson.startSchemaWatch", title: "Start Hson Schema watch", arguments: [document.uri] };
+      return [generate, watch];
+    },
+  }, { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }));
   // Manual invocation only: no punctuation-trigger spam or expression ownership.
   context.subscriptions.push(vscode.languages.registerCompletionItemProvider(["typescript", "typescriptreact"], {
     async provideCompletionItems(document, position, token) {
@@ -411,6 +575,7 @@ export function activate(context: vscode.ExtensionContext): void {
   }));
   const watcher = vscode.workspace.createFileSystemWatcher("**/*.{js,mjs,cjs,ts,mts,cts}");
   const changed = (uri: vscode.Uri): void => {
+    if (uri.fsPath.includes(".hson-schema.generated.")) refreshSchemaEvidence();
     for (const [key, client] of clients) {
       if (files.get(key)?.has(uri.fsPath) || client.schemaModuleUrls.includes(uri.toString())) {
         client.invalidate();
@@ -419,7 +584,7 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }
   };
-  context.subscriptions.push(schemaCollection, statusBar, output, controller, watcher,
+  context.subscriptions.push(schemaCollection, statusBar, output, schemaToolOutput, schemaToolStatus, controller, watcher,
     watcher.onDidChange(changed), watcher.onDidCreate(changed), watcher.onDidDelete(changed),
     vscode.workspace.onDidOpenTextDocument(doc => documentTexts.set(doc.uri.toString(), doc.getText())),
     vscode.workspace.onDidCloseTextDocument(doc => documentTexts.delete(doc.uri.toString())),
@@ -445,7 +610,29 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     }),
     vscode.workspace.onDidGrantWorkspaceTrust(reconfigure),
-    vscode.workspace.onDidChangeWorkspaceFolders(reconfigure),
-    vscode.window.onDidChangeActiveTextEditor(describe),
-    { dispose(): void { for (const client of clients.values()) client.dispose(); clients.clear(); } });
+    vscode.workspace.onDidChangeWorkspaceFolders(event => {
+      reconfigure();
+      for (const folder of event.removed) {
+        for (const [key, watch] of schemaWatches) if (watch.folder.uri.toString() === folder.uri.toString()) {
+          terminate_schema_process(watch.child); schemaWatches.delete(key); schemaToolStates.set(key, "stopped");
+        }
+      }
+      updateSchemaToolStatus();
+    }),
+    vscode.window.onDidChangeActiveTextEditor(() => { describe(); updateSchemaToolStatus(); }),
+    { dispose(): void {
+      for (const watch of schemaWatches.values()) terminate_schema_process(watch.child);
+      schemaWatches.clear();
+      for (const client of clients.values()) client.dispose(); clients.clear();
+    } });
+}
+
+function terminate_schema_process(child: ChildProcess): void {
+  if (child.pid === undefined || child.exitCode !== null) return;
+  if (process.platform === "win32") {
+    const taskkill = spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], { stdio: "ignore", windowsHide: true });
+    taskkill.once("error", () => child.kill());
+    return;
+  }
+  try { process.kill(-child.pid, "SIGTERM"); } catch { child.kill("SIGTERM"); }
 }

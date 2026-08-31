@@ -1,19 +1,12 @@
 import { compile_hson_schema } from "../../../src/internal/hson-schema/compiler.js";
 
 export type LocalHsonSchemaDiagnostic = Readonly<{ start: number; end: number; code: string; message: string }>;
+export type LocalHsonSchemaDeclaration = Readonly<{ name: string; start: number; end: number; template: string }>;
 
 /** Fast authoring feedback backed by the same pure compiler as the build analyzer. */
 export function local_hson_schema_diagnostics(fileName: string, text: string): readonly LocalHsonSchemaDiagnostic[] {
   void fileName;
-  const officialHson = new Set<string>(), officialSchema = new Set<string>();
-  for (const match of text.matchAll(/import\s*{([^}]*)}\s*from\s*["'](hson-live(?:\/hson)?)["']/g)) {
-    for (const raw of (match[1] ?? "").split(",")) {
-      const binding = raw.trim().replace(/^type\s+/, "").split(/\s+as\s+/);
-      const imported = binding[0], local = binding[1] ?? binding[0];
-      if (imported === "Hson" && local !== undefined) officialHson.add(local);
-      if (imported === "HsonSchema" && local !== undefined) officialSchema.add(local);
-    }
-  }
+  const { officialHson, officialSchema } = official_bindings(text);
   const diagnostics: LocalHsonSchemaDiagnostic[] = [];
   const declarationPattern = /(?:export\s+)?const\s+([$\w]+)\s*:\s*([$\w]+)\s*=\s*([$\w]+)\s*`([\s\S]*?)`\s*;/g;
   for (const match of text.matchAll(declarationPattern)) {
@@ -28,4 +21,32 @@ export function local_hson_schema_diagnostics(fileName: string, text: string): r
     if (!result.ok) for (const issue of result.issues) diagnostics.push(Object.freeze({ start: templateStart + (issue.range?.start ?? 0), end: templateStart + (issue.range?.end ?? sourceText.length), code: issue.code, message: issue.message }));
   }
   return Object.freeze(diagnostics);
+}
+
+/** Discovery only: generation and freshness semantics remain owned by hson-schema. */
+export function local_hson_schema_declarations(text: string): readonly LocalHsonSchemaDeclaration[] {
+  const { officialHson, officialSchema } = official_bindings(text);
+  const declarations: LocalHsonSchemaDeclaration[] = [];
+  const declarationPattern = /(?:export\s+)?const\s+([$\w]+)\s*:\s*([$\w]+)\s*=\s*([$\w]+)\s*`([\s\S]*?)`\s*;/g;
+  for (const match of text.matchAll(declarationPattern)) {
+    const name = match[1], schemaType = match[2], tag = match[3], template = match[4] ?? "", start = match.index;
+    if (name === undefined || schemaType === undefined || tag === undefined || start === undefined) continue;
+    if (officialSchema.has(schemaType) && officialHson.has(tag) && !template.includes("${")) {
+      declarations.push(Object.freeze({ name, start, end: start + match[0].length, template }));
+    }
+  }
+  return Object.freeze(declarations);
+}
+
+function official_bindings(text: string): Readonly<{ officialHson: ReadonlySet<string>; officialSchema: ReadonlySet<string> }> {
+  const officialHson = new Set<string>(), officialSchema = new Set<string>();
+  for (const match of text.matchAll(/import\s*{([^}]*)}\s*from\s*["'](hson-live(?:\/hson)?)["']/g)) {
+    for (const raw of (match[1] ?? "").split(",")) {
+      const binding = raw.trim().replace(/^type\s+/, "").split(/\s+as\s+/);
+      const imported = binding[0], local = binding[1] ?? binding[0];
+      if (imported === "Hson" && local !== undefined) officialHson.add(local);
+      if (imported === "HsonSchema" && local !== undefined) officialSchema.add(local);
+    }
+  }
+  return Object.freeze({ officialHson, officialSchema });
 }

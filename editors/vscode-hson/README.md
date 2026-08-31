@@ -137,10 +137,27 @@ hsonLiveMap.fromHson(user).schema.use(UserSchema);
 
 The extension discovers static `HsonSchema` declarations and generated evidence.
 It provides Schema-aware diagnostics and completion without executing callback
-validators. Run `hson-schema generate --project tsconfig.json` after adding or
-renaming a Schema, or keep `hson-schema watch --project tsconfig.json` running
-while editing. Interpolations remain ordinary TypeScript expressions; runtime
-values can be certified explicitly with `Hson.certify`.
+validators.
+
+For headless development and CI, the package remains authoritative:
+
+```sh
+hson-schema generate --project tsconfig.json
+hson-schema watch --project tsconfig.json
+```
+
+In VS Code, use **Hson: Generate Schema Types**, **Hson: Start Schema Watch**,
+and **Hson: Stop Schema Watch**. The extension resolves and runs only the
+selected workspace's installed `hson-live` `hson-schema` executable; it never
+downloads or supplies a generator. Watch automatically regenerates after
+relevant saved edits, and the status item reports only extension-managed watch
+state. Missing or stale local evidence offers Generate and Start Watch quick
+fixes. Commands are explicit trusted-workspace operations; opening a project
+does not start them. Generated declarations are ordinary TypeScript files, so
+their updates do not require a window reload.
+
+Interpolations remain ordinary TypeScript expressions; runtime values can be
+certified explicitly with `Hson.certify`.
 
 ## Development
 
@@ -158,7 +175,7 @@ archive, atomically promotes it to `editors/vscode-hson/hson-language.vsix`, and
 force-installs that exact artifact. It then verifies the installed extension ID,
 version, and payload when the current VS Code CLI can locate it.
 
-After a successful install, run **Developer: Reload Window** in VS Code. The
+After `npm run toolkit:update`, run **Developer: Reload Window** in VS Code. The
 tooling does not reload or restart VS Code automatically.
 
 Package without installing:

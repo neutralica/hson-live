@@ -96,7 +96,7 @@ async function run(): Promise<void> {
     const parts = separators(text);
     assert.deepEqual(parts.map(part => text.slice(part.range.start, part.range.end)), [".", ".", "."]);
     assert.deepEqual(parts.map(part => part.range.start), [
-      text.indexOf(".liveMap"), text.indexOf(".fromJson"), text.indexOf(".transform"),
+      text.indexOf(".liveMap"), text.lastIndexOf(".fromJson"), text.indexOf(".transform"),
     ]);
     assert.ok(parts.every(part => part.colorId === HSON_LIBRARY_SEPARATOR_COLOR_ID && part.strength === "strong"));
     assert.ok(!parts.some(part => part.range.start === text.indexOf(".fromJson")));

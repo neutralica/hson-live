@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 import { TransformError } from "../../../src/core/errors.js";
 import {
@@ -14,7 +17,8 @@ import {
   type DiagnosticPublisher,
   type Disposable,
 } from "../src/diagnostics.js";
-import { local_hson_schema_diagnostics } from "../src/hson-schema-local.js";
+import { local_hson_schema_declarations, local_hson_schema_diagnostics } from "../src/hson-schema-local.js";
+import { discover_schema_project, resolve_workspace_hson_schema_tool, schema_tool_arguments } from "../src/schema-tooling.js";
 
 let checks = 0;
 function check(name: string, body: () => void): void {
@@ -22,6 +26,25 @@ function check(name: string, body: () => void): void {
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
+
+check("Schema tooling resolves only an installed workspace hson-live executable", () => {
+  const workspace = mkdtempSync(join(tmpdir(), "hson-vscode-tooling-"));
+  const packageRoot = join(workspace, "node_modules", "hson-live");
+  mkdirSync(join(packageRoot, "dist"), { recursive: true });
+  writeFileSync(join(packageRoot, "package.json"), JSON.stringify({ name: "hson-live", version: "3.3.0", main: "./dist/index.js", bin: { "hson-schema": "./dist/hson-schema.mjs" } }));
+  writeFileSync(join(packageRoot, "dist", "index.js"), "export {};");
+  writeFileSync(join(packageRoot, "dist", "hson-schema.mjs"), "#!/usr/bin/env node\n");
+  writeFileSync(join(workspace, "tsconfig.json"), "{}");
+  const resolved = resolve_workspace_hson_schema_tool(workspace);
+  assert.equal(resolved.executable, resolve(packageRoot, "dist", "hson-schema.mjs"));
+  assert.deepEqual(schema_tool_arguments(resolved, "generate", resolve(workspace, "tsconfig.json")), [resolved.executable, "generate", "--project", resolve(workspace, "tsconfig.json")]);
+  assert.equal(discover_schema_project(workspace), resolve(workspace, "tsconfig.json"));
+  assert.throws(() => resolve_workspace_hson_schema_tool(mkdtempSync(join(tmpdir(), "hson-vscode-missing-"))), /workspace-local hson-live dependency/);
+  const incompatible = mkdtempSync(join(tmpdir(), "hson-vscode-incompatible-"));
+  mkdirSync(join(incompatible, "node_modules", "hson-live"), { recursive: true });
+  writeFileSync(join(incompatible, "node_modules", "hson-live", "package.json"), JSON.stringify({ name: "hson-live", version: "old", bin: {} }));
+  assert.throws(() => resolve_workspace_hson_schema_tool(incompatible), /does not expose the required public hson-schema executable/);
+});
 
 function diagnose(
   text: string,
@@ -109,6 +132,12 @@ check("local Hson Schema diagnostics reuse the proof compiler without workspace 
   const document = valid.replace('<type "data" content <name "string">>', '<type "document" tag "main" attrs <props <id "string">> content <sequence [<tag "section" content "string">]>>');
   assert.deepEqual(local_hson_schema_diagnostics("/workspace/schema.ts", document), []);
   assert.equal(local_hson_schema_diagnostics("/workspace/schema.ts", document.replace('tag "main"', 'tag "main" element true'))[0]?.code, "UNKNOWN_SCHEMA_MEMBER");
+});
+
+check("Schema evidence discovery stays binding-aware and does not generate", () => {
+  const source = 'import { Hson, type HsonSchema } from "hson-live"; export const UserSchema: HsonSchema = Hson`<type "data" content "string">`;';
+  assert.deepEqual(local_hson_schema_declarations(source).map(declaration => declaration.name), ["UserSchema"]);
+  assert.deepEqual(local_hson_schema_declarations(source.replace('from "hson-live"', 'from "other"')), []);
 });
 
 check("valid direct official template has no diagnostics", () => {

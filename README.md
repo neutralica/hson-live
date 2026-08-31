@@ -545,8 +545,14 @@ map.schema.use(UserSchema);
 
 The Hson Schema check generates the real `UserSchemaType` and `UserSchemaHson`
 workspace symbols and validates the static assignment without a runtime call.
-Use the package CLI in headless development and CI: `hson-schema generate`
-after declaration changes, then `hson-schema check --project tsconfig.json` for
+Use the package CLI in headless development and CI:
+
+```sh
+hson-schema generate --project tsconfig.json
+hson-schema watch --project tsconfig.json
+```
+
+Then use `hson-schema check --project tsconfig.json` for
 Schema discovery, freshness, static Hson validation, and TypeScript checking.
 For genuinely dynamic values, `Hson.certify(UserSchema, source)` returns the
 same canonical string or throws the structured Schema error.

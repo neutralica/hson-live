@@ -11,7 +11,7 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "Syntax tooling works in Restricted Mode. Trusted Schema diagnostics execute project code only with Workspace Trust and explicit enablement.",
+      "description": "Syntax tooling works in Restricted Mode. Trusted Schema diagnostics execute project code only with Workspace Trust and explicit enablement. Schema generation and watch commands run only when explicitly invoked in a trusted workspace.",
       "restrictedConfigurations": ["hson.trustedSchemaDiagnostics.enabled", "hson.trustedSchemaDiagnostics.module", "hson.trustedSchemaDiagnostics.hsonModule", "hson.trustedSchemaDiagnostics.runtimeEntry", "hson.trustedSchemaDiagnostics.execArgv"]
     }
   },
@@ -195,7 +195,12 @@
       { "command": "hson.openSettings", "title": "Open Settings", "category": "Hson" },
       { "command": "hson.enableTrustedSchemaDiagnostics", "title": "Enable Trusted Schema Diagnostics", "category": "Hson" },
       { "command": "hson.disableTrustedSchemaDiagnostics", "title": "Disable Trusted Schema Diagnostics", "category": "Hson" },
-      { "command": "hson.restartTrustedSchemaRuntime", "title": "Restart Trusted Schema Runtime", "category": "Hson" }
+      { "command": "hson.restartTrustedSchemaRuntime", "title": "Restart Trusted Schema Runtime", "category": "Hson" },
+      { "command": "hson.generateSchemaTypes", "title": "Generate Schema Types", "category": "Hson" },
+      { "command": "hson.startSchemaWatch", "title": "Start Schema Watch", "category": "Hson" },
+      { "command": "hson.stopSchemaWatch", "title": "Stop Schema Watch", "category": "Hson" },
+      { "command": "hson.checkSchemas", "title": "Check Schemas", "category": "Hson" },
+      { "command": "hson.showSchemaOutput", "title": "Show Schema Output", "category": "Hson" }
     ],
     "languages": [
       {

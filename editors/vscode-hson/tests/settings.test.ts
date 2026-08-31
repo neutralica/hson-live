@@ -115,7 +115,7 @@ check("marker strength clamps invalid low and high values", () => {
 check("marker strength falls back for non-finite input", () => assert.equal(marker_strength(Number.NaN, 0.6), 0.6));
 check("the compact command set complements settings and status", () => assert.deepEqual(
   manifest.contributes.commands.map((command: { command: string }) => command.command),
-  ["hson.openSettings", "hson.enableTrustedSchemaDiagnostics", "hson.disableTrustedSchemaDiagnostics", "hson.restartTrustedSchemaRuntime"],
+  ["hson.openSettings", "hson.enableTrustedSchemaDiagnostics", "hson.disableTrustedSchemaDiagnostics", "hson.restartTrustedSchemaRuntime", "hson.generateSchemaTypes", "hson.startSchemaWatch", "hson.stopSchemaWatch", "hson.checkSchemas", "hson.showSchemaOutput"],
 ));
 
 process.stdout.write(`ok - ${checks} focused settings and consent checks passed\n`);

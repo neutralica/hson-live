@@ -33,14 +33,14 @@ const projectPath = resolve(projectArg);
 if (!["generate", "verify", "check", "build", "watch"].includes(mode)) fail(`Unknown Hson Schema mode ${JSON.stringify(mode)}.`);
 
 if (mode === "watch") {
-  run_cycle("check");
+  run_cycle("generate");
   console.log("Hson Schema watch active. Press Ctrl+C to stop.");
   let fingerprint = tree_fingerprint(dirname(projectPath));
   setInterval(() => {
     const next = tree_fingerprint(dirname(projectPath));
     if (next === fingerprint) return;
     fingerprint = next;
-    try { run_cycle("check"); } catch (error) { console.error(error instanceof Error ? error.message : error); }
+    try { run_cycle("generate"); } catch (error) { console.error(error instanceof Error ? error.message : error); }
   }, 500);
 } else {
   run_cycle(mode);

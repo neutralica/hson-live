@@ -24,7 +24,10 @@ assert.deepEqual(manifest.contributes.colors.map(color => color.id), [
 ]);
 assert.ok((await readFile(new URL("../dist/onig.wasm", import.meta.url))).length > 0);
 assert.deepEqual(languageConfiguration.comments, { lineComment: "//" });
-assert.equal(manifest.contributes.commands.length, 4);
+assert.equal(manifest.contributes.commands.length, 9);
+assert.deepEqual(manifest.contributes.commands.slice(-5).map(command => command.command), [
+  "hson.generateSchemaTypes", "hson.startSchemaWatch", "hson.stopSchemaWatch", "hson.checkSchemas", "hson.showSchemaOutput",
+]);
 const configuration = Object.assign({}, ...manifest.contributes.configuration.map(group => group.properties));
 assert.equal(configuration["hson.trustedSchemaDiagnostics.enabled"].default, false);
 assert.equal(configuration["hson.appearance.libraryMarkerStrength"].default, 1);
