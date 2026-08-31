@@ -23,9 +23,21 @@ export type HsonCanonical = string & {
 
 declare const HSON_SCHEMA_SOURCE_DESIGNATION: unique symbol;
 declare const HSON_SCHEMA_VALUE_ASSOCIATION: unique symbol;
+declare const HSON_SCHEMA_MUTATION_CANDIDATE: unique symbol;
 
 /** Static root domain established by the generated Hson Schema analyzer. */
 export type HsonSchemaMode = "data" | "document";
+
+/**
+ * Declaration-only candidate association emitted beside generated Schema proof
+ * carriers. It is consumed by LiveMap write signatures; callers neither create
+ * nor observe it at runtime.
+ *
+ * This supports generated Hson Schema declarations only.
+ */
+export type HsonSchemaMutationCandidate<TValue> = Readonly<{
+  readonly [HSON_SCHEMA_MUTATION_CANDIDATE]: TValue;
+}>;
 
 /**
  * Canonical Hson source designated for authoritative Hson Schema checking.

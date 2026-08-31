@@ -865,7 +865,6 @@ function make_livemap_core_from_owned_root(
         value: normalized.value,
       };
       const planned = plan_write_ops(must_projected_root_value(owned.root), [operation]);
-      must_hson_schema_projected_candidate(owned.hsonSchema, planned.value);
       let candidate = clone_live_root(normalized.root);
       if (options?.identity === "strip") candidate = clone_hson_graph_without_quids(candidate);
       if (options?.identity === "reject") {
@@ -883,6 +882,7 @@ function make_livemap_core_from_owned_root(
         throw new Error(`LiveMap projected restore mode mismatch: expected ${initialMode}, observed ${observedMode}.`);
       }
       const preparedCandidate = prepare_livemap_root(candidate);
+      if (owned.hsonSchema !== undefined) must_hson_schema_root(owned.hsonSchema, preparedCandidate.root);
       const continuity = projected_capture_continuity(mapIdentityEpoch, capture as object, options);
       const restoredQuids = livemap_projected_identity_quids(
         require_projected_overlay(preparedCandidate.projectedOverlay),

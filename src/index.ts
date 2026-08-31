@@ -6,6 +6,7 @@ export type {
     BinaryDecodeOptions,
     TransformBinarySerialize,
     HsonSchema,
+    HsonSchemaMutationCandidate,
 } from "./api/transform/transform.types.js";
 export {
     TransformError,

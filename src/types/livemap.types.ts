@@ -1,7 +1,7 @@
 // livemap.types.ts
 
 import type { CanonicalPublicAttrs, CanonicalPublicAttrValue, HsonNode, JsonValue, NodeContent, Primitive } from "../core/types.js";
-import type { HsonSchema, HsonSchemaMode } from "../api/transform/transform.types.js";
+import type { HsonSchema, HsonSchemaMode, HsonSchemaMutationCandidate } from "../api/transform/transform.types.js";
 import type {
   DocumentAttrsEvidence,
   DocumentAttrValueEvidence,
@@ -198,9 +198,30 @@ export type LiveMapPathValue<TValue, TPath extends LivePath> = PublicLiveMapPath
   ResolveLiveMapPathValue<TValue, TPath>
 >;
 
+/**
+ * The ordinary candidate accepted at a LiveMap write boundary. Generated Schema
+ * proof carriers associate their structurally truthful unproved counterpart;
+ * this association is declaration-only and never widens governed reads.
+ */
+type LiveMapMutationCandidateValue<TValue> =
+  TValue extends HsonSchemaMutationCandidate<infer TCandidate>
+    ? TCandidate
+    : TValue extends readonly [infer THead, ...infer TTail]
+      ? [LiveMapMutationCandidateValue<THead>, ...LiveMapMutationCandidateTuple<TTail>]
+      : TValue extends readonly (infer TItem)[]
+        ? Array<LiveMapMutationCandidateValue<TItem>>
+        : TValue extends object
+          ? { -readonly [TKey in keyof TValue]: LiveMapMutationCandidateValue<TValue[TKey]> }
+          : TValue;
+
+type LiveMapMutationCandidateTuple<TValue extends readonly unknown[]> =
+  TValue extends readonly [infer THead, ...infer TTail]
+    ? [LiveMapMutationCandidateValue<THead>, ...LiveMapMutationCandidateTuple<TTail>]
+    : [];
+
 /** Remove `undefined` from write positions while preserving JSON value shape. */
-export type LiveMapWriteValue<TValue> = [Exclude<TValue, undefined>] extends [JsonValue]
-  ? Exclude<TValue, undefined>
+export type LiveMapWriteValue<TValue> = [Exclude<LiveMapMutationCandidateValue<TValue>, undefined>] extends [JsonValue]
+  ? Exclude<LiveMapMutationCandidateValue<TValue>, undefined>
   : JsonValue;
 
 export type LiveMapPathWriteValue<TValue, TPath extends LivePath> = LiveMapWriteValue<LiveMapPathValue<TValue, TPath>>;
@@ -211,9 +232,9 @@ export type LiveMapPathWriteValue<TValue, TPath extends LivePath> = LiveMapWrite
  * shallow object patch shape because runtime `set` preserves unspecified object
  * siblings. Use `replace` for exact object replacement.
  */
-export type LiveMapSetValue<TValue> = NonNullable<TValue> extends readonly unknown[]
+export type LiveMapSetValue<TValue> = NonNullable<LiveMapMutationCandidateValue<TValue>> extends readonly unknown[]
   ? LiveMapWriteValue<TValue>
-  : NonNullable<TValue> extends object
+  : NonNullable<LiveMapMutationCandidateValue<TValue>> extends object
   ? LiveMapObjectSetManyValues<TValue>
   : LiveMapWriteValue<TValue>;
 export type LiveMapPathSetValue<TValue, TPath extends LivePath> = LiveMapSetValue<LiveMapPathValue<TValue, TPath>>;
@@ -274,7 +295,7 @@ export type LiveMapBatchTx<TValue = JsonValue | undefined> = Readonly<{
  */
 export type LiveMapCoreSchemaApi<TValue = JsonValue | undefined> = Readonly<{
   get: () => HsonSchema | undefined;
-  use: <TGoverned = TValue>(schema: HsonSchema) => LiveMap<TGoverned>;
+  use: <TSchema extends HsonSchema>(schema: TSchema) => LiveMap<HsonSchemaValue<TSchema>>;
 }>;
 
 export type LiveMapCore<

@@ -50,29 +50,61 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
     proofDeclarations.push(`abstract class ${className} { declare private readonly __hsonSchemaProof${proofIndex}: void; }`);
     return className;
   };
+  const mutationCandidate = (proofName: string, candidate: string): string => (
+    `${proof(proofName)} & HsonSchemaMutationCandidate<${candidate}>`
+  );
+  const candidateAliases = new Map<string, string>(
+    [...aliases.entries()].map(([definitionName, alias]) => [definitionName, `${alias}MutationCandidate`]),
+  );
+  const emitDataCandidate = (schema: HsonSchemaDataSemanticNode): string => {
+    switch (schema.kind) {
+      case "string": return "string";
+      case "number": return "number";
+      case "boolean": return "boolean";
+      case "null": return "null";
+      case "exact": {
+        if (schema.value === null) return "null";
+        if (typeof schema.value === "string" || typeof schema.value === "boolean") return JSON.stringify(schema.value);
+        return Object.is(schema.value, -0) ? "0" : String(schema.value);
+      }
+      case "object": {
+        const fields = schema.members.map((member) => `${property_name(member.name)}${member.optional ? "?" : ""}: ${emitDataCandidate(member.schema)};`).join(" ");
+        return `{ ${fields} }`;
+      }
+      case "array": return `Array<${emitDataCandidate(schema.item)}>`;
+      case "tuple": return `[${schema.items.map(emitDataCandidate).join(", ")}]`;
+      case "union": return schema.choices.map((choice) => `(${emitDataCandidate(choice)})`).join(" | ");
+      case "ref": {
+        const alias = candidateAliases.get(schema.name);
+        if (alias === undefined) throw new Error(`Unreachable generated Schema ref ${JSON.stringify(schema.name)}.`);
+        return alias;
+      }
+    }
+  };
   const refined = (base: string, schema: Extract<HsonSchemaDataSemanticNode, { refinements: readonly unknown[] }>, path: string): string => schema.refinements.reduce(
-    (type, refinement, index) => `${type} & ${proof(`${path}${refinement.member[0]?.toUpperCase() ?? "R"}${refinement.member.slice(1)}R${index}`)}`,
+    (type, refinement, index) => `${type} & ${mutationCandidate(`${path}${refinement.member[0]?.toUpperCase() ?? "R"}${refinement.member.slice(1)}R${index}`, emitDataCandidate(schema))}`,
     base,
   );
   const emitData = (schema: HsonSchemaDataSemanticNode, path: string): string => {
     switch (schema.kind) {
       case "string": return refined("string", schema, path);
-      case "number": return refined("HsonNumber", schema, path);
+      case "number": return refined("HsonNumber & HsonSchemaMutationCandidate<number>", schema, path);
       case "boolean": return "boolean";
       case "null": return "null";
       case "exact": {
         if (schema.value === null) return "null";
         if (typeof schema.value === "string" || typeof schema.value === "boolean") return JSON.stringify(schema.value);
         const spelling = Object.is(schema.value, -0) ? "0" : String(schema.value);
-        const zeroProof = schema.value === 0 ? ` & ${proof(`${path}Zero`)}` : "";
-        return `${spelling} & HsonNumber${zeroProof}`;
+        const candidate = emitDataCandidate(schema);
+        const zeroProof = schema.value === 0 ? ` & ${mutationCandidate(`${path}Zero`, candidate)}` : "";
+        return `${spelling} & HsonNumber & HsonSchemaMutationCandidate<${candidate}>${zeroProof}`;
       }
       case "object": {
         const fields = schema.members.map((member, index) => `readonly ${property_name(member.name)}${member.optional ? "?" : ""}: ${emitData(member.schema, `${path}M${index}`)};`).join(" ");
-        return `Readonly<{ ${fields} }> & ${proof(`${path}Object`)}`;
+        return `Readonly<{ ${fields} }> & ${mutationCandidate(`${path}Object`, emitDataCandidate(schema))}`;
       }
-      case "array": return refined(`ReadonlyArray<${emitData(schema.item, `${path}Item`)}> & ${proof(`${path}Array`)}`, schema, path);
-      case "tuple": return refined(`readonly [${schema.items.map((item, index) => emitData(item, `${path}T${index}`)).join(", ")}] & ${proof(`${path}Tuple`)}`, schema, path);
+      case "array": return refined(`ReadonlyArray<${emitData(schema.item, `${path}Item`)}> & ${mutationCandidate(`${path}Array`, emitDataCandidate(schema))}`, schema, path);
+      case "tuple": return refined(`readonly [${schema.items.map((item, index) => emitData(item, `${path}T${index}`)).join(", ")}] & ${mutationCandidate(`${path}Tuple`, emitDataCandidate(schema))}`, schema, path);
       case "union": return schema.choices.map((choice, index) => `(${emitData(choice, `${path}U${index}`)})`).join(" | ");
       case "ref": {
         const alias = aliases.get(schema.name);
@@ -136,11 +168,22 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
     return `readonly [${items.join(", ")}]`;
   };
 
+  const definitionCandidateDeclarations = reachableDefinitions.flatMap((definition) => {
+    if (definition.schema.kind === "document-element") return [];
+    const alias = candidateAliases.get(definition.name);
+    if (alias === undefined) throw new Error(`Missing generated candidate alias for ${JSON.stringify(definition.name)}.`);
+    return [`type ${alias} = ${emitDataCandidate(definition.schema)};`];
+  });
   const definitionDeclarations = reachableDefinitions.map((definition, index) => {
     const alias = aliases.get(definition.name);
     if (alias === undefined) throw new Error(`Missing generated alias for ${JSON.stringify(definition.name)}.`);
     const body = definition.schema.kind === "document-element" ? emitDocumentElement(definition.schema, `D${index}`) : emitData(definition.schema, `D${index}`);
-    return `type ${alias} = (${body}) & ${proof(`D${index}Definition`)};`;
+    if (definition.schema.kind === "document-element") {
+      return `type ${alias} = (${body}) & ${proof(`D${index}Definition`)};`;
+    }
+    const candidate = candidateAliases.get(definition.name);
+    if (candidate === undefined) throw new Error(`Missing generated candidate alias for ${JSON.stringify(definition.name)}.`);
+    return `type ${alias} = (${body}) & ${mutationCandidate(`D${index}Definition`, candidate)};`;
   });
   const type = root.kind === "document"
     ? `Readonly<{ readonly $_tag: "_hson_root"; readonly $_content: ${emitDocumentRootContent(root.content, "RootContent")}; }> & ${proof("RootDocument")}`
@@ -150,7 +193,7 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
   const hsonProof = proof("Hson");
   return Object.freeze({
     proofNodeCount,
-    declarations: `${proofDeclarations.join("\n")}\n${definitionDeclarations.join("\n")}${definitionDeclarations.length === 0 ? "" : "\n"}export type ${name}Type = ${type};\nexport type ${name}Hson = HsonCanonical & ${hsonProof};`,
+    declarations: `${proofDeclarations.join("\n")}\n${definitionCandidateDeclarations.join("\n")}${definitionCandidateDeclarations.length === 0 ? "" : "\n"}${definitionDeclarations.join("\n")}${definitionDeclarations.length === 0 ? "" : "\n"}export type ${name}Type = ${type};\nexport type ${name}Hson = HsonCanonical & ${hsonProof};`,
   });
 }
 

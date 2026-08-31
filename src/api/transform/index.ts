@@ -11,6 +11,7 @@ export type {
   BinaryDecodeOptions,
   HsonCanonical,
   HsonSchema,
+  HsonSchemaMutationCandidate,
   HsonTransformSource,
   OutputConstructor_2,
   TransformFrameOptions,

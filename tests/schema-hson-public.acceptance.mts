@@ -29,7 +29,7 @@ check("published LiveMap facade has no builder or duplicate validation namespace
 
 check("published map.schema governance accepts HsonSchema", () => {
   const declaration = readFileSync(new URL("../dist/types/livemap.types.d.ts", import.meta.url), "utf8");
-  assert.match(declaration, /use: <TGoverned = TValue>\(schema: HsonSchema\) => LiveMap<TGoverned>;/);
+  assert.match(declaration, /use: <TSchema extends HsonSchema>\(schema: TSchema\) => LiveMap<HsonSchemaValue<TSchema>>;/);
   assert.match(declaration, /get: \(\) => HsonSchema \| undefined/);
 });
 
