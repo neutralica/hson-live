@@ -85,9 +85,7 @@ runtime. No path may reconstruct a handle in the compatibility default runtime.
   `dispose_node_deep()` -> runtime cleanup/drain -> QUID destruction ->
   disposed-state marking.
 - `empty()` follows the same `dispose_node_deep()` path for removed child
-  roots. The distinct legacy `removeChildren()` path unlinks matching direct
-  children and clears projection resources without destroying their handles or
-  QUID claims.
+  roots. `detachContents()` is the explicit identity-preserving alternative.
 
 Each runtime owns active claims `Q` and a monotonic issued ledger `I`, with
 `Q <= I`. Admission and minting add validated bytes to both; terminal removal
@@ -303,15 +301,13 @@ page document or one synthetic server/test rendering document.
 
 Terminal teardown resolves and drains resources in the owning runtime before
 unlinking mappings and releasing claims. Reusable detach retains identity,
-mapping, element, and reusable resources. The specialized legacy
-`removeChildren()` contract remains nonterminal for removed child handles;
-`empty()` and terminal removal retain their established destruction semantics.
+mapping, element, and reusable resources. `empty()` and terminal removal retain
+their established destruction semantics.
 
 ## Archaeology resolutions
 
 - `methods/remove-self.ts` had no production, test, or package consumer and was
-  deleted. Public `remove()` / `removeSelf()` route through
-  `remove_livetree_terminal()`.
+  deleted. Public `remove()` routes through `remove_livetree_terminal()`.
 - Clone is structural-only: fresh eligible-node QUIDs in the source runtime,
   with no CSS, listener, event, observer, binding, or other resource copying.
   The stale CSS-copy comment and unused QUID-map CSS-copy helper were removed.

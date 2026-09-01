@@ -11,18 +11,18 @@ is a separate runtime boundary.
 import {
   hsonLocus,
   create_locus,
-  create_locus_client,
   create_persistent_locus,
   capture_locus_bootstrap,
   encode_locus_bootstrap,
   decode_locus_bootstrap,
   install_locus_bootstrap,
-  create_locus_bootstrap_client,
   create_browser_locus_socket,
   encode_locus_graph_content,
   decode_locus_graph_content,
   is_locus_encoded_graph_content,
 } from "hson-live/locus";
+
+import { hsonEcho, create_echo, create_locus_bootstrap_echo } from "hson-live/echo";
 
 import {
   create_node_locus_socket,
@@ -37,16 +37,17 @@ exports the bounded `LiveHostLocusRegistry` service. The basic and persistent
 multi-Locus stores remain internal application utilities. None of these
 services is a member of `hsonLocus` or `hson.locus`.
 
-The Locus facade has exactly four members:
+The Locus facade has exactly three members:
 
 ```ts
 hsonLocus.create;
-hsonLocus.client;
 hsonLocus.protocol;
 hsonLocus.debug;
 ```
 
-The umbrella facade exposes the same object as `hson.locus`.
+The umbrella facade exposes the same object as `hson.locus`. Echo is separate:
+`hsonEcho.create`, `hson.echo.create`, and `create_echo` have the same behavior.
+`hsonLocus.client` does not exist.
 
 ## Core construction
 
@@ -77,14 +78,24 @@ identity.
 per-Library HsonSchemas. Actions use the same `context.mutate(...)` model, with
 `draft.lib("name")` selecting the Library for that one atomic global action.
 There is still one revision cursor and one ordered commit stream, not a stream
-per Library. The normal `hsonLocus.client({ map, socket, recovery })` route
+per Library. The normal `hsonEcho.create({ map, socket, recovery })` route
 bootstraps and recovers one complete same-topology mirror; data subscriptions
 are library-qualified. Named document Libraries work with `hsonReflect` across
 live updates and in-place replacement recovery.
 
+Fixed multi-library construction reuses the ordinary action authority options:
+`schema.actions`, `authorizeAction`, `sessionId`, `sessions`, and
+`actionDedupe`. Its Locus exposes the same `sessions` and `actionRequests`
+inspectors. Its Echo exposes the ordinary `clientId`, `session`, `action`,
+`retryAction`, and `actionStatus` vocabulary; request identity and session
+credentials cover the complete fixed registry rather than an individual
+Library.
+
 ## Client and protocol
 
-`create_locus_client` creates a mirror client over `LocusSocketLike`. The
+`create_echo` creates an Echo over `LocusSocketLike`. Echo exclusively governs
+one exact client LiveMap replica. Public mutation of that replica is fenced;
+bootstrap, restore, recovery, and accepted canonical replay are its state-changing paths. The
 protocol codec functions are:
 
 ```ts
@@ -94,8 +105,9 @@ decode_locus_server_message(text);
 ```
 
 Message discriminators such as `action`, `recover`, `commit`, and
-`session-create` remain semantic message kinds. A hello message may contain
-`type` and an optional `clientId`; the removed `hostId` field rejects.
+`session-create` remain semantic message kinds. A hello message admits exactly
+`type` and an optional `clientId`; every other field rejects through ordinary
+exact-shape validation.
 
 The core depends only on `LocusSocketLike`: text `send`, close, message
 subscription, and close subscription. `create_browser_locus_socket` adapts the
@@ -159,6 +171,11 @@ Locus. The route query is `?locus=`; `?livehost=` is not an alias.
 Locus supplies the authoritative snapshot/cut. Application/runtime code
 supplies routing and delivery continuation, and one assembler produces the
 single bootstrap artifact.
+
+`install_locus_bootstrap` remains a Locus artifact operation.
+`create_locus_bootstrap_echo` is exported by `hson-live/echo`; it returns a
+`LocusBootstrapEcho` whose live endpoint property is `echo` and whose single
+continuation operation is `connectAndRecover()`.
 
 ## Persistence
 

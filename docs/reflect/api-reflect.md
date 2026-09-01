@@ -90,6 +90,16 @@ LiveMap remains canonical. Reflect consumes exact accepted-state evidence and
 ordered commit revisions; it never infers canonical state from the projected
 tree or DOM.
 
+With a local authoritative LiveMap, supported LiveTree requests lower and
+commit synchronously. With an Echo-governed map, the same semantic descriptor
+is queued by Echo and lowered only at queue head against the latest accepted
+replica. No optimistic LiveTree or DOM mutation occurs. Authorization rejection
+leaves Reflect active because there is no accepted evidence to project.
+
+Hosted QUID demand is intentionally bounded: QUIDs already present in accepted
+state remain readable, while synchronous identity demand for an unquidded
+Echo-bound node rejects without a local `ensure-quid` commit.
+
 Document Reflect handles the public document graph operations currently
 produced by LiveMap:
 

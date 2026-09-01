@@ -9,6 +9,8 @@ LiveHost, and the Node runtime.
 |---|---|---|
 | LiveMap | Canonical graph state, revision, mutation, schema enforcement, capture/apply/replay, paths, and graph equality | May exist without a Locus |
 | Locus | Exclusive authority over one LiveMap, FIFO mutation admission, canonical history, recovery, sessions, actions, one-map persistence and synchronization, bootstrap state, and activity | Exactly one LiveMap |
+| Echo | Subjugated client endpoint governing one exact replica LiveMap and its connection, recovery, session, and request lifecycle | One solo map or one exact fixed multi-library topology |
+| Reflect | LiveTree ↔ LiveMap bridge; delegates supported hosted authoring through Echo without owning transport policy | One binding |
 | Application | Domain meaning, custom actions and side effects, authorization policy, event semantics, topology, acquisition-key meaning, retention policy, and cross-Locus workflows | Zero or more Loci |
 | LiveHost | Application registration and dispatch, generic application context, principal evidence, readiness/disposal, runtime adaptation boundaries, and the optional bounded Locus registry | Zero or more applications |
 | Node LiveHost | HTTP and WebSocket ingress, Web Request/Response adaptation, origin and proxy policy, limits, heartbeat/backpressure, `/healthz`, and network/process shutdown | One concrete runtime implementation |
@@ -16,6 +18,11 @@ LiveHost, and the Node runtime.
 LiveMap is state. Locus is authority over one state domain. An application owns
 meaning and topology. LiveHost hosts applications. Node supplies the physical
 runtime adapter.
+
+For hosted documents, the client path is
+`LiveTree → Reflect → Echo → Locus → authoritative LiveMap`, followed by
+`Echo replay → Reflect → LiveTree / DOM` convergence. LiveHost routes and
+hosts the application/Locus; it does not own Echo.
 
 ## Zero-Locus and optional-Locus applications
 

@@ -3,7 +3,9 @@
 Locus is hson-live’s one-map authority layer for shared live state and live documents.
 It combines a `LiveMap` with ordered mutation authority, actions, authorization, sessions, recovery, persistence, and transport-facing publication. An authoritative map remains the canonical application state; Locus determines how that state may change, how accepted changes are ordered, and how clients recover and continue from the same authority.
 Locus is authoritative over its owned `LiveMap`. Canonical transitions pass through one Locus-owned FIFO; the original map and all retained mutation surfaces are fenced for the lifetime of that ownership. Document authorities may additionally use backend-agnostic durable persistence. In that configuration, every changed commit is appended durably before it becomes visible in memory or to connected clients.
-Locus does not yet provide server-side HTML projection, DOM adoption, or LiveTree participation in the browser. Those systems are the next projection layer built on top of the authority, persistence, and recovery model described here.
+Locus does not own DOM or LiveTree semantics. Reflect bridges LiveTree and
+LiveMap, while Echo carries pessimistic hosted authoring to Locus and replays
+accepted canonical commits back into the replica.
 
 LiveHost is separate. It owns application registration, routing, HTTP/WebSocket
 runtime policy, resource limits, health, and shutdown, and may expose a bounded
@@ -24,21 +26,34 @@ LiveMap
 Locus
   authority, ordering, actions, authorization, sessions, history,
   recovery, persistence, and client publication
+Echo
+  subjugated client endpoint governing one exact replicated LiveMap
+Reflect
+  LiveTree ↔ LiveMap bridge
 
 
 A common authoritative document stack is:
 
-persistent storage
-        ↓
-Locus
-        ↓
-DocumentLiveMap
-        ↓
-future server/client projection
-        ↓
-LiveTree, DOM, canvas, SVG, or another renderer
+persistent storage → Locus → authoritative DocumentLiveMap
+                              ↕
+                         Echo protocol
+                              ↕
+Echo → replica DocumentLiveMap ↔ Reflect ↔ LiveTree / DOM
 
 Locus does not replace LiveMap. LiveMap remains the graph reducer; Locus owns ordering, optional durability, accepted history, publication, and recovery.
+
+The complete hosted document path is:
+
+```text
+LiveTree semantic mutation
+→ Reflect
+→ Echo
+→ Locus
+→ authoritative LiveMap commit
+→ Echo LiveMap replay
+→ Reflect
+→ LiveTree / DOM convergence
+```
 
 ⸻
 
@@ -125,7 +140,8 @@ A DocumentLiveMap exposes the Hson document graph directly, including:
 * exact document capture;
 * privileged restore and replay.
 
-Document maps are the basis for authoritative live documents and future server projection.
+Document maps are the basis for authoritative live documents and current
+Echo/Reflect hosted authoring.
 
 Document hosts may be persistent.
 
@@ -466,7 +482,10 @@ The host must determine:
 
 Controlled Locus errors and traces avoid graph content, Hson payloads, attributes, CSS, view-state payloads, action payloads, and QUID content.
 
-Future server projection will require an additional distinction between authoritative state and visible projection. Authorization to mutate a document will not automatically imply authorization to receive every part of that document.
+Projected Locus operation distinguishes authoritative state from the visible
+projection delivered to an Echo. Authorization to mutate a document does not
+automatically imply authorization to receive every part of that document; the
+application must configure both authority and projection deliberately.
 
 ⸻
 

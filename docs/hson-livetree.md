@@ -127,7 +127,7 @@ LiveTree exposes two related traversal models.
 
 Terminal disposal recursively releases QUID registry ownership and persisted `hson:quid`, removes listeners and QUID-scoped CSS, drains registered disposables, drops node-element mappings, and marks every node disposed. Only `isDisposed` and repeated `remove()` are safe lifecycle surfaces afterward; meaningful reads and mutations throw the stable `LiveTreeDisposedError`.
 
-Browser-owned `documentElement`, `head`, and `body` roots are protected from detach and removal. Ordinary application roots are not. `removeSelf` is a deprecated alias for terminal `remove`; `removeChildren` is a deprecated specialized semantic-element filter. Use the canonical lifecycle and content APIs in new code.
+Browser-owned `documentElement`, `head`, and `body` roots are protected from detach and removal. Ordinary application roots are not. Use `remove()` or `detach()` for a branch, and `empty()` or `detachContents()` for its contents; the former compatibility method names are removed.
 
 Manager namespaces specialize common mutations:
 

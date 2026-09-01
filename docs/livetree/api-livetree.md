@@ -103,8 +103,6 @@ tree.empty()
 tree.detachContents()
 tree.detach()
 tree.remove()
-tree.removeChildren()
-tree.removeSelf()
 tree.isDisposed
 tree.cloneBranch()
 tree.bind
@@ -121,8 +119,10 @@ tree.bind
 - `detach()` unlinks and unmounts this branch while retaining its Hson graph,
   QUIDs, metadata, mappings, listeners, CSS, disposables, and current bindings.
   It returns `1` for a transition and `0` when already detached.
-- `remove()` unlinks and terminally disposes the complete subtree. It returns
-  `1` once and `0` on repeated calls. Every retained alias reports
+- `remove()` requests terminal removal and returns `void`. Standalone and local
+  Reflect authority complete synchronously; hosted Reflect submits the request
+  through Echo and removal becomes visible after authoritative acceptance.
+  Repeated calls remain safe. Every retained alias eventually reports
   `isDisposed === true`; meaningful APIs throw `LiveTreeDisposedError` with
   code `LIVETREE_DISPOSED`.
 
@@ -154,10 +154,9 @@ content supplies no continuation authority. `find.byQuid(q)` is absent after
 terminal removal and cannot later retarget inside that runtime. Equal bytes may
 be admitted in a separately created runtime.
 
-`removeSelf()` is a deprecated terminal alias for `remove()`. `removeChildren()`
-is deprecated but temporarily retains its specialized legacy behavior: it
-unwraps one semantic `_hson_elem`, skips VSNs, and removes only direct concrete
-element children. Use `empty()` or `detachContents()` for complete contents.
+The removed `removeSelf()` and `removeChildren()` compatibility methods have no
+public aliases. Use `remove()` or `detach()` for the branch, and `empty()` or
+`detachContents()` for its complete contents.
 
 ---
 

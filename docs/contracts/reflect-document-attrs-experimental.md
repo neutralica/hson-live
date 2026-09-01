@@ -41,9 +41,8 @@ write; the normal commit update remains the sole graph/DOM update path.
 | `text.add` | conditionally delegated | one `insert-content` | requires empty content or one `_hson_elem` bucket |
 | `text.insert` | conditionally delegated | one raw-index `insert-content` | requires empty content or one `_hson_elem` bucket |
 | `empty` | conditionally delegated | zero operations when empty, otherwise one `remove-content` | requires at most one physical content slot |
-| nested `remove` / `removeSelf` | delegated | one parent-path `remove-content` | document root removal is forbidden |
+| nested `remove` | delegated | one parent-path `remove-content` | document root removal is forbidden |
 | `text.overwrite` | rejected | none | complete destructive replacement has no exact one-call mapping |
-| `removeChildren` | rejected | none | effective-child selection and detach lifecycle differ from canonical removal |
 | `detach`, `detachContents` | rejected | none | reusable identity-preserving results conflict with canonical deletion |
 | `append`, batch append, `create.*` | rejected | none | creation/effective placement occurs before a single canonical equivalent exists |
 | move/reparent | rejected | none | no exact cross-parent map operation exists |

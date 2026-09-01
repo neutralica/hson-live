@@ -99,13 +99,17 @@ Hson / JSON / HTML / SVG / XML
 
 or:
 
-         canonical Locus
-                ↓
-      ordered revision stream
-                ↓
-        client LiveMap mirror
-                ↓
-         LiveTree projection
+         Locus LiveMap
+                ⇅
+              Locus
+                ⇅
+               Echo
+                ⇅
+          Echo LiveMap
+                ⇅
+             Reflect
+                ⇅
+       LiveTree / DOM projection
 ```
 
 ---
@@ -388,7 +392,10 @@ failure, and lifecycle boundaries.
 
 Locus makes exactly one LiveMap authoritative.
 
-A Locus authority owns one LiveMap and its ordered commit history. Clients do not independently simulate the same application and exchange events afterward. They maintain revisioned mirrors of one canonical state and follow the same accepted commit stream.
+A Locus authority owns one LiveMap and its ordered commit history. Echo
+endpoints do not independently simulate the same application and exchange
+events afterward; each governs an exact revisioned replica and follows the
+same accepted commit stream.
 
 Locus provides:
 
@@ -480,7 +487,9 @@ LiveMap and LiveTree retain different responsibilities. When connected deliberat
 
 ### A hosted application can be a revisioned graph rather than a collection of client-side simulations
 
-Locus accepts actions, mutates one authority, and publishes one ordered history. Clients recover from canonical identity and revision rather than relying on timing or best-effort event replay.
+Locus accepts actions, mutates one authority, and publishes one ordered
+history. Echo recovers from canonical identity and revision rather than
+relying on timing or best-effort event replay.
 
 ### Infrastructure should be inspectable
 
@@ -572,7 +581,7 @@ import type { Locus } from "hson-live/locus";
 ```
 
 The root also exports the existing `hsonTransform`, `hsonLiveMap`, `hsonLiveTree`,
-`hsonLocus`, `hsonReflect`, `hsonInspect`, and `hsonCalc` facade objects/functions.
+`hsonLocus`, `hsonEcho`, `hsonReflect`, `hsonInspect`, and `hsonCalc` facade objects/functions.
 Use dedicated subsystem subpaths when their package boundary matters. Root
 convenience imports are not a promise of a narrow authoring bundle.
 
@@ -581,8 +590,9 @@ Locus’s environment-neutral network surface is available from:
 ```ts
 import {
   create_locus,
-  create_locus_client,
 } from "hson-live/locus";
+
+import { create_echo } from "hson-live/echo";
 ```
 
 The one-map Node socket adapter is available from:

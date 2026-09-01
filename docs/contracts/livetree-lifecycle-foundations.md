@@ -22,9 +22,12 @@ Public Patch 2 vocabulary:
 - runtime-preserving `detach()` and `detachContents()` unlink graph/DOM
   ownership while preserving QUIDs, metadata, mappings, and live projections;
 - terminal `remove()` disposes the calling subtree;
-- terminal `empty()` disposes every content subtree while preserving its caller;
-- deprecated `removeSelf()` aliases `remove()`; deprecated `removeChildren()`
-  retains only its specialized legacy semantic-element filter.
+- terminal `empty()` disposes every content subtree while preserving its caller.
+
+The former `removeSelf()` and `removeChildren()` compatibility methods are not
+part of the current public surface. Use `remove()` or `detach()` for the calling
+tree, and `empty()` or `detachContents()` for its contents, according to whether
+identity is terminally retired or preserved.
 
 QUID identity follows those lifecycle boundaries. Valid supplied QUIDs remain
 cold during Transform parsing and are claimed only when a graph becomes
