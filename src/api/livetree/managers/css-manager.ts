@@ -1,6 +1,6 @@
 // css-manager.ts
 
-import { normalize_css_key } from "../../../_tests/test-exports.js";
+import { normalize_css_key } from "../../transform/utils/attrs-utils/normalize-css.js";
 import { CssPseudoKey, CssValue, CssProp } from "../../../core/style.types.js";
 import { AnimAdapters, CssAnimScope, CssAnimHandle } from "../../../types/animate.types.js";
 import { PropertyManager } from "../../../types/at-property.types.js";
