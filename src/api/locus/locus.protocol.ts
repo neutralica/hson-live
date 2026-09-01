@@ -540,10 +540,10 @@ function optional_string(value: unknown): string | undefined {
 }
 
 function decode_hello_message(value: Readonly<Record<string, unknown>>): LocusResult<LocusClientHelloMessage> {
-  if (Object.hasOwn(value, "lastSeq") || Object.hasOwn(value, "hostId")) {
-    return fail("Locus hello contains a removed field.");
-  }
   const clientId = optional_string(value.clientId);
+  if (!has_exact_keys(value, clientId === undefined ? ["type"] : ["type", "clientId"])) {
+    return fail("Malformed Locus hello message.");
+  }
 
   return ok({
     type: "hello",

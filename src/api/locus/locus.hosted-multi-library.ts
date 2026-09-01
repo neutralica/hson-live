@@ -27,7 +27,7 @@ import { make_livemap_hosted_mirror_from_snapshot_internal } from "../livemap/li
 import type { PreparedLiveMapAggregateTransition } from "../livemap/livemap.authority.js";
 
 /** Internal routing marker. The enclosed commit is exact aggregate evidence. */
-export const LOCUS_HOSTED_AGGREGATE_WIRE_FORMAT = "hson-locus-hosted-aggregate-h2" as const;
+export const LOCUS_HOSTED_AGGREGATE_WIRE_FORMAT = "hson-locus-hosted-aggregate-commit" as const;
 /** Keep aggregate live traffic inside the existing Locus four-megabyte history budget. */
 export const DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES = 4 * 1_024 * 1_024;
 

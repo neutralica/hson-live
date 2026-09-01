@@ -49,11 +49,11 @@ function must_bound(value: number | undefined, fallback: number, name: string): 
 }
 
 function is_document_capture(value: unknown): value is DocumentLiveMapCapture {
-  return typeof value === "object"
-    && value !== null
-    && "kind" in value
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const keys = Object.keys(value).sort();
+  if (keys.length !== 4 || keys[0] !== "kind" || keys[1] !== "mode" || keys[2] !== "rev" || keys[3] !== "root") return false;
+  return "kind" in value
     && value.kind === "hson-document"
-    && !("version" in value)
     && "mode" in value
     && (value.mode === "document")
     && "rev" in value

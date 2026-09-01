@@ -73,6 +73,8 @@ function insert_item(quid = QUID) {
 await check("one managed action stages state, colors, and page behind one gate and one revision", async () => {
   const map = make_map();
   const seed = internal_livemap_aggregate_authority(map).captureHosted();
+  assert.equal(seed.authority.logicalMapId.startsWith("h1-"), false);
+  assert.equal(seed.authority.incarnationId.startsWith("h1-"), false);
   const wires: string[] = [];
   const gateSeen: unknown[] = [];
   let publications = 0;
@@ -174,6 +176,12 @@ await check("wire fencing, stale revisions, malformed replay evidence, and schem
   const wire = wires[0]!;
   const client = create_locus_hosted_aggregate_client_internal(seed);
   const before = internal_livemap_aggregate_authority(client.map).captureHosted();
+  const oldAggregateFormat = JSON.parse(wire) as any;
+  oldAggregateFormat.commit.format = "hson-locus-hosted-aggregate-h2";
+  assert.throws(() => client.apply_wire(JSON.stringify(oldAggregateFormat)), /format|incompatible/i);
+  const oldCommitFormat = JSON.parse(wire) as any;
+  oldCommitFormat.commit.commit.format = "hson-hosted-commit-h1";
+  assert.throws(() => client.apply_wire(JSON.stringify(oldCommitFormat)), /format|incompatible/i);
   const registryMismatch = JSON.parse(wire) as any;
   registryMismatch.commit.registryDigest = "0".repeat(64);
   assert.throws(() => client.apply_wire(JSON.stringify(registryMismatch)), /fence/i);

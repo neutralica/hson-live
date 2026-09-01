@@ -73,6 +73,7 @@ check("registry order and digest are deterministic and cover name, mode, and exa
   ];
   const left = make_hosted_registry(base);
   const right = make_hosted_registry(base.map((entry) => ({ ...entry })));
+  assert.equal(left.format, "hson-hosted-registry");
   assert.equal(left.digest, right.digest);
   assert.deepEqual(left.libraries.map((entry) => entry.name), ["a", "b"]);
   assert.notEqual(left.digest, make_hosted_registry([{ ...base[0]!, name: "renamed" }, base[1]!]).digest);
@@ -96,9 +97,11 @@ check("one hosted commit carries ordered qualified semantics plus one exact witn
   ]);
   const hosted = commit.hosted;
   if (hosted === undefined) throw new Error("Expected exact hosted commit evidence");
+  assert.equal(hosted.format, "hson-hosted-commit");
   assert.deepEqual(hosted.operations.map((entry) => entry.library), ["alpha", "beta", "alpha", "alpha", "page"]);
   assert.deepEqual(hosted.replay.operations.map((entry) => entry.library), ["alpha", "beta", "alpha", "alpha", "page"]);
   assert.deepEqual(hosted.replay.operations.map((entry) => entry.domain), ["data", "data", "data", "data", "graph"]);
+  assert.equal(hosted.replay.operations[4]?.format, "hson-hosted-graph-op");
   assert.equal(Object.is(map.lib("alpha").snap(["negativeZero"]), -0), true);
   assert.deepEqual(Object.keys(map.lib("alpha").snap(["ordered"]) as object), ["b", "a"]);
   assert.equal(Object.is((map.lib("alpha").snap(["items"]) as number[])[1], -0), true);
@@ -128,6 +131,13 @@ check("semantic/payload drift and unknown Library names reject without revision 
   unknown.replay.operations[0].library = "missing";
   assert.throws(() => authority.replayHosted(unknown), /unknown Library/i);
   assert.equal(target.rev, before);
+
+  const oldCommit = structuredClone(hosted) as any;
+  oldCommit.format = "hson-hosted-commit-h1";
+  assert.throws(() => authority.replayHosted(oldCommit), /format|incompatible/i);
+  const oldGraph = structuredClone(hosted) as any;
+  oldGraph.replay.operations[0].format = "hson-hosted-graph-op-h1";
+  assert.throws(() => authority.replayHosted(oldGraph), /format|unsupported|incompatible|disagree/i);
 });
 
 check("invalid later-Library replay rejects every staged Library and publishes nothing", () => {

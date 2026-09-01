@@ -21,7 +21,7 @@ export function must_livemap_replay(input: unknown): AdmittedLiveMapReplay {
     throw new LiveMapReplayInputError("prevRev is not a non-negative integer");
   }
 
-  if (Object.hasOwn(input, "formatVersion") || !has_transport_field(input)) {
+  if (!has_exact_keys(input, ["prevRev", "format", "payload"])) {
     throw new LiveMapReplayInputError("envelope is not the canonical structural representation");
   }
   return must_exact_replay(input);
@@ -47,9 +47,10 @@ function must_exact_replay(input: Readonly<Record<string, unknown>>): AdmittedLi
   }
 }
 
-function has_transport_field(value: Readonly<Record<string, unknown>>): boolean {
-  return Object.hasOwn(value, "format")
-    || Object.hasOwn(value, "payload");
+function has_exact_keys(value: Readonly<Record<string, unknown>>, keys: readonly string[]): boolean {
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
 }
 
 function is_plain_object(value: unknown): value is Readonly<Record<string, unknown>> {

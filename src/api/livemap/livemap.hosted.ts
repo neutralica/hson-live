@@ -33,10 +33,10 @@ import {
 import type { LiveMapLibraryIdentity } from "./livemap.library.js";
 import { validate_document_path } from "./livemap.document.path.js";
 
-export const HOSTED_REGISTRY_FORMAT = "hson-hosted-registry-h1" as const;
-export const HOSTED_COMMIT_FORMAT = "hson-hosted-commit-h1" as const;
-export const HOSTED_SNAPSHOT_FORMAT = "hson-hosted-snapshot-h1" as const;
-export const HOSTED_GRAPH_OP_FORMAT = "hson-hosted-graph-op-h1" as const;
+export const HOSTED_REGISTRY_FORMAT = "hson-hosted-registry" as const;
+export const HOSTED_COMMIT_FORMAT = "hson-hosted-commit" as const;
+export const HOSTED_SNAPSHOT_FORMAT = "hson-hosted-snapshot" as const;
+export const HOSTED_GRAPH_OP_FORMAT = "hson-hosted-graph-op" as const;
 export const HOSTED_ROOT_FORMAT = "hson-exact-value" as const;
 
 export const HOSTED_MAX_LIBRARIES = 1_024;
@@ -569,11 +569,11 @@ function incompatible_graph(): HostedAggregateRepresentationError {
 
 function hosted_identity(label: string): string {
   const uuid = globalThis.crypto?.randomUUID?.();
-  if (uuid !== undefined) return `h1-${label}-${uuid}`;
+  if (uuid !== undefined) return `${label}-${uuid}`;
   const bytes = new Uint8Array(16);
   globalThis.crypto?.getRandomValues?.(bytes);
   const random = [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-  return `h1-${label}-${Date.now().toString(36)}-${random}`;
+  return `${label}-${Date.now().toString(36)}-${random}`;
 }
 
 /** Small universal synchronous SHA-256 used only for deterministic internal registry fingerprints. */

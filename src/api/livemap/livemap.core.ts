@@ -2635,7 +2635,7 @@ function must_projected_capture(input: unknown): Readonly<{ rev: number; value: 
   if (typeof input.rev !== "number" || !Number.isInteger(input.rev) || input.rev < 0) {
     throw new LiveMapProjectedTransportError("restore", "revision is not a non-negative integer");
   }
-  if (Object.hasOwn(input, "formatVersion") || Object.hasOwn(input, "value")) {
+  if (!has_exact_projected_keys(input, ["rev", "format", "payload", "root"])) {
     throw new LiveMapProjectedTransportError("restore", "capture is not the canonical structural representation");
   }
   if (!has_projected_transport_field(input)) {
@@ -2658,7 +2658,7 @@ function must_projected_apply(input: unknown): Readonly<{ prevRev: number; value
   if (typeof input.prevRev !== "number" || !Number.isInteger(input.prevRev) || input.prevRev < 0) {
     throw new Error(`LiveMap expected revision is not valid: ${String(input.prevRev)}`);
   }
-  if (Object.hasOwn(input, "formatVersion") || Object.hasOwn(input, "value")) {
+  if (!has_exact_projected_keys(input, ["prevRev", "format", "payload"])) {
     throw new LiveMapProjectedTransportError("apply", "input is not the canonical structural representation");
   }
   if (!has_projected_transport_field(input)) {
@@ -2688,6 +2688,15 @@ function must_exact_projected_value(
     }
     throw error;
   }
+}
+
+function has_exact_projected_keys(
+  value: Readonly<Record<string, unknown>>,
+  keys: readonly string[],
+): boolean {
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
 }
 
 function has_projected_transport_field(input: Readonly<Record<string, unknown>>): boolean {
