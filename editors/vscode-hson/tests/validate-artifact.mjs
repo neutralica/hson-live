@@ -34,12 +34,12 @@ assert.deepEqual(manifest.contributes.colors.map(color => color.id), [
 ]);
 assert.ok((await readFile(new URL("../dist/onig.wasm", import.meta.url))).length > 0);
 assert.deepEqual(languageConfiguration.comments, { lineComment: "//" });
-assert.equal(manifest.contributes.commands.length, 9);
-assert.deepEqual(manifest.contributes.commands.slice(-5).map(command => command.command), [
+assert.deepEqual(manifest.contributes.commands.map(command => command.command), [
+  "hson.openSettings",
   "hson.generateSchemaTypes", "hson.startSchemaWatch", "hson.stopSchemaWatch", "hson.checkSchemas", "hson.showSchemaOutput",
 ]);
 const configuration = Object.assign({}, ...manifest.contributes.configuration.map(group => group.properties));
-assert.equal(configuration["hson.trustedSchemaDiagnostics.enabled"].default, false);
+assert.equal(Object.keys(configuration).some(key => key.startsWith("hson.trustedSchemaDiagnostics.")), false);
 assert.equal(configuration["hson.appearance.libraryMarkerStrength"].default, 1);
 assert.equal(configuration["hson.appearance.authoringMarkerStrength"].default, 0.7);
 assert.equal(configuration["hson.appearance.libraryMarkerStrength"].multipleOf, undefined);
@@ -56,7 +56,7 @@ assert.deepEqual({
   separator: configuration["hson.appearance.librarySeparatorColor"].default,
 }, { enabled: true, separator: "#7247d4" });
 assert.equal(manifest.capabilities.untrustedWorkspaces.supported, "limited");
-assert.ok(manifest.capabilities.untrustedWorkspaces.restrictedConfigurations.includes("hson.trustedSchemaDiagnostics.module"));
+assert.equal(manifest.capabilities.untrustedWorkspaces.restrictedConfigurations, undefined);
 assert.ok(manifest.devDependencies.esbuild);
 assert.ok(manifest.devDependencies.typescript);
 assert.deepEqual(manifest.contributes.typescriptServerPlugins, [{

@@ -6,11 +6,11 @@ import { performance } from "node:perf_hooks";
 import * as ts from "typescript";
 import type { CompiledHsonSchema } from "../src/internal/hson-schema/compiler.ts";
 
-const packagedRuntime = existsSync(new URL("../dist/internal/hson-schema/compiler.js", import.meta.url));
+const packagedRuntime = existsSync(new URL("../dist/internal/hson-schema/compiler.js", import.meta.url))
+  && existsSync(new URL("../dist/internal/hson-schema/generated-evidence.js", import.meta.url));
 const runtimeBase = packagedRuntime ? "../dist" : "../src";
 const { compile_hson_schema, HSON_SCHEMA_MVP_COMPATIBILITY_VERSION } = await import(`${runtimeBase}/internal/hson-schema/compiler.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/compiler.ts");
-const { encode_canonical_schema_graph_hson } = await import(`${runtimeBase}/internal/canonical-schema/encode-hson.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/canonical-schema/encode-hson.ts");
-const { generate_hson_schema_types } = await import(`${runtimeBase}/internal/hson-schema/generate-types.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/generate-types.ts");
+const { generate_hson_schema_evidence } = await import(`${runtimeBase}/internal/hson-schema/generated-evidence.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/generated-evidence.ts");
 const { projected_value_from_hson_node } = await import(`${runtimeBase}/core/projected-value-graph.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/core/projected-value-graph.ts");
 const { evaluate_canonical_document_schema, evaluate_canonical_projected_schema } = await import(`${runtimeBase}/internal/canonical-schema/evaluate.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/canonical-schema/evaluate.ts");
 const { parse_hson_with_provenance } = await import(`${runtimeBase}/internal/hson-source-provenance/parse-hson-with-provenance.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-source-provenance/parse-hson-with-provenance.ts");
@@ -22,10 +22,11 @@ type SchemaDeclaration = Readonly<{ sourceFile: ts.SourceFile; statement: ts.Var
 type Artifact = Readonly<{ path: string; content: string; metadataPath: string; metadata: string; reexport: string; schemaAssociation: string; generatedBytes: number; proofNodeCount: number }>;
 type Diagnostic = Readonly<{ file?: string; start?: number; message: string }>;
 type Overlay = Readonly<{ file: string; start: number; end: number; text: string }>;
-type CycleSummary = Readonly<{ schemas: number; updates: number }>;
+type CycleSummary = Readonly<{ schemas: number; updates: number; inputs: readonly string[] }>;
 
 const GENERATED_EXPORTS_START = "// @hson-schema generated type exports";
 const GENERATED_EXPORTS_END = "// @hson-schema end generated type exports";
+let configInputs: readonly string[] = Object.freeze([]);
 
 const args = process.argv.slice(2);
 const mode = (args[0] ?? "verify") as Mode;
@@ -39,19 +40,21 @@ else try { run_cycle(mode); } catch (error) { console.error(error_message(error)
 function run_watch(): void {
   console.log(`Hson Schema watch: checking ${projectPath}.`);
   let fingerprint = "";
+  let inputs: readonly string[] = Object.freeze([projectPath]);
   const cycle = (): void => {
     try {
       const summary = run_cycle("generate");
+      inputs = summary.inputs;
       console.log(`Hson Schema watch: current; ${summary.schemas} ${summary.schemas === 1 ? "Schema" : "Schemas"}; ${summary.updates} ${summary.updates === 1 ? "artifact" : "artifacts"} updated; watching.`);
     } catch (error) {
       console.error(`Hson Schema watch: stale/error; ${error_message(error)}`);
     } finally {
-      fingerprint = watch_fingerprint(dirname(projectPath));
+      fingerprint = watch_fingerprint(inputs);
     }
   };
   cycle();
   const timer = setInterval(() => {
-    const next = watch_fingerprint(dirname(projectPath));
+    const next = watch_fingerprint(inputs);
     if (next === fingerprint) return;
     console.log("Hson Schema watch: checking changes.");
     cycle();
@@ -133,7 +136,7 @@ function run_cycle(selected: Exclude<Mode, "watch">): CycleSummary {
   const memory = process.memoryUsage();
   const sourceProvenanceBytes = schemaDeclarations.reduce((count, declaration) => count + Buffer.byteLength(declaration.source), 0);
   console.log(JSON.stringify({ hsonSchema: selected, schemas: schemaDeclarations.length, defs: definitionCount, refs: referenceCount, recursiveSccs: recursiveSccCount, documentRepeatNodes: documentRepeatCount, documentExactCountNodes: documentExactCountCount, canonicalNodes: graphNodes, canonicalDocumentNodes: documentGraphNodes, refinementCount, generatedDeclarationBytes: generatedBytes, proofNodes, staticHsonValidations: staticCount, staticDocumentValidations: staticAnalysis.documentCount, analyzerColdMs: round(performance.now() - coldStart), analyzerWarmMs: round(analyzerWarmMs), staticValidationMs: round(staticMs), typescriptColdMs: round(tsMs), typescriptIncrementalMs: round(tsIncrementalMs), checkerHeapBytes: memory.heapUsed, checkerRssBytes: memory.rss, freshnessArtifactBytes: freshnessBytes, sourceProvenanceBytes, totalMs: round(performance.now() - started) }));
-  return Object.freeze({ schemas: schemaDeclarations.length, updates });
+  return Object.freeze({ schemas: schemaDeclarations.length, updates, inputs: authoritative_watch_inputs(config) });
 }
 
 function discover_schemas(program: ts.Program, checker: ts.TypeChecker): SchemaDeclaration[] {
@@ -173,25 +176,9 @@ function make_artifact(schema: SchemaDeclaration): Artifact {
   const extension = extname(schema.sourceFile.fileName);
   const stem = schema.sourceFile.fileName.slice(0, -extension.length);
   const artifactPath = `${stem}.${schema.name}.hson-schema.generated.ts`;
-  const generated = generate_hson_schema_types(schema.name, schema.compiled.semantic, schema.compiled.definitions);
-  const header = `/* Generated by Hson Schema ${HSON_SCHEMA_MVP_COMPATIBILITY_VERSION}. Do not edit. */`;
-  const generatedImports = [
-    ...(generated.declarations.includes("HsonNumber") ? ["HsonNumber"] : []),
-    ...(generated.declarations.includes("HsonSchemaMutationCandidate") ? ["HsonSchemaMutationCandidate"] : []),
-  ];
-  const generatedImport = generatedImports.length === 0 ? "" : `import type { ${generatedImports.join(", ")} } from "hson-live";\n`;
-  const content = `${header}\n${generatedImport}import type { HsonCanonical } from "hson-live/hson";\n${generated.declarations}\n`;
   const identity = `${relative(dirname(projectPath), schema.sourceFile.fileName).split(sep).join("/")}#${schema.name}`;
-  const graphHson = encode_canonical_schema_graph_hson(schema.compiled.graph);
-  const metadataObject = {
-    compatibilityVersion: HSON_SCHEMA_MVP_COMPATIBILITY_VERSION,
-    declarationIdentity: identity,
-    sourceDigest: digest(schema.source),
-    semanticGraphDigest: digest(graphHson),
-    generatedDeclarationDigest: digest(content),
-    graphHson,
-  };
-  const metadata = `${JSON.stringify(metadataObject, null, 2)}\n`;
+  const evidence = generate_hson_schema_evidence(schema.name, schema.source, identity);
+  const content = evidence.declaration, metadata = evidence.metadata;
   const runtimeExtension = extension === ".mts" ? ".mjs" : extension === ".cts" ? ".cjs" : ".js";
   const generatedSpecifier = `./${stem.slice(stem.lastIndexOf(sep) + 1)}.${schema.name}.hson-schema.generated${runtimeExtension}`;
   const generatedNames = `${schema.name}Type, ${schema.name}Hson`;
@@ -201,7 +188,7 @@ function make_artifact(schema: SchemaDeclaration): Artifact {
     : localBinding;
   const annotation = schema_annotation(schema);
   const schemaAssociation = `${annotation.typeName.getText(schema.sourceFile)}<${schema.name}Type, ${JSON.stringify(schema_mode(schema))}>`;
-  return Object.freeze({ path: artifactPath, content, metadataPath: `${stem}.${schema.name}.hson-schema.generated.json`, metadata, reexport, schemaAssociation, generatedBytes: Buffer.byteLength(content), proofNodeCount: generated.proofNodeCount });
+  return Object.freeze({ path: artifactPath, content, metadataPath: `${stem}.${schema.name}.hson-schema.generated.json`, metadata, reexport, schemaAssociation, generatedBytes: evidence.generatedBytes, proofNodeCount: evidence.proofNodeCount });
 }
 
 function schema_mode(schema: SchemaDeclaration): "data" | "document" {
@@ -424,22 +411,39 @@ function remove_generated_exports_block(source: string): string {
   return block === "" ? source : source.replace(block, "");
 }
 
-function generated_artifact_paths(config: ts.ParsedCommandLine): readonly string[] {
+function generated_artifact_paths(_config: ts.ParsedCommandLine): readonly string[] {
   const output: string[] = [];
-  const sourceStems = config.fileNames
-    .filter((fileName) => /\.[cm]?tsx?$/.test(fileName) && !fileName.includes(".hson-schema.generated."))
-    .map((fileName) => fileName.slice(0, -extname(fileName).length));
   const visit = (path: string): void => {
     for (const name of readdirSync(path)) {
       if (["node_modules", "dist", ".git"].includes(name)) continue;
       const child = join(path, name);
       const stat = statSync(child);
       if (stat.isDirectory()) visit(child);
-      else if (/\.hson-schema\.generated\.(?:ts|json)$/.test(name) && sourceStems.some((stem) => child.startsWith(`${stem}.`))) output.push(child);
+      else if (/\.hson-schema\.generated\.json$/.test(name) && authoritative_metadata(child)) {
+        output.push(child);
+        const declaration = child.slice(0, -4) + "ts";
+        if (existsSync(declaration)) output.push(declaration);
+      }
     }
   };
   visit(dirname(projectPath));
   return Object.freeze(output);
+}
+
+function authoritative_metadata(path: string): boolean {
+  try {
+    const value: unknown = JSON.parse(readFileSync(path, "utf8"));
+    if (typeof value !== "object" || value === null) return false;
+    const metadata = value as Record<string, unknown>;
+    if (metadata.compatibilityVersion !== HSON_SCHEMA_MVP_COMPATIBILITY_VERSION || typeof metadata.declarationIdentity !== "string" || typeof metadata.generatedDeclarationDigest !== "string") return false;
+    const separatorIndex = metadata.declarationIdentity.lastIndexOf("#");
+    if (separatorIndex <= 0) return false;
+    const producer = resolve(dirname(projectPath), metadata.declarationIdentity.slice(0, separatorIndex));
+    const schemaName = metadata.declarationIdentity.slice(separatorIndex + 1);
+    const producerExtension = extname(producer);
+    const expected = `${producer.slice(0, -producerExtension.length)}.${schemaName}.hson-schema.generated.json`;
+    return resolve(path) === resolve(expected);
+  } catch { return false; }
 }
 
 function official_binding(identifier: ts.Identifier, expected: string, checker: ts.TypeChecker): boolean {
@@ -465,24 +469,45 @@ function raw_template(node: ts.NoSubstitutionTemplateLiteral, sourceFile: ts.Sou
 function digest(value: string): string { return createHash("sha256").update(value).digest("hex"); }
 function write_if_changed(path: string, content: string): boolean { if (existsSync(path) && readFileSync(path, "utf8") === content) return false; writeFileSync(path, content); return true; }
 function value_after(flag: string): string | undefined { const index = args.indexOf(flag); return index < 0 ? undefined : args[index + 1]; }
-function read_config(path: string): ts.ParsedCommandLine { const read = ts.readConfigFile(path, ts.sys.readFile); if (read.error) fail(ts.flattenDiagnosticMessageText(read.error.messageText, "\n")); const parsed = ts.parseJsonConfigFileContent(read.config, ts.sys, dirname(path)); if (parsed.errors.length > 0) fail(parsed.errors.map((entry) => ts.flattenDiagnosticMessageText(entry.messageText, "\n")).join("\n")); return parsed; }
+function read_config(path: string): ts.ParsedCommandLine {
+  const consumed = new Set<string>([resolve(path)]);
+  const host: ts.ParseConfigHost = { ...ts.sys, readFile(fileName): string | undefined { consumed.add(resolve(fileName)); return ts.sys.readFile(fileName); } };
+  const read = ts.readConfigFile(path, host.readFile);
+  if (read.error) fail(ts.flattenDiagnosticMessageText(read.error.messageText, "\n"));
+  const parsed = ts.parseJsonConfigFileContent(read.config, host, dirname(path), undefined, path);
+  if (parsed.errors.length > 0) fail(parsed.errors.map((entry) => ts.flattenDiagnosticMessageText(entry.messageText, "\n")).join("\n"));
+  for (const reference of parsed.projectReferences ?? []) {
+    const referencePath = resolve(reference.path);
+    const referenceConfig = existsSync(referencePath) && statSync(referencePath).isDirectory() ? join(referencePath, "tsconfig.json") : referencePath;
+    collect_config_inputs(referenceConfig, consumed, new Set());
+  }
+  configInputs = Object.freeze([...consumed]);
+  return parsed;
+}
+function collect_config_inputs(path: string, consumed: Set<string>, seen: Set<string>): void {
+  const config = resolve(path);
+  if (seen.has(config)) return;
+  seen.add(config); consumed.add(config);
+  const host: ts.ParseConfigHost = { ...ts.sys, readFile(fileName): string | undefined { consumed.add(resolve(fileName)); return ts.sys.readFile(fileName); } };
+  const read = ts.readConfigFile(config, host.readFile);
+  if (read.error) return;
+  const parsed = ts.parseJsonConfigFileContent(read.config, host, dirname(config), undefined, config);
+  for (const reference of parsed.projectReferences ?? []) {
+    const referencePath = resolve(reference.path);
+    collect_config_inputs(existsSync(referencePath) && statSync(referencePath).isDirectory() ? join(referencePath, "tsconfig.json") : referencePath, consumed, seen);
+  }
+}
 function report_and_fail(diagnostics: readonly Diagnostic[]): never { fail(diagnostics.map((entry) => `${entry.file ?? "Hson Schema"}${entry.start === undefined ? "" : `:${entry.start}`}: ${entry.message}`).join("\n")); }
 function fail(message: string): never { throw new Error(message); }
 function error_message(error: unknown): string { return error instanceof Error ? error.message : String(error); }
 function round(value: number): number { return Math.round(value * 100) / 100; }
-function watch_fingerprint(root: string): string {
-  const entries: string[] = [];
-  const visit = (path: string): void => {
-    for (const name of readdirSync(path)) {
-      if (["node_modules", "dist", ".git"].includes(name)) continue;
-      const child = join(path, name);
-      const stat = statSync(child);
-      if (stat.isDirectory()) visit(child);
-      else if (resolve(child) === projectPath || (/\.[cm]?tsx?$/.test(name) && !name.includes(".hson-schema.generated.") && readFileSync(child, "utf8").includes("HsonSchema"))) {
-        entries.push(`${child}:${stat.mtimeMs}:${stat.size}`);
-      }
-    }
-  };
-  visit(root);
+function authoritative_watch_inputs(config: ts.ParsedCommandLine): readonly string[] {
+  return Object.freeze([...new Set([
+    ...configInputs,
+    ...config.fileNames.filter(fileName => !fileName.includes(".hson-schema.generated.")),
+  ].map(path => resolve(path)))].sort());
+}
+function watch_fingerprint(inputs: readonly string[]): string {
+  const entries = inputs.map(path => existsSync(path) ? `${path}:${digest(readFileSync(path, "utf8"))}` : `${path}:missing`);
   return digest(entries.sort().join("\n"));
 }

@@ -3,8 +3,7 @@
 This extension provides syntax highlighting and authoritative parser diagnostics
 for standalone `.hson` files, supported `Hson` tagged templates, and statically
 recoverable strings passed to official `fromHson` boundaries in TypeScript and
-TSX. In trusted Schema mode, `Hson` templates also support bounded structural
-completion.
+TSX.
 
 Highlighting and diagnostics share TypeScript binding-aware discovery of named
 `Hson` imports from `hson-live` and `hson-live/hson`, including renamed imports.
@@ -12,8 +11,8 @@ Local/shadowed names, wrong packages, copied functions and wrappers are excluded
 The existing Hson TextMate grammar supplies the template tokens, published through
 VS Code semantic tokens with Hson scope fallbacks. A spelling-only injection is
 not contributed. Invalid Hson and literal segments around interpolation are still
-highlighted. Neither highlighting nor secure diagnostics requires Schema, a
-trusted provider, Workspace Trust, completion, or application execution.
+highlighted. Neither highlighting nor secure diagnostics requires Schema,
+Workspace Trust, or application execution.
 
 Literal usage references to the official `hson` facade carry strong blue, yellow,
 pink, and green family colors; literal usage references to official `Hson` use
@@ -44,28 +43,13 @@ The initial user-facing surface is deliberately compact:
 - **Hson › Appearance: Color Library hson**
   (`hson.appearance.colorLibraryMarker`, default `true`) controls only the
   lowercase official library marker and its violet separator. Uppercase `Hson`,
-  Hson bodies, imports, diagnostics, and trusted runtime behavior are unaffected.
+  Hson bodies, imports, and diagnostics are unaffected.
 - **Hson › Appearance: Library Separator Color**
   (`hson.appearance.librarySeparatorColor`, default `#7247d4`) controls the first
   member-access period immediately after an official lowercase `hson` root.
-- **Hson › Schema Diagnostics: Trusted Execution**
-  (`hson.trustedSchemaDiagnostics.enabled`, default `false`, resource scope)
-  permits project code execution only when Workspace Trust and separate Hson
-  consent are also present.
-- **Hson › Runtime / Provider** contains the existing resource-scoped Provider
-  Entry, Hson Runtime Module, optional Runtime Entry, and Node Arguments needed
-  by trusted Schema diagnostics. Paths are relative to the containing
-  workspace folder. These execution-sensitive settings are restricted in
-  Restricted Mode.
-
 Changing a strength, shared color, lowercase toggle, or separator color recreates
 the presentation decorations and refreshes visible editors immediately; no
-rebuild, reinstall, window reload, or runtime restart is required. Trusted-runtime
-configuration changes retire the old generation and invalidate consent for the
-previous configuration. The 150 ms validation
-debounce, request/startup timeouts, restart budget, queue limits, and log bounds
-remain implementation-owned safeguards. Schema completion stays on whenever a
-current authorized trusted runtime is available; it has no separate toggle.
+rebuild, reinstall, window reload, or runtime restart is required.
 
 When no non-empty user/workspace Appearance color override is configured, each
 marker uses its contributed theme color identity. `workbench.colorCustomizations`
@@ -109,7 +93,7 @@ is authoritative, while closing it restores the saved-file result instead of
 removing its Problems. In the default secure mode the extension parses project
 configuration but does not execute workspace code. It does not write helper
 files or modify user source. This scan is independent of Schema Generate,
-Schema Watch, trusted diagnostics, and Workspace Trust; stopping Schema Watch
+Schema Watch and Workspace Trust; stopping Schema Watch
 does not reduce ordinary Hson diagnostic coverage.
 Substitution-free templates receive authoritative whole-Hson tag admission
 diagnostics, including raw-template newline normalization and UTF-16 mapping.
@@ -230,9 +214,9 @@ directories.
 
 Local source updates deliberately use `--force`, so replacing one `0.1.1`
 development build with another does not require an extension version bump.
-Changing Hson Appearance or trusted-diagnostics settings does not require a
-reinstall; use the normal VS Code settings lifecycle. Reinstall only after
-extension source or build inputs change.
+Changing Hson Appearance settings does not require a reinstall; use the normal
+VS Code settings lifecycle. Reinstall only after extension source or build inputs
+change.
 
 The multi-step build/development-host sequence below remains useful for extension
 debugging, but it is not the ordinary local installation workflow.
@@ -298,54 +282,3 @@ edit journey in trusted and genuinely restricted workspaces. Set
 ordinary macOS installation). `npm run test:baseline:installed` builds the actual
 VSIX and runs the same journey from a clean installed-extension directory, using
 an empty test-driver extension rather than a development override for Hson.
-
-### Natural LiveMap Schema governance
-
-With a trusted provider supplying source-bound lifecycle evidence, ordinary
-map-owning code needs no extra standalone validation call:
-
-```ts
-import { Hson } from "hson-live/hson";
-import { hsonLiveMap } from "hson-live/livemap";
-import { UserSchema } from "./schema.js";
-
-const source = Hson`<user <age "37">>`;
-const map = hsonLiveMap.fromHson(source);
-map.schema.use(UserSchema);
-```
-
-The original template receives the current candidate's Schema diagnostics,
-including when initial attachment rejects. Related information identifies the
-use site. Both the dedicated facade above and `hson.liveMap.fromHson` work;
-local immutable aliases and inline templates are supported, but the standalone
-Hson block is the preferred style. Multiple maps retain independent contracts.
-Actual mutation, including mutation followed by restoration, suppresses source
-attribution for that map.
-
-Workspace Trust and explicit enablement are still both required. A Schema-only
-provider does not establish map correspondence: governance needs the existing
-capture path bound to the source sites. The private provider instrumenter and
-its limits are documented in
-`src/internal/trusted-schema-diagnostics/README.md` in the source repository.
-There is no automatic application import, public provenance API, or new
-validation API. The editor makes no claim that application execution reached
-`schema.use`.
-
-### Static `fromHson` Schema governance
-
-A statically recoverable raw string can be the source occurrence for the same
-trusted lifecycle path:
-
-```ts
-const source = `<user <age "37">>`;
-const map = hsonLiveMap.fromHson(source);
-map.schema.use(UserSchema);
-```
-
-Syntax checking is immediate and does not require trust or Schema execution.
-When Workspace Trust and trusted diagnostics are both enabled, the private
-provider can prove that this exact construction produced the actual map and
-project the later Schema relationship back into the original literal. Failed
-initial attachment remains diagnosable. Actual mutation, including mutation
-followed by restoration, suppresses attribution. Multiple maps using one
-literal retain separate Schema relationships.

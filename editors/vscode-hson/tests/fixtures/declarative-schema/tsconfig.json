@@ -9,8 +9,8 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "hson-live": ["../../../../../src/index.ts"],
-      "hson-live/hson": ["../../../../../src/hson-authoring.ts"]
+      "hson-live": ["../../../../../dist/index.d.ts"],
+      "hson-live/hson": ["../../../../../dist/hson-authoring.d.ts"]
     }
   },
   "include": ["./*.ts"]

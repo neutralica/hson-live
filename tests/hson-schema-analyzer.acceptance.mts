@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
@@ -248,6 +248,23 @@ check("deletion and rename remove stale artifacts and managed bindings", () => {
   assert.equal(existsSync(join(project, "local-static.RenamedSchema.hson-schema.generated.ts")), true);
   writeFileSync(localStatic, original);
   assert.equal(run("generate").status, 0);
+});
+check("physical producer deletion, file rename, exclusion, and restoration reconcile only owned evidence", () => {
+  const lifecycle = join(project, "lifecycle.ts"), renamedLifecycle = join(project, "lifecycle-renamed.ts");
+  const authored = 'import { Hson, type HsonSchema } from "hson-live";\nexport const LifecycleSchema: HsonSchema = Hson`<type "data" content <ok "boolean">>`;\n';
+  const artifact = join(project, "lifecycle.LifecycleSchema.hson-schema.generated.ts");
+  const metadata = join(project, "lifecycle.LifecycleSchema.hson-schema.generated.json");
+  writeFileSync(lifecycle, authored); assert.equal(run("generate").status, 0); assert.ok(existsSync(artifact) && existsSync(metadata));
+  unlinkSync(lifecycle); assert.equal(run("generate").status, 0); assert.equal(existsSync(artifact), false); assert.equal(existsSync(metadata), false);
+  writeFileSync(lifecycle, authored); assert.equal(run("generate").status, 0); assert.ok(existsSync(artifact));
+  renameSync(lifecycle, renamedLifecycle); assert.equal(run("generate").status, 0);
+  const renamedArtifact = join(project, "lifecycle-renamed.LifecycleSchema.hson-schema.generated.ts");
+  assert.equal(existsSync(artifact), false); assert.ok(existsSync(renamedArtifact));
+  const originalConfig = readFileSync(config, "utf8");
+  writeFileSync(config, JSON.stringify({ ...JSON.parse(originalConfig), exclude: ["./lifecycle-renamed.ts"] }, null, 2));
+  assert.equal(run("generate").status, 0); assert.equal(existsSync(renamedArtifact), false);
+  writeFileSync(config, originalConfig); assert.equal(run("generate").status, 0); assert.ok(existsSync(renamedArtifact));
+  unlinkSync(renamedLifecycle); assert.equal(run("generate").status, 0);
 });
 
 emit_hson_live_test_completion("hson-schema-analyzer", checks, checks, 0);

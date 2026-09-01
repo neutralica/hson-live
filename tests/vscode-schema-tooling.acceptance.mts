@@ -29,9 +29,13 @@ for (const dependency of ["dompurify", "htmlparser2", "ws", "@types/dompurify", 
   symlinkSync(target, link, "dir");
 }
 const source = join(project, "schema.ts");
+const candidate = join(project, "candidate.ts");
 const config = join(project, "tsconfig.json");
-writeFileSync(config, JSON.stringify({ compilerOptions: { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext" }, include: ["./schema.ts"] }, null, 2));
+const baseConfig = join(project, "tsconfig.base.json");
+writeFileSync(baseConfig, JSON.stringify({ compilerOptions: { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext", forceConsistentCasingInFileNames: false } }, null, 2));
+writeFileSync(config, JSON.stringify({ extends: "./tsconfig.base.json", include: ["./*.ts"] }, null, 2));
 writeFileSync(source, 'import { Hson, type HsonSchema } from "hson-live";\nexport const UserSchema: HsonSchema = Hson`<type "data" content <name "string">>`;\n');
+writeFileSync(candidate, 'import { Hson } from "hson-live"; import type { UserSchemaHson } from "./schema.js";\nconst candidate: UserSchemaHson = Hson`<name "Ada">`; void candidate;\n');
 
 const tool = resolve_workspace_hson_schema_tool(project);
 check("packed consumer resolves its installed public hson-schema executable", () => {
@@ -64,15 +68,25 @@ const waitFor = async (condition: () => boolean, label: string): Promise<void> =
 const original = readFileSync(source, "utf8");
 const artifact = join(project, "schema.UserSchema.hson-schema.generated.ts");
 await waitFor(() => watchOutput.includes(`Hson Schema watch: checking ${config}.`) && watchOutput.includes("Hson Schema watch: current; 1 Schema;"), "watch did not report its project and initial current state");
-writeFileSync(source, original.replace('name "string"', 'name "string" age "number"'));
-await waitFor(() => existsSync(artifact) && /readonly age:/.test(readFileSync(artifact, "utf8")), "watch did not regenerate valid Schema evidence");
+const beforeCandidateError = watchOutput.length;
+writeFileSync(candidate, readFileSync(candidate, "utf8").replace('name "Ada"', "name 1"));
+await waitFor(() => watchOutput.slice(beforeCandidateError).includes("Hson Schema watch: stale/error;"), "watch did not react to an invalid separate Schema-bound candidate without a literal HsonSchema name");
+const beforeCandidateRecovery = watchOutput.length;
+writeFileSync(candidate, readFileSync(candidate, "utf8").replace("name 1", 'name "Ada"'));
+await waitFor(() => watchOutput.slice(beforeCandidateRecovery).includes("Hson Schema watch: current; 1 Schema;"), "watch did not recover after correcting the separate Schema-bound candidate");
+const beforeConfigCycle = watchOutput.length;
+writeFileSync(baseConfig, readFileSync(baseConfig, "utf8").replace('"forceConsistentCasingInFileNames": false', '"forceConsistentCasingInFileNames": true'));
+await waitFor(() => watchOutput.slice(beforeConfigCycle).includes("Hson Schema watch: current; 1 Schema;"), "watch did not react to the extended project configuration");
+writeFileSync(source, original.replace('name "string"', 'name "string" age <optional "number">'));
+await waitFor(() => existsSync(artifact) && /readonly age\?:/.test(readFileSync(artifact, "utf8")), "watch did not regenerate valid Schema evidence");
 const beforeError = watchOutput.length;
-writeFileSync(source, readFileSync(source, "utf8").replace('age "number"', "age <broken"));
+writeFileSync(source, readFileSync(source, "utf8").replace('age <optional "number">', "age <broken"));
 await waitFor(() => watchOutput.slice(beforeError).includes("Hson Schema watch: stale/error;"), "watch did not surface an invalid Schema");
 const beforeRecovery = watchOutput.length;
-writeFileSync(source, readFileSync(source, "utf8").replace("age <broken", 'age "number"'));
+writeFileSync(source, readFileSync(source, "utf8").replace("age <broken", 'age <optional "number">'));
 await waitFor(() => watchOutput.slice(beforeRecovery).includes("Hson Schema watch: current; 1 Schema;"), "watch did not recover after correcting the Schema");
 writeFileSync(source, readFileSync(source, "utf8").replaceAll("UserSchema", "AccountSchema"));
+writeFileSync(candidate, readFileSync(candidate, "utf8").replaceAll("UserSchema", "AccountSchema"));
 const renamedArtifact = join(project, "schema.AccountSchema.hson-schema.generated.ts");
 await waitFor(() => existsSync(renamedArtifact) && !existsSync(artifact) && !readFileSync(source, "utf8").includes("UserSchema"), "watch did not reconcile renamed Schema evidence");
 const stopped = new Promise<number | null>(resolveStopped => watcher.once("close", code => resolveStopped(code)));

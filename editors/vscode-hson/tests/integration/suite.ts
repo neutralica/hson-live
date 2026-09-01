@@ -23,6 +23,16 @@ async function diagnosticsFor(
     .filter((diagnostic) => diagnostic.source === "Hson");
 }
 
+async function schemaEvidenceDiagnostics(uri: vscode.Uri, count: number): Promise<readonly vscode.Diagnostic[]> {
+  const timeout = Date.now() + 5_000;
+  while (Date.now() < timeout) {
+    const diagnostics = vscode.languages.getDiagnostics(uri).filter(diagnostic => diagnostic.source === "Hson Schema" && String(diagnostic.code).startsWith("HSON_SCHEMA_GENERATED_EVIDENCE_"));
+    if (diagnostics.length === count) return diagnostics;
+    await new Promise(resolveWait => setTimeout(resolveWait, 50));
+  }
+  return vscode.languages.getDiagnostics(uri).filter(diagnostic => diagnostic.source === "Hson Schema" && String(diagnostic.code).startsWith("HSON_SCHEMA_GENERATED_EVIDENCE_"));
+}
+
 async function waitFor(condition: () => boolean | Promise<boolean>, label: string, timeoutMs = 15_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!await condition()) {
@@ -42,6 +52,39 @@ async function runSchemaConsumer(workspace: string): Promise<void> {
   let leaveWatchForDisposal = false;
   try {
     await vscode.commands.executeCommand("hson.generateSchemaTypes", source);
+    const schemaFiles = [
+      "src/app/state/shell.schema.ts",
+      "src/app/demos/cellsheet/cellsheet.state.ts",
+      "src/app/demos/oklch/oklch.state.ts",
+      "src/app/demos/towl/towl.schema.ts",
+    ];
+    for (const relativeFile of schemaFiles) {
+      const document = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace, relativeFile)));
+      assert.match(document.getText(), /HsonSchema<[^>]+, "data">/, `${relativeFile} is not in generated generic form`);
+      assert.equal((await schemaEvidenceDiagnostics(document.uri, 0)).length, 0, `${relativeFile} evidence is not current`);
+      const ref = document.getText().indexOf('<ref "');
+      if (ref >= 0) {
+        assert.ok((await localSchemaCompletions(document, ref + 6)).length > 0, `${relativeFile} generated generic declaration was not discovered for completion`);
+        const hover = await vscode.commands.executeCommand<vscode.Hover[]>('vscode.executeHoverProvider', document.uri, document.positionAt(ref + 6));
+        assert.ok((hover?.length ?? 0) > 0, `${relativeFile} generated generic declaration was not discovered for hover`);
+      }
+      const typeMember = document.getText().indexOf('type "data"');
+      assert.ok(typeMember >= 0);
+      const invalidate = new vscode.WorkspaceEdit();
+      invalidate.replace(document.uri, new vscode.Range(document.positionAt(typeMember), document.positionAt(typeMember + 4)), "thing");
+      assert.equal(await vscode.workspace.applyEdit(invalidate), true);
+      await waitFor(() => vscode.languages.getDiagnostics(document.uri).some(diagnostic => diagnostic.source === "Hson Schema" && diagnostic.code === "INVALID_ROOT"), `${relativeFile} generated generic declaration was not discovered for local diagnostics`);
+      const restore = new vscode.WorkspaceEdit();
+      restore.replace(document.uri, new vscode.Range(document.positionAt(typeMember), document.positionAt(typeMember + 5)), "type");
+      assert.equal(await vscode.workspace.applyEdit(restore), true);
+      await waitFor(() => !vscode.languages.getDiagnostics(document.uri).some(diagnostic => diagnostic.source === "Hson Schema" && diagnostic.code === "INVALID_ROOT"), `${relativeFile} local diagnostic did not clear after correction`);
+      assert.equal(await document.save(), true);
+    }
+    const sourceDocument = await vscode.workspace.openTextDocument(source);
+    await write(metadata, `${await read(metadata)}\n`);
+    await waitFor(() => vscode.languages.getDiagnostics(sourceDocument.uri).some(diagnostic => diagnostic.code === "HSON_SCHEMA_GENERATED_EVIDENCE_STALE"), "pre-existing on-disk stale evidence was not diagnosed deterministically");
+    await vscode.commands.executeCommand("hson.generateSchemaTypes", source);
+    assert.equal((await schemaEvidenceDiagnostics(sourceDocument.uri, 0)).length, 0, "Generate did not clear stale evidence after authoritative reconciliation");
     const originalArtifact = await read(artifact);
     const originalMetadata = await read(metadata);
     const openArtifact = await vscode.workspace.openTextDocument(artifact);
@@ -156,6 +199,22 @@ export async function run(): Promise<void> {
   const generated = vscode.Uri.file(join(workspace, "schema-symbols.SymbolSchema.hson-schema.generated.ts"));
   assert.equal(Buffer.from(await vscode.workspace.fs.readFile(generated)).toString(), "export {};\n");
   process.stdout.write("ok - real VS Code Schema defs/ref: completion, definition, references, rename, hover, and generated source remains untouched\n");
+
+  const generatedSchemaDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace, "declarative-schema", "schema.ts")));
+  await vscode.window.showTextDocument(generatedSchemaDocument);
+  assert.match(generatedSchemaDocument.getText(), /HsonSchema<UserSchemaType, "data">/);
+  const generatedAgeDefinition = generatedSchemaDocument.getText().indexOf('Age "number"');
+  const generatedAgeReference = generatedSchemaDocument.getText().indexOf('ref "Age"') + 5;
+  assert.deepEqual((await localSchemaCompletions(generatedSchemaDocument, generatedAgeReference)).map(item => item.label), ["Age", "User"]);
+  const generatedDefinitions = await vscode.commands.executeCommand<vscode.Location[]>('vscode.executeDefinitionProvider', generatedSchemaDocument.uri, generatedSchemaDocument.positionAt(generatedAgeReference));
+  assert.equal(generatedSchemaDocument.getText(generatedDefinitions?.[0]?.range), "Age");
+  const generatedReferences = await vscode.commands.executeCommand<vscode.Location[]>('vscode.executeReferenceProvider', generatedSchemaDocument.uri, generatedSchemaDocument.positionAt(generatedAgeDefinition));
+  assert.equal(generatedReferences?.filter(location => generatedSchemaDocument.getText(location.range) === '"Age"').length, 1);
+  const generatedHover = await vscode.commands.executeCommand<vscode.Hover[]>('vscode.executeHoverProvider', generatedSchemaDocument.uri, generatedSchemaDocument.positionAt(generatedAgeReference));
+  assert.ok((generatedHover?.length ?? 0) > 0);
+  const generatedRename = await vscode.commands.executeCommand<vscode.WorkspaceEdit>('vscode.executeDocumentRenameProvider', generatedSchemaDocument.uri, generatedSchemaDocument.positionAt(generatedAgeDefinition), "Years");
+  assert.ok(generatedRename);
+  process.stdout.write("ok - real VS Code generated HsonSchema generic remains discoverable for completion, definition, references, rename, and hover without reload\n");
 
   const fixturePath = join(__dirname, "..", "tests", "fixtures", "diagnostics-alias.ts");
   const alias = await vscode.workspace.openTextDocument(vscode.Uri.file(fixturePath));

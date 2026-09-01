@@ -166,7 +166,12 @@ check("local Hson Schema diagnostics reuse the proof compiler without workspace 
 check("Schema evidence discovery stays binding-aware and does not generate", () => {
   const source = 'import { Hson, type HsonSchema } from "hson-live"; export const UserSchema: HsonSchema = Hson`<type "data" content "string">`;';
   assert.deepEqual(local_hson_schema_declarations(source).map(declaration => declaration.name), ["UserSchema"]);
+  assert.deepEqual(local_hson_schema_declarations(source.replace(": HsonSchema", ': HsonSchema<UserSchemaType, "data">')).map(declaration => declaration.name), ["UserSchema"]);
+  assert.deepEqual(local_hson_schema_declarations(source.replace(": HsonSchema", ': HsonSchema<PageSchemaType, "document">')).map(declaration => declaration.name), ["UserSchema"]);
+  assert.deepEqual(local_hson_schema_declarations(source.replace("type HsonSchema", "type HsonSchema as Schema").replace(": HsonSchema", ': Schema<UserSchemaType, "data">')).map(declaration => declaration.name), ["UserSchema"]);
   assert.deepEqual(local_hson_schema_declarations(source.replace('from "hson-live"', 'from "other"')), []);
+  assert.deepEqual(local_hson_schema_declarations(source.replace(": HsonSchema", ': HsonSchema<UserSchemaType, "wrong">')), []);
+  assert.deepEqual(local_hson_schema_declarations(`type HsonSchema<T, M> = unknown; declare const Hson: unknown; const Wrong: HsonSchema<string, "data"> = Hson\`x\`;`), []);
 });
 
 check("local defs/ref symbols are compiler-resolved, scoped, and source-exact", () => {

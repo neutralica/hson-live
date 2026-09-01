@@ -5,12 +5,9 @@ import { resolve } from "node:path";
 import {
   HSON_SETTINGS_QUERY,
   APPEARANCE_COLOR_KEYS,
-  TRUSTED_CONFIGURATION_KEYS,
   appearance_color,
   marker_color_key,
   marker_strength,
-  trusted_consent_key,
-  trusted_execution_fingerprint,
 } from "../src/settings.js";
 
 const manifest = JSON.parse(readFileSync(resolve(__dirname, "../package.json"), "utf8"));
@@ -25,9 +22,7 @@ function check(name: string, body: () => void): void {
   process.stdout.write(`ok ${++checks} - ${name}\n`);
 }
 
-check("settings use three coherent native groups", () => assert.deepEqual(groups.map(group => group.title), [
-  "Hson › Appearance", "Hson › Schema Diagnostics", "Hson › Runtime / Provider",
-]));
+check("settings expose only supported appearance controls", () => assert.deepEqual(groups.map(group => group.title), ["Hson › Appearance"]));
 check("appearance surface contains only the finalized eight controls", () => assert.deepEqual(
   Object.keys(groups[0]!.properties),
   [
@@ -86,36 +81,16 @@ check("runtime color parsing accepts hex and falls back for unset or invalid val
   assert.equal(appearance_color("#abc"), "#abc"); assert.equal(appearance_color("#69B8EECC"), "#69B8EECC");
   assert.equal(appearance_color(""), undefined); assert.equal(appearance_color("blue"), undefined);
 });
-check("trusted execution remains off by default", () => assert.equal(properties["hson.trustedSchemaDiagnostics.enabled"].default, false));
-check("trusted execution is resource scoped", () => assert.equal(properties["hson.trustedSchemaDiagnostics.enabled"].scope, "resource"));
-check("trusted execution warning names code categories and user permissions", () => {
-  const text = properties["hson.trustedSchemaDiagnostics.enabled"].markdownDescription;
-  assert.match(text, /constraints/); assert.match(text, /module initialization/); assert.match(text, /user permissions/); assert.match(text, /not a security sandbox/i);
-});
-check("all established runtime keys remain represented once", () => assert.deepEqual(TRUSTED_CONFIGURATION_KEYS.filter(key => properties[key] !== undefined), TRUSTED_CONFIGURATION_KEYS));
-check("all execution-sensitive settings are restricted", () => assert.deepEqual(
-  manifest.capabilities.untrustedWorkspaces.restrictedConfigurations, TRUSTED_CONFIGURATION_KEYS,
-));
-check("appearance settings are not restricted", () => assert.ok(
-  manifest.capabilities.untrustedWorkspaces.restrictedConfigurations.every((key: string) => !key.startsWith("hson.appearance.")),
-));
+check("retired trusted Schema settings are absent", () => assert.equal(Object.keys(properties).some(key => key.startsWith("hson.trustedSchemaDiagnostics.")), false));
+check("no retired execution settings are advertised as restricted", () => assert.equal(manifest.capabilities.untrustedWorkspaces.restrictedConfigurations, undefined));
 check("settings search targets this extension", () => assert.equal(HSON_SETTINGS_QUERY, "@ext:terminal-gothic.hson-language"));
-check("consent is namespaced per workspace folder", () => assert.notEqual(trusted_consent_key("file:///a"), trusted_consent_key("file:///b")));
-check("consent binds every execution-sensitive parameter", () => {
-  const base = { module: "schema.js", hsonModule: "hson.js", runtimeEntry: "entry.js", execArgv: ["--loader=x"] };
-  const fingerprint = trusted_execution_fingerprint(base);
-  assert.notEqual(fingerprint, trusted_execution_fingerprint({ ...base, module: "other.js" }));
-  assert.notEqual(fingerprint, trusted_execution_fingerprint({ ...base, hsonModule: "other-hson.js" }));
-  assert.notEqual(fingerprint, trusted_execution_fingerprint({ ...base, runtimeEntry: "other-entry.js" }));
-  assert.notEqual(fingerprint, trusted_execution_fingerprint({ ...base, execArgv: ["--loader=y"] }));
-});
 check("marker strength clamps invalid low and high values", () => {
   assert.equal(marker_strength(-1, 0.5), 0); assert.equal(marker_strength(2, 0.5), 1);
 });
 check("marker strength falls back for non-finite input", () => assert.equal(marker_strength(Number.NaN, 0.6), 0.6));
 check("the compact command set complements settings and status", () => assert.deepEqual(
   manifest.contributes.commands.map((command: { command: string }) => command.command),
-  ["hson.openSettings", "hson.enableTrustedSchemaDiagnostics", "hson.disableTrustedSchemaDiagnostics", "hson.restartTrustedSchemaRuntime", "hson.generateSchemaTypes", "hson.startSchemaWatch", "hson.stopSchemaWatch", "hson.checkSchemas", "hson.showSchemaOutput"],
+  ["hson.openSettings", "hson.generateSchemaTypes", "hson.startSchemaWatch", "hson.stopSchemaWatch", "hson.checkSchemas", "hson.showSchemaOutput"],
 ));
 
 process.stdout.write(`ok - ${checks} focused settings and consent checks passed\n`);

@@ -12,8 +12,7 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "Syntax tooling works in Restricted Mode. Trusted Schema diagnostics execute project code only with Workspace Trust and explicit enablement. Schema generation and watch commands run only when explicitly invoked in a trusted workspace.",
-      "restrictedConfigurations": ["hson.trustedSchemaDiagnostics.enabled", "hson.trustedSchemaDiagnostics.module", "hson.trustedSchemaDiagnostics.hsonModule", "hson.trustedSchemaDiagnostics.runtimeEntry", "hson.trustedSchemaDiagnostics.execArgv"]
+      "description": "Syntax, local HsonSchema authoring, symbols, and generated-evidence diagnostics work in Restricted Mode. Schema generation and watch commands run only when explicitly invoked in a trusted workspace."
     }
   },
   "engines": {
@@ -139,66 +138,10 @@
             "markdownDescription": "Colors only the first member-access period after an official lowercase `hson` root. Clear an explicit override to use the contributed theme color and `workbench.colorCustomizations` ID."
           }
         }
-      },
-      {
-        "title": "Hson › Schema Diagnostics",
-        "order": 20,
-        "properties": {
-          "hson.trustedSchemaDiagnostics.enabled": {
-            "type": "boolean",
-            "default": false,
-            "scope": "resource",
-            "order": 10,
-            "title": "Trusted Execution",
-            "markdownDescription": "Allows Hson trusted Schema diagnostics to execute the selected project's code, including Schema definitions, constraints, recurse callbacks, and module initialization. Execution occurs only in a VS Code-trusted workspace, after separate Hson consent, and runs with your user permissions in a supervised separate process. This is not a security sandbox."
-          }
-        }
-      },
-      {
-        "title": "Hson › Runtime / Provider",
-        "order": 30,
-        "properties": {
-          "hson.trustedSchemaDiagnostics.module": {
-            "type": "string",
-            "default": "",
-            "scope": "resource",
-            "order": 10,
-            "title": "Provider Entry",
-            "description": "Trusted Schema registration module path, resolved relative to the containing workspace folder. Prefer a Schema-only module, not the application entrypoint."
-          },
-          "hson.trustedSchemaDiagnostics.hsonModule": {
-            "type": "string",
-            "default": "",
-            "scope": "resource",
-            "order": 20,
-            "title": "Hson Runtime Module",
-            "description": "Advanced: path to the project's hson.js facade, resolved relative to the containing workspace folder. It must be the same runtime instance used by the provider."
-          },
-          "hson.trustedSchemaDiagnostics.runtimeEntry": {
-            "type": "string",
-            "default": "",
-            "scope": "resource",
-            "order": 30,
-            "title": "Runtime Entry",
-            "description": "Advanced: private trusted-diagnostics Node entry path relative to the workspace folder. When empty, Hson uses the entry beside the configured Hson runtime module."
-          },
-          "hson.trustedSchemaDiagnostics.execArgv": {
-            "type": "array",
-            "items": { "type": "string" },
-            "default": [],
-            "scope": "resource",
-            "order": 40,
-            "title": "Node Arguments",
-            "description": "Advanced: Node loader arguments required by the trusted provider, for example when executing development TypeScript modules."
-          }
-        }
       }
     ],
     "commands": [
       { "command": "hson.openSettings", "title": "Open Settings", "category": "Hson" },
-      { "command": "hson.enableTrustedSchemaDiagnostics", "title": "Enable Trusted Schema Diagnostics", "category": "Hson" },
-      { "command": "hson.disableTrustedSchemaDiagnostics", "title": "Disable Trusted Schema Diagnostics", "category": "Hson" },
-      { "command": "hson.restartTrustedSchemaRuntime", "title": "Restart Trusted Schema Runtime", "category": "Hson" },
       { "command": "hson.generateSchemaTypes", "title": "Generate Schema Types", "category": "Hson" },
       { "command": "hson.startSchemaWatch", "title": "Start Schema Watch", "category": "Hson" },
       { "command": "hson.stopSchemaWatch", "title": "Stop Schema Watch", "category": "Hson" },

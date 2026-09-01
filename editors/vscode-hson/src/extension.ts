@@ -1,14 +1,9 @@
 import * as messages from "./diagnostic-messages.js";
 import * as vscode from "vscode";
-import { existsSync } from "node:fs";
 import { spawn, type ChildProcess } from "node:child_process";
-import { resolve, dirname, extname } from "node:path";
-import { pathToFileURL } from "node:url";
-import { TrustedSchemaClient, type SchemaStatus } from "./trusted-schema-client.js";
-import { start_schema_diagnostics } from "./schema-diagnostics.js";
-import { TrustedSchemaInfrastructureError } from "../../../src/internal/trusted-schema-diagnostics/node-supervisor.js";
-import { schema_provider_source_changed } from "./schema-source-revision.js";
+import { dirname, extname, relative, resolve, sep } from "node:path";
 import { local_hson_schema_declarations, local_hson_schema_diagnostics } from "./hson-schema-local.js";
+import { inspect_hson_schema_evidence } from "../../../src/internal/hson-schema/generated-evidence.js";
 import {
   local_hson_schema_completion,
   local_hson_schema_symbols,
@@ -20,7 +15,6 @@ import { discover_schema_project, resolve_workspace_hson_schema_tool, schema_wat
 
 import {
   type DiagnosticDocument,
-  type DiagnosticHost,
   type DiagnosticPublisher,
 } from "./diagnostics.js";
 import type { DocumentDiagnosticSpec } from "./document-diagnostics.js";
@@ -37,17 +31,7 @@ import {
   hson_identity_presentation,
   hsonIdentityMarkers,
 } from "./authoring-marker.js";
-import {
-  HSON_SETTINGS_QUERY,
-  TRUSTED_CONFIGURATION_KEYS,
-  TRUSTED_CONFIGURATION_SECTION,
-  appearance_color,
-  marker_strength,
-  marker_color_key,
-  trusted_consent_key,
-  trusted_execution_fingerprint,
-  type TrustedExecutionConfiguration,
-} from "./settings.js";
+import { HSON_SETTINGS_QUERY, appearance_color, marker_strength, marker_color_key } from "./settings.js";
 
 function adaptDocument(document: vscode.TextDocument): DiagnosticDocument {
   return Object.freeze({
@@ -100,27 +84,28 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const localSchemaCollection = vscode.languages.createDiagnosticCollection("hson-schema-authoring");
   const schemaEvidenceCollection = vscode.languages.createDiagnosticCollection("hson-schema-evidence");
-  const staleSchemaEvidence = new Set<string>();
-  const schemaDeclarationSnapshots = new Map<string, string>();
   const publishSchemaEvidence = (document: vscode.TextDocument): void => {
     if (document.languageId !== "typescript" && document.languageId !== "typescriptreact") return;
-    const declarations = local_hson_schema_declarations(document.getText());
-    const stale = staleSchemaEvidence.has(document.uri.toString());
+    const declarations = local_hson_schema_declarations(document.getText(), document.fileName);
     const diagnostics: vscode.Diagnostic[] = [];
+    const folder = vscode.workspace.getWorkspaceFolder(document.uri);
+    let project: string | undefined;
+    if (folder !== undefined) try { project = discover_schema_project(folder.uri.fsPath, document.fileName); } catch { project = undefined; }
     for (const declaration of declarations) {
       const generated = resolve(document.fileName.slice(0, -extname(document.fileName).length) + `.${declaration.name}.hson-schema.generated.ts`);
-      const metadata = generated.slice(0, -3) + "json";
+      const metadata = generated.slice(0, -2) + "json";
       const range = new vscode.Range(document.positionAt(declaration.start), document.positionAt(declaration.end));
-      if (!existsSync(generated) || !existsSync(metadata)) {
-        const diagnostic = new vscode.Diagnostic(range, `Generated Hson Schema types for ${declaration.name} are missing. Generate Schema Types or start Hson Schema watch.`, vscode.DiagnosticSeverity.Warning);
-        diagnostic.source = "Hson Schema"; diagnostic.code = "HSON_SCHEMA_GENERATED_EVIDENCE_MISSING"; diagnostics.push(diagnostic);
-      } else if (stale) {
-        const diagnostic = new vscode.Diagnostic(range, `Generated Hson Schema types for ${declaration.name} may be stale after this Schema edit. Generate Schema Types or start Hson Schema watch.`, vscode.DiagnosticSeverity.Warning);
-        diagnostic.source = "Hson Schema"; diagnostic.code = "HSON_SCHEMA_GENERATED_EVIDENCE_STALE"; diagnostics.push(diagnostic);
-      }
+      const identity = project === undefined ? undefined : `${relative(dirname(project), document.fileName).split(sep).join("/")}#${declaration.name}`;
+      const evidence = identity === undefined ? { state: "error" as const, message: "No containing tsconfig.json was found." }
+        : inspect_hson_schema_evidence(declaration.name, declaration.template, identity, generated, metadata);
+      if (evidence.state === "current") continue;
+      const label = evidence.state === "missing" ? "missing" : evidence.state === "stale" ? "stale" : evidence.state === "invalid" ? "invalid" : "unavailable";
+      const diagnostic = new vscode.Diagnostic(range, `Generated Hson Schema types for ${declaration.name} are ${label}.${evidence.message === undefined ? "" : ` ${evidence.message}`} Generate Schema Types or start Hson Schema watch.`, evidence.state === "invalid" || evidence.state === "error" ? vscode.DiagnosticSeverity.Error : vscode.DiagnosticSeverity.Warning);
+      diagnostic.source = "Hson Schema";
+      diagnostic.code = evidence.state === "missing" ? "HSON_SCHEMA_GENERATED_EVIDENCE_MISSING" : evidence.state === "stale" ? "HSON_SCHEMA_GENERATED_EVIDENCE_STALE" : evidence.state === "invalid" ? "HSON_SCHEMA_GENERATED_EVIDENCE_INVALID" : "HSON_SCHEMA_GENERATED_EVIDENCE_ERROR";
+      diagnostics.push(diagnostic);
     }
     schemaEvidenceCollection.set(document.uri, diagnostics);
-    schemaDeclarationSnapshots.set(document.uri.toString(), JSON.stringify(declarations.map(declaration => [declaration.name, declaration.template])));
   };
   const publishLocalSchema = (document: vscode.TextDocument): void => {
     if (document.languageId !== "typescript" && document.languageId !== "typescriptreact") return;
@@ -132,13 +117,8 @@ export function activate(context: vscode.ExtensionContext): void {
   for (const document of vscode.workspace.textDocuments) { publishLocalSchema(document); publishSchemaEvidence(document); }
   context.subscriptions.push(localSchemaCollection, schemaEvidenceCollection,
     vscode.workspace.onDidOpenTextDocument(document => { publishLocalSchema(document); publishSchemaEvidence(document); }),
-    vscode.workspace.onDidChangeTextDocument(event => {
-      const before = schemaDeclarationSnapshots.get(event.document.uri.toString());
-      const after = JSON.stringify(local_hson_schema_declarations(event.document.getText()).map(declaration => [declaration.name, declaration.template]));
-      if (before !== undefined && before !== after) staleSchemaEvidence.add(event.document.uri.toString());
-      publishLocalSchema(event.document); publishSchemaEvidence(event.document);
-    }),
-    vscode.workspace.onDidCloseTextDocument(document => { localSchemaCollection.delete(document.uri); schemaEvidenceCollection.delete(document.uri); staleSchemaEvidence.delete(document.uri.toString()); schemaDeclarationSnapshots.delete(document.uri.toString()); }));
+    vscode.workspace.onDidChangeTextDocument(event => { publishLocalSchema(event.document); publishSchemaEvidence(event.document); }),
+    vscode.workspace.onDidCloseTextDocument(document => { localSchemaCollection.delete(document.uri); schemaEvidenceCollection.delete(document.uri); }));
 
   // Secure local defs/ref tooling deliberately shares the pure compiler with
   // authoring diagnostics. It never asks the trusted runtime to load a project.
@@ -301,22 +281,7 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   context.subscriptions.push(start_workspace_diagnostics(host, publisher));
-  const openDocumentHost: DiagnosticHost = {
-    openDocuments: host.openDocuments,
-    onDidOpen: host.onDidOpen,
-    onDidChange: host.onDidChange,
-    onDidClose: host.onDidClose,
-    setTimer: host.setTimer,
-    clearTimer: host.clearTimer,
-    reportUnexpected(error, document): void {
-      host.reportUnexpected(error, Object.freeze({
-        uri: document.uri,
-        fileName: document.fileName,
-        languageId: document.languageId === "typescriptreact" ? "typescriptreact" : document.languageId === "hson" ? "hson" : "typescript",
-      }));
-    },
-  };
-  // Independent of all trusted clients, associations and completion providers.
+  // Independent of Schema associations and completion providers.
   const legend = new vscode.SemanticTokensLegend(Object.keys(hsonTokenScopes));
   const grammar = load_hson_grammar(context.extensionPath);
   context.subscriptions.push(vscode.languages.registerDocumentSemanticTokensProvider(
@@ -394,166 +359,6 @@ export function activate(context: vscode.ExtensionContext): void {
       replaceMarkerDecorations();
       presentVisibleMarkers();
     }));
-  const schemaCollection = vscode.languages.createDiagnosticCollection("hson-schema");
-  const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 10);
-  const output = vscode.window.createOutputChannel("Hson Schema diagnostics");
-  const statuses = new Map<string, { status: SchemaStatus; message?: string }>();
-  const clients = new Map<string, TrustedSchemaClient>();
-  const files = new Map<string, ReadonlySet<string>>();
-  const staleProviders = new Set<string>();
-  const pendingConsent = new Set<string>();
-  const documentTexts = new Map(vscode.workspace.textDocuments.map(doc => [doc.uri.toString(), doc.getText()]));
-  const executionConfiguration = (uri: vscode.Uri): TrustedExecutionConfiguration => {
-    const configuration = vscode.workspace.getConfiguration(TRUSTED_CONFIGURATION_SECTION, uri);
-    return {
-      module: configuration.get<string>("module", ""),
-      hsonModule: configuration.get<string>("hsonModule", ""),
-      runtimeEntry: configuration.get<string>("runtimeEntry", ""),
-      execArgv: configuration.get<string[]>("execArgv", []),
-    };
-  };
-  const hasConsent = (folder: vscode.WorkspaceFolder, uri: vscode.Uri): boolean => context.workspaceState.get<string>(
-    trusted_consent_key(folder.uri.toString()),
-  ) === trusted_execution_fingerprint(executionConfiguration(uri));
-  const trustedExecutionAvailable = (uri: vscode.Uri): boolean => {
-    const folder = vscode.workspace.getWorkspaceFolder(uri);
-    const configuration = vscode.workspace.getConfiguration(TRUSTED_CONFIGURATION_SECTION, uri);
-    return vscode.workspace.isTrusted && folder !== undefined && configuration.get<boolean>("enabled", false)
-      && hasConsent(folder, uri);
-  };
-  const describe = (): void => {
-    const uri = vscode.window.activeTextEditor?.document.uri.toString();
-    const state = uri === undefined ? undefined : statuses.get(uri);
-    statusBar.text = messages.schemaStatusLabel(state?.status);
-    statusBar.tooltip = messages.schemaStatusTooltip(state?.status, state?.message);
-    statusBar.show();
-  };
-  const enabled = (): boolean => vscode.workspace.isTrusted;
-  const schemaPublisher: DiagnosticPublisher = {
-    set(document, specs): void {
-      const current = vscode.workspace.textDocuments.find(doc => doc.uri.toString() === document.uri && doc.version === document.version);
-      if (current === undefined) return;
-      schemaCollection.set(current.uri, specs.map(spec => {
-        const diagnostic = new vscode.Diagnostic(toRange(current.getText(), spec), spec.message, vscode.DiagnosticSeverity.Error);
-        diagnostic.source = spec.runtimeAdmission ? "Hson" : "Hson Schema"; diagnostic.code = spec.code;
-        diagnostic.relatedInformation = spec.related.map(item => new vscode.DiagnosticRelatedInformation(new vscode.Location(current.uri,
-          new vscode.Range(current.positionAt(item.range.start), current.positionAt(item.range.end))), item.message));
-        return diagnostic;
-      }));
-    },
-    delete(uri): void { schemaCollection.delete(vscode.Uri.parse(uri)); },
-  };
-  const controller = start_schema_diagnostics(openDocumentHost, schemaPublisher, {
-    enabled,
-    clientFor(document) {
-      if (!vscode.workspace.isTrusted) return undefined;
-      const uri = vscode.Uri.parse(document.uri);
-      const folder = vscode.workspace.getWorkspaceFolder(uri);
-      const config = vscode.workspace.getConfiguration(TRUSTED_CONFIGURATION_SECTION, uri);
-      if (folder === undefined || !trustedExecutionAvailable(uri)) return undefined;
-      const key = folder.uri.toString();
-      if (staleProviders.has(key)) return undefined;
-      const previous = clients.get(key);
-      if (previous !== undefined) return previous;
-      const module = config.get<string>("module", "");
-      const hsonModule = config.get<string>("hsonModule", "");
-      if (!module || !hsonModule) return undefined;
-      const modulePath = resolve(folder.uri.fsPath, module);
-      const hsonPath = resolve(folder.uri.fsPath, hsonModule);
-      const entry = config.get<string>("runtimeEntry", "");
-      const client = new TrustedSchemaClient({
-        trust: { workspaceTrusted: vscode.workspace.isTrusted, enabled: true },
-        moduleUrl: pathToFileURL(modulePath).href, hsonModuleUrl: pathToFileURL(hsonPath).href,
-        runtimeEntry: entry ? resolve(folder.uri.fsPath, entry) : resolve(dirname(hsonPath), "internal/trusted-schema-diagnostics/node-runtime-entry.js"),
-        execArgv: config.get<string[]>("execArgv", []),
-        startupDeadlineMs: 5_000,
-      });
-      client.supervisor.onRetired(reason => controller.retire(reason instanceof TrustedSchemaInfrastructureError && reason.code === "RUNTIME_RETIRED" ? "stale" : "runtime-failed", reason.message));
-      clients.set(key, client); files.set(key, new Set([modulePath, hsonPath, entry ? resolve(folder.uri.fsPath, entry) : resolve(dirname(hsonPath), "internal/trusted-schema-diagnostics/node-runtime-entry.js")]));
-      return client;
-    },
-    status(document, status, message) {
-      const uri = vscode.Uri.parse(document.uri);
-      const config = vscode.workspace.getConfiguration(TRUSTED_CONFIGURATION_SECTION, uri);
-      const folder = vscode.workspace.getWorkspaceFolder(uri);
-      const configured = config.get<boolean>("enabled", false);
-      const unavailableMessage = !configured ? "Trusted Schema diagnostics are disabled."
-        : !vscode.workspace.isTrusted ? "Workspace Trust is required before project code can execute."
-        : folder === undefined ? "The document is not contained by a workspace folder."
-        : !hasConsent(folder, uri) ? "This provider/runtime configuration is awaiting explicit Hson consent."
-        : message;
-      statuses.set(document.uri, { status: configured && vscode.workspace.isTrusted && folder !== undefined && hasConsent(folder, uri)
-        ? staleProviders.has(folder.uri.toString()) ? "stale" : status : "off", message: unavailableMessage });
-      describe();
-    },
-    measure(result, perceivedMs) {
-      if (result.measurement === undefined) return;
-      output.appendLine(JSON.stringify({ ...result.measurement, perceivedMs, status: result.status }));
-      if (result.measurement.endToEndMs >= 2_000) output.appendLine(messages.slowSchemaRequest);
-    },
-  });
-  const reconfigure = (): void => {
-    controller.retire();
-    for (const client of clients.values()) client.dispose();
-    clients.clear(); files.clear(); staleProviders.clear();
-    controller.refresh();
-  };
-  const selectedFolder = (): vscode.WorkspaceFolder | undefined => {
-    const active = vscode.window.activeTextEditor?.document.uri;
-    return active === undefined ? vscode.workspace.workspaceFolders?.[0] : vscode.workspace.getWorkspaceFolder(active);
-  };
-  const resourceFor = (folder: vscode.WorkspaceFolder): vscode.Uri => {
-    const active = vscode.window.activeTextEditor?.document.uri;
-    return active !== undefined && vscode.workspace.getWorkspaceFolder(active)?.uri.toString() === folder.uri.toString()
-      ? active : folder.uri;
-  };
-  const requestConsent = async (folder: vscode.WorkspaceFolder, resource: vscode.Uri): Promise<boolean> => {
-    const key = folder.uri.toString();
-    if (hasConsent(folder, resource)) return true;
-    if (!vscode.workspace.isTrusted) {
-      void vscode.window.showWarningMessage("Hson trusted Schema diagnostics remain off until this workspace is trusted through VS Code Workspace Trust.");
-      return false;
-    }
-    const execution = executionConfiguration(resource);
-    if (!execution.module || !execution.hsonModule) {
-      void vscode.window.showWarningMessage("Configure both the Hson Provider Entry and Hson Runtime Module before enabling trusted Schema diagnostics.", "Open Hson Settings")
-        .then(action => action === "Open Hson Settings" && vscode.commands.executeCommand("hson.openSettings"));
-      return false;
-    }
-    if (pendingConsent.has(key)) return false;
-    pendingConsent.add(key);
-    try {
-      const allow = process.env.HSON_D2_TEST_WORKSPACE !== undefined ? "Allow Trusted Execution" : await vscode.window.showWarningMessage(
-        `Allow Hson to execute project code from “${folder.name}” with your user permissions in a supervised separate process? Schema definitions, constraints, recurse callbacks, and module initialization may run. This is not a security sandbox.`,
-        { modal: true },
-        "Allow Trusted Execution",
-      );
-      if (allow !== "Allow Trusted Execution") return false;
-      await context.workspaceState.update(trusted_consent_key(key), trusted_execution_fingerprint(execution));
-      reconfigure();
-      return true;
-    } finally {
-      pendingConsent.delete(key);
-    }
-  };
-  const updateEnabled = async (value: boolean): Promise<void> => {
-    const folder = selectedFolder();
-    if (folder === undefined) {
-      void vscode.window.showWarningMessage("Open a workspace folder before configuring Hson trusted Schema diagnostics.");
-      return;
-    }
-    const resource = resourceFor(folder);
-    const configuration = vscode.workspace.getConfiguration(TRUSTED_CONFIGURATION_SECTION, resource);
-    const target = (vscode.workspace.workspaceFolders?.length ?? 0) > 1
-      ? vscode.ConfigurationTarget.WorkspaceFolder : vscode.ConfigurationTarget.Workspace;
-    await configuration.update("enabled", value, target);
-    if (!value) {
-      await context.workspaceState.update(trusted_consent_key(folder.uri.toString()), undefined);
-      reconfigure();
-      return;
-    }
-    await requestConsent(folder, resource);
-  };
   type ManagedSchemaWatch = Readonly<{ folder: vscode.WorkspaceFolder; project: string; child: ChildProcess }>;
   const schemaToolOutput = vscode.window.createOutputChannel("Hson Schema");
   const schemaToolStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 11);
@@ -606,7 +411,6 @@ export function activate(context: vscode.ExtensionContext): void {
   };
   const refreshSchemaEvidence = (): void => {
     for (const document of vscode.workspace.textDocuments) {
-      if (!document.isDirty) staleSchemaEvidence.delete(document.uri.toString());
       publishSchemaEvidence(document);
     }
   };
@@ -687,20 +491,8 @@ export function activate(context: vscode.ExtensionContext): void {
   };
   schemaToolStatus.command = "hson.schemaToolActions";
   updateSchemaToolStatus();
-  statusBar.command = "hson.openSettings";
   context.subscriptions.push(
     vscode.commands.registerCommand("hson.openSettings", () => vscode.commands.executeCommand("workbench.action.openSettings", HSON_SETTINGS_QUERY)),
-    vscode.commands.registerCommand("hson.enableTrustedSchemaDiagnostics", () => updateEnabled(true)),
-    vscode.commands.registerCommand("hson.disableTrustedSchemaDiagnostics", () => updateEnabled(false)),
-    vscode.commands.registerCommand("hson.restartTrustedSchemaRuntime", async () => {
-      const folder = selectedFolder();
-      if (folder === undefined || !trustedExecutionAvailable(resourceFor(folder))) {
-        void vscode.window.showWarningMessage("Hson trusted Schema diagnostics are not currently authorized and available.");
-        return;
-      }
-      reconfigure();
-      void vscode.window.showInformationMessage("Hson trusted Schema runtime restarted.");
-    }),
     vscode.commands.registerCommand("hson.generateSchemaTypes", (uri?: vscode.Uri) => runSchemaOnce("generate", uri)),
     vscode.commands.registerCommand("hson.checkSchemas", (uri?: vscode.Uri) => runSchemaOnce("check", uri)),
     vscode.commands.registerCommand("hson.startSchemaWatch", (uri?: vscode.Uri) => startSchemaWatch(uri)),
@@ -728,72 +520,13 @@ export function activate(context: vscode.ExtensionContext): void {
       return [generate, watch];
     },
   }, { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }));
-  // Manual invocation only: no punctuation-trigger spam or expression ownership.
-  context.subscriptions.push(vscode.languages.registerCompletionItemProvider(["typescript", "typescriptreact"], {
-    async provideCompletionItems(document, position, token) {
-      const folder = vscode.workspace.getWorkspaceFolder(document.uri);
-      if (folder === undefined || !trustedExecutionAvailable(document.uri)) return [];
-      const key = folder.uri.toString();
-      const client = clients.get(key);
-      if (client === undefined || staleProviders.has(key)) return [];
-      const snapshot = adaptDocument(document);
-      const current = () => !token.isCancellationRequested && document.version === snapshot.version && clients.get(key) === client
-        && !staleProviders.has(key) && trustedExecutionAvailable(document.uri);
-      const result = await client.complete(snapshot, document.offsetAt(position), current);
-      if (!current() || result.completion?.range === undefined) return [];
-      const started = performance.now();
-      const range = new vscode.Range(document.positionAt(result.completion.range.start), document.positionAt(result.completion.range.end));
-      const items = result.completion.items.map(spec => {
-        const item = new vscode.CompletionItem(spec.label, spec.kind === "literal" ? vscode.CompletionItemKind.Value : spec.kind === "tag" ? vscode.CompletionItemKind.Class : vscode.CompletionItemKind.Property);
-        item.range = range;
-        item.insertText = spec.snippet ? new vscode.SnippetString(spec.insertText) : spec.insertText;
-        item.detail = messages.schemaCompletionDetail(spec.detail);
-        item.sortText = spec.sortText;
-        return item;
-      });
-      output.appendLine(JSON.stringify({ completion: true, ...result.measurement, ...result.completion.timings, itemConstructionMs: performance.now() - started }));
-      return items;
-    },
-  }));
-  const watcher = vscode.workspace.createFileSystemWatcher("**/*.{js,mjs,cjs,ts,mts,cts}");
+  const watcher = vscode.workspace.createFileSystemWatcher("**/*.{js,mjs,cjs,ts,mts,cts,json}");
   const changed = (uri: vscode.Uri): void => {
     if (uri.fsPath.includes(".hson-schema.generated.")) refreshSchemaEvidence();
-    for (const [key, client] of clients) {
-      if (files.get(key)?.has(uri.fsPath) || client.schemaModuleUrls.includes(uri.toString())) {
-        client.invalidate();
-        if (!vscode.workspace.textDocuments.some(doc => doc.uri.toString() === uri.toString() && doc.isDirty)) staleProviders.delete(key);
-        controller.refresh();
-      }
-    }
   };
-  context.subscriptions.push(schemaCollection, statusBar, output, schemaToolOutput, schemaToolStatus, controller, watcher,
+  context.subscriptions.push(schemaToolOutput, schemaToolStatus, watcher,
     watcher.onDidChange(changed), watcher.onDidCreate(changed), watcher.onDidDelete(changed),
-    vscode.workspace.onDidOpenTextDocument(doc => documentTexts.set(doc.uri.toString(), doc.getText())),
-    vscode.workspace.onDidCloseTextDocument(doc => documentTexts.delete(doc.uri.toString())),
-    vscode.workspace.onDidChangeTextDocument(event => {
-      const doc = event.document;
-      const previous = documentTexts.get(doc.uri.toString());
-      documentTexts.set(doc.uri.toString(), doc.getText());
-      for (const [key, client] of clients) {
-        if ((files.get(key)?.has(doc.fileName) || client.schemaModuleUrls.includes(doc.uri.toString()))
-          && (previous === undefined || schema_provider_source_changed(doc.fileName, previous, doc.getText()))) {
-          staleProviders.add(key); client.invalidate(); controller.retire();
-        }
-      }
-    }),
-    vscode.workspace.onDidChangeConfiguration(event => {
-      if (!TRUSTED_CONFIGURATION_KEYS.some(key => event.affectsConfiguration(key))) return;
-      reconfigure();
-      for (const folder of vscode.workspace.workspaceFolders ?? []) {
-        const resource = resourceFor(folder);
-        if (vscode.workspace.getConfiguration(TRUSTED_CONFIGURATION_SECTION, resource).get<boolean>("enabled", false)) {
-          void requestConsent(folder, resource);
-        }
-      }
-    }),
-    vscode.workspace.onDidGrantWorkspaceTrust(reconfigure),
     vscode.workspace.onDidChangeWorkspaceFolders(event => {
-      reconfigure();
       for (const folder of event.removed) {
         for (const [key, watch] of schemaWatches) if (watch.folder.uri.toString() === folder.uri.toString()) {
           terminate_schema_process(watch.child); schemaWatches.delete(key); schemaToolStates.set(key, "stopped");
@@ -802,17 +535,15 @@ export function activate(context: vscode.ExtensionContext): void {
       updateSchemaToolStatus();
     }),
     vscode.workspace.onDidChangeTextDocument(event => {
-      if (!staleSchemaEvidence.has(event.document.uri.toString())) return;
       const folder = vscode.workspace.getWorkspaceFolder(event.document.uri);
-      if (folder === undefined) return;
+      if (folder === undefined || local_hson_schema_declarations(event.document.getText(), event.document.fileName).length === 0) return;
       for (const [key, watch] of schemaWatches) if (watch.folder.uri.toString() === folder.uri.toString()) schemaToolStates.set(key, "stale");
       updateSchemaToolStatus();
     }),
-    vscode.window.onDidChangeActiveTextEditor(() => { describe(); updateSchemaToolStatus(); }),
+    vscode.window.onDidChangeActiveTextEditor(updateSchemaToolStatus),
     { dispose(): void {
       for (const watch of schemaWatches.values()) terminate_schema_process(watch.child);
       schemaWatches.clear();
-      for (const client of clients.values()) client.dispose(); clients.clear();
     } });
 }
 
