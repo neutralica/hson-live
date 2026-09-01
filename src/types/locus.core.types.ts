@@ -286,11 +286,11 @@ export type LocusActions<
 }>;
 
 export type LocusMapValue<TMap extends LiveMapAuthority> =
-  TMap extends LiveMap<infer TValue extends JsonValue | undefined>
+  TMap extends LiveMap<infer TValue>
   ? TValue
   : TMap extends DocumentLiveMap
   ? undefined
-  : JsonValue | undefined;
+  : never;
 
 type LocusSharedOptions<
   TMap extends LiveMapAuthority,
@@ -797,7 +797,7 @@ export type Locus<
   mutate: (
     mutation: (draft: LocusMutationDraft<TMap>) => LiveMapCommit<LiveMapAnyOp>,
   ) => Promise<LiveMapCommit<LiveMapAnyOp>>;
-  dispatch_action: (message: LocusClientActionMessage<TActions>) => Promise<LocusServerMessage<LocusMapValue<TMap>>>;
+  dispatch_action: (message: LocusClientActionMessage<TActions>) => Promise<LocusServerMessage>;
   connect: (socket: LocusSocketLike, context?: LocusConnectionContext) => LocusConnection;
   dispose: LocusDisposer;
 }>;

@@ -220,7 +220,7 @@ export type LocusActionSchema<TPayload extends JsonValue | undefined = JsonValue
 }>;
 
 export type LocusSchema<
-  TState extends JsonValue | undefined = JsonValue | undefined,
+  TState = JsonValue | undefined,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = Readonly<{
   state?: LocusValidator<TState> | LocusSchemaDecoder<TState>;

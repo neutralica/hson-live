@@ -21,7 +21,6 @@ import type {
   LocusDisposer,
   LocusOptions,
   ProjectedLocusOptions,
-  LocusMapValue,
   LocusMultiLibrary,
   LocusMultiLibraryOptions,
   LocusMutationDraft,
@@ -807,7 +806,7 @@ function create_locus_for_map<
     origin: LocusActionOrigin,
     emitEvent: LocusActionContext<TMap>["emit_event"],
     trace?: LiveTraceContext,
-  ): Promise<LocusServerMessage<LocusMapValue<TMap>>> {
+  ): Promise<LocusServerMessage> {
     const causation = action_causation(message, origin, trace);
     const actionSpan = trace?.beginSpan(
       "locus",
@@ -911,7 +910,7 @@ function create_locus_for_map<
     origin: LocusActionOrigin,
     emitEvent: LocusActionContext<TMap>["emit_event"],
     trace?: LiveTraceContext,
-  ): Promise<LocusServerMessage<LocusMapValue<TMap>>> {
+  ): Promise<LocusServerMessage> {
     const release = activity.acquire("action");
     try {
       return await dispatch_action_scoped_internal(message, origin, emitEvent, trace);
@@ -920,7 +919,7 @@ function create_locus_for_map<
     }
   }
 
-  function dispatch_action(message: LocusClientActionMessage<TActions>): Promise<LocusServerMessage<LocusMapValue<TMap>>> {
+  function dispatch_action(message: LocusClientActionMessage<TActions>): Promise<LocusServerMessage> {
     if (exclusiveAuthority.failed) {
       return Promise.reject(new LocusAuthorityError(
         "LOCUS_AUTHORITY_TERMINAL",

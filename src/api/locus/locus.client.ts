@@ -265,7 +265,7 @@ export function create_locus_client<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(options: LocusClientOptions<LiveMap<TState>>): LocusClient<LiveMap<TState>, TActions>;
 export function create_locus_client<
-  TMap extends ClassifiedLiveMap,
+  TMap extends LiveMapAuthority,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(options: LocusClientOptions<TMap> & Readonly<{ map: TMap }>): LocusClient<TMap, TActions>;
 export function create_locus_client<
