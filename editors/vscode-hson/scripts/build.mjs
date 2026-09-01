@@ -24,7 +24,7 @@ await build({
 });
 await build({
   absWorkingDir: extensionRoot,
-  entryPoints: ["src/tsserver-plugin.ts"],
+  entryPoints: ["src/tsserver-plugin/tsserver-plugin.ts"],
   outfile: "typescript-plugin/dist/index.cjs",
   bundle: true,
   format: "cjs",

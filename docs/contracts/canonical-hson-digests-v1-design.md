@@ -556,8 +556,8 @@ src/api/transform/constructors/construct-options-3.ts
 src/api/transform/constructors/construct-render-4.ts
 src/api/transform/index.ts                       # public digest exports
 tests/hson-canonical.types.ts
-tests/entrypoints/public-entrypoints.ts
-tests/entrypoints/transform-worker.ts
+tests/entrypoints/public/public-entrypoints.ts
+tests/entrypoints/worker/transform-worker.ts
 src/_tests/test-launchers.ts
 package.json
 ```

@@ -1,13 +1,4 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": [],
-    "strict": true,
-    "noEmit": true,
-    "skipLibCheck": false
-  },
-  "files": ["livetree-browser.ts"]
+  "extends": "./browser/tsconfig.json",
+  "files": ["browser/livetree-browser.ts"]
 }

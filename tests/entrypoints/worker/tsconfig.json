@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "ESNext.Disposable"],
+    "types": [],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": false
+  },
+  "files": [
+    "./hson-worker.ts",
+    "./livemap-worker.ts",
+    "./locus-worker.ts",
+    "./transform-worker.ts"
+  ]
+}

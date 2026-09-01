@@ -1,0 +1,11 @@
+{
+  "extends": "../tests/tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".."
+  },
+  "files": [
+    "./hson-schema.mts",
+    "./typescript-observability.mts"
+  ],
+  "include": []
+}

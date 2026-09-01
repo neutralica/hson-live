@@ -121,7 +121,7 @@
     "certify:consumer": "node ../hson-demo2/scripts/certified-package.mjs certify",
     "check:source": "tsc -p tsconfig.json --noEmit",
     "check:tests": "tsc -p tests/tsconfig.json --noEmit",
-    "check:tooling": "tsc -p tsconfig.tooling.json --noEmit",
+    "check:tooling": "tsc -p scripts/tsconfig.json --noEmit",
     "check:editor": "npm --prefix editors/vscode-hson run check:source",
     "check:schema-consumers": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm scripts/hson-schema.mts check --project tests/fixtures/hson-schema-mvp/tsconfig.json && TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm scripts/hson-schema.mts check --project tests/fixtures/hson-schema-document/tsconfig.json",
     "check:vscode-schema-tooling": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/vscode-schema-tooling.acceptance.mts",

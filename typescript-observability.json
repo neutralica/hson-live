@@ -1,20 +1,27 @@
 {
   "projects": [
-    { "path": "tsconfig.json", "authority": "check:source" },
-    { "path": "tests/tsconfig.json", "authority": "check:tests" },
-    { "path": "tsconfig.tooling.json", "authority": "check:tooling" },
-    { "path": "editors/vscode-hson/tsconfig.json", "authority": "check:editor" },
-    { "path": "editors/vscode-hson/tsconfig.plugin.json", "authority": "check:editor" },
-    { "path": "tests/entrypoints/tsconfig.public.json", "authority": "check:entrypoints" },
-    { "path": "tests/entrypoints/tsconfig.hson-worker.json", "authority": "check:entrypoints" },
-    { "path": "tests/entrypoints/tsconfig.transform-worker.json", "authority": "check:entrypoints" },
-    { "path": "tests/entrypoints/tsconfig.livemap-worker.json", "authority": "check:entrypoints" },
-    { "path": "tests/entrypoints/tsconfig.locus-worker.json", "authority": "check:entrypoints" },
-    { "path": "tests/entrypoints/tsconfig.livehost-node.json", "authority": "check:entrypoints" },
-    { "path": "tests/entrypoints/tsconfig.livetree-browser.json", "authority": "check:entrypoints" },
-    { "path": "tests/fixtures/hson-schema-mvp/tsconfig.json", "authority": "check:schema-consumers" },
-    { "path": "tests/fixtures/hson-schema-document/tsconfig.json", "authority": "check:schema-consumers" },
-    { "path": "editors/vscode-hson/tests/fixtures/declarative-schema/tsconfig.verify.json", "authority": "npm --prefix editors/vscode-hson run test:integration" }
+    { "path": "tsconfig.json", "role": "primary", "authority": "check:source" },
+    { "path": "tests/tsconfig.json", "role": "primary", "authority": "check:tests" },
+    { "path": "scripts/tsconfig.json", "role": "primary", "authority": "check:tooling" },
+    { "path": "editors/vscode-hson/tsconfig.json", "role": "primary", "authority": "check:editor" },
+    { "path": "editors/vscode-hson/src/tsserver-plugin/tsconfig.json", "role": "primary", "authority": "check:editor" },
+    { "path": "tests/entrypoints/public/tsconfig.json", "role": "primary", "authority": "check:entrypoints" },
+    { "path": "tests/entrypoints/worker/tsconfig.json", "role": "primary", "authority": "check:entrypoints" },
+    { "path": "tests/entrypoints/node/tsconfig.json", "role": "primary", "authority": "check:entrypoints" },
+    { "path": "tests/entrypoints/browser/tsconfig.json", "role": "primary", "authority": "check:entrypoints" },
+    { "path": "tests/fixtures/hson-schema-mvp/tsconfig.json", "role": "primary", "authority": "check:schema-consumers" },
+    { "path": "tests/fixtures/hson-schema-document/tsconfig.json", "role": "primary", "authority": "check:schema-consumers" },
+    { "path": "editors/vscode-hson/tests/fixtures/declarative-schema/tsconfig.json", "role": "primary", "authority": "npm --prefix editors/vscode-hson run test:integration" },
+
+    { "path": "editors/vscode-hson/tsconfig.plugin.json", "role": "subordinate", "authority": "check:editor" },
+    { "path": "tests/entrypoints/tsconfig.public.json", "role": "subordinate", "authority": "check:entrypoints" },
+    { "path": "tests/entrypoints/tsconfig.hson-worker.json", "role": "subordinate", "authority": "check:entrypoints" },
+    { "path": "tests/entrypoints/tsconfig.transform-worker.json", "role": "subordinate", "authority": "check:entrypoints" },
+    { "path": "tests/entrypoints/tsconfig.livemap-worker.json", "role": "subordinate", "authority": "check:entrypoints" },
+    { "path": "tests/entrypoints/tsconfig.locus-worker.json", "role": "subordinate", "authority": "check:entrypoints" },
+    { "path": "tests/entrypoints/tsconfig.livehost-node.json", "role": "subordinate", "authority": "check:entrypoints" },
+    { "path": "tests/entrypoints/tsconfig.livetree-browser.json", "role": "subordinate", "authority": "check:entrypoints" },
+    { "path": "editors/vscode-hson/tests/fixtures/declarative-schema/tsconfig.verify.json", "role": "subordinate", "authority": "npm --prefix editors/vscode-hson run test:integration" }
   ],
   "exemptions": [
     {

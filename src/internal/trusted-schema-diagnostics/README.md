@@ -51,7 +51,7 @@ execution-boundary tests without exposing a public test hook.
 
 `npm run test:trusted-schema-d1` contains the end-to-end fixtures, deterministic
 process-boundary checks, public export graph checks, and executed timing probes.
-Negative type imports also live in `tests/entrypoints/public-entrypoints.ts`.
+Negative type imports also live in `tests/entrypoints/public/public-entrypoints.ts`.
 The D2 VS Code client reuses this process supervisor and protocol. Arbitrary
 provenance tracing and automatic Schema instrumentation remain out of scope.
 Source-bound interpolation capture is described under D5 below.
