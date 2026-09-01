@@ -373,10 +373,10 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
   }
 
   /** Terminally remove and dispose this complete branch. */
-  public remove(): LiveTreeLifecycleResult {
+  public remove(): void {
     const node = this.nodeRef.resolveNode();
-    if (!node) return 0;
-    return remove_livetree_terminal(node, runtime_for_tree(this));
+    if (!node) return;
+    remove_livetree_terminal(node, runtime_for_tree(this));
   }
 
 

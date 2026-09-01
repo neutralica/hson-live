@@ -21,28 +21,6 @@ export class LocusRecoveryError extends Error {
   }
 }
 
-export class LocusClientRecoveryError extends Error {
-  readonly code: string;
-  readonly cause?: unknown;
-
-  constructor(code: string, message: string, cause?: unknown) {
-    super(message);
-    this.name = "LocusClientRecoveryError";
-    this.code = code;
-    if (cause !== undefined) this.cause = cause;
-  }
-}
-
-export class LocusClientSessionError extends Error {
-  readonly code: string;
-
-  constructor(code: string, message: string) {
-    super(message);
-    this.name = "LocusClientSessionError";
-    this.code = code;
-  }
-}
-
 export class LocusDuplicateActionIdError extends Error {
   readonly code = "LOCUS_DUPLICATE_ACTION_ID" as const;
   readonly actionId: string;

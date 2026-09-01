@@ -130,6 +130,7 @@ export type LiveMapStagedAuthority<TMap extends object = object> = Readonly<{
   discard: LiveMapTransitionController["discard"];
   claimManagement: (owner: object, schedule: LiveMapManagedMutationScheduler<TMap>) => void;
   releaseManagement: (owner: object) => void;
+  runManaged: <T>(owner: object, operation: () => T) => T;
   scheduleManaged: (mutation: (draft: TMap) => LiveMapCommit<LiveMapAnyOp>) => Promise<LiveMapCommit<LiveMapAnyOp>> | undefined;
 }>;
 

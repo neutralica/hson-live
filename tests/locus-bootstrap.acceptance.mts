@@ -10,7 +10,6 @@ import {
   LocusBootstrapError,
   capture_locus_bootstrap,
   create_locus,
-  create_locus_bootstrap_client,
   decode_locus_bootstrap,
   encode_locus_bootstrap,
   install_locus_bootstrap,
@@ -18,6 +17,7 @@ import {
   type LocusBootstrapAuthority,
   type LocusSocketLike,
 } from "hson-live/locus";
+import { create_locus_bootstrap_echo } from "hson-live/echo";
 import { create_node_locus_socket } from "hson-live/locus/node";
 import { start_node_application_host } from "hson-live/livehost/node";
 import WebSocket from "ws";
@@ -254,7 +254,7 @@ check("malformed Hson rejects structurally", () => {
   assert.equal(error_code(() => decode_locus_bootstrap("<broken")), "LOCUS_BOOTSTRAP_MALFORMED_HSON");
 });
 
-check("old LiveHost discriminator rejects explicitly", () => {
+check("a removed LiveHost discriminator rejects through current discriminator validation", () => {
   assert.equal(
     error_code(() => decode_locus_bootstrap(encode_unknown_bootstrap({ ...base.bootstrap, format: "hson-livehost-bootstrap" }))),
     "LOCUS_BOOTSTRAP_FORMAT_UNSUPPORTED",
@@ -377,12 +377,12 @@ check("preinstalled mirror continues as current through existing recovery", asyn
   const pair = socket_pair();
   authority.connect(pair.server);
   const installed = install_locus_bootstrap(bootstrap);
-  const client = create_locus_bootstrap_client(installed, { socket: pair.client });
+  const client = create_locus_bootstrap_echo(installed, { socket: pair.client });
   assert.equal(client.status, "installed");
-  const result = await client.connect_and_recover();
+  const result = await client.connectAndRecover();
   assert.equal(result.strategy, "current");
   assert.equal(result.headRev, bootstrap.rev);
-  assert.equal(client.client.recovery.status, "caught_up");
+  assert.equal(client.echo.recovery.status, "caught_up");
   assert.equal(client.status, "live");
   client.dispose();
   client.dispose();
@@ -395,12 +395,12 @@ check("commits after HTTP cut replay exactly once", async () => {
   await authority.mutate((draft) => draft.set(["value"], 3));
   const pair = socket_pair();
   authority.connect(pair.server);
-  const client = create_locus_bootstrap_client(install_locus_bootstrap(bootstrap), { socket: pair.client });
-  const result = await client.connect_and_recover();
+  const client = create_locus_bootstrap_echo(install_locus_bootstrap(bootstrap), { socket: pair.client });
+  const result = await client.connectAndRecover();
   assert.equal(result.strategy, "replay");
   assert.equal(client.map.rev, authority.stream.headRev);
   assert.deepEqual(client.map.capture(), authority.map.capture());
-  assert.equal(client.client.recovery.debug().duplicateCommitsIgnored, 0);
+  assert.equal(client.echo.recovery.debug().duplicateCommitsIgnored, 0);
   client.dispose();
 });
 
@@ -411,12 +411,12 @@ check("duplicate revision delivery after bootstrap recovery is ignored", async (
   assert.ok(commit);
   const pair = socket_pair();
   authority.connect(pair.server);
-  const client = create_locus_bootstrap_client(install_locus_bootstrap(bootstrap), { socket: pair.client });
-  await client.connect_and_recover();
+  const client = create_locus_bootstrap_echo(install_locus_bootstrap(bootstrap), { socket: pair.client });
+  await client.connectAndRecover();
   const request = pair.clientSent.map((raw) => JSON.parse(raw)).find((message) => message.type === "recover");
   assert.ok(request);
   pair.server.send(JSON.stringify({ type: "commit", id: request.id, commit }));
-  assert.equal(client.client.recovery.debug().duplicateCommitsIgnored, 1);
+  assert.equal(client.echo.recovery.debug().duplicateCommitsIgnored, 1);
   assert.deepEqual(client.map.capture(), authority.map.capture());
   client.dispose();
 });
@@ -425,8 +425,8 @@ check("revision gap after bootstrap recovery fails through the existing client p
   const { authority, bootstrap } = fixture();
   const pair = socket_pair();
   authority.connect(pair.server);
-  const client = create_locus_bootstrap_client(install_locus_bootstrap(bootstrap), { socket: pair.client });
-  await client.connect_and_recover();
+  const client = create_locus_bootstrap_echo(install_locus_bootstrap(bootstrap), { socket: pair.client });
+  await client.connectAndRecover();
   const request = pair.clientSent.map((raw) => JSON.parse(raw)).find((message) => message.type === "recover");
   assert.ok(request);
   const other = create_locus({
@@ -439,8 +439,8 @@ check("revision gap after bootstrap recovery fails through the existing client p
   const gap = other.stream.history.replay_after(1)?.[0];
   assert.ok(gap);
   pair.server.send(JSON.stringify({ type: "commit", id: request.id, commit: gap }));
-  assert.equal(client.client.recovery.status, "failed");
-  assert.equal(client.client.recovery.failure?.code, "LOCUS_RECOVERY_COMMIT_GAP");
+  assert.equal(client.echo.recovery.status, "failed");
+  assert.equal(client.echo.recovery.failure?.code, "LOCUS_RECOVERY_COMMIT_GAP");
   client.dispose();
   other.dispose();
 });
@@ -456,12 +456,12 @@ check("commit published during recovery is ordered after the selected body", asy
     void authority.mutate((draft) => draft.set(["value"], 3));
   });
   authority.connect(pair.server);
-  const client = create_locus_bootstrap_client(install_locus_bootstrap(bootstrap), { socket: pair.client });
-  const result = await client.connect_and_recover();
+  const client = create_locus_bootstrap_echo(install_locus_bootstrap(bootstrap), { socket: pair.client });
+  const result = await client.connectAndRecover();
   assert.equal(result.strategy, "replay");
   assert.equal(publishedTail, true);
   assert.deepEqual(client.map.capture(), authority.map.capture());
-  assert.equal(client.client.recovery.lastAppliedRev, authority.stream.headRev);
+  assert.equal(client.echo.recovery.lastAppliedRev, authority.stream.headRev);
   client.dispose();
 });
 
@@ -470,8 +470,8 @@ check("history eviction replaces the bootstrap mirror through existing snapshot 
   await authority.mutate((draft) => draft.set(["value"], 2));
   const pair = socket_pair();
   authority.connect(pair.server);
-  const client = create_locus_bootstrap_client(install_locus_bootstrap(bootstrap), { socket: pair.client });
-  const result = await client.connect_and_recover();
+  const client = create_locus_bootstrap_echo(install_locus_bootstrap(bootstrap), { socket: pair.client });
+  const result = await client.connectAndRecover();
   assert.equal(result.strategy, "snapshot");
   assert.equal(client.map.rev, authority.stream.headRev);
   assert.deepEqual(client.map.capture(), authority.map.capture());
@@ -487,8 +487,8 @@ check("incarnation replacement never treats revision equality as current", async
   });
   const pair = socket_pair();
   replacement.connect(pair.server);
-  const client = create_locus_bootstrap_client(install_locus_bootstrap(first.bootstrap), { socket: pair.client });
-  const result = await client.connect_and_recover();
+  const client = create_locus_bootstrap_echo(install_locus_bootstrap(first.bootstrap), { socket: pair.client });
+  const result = await client.connectAndRecover();
   assert.equal(result.strategy, "snapshot");
   assert.equal(result.headRev, replacement.stream.headRev);
   assert.deepEqual(client.map.capture(), replacement.map.capture());
@@ -500,9 +500,9 @@ check("different logical authority rejects continuation", async () => {
   const wrong = create_locus({ state: { value: 9 }, logicalMapId: "other-map" });
   const pair = socket_pair();
   wrong.connect(pair.server);
-  const client = create_locus_bootstrap_client(install_locus_bootstrap(first.bootstrap), { socket: pair.client });
-  await assert.rejects(client.connect_and_recover(), /different logical map|invalid target/i);
-  assert.equal(client.client.recovery.status, "failed");
+  const client = create_locus_bootstrap_echo(install_locus_bootstrap(first.bootstrap), { socket: pair.client });
+  await assert.rejects(client.connectAndRecover(), /different logical map|invalid target/i);
+  assert.equal(client.echo.recovery.status, "failed");
   client.dispose();
 });
 
@@ -534,9 +534,9 @@ check("equal route-local selectors stay isolated across application-owned author
 check("socket failure remains distinct from installed state and releases cleanly", async () => {
   const { bootstrap } = fixture();
   const pair = socket_pair();
-  const client = create_locus_bootstrap_client(install_locus_bootstrap(bootstrap), { socket: pair.client });
+  const client = create_locus_bootstrap_echo(install_locus_bootstrap(bootstrap), { socket: pair.client });
   const installedCapture = client.map.capture();
-  const recovery = client.connect_and_recover();
+  const recovery = client.connectAndRecover();
   pair.close();
   await assert.rejects(recovery, /disconnected/i);
   assert.equal(client.status, "failed");
@@ -618,11 +618,11 @@ check("real HTTP helper and WebSocket continuation share one application authori
       websocket.once("open", resolve);
       websocket.once("error", reject);
     });
-    const client = create_locus_bootstrap_client(
+    const client = create_locus_bootstrap_echo(
       install_locus_bootstrap(bootstrap),
       { socket: create_node_locus_socket(websocket) },
     );
-    const recovered = await client.connect_and_recover();
+    const recovered = await client.connectAndRecover();
     assert.equal(recovered.strategy, "replay");
     await authority.mutate((draft) => draft.set(["value"], 3));
     await new Promise((resolve) => setTimeout(resolve, 10));

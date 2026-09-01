@@ -3,6 +3,8 @@
 import { IdApi, ClassApi } from "../../../types/dom.types.js";
 import { LiveTree } from "../livetree.js";
 import { getAttrImpl, setAttrsImpl, removeAttrImpl } from "./attr-handle.js";
+import { document_binding_for_node } from "../lifecycle/document-binding-state.js";
+import type { CanonicalPublicAttrs } from "../../../core/types.js";
 
 
 export function make_id_api<TTree extends LiveTree>(tree: TTree): IdApi<TTree> {
@@ -29,6 +31,23 @@ export function make_id_api<TTree extends LiveTree>(tree: TTree): IdApi<TTree> {
 }
 
 export function make_class_api<TTree extends LiveTree>(tree: TTree): ClassApi<TTree> {
+  const transform = (
+    operation: (current: Set<string>) => Set<string>,
+  ): TTree | undefined => {
+    const binding = document_binding_for_node(tree.node);
+    if (binding === undefined) return undefined;
+    binding.delegateAttrs({
+      kind: "transform",
+      apply: (attrs: CanonicalPublicAttrs) => {
+        const raw = typeof attrs.class === "string" ? attrs.class : "";
+        const next = [...operation(new Set(raw.split(/\s+/).filter(Boolean)))].filter(Boolean).join(" ").trim();
+        return next.length === 0
+          ? { kind: "drop", name: "class" }
+          : { kind: "set", name: "class", value: next };
+      },
+    });
+    return tree;
+  };
   // read from attrs, not tree.classlist.get() (avoids self-recursion)
   const getRaw = (): string | undefined => {
     const v = tree.attrs.get("class");
@@ -67,18 +86,35 @@ export function make_class_api<TTree extends LiveTree>(tree: TTree): ClassApi<TT
     },
 
     add: (...names) => {
+      const delegated = transform((set) => {
+        for (const n of names) if (n) set.add(n);
+        return set;
+      });
+      if (delegated !== undefined) return delegated;
       const set = getSet();
       for (const n of names) if (n) set.add(n);
       return write(set);
     },
 
     remove: (...names) => {
+      const delegated = transform((set) => {
+        for (const n of names) if (n) set.delete(n);
+        return set;
+      });
+      if (delegated !== undefined) return delegated;
       const set = getSet();
       for (const n of names) if (n) set.delete(n);
       return write(set);
     },
 
     toggle: (name, force) => {
+      const delegated = transform((set) => {
+        const shouldHave = force === undefined ? !set.has(name) : force;
+        if (shouldHave) set.add(name);
+        else set.delete(name);
+        return set;
+      });
+      if (delegated !== undefined) return delegated;
       const set = getSet();
       const has = set.has(name);
       const shouldHave = (force === undefined) ? !has : force;

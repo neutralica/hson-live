@@ -165,12 +165,35 @@ import {
   LocusAuthorityError,
   hsonLocus as hostSubpath,
   type Locus,
+  type LocusClientId,
+  type LocusClientMessage,
   type LocusAuthorityErrorCode,
   type LocusReadonlyMap,
+  type LocusMultiLibrary,
+  type LocusMultiLibraryActionContext,
   type LocusSyncManager,
   type LocusSyncSend,
   type LocusSyncSession,
 } from "hson-live/locus";
+void (0 as unknown as LocusClientId);
+void (0 as unknown as LocusClientMessage);
+declare const multiLocus: LocusMultiLibrary;
+declare const multiActionContext: LocusMultiLibraryActionContext;
+void multiLocus.dispatchAction;
+void multiActionContext.emitEvent("event", null);
+// @ts-expect-error Removed snake_case multi-library method has no alias.
+void multiLocus.dispatch_action;
+// @ts-expect-error Removed snake_case multi-library context method has no alias.
+void multiActionContext.emit_event;
+// @ts-expect-error Echo construction belongs to hson-live/echo.
+import { create_echo as leakedCreateEcho } from "hson-live/locus";
+// @ts-expect-error Architectural endpoint types do not leak through Locus.
+import type { Echo as LeakedEcho } from "hson-live/locus";
+// @ts-expect-error Endpoint action handles do not leak through Locus.
+import type { EchoActionPromise as LeakedEchoActionPromise } from "hson-live/locus";
+void leakedCreateEcho;
+void (0 as unknown as LeakedEcho);
+void (0 as unknown as LeakedEchoActionPromise);
 // @ts-expect-error The historical one-map constructor is removed from the root.
 import { create_livehost } from "hson-live";
 // @ts-expect-error The historical one-map facade is removed from the root.

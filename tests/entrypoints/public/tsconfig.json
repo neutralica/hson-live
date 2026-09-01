@@ -9,5 +9,5 @@
     "noEmit": true,
     "skipLibCheck": false
   },
-  "files": ["./public-entrypoints.ts", "./root-compatibility.ts"]
+  "files": ["./public-entrypoints.ts", "./root-compatibility.ts", "./echo-entrypoint.ts"]
 }

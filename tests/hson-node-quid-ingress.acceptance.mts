@@ -892,7 +892,7 @@ check("LiveTree detach retains ownership and terminal removal releases it", () =
     assert.equal(branch.detach(), 1);
     assert.equal(read_hson_node_quid(branch.node), Q3);
     assert.equal(get_node_by_quid(Q3), branch.node);
-    assert.equal(branch.remove(), 1);
+    branch.remove();
     assert.equal(get_node_by_quid(Q3), undefined);
   } finally {
     destroy_subtree_quids(parent.node);

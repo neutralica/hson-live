@@ -100,7 +100,7 @@ function socket_pair() {
 function connect(host, clientId, options = {}) {
     const pair = socket_pair();
     host.connect(pair.server);
-    const client = hson.locus.client({
+    const client = hson.echo.create({
         socket: pair.client,
         clientId,
         ...options,
@@ -204,7 +204,7 @@ await check(
         assert.equal(f.host.actionRequests.debug().pendingRequestCount, 1);
         assert.equal(f.executions(), 1);
         assert.equal(
-            (await client.action_status(call.request.requestId)).state,
+            (await client.actionStatus(call.request.requestId)).state,
             'pending',
         );
         f.gate.resolve();
@@ -223,8 +223,8 @@ await check('duplicate pending requests join one execution', async () => {
     const b = connect(f.host, 'same-client');
     const original = a.client.action('gated', 4);
     await f.entered.promise;
-    const joined1 = b.client.retry_action(original.request);
-    const joined2 = b.client.retry_action(original.request);
+    const joined1 = b.client.retryAction(original.request);
+    const joined2 = b.client.retryAction(original.request);
     assert.equal(f.executions(), 1);
     assert.equal(f.host.actionRequests.debug().pendingWaiterCount, 3);
     f.gate.resolve();
@@ -243,7 +243,7 @@ await check('completed duplicate returns cached outcome', async () => {
     const first = await client.action('echo', { b: 2, a: 1 });
     const request = client.action('echo', { a: 1, b: 2 }).request;
     const same = { ...request, requestId: first.requestId };
-    const cached = await client.retry_action(same);
+    const cached = await client.retryAction(same);
     assert.equal(cached.delivery, 'cached');
     assert.equal(cached.completionRev, first.completionRev);
     assert.deepEqual(cached.result, first.result);
@@ -257,7 +257,7 @@ await check(
         const { client } = connect(f.host, 'conflict-client');
         const original = client.action('gated', 5);
         await f.entered.promise;
-        const conflict = await client.retry_action({
+        const conflict = await client.retryAction({
             requestId: original.request.requestId,
             name: 'gated',
             payload: 6,
@@ -269,7 +269,7 @@ await check(
         );
         assert.equal(conflict.delivery, 'rejected');
         assert.equal(f.executions(), 1);
-        const nameConflict = await client.retry_action({
+        const nameConflict = await client.retryAction({
             requestId: original.request.requestId,
             name: 'echo',
             payload: 5,
@@ -316,17 +316,17 @@ await check(
         await assert.rejects(original);
         const b = connect(f.host, 'uncertain-client');
         assert.equal(
-            (await b.client.action_status(request.requestId)).state,
+            (await b.client.actionStatus(request.requestId)).state,
             'pending',
         );
-        const joined = b.client.retry_action(request);
+        const joined = b.client.retryAction(request);
         f.gate.resolve();
         const outcome = await joined;
         assert.equal(outcome.delivery, 'joined');
-        const status = await b.client.action_status(request.requestId);
+        const status = await b.client.actionStatus(request.requestId);
         assert.equal(status.state, 'succeeded');
         assert.equal(status.outcome.completionRev, outcome.completionRev);
-        assert.equal((await b.client.retry_action(request)).delivery, 'cached');
+        assert.equal((await b.client.retryAction(request)).delivery, 'cached');
         assert.equal(f.executions(), 1);
     },
 );
@@ -339,12 +339,12 @@ await check('failed action is terminal and cached', async () => {
     assert.equal(failure.type, 'error');
     assert.equal(failure.error.code, 'LOCUS_ACTION_FAILED');
     assert.equal(typeof failure.completionRev, 'number');
-    const cached = await client.retry_action(first.request);
+    const cached = await client.retryAction(first.request);
     assert.equal(cached.delivery, 'cached');
     assert.deepEqual(cached.error, failure.error);
     assert.equal(f.executions(), 1);
     assert.equal(
-        (await client.action_status(first.request.requestId)).state,
+        (await client.actionStatus(first.request.requestId)).state,
         'failed',
     );
 });
@@ -361,7 +361,7 @@ await check(
         assert.equal(f.host.stream.headRev, before + 1);
         assert.equal(failure.completionRev, f.host.stream.headRev);
         assert.deepEqual(f.host.map.snap(), { value: 9 });
-        await client.retry_action(first.request);
+        await client.retryAction(first.request);
         assert.equal(f.host.stream.headRev, before + 1);
         assert.equal(f.executions(), 1);
     },
@@ -377,7 +377,7 @@ await check(
         const outcome = await first;
         assert.equal(outcome.completionRev, before);
         assert.equal(
-            (await client.retry_action(first.request)).completionRev,
+            (await client.retryAction(first.request)).completionRev,
             before,
         );
         assert.equal(f.executions(), 1);
@@ -459,7 +459,7 @@ await check(
         const { client } = connect(f.host, 'canonical-client');
         const first = client.action('echo', { a: 1, nested: { x: 2, y: 3 } });
         await first;
-        const cached = await client.retry_action({
+        const cached = await client.retryAction({
             requestId: first.request.requestId,
             name: 'echo',
             payload: { nested: { y: 3, x: 2 }, a: 1 },
@@ -479,7 +479,7 @@ await check('outcome normalization failure is retained', async () => {
         outcome.error.code,
         'LOCUS_ACTION_OUTCOME_NORMALIZATION_FAILED',
     );
-    assert.equal((await client.retry_action(first.request)).delivery, 'cached');
+    assert.equal((await client.retryAction(first.request)).delivery, 'cached');
     assert.equal(f.executions(), 1);
     assert.equal(
         f.host.actionRequests.debug().outcomeNormalizationFailureCount,
@@ -563,16 +563,16 @@ await check(
         const second = client.action('echo', 'two');
         await second;
         assert.equal(
-            (await client.action_status(first.request.requestId)).state,
+            (await client.actionStatus(first.request.requestId)).state,
             'expired',
         );
         assert.equal(
-            (await client.retry_action(first.request)).error.code,
+            (await client.retryAction(first.request)).error.code,
             'LOCUS_ACTION_REQUEST_EXPIRED',
         );
         clock.advance(1_001);
         assert.equal(
-            (await client.action_status(second.request.requestId)).state,
+            (await client.actionStatus(second.request.requestId)).state,
             'expired',
         );
 
@@ -590,7 +590,7 @@ await check(
         const byteRequest = byteClient.action('echo', 'large-result');
         await byteRequest;
         assert.equal(
-            (await byteClient.action_status(byteRequest.request.requestId))
+            (await byteClient.actionStatus(byteRequest.request.requestId))
                 .state,
             'expired',
         );
@@ -613,10 +613,10 @@ await check(
         const newer = forgottenClient.action('echo', 2);
         await newer;
         assert.equal(
-            (await forgottenClient.action_status(old.request.requestId)).state,
+            (await forgottenClient.actionStatus(old.request.requestId)).state,
             'unknown',
         );
-        const unknownRetry = await forgottenClient.retry_action(old.request);
+        const unknownRetry = await forgottenClient.retryAction(old.request);
         assert.equal(
             unknownRetry.error.code,
             'LOCUS_ACTION_REQUEST_UNKNOWN',
@@ -641,7 +641,7 @@ await check('terminal limits never evict a pending action', async () => {
     await f.entered.promise;
     await client.action('echo', 2);
     assert.equal(
-        (await client.action_status(pending.request.requestId)).state,
+        (await client.actionStatus(pending.request.requestId)).state,
         'pending',
     );
     assert.equal(f.host.actionRequests.debug().pendingRequestCount, 1);
@@ -664,7 +664,7 @@ await check(
         };
         let joined;
         f.setReentrant(() => {
-            joined = b.client.retry_action(descriptor);
+            joined = b.client.retryAction(descriptor);
         });
         const original = a.client.action('reentrant', 12);
         const [one, two] = await Promise.all([original, joined]);
@@ -695,7 +695,7 @@ await check('fenced transport cannot create a dedupe record', async () => {
     );
     assert.equal(f.executions(), 0);
     assert.equal(
-        (await second.client.action_status('fenced-id')).state,
+        (await second.client.actionStatus('fenced-id')).state,
         'unknown',
     );
 });
@@ -714,7 +714,7 @@ await check(
             outcome.error.code,
             'LOCUS_ACTION_DEDUPE_STORE_UNAVAILABLE',
         );
-        const retry = await client.retry_action(pending.request);
+        const retry = await client.retryAction(pending.request);
         assert.equal(
             retry.error.code,
             'LOCUS_ACTION_DEDUPE_STORE_UNAVAILABLE',
@@ -764,7 +764,7 @@ await check(
         const url = `ws://127.0.0.1:${address.port}`;
         const wsA = new WebSocket(url);
         await opened(wsA);
-        const clientA = hson.locus.client({
+        const clientA = hson.echo.create({
             socket: ws_socket(wsA),
             clientId: 'real-browser',
             recovery: { logicalMapId: f.host.stream.logicalMapId },
@@ -778,30 +778,33 @@ await check(
         wsA.close();
         await closeA;
         await assert.rejects(original);
+        const savedMap = clientA.map;
+        const savedCursor = {
+            incarnationId: clientA.recovery.incarnationId,
+            lastAppliedRev: clientA.recovery.lastAppliedRev,
+        };
+        clientA.dispose();
 
         const wsB = new WebSocket(url);
         await opened(wsB);
-        const clientB = hson.locus.client({
+        const clientB = hson.echo.create({
             socket: ws_socket(wsB),
             clientId: 'real-browser',
-            map: clientA.map,
+            map: savedMap,
             recovery: {
                 logicalMapId: f.host.stream.logicalMapId,
-                cursor: {
-                    incarnationId: clientA.recovery.incarnationId,
-                    lastAppliedRev: clientA.recovery.lastAppliedRev,
-                },
+                cursor: savedCursor,
             },
         });
         clientB.connect();
         await clientB.recovery.recover();
         assert.equal(
-            (await clientB.action_status(request.requestId)).state,
+            (await clientB.actionStatus(request.requestId)).state,
             'pending',
         );
-        const joined = clientB.retry_action(request);
+        const joined = clientB.retryAction(request);
         assert.equal(
-            (await clientB.action_status(request.requestId)).state,
+            (await clientB.actionStatus(request.requestId)).state,
             'pending',
         );
         assert.equal(
@@ -814,7 +817,7 @@ await check(
         assert.equal(f.executions(), 1);
         assert.ok(clientB.recovery.lastAppliedRev >= outcome.completionRev);
         assert.equal(
-            (await clientB.action_status(request.requestId)).state,
+            (await clientB.actionStatus(request.requestId)).state,
             'succeeded',
         );
         const closeB = closed(wsB);

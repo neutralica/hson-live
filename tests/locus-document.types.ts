@@ -1,9 +1,9 @@
-import { create_locus, create_locus_client, create_persistent_locus, hson, validate_document_path } from "../src/index.ts";
+import { create_locus, create_echo, create_persistent_locus, hson, validate_document_path } from "../src/index.ts";
 import type {
   DocumentLiveMap,LocusOptions,
 
   Locus,
-  LocusClient,
+  Echo,
   LocusDocumentActionPayloads,
   LocusEncodedGraphOp,
   LiveMapDocumentAttrs,
@@ -119,14 +119,14 @@ const socket = {
   onClose() {},
 };
 
-const inferredProjectedClient = create_locus_client<{ count: number }>({ socket });
+const inferredProjectedClient = create_echo<{ count: number }>({ socket });
 inferredProjectedClient.subscribe([]);
 inferredProjectedClient.unsubscribe(["count"]);
 type InferredProjectedSubscribeIsCallable = Assert<
   Equal<typeof inferredProjectedClient.subscribe, (path: readonly (string | number)[]) => void>
 >;
 
-declare const projectedClientAlias: LocusClient<LiveMap<{ count: number }>>;
+declare const projectedClientAlias: Echo<LiveMap<{ count: number }>>;
 projectedClientAlias.subscribe([]);
 projectedClientAlias.unsubscribe(["count"]);
 type ProjectedAliasSubscribeIsCallable = Assert<
@@ -134,7 +134,7 @@ type ProjectedAliasSubscribeIsCallable = Assert<
 >;
 
 const existingProjectedMap = hson.liveMap.fromJson({ count: 0 });
-const existingProjectedClient = create_locus_client({ socket, map: existingProjectedMap });
+const existingProjectedClient = create_echo({ socket, map: existingProjectedMap });
 existingProjectedClient.subscribe([]);
 existingProjectedClient.unsubscribe(["count"]);
 type ExistingProjectedSubscribeIsCallable = Assert<
@@ -220,7 +220,7 @@ const multiNodeDocumentHost = create_locus({
 });
 type DocumentSequenceMapIsExact = Assert<typeof multiNodeDocumentHost.map extends LocusReadonlyMap<DocumentLiveMap> ? true : false>;
 
-const client = create_locus_client({
+const client = create_echo({
   socket,
   map: elementCandidate,
 });
@@ -228,7 +228,7 @@ type ClientElementMapIsExact = Assert<Equal<typeof client.map, DocumentLiveMap>>
 type DocumentSubscribeIsGated = Assert<Equal<typeof client.subscribe, never>>;
 type DocumentUnsubscribeIsGated = Assert<Equal<typeof client.unsubscribe, never>>;
 
-const multiNodeDocumentClient = create_locus_client({ socket, map: multiNodeDocumentCandidate });
+const multiNodeDocumentClient = create_echo({ socket, map: multiNodeDocumentCandidate });
 type DocumentSequenceSubscribeIsGated = Assert<Equal<typeof multiNodeDocumentClient.subscribe, never>>;
 type DocumentSequenceUnsubscribeIsGated = Assert<Equal<typeof multiNodeDocumentClient.unsubscribe, never>>;
 
@@ -255,12 +255,12 @@ const assertions: TypeAssertions = true;
 void assertions;
 
 type CustomActions = Readonly<{ custom: number }>;
-declare const typedProjectedClient: LocusClient<LiveMap<{ count: number }>, CustomActions>;
+declare const typedProjectedClient: Echo<LiveMap<{ count: number }>, CustomActions>;
 typedProjectedClient.subscribe(["count"]);
 typedProjectedClient.unsubscribe([]);
 typedProjectedClient.action("custom", 1);
 
-declare const typedDocumentClient: LocusClient<DocumentLiveMap, CustomActions>;
+declare const typedDocumentClient: Echo<DocumentLiveMap, CustomActions>;
 typedDocumentClient.action("custom", 1);
 typedDocumentClient.action("document.attrs.set", {
   target: { kind: "quid", quid: "000000001" },

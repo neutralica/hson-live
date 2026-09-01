@@ -8,6 +8,7 @@ import type {
   LiveMapLibraries,
   LivePath,
 } from "../../types/livemap.types.js";
+import type { LocusClientActionMessage } from "../../types/locus.types.js";
 import {
   internal_livemap_aggregate_authority,
   type InternalLiveMapAggregateAuthority,
@@ -85,6 +86,7 @@ export type LocusHostedAggregateActionContext = Readonly<{
 export type LocusHostedAggregateAction = (
   context: LocusHostedAggregateActionContext,
   payload: JsonValue | undefined,
+  message?: LocusClientActionMessage,
 ) => JsonValue | void | Promise<JsonValue | void>;
 
 export type LocusHostedAggregateGateInput = Readonly<{
@@ -111,7 +113,7 @@ export type LocusHostedAggregate = Readonly<{
   readonly registryDigest: string;
   readonly rev: number;
   mutate: (mutation: (draft: LocusHostedAggregateDraft) => void | Promise<void>) => Promise<HostedAggregateCommit | undefined>;
-  dispatch_action: (name: string, payload?: JsonValue) => Promise<JsonValue | void>;
+  dispatch_action: (name: string, payload?: JsonValue, message?: LocusClientActionMessage) => Promise<JsonValue | void>;
   /** @internal Ordered non-mutation barrier shared with aggregate mutations. */
   run_exclusive: <TResult>(operation: () => TResult | Promise<TResult>) => Promise<TResult>;
   on_wire: (listener: (wire: string) => void) => () => void;
@@ -210,7 +212,7 @@ export function create_locus_hosted_aggregate_internal(
     async mutate(mutation) {
       return (await enqueue(mutation)).commit;
     },
-    async dispatch_action(name, payload) {
+    async dispatch_action(name, payload, message) {
       const action = options.actions?.[name];
       if (action === undefined) throw new Error(`Unknown hosted aggregate Locus action: ${name}`);
       return (await enqueue(async (draft) => {
@@ -218,7 +220,7 @@ export function create_locus_hosted_aggregate_internal(
           map: options.map,
           mutate: async (mutation) => { mutation(draft); },
         });
-        return action(context, payload);
+        return action(context, payload, message);
       })).result;
     },
     run_exclusive<TResult>(operation: () => TResult | Promise<TResult>): Promise<TResult> {

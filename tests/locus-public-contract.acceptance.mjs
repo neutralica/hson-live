@@ -16,8 +16,6 @@ const locusRuntimeExports = [
   "LOCUS_BOOTSTRAP_MEDIA_TYPE",
   "LocusAuthorityError",
   "LocusBootstrapError",
-  "LocusClientRecoveryError",
-  "LocusClientSessionError",
   "LocusDisconnectedError",
   "LocusDuplicateActionIdError",
   "LocusGraphContentCodecError",
@@ -28,8 +26,6 @@ const locusRuntimeExports = [
   "create_live_trace_collector",
   "create_live_trace_console_sink",
   "create_locus",
-  "create_locus_bootstrap_client",
-  "create_locus_client",
   "create_persistent_locus",
   "decode_locus_bootstrap",
   "decode_locus_graph_content",
@@ -49,6 +45,52 @@ const locusRuntimeExports = [
 await check("the Locus package resolves with its exact runtime surface", async () => {
   const module = await import("hson-live/locus");
   assert.deepEqual(Object.keys(module).sort(), locusRuntimeExports);
+});
+
+await check("the Echo package resolves with its exact endpoint surface", async () => {
+  const module = await import("hson-live/echo");
+  assert.deepEqual(Object.keys(module).sort(), [
+    "EchoRecoveryError",
+    "EchoSessionError",
+    "create_echo",
+    "create_locus_bootstrap_echo",
+    "hsonEcho",
+  ]);
+  assert.deepEqual(Object.keys(module.hsonEcho), ["create"]);
+  assert.equal(module.hsonEcho.create, module.create_echo);
+});
+
+await check("removed architectural endpoint runtime names have no aliases", async () => {
+  const root = await import("hson-live");
+  const locus = await import("hson-live/locus");
+  const echo = await import("hson-live/echo");
+  for (const name of ["create_locus_client", "create_locus_bootstrap_client"]) {
+    assert.equal(name in root, false);
+    assert.equal(name in locus, false);
+    assert.equal(name in echo, false);
+  }
+  assert.equal("create_locus_bootstrap_echo" in echo, true);
+  assert.equal("create_locus_bootstrap_echo" in locus, false);
+});
+
+await check("solo Echo exposes only the camelCase endpoint method spellings", async () => {
+  const { create_echo } = await import("hson-live/echo");
+  const socket = {
+    send() {},
+    close() {},
+    onMessage() { return () => {}; },
+    onClose() { return () => {}; },
+  };
+  const endpoint = create_echo({ socket });
+  for (const name of ["onEvent", "retryAction", "actionStatus", "dispose"]) {
+    assert.equal(typeof endpoint[name], "function", `missing Echo method ${name}`);
+  }
+  assert.equal(typeof endpoint.recovery.onChange, "function");
+  for (const name of ["on_event", "retry_action", "action_status"]) {
+    assert.equal(name in endpoint, false, `unexpected Echo method ${name}`);
+  }
+  assert.equal("on_change" in endpoint.recovery, false);
+  endpoint.dispose();
 });
 
 await check("the Locus Node package resolves with only one-map adapters", async () => {
@@ -83,8 +125,10 @@ await check("the root exposes Locus and no historical one-map aliases", async ()
   const module = await import("hson-live");
   for (const name of [
     "hsonLocus",
+    "hsonEcho",
     "create_locus",
-    "create_locus_client",
+    "create_echo",
+    "create_locus_bootstrap_echo",
     "create_persistent_locus",
     "decode_locus_message",
     "decode_locus_server_message",
@@ -102,6 +146,9 @@ await check("the root exposes Locus and no historical one-map aliases", async ()
     "create_livehost_authority_registry",
   ]) assert.equal(name in module, false, `unexpected root export ${name}`);
   assert.equal(module.hson.locus, module.hsonLocus);
+  assert.equal(module.hson.echo, module.hsonEcho);
+  assert.equal(module.hsonEcho.create, module.create_echo);
+  assert.equal("client" in module.hsonLocus, false);
   assert.equal("liveHost" in module.hson, false);
 });
 

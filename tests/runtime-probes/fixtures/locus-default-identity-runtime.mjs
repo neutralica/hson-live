@@ -9,7 +9,7 @@ const socket = {
   onClose(listener) { closeListeners.add(listener); return () => closeListeners.delete(listener); },
 };
 
-const client = hson.locus.client({ socket });
+const client = hson.echo.create({ socket });
 client.connect();
 const action = client.action("echo", 1);
 process.stdout.write(JSON.stringify({ clientId: client.clientId, requestId: action.request.requestId }));

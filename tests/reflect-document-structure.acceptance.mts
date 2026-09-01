@@ -201,7 +201,6 @@ check("bound public structural and text APIs reject until disposal", () => {
     () => bound.append(branch),
     () => bound.create.div(),
     () => bound.detachContents(),
-    () => bound.removeChildren(),
     () => bound.text.overwrite("blocked"),
   ]) {
     assert.throws(mutation, (cause) => cause instanceof DocumentReflectError
@@ -249,11 +248,11 @@ check("failed structural replacement disposes the disconnected old owned subtree
   assert.equal(raw_node(projected_element_from_map(map), [0, 0]).$_tag, "b");
   assert.equal(binding.status, "failed");
   assert.equal(displacedTree.isDisposed, true);
-  assert.equal(displacedTree.remove(), 0);
+  displacedTree.remove();
   binding.dispose();
   binding.dispose();
-  assert.equal(binding.tree.remove(), 1);
-  assert.equal(binding.tree.remove(), 0);
+  binding.tree.remove();
+  binding.tree.remove();
 });
 
 check("initial and later structured style realization use one serializer", () => {

@@ -2359,6 +2359,7 @@ function register_staged_facade<TMap extends object>(map: TMap, built: BuiltLive
       }
     },
     releaseManagement: built.transitionController.releaseManagement,
+    runManaged: built.transitionController.runManaged,
     scheduleManaged: (mutation) => built.transitionController.scheduleManaged(
       mutation as (draft: object) => LiveMapCommit<LiveMapAnyOp>,
     ),

@@ -114,7 +114,7 @@ export interface LiveTreeContent<TSelf> {
     detach(): LiveTreeLifecycleResult;
 
     /** Terminally remove and dispose this complete branch. */
-    remove(): LiveTreeLifecycleResult;
+    remove(): void;
 
     /**
      * Remove this node's direct child nodes and return the number removed.

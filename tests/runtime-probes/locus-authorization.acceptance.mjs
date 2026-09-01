@@ -17,7 +17,7 @@ function socket_pair() {
 function connect(host, clientId, context) {
   const pair = socket_pair(); let request = 0, attempt = 0;
   host.connect(pair.server, context);
-  const client = hson.locus.client({ socket: pair.client, clientId, actionId: () => `${clientId}-request-${++request}`, actionAttemptId: () => `${clientId}-attempt-${++attempt}` });
+  const client = hson.echo.create({ socket: pair.client, clientId, actionId: () => `${clientId}-request-${++request}`, actionAttemptId: () => `${clientId}-attempt-${++attempt}` });
   client.connect(); return { client, pair };
 }
 function fixture(options = {}) {
@@ -85,16 +85,16 @@ await check("joining attempts authorize separately without cancelling the origin
   const f = fixture({ gate, authorizeAction() { calls += 1; return allow; } });
   const a = connect(f.host, "join").client, b = connect(f.host, "join").client;
   const original = a.action("gated", 9); await Promise.resolve(); allow = false;
-  assert.equal((await b.retry_action(original.request)).error.code, "LOCUS_ACTION_FORBIDDEN"); assert.equal(f.executions(), 1);
-  allow = true; const joined = b.retry_action(original.request); gate.resolve();
+  assert.equal((await b.retryAction(original.request)).error.code, "LOCUS_ACTION_FORBIDDEN"); assert.equal(f.executions(), 1);
+  allow = true; const joined = b.retryAction(original.request); gate.resolve();
   const [first, second] = await Promise.all([original, joined]); assert.equal(first.delivery, "executed"); assert.equal(second.delivery, "joined"); assert.equal(calls, 3);
 });
 
 await check("cached attempts reauthorize and policy decisions are not cached", async () => {
   let allow = true, calls = 0; const f = fixture({ authorizeAction() { calls += 1; return allow; } }); const client = connect(f.host, "cache").client;
   const call = client.action("set", { value: 10 }); await call; allow = false;
-  assert.equal((await client.retry_action(call.request)).error.code, "LOCUS_ACTION_FORBIDDEN"); assert.equal(f.host.actionRequests.debug().retainedTerminalCount, 1);
-  allow = true; const cached = await client.retry_action(call.request); assert.equal(cached.delivery, "cached"); assert.equal(f.executions(), 1); assert.equal(calls, 3);
+  assert.equal((await client.retryAction(call.request)).error.code, "LOCUS_ACTION_FORBIDDEN"); assert.equal(f.host.actionRequests.debug().retainedTerminalCount, 1);
+  allow = true; const cached = await client.retryAction(call.request); assert.equal(cached.delivery, "cached"); assert.equal(f.executions(), 1); assert.equal(calls, 3);
 });
 
 await check("trace stage is ordered/redacted and omitted policy records implicit allow", async () => {
@@ -174,7 +174,7 @@ await check("custom application handlers can use external state and emit non-can
   });
   const { client } = connect(host, "application");
   const events = [];
-  client.on_event((event) => events.push(event));
+  client.onEvent((event) => events.push(event));
   const beforeMap = host.map.capture();
   const beforeRev = host.map.rev;
   const beforeHistory = host.stream.history.debug().retainedCommitCount;

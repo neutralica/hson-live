@@ -8,9 +8,9 @@ import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap
 import { make_livemap_hosted_mirror_from_snapshot_internal } from "../src/api/livemap/livemap.libraries.ts";
 import { encode_locus_graph_content } from "../src/api/locus/locus.graph-content-codec.ts";
 import {
-  create_locus_hosted_aggregate_socket_client_internal,
-  create_locus_hosted_aggregate_socket_internal,
-} from "../src/api/locus/locus.hosted-multi-library.socket.ts";
+  create_multi_library_echo_socket_client_internal,
+} from "../src/api/echo/echo.multi-library.socket.ts";
+import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.hosted-multi-library.socket.ts";
 import type {
   LocusHostedAggregateDataDraft,
   LocusHostedAggregateDocumentDraft,
@@ -36,7 +36,7 @@ function socket_pair(): Readonly<{
   server: LocusSocketLike;
   clientSent: string[];
   serverSent: string[];
-  before_server_delivery: (listener: (message: Record<string, unknown>) => void) => void;
+  before_server_delivery: (listener: (message: Record<string, unknown>) => Record<string, unknown> | void) => void;
   close: () => void;
 }> {
   const clientMessages = new Set<(raw: string) => void>();
@@ -45,7 +45,7 @@ function socket_pair(): Readonly<{
   const serverCloses = new Set<() => void>();
   const clientSent: string[] = [];
   const serverSent: string[] = [];
-  let beforeServerDelivery: ((message: Record<string, unknown>) => void) | undefined;
+  let beforeServerDelivery: ((message: Record<string, unknown>) => Record<string, unknown> | void) | undefined;
   const client = Object.freeze({
     send(raw: string) {
       clientSent.push(raw);
@@ -64,8 +64,10 @@ function socket_pair(): Readonly<{
   const server = Object.freeze({
     send(raw: string) {
       serverSent.push(raw);
-      beforeServerDelivery?.(JSON.parse(raw) as Record<string, unknown>);
-      for (const listener of [...clientMessages]) listener(raw);
+      const message = JSON.parse(raw) as Record<string, unknown>;
+      const delivered = beforeServerDelivery?.(message) ?? message;
+      const deliveredRaw = JSON.stringify(delivered);
+      for (const listener of [...clientMessages]) listener(deliveredRaw);
     },
     close() {},
     onMessage(listener: (raw: string) => void) {
@@ -139,7 +141,7 @@ function insert_item(quid = QUID) {
 async function attach(server: ReturnType<typeof create_locus_hosted_aggregate_socket_internal>, options: Readonly<{ map?: LiveMapLibraries }> = {}) {
   const pair = socket_pair();
   server.connect(pair.server);
-  const client = create_locus_hosted_aggregate_socket_client_internal({
+  const client = create_multi_library_echo_socket_client_internal({
     socket: pair.client,
     logicalMapId: server.logicalMapId,
     ...options,
@@ -161,7 +163,24 @@ await check("actual socket aggregate bootstrap establishes one complete two-data
   );
   const sent = attached.pair.serverSent.map((raw) => JSON.parse(raw) as Record<string, unknown>);
   assert.equal(sent.some((message) => message.type === "hello"), false);
-  assert.equal(sent.find((message) => message.type === "recovery-snapshot")?.format, "hson-locus-hosted-aggregate-h3");
+  assert.equal(sent.find((message) => message.type === "recovery-snapshot")?.format, "hson-locus-hosted-aggregate-message");
+  server.dispose();
+});
+
+await check("old aggregate socket discriminator rejects as an ordinary non-current value", async () => {
+  const server = create_locus_hosted_aggregate_socket_internal({ map: make_map() });
+  const pair = socket_pair();
+  server.connect(pair.server);
+  pair.before_server_delivery((message) => message.type === "recovery-snapshot"
+    ? { ...message, format: "hson-locus-hosted-aggregate-h3" }
+    : message);
+  const endpoint = create_multi_library_echo_socket_client_internal({
+    socket: pair.client,
+    logicalMapId: server.logicalMapId,
+  });
+  await assert.rejects(endpoint.connect(), /format|incompatible/i);
+  assert.equal(endpoint.map, undefined);
+  endpoint.dispose();
   server.dispose();
 });
 
@@ -272,15 +291,14 @@ await check("socket document action requires a named document library and replay
     content,
   });
   assert.equal(page_library(attached.client.map!).document.byQuid(QUID)?.$_tag, "item");
-  await assert.rejects(
-    () => attached.client.action("document.content.insert", {
+  const invalid = await attached.client.action("document.content.insert", {
       library: "state",
       target: { kind: "path", path: [0] },
       index: 0,
       content,
-    }),
-    /document/i,
-  );
+    });
+  assert.equal(invalid.type, "error");
+  if (invalid.type === "error") assert.match(invalid.error.message, /document/i);
   server.dispose();
 });
 
@@ -369,7 +387,7 @@ await check("current recovery preserves the global cursor and resynchronizes an 
   const attached = await attach(server);
   const values: unknown[] = [];
   attached.client.subscribe("state", ["theme"], (value, revision) => values.push([value, revision]));
-  const recovered = await attached.client.recover();
+  const recovered = await attached.client.connect();
   assert.equal(recovered.outcome, "current");
   assert.equal(recovered.revision, 0);
   assert.deepEqual(values, [["light", 0], ["light", 0]]);

@@ -185,14 +185,19 @@ export function flag_handle<TTree extends LiveTree>(tree: TTree): FlagHandle<TTr
     },
     clear: (...names): TTree => {
       const normalized = normalize_flag_names(tree, names, "flags.clear", true);
-      const current = read_attrs(tree, "flags.clear");
-      const next = plan_public_flags_clear(current, normalized);
       const binding = document_binding_for_node(tree.node);
       if (binding !== undefined) {
-        const dropped = normalized.filter((name) => canonical_attr_is_flag(current, name));
-        binding.delegateAttrs({ kind: "dropMany", names: dropped });
+        binding.delegateAttrs({
+          kind: "transform",
+          apply: (current) => ({
+            kind: "dropMany",
+            names: normalized.filter((name) => canonical_attr_is_flag(current, name)),
+          }),
+        });
         return tree;
       }
+      const current = read_attrs(tree, "flags.clear");
+      const next = plan_public_flags_clear(current, normalized);
       return apply_attrs_replacement(tree, current, next);
     },
   });

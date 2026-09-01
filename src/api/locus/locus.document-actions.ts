@@ -21,7 +21,32 @@ export type LocusDocumentActionResolution =
   | Readonly<{ kind: "not-document-action" }>
   | Readonly<{ kind: "unavailable"; message: string }>
   | Readonly<{ kind: "invalid"; message: string }>
-  | Readonly<{ kind: "ready"; payload: JsonValue; execute: (targetMap?: LiveMapAuthority) => LiveMapGraphCommit }>;
+  | Readonly<{ kind: "ready"; payload: JsonValue; execute: (targetMap?: LocusDocumentActionTarget) => LiveMapGraphCommit }>;
+
+/** Minimal document mutation target shared by solo maps and selected aggregate drafts. */
+export type LocusDocumentActionTarget = Readonly<{
+  mode: "document";
+  document: Readonly<{
+    attrs: Readonly<{
+      set: (...args: Parameters<LiveMapDocumentApi["attrs"]["set"]>) => LiveMapGraphCommit;
+      drop: (...args: Parameters<LiveMapDocumentApi["attrs"]["drop"]>) => LiveMapGraphCommit;
+      setMany: (...args: Parameters<LiveMapDocumentApi["attrs"]["setMany"]>) => LiveMapGraphCommit;
+      dropMany: (...args: Parameters<LiveMapDocumentApi["attrs"]["dropMany"]>) => LiveMapGraphCommit;
+      clear: (...args: Parameters<LiveMapDocumentApi["attrs"]["clear"]>) => LiveMapGraphCommit;
+      replace: (...args: Parameters<LiveMapDocumentApi["attrs"]["replace"]>) => LiveMapGraphCommit;
+    }>;
+    content: Readonly<{
+      replace: (...args: Parameters<LiveMapDocumentApi["content"]["replace"]>) => LiveMapGraphCommit;
+      insert: (...args: Parameters<LiveMapDocumentApi["content"]["insert"]>) => LiveMapGraphCommit;
+      remove: (...args: Parameters<LiveMapDocumentApi["content"]["remove"]>) => LiveMapGraphCommit;
+      move: (...args: Parameters<LiveMapDocumentApi["content"]["move"]>) => LiveMapGraphCommit;
+    }>;
+  }>;
+}>;
+
+export function is_locus_document_action_target(value: unknown): value is LocusDocumentActionTarget {
+  return typeof value === "object" && value !== null && "mode" in value && value.mode === "document" && "document" in value;
+}
 
 const DOCUMENT_ACTION_NAMES: ReadonlySet<string> = new Set<LocusDocumentActionName>([
   "document.attrs.set",
@@ -38,7 +63,7 @@ const DOCUMENT_ACTION_NAMES: ReadonlySet<string> = new Set<LocusDocumentActionNa
 
 /** Resolve one reserved built-in without mutating. Execution remains in the normal action pipeline. */
 export function resolve_locus_document_action(
-  map: LiveMapAuthority,
+  map: LiveMapAuthority | LocusDocumentActionTarget,
   name: string,
   payload: JsonValue | undefined,
 ): LocusDocumentActionResolution {
@@ -215,15 +240,15 @@ function decoded_action_payload(value: unknown): JsonValue {
   throw new Error("Decoded Locus document action payload is not canonical JSON.");
 }
 
-function is_document_live_map(map: LiveMapAuthority): map is DocumentLiveMap {
+function is_document_live_map(map: LiveMapAuthority | LocusDocumentActionTarget): map is DocumentLiveMap | LocusDocumentActionTarget {
   return (map.mode === "document") && "document" in map;
 }
 
-function document_api(map: DocumentLiveMap): LiveMapDocumentApi {
+function document_api(map: DocumentLiveMap | LocusDocumentActionTarget): LocusDocumentActionTarget["document"] {
   return map.document;
 }
 
-function document_api_for(map: LiveMapAuthority): LiveMapDocumentApi {
+function document_api_for(map: LiveMapAuthority | LocusDocumentActionTarget): LocusDocumentActionTarget["document"] {
   if (is_document_live_map(map)) return document_api(map);
   throw new Error("Locus document action draft mode is unavailable.");
 }

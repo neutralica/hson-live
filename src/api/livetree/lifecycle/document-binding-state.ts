@@ -1,9 +1,9 @@
 import type {
   LiveMapDocumentAttributeValue,
   LiveMapDocumentAttrs,
-  LiveMapDocumentTarget,
+  LiveMapDocumentRequestTarget,
 } from "../../../types/livemap.types.js";
-import type { HsonNode } from "../../../core/types.js";
+import type { CanonicalPublicAttrs, HsonNode } from "../../../core/types.js";
 
 export type DocumentBoundAttrsMutation =
   | Readonly<{ kind: "set"; name: string; value: LiveMapDocumentAttributeValue }>
@@ -11,7 +11,11 @@ export type DocumentBoundAttrsMutation =
   | Readonly<{ kind: "drop"; name: string }>
   | Readonly<{ kind: "dropMany"; names: readonly string[] }>
   | Readonly<{ kind: "clear" }>
-  | Readonly<{ kind: "replace"; values: LiveMapDocumentAttrs }>;
+  | Readonly<{ kind: "replace"; values: LiveMapDocumentAttrs }>
+  | Readonly<{
+    kind: "transform";
+    apply: (current: CanonicalPublicAttrs) => Exclude<DocumentBoundAttrsMutation, { kind: "transform" }>;
+  }>;
 
 export type DocumentBoundTextMutation =
   | Readonly<{ kind: "set"; value: string | boolean | number | null }>
@@ -37,14 +41,15 @@ export class LiveTreeLinkedIdentityRequiredError extends Error {
 
 export type DocumentBindingNodeRegistration = Readonly<{
   owner: object;
-  canonicalTarget: LiveMapDocumentTarget;
+  canonicalTarget: LiveMapDocumentRequestTarget;
   canonicalPath: readonly number[];
   persistedQuid?: string;
   requireCanonicalIdentity: () => string;
   delegateAttrs: (mutation: DocumentBoundAttrsMutation) => void;
   delegateText: (mutation: DocumentBoundTextMutation) => void;
   delegateEmpty: () => void;
-  delegateRemove: () => 1 | undefined;
+  /** True when authority handled removal; false when caller must perform local root teardown. */
+  delegateRemove: () => boolean;
   rejectStructuralMutation: (operation: string) => never;
 }>;
 
@@ -95,6 +100,8 @@ export function delegate_document_empty_if_bound(node: HsonNode): boolean {
   return true;
 }
 
-export function delegate_document_remove_if_bound(node: HsonNode): 1 | undefined {
-  return document_binding_for_node(node)?.delegateRemove();
+export function delegate_document_remove_if_bound(node: HsonNode): boolean {
+  const registration = document_binding_for_node(node);
+  if (registration === undefined) return false;
+  return registration.delegateRemove();
 }

@@ -64,7 +64,7 @@ function multiNodeDocument(source) {
 function attach(host, map, cursor) {
   const pair = socket_pair();
   const disconnectHost = host.connect(pair.server);
-  const client = hson.locus.client({
+  const client = hson.echo.create({
     socket: pair.client,
     map,
     recovery: {
@@ -101,7 +101,7 @@ function find_node(node, tag) {
 
 function begin_scripted_snapshot_recovery(map, logicalMapId, incarnationId, headRev) {
   const pair = socket_pair();
-  const client = hson.locus.client({
+  const client = hson.echo.create({
     socket: pair.client,
     map,
     recovery: {
@@ -604,7 +604,7 @@ await check("view-state snapshot recovery applies the existing JSON replay tail 
       void host.mutate((draft) => draft.document.attrs.set(root, "title", "tail-applied"));
     }
   });
-  const client = hson.locus.client({
+  const client = hson.echo.create({
     socket: pair.client,
     map: mirror,
     recovery: { logicalMapId },

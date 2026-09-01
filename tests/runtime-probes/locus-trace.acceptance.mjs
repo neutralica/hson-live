@@ -66,7 +66,7 @@ function fixture(trace, identity = {}) {
     },
   });
   host.connect(pair.server);
-  const client = hson.locus.client({
+  const client = hson.echo.create({
     socket: pair.client,
     clientId: "trace-client",
     actionId: identity.actionId ?? (() => "request-1"),
@@ -237,7 +237,7 @@ await check("overlapping async actions keep commit causation isolated", async ()
   host.connect(pair.server);
   let request = 0;
   let attempt = 0;
-  const client = hson.locus.client({
+  const client = hson.echo.create({
     socket: pair.client,
     clientId: "overlap-client",
     actionId: () => `overlap-request-${++request}`,
@@ -245,7 +245,7 @@ await check("overlapping async actions keep commit causation isolated", async ()
   });
   client.connect();
   const slow = client.action("slow");
-  const joined = client.retry_action(slow.request);
+  const joined = client.retryAction(slow.request);
   const fast = await client.action("fast");
   releaseSlow();
   const [slowResult, joinedResult] = await Promise.all([slow, joined]);
@@ -400,7 +400,7 @@ await check("host trace identity is distinct per processing attempt despite retr
   const firstCall = f.client.action("update", { value: 1, secret: "first-secret" });
   const first = await firstCall;
   const second = await f.client.action("update", { value: 2, secret: "second-secret" });
-  const cached = await f.client.retry_action(firstCall.request);
+  const cached = await f.client.retryAction(firstCall.request);
   assert.equal(first.delivery, "executed");
   assert.equal(second.delivery, "executed");
   assert.equal(cached.delivery, "cached");

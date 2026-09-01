@@ -54,6 +54,10 @@
       "types": "./dist/api/locus/index.d.ts",
       "import": "./dist/api/locus/index.js"
     },
+    "./echo": {
+      "types": "./dist/api/echo/index.d.ts",
+      "import": "./dist/api/echo/index.js"
+    },
     "./locus/node": {
       "types": "./dist/api/locus/node/index.d.ts",
       "import": "./dist/api/locus/node/index.js"
@@ -182,6 +186,7 @@
     "test:reflect-document-attrs": "node --import=tsx tests/reflect-document-attrs.acceptance.mts",
     "test:reflect-document-structure": "node --import=tsx tests/reflect-document-structure.acceptance.mts",
     "test:reflect-document-delegation": "node --import=tsx tests/reflect-document-delegation.acceptance.mts",
+    "test:echo-reflect-authoring": "node --import=tsx tests/echo-reflect-authoring.acceptance.mts",
     "test:reflect-document-root": "node --import=tsx tests/reflect-document-root.acceptance.mts",
     "test:reflect-document-snapshot": "node --import=tsx tests/reflect-document-snapshot.acceptance.mts",
     "test:reflect-document-path-authority": "node --import=tsx tests/reflect-document-path-authority.acceptance.mts",
@@ -211,6 +216,7 @@
     "test:locus-hosted-multi-library-h3": "node --import=tsx tests/locus-hosted-multi-library-h3.acceptance.mts",
     "test:locus-hosted-multi-library-h4": "node --import=tsx tests/locus-hosted-multi-library-h4.acceptance.mts",
     "test:locus-hosted-multi-library-h5": "node --import=tsx tests/locus-hosted-multi-library-h5.acceptance.mts",
+    "test:locus-hosted-multi-library-action-pipeline": "node --import=tsx tests/locus-hosted-multi-library-action-pipeline.acceptance.mts",
     "test:livemap-identity-aba-prevention": "node --import=tsx tests/livemap-identity-aba-prevention.acceptance.mts",
     "test:livemap-identity-replay-provenance": "node --import=tsx tests/livemap-identity-replay-provenance.acceptance.mts",
     "test:livemap-document": "node --import=tsx tests/livemap-document.acceptance.mts",

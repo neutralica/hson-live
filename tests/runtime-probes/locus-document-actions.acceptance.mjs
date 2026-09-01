@@ -48,7 +48,7 @@ function documentElement(map) {
 async function connected_document_client(host, mirror, cursor = { incarnationId: host.stream.incarnationId, lastAppliedRev: mirror.rev }) {
   const pair = socket_pair();
   host.connect(pair.server);
-  const client = hson.locus.client({
+  const client = hson.echo.create({
     socket: pair.client,
     map: mirror,
     session: {},
@@ -72,7 +72,7 @@ async function assert_single_hosted_commit({ host, client, action, payload, veri
   client.map.commits.observe((event) => {
     if (event.kind === "commit" && event.origin === "replay") replayed += 1;
   });
-  client.recovery.on_change((event) => {
+  client.recovery.onChange((event) => {
     if (event.kind === "commit") clientChanges += 1;
   });
   const beforeRev = host.map.rev;
@@ -322,7 +322,7 @@ await check("all ten names are recognized but unavailable for data-object and da
     const host = hson.locus.create({ state });
     const pair = socket_pair();
     host.connect(pair.server);
-    const client = hson.locus.client({ socket: pair.client });
+    const client = hson.echo.create({ socket: pair.client });
     client.connect();
     for (const [name, payload] of [
       ["document.attrs.set", { target: rootPath, name: "id", value: "x" }],
@@ -484,7 +484,7 @@ await check("a duplicate retry returns the cached acknowledgement without a seco
   host.stream.on_commit(() => { commits += 1; });
   const first = client.action("document.attrs.set", { target: rootPath, name: "id", value: "once" });
   const executed = await first;
-  const retried = await client.retry_action(first.request);
+  const retried = await client.retryAction(first.request);
   assert.equal(executed.delivery, "executed");
   assert.equal(retried.delivery, "cached");
   assert.equal(host.map.rev, 1);
@@ -504,7 +504,7 @@ await check("a duplicate bulk request is deduped once for the complete request",
     values: { id: "new", hidden: false },
   });
   const executed = await first;
-  const retried = await client.retry_action(first.request);
+  const retried = await client.retryAction(first.request);
   assert.equal(executed.delivery, "executed");
   assert.equal(retried.delivery, "cached");
   assert.equal(host.map.rev, 1);
@@ -582,7 +582,7 @@ await check("a duplicate structural retry does not insert twice", async () => {
     content: documentElement(element(`<b/>`)),
   });
   const executed = await first;
-  const retried = await client.retry_action(first.request);
+  const retried = await client.retryAction(first.request);
   assert.equal(executed.delivery, "executed");
   assert.equal(retried.delivery, "cached");
   assert.equal(host.map.rev, 1);

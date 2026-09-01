@@ -1,7 +1,7 @@
 import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { WebSocket, WebSocketServer } from "ws";
-import { LocusClientSessionError, hson } from "../../src/index.ts";
+import { EchoSessionError, hson } from "../../src/index.ts";
 
 let checks = 0;
 function check(name, fn) {
@@ -96,7 +96,7 @@ function host_fixture(extra = {}) {
 function connect_client(host, options = {}) {
   const pair = socket_pair();
   const connection = host.connect(pair.server);
-  const client = hson.locus.client({ socket: pair.client, ...options });
+  const client = hson.echo.create({ socket: pair.client, ...options });
   client.connect();
   return { pair, connection, client };
 }
@@ -112,8 +112,12 @@ async function create_recovered(host) {
 }
 
 function resume_options(host, client, credential) {
+  const map = restore_projected_revision(
+    hson.liveMap.fromJson(client.map.snap()),
+    client.map.rev,
+  );
   return {
-    map: client.map,
+    map,
     session: { credential },
     recovery: {
       logicalMapId: host.stream.logicalMapId,
@@ -245,7 +249,7 @@ await check("fake-clock grace period accepts before deadline and expires after i
   assert.equal(host.sessions.debug().sessions[0].state, "expired");
   assert.equal(clock.pending(), 0);
   const expired = connect_client(host, { session: { credential } });
-  await assert.rejects(expired.client.session.reattach(), (error) => error instanceof LocusClientSessionError && error.code === "LOCUS_SESSION_CREDENTIAL_EXPIRED");
+  await assert.rejects(expired.client.session.reattach(), (error) => error instanceof EchoSessionError && error.code === "LOCUS_SESSION_CREDENTIAL_EXPIRED");
 });
 
 await check("attached sessions do not expire when the clock advances", async () => {
@@ -323,7 +327,7 @@ await check("session credentials cannot weaken revision-ahead validation", async
   host.connect(pair.server);
   const mirror = hson.liveMap.fromJson({ value: 99 });
   restore_projected_revision(mirror, host.stream.headRev + 5);
-  const client = hson.locus.client({
+  const client = hson.echo.create({
     socket: pair.client,
     map: mirror,
     session: { credential: first.client.session.credential },
@@ -384,15 +388,16 @@ await check("real WebSocket reattachment fences A before B recovers", async () =
   const url = `ws://127.0.0.1:${address.port}`;
   const wsA = new WebSocket(url);
   await opened(wsA);
-  const clientA = hson.locus.client({ socket: ws_socket(wsA), session: {}, recovery: { logicalMapId: host.stream.logicalMapId } });
+  const clientA = hson.echo.create({ socket: ws_socket(wsA), session: {}, recovery: { logicalMapId: host.stream.logicalMapId } });
   clientA.connect();
   await clientA.session.create();
   await clientA.recovery.recover();
   const credential = clientA.session.credential;
+  const mapB = restore_projected_revision(hson.liveMap.fromJson(clientA.map.snap()), clientA.map.rev);
 
   const wsB = new WebSocket(url);
   await opened(wsB);
-  const clientB = hson.locus.client({ socket: ws_socket(wsB), map: clientA.map, session: { credential }, recovery: { logicalMapId: host.stream.logicalMapId, cursor: { incarnationId: clientA.recovery.incarnationId, lastAppliedRev: clientA.recovery.lastAppliedRev } } });
+  const clientB = hson.echo.create({ socket: ws_socket(wsB), map: mapB, session: { credential }, recovery: { logicalMapId: host.stream.logicalMapId, cursor: { incarnationId: clientA.recovery.incarnationId, lastAppliedRev: clientA.recovery.lastAppliedRev } } });
   clientB.connect();
   const attached = await clientB.session.reattach();
   assert.equal(attached.epoch, 2);

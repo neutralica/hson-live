@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   hson,
   hsonLocus,
+  hsonEcho,
   hsonLiveMap,
   hsonReflect,
   hsonLiveTree,
@@ -21,6 +22,8 @@ function check(name: string, fn: () => void): void {
 check("canonical facade runtime identities remain stable", () => {
   assert.equal(hson.transform, hsonTransform);
   assert.equal(hson.locus, hsonLocus);
+  assert.equal(hson.echo, hsonEcho);
+  assert.equal("client" in hsonLocus, false);
   assert.equal(hson.liveTree, hsonLiveTree);
   assert.equal(hson.reflect, hsonReflect);
   assert.equal(typeof hsonReflect, "function");

@@ -1,9 +1,7 @@
 export { hsonLocus } from "./locus.facade.js";
 export { create_locus } from "./locus.core.js";
-export { create_locus_client } from "./locus.client.js";
 export {
   capture_locus_bootstrap,
-  create_locus_bootstrap_client,
   decode_locus_bootstrap,
   encode_locus_bootstrap,
   install_locus_bootstrap,
@@ -16,7 +14,6 @@ export {
 } from "./locus.bootstrap.js";
 export type {
   LocusBootstrap,
-  LocusBootstrapClient,
   LocusBootstrapAuthority,
   LocusBootstrapCodecOptions,
   LocusBootstrapContinuation,
@@ -55,8 +52,6 @@ export {
   LocusGraphContentCodecError,
 } from "./locus.graph-content-codec.js";
 export {
-  LocusClientRecoveryError,
-  LocusClientSessionError,
   LocusDisconnectedError,
   LocusDuplicateActionIdError,
   LocusRecoveryError,
@@ -70,4 +65,61 @@ export {
   LocusAuthorityError,
   type LocusAuthorityErrorCode,
 } from "./locus.authority.js";
-export type * from "../../types/locus.types.js";
+export type * from "../../types/locus.shared.types.js";
+export type * from "../../types/live.trace.types.js";
+export type * from "../../types/locus.representation.types.js";
+export type * from "../../types/locus.protocol.types.js";
+export type * from "../../types/locus.persistence.types.js";
+export type {
+  LocusRecoveryRequest,
+  LocusRecoveryOptions,
+  LocusRecoveryHooks,
+  LocusRecoveryRuntimeErrorCode,
+  LocusRecoveryBodyItem,
+  LocusRecoveryBodyObserver,
+  LocusRecoveryCompletion,
+  LocusRecoveryAttemptState,
+  LocusRecoveryAttemptDiagnostics,
+  LocusRecoveryAttemptBase,
+  LocusRecoveryCurrentPlan,
+  LocusRecoveryReplayPlan,
+  LocusRecoverySnapshotPlan,
+  LocusRecoveryRejectPlan,
+  LocusRecoveryPlan,
+  LocusRecoveryPlannerDiagnostics,
+  LocusRecoveryPlanner,
+  LocusActionContext,
+  LocusMutationDraft,
+  LocusReadonlyMap,
+  LocusActionHandler,
+  LocusActions,
+  LocusMapValue,
+  ProjectedLocusOptions,
+  LocusOptions,
+  LocusMultiLibraryActionContext,
+  LocusMultiLibraryActionHandler,
+  LocusMultiLibraryActions,
+  LocusMultiLibraryOptions,
+  LocusActionDedupeSchedule,
+  LocusActionDedupeOptions,
+  LocusActionDedupeDiagnostics,
+  LocusActionDedupeInspector,
+  LocusSessionSchedule,
+  LocusSessionOptions,
+  LocusSessionState,
+  LocusSessionDiagnostic,
+  LocusSessionDiagnostics,
+  LocusSessionLifecycleEvent,
+  LocusSessionInspector,
+  LocusEventListener,
+  LocusConnection,
+  Locus,
+  LocusMultiLibrary,
+  LocusMultiLibraryPersistenceAdapter,
+  PersistentLocusMultiLibraryOptions,
+  PersistentLocusMultiLibrary,
+  LocusActivityKind,
+  LocusActivityState,
+  LocusActivitySnapshot,
+  LocusActivity,
+} from "../../types/locus.core.types.js";

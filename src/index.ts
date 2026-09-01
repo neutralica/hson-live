@@ -1,7 +1,7 @@
 // index.ts
 
 export { Hson } from "./hson-authoring.js";
-export { hson, hsonCalc, hsonLocus, hsonTransform, hsonLiveMap, hsonLiveTree, hsonInspect, type HsonFacade } from "./hson.js";
+export { hson, hsonCalc, hsonLocus, hsonEcho, hsonTransform, hsonLiveMap, hsonLiveTree, hsonInspect, type HsonFacade } from "./hson.js";
 export type {
     BinaryDecodeOptions,
     TransformBinarySerialize,
@@ -140,14 +140,21 @@ export {
   LocusPersistenceError,
 } from "./api/locus/locus.persistence.js";
 export type { LocusPersistenceErrorCode } from "./api/locus/locus.persistence.error.js";
-export { create_locus_client } from "./api/locus/locus.client.js";
+export { create_echo, create_locus_bootstrap_echo, type LocusBootstrapEcho } from "./api/echo/index.js";
+export type {
+    EchoActionFn,
+    EchoActionPromise,
+    EchoActionRequest,
+    EchoActionStatusResult,
+    EchoRecoveryCursor,
+    EchoRetryActionFn,
+} from "./types/echo.types.js";
 export {
     LocusDisconnectedError,
     LocusDuplicateActionIdError,
-    LocusClientRecoveryError,
-    LocusClientSessionError,
     LocusRecoveryError,
 } from "./api/locus/locus.error.js";
+export { EchoRecoveryError, EchoSessionError } from "./api/echo/echo.error.js";
 export {
     make_locus_sync_manager,
     type LocusSyncManager,
@@ -224,7 +231,6 @@ export type {
     LiveMapDocumentRequestTarget,
     LiveMapDocumentCommitTarget,
     LiveMapDocumentTargetWitness,
-    LiveMapDocumentTarget,
     LiveMapDocumentAttributeValue,
     LiveMapDocumentAttrs,
     LiveMapDocumentContent,

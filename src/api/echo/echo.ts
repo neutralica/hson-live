@@ -1,4 +1,4 @@
-// locus/client.ts
+// echo/echo.ts
 
 import type { JsonValue } from "../../core/types.js";
 import type {
@@ -13,35 +13,47 @@ import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { parse_json } from "../transform/parsers/parse-json.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
 import { is_public_multi_library_livemap } from "../livemap/livemap.libraries.js";
-import { create_multi_library_locus_client } from "./locus.multi-library.js";
+import { create_multi_library_echo } from "./echo.multi-library.js";
 import { decode_projected_value_payload } from "../livemap/livemap.transport.js";
 import { livemap_projected_propagation } from "../livemap/livemap.projected-propagation.js";
+import { get_livemap_staged_authority, LiveMapTransitionError } from "../livemap/livemap.authority.js";
+import {
+  make_echo_document_authority,
+  register_echo_document_authority,
+  unregister_echo_document_authority,
+  type EchoDocumentAction,
+  type EchoDocumentAuthority,
+} from "./echo.document-authority.js";
 import type {
   LocusActionId,
   LocusActionPayloads,
   LocusActionRequestId,
   LocusActionStatusId,
   LocusCanonicalCommit,
-  LocusClient,
-  LocusMultiLibraryClient,
-  LocusMultiLibraryClientOptions,
+  Echo,
+  MultiLibraryEcho,
+  MultiLibraryEchoOptions,
   LocusClientActionMessage,
-  LocusClientActionPromise,
-  LocusClientActionRequest,
+  EchoActionPromise,
+  EchoActionRequest,
   LocusClientActionResult,
-  LocusClientActionStatusResult,
+  EchoActionStatusResult,
+  LocusDocumentActionFn,
+  LocusDocumentActionPromise,
+  LocusDocumentActionRequest,
+  LocusDocumentRetryActionFn,
   LocusClientMessage,
-  LocusClientOptions,
-  LocusClientRecoveryChange,
-  LocusClientRecoveryChangeListener,
-  LocusClientRecoveryDiagnostics,
-  LocusClientRecoveryFailure,
-  LocusClientRecoveryResult,
-  LocusClientRecoveryStatus,
-  LocusClientRecoveryStrategy,
-  LocusClientSessionDiagnostics,
-  LocusClientSessionResult,
-  LocusClientSessionStatus,
+  EchoOptions,
+  EchoRecoveryChange,
+  EchoRecoveryChangeListener,
+  EchoRecoveryDiagnostics,
+  EchoRecoveryFailure,
+  EchoRecoveryResult,
+  EchoRecoveryStatus,
+  EchoRecoveryStrategy,
+  EchoSessionDiagnostics,
+  EchoSessionResult,
+  EchoSessionStatus,
   LocusDisposer,
   LocusEventListener,
   LocusClientId,
@@ -55,26 +67,25 @@ import type {
   LocusSnapshotEncodingSelection,
 } from "../../types/locus.types.js";
 import {
-  LocusClientRecoveryError,
-  LocusClientSessionError,
   LocusDisconnectedError,
   LocusDuplicateActionIdError,
-} from "./locus.error.js";
+} from "../locus/locus.error.js";
+import { EchoRecoveryError, EchoSessionError } from "./echo.error.js";
 import {
   decode_locus_server_message,
   replay_locus_document_commit,
   is_locus_json_value,
-} from "./locus.protocol.js";
+} from "../locus/locus.protocol.js";
 import {
   encode_locus_graph_content,
-} from "./locus.graph-content-codec.js";
-import { create_live_trace_context, type LiveTraceContext } from "./locus.trace.js";
+} from "../locus/locus.graph-content-codec.js";
+import { create_live_trace_context, type LiveTraceContext } from "../locus/locus.trace.js";
 import {
   decode_locus_document_snapshot,
   LocusDocumentSnapshotDecodeError,
   type LocusDecodedServerMessage,
   type LocusValidatedSnapshotEnvelope,
-} from "./locus.document-snapshot.js";
+} from "../locus/locus.document-snapshot.js";
 
 let nextFallbackIdentityId = 0;
 let nextActionAttemptId = 0;
@@ -122,7 +133,7 @@ function make_action_status_id(): LocusActionStatusId {
   return `lhas-${nextActionStatusId}`;
 }
 
-function recovery_trace_strategy(strategy: LocusClientRecoveryStrategy | undefined): string {
+function recovery_trace_strategy(strategy: EchoRecoveryStrategy | undefined): string {
   if (strategy === "current") return "already-current";
   if (strategy === "replay") return "incremental-replay";
   return strategy ?? "unavailable";
@@ -160,16 +171,23 @@ type PendingAction = Readonly<{
   reject: (error: LocusDisconnectedError) => void;
 }>;
 
+/** @internal Deterministic correlation seam used only by repository proof fixtures. */
+type EchoInternalIdFactories = Readonly<{
+  actionId?: () => LocusActionId;
+  actionAttemptId?: () => LocusActionId;
+  actionStatusId?: () => LocusActionStatusId;
+}>;
+
 type PendingActionStatus = Readonly<{
   requestId: LocusActionRequestId;
-  resolve: (result: LocusClientActionStatusResult) => void;
+  resolve: (result: EchoActionStatusResult) => void;
   reject: (error: LocusDisconnectedError) => void;
 }>;
 
 type PendingRecovery = {
   id: LocusRecoveryId;
-  resolve: (result: LocusClientRecoveryResult) => void;
-  reject: (error: LocusClientRecoveryError) => void;
+  resolve: (result: EchoRecoveryResult) => void;
+  reject: (error: EchoRecoveryError) => void;
   trace?: LiveTraceContext;
   startedAt: number;
   localRevBefore: number;
@@ -195,8 +213,8 @@ type ClientRecoveryLifecycle =
 type PendingSession = Readonly<{
   id: LocusSessionRequestId;
   kind: "create" | "reattach" | "goodbye";
-  resolve: (result: LocusClientSessionResult | undefined) => void;
-  reject: (error: LocusClientSessionError) => void;
+  resolve: (result: EchoSessionResult | undefined) => void;
+  reject: (error: EchoSessionError) => void;
 }>;
 
 function reject_pending_actions(
@@ -256,55 +274,66 @@ function clone_action_payload(value: JsonValue): JsonValue {
   return Object.freeze(clone);
 }
 
-export function create_locus_client<
+export function create_echo<
   TMap extends import("../../types/livemap.types.js").LiveMapLibraries,
   TActions extends LocusActionPayloads = LocusActionPayloads,
->(options: LocusMultiLibraryClientOptions<TMap>): LocusMultiLibraryClient<TMap, TActions>;
-export function create_locus_client<
+>(options: MultiLibraryEchoOptions<TMap>): MultiLibraryEcho<TMap, TActions>;
+export function create_echo<
   TState extends JsonValue | undefined = JsonValue | undefined,
   TActions extends LocusActionPayloads = LocusActionPayloads,
->(options: LocusClientOptions<LiveMap<TState>>): LocusClient<LiveMap<TState>, TActions>;
-export function create_locus_client<
+>(options: EchoOptions<LiveMap<TState>>): Echo<LiveMap<TState>, TActions>;
+export function create_echo<
   TMap extends LiveMapAuthority,
   TActions extends LocusActionPayloads = LocusActionPayloads,
->(options: LocusClientOptions<TMap> & Readonly<{ map: TMap }>): LocusClient<TMap, TActions>;
-export function create_locus_client<
+>(options: EchoOptions<TMap> & Readonly<{ map: TMap }>): Echo<TMap, TActions>;
+export function create_echo<
   TActions extends LocusActionPayloads = LocusActionPayloads,
->(input: LocusClientOptions<LiveMapAuthority> | LocusMultiLibraryClientOptions<import("../../types/livemap.types.js").LiveMapLibraries>): unknown {
+>(input: EchoOptions<LiveMapAuthority> | MultiLibraryEchoOptions<import("../../types/livemap.types.js").LiveMapLibraries>): unknown {
   if (input.map !== undefined && is_public_multi_library_livemap(input.map)) {
-    return create_multi_library_locus_client(input as never);
+    return create_multi_library_echo(input as never);
   }
-  const options = input as LocusClientOptions<LiveMapAuthority>;
+  const options = input as EchoOptions<LiveMapAuthority>;
   if (options.recovery?.cursor && !options.map) {
     throw new Error("Locus recovery cursor requires the exact corresponding mirror.");
   }
 
   const clientId = options.clientId ?? make_client_id();
-  const makeActionId = options.actionId ?? make_action_id;
-  const makeActionAttemptId = options.actionAttemptId ?? make_action_attempt_id;
-  const makeActionStatusId = options.actionStatusId ?? make_action_status_id;
+  const internalOptions = options as EchoOptions<LiveMapAuthority> & EchoInternalIdFactories;
+  const makeActionId = internalOptions.actionId ?? make_action_id;
+  const makeActionAttemptId = internalOptions.actionAttemptId ?? make_action_attempt_id;
+  const makeActionStatusId = internalOptions.actionStatusId ?? make_action_status_id;
   let map: ClassifiedLiveMap = classified_live_map(options.map);
+  const echoOwner = Object.freeze({});
+  const mapAuthority = get_livemap_staged_authority(map);
+  let echoDisposed = false;
+  let documentAuthority: EchoDocumentAuthority | undefined;
+  const run_echo_owned = <T>(operation: () => T): T => mapAuthority.runManaged(echoOwner, operation);
   const initialRecoveryCursor = options.recovery?.cursor;
   if (initialRecoveryCursor !== undefined && initialRecoveryCursor.lastAppliedRev !== map.rev) {
-    throw new LocusClientRecoveryError(
+    throw new EchoRecoveryError(
       "LOCUS_RECOVERY_CURSOR_MISMATCH",
       `Locus recovery cursor revision ${initialRecoveryCursor.lastAppliedRev} does not match mirror revision ${map.rev}.`,
     );
   }
+  mapAuthority.claimManagement(echoOwner, () => Promise.reject(new LiveMapTransitionError(
+    "LIVEMAP_MANAGED_MUTATION_REJECTED",
+    "Echo LiveMap mutation is reserved for accepted canonical replay.",
+  )));
   const pendingActions = new Map<LocusActionId, PendingAction[]>();
   const pendingActionAttemptsByRequest = new Map<LocusActionRequestId, LocusActionId[]>();
   const pendingActionStatuses = new Map<LocusActionStatusId, PendingActionStatus>();
   const eventListeners = new Set<LocusEventListener>();
-  const recoveryListeners = new Set<LocusClientRecoveryChangeListener<ClassifiedLiveMap>>();
+  const recoveryListeners = new Set<EchoRecoveryChangeListener<ClassifiedLiveMap>>();
   const disposers: LocusDisposer[] = [];
+  const readyWaiters = new Set<() => void>();
   let seq: LocusSeq = 0;
   let isConnected = false;
   let recoveryDisposed = false;
-  let recoveryStatus: LocusClientRecoveryStatus = "idle";
-  let recoveryStrategy: LocusClientRecoveryStrategy | undefined;
+  let recoveryStatus: EchoRecoveryStatus = "idle";
+  let recoveryStrategy: EchoRecoveryStrategy | undefined;
   let incarnationId = options.recovery?.cursor?.incarnationId;
   let lastAppliedRev = options.recovery?.cursor?.lastAppliedRev;
-  let firstFailure: LocusClientRecoveryFailure | undefined;
+  let firstFailure: EchoRecoveryFailure | undefined;
   let pendingRecovery: PendingRecovery | undefined;
   let recoveryLifecycle: ClientRecoveryLifecycle = Object.freeze({ phase: "disconnected" });
   let stopRecoveryMessages: LocusDisposer | undefined;
@@ -319,7 +348,7 @@ export function create_locus_client<
   let recoveryFailures = 0;
   let consumerNotifications = 0;
   let observerFailures = 0;
-  let sessionStatus: LocusClientSessionStatus = "idle";
+  let sessionStatus: EchoSessionStatus = "idle";
   let sessionId: string | undefined;
   let sessionCredential: LocusSessionCredential | undefined = options.session?.credential;
   let sessionEpoch: number | undefined;
@@ -330,6 +359,32 @@ export function create_locus_client<
   let sessionReattachCount = 0;
   let sessionFencingCount = 0;
   let sessionRejectionCount = 0;
+
+  function echo_ready(): boolean {
+    return !echoDisposed
+      && isConnected
+      && (options.recovery === undefined || recoveryStatus === "caught_up")
+      && (options.session === undefined || sessionStatus === "attached");
+  }
+
+  function notify_echo_ready(): void {
+    if (!echo_ready() && !echoDisposed) return;
+    const waiters = [...readyWaiters];
+    readyWaiters.clear();
+    for (const waiter of waiters) waiter();
+  }
+
+  function wait_until_echo_ready(): Promise<void> {
+    if (echo_ready()) return Promise.resolve();
+    if (echoDisposed) return Promise.reject(new LocusDisconnectedError());
+    return new Promise((resolve, reject) => {
+      const finish = (): void => {
+        if (echoDisposed) reject(new LocusDisconnectedError());
+        else resolve();
+      };
+      readyWaiters.add(finish);
+    });
+  }
 
   function send(message: LocusClientMessage<TActions>): void {
     options.socket.send(encode_client_message(message));
@@ -378,10 +433,10 @@ export function create_locus_client<
         errorCode: code,
       }),
     });
-    pending?.reject(new LocusClientRecoveryError(code, message, cause));
+    pending?.reject(new EchoRecoveryError(code, message, cause));
   }
 
-  function notify(change: LocusClientRecoveryChange<ClassifiedLiveMap>): void {
+  function notify(change: EchoRecoveryChange<ClassifiedLiveMap>): void {
     consumerNotifications += 1;
     try {
       for (const listener of [...recoveryListeners]) listener(change);
@@ -462,7 +517,7 @@ export function create_locus_client<
 
     const localRevBefore = map.rev;
     try {
-      const applied = map.mode === "document"
+      const applied = run_echo_owned(() => map.mode === "document"
         ? replay_locus_document_commit(map, commit)
         : projected_identity_replay(commit, localRevBefore) !== undefined
           ? map.replay(projected_identity_replay(commit, localRevBefore)!)
@@ -473,9 +528,9 @@ export function create_locus_client<
             format: commit.format,
             payload: commit.payload,
           })
-          : (() => { throw new Error("Canonical data commit is missing structural transport."); })();
+          : (() => { throw new Error("Canonical data commit is missing structural transport."); })());
       if (!applied.changed || map.rev !== localRevBefore + 1) {
-        throw new Error("Canonical changed commit did not advance the client mirror exactly once.");
+        throw new Error("Canonical changed commit did not advance the Echo replica exactly once.");
       }
     } catch (cause) {
       if (map.rev === localRevBefore + 1) {
@@ -484,7 +539,7 @@ export function create_locus_client<
         fail_recovery("LOCUS_RECOVERY_OBSERVER_FAILED", "A mirror observer failed after canonical state application.", cause);
       } else {
         replayConflicts += 1;
-        fail_recovery("LOCUS_RECOVERY_REPLAY_CONFLICT", "Canonical commit conflicts with the client mirror.", cause);
+        fail_recovery("LOCUS_RECOVERY_REPLAY_CONFLICT", "Canonical commit conflicts with the Echo replica.", cause);
       }
       return;
     }
@@ -531,13 +586,13 @@ export function create_locus_client<
         }
         const schema = map.schema.get();
         const capture = staged.capture();
-        map.restore(Object.freeze({
+        run_echo_owned(() => map.restore(Object.freeze({
           rev: snapshot.rev,
           format: capture.format,
           payload: capture.payload,
           root: capture.root,
-        }));
-        if (schema) map.schema.use(schema);
+        })));
+        if (schema) run_echo_owned(() => map.schema.use(schema));
       } else if (is_document_live_map(map)) {
         const capture = decode_locus_document_snapshot(snapshot);
         if (capture.mode !== map.mode) {
@@ -546,7 +601,7 @@ export function create_locus_client<
             "Locus document snapshot mode does not match the mirror mode.",
           );
         }
-        map.restore(capture, { identity: "preserve-metadata" });
+        run_echo_owned(() => map.restore(capture, { identity: "preserve-metadata" }));
       } else {
         throw new Error("Recovery snapshot reconstructed an incompatible map mode.");
       }
@@ -720,6 +775,7 @@ export function create_locus_client<
       headRev: caught.throughRev,
       incarnationChanged: previousIncarnation !== undefined && previousIncarnation !== plan.incarnationId,
     });
+    notify_echo_ready();
     return true;
   }
 
@@ -765,7 +821,7 @@ export function create_locus_client<
       sessionRejectionCount += 1;
       sessionStatus = "failed";
       sessionFailure ??= Object.freeze({ code: message.code, message: message.message });
-      pending.reject(new LocusClientSessionError(message.code, message.message));
+      pending.reject(new EchoSessionError(message.code, message.message));
       return;
     }
     if (message.type === "session-ended") {
@@ -786,6 +842,7 @@ export function create_locus_client<
       sessionReattachCount += 1;
     }
     pending.resolve({ sessionId: message.sessionId, epoch: message.epoch, reattached: message.type === "session-attached" });
+    notify_echo_ready();
   }
 
   function install_recovery_messages(): void {
@@ -819,11 +876,13 @@ export function create_locus_client<
     if (message.type === "hello") {
       seq = message.seq;
       if (is_projected_live_map(map)) {
-        if (has_projected_transport(message)) {
-          apply_projected_message(map, [], message, "replace");
-        } else if (is_locus_json_value(message.snapshot)) {
-          map.replace(message.snapshot);
-        }
+        run_echo_owned(() => {
+          if (has_projected_transport(message)) {
+            apply_projected_message(map, [], message, "replace");
+          } else if (is_locus_json_value(message.snapshot)) {
+            map.replace(message.snapshot);
+          }
+        });
       }
       return;
     }
@@ -831,15 +890,17 @@ export function create_locus_client<
       seq = message.seq;
 
       if (is_projected_live_map(map)) {
-        if (has_projected_transport(message)) {
-          apply_projected_message(map, message.path, message, message.path.length === 0 ? "replace" : "set");
-        } else if (message.path.length === 0) {
-          if (is_locus_json_value(message.value)) map.replace(message.value);
-        } else if (message.value === undefined) {
-          map.delete(message.path);
-        } else {
-          map.set(message.path, message.value);
-        }
+        run_echo_owned(() => {
+          if (has_projected_transport(message)) {
+            apply_projected_message(map, message.path, message, message.path.length === 0 ? "replace" : "set");
+          } else if (message.path.length === 0) {
+            if (is_locus_json_value(message.value)) map.replace(message.value);
+          } else if (message.value === undefined) {
+            map.delete(message.path);
+          } else {
+            map.set(message.path, message.value);
+          }
+        });
       }
 
       return;
@@ -900,6 +961,7 @@ export function create_locus_client<
     if (stopClose) disposers.push(stopClose);
     if (options.recovery) install_recovery_messages();
     if (!options.recovery && !options.session) send({ type: "hello", clientId });
+    notify_echo_ready();
     return disconnect;
   }
 
@@ -914,7 +976,7 @@ export function create_locus_client<
     reject_pending_action_statuses(pendingActionStatuses, new LocusDisconnectedError());
     const sessionPending = pendingSession;
     pendingSession = undefined;
-    sessionPending?.reject(new LocusClientSessionError("LOCUS_SESSION_DISCONNECTED", "Locus session transport disconnected."));
+    sessionPending?.reject(new EchoSessionError("LOCUS_SESSION_DISCONNECTED", "Locus session transport disconnected."));
     if (sessionStatus === "attached") sessionStatus = "detached";
     if (recoveryStatus === "recovering" || recoveryStatus === "caught_up") {
       fail_recovery("LOCUS_RECOVERY_DISCONNECTED", "Locus recovery transport disconnected.");
@@ -922,12 +984,23 @@ export function create_locus_client<
     recoveryLifecycle = Object.freeze({ phase: "disconnected" });
   }
 
-  function recover(): Promise<LocusClientRecoveryResult> {
-    if (recoveryDisposed) return Promise.reject(new LocusClientRecoveryError("LOCUS_RECOVERY_DISPOSED", "Locus client recovery is disposed."));
-    if (!options.recovery) return Promise.reject(new LocusClientRecoveryError("LOCUS_RECOVERY_NOT_CONFIGURED", "Locus client recovery is not configured."));
-    if (!isConnected) return Promise.reject(new LocusClientRecoveryError("LOCUS_RECOVERY_DISCONNECTED", "Locus recovery requires a connected transport."));
-    if (pendingRecovery) return Promise.reject(new LocusClientRecoveryError("LOCUS_RECOVERY_IN_PROGRESS", "Locus recovery is already in progress."));
-    if (recoveryStatus === "failed") return Promise.reject(new LocusClientRecoveryError("LOCUS_RECOVERY_LIFECYCLE_INVALID", "Locus recovery requires a reconnect after failure."));
+  function dispose(): void {
+    if (echoDisposed) return;
+    echoDisposed = true;
+    disconnect();
+    dispose_recovery();
+    dispose_session();
+    if (documentAuthority !== undefined) unregister_echo_document_authority(map, documentAuthority);
+    mapAuthority.releaseManagement(echoOwner);
+    notify_echo_ready();
+  }
+
+  function recover(): Promise<EchoRecoveryResult> {
+    if (recoveryDisposed) return Promise.reject(new EchoRecoveryError("LOCUS_RECOVERY_DISPOSED", "Echo recovery is disposed."));
+    if (!options.recovery) return Promise.reject(new EchoRecoveryError("LOCUS_RECOVERY_NOT_CONFIGURED", "Echo recovery is not configured."));
+    if (!isConnected) return Promise.reject(new EchoRecoveryError("LOCUS_RECOVERY_DISCONNECTED", "Locus recovery requires a connected transport."));
+    if (pendingRecovery) return Promise.reject(new EchoRecoveryError("LOCUS_RECOVERY_IN_PROGRESS", "Locus recovery is already in progress."));
+    if (recoveryStatus === "failed") return Promise.reject(new EchoRecoveryError("LOCUS_RECOVERY_LIFECYCLE_INVALID", "Locus recovery requires a reconnect after failure."));
     const id = make_recovery_id();
     install_recovery_messages();
     recoveryLifecycle = Object.freeze({ phase: "awaiting-plan", requestId: id });
@@ -951,7 +1024,7 @@ export function create_locus_client<
         currentRev: map.rev,
       }),
     });
-    const promise = new Promise<LocusClientRecoveryResult>((resolve, reject) => {
+    const promise = new Promise<EchoRecoveryResult>((resolve, reject) => {
       pendingRecovery = {
         id,
         resolve,
@@ -998,17 +1071,17 @@ export function create_locus_client<
         errorCode: "LOCUS_RECOVERY_DISPOSED",
       }),
     });
-    pending?.reject(new LocusClientRecoveryError("LOCUS_RECOVERY_DISPOSED", "Locus client recovery was disposed."));
+    pending?.reject(new EchoRecoveryError("LOCUS_RECOVERY_DISPOSED", "Echo recovery was disposed."));
     recoveryListeners.clear();
   }
 
-  function on_change(listener: LocusClientRecoveryChangeListener<ClassifiedLiveMap>): LocusDisposer {
+  function onChange(listener: EchoRecoveryChangeListener<ClassifiedLiveMap>): LocusDisposer {
     if (recoveryDisposed) return () => { };
     recoveryListeners.add(listener);
     return () => recoveryListeners.delete(listener);
   }
 
-  function debug(): LocusClientRecoveryDiagnostics {
+  function debug(): EchoRecoveryDiagnostics {
     return Object.freeze({
       status: recoveryStatus,
       ...(recoveryStrategy ? { strategy: recoveryStrategy } : {}),
@@ -1031,44 +1104,44 @@ export function create_locus_client<
   function begin_session_request(
     kind: PendingSession["kind"],
     message: LocusClientMessage<TActions>,
-  ): Promise<LocusClientSessionResult | undefined> {
-    if (sessionDisposed) return Promise.reject(new LocusClientSessionError("LOCUS_SESSION_DISPOSED", "Locus client session API is disposed."));
-    if (!isConnected) return Promise.reject(new LocusClientSessionError("LOCUS_SESSION_DISCONNECTED", "Locus session requires a connected transport."));
-    if (pendingSession) return Promise.reject(new LocusClientSessionError("LOCUS_SESSION_REQUEST_PENDING", "A Locus session request is already pending."));
+  ): Promise<EchoSessionResult | undefined> {
+    if (sessionDisposed) return Promise.reject(new EchoSessionError("LOCUS_SESSION_DISPOSED", "Echo session API is disposed."));
+    if (!isConnected) return Promise.reject(new EchoSessionError("LOCUS_SESSION_DISCONNECTED", "Locus session requires a connected transport."));
+    if (pendingSession) return Promise.reject(new EchoSessionError("LOCUS_SESSION_REQUEST_PENDING", "A Locus session request is already pending."));
     if (kind === "create") sessionStatus = "creating";
     if (kind === "reattach") sessionStatus = "attaching";
     const id = "id" in message && typeof message.id === "string" ? message.id : make_session_request_id();
-    const promise = new Promise<LocusClientSessionResult | undefined>((resolve, reject) => {
+    const promise = new Promise<EchoSessionResult | undefined>((resolve, reject) => {
       pendingSession = { id, kind, resolve, reject };
     });
     send(message);
     return promise;
   }
 
-  async function create_session(): Promise<LocusClientSessionResult> {
-    if (sessionStatus === "attached") throw new LocusClientSessionError("LOCUS_SESSION_ALREADY_ATTACHED", "A Locus session is already attached.");
+  async function create_session(): Promise<EchoSessionResult> {
+    if (sessionStatus === "attached") throw new EchoSessionError("LOCUS_SESSION_ALREADY_ATTACHED", "A Locus session is already attached.");
     const id = make_session_request_id();
     const result = await begin_session_request("create", { type: "session-create", id });
-    if (!result) throw new LocusClientSessionError("LOCUS_SESSION_CREATE_FAILED", "Locus session creation produced no result.");
+    if (!result) throw new EchoSessionError("LOCUS_SESSION_CREATE_FAILED", "Locus session creation produced no result.");
     return result;
   }
 
-  async function reattach_session(credential = sessionCredential): Promise<LocusClientSessionResult> {
-    if (sessionStatus === "attached") throw new LocusClientSessionError("LOCUS_SESSION_ALREADY_ATTACHED", "A Locus session is already attached.");
+  async function reattach_session(credential = sessionCredential): Promise<EchoSessionResult> {
+    if (sessionStatus === "attached") throw new EchoSessionError("LOCUS_SESSION_ALREADY_ATTACHED", "A Locus session is already attached.");
     const id = make_session_request_id();
     const result = await begin_session_request("reattach", {
       type: "session-attach",
       id,
       ...(credential !== undefined ? { credential } : {}),
     });
-    if (!result) throw new LocusClientSessionError("LOCUS_SESSION_ATTACH_FAILED", "Locus session reattachment produced no result.");
+    if (!result) throw new EchoSessionError("LOCUS_SESSION_ATTACH_FAILED", "Locus session reattachment produced no result.");
     sessionCredential = credential;
     return result;
   }
 
   async function goodbye_session(): Promise<void> {
-    if (sessionStatus === "ended") throw new LocusClientSessionError("LOCUS_SESSION_ALREADY_GONE", "Locus session is already ended.");
-    if (sessionStatus !== "attached") throw new LocusClientSessionError("LOCUS_SESSION_NOT_ATTACHED", "No authoritative Locus session is attached.");
+    if (sessionStatus === "ended") throw new EchoSessionError("LOCUS_SESSION_ALREADY_GONE", "Locus session is already ended.");
+    if (sessionStatus !== "attached") throw new EchoSessionError("LOCUS_SESSION_NOT_ATTACHED", "No authoritative Locus session is attached.");
     const id = make_session_request_id();
     const result = await begin_session_request("goodbye", { type: "session-goodbye", id });
     void result;
@@ -1080,10 +1153,10 @@ export function create_locus_client<
     const pending = pendingSession;
     pendingSession = undefined;
     sessionStatus = "disposed";
-    pending?.reject(new LocusClientSessionError("LOCUS_SESSION_DISPOSED", "Locus client session API was disposed."));
+    pending?.reject(new EchoSessionError("LOCUS_SESSION_DISPOSED", "Echo session API was disposed."));
   }
 
-  function debug_session(): LocusClientSessionDiagnostics {
+  function debug_session(): EchoSessionDiagnostics {
     return Object.freeze({
       status: sessionStatus,
       ...(sessionId ? { sessionId } : {}),
@@ -1098,15 +1171,15 @@ export function create_locus_client<
 
   function subscribe(path: readonly (string | number)[]): void { send({ type: "subscribe", path: [...path] }); }
   function unsubscribe(path: readonly (string | number)[]): void { send({ type: "unsubscribe", path: [...path] }); }
-  function on_event(listener: LocusEventListener): LocusDisposer {
+  function onEvent(listener: LocusEventListener): LocusDisposer {
     eventListeners.add(listener);
     return () => eventListeners.delete(listener);
   }
 
   function action_handle<TName extends keyof TActions & string>(
-    request: LocusClientActionRequest<TActions, TName>,
+    request: EchoActionRequest<TActions, TName>,
     retry: boolean,
-  ): LocusClientActionPromise<TActions, TName> {
+  ): EchoActionPromise<TActions, TName> {
     const attemptId = makeActionAttemptId();
     const connected = isConnected && (options.session === undefined || sessionStatus === "attached");
     const duplicateNewId = pendingActions.has(attemptId);
@@ -1122,7 +1195,7 @@ export function create_locus_client<
       : Promise.reject(duplicateNewId
         ? new LocusDuplicateActionIdError(attemptId)
         : new LocusDisconnectedError());
-    const handle: LocusClientActionPromise<TActions, TName> = Object.assign(promise, { request });
+    const handle: EchoActionPromise<TActions, TName> = Object.assign(promise, { request });
     if (connected && !duplicateNewId) {
       const message = {
         type: "action",
@@ -1142,7 +1215,7 @@ export function create_locus_client<
   function action<TName extends keyof TActions & string>(
     name: TName,
     ...args: undefined extends TActions[TName] ? [payload?: TActions[TName]] : [payload: TActions[TName]]
-  ): LocusClientActionPromise<TActions, TName> {
+  ): EchoActionPromise<TActions, TName> {
     const requestId = makeActionId();
     const payload = args[0];
     const request = Object.freeze({
@@ -1153,10 +1226,10 @@ export function create_locus_client<
     return action_handle(request, false);
   }
 
-  function retry_action<TName extends keyof TActions & string>(
-    request: LocusClientActionRequest<TActions, TName>,
-  ): LocusClientActionPromise<TActions, TName> {
-    const stableRequest: LocusClientActionRequest<TActions, TName> = Object.freeze({
+  function retryAction<TName extends keyof TActions & string>(
+    request: EchoActionRequest<TActions, TName>,
+  ): EchoActionPromise<TActions, TName> {
+    const stableRequest: EchoActionRequest<TActions, TName> = Object.freeze({
       requestId: request.requestId,
       name: request.name,
       ...(request.payload !== undefined ? { payload: clone_action_payload(request.payload as JsonValue) as TActions[TName] } : {}),
@@ -1164,10 +1237,10 @@ export function create_locus_client<
     return action_handle(stableRequest, true);
   }
 
-  function action_status(requestId: LocusActionRequestId): Promise<LocusClientActionStatusResult> {
+  function actionStatus(requestId: LocusActionRequestId): Promise<EchoActionStatusResult> {
     if (!isConnected || (options.session !== undefined && sessionStatus !== "attached")) return Promise.reject(new LocusDisconnectedError());
     const id = makeActionStatusId();
-    const result = new Promise<LocusClientActionStatusResult>((resolve, reject) => {
+    const result = new Promise<EchoActionStatusResult>((resolve, reject) => {
       pendingActionStatuses.set(id, { requestId, resolve, reject });
     });
     send({ type: "action-status", id, clientId, requestId });
@@ -1183,7 +1256,7 @@ export function create_locus_client<
     get failure() { return firstFailure; },
     get strategy() { return recoveryStrategy; },
     recover,
-    on_change,
+    onChange,
     dispose: dispose_recovery,
     debug,
   });
@@ -1201,6 +1274,67 @@ export function create_locus_client<
     debug: debug_session,
   });
 
+  if (is_document_live_map(map)) {
+    const documentAction = action as LocusDocumentActionFn;
+    const documentRetryAction = retryAction as LocusDocumentRetryActionFn;
+    const send_document_action = (request: EchoDocumentAction): LocusDocumentActionPromise => {
+      switch (request.name) {
+        case "document.attrs.set": return documentAction(request.name, request.payload);
+        case "document.attrs.drop": return documentAction(request.name, request.payload);
+        case "document.attrs.setMany": return documentAction(request.name, request.payload);
+        case "document.attrs.dropMany": return documentAction(request.name, request.payload);
+        case "document.attrs.clear": return documentAction(request.name, request.payload);
+        case "document.attrs.replace": return documentAction(request.name, request.payload);
+        case "document.content.replace": return documentAction(request.name, request.payload);
+        case "document.content.insert": return documentAction(request.name, request.payload);
+        case "document.content.remove": return documentAction(request.name, request.payload);
+        case "document.content.move": return documentAction(request.name, request.payload);
+      }
+    };
+    const retry_document_action = (request: LocusDocumentActionRequest): LocusDocumentActionPromise => {
+      switch (request.name) {
+        case "document.attrs.set": return documentRetryAction(request);
+        case "document.attrs.drop": return documentRetryAction(request);
+        case "document.attrs.setMany": return documentRetryAction(request);
+        case "document.attrs.dropMany": return documentRetryAction(request);
+        case "document.attrs.clear": return documentRetryAction(request);
+        case "document.attrs.replace": return documentRetryAction(request);
+        case "document.content.replace": return documentRetryAction(request);
+        case "document.content.insert": return documentRetryAction(request);
+        case "document.content.remove": return documentRetryAction(request);
+        case "document.content.move": return documentRetryAction(request);
+      }
+    };
+    const dispatch_document_action = async (request: EchoDocumentAction): Promise<Readonly<{
+      accepted: boolean;
+      completionRev?: number;
+    }>> => {
+      let pending = send_document_action(request);
+      let result: LocusClientActionResult;
+      while (true) {
+        try {
+          result = await pending;
+          break;
+        } catch (cause) {
+          if (!(cause instanceof LocusDisconnectedError)) throw cause;
+          const stableRequest = pending.request;
+          await wait_until_echo_ready();
+          pending = retry_document_action(stableRequest);
+        }
+      }
+      return Object.freeze({
+        accepted: result.type === "ack" && result.ok === true,
+        ...(result.completionRev === undefined ? {} : { completionRev: result.completionRev }),
+      });
+    };
+    documentAuthority = make_echo_document_authority(
+      dispatch_document_action,
+      () => map.rev,
+      (listener) => map.commits.observe(listener),
+    );
+    register_echo_document_authority(map, documentAuthority);
+  }
+
   return Object.freeze({
     get map() { return map; },
     clientId,
@@ -1211,10 +1345,11 @@ export function create_locus_client<
     disconnect,
     subscribe,
     unsubscribe,
-    on_event,
+    onEvent,
     action,
-    retry_action,
-    action_status,
+    retryAction,
+    actionStatus,
+    dispose,
   });
 }
 
@@ -1226,7 +1361,6 @@ function is_projected_live_map(map: LiveMapAuthority): map is LiveMap {
 
 function has_projected_transport(value: object): boolean {
   return Object.hasOwn(value, "format")
-    || Object.hasOwn(value, "formatVersion")
     || Object.hasOwn(value, "payload");
 }
 
@@ -1236,9 +1370,7 @@ function apply_projected_message(
   message: Readonly<{ format?: unknown; payload?: unknown }>,
   kind: "set" | "replace",
 ): void {
-  if (message.format !== "structural-json"
-    || Object.hasOwn(message, "formatVersion")
-    || typeof message.payload !== "string") {
+  if (message.format !== "structural-json" || typeof message.payload !== "string") {
     throw new Error("Locus projected message has an invalid exact transport envelope.");
   }
   const projected = livemap_projected_propagation(map);
@@ -1261,5 +1393,5 @@ function is_document_live_map(map: LiveMapAuthority): map is Extract<ClassifiedL
 function classified_live_map(map: LiveMapAuthority | undefined): ClassifiedLiveMap {
   if (map === undefined) return make_classified_livemap(parse_json({}));
   if (is_projected_live_map(map) || is_document_live_map(map)) return map;
-  throw new Error("Locus client map is not a classified LiveMap authority.");
+  throw new Error("Echo map is not a classified LiveMap authority.");
 }

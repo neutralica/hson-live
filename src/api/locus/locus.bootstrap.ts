@@ -7,8 +7,6 @@ import type {
   LiveMapRootMode,
 } from "../../types/livemap.types.js";
 import type {
-  LocusClient,
-  LocusClientOptions,
   LocusRecoveryPlanner,
   LocusSelector,
   LocusSnapshotEnvelope,
@@ -19,7 +17,6 @@ import { parse_json } from "../transform/parsers/parse-json.js";
 import { json_value_from_node } from "../transform/serializers/serialize-json.js";
 import { serialize_hson } from "../transform/serializers/serialize-hson.js";
 import { detach_hson_root_value } from "../transform/utils/node-utils/detach-hson-root-value.js";
-import { create_locus_client } from "./locus.client.js";
 import { decode_locus_document_snapshot } from "./locus.document-snapshot.js";
 
 export const LOCUS_BOOTSTRAP_FORMAT = "hson-locus-bootstrap" as const;
@@ -94,26 +91,6 @@ export type LocusBootstrapInstall = Readonly<{
 export type LocusBootstrapAuthority = Readonly<{
   stream: Readonly<{ logicalMapId: string }>;
   recovery: LocusRecoveryPlanner;
-}>;
-
-export type LocusBootstrapClient<TMap extends LiveMapAuthority = ClassifiedLiveMap> = Readonly<{
-  bootstrap: LocusBootstrap;
-  map: TMap;
-  readonly status:
-    | "installed"
-    | "socket-connecting"
-    | "recovering"
-    | "live"
-    | "failed"
-    | "disposed";
-  readonly failure: unknown;
-  client: LocusClient<TMap>;
-  connect_and_recover(): Promise<Readonly<{
-    status: "live";
-    strategy: "current" | "replay" | "snapshot";
-    headRev: number;
-  }>>;
-  dispose(): void;
 }>;
 
 const textEncoder = new TextEncoder();
@@ -532,63 +509,4 @@ export function install_locus_bootstrap(
       }),
     }),
   });
-}
-
-/** Create the existing Locus client around an installed bootstrap mirror. */
-export function create_locus_bootstrap_client<TMap extends LiveMapAuthority>(
-  install: LocusBootstrapInstall & Readonly<{ map: TMap }>,
-  options: Omit<LocusClientOptions<TMap>, "map" | "recovery">,
-): LocusBootstrapClient<TMap> {
-  const client = create_locus_client({
-    ...options,
-    map: install.map,
-    recovery: install.recovery,
-  });
-  let disposed = false;
-  let connected = false;
-  let status: LocusBootstrapClient<TMap>["status"] = "installed";
-  let failure: unknown;
-  const result: LocusBootstrapClient<TMap> = {
-    bootstrap: install.bootstrap,
-    map: install.map,
-    get status() {
-      return status;
-    },
-    get failure() {
-      return failure;
-    },
-    client,
-    async connect_and_recover() {
-      if (disposed) throw new Error("Locus bootstrap client is disposed.");
-      try {
-        if (!connected) {
-          status = "socket-connecting";
-          client.connect();
-          connected = true;
-        }
-        status = "recovering";
-        const recovered = await client.recovery.recover();
-        status = "live";
-        return Object.freeze({
-          status: "live" as const,
-          strategy: recovered.strategy,
-          headRev: recovered.headRev,
-        });
-      } catch (cause) {
-        failure = cause;
-        status = "failed";
-        throw cause;
-      }
-    },
-    dispose() {
-      if (disposed) return;
-      disposed = true;
-      status = "disposed";
-      client.recovery.dispose();
-      client.session.dispose();
-      client.disconnect();
-      options.socket.close(1000, "Locus bootstrap client disposed.");
-    },
-  };
-  return Object.freeze(result);
 }

@@ -80,17 +80,16 @@ export function detach_livetree(tree: LiveTree): LiveTreeLifecycleResult {
 export function remove_livetree_terminal(
   node: HsonNode,
   runtime: LiveTreeRuntime,
-): LiveTreeLifecycleResult {
+): void {
   const delegated = delegate_document_remove_if_bound(node);
-  if (delegated !== undefined) return delegated;
+  if (delegated) return;
   assert_document_structural_mutation_allowed(node, "remove branch");
-  if (is_livetree_node_disposed(node)) return 0;
+  if (is_livetree_node_disposed(node)) return;
   assert_not_browser_owned_root(node, "remove");
 
   unlink_node_from_parent(node);
   dispose_node_deep(node, runtime);
   release_subtree_ownership(node);
-  return 1;
 }
 
 function make_detached_live_content(

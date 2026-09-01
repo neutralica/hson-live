@@ -11,7 +11,7 @@ import type {
   LiveMapDocumentAttrs,
   LiveMapDocumentContent,
   LiveMapDocumentCommitTarget,
-  LiveMapDocumentTarget,
+  LiveMapDocumentRequestTarget,
   LiveMapDataLibraryInput,
   LiveMapGraphOp,
   HsonSchemaValue,
@@ -395,7 +395,7 @@ export type LocusMultiLibraryActionContext<
   mutate: (mutation: (draft: MultiLibraryMutationDraft<MultiLibraryInputs<TMap>>) => void) => Promise<void>;
   seq: LocusSeq;
   origin: LocusActionOrigin;
-  emit_event: (event: string, payload: JsonValue) => boolean;
+  emitEvent: (event: string, payload: JsonValue) => boolean;
 }>;
 
 export type LocusMultiLibraryActionHandler<
@@ -425,6 +425,11 @@ export type LocusMultiLibraryOptions<
   actions?: Partial<LocusMultiLibraryActions<NoInfer<TMap>, TActions>>;
   logicalMapId?: LocusLogicalMapId;
   incarnationId?: LocusIncarnationId;
+  sessionId?: LocusSessionId | (() => LocusSessionId);
+  sessions?: LocusSessionOptions;
+  actionDedupe?: LocusActionDedupeOptions;
+  schema?: Pick<LocusSchema<JsonValue | undefined, TActions>, "actions">;
+  authorizeAction?: LocusActionAuthorizer<TActions>;
 }>;
 
 export type LocusActionDedupeSchedule = (
@@ -539,7 +544,7 @@ export type LocusSessionInspector = Readonly<{
   dispose: LocusDisposer;
 }>;
 
-export type LocusClientActionRequest<
+export type EchoActionRequest<
   TActions extends LocusActionPayloads = LocusActionPayloads,
   TName extends keyof TActions & string = keyof TActions & string,
 > = Readonly<{
@@ -548,11 +553,11 @@ export type LocusClientActionRequest<
   payload?: TActions[TName];
 }>;
 
-export type LocusClientActionPromise<
+export type EchoActionPromise<
   TActions extends LocusActionPayloads = LocusActionPayloads,
   TName extends keyof TActions & string = keyof TActions & string,
 > = Promise<LocusClientActionResult> & Readonly<{
-  request: LocusClientActionRequest<TActions, TName>;
+  request: EchoActionRequest<TActions, TName>;
 }>;
 
 export type LocusEventListener = (message: LocusServerEventMessage) => void;
@@ -561,47 +566,47 @@ export type LocusConnection = LocusDisposer & Readonly<{
   emit_event: (event: string, payload: JsonValue) => void;
 }>;
 
-export type LocusClientActionFn<
+export type EchoActionFn<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = <TName extends keyof TActions & string>(
   name: TName,
   ...args: undefined extends TActions[TName]
     ? [payload?: TActions[TName]]
     : [payload: TActions[TName]]
-) => LocusClientActionPromise<TActions, TName>;
+) => EchoActionPromise<TActions, TName>;
 
-export type LocusClientRetryActionFn<
+export type EchoRetryActionFn<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = <TName extends keyof TActions & string>(
-  request: LocusClientActionRequest<TActions, TName>,
-) => LocusClientActionPromise<TActions, TName>;
+  request: EchoActionRequest<TActions, TName>,
+) => EchoActionPromise<TActions, TName>;
 
-export type LocusClientActionStatusResult = Readonly<{
+export type EchoActionStatusResult = Readonly<{
   requestId: LocusActionRequestId;
   state: LocusActionStatusState;
   outcome?: LocusActionTerminalOutcome;
 }>;
 
-export type LocusClientRecoveryStatus = "idle" | "recovering" | "caught_up" | "failed" | "disposed";
-export type LocusClientRecoveryStrategy = "current" | "replay" | "snapshot" | "reject";
+export type EchoRecoveryStatus = "idle" | "recovering" | "caught_up" | "failed" | "disposed";
+export type EchoRecoveryStrategy = "current" | "replay" | "snapshot" | "reject";
 
-export type LocusClientRecoveryCursor = Readonly<{
+export type EchoRecoveryCursor = Readonly<{
   incarnationId: LocusIncarnationId;
   lastAppliedRev: number;
 }>;
 
-export type LocusClientRecoveryOptions = Readonly<{
+export type EchoRecoveryOptions = Readonly<{
   logicalMapId: LocusLogicalMapId;
-  cursor?: LocusClientRecoveryCursor;
+  cursor?: EchoRecoveryCursor;
 }>;
 
-export type LocusClientRecoveryFailure = Readonly<{
+export type EchoRecoveryFailure = Readonly<{
   code: string;
   message: string;
   cause?: unknown;
 }>;
 
-export type LocusClientRecoveryChange<
+export type EchoRecoveryChange<
   TMap extends LiveMapAuthority = LiveMap<JsonValue | undefined>,
 > = Readonly<{
   kind: "commit" | "snapshot";
@@ -611,12 +616,12 @@ export type LocusClientRecoveryChange<
   map: TMap;
 }>;
 
-export type LocusClientRecoveryChangeListener<
+export type EchoRecoveryChangeListener<
   TMap extends LiveMapAuthority = LiveMap<JsonValue | undefined>,
-> = (change: LocusClientRecoveryChange<TMap>) => void;
+> = (change: EchoRecoveryChange<TMap>) => void;
 
-export type LocusClientRecoveryResult = Readonly<{
-  strategy: Exclude<LocusClientRecoveryStrategy, "reject">;
+export type EchoRecoveryResult = Readonly<{
+  strategy: Exclude<EchoRecoveryStrategy, "reject">;
   sessionId: LocusSessionId;
   logicalMapId: LocusLogicalMapId;
   incarnationId: LocusIncarnationId;
@@ -624,9 +629,9 @@ export type LocusClientRecoveryResult = Readonly<{
   incarnationChanged: boolean;
 }>;
 
-export type LocusClientRecoveryDiagnostics = Readonly<{
-  status: LocusClientRecoveryStatus;
-  strategy?: LocusClientRecoveryStrategy;
+export type EchoRecoveryDiagnostics = Readonly<{
+  status: EchoRecoveryStatus;
+  strategy?: EchoRecoveryStrategy;
   logicalMapId?: LocusLogicalMapId;
   incarnationId?: LocusIncarnationId;
   lastAppliedRev?: number;
@@ -642,37 +647,37 @@ export type LocusClientRecoveryDiagnostics = Readonly<{
   observerFailures: number;
 }>;
 
-export type LocusClientRecovery<
+export type EchoRecovery<
   TMap extends LiveMapAuthority = LiveMap<JsonValue | undefined>,
 > = Readonly<{
-  readonly status: LocusClientRecoveryStatus;
+  readonly status: EchoRecoveryStatus;
   readonly logicalMapId: LocusLogicalMapId | undefined;
   readonly incarnationId: LocusIncarnationId | undefined;
   readonly lastAppliedRev: number | undefined;
   readonly map: TMap;
-  readonly failure: LocusClientRecoveryFailure | undefined;
-  readonly strategy: LocusClientRecoveryStrategy | undefined;
-  recover: () => Promise<LocusClientRecoveryResult>;
-  on_change: (listener: LocusClientRecoveryChangeListener<TMap>) => LocusDisposer;
+  readonly failure: EchoRecoveryFailure | undefined;
+  readonly strategy: EchoRecoveryStrategy | undefined;
+  recover: () => Promise<EchoRecoveryResult>;
+  onChange: (listener: EchoRecoveryChangeListener<TMap>) => LocusDisposer;
   dispose: LocusDisposer;
-  debug: () => LocusClientRecoveryDiagnostics;
+  debug: () => EchoRecoveryDiagnostics;
 }>;
 
-export type LocusClientSessionStatus = "idle" | "creating" | "attaching" | "attached" | "detached" | "failed" | "ended" | "disposed";
+export type EchoSessionStatus = "idle" | "creating" | "attaching" | "attached" | "detached" | "failed" | "ended" | "disposed";
 
-export type LocusClientSessionFailure = Readonly<{
+export type EchoSessionFailure = Readonly<{
   code: string;
   message: string;
 }>;
 
-export type LocusClientSessionResult = Readonly<{
+export type EchoSessionResult = Readonly<{
   sessionId: LocusSessionId;
   epoch: LocusConnectionEpoch;
   reattached: boolean;
 }>;
 
-export type LocusClientSessionDiagnostics = Readonly<{
-  status: LocusClientSessionStatus;
+export type EchoSessionDiagnostics = Readonly<{
+  status: EchoSessionStatus;
   sessionId?: LocusSessionId;
   epoch?: LocusConnectionEpoch;
   hasCredential: boolean;
@@ -682,24 +687,24 @@ export type LocusClientSessionDiagnostics = Readonly<{
   rejectionCount: number;
 }>;
 
-export type LocusClientSession = Readonly<{
-  readonly status: LocusClientSessionStatus;
+export type EchoSession = Readonly<{
+  readonly status: EchoSessionStatus;
   readonly sessionId: LocusSessionId | undefined;
   readonly credential: LocusSessionCredential | undefined;
   readonly epoch: LocusConnectionEpoch | undefined;
-  readonly failure: LocusClientSessionFailure | undefined;
-  create: () => Promise<LocusClientSessionResult>;
-  reattach: (credential?: LocusSessionCredential) => Promise<LocusClientSessionResult>;
+  readonly failure: EchoSessionFailure | undefined;
+  create: () => Promise<EchoSessionResult>;
+  reattach: (credential?: LocusSessionCredential) => Promise<EchoSessionResult>;
   goodbye: () => Promise<void>;
   dispose: LocusDisposer;
-  debug: () => LocusClientSessionDiagnostics;
+  debug: () => EchoSessionDiagnostics;
 }>;
 
-export type LocusClientSessionOptions = Readonly<{
+export type EchoSessionOptions = Readonly<{
   credential?: LocusSessionCredential;
 }>;
 
-export type LocusClientOptions<
+export type EchoOptions<
   TMap extends LiveMapAuthority = LiveMap<JsonValue | undefined>,
 > = Readonly<{
   socket: LocusSocketLike;
@@ -710,36 +715,31 @@ export type LocusClientOptions<
    * the same logical client and preserving its outstanding request lineage.
    */
   clientId?: LocusClientId;
-  /**
-   * Factory for fresh action request IDs. `action()` calls it once per new
-   * command; `retry_action()` retains the request ID in the supplied descriptor.
-   */
-  actionId?: () => LocusActionId;
-  actionAttemptId?: () => LocusActionId;
-  actionStatusId?: () => LocusActionStatusId;
-  recovery?: LocusClientRecoveryOptions;
-  session?: LocusClientSessionOptions;
+  recovery?: EchoRecoveryOptions;
+  session?: EchoSessionOptions;
   /** Optional local-only client lifecycle trace sink. Never transmitted. */
   trace?: LiveTraceSink;
 }>;
 
-/** Existing Locus client options when bootstrapping a fixed public Library registry. */
-export type LocusMultiLibraryClientOptions<
+/** Echo options for one exact fixed public Library registry. */
+export type MultiLibraryEchoOptions<
   TMap extends LiveMapLibraries,
 > = Readonly<{
   socket: LocusSocketLike;
-  /** A same-topology local mirror; bootstrap replaces it atomically in place. */
+  /** A same-topology Echo replica; bootstrap replaces it atomically in place. */
   map: TMap;
-  recovery: LocusClientRecoveryOptions;
+  recovery: EchoRecoveryOptions;
+  clientId?: LocusClientId;
+  session?: EchoSessionOptions;
 }>;
 
-export type LocusMultiLibraryClientRecovery = Readonly<{
+export type MultiLibraryEchoRecovery = Readonly<{
   outcome: "current" | "replay" | "snapshot";
   revision: number;
 }>;
 
-/** One complete client mirror with library-qualified value subscriptions. */
-export type LocusMultiLibraryClient<
+/** One complete Echo replica with library-qualified value subscriptions. */
+export type MultiLibraryEcho<
   TMap extends LiveMapLibraries = LiveMapLibraries,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = Readonly<{
@@ -747,36 +747,35 @@ export type LocusMultiLibraryClient<
   logicalMapId: LocusLogicalMapId;
   readonly incarnationId: LocusIncarnationId | undefined;
   readonly lastAppliedRev: number | undefined;
-  connect: () => Promise<LocusMultiLibraryClientRecovery>;
-  recover: () => Promise<LocusMultiLibraryClientRecovery>;
+  clientId: LocusClientId;
+  session: EchoSession;
+  connect: () => Promise<MultiLibraryEchoRecovery>;
   subscribe: (library: Extract<keyof MultiLibraryInputs<TMap>, string>, path: LivePath, listener: (value: JsonValue | undefined, revision: number) => void) => LocusDisposer;
   unsubscribe: (library: Extract<keyof MultiLibraryInputs<TMap>, string>, path: LivePath) => void;
-  action: <TName extends keyof TActions & string>(
-    name: TName,
-    ...args: undefined extends TActions[TName]
-      ? [payload?: TActions[TName]]
-      : [payload: TActions[TName]]
-  ) => Promise<JsonValue | undefined>;
-  close: () => void;
+  action: EchoActionFn<TActions>;
+  retryAction: EchoRetryActionFn<TActions>;
+  actionStatus: (requestId: LocusActionRequestId) => Promise<EchoActionStatusResult>;
+  dispose: () => void;
 }>;
 
-export type LocusClient<
+export type Echo<
   TMap extends LiveMapAuthority = LiveMap<JsonValue | undefined>,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = Readonly<{
   map: TMap;
   clientId: LocusClientId;
-  recovery: LocusClientRecovery<TMap>;
-  session: LocusClientSession;
+  recovery: EchoRecovery<TMap>;
+  session: EchoSession;
   seq: LocusSeq;
   connect: () => LocusDisposer;
   disconnect: () => void;
   subscribe: LocusProjectedSubscription<TMap>;
   unsubscribe: LocusProjectedSubscription<TMap>;
-  on_event: (listener: LocusEventListener) => LocusDisposer;
-  action: LocusClientActionFn<TActions> & LocusDocumentActionFn;
-  retry_action: LocusClientRetryActionFn<TActions> & LocusDocumentRetryActionFn;
-  action_status: (requestId: LocusActionRequestId) => Promise<LocusClientActionStatusResult>;
+  onEvent: (listener: LocusEventListener) => LocusDisposer;
+  action: EchoActionFn<TActions> & LocusDocumentActionFn;
+  retryAction: EchoRetryActionFn<TActions> & LocusDocumentRetryActionFn;
+  actionStatus: (requestId: LocusActionRequestId) => Promise<EchoActionStatusResult>;
+  dispose: LocusDisposer;
 }>;
 
 type LocusProjectedSubscription<TMap extends LiveMapAuthority> =
@@ -812,8 +811,10 @@ export type LocusMultiLibrary<
   readonly incarnationId: LocusIncarnationId;
   readonly rev: number;
   activity: LocusActivity;
+  sessions: LocusSessionInspector;
+  actionRequests: LocusActionDedupeInspector;
   mutate: (mutation: (draft: MultiLibraryMutationDraft<MultiLibraryInputs<TMap>>) => void | Promise<void>) => Promise<void>;
-  dispatch_action: (message: LocusClientActionMessage<TActions>) => Promise<LocusServerMessage<JsonValue | undefined>>;
+  dispatchAction: (message: LocusClientActionMessage<TActions>) => Promise<LocusServerMessage<JsonValue | undefined>>;
   connect: (socket: LocusSocketLike, context?: LocusConnectionContext) => LocusConnection;
   dispose: LocusDisposer;
 }>;

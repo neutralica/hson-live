@@ -5,7 +5,6 @@ import type { ClassifiedLiveMap, LiveMap, LiveMapAnyOp, LiveMapAuthority, LiveMa
 import type {
   Locus,
   LocusActionContext,
-  LocusActionAuthorizationContext,
   LocusActionDelivery,
   LocusActionOrigin,
   LocusActionPayloads,
@@ -24,7 +23,6 @@ import type {
   LocusMultiLibrary,
   LocusMultiLibraryOptions,
   LocusMutationDraft,
-  LocusSchemaDecoder,
   LocusSchemaResult,
   LocusSeq,
   LocusServerMessage,
@@ -32,7 +30,6 @@ import type {
   LocusSocketLike,
   LocusSnapshotCapabilities,
   LocusSnapshotEncodingSelection,
-  LocusValidator,
 } from "../../types/locus.types.js";
 import { decode_locus_message, encode_locus_message, is_locus_json_value } from "./locus.protocol.js";
 import { make_locus_sync_manager } from "./locus.sync.js";
@@ -59,7 +56,9 @@ import {
 import type { PreparedLiveMapTransition } from "../livemap/livemap.authority.js";
 import { make_locus_session_manager } from "./locus.session.js";
 import { make_locus_action_dedupe_store } from "./locus.actions.js";
-import { resolve_locus_document_action } from "./locus.document-actions.js";
+import { authorize_locus_action } from "./locus.action-authorization.js";
+import { decode_locus_action_payload, locus_schema_error_message } from "./locus.action-validation.js";
+import { is_locus_document_action_target, resolve_locus_document_action } from "./locus.document-actions.js";
 import {
   create_live_trace_context,
   type LocusCommitCausation,
@@ -156,33 +155,6 @@ function resolve_session_id(option: LocusOptions<LiveMapAuthority>["sessionId"])
   return option ?? make_locus_session_id();
 }
 
-function is_schema_result<TValue>(value: unknown): value is LocusSchemaResult<TValue> {
-  return typeof value === "object"
-    && value !== null
-    && "ok" in value
-    && typeof (value as { ok?: unknown }).ok === "boolean";
-}
-
-function decode_with_schema<TValue>(
-  schema: LocusValidator<TValue> | LocusSchemaDecoder<TValue> | undefined,
-  value: unknown,
-): LocusSchemaResult<TValue> {
-  if (!schema) return { ok: true, value: value as TValue };
-
-  const result = schema(value);
-  if (is_schema_result<TValue>(result)) return result;
-  if (result === true) return { ok: true, value: value as TValue };
-
-  return {
-    ok: false,
-    issues: ["Value failed Locus schema validation."],
-  };
-}
-
-function schema_error_message(issues: readonly string[]): string {
-  return issues.length ? issues.join("; ") : "Value failed Locus schema validation.";
-}
-
 function safe_error_code(cause: unknown, fallback: string): string {
   return typeof cause === "object"
     && cause !== null
@@ -190,22 +162,6 @@ function safe_error_code(cause: unknown, fallback: string): string {
     && typeof cause.code === "string"
     ? cause.code
     : fallback;
-}
-
-function clone_action_value(value: JsonValue, frozen: boolean): JsonValue {
-  if (value === null || typeof value !== "object") return value;
-  if (Array.isArray(value)) {
-    const clone: JsonValue[] = value.map((item) => clone_action_value(item, frozen));
-    if (frozen) Object.freeze(clone);
-    return clone;
-  }
-  const clone: Record<string, JsonValue> = {};
-  for (const key of Object.keys(value)) clone[key] = clone_action_value(value[key], frozen);
-  return frozen ? Object.freeze(clone) : clone;
-}
-
-function clone_action_payload(value: JsonValue | undefined, frozen: boolean): JsonValue | undefined {
-  return value === undefined ? undefined : clone_action_value(value, frozen);
 }
 
 export function create_locus<
@@ -239,7 +195,7 @@ export function create_locus(
     }
     return create_locus_for_map(options.map, options);
   }
-  const stateResult = decode_with_schema(options.schema?.state, options.state ?? {});
+  const stateResult = decode_locus_action_payload(options.schema?.state, options.state ?? {});
   const initialState: JsonValue = (stateResult.ok ? stateResult.value : options.state) ?? {};
   const classified = make_classified_livemap(parse_json(initialState));
   if (classified.mode !== "data-object" && classified.mode !== "data-array") {
@@ -572,7 +528,10 @@ function create_locus_for_map<
     }
     if (documentAction.kind === "ready") {
       const handler: NonNullable<Partial<LocusActions<TActions, TMap>>[keyof TActions & string]> = async (context) => {
-        await context.mutate((draft) => documentAction.execute(draft as unknown as TMap));
+        await context.mutate((draft) => {
+          if (!is_locus_document_action_target(draft)) throw new Error("Locus document action draft mode is unavailable.");
+          return documentAction.execute(draft);
+        });
       };
       validationSpan?.success(() => ({ action: message.name, schemaConfigured: true }));
       return { ok: true, handler, payload: documentAction.payload };
@@ -584,7 +543,7 @@ function create_locus_for_map<
     const actionSchema = options.schema?.actions?.[message.name];
     let payloadResult: LocusSchemaResult<JsonValue | undefined>;
     try {
-      payloadResult = decode_with_schema(actionSchema?.payload, message.payload);
+      payloadResult = decode_locus_action_payload(actionSchema?.payload, message.payload);
     } catch (cause) {
       validationSpan?.failure(() => ({ action: message.name, errorCode: safe_error_code(cause, "LOCUS_SCHEMA_DECODER_FAILED") }));
       throw cause;
@@ -595,7 +554,7 @@ function create_locus_for_map<
         errorCode: "LOCUS_SCHEMA_INVALID_PAYLOAD",
         issueCount: payloadResult.issues.length,
       }));
-      return { ok: false, code: "LOCUS_ACTION_INVALID", message: schema_error_message(payloadResult.issues) };
+      return { ok: false, code: "LOCUS_ACTION_INVALID", message: locus_schema_error_message(payloadResult.issues) };
     }
     validationSpan?.success(() => ({ action: message.name, schemaConfigured: actionSchema?.payload !== undefined }));
     return { ok: true, handler, payload: payloadResult.value };
@@ -609,15 +568,6 @@ function create_locus_for_map<
     return "LOCUS_SCHEMA_INVALID_PAYLOAD";
   }
 
-  type AuthorizationResult =
-    | Readonly<{ ok: true; payload: JsonValue | undefined }>
-    | Readonly<{
-      ok: false;
-      code: "LOCUS_ACTION_FORBIDDEN" | "LOCUS_ACTION_AUTHORIZATION_FAILED";
-      message: string;
-      cause?: unknown;
-    }>;
-
   function authorize_validated_action(
     message: LocusClientActionMessage<TActions>,
     payload: JsonValue | undefined,
@@ -625,7 +575,7 @@ function create_locus_for_map<
     trace?: LiveTraceContext,
     parentSpanId?: string,
     connectionContext?: LocusConnectionContext,
-  ): AuthorizationResult | Promise<AuthorizationResult> {
+  ): ReturnType<typeof authorize_locus_action<TActions>> {
     const authorizer = application.authorizeAction;
     if (authorizer === undefined) {
       trace?.emit({
@@ -644,60 +594,28 @@ function create_locus_for_map<
       parentSpanId,
       () => ({ action: message.name }),
     );
-    const policyPayload = clone_action_payload(payload, true);
-    const handlerPayload = clone_action_payload(payload, false);
-    const context = Object.freeze({
+    const authorization = authorize_locus_action<TActions>({
+      authorizer,
       action: message.name,
-      session: Object.freeze({
-        sessionId: origin.sessionId,
-        epoch: origin.epoch,
-        resumable: origin.resumable,
-      }),
-      payload: policyPayload,
+      payload,
+      origin,
       logicalMapId: stream.logicalMapId,
       incarnationId: stream.incarnationId,
       ...(connectionContext === undefined ? {} : { connection: connectionContext }),
-    }) as LocusActionAuthorizationContext<TActions>;
-
-    function finish(decision: boolean): AuthorizationResult {
-      if (!decision) {
+    });
+    function finish(result: Awaited<typeof authorization>) {
+      if (!result.ok) {
         authorizationSpan?.failure(() => ({
           action: message.name,
-          outcome: "denied",
-          errorCode: "LOCUS_ACTION_FORBIDDEN",
+          outcome: result.code === "LOCUS_ACTION_FORBIDDEN" ? "denied" : "failed",
+          errorCode: result.code,
         }));
-        return {
-          ok: false,
-          code: "LOCUS_ACTION_FORBIDDEN",
-          message: "Locus action is not authorized.",
-        };
+        return result;
       }
       authorizationSpan?.success(() => ({ action: message.name, outcome: "allowed" }));
-      return { ok: true, payload: handlerPayload };
+      return result;
     }
-
-    function failed(cause: unknown): AuthorizationResult {
-      authorizationSpan?.failure(() => ({
-        action: message.name,
-        outcome: "failed",
-        errorCode: "LOCUS_ACTION_AUTHORIZATION_FAILED",
-      }));
-      return {
-        ok: false,
-        code: "LOCUS_ACTION_AUTHORIZATION_FAILED",
-        message: "Locus action authorization failed.",
-        cause,
-      };
-    }
-
-    try {
-      const decision = authorizer(context);
-      return typeof decision === "boolean"
-        ? finish(decision)
-        : decision.then(finish, failed);
-    } catch (cause) {
-      return failed(cause);
-    }
+    return authorization instanceof Promise ? authorization.then(finish) : finish(authorization);
   }
 
   async function execute_validated_action(

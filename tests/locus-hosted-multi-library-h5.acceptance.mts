@@ -4,6 +4,7 @@ import {
   Hson,
   hsonLiveMap,
   hsonLocus,
+  hsonEcho,
   hsonReflect,
   create_persistent_locus,
   validate_document_path,
@@ -12,6 +13,7 @@ import {
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import { create_livehost_locus_registry } from "../src/api/livehost/index.ts";
 import { install_fake_document } from "./helpers/fake-document.mts";
+import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 
 const StateSchema: HsonSchema = Hson`<type "data" content <theme "string" count <number <int true min 0>>>>`;
@@ -83,6 +85,23 @@ function make_map() {
   });
 }
 
+function reflected_document_element(reflection: ReturnType<typeof hsonReflect>) {
+  const node = reflection.tree.node.$_content[0];
+  if (node === null || typeof node !== "object") throw new Error("Expected reflected document element.");
+  return create_livetree(node).adoptRoots(reflection.tree.hostRootNode());
+}
+
+function wait_for_aggregate_revision(map: ReturnType<typeof make_map>, revision: number): Promise<void> {
+  if (map.rev >= revision) return Promise.resolve();
+  return new Promise((resolve) => {
+    const off = map.commits.observe(() => {
+      if (map.rev < revision) return;
+      off();
+      resolve();
+    });
+  });
+}
+
 class MemoryPersistence {
   private state: Readonly<{ checkpoint: unknown; commits: readonly unknown[] }> | undefined;
   failAppends = false;
@@ -133,7 +152,7 @@ function remove_item() {
   };
 }
 
-await check("the public Locus and client paths bootstrap one typed aggregate mirror and replay atomic named-library actions", async () => {
+await check("the public Locus and Echo paths bootstrap one typed aggregate mirror and replay atomic named-library actions", async () => {
   install_fake_document();
   const serverMap = make_map();
   const locus = hsonLocus.create({
@@ -148,6 +167,8 @@ await check("the public Locus and client paths bootstrap one typed aggregate mir
         return "ok";
       },
       "state.only": async (context) => {
+        assert.equal(typeof context.emitEvent, "function");
+        assert.equal("emit_event" in context, false);
         await context.mutate((draft) => draft.lib("state").at(["count"]).set(1));
       },
       invalid: async (context) => {
@@ -156,13 +177,21 @@ await check("the public Locus and client paths bootstrap one typed aggregate mir
     },
   });
   const pair = socket_pair();
+  assert.equal(typeof locus.dispatchAction, "function");
+  assert.equal("dispatch_action" in locus, false);
   locus.connect(pair.server);
   const clientMap = make_map();
-  const client = hsonLocus.client({
+  const client = hsonEcho.create({
     socket: pair.client,
     map: clientMap,
     recovery: { logicalMapId: locus.logicalMapId },
   });
+  assert.equal(typeof client.retryAction, "function");
+  assert.equal(typeof client.actionStatus, "function");
+  assert.equal(typeof client.dispose, "function");
+  for (const removed of ["recover", "close", "retry_action", "action_status"]) {
+    assert.equal(removed in client, false, `unexpected multi-library Echo method ${removed}`);
+  }
   const started = performance.now();
   const bootstrap = await client.connect();
   const bootstrapMs = performance.now() - started;
@@ -174,15 +203,16 @@ await check("the public Locus and client paths bootstrap one typed aggregate mir
     // @ts-expect-error Runtime input can still contain an unknown library name.
     client.subscribe("missing", [], () => {});
   }, /unknown/i);
-  await assert.rejects(() => client.action("invalid"), /schema/i);
-  await assert.rejects(
-    () => client.action("document.content.remove", {
+  const invalid = await client.action("invalid");
+  assert.equal(invalid.type, "error");
+  if (invalid.type === "error") assert.match(invalid.error.message, /schema/i);
+  const wrongLibrary = await client.action("document.content.remove", {
       library: "state",
       target: { kind: "path", path: [0] },
       index: 0,
-    }),
-    /document/i,
-  );
+    });
+  assert.equal(wrongLibrary.type, "error");
+  if (wrongLibrary.type === "error") assert.match(wrongLibrary.error.message, /document/i);
   assert.deepEqual([serverMap.rev, clientMap.rev], [0, 0]);
   const page = client.map.lib("page");
   const reflection = hsonReflect(page);
@@ -191,7 +221,9 @@ await check("the public Locus and client paths bootstrap one typed aggregate mir
   const stopState = client.subscribe("state", ["theme"], (value, revision) => stateValues.push([value, revision]));
   const stopColors = client.subscribe("colors", ["theme"], (value, revision) => colorsValues.push([value, revision]));
   const aggregateStarted = performance.now();
-  assert.equal(await client.action("theme.all"), "ok");
+  const themeAll = await client.action("theme.all");
+  assert.equal(themeAll.type, "ack");
+  if (themeAll.type === "ack") assert.equal(themeAll.result, "ok");
   const stateColorsPageMs = performance.now() - aggregateStarted;
   assert.deepEqual([serverMap.rev, clientMap.rev], [1, 1]);
   assert.equal(clientMap.lib("state").snap(["theme"]), "dark");
@@ -212,11 +244,50 @@ await check("the public Locus and client paths bootstrap one typed aggregate mir
   assert.equal(reflection.sourceRevision, 2);
   assert.equal(reflection.diagnostics().updatesApplied, 1);
   assert.equal(client.lastAppliedRev, 2);
+  const reflectedMain = reflected_document_element(reflection);
+  reflectedMain.attrs.set("title", "echoed");
+  assert.equal(serverMap.lib("page").document.attrs.get({ kind: "path", path: [0] }, "title"), undefined);
+  await wait_for_aggregate_revision(clientMap, 3);
+  assert.equal(serverMap.lib("page").document.attrs.get({ kind: "path", path: [0] }, "title"), "echoed");
+  assert.equal(reflectedMain.attrs.get("title"), "echoed");
+  assert.equal(reflection.sourceRevision, 3);
   stopState();
   client.unsubscribe("colors", ["theme"]);
   reflection.dispose();
   process.stdout.write(`# telemetry ${JSON.stringify({ bootstrapMs, stateOnlyMs, stateColorsPageMs, aggregateCommitBytes: new TextEncoder().encode(JSON.stringify(published)).byteLength })}\n`);
-  client.close();
+  client.dispose();
+  locus.dispose();
+});
+
+await check("named document Echo authoring honors aggregate authorization and continues after denial", async () => {
+  install_fake_document();
+  const decisions = [false, true];
+  const serverMap = make_map();
+  const locus = hsonLocus.create({
+    map: serverMap,
+    authorizeAction: () => decisions.shift() ?? true,
+  });
+  const pair = socket_pair();
+  locus.connect(pair.server, { principalId: "principal-a" });
+  const clientMap = make_map();
+  const echo = hsonEcho.create({
+    socket: pair.client,
+    map: clientMap,
+    recovery: { logicalMapId: locus.logicalMapId },
+  });
+  await echo.connect();
+  const reflection = hsonReflect(clientMap.lib("page"));
+  const main = reflected_document_element(reflection);
+  main.attrs.set("title", "denied");
+  main.attrs.set("id", "accepted");
+  await wait_for_aggregate_revision(clientMap, 1);
+  assert.equal(serverMap.rev, 1);
+  assert.equal(clientMap.rev, 1);
+  assert.equal(main.attrs.get("title"), undefined);
+  assert.equal(main.attrs.get("id"), "accepted");
+  assert.equal(reflection.status, "active");
+  reflection.dispose();
+  echo.dispose();
   locus.dispose();
 });
 
@@ -234,7 +305,7 @@ await check("public recovery replays retained history, replaces one complete mir
   const reflection = hsonReflect(staleMap.lib("page"));
   const first = socket_pair();
   locus.connect(first.server);
-  const snapshotClient = hsonLocus.client({
+  const snapshotClient = hsonEcho.create({
     socket: first.client,
     map: staleMap,
     recovery: { logicalMapId: locus.logicalMapId },
@@ -246,7 +317,7 @@ await check("public recovery replays retained history, replaces one complete mir
   assert.equal(stateHandle.snap(), "dark");
   assert.equal(staleMap.lib("page").document.byQuid(RECOVERY_QUID)?.$_tag, "item");
   assert.equal(reflection.sourceRevision, 1);
-  snapshotClient.close();
+  snapshotClient.dispose();
 
   await locus.mutate((draft) => {
     draft.lib("state").at(["count"]).set(2);
@@ -255,7 +326,7 @@ await check("public recovery replays retained history, replaces one complete mir
   });
   const second = socket_pair();
   locus.connect(second.server);
-  const replayClient = hsonLocus.client({
+  const replayClient = hsonEcho.create({
     socket: second.client,
     map: staleMap,
     recovery: { logicalMapId: locus.logicalMapId },
@@ -267,11 +338,11 @@ await check("public recovery replays retained history, replaces one complete mir
   assert.equal(staleMap.lib("page").document.byQuid(RECOVERY_NEXT_QUID)?.$_tag, "item");
   const values: unknown[] = [];
   replayClient.subscribe("state", ["theme"], (value, revision) => values.push([value, revision]));
-  assert.equal((await replayClient.recover()).outcome, "current");
+  assert.equal((await replayClient.connect()).outcome, "current");
   assert.deepEqual(values, [["dark", 2], ["dark", 2]]);
   process.stdout.write(`# telemetry ${JSON.stringify({ snapshotReplacementMs, retainedReplayMs })}\n`);
   reflection.dispose();
-  replayClient.close();
+  replayClient.dispose();
   locus.dispose();
 });
 
@@ -349,7 +420,7 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   const first = socket_pair();
   host.connect(first.server);
   const clientMap = make_map();
-  const client = hsonLocus.client({ socket: first.client, map: clientMap, recovery: { logicalMapId: host.logicalMapId } });
+  const client = hsonEcho.create({ socket: first.client, map: clientMap, recovery: { logicalMapId: host.logicalMapId } });
   await client.connect();
   const reflection = hsonReflect(clientMap.lib("page"));
   await client.action("state.page");
@@ -361,7 +432,7 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   await host.checkpoint();
   const checkpointMs = performance.now() - checkpointStarted;
   host.dispose();
-  client.close();
+  client.dispose();
 
   const restoredMap = make_map();
   const restartStarted = performance.now();
@@ -387,13 +458,15 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   assert.equal(restoredMap.rev, 2);
   const second = socket_pair();
   restored.connect(second.server);
-  const recovered = hsonLocus.client({ socket: second.client, map: clientMap, recovery: { logicalMapId: restored.logicalMapId } });
+  const recovered = hsonEcho.create({ socket: second.client, map: clientMap, recovery: { logicalMapId: restored.logicalMapId } });
   const reconnectStarted = performance.now();
   assert.equal((await recovered.connect()).outcome, "current");
   const reconnectMs = performance.now() - reconnectStarted;
   assert.equal(clientMap.lib("page").document.byQuid(PERSISTED_QUID), undefined);
   assert.equal(reflection.sourceRevision, 2);
-  await assert.rejects(() => recovered.action("reuse"), /QUID|reuse|identity/i);
+  const reuse = await recovered.action("reuse");
+  assert.equal(reuse.type, "error");
+  if (reuse.type === "error") assert.match(reuse.error.message, /QUID|reuse|identity/i);
   assert.equal(clientMap.rev, 2);
   const continuedStatePageStarted = performance.now();
   await recovered.action("state.page");
@@ -402,7 +475,7 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   assert.equal(clientMap.lib("page").document.byQuid(PERSISTED_NEXT_QUID)?.$_tag, "item");
   assert.equal(reflection.sourceRevision, 3);
   process.stdout.write(`# telemetry ${JSON.stringify({ checkpointMs, restartLoadMs, reconnectMs, continuedStatePageMs })}\n`);
-  recovered.close();
+  recovered.dispose();
   reflection.dispose();
   restored.dispose();
 
@@ -437,7 +510,7 @@ await check("public hosted failures reject before acceptance and leave the aggre
     },
   });
   persistence.failAppends = true;
-  const result = await host.dispatch_action({ type: "action", id: "failed-append", name: "increment" });
+  const result = await host.dispatchAction({ type: "action", id: "failed-append", name: "increment" });
   assert.equal(result.type, "error");
   assert.equal(map.rev, 0);
   host.dispose();

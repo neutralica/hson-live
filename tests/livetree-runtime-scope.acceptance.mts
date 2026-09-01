@@ -250,7 +250,7 @@ check("terminal destruction releases only the owning runtime claim", () => {
   const right = _create_livetree_runtime_test_handle();
   const leftTree = runtimeTree(left, node("main", SAME_QUID));
   const rightTree = runtimeTree(right, node("main", SAME_QUID));
-  assert.equal(leftTree.remove(), 1);
+  leftTree.remove();
   assert.equal(_lookup_livetree_runtime_test_node(left, SAME_QUID), undefined);
   assert.equal(_lookup_livetree_runtime_test_node(right, SAME_QUID), rightTree.node);
 });
@@ -317,7 +317,7 @@ check("rejected private creation unwinds its unpublished runtime claim", () => {
   assert.throws(() => boundRoot.create.div(), /unavailable while document-bound/);
   assert.equal(_livetree_runtime_test_claim_count(runtime), before);
   binding.dispose();
-  assert.equal(binding.tree.remove(), 1);
+  binding.tree.remove();
 
   const parent = runtimeTree(runtime, node("main"));
   const beforeSuccess = _livetree_runtime_test_claim_count(runtime);
@@ -340,10 +340,10 @@ check("text overwrite terminally disposes displaced descendants and leaves its o
   assert.equal(parent.text.get(), "replacement");
   assert.equal(child.isDisposed, true);
   assert.equal(_lookup_livetree_runtime_test_node(runtime, "000000rt7"), undefined);
-  assert.equal(child.remove(), 0);
+  child.remove();
   assert.equal(parent.isDisposed, false);
-  assert.equal(parent.remove(), 1);
-  assert.equal(parent.remove(), 0);
+  parent.remove();
+  parent.remove();
 });
 
 check("QUID-owned resource kinds are isolated across equal-valued claims", () => {
@@ -698,16 +698,16 @@ check("binding disposal and later tree destruction are separate and idempotent",
   binding.dispose();
   binding.dispose();
   assert.equal(binding.tree.isDisposed, false);
-  assert.equal(binding.tree.remove(), 1);
+  binding.tree.remove();
   assert.equal(binding.tree.isDisposed, true);
-  assert.equal(binding.tree.remove(), 0);
+  binding.tree.remove();
 });
 
 check("borrowed tree destruction stops its bridge and later binding disposal is safe", () => {
   const runtime = _create_livetree_runtime_test_handle();
   const map = elementMap(`<main @${SAME_QUID} <span/>/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
-  assert.equal(binding.tree.remove(), 1);
+  binding.tree.remove();
   assert.equal(binding.status, "disposed");
   const retained = map.at([]).snap();
   assert.equal(is_Node(retained) ? retained.$_tag : undefined, "main");

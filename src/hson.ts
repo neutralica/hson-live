@@ -8,6 +8,7 @@ import { hsonLiveMap } from "./api/livemap/livemap.facade.js";
 import { hsonLiveMapBrowser } from "./api/livemap/livemap.compat.js";
 import { hsonLiveTree } from "./api/livetree/livetree.facade.js";
 import { hsonLocus } from "./api/locus/locus.facade.js";
+import { hsonEcho } from "./api/echo/echo.facade.js";
 import { hsonReflect } from "./api/reflect/reflect.facade.js";
 import { hsonInspect } from "./api/inspect/liveinspect.facade.js";
 import type {
@@ -20,6 +21,7 @@ import type { OutputConstructor_2 } from "./types/constructor.types.js";
 
 export {
   hsonLocus,
+  hsonEcho,
   hsonLiveMap,
   hsonLiveTree,
   hsonReflect,
@@ -60,6 +62,7 @@ export interface HsonFacade {
   readonly liveMap: typeof hsonLiveMapBrowser;
   readonly liveTree: typeof hsonLiveTree;
   readonly locus: typeof hsonLocus;
+  readonly echo: typeof hsonEcho;
   readonly reflect: typeof hsonReflect;
   readonly inspect: typeof hsonInspect;
 }
@@ -78,6 +81,7 @@ export const hson: HsonFacade = Object.freeze({
   liveMap: hsonLiveMapBrowser,
   liveTree: hsonLiveTree,
   locus: hsonLocus,
+  echo: hsonEcho,
 
   reflect: hsonReflect,
   inspect: hsonInspect,

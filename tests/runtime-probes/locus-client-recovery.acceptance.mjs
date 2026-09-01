@@ -1,7 +1,7 @@
 import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { WebSocket, WebSocketServer } from "ws";
-import { decode_locus_server_message, Hson, LocusClientRecoveryError, hson } from "../../src/index.ts";
+import { decode_locus_server_message, Hson, EchoRecoveryError, hson } from "../../src/index.ts";
 import { acquire_projected_identity } from "../helpers/livemap-identity-internal.mts";
 import { create_locus_internal } from "../../src/api/locus/locus.core.ts";
 import { make_locus_canonical_commit } from "../../src/api/locus/locus.history.ts";
@@ -61,7 +61,7 @@ function socket_pair() {
 
 function attach(host, pair, options = {}) {
   host.connect(pair.server);
-  const client = hson.locus.client({ socket: pair.client, ...options });
+  const client = hson.echo.create({ socket: pair.client, ...options });
   client.connect();
   return client;
 }
@@ -110,7 +110,7 @@ function canonical_set(logicalMapId, incarnationId, prevRev, rev, prev, next) {
 function begin_scripted_projected_recovery(logicalMapId) {
   const pair = socket_pair();
   const mirror = hson.liveMap.fromJson({ value: 0 });
-  const client = hson.locus.client({
+  const client = hson.echo.create({
     socket: pair.client,
     map: mirror,
     recovery: {
@@ -173,7 +173,7 @@ await check("protocol rejects legacy value snapshots and malformed Hson envelope
 await check("recovery cursor admission requires the supplied mirror revision", () => {
   const matchingPair = socket_pair();
   const matchingMirror = restore_projected_revision(hson.liveMap.fromJson({ value: 1 }), 2);
-  const matching = hson.locus.client({
+  const matching = hson.echo.create({
     socket: matchingPair.client,
     map: matchingMirror,
     recovery: {
@@ -191,7 +191,7 @@ await check("recovery cursor admission requires the supplied mirror revision", (
     const pair = socket_pair();
     const mirror = restore_projected_revision(hson.liveMap.fromJson({ value: label }), mirrorRev);
     assert.throws(
-      () => hson.locus.client({
+      () => hson.echo.create({
         socket: pair.client,
         map: mirror,
         recovery: {
@@ -199,7 +199,7 @@ await check("recovery cursor admission requires the supplied mirror revision", (
           cursor: { incarnationId: "inc", lastAppliedRev: cursorRev },
         },
       }),
-      (error) => error instanceof LocusClientRecoveryError
+      (error) => error instanceof EchoRecoveryError
         && error.code === "LOCUS_RECOVERY_CURSOR_MISMATCH",
     );
     assert.equal(pair.clientSent.length, 0);
@@ -233,7 +233,7 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
   const client = attach(host, pair, { map: mirror, recovery: { logicalMapId: host.stream.logicalMapId }, trace });
   const oldMap = client.map;
   const observed = [];
-  client.recovery.on_change((change) => observed.push({ kind: change.kind, value: change.map.snap(), active: change.map === client.map }));
+  client.recovery.onChange((change) => observed.push({ kind: change.kind, value: change.map.snap(), active: change.map === client.map }));
   const result = await client.recovery.recover();
   assert.equal(result.strategy, "snapshot");
   assert.equal(client.recovery.incarnationId, host.stream.incarnationId);
@@ -274,8 +274,8 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
   const identityClient = attach(identityHost, identityPair, { recovery: { logicalMapId: identityHost.stream.logicalMapId } });
   assert.equal((await identityClient.recovery.recover()).strategy, "snapshot");
   const identityRev = identityClient.map.rev;
-  assert.equal(acquire_projected_identity(identityClient.map, ["container"]).active, true);
-  assert.equal(identityClient.map.rev, identityRev + 1, "serialized recovery cannot carry map-local data overlay claims");
+  assert.throws(() => acquire_projected_identity(identityClient.map, ["container"]), /managed|controlled|identity/i);
+  assert.equal(identityClient.map.rev, identityRev, "Echo fencing forbids local identity acquisition after snapshot recovery");
 
   const equalHost = hson.locus.create({ state: { value: 5 }, logicalMapId: "map-equal-snapshot" });
   const equalMirror = hson.liveMap.fromJson({ value: 5 });
@@ -319,7 +319,7 @@ await check("replay applies exact commits once and current emits no body", async
   const pair = socket_pair();
   const client = attach(host, pair, { ...recovery_options(host, mirror, base), trace });
   const revs = [];
-  client.recovery.on_change((change) => revs.push(change.rev));
+  client.recovery.onChange((change) => revs.push(change.rev));
   const replay = await client.recovery.recover();
   assert.equal(replay.strategy, "replay");
   assert.deepEqual(revs, [base + 1, base + 2]);
@@ -421,7 +421,7 @@ await check("revision ahead rejects without replacing the mirror", async () => {
   restore_projected_revision(mirror, host.stream.headRev + 2);
   const pair = socket_pair();
   const client = attach(host, pair, { ...recovery_options(host, mirror, host.stream.headRev + 2), trace });
-  await assert.rejects(client.recovery.recover(), (error) => error instanceof LocusClientRecoveryError && error.code === "REVISION_AHEAD_OF_AUTHORITY");
+  await assert.rejects(client.recovery.recover(), (error) => error instanceof EchoRecoveryError && error.code === "REVISION_AHEAD_OF_AUTHORITY");
   assert.equal(client.map, mirror);
   assert.equal(client.recovery.lastAppliedRev, host.stream.headRev + 2);
   assert.equal(pair.serverSent.some((raw) => JSON.parse(raw).type === "recovery-snapshot"), false);
@@ -485,7 +485,7 @@ await check("cut boundary puts pre-cut in body and post-cut in tail", async () =
   });
   const client = attach(host, pair, recovery_options(host, mirror, base));
   const revs = [];
-  client.recovery.on_change((change) => revs.push(change.rev));
+  client.recovery.onChange((change) => revs.push(change.rev));
   const result = await client.recovery.recover();
   assert.equal(result.headRev, base + 2);
   assert.deepEqual(revs, [base + 1, base + 2]);
@@ -501,7 +501,7 @@ await check("reentrant canonical publication remains ordered", async () => {
   await client.recovery.recover();
   const base = client.recovery.lastAppliedRev;
   const revs = [];
-  client.recovery.on_change((change) => {
+  client.recovery.onChange((change) => {
     revs.push(change.rev);
     if (change.map.snap().value === 1) void host.mutate((draft) => draft.set(["value"], 2));
   });
@@ -530,7 +530,7 @@ await check("valid duplicate is ignored after full decode", async () => {
 await check("gap stops later application and preserves last valid state", async () => {
   const pair = socket_pair();
   const mirror = hson.liveMap.fromJson({ value: 0 });
-  const client = hson.locus.client({ socket: pair.client, map: mirror, recovery: { logicalMapId: "scripted", cursor: { incarnationId: "inc", lastAppliedRev: 0 } } });
+  const client = hson.echo.create({ socket: pair.client, map: mirror, recovery: { logicalMapId: "scripted", cursor: { incarnationId: "inc", lastAppliedRev: 0 } } });
   client.connect();
   const promise = client.recovery.recover();
   const id = JSON.parse(pair.clientSent.at(-1)).id;
@@ -544,7 +544,7 @@ await check("gap stops later application and preserves last valid state", async 
   assert.equal(client.recovery.lastAppliedRev, 0);
 });
 
-await check("already-current recovery rejects when the installed mirror revision changes", async () => {
+await check("already-current recovery cannot be invalidated by direct Echo LiveMap mutation", async () => {
   const fixture = begin_scripted_projected_recovery("current-mirror-mismatch");
   fixture.pair.push_server({
     type: "recovery-plan",
@@ -556,7 +556,7 @@ await check("already-current recovery rejects when the installed mirror revision
     outcome: "current",
     snapshotEncoding: { format: "hson" },
   });
-  fixture.mirror.set(["value"], 1);
+  assert.throws(() => fixture.mirror.set(["value"], 1), /managed|controlled/i);
   fixture.pair.push_server({
     type: "recovery-caught-up",
     id: fixture.id,
@@ -567,14 +567,10 @@ await check("already-current recovery rejects when the installed mirror revision
       throughRev: 0,
     },
   });
-  await assert.rejects(
-    fixture.promise,
-    (error) => error instanceof LocusClientRecoveryError
-      && error.code === "LOCUS_RECOVERY_CAUGHT_UP_MISMATCH",
-  );
-  assert.equal(fixture.mirror.rev, 1);
+  assert.equal((await fixture.promise).strategy, "current");
+  assert.equal(fixture.mirror.rev, 0);
   assert.equal(fixture.client.recovery.lastAppliedRev, 0);
-  assert.equal(fixture.client.recovery.status, "failed");
+  assert.equal(fixture.client.recovery.status, "caught_up");
 });
 
 await check("client rejects removed-version and unsupported snapshot acknowledgments", async () => {
@@ -585,7 +581,7 @@ await check("client rejects removed-version and unsupported snapshot acknowledgm
   ]) {
     const pair = socket_pair();
     const mirror = hson.liveMap.fromJson({ value: 0 });
-    const client = hson.locus.client({
+    const client = hson.echo.create({
       socket: pair.client,
       map: mirror,
       recovery: {
@@ -721,7 +717,7 @@ await check("replay conflict preserves cursor and supports a later snapshot atte
   assert.equal(failedApply.details.errorCode, "LOCUS_RECOVERY_REPLAY_CONFLICT");
   assert.equal(events.filter((event) => event.phase === "recovery.complete").length, 1);
   assert.equal(events.some((event) => event.phase === "recovery.complete" && event.status === "success"), false);
-  const replacement = hson.locus.client({ socket: pair.client, recovery: { logicalMapId: host.stream.logicalMapId } });
+  const replacement = hson.echo.create({ socket: pair.client, recovery: { logicalMapId: host.stream.logicalMapId } });
   replacement.connect();
   assert.equal((await replacement.recovery.recover()).strategy, "snapshot");
 });
@@ -731,7 +727,7 @@ await check("invalid snapshot retains old mirror and cursor", async () => {
   const mirror = hson.liveMap.fromJson({ value: 1 });
   restore_projected_revision(mirror, 4);
   const events = [];
-  const client = hson.locus.client({ socket: pair.client, map: mirror, recovery: { logicalMapId: "bad-snapshot", cursor: { incarnationId: "old", lastAppliedRev: 4 } }, trace: trace_sink(events) });
+  const client = hson.echo.create({ socket: pair.client, map: mirror, recovery: { logicalMapId: "bad-snapshot", cursor: { incarnationId: "old", lastAppliedRev: 4 } }, trace: trace_sink(events) });
   client.connect();
   const promise = client.recovery.recover();
   const id = JSON.parse(pair.clientSent.at(-1)).id;
@@ -748,10 +744,10 @@ await check("malformed snapshot Hson fails installation without advancing state"
   const pair = socket_pair();
   const mirror = hson.liveMap.fromJson({ value: 1 });
   restore_projected_revision(mirror, 4);
-  const client = hson.locus.client({ socket: pair.client, map: mirror, recovery: { logicalMapId: "malformed-hson", cursor: { incarnationId: "old", lastAppliedRev: 4 } } });
+  const client = hson.echo.create({ socket: pair.client, map: mirror, recovery: { logicalMapId: "malformed-hson", cursor: { incarnationId: "old", lastAppliedRev: 4 } } });
   client.connect();
   let notifications = 0;
-  client.recovery.on_change(() => { notifications += 1; });
+  client.recovery.onChange(() => { notifications += 1; });
   const promise = client.recovery.recover();
   const id = JSON.parse(pair.clientSent.at(-1)).id;
   pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "malformed-hson", incarnationId: "new", headRev: 5, outcome: "snapshot", reason: "incarnation_mismatch", snapshotEncoding: { format: "hson" } });
@@ -775,7 +771,7 @@ await check("valid Hson rejected by the active schema does not replace the mirro
   const mirror = hson.liveMap.fromJson({ value: 1 });
   restore_projected_revision(mirror, 4);
   mirror.schema.use(schema);
-  const client = hson.locus.client({ socket: pair.client, map: mirror, recovery: { logicalMapId: "schema-invalid", cursor: { incarnationId: "old", lastAppliedRev: 4 } } });
+  const client = hson.echo.create({ socket: pair.client, map: mirror, recovery: { logicalMapId: "schema-invalid", cursor: { incarnationId: "old", lastAppliedRev: 4 } } });
   client.connect();
   const promise = client.recovery.recover();
   const id = JSON.parse(pair.clientSent.at(-1)).id;
@@ -796,7 +792,7 @@ await check("legacy value snapshot fails as a protocol envelope error", async ()
   const pair = socket_pair();
   const mirror = hson.liveMap.fromJson({ value: 1 });
   restore_projected_revision(mirror, 4);
-  const client = hson.locus.client({ socket: pair.client, map: mirror, recovery: { logicalMapId: "legacy-envelope", cursor: { incarnationId: "old", lastAppliedRev: 4 } } });
+  const client = hson.echo.create({ socket: pair.client, map: mirror, recovery: { logicalMapId: "legacy-envelope", cursor: { incarnationId: "old", lastAppliedRev: 4 } } });
   client.connect();
   const promise = client.recovery.recover();
   const id = JSON.parse(pair.clientSent.at(-1)).id;
@@ -830,7 +826,7 @@ await check("tail overflow is visible and a fresh recovery succeeds", async () =
 
 await check("disposal is idempotent and later messages cannot mutate", async () => {
   const pair = socket_pair();
-  const client = hson.locus.client({ socket: pair.client, recovery: { logicalMapId: "dispose-map" } });
+  const client = hson.echo.create({ socket: pair.client, recovery: { logicalMapId: "dispose-map" } });
   client.connect();
   const promise = client.recovery.recover();
   const id = JSON.parse(pair.clientSent.at(-1)).id;
@@ -884,7 +880,7 @@ await check("hello synchronization uses only the current snapshot", async () => 
   const host = hson.locus.create({ state: { value: "legacy" }, trace: trace_sink(events) });
   const pair = socket_pair();
   host.connect(pair.server);
-  const client = hson.locus.client({ socket: pair.client });
+  const client = hson.echo.create({ socket: pair.client });
   client.connect();
   assert.deepEqual(client.map.snap(), host.map.snap());
   assert.equal(pair.clientSent.map(JSON.parse).some((message) => message.type === "hello"), true);
@@ -926,7 +922,7 @@ await check("real WebSocket reconnect uses a new session and recovers state", as
 
   const ws1 = new WebSocket(url);
   await opened(ws1);
-  const first = hson.locus.client({ socket: ws_socket(ws1), recovery: { logicalMapId: host.stream.logicalMapId } });
+  const first = hson.echo.create({ socket: ws_socket(ws1), recovery: { logicalMapId: host.stream.logicalMapId } });
   first.connect();
   const initial = await first.recovery.recover();
   const savedMap = first.map;
@@ -934,12 +930,13 @@ await check("real WebSocket reconnect uses a new session and recovers state", as
   const close1 = closed(ws1);
   ws1.close();
   await close1;
+  first.dispose();
   await host.mutate((draft) => draft.set(["value"], 1));
   await host.mutate((draft) => draft.set(["value"], 2));
 
   const ws2 = new WebSocket(url);
   await opened(ws2);
-  const second = hson.locus.client({ socket: ws_socket(ws2), map: savedMap, recovery: { logicalMapId: host.stream.logicalMapId, cursor: savedCursor } });
+  const second = hson.echo.create({ socket: ws_socket(ws2), map: savedMap, recovery: { logicalMapId: host.stream.logicalMapId, cursor: savedCursor } });
   second.connect();
   const resumed = await second.recovery.recover();
   assert.notEqual(resumed.sessionId, initial.sessionId);

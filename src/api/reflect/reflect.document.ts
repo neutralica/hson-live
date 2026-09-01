@@ -95,6 +95,10 @@ import {
   transform_document_path,
   validate_document_path,
 } from "../livemap/livemap.document.path.js";
+import {
+  echo_document_authority_for,
+  type EchoDocumentAction,
+} from "../echo/echo.document-authority.js";
 
 export type DocumentReflectStatus = "initializing" | "active" | "replacing" | "failed" | "disposed";
 
@@ -218,14 +222,49 @@ export function reflect_document_in_runtime(
     mutation: DocumentBoundAttrsMutation,
   ): void => {
     assert_delegation_ready(registration);
-    const target = registration.canonicalTarget;
+    const authority = echo_document_authority_for(map);
+    if (authority !== undefined) {
+      authority.enqueue(() => {
+        assert_delegation_ready(registration);
+        return lower_attrs_action(registration.canonicalTarget, mutation);
+      });
+      return;
+    }
+    execute_document_action(map, lower_attrs_action(registration.canonicalTarget, mutation));
+  };
+
+  const execute_document_action = (
+    targetMap: ReflectableDocumentMap,
+    action: EchoDocumentAction,
+  ): void => {
+    switch (action.name) {
+      case "document.attrs.set": targetMap.document.attrs.set(action.payload.target, action.payload.name, action.payload.value); return;
+      case "document.attrs.setMany": targetMap.document.attrs.setMany(action.payload.target, action.payload.values); return;
+      case "document.attrs.drop": targetMap.document.attrs.drop(action.payload.target, action.payload.name); return;
+      case "document.attrs.dropMany": targetMap.document.attrs.dropMany(action.payload.target, action.payload.names); return;
+      case "document.attrs.clear": targetMap.document.attrs.clear(action.payload.target); return;
+      case "document.attrs.replace": targetMap.document.attrs.replace(action.payload.target, action.payload.values); return;
+      case "document.content.insert": targetMap.document.content.insert(action.payload.target, action.payload.index, action.payload.content); return;
+      case "document.content.replace": targetMap.document.content.replace(action.payload.target, action.payload.index, action.payload.replacement); return;
+      case "document.content.remove": targetMap.document.content.remove(action.payload.target, action.payload.index); return;
+      case "document.content.move": targetMap.document.content.move(action.payload.target, action.payload.from, action.payload.to); return;
+    }
+  };
+
+  const lower_attrs_action = (
+    target: LiveMapDocumentCommitTarget,
+    mutation: DocumentBoundAttrsMutation,
+  ): EchoDocumentAction => {
+    if (mutation.kind === "transform") {
+      return lower_attrs_action(target, mutation.apply(read_map_attrs(map, target)));
+    }
     switch (mutation.kind) {
-      case "set": map.document.attrs.set(target, mutation.name, mutation.value); return;
-      case "setMany": map.document.attrs.setMany(target, mutation.values); return;
-      case "drop": map.document.attrs.drop(target, mutation.name); return;
-      case "dropMany": map.document.attrs.dropMany(target, mutation.names); return;
-      case "clear": map.document.attrs.clear(target); return;
-      case "replace": map.document.attrs.replace(target, mutation.values); return;
+      case "set": return Object.freeze({ name: "document.attrs.set", payload: { target, name: mutation.name, value: mutation.value } });
+      case "setMany": return Object.freeze({ name: "document.attrs.setMany", payload: { target, values: mutation.values } });
+      case "drop": return Object.freeze({ name: "document.attrs.drop", payload: { target, name: mutation.name } });
+      case "dropMany": return Object.freeze({ name: "document.attrs.dropMany", payload: { target, names: mutation.names } });
+      case "clear": return Object.freeze({ name: "document.attrs.clear", payload: { target } });
+      case "replace": return Object.freeze({ name: "document.attrs.replace", payload: { target, values: mutation.values } });
     }
   };
 
@@ -254,6 +293,22 @@ export function reflect_document_in_runtime(
     registration: ProjectedRegistration,
     mutation: DocumentBoundTextMutation,
   ): void => {
+    assert_delegation_ready(registration);
+    const authority = echo_document_authority_for(map);
+    if (authority !== undefined) {
+      // Preserve Reflect's synchronous support boundary while still lowering
+      // the authoritative request again at queue head against accepted state.
+      lower_text_action(registration, mutation);
+      authority.enqueue(() => lower_text_action(registration, mutation));
+      return;
+    }
+    execute_document_action(map, lower_text_action(registration, mutation));
+  };
+
+  const lower_text_action = (
+    registration: ProjectedRegistration,
+    mutation: DocumentBoundTextMutation,
+  ): EchoDocumentAction => {
     const canonical = canonical_node_for(registration);
     if (mutation.kind === "overwrite") {
       throw delegation_unsupported("text.overwrite changes complete effective content without one exact map operation");
@@ -261,8 +316,7 @@ export function reflect_document_in_runtime(
     const text = mutation.value === null ? "" : String(mutation.value);
     if (canonical.$_content.length === 0) {
       const bucket: HsonNode = { $_tag: ELEM_TAG, $_content: [{ $_tag: STR_TAG, $_content: [text] }] };
-      map.document.content.insert(registration.canonicalTarget, 0, bucket);
-      return;
+      return Object.freeze({ name: "document.content.insert", payload: { target: registration.canonicalTarget, index: 0, content: bucket } });
     }
     if (canonical.$_content.length !== 1) {
       throw delegation_unsupported("text mutation requires one canonical _hson_elem content bucket");
@@ -276,39 +330,47 @@ export function reflect_document_in_runtime(
       path: validate_document_path([...registration.canonicalPath, 0]),
     });
     if (mutation.kind === "add") {
-      map.document.content.insert(bucketTarget, bucket.$_content.length, text);
-      return;
+      return Object.freeze({ name: "document.content.insert", payload: { target: bucketTarget, index: bucket.$_content.length, content: text } });
     }
     if (mutation.kind === "insert") {
       const index = Number.isFinite(mutation.index)
         ? Math.max(0, Math.min(bucket.$_content.length, Math.floor(mutation.index)))
         : bucket.$_content.length;
-      map.document.content.insert(bucketTarget, index, text);
-      return;
+      return Object.freeze({ name: "document.content.insert", payload: { target: bucketTarget, index, content: text } });
     }
     const leafIndexes = bucket.$_content.flatMap((item, index) =>
       is_Node(item) && (item.$_tag === STR_TAG || item.$_tag === VAL_TAG) ? [index] : []);
     if (leafIndexes.length === 0) {
-      map.document.content.insert(bucketTarget, 0, text);
-      return;
+      return Object.freeze({ name: "document.content.insert", payload: { target: bucketTarget, index: 0, content: text } });
     }
     if (leafIndexes.length !== 1) {
       throw delegation_unsupported("text.set would need more than one canonical content mutation");
     }
-    map.document.content.replace(
-      bucketTarget,
-      leafIndexes[0]!,
-      { $_tag: STR_TAG, $_content: [text] },
-    );
+    return Object.freeze({
+      name: "document.content.replace",
+      payload: { target: bucketTarget, index: leafIndexes[0]!, replacement: { $_tag: STR_TAG, $_content: [text] } },
+    });
   };
 
   const delegate_empty = (registration: ProjectedRegistration): void => {
+    assert_delegation_ready(registration);
+    const authority = echo_document_authority_for(map);
+    if (authority !== undefined) {
+      lower_empty_action(registration);
+      authority.enqueue(() => lower_empty_action(registration));
+      return;
+    }
+    const action = lower_empty_action(registration);
+    if (action !== undefined) execute_document_action(map, action);
+  };
+
+  const lower_empty_action = (registration: ProjectedRegistration): EchoDocumentAction | undefined => {
     const canonical = canonical_node_for(registration);
-    if (canonical.$_content.length === 0) return;
+    if (canonical.$_content.length === 0) return undefined;
     if (canonical.$_content.length !== 1) {
       throw delegation_unsupported("empty would need more than one canonical content mutation");
     }
-    map.document.content.remove(registration.canonicalTarget, 0);
+    return Object.freeze({ name: "document.content.remove", payload: { target: registration.canonicalTarget, index: 0 } });
   };
 
   const dispose_binding = (): void => {
@@ -329,19 +391,36 @@ export function reflect_document_in_runtime(
     currentStatus = "disposed";
   };
 
-  const delegate_remove = (registration: ProjectedRegistration): 1 | undefined => {
+  const delegate_remove = (registration: ProjectedRegistration): boolean => {
     canonical_node_for(registration);
     if (registration.canonicalPath.length === 0) {
       // Root removal is terminal lifecycle of the borrowed projection, not a
       // canonical LiveMap edit. Stop the bridge first, then let LiveTree own
       // its normal runtime teardown.
       dispose_binding();
-      return undefined;
+      return false;
     }
-    const index = registration.canonicalPath[registration.canonicalPath.length - 1]!;
-    const parentPath = validate_document_path(registration.canonicalPath.slice(0, -1));
-    map.document.content.remove(Object.freeze({ kind: "path", path: parentPath }), index);
-    return 1;
+    const lower = (): EchoDocumentAction => {
+      canonical_node_for(registration);
+      let index = registration.canonicalPath[registration.canonicalPath.length - 1]!;
+      let parentPath = validate_document_path(registration.canonicalPath.slice(0, -1));
+      const parent = resolve_raw_node(map.root(), parentPath);
+      if (parent !== undefined && parent.$_tag === ELEM_TAG && parent.$_content.length === 1 && parentPath.length > 0) {
+        index = parentPath[parentPath.length - 1]!;
+        parentPath = validate_document_path(parentPath.slice(0, -1));
+      }
+      return Object.freeze({
+        name: "document.content.remove",
+        payload: { target: Object.freeze({ kind: "path", path: parentPath }), index },
+      });
+    };
+    const authority = echo_document_authority_for(map);
+    if (authority !== undefined) {
+      authority.enqueue(lower);
+      return true;
+    }
+    execute_document_action(map, lower());
+    return true;
   };
 
   const reject_structural_mutation = (operation: string): never => {
@@ -368,9 +447,9 @@ export function reflect_document_in_runtime(
       delegateAttrs: (): never => reject_structural_mutation("mutate internal document-root attributes"),
       delegateText: (): never => reject_structural_mutation("mutate internal document-root text"),
       delegateEmpty: (): never => reject_structural_mutation("empty internal document root"),
-      delegateRemove: (): undefined => {
+      delegateRemove: (): false => {
         dispose_binding();
-        return undefined;
+        return false;
       },
       rejectStructuralMutation: reject_structural_mutation,
     });
@@ -397,10 +476,12 @@ export function reflect_document_in_runtime(
       canonicalPath: path,
       canonicalTarget,
       ...(persistedQuid === undefined ? {} : { persistedQuid }),
-      requireCanonicalIdentity: () => require_livemap_document_canonical_identity(
-        map.document,
-        registration.canonicalTarget,
-      ),
+      requireCanonicalIdentity: () => {
+        if (persistedQuid === undefined && echo_document_authority_for(map)?.rejectIdentityDemand === true) {
+          throw new LiveTreeLinkedIdentityRequiredError("hosted QUID demand");
+        }
+        return require_livemap_document_canonical_identity(map.document, registration.canonicalTarget);
+      },
       delegateAttrs: (mutation) => delegate_attrs(registration, mutation),
       delegateText: (mutation) => delegate_text(registration, mutation),
       delegateEmpty: () => delegate_empty(registration),

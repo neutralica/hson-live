@@ -9,14 +9,11 @@ import type {
   LocusConnectionContext,
   LocusMultiLibrary,
   LocusMultiLibraryActionContext,
-  LocusMultiLibraryClient,
-  LocusMultiLibraryClientOptions,
   LocusMultiLibraryOptions,
 } from "../../types/locus.types.js";
 import { make_locus_activity_controller } from "./locus.activity.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import {
-  create_locus_hosted_aggregate_socket_client_internal,
   create_locus_hosted_aggregate_socket_internal,
 } from "./locus.hosted-multi-library.socket.js";
 import type { LocusHostedAggregateGateInput } from "./locus.hosted-multi-library.js";
@@ -73,11 +70,15 @@ export function create_multi_library_locus_internal<
   const activity = make_locus_activity_controller();
   let actionSequence = 0;
   let disposed = false;
-  const actions: Record<string, (context: unknown, payload: JsonValue | undefined) => JsonValue | void | Promise<JsonValue | void>> = {};
+  const actions: Record<string, (
+    context: unknown,
+    payload: JsonValue | undefined,
+    message?: LocusClientActionMessage,
+  ) => JsonValue | void | Promise<JsonValue | void>> = {};
 
   for (const [name, handler] of Object.entries(options.actions ?? {})) {
     if (handler === undefined) continue;
-    actions[name] = async (context, payload) => {
+    actions[name] = async (context, payload, actionMessage) => {
       actionSequence += 1;
       const aggregateContext = context as Readonly<{
         map: LiveMapLibraries;
@@ -90,14 +91,14 @@ export function create_multi_library_locus_internal<
         origin: DIRECT_ORIGIN,
         // Aggregate transport does not carry application events. Keep the
         // established action context callable without fabricating a stream.
-        emit_event: () => false,
+        emitEvent: () => false,
       });
-      const message: LocusClientActionMessage<TActions> = Object.freeze({
+      const message: LocusClientActionMessage<TActions> = (actionMessage ?? Object.freeze({
         type: "action",
         id: `locus-action-${actionSequence}`,
         name,
         ...(payload === undefined ? {} : { payload }),
-      }) as LocusClientActionMessage<TActions>;
+      })) as LocusClientActionMessage<TActions>;
       return (handler as (context: LocusMultiLibraryActionContext<TMap>, payload: JsonValue | undefined, message: LocusClientActionMessage<TActions>) => JsonValue | void | Promise<JsonValue | void>)(
         publicContext,
         payload,
@@ -110,6 +111,11 @@ export function create_multi_library_locus_internal<
     map: options.map,
     ...(Object.keys(actions).length === 0 ? {} : { actions }),
     ...(internal.gate === undefined ? {} : { gate: internal.gate }),
+    ...(options.authorizeAction === undefined ? {} : { authorizeAction: options.authorizeAction }),
+    ...(options.sessionId === undefined ? {} : { sessionId: options.sessionId }),
+    ...(options.sessions === undefined ? {} : { sessions: options.sessions }),
+    ...(options.actionDedupe === undefined ? {} : { actionDedupe: options.actionDedupe }),
+    ...(options.schema === undefined ? {} : { schema: options.schema }),
   });
 
   const mutate: LocusMultiLibrary<TMap, TActions>["mutate"] = async (mutation) => {
@@ -121,28 +127,10 @@ export function create_multi_library_locus_internal<
     }
   };
 
-  const dispatch_action: LocusMultiLibrary<TMap, TActions>["dispatch_action"] = async (message) => {
+  const dispatchAction: LocusMultiLibrary<TMap, TActions>["dispatchAction"] = async (message) => {
     const release = activity.acquire("action");
-    actionSequence += 1;
     try {
-      const result = await authority.dispatch_action(message.name, message.payload);
-      return Object.freeze({
-        type: "ack" as const,
-        id: message.id,
-        ok: true as const,
-        seq: actionSequence,
-        ...(result === undefined ? {} : { result }),
-      });
-    } catch (cause) {
-      return Object.freeze({
-        type: "error" as const,
-        id: message.id,
-        ok: false as const,
-        seq: actionSequence,
-        error: Object.freeze({
-          message: cause instanceof Error ? cause.message : "Locus action failed.",
-        }),
-      });
+      return await authority.dispatch_message(message);
     } finally {
       release();
     }
@@ -151,7 +139,7 @@ export function create_multi_library_locus_internal<
   const connect: LocusMultiLibrary<TMap, TActions>["connect"] = (socket, _context?: LocusConnectionContext) => {
     if (disposed) return Object.assign(() => {}, { emit_event: () => {} });
     const release = activity.acquire("connection");
-    const stop = authority.connect(socket);
+    const stop = authority.connect(socket, _context);
     let connected = true;
     const close = (): void => {
       if (!connected) return;
@@ -168,8 +156,10 @@ export function create_multi_library_locus_internal<
     incarnationId: authority.incarnationId,
     get rev() { return authority.rev; },
     activity: activity.public,
+    sessions: authority.sessions,
+    actionRequests: authority.actionRequests,
     mutate,
-    dispatch_action,
+    dispatchAction,
     connect,
     dispose: () => {
       if (disposed) return;
@@ -179,31 +169,4 @@ export function create_multi_library_locus_internal<
     },
   });
   return Object.freeze({ locus, run_exclusive: authority.run_exclusive });
-}
-
-/** Create one complete fixed-registry mirror through the ordinary Locus client entry point. */
-export function create_multi_library_locus_client<
-  TMap extends LiveMapLibraries,
-  TActions extends LocusActionPayloads = LocusActionPayloads,
->(
-  options: LocusMultiLibraryClientOptions<TMap>,
-): LocusMultiLibraryClient<TMap, TActions> {
-  const client = create_locus_hosted_aggregate_socket_client_internal({
-    socket: options.socket,
-    map: options.map,
-    logicalMapId: options.recovery.logicalMapId,
-  });
-
-  return Object.freeze({
-    map: options.map,
-    logicalMapId: client.logicalMapId,
-    get incarnationId() { return client.incarnationId; },
-    get lastAppliedRev() { return client.lastAppliedRev; },
-    connect: () => client.connect(),
-    recover: () => client.recover(),
-    subscribe: (library, path, listener) => client.subscribe(library, path, listener),
-    unsubscribe: (library, path) => client.unsubscribe(library, path),
-    action: (name, ...args) => client.action(name, args[0]),
-    close: client.close,
-  }) as LocusMultiLibraryClient<TMap, TActions>;
 }

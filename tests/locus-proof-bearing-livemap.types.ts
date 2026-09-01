@@ -1,6 +1,6 @@
 import {
   create_locus,
-  create_locus_client,
+  create_echo,
   create_persistent_locus,
   hsonLiveMap,
 } from "hson-live";
@@ -8,7 +8,7 @@ import type {
   DocumentLiveMap,
   LiveMap,
   Locus,
-  LocusClient,
+  Echo,
   LocusMapValue,
   LocusMultiLibraryPersistenceAdapter,
   LocusPersistenceAdapter,
@@ -125,8 +125,8 @@ const socket = {
   onClose(_listener: () => void) {},
 };
 
-const inferredClient = create_locus_client({ socket, map: governedMap });
-const explicitClient = create_locus_client<typeof governedMap>({ socket, map: governedMap });
+const inferredClient = create_echo({ socket, map: governedMap });
+const explicitClient = create_echo<typeof governedMap>({ socket, map: governedMap });
 type InferredClientMapIsExact = Assert<Equal<typeof inferredClient.map, typeof governedMap>>;
 type ExplicitClientMapIsExact = Assert<Equal<typeof explicitClient.map, typeof governedMap>>;
 const clientState: UserSchemaType = inferredClient.map.snap();
@@ -145,7 +145,7 @@ inferredClient.map.sub.path(["age"], (next) => {
   const exact: UserSchemaType["age"] = next;
   void exact;
 });
-inferredClient.recovery.on_change((change) => {
+inferredClient.recovery.onChange((change) => {
   const exactMap: typeof governedMap = change.map;
   const exactState: UserSchemaType = change.map.snap();
   void exactMap;
@@ -159,14 +159,14 @@ if (false) {
 const ordinaryMap = hsonLiveMap.fromJson({ count: 0 });
 type OrdinaryMapValueIsUnchanged = Assert<Equal<LocusMapValue<typeof ordinaryMap>, JsonValue | undefined>>;
 const ordinaryAuthority = create_locus({ map: ordinaryMap });
-const ordinaryClient = create_locus_client({ socket, map: ordinaryMap });
+const ordinaryClient = create_echo({ socket, map: ordinaryMap });
 const ordinaryCount: JsonValue | undefined = ordinaryClient.map.at(["count"]).snap();
 
 const documentCandidate = hsonLiveMap.fromHson("<main/>");
 if (documentCandidate.mode === "document") {
   type DocumentMapValueIsUndefined = Assert<Equal<LocusMapValue<typeof documentCandidate>, undefined>>;
   const documentAuthority: Locus<DocumentLiveMap> = create_locus({ map: documentCandidate });
-  const documentClient: LocusClient<DocumentLiveMap> = create_locus_client({ socket, map: documentCandidate });
+  const documentClient: Echo<DocumentLiveMap> = create_echo({ socket, map: documentCandidate });
   declare_document_persistence(documentCandidate);
   void documentAuthority;
   void documentClient;
@@ -179,12 +179,12 @@ const libraries = hsonLiveMap.fromLibraries({
   tree: { data: { value: "root", age: 1, children: [] }, schema: TreeSchema },
 });
 const multiAuthority = create_locus({ map: libraries });
-const multiClient = create_locus_client({
+const multiClient = create_echo({
   socket,
   map: libraries,
   recovery: { logicalMapId: "proof-bearing-multi-library" },
 });
-multiClient.recover();
+multiClient.connect();
 declare const multiPersistence: LocusMultiLibraryPersistenceAdapter;
 create_persistent_locus({ map: libraries, persistence: multiPersistence });
 

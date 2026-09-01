@@ -1,6 +1,6 @@
 // style-manager.ts
 
-import { HsonAttrs, HsonNode } from "../../../core/types.js";
+import { HsonAttrs, HsonNode, type CanonicalPublicAttrs } from "../../../core/types.js";
 import { AllowedStyleKey, CssMap, CssVarFacade } from "../../../types/css.types.js";
 import { camel_to_kebab } from "../../transform/utils/attrs-utils/camel_to_kebab.js";
 import { kebab_to_camel } from "../../transform/utils/primitive-utils/kebab-to-camel.util.js";
@@ -432,13 +432,23 @@ export class StyleManager<TTree extends LiveTree> {
 
         const val = value == null ? "" : String(value);
 
-        if (document_binding_for_node(this.tree.node) !== undefined) {
-            const next = { ...readCanonicalStyleFromNode(this.tree.node) };
+        const binding = document_binding_for_node(this.tree.node);
+        if (binding !== undefined) {
             const key = kebab.startsWith("--") ? kebab : kebab_to_camel(kebab);
-            if (val === "") delete next[key];
-            else next[key] = val;
-            if (Object.keys(next).length === 0) this.tree.attrs.drop("style");
-            else this.tree.attrs.set("style", next);
+            binding.delegateAttrs({
+                kind: "transform",
+                apply: (attrs: CanonicalPublicAttrs) => {
+                    const current = attrs.style;
+                    const next = typeof current === "object" && current !== null && !Array.isArray(current)
+                        ? { ...current }
+                        : {};
+                    if (val === "") delete next[key];
+                    else next[key] = val;
+                    return Object.keys(next).length === 0
+                        ? { kind: "drop", name: "style" }
+                        : { kind: "set", name: "style", value: next };
+                },
+            });
             return this.tree;
         }
 
@@ -467,12 +477,22 @@ export class StyleManager<TTree extends LiveTree> {
             ? propertyName
             : camel_to_kebab(propertyName);
 
-        if (document_binding_for_node(this.tree.node) !== undefined) {
-            const next = { ...readCanonicalStyleFromNode(this.tree.node) };
+        const binding = document_binding_for_node(this.tree.node);
+        if (binding !== undefined) {
             const key = kebab.startsWith("--") ? kebab : kebab_to_camel(kebab);
-            delete next[key];
-            if (Object.keys(next).length === 0) this.tree.attrs.drop("style");
-            else this.tree.attrs.set("style", next);
+            binding.delegateAttrs({
+                kind: "transform",
+                apply: (attrs: CanonicalPublicAttrs) => {
+                    const current = attrs.style;
+                    const next = typeof current === "object" && current !== null && !Array.isArray(current)
+                        ? { ...current }
+                        : {};
+                    delete next[key];
+                    return Object.keys(next).length === 0
+                        ? { kind: "drop", name: "style" }
+                        : { kind: "set", name: "style", value: next };
+                },
+            });
             return this.tree;
         }
 
