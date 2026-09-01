@@ -7,6 +7,7 @@
   "repository": { "type": "git", "url": "https://github.com/neutralica/hson-live.git", "directory": "editors/vscode-hson" },
   "license": "SEE LICENSE IN LICENSE",
   "private": true,
+  "icon": "images/hson-icon.png",
   "main": "./dist/extension.js",
   "capabilities": {
     "untrustedWorkspaces": {
@@ -36,6 +37,7 @@
     "test:unit": "node ./scripts/build-tests.mjs && node ./.test-dist/unit.cjs && node ./.test-dist/workspace.cjs",
     "test:settings": "node ./scripts/build-tests.mjs && node ./.test-dist/settings.cjs",
     "test:integration": "npm run build && node ./scripts/build-tests.mjs && node ./tests/integration/run.mjs",
+    "test:integration:consumer": "npm run build && node ./scripts/build-tests.mjs && node ./tests/integration/run-consumer.mjs",
     "test:baseline": "npm run build && node ./scripts/build-tests.mjs && node ./.test-dist/baseline.cjs",
     "test:baseline:integration": "npm run build && node ./scripts/build-tests.mjs && node ./tests/integration/run-baseline.mjs",
     "test:baseline:installed": "npm run package:vsix && node ./scripts/build-tests.mjs && HSON_BASELINE_VSIX=hson-language.vsix node ./tests/integration/run-baseline.mjs",

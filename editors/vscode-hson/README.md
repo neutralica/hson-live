@@ -54,7 +54,7 @@ The initial user-facing surface is deliberately compact:
   consent are also present.
 - **Hson › Runtime / Provider** contains the existing resource-scoped Provider
   Entry, Hson Runtime Module, optional Runtime Entry, and Node Arguments needed
-  by the current D1–D6 trusted runtime. Paths are relative to the containing
+  by trusted Schema diagnostics. Paths are relative to the containing
   workspace folder. These execution-sensitive settings are restricted in
   Restricted Mode.
 
@@ -97,17 +97,20 @@ the same hues; Authoring Marker Strength supplies the default `0.70` opacity.
 Library Marker Strength applies equally to lowercase letters and the violet
 separator. A supplied alpha channel is respected and multiplied by strength.
 
-Syntax diagnostics cover configured TS/TSX source and standalone `.hson` files
-across every workspace folder, including files that have never been opened.
-TS/TSX membership follows TypeScript project configuration (`include`,
-`exclude`, `extends`, and project references); declarations, generated Schema
-artifacts, dependencies, and configured output directories are excluded. An
-open editor's in-memory text is authoritative, while closing it restores the
-saved-file result instead of removing its Problems. In the default secure mode
-the extension parses project configuration but does not execute workspace code.
-It does not write helper files or modify user source, and this static scan is
-independent of Schema Generate, Schema Watch, trusted diagnostics, and
-Workspace Trust.
+Ordinary project-owned TS/TSX source receives proactive workspace Hson
+diagnostics, including files that have never been opened, and standalone
+`.hson` is discovered directly across every workspace folder. TS/TSX ownership
+follows TypeScript project configuration (`include`, `exclude`, `extends`, and
+project references). Loose or otherwise unowned TS/TSX files are diagnosed when
+explicitly opened, matching TypeScript's project-ownership model. Declarations,
+generated Schema artifacts, dependencies, configured output directories, and
+explicit diagnostic fixtures remain excluded. An open editor's in-memory text
+is authoritative, while closing it restores the saved-file result instead of
+removing its Problems. In the default secure mode the extension parses project
+configuration but does not execute workspace code. It does not write helper
+files or modify user source. This scan is independent of Schema Generate,
+Schema Watch, trusted diagnostics, and Workspace Trust; stopping Schema Watch
+does not reduce ordinary Hson diagnostic coverage.
 Substitution-free templates receive authoritative whole-Hson tag admission
 diagnostics, including raw-template newline normalization and UTF-16 mapping.
 Readable noncanonical formatting is accepted when the actual tag accepts it.
@@ -163,14 +166,16 @@ hson-schema watch --project tsconfig.json
 ```
 
 In VS Code, use **Hson: Generate Schema Types**, **Hson: Start Schema Watch**,
-and **Hson: Stop Schema Watch**. The extension resolves and runs only the
-selected workspace's installed `hson-live` `hson-schema` executable; it never
-downloads or supplies a generator. Watch automatically regenerates after
-relevant saved edits, and the status item reports only extension-managed watch
-state. Missing or stale local evidence offers Generate and Start Watch quick
-fixes. Commands are explicit trusted-workspace operations; opening a project
-does not start them. Generated declarations are ordinary TypeScript files, so
-their updates do not require a window reload.
+**Hson: Stop Schema Watch**, and **Hson: Check Schemas**. The extension resolves
+and runs only the selected workspace's installed `hson-live` `hson-schema`
+executable; it never downloads or supplies a generator. Watch automatically
+regenerates after relevant saved edits. Its compact status reports Stopped,
+Checking, Current, Stale, or Error for extension-managed processes; lifecycle
+details remain in the Hson Schema output channel. Missing or stale local
+evidence offers Generate and Start Watch quick fixes. Commands are explicit
+trusted-workspace operations; opening a project does not start them. Generated
+declarations are ordinary TypeScript files, so their updates do not require a
+window reload.
 
 Interpolations remain ordinary TypeScript expressions; runtime values can be
 certified explicitly with `Hson.certify`.
@@ -193,6 +198,13 @@ version, and payload when the current VS Code CLI can locate it.
 
 After `npm run toolkit:update`, run **Developer: Reload Window** in VS Code. The
 tooling does not reload or restart VS Code automatically.
+
+`toolkit:update` is the one-command local update path. The extension build
+bundles its required compiler/runtime source directly from this repository, so
+a separate root `npm run build` is not a VSIX prerequisite. The install step
+itself checks extension source, builds, validates, packages once, installs that
+exact VSIX, and verifies the installed payload. Workspace Schema commands still
+run each consumer project's own installed `hson-live` executable.
 
 Package without installing:
 
@@ -270,7 +282,7 @@ Direct and renamed official imports receive the same grammar-backed highlighting
 and admission diagnostics because both use the same TypeScript binding identity.
 
 Ordinary strings and templates inside `fromHson(...)` intentionally retain
-ordinary TypeScript coloring. D4 adds semantic diagnostics, not spelling-based
+ordinary TypeScript coloring. Schema tooling adds semantic diagnostics, not spelling-based
 TextMate injection. `Hson\`...\`` remains the preferred embedded authoring form
 with first-class Hson presentation.
 
@@ -287,9 +299,9 @@ ordinary macOS installation). `npm run test:baseline:installed` builds the actua
 VSIX and runs the same journey from a clean installed-extension directory, using
 an empty test-driver extension rather than a development override for Hson.
 
-### Natural LiveMap Schema governance (D3)
+### Natural LiveMap Schema governance
 
-With a trusted provider supplying source-bound D1 lifecycle evidence, ordinary
+With a trusted provider supplying source-bound lifecycle evidence, ordinary
 map-owning code needs no extra standalone validation call:
 
 ```ts
@@ -311,19 +323,18 @@ Actual mutation, including mutation followed by restoration, suppresses source
 attribution for that map.
 
 Workspace Trust and explicit enablement are still both required. A Schema-only
-provider does not establish map correspondence: D3 needs the existing D1
+provider does not establish map correspondence: governance needs the existing
 capture path bound to the source sites. The private provider instrumenter and
 its limits are documented in
-`src/internal/trusted-schema-diagnostics/README.md` in the source repository
-(D3 natural map association section).
+`src/internal/trusted-schema-diagnostics/README.md` in the source repository.
 There is no automatic application import, public provenance API, or new
 validation API. The editor makes no claim that application execution reached
 `schema.use`.
 
-### Static `fromHson` Schema governance (D4)
+### Static `fromHson` Schema governance
 
 A statically recoverable raw string can be the source occurrence for the same
-D3 lifecycle path:
+trusted lifecycle path:
 
 ```ts
 const source = `<user <age "37">>`;
@@ -332,7 +343,7 @@ map.schema.use(UserSchema);
 ```
 
 Syntax checking is immediate and does not require trust or Schema execution.
-When Workspace Trust and trusted diagnostics are both enabled, the private D3
+When Workspace Trust and trusted diagnostics are both enabled, the private
 provider can prove that this exact construction produced the actual map and
 project the later Schema relationship back into the original literal. Failed
 initial attachment remains diagnosable. Actual mutation, including mutation

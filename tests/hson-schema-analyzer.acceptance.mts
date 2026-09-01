@@ -25,7 +25,7 @@ writeFileSync(documentConsumer, `import { Hson } from "hson-live"; import type {
 writeFileSync(localStatic, `import { Hson, type HsonSchema } from "hson-live";\nconst SchemaTest: HsonSchema = Hson\`<type "data" content <name "string" score "number">>\`;\nconst testData: SchemaTestHson = Hson\`<name "Ada" score 37>\`;\ndeclare const typed: SchemaTestType; const score: number = typed.score; void SchemaTest; void testData; void score;\n`);
 writeFileSync(config, JSON.stringify({ compilerOptions: { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext", declaration: true, outDir: "./out", baseUrl: ".", paths: { "hson-live": [resolve("dist/index.d.ts")], "hson-live/hson": [resolve("dist/hson-authoring.d.ts")] } }, include: ["./*.ts"] }, null, 2));
 
-const run = (mode: "generate" | "verify" | "check" | "build") => spawnSync(process.execPath, ["--loader", "ts-node/esm", "scripts/hson-schema.mts", mode, "--project", config], { cwd: root, encoding: "utf8", env: { ...process.env, TS_NODE_TRANSPILE_ONLY: "true" } });
+const run = (mode: "generate" | "verify" | "check" | "build") => spawnSync(process.execPath, ["--import=tsx", "scripts/hson-schema.mts", mode, "--project", config], { cwd: root, encoding: "utf8" });
 
 check("generation and extension-independent authoritative check pass", () => { assert.equal(run("generate").status, 0); const result = run("check"); assert.equal(result.status, 0, result.stdout + result.stderr); });
 check("plain local static form gains real Type and Hson symbols without certification", () => {

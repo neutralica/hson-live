@@ -25,7 +25,7 @@ import {
   rename_hson_schema_definition,
   schema_target_at,
 } from "../src/hson-schema-symbols.js";
-import { discover_schema_project, resolve_workspace_hson_schema_tool, schema_tool_arguments } from "../src/schema-tooling.js";
+import { discover_schema_project, resolve_workspace_hson_schema_tool, schema_tool_arguments, schema_watch_output_state } from "../src/schema-tooling.js";
 
 let checks = 0;
 function check(name: string, body: () => void): void {
@@ -51,6 +51,14 @@ check("Schema tooling resolves only an installed workspace hson-live executable"
   mkdirSync(join(incompatible, "node_modules", "hson-live"), { recursive: true });
   writeFileSync(join(incompatible, "node_modules", "hson-live", "package.json"), JSON.stringify({ name: "hson-live", version: "old", bin: {} }));
   assert.throws(() => resolve_workspace_hson_schema_tool(incompatible), /does not expose the required public hson-schema executable/);
+});
+
+check("Schema watch lifecycle output maps to truthful extension states", () => {
+  assert.equal(schema_watch_output_state("Hson Schema watch: checking /workspace/tsconfig.json."), "starting");
+  assert.equal(schema_watch_output_state("Hson Schema watch: checking changes."), "starting");
+  assert.equal(schema_watch_output_state("Hson Schema watch: current; 4 Schemas; 2 artifacts updated; watching."), "watching");
+  assert.equal(schema_watch_output_state("Hson Schema watch: stale/error; invalid Schema"), "error");
+  assert.equal(schema_watch_output_state('{"hsonSchema":"generate"}'), undefined);
 });
 
 function diagnose(

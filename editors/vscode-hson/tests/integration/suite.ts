@@ -23,6 +23,61 @@ async function diagnosticsFor(
     .filter((diagnostic) => diagnostic.source === "Hson");
 }
 
+async function waitFor(condition: () => boolean | Promise<boolean>, label: string, timeoutMs = 15_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!await condition()) {
+    if (Date.now() >= deadline) throw new Error(label);
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+}
+
+async function runSchemaConsumer(workspace: string): Promise<void> {
+  const source = vscode.Uri.file(join(workspace, "src", "app", "state", "shell.schema.ts"));
+  const artifact = vscode.Uri.file(join(workspace, "src", "app", "state", "shell.schema.DEMO_LIVEMAP_SCHEMA.hson-schema.generated.ts"));
+  const metadata = vscode.Uri.file(join(workspace, "src", "app", "state", "shell.schema.DEMO_LIVEMAP_SCHEMA.hson-schema.generated.json"));
+  const diagnosticProbe = vscode.Uri.file(join(workspace, "hson-schema-watch-diagnostic-probe.hson"));
+  const read = async (uri: vscode.Uri): Promise<string> => Buffer.from(await vscode.workspace.fs.readFile(uri)).toString();
+  const write = async (uri: vscode.Uri, text: string): Promise<void> => vscode.workspace.fs.writeFile(uri, Buffer.from(text));
+  const originalSource = await read(source);
+  let leaveWatchForDisposal = false;
+  try {
+    await vscode.commands.executeCommand("hson.generateSchemaTypes", source);
+    const originalArtifact = await read(artifact);
+    const originalMetadata = await read(metadata);
+    const openArtifact = await vscode.workspace.openTextDocument(artifact);
+    await vscode.commands.executeCommand("hson.startSchemaWatch", source);
+    await vscode.commands.executeCommand("hson.startSchemaWatch", source);
+    const validProbe = originalSource.replace('<exact "color-sudoku">', '<union [<exact "color-sudoku">, <exact "watch-probe">]>');
+    assert.notEqual(validProbe, originalSource);
+    await write(source, validProbe);
+    await waitFor(async () => (await read(artifact)).includes("watch-probe") && openArtifact.getText().includes("watch-probe"), "extension watch did not refresh generated evidence in the open editor");
+    const invalidProbe = validProbe.replace('<exact "watch-probe">]>', '<exact "watch-probe">]');
+    await write(source, invalidProbe);
+    await new Promise(resolve => setTimeout(resolve, 1_000));
+    await write(source, originalSource);
+    await waitFor(async () => await read(artifact) === originalArtifact && await read(metadata) === originalMetadata, "extension watch did not recover and restore current evidence");
+    await vscode.commands.executeCommand("hson.stopSchemaWatch", source);
+    await write(source, validProbe);
+    await new Promise(resolve => setTimeout(resolve, 1_200));
+    assert.equal(await read(artifact), originalArtifact, "Stop Schema Watch left an extension-owned watcher running");
+    await write(source, originalSource);
+    await vscode.commands.executeCommand("hson.generateSchemaTypes", source);
+    await vscode.workspace.fs.writeFile(diagnosticProbe, Buffer.from("+1\n"));
+    assert.equal((await diagnosticsFor(diagnosticProbe, 1)).length, 1, "ordinary Hson diagnostics stopped with Schema Watch");
+    await vscode.commands.executeCommand("hson.checkSchemas", source);
+    await vscode.workspace.fs.delete(diagnosticProbe);
+    await vscode.commands.executeCommand("hson.startSchemaWatch", source);
+    await new Promise(resolve => setTimeout(resolve, 1_000));
+    leaveWatchForDisposal = true;
+    process.stdout.write("ok - real hson-demo2 extension Generate/Watch/error/recovery/Stop/Check/disposal lifecycle and watch-independent diagnostics\n");
+  } finally {
+    if (!leaveWatchForDisposal) await vscode.commands.executeCommand("hson.stopSchemaWatch", source).then(undefined, () => undefined);
+    await write(source, originalSource);
+    if (!leaveWatchForDisposal) await vscode.commands.executeCommand("hson.generateSchemaTypes", source).then(undefined, () => undefined);
+    await vscode.workspace.fs.delete(diagnosticProbe).then(undefined, () => undefined);
+  }
+}
+
 export async function run(): Promise<void> {
   const extension = vscode.extensions.getExtension("terminal-gothic.hson-language");
   assert.ok(extension, "Hson extension was not discovered by the extension host");
@@ -30,6 +85,10 @@ export async function run(): Promise<void> {
   const workspace = process.env.HSON_TEST_WORKSPACE;
 
   assert.ok(workspace);
+  if (process.env.HSON_SCHEMA_CONSUMER_TEST === "1") {
+    await runSchemaConsumer(workspace);
+    return;
+  }
   const unopenedTypeScript = vscode.Uri.file(join(workspace, "static-project", "unopened-invalid.ts"));
   const unopenedStandalone = vscode.Uri.file(join(workspace, "unopened-invalid.hson"));
   const pragmaStandalone = vscode.Uri.file(join(workspace, "pragma-invalid.hson"));

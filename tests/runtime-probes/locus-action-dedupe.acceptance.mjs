@@ -118,7 +118,7 @@ function separately_initialized_default_identity() {
     );
     const output = execFileSync(
         process.execPath,
-        ['--loader', 'ts-node/esm', fixturePath],
+        ['--import=tsx', fixturePath],
         {
             cwd: fileURLToPath(new URL('..', import.meta.url)),
             encoding: 'utf8',

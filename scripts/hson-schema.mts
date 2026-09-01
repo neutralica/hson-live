@@ -22,6 +22,7 @@ type SchemaDeclaration = Readonly<{ sourceFile: ts.SourceFile; statement: ts.Var
 type Artifact = Readonly<{ path: string; content: string; metadataPath: string; metadata: string; reexport: string; schemaAssociation: string; generatedBytes: number; proofNodeCount: number }>;
 type Diagnostic = Readonly<{ file?: string; start?: number; message: string }>;
 type Overlay = Readonly<{ file: string; start: number; end: number; text: string }>;
+type CycleSummary = Readonly<{ schemas: number; updates: number }>;
 
 const GENERATED_EXPORTS_START = "// @hson-schema generated type exports";
 const GENERATED_EXPORTS_END = "// @hson-schema end generated type exports";
@@ -32,21 +33,42 @@ const projectArg = value_after("--project") ?? "tsconfig.json";
 const projectPath = resolve(projectArg);
 if (!["generate", "verify", "check", "build", "watch"].includes(mode)) fail(`Unknown Hson Schema mode ${JSON.stringify(mode)}.`);
 
-if (mode === "watch") {
-  run_cycle("generate");
-  console.log("Hson Schema watch active. Press Ctrl+C to stop.");
-  let fingerprint = tree_fingerprint(dirname(projectPath));
-  setInterval(() => {
-    const next = tree_fingerprint(dirname(projectPath));
+if (mode === "watch") run_watch();
+else try { run_cycle(mode); } catch (error) { console.error(error_message(error)); process.exitCode = 1; }
+
+function run_watch(): void {
+  console.log(`Hson Schema watch: checking ${projectPath}.`);
+  let fingerprint = "";
+  const cycle = (): void => {
+    try {
+      const summary = run_cycle("generate");
+      console.log(`Hson Schema watch: current; ${summary.schemas} ${summary.schemas === 1 ? "Schema" : "Schemas"}; ${summary.updates} ${summary.updates === 1 ? "artifact" : "artifacts"} updated; watching.`);
+    } catch (error) {
+      console.error(`Hson Schema watch: stale/error; ${error_message(error)}`);
+    } finally {
+      fingerprint = watch_fingerprint(dirname(projectPath));
+    }
+  };
+  cycle();
+  const timer = setInterval(() => {
+    const next = watch_fingerprint(dirname(projectPath));
     if (next === fingerprint) return;
-    fingerprint = next;
-    try { run_cycle("generate"); } catch (error) { console.error(error instanceof Error ? error.message : error); }
+    console.log("Hson Schema watch: checking changes.");
+    cycle();
   }, 500);
-} else {
-  run_cycle(mode);
+  let stopping = false;
+  const stop = (signal: string): void => {
+    if (stopping) return;
+    stopping = true;
+    clearInterval(timer);
+    process.exitCode = 0;
+    console.log(`Hson Schema watch: stopped (${signal}).`);
+  };
+  process.once("SIGINT", () => stop("SIGINT"));
+  process.once("SIGTERM", () => stop("SIGTERM"));
 }
 
-function run_cycle(selected: Exclude<Mode, "watch">): void {
+function run_cycle(selected: Exclude<Mode, "watch">): CycleSummary {
   const started = performance.now();
   const config = read_config(projectPath);
   const coldStart = performance.now();
@@ -59,14 +81,14 @@ function run_cycle(selected: Exclude<Mode, "watch">): void {
   }
   const artifacts = schemaDeclarations.map(make_artifact);
   const diagnostics: Diagnostic[] = [];
-  reconcile_generated_lifecycle(config, schemaDeclarations, artifacts, selected, diagnostics);
+  let updates = reconcile_generated_lifecycle(config, schemaDeclarations, artifacts, selected, diagnostics);
 
   for (let index = 0; index < schemaDeclarations.length; index += 1) {
     const declaration = schemaDeclarations[index] as SchemaDeclaration;
     const artifact = artifacts[index] as Artifact;
     if (selected === "generate") {
-      write_if_changed(artifact.path, artifact.content);
-      write_if_changed(artifact.metadataPath, artifact.metadata);
+      if (write_if_changed(artifact.path, artifact.content)) updates += 1;
+      if (write_if_changed(artifact.metadataPath, artifact.metadata)) updates += 1;
     } else {
       verify_artifact(declaration, artifact, diagnostics);
     }
@@ -111,6 +133,7 @@ function run_cycle(selected: Exclude<Mode, "watch">): void {
   const memory = process.memoryUsage();
   const sourceProvenanceBytes = schemaDeclarations.reduce((count, declaration) => count + Buffer.byteLength(declaration.source), 0);
   console.log(JSON.stringify({ hsonSchema: selected, schemas: schemaDeclarations.length, defs: definitionCount, refs: referenceCount, recursiveSccs: recursiveSccCount, documentRepeatNodes: documentRepeatCount, documentExactCountNodes: documentExactCountCount, canonicalNodes: graphNodes, canonicalDocumentNodes: documentGraphNodes, refinementCount, generatedDeclarationBytes: generatedBytes, proofNodes, staticHsonValidations: staticCount, staticDocumentValidations: staticAnalysis.documentCount, analyzerColdMs: round(performance.now() - coldStart), analyzerWarmMs: round(analyzerWarmMs), staticValidationMs: round(staticMs), typescriptColdMs: round(tsMs), typescriptIncrementalMs: round(tsIncrementalMs), checkerHeapBytes: memory.heapUsed, checkerRssBytes: memory.rss, freshnessArtifactBytes: freshnessBytes, sourceProvenanceBytes, totalMs: round(performance.now() - started) }));
+  return Object.freeze({ schemas: schemaDeclarations.length, updates });
 }
 
 function discover_schemas(program: ts.Program, checker: ts.TypeChecker): SchemaDeclaration[] {
@@ -320,11 +343,12 @@ function reconcile_generated_lifecycle(
   artifacts: readonly Artifact[],
   selected: Exclude<Mode, "watch">,
   diagnostics: Diagnostic[],
-): void {
+): number {
+  let updates = 0;
   const expectedArtifacts = new Set(artifacts.flatMap((artifact) => [resolve(artifact.path), resolve(artifact.metadataPath)]));
   for (const path of generated_artifact_paths(config)) {
     if (expectedArtifacts.has(resolve(path))) continue;
-    if (selected === "generate") unlinkSync(path);
+    if (selected === "generate") { unlinkSync(path); updates += 1; }
     else diagnostics.push({ file: path, message: `Stale generated Hson Schema artifact has no current declaration. Run hson-schema generate --project ${projectArg}.` });
   }
 
@@ -353,7 +377,7 @@ function reconcile_generated_lifecycle(
       if (source === associated && actual === expected) continue;
       const without = remove_generated_exports_block(associated).trimEnd();
       const next = expected === "" ? `${without}\n` : `${without}\n\n${expected}`;
-      if (next !== source) writeFileSync(fileName, next);
+      if (next !== source) { writeFileSync(fileName, next); updates += 1; }
     } else {
       if (source !== associated) {
         diagnostics.push({ file: fileName, message: `Generated Hson Schema value associations are missing or stale. Run hson-schema generate --project ${projectArg}.` });
@@ -363,6 +387,7 @@ function reconcile_generated_lifecycle(
       }
     }
   }
+  return updates;
 }
 
 function apply_generated_schema_associations(
@@ -438,10 +463,26 @@ function is_certify_call(call: ts.CallExpression, checker: ts.TypeChecker): bool
 function has_export(statement: ts.VariableStatement): boolean { return statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) === true; }
 function raw_template(node: ts.NoSubstitutionTemplateLiteral, sourceFile: ts.SourceFile): string { const text = node.getText(sourceFile); return text.slice(1, -1); }
 function digest(value: string): string { return createHash("sha256").update(value).digest("hex"); }
-function write_if_changed(path: string, content: string): void { if (!existsSync(path) || readFileSync(path, "utf8") !== content) writeFileSync(path, content); }
+function write_if_changed(path: string, content: string): boolean { if (existsSync(path) && readFileSync(path, "utf8") === content) return false; writeFileSync(path, content); return true; }
 function value_after(flag: string): string | undefined { const index = args.indexOf(flag); return index < 0 ? undefined : args[index + 1]; }
 function read_config(path: string): ts.ParsedCommandLine { const read = ts.readConfigFile(path, ts.sys.readFile); if (read.error) fail(ts.flattenDiagnosticMessageText(read.error.messageText, "\n")); const parsed = ts.parseJsonConfigFileContent(read.config, ts.sys, dirname(path)); if (parsed.errors.length > 0) fail(parsed.errors.map((entry) => ts.flattenDiagnosticMessageText(entry.messageText, "\n")).join("\n")); return parsed; }
 function report_and_fail(diagnostics: readonly Diagnostic[]): never { fail(diagnostics.map((entry) => `${entry.file ?? "Hson Schema"}${entry.start === undefined ? "" : `:${entry.start}`}: ${entry.message}`).join("\n")); }
-function fail(message: string): never { console.error(message); process.exitCode = 1; throw new Error(message); }
+function fail(message: string): never { throw new Error(message); }
+function error_message(error: unknown): string { return error instanceof Error ? error.message : String(error); }
 function round(value: number): number { return Math.round(value * 100) / 100; }
-function tree_fingerprint(root: string): string { const entries: string[] = []; const visit = (path: string): void => { for (const name of readdirSync(path)) { if (["node_modules", "dist", ".git"].includes(name)) continue; const child = join(path, name); const stat = statSync(child); if (stat.isDirectory()) visit(child); else if (/\.(?:[cm]?ts|json)$/.test(name)) entries.push(`${child}:${stat.mtimeMs}:${stat.size}`); } }; visit(root); return digest(entries.sort().join("\n")); }
+function watch_fingerprint(root: string): string {
+  const entries: string[] = [];
+  const visit = (path: string): void => {
+    for (const name of readdirSync(path)) {
+      if (["node_modules", "dist", ".git"].includes(name)) continue;
+      const child = join(path, name);
+      const stat = statSync(child);
+      if (stat.isDirectory()) visit(child);
+      else if (resolve(child) === projectPath || (/\.[cm]?tsx?$/.test(name) && !name.includes(".hson-schema.generated.") && readFileSync(child, "utf8").includes("HsonSchema"))) {
+        entries.push(`${child}:${stat.mtimeMs}:${stat.size}`);
+      }
+    }
+  };
+  visit(root);
+  return digest(entries.sort().join("\n"));
+}

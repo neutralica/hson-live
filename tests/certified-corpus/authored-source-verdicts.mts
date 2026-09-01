@@ -620,7 +620,7 @@ export function renderAuthoredSourceVerdictTemplate(): string {
     "descriptor-derived candidate with this editable worksheet, generate into a temporary file:",
     "",
     "```sh",
-    "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm \\",
+    "node --import=tsx \\",
     "  tests/certified-corpus/generate-authored-source-verdicts.mts \\",
     "  --output /tmp/01-authored-source-verdicts.candidate.md",
     "diff -u docs/contracts/authored-hson-review/01-authored-source-verdicts.md \\",

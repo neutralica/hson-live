@@ -9,6 +9,11 @@ const languageConfiguration = await readJson("../language-configuration.json");
 const coreGrammar = await readJson("../syntaxes/hson.tmLanguage.json");
 
 assert.equal(manifest.main, "./dist/extension.js");
+assert.equal(manifest.icon, "images/hson-icon.png");
+const icon = await readFile(new URL(`../${manifest.icon}`, import.meta.url));
+assert.equal(icon.toString("ascii", 1, 4), "PNG");
+assert.equal(icon.readUInt32BE(16), 256);
+assert.equal(icon.readUInt32BE(20), 256);
 assert.deepEqual(manifest.activationEvents, [
   "onStartupFinished",
   "onLanguage:typescript",

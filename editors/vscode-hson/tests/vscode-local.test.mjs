@@ -144,6 +144,7 @@ async function extractInstalled(vsixPath, installedRoot, metadata = true) {
 
 await check("root scripts delegate to extension-owned commands", async () => {
   const scripts = JSON.parse(await readFile(join(repositoryRoot, "package.json"), "utf8")).scripts;
+  assert.equal(scripts["toolkit:update"], "npm run vscode:install");
   assert.equal(scripts["vscode:package"], "npm --prefix editors/vscode-hson run package:vsix");
   assert.equal(scripts["vscode:install"], "npm --prefix editors/vscode-hson run vscode:install");
   assert.equal(scripts["vscode:status"], "npm --prefix editors/vscode-hson run vscode:status");

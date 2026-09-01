@@ -7,6 +7,8 @@ export type ResolvedSchemaTool = Readonly<{
   packageVersion: string;
 }>;
 
+export type SchemaWatchOutputState = "starting" | "watching" | "error";
+
 type HsonLivePackage = Readonly<{
   name?: unknown;
   version?: unknown;
@@ -55,6 +57,14 @@ export function discover_schema_project(workspaceFolder: string, activeFile?: st
 
 export function schema_tool_arguments(tool: ResolvedSchemaTool, mode: "generate" | "check" | "watch", project: string): readonly string[] {
   return Object.freeze([tool.executable, mode, "--project", project]);
+}
+
+/** Maps the shared CLI's human lifecycle lines to extension status state. */
+export function schema_watch_output_state(line: string): SchemaWatchOutputState | undefined {
+  if (line.startsWith("Hson Schema watch: checking")) return "starting";
+  if (line.startsWith("Hson Schema watch: current;")) return "watching";
+  if (line.startsWith("Hson Schema watch: stale/error;")) return "error";
+  return undefined;
 }
 
 function read_package(path: string): HsonLivePackage {

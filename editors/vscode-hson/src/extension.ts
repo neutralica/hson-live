@@ -16,7 +16,7 @@ import {
   schema_ref_completion_range,
   schema_target_at,
 } from "./hson-schema-symbols.js";
-import { discover_schema_project, resolve_workspace_hson_schema_tool } from "./schema-tooling.js";
+import { discover_schema_project, resolve_workspace_hson_schema_tool, schema_watch_output_state } from "./schema-tooling.js";
 
 import {
   type DiagnosticDocument,
@@ -558,7 +558,8 @@ export function activate(context: vscode.ExtensionContext): void {
   const schemaToolOutput = vscode.window.createOutputChannel("Hson Schema");
   const schemaToolStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 11);
   const schemaWatches = new Map<string, ManagedSchemaWatch>();
-  const schemaToolStates = new Map<string, "stopped" | "watching" | "error">();
+  type SchemaToolState = "stopped" | "starting" | "watching" | "stale" | "error";
+  const schemaToolStates = new Map<string, SchemaToolState>();
   const schemaWatchKey = (folder: vscode.WorkspaceFolder, project: string): string => `${folder.uri.toString()}::${project}`;
   const schemaToolFolder = async (requested?: vscode.Uri): Promise<vscode.WorkspaceFolder | undefined> => {
     const direct = requested === undefined ? vscode.window.activeTextEditor?.document.uri : requested;
@@ -577,17 +578,31 @@ export function activate(context: vscode.ExtensionContext): void {
   };
   const updateSchemaToolStatus = (): void => {
     const folder = vscode.window.activeTextEditor === undefined ? undefined : vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor.document.uri);
-    const entry = folder === undefined ? undefined : [...schemaToolStates.entries()].find(([key]) => key.startsWith(`${folder.uri.toString()}::`));
-    const state = entry?.[1] ?? "stopped";
-    schemaToolStatus.text = state === "watching" ? "Hson Schema: Watching" : state === "error" ? "Hson Schema: Error" : "Hson Schema: Stopped";
-    schemaToolStatus.tooltip = state === "watching" ? "An extension-managed workspace hson-schema watch process is running."
-      : state === "error" ? "The extension-managed Hson Schema command failed. Select to generate, watch, stop, or show output."
+    const entries = [...schemaToolStates.entries()].filter(([key]) => folder === undefined || key.startsWith(`${folder.uri.toString()}::`));
+    const states = entries.map(([, state]) => state);
+    const state: SchemaToolState = states.includes("error") ? "error" : states.includes("stale") ? "stale" : states.includes("starting") ? "starting" : states.includes("watching") ? "watching" : "stopped";
+    schemaToolStatus.text = state === "watching" ? "Hson Schema: Current" : state === "starting" ? "Hson Schema: Checking" : state === "stale" ? "Hson Schema: Stale" : state === "error" ? "Hson Schema: Error" : "Hson Schema: Stopped";
+    schemaToolStatus.tooltip = state === "watching" ? "The extension-managed Schema watcher is running and generated evidence is current."
+      : state === "starting" ? "The extension-managed Hson Schema command is starting or checking changes."
+      : state === "stale" ? "An edited Schema has not yet been reconciled with generated evidence."
+      : state === "error" ? "The extension-managed Hson Schema command reported an error. Select to generate, watch, stop, or show output."
       : "No extension-managed Hson Schema watch process is running. An external terminal watcher may still exist.";
     schemaToolStatus.show();
   };
-  const appendProcessOutput = (child: ChildProcess): void => {
-    child.stdout?.on("data", chunk => schemaToolOutput.append(String(chunk)));
-    child.stderr?.on("data", chunk => schemaToolOutput.append(String(chunk)));
+  const appendProcessOutput = (child: ChildProcess, onLine?: (line: string) => void): void => {
+    const attach = (stream: NodeJS.ReadableStream | null): void => {
+      let pending = "";
+      stream?.on("data", chunk => {
+        const text = String(chunk);
+        schemaToolOutput.append(text);
+        pending += text;
+        const lines = pending.split(/\r?\n/);
+        pending = lines.pop() ?? "";
+        for (const line of lines) onLine?.(line);
+      });
+      stream?.on("end", () => { if (pending !== "") onLine?.(pending); });
+    };
+    attach(child.stdout); attach(child.stderr);
   };
   const refreshSchemaEvidence = (): void => {
     for (const document of vscode.workspace.textDocuments) {
@@ -602,7 +617,11 @@ export function activate(context: vscode.ExtensionContext): void {
     if (matches.length === 0) { schemaToolStates.set(`${folder.uri.toString()}::none`, "stopped"); updateSchemaToolStatus(); return; }
     for (const [key, watch] of matches) {
       schemaToolOutput.appendLine(`Stopping extension-managed hson-schema watch for ${watch.project}.`);
-      terminate_schema_process(watch.child);
+      await new Promise<void>(resolveStopped => {
+        if (watch.child.exitCode !== null) return resolveStopped();
+        watch.child.once("close", () => resolveStopped());
+        terminate_schema_process(watch.child);
+      });
       schemaWatches.delete(key); schemaToolStates.set(key, "stopped");
     }
     updateSchemaToolStatus();
@@ -637,7 +656,7 @@ export function activate(context: vscode.ExtensionContext): void {
     await new Promise<void>(resolveOnce => {
       child.once("error", error => { schemaToolOutput.appendLine(`Hson Schema ${mode} failed to start: ${error.message}`); schemaToolStates.set(key, "error"); updateSchemaToolStatus(); resolveOnce(); });
       child.once("close", code => {
-        if (code === 0) { schemaToolOutput.appendLine(`Hson Schema ${mode} completed in ${Math.round(performance.now() - started)}ms.`); schemaToolStates.set(key, "stopped"); refreshSchemaEvidence(); }
+        if (code === 0) { schemaToolOutput.appendLine(`Hson Schema ${mode} completed in ${Math.round(performance.now() - started)}ms.`); schemaToolStates.set(key, schemaWatches.has(key) ? "watching" : "stopped"); refreshSchemaEvidence(); }
         else { schemaToolOutput.appendLine(`Hson Schema ${mode} exited with code ${code ?? "unknown"}.`); schemaToolStates.set(key, "error"); void vscode.window.showErrorMessage(`Hson Schema ${mode} failed.`, "Show Hson Output").then(action => action === "Show Hson Output" && schemaToolOutput.show(true)); }
         updateSchemaToolStatus(); resolveOnce();
       });
@@ -651,7 +670,14 @@ export function activate(context: vscode.ExtensionContext): void {
     schemaToolOutput.appendLine(`Starting hson-schema watch --project ${prepared.project}`);
     const child = spawn(process.execPath, [prepared.executable, "watch", "--project", prepared.project], { cwd: prepared.folder.uri.fsPath, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
     const watch = Object.freeze({ folder: prepared.folder, project: prepared.project, child });
-    schemaWatches.set(key, watch); schemaToolStates.set(key, "watching"); appendProcessOutput(child); updateSchemaToolStatus();
+    schemaWatches.set(key, watch); schemaToolStates.set(key, "starting");
+    appendProcessOutput(child, line => {
+      const state = schema_watch_output_state(line);
+      if (state === undefined || !schemaWatches.has(key)) return;
+      schemaToolStates.set(key, state); updateSchemaToolStatus();
+      if (state === "watching") refreshSchemaEvidence();
+    });
+    updateSchemaToolStatus();
     child.once("error", error => { schemaToolOutput.appendLine(`Hson Schema watch failed to start: ${error.message}`); schemaWatches.delete(key); schemaToolStates.set(key, "error"); updateSchemaToolStatus(); });
     child.once("close", code => {
       const managed = schemaWatches.delete(key);
@@ -773,6 +799,13 @@ export function activate(context: vscode.ExtensionContext): void {
           terminate_schema_process(watch.child); schemaWatches.delete(key); schemaToolStates.set(key, "stopped");
         }
       }
+      updateSchemaToolStatus();
+    }),
+    vscode.workspace.onDidChangeTextDocument(event => {
+      if (!staleSchemaEvidence.has(event.document.uri.toString())) return;
+      const folder = vscode.workspace.getWorkspaceFolder(event.document.uri);
+      if (folder === undefined) return;
+      for (const [key, watch] of schemaWatches) if (watch.folder.uri.toString() === folder.uri.toString()) schemaToolStates.set(key, "stale");
       updateSchemaToolStatus();
     }),
     vscode.window.onDidChangeActiveTextEditor(() => { describe(); updateSchemaToolStatus(); }),
