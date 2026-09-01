@@ -12,6 +12,7 @@
   "include": [
     "src/**/*.ts",
     "tests/runtime.test.ts",
+    "tests/workspace-diagnostics.test.ts",
     "tests/settings.test.ts",
     "tests/benchmark.ts",
     "tests/integration/suite.ts",

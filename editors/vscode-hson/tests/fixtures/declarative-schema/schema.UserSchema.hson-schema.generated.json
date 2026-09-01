@@ -1,0 +1,8 @@
+{
+  "compatibilityVersion": "hson-schema-mvp-7",
+  "declarationIdentity": "schema.ts#UserSchema",
+  "sourceDigest": "d6c45c546ea06f670e3a11cf66689bcea61edb5282886828f60a7aea234152eb",
+  "semanticGraphDigest": "e08c8167ff9baa1d5543e385cb784689787b4c05ef1b13281ef75a6b55ee9104",
+  "generatedDeclarationDigest": "5d91298ab07407b8d9fd095c79551b5c4f2ed1f728603dc46e22b7feacbce030",
+  "graphHson": "<format \"hson-canonical-schema\" version 1 capabilities <projectedRoot 0> nodes «<kind \"projected-object\" exact true properties ««\"user\",1»»>,<kind \"projected-object\" exact true properties ««\"age\",2»»>,<kind \"projected-number\">»>"
+}

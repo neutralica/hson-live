@@ -22,6 +22,7 @@
     "Programming Languages"
   ],
   "activationEvents": [
+    "onStartupFinished",
     "onLanguage:typescript",
     "onLanguage:typescriptreact"
   ],
@@ -32,7 +33,7 @@
     "check": "npm run check:source && npm run build && npm run validate:artifact",
     "test": "npm run test:grammar && npm run test:unit && npm run test:settings",
     "test:grammar": "node ./tests/grammar.test.mjs && npm run test:baseline",
-    "test:unit": "node ./scripts/build-tests.mjs && node ./.test-dist/unit.cjs",
+    "test:unit": "node ./scripts/build-tests.mjs && node ./.test-dist/unit.cjs && node ./.test-dist/workspace.cjs",
     "test:settings": "node ./scripts/build-tests.mjs && node ./.test-dist/settings.cjs",
     "test:integration": "npm run build && node ./scripts/build-tests.mjs && node ./tests/integration/run.mjs",
     "test:baseline": "npm run build && node ./scripts/build-tests.mjs && node ./.test-dist/baseline.cjs",

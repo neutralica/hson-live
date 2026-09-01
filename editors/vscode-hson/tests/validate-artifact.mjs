@@ -10,6 +10,7 @@ const coreGrammar = await readJson("../syntaxes/hson.tmLanguage.json");
 
 assert.equal(manifest.main, "./dist/extension.js");
 assert.deepEqual(manifest.activationEvents, [
+  "onStartupFinished",
   "onLanguage:typescript",
   "onLanguage:typescriptreact",
 ]);

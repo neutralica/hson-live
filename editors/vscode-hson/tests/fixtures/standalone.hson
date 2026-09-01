@@ -1,3 +1,4 @@
+// @hson-diagnostics-ignore-file
 // standalone lexical coverage
 <profile <
   bareName "Ada\nLovelace"

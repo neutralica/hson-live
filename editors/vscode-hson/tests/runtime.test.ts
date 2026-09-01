@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { TransformError } from "../../../src/core/errors.js";
+import { hson } from "../../../src/hson.js";
 import {
   DIAGNOSTIC_SOURCE,
   produce_document_diagnostics,
@@ -70,6 +71,20 @@ check("standalone malformed point evidence receives a visible range", () => {
   assert.deepEqual(diagnostics[0]?.range, { start: 0, end: 1 });
   assert.equal(diagnostics[0]?.precision, "point");
   assert.equal(diagnostics[0]?.source, DIAGNOSTIC_SOURCE);
+});
+
+check("leading diagnostic-ignore-file pragma suppresses only ordinary extension diagnostics", () => {
+  assert.equal(diagnose("// @hson-diagnostics-ignore-file\n+1").length, 0);
+  assert.equal(diagnose("  // fixture context\r\n// @hson-diagnostics-ignore-file\r\n+1").length, 0);
+  assert.equal(diagnose('/* license */\n// @hson-diagnostics-ignore-file\nimport { Hson } from "hson-live";\nHson`+1`;', "typescript", "/workspace/fixture.ts").length, 0);
+  assert.equal(diagnose('"// @hson-diagnostics-ignore-file"\n+1').length, 1);
+  assert.equal(diagnose('<valid/>\n// @hson-diagnostics-ignore-file\n+1').length, 1);
+});
+
+check("diagnostic-ignore-file pragma does not alter explicit fixture parsing", () => {
+  const fixture = readFileSync(resolve("tests/fixtures/standalone.hson"), "utf8");
+  assert.deepEqual(diagnose(fixture), []);
+  assert.throws(() => hson.fromHson(fixture).toNode());
 });
 
 check("standalone EOF evidence remains zero-width", () => {
@@ -461,7 +476,7 @@ check("quick changes discard stale versions and the valid edit clears diagnostic
   controller.dispose();
 });
 
-check("close cancels pending work and clears published diagnostics", () => {
+check("legacy open-document controller preserves close-clears for trusted runtime diagnostics", () => {
   const host = new FakeHost();
   const publisher = new FakePublisher();
   const value = document("bad", 1);

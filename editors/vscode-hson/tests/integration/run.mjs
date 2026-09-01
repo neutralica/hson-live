@@ -1,7 +1,7 @@
-import { mkdtemp, mkdir, realpath, rm, writeFile, readFile, readdir } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
 import { downloadAndUnzipVSCode, runTests } from "@vscode/test-electron";
@@ -18,71 +18,38 @@ await mkdir(extensionsDir);
 await mkdir(restrictedUserDataDir);
 await mkdir(restrictedExtensionsDir);
 await mkdir(workspaceDir);
-const hsonPath = resolve(here, "../../../../dist/hson.js");
-const authoringPath = resolve(here, "../../../../dist/hson-authoring.js");
-const contracts = `import { Hson } from ${JSON.stringify(pathToFileURL(authoringPath).href)};
-export const UserSchema = Hson\`<type "data" content <user <content <age "number">>>>\`;
-export const CompletionSchema = Hson\`<type "data" content <name "string" role <union [<exact "user">, <exact "admin">]> enabled <optional "boolean">>>\`;
-export const ElementSchema = Hson\`<type "document" tag "div" attrs <id "string" hidden <flag <optional true>>> content <repeat <tag "button" content "empty">>>\`;
-export const SlowSchema = Hson\`<type "data" content <late "string">>\`;
-`;
-await writeFile(join(workspaceDir, "contracts.mjs"), contracts);
-for (const [file, schema, body] of [["completion-user.ts", "CompletionSchema", "< >"], ["completion-element.ts", "ElementSchema", "<div />"], ["completion-slow.ts", "SlowSchema", "< >"]]) {
-  await writeFile(join(workspaceDir, file), `import { Hson } from "hson-live/hson"; import { ${schema} } from "./contracts.mjs"; const value=1; const source=Hson\`${body}\`; Hson.certify(${schema},source);`);
-}
-const d3Source = 'import { Hson } from "hson-live/hson";\nimport { hsonLiveMap } from "hson-live/livemap";\nimport { UserSchema } from "./contracts.mjs";\nconst source = Hson`<user <age "37">>`;\nconst map = hsonLiveMap.fromHson(source);\nmap.schema.use(UserSchema);\n';
-await writeFile(join(workspaceDir, "map-user.ts"), d3Source);
-const d4Source = 'import { hsonLiveMap } from "hson-live/livemap";\nimport { UserSchema } from "./contracts.mjs";\nconst source = "<user <age \\x2237\\x22>>";\nconst map = hsonLiveMap.fromHson(source);\nmap.schema.use(UserSchema);\n';
-const d4Mutated = 'import { hsonLiveMap } from "hson-live/livemap";\nimport { UserSchema } from "./contracts.mjs";\nconst source = `<user <age "37">>`;\nconst map = hsonLiveMap.fromHson(source);\nmap.set(["user", "age"], 37);\nmap.schema.use(UserSchema);\n';
-await writeFile(join(workspaceDir, "static-map-user.ts"), d4Source);
-await writeFile(join(workspaceDir, "static-mutated.ts"), d4Mutated);
+await mkdir(join(workspaceDir, "static-project"));
+await writeFile(join(workspaceDir, "static-project", "tsconfig.json"), JSON.stringify({ compilerOptions: { target: "ES2022", module: "ESNext" }, include: ["**/*.ts"] }));
+await writeFile(join(workspaceDir, "static-project", "unopened-invalid.ts"), 'import { Hson } from "hson-live";\nexport const unopened = Hson`+1`;\n');
+await writeFile(join(workspaceDir, "unopened-invalid.hson"), "+1\n");
+await writeFile(join(workspaceDir, "pragma-invalid.hson"), "// @hson-diagnostics-ignore-file\n+1\n");
 await writeFile(join(workspaceDir, "static-syntax.ts"), 'import { hsonTransform } from "hson-live/transform";\nhsonTransform.fromHson("\\x2b1").toNode();\n');
-const d5Imports = 'import { Hson } from "hson-live/hson";\nimport { hsonLiveMap } from "hson-live/livemap";\nimport { UserSchema } from "./contracts.mjs";\nimport { getAge } from "./runtime-value.mjs";\n';
-const d5Source = d5Imports + 'const age=getAge(); const source=Hson`<user <age ${age}>>`;\nHson.certify(UserSchema,source);';
-const d5Map = d5Imports + 'const age="37"; const source=Hson`<user <age ${age}>>`;\nconst map=hsonLiveMap.fromHson(source);\nmap.schema.use(UserSchema);';
-const d5Cases = {
-  'interpolated.ts': d5Source,
-  'interpolated-map.ts': d5Map,
-  'interpolated-repeated.ts': d5Imports + 'function make(){ const age="37"; const source=Hson`<user <age ${age}>>`; try { Hson.certify(UserSchema,source); } catch {} } make(); make();',
-  'interpolated-literal-error.ts': d5Imports + 'const value=37; Hson`<user <age ${value}> +>`;',
-  'interpolated-value-error.ts': d5Imports + 'const value=Infinity; Hson`<user <age ${value}>>`;',
-};
-for (const [name,text] of Object.entries(d5Cases)) await writeFile(join(workspaceDir,name),text);
-await writeFile(join(workspaceDir,'runtime-age.json'),'"37"');
-await writeFile(join(workspaceDir,'runtime-value.mjs'), 'import { readFileSync, appendFileSync } from "node:fs"; export function getAge(){ const value=JSON.parse(readFileSync(new URL("./runtime-age.json",import.meta.url),"utf8")); appendFileSync(new URL("./evaluated-values.jsonl",import.meta.url),JSON.stringify(value)+"\\n"); return value; }');
-const instrumenter = pathToFileURL(resolve(here, "../../../../dist/internal/trusted-schema-diagnostics/instrument-map-sources.js")).href;
-const helper = pathToFileURL(resolve(here, "../../../../dist/internal/trusted-schema-diagnostics/source-lifecycle.js")).href;
-await writeFile(join(workspaceDir, "trusted-schema.mjs"), `
-export * from "./contracts.mjs";
-import { readFile, writeFile } from "node:fs/promises";
-import { instrument_trusted_schema_map_sources } from ${JSON.stringify(instrumenter)};
-const marker=new URL("./provider-count.txt",import.meta.url);
-await writeFile(marker,String(Number(await readFile(marker,"utf8").catch(()=>"0"))+1));
-const contractsUrl = new URL("./contracts.mjs", import.meta.url).href;
-export const trustedSchemaBindings = Object.entries({ runtimeHandle: "UserSchema", completion: "CompletionSchema", element: "ElementSchema", slow: "SlowSchema" }).map(([schemaId, exportName]) => ({ schemaId, binding: { moduleUrl: contractsUrl, exportName } }));
-const source = ${JSON.stringify(d3Source)};
-const cases = [
-  [${JSON.stringify(join(workspaceDir, "map-user.ts"))}, source],
-  [${JSON.stringify(join(workspaceDir, "static-map-user.ts"))}, ${JSON.stringify(d4Source)}],
-  [${JSON.stringify(join(workspaceDir, "static-mutated.ts"))}, ${JSON.stringify(d4Mutated)}],
-  ...await Promise.all(${JSON.stringify(Object.keys(d5Cases))}.map(async name => [new URL(name, import.meta.url).pathname, await readFile(new URL(name,import.meta.url),"utf8")])),
-];
-for (const [fileName, caseSource] of cases) {
-const code = instrument_trusted_schema_map_sources(fileName, caseSource, ${JSON.stringify(helper)})
-  .replaceAll('"hson-live"', ${JSON.stringify(JSON.stringify(pathToFileURL(resolve(here, "../../../../dist/index.js")).href))})
-  .replaceAll('"hson-live/hson"', ${JSON.stringify(JSON.stringify(pathToFileURL(resolve(here, "../../../../dist/hson-authoring.js")).href))})
-  .replaceAll('"hson-live/livemap"', ${JSON.stringify(JSON.stringify(pathToFileURL(resolve(here, "../../../../dist/api/livemap/livemap.facade.js")).href))})
-  .replaceAll('"./contracts.mjs"', JSON.stringify(contractsUrl))
-  .replaceAll('"./runtime-value.mjs"', JSON.stringify(new URL("./runtime-value.mjs",import.meta.url).href));
-try { await import("data:text/javascript;base64," + Buffer.from(code).toString("base64")); } catch(error) {
-  if (!fileName.includes("interpolated")) throw error;
-}
-}
-`);
-await writeFile(join(workspaceDir, "user.ts"), 'import { Hson, hson } from "hson-live";\nimport { UserSchema } from "./trusted-schema.mjs";\nconst user = Hson`<user <age "37">>`;\nHson.certify(UserSchema, user);\n');
 await writeFile(join(workspaceDir, "schema-symbols.ts"), 'import { Hson, type HsonSchema } from "hson-live";\nexport const SymbolSchema: HsonSchema = Hson`<type "data" defs <Age <number <int true min 0>> User <content <age <ref "Age">>>> content <ref "User">>`;\nconst ordinary = "Age";\n');
 await writeFile(join(workspaceDir, "schema-symbols.SymbolSchema.hson-schema.generated.ts"), "export {};\n");
 await writeFile(join(workspaceDir, "schema-symbols.SymbolSchema.hson-schema.generated.json"), "{}\n");
+const declarativeFixture = resolve(here, "../fixtures/declarative-schema");
+const declarativeWorkspace = join(workspaceDir, "declarative-schema");
+await mkdir(declarativeWorkspace);
+for (const name of ["schema.ts", "schema.UserSchema.hson-schema.generated.ts", "schema.UserSchema.hson-schema.generated.json", "candidate.ts"]) {
+  await writeFile(join(declarativeWorkspace, name), await readFile(join(declarativeFixture, name)));
+}
+await writeFile(join(declarativeWorkspace, "tsconfig.json"), JSON.stringify({
+  compilerOptions: {
+    target: "ES2022",
+    module: "NodeNext",
+    moduleResolution: "NodeNext",
+    strict: true,
+    exactOptionalPropertyTypes: true,
+    noUncheckedIndexedAccess: true,
+    noEmit: true,
+    baseUrl: ".",
+    paths: {
+      "hson-live": [resolve(here, "../../../../src/index.ts")],
+      "hson-live/hson": [resolve(here, "../../../../src/hson-authoring.ts")],
+    },
+  },
+  include: ["./*.ts"],
+}));
 try {
   await runTests({
     extensionDevelopmentPath: resolve(here, "../.."),
@@ -97,19 +64,8 @@ try {
       `--user-data-dir=${userDataDir}`,
       `--extensions-dir=${extensionsDir}`,
     ],
-    extensionTestsEnv: { HSON_D2_TEST_WORKSPACE: workspaceDir, HSON_D2_TEST_HSON: hsonPath },
+    extensionTestsEnv: { HSON_TEST_WORKSPACE: workspaceDir },
   });
-  const measurements = [];
-  for (const entry of await readdir(join(userDataDir, 'logs'), { recursive: true })) {
-    if (!entry.includes('output_logging') || !entry.endsWith('.log')) continue;
-    for (const line of (await readFile(join(userDataDir, 'logs', entry), 'utf8')).split('\n')) {
-      try { const record = JSON.parse(line.slice(line.indexOf('{'))); if (record.completion) measurements.push(record); } catch {}
-    }
-  }
-  if (measurements.length) {
-    const values = measurements.map(m => m.itemConstructionMs).sort((a,b)=>a-b);
-    console.log('# D6 real VS Code item construction ms ' + JSON.stringify({samples: values.length, p50: values[Math.floor(values.length/2)], max: values.at(-1)}));
-  }
   const executable = process.env.HSON_VSCODE_EXECUTABLE ?? await downloadAndUnzipVSCode("1.95.3");
   const restrictedArgs = [
     "--no-sandbox", "--disable-gpu-sandbox", "--disable-updates", "--skip-welcome", "--skip-release-notes",
@@ -120,7 +76,7 @@ try {
     `--extensions-dir=${restrictedExtensionsDir}`,
   ];
   await new Promise((resolveRun, rejectRun) => {
-    const child = spawn(executable, restrictedArgs, { env: { ...process.env, HSON_D2_TEST_WORKSPACE: workspaceDir, HSON_D4_RESTRICTED: "1" } });
+    const child = spawn(executable, restrictedArgs, { env: { ...process.env, HSON_TEST_WORKSPACE: workspaceDir, HSON_RESTRICTED_TEST: "1" } });
     child.stdout.on("data", data => process.stdout.write(data));
     child.stderr.on("data", data => process.stderr.write(data));
     child.once("error", rejectRun);

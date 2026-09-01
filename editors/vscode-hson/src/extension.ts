@@ -19,12 +19,18 @@ import {
 import { discover_schema_project, resolve_workspace_hson_schema_tool } from "./schema-tooling.js";
 
 import {
-  start_diagnostics,
   type DiagnosticDocument,
   type DiagnosticHost,
   type DiagnosticPublisher,
 } from "./diagnostics.js";
 import type { DocumentDiagnosticSpec } from "./document-diagnostics.js";
+import { discover_typescript_projects } from "./typescript-project-discovery.js";
+import {
+  start_workspace_diagnostics,
+  type WorkspaceDiagnosticHost,
+  type WorkspaceDiagnosticSource,
+  type WorkspaceSourceChange,
+} from "./workspace-diagnostics.js";
 import { hson_highlights, hsonTokenScopes, load_hson_grammar } from "./highlighting.js";
 import {
   HSON_LIBRARY_SEPARATOR_COLOR_ID,
@@ -53,10 +59,22 @@ function adaptDocument(document: vscode.TextDocument): DiagnosticDocument {
   });
 }
 
-function toRange(document: vscode.TextDocument, spec: DocumentDiagnosticSpec): vscode.Range {
+function positionAt(text: string, offset: number): vscode.Position {
+  const target = Math.max(0, Math.min(offset, text.length));
+  let line = 0;
+  let lineStart = 0;
+  for (let index = 0; index < target; index += 1) {
+    if (text.charCodeAt(index) !== 10) continue;
+    line += 1;
+    lineStart = index + 1;
+  }
+  return new vscode.Position(line, target - lineStart);
+}
+
+function toRange(text: string, spec: DocumentDiagnosticSpec): vscode.Range {
   return new vscode.Range(
-    document.positionAt(spec.range.start),
-    document.positionAt(spec.range.end),
+    positionAt(text, spec.range.start),
+    positionAt(text, spec.range.end),
   );
 }
 
@@ -77,7 +95,8 @@ function explicitAppearanceColor(
 
 export function activate(context: vscode.ExtensionContext): void {
   const collection = vscode.languages.createDiagnosticCollection("hson");
-  context.subscriptions.push(collection);
+  const diagnosticsOutput = vscode.window.createOutputChannel("Hson Diagnostics");
+  context.subscriptions.push(collection, diagnosticsOutput);
 
   const localSchemaCollection = vscode.languages.createDiagnosticCollection("hson-schema-authoring");
   const schemaEvidenceCollection = vscode.languages.createDiagnosticCollection("hson-schema-evidence");
@@ -183,26 +202,79 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
-  const host: DiagnosticHost = {
+  const sourceWatcher = vscode.workspace.createFileSystemWatcher("**/*.{ts,tsx,hson}");
+  const projectWatcher = vscode.workspace.createFileSystemWatcher("**/*.json");
+  context.subscriptions.push(sourceWatcher, projectWatcher);
+  const sourceListeners = new Set<(changes: readonly WorkspaceSourceChange[]) => void>();
+  const projectListeners = new Set<() => void>();
+  let projectConfigurations = new Set<string>();
+  const fireSource = (uri: vscode.Uri, kind: WorkspaceSourceChange["kind"]): void => {
+    const change = Object.freeze({ uri: uri.toString(), kind });
+    for (const listener of sourceListeners) listener([change]);
+  };
+  context.subscriptions.push(
+    sourceWatcher.onDidCreate(uri => fireSource(uri, "create")),
+    sourceWatcher.onDidChange(uri => fireSource(uri, "change")),
+    sourceWatcher.onDidDelete(uri => fireSource(uri, "delete")),
+    projectWatcher.onDidCreate(uri => { if (/^(?:tsconfig.*|jsconfig)\.json$/i.test(uri.path.slice(uri.path.lastIndexOf("/") + 1))) for (const listener of projectListeners) listener(); }),
+    projectWatcher.onDidChange(uri => { if (projectConfigurations.has(uri.toString())) for (const listener of projectListeners) listener(); }),
+    projectWatcher.onDidDelete(uri => { if (projectConfigurations.has(uri.toString())) for (const listener of projectListeners) listener(); }),
+    vscode.workspace.onDidSaveTextDocument(document => fireSource(document.uri, "change")),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => { for (const listener of projectListeners) listener(); }),
+  );
+  const register = <Listener>(listeners: Set<Listener>, listener: Listener): vscode.Disposable => {
+    listeners.add(listener);
+    return new vscode.Disposable(() => listeners.delete(listener));
+  };
+  const discoverSources = async (): Promise<readonly WorkspaceDiagnosticSource[]> => {
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    const fileFolders = folders.filter(folder => folder.uri.scheme === "file");
+    await new Promise<void>(resolveYield => setTimeout(resolveYield, 0));
+    const projects = discover_typescript_projects(fileFolders.map(folder => folder.uri.fsPath));
+    projectConfigurations = new Set(projects.configurations.map(fileName => vscode.Uri.file(fileName).toString()));
+    for (const error of projects.errors) diagnosticsOutput.appendLine(error);
+    const standalone = (await Promise.all(folders.map(folder => vscode.workspace.findFiles(
+      new vscode.RelativePattern(folder, "**/*.hson"),
+      "**/{node_modules,.git,dist,build,out,coverage}/**",
+    )))).flat();
+    const standaloneSources: WorkspaceDiagnosticSource[] = standalone.map(uri => Object.freeze({
+      uri: uri.toString(),
+      fileName: uri.fsPath,
+      languageId: "hson",
+    }));
+    return Object.freeze([
+      ...projects.sources.map(source => Object.freeze({
+        uri: vscode.Uri.file(source.fileName).toString(),
+        fileName: source.fileName,
+        languageId: source.languageId,
+      })),
+      ...standaloneSources,
+    ]);
+  };
+  const host: WorkspaceDiagnosticHost = {
     openDocuments: () => vscode.workspace.textDocuments.map(adaptDocument),
+    discoverSources,
+    readSource: async source => new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.parse(source.uri))),
     onDidOpen: (listener) => vscode.workspace.onDidOpenTextDocument((document) => listener(adaptDocument(document))),
     onDidChange: (listener) => vscode.workspace.onDidChangeTextDocument((event) => listener(adaptDocument(event.document))),
     onDidClose: (listener) => vscode.workspace.onDidCloseTextDocument((document) => listener(adaptDocument(document))),
+    onDidChangeSources: listener => register(sourceListeners, listener),
+    onDidChangeProjects: listener => register(projectListeners, listener),
     setTimer: (callback, delayMilliseconds) => setTimeout(callback, delayMilliseconds),
     clearTimer: (timer) => clearTimeout(timer as ReturnType<typeof setTimeout>),
-    reportUnexpected: (error, document) => {
-      console.error(messages.unexpectedDiagnosticsFailure(document.fileName), error);
+    yield: () => new Promise(resolveYield => setTimeout(resolveYield, 0)),
+    reportUnexpected: (error, source) => {
+      const message = messages.unexpectedDiagnosticsFailure(source?.fileName ?? "workspace scan");
+      diagnosticsOutput.appendLine(`${message} ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+      console.error(message, error);
     },
   };
   const publisher: DiagnosticPublisher = {
     set(document, specs): void {
-      const current = vscode.workspace.textDocuments.find(
-        (candidate) => candidate.uri.toString() === document.uri,
-      );
-      if (current === undefined || current.version !== document.version) return;
+      const uri = vscode.Uri.parse(document.uri);
       const diagnostics = specs.map((spec) => {
         const diagnostic = new vscode.Diagnostic(
-          toRange(current, spec),
+          toRange(document.text, spec),
           spec.message,
           vscode.DiagnosticSeverity.Error,
         );
@@ -211,24 +283,39 @@ export function activate(context: vscode.ExtensionContext): void {
         diagnostic.relatedInformation = spec.related.map((related) =>
           new vscode.DiagnosticRelatedInformation(
             new vscode.Location(
-              current.uri,
+              uri,
               new vscode.Range(
-                current.positionAt(related.range.start),
-                current.positionAt(related.range.end),
+                positionAt(document.text, related.range.start),
+                positionAt(document.text, related.range.end),
               ),
             ),
             related.message,
           ));
         return diagnostic;
       });
-      collection.set(current.uri, diagnostics);
+      collection.set(uri, diagnostics);
     },
     delete(uri): void {
       collection.delete(vscode.Uri.parse(uri));
     },
   };
 
-  context.subscriptions.push(start_diagnostics(host, publisher));
+  context.subscriptions.push(start_workspace_diagnostics(host, publisher));
+  const openDocumentHost: DiagnosticHost = {
+    openDocuments: host.openDocuments,
+    onDidOpen: host.onDidOpen,
+    onDidChange: host.onDidChange,
+    onDidClose: host.onDidClose,
+    setTimer: host.setTimer,
+    clearTimer: host.clearTimer,
+    reportUnexpected(error, document): void {
+      host.reportUnexpected(error, Object.freeze({
+        uri: document.uri,
+        fileName: document.fileName,
+        languageId: document.languageId === "typescriptreact" ? "typescriptreact" : document.languageId === "hson" ? "hson" : "typescript",
+      }));
+    },
+  };
   // Independent of all trusted clients, associations and completion providers.
   const legend = new vscode.SemanticTokensLegend(Object.keys(hsonTokenScopes));
   const grammar = load_hson_grammar(context.extensionPath);
@@ -347,7 +434,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const current = vscode.workspace.textDocuments.find(doc => doc.uri.toString() === document.uri && doc.version === document.version);
       if (current === undefined) return;
       schemaCollection.set(current.uri, specs.map(spec => {
-        const diagnostic = new vscode.Diagnostic(toRange(current, spec), spec.message, vscode.DiagnosticSeverity.Error);
+        const diagnostic = new vscode.Diagnostic(toRange(current.getText(), spec), spec.message, vscode.DiagnosticSeverity.Error);
         diagnostic.source = spec.runtimeAdmission ? "Hson" : "Hson Schema"; diagnostic.code = spec.code;
         diagnostic.relatedInformation = spec.related.map(item => new vscode.DiagnosticRelatedInformation(new vscode.Location(current.uri,
           new vscode.Range(current.positionAt(item.range.start), current.positionAt(item.range.end))), item.message));
@@ -356,7 +443,7 @@ export function activate(context: vscode.ExtensionContext): void {
     },
     delete(uri): void { schemaCollection.delete(vscode.Uri.parse(uri)); },
   };
-  const controller = start_schema_diagnostics(host, schemaPublisher, {
+  const controller = start_schema_diagnostics(openDocumentHost, schemaPublisher, {
     enabled,
     clientFor(document) {
       if (!vscode.workspace.isTrusted) return undefined;

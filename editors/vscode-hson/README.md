@@ -97,9 +97,17 @@ the same hues; Authoring Marker Strength supplies the default `0.70` opacity.
 Library Marker Strength applies equally to lowercase letters and the violet
 separator. A supplied alpha channel is respected and multiplied by strength.
 
-Syntax diagnostics analyze only open in-memory documents. In the default secure
-mode the extension does not load a project or execute workspace code. It does
-not write helper files or modify user source.
+Syntax diagnostics cover configured TS/TSX source and standalone `.hson` files
+across every workspace folder, including files that have never been opened.
+TS/TSX membership follows TypeScript project configuration (`include`,
+`exclude`, `extends`, and project references); declarations, generated Schema
+artifacts, dependencies, and configured output directories are excluded. An
+open editor's in-memory text is authoritative, while closing it restores the
+saved-file result instead of removing its Problems. In the default secure mode
+the extension parses project configuration but does not execute workspace code.
+It does not write helper files or modify user source, and this static scan is
+independent of Schema Generate, Schema Watch, trusted diagnostics, and
+Workspace Trust.
 Substitution-free templates receive authoritative whole-Hson tag admission
 diagnostics, including raw-template newline normalization and UTF-16 mapping.
 Readable noncanonical formatting is accepted when the actual tag accepts it.

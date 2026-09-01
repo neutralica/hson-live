@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "hson-live": ["../../../../../src/index.ts"],
+      "hson-live/hson": ["../../../../../src/hson-authoring.ts"]
+    }
+  },
+  "include": ["./*.ts"]
+}

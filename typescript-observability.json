@@ -13,9 +13,16 @@
     { "path": "tests/entrypoints/tsconfig.livehost-node.json", "authority": "check:entrypoints" },
     { "path": "tests/entrypoints/tsconfig.livetree-browser.json", "authority": "check:entrypoints" },
     { "path": "tests/fixtures/hson-schema-mvp/tsconfig.json", "authority": "check:schema-consumers" },
-    { "path": "tests/fixtures/hson-schema-document/tsconfig.json", "authority": "check:schema-consumers" }
+    { "path": "tests/fixtures/hson-schema-document/tsconfig.json", "authority": "check:schema-consumers" },
+    { "path": "editors/vscode-hson/tests/fixtures/declarative-schema/tsconfig.verify.json", "authority": "npm --prefix editors/vscode-hson run test:integration" }
   ],
   "exemptions": [
+    {
+      "file": "editors/vscode-hson/tests/fixtures/declarative-schema/candidate.ts",
+      "kind": "negative-compile-fixture",
+      "authority": "npm --prefix editors/vscode-hson run test:integration",
+      "reason": "Real VS Code integration keeps this declarative Schema-bound Hson invalid on disk, then proves an unsaved correction clears the generated-evidence assignment diagnostic."
+    },
     {
       "file": "editors/vscode-hson/tests/fixtures/diagnostics-alias.ts",
       "kind": "non-typechecked-artifact",

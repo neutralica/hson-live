@@ -19,6 +19,7 @@ import {
 } from "../../../src/internal/embedded-hson/static-hson-source.js";
 
 export const DIAGNOSTIC_SOURCE = "Hson";
+const DIAGNOSTICS_IGNORE_FILE_DIRECTIVE = "@hson-diagnostics-ignore-file";
 export type SupportedLanguageId = "hson" | "typescript" | "typescriptreact";
 
 export type DocumentDiagnosticInput = Readonly<{
@@ -55,6 +56,32 @@ export function is_supported_document(input: DocumentDiagnosticInput): boolean {
   return input.languageId === "hson"
     || isTypeScriptInput(input)
     || isTypeScriptReactInput(input);
+}
+
+function hasDiagnosticsIgnoreFileDirective(input: DocumentDiagnosticInput): boolean {
+  let cursor = 0;
+  while (cursor < input.text.length) {
+    const character = input.text[cursor];
+    if (character === " " || character === "\t" || character === "\r" || character === "\n") {
+      cursor += 1;
+      continue;
+    }
+    if (input.text.startsWith("//", cursor)) {
+      const end = input.text.indexOf("\n", cursor + 2);
+      const commentEnd = end === -1 ? input.text.length : end;
+      if (input.text.slice(cursor + 2, commentEnd).trim() === DIAGNOSTICS_IGNORE_FILE_DIRECTIVE) return true;
+      cursor = commentEnd;
+      continue;
+    }
+    if (input.languageId !== "hson" && input.text.startsWith("/*", cursor)) {
+      const end = input.text.indexOf("*/", cursor + 2);
+      if (end === -1) return false;
+      cursor = end + 2;
+      continue;
+    }
+    return false;
+  }
+  return false;
 }
 
 function fallbackRange(text: string): HostSourceRange {
@@ -167,6 +194,7 @@ export function produce_document_diagnostics(
   input: DocumentDiagnosticInput,
 ): readonly DocumentDiagnosticSpec[] {
   if (!is_supported_document(input)) return Object.freeze([]);
+  if (hasDiagnosticsIgnoreFileDirective(input)) return Object.freeze([]);
   return input.languageId === "hson"
     ? validateStandalone(input.text)
     : validateEmbedded(input);
