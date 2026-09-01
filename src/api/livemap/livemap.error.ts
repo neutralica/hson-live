@@ -7,7 +7,7 @@ import {
 } from "./livemap.path.js";
 import type { HsonSchemaIssueCode } from "../../types/livemap.types.js";
 import type { JsonValue } from "../../core/types.js";
-import type { LiveMapDocumentTarget } from "../../types/livemap.types.js";
+import type { LiveMapDocumentRequestTarget } from "../../types/livemap.types.js";
 import type {
   ProjectedValueAdmissionCode,
   ProjectedValuePath,
@@ -247,10 +247,10 @@ export class LiveMapDocumentIdentityRegistrationError extends Error {
 export class LiveMapDocumentAttributeNotFoundError extends LiveMapDocumentMutationError {
   declare readonly code: "DOCUMENT_ATTRIBUTE_NOT_FOUND";
   declare readonly operation: "must-get-attr";
-  readonly target: LiveMapDocumentTarget;
+  readonly target: LiveMapDocumentRequestTarget;
   readonly attributeName: string;
 
-  constructor(target: LiveMapDocumentTarget, attributeName: string) {
+  constructor(target: LiveMapDocumentRequestTarget, attributeName: string) {
     super(
       "DOCUMENT_ATTRIBUTE_NOT_FOUND",
       "must-get-attr",
@@ -262,7 +262,7 @@ export class LiveMapDocumentAttributeNotFoundError extends LiveMapDocumentMutati
   }
 }
 
-function clone_document_target(target: LiveMapDocumentTarget): LiveMapDocumentTarget {
+function clone_document_target(target: LiveMapDocumentRequestTarget): LiveMapDocumentRequestTarget {
   return target.kind === "path"
     ? Object.freeze({ kind: "path", path: Object.freeze([...target.path]) })
     : Object.freeze({ kind: "quid", quid: target.quid });

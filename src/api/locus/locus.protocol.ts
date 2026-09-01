@@ -46,7 +46,7 @@ import type {
   LiveMapDocumentAttributeValue,
   LiveMapDocumentAttrs,
   LiveMapDocumentCommitTarget,
-  LiveMapDocumentTarget,
+  LiveMapDocumentRequestTarget,
   LiveMapGraphCommit,
   LiveMapGraphOp,
   LiveMapProjectedGraphEnsureQuidOp,
@@ -231,7 +231,7 @@ function decode_style_map(value: unknown): CssMap | undefined {
   return Object.freeze(decoded);
 }
 
-function decode_document_target(value: unknown): LiveMapDocumentTarget | undefined {
+function decode_document_target(value: unknown): LiveMapDocumentRequestTarget | undefined {
   if (!is_record(value)) return undefined;
   if (value.kind === "path" && has_exact_keys(value, ["kind", "path"])) {
     try {
@@ -277,7 +277,7 @@ function decode_attribute_value(name: string, value: unknown): LiveMapDocumentAt
 }
 
 /** Shared strict payload decoders used by graph commits and hosted document actions. */
-export function decode_locus_document_target(value: unknown): LiveMapDocumentTarget | undefined {
+export function decode_locus_document_target(value: unknown): LiveMapDocumentRequestTarget | undefined {
   return decode_document_target(value);
 }
 

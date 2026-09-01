@@ -188,65 +188,14 @@ check("public fromNode observes same-runtime non-reuse", () => {
   assert.throws(() => hson.liveTree.fromNode(node("main", Q1)), reuse);
 });
 
-check("remove returns only lifecycle status and no restoration artifact", () => {
+check("remove returns void and no restoration artifact", () => {
   const runtime = _create_livetree_runtime_test_handle();
   const tree = _create_livetree_for_runtime_test(runtime, node("main", Q1));
-  assert.equal(tree.remove(), 1);
-  assert.equal(tree.remove(), 0);
+  tree.remove();
+  tree.remove();
 });
 
-check("deprecated removeChildren removes only direct semantic element children", () => {
-  const runtime = _create_livetree_runtime_test_handle();
-  const text: HsonNode = { $_tag: "_hson_str", $_content: ["kept"] };
-  const child = node("span", Q1);
-  const parent = _create_livetree_for_runtime_test(runtime, {
-    $_tag: "main",
-    $_content: [text, child, "primitive"],
-  });
-  assert.equal(parent.removeChildren(), 1);
-  assert.deepEqual(parent.node.$_content, [text, "primitive"]);
-  assert.equal(parent.removeChildren(), 0);
-});
-
-check("deprecated removeChildren preserves the exact child handle and active QUID", () => {
-  const runtime = _create_livetree_runtime_test_handle();
-  const childNode = node("span", Q1);
-  const parent = _create_livetree_for_runtime_test(runtime, node("main", Q2, [childNode]));
-  const child = _create_livetree_for_runtime_test(runtime, childNode).adoptRoots(parent.hostRootNode());
-  assert.equal(parent.removeChildren(), 1);
-  assert.equal(child.isDisposed, false);
-  assert.equal(child.node, childNode);
-  assert.equal(child.quid, Q1);
-  assert.equal(_lookup_livetree_runtime_test_node(runtime, Q1), childNode);
-});
-
-check("deprecated removeChildren drains listener and runtime resource ownership", () => {
-  const runtime = _create_livetree_runtime_test_handle();
-  const childNode = node("span", Q1);
-  const parent = _create_livetree_for_runtime_test(runtime, node("main", Q2, [childNode]));
-  let disposed = 0;
-  _own_livetree_runtime_test_disposable(runtime, Q1, () => { disposed += 1; }, "listener");
-  _own_livetree_runtime_test_disposable(runtime, Q1, () => { disposed += 1; }, "other");
-  parent.removeChildren();
-  assert.equal(disposed, 2);
-  assert.equal(_livetree_runtime_test_resource_counts(runtime, Q1).total, 0);
-  assert.equal(_lookup_livetree_runtime_test_node(runtime, Q1), childNode);
-});
-
-check("deprecated removeChildren permits exact child reattachment", () => {
-  const runtime = _create_livetree_runtime_test_handle();
-  const childNode = node("span", Q1);
-  const parent = _create_livetree_for_runtime_test(runtime, node("main", Q2, [childNode]));
-  const child = _create_livetree_for_runtime_test(runtime, childNode).adoptRoots(parent.hostRootNode());
-  parent.removeChildren();
-  assert.equal(parent.append(child), parent);
-  const carrier = parent.node.$_content[0];
-  assert.equal(typeof carrier === "object" && carrier !== null && carrier.$_content[0], childNode);
-  assert.equal(child.isDisposed, false);
-  assert.equal(_lookup_livetree_runtime_test_node(runtime, Q1), childNode);
-});
-
-check("empty terminally disposes children unlike deprecated removeChildren", () => {
+ check("empty terminally disposes children while detachContents preserves them", () => {
   const runtime = _create_livetree_runtime_test_handle();
   const childNode = node("span", Q1);
   const parent = _create_livetree_for_runtime_test(runtime, node("main", Q2, [childNode]));
@@ -257,27 +206,4 @@ check("empty terminally disposes children unlike deprecated removeChildren", () 
   assert.throws(() => parent.append(child), (error: unknown) => Reflect.get(error as object, "code") === "LIVETREE_DISPOSED");
 });
 
-check("deprecated removeChildren is rejected while Reflection owns structure", () => {
-  const map = element(`<main <a/>/>`);
-  const binding = _reflect_document_for_runtime_test(_create_livetree_runtime_test_handle(), map);
-  const before = structuredClone(binding.tree.node);
-  assert.throws(
-    () => binding.tree.removeChildren(),
-    (error: unknown) => Reflect.get(error as object, "code") === "DOCUMENT_REFLECT_UNSUPPORTED_OPERATION",
-  );
-  assert.deepEqual(binding.tree.node, before);
-  assert.equal(binding.status, "active");
-  binding.dispose();
-});
-
-check("deprecated removeChildren does not retire bytes from the runtime issued lifetime", () => {
-  const runtime = _create_livetree_runtime_test_handle();
-  const childNode = node("span", Q1);
-  const parent = _create_livetree_for_runtime_test(runtime, node("main", Q2, [childNode]));
-  parent.removeChildren();
-  assert.equal(_livetree_runtime_test_issued_count(runtime), 2);
-  assert.equal(_livetree_runtime_test_claim_count(runtime), 2);
-  assert.throws(() => _create_livetree_for_runtime_test(runtime, node("aside", Q1)), /already registered/);
-});
-
-emit_hson_live_test_completion("livetree.terminal-reuse-boundaries", checks, checks, 0);
+ emit_hson_live_test_completion("livetree.terminal-reuse-boundaries", checks, checks, 0);

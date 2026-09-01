@@ -150,7 +150,7 @@ export class TreeSelector implements TreeSelectorType {
     const hit = this.contents[ix];
     if (!hit) return false;
 
-    hit.removeSelf();
+    hit.remove();
     return true;
   }
 
@@ -158,7 +158,7 @@ export class TreeSelector implements TreeSelectorType {
     let n = 0;
 
     for (const t of this.contents) {
-      t.removeSelf();
+      t.remove();
       n += 1;
     }
 

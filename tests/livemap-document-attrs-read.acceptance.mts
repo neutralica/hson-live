@@ -7,7 +7,7 @@ import {
 } from "../src/index.ts";
 import type {
   DocumentLiveMap,
-  LiveMapDocumentTarget,
+  LiveMapDocumentRequestTarget,
 } from "../src/types/livemap.types.ts";
 import { internal_livemap_root } from "../src/api/livemap/livemap.internal.ts";
 
@@ -30,9 +30,9 @@ function multiNodeDocument(source: string): DocumentLiveMap {
   return map;
 }
 
-const path = (...segments: number[]): LiveMapDocumentTarget =>
+const path = (...segments: number[]): LiveMapDocumentRequestTarget =>
   Object.freeze({ kind: "path", path: Object.freeze(segments) });
-const quid = (value: string): LiveMapDocumentTarget => Object.freeze({ kind: "quid", quid: value });
+const quid = (value: string): LiveMapDocumentRequestTarget => Object.freeze({ kind: "quid", quid: value });
 
 function errorCode(fn: () => unknown, code: string, operation?: string): void {
   assert.throws(fn, (cause) => cause instanceof LiveMapDocumentMutationError

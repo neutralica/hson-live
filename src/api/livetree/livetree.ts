@@ -30,7 +30,6 @@ import { ContentManager } from "./managers/content-manager.js";
 import { css_for_quids } from "./methods/livetree.css-quids.js";
 import { AttrHandle, FlagHandle } from "../../types/attrs.types.js";
 import { attr_handle, flag_handle } from "./managers/attr-handle.js";
-import { remove_node_children } from "./methods/remove-child.js";
 import { make_svg_tree_create } from "./methods/create/create-svg.js";
 import { make_html_tree_create } from "./methods/create/create-html.js";
 import { make_svg_api, SvgApi } from "./managers/svg-api.js";
@@ -124,7 +123,7 @@ function makeRef(node: HsonNode, tree: LiveTree): NodeRef {
  *
  * Core surfaces:
  * - Traversal and selection (`find`, `findAll`).
- * - Structural editing (`append`, `empty`, `removeChildren`, `removeSelf`).
+ * - Structural editing (`append`, `empty`, `detachContents`, `detach`, `remove`).
  * - Attribute/flag, content/form, style/data/css, and event helpers.
  * - Typed element creation via `.create`.
  *
@@ -343,24 +342,6 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    *
    * @see LiveTreeContent
    ***************************************/
-
-  /**
-   * @deprecated Removes only direct semantic element children through the
-   * legacy nonterminal path: exact handles and QUID claims survive, while DOM,
-   * listener, CSS, and other runtime resources are detached. Use terminal
-   * empty() or identity-preserving detachContents() for explicit lifecycle.
-   */
-  public removeChildren(): number {
-    this.assertActive("remove children");
-    const parent = this.nodeRef.resolveNode();
-    if (!parent) return 0;
-    return remove_node_children(parent);
-  }
-
-  /** @deprecated Terminal alias for remove(). Use remove() or detach() explicitly. */
-  public removeSelf(): number {
-    return this.remove();
-  }
 
   /** Identity-preserving removal of all ordered content. */
   public detachContents(): DetachedLiveContent {

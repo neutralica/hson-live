@@ -31,6 +31,8 @@ import {
   type HsonCanonical as AuthoringCanonical,
 } from "hson-live/hson";
 import type { HsonNode, HsonSemanticPrimitive, JsonValue, Primitive } from "hson-live/types";
+// @ts-expect-error Deprecated document request-target alias was hard-removed.
+import type { LiveMapDocumentTarget } from "hson-live/types";
 // D1 tooling is private, including its capability-origin and lifecycle helpers.
 // @ts-expect-error Standalone helper is not a public export.
 import { validate } from "hson-live";
@@ -118,6 +120,11 @@ import {
   type PropertyRegistration,
   type TreeEvents,
 } from "hson-live/livetree";
+declare const liveTree: LiveTree;
+// @ts-expect-error Deprecated lifecycle compatibility method was hard-removed.
+liveTree.removeChildren();
+// @ts-expect-error Deprecated lifecycle compatibility method was hard-removed.
+liveTree.removeSelf();
 // @ts-expect-error The obsolete construction engine is not a public export.
 import { construct_tree } from "hson-live/livetree";
 import {

@@ -13,7 +13,7 @@ import type {
   DocumentLiveMapMode,
   LiveMapDocumentAttributeValue,
   LiveMapDocumentAttrs,
-  LiveMapDocumentTarget,
+  LiveMapDocumentRequestTarget,
 } from "../../types/livemap.types.js";
 import type { HsonNode } from "../../core/types.js";
 import type { LiveMapDocumentIdentityOverlay } from "./livemap.document.identity.js";
@@ -53,7 +53,7 @@ export function make_livemap_document_attrs_read_api(
   controller: LiveMapDocumentAttrsReadController,
 ): DocumentLiveMapAttrsReadApi {
   const get = (
-    targetInput: LiveMapDocumentTarget,
+    targetInput: LiveMapDocumentRequestTarget,
     nameInput: string,
   ): LiveMapDocumentAttributeValue | undefined => {
     const operation = "get-attr";
@@ -63,7 +63,7 @@ export function make_livemap_document_attrs_read_api(
   };
   const must = Object.freeze({
     get: (
-      targetInput: LiveMapDocumentTarget,
+      targetInput: LiveMapDocumentRequestTarget,
       nameInput: string,
     ): LiveMapDocumentAttributeValue => {
       const operation = "must-get-attr";
@@ -122,7 +122,7 @@ function resolve_attr_query(
   controller: LiveMapDocumentAttrsReadController,
   targetInput: unknown,
   operation: LiveMapDocumentOperation,
-): Readonly<{ target: LiveMapDocumentTarget; element: HsonNode }> {
+): Readonly<{ target: LiveMapDocumentRequestTarget; element: HsonNode }> {
   const target = normalize_document_target(targetInput, operation);
   const endpoint = resolve_document_target(
     controller.root(),

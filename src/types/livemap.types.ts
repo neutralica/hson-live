@@ -456,9 +456,6 @@ export type LiveMapProjectedIdentityCommitTarget = Readonly<{
   projected: true;
 }>;
 
-/** @deprecated Compatibility name for the live request-target union. */
-export type LiveMapDocumentTarget = LiveMapDocumentRequestTarget;
-
 /** Existing canonical Hson attribute value model; style remains structured. */
 export type LiveMapDocumentAttributeValue = CanonicalPublicAttrValue;
 

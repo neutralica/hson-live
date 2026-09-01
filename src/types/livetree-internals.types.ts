@@ -116,30 +116,6 @@ export interface LiveTreeContent<TSelf> {
     /** Terminally remove and dispose this complete branch. */
     remove(): void;
 
-    /**
-     * Remove this node's direct child nodes and return the number removed.
-     *
-     * This is a structural child-node operation. Removal semantics are defined by
-     * `remove_node_children`, and DOM state is kept in sync when mounted.
-     *
-     * @returns The number of direct node-children removed.
-     */
-    /**
-     * @deprecated Removes only direct semantic element children through a
-     * legacy nonterminal path. Exact handles and QUID claims survive, but DOM
-     * and runtime resources are detached; use empty or detachContents for an
-     * explicit lifecycle choice.
-     */
-    removeChildren(): number;
-
-    /**
-       * Remove this node from its parent (Hson + DOM).
-       *
-       * @returns `1` when removed, or `0` if already detached.
-       * @see remove_livetree
-       */
-    /** @deprecated Alias for terminal `remove()`; use remove or detach explicitly. */
-    removeSelf(): number;
  /**
    * Content manager for structured child access and mutation.
    *

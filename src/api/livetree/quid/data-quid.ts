@@ -549,7 +549,7 @@ export const HSON_QUID_MARKUP_NAME =
  * Used when explicitly destroying active identity ownership. The runtime's
  * issued ledger remains monotonic and is not reset here.
  *
- * Not used for normal detach/removeSelf flows. A detached branch still owns its
+ * Not used for normal detach/remove flows. A detached branch still owns its
  * Hson nodes and persisted QUIDs so it can remain valid while unmounted and may
  * be grafted again later.
  ***************************************/

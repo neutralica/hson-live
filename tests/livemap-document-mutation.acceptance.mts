@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { hson, LiveMapDocumentMutationError } from "../src/index.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import type { HsonNode, Primitive } from "../src/core/types.ts";
-import type { DocumentLiveMapCapture, DocumentLiveMap, LiveMapDocumentTarget } from "../src/types/livemap.types.ts";
+import type { DocumentLiveMapCapture, DocumentLiveMap, LiveMapDocumentRequestTarget } from "../src/types/livemap.types.ts";
 
 let checks = 0;
 function check(name: string, fn: () => void): void {
@@ -24,9 +24,9 @@ function multiNodeDocument(source: string): DocumentLiveMap {
   return map;
 }
 
-const path = (...segments: number[]): LiveMapDocumentTarget => Object.freeze({ kind: "path", path: Object.freeze(segments) });
-const elementPath = (...segments: number[]): LiveMapDocumentTarget => path(0, ...segments);
-const quid = (value: string): LiveMapDocumentTarget => Object.freeze({ kind: "quid", quid: value });
+const path = (...segments: number[]): LiveMapDocumentRequestTarget => Object.freeze({ kind: "path", path: Object.freeze(segments) });
+const elementPath = (...segments: number[]): LiveMapDocumentRequestTarget => path(0, ...segments);
+const quid = (value: string): LiveMapDocumentRequestTarget => Object.freeze({ kind: "quid", quid: value });
 
 function nodes(root: HsonNode): HsonNode[] {
   const out: HsonNode[] = [];

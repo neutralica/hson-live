@@ -11,7 +11,7 @@ import type {
   LiveMapDocumentAttrs,
   LiveMapDocumentContent,
   LiveMapDocumentCommitTarget,
-  LiveMapDocumentTarget,
+  LiveMapDocumentRequestTarget,
   LiveMapGraphOp,
   LiveMapProjectedGraphEnsureQuidOp,
   LiveMapAnyOp,
@@ -96,7 +96,7 @@ export type LocusDocumentActionName =
   | "document.content.remove"
   | "document.content.move";
 
-export type LocusDocumentTargetPayload = LiveMapDocumentTarget;
+export type LocusDocumentTargetPayload = LiveMapDocumentRequestTarget;
 
 export type LocusDocumentActionPayloads = Readonly<{
   "document.attrs.set": {
