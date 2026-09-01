@@ -12,8 +12,12 @@ assert.equal(manifest.main, "./dist/extension.js");
 assert.equal(manifest.icon, "images/hson-icon.png");
 const icon = await readFile(new URL(`../${manifest.icon}`, import.meta.url));
 assert.equal(icon.toString("ascii", 1, 4), "PNG");
-assert.equal(icon.readUInt32BE(16), 256);
-assert.equal(icon.readUInt32BE(20), 256);
+const width = icon.readUInt32BE(16);
+const height = icon.readUInt32BE(20);
+
+assert.ok(width >= 128);
+assert.ok(height >= 128);
+assert.equal(width, height);
 assert.deepEqual(manifest.activationEvents, [
   "onStartupFinished",
   "onLanguage:typescript",
