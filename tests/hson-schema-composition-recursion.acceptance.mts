@@ -135,6 +135,32 @@ check("refs compose through array, tuple, restricted union, and refinements", ()
   if (result.ok) assert.equal(result.value.graph.nodes.filter((node) => node.kind === "projected-refinement").length, 2);
 });
 
+check("refs preserve finite exact-domain distinguishability through nested unions", () => {
+  const result = compile(`<
+    type "data"
+    defs <
+      Lobby <exact "lobby">
+      Ready <exact "ready">
+      Active <union [<ref "Lobby">, <union [<ref "Ready">, <exact "playing">]>]>
+    >
+    content <content <pair <union [<ref "Lobby">, <ref "Ready">]> phase <ref "Active">>>
+  >`);
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.value.graph.nodes.filter((node) => node.kind === "projected-union").length, 3);
+});
+
+check("finite exact-domain duplicates and cycles reached through refs fail closed", () => {
+  for (const source of [
+    `<type "data" defs <Left <exact "same"> Right <exact "same">> content <value <union [<ref "Left">, <ref "Right">]>>>`,
+    `<type "data" defs <Domain <union [<exact "a">, <exact "b">]> Duplicate <exact "b">> content <value <union [<ref "Domain">, <ref "Duplicate">]>>>`,
+    `<type "data" defs <Cycle <union [<exact "a">, <ref "Cycle">]>> content <ref "Cycle">>`,
+  ]) {
+    const result = compile(source);
+    assert.equal(result.ok, false, source);
+    if (!result.ok) assert.equal(result.issues.some((entry) => entry.code === "INVALID_UNION"), true);
+  }
+});
+
 check("data/document capability mismatches reject in the single local namespace", () => {
   const result = compile(`<type "data" defs <Element <tag "x" content "empty">> content <ref "Element">>`);
   assert.equal(result.ok, false);

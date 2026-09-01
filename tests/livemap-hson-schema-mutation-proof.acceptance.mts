@@ -19,8 +19,11 @@ function user(age = 37) {
     percent: 80,
     code: "ID-7",
     status: "ready" as const,
+    phase: "lobby" as const,
+    turn: "player1" as const,
     zero: 0,
     negativeZero: -0,
+    signedZeroChoice: -0,
     flags: [true, false],
     pair: ["pair", 2],
     account: { kind: "user" as const, handle: "ada" },
@@ -33,6 +36,9 @@ check("schema association supplies certified reads and ordinary typed mutation c
   const flags = map.at(["flags"]);
   const pair = map.at(["pair"]);
   const account = map.at(["account"]);
+  const phase = map.at(["phase"]);
+  const turn = map.at(["turn"]);
+  const signedZeroChoice = map.at(["signedZeroChoice"]);
 
   const governed: UserSchemaType = map.snap();
   const governedAge: UserSchemaType["age"] = age.snap();
@@ -43,6 +49,17 @@ check("schema association supplies certified reads and ordinary typed mutation c
   flags.replace([true, false]);
   pair.replace(["next", 3]);
   account.replace({ kind: "admin", level: 4 });
+  phase.set("ready");
+  phase.set("playing");
+  phase.set("finished");
+  phase.set("lobby");
+  turn.set("player2");
+  turn.set(null);
+  turn.set("player1");
+  signedZeroChoice.set(0);
+  assert.equal(Object.is(signedZeroChoice.snap(), 0), true);
+  signedZeroChoice.set(-0);
+  assert.equal(Object.is(signedZeroChoice.snap(), -0), true);
   map.at(["nickname"]).set("grace");
 
   const libraries = hsonLiveMap.fromLibraries({
@@ -67,6 +84,10 @@ check("schema association supplies certified reads and ordinary typed mutation c
     const crossSchemaProof: TreeSchemaType["age"] = age.snap();
     // @ts-expect-error Exact literals remain statically precise in candidates.
     map.at(["status"]).set("other");
+    // @ts-expect-error Finite exact literal domains reject outsiders.
+    phase.set("paused");
+    // @ts-expect-error Exact string-or-null domains reject outsiders.
+    turn.set("player3");
     // @ts-expect-error Tuple candidates retain position and primitive types.
     pair.replace(["next", "3"]);
     // @ts-expect-error Array candidates retain item domain.

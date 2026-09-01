@@ -16,8 +16,9 @@ import { evaluate_canonical_projected_schema } from "../canonical-schema/evaluat
 import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { is_public_attr_name } from "../../core/public-attrs.js";
 import { resolve_projected_hson_location } from "../../api/livemap/livemap.editor.js";
+import { ordered_projected_value_equal } from "../../core/ordered-projected-value.js";
 
-export const HSON_SCHEMA_MVP_COMPATIBILITY_VERSION = "hson-schema-mvp-6" as const;
+export const HSON_SCHEMA_MVP_COMPATIBILITY_VERSION = "hson-schema-mvp-7" as const;
 
 export type HsonSchemaIssueCode =
   | "INVALID_ROOT"
@@ -748,7 +749,28 @@ function distinguishable(left: HsonSchemaDataSemanticNode, right: HsonSchemaData
     return target === undefined || target.kind === "document-element" ? value : dereference(target, seen);
   };
   left = dereference(left); right = dereference(right);
-  const primitive = (value: HsonSchemaDataSemanticNode): string | undefined => value.kind === "exact" ? typeof value.value : ["string", "number", "boolean", "null"].includes(value.kind) ? value.kind : undefined;
+  const finitePrimitiveDomain = (value: HsonSchemaDataSemanticNode, activeRefs = new Set<string>()): readonly (string | number | boolean | null)[] | undefined => {
+    if (value.kind === "exact") return Object.freeze([value.value]);
+    if (value.kind === "null") return Object.freeze([null]);
+    if (value.kind === "union") {
+      const leftDomain = finitePrimitiveDomain(value.choices[0], activeRefs);
+      const rightDomain = finitePrimitiveDomain(value.choices[1], activeRefs);
+      return leftDomain === undefined || rightDomain === undefined ? undefined : Object.freeze([...leftDomain, ...rightDomain]);
+    }
+    if (value.kind !== "ref" || activeRefs.has(value.name)) return undefined;
+    const target = byName.get(value.name);
+    if (target === undefined || target.kind === "document-element") return undefined;
+    const nextRefs = new Set(activeRefs);
+    nextRefs.add(value.name);
+    return finitePrimitiveDomain(target, nextRefs);
+  };
+  const leftDomain = finitePrimitiveDomain(left), rightDomain = finitePrimitiveDomain(right);
+  if (leftDomain !== undefined && rightDomain !== undefined) {
+    return leftDomain.every((leftValue) => rightDomain.every((rightValue) => !ordered_projected_value_equal(leftValue, rightValue)));
+  }
+  const primitive = (value: HsonSchemaDataSemanticNode): string | undefined => value.kind === "exact"
+    ? value.value === null ? "null" : typeof value.value
+    : ["string", "number", "boolean", "null"].includes(value.kind) ? value.kind : undefined;
   const a = primitive(left), b = primitive(right);
   if (a !== undefined || b !== undefined) return a !== undefined && b !== undefined && a !== b;
   if (left.kind !== "object" || right.kind !== "object") return false;

@@ -36,6 +36,60 @@ check("primitive and discriminated unions lower", () => {
   assert.equal(compile('account <union [<content <kind <exact "user">>>, <content <kind <exact "admin">>>]>').ok, true);
   assert.equal(compile('bad <union ["string", <exact "x">]>').ok, false);
 });
+check("finite exact primitive domains lower when every branch is canonically disjoint", () => {
+  const cases = [
+    'value <union [<exact "lobby">, <exact "ready">]>',
+    'value <union [<exact "lobby">, <union [<exact "ready">, <union [<exact "playing">, <exact "finished">]>]>]>',
+    'value <union [<exact "player1">, <union [<exact "player2">, "null"]>]>',
+    'value <union [<exact 1>, <exact 2>]>',
+    'value <union [<exact true>, <exact false>]>',
+  ];
+  for (const source of cases) assert.equal(compile(source).ok, true, source);
+  const signedZero = compile('value <union [<exact 0>, <exact -0>]>');
+  assert.equal(signedZero.ok, true);
+  if (signedZero.ok) {
+    const literals = signedZero.value.graph.nodes.filter((node) => node.kind === "projected-literal");
+    assert.equal(literals.length, 2);
+    assert.equal(literals[0]?.kind === "projected-literal" && Object.is(literals[0].values[0], 0), true);
+    assert.equal(literals[1]?.kind === "projected-literal" && Object.is(literals[1].values[0], -0), true);
+  }
+});
+check("finite exact primitive domains reject every unproved or overlapping combination", () => {
+  for (const source of [
+    'value <union [<exact "same">, <exact "same">]>',
+    'value <union [<exact 1>, <exact 1>]>',
+    'value <union [<exact true>, <exact true>]>',
+    'value <union ["null", "null"]>',
+    'value <union [<exact null>, <exact null>]>',
+    'value <union [<exact null>, "null"]>',
+    'value <union [<exact "a">, <union [<exact "b">, <exact "a">]>]>',
+    'value <union [<exact "x">, "string"]>',
+    'value <union [<exact "x">, <string <prefix "y">>]>',
+    'value <union [<exact 1>, "number"]>',
+    'value <union [<exact 1>, <number <min 2>>]>',
+    'value <union [<exact true>, "boolean"]>',
+    'value <union [<union [<exact "a">, <exact "b">]>, "string"]>',
+    'value <union [<union [<exact "a">, <exact "b">]>, <string <prefix "z">>]>',
+  ]) assert.equal(compile(source).ok, false, source);
+});
+check("runtime certification accepts every finite-domain member and rejects outsiders", () => {
+  const schema: HsonSchema = Hson`<type "data" content <
+    phase <union [<exact "lobby">, <union [<exact "ready">, <union [<exact "playing">, <exact "finished">]>]>]>
+    turn <union [<exact "player1">, <union [<exact "player2">, "null"]>]>
+    score <union [<exact 1>, <exact 2>]>
+    zero <union [<exact 0>, <exact -0>]>
+    flag <union [<exact true>, <exact false>]>
+  >>`;
+  for (const candidate of [
+    Hson`<phase "lobby" turn "player1" score 1 zero 0 flag true>`,
+    Hson`<phase "ready" turn "player2" score 2 zero -0 flag false>`,
+    Hson`<phase "playing" turn null score 1 zero 0 flag false>`,
+    Hson`<phase "finished" turn "player1" score 2 zero -0 flag true>`,
+  ]) assert.equal(Hson.certify(schema, candidate), candidate);
+  assert.throws(() => Hson.certify(schema, Hson`<phase "paused" turn "player1" score 1 zero 0 flag true>`));
+  assert.throws(() => Hson.certify(schema, Hson`<phase "lobby" turn "player3" score 1 zero 0 flag true>`));
+  assert.throws(() => Hson.certify(schema, Hson`<phase "lobby" turn "player1" score 3 zero 0 flag true>`));
+});
 check("bootstrap has a deterministic authored Hson machine representation", () => {
   const authored = encode_canonical_schema_graph_hson(HSON_SCHEMA_MVP_BOOTSTRAP);
   const decoded = decode_canonical_schema_graph_hson(authored);

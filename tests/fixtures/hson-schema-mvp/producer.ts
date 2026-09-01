@@ -9,8 +9,14 @@ export const UserSchema: HsonSchema<UserSchemaType, "data"> = Hson`
     percent <number <min 0 max 100>>
     code <string <len 4 prefix "ID" contains "-" suffix "7">>
     status <exact "ready">
+    phase <union [
+      <exact "lobby">,
+      <union [<exact "ready">, <union [<exact "playing">, <exact "finished">]>]>
+    ]>
+    turn <union [<exact "player1">, <union [<exact "player2">, "null"]>]>
     zero <exact 0>
     negativeZero <exact -0>
+    signedZeroChoice <union [<exact 0>, <exact -0>]>
     flags <array <content "boolean" unique true minlen 1 maxlen 3>>
     pair <tuple ["string", "number"]>
     account <union [

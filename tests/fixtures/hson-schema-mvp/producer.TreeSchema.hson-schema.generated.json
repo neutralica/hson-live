@@ -1,8 +1,8 @@
 {
-  "compatibilityVersion": "hson-schema-mvp-6",
+  "compatibilityVersion": "hson-schema-mvp-7",
   "declarationIdentity": "producer.ts#TreeSchema",
   "sourceDigest": "b2f6a31c70211d0316d30bd98222301685930925a697c699caecdbf1b7260352",
   "semanticGraphDigest": "50dad83e7a21772e30b4d42dd9fd322eaeadd297b025ac7ec61e2713d53b9b21",
-  "generatedDeclarationDigest": "d293de7c670d9fa5fa56eb6a30b65a60818fdf97166be16ce2c38acfdfaccc05",
+  "generatedDeclarationDigest": "8774a1b8280402879440274d64e45cf56eb45fec93d283ac9f0ce516e2df2b9c",
   "graphHson": "<format \"hson-canonical-schema\" version 1 capabilities <projectedRoot 0> nodes «<kind \"projected-ref\" target 1>,<kind \"projected-object\" exact true properties ««\"value\",2»,«\"age\",3»,«\"children\",7»»>,<kind \"projected-string\">,<kind \"projected-ref\" target 4>,<kind \"projected-refinement\" base 5 rule <kind \"integer\"> label \"int\">,<kind \"projected-refinement\" base 6 rule <kind \"number-lower-bound\" value 0 inclusive true> label \"min\">,<kind \"projected-number\">,<kind \"projected-array\" item 8>,<kind \"projected-ref\" target 1>»>"
 }

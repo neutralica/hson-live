@@ -3,10 +3,10 @@ import type { HsonCanonical } from "hson-live/hson";
 import { TreeSchema, UserSchema, type TreeSchemaHson, type UserSchemaHson } from "./producer.js";
 
 const authored: UserSchemaHson = Hson`
-  <name "Ada" score 37 age 37 percent 80 code "ID-7" status "ready" zero 0 negativeZero -0 flags [true, false] pair ["x", 2] account <kind "user" handle "ada">>
+  <name "Ada" score 37 age 37 percent 80 code "ID-7" status "ready" phase "lobby" turn "player1" zero 0 negativeZero -0 signedZeroChoice -0 flags [true, false] pair ["x", 2] account <kind "user" handle "ada">>
 `;
 
-const dynamic: HsonCanonical = hsonTransform.fromJson({ name: "Ada", score: 37, age: 37, percent: 80, code: "ID-7", status: "ready", zero: 0, negativeZero: -0, flags: [true], pair: ["x", 2], account: { kind: "admin", level: 3 } }).toHson().serialize();
+const dynamic: HsonCanonical = hsonTransform.fromJson({ name: "Ada", score: 37, age: 37, percent: 80, code: "ID-7", status: "ready", phase: "finished", turn: null, zero: 0, negativeZero: -0, signedZeroChoice: 0, flags: [true], pair: ["x", 2], account: { kind: "admin", level: 3 } }).toHson().serialize();
 const certified: UserSchemaHson = Hson.certify(UserSchema, dynamic);
 const numberEvidence: HsonNumber = hsonCalc(37);
 const recursiveAuthored: TreeSchemaHson = Hson`<value "root" age 2 children [<value "leaf" age 0 children []>]>`;
@@ -15,7 +15,7 @@ const recursiveCertified: TreeSchemaHson = Hson.certify(TreeSchema, recursiveDyn
 
 const libraries = hsonLiveMap.fromLibraries({
   user: {
-    data: { name: "Ada", score: 37, age: 37, percent: 80, code: "ID-7", status: "ready", zero: 0, negativeZero: -0, flags: [true], pair: ["x", 2], account: { kind: "admin", level: 3 } },
+    data: { name: "Ada", score: 37, age: 37, percent: 80, code: "ID-7", status: "ready", phase: "playing", turn: "player2", zero: 0, negativeZero: -0, signedZeroChoice: -0, flags: [true], pair: ["x", 2], account: { kind: "admin", level: 3 } },
     schema: UserSchema,
   },
   tree: {

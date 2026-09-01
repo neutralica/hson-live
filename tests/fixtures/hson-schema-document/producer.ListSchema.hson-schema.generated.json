@@ -1,8 +1,8 @@
 {
-  "compatibilityVersion": "hson-schema-mvp-6",
+  "compatibilityVersion": "hson-schema-mvp-7",
   "declarationIdentity": "producer.ts#ListSchema",
   "sourceDigest": "dbfcb8c77259a8c5b8b97da872d559515cf1fac2a2ec6dfe380c2c2b83dddba0",
   "semanticGraphDigest": "40eb4ccf519d84927a3363209abd886b2772936e90a7382b2dab33368fff7751",
-  "generatedDeclarationDigest": "1542e12142cfad7da4fcabda5b67415f72b56c812bd8d2c61bba601c81a89912",
+  "generatedDeclarationDigest": "de4cfcd2be957d5f3ed4e6e150c3ca4eba968ebf72cdb420194018a95a05878c",
   "graphHson": "<format \"hson-canonical-schema\" version 1 capabilities <documentRoot 0> nodes «<kind \"document-root\" content 1>,<kind \"document-sequence\" items «2»>,<kind \"document-element\" tag \"list\" content 3>,<kind \"document-repeat\" item 4 count 2>,<kind \"document-element\" tag \"item\" attrs 5 content 9>,<kind \"document-attrs\" exact false properties «<name \"code\" optional false flag false value 6>»>,<kind \"projected-ref\" target 7>,<kind \"projected-refinement\" base 8 rule <kind \"string-pattern\" dialect \"literal-string-v1\" mode \"prefix\" pattern \"ok-\"> label \"prefix\">,<kind \"projected-string\">,<kind \"document-sequence\" items «»>»>"
 }
