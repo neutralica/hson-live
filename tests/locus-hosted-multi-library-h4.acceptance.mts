@@ -20,6 +20,7 @@ import type {
   LocusHostedAggregateDraft,
 } from "../src/api/locus/locus.hosted-multi-library.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
 const StateSchema: HsonSchema = Hson`<type "data" content <theme "string" count <number <int true min 0>>>>`;
 const ColorsSchema: HsonSchema = Hson`<type "data" content <accent "string">>`;
@@ -27,9 +28,29 @@ const PageSchema: HsonSchema = Hson`<type "document" tag "main" content <repeat 
 const RETIRED_QUID = "000008301";
 const ACTIVE_QUID = "000008302";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "locus.hosted-multi-library-h4",
+  title: "Hosted multi-library H4",
+  category: "Locus",
+  runtime: "node",
+  tags: Object.freeze(["locus", "livemap", "libraries", "hosted", "h4"]),
+});
+
+const testEvents = create_test_event_emitter("locus.hosted-multi-library-h4");
 let checks = 0;
 async function check(name: string, run: () => void | Promise<void>): Promise<void> {
-  await run();
+
+  testEvents.case_begin(name, name);
+  try {
+    await run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -319,4 +340,5 @@ await check("digest and authority mismatches in checkpoint or tail reject before
 
 process.stdout.write(`1..${checks}\n`);
 process.stdout.write(`Hosted multi-library H4 acceptance: ${checks}/${checks}\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("locus.hosted-multi-library-h4", checks, checks, 0);

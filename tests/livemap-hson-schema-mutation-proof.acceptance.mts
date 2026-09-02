@@ -2,11 +2,32 @@ import assert from "node:assert/strict";
 import { Hson, hsonLiveMap } from "hson-live";
 import { TreeSchema, UserSchema, type TreeSchemaType, type UserSchemaType } from "./fixtures/hson-schema-mvp/producer.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap-hson-schema-mutation-proof",
+  title: "LiveMap Hson Schema mutation proof",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["livemap", "hson-schema", "mutation", "public-api"]),
+});
+
+const testEvents = create_test_event_emitter("livemap-hson-schema-mutation-proof");
 let checks = 0;
 
 function check(name: string, run: () => void): void {
-  run();
+
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   process.stdout.write(`ok ${++checks} - ${name}\n`);
 }
 
@@ -165,4 +186,5 @@ check("construction, restore, and replay cannot install invalid governed data", 
   assert.equal(map.rev, beforeRev);
 });
 
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap-hson-schema-mutation-proof", checks, checks, 0);

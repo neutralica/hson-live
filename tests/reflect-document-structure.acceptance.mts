@@ -1,4 +1,5 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { hson, validate_document_path } from "../src/index.ts";
 import { is_Node } from "../src/core/node-guards.ts";
@@ -17,9 +18,29 @@ import { project_livetree } from "../src/api/livetree/creation/project-live-tree
 import { get_el_for_node } from "../src/api/livetree/utils/node-map-helpers.ts";
 import { FakeElement, FakeText, install_fake_document } from "./helpers/fake-document.mts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "reflect.document-structure",
+  title: "Document Reflect structure",
+  category: "Reflect",
+  runtime: "node-synthetic-dom",
+  tags: Object.freeze(["document", "binding", "structure"]),
+});
+
+const testEvents = create_test_event_emitter("reflect.document-structure");
 let checks = 0;
 function check(name: string, fn: () => void): void {
-  fn();
+
+  testEvents.case_begin(name, name);
+  try {
+    fn();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -328,4 +349,5 @@ function projected_element_from_map(map: DocumentLiveMap): HsonNode {
 }
 
 process.stdout.write(`# ${checks} document LiveTree structural binding checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("reflect.document-structure", checks, checks, 0);

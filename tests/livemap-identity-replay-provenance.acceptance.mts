@@ -1,6 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 import { hson } from "../src/index.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.identity-epoch.ts";
@@ -14,8 +15,28 @@ import { acquire_document_identity, acquire_projected_identity } from "./helpers
 const Q1 = "000004c01";
 const Q2 = "000004c02";
 const Q3 = "000004c03";
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap.identity-replay-provenance",
+  title: "Identity replay and provenance ABA closure",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["projected-value", "document", "quid", "identity-handle", "replay", "provenance", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("livemap.identity-replay-provenance");
 let checks = 0;
-const check = (name: string, run: () => void) => { run(); checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); };
+const check = (name: string, run: () => void) => {
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  } checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); };
 const map = (value: unknown) => hson.liveMap.fromJson(value as never);
 const target = (...path: number[]) => Object.freeze({ kind: "path" as const, path: Object.freeze([0, ...path]) });
 const projectedEnsure = (prevRev: number, path: readonly (string | number)[], quid: string) => ({ changed: true, prevRev, rev: prevRev + 1, ops: [{ domain: "graph", op: "ensure-quid", target: { kind: "path", path, projected: true }, quid }] });
@@ -52,4 +73,5 @@ check("canonical transport shape remains version-neutral", () => { const m = map
 check("independent Locus map epochs may carry equal QUID bytes", () => { const a = map({ x: {} }); const b = map({ x: {} }); set_livemap_projected_quid_candidate_source_for_tests(a, () => Q1); set_livemap_projected_quid_candidate_source_for_tests(b, () => Q1); acquire_projected_identity(a, ["x"]); acquire_projected_identity(b, ["x"]); assert.equal(livemap_identity_epoch_accounting(a).issued, 1); assert.equal(livemap_identity_epoch_accounting(b).issued, 1); });
 
 process.stdout.write(`1..${checks}\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap.identity-replay-provenance", checks, checks, 0);

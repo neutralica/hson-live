@@ -1,6 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 import { element, mount, path, raw_node } from "./helpers/reflect-unit6.mts";
 import {
   begin_livetree_materialization_profile,
@@ -31,9 +32,29 @@ Reflect.set(globalThis.document, "documentElement", syntheticHead);
 Reflect.set(globalThis.document, "querySelector", () => undefined);
 Reflect.set(FakeElement.prototype, "querySelector", () => undefined);
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap.linked-identity-closure",
+  title: "Linked identity replay and resource closure",
+  category: "LiveMap",
+  runtime: "node-synthetic-dom",
+  tags: Object.freeze(["document", "binding", "quid", "runtime", "locus", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("livemap.linked-identity-closure");
 let checks = 0;
 function check(name: string, run: () => void): void {
-  run();
+
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -280,4 +301,5 @@ check("disposed binding cannot resurrect linked identity privately", () => {
 
 _dispose_livetree_runtime_test_handle(runtime);
 process.stdout.write(`LiveMap linked identity closure acceptance: ${checks}/${checks}\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap.linked-identity-closure", checks, checks, 0);

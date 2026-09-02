@@ -13,9 +13,30 @@ import {
 } from "../src/internal/canonical-schema/graph.ts";
 import { verify_canonical_schema_graph } from "../src/internal/canonical-schema/verify.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "canonical-schema-resource-semantics",
+  title: "Canonical Schema resource semantics",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["hson-schema", "canonical-schema", "resources"]),
+});
+
+const testEvents = create_test_event_emitter("canonical-schema-resource-semantics");
 let checks = 0;
-const check = (name: string, run: () => void): void => { run(); console.log(`ok ${++checks} - ${name}`); };
+const check = (name: string, run: () => void): void => {
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  } console.log(`ok ${++checks} - ${name}`); };
 const verified = (graph: CanonicalSchemaGraph) => {
   const result = verify_canonical_schema_graph(graph);
   if (!result.ok) assert.fail(JSON.stringify(result.issues));
@@ -61,4 +82,5 @@ check("document content traversal has an independent budget", () => {
   assert.equal(exhausted(evaluate_canonical_document_schema(graph, parse_hson('"a" "b"', { allowTopLevelDocumentText: true }), { maxContentItems: 1 })), true);
 });
 
+testEvents.terminal("pass");
 emit_hson_live_test_completion("canonical-schema-resource-semantics", checks, checks, 0);

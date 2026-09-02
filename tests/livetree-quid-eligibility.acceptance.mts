@@ -1,4 +1,5 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import type { HsonNode } from "../src/core/types.ts";
@@ -15,9 +16,29 @@ import {
 } from "../src/api/livetree/quid/data-quid.ts";
 import { LiveTree } from "../src/api/livetree/livetree.ts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livetree.quid-eligibility",
+  title: "LiveTree QUID eligibility",
+  category: "LiveTree",
+  runtime: "node",
+  tags: Object.freeze(["quid", "eligibility", "identity", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("livetree.quid-eligibility");
 let checks = 0;
 function check(name: string, fn: () => void): void {
-  fn();
+
+  testEvents.case_begin(name, name);
+  try {
+    fn();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -198,4 +219,5 @@ check("clone remints every ordinary node and leaves nested VSN wrappers unquidde
 });
 
 process.stdout.write(`1..${checks}\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livetree.quid-eligibility", checks, checks, 0);

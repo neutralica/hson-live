@@ -7,9 +7,30 @@ import type { HsonNode } from "../src/core/types.ts";
 import type { DocumentLiveMap, LiveMapDocumentRequestTarget } from "../src/types/livemap.types.ts";
 import { element as reflectedElement, raw_node } from "./helpers/reflect-unit6.mts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap.document-location-content",
+  title: "Document location ordered-content convergence",
+  category: "LiveMap",
+  runtime: "node-synthetic-dom",
+  tags: Object.freeze(["document", "path", "mutation", "proxy", "reflection", "public-api", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("livemap.document-location-content");
 let checks = 0;
-const check = (name: string, run: () => void): void => { run(); checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); };
+const check = (name: string, run: () => void): void => {
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  } checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); };
 const element = (source: string): DocumentLiveMap => { const map = hson.liveMap.fromHson(source); if (map.mode !== "document") throw new Error("Expected element map"); return map; };
 const multiNodeDocument = (source: string): DocumentLiveMap => { const map = hson.liveMap.fromHson(source); if (map.mode !== "document") throw new Error("Expected multiNodeDocument map"); return map; };
 const emptyDocumentSequence = (): DocumentLiveMap => { const map = hson.liveMap.fromNode({ $_tag: "_hson_root", $_content: [] }); if (map.mode !== "document") throw new Error("Expected multiNodeDocument map"); return map; };
@@ -46,4 +67,5 @@ check("capability acquisition never mints QUIDs", () => { const map = element(`<
 check("surface adds no duplicate item or generic operators", () => { const location = element(`<main/>`).at([]); assert.equal("remove" in location, false); assert.equal("set" in location, false); assert.equal("update" in location, false); const projected = hson.liveMap.fromJson([1]); assert.equal("insert" in projected.at([]), false); assert.equal("move" in projected.at([]), false); });
 
 process.stdout.write(`# ${checks} document location ordered-content checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap.document-location-content", checks, checks, 0);

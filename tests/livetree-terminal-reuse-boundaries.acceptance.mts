@@ -1,4 +1,5 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { hson } from "../src/index.ts";
@@ -20,9 +21,29 @@ import { element } from "./helpers/reflect-unit6.mts";
 const Q1 = "000000v01";
 const Q2 = "000000v02";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livetree.terminal-reuse-boundaries",
+  title: "LiveTree terminal QUID reuse boundaries",
+  category: "LiveTree",
+  runtime: "node-synthetic-dom",
+  tags: Object.freeze(["quid", "runtime", "lifecycle", "identity", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("livetree.terminal-reuse-boundaries");
 let checks = 0;
 function check(name: string, run: () => void): void {
-  run();
+
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -206,4 +227,5 @@ check("remove returns void and no restoration artifact", () => {
   assert.throws(() => parent.append(child), (error: unknown) => Reflect.get(error as object, "code") === "LIVETREE_DISPOSED");
 });
 
+testEvents.terminal("pass");
  emit_hson_live_test_completion("livetree.terminal-reuse-boundaries", checks, checks, 0);

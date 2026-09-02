@@ -6,9 +6,30 @@ import { LiveMapDocumentAttributeNotFoundError, LiveMapDocumentMutationError } f
 import type { DocumentLiveMap, LiveMapDocumentRequestTarget } from "../src/types/livemap.types.ts";
 import { element as reflectedElement } from "./helpers/reflect-unit6.mts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap.document-location-attrs",
+  title: "Document location attrs convergence",
+  category: "LiveMap",
+  runtime: "node-synthetic-dom",
+  tags: Object.freeze(["document", "path", "mutation", "attrs", "proxy", "reflection", "public-api", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("livemap.document-location-attrs");
 let checks = 0;
-const check = (name: string, run: () => void): void => { run(); checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); };
+const check = (name: string, run: () => void): void => {
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  } checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); };
 const element = (source: string): DocumentLiveMap => { const map = hson.liveMap.fromHson(source); if (map.mode !== "document") throw new Error("Expected element map"); return map; };
 const target = (...path: number[]): LiveMapDocumentRequestTarget => ({ kind: "path", path });
 const code = (run: () => unknown, expected: LiveMapDocumentMutationError["code"]): void => assert.throws(run, (error: unknown) => error instanceof LiveMapDocumentMutationError && error.code === expected);
@@ -54,4 +75,5 @@ check("attrs capability acquisition is frozen and non-minting", () => { const ma
 check("attrs vocabulary has no synonyms or structural traversal", () => { const attrs = element(`<main/>`).at([]).attrs; assert.deepEqual(Object.keys(attrs).sort(), ["clear", "drop", "dropMany", "get", "has", "keys", "must", "replace", "set", "setMany"].sort()); assert.equal("delete" in attrs, false); assert.equal("at" in attrs, false); });
 
 process.stdout.write(`# ${checks} document location attrs checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap.document-location-attrs", checks, checks, 0);

@@ -1,12 +1,33 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import type { HsonNode, NodeContent, Primitive } from "../src/core/types.ts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap.document",
+  title: "Document LiveMap",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["document", "construction", "identity"]),
+});
+
+const testEvents = create_test_event_emitter("livemap.document");
 let checks = 0;
 
 function check(name: string, fn: () => void): void {
-  fn();
+
+  testEvents.case_begin(name, name);
+  try {
+    fn();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -339,4 +360,5 @@ check("document root observation is detached from canonical ownership", () => {
 });
 
 process.stdout.write(`# ${checks} document LiveMap checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap.document", checks, checks, 0);

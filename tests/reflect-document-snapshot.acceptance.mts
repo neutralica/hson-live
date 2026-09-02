@@ -1,4 +1,5 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../src/index.ts";
 import { is_Node } from "../src/core/node-guards.ts";
@@ -12,9 +13,29 @@ import { FakeElement, FakeText, install_fake_document } from "./helpers/fake-doc
 
 install_fake_document();
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "reflect.document-snapshot",
+  title: "Document Reflect snapshot update",
+  category: "Reflect",
+  runtime: "node-synthetic-dom",
+  tags: Object.freeze(["document", "binding", "snapshot"]),
+});
+
+const testEvents = create_test_event_emitter("reflect.document-snapshot");
 let checks = 0;
 function check(name: string, fn: () => void): void {
-  fn();
+
+  testEvents.case_begin(name, name);
+  try {
+    fn();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -279,4 +300,5 @@ check("stale snapshot convergence hooks cannot dispose the fresh binding", () =>
 });
 
 process.stdout.write(`# ${checks} compatible document snapshot convergence checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("reflect.document-snapshot", checks, checks, 0);

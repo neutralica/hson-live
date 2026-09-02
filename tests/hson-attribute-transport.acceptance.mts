@@ -1,4 +1,5 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import {
   assertCanonicalSerializedClosure,
@@ -17,15 +18,34 @@ import {
 } from "../src/api/transform/utils/html-preflights/ordinary-attribute-transit.ts";
 import type { HsonNode } from "../src/core/types.ts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "hson.attribute-transport",
+  title: "Hson ordinary attribute transport",
+  category: "Transform",
+  runtime: "node",
+  tags: Object.freeze(["hson", "attributes", "transport", "canonicalization"]),
+});
+
 const Q1 = "000000001";
 const ORDINARY_PRIVATE = "_hson_attr_transit_v1_613a62";
 const METADATA_PRIVATE = "_hson_meta_attr_v2_71756964";
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 const SVG_NS = "http://www.w3.org/2000/svg";
 
+const testEvents = create_test_event_emitter("hson.attribute-transport");
 let checks = 0;
 function check(name: string, fn: () => void): void {
-  fn();
+  testEvents.case_begin(name, name);
+  try {
+    fn();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -497,4 +517,5 @@ check("reserved HTML transport lowering agrees across browser and Worker", () =>
 });
 
 process.stdout.write(`# ${checks} ordinary attribute transport checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("hson.attribute-transport", checks, checks, 0);

@@ -1,6 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 import { hson } from "../src/index.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { set_livemap_projected_quid_candidate_source_for_tests } from "../src/api/livemap/livemap.projected.identity-handle.ts";
@@ -11,8 +12,28 @@ import { acquire_document_identity, acquire_projected_identity } from "./helpers
 
 const Q1 = "000004b01";
 const Q2 = "000004b02";
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap.identity-aba-prevention",
+  title: "Same-epoch QUID ABA prevention",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["projected-value", "document", "quid", "identity-handle", "lifecycle", "provenance", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("livemap.identity-aba-prevention");
 let checks = 0;
-const check = (name: string, run: () => void) => { run(); checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); };
+const check = (name: string, run: () => void) => {
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  } checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); };
 const map = (value: unknown) => hson.liveMap.fromJson(value as never);
 const target = (...path: number[]) => Object.freeze({ kind: "path" as const, path: Object.freeze([0, ...path]) });
 const errorCode = (code: string) => (error: unknown) => typeof error === "object" && error !== null && "code" in error && error.code === code;
@@ -41,4 +62,5 @@ check("a durable document epoch may admit equal bytes without reviving an old ha
 check("fresh owner epochs remain independent even when QUID bytes are equal", () => { const a = map({ x: {} }); const b = map({ x: {} }); set_livemap_projected_quid_candidate_source_for_tests(a, () => Q1); set_livemap_projected_quid_candidate_source_for_tests(b, () => Q1); const ha = acquire_projected_identity(a, ["x"]); const hb = acquire_projected_identity(b, ["x"]); a.delete(["x"]); assert.equal(ha.active, false); assert.equal(hb.active, true); });
 
 process.stdout.write(`1..${checks}\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap.identity-aba-prevention", checks, checks, 0);

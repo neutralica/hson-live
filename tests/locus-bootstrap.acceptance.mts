@@ -1,4 +1,5 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { hson } from "hson-live";
@@ -22,12 +23,32 @@ import { create_node_locus_socket } from "hson-live/locus/node";
 import { start_node_application_host } from "hson-live/livehost/node";
 import WebSocket from "ws";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "locus.bootstrap",
+  title: "Locus HTTP Hson bootstrap",
+  category: "Locus",
+  runtime: "node-real-websocket",
+  tags: Object.freeze(["bootstrap", "hson", "recovery", "http", "websocket", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("locus.bootstrap");
 let checks = 0;
 let sequence = Promise.resolve();
 
 function check(name: string, run: () => void | Promise<void>): void {
   sequence = sequence.then(async () => {
+
+  testEvents.case_begin(name, name);
+  try {
     await run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
     checks += 1;
     process.stdout.write(`ok ${checks} - ${name}\n`);
   });
@@ -731,4 +752,5 @@ check("HTTP encoded-size failure is deterministic and no-store", async () => {
 await sequence;
 base.authority.dispose();
 process.stdout.write(`1..${checks}\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("locus.bootstrap", checks, checks, 0);

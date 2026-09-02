@@ -6,16 +6,37 @@ import {
   internal_livemap_library_ownership,
 } from "../src/api/livemap/livemap.internal.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
 const NumberSchema = Hson`<type "data" content <value "number">>`;
 const StringSchema = Hson`<type "data" content <value "string">>`;
 const Q1 = "000000001";
 const Q2 = "000000002";
 const Q3 = "000000003";
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap.aggregate-library-transitions",
+  title: "LiveMap aggregate library transitions",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["livemap", "libraries", "aggregate", "transitions"]),
+});
+
+const testEvents = create_test_event_emitter("livemap.aggregate-library-transitions");
 let checks = 0;
 
 const check = (name: string, run: () => void): void => {
-  run();
+
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 };
@@ -216,4 +237,5 @@ check("aggregate preparation clones only affected library candidates and publish
 });
 
 process.stdout.write(`1..${checks}\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap.aggregate-library-transitions", checks, checks, 0);

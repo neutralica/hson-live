@@ -1,9 +1,29 @@
 import assert from "node:assert/strict";
+import { create_test_event_emitter } from "./test-events.mjs";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "locus.public-contract",
+  title: "Locus public package contract",
+  category: "Locus",
+  runtime: "node",
+  tags: Object.freeze(["locus", "exports", "public-api", "built-package"]),
+});
+
+const testEvents = create_test_event_emitter("locus.public-contract");
 let checks = 0;
 
 async function check(name, run) {
-  await run();
+  testEvents.case_begin(name, name);
+  try {
+    await run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -153,3 +173,4 @@ await check("the root exposes Locus and no historical one-map aliases", async ()
 });
 
 process.stdout.write(`1..${checks}\n`);
+testEvents.terminal("pass");

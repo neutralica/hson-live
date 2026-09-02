@@ -1,4 +1,5 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 
 import assert from "node:assert/strict";
@@ -26,9 +27,29 @@ import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts"
 import type { JsonValue } from "../src/core/types.ts";
 import type { LocusCanonicalCommit, LocusServerSyncMessage } from "../src/types/locus.types.ts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap.exact-propagation",
+  title: "LiveMap exact carrier propagation",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["projected-value", "feed", "link", "store", "locus", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("livemap.exact-propagation");
 let checks = 0;
 function check(name: string, run: () => void): void {
-  run();
+
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -285,4 +306,5 @@ check("Locus sync and recovery use exact projected transport", () => {
 
 assert.equal(checks, 25);
 process.stdout.write(`# ${checks} exact LiveMap propagation checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap.exact-propagation", checks, checks, 0);

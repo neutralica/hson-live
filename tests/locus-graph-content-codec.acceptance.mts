@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { create_test_event_emitter } from "./test-events.mjs";
 import { hson } from "../src/hson.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { is_Node } from "../src/core/node-guards.ts";
@@ -8,9 +9,28 @@ import {
   LocusGraphContentCodecError,
 } from "../src/api/locus/locus.graph-content-codec.ts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "locus.graph-content-codec",
+  title: "Locus graph-content codec",
+  category: "Locus",
+  runtime: "node",
+  tags: Object.freeze(["locus", "codec", "serialization", "canonicalization"]),
+});
+
+const testEvents = create_test_event_emitter("locus.graph-content-codec");
 let checks = 0;
 function check(name: string, fn: () => void): void {
-  fn();
+  testEvents.case_begin(name, name);
+  try {
+    fn();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -101,3 +121,4 @@ check("duplicate persisted QUIDs and structurally invalid canonical nodes are re
 });
 
 process.stdout.write(`# ${checks} Locus graph-content codec checks passed\n`);
+testEvents.terminal("pass");

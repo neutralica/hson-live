@@ -1,6 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 import { hson } from "../src/index.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { is_persisted_quid, scan_hson_node_quids } from "../src/core/hson-node-quid.ts";
@@ -12,8 +13,28 @@ import {
 
 const Q1 = "000003a01";
 const Q2 = "000003a02";
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap.projected-identity-acquisition",
+  title: "Internal sparse data identity acquisition",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["projected-value", "quid", "identity-handle", "authority", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("livemap.projected-identity-acquisition");
 let checks = 0;
-const check = (name: string, run: () => void) => { run(); checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); };
+const check = (name: string, run: () => void) => {
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  } checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); };
 const map = (value: unknown) => hson.liveMap.fromJson(value as never);
 const code = (expected: string) => (error: unknown) => typeof error === "object" && error !== null && "code" in error && error.code === expected;
 
@@ -49,4 +70,5 @@ check("allocator exhaustion is atomic", () => { const owner = map({}); let calls
 check("passive map.at reads never acquire identity", () => { const owner = map({ a: {} }); owner.at(["a"]).snap(); assert.equal(owner.rev, 0); assert.equal(scan_hson_node_quids(owner.root()).size, 0); });
 
 process.stdout.write(`1..${checks}\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap.projected-identity-acquisition", checks, checks, 0);

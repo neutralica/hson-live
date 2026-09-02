@@ -1,4 +1,5 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import {
@@ -30,9 +31,29 @@ Reflect.set(globalThis.document, "querySelector", () => undefined);
 Reflect.set(FakeElement.prototype, "querySelector", () => undefined);
 const projectionRuntime = _create_livetree_runtime_test_handle();
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livetree.quid-runtime-closure",
+  title: "LiveTree QUID runtime closure",
+  category: "LiveTree",
+  runtime: "node-synthetic-dom",
+  tags: Object.freeze(["quid", "runtime", "lifecycle", "Reflect", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("livetree.quid-runtime-closure");
 let checks = 0;
 function check(name: string, run: () => void): void {
-  run();
+
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -213,4 +234,5 @@ check("withdrawn public identity acquisition methods remain absent", () => {
   assert.equal("ensureIdentity" in map.document, false);
 });
 
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livetree.quid-runtime-closure", checks, checks, 0);

@@ -1,6 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 import {
   element,
   mount,
@@ -20,9 +21,29 @@ import {
 import { get_el_for_node } from "../src/api/livetree/utils/node-map-helpers.ts";
 import { FakeElement } from "./helpers/fake-document.mts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "reflect.linked-no-mint-projection",
+  title: "Document Reflect linked no-mint projection",
+  category: "Reflect",
+  runtime: "node-synthetic-dom",
+  tags: Object.freeze(["document", "binding", "quid", "runtime", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("reflect.linked-no-mint-projection");
 let checks = 0;
 function check(name: string, run: () => void): void {
-  run();
+
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -239,4 +260,5 @@ check("QUID-scoped CSS and events share one authority-owned acquisition", () => 
 
 _dispose_livetree_runtime_test_handle(runtime);
 process.stdout.write(`Reflect linked no-mint projection acceptance: ${checks}/${checks}\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("reflect.linked-no-mint-projection", checks, checks, 0);

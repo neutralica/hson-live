@@ -1,4 +1,5 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import type {
@@ -8,9 +9,29 @@ import type {
 import type { HsonNode } from "../src/core/types.ts";
 import { internal_livemap_node } from "../src/api/livemap/livemap.internal.ts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap.document-install",
+  title: "Document LiveMap installation",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["document", "installation", "identity"]),
+});
+
+const testEvents = create_test_event_emitter("livemap.document-install");
 let checks = 0;
 function check(name: string, fn: () => void): void {
-  fn();
+
+  testEvents.case_begin(name, name);
+  try {
+    fn();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -290,4 +311,5 @@ check("data façades do not expose document install at runtime", () => {
 });
 
 process.stdout.write(`# ${checks} document install checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap.document-install", checks, checks, 0);

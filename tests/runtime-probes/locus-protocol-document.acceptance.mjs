@@ -1,12 +1,33 @@
 import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
+import { create_test_event_emitter } from "../test-events.mjs";
 import assert from "node:assert/strict";
 import { decode_locus_message, decode_locus_server_message, encode_locus_message, hson } from "../../src/index.ts";
 import { encode_locus_graph_content } from "../../src/api/locus/locus.graph-content-codec.ts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "locus.protocol-document",
+  title: "Locus document protocol",
+  category: "Locus",
+  runtime: "node",
+  tags: Object.freeze(["document", "protocol", "validation"]),
+});
+
+const testEvents = create_test_event_emitter("locus.protocol-document");
 let checks = 0;
 
 function check(name, fn) {
-  fn();
+
+  testEvents.case_begin(name, name);
+  try {
+    fn();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -310,4 +331,5 @@ check("recovery plans carry generation-free snapshot encoding acknowledgments", 
 });
 
 process.stdout.write(`# ${checks} Locus document protocol checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("locus.protocol-document", checks, checks, 0);

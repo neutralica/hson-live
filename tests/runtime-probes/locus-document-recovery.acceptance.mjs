@@ -1,4 +1,5 @@
 import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
+import { create_test_event_emitter } from "../test-events.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../../src/index.ts";
 import { make_locus_canonical_stream } from "../../src/api/locus/locus.history.ts";
@@ -9,10 +10,30 @@ import { ViewStateSnapshotCodecError } from "../../src/api/livemap/livemap.docum
 import { LocusDocumentSnapshotEncodeError } from "../../src/api/locus/locus.document-snapshot.ts";
 import { internal_livemap_root } from "../../src/api/livemap/livemap.internal.ts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "locus.document-recovery",
+  title: "Locus document recovery",
+  category: "Locus",
+  runtime: "node",
+  tags: Object.freeze(["document", "recovery", "snapshot"]),
+});
+
+const testEvents = create_test_event_emitter("locus.document-recovery");
 let checks = 0;
 
 async function check(name, fn) {
-  await fn();
+
+  testEvents.case_begin(name, name);
+  try {
+    await fn();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -853,4 +874,5 @@ await check("hosted document action carries action causation into commit publica
 });
 
 process.stdout.write(`# ${checks} Locus document recovery checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("locus.document-recovery", checks, checks, 0);

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { create_test_event_emitter } from "./test-events.mjs";
 import {
   hson,
   TransformError,
@@ -383,6 +384,19 @@ import type {
   SanitizerLike,
 } from "../src/index.ts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "core.root-compatibility",
+  title: "Root export compatibility",
+  category: "Core",
+  runtime: "node",
+  tags: Object.freeze(["root", "exports", "compatibility", "public-api"]),
+});
+
+const testEvents = create_test_event_emitter("core.root-compatibility");
+const compatibilityCase = "root runtime and type exports retain their compatibility surface";
+testEvents.case_begin(compatibilityCase, compatibilityCase);
+try {
+
 const compatibilityValues = {
   hson,
   TransformError,
@@ -513,3 +527,12 @@ for (const [name, value] of Object.entries(compatibilityValues)) {
 }
 
 process.stdout.write(`# ${Object.keys(compatibilityValues).length} root compatibility runtime exports passed\n`);
+  testEvents.case_end(compatibilityCase, "pass");
+  testEvents.terminal("pass");
+} catch (error) {
+  const message = error instanceof Error ? error.message : "Check failed.";
+  testEvents.diagnostic(compatibilityCase, "assertion", message.slice(0, 1_000));
+  testEvents.case_end(compatibilityCase, "fail");
+  testEvents.terminal("fail");
+  throw error;
+}

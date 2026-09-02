@@ -12,6 +12,7 @@ import {
 } from "../src/api/livemap/livemap.library.ts";
 import { prepare_livemap_root } from "../src/api/livemap/livemap.document.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
 const DataSchema = Hson`<type "data" content <value "number">>`;
 const ColorSchema = Hson`<type "data" content <value "string">>`;
@@ -20,10 +21,30 @@ const DocumentSchema = Hson`<type "document" tag "main" content <sequence []>>`;
 const Q1 = "000000001";
 const Q2 = "000000002";
 const Q3 = "000000003";
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap.n-library-engine",
+  title: "LiveMap N-library engine",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["livemap", "libraries", "aggregate", "engine"]),
+});
+
+const testEvents = create_test_event_emitter("livemap.n-library-engine");
 let checks = 0;
 
 function check(name: string, run: () => void): void {
-  run();
+
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -272,4 +293,5 @@ check("performance telemetry clones and validates only touched libraries", () =>
 });
 
 process.stdout.write(`1..${checks}\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap.n-library-engine", checks, checks, 0);

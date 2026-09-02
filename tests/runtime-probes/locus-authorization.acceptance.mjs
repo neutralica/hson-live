@@ -1,10 +1,31 @@
 import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
+import { create_test_event_emitter } from "../test-events.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../../src/index.ts";
 import { create_live_trace_collector } from "../../src/diagnostics/index.ts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "locus.authorization",
+  title: "Locus action authorization",
+  category: "Locus",
+  runtime: "node",
+  tags: Object.freeze(["actions", "authorization", "policy"]),
+});
+
+const testEvents = create_test_event_emitter("locus.authorization");
 let checks = 0;
-async function check(name, run) { await run(); process.stdout.write(`ok ${++checks} - ${name}\n`); }
+async function check(name, run) {
+  testEvents.case_begin(name, name);
+  try {
+    await run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  } process.stdout.write(`ok ${++checks} - ${name}\n`); }
 function deferred() { let resolve; const promise = new Promise((done) => { resolve = done; }); return { promise, resolve }; }
 function socket_pair() {
   const clientListeners = new Set(), serverListeners = new Set(), clientSent = [], serverSent = [];
@@ -196,4 +217,5 @@ await check("custom application handlers can use external state and emit non-can
 });
 
 process.stdout.write(`# ${checks} Locus authorization checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("locus.authorization", checks, checks, 0);

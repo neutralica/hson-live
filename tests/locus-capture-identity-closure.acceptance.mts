@@ -27,13 +27,34 @@ import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts
 import type { ClassifiedLiveMap, DocumentLiveMap } from "../src/types/livemap.types.ts";
 import { element, path, projected_element, raw_node } from "./helpers/reflect-unit6.mts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
 const Q1 = "000000v91";
 const Q2 = "000000v92";
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "locus.capture-identity-closure",
+  title: "Locus and Reflection capture identity closure",
+  category: "Locus",
+  runtime: "node-synthetic-dom",
+  tags: Object.freeze(["document", "quid", "capture", "locus", "reflection", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("locus.capture-identity-closure");
 let checks = 0;
 
 function check(name: string, run: () => void): void {
-  run();
+
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -263,4 +284,5 @@ check("capture categories do not alter LiveTree clone identity semantics", () =>
 });
 
 process.stdout.write(`# ${checks} Locus and Reflection capture-identity closure checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("locus.capture-identity-closure", checks, checks, 0);

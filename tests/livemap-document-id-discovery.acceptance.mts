@@ -9,10 +9,31 @@ import type {
   LiveMapDocumentRequestTarget,
 } from "../src/types/livemap.types.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap.document-id-discovery",
+  title: "Internal canonical document ID discovery",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["document", "path", "traversal", "discovery", "canonical-graph", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("livemap.document-id-discovery");
 let checks = 0;
 function check(name: string, run: () => void): void {
-  run();
+
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -197,4 +218,5 @@ check("internal discovery remains non-minting and unexported beneath the public 
 });
 
 process.stdout.write(`# ${checks} internal canonical ID-discovery checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap.document-id-discovery", checks, checks, 0);

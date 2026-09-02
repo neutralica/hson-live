@@ -1,4 +1,5 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import {
   hson,
@@ -12,9 +13,29 @@ import type {
 import { internal_livemap_root } from "../src/api/livemap/livemap.internal.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap.document-attrs-read",
+  title: "Document LiveMap attribute reads",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["document", "attributes", "reads"]),
+});
+
+const testEvents = create_test_event_emitter("livemap.document-attrs-read");
 let checks = 0;
 function check(name: string, fn: () => void): void {
-  fn();
+
+  testEvents.case_begin(name, name);
+  try {
+    fn();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -218,4 +239,5 @@ check("local reads through a hosted authority create no history or publication",
 });
 
 process.stdout.write(`# ${checks} Document LiveMap attrs read checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap.document-attrs-read", checks, checks, 0);

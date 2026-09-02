@@ -1,6 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 import { hson } from "../src/index.ts";
 import { collect_hson_node_quid_claims, PERSISTED_QUID_ALPHABET } from "../src/core/hson-node-quid.ts";
 import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.identity-epoch.ts";
@@ -13,8 +14,28 @@ import type { HsonNode } from "../src/core/types.ts";
 const Q1 = "000004p01";
 const Q2 = "000004p02";
 const Q3 = "000004p03";
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap.issued-quid-ledger",
+  title: "Same-epoch issued-QUID ledger invariants",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["projected-value", "document", "quid", "identity-handle", "lifecycle", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("livemap.issued-quid-ledger");
 let checks = 0;
-const check = (name: string, run: () => void) => { run(); checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); };
+const check = (name: string, run: () => void) => {
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  } checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); };
 const map = (value: unknown) => hson.liveMap.fromJson(value as never);
 const target = (...path: number[]) => Object.freeze({ kind: "path" as const, path: Object.freeze([0, ...path]) });
 const active = (owner: { root: () => HsonNode }) => collect_hson_node_quid_claims(owner.root()).length;
@@ -44,4 +65,5 @@ check("a post-capture QUID remains reserved after same-epoch restore", () => { c
 check("bounded acquire-retire cycles retain O(I) strings and no active claims", () => { const m = map({ slot: {} }); for (let i = 0; i < 25; i += 1) { const quid = `00000000${PERSISTED_QUID_ALPHABET[i]}`; set_livemap_projected_quid_candidate_source_for_tests(m, () => quid); const handle = acquire_projected_identity(m, ["slot"]); m.delete(["slot"]); assert.equal(handle.active, false); if (i !== 24) m.at([]).object.setKey("slot", {}); } assert.equal(active(m), 0); assert.equal(state(m).issued, 25); });
 
 process.stdout.write(`1..${checks}\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap.issued-quid-ledger", checks, checks, 0);

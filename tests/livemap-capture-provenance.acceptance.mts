@@ -15,13 +15,34 @@ import {
 } from "../src/api/livemap/livemap.document.view-state-codec.ts";
 import { get_livemap_staged_authority } from "../src/api/livemap/livemap.authority.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
 const Q1 = "000000v81";
 const Q2 = "000000v82";
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap.capture-provenance",
+  title: "Document capture epoch provenance",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["document", "quid", "capture", "provenance", "atomicity", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("livemap.capture-provenance");
 let checks = 0;
 
 function check(name: string, run: () => void): void {
-  run();
+
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -240,4 +261,5 @@ check("staged durable installation replaces the accepted map epoch", () => {
 });
 
 process.stdout.write(`# ${checks} LiveMap capture-provenance checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap.capture-provenance", checks, checks, 0);

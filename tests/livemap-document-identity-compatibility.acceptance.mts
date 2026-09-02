@@ -1,6 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 import { element, mount } from "./helpers/reflect-unit6.mts";
 import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
 import { internal_livemap_node } from "../src/api/livemap/livemap.internal.ts";
@@ -19,10 +20,30 @@ import { set_livemap_document_quid_candidate_source_for_tests } from "../src/api
 import { FakeElement } from "./helpers/fake-document.mts";
 
 const Q1 = "000002c01";
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap.document-identity-compatibility",
+  title: "Raw-QUID compatibility fences and reflected closure",
+  category: "LiveMap",
+  runtime: "node-synthetic-dom",
+  tags: Object.freeze(["document", "quid", "identity-handle", "compatibility", "binding", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("livemap.document-identity-compatibility");
 let checks = 0;
 
 function check(name: string, run: () => void): void {
-  run();
+
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -265,4 +286,5 @@ check("internal identity acquisition adds no public Locus or remote registration
 });
 
 process.stdout.write(`1..${checks}\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap.document-identity-compatibility", checks, checks, 0);

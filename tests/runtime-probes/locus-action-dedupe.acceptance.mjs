@@ -1,18 +1,35 @@
 import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
+import { create_test_event_emitter } from "../test-events.mjs";
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { WebSocket, WebSocketServer } from 'ws';
 import { hson } from '../../src/index.ts';
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "locus.action-dedupe",
+  title: "Locus action deduplication",
+  category: "Locus",
+  runtime: "node-real-websocket-process",
+  tags: Object.freeze(["actions", "deduplication", "identity", "websocket"]),
+});
+
+const testEvents = create_test_event_emitter("locus.action-dedupe");
 let checks = 0;
-function check(name, fn) {
-    return Promise.resolve()
-        .then(fn)
-        .then(() => {
-            checks += 1;
-            process.stdout.write(`ok ${checks} - ${name}\n`);
-        });
+async function check(name, fn) {
+  testEvents.case_begin(name, name);
+  try {
+    await fn();
+    testEvents.case_end(name, "pass");
+    checks += 1;
+    process.stdout.write(`ok ${checks} - ${name}\n`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
 }
 
 function deferred() {
@@ -830,4 +847,5 @@ await check(
 process.stdout.write(
     `Locus action dedupe acceptance checks passed (${checks}).\n`,
 );
+testEvents.terminal("pass");
 emit_hson_live_test_completion("locus.action-dedupe", checks, checks, 0);

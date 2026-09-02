@@ -1,14 +1,35 @@
 // @hson-live-external-test
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 
 import { hson } from "../src/hson.ts";
 import { TransformError } from "../src/core/errors.ts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "transform.hson-quoted-name-rejection",
+  title: "Hson quoted-name rejection and legacy syntax",
+  category: "Transform",
+  runtime: "node",
+  tags: Object.freeze(["hson", "quoted-name", "rejection", "diagnostics", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("transform.hson-quoted-name-rejection");
 let checks = 0;
 
 function check(name: string, body: () => void): void {
-  body();
+
+  testEvents.case_begin(name, name);
+  try {
+    body();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -141,4 +162,5 @@ check("quoted-name escape rejection owns the exact backslash location", () => {
 });
 
 process.stdout.write(`# ${checks} quoted-name rejection checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("transform.hson-quoted-name-rejection", checks, checks, 0);

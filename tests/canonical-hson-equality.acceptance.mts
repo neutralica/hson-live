@@ -1,4 +1,5 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { hsonTransform } from "../src/api/transform/index.ts";
 import { assert_invariants } from "../src/core/assert-invariants.ts";
@@ -8,9 +9,29 @@ import {
 } from "../src/core/canonical-hson-equal.ts";
 import type { HsonNode } from "../src/core/types.ts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "core.canonical-hson-equality",
+  title: "Canonical Hson equality",
+  category: "Core",
+  runtime: "node",
+  tags: Object.freeze(["canonical-graph", "equality"]),
+});
+
+const testEvents = create_test_event_emitter("core.canonical-hson-equality");
 let checks = 0;
 function check(name: string, fn: () => void): void {
-  fn();
+
+  testEvents.case_begin(name, name);
+  try {
+    fn();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -329,4 +350,5 @@ check("first divergence classifies strict canonical identity without graph repai
 });
 
 process.stdout.write(`# ${checks} canonical Hson equality checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("core.canonical-hson-equality", checks, checks, 0);

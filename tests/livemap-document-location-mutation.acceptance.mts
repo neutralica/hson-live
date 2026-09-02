@@ -14,10 +14,31 @@ import type {
   LiveMapDocumentRequestTarget,
 } from "../src/types/livemap.types.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap.document-location-mutation",
+  title: "Document location replace and delete convergence",
+  category: "LiveMap",
+  runtime: "node-synthetic-dom",
+  tags: Object.freeze(["document", "path", "mutation", "proxy", "reflection", "public-api", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("livemap.document-location-mutation");
 let checks = 0;
 function check(name: string, run: () => void): void {
-  run();
+
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -222,4 +243,5 @@ check("location mutation acquisition is non-minting and does not broaden capabil
 });
 
 process.stdout.write(`# ${checks} document location mutation checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap.document-location-mutation", checks, checks, 0);

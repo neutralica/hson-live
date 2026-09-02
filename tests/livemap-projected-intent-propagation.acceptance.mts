@@ -11,10 +11,31 @@ import {
   encode_projected_value_transport,
 } from "../src/api/livemap/livemap.transport.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap.projected-intent-propagation",
+  title: "Projected rename and move propagation closure",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["projected-value", "rename", "move", "feeds", "links", "stores", "locus", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("livemap.projected-intent-propagation");
 let checks = 0;
 function check(name: string, run: () => void): void {
-  run();
+
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -251,4 +272,5 @@ check("propagation never introduces QUID metadata", () => {
 });
 
 process.stdout.write(`# ${checks} projected intent propagation checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap.projected-intent-propagation", checks, checks, 0);

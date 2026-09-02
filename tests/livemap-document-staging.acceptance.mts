@@ -10,10 +10,31 @@ import type {
 } from "../src/types/livemap.types.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap.document-staging",
+  title: "Staged canonical document operations",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["document", "path", "staging", "replay", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("livemap.document-staging");
 let checks = 0;
 function check(name: string, run: () => void): void {
-  run();
+
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -254,4 +275,5 @@ check("the same staged commit replays deterministically on equal roots", () => {
 });
 
 process.stdout.write(`# ${checks} staged canonical document-operation checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap.document-staging", checks, checks, 0);

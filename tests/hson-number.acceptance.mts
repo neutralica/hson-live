@@ -1,6 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 import {
   HSON_NUMBER_NONFINITE,
   HSON_NUMBER_TYPE_REQUIRED,
@@ -12,9 +13,29 @@ import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts"
 import { read_transform_error_details } from "../src/core/errors.ts";
 import { coerce } from "../src/api/transform/utils/primitive-utils/coerce-string.utils.ts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "core.hson-number",
+  title: "Hson numeric admission",
+  category: "Core",
+  runtime: "node",
+  tags: Object.freeze(["hson", "number", "admission", "public-api", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("core.hson-number");
 let checks = 0;
 function check(name: string, fn: () => void): void {
-  fn();
+
+  testEvents.case_begin(name, name);
+  try {
+    fn();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -329,4 +350,5 @@ check("transport carries ordinary numbers and requires fresh admission proof", (
 });
 
 process.stdout.write(`# ${checks} Hson numeric admission checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("core.hson-number", checks, checks, 0);

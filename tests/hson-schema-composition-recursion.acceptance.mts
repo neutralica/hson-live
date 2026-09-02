@@ -4,9 +4,30 @@ import { Hson, type HsonSchema } from "../src/index.ts";
 import { compile_hson_schema } from "../src/internal/hson-schema/compiler.ts";
 import { generate_hson_schema_types } from "../src/internal/hson-schema/generate-types.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "hson-schema-composition-recursion",
+  title: "Hson Schema composition and recursion",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["hson-schema", "composition", "recursion"]),
+});
+
+const testEvents = create_test_event_emitter("hson-schema-composition-recursion");
 let checks = 0;
-const check = (name: string, run: () => void): void => { run(); console.log(`ok ${++checks} - ${name}`); };
+const check = (name: string, run: () => void): void => {
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  } console.log(`ok ${++checks} - ${name}`); };
 const compile = (source: string) => compile_hson_schema(source);
 
 const compositionSource = `<
@@ -206,4 +227,5 @@ check("moderately nested recursive validation and generation remain bounded", ()
   console.log(JSON.stringify({ recursionPerformance: "ok", defs: result.value.definitions.length, refs: result.value.referenceUses.length, recursiveSccs: result.value.recursiveSccCount, canonicalNodes: result.value.canonicalNodeCount, proofNodes: generated.proofNodeCount, generatedDeclarationBytes: Buffer.byteLength(generated.declarations), runtimeValidationMs: Math.round(elapsed * 100) / 100 }));
 });
 
+testEvents.terminal("pass");
 emit_hson_live_test_completion("hson-schema-composition-recursion", checks, checks, 0);

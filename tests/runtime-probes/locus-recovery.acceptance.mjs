@@ -1,10 +1,25 @@
 import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
+import { create_test_event_emitter } from "../test-events.mjs";
 import assert from "node:assert/strict";
 import { LocusRecoveryError, hson } from "../../src/index.ts";
 import { make_locus_canonical_stream } from "../../src/api/locus/locus.history.ts";
 import { make_locus_recovery_planner } from "../../src/api/locus/locus.recovery.ts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "locus.recovery",
+  title: "Locus recovery",
+  category: "Locus",
+  runtime: "node",
+  tags: Object.freeze(["locus", "recovery", "runtime-probe"]),
+});
+
+const testEvents = create_test_event_emitter("locus.recovery");
 let checks = 0;
+function run_case(caseId, title, fn) {
+  testEvents.case_begin(caseId, title);
+  try { fn(); testEvents.case_end(caseId, "pass"); checks += 1; }
+  catch (error) { const message = error instanceof Error ? error.message : "Check failed."; testEvents.diagnostic(caseId, "assertion", message.slice(0, 1_000)); testEvents.case_end(caseId, "fail"); testEvents.terminal("fail"); throw error; }
+}
 
 function request_for(host, lastAppliedRev = host.stream.headRev) {
   return {
@@ -39,7 +54,7 @@ function recovery_host(options) {
 }
 
 // Already-current recovery works even when the history ring is empty.
-{
+run_case("already-current-recovery-works-even-when-the-history-ring-is-empty", "Already-current recovery works even when the history ring is empty", () => {
   const host = recovery_host({
     state: { value: 0 },
     history: { maxCommits: 0, maxBytes: 0 },
@@ -50,12 +65,12 @@ function recovery_host(options) {
   const completion = plan.complete();
   assert.equal(completion.caughtUp.throughRev, plan.headRev);
   assert.deepEqual(completion.tail, []);
-}
-checks += 1;
+
+});
 
 // Replay is contiguous and a reentrant mutation during body publication lands
 // in the tail, after every replay commit and exactly once.
-{
+run_case("in-the-tail-after-every-replay-commit-and-exactly-once", "in the tail, after every replay commit and exactly once", () => {
   const host = recovery_host({ state: { value: 0 } });
   const baseRev = host.stream.headRev;
   host.map.set(["value"], 1);
@@ -79,13 +94,13 @@ checks += 1;
   const allRecovered = [...produced, ...completion.tail.map((commit) => commit.rev)];
   assert.deepEqual(allRecovered, [baseRev + 1, baseRev + 2, baseRev + 3]);
   assert.equal(new Set(allRecovered).size, allRecovered.length);
-}
-checks += 1;
+
+});
 
 // Deterministic barriers prove the snapshot cut: a mutation immediately before
 // the cut and one while capture is prepared belong to the snapshot; a mutation
 // immediately after the fixed cut belongs only to the tail.
-{
+run_case("immediately-after-the-fixed-cut-belongs-only-to-the-tail", "immediately after the fixed cut belongs only to the tail", () => {
   const host = recovery_host({ state: { value: 0 } });
   const plan = host.recovery.plan(
     { logicalMapId: host.stream.logicalMapId },
@@ -117,12 +132,12 @@ checks += 1;
   assert.equal(completion.caughtUp.throughRev, plan.body.rev + 1);
   assert.deepEqual(completion.tail.map((commit) => commit.rev), [plan.body.rev + 1]);
   assert.deepEqual(project_snapshot_hson(plan.body.hson), { value: 2 });
-}
-checks += 1;
+
+});
 
 // Snapshot Hson covers the complete projected JsonValue domain while remaining
 // compact canonical text inside the recovery envelope.
-{
+run_case("compact-canonical-text-inside-the-recovery-envelope", "compact canonical text inside the recovery envelope", () => {
   const state = {
     nested: {
       array: [1, true, false, null, `quote" slash\\ tab\t line\nnext`],
@@ -140,11 +155,11 @@ checks += 1;
   assert.equal("value" in plan.body, false);
   assert.deepEqual(project_snapshot_hson(plan.body.hson), state);
   plan.dispose();
-}
-checks += 1;
+
+});
 
 // Same logical map but a different incarnation resets through a snapshot.
-{
+run_case("same-logical-map-but-a-different-incarnation-resets-through-a-snapshot", "Same logical map but a different incarnation resets through a snapshot", () => {
   const host = recovery_host({ state: { value: 4 } });
   const plan = host.recovery.plan({
     logicalMapId: host.stream.logicalMapId,
@@ -155,21 +170,21 @@ checks += 1;
   assert.equal(plan.reason, "incarnation_mismatch");
   assert.equal(plan.body.incarnationId, host.stream.incarnationId);
   plan.dispose();
-}
-checks += 1;
+
+});
 
 // Same-incarnation revision-ahead is a hard classified rejection.
-{
+run_case("same-incarnation-revision-ahead-is-a-hard-classified-rejection", "Same-incarnation revision-ahead is a hard classified rejection", () => {
   const host = recovery_host({ state: { value: 0 } });
   const plan = host.recovery.plan(request_for(host, host.stream.headRev + 1));
   assert.equal(plan.outcome, "reject");
   assert.equal(plan.error.code, "REVISION_AHEAD_OF_AUTHORITY");
   assert.equal(host.recovery.debug().activeAttemptCount, 0);
-}
-checks += 1;
+
+});
 
 // Incomplete history falls back to snapshot; Patch 1 coverage remains exact.
-{
+run_case("incomplete-history-falls-back-to-snapshot-patch-1-coverage-remains-exact", "Incomplete history falls back to snapshot; Patch 1 coverage remains exact", () => {
   const host = recovery_host({
     state: { value: 0 },
     history: { maxCommits: 1, maxBytes: 1_000_000 },
@@ -185,12 +200,12 @@ checks += 1;
   assert.equal(plan.body.rev, host.stream.headRev);
   assert.deepEqual(project_snapshot_hson(plan.body.hson), { value: 2 });
   plan.dispose();
-}
-checks += 1;
+
+});
 
 // Tail overflow aborts visibly, clears queued state, emits no completion, and
 // leaves both stream and planner reusable.
-{
+run_case("leaves-both-stream-and-planner-reusable", "leaves both stream and planner reusable", () => {
   const host = recovery_host({
     state: { value: 0 },
     recovery: { maxTailCommits: 1, maxTailBytes: 1_000_000 },
@@ -214,11 +229,11 @@ checks += 1;
   const later = host.recovery.plan(request_for(host));
   assert.equal(later.outcome, "current");
   later.complete();
-}
-checks += 1;
+
+});
 
 // Explicit disposal releases the subscription and all queued state.
-{
+run_case("explicit-disposal-releases-the-subscription-and-all-queued-state", "Explicit disposal releases the subscription and all queued state", () => {
   const host = recovery_host({ state: { value: 0 } });
   const cut = host.stream.headRev;
   const plan = host.recovery.plan(request_for(host, cut), {
@@ -233,11 +248,11 @@ checks += 1;
   host.map.set(["value"], 2);
   assert.equal(plan.debug().queuedTailCommits, 0);
   expect_recovery_error(() => plan.complete(), "LOCUS_RECOVERY_DISPOSED");
-}
-checks += 1;
+
+});
 
 // The byte bound is enforced independently of the commit-count bound.
-{
+run_case("the-byte-bound-is-enforced-independently-of-the-commit-count-bound", "The byte bound is enforced independently of the commit-count bound", () => {
   const host = recovery_host({
     state: { value: 0 },
     recovery: { maxTailCommits: 100, maxTailBytes: 1 },
@@ -248,12 +263,12 @@ checks += 1;
     });
   }, "LOCUS_RECOVERY_TAIL_OVERFLOW");
   assert.equal(host.recovery.debug().activeAttemptCount, 0);
-}
-checks += 1;
+
+});
 
 // Snapshot-planning and observer failures dispose cleanly and do not poison a
 // later attempt or Patch 1 canonical history.
-{
+run_case("later-attempt-or-patch-1-canonical-history", "later attempt or Patch 1 canonical history", () => {
   const host = recovery_host({ state: { value: 0 } });
   expect_recovery_error(() => {
     host.recovery.plan(
@@ -276,8 +291,8 @@ checks += 1;
   const later = host.recovery.plan(request_for(host, baseRev));
   assert.equal(later.outcome, "replay");
   later.complete();
-}
 
-checks += 1;
+});
 process.stdout.write("Locus recovery acceptance checks passed.\n");
+testEvents.terminal("pass");
 emit_hson_live_test_completion("locus.recovery", checks, checks, 0);

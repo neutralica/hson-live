@@ -2,13 +2,33 @@ import assert from "node:assert/strict";
 
 import { discover_static_from_hson_sources } from "../src/internal/embedded-hson/discover-static-from-hson-sources.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "from-hson-static-discovery",
+  title: "D4 official fromHson binding discovery",
+  category: "Transform",
+  runtime: "node",
+  tags: Object.freeze(["hson", "authoring", "discovery", "internal"]),
+});
+
+const testEvents = create_test_event_emitter("from-hson-static-discovery");
 let checks = 0;
 const run = (text: string) => discover_static_from_hson_sources("/project/source.ts", text).sources;
 function check(name: string, text: string, count: number, boundary?: string): void {
+  testEvents.case_begin(name, name);
+  try {
   const found = run(text); assert.equal(found.length, count, name); if (boundary !== undefined) assert.equal(found[0]?.boundary, boundary);
   console.log(`ok ${++checks} - ${name}`);
-}
+
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }}
 const root = 'import { hson, hsonTransform, hsonLiveMap, hsonLiveTree } from "hson-live";\n';
 
 check("aggregate Transform shortcut", root + 'hson.fromHson("<a/>");', 1, "transform");
@@ -39,4 +59,5 @@ check("two identical occurrences remain distinct", root + 'hson.fromHson("<a/>")
 const identical = run(root + 'hson.fromHson("<a/>"); hson.fromHson("<a/>");');
 assert.notEqual(identical[0]?.literalRange.start, identical[1]?.literalRange.start);
 
+testEvents.terminal("pass");
 emit_hson_live_test_completion("from-hson-static-discovery", checks, checks, 0);

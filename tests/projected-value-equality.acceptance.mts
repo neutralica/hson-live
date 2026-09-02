@@ -1,4 +1,5 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 
 import assert from "node:assert/strict";
@@ -11,10 +12,30 @@ import {
   type OrderedProjectedValue,
 } from "../src/core/ordered-projected-value.ts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "core.projected-value-equality",
+  title: "Ordered projected-value equality",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["projected-value", "equality", "same-value", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("core.projected-value-equality");
 let checks = 0;
 
 function check(name: string, fn: () => void): void {
-  fn();
+
+  testEvents.case_begin(name, name);
+  try {
+    fn();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -157,4 +178,5 @@ check("comparison is deterministic and does not mutate carriers", () => {
 });
 
 process.stdout.write(`# ${checks} ordered projected-value equality checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("core.projected-value-equality", checks, checks, 0);

@@ -13,15 +13,36 @@ import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.id
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
 const StateSchema: HsonSchema = Hson`<type "data" content <count "number" nested <content <value "number">>>>`;
 const ColorsSchema: HsonSchema = Hson`<type "data" content <primary "string">>`;
 const PageSchema: HsonSchema = Hson`<type "document" tag "main" attrs <props <title <optional "string">>> content "empty">`;
 const ItemDocumentSchema: HsonSchema = Hson`<type "document" tag "main" content <repeat <tag "item" content "empty">>>`;
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap.public-libraries",
+  title: "LiveMap public libraries",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["livemap", "libraries", "public-api"]),
+});
+
+const testEvents = create_test_event_emitter("livemap.public-libraries");
 let checks = 0;
 
 function check(name: string, run: () => void): void {
-  run();
+
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -292,4 +313,5 @@ if (false) {
 }
 
 process.stdout.write(`1..${checks}\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap.public-libraries", checks, checks, 0);

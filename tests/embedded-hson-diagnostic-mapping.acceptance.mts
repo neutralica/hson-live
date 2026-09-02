@@ -1,6 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
 import {
   TransformError,
@@ -19,10 +20,30 @@ import {
   type EmbeddedDiagnosticMapping,
 } from "../src/internal/embedded-hson/map-transform-error.ts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "transform.embedded-hson-diagnostic-mapping",
+  title: "Embedded Hson diagnostic mapping",
+  category: "Transform",
+  runtime: "node",
+  tags: Object.freeze(["hson", "diagnostics", "embedded-source", "tooling", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("transform.embedded-hson-diagnostic-mapping");
 let checks = 0;
 
 function check(name: string, body: () => void): void {
-  body();
+
+  testEvents.case_begin(name, name);
+  try {
+    body();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -440,4 +461,5 @@ check("an invalid descriptor produces no fabricated source range", () => {
 });
 
 process.stdout.write(`# ${checks} embedded Hson diagnostic mapping checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("transform.embedded-hson-diagnostic-mapping", checks, checks, 0);

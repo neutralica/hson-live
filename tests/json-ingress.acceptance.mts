@@ -1,5 +1,6 @@
 // @hson-live-external-test
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import { parse_json } from "../src/api/transform/parsers/parse-json.ts";
@@ -26,9 +27,29 @@ import {
   type StructuralJsonOrderFixture,
 } from "./fixtures/structural-json-order-fixtures.mts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "transform.json-ingress",
+  title: "Detached JSON ingress and root metadata",
+  category: "Transform",
+  runtime: "node",
+  tags: Object.freeze(["json", "ingress", "canonical-graph", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("transform.json-ingress");
 let checks = 0;
 function check(name: string, fn: () => void): void {
-  fn();
+
+  testEvents.case_begin(name, name);
+  try {
+    fn();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -591,4 +612,5 @@ check("late duplicate rejection settles without eager whole-source position scan
 });
 
 process.stdout.write(`# ${checks} JSON ingress checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("transform.json-ingress", checks, checks, 0);

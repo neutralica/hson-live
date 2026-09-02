@@ -1206,54 +1206,54 @@ readonly HsonLiveNonLauncherTestScript[] = Object.freeze([
   }),
   Object.freeze({
     packageScript: "test:hson-array-index",
-    reason: "Command-only Transform integration journey; not an externally selectable launcher.",
+    reason: "Source-owned metadata and events replace this transitional manifest omission in Phase 2B.",
   }),
   Object.freeze({
     packageScript: "test:hson-attribute-transport",
-    reason: "Command-only Transform integration journey; not an externally selectable launcher.",
+    reason: "Source-owned metadata and events replace this transitional manifest omission in Phase 2B.",
   }),
   Object.freeze({
     packageScript: "test:locus-graph-content-codec",
-    reason: "Command-only Locus integration journey; not an externally selectable launcher.",
+    reason: "Source-owned metadata and events replace this transitional manifest omission in Phase 2B.",
   }),
   Object.freeze({
     packageScript: "test:locus-public-contract",
-    reason: "Built-package export certification; not an externally selectable semantic launcher.",
+    reason: "Source-owned metadata and events replace this transitional manifest omission in Phase 2B.",
   }),
   Object.freeze({
     packageScript: "test:hson-authoring-package",
-    reason: "Built-package tree-shaking certification using the editor bundler; not a semantic launcher.",
+    reason: "Source-owned metadata and events replace this transitional manifest omission in Phase 2B.",
   }),
   Object.freeze({
     packageScript: "test:root-compatibility",
-    reason: "Production artifact compatibility certification; not an external semantic launcher.",
+    reason: "Source-owned metadata and events replace this transitional manifest omission in Phase 2B.",
   }),
   Object.freeze({
     packageScript: "test:transform-worker",
-    reason: "Worker entrypoint integration journey; not an externally selectable launcher.",
+    reason: "Source-owned metadata and events replace this transitional manifest omission in Phase 2B.",
   }),
   Object.freeze({
     packageScript: "test:typescript-observability",
-    reason: "Repository observability inventory check; it emits no external launcher completion record.",
+    reason: "Source-owned metadata and events replace this transitional manifest omission in Phase 2B.",
   }),
   Object.freeze({
     packageScript: "test:schema-editor-proof",
-    reason: "Editor diagnostic proof command; it emits no external launcher completion record.",
+    reason: "Source-owned metadata and events replace this transitional manifest omission in Phase 2B.",
   }),
   Object.freeze({
     packageScript: "test:public-entrypoint-runtime",
-    reason: "Fresh-process built-package entrypoint check; it emits no external launcher completion record.",
+    reason: "Source-owned metadata and events replace this transitional manifest omission in Phase 2B.",
   }),
   Object.freeze({
     packageScript: "test:production-dependency-boundary",
-    reason: "Production dependency boundary check; it emits no external launcher completion record.",
+    reason: "Source-owned metadata and events replace this transitional manifest omission in Phase 2B.",
   }),
   Object.freeze({
     packageScript: "test:hson-schema-document-consumer",
-    reason: "Build-orchestrating Hson Schema document consumer check; it emits no external launcher completion record.",
+    reason: "Source-owned metadata and events replace this transitional manifest omission in Phase 2B.",
   }),
   Object.freeze({
     packageScript: "test:hson-schema-consumer",
-    reason: "Build-orchestrating Hson Schema consumer check; it emits no external launcher completion record.",
+    reason: "Source-owned metadata and events replace this transitional manifest omission in Phase 2B.",
   }),
 ]);

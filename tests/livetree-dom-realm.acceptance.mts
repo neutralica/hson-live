@@ -1,12 +1,33 @@
 // @hson-live-external-test
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import { link_node_to_el } from "../src/api/livetree/utils/node-map-helpers.ts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livetree.dom-realm",
+  title: "LiveTree mapped DOM realm boundaries",
+  category: "LiveTree",
+  runtime: "node",
+  tags: Object.freeze(["dom-projection", "runtime", "realm", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("livetree.dom-realm");
 let checks = 0;
 function check(name: string, fn: () => void): void {
-  fn();
+
+  testEvents.case_begin(name, name);
+  try {
+    fn();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -238,4 +259,5 @@ check("mounted SVG creation resolves DOMParser from the mapped realm", () => {
 });
 
 process.stdout.write(`# ${checks} LiveTree DOM realm checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livetree.dom-realm", checks, checks, 0);

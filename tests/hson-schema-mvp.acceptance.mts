@@ -3,9 +3,30 @@ import { Hson, hsonTransform, type HsonSchema } from "../src/index.ts";
 import { compile_hson_schema, HSON_SCHEMA_MVP_BOOTSTRAP } from "../src/internal/hson-schema/compiler.ts";
 import { decode_canonical_schema_graph_hson, encode_canonical_schema_graph_hson } from "../src/internal/canonical-schema/encode-hson.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "hson-schema-mvp",
+  title: "Hson Schema MVP",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["hson-schema", "compiler", "canonical-schema"]),
+});
+
+const testEvents = create_test_event_emitter("hson-schema-mvp");
 let checks = 0;
-const check = (name: string, run: () => void): void => { run(); console.log(`ok ${++checks} - ${name}`); };
+const check = (name: string, run: () => void): void => {
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  } console.log(`ok ${++checks} - ${name}`); };
 const compile = (body: string) => compile_hson_schema(`<type "data" content <${body}>>`);
 
 check("valid primitive and closed structure lower deterministically", () => {
@@ -173,4 +194,5 @@ check("runtime validation returns unchanged canonical identity", () => {
   assert.equal(Hson.certify(schema, dynamic), dynamic);
 });
 
+testEvents.terminal("pass");
 emit_hson_live_test_completion("hson-schema-mvp", checks, checks, 0);

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { create_test_event_emitter } from "./test-events.mjs";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -14,6 +15,19 @@ import {
   type ProjectOwnership,
   type ProjectSpec,
 } from "../scripts/typescript-observability.mts";
+
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "tooling.typescript-observability",
+  title: "TypeScript observability",
+  category: "Tooling",
+  runtime: "node",
+  tags: Object.freeze(["typescript", "tooling", "coverage", "editor"]),
+});
+
+const testEvents = create_test_event_emitter("tooling.typescript-observability");
+const observabilityCase = "TypeScript sources remain covered by explicit compiler projects";
+testEvents.case_begin(observabilityCase, observabilityCase);
+try {
 
 const primaryRoot: ProjectOwnership = { project: "tsconfig.json", role: "primary", inclusion: "root" };
 const owned = new Map<string, readonly ProjectOwnership[]>([["owned.ts", [primaryRoot]]]);
@@ -93,3 +107,12 @@ try {
 }
 
 console.log(JSON.stringify({ typescriptObservabilityAcceptance: "ok", checks: 20 }));
+  testEvents.case_end(observabilityCase, "pass");
+  testEvents.terminal("pass");
+} catch (error) {
+  const message = error instanceof Error ? error.message : "Check failed.";
+  testEvents.diagnostic(observabilityCase, "assertion", message.slice(0, 1_000));
+  testEvents.case_end(observabilityCase, "fail");
+  testEvents.terminal("fail");
+  throw error;
+}

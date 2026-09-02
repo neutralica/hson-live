@@ -19,16 +19,37 @@ import {
 import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.identity-epoch.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
 const DataSchema: HsonSchema = Hson`<type "data" content <negativeZero "number" ordered <content <a "number" b "number">> items <array "number"> count <number <int true min 0>>>>`;
 const FlagSchema: HsonSchema = Hson`<type "data" content <enabled "boolean">>`;
 const DocumentSchema: HsonSchema = Hson`<type "document" tag "main" content <repeat <tag "item" content "empty">>>`;
 const Q_RETIRED = "000008001";
 const Q_ACTIVE = "000008002";
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap.hosted-multi-library-h1",
+  title: "Hosted multi-library H1",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["livemap", "libraries", "hosted", "h1"]),
+});
+
+const testEvents = create_test_event_emitter("livemap.hosted-multi-library-h1");
 let checks = 0;
 
 function check(name: string, run: () => void): void {
-  run();
+
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -338,4 +359,5 @@ check("focused capture, codec, ledger hydration, and replay telemetry stays boun
 });
 
 process.stdout.write(`1..${checks}\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap.hosted-multi-library-h1", checks, checks, 0);

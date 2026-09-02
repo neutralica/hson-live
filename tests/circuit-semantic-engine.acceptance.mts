@@ -1,4 +1,5 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { hsonTransform } from "../src/api/transform/index.ts";
 import {
@@ -15,10 +16,30 @@ import { universalCircuitBoundary } from "./circuit-test-helpers.mts";
 
 const LAUNCHER = "diagnostics.circuit-semantic-engine";
 const JSON_SOURCE = '{"a":1,"b":[true,"x"]}';
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "diagnostics.circuit-semantic-engine",
+  title: "Circuit semantic engine",
+  category: "Transform",
+  runtime: "node",
+  tags: Object.freeze(["diagnostics", "circuit", "canonical-graph", "strict-comparison"]),
+});
+
+const testEvents = create_test_event_emitter("diagnostics.circuit-semantic-engine");
 let checks = 0;
 
 function check(name: string, run: () => void): void {
-  run();
+
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -244,4 +265,5 @@ check("strict closure distinguishes element, object, and multi-node document gra
 
 assert.equal(checks, 25);
 process.stdout.write(`# ${checks} circuit semantic engine checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion(LAUNCHER, checks, checks, 0);

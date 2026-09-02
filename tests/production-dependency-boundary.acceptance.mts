@@ -1,6 +1,17 @@
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { relative, resolve } from "node:path";
+import { create_test_event_emitter } from "./test-events.mjs";
+
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "core.production-dependency-boundary",
+  title: "Production dependency boundary",
+  category: "Core",
+  runtime: "node",
+  tags: Object.freeze(["dependencies", "production", "removals", "public-api"]),
+});
+
+const testEvents = create_test_event_emitter("core.production-dependency-boundary");
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
 const sourceRoot = resolve(repositoryRoot, "src");
@@ -37,14 +48,66 @@ for (const file of files) {
   }
 }
 
-assert.deepEqual(
-  violations,
-  [],
-  `production runtime modules must not import test-only modules:\n${violations.join("\n")}`,
-);
+function check(name: string, run: () => void): void {
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
+}
+
+check("production runtime modules do not import test-only modules", () => {
+  assert.deepEqual(
+    violations,
+    [],
+    `production runtime modules must not import test-only modules:\n${violations.join("\n")}`,
+  );
+});
+
+check("removed LiveTree construction engine and graft_body stay absent", () => {
+  const productionSource = files.map((path) => readFileSync(path, "utf8")).join("\n");
+  assert.equal(
+    productionSource.includes("construct_tree") || productionSource.includes("construct-tree"),
+    false,
+    "the obsolete LiveTree construction engine must not remain reachable in source",
+  );
+  assert.equal(
+    productionSource.includes("graft_body"),
+    false,
+    "the obsolete graft_body compatibility alias must not remain reachable",
+  );
+  assert.equal(existsSync(resolve(repositoryRoot, "dist", "api", "livetree", "creation", "construct-tree.js")), false);
+  assert.equal(existsSync(resolve(repositoryRoot, "dist", "api", "livetree", "creation", "construct-tree.d.ts")), false);
+});
+
+check("removed constructor declarations stay absent", () => {
+  const declarations = readFileSync(
+    resolve(repositoryRoot, "dist", "types", "constructor.types.d.ts"),
+    "utf8",
+  );
+  for (const symbol of [
+    "TreeConstructor_Source",
+    "DomQuerySourceConstructor",
+    "DomQueryLiveTreeConstructor",
+    "LiveTreeConstructor_3",
+  ]) {
+    assert.equal(
+      declarations.includes(symbol),
+      false,
+      `built declarations must not retain obsolete constructor symbol ${symbol}`,
+    );
+  }
+});
 
 console.log(JSON.stringify({
   productionDependencyBoundary: "ok",
   filesScanned: files.length,
   excludedDiagnosticAndTestRoots: [...excludedSourceDirectories].sort(),
 }));
+testEvents.terminal("pass");

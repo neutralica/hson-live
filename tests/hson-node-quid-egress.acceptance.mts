@@ -1,4 +1,5 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
@@ -19,9 +20,29 @@ const Q3 = "000000103";
 const Q4 = "000000104";
 const Q5 = "000000105";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "transform.hson-node-quid-egress",
+  title: "Canonical HsonNode QUID egress",
+  category: "Transform",
+  runtime: "node-synthetic-dom",
+  tags: Object.freeze(["quid", "egress", "serialization", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("transform.hson-node-quid-egress");
 let checks = 0;
 function check(name: string, fn: () => void): void {
-  fn();
+
+  testEvents.case_begin(name, name);
+  try {
+    fn();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -301,4 +322,5 @@ check("JSON projection validates identity after canonical empty-element normaliz
 });
 
 console.log(`hson-node QUID egress acceptance: ${checks} checks passed`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("transform.hson-node-quid-egress", checks, checks, 0);

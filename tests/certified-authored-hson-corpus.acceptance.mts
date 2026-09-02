@@ -1,6 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 import {
   corpusCounts,
   materializedCorpusCases,
@@ -14,13 +15,33 @@ import { authoredCompletenessBasisCases } from "./certified-corpus/authored-comp
 import { runCorpusIntegrityChecks } from "./certified-corpus/corpus-integrity.mts";
 
 const LAUNCHER = "transform.certified-authored-hson-corpus";
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "transform.certified-authored-hson-corpus",
+  title: "Certified authored-Hson corpus",
+  category: "Transform",
+  runtime: "node",
+  tags: Object.freeze(["hson", "certified-corpus", "transport", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("transform.certified-authored-hson-corpus");
 let checks = 0;
 let acceptedAssertions = 0;
 let rejectedAssertions = 0;
 let integrityAssertions = 0;
 
 async function check(name: string, run: () => void | Promise<void>): Promise<void> {
-  await run();
+
+  testEvents.case_begin(name, name);
+  try {
+    await run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -90,4 +111,5 @@ await check("integrity rules and the committed review artifact are deterministic
 process.stdout.write(`# ${checks} certified authored-Hson corpus checks passed\n`);
 process.stdout.write(`# descriptors ${JSON.stringify(corpusCounts)}\n`);
 process.stdout.write(`# observed assertions ${JSON.stringify({ acceptedAssertions, rejectedAssertions, integrityAssertions, totalAssertions: acceptedAssertions + rejectedAssertions + integrityAssertions })}\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion(LAUNCHER, checks, checks, 0);

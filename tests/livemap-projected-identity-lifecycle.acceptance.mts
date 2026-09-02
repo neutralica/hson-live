@@ -1,11 +1,32 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 import { hson } from "../src/index.ts";
 import { acquire_projected_identity } from "./helpers/livemap-identity-internal.mts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap.projected-identity-lifecycle",
+  title: "Active-epoch data identity handle lifecycle",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["projected-value", "quid", "identity-handle", "lifecycle", "provenance", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("livemap.projected-identity-lifecycle");
 let checks = 0;
-const check = (name: string, run: () => void) => { run(); checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); };
+const check = (name: string, run: () => void) => {
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  } checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); };
 const map = (value: unknown) => hson.liveMap.fromJson(value as never);
 
 check("nested scalar mutation preserves container identity", () => { const m = map({ a: { x: 1 } }); const h = acquire_projected_identity(m, ["a"]); m.set(["a", "x"], 2); assert.deepEqual(h.snap(), { x: 2 }); });
@@ -33,4 +54,5 @@ check("exact same-epoch restore preserves continuity", () => { const m = map({ a
 check("copied same-epoch capture cannot preserve continuity", () => { const m = map({ a: {} }); acquire_projected_identity(m, ["a"]); const c = m.capture({ identity: "same-epoch" }); assert.throws(() => m.restore({ ...c }, { identity: "same-epoch" })); });
 
 process.stdout.write(`1..${checks}\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap.projected-identity-lifecycle", checks, checks, 0);

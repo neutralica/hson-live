@@ -1,9 +1,30 @@
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "hson-schema-livemap-convergence",
+  title: "Hson Schema LiveMap convergence",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["hson-schema", "livemap", "convergence"]),
+});
+
+const testEvents = create_test_event_emitter("hson-schema-livemap-convergence");
 let checks = 0;
-const check = (name: string, run: () => void): void => { run(); console.log(`ok ${++checks} - ${name}`); };
+const check = (name: string, run: () => void): void => {
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  } console.log(`ok ${++checks} - ${name}`); };
 
 const PersonSchema: HsonSchema = Hson`<type "data" content <name "string" age "number">>`;
 const OtherSchema: HsonSchema = Hson`<type "data" content <name "string">>`;
@@ -55,4 +76,5 @@ check("duplicate LiveMap namespace certification is retired", () => {
   assert.equal("schema" in hsonLiveMap, false);
 });
 
+testEvents.terminal("pass");
 emit_hson_live_test_completion("hson-schema-livemap-convergence", checks, checks, 0);

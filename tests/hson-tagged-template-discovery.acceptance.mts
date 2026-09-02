@@ -1,6 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
 import { TransformError } from "../src/core/errors.ts";
 import { hson } from "../src/hson.ts";
@@ -15,6 +16,15 @@ import {
   type HsonTaggedTemplateDiscoveryProposition,
 } from "../src/_tests/hson-tagged-template-discovery-propositions.ts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "transform.hson-tagged-template-discovery",
+  title: "Hson tagged-template discovery",
+  category: "Transform",
+  runtime: "node",
+  tags: Object.freeze(["hson", "discovery", "tagged-template", "tooling", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("transform.hson-tagged-template-discovery");
 let checks = 0;
 
 function check(name: HsonTaggedTemplateDiscoveryProposition, body: () => void): void {
@@ -23,7 +33,18 @@ function check(name: HsonTaggedTemplateDiscoveryProposition, body: () => void): 
     HSON_TAGGED_TEMPLATE_DISCOVERY_PROPOSITIONS[checks],
     "tagged-template discovery propositions must execute once in canonical inventory order",
   );
-  body();
+
+  testEvents.case_begin(name, name);
+  try {
+    body();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -273,4 +294,5 @@ assert.equal(
   "every tagged-template discovery proposition must execute exactly once",
 );
 
+testEvents.terminal("pass");
 emit_hson_live_test_completion("transform.hson-tagged-template-discovery", checks, checks, 0);

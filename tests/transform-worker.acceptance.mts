@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { create_test_event_emitter } from "./test-events.mjs";
 import { hsonTransform } from "../src/api/transform/index.ts";
 import { assertCanonicalClosure } from "../src/_tests/transform-oracle.ts";
 import { hsonCalc } from "../src/number.ts";
@@ -13,11 +14,30 @@ import {
 import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "transform.worker",
+  title: "Worker-safe Transform facade",
+  category: "Transform",
+  runtime: "node",
+  tags: Object.freeze(["transform", "worker", "public-api", "webcrypto"]),
+});
+
 const Q1 = "000000001";
 
+const testEvents = create_test_event_emitter("transform.worker");
 let checks = 0;
 function check(name: string, fn: () => void): void {
-  fn();
+  testEvents.case_begin(name, name);
+  try {
+    fn();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -289,10 +309,22 @@ check("Worker-safe authored diagnostics retain portable codes and related positi
 });
 
 const workerShaRepresentation = hsonTransform.fromHson(`<worker @000000001 "ready"/>`).toHson();
-assert.equal(
-  await workerShaRepresentation.sha256(),
-  "47eebceca8428b19a36dc1ae429cddb1da2de7eda05ddb3bbfad81bd8a1659c3",
-);
+const shaCase = "Worker-safe Transform hashes exact Hson output with WebCrypto";
+testEvents.case_begin(shaCase, shaCase);
+try {
+  assert.equal(
+    await workerShaRepresentation.sha256(),
+    "47eebceca8428b19a36dc1ae429cddb1da2de7eda05ddb3bbfad81bd8a1659c3",
+  );
+  testEvents.case_end(shaCase, "pass");
+} catch (error) {
+  const message = error instanceof Error ? error.message : "Check failed.";
+  testEvents.diagnostic(shaCase, "assertion", message.slice(0, 1_000));
+  testEvents.case_end(shaCase, "fail");
+  testEvents.terminal("fail");
+  throw error;
+}
 checks += 1;
-process.stdout.write(`ok ${checks} - Worker-safe Transform hashes exact Hson output with WebCrypto\n`);
+process.stdout.write(`ok ${checks} - ${shaCase}\n`);
 process.stdout.write(`# ${checks} DOM-free transform facade checks passed\n`);
+testEvents.terminal("pass");

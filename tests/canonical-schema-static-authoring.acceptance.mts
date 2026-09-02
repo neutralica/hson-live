@@ -1,9 +1,30 @@
 import assert from "node:assert/strict";
 import ts from "typescript";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "canonical-schema-static-authoring",
+  title: "Canonical Schema static authoring",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["hson-schema", "canonical-schema", "authoring"]),
+});
+
+const testEvents = create_test_event_emitter("canonical-schema-static-authoring");
 let checks = 0;
-const check = (name: string, run: () => void): void => { run(); console.log(`ok ${++checks} - ${name}`); };
+const check = (name: string, run: () => void): void => {
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  } console.log(`ok ${++checks} - ${name}`); };
 const sourceText = `
 const Name = schema.length(schema.string, { minimum: 1 });
 const User = schema.object.exact({ name: Name, role: schema.pick("admin", "user") });
@@ -33,4 +54,5 @@ check("direct declarations contain no spreads", () => assert.equal(spread, 0));
 check("object and element structure remain syntactically distinct fixed constructors", () => assert.match(sourceText, /schema\.object\.exact[\s\S]*schema\.main/));
 check("symbolic recursion is statically named data", () => assert.match(sourceText, /schema\.reference\("Tree"\)[\s\S]*schema\.declarations/));
 
+testEvents.terminal("pass");
 emit_hson_live_test_completion("canonical-schema-static-authoring", checks, checks, 0);

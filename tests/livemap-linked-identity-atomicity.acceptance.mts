@@ -1,6 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 import { element, mount, path, projected_element, raw_node } from "./helpers/reflect-unit6.mts";
 import {
   _create_livetree_for_runtime_test,
@@ -34,12 +35,32 @@ Reflect.set(globalThis.document, "documentElement", syntheticHead);
 Reflect.set(globalThis.document, "querySelector", () => undefined);
 Reflect.set(FakeElement.prototype, "querySelector", () => undefined);
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap.linked-identity-atomicity",
+  title: "Linked identity preflight and atomicity",
+  category: "LiveMap",
+  runtime: "node-synthetic-dom",
+  tags: Object.freeze(["document", "binding", "quid", "runtime", "atomicity", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("livemap.linked-identity-atomicity");
 let checks = 0;
 let runtime: ReturnType<typeof _create_livetree_runtime_test_handle>;
 function check(name: string, run: () => void): void {
   runtime = _create_livetree_runtime_test_handle();
   try {
+
+  testEvents.case_begin(name, name);
+  try {
     run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   } finally {
     _dispose_livetree_runtime_test_handle(runtime);
   }
@@ -275,4 +296,5 @@ check("different existing QUID is classified explicitly by the reducer", () => {
 });
 
 process.stdout.write(`LiveMap linked identity atomicity acceptance: ${checks}/${checks}\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap.linked-identity-atomicity", checks, checks, 0);

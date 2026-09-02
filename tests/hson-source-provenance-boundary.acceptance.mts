@@ -4,9 +4,30 @@ import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/de
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { parse_hson_with_provenance } from "../src/internal/hson-source-provenance/parse-hson-with-provenance.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "transform.hson-source-provenance-boundary",
+  title: "Hson source provenance boundary and canonicalization",
+  category: "Transform",
+  runtime: "node",
+  tags: Object.freeze(["hson", "parsing", "source-provenance", "root-boundary", "internal"]),
+});
+
+const testEvents = create_test_event_emitter("transform.hson-source-provenance-boundary");
 let checks = 0;
-function check(name: string, body: () => void): void { body(); checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); }
+function check(name: string, body: () => void): void {
+  testEvents.case_begin(name, name);
+  try {
+    body();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  } checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); }
 const valueRange = (source: string, path: readonly number[]) =>
   parse_hson_with_provenance(source).provenance.range({ kind: "node", path, role: "value" });
 
@@ -58,4 +79,5 @@ check("repeated parse preserves value and range determinism", () => {
 });
 
 process.stdout.write(`# ${checks} Hson provenance-boundary checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("transform.hson-source-provenance-boundary", checks, checks, 0);

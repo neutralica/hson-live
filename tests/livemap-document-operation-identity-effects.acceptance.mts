@@ -11,10 +11,31 @@ import {
 import { prepare_document_graph_operation } from "../src/api/livemap/livemap.document.mutation.ts";
 import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap.document-operation-identity-effects",
+  title: "Document operation-derived identity effects",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["document", "quid", "path", "identity-effects", "reconciliation", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("livemap.document-operation-identity-effects");
 let checks = 0;
 function check(name: string, run: () => void): void {
-  run();
+
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -220,4 +241,5 @@ check("ordinary attributes cannot write QUID metadata", () => {
 });
 
 process.stdout.write(`1..${checks}\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap.document-operation-identity-effects", checks, checks, 0);

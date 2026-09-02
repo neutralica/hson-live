@@ -3,7 +3,17 @@ import assert from "node:assert/strict";
 import { discover_static_from_hson_sources } from "../src/internal/embedded-hson/discover-static-from-hson-sources.ts";
 import { map_static_hson_point, map_static_hson_range } from "../src/internal/embedded-hson/static-hson-source.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "static-hson-js-literal-mapping",
+  title: "D4 JavaScript literal cooking and source mapping",
+  category: "Transform",
+  runtime: "node",
+  tags: Object.freeze(["hson", "authoring", "diagnostics", "internal"]),
+});
+
+const testEvents = create_test_event_emitter("static-hson-js-literal-mapping");
 let checks = 0;
 const prefix = 'import { hsonTransform as t } from "hson-live/transform";\n';
 function source(literal: string) {
@@ -12,7 +22,18 @@ function source(literal: string) {
   assert.ok(found, literal);
   return found;
 }
-function check(name: string, body: () => void): void { body(); console.log(`ok ${++checks} - ${name}`); }
+function check(name: string, body: () => void): void {
+  testEvents.case_begin(name, name);
+  try {
+    body();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  } console.log(`ok ${++checks} - ${name}`); }
 function pointSpelling(literal: string, index: number): string {
   const found = source(literal);
   const mapped = map_static_hson_point(found, index);
@@ -46,4 +67,5 @@ check("Hson escape nested inside JavaScript escaping remains exact", () => asser
 check("multi-character runtime range covers complete endpoint escapes", () => { const found = source('"\\x3cfoo\\x2f>"'); const mapped = map_static_hson_range(found, { start: 0, end: found.runtimeText.length })!; assert.equal(found.hostText.slice(mapped.start, mapped.end), "\\x3cfoo\\x2f>"); });
 check("invalid JavaScript literal syntax is rejected by TypeScript", () => { const text = `${prefix}t.fromHson("\\xZ1");`; assert.equal(discover_static_from_hson_sources("/project/source.ts", text).sources.length, 0); });
 
+testEvents.terminal("pass");
 emit_hson_live_test_completion("static-hson-js-literal-mapping", checks, checks, 0);

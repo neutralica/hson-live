@@ -4,9 +4,30 @@ import { evaluate_canonical_projected_schema } from "../src/internal/canonical-s
 import { CANONICAL_SCHEMA_FORMAT, CANONICAL_SCHEMA_VERSION, type CanonicalRefinementRule } from "../src/internal/canonical-schema/graph.ts";
 import { verify_canonical_schema_graph } from "../src/internal/canonical-schema/verify.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "canonical-schema-refinement",
+  title: "Canonical Schema refinement",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["hson-schema", "canonical-schema", "refinement"]),
+});
+
+const testEvents = create_test_event_emitter("canonical-schema-refinement");
 let checks = 0;
-const check = (name: string, run: () => void): void => { run(); console.log(`ok ${++checks} - ${name}`); };
+const check = (name: string, run: () => void): void => {
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  } console.log(`ok ${++checks} - ${name}`); };
 const evaluate = (base: string, rule: CanonicalRefinementRule, value: unknown) => {
   const verified = verify_canonical_schema_graph({ format: CANONICAL_SCHEMA_FORMAT, version: CANONICAL_SCHEMA_VERSION, capabilities: { projectedRoot: 0 }, nodes: [{ kind: "projected-refinement", base: 1, rule }, { kind: base }] });
   assert.equal(verified.ok, true); if (!verified.ok) throw new Error("invalid fixture graph");
@@ -31,4 +52,5 @@ check("semantic diagnostic metadata changes expected evidence", () => {
   assert.equal(evaluate_canonical_projected_schema(verified.graph, admit_projected_value("bad")).issues[0]?.expected, "finite count");
 });
 
+testEvents.terminal("pass");
 emit_hson_live_test_completion("canonical-schema-refinement", checks, checks, 0);

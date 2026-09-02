@@ -1,4 +1,5 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -22,12 +23,32 @@ import {
 } from "hson-live/livehost/node";
 import WebSocket from "ws";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livehost.node-hosting",
+  title: "LiveHost Node hosting",
+  category: "LiveHost",
+  runtime: "node-real-websocket",
+  tags: Object.freeze(["transport", "websocket", "node-host", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("livehost.node-hosting");
 let checks = 0;
 let sequence = Promise.resolve();
 
 function check(name: string, run: () => void | Promise<void>): void {
   sequence = sequence.then(async () => {
+
+  testEvents.case_begin(name, name);
+  try {
     await run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
     checks += 1;
     process.stdout.write(`ok ${checks} - ${name}\n`);
   });
@@ -784,4 +805,5 @@ check("generic LiveHost layer has no Node or ws dependency", async () => {
 
 await sequence;
 process.stdout.write(`1..${checks}\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livehost.node-hosting", checks, checks, 0);

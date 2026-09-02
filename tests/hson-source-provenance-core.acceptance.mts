@@ -2,10 +2,31 @@ import assert from "node:assert/strict";
 import { parse_hson_with_provenance } from "../src/internal/hson-source-provenance/parse-hson-with-provenance.ts";
 import type { HsonSourceLocation } from "../src/internal/hson-source-provenance/hson-source-provenance.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "transform.hson-source-provenance-core",
+  title: "Hson source provenance core",
+  category: "Transform",
+  runtime: "node",
+  tags: Object.freeze(["hson", "parsing", "source-provenance", "internal"]),
+});
+
+const testEvents = create_test_event_emitter("transform.hson-source-provenance-core");
 let checks = 0;
 function check(name: string, body: () => void): void {
-  body(); checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`);
+
+  testEvents.case_begin(name, name);
+  try {
+    body();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  } checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 const node = (path: readonly number[], role: "coverage" | "name" | "value" | "open" | "close"): HsonSourceLocation =>
   ({ kind: "node", path, role });
@@ -81,4 +102,5 @@ check("same source produces structurally identical query results", () => {
 });
 
 process.stdout.write(`# ${checks} Hson provenance-core checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("transform.hson-source-provenance-core", checks, checks, 0);

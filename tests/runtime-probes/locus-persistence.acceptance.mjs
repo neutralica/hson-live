@@ -1,4 +1,5 @@
 import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
+import { create_test_event_emitter } from "../test-events.mjs";
 import assert from "node:assert/strict";
 import {
   create_persistent_locus,
@@ -11,9 +12,29 @@ import { create_persistent_locus_internal } from "../../src/api/locus/locus.pers
 import { LocusAuthorityError } from "../../src/api/locus/locus.authority.ts";
 import { get_livemap_staged_authority } from "../../src/api/livemap/livemap.authority.ts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "locus.persistence",
+  title: "Persistent Locus",
+  category: "Locus",
+  runtime: "node",
+  tags: Object.freeze(["persistence", "authority", "recovery"]),
+});
+
+const testEvents = create_test_event_emitter("locus.persistence");
 let checks = 0;
 async function check(name, fn) {
-  await fn();
+
+  testEvents.case_begin(name, name);
+  try {
+    await fn();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -551,4 +572,5 @@ await check("corrupt persisted envelopes and tails reject without partial regist
 });
 
 process.stdout.write(`# ${checks} persistent Locus checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("locus.persistence", checks, checks, 0);

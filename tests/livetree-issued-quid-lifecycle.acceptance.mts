@@ -1,4 +1,5 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import {
@@ -17,9 +18,29 @@ const Q1 = "000000t01";
 const Q2 = "000000t02";
 const Q3 = "000000t03";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livetree.issued-quid-lifecycle",
+  title: "LiveTree runtime issued-QUID lifecycle",
+  category: "LiveTree",
+  runtime: "node-synthetic-dom",
+  tags: Object.freeze(["quid", "runtime", "lifecycle", "identity", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("livetree.issued-quid-lifecycle");
 let checks = 0;
 function check(name: string, run: () => void): void {
-  run();
+
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -195,4 +216,5 @@ check("clone mints a new issued lineage", () => {
   assert.equal(_livetree_runtime_test_issued_count(runtime), 2);
 });
 
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livetree.issued-quid-lifecycle", checks, checks, 0);

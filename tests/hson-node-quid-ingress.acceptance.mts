@@ -1,4 +1,5 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { parseDocument } from "htmlparser2";
@@ -40,9 +41,29 @@ const Q10 = "00000000a";
 const Q11 = "00000000b";
 const QUID_ATTR = "hson:quid";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "transform.hson-node-quid-ingress",
+  title: "Canonical HsonNode QUID ingress",
+  category: "Transform",
+  runtime: "node-synthetic-dom",
+  tags: Object.freeze(["quid", "ingress", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("transform.hson-node-quid-ingress");
 let checks = 0;
 function check(name: string, fn: () => void): void {
-  fn();
+
+  testEvents.case_begin(name, name);
+  try {
+    fn();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -1122,4 +1143,5 @@ check("failed document capture installation is atomic", () => {
 });
 
 process.stdout.write(`# ${checks} HsonNode QUID ingress checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("transform.hson-node-quid-ingress", checks, checks, 0);

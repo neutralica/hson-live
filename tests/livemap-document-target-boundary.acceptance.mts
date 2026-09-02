@@ -13,13 +13,34 @@ import type {
   LiveMapGraphOp,
 } from "../src/types/livemap.types.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
 const Q1 = "000000601";
 const Q2 = "000000602";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap.document-target-boundary",
+  title: "Document request and commit target boundary",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["document", "path", "quid", "witness", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("livemap.document-target-boundary");
 let checks = 0;
 function check(name: string, run: () => void): void {
-  run();
+
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -256,4 +277,5 @@ check("canonical target JSON is deterministic and path-first", () => {
 });
 
 process.stdout.write(`# ${checks} document request/commit target boundary checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap.document-target-boundary", checks, checks, 0);

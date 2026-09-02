@@ -1,13 +1,34 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { hson, LiveMapDocumentMutationError } from "../src/index.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import type { HsonNode, Primitive } from "../src/core/types.ts";
 import type { DocumentLiveMapCapture, DocumentLiveMap, LiveMapDocumentRequestTarget } from "../src/types/livemap.types.ts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap.document-mutation",
+  title: "Document LiveMap mutation",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["document", "mutation", "attributes", "content"]),
+});
+
+const testEvents = create_test_event_emitter("livemap.document-mutation");
 let checks = 0;
 function check(name: string, fn: () => void): void {
-  fn();
+
+  testEvents.case_begin(name, name);
+  try {
+    fn();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -596,4 +617,5 @@ check("sequential changes advance once while failures and no-ops consume no revi
 });
 
 process.stdout.write(`# ${checks} LiveMap document mutation checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap.document-mutation", checks, checks, 0);

@@ -1,6 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 import {
   element,
   mount,
@@ -26,9 +27,29 @@ import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.id
 import { get_el_for_node } from "../src/api/livetree/utils/node-map-helpers.ts";
 import type { HsonNode } from "../src/core/types.ts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "reflect.document-same-quid-replacement-continuity",
+  title: "Document same-QUID replacement continuity",
+  category: "Reflect",
+  runtime: "node-synthetic-dom",
+  tags: Object.freeze(["document", "binding", "quid", "continuity", "replay", "lifecycle", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("reflect.document-same-quid-replacement-continuity");
 let checks = 0;
 function check(name: string, run: () => void): void {
-  run();
+
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -524,4 +545,5 @@ check("throwing resource cleanup is isolated while A to B runtime transfer compl
 
 assert.equal(checks, 27);
 process.stdout.write(`1..${checks}\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("reflect.document-same-quid-replacement-continuity", checks, checks, 0);

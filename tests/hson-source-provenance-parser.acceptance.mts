@@ -2,9 +2,30 @@ import assert from "node:assert/strict";
 import { parse_hson_with_provenance } from "../src/internal/hson-source-provenance/parse-hson-with-provenance.ts";
 import type { HsonNodeSourceRole } from "../src/internal/hson-source-provenance/hson-source-provenance.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "transform.hson-source-provenance-parser",
+  title: "Hson source provenance parser",
+  category: "Transform",
+  runtime: "node",
+  tags: Object.freeze(["hson", "parsing", "source-provenance", "canonical-graph", "internal"]),
+});
+
+const testEvents = create_test_event_emitter("transform.hson-source-provenance-parser");
 let checks = 0;
-function check(name: string, body: () => void): void { body(); checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); }
+function check(name: string, body: () => void): void {
+  testEvents.case_begin(name, name);
+  try {
+    body();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  } checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); }
 function range(source: string, path: readonly number[], role: HsonNodeSourceRole) {
   return parse_hson_with_provenance(source).provenance.range({ kind: "node", path, role });
 }
@@ -47,4 +68,5 @@ check("array scalar payload owns value spelling", () => assert.deepEqual(range(`
 check("nested arrays receive physical content paths", () => assert.deepEqual(range(`[[true]]`, [0, 0], "coverage"), { start: 1, end: 7 }));
 
 process.stdout.write(`# ${checks} Hson provenance-parser checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("transform.hson-source-provenance-parser", checks, checks, 0);

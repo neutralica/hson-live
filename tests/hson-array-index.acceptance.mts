@@ -1,4 +1,5 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { parseDocument } from "htmlparser2";
 import { hson } from "../src/hson.ts";
@@ -23,9 +24,28 @@ import { is_Node } from "../src/core/node-guards.ts";
 import { decode_locus_graph_content } from "../src/api/locus/locus.graph-content-codec.ts";
 import type { HsonNode } from "../src/core/types.ts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "core.hson-array-index",
+  title: "Canonical Hson array indexes",
+  category: "Core",
+  runtime: "node",
+  tags: Object.freeze(["hson", "arrays", "canonicalization", "public-api"]),
+});
+
+const testEvents = create_test_event_emitter("core.hson-array-index");
 let checks = 0;
 function check(name: string, fn: () => void): void {
-  fn();
+  testEvents.case_begin(name, name);
+  try {
+    fn();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -402,4 +422,5 @@ check("canonical invariant requires physical order to equal index order", () => 
 });
 
 process.stdout.write(`# ${checks} canonical array-index checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("core.hson-array-index", checks, checks, 0);

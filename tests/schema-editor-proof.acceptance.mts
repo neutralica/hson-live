@@ -1,8 +1,22 @@
 import assert from "node:assert/strict";
+import { create_test_event_emitter } from "./test-events.mjs";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import ts from "typescript";
 import { filter_verified_schema_assignment_diagnostics, verified_schema_assignment_ranges } from "../editors/vscode-hson/src/schema-editor-proof.ts";
+
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "tooling.schema-editor-proof",
+  title: "Schema editor diagnostic proof",
+  category: "Tooling",
+  runtime: "node",
+  tags: Object.freeze(["schema", "editor", "typescript", "diagnostics"]),
+});
+
+const testEvents = create_test_event_emitter("tooling.schema-editor-proof");
+const editorProofCase = "verified schema assignments filter only proven editor diagnostics";
+testEvents.case_begin(editorProofCase, editorProofCase);
+try {
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
 const mvpConfig = resolve(repositoryRoot, "tests/fixtures/hson-schema-mvp/tsconfig.json");
@@ -62,4 +76,13 @@ function schema_assignment_errors(program: ts.Program, fileName: string): readon
 function filtered_schema_assignment_errors(program: ts.Program, fileName: string): readonly ts.Diagnostic[] {
   const diagnostics = schema_assignment_errors(program, fileName);
   return filter_verified_schema_assignment_diagnostics(diagnostics, verified_schema_assignment_ranges(ts, program, fileName));
+}
+  testEvents.case_end(editorProofCase, "pass");
+  testEvents.terminal("pass");
+} catch (error) {
+  const message = error instanceof Error ? error.message : "Check failed.";
+  testEvents.diagnostic(editorProofCase, "assertion", message.slice(0, 1_000));
+  testEvents.case_end(editorProofCase, "fail");
+  testEvents.terminal("fail");
+  throw error;
 }

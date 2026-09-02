@@ -20,15 +20,36 @@ import type {
   LocusPersistedMapState,
 } from "../src/types/locus.types.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
 const Q1 = "000000721";
 const Q2 = "000000722";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "locus.document-request-compatibility",
+  title: "Locus document request and legacy compatibility closure",
+  category: "Locus",
+  runtime: "node",
+  tags: Object.freeze(["locus", "document", "quid", "path", "request-lowering", "history", "recovery", "persistence", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("locus.document-request-compatibility");
 let checks = 0;
 let sequence = Promise.resolve();
 function check(name: string, run: () => void | Promise<void>): void {
   sequence = sequence.then(async () => {
+
+  testEvents.case_begin(name, name);
+  try {
     await run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
     checks += 1;
     process.stdout.write(`ok ${checks} - ${name}\n`);
   });
@@ -367,4 +388,5 @@ check("read-only hosted byQuid remains a lookup rather than a mutation", () => {
 
 await sequence;
 process.stdout.write(`# ${checks} Locus request compatibility checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("locus.document-request-compatibility", checks, checks, 0);

@@ -7,14 +7,35 @@ import {
   internal_livemap_library_ownership,
 } from "../src/api/livemap/livemap.internal.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 
 const StateSchema = Hson`<type "data" content <account <content <id "string">> age <number <int true min 0 under 130>>>>`;
 const ColorsSchema = Hson`<type "data" content <value <string <prefix "#">>>>`;
 const Q1 = "000000001";
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap-hson-schema-transition-proof",
+  title: "LiveMap Hson Schema transition proof",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["livemap", "hson-schema", "transitions"]),
+});
+
+const testEvents = create_test_event_emitter("livemap-hson-schema-transition-proof");
 let checks = 0;
 
 function check(name: string, run: () => void): void {
-  run();
+
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
   process.stdout.write(`ok ${++checks} - ${name}\n`);
 }
 
@@ -93,4 +114,5 @@ check("staged candidates gain no governed proof until accepted", () => {
   assert.equal(aggregate.snap(colors, ["value"]), "#blue");
 });
 
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap-hson-schema-transition-proof", checks, checks, 0);

@@ -1,4 +1,5 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 
 import assert from "node:assert/strict";
@@ -26,8 +27,28 @@ import {
 import { projected_value_from_hson_node, projected_value_to_hson_root } from "../src/core/projected-value-graph.ts";
 import type { JsonValue, LiveMapCore } from "../src/types/index.ts";
 
+export const HSON_LIVE_TEST_METADATA = Object.freeze({
+  id: "livemap.exact-route-closure",
+  title: "LiveMap exact multi-route closure",
+  category: "LiveMap",
+  runtime: "node",
+  tags: Object.freeze(["projected-value", "capture", "replay", "propagation", "closure", "externally-discoverable"]),
+});
+
+const testEvents = create_test_event_emitter("livemap.exact-route-closure");
 let checks = 0;
-function check(name: string, run: () => void): void { run(); checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); }
+function check(name: string, run: () => void): void {
+  testEvents.case_begin(name, name);
+  try {
+    run();
+    testEvents.case_end(name, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(name, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  } checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); }
 const object = (entries: readonly (readonly [string, OrderedProjectedValue])[]): OrderedProjectedObject => ordered_projected_object(entries);
 const map = (value: OrderedProjectedValue) => make_livemap_core(projected_value_to_hson_root(value));
 const carrier = (valueMap: ReturnType<typeof map>) => projected_value_from_hson_node(valueMap.root());
@@ -179,4 +200,5 @@ check("integer-like public snapshots are explicitly lossy ordered transport", ()
 
 assert.equal(checks, 27);
 process.stdout.write(`# ${checks} exact multi-route closure checks passed\n`);
+testEvents.terminal("pass");
 emit_hson_live_test_completion("livemap.exact-route-closure", checks, checks, 0);
