@@ -1,6 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
+import { is_Node } from "../src/core/node-guards.ts";
 import type {
   DocumentLiveMap,
   LiveMapDocumentRequestTarget,
@@ -29,6 +30,11 @@ function multiNodeDocument(source: string): DocumentLiveMap {
 const target = (...path: number[]): LiveMapDocumentRequestTarget => ({ kind: "path", path });
 const tag = (value: unknown): string | undefined =>
   typeof value === "object" && value !== null && "$_tag" in value ? String(value.$_tag) : undefined;
+const authoredElement = (source: string) => {
+  const candidate = element(source).root().$_content[0];
+  if (!is_Node(candidate)) throw new Error("Expected one authored document element");
+  return candidate;
+};
 
 check("root document locations discover their own canonical ID", () => {
   const map = element(`<main id="root"/>`);
@@ -112,7 +118,7 @@ check("location and proxy escape discovery return the same object", () => {
 check("insertion shifts fresh discovery without moving an old location", () => {
   const map = element(`<main <a id="x"/> <b/>/>`);
   const found = map.at([]).id("x");
-  map.document.content.insert(target(0), 0, element(`<z/>`).root());
+  map.document.content.insert(target(0, 0), 0, authoredElement(`<z/>`));
   assert.equal(tag(found?.snap()), "z");
   assert.deepEqual(map.at([]).id("x")?.path(), [1]);
 });
@@ -120,14 +126,14 @@ check("insertion shifts fresh discovery without moving an old location", () => {
 check("movement does not make a returned location follow the subject", () => {
   const map = element(`<main <a id="x"/> <b/>/>`);
   const found = map.at([]).id("x");
-  map.document.content.move(target(0), 0, 1);
+  map.document.content.move(target(0, 0), 0, 1);
   assert.equal(tag(found?.snap()), "b");
 });
 
 check("fresh discovery after movement finds the current coordinate", () => {
   const map = element(`<main <a id="x"/> <b/>/>`);
   const found = map.at([]).id("x");
-  map.document.content.move(target(0), 0, 1);
+  map.document.content.move(target(0, 0), 0, 1);
   assert.notEqual(map.at([]).id("x"), found);
   assert.deepEqual(map.at([]).id("x")?.path(), [1]);
 });
@@ -135,7 +141,7 @@ check("fresh discovery after movement finds the current coordinate", () => {
 check("removal leaves the old coordinate passive and fresh discovery missing", () => {
   const map = element(`<main <a/> <b id="x"/>/>`);
   const found = map.at([]).id("x");
-  map.document.content.remove(target(0), 1);
+  map.document.content.remove(target(0, 0), 1);
   assert.equal(found?.snap(), undefined);
   assert.equal(map.at([]).id("x"), undefined);
 });
@@ -143,7 +149,7 @@ check("removal leaves the old coordinate passive and fresh discovery missing", (
 check("replacement is visible to fresh public discovery", () => {
   const map = element(`<main <a id="x"/>/>`);
   const found = map.at([]).id("x");
-  map.document.content.replace(target(0), 0, element(`<b id="y"/>`).root());
+  map.document.content.replace(target(0, 0), 0, authoredElement(`<b id="y"/>`));
   assert.equal(map.at([]).id("x"), undefined);
   assert.equal(map.at([]).id("y"), found);
 });
@@ -152,7 +158,7 @@ check("fresh public discovery observes replayed canonical state", () => {
   const source = element(`<main <a id="x"/> <b/>/>`);
   const receiver = element(`<main <a id="x"/> <b/>/>`);
   const found = receiver.at([]).id("x");
-  receiver.replay(source.document.content.move(target(0), 0, 1));
+  receiver.replay(source.document.content.move(target(0, 0), 0, 1));
   assert.equal(tag(found?.snap()), "b");
   assert.deepEqual(receiver.at([]).id("x")?.path(), [1]);
 });
@@ -160,7 +166,7 @@ check("fresh public discovery observes replayed canonical state", () => {
 check("fresh public discovery observes restored canonical state", () => {
   const map = element(`<main <a id="x"/> <b/>/>`);
   const initial = map.capture();
-  map.document.content.move(target(0), 0, 1);
+  map.document.content.move(target(0, 0), 0, 1);
   const moved = map.at([]).id("x");
   map.restore(initial);
   assert.equal(tag(moved?.snap()), "b");

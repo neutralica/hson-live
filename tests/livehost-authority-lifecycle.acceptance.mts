@@ -531,7 +531,7 @@ check("persistent append and checkpoint work are reported as Locus activity", as
         persistence: adapter,
     logicalMapId: "persistent-activity",
   });
-  const mutation = host.mutate((draft) => draft.document.attrs.set({ kind: "path", path: [] }, "ready", true));
+  const mutation = host.mutate((draft) => draft.document.attrs.set({ kind: "path", path: [0] }, "ready", true));
   await Promise.resolve();
   assert.equal(host.activity.snapshot().persistenceCount, 1);
   appends[0]?.resolve();

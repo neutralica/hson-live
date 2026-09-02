@@ -1,7 +1,6 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { Worker } from "node:worker_threads";
 
 import { hson } from "../src/hson.ts";
 import { hsonTransform } from "../src/api/transform/index.ts";
@@ -9,6 +8,7 @@ import { set_transform_html_sanitizer } from "../src/api/transform/constructors/
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import type { HsonAttrs, HsonNode, Primitive } from "../src/core/types.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
 
 let checks = 0;
 
@@ -304,7 +304,7 @@ await check("maxGraphNodes rejects before exceeding its node budget", () => {
 });
 
 await check("an actual Worker has byte, decode/encode, and SHA parity", async () => {
-  const worker = new Worker(new URL("./fixtures/binary-hson.worker.mts", import.meta.url));
+  const worker = repository_typescript_worker(new URL("./fixtures/binary-hson.worker.mts", import.meta.url));
   const result = await new Promise<{ bytes: number[]; closure: number[]; digest: string }>((resolve, reject) => {
     worker.once("message", resolve);
     worker.once("error", reject);

@@ -35,7 +35,7 @@ function check(name: string, run: () => void): void {
 
 const target = (...segments: number[]) => Object.freeze({
   kind: "path" as const,
-  path: Object.freeze(segments),
+  path: Object.freeze([0, ...segments]),
 });
 const mountedRuntime = _create_livetree_runtime_test_handle();
 
@@ -73,7 +73,7 @@ check("A to A same-tag replacement keeps one canonical active subject", () => {
   const handle = acquire_document_identity(map.document, target(0, 0));
   const commit = map.document.content.replace(path(0), 0, projected_element(`<a @${A} title="new"/>`));
   assert.deepEqual(effects(commit), ["retired", "introduced"]);
-  assert.deepEqual(livemap_document_identity_overlay_for(map.document).pathForQuid(A), [0, 0]);
+  assert.deepEqual(livemap_document_identity_overlay_for(map.document).pathForQuid(A), [0, 0, 0]);
   assert.deepEqual(livemap_identity_epoch_accounting(map.document), { epoch: 0, issued: 1 });
   assert.equal(handle.active, true);
   assert.equal(handle.snap()?.$_attrs?.title, "new");
@@ -335,7 +335,7 @@ check("durable new-epoch root install replaces exact runtime and DOM identity", 
   const binding = _reflect_document_for_runtime_test(runtime, map);
   const oldTree = binding.tree;
   mount(binding.tree.node);
-  const oldRoot = binding.tree.node;
+  const oldRoot = raw_node(binding.tree.node, []);
   const oldDom = get_el_for_node(oldRoot);
   const oldHandle = acquire_document_identity(map.document, target());
   let disposed = 0;
@@ -344,7 +344,7 @@ check("durable new-epoch root install replaces exact runtime and DOM identity", 
   assert.deepEqual(livemap_identity_epoch_accounting(map.document), { epoch: 1, issued: 1 });
   assert.equal(oldHandle.active, false);
   assert.equal(binding.status, "active");
-  const newRoot = binding.tree.node;
+  const newRoot = raw_node(binding.tree.node, []);
   const newDom = get_el_for_node(newRoot);
   assert.notEqual(binding.tree, oldTree);
   assert.notEqual(newRoot, oldRoot);
@@ -378,15 +378,15 @@ check("exact same-epoch root admission preserves both canonical and runtime cont
   const runtime = _create_livetree_runtime_test_handle();
   const map = element(`<main @${A} title="captured"/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
-  const oldRoot = binding.tree.node;
+  const oldRoot = raw_node(binding.tree.node, []);
   const handle = acquire_document_identity(map.document, target());
   const capture = map.capture({ identity: "same-epoch" });
   map.document.attrs.set(path(), "title", "changed");
   map.install(capture, { identity: "same-epoch" });
   assert.deepEqual(livemap_identity_epoch_accounting(map.document), { epoch: 0, issued: 1 });
   assert.equal(handle.active, true);
-  assert.equal(binding.tree.node, oldRoot);
-  assert.equal(binding.tree.attrs.get("title"), "captured");
+  assert.equal(raw_node(binding.tree.node, []), oldRoot);
+  assert.equal(oldRoot.$_attrs?.title, "captured");
   binding.dispose();
 });
 

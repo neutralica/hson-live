@@ -1,3 +1,4 @@
+// @hson-live-external-test
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";

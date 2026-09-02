@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import * as publicApi from "../src/index.ts";
 import { find_internal_document_id } from "../src/api/livemap/livemap.document.id-discovery.ts";
+import { is_Node } from "../src/core/node-guards.ts";
 import type {
   DocumentLiveMap,
   LiveMapDocumentRequestTarget,
@@ -33,6 +34,11 @@ const find = (map: DocumentLiveMap, id: string, scope: readonly number[] = []) =
   find_internal_document_id(map, map.at(scope), id);
 const tag = (value: unknown): string | undefined =>
   typeof value === "object" && value !== null && "$_tag" in value ? String(value.$_tag) : undefined;
+const authoredElement = (source: string) => {
+  const candidate = element(source).root().$_content[0];
+  if (!is_Node(candidate)) throw new Error("Expected one authored document element");
+  return candidate;
+};
 
 check("element search includes the ordinary root element", () => {
   assert.deepEqual(find(element(`<main id="root"/>`), "root")?.path(), []);
@@ -132,10 +138,10 @@ check("discovery returns the same coordinate and interned location as map.at", (
 check("insertion and movement do not move an old location but fresh searches find the subject", () => {
   const map = element(`<main <a id="x"/> <b/>/>`);
   const found = find(map, "x");
-  map.document.content.insert(target(0), 0, element(`<z/>`).root());
+  map.document.content.insert(target(0, 0), 0, authoredElement(`<z/>`));
   assert.equal(tag(found?.snap()), "z");
   assert.deepEqual(find(map, "x")?.path(), [1]);
-  map.document.content.move(target(0), 1, 2);
+  map.document.content.move(target(0, 0), 1, 2);
   assert.equal(tag(found?.snap()), "z");
   assert.deepEqual(find(map, "x")?.path(), [2]);
 });
@@ -143,7 +149,7 @@ check("insertion and movement do not move an old location but fresh searches fin
 check("removing a discovered tail makes its fixed coordinate missing", () => {
   const map = element(`<main <a/> <b id="x"/>/>`);
   const found = find(map, "x");
-  map.document.content.remove(target(0), 1);
+  map.document.content.remove(target(0, 0), 1);
   assert.equal(found?.snap(), undefined);
   assert.equal(find(map, "x"), undefined);
 });
@@ -151,7 +157,7 @@ check("removing a discovered tail makes its fixed coordinate missing", () => {
 check("replacement changes the occupant and fresh discovery sees current attrs", () => {
   const map = element(`<main <a id="x"/>/>`);
   const found = find(map, "x");
-  map.document.content.replace(target(0), 0, element(`<b id="y"/>`).root());
+  map.document.content.replace(target(0, 0), 0, authoredElement(`<b id="y"/>`));
   assert.equal(tag(found?.snap()), "b");
   assert.equal(find(map, "x"), undefined);
   assert.equal(find(map, "y"), found);
@@ -161,7 +167,7 @@ check("replay preserves old coordinates while fresh discovery sees replayed stat
   const source = element(`<main <a id="x"/> <b/>/>`);
   const receiver = element(`<main <a id="x"/> <b/>/>`);
   const found = find(receiver, "x");
-  receiver.replay(source.document.content.move(target(0), 0, 1));
+  receiver.replay(source.document.content.move(target(0, 0), 0, 1));
   assert.equal(tag(found?.snap()), "b");
   assert.deepEqual(find(receiver, "x")?.path(), [1]);
 });
@@ -169,7 +175,7 @@ check("replay preserves old coordinates while fresh discovery sees replayed stat
 check("restore searches restored state without changing fixed-coordinate semantics", () => {
   const map = element(`<main <a id="x"/> <b/>/>`);
   const initial = map.capture();
-  map.document.content.move(target(0), 0, 1);
+  map.document.content.move(target(0, 0), 0, 1);
   const moved = find(map, "x");
   map.restore(initial);
   assert.equal(tag(moved?.snap()), "b");

@@ -189,8 +189,8 @@ check("root-attached empty element wrappers reject at every canonical boundary",
   rejectsEveryBoundary(root(elem()), /empty _hson_elem is not valid retained canonical state/);
 });
 
-check("nested redundant empty element wrappers reject at every canonical boundary", () => {
-  rejectsEveryBoundary(root(elem(elem())), /empty _hson_elem is not valid retained canonical state/);
+check("nested structural element carriers reject at every canonical boundary", () => {
+  rejectsEveryBoundary(root(elem(elem())), /_hson_elem cannot contain _hson_elem/);
 });
 
 check("element branches reject typed value leaves", () => {

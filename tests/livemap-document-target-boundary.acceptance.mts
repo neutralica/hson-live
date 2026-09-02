@@ -67,15 +67,15 @@ function allQuids(root: ReturnType<DocumentLiveMap["root"]>): readonly string[] 
 
 check("path requests produce path-authoritative canonical commit targets", () => {
   const map = element(`<main/>`);
-  const commit = map.document.attrs.set({ kind: "path", path: [] }, "id", "main");
+  const commit = map.document.attrs.set({ kind: "path", path: [0] }, "id", "main");
   const operation = commit.ops[0];
   assert.equal(operation?.op, "set-attr");
-  assert.deepEqual(operation?.op === "set-attr" && operation.target, { kind: "path", path: [] });
+  assert.deepEqual(operation?.op === "set-attr" && operation.target, { kind: "path", path: [0] });
 });
 
 check("path requests do not acquire an implicit identity witness", () => {
   const map = element(`<main @${Q1}/>`);
-  const commit = map.document.attrs.set({ kind: "path", path: [] }, "id", "main");
+  const commit = map.document.attrs.set({ kind: "path", path: [0] }, "id", "main");
   const operation = commit.ops[0];
   assert.equal(operation?.op === "set-attr" && operation.target.witness, undefined);
 });
@@ -85,7 +85,7 @@ check("QUID requests lower synchronously to path plus witness", () => {
   const commit = map.document.attrs.set({ kind: "quid", quid: Q1 }, "id", "main");
   const operation = commit.ops[0];
   assert.deepEqual(operation?.op === "set-attr" && operation.target, {
-    kind: "path", path: [], witness: { quid: Q1 },
+    kind: "path", path: [0], witness: { quid: Q1 },
   });
 });
 
@@ -93,7 +93,7 @@ check("nested QUID lowering records the exact current canonical path", () => {
   const map = element(`<main <section @${Q1}/>/>`);
   const commit = map.document.attrs.set({ kind: "quid", quid: Q1 }, "id", "nested");
   const operation = commit.ops[0];
-  assert.deepEqual(operation?.op === "set-attr" && operation.target.path, [0, 0]);
+  assert.deepEqual(operation?.op === "set-attr" && operation.target.path, [0, 0, 0]);
 });
 
 check("request path arrays are detached before the commit is returned", () => {
@@ -195,7 +195,7 @@ check("legacy QUID replay is isolated and normalized to a canonical target", () 
   if (!Array.isArray(operations)) throw new Error("Expected replay operations");
   const operation: LiveMapGraphOp | undefined = operations[0];
   assert.deepEqual(operation?.op === "set-attr" && operation.target, {
-    kind: "path", path: [], witness: { quid: Q1 },
+    kind: "path", path: [0], witness: { quid: Q1 },
   });
 });
 
@@ -221,7 +221,7 @@ check("canonical operation objects never contain a QUID-only target", () => {
 
 check("path-authoritative requests do not mint QUID metadata", () => {
   const map = element(`<main <section/>/>`);
-  map.document.attrs.set({ kind: "path", path: [0, 0] }, "id", "section");
+  map.document.attrs.set({ kind: "path", path: [0, 0, 0] }, "id", "section");
   assert.deepEqual(allQuids(map.root()), []);
 });
 

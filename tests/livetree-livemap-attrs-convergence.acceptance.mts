@@ -1,6 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { hson } from "../src/index.ts";
+import { is_Node } from "../src/core/node-guards.ts";
 import type { LiveTree } from "../src/api/livetree/livetree.ts";
 import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
@@ -20,7 +21,9 @@ function owners(source = `<main a="one" b="two" selected/>`): { tree: LiveTree; 
 }
 
 function assertAttrsEqual(tree: LiveTree, map: DocumentLiveMap): void {
-  assert.deepEqual(tree.node.$_attrs, map.root().$_attrs);
+  const ordinaryRoot = map.root().$_content[0];
+  if (!is_Node(ordinaryRoot)) throw new Error("Expected one ordinary document root element");
+  assert.deepEqual(tree.node.$_attrs, ordinaryRoot.$_attrs);
   assert.deepEqual(tree.attrs.keys(), map.at([]).attrs.keys());
 }
 
@@ -90,7 +93,9 @@ check("same-name attrs and flags have identical reconstructed semantics", () => 
   tree.attrs.set("selected", "selected");
   map.at([]).flags.set("selected");
   assertAttrsEqual(tree, map);
-  const reconstructed = hson.liveTree.fromNode(structuredClone(map.root()));
+  const ordinaryRoot = map.root().$_content[0];
+  if (!is_Node(ordinaryRoot)) throw new Error("Expected one ordinary document root element");
+  const reconstructed = hson.liveTree.fromNode(structuredClone(ordinaryRoot));
   assert.equal(reconstructed.flags.has("selected"), true);
   assert.equal(reconstructed.attrs.get("selected"), "selected");
 });

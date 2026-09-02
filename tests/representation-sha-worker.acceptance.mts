@@ -1,7 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { Worker } from "node:worker_threads";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
 import { hsonTransform } from "../src/api/transform/index.ts";
 
 const LAUNCHER = "transform.representation-sha-worker";
@@ -26,7 +26,7 @@ async function check(name: string, run: () => void | Promise<void>): Promise<voi
 
 function runWorker(): Promise<WorkerResult> {
   return new Promise((resolve, reject) => {
-    const worker = new Worker(
+    const worker = repository_typescript_worker(
       new URL("./fixtures/representation-sha.worker.mts", import.meta.url),
       { workerData: { source: SOURCE } },
     );

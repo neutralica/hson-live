@@ -9,6 +9,7 @@ import { resolve_internal_document_location, type InternalDocumentLogicalEdge } 
 import { classify_live_root_mode } from "../../api/livemap/livemap.document.js";
 import type { HsonNode } from "../../core/types.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
+import { ELEM_TAG, ROOT_TAG } from "../../core/constants.js";
 
 type Slot = Parameters<NonNullable<HsonSourceLexicalCollector["completionSlot"]>>[0];
 type Probe = Readonly<{ kind: Slot; range: HsonSourceRange; text: string; witness: HsonSourceRange }>;
@@ -102,7 +103,14 @@ export function completion_context(source: string, cursor: number, unknownRanges
       };
       return walk(projected, [], []);
     }
-    const mode = classify_live_root_mode(root);
+    // Provenance is intentionally finalized against the detached semantic
+    // value. Document traversal now requires the canonical root shape, so
+    // reconstruct only that logical carrier while retaining the detached
+    // provenance paths and returned root.
+    const logicalRoot: HsonNode = root.$_tag === ELEM_TAG
+      ? { $_tag: ROOT_TAG, $_content: root.$_content }
+      : root;
+    const mode = classify_live_root_mode(logicalRoot);
     // An unknown complete attr value cannot change the tag, attribute names or
     // child layout. Document text holes still require current D5 evidence.
     if (unknown.length > 0) {
@@ -121,7 +129,7 @@ export function completion_context(source: string, cursor: number, unknownRanges
     const resolve = (path: readonly number[], facet = false) => {
       const edges: InternalDocumentLogicalEdge[] = path.map(index => ({ kind: "content", index }));
       if (facet) edges.push({ kind: "facet", facet: "content" });
-      return resolve_internal_document_location(root, mode, edges);
+      return resolve_internal_document_location(logicalRoot, mode, edges);
     };
     const walk = (path: readonly number[]): CompletionContext | undefined => {
       if (path.length > 64) return undefined;
@@ -136,7 +144,7 @@ export function completion_context(source: string, cursor: number, unknownRanges
       const physical = node.physical;
       const physicalPath = physical.kind === "direct" || physical.kind === "carrier" ? physical.path : undefined;
       if (physicalPath === undefined) return undefined;
-      const owner = [0, ...physicalPath];
+      const owner = physicalPath;
       if (selected.kind === "tag" && matches(provenance.range({ kind: "node", path: owner, role: "name" }))) return { ...base, path, existing: [] };
       if ((selected.kind === "child" || selected.kind === "value") && matches(provenance.range({ kind: "node", path: [...owner, 0], role: "value" }))) return { ...base, kind: "child", path, existing: [] };
       if (node.kind !== "node" || !is_ordinary_element_node(node.value)) return undefined;

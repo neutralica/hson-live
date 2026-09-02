@@ -10,6 +10,7 @@ import type {
   LiveMapDocumentRequestTarget,
 } from "../src/types/livemap.types.ts";
 import { internal_livemap_root } from "../src/api/livemap/livemap.internal.ts";
+import { is_Node } from "../src/core/node-guards.ts";
 
 let checks = 0;
 function check(name: string, fn: () => void): void {
@@ -32,7 +33,14 @@ function multiNodeDocument(source: string): DocumentLiveMap {
 
 const path = (...segments: number[]): LiveMapDocumentRequestTarget =>
   Object.freeze({ kind: "path", path: Object.freeze(segments) });
+const elementPath = (...segments: number[]): LiveMapDocumentRequestTarget => path(0, ...segments);
 const quid = (value: string): LiveMapDocumentRequestTarget => Object.freeze({ kind: "quid", quid: value });
+
+function ordinaryRoot(map: DocumentLiveMap) {
+  const candidate = map.root().$_content[0];
+  if (!is_Node(candidate)) throw new Error("Expected one ordinary document root element");
+  return candidate;
+}
 
 function errorCode(fn: () => unknown, code: string, operation?: string): void {
   assert.throws(fn, (cause) => cause instanceof LiveMapDocumentMutationError
@@ -54,7 +62,7 @@ function assertNoReadEffects(map: DocumentLiveMap, fn: () => void): void {
 
 check("get preserves every canonical value distinction and detaches structured style", () => {
   const map = element(`<main @000000101/>`);
-  map.document.attrs.replace(path(), {
+  map.document.attrs.replace(elementPath(), {
     empty: "",
     enabled: true,
     disabled: false,
@@ -64,23 +72,23 @@ check("get preserves every canonical value distinction and detaches structured s
     style: { color: "red", width: { value: 2, unit: "px" } },
   });
   assertNoReadEffects(map, () => {
-    assert.equal(map.document.attrs.get(path(), "empty"), "");
-    assert.equal(map.document.attrs.get(path(), "enabled"), true);
-    assert.equal(map.document.attrs.get(path(), "disabled"), false);
-    assert.equal(map.document.attrs.get(path(), "positive"), 7);
-    assert.equal(map.document.attrs.get(path(), "zero"), 0);
-    assert.equal(map.document.attrs.get(path(), "nullable"), null);
-    assert.equal(map.document.attrs.get(path(), "absent"), undefined);
+    assert.equal(map.document.attrs.get(elementPath(), "empty"), "");
+    assert.equal(map.document.attrs.get(elementPath(), "enabled"), true);
+    assert.equal(map.document.attrs.get(elementPath(), "disabled"), false);
+    assert.equal(map.document.attrs.get(elementPath(), "positive"), 7);
+    assert.equal(map.document.attrs.get(elementPath(), "zero"), 0);
+    assert.equal(map.document.attrs.get(elementPath(), "nullable"), null);
+    assert.equal(map.document.attrs.get(elementPath(), "absent"), undefined);
     assert.equal(map.document.attrs.get(quid("000000101"), "positive"), 7);
 
-    const style = map.document.attrs.get(path(), "style");
-    const styleAgain = map.document.attrs.get(path(), "style");
+    const style = map.document.attrs.get(elementPath(), "style");
+    const styleAgain = map.document.attrs.get(elementPath(), "style");
     assert.deepEqual(style, { color: "red", width: { value: 2, unit: "px" } });
     assert.notEqual(style, styleAgain);
     assert.equal(Object.isFrozen(style), true);
     assert.equal(typeof style === "object" && style !== null && Object.isFrozen(style.width), true);
     assert.equal(Reflect.set(style as object, "color", "purple"), false);
-    assert.deepEqual(map.document.attrs.get(path(), "style"), {
+    assert.deepEqual(map.document.attrs.get(elementPath(), "style"), {
       width: { value: 2, unit: "px" },
       color: "red",
     });
@@ -89,40 +97,40 @@ check("get preserves every canonical value distinction and detaches structured s
 
 check("has tests own-key presence without truthiness", () => {
   const map = element(`<main/>`);
-  map.document.attrs.replace(path(), { empty: "", disabled: false, zero: 0, nullable: null });
+  map.document.attrs.replace(elementPath(), { empty: "", disabled: false, zero: 0, nullable: null });
   assertNoReadEffects(map, () => {
     for (const name of ["empty", "disabled", "zero", "nullable"]) {
-      assert.equal(map.document.attrs.has(path(), name), true);
+      assert.equal(map.document.attrs.has(elementPath(), name), true);
     }
-    assert.equal(map.document.attrs.has(path(), "absent"), false);
+    assert.equal(map.document.attrs.has(elementPath(), "absent"), false);
   });
 });
 
 check("keys is lexical, public-only, fresh, and does not create absent storage", () => {
   const map = element(`<main @000000102/>`);
-  assert.equal(map.root().$_attrs, undefined);
-  const first = map.document.attrs.keys(path());
+  assert.equal(ordinaryRoot(map).$_attrs, undefined);
+  const first = map.document.attrs.keys(elementPath());
   assert.deepEqual(first, []);
   assert.equal(Object.isFrozen(first), true);
-  assert.equal(map.root().$_attrs, undefined);
+  assert.equal(ordinaryRoot(map).$_attrs, undefined);
 
-  map.document.attrs.replace(path(), {
+  map.document.attrs.replace(elementPath(), {
     zeta: 1,
     style: { color: "red" },
     alpha: 2,
     "data-_quid": "application",
   });
   const keys = map.document.attrs.keys(quid("000000102"));
-  const again = map.document.attrs.keys(path());
+  const again = map.document.attrs.keys(elementPath());
   assert.deepEqual(keys, ["alpha", "data-_quid", "style", "zeta"]);
   assert.notEqual(keys, again);
-  assert.equal(map.document.attrs.get(path(), "data-_quid"), "application");
+  assert.equal(map.document.attrs.get(elementPath(), "data-_quid"), "application");
   assert.equal(Reflect.set(keys as string[], 0, "changed"), false);
-  assert.deepEqual(map.document.attrs.keys(path()), ["alpha", "data-_quid", "style", "zeta"]);
+  assert.deepEqual(map.document.attrs.keys(elementPath()), ["alpha", "data-_quid", "style", "zeta"]);
 });
 
 check("must.get shares canonical reads and reports only valid absence as not found", () => {
-  const target = path();
+  const target = elementPath();
   const map = element(`<main id="present"/>`);
   map.document.attrs.set(target, "style", { color: "red", width: { value: 2, unit: "px" } });
   assert.equal(map.document.attrs.must, map.document.attrs.must);
@@ -140,7 +148,8 @@ check("must.get shares canonical reads and reports only valid absence as not fou
       && cause.operation === "must-get-attr"
       && cause.attributeName === "missing"
       && cause.target.kind === "path"
-      && cause.target.path.length === 0,
+      && cause.target.path.length === 1
+      && cause.target.path[0] === 0,
   );
   errorCode(() => map.document.attrs.must.get(target, "bad name"), "INVALID_DOCUMENT_ATTRIBUTE_NAME", "must-get-attr");
   errorCode(() => map.document.attrs.must.get(target, "hson:quid"), "PROTECTED_DOCUMENT_METADATA", "must-get-attr");
@@ -150,12 +159,12 @@ check("must.get shares canonical reads and reports only valid absence as not fou
 check("all reads share target and name validation", () => {
   const map = element(`<main "text"/>`);
   for (const read of [
-    () => map.document.attrs.get(path(), "bad name"),
-    () => map.document.attrs.has(path(), "bad name"),
+    () => map.document.attrs.get(elementPath(), "bad name"),
+    () => map.document.attrs.has(elementPath(), "bad name"),
   ]) errorCode(read, "INVALID_DOCUMENT_ATTRIBUTE_NAME");
   for (const read of [
-    () => map.document.attrs.get(path(), "hson:index"),
-    () => map.document.attrs.has(path(), "hson:unknown"),
+    () => map.document.attrs.get(elementPath(), "hson:index"),
+    () => map.document.attrs.has(elementPath(), "hson:unknown"),
   ]) errorCode(read, "PROTECTED_DOCUMENT_METADATA");
   errorCode(() => map.document.attrs.keys(path(99)), "DOCUMENT_PATH_OUT_OF_RANGE", "list-attrs");
   errorCode(() => map.document.attrs.get(quid("000000199"), "id"), "DOCUMENT_TARGET_NOT_FOUND", "get-attr");
@@ -169,8 +178,8 @@ check("all reads share target and name validation", () => {
 
 check("multiNodeDocument and element modes support root, nested, path, and QUID targets", () => {
   const elementMap = element(`<main id="root" <p title="nested" @000000103/>/>`);
-  assert.equal(elementMap.document.attrs.get(path(), "id"), "root");
-  assert.equal(elementMap.document.attrs.get(path(0, 0), "title"), "nested");
+  assert.equal(elementMap.document.attrs.get(elementPath(), "id"), "root");
+  assert.equal(elementMap.document.attrs.get(elementPath(0, 0), "title"), "nested");
   assert.equal(elementMap.document.attrs.has(quid("000000103"), "title"), true);
 
   const multiNodeDocumentMap = multiNodeDocument(`<section id="first" @000000104/> <aside title="second"/>`);
@@ -183,9 +192,9 @@ check("reads over absent attrs remain complete no-ops", () => {
   const map = element(`<main @000000105/>`);
   const beforeLookup = map.document.byQuid("000000105");
   assertNoReadEffects(map, () => {
-    assert.equal(map.document.attrs.get(path(), "id"), undefined);
-    assert.equal(map.document.attrs.has(path(), "id"), false);
-    assert.deepEqual(map.document.attrs.keys(path()), []);
+    assert.equal(map.document.attrs.get(elementPath(), "id"), undefined);
+    assert.equal(map.document.attrs.has(elementPath(), "id"), false);
+    assert.deepEqual(map.document.attrs.keys(elementPath()), []);
   });
   assert.deepEqual(map.document.byQuid("000000105"), beforeLookup);
 });
@@ -198,10 +207,10 @@ check("local reads through a hosted authority create no history or publication",
   host.stream.on_commit(() => { publications += 1; });
   const beforeRev = host.map.rev;
   const beforeHistory = host.stream.history.debug().retainedCommitCount;
-  assert.equal(host.map.document.attrs.get(path(), "id"), "local");
-  assert.equal(host.map.document.attrs.has(path(), "id"), true);
-  assert.deepEqual(host.map.document.attrs.keys(path()), ["id"]);
-  assert.equal(host.map.document.attrs.must.get(path(), "id"), "local");
+  assert.equal(host.map.document.attrs.get(elementPath(), "id"), "local");
+  assert.equal(host.map.document.attrs.has(elementPath(), "id"), true);
+  assert.deepEqual(host.map.document.attrs.keys(elementPath()), ["id"]);
+  assert.equal(host.map.document.attrs.must.get(elementPath(), "id"), "local");
   assert.equal(host.map.rev, beforeRev);
   assert.equal(host.stream.headRev, beforeRev);
   assert.equal(host.stream.history.debug().retainedCommitCount, beforeHistory);

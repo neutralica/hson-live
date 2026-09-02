@@ -38,7 +38,7 @@ TRANSPORT INVENTORY
 - graph.reject.direct-element-positive-number
 - graph.reject.direct-element-true
 - graph.reject.direct-element-zero
-- graph.reject.fragment-typed-child
+- graph.reject.element-carrier-child
 - graph.reject.nested-element-number
 - html.accept.control-empty-unicode-adjacent
 - html.accept.empty-nonempty-empty
@@ -932,8 +932,8 @@ declared source reuse: —
 tags: graph-ingress, typed-value, structural-mode, rejection
 rationale: A detached Hson element carrier may not contain a typed zero leaf.
 
-=== graph.reject.fragment-typed-child ===
-claim: An element fragment containing one typed child rejects as a whole.
+=== graph.reject.element-carrier-child ===
+claim: An element content carrier containing one typed child rejects as a whole.
 classification: graph-ingress-rejected-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"a\",\"$_content\":[]},{\"$_tag\":\"_hson_val\",\"$_content\":[false]}]}"
@@ -941,7 +941,7 @@ verbatim input: —
 semantic shape: _hson_elem
 slot: element-content
 variation: —
-defect: fragment-typed-child
+defect: element-carrier-child
 disposition: reject
 hand-authored expected graph: —
 exact Hson output: —
@@ -963,7 +963,7 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: graph-ingress, typed-value, structural-mode, rejection
-rationale: An element fragment containing one typed child rejects as a whole.
+rationale: An element content carrier containing one typed child rejects as a whole.
 
 === graph.reject.nested-element-number ===
 claim: An ordinary element may not retain a typed numeric leaf beneath its element content.
@@ -1293,15 +1293,15 @@ declared source reuse: —
 tags: element, quoted-name, authored-name
 rationale: A nonempty single-quoted name is admitted as an Hson element name.
 
-=== hson.accept.basis.root.element-fragment ===
-claim: A homogeneous root element fragment preserves sibling order.
+=== hson.accept.basis.root.element-sequence ===
+claim: A homogeneous root element sequence preserves sibling order.
 classification: literal-accepted-authored-hson
 ingress format: hson
 escaped input: "\"<a/><b/>\""
 verbatim input: —
-semantic shape: element-fragment
+semantic shape: element-sequence
 slot: root
-variation: element-fragment
+variation: element-sequence
 defect: —
 disposition: accept
 hand-authored expected graph:
@@ -1328,12 +1328,12 @@ negative-zero paths: —
 structured rejection: —
 origin: targeted-authored-hson-completeness-amendment
 provenance: Direct transcription of the settled authored-Hson structural-mode contract.
-novelty: Adds the missing positive multi-element root fragment.
+novelty: Adds the missing positive multi-element root sequence.
 human-review priority: medium
 specialized-test reference: —
 declared source reuse: —
-tags: root-boundary, element, fragment, order
-rationale: A homogeneous root element fragment preserves sibling order.
+tags: root-boundary, element, order
+rationale: A homogeneous root element sequence preserves sibling order.
 
 === hson.accept.basis.trivia.array-slots ===
 claim: Array trivia covers after-opener, before-comma, after-comma, before-closer, and a terminated item-boundary comment.

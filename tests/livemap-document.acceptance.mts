@@ -97,8 +97,8 @@ check("malformed and unsupported canonical roots are rejected with causes", () =
   assert.throws(
     () => hson.liveMap.fromNode({ $_tag: "_hson_root", $_content: [1] }),
     (error) => error instanceof Error
-      && error.message.includes("malformed canonical Hson root")
-      && error.cause instanceof Error,
+      && Reflect.get(error, "code") === "HSON_CANONICAL_INVARIANT_VIOLATION"
+      && /primitive\/null outside _hson_str/.test(error.message),
   );
   assert.throws(
     () => hson.liveMap.fromNode({ $_tag: "button", $_content: [] }),
@@ -249,7 +249,7 @@ check("duplicate and malformed persisted document QUIDs are rejected", () => {
   if (div !== undefined) div.$_meta = { quid: 42 as unknown as string };
   assert.throws(
     () => hson.liveMap.fromNode(malformed),
-    /malformed canonical Hson root/,
+    /invalid metadata value for "quid"/,
   );
 });
 

@@ -2635,14 +2635,20 @@ function must_projected_capture(input: unknown): Readonly<{ rev: number; value: 
   if (typeof input.rev !== "number" || !Number.isInteger(input.rev) || input.rev < 0) {
     throw new LiveMapProjectedTransportError("restore", "revision is not a non-negative integer");
   }
-  if (!has_exact_projected_keys(input, ["rev", "format", "payload", "root"])) {
+  if (!has_exact_projected_keys(input, ["rev", "format", "payload"])) {
     throw new LiveMapProjectedTransportError("restore", "capture is not the canonical structural representation");
   }
   if (!has_projected_transport_field(input)) {
     throw new LiveMapProjectedTransportError("restore", "capture is missing structural transport");
   }
-  if (!Object.hasOwn(input, "root") || !is_Node(input.root)) {
+  const rootDescriptor = Object.getOwnPropertyDescriptor(input, "root");
+  if (rootDescriptor === undefined || rootDescriptor.enumerable || !is_Node(input.root)) {
     throw new LiveMapProjectedTransportError("restore", "canonical root is not an Hson node");
+  }
+  const ownKeys = Reflect.ownKeys(input);
+  if (ownKeys.length !== 4
+    || !ownKeys.every((key) => typeof key === "string" && ["rev", "format", "payload", "root"].includes(key))) {
+    throw new LiveMapProjectedTransportError("restore", "capture is not the canonical structural representation");
   }
   return Object.freeze({
     rev: input.rev,
