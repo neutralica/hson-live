@@ -12,6 +12,7 @@ import type {
   LocusSnapshotEnvelope,
 } from "../../types/locus.types.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
+import { make_canonical_livemap_projected_capture } from "../livemap/livemap.projected.capture.js";
 import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { parse_json } from "../transform/parsers/parse-json.js";
 import { json_value_from_node } from "../transform/serializers/serialize-json.js";
@@ -293,12 +294,12 @@ function map_from_snapshot(
   try {
     if (is_data_map(map)) {
       const capture = map.capture();
-      map.restore(Object.freeze({
-        rev: snapshot.rev,
-        format: capture.format,
-        payload: capture.payload,
-        root: capture.root,
-      }));
+      map.restore(make_canonical_livemap_projected_capture(
+        snapshot.rev,
+        capture.format,
+        capture.payload,
+        capture.root,
+      ));
     } else if (is_document_map(map)) {
       const capture = decode_locus_document_snapshot(snapshot);
       map.restore(capture, { identity: "preserve-metadata" });

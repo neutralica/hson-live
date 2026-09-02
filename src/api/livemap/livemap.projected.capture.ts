@@ -23,6 +23,18 @@ type Provenance = Readonly<{
 const provenance = new WeakMap<object, Provenance>();
 const captureIdentityOverlay = new WeakMap<object, LiveMapProjectedIdentityOverlay>();
 
+/** Construct one canonical projected capture from an already detached graph root. */
+export function make_canonical_livemap_projected_capture(
+  rev: number,
+  format: LiveMapCapture["format"],
+  payload: string,
+  root: HsonNode,
+): LiveMapCapture {
+  const capture: LiveMapCapture = { rev, format, payload, root };
+  Object.defineProperty(capture, "root", { enumerable: false });
+  return Object.freeze(capture);
+}
+
 export function capture_livemap_projected(
   controller: LiveMapDocumentIdentityEpochController,
   rev: number,
@@ -38,13 +50,13 @@ export function capture_livemap_projected(
   const captureRoot = category === "strip"
     ? clone_hson_graph_without_quids(root)
     : clone_live_root(root);
-  const capture: LiveMapCapture = {
+  const transport = encode_projected_value_transport(projected);
+  const capture = make_canonical_livemap_projected_capture(
     rev,
-    ...encode_projected_value_transport(projected),
-    root: captureRoot,
-  };
-  Object.defineProperty(capture, "root", { enumerable: false });
-  Object.freeze(capture);
+    transport.format,
+    transport.payload,
+    captureRoot,
+  );
   if (category !== "strip") captureIdentityOverlay.set(capture, overlay);
   if (options !== undefined) {
     provenance.set(capture, Object.freeze({

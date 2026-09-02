@@ -2,6 +2,7 @@ import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { WebSocket, WebSocketServer } from "ws";
 import { EchoSessionError, hson } from "../../src/index.ts";
+import { make_canonical_livemap_projected_capture } from "../../src/api/livemap/livemap.projected.capture.ts";
 
 let checks = 0;
 function check(name, fn) {
@@ -131,12 +132,12 @@ function resume_options(host, client, credential) {
 
 function restore_projected_revision(map, rev) {
   const capture = map.capture();
-  map.restore({
+  map.restore(make_canonical_livemap_projected_capture(
     rev,
-    format: capture.format,
-    payload: capture.payload,
-    root: capture.root,
-  });
+    capture.format,
+    capture.payload,
+    capture.root,
+  ));
   assert.equal(map.rev, rev);
   return map;
 }

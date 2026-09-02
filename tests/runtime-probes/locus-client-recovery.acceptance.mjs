@@ -5,6 +5,7 @@ import { decode_locus_server_message, Hson, EchoRecoveryError, hson } from "../.
 import { acquire_projected_identity } from "../helpers/livemap-identity-internal.mts";
 import { create_locus_internal } from "../../src/api/locus/locus.core.ts";
 import { make_locus_canonical_commit } from "../../src/api/locus/locus.history.ts";
+import { make_canonical_livemap_projected_capture } from "../../src/api/livemap/livemap.projected.capture.ts";
 
 let checks = 0;
 
@@ -78,12 +79,12 @@ function recovery_options(host, map, rev, incarnationId = host.stream.incarnatio
 
 function restore_projected_revision(map, rev) {
   const capture = map.capture();
-  map.restore({
+  map.restore(make_canonical_livemap_projected_capture(
     rev,
-    format: capture.format,
-    payload: capture.payload,
-    root: capture.root,
-  });
+    capture.format,
+    capture.payload,
+    capture.root,
+  ));
   assert.equal(map.rev, rev);
   return map;
 }

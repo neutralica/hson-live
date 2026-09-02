@@ -12,6 +12,7 @@ import type {
 import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { parse_json } from "../transform/parsers/parse-json.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
+import { make_canonical_livemap_projected_capture } from "../livemap/livemap.projected.capture.js";
 import { is_public_multi_library_livemap } from "../livemap/livemap.libraries.js";
 import { create_multi_library_echo } from "./echo.multi-library.js";
 import { decode_projected_value_payload } from "../livemap/livemap.transport.js";
@@ -586,12 +587,12 @@ export function create_echo<
         }
         const schema = map.schema.get();
         const capture = staged.capture();
-        run_echo_owned(() => map.restore(Object.freeze({
-          rev: snapshot.rev,
-          format: capture.format,
-          payload: capture.payload,
-          root: capture.root,
-        })));
+        run_echo_owned(() => map.restore(make_canonical_livemap_projected_capture(
+          snapshot.rev,
+          capture.format,
+          capture.payload,
+          capture.root,
+        )));
         if (schema) run_echo_owned(() => map.schema.use(schema));
       } else if (is_document_live_map(map)) {
         const capture = decode_locus_document_snapshot(snapshot);

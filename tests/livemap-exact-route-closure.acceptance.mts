@@ -4,6 +4,7 @@ import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import { make_livemap_core } from "../src/api/livemap/livemap.core.ts";
+import { make_canonical_livemap_projected_capture } from "../src/api/livemap/livemap.projected.capture.ts";
 import { link_livemap } from "../src/api/livemap/livemap.link.ts";
 import { livemap_projected_propagation } from "../src/api/livemap/livemap.projected-propagation.ts";
 import { make_livemap_store_api } from "../src/api/livemap/livemap.store.ts";
@@ -54,6 +55,22 @@ const nested = object([["value", object([["ordered", ordered], ["dangerous", dan
 
 check("exact capture restores to the strict original graph", () => {
   const source = map(nested); const target = map(object([["old", true]])); target.restore(source.capture()); assert_same_graph(source, target);
+});
+check("internal recovery captures have the canonical public descriptor contract", () => {
+  const source = map(nested); const publicCapture = source.capture();
+  const recoveryCapture = make_canonical_livemap_projected_capture(9, publicCapture.format, publicCapture.payload, publicCapture.root);
+  assert.deepEqual(Object.keys(recoveryCapture), ["rev", "format", "payload"]);
+  assert.equal(Object.hasOwn(recoveryCapture, "root"), true);
+  assert.equal(Object.getOwnPropertyDescriptor(recoveryCapture, "root")?.enumerable, false);
+  assert.equal(Object.isFrozen(recoveryCapture), true);
+  const target = map(object([["old", true]])); target.restore(recoveryCapture); assert.equal(target.rev, 9); assert_same_graph(source, target);
+});
+check("an equivalent enumerable-root capture remains rejected", () => {
+  const source = map(nested); const capture = source.capture();
+  const enumerableRoot = Object.freeze({ rev: 9, format: capture.format, payload: capture.payload, root: capture.root });
+  assert.equal(Object.getOwnPropertyDescriptor(enumerableRoot, "root")?.enumerable, true);
+  const target = map(object([["old", true]]));
+  assert.throws(() => target.restore(enumerableRoot), /capture is not the canonical structural representation/);
 });
 check("exact apply reconstructs the strict original graph", () => {
   const source = map(nested); const target = map(object([["old", true]])); const capture = source.capture();
@@ -160,6 +177,6 @@ check("integer-like public snapshots are explicitly lossy ordered transport", ()
   assert.equal(canonical_hson_graph_equal(source.root(), target.root()), false); assert.equal(source.capture().payload, source.capture().payload);
 });
 
-assert.equal(checks, 25);
+assert.equal(checks, 27);
 process.stdout.write(`# ${checks} exact multi-route closure checks passed\n`);
 emit_hson_live_test_completion("livemap.exact-route-closure", checks, checks, 0);
