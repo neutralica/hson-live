@@ -15,7 +15,6 @@ import type {
   DocumentLiveMap,
   LiveMapGraphCommit,
 } from "../src/types/livemap.types.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 const Q1 = "000000711";
@@ -332,4 +331,3 @@ check("staged overlay remains owned by the accepting map", () => {
 
 process.stdout.write(`# ${checks} staged request-lowering checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.document-staged-request-lowering", checks, checks, 0);

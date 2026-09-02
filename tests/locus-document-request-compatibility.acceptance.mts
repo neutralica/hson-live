@@ -19,7 +19,6 @@ import type {
   LocusPersistedDocumentCheckpoint,
   LocusPersistedMapState,
 } from "../src/types/locus.types.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 const Q1 = "000000721";
@@ -389,4 +388,3 @@ check("read-only hosted byQuid remains a lookup rather than a mutation", () => {
 await sequence;
 process.stdout.write(`# ${checks} Locus request compatibility checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("locus.document-request-compatibility", checks, checks, 0);

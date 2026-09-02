@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { hsonTransform } from "../src/api/transform/index.ts";
@@ -351,4 +350,3 @@ check("first divergence classifies strict canonical identity without graph repai
 
 process.stdout.write(`# ${checks} canonical Hson equality checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("core.canonical-hson-equality", checks, checks, 0);

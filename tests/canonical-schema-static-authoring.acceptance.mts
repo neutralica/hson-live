@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import ts from "typescript";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -55,4 +54,3 @@ check("object and element structure remain syntactically distinct fixed construc
 check("symbolic recursion is statically named data", () => assert.match(sourceText, /schema\.reference\("Tree"\)[\s\S]*schema\.declarations/));
 
 testEvents.terminal("pass");
-emit_hson_live_test_completion("canonical-schema-static-authoring", checks, checks, 0);

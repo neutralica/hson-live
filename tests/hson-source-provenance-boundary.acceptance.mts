@@ -3,7 +3,6 @@ import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
 import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { parse_hson_with_provenance } from "../src/internal/hson-source-provenance/parse-hson-with-provenance.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -80,4 +79,3 @@ check("repeated parse preserves value and range determinism", () => {
 
 process.stdout.write(`# ${checks} Hson provenance-boundary checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("transform.hson-source-provenance-boundary", checks, checks, 0);

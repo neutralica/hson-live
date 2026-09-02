@@ -1,6 +1,5 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { hsonTransform } from "../src/api/transform/index.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
@@ -237,4 +236,3 @@ await check_async("HTML circuit retains exact output with a SHA witness", () => 
 assert.equal(checks, 25);
 process.stdout.write(`# ${checks} universal circuit verification checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion(LAUNCHER, checks, checks, 0);

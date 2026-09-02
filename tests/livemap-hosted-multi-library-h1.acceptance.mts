@@ -18,7 +18,6 @@ import {
 } from "../src/api/livemap/livemap.hosted.ts";
 import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.identity-epoch.ts";
 import { is_Node } from "../src/core/node-guards.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 const DataSchema: HsonSchema = Hson`<type "data" content <negativeZero "number" ordered <content <a "number" b "number">> items <array "number"> count <number <int true min 0>>>>`;
@@ -360,4 +359,3 @@ check("focused capture, codec, ledger hydration, and replay telemetry stays boun
 
 process.stdout.write(`1..${checks}\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.hosted-multi-library-h1", checks, checks, 0);

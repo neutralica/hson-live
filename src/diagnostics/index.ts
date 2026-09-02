@@ -7,16 +7,6 @@ export { is_Node as _is_Node } from "../core/node-guards.js"
 export { _circuit_test  } from "./test-circuit.js";
 export { _format_test  } from "./test-format.js";
 export type { Artifact, LoopReport, FixtureAtom, LoopOpts } from "../types/diagnostics.types.js";
-export {
-  hson_live_test_launchers,
-} from "../_tests/test-launchers.js";
-export type {
-  HsonLiveTestLauncher,
-  HsonLiveTestRuntime,
-  HsonLiveTestSubject,
-} from "../_tests/test-launchers.js";
-
-
 // dev exports 
 export { CREATE_NODE as _CREATE_NODE } from "../core/factories.js";
 export { _listeners_off_for_target, _listeners_debug_hard_reset } from "../api/livetree/managers/listener-builder.js";

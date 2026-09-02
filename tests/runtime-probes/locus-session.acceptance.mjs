@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import { create_test_event_emitter } from "../test-events.mjs";
 import assert from "node:assert/strict";
 import { WebSocket, WebSocketServer } from "ws";
@@ -431,4 +430,3 @@ await check("real WebSocket reattachment fences A before B recovers", async () =
 
 process.stdout.write(`Locus session acceptance checks passed (${checks}).\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("locus.session", checks, checks, 0);

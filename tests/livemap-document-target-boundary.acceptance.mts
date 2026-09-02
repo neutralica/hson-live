@@ -12,7 +12,6 @@ import type {
   LiveMapDocumentCommitTarget,
   LiveMapGraphOp,
 } from "../src/types/livemap.types.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 const Q1 = "000000601";
@@ -278,4 +277,3 @@ check("canonical target JSON is deterministic and path-first", () => {
 
 process.stdout.write(`# ${checks} document request/commit target boundary checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.document-target-boundary", checks, checks, 0);

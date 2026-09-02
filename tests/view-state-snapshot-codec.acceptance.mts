@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
@@ -712,4 +711,3 @@ check("encoding does not mutate source structure or insertion order", () => {
 
 process.stdout.write(`# ${checks} view-state snapshot codec checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.view-state-snapshot-codec", checks, checks, 0);

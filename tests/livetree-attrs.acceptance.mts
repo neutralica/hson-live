@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import {
@@ -424,4 +423,3 @@ check("attrs and flags are converged views over one canonical bag", () => {
 
 process.stdout.write(`# ${checks} LiveTree canonical attrs checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livetree.attrs", checks, checks, 0);

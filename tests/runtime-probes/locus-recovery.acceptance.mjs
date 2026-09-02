@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import { create_test_event_emitter } from "../test-events.mjs";
 import assert from "node:assert/strict";
 import { LocusRecoveryError, hson } from "../../src/index.ts";
@@ -295,4 +294,3 @@ run_case("later-attempt-or-patch-1-canonical-history", "later attempt or Patch 1
 });
 process.stdout.write("Locus recovery acceptance checks passed.\n");
 testEvents.terminal("pass");
-emit_hson_live_test_completion("locus.recovery", checks, checks, 0);

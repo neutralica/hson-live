@@ -17,7 +17,6 @@ import type {
   LocusHostedAggregateDraft,
 } from "../src/api/locus/locus.hosted-multi-library.ts";
 import { install_fake_document } from "./helpers/fake-document.mts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 const StateSchema: HsonSchema = Hson`<type "data" content <theme "string" count <number <int true min 0>> box <content <id "number">>>>`;
@@ -435,4 +434,3 @@ await check("H3 socket telemetry captures two/four-library bootstrap and effecti
 process.stdout.write(`1..${checks}\n`);
 process.stdout.write(`Hosted multi-library H3 acceptance: ${checks}/${checks}\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("locus.hosted-multi-library-h3", checks, checks, 0);

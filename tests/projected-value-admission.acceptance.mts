@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 
@@ -341,4 +340,3 @@ check("accessor TOCTOU and throwing proxy admission failures are atomic", () => 
 
 process.stdout.write(`# ${checks} projected-value admission and materialization checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("core.projected-value-admission", checks, checks, 0);

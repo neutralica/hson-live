@@ -8,7 +8,6 @@ import type {
   DocumentLiveMap,
   LiveMapDocumentRequestTarget,
 } from "../src/types/livemap.types.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -219,4 +218,3 @@ check("internal discovery remains non-minting and unexported beneath the public 
 
 process.stdout.write(`# ${checks} internal canonical ID-discovery checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.document-id-discovery", checks, checks, 0);

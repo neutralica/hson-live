@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import * as publicApi from "../src/index.ts";
 import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
 import { is_Node } from "../src/core/node-guards.ts";
@@ -350,4 +349,3 @@ check("document public observer failure takes precedence after watch delivery", 
 
 process.stdout.write(`# ${checks} public document location checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.document-location", checks, checks, 0);

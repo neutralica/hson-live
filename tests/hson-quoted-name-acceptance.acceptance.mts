@@ -1,5 +1,4 @@
 // @hson-live-external-test
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 
@@ -194,4 +193,3 @@ check("host and Hson escaping layer once when a template-literal name contains a
 
 process.stdout.write(`# ${checks} quoted-name acceptance checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("transform.hson-quoted-name-acceptance", checks, checks, 0);

@@ -12,7 +12,6 @@ import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap
 import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.identity-epoch.ts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import { is_Node } from "../src/core/node-guards.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 const StateSchema: HsonSchema = Hson`<type "data" content <count "number" nested <content <value "number">>>>`;
@@ -314,4 +313,3 @@ if (false) {
 
 process.stdout.write(`1..${checks}\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.public-libraries", checks, checks, 0);

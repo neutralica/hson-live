@@ -12,7 +12,6 @@ import {
   type CanonicalSchemaGraph,
 } from "../src/internal/canonical-schema/graph.ts";
 import { verify_canonical_schema_graph } from "../src/internal/canonical-schema/verify.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -83,4 +82,3 @@ check("document content traversal has an independent budget", () => {
 });
 
 testEvents.terminal("pass");
-emit_hson_live_test_completion("canonical-schema-resource-semantics", checks, checks, 0);

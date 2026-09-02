@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../src/index.ts";
@@ -301,4 +300,3 @@ check("stale snapshot convergence hooks cannot dispose the fresh binding", () =>
 
 process.stdout.write(`# ${checks} compatible document snapshot convergence checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("reflect.document-snapshot", checks, checks, 0);

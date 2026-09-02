@@ -14,7 +14,6 @@ import {
   encode_view_state_snapshot,
 } from "../src/api/livemap/livemap.document.view-state-codec.ts";
 import { get_livemap_staged_authority } from "../src/api/livemap/livemap.authority.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 const Q1 = "000000v81";
@@ -262,4 +261,3 @@ check("staged durable installation replaces the accepted map epoch", () => {
 
 process.stdout.write(`# ${checks} LiveMap capture-provenance checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.capture-provenance", checks, checks, 0);

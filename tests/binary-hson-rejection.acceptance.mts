@@ -7,7 +7,6 @@ import { hsonTransform } from "../src/api/transform/index.ts";
 import { set_transform_html_sanitizer } from "../src/api/transform/constructors/construct-output-2.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import type { HsonAttrs, HsonNode, Primitive } from "../src/core/types.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
 
@@ -340,4 +339,3 @@ await check("an actual Worker has byte, decode/encode, and SHA parity", async ()
 
 process.stdout.write(`1..${checks}\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("transform.binary-hson-rejection", checks, checks, 0);

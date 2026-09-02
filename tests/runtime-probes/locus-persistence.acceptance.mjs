@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import { create_test_event_emitter } from "../test-events.mjs";
 import assert from "node:assert/strict";
 import {
@@ -573,4 +572,3 @@ await check("corrupt persisted envelopes and tails reject without partial regist
 
 process.stdout.write(`# ${checks} persistent Locus checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("locus.persistence", checks, checks, 0);

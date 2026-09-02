@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 
@@ -179,4 +178,3 @@ check("comparison is deterministic and does not mutate carriers", () => {
 
 process.stdout.write(`# ${checks} ordered projected-value equality checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("core.projected-value-equality", checks, checks, 0);

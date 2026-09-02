@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { Hson, hsonTransform, type HsonSchema } from "../src/index.ts";
 import { compile_hson_schema, HSON_SCHEMA_MVP_BOOTSTRAP } from "../src/internal/hson-schema/compiler.ts";
 import { decode_canonical_schema_graph_hson, encode_canonical_schema_graph_hson } from "../src/internal/canonical-schema/encode-hson.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -195,4 +194,3 @@ check("runtime validation returns unchanged canonical identity", () => {
 });
 
 testEvents.terminal("pass");
-emit_hson_live_test_completion("hson-schema-mvp", checks, checks, 0);

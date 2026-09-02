@@ -1,6 +1,5 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import {
   corpusCounts,
@@ -112,4 +111,3 @@ process.stdout.write(`# ${checks} certified authored-Hson corpus checks passed\n
 process.stdout.write(`# descriptors ${JSON.stringify(corpusCounts)}\n`);
 process.stdout.write(`# observed assertions ${JSON.stringify({ acceptedAssertions, rejectedAssertions, integrityAssertions, totalAssertions: acceptedAssertions + rejectedAssertions + integrityAssertions })}\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion(LAUNCHER, checks, checks, 0);

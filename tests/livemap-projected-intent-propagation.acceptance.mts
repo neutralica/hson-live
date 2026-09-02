@@ -10,7 +10,6 @@ import {
   decode_livemap_replay_payload,
   encode_projected_value_transport,
 } from "../src/api/livemap/livemap.transport.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -273,4 +272,3 @@ check("propagation never introduces QUID metadata", () => {
 
 process.stdout.write(`# ${checks} projected intent propagation checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.projected-intent-propagation", checks, checks, 0);

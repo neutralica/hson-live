@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import {
@@ -228,4 +227,3 @@ check("document install is present only on document runtime façades", () => {
 
 process.stdout.write(`# ${checks} public boundary checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("core.public-boundaries", checks, checks, 0);

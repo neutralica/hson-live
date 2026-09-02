@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 
@@ -307,4 +306,3 @@ check("Locus sync and recovery use exact projected transport", () => {
 assert.equal(checks, 25);
 process.stdout.write(`# ${checks} exact LiveMap propagation checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.exact-propagation", checks, checks, 0);

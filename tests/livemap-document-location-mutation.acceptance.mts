@@ -13,7 +13,6 @@ import type {
   DocumentLiveMap,
   LiveMapDocumentRequestTarget,
 } from "../src/types/livemap.types.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -244,4 +243,3 @@ check("location mutation acquisition is non-minting and does not broaden capabil
 
 process.stdout.write(`# ${checks} document location mutation checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.document-location-mutation", checks, checks, 0);

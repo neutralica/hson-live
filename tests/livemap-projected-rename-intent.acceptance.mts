@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { decode_livemap_replay_payload } from "../src/api/livemap/livemap.transport.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -175,4 +174,3 @@ check("projected rename never mints QUID metadata", () => {
 
 process.stdout.write(`# ${checks} projected rename-intent checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.projected-rename-intent", checks, checks, 0);

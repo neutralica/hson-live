@@ -6,7 +6,6 @@ import {
   decode_livemap_replay_payload,
   encode_livemap_replay_transport,
 } from "../src/api/livemap/livemap.transport.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -183,4 +182,3 @@ check("projected move never mints QUID metadata", () => {
 
 process.stdout.write(`# ${checks} data array move-intent checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.projected-array-move-intent", checks, checks, 0);

@@ -5,7 +5,6 @@ import { _create_livetree_runtime_test_handle, _reflect_document_for_runtime_tes
 import { LiveMapDocumentAttributeNotFoundError, LiveMapDocumentMutationError } from "../src/api/livemap/livemap.error.ts";
 import type { DocumentLiveMap, LiveMapDocumentRequestTarget } from "../src/types/livemap.types.ts";
 import { element as reflectedElement } from "./helpers/reflect-unit6.mts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -76,4 +75,3 @@ check("attrs vocabulary has no synonyms or structural traversal", () => { const 
 
 process.stdout.write(`# ${checks} document location attrs checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.document-location-attrs", checks, checks, 0);

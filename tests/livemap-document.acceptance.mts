@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
@@ -361,4 +360,3 @@ check("document root observation is detached from canonical ownership", () => {
 
 process.stdout.write(`# ${checks} document LiveMap checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.document", checks, checks, 0);

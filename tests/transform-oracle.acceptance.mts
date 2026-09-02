@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import {
@@ -652,4 +651,3 @@ check("fixed regression descriptors cover every future promotion shape", () => {
 
 process.stdout.write(`# ${checks} canonical Transform oracle checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion(LAUNCHER, checks, checks, 0);

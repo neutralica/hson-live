@@ -1,6 +1,5 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import {
   element,
@@ -263,4 +262,3 @@ check("identity-stripped capture projects with no supplied claims", () => {
 
 process.stdout.write(`Reflect supplied identity preservation acceptance: ${checks}/${checks}\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("reflect.supplied-identity-preservation", checks, checks, 0);

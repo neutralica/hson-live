@@ -8,7 +8,6 @@ import {
 } from "../src/index.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import { install_fake_document } from "./helpers/fake-document.mts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 const StateSchema: HsonSchema = Hson`<type "data" content <value <number <int true min 0>>>>`;
@@ -322,4 +321,3 @@ await check("built-ins and single- or cross-library application actions share on
 
 process.stdout.write(`1..${checks}\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("locus.hosted-multi-library-action-pipeline", checks, checks, 0);

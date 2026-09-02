@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
@@ -578,4 +577,3 @@ check("activity observers stop cleanly and Locus-only lifecycle creates no DOM",
 await sequence;
 process.stdout.write(`1..${checks}\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livehost.authority-lifecycle", checks, checks, 0);

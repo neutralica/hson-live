@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { hson, validate_document_path } from "../src/index.ts";
@@ -350,4 +349,3 @@ function projected_element_from_map(map: DocumentLiveMap): HsonNode {
 
 process.stdout.write(`# ${checks} document LiveTree structural binding checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("reflect.document-structure", checks, checks, 0);

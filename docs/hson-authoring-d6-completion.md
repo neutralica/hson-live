@@ -45,7 +45,7 @@ tests/schema-completion-performance.acceptance.mts (new)
 tests/fixtures/schema-d6-schemas.fixture.mts (new)
 tests/fixtures/schema-d6-runtime.fixture.mts (new)
 tests/hson-authoring-package.acceptance.mjs
-src/_tests/test-launchers.ts
+suite-owned `HSON_LIVE_TEST_METADATA`
 package.json
 docs/hson-authoring-d6-completion.md (new)
 ```
@@ -219,7 +219,7 @@ Schema definitions or history. Source analysis is bounded at 128,000 UTF-16 unit
 
 106 focused behavioral checks plus 6 measured scenarios passed. The editor suite
 includes actual supervised D2, D3 and fresh/stale/repeated D5 cases. Suites are
-registered coherently in the existing launcher inventory.
+discoverable through their suite-owned executable metadata.
 
 ## 22. Real VS Code integration
 

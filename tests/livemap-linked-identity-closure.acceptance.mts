@@ -1,6 +1,5 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { element, mount, path, raw_node } from "./helpers/reflect-unit6.mts";
 import {
@@ -302,4 +301,3 @@ check("disposed binding cannot resurrect linked identity privately", () => {
 _dispose_livetree_runtime_test_handle(runtime);
 process.stdout.write(`LiveMap linked identity closure acceptance: ${checks}/${checks}\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.linked-identity-closure", checks, checks, 0);

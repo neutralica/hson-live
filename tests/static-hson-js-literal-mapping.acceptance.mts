@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 
 import { discover_static_from_hson_sources } from "../src/internal/embedded-hson/discover-static-from-hson-sources.ts";
 import { map_static_hson_point, map_static_hson_range } from "../src/internal/embedded-hson/static-hson-source.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -68,4 +67,3 @@ check("multi-character runtime range covers complete endpoint escapes", () => { 
 check("invalid JavaScript literal syntax is rejected by TypeScript", () => { const text = `${prefix}t.fromHson("\\xZ1");`; assert.equal(discover_static_from_hson_sources("/project/source.ts", text).sources.length, 0); });
 
 testEvents.terminal("pass");
-emit_hson_live_test_completion("static-hson-js-literal-mapping", checks, checks, 0);

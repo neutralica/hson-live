@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
@@ -235,4 +234,3 @@ check("withdrawn public identity acquisition methods remain absent", () => {
 });
 
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livetree.quid-runtime-closure", checks, checks, 0);

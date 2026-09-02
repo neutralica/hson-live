@@ -9,7 +9,6 @@ import type {
   LiveMapGraphOp,
 } from "../src/types/livemap.types.ts";
 import type { HsonNode } from "../src/core/types.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -276,4 +275,3 @@ check("the same staged commit replays deterministically on equal roots", () => {
 
 process.stdout.write(`# ${checks} staged canonical document-operation checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.document-staging", checks, checks, 0);

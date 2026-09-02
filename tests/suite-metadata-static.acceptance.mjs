@@ -26,20 +26,6 @@ assert.throws(() => read_metadata(valid.replace('Object.freeze(["x"])', '[tag]')
 assert.throws(() => { const ids = [read_metadata(valid), read_metadata(valid.replace('"one"', '"one"'))]; if (new Set(ids).size !== ids.length) throw new Error("Duplicate suite ID"); }, /Duplicate/);
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
-const launcherSource = await readFile(resolve(repositoryRoot, "src", "_tests", "test-launchers.ts"), "utf8");
-// This comparison is migration scaffolding and can leave with the old manifest in Phase 2C.
-const transitionalLaunchers = [...launcherSource.matchAll(/launcher\(\{([\s\S]*?)\}\),/g)]
-  .map((match) => {
-    const id = /\bid:\s*"([^"]+)"/.exec(match[1])?.[1];
-    const modulePath = /\brepositoryModule:\s*"([^"]+)"/.exec(match[1])?.[1];
-    assert.ok(id && modulePath, "transitional launcher blocks must expose literal IDs and modules");
-    return { id, modulePath };
-  });
-assert.equal(new Set(transitionalLaunchers.map(({ modulePath }) => modulePath)).size, transitionalLaunchers.length);
-for (const { id, modulePath } of transitionalLaunchers) {
-  assert.equal(read_metadata(await readFile(resolve(repositoryRoot, modulePath), "utf8")), id);
-}
-
 async function acceptance_sources(directory) {
   const sources = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {
@@ -59,6 +45,5 @@ for (const path of await acceptance_sources(resolve(repositoryRoot, "tests"))) {
 assert.equal(new Set(metadataIds).size, metadataIds.length, "executable suite metadata IDs must be unique");
 console.log(JSON.stringify({
   suiteMetadataStaticAcceptance: "passed",
-  transitionalLaunchersChecked: transitionalLaunchers.length,
   executableMetadataObjectsChecked: metadataIds.length,
 }));

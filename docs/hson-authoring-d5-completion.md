@@ -53,7 +53,7 @@ tests/fixtures/schema-d5-uncaught.fixture.mts (new)
 tests/hson-authoring-package.acceptance.mjs
 tests/schema-d2-discovery.acceptance.mts
 tests/schema-d3-discovery.acceptance.mts
-src/_tests/test-launchers.ts
+suite-owned `HSON_LIVE_TEST_METADATA`
 package.json
 docs/hson-authoring-d5-completion.md (new)
 ```

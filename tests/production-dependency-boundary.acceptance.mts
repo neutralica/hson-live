@@ -18,7 +18,7 @@ const sourceRoot = resolve(repositoryRoot, "src");
 const excludedSourceDirectories = new Set(["_refactor", "_tests", "diagnostics"]);
 const sourceExtensions = new Set([".ts", ".mts", ".js", ".mjs"]);
 const importSpecifierPattern = /(?:\bfrom\s*|\bimport\s*\(\s*)["']([^"']+)["']/g;
-const testOnlySpecifierPattern = /(?:^|\/)(?:_tests|tests?|fixtures?)(?:\/|$)|(?:^|\/)(?:test-exports|test-launchers|transform-test-oracle|test-circuit)(?:\.[cm]?[jt]s)?$/;
+const testOnlySpecifierPattern = /(?:^|\/)(?:_tests|tests?|fixtures?)(?:\/|$)|(?:^|\/)(?:test-exports|transform-test-oracle|test-circuit)(?:\.[cm]?[jt]s)?$/;
 
 function extension(path: string): string {
   const match = /\.[^.\/]+$/.exec(path);

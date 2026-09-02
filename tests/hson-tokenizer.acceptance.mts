@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
@@ -1075,4 +1074,3 @@ check("adjacent authored element text items remain distinct and ordered", () => 
 
 process.stdout.write(`# ${checks} Hson tokenizer checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("transform.hson-tokenizer", checks, checks, 0);

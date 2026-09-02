@@ -1,5 +1,4 @@
 // @hson-live-external-test
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
@@ -260,4 +259,3 @@ check("mounted SVG creation resolves DOMParser from the mapped realm", () => {
 
 process.stdout.write(`# ${checks} LiveTree DOM realm checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livetree.dom-realm", checks, checks, 0);

@@ -6,7 +6,6 @@ import { normalize_hson_graph } from "../src/core/normalize-hson-graph.ts";
 import { serialize_hson } from "../src/api/transform/serializers/serialize-hson.ts";
 import { TransformError } from "../src/core/errors.ts";
 import type { HsonNode } from "../src/core/types.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -323,4 +322,3 @@ check("authored structural crossings retain parser-owned structured evidence", (
 
 process.stdout.write(`# ${checks} structural-mode checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("transform.hson-structural-mode", checks, checks, 0);

@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap } from "hson-live";
 import { TreeSchema, UserSchema, type TreeSchemaType, type UserSchemaType } from "./fixtures/hson-schema-mvp/producer.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -187,4 +186,3 @@ check("construction, restore, and replay cannot install invalid governed data", 
 });
 
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap-hson-schema-mutation-proof", checks, checks, 0);

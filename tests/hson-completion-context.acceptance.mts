@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { completion_context } from "../src/internal/schema-completion/context.ts";
 import { completion_source } from "../editors/vscode-hson/src/completion-source.ts";
 import { discover_schema_validation_sources } from "../src/internal/trusted-schema-diagnostics/discover-validation-sources.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "hson-completion-context",
@@ -66,4 +65,3 @@ const tagAssociation = discover_schema_validation_sources('/tmp/tag-context.ts',
 check("editor source mapping retains tag context and exact host range", () => { const candidate = completion_source(tagAssociation, tagHost.indexOf('< />') + 2)!; const result = completion_context(candidate.source, candidate.cursor, candidate.unknownRanges); assert.equal(result?.kind, "tag"); assert.deepEqual(result?.path, [0]); assert.deepEqual(result?.range, { start: 2, end: 2 }); assert.deepEqual(candidate.map(result!.range), { start: tagHost.indexOf('< />') + 2, end: tagHost.indexOf('< />') + 2 }); });
 check("analysis never edits source", () => { const source = '<a >'; completion_context(source, 3); assert.equal(source, '<a >'); });
 testEvents.terminal("pass");
-emit_hson_live_test_completion('hson-completion-context', checks, checks, 0);

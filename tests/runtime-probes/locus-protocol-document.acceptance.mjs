@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import { create_test_event_emitter } from "../test-events.mjs";
 import assert from "node:assert/strict";
 import { decode_locus_message, decode_locus_server_message, encode_locus_message, hson } from "../../src/index.ts";
@@ -332,4 +331,3 @@ check("recovery plans carry generation-free snapshot encoding acknowledgments", 
 
 process.stdout.write(`# ${checks} Locus document protocol checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("locus.protocol-document", checks, checks, 0);

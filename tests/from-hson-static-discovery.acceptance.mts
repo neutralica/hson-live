@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 
 import { discover_static_from_hson_sources } from "../src/internal/embedded-hson/discover-static-from-hson-sources.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -60,4 +59,3 @@ const identical = run(root + 'hson.fromHson("<a/>"); hson.fromHson("<a/>");');
 assert.notEqual(identical[0]?.literalRange.start, identical[1]?.literalRange.start);
 
 testEvents.terminal("pass");
-emit_hson_live_test_completion("from-hson-static-discovery", checks, checks, 0);

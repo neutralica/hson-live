@@ -7,7 +7,6 @@ import * as transform from "hson-live/transform";
 import { hsonLiveTree } from "hson-live/livetree";
 import { hsonLocus } from "hson-live/locus";
 import { hsonReflect } from "hson-live/reflect";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -101,4 +100,3 @@ check("root facade exports preserve subsystem identities", () => {
 });
 
 testEvents.terminal("pass");
-emit_hson_live_test_completion("schema-hson-public", checks, checks, 0);

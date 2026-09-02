@@ -2,7 +2,6 @@
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
 import type { HsonNode } from "../src/core/types.ts";
@@ -212,4 +211,3 @@ check("multiNodeDocument capture categories preserve mode and strip identity", (
 
 process.stdout.write(`# ${checks} LiveMap capture-category checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.capture-categories", checks, checks, 0);

@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
@@ -323,4 +322,3 @@ check("JSON projection validates identity after canonical empty-element normaliz
 
 console.log(`hson-node QUID egress acceptance: ${checks} checks passed`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("transform.hson-node-quid-egress", checks, checks, 0);

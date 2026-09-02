@@ -90,10 +90,6 @@
       "types": "./dist/types/index.d.ts",
       "import": "./dist/types/index.js"
     },
-    "./test-launchers": {
-      "types": "./dist/_tests/test-launchers.d.ts",
-      "import": "./dist/_tests/test-launchers.js"
-    },
     "./diagnostics/test-exports": "./dist/_tests/test-exports.js",
     "./diagnostics/transform-test-oracle": {
       "types": "./dist/_tests/transform-oracle.d.ts",
@@ -142,7 +138,6 @@
     "test:hson-node-quid": "node --import=tsx tests/hson-node-quid.acceptance.mts",
     "test:hson-node-quid-ingress": "node --import=tsx tests/hson-node-quid-ingress.acceptance.mts",
     "test:hson-node-quid-egress": "node --import=tsx tests/hson-node-quid-egress.acceptance.mts",
-    "test:diagnostics-inventory": "node --import=tsx tests/diagnostics-inventory.acceptance.mts",
     "test:hson-serializer": "node --import=tsx tests/hson-serializer.acceptance.mts",
     "test:json-ingress": "node --import=tsx tests/json-ingress.acceptance.mts",
     "test:hson-array-index": "node --import=tsx tests/hson-array-index.acceptance.mts",

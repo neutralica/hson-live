@@ -6,7 +6,6 @@ import { LiveMapDocumentMutationError } from "../src/api/livemap/livemap.error.t
 import type { HsonNode } from "../src/core/types.ts";
 import type { DocumentLiveMap, LiveMapDocumentRequestTarget } from "../src/types/livemap.types.ts";
 import { element as reflectedElement, raw_node } from "./helpers/reflect-unit6.mts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -68,4 +67,3 @@ check("surface adds no duplicate item or generic operators", () => { const locat
 
 process.stdout.write(`# ${checks} document location ordered-content checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.document-location-content", checks, checks, 0);

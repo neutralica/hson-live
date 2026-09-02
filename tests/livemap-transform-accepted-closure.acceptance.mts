@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 
@@ -184,4 +183,3 @@ check("array index wrappers close through a LiveMap splice", () => {
 assert.equal(checks, 24);
 process.stdout.write(`# ${checks} Transform–LiveMap accepted closure checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.transform-accepted-closure", checks, checks, 0);

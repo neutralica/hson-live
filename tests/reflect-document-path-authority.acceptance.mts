@@ -18,7 +18,6 @@ import type {
   LiveMapGraphCommit,
   LiveMapGraphOp,
 } from "../src/types/livemap.types.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -283,4 +282,3 @@ check("replacement targets remain path-authoritative when QUIDs differ", () => {
 
 process.stdout.write(`# ${checks} Unit 6 path-first reflection checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("reflect.document-path-authority", checks, checks, 0);

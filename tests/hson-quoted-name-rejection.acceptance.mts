@@ -1,5 +1,4 @@
 // @hson-live-external-test
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 
@@ -163,4 +162,3 @@ check("quoted-name escape rejection owns the exact backslash location", () => {
 
 process.stdout.write(`# ${checks} quoted-name rejection checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("transform.hson-quoted-name-rejection", checks, checks, 0);

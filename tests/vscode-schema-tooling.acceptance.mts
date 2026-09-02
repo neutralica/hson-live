@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { discover_schema_project, resolve_workspace_hson_schema_tool } from "../editors/vscode-hson/src/schema-tooling.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 
 let checks = 0;
 function check(name: string, body: () => void): void { body(); console.log(`ok ${++checks} - ${name}`); }
@@ -93,5 +92,3 @@ const stopped = new Promise<number | null>(resolveStopped => watcher.once("close
 watcher.kill("SIGTERM");
 assert.equal(await stopped, 0, watchOutput);
 check("packed consumer watch reports project/current/error/recovery, reconciles changes, and stops cleanly", () => assert.equal(run("check").status, 0));
-
-emit_hson_live_test_completion("vscode-schema-tooling", checks, checks, 0);

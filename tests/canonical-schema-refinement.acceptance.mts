@@ -3,7 +3,6 @@ import { admit_projected_value } from "../src/core/projected-value-admission.ts"
 import { evaluate_canonical_projected_schema } from "../src/internal/canonical-schema/evaluate.ts";
 import { CANONICAL_SCHEMA_FORMAT, CANONICAL_SCHEMA_VERSION, type CanonicalRefinementRule } from "../src/internal/canonical-schema/graph.ts";
 import { verify_canonical_schema_graph } from "../src/internal/canonical-schema/verify.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -53,4 +52,3 @@ check("semantic diagnostic metadata changes expected evidence", () => {
 });
 
 testEvents.terminal("pass");
-emit_hson_live_test_completion("canonical-schema-refinement", checks, checks, 0);

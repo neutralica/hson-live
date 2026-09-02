@@ -22,7 +22,6 @@ import {
   DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
   DocumentReflectError,
 } from "../src/api/reflect/reflect.document.error.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -285,4 +284,3 @@ check("unbound detach and reinsert semantics remain unchanged after disposal", (
 
 process.stdout.write(`# ${checks} Unit 6 continuity and lifecycle checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("reflect.document-continuity", checks, checks, 0);

@@ -4,7 +4,6 @@ import { hson } from "../src/index.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import type { LiveTree } from "../src/api/livetree/livetree.ts";
 import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -123,4 +122,3 @@ check("same-name attrs and flags have identical reconstructed semantics", () => 
 
 process.stdout.write(`# ${checks} LiveTree/LiveMap attrs and flags convergence checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livetree-livemap.attrs-convergence", checks, checks, 0);

@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 
@@ -201,4 +200,3 @@ check("integer-like public snapshots are explicitly lossy ordered transport", ()
 assert.equal(checks, 27);
 process.stdout.write(`# ${checks} exact multi-route closure checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.exact-route-closure", checks, checks, 0);

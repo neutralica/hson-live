@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
@@ -217,4 +216,3 @@ check("clone mints a new issued lineage", () => {
 });
 
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livetree.issued-quid-lifecycle", checks, checks, 0);

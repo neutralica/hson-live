@@ -6,7 +6,6 @@ import {
   internal_livemap_aggregate_authority,
   internal_livemap_library_ownership,
 } from "../src/api/livemap/livemap.internal.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 const StateSchema = Hson`<type "data" content <account <content <id "string">> age <number <int true min 0 under 130>>>>`;
@@ -115,4 +114,3 @@ check("staged candidates gain no governed proof until accepted", () => {
 });
 
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap-hson-schema-transition-proof", checks, checks, 0);

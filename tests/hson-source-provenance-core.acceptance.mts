@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { parse_hson_with_provenance } from "../src/internal/hson-source-provenance/parse-hson-with-provenance.ts";
 import type { HsonSourceLocation } from "../src/internal/hson-source-provenance/hson-source-provenance.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -103,4 +102,3 @@ check("same source produces structurally identical query results", () => {
 
 process.stdout.write(`# ${checks} Hson provenance-core checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("transform.hson-source-provenance-core", checks, checks, 0);

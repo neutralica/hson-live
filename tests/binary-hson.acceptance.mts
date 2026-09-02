@@ -6,7 +6,6 @@ import { hson } from "../src/hson.ts";
 import { hsonTransform } from "../src/api/transform/index.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import type { HsonAttrs, HsonMeta, HsonNode, Primitive } from "../src/core/types.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -371,4 +370,3 @@ await check("Binary SHA hashes surrogate bytes directly", async () => {
 
 process.stdout.write(`1..${checks}\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("transform.binary-hson-vectors", checks, checks, 0);

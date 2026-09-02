@@ -1,6 +1,5 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 import {
@@ -462,4 +461,3 @@ check("an invalid descriptor produces no fabricated source range", () => {
 
 process.stdout.write(`# ${checks} embedded Hson diagnostic mapping checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("transform.embedded-hson-diagnostic-mapping", checks, checks, 0);

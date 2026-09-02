@@ -3,7 +3,6 @@ import { existsSync, mkdtempSync, readFileSync, renameSync, unlinkSync, writeFil
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -289,4 +288,3 @@ check("physical producer deletion, file rename, exclusion, and restoration recon
 });
 
 testEvents.terminal("pass");
-emit_hson_live_test_completion("hson-schema-analyzer", checks, checks, 0);

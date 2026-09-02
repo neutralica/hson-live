@@ -26,7 +26,6 @@ import {
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import type { ClassifiedLiveMap, DocumentLiveMap } from "../src/types/livemap.types.ts";
 import { element, path, projected_element, raw_node } from "./helpers/reflect-unit6.mts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 const Q1 = "000000v91";
@@ -285,4 +284,3 @@ check("capture categories do not alter LiveTree clone identity semantics", () =>
 
 process.stdout.write(`# ${checks} Locus and Reflection capture-identity closure checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("locus.capture-identity-closure", checks, checks, 0);

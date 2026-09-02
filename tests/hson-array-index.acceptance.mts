@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { parseDocument } from "htmlparser2";
@@ -423,4 +422,3 @@ check("canonical invariant requires physical order to equal index order", () => 
 
 process.stdout.write(`# ${checks} canonical array-index checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("core.hson-array-index", checks, checks, 0);

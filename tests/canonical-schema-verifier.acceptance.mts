@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { admit_projected_value } from "../src/core/projected-value-admission.ts";
 import { CANONICAL_SCHEMA_FORMAT, CANONICAL_SCHEMA_VERSION } from "../src/internal/canonical-schema/graph.ts";
 import { verify_canonical_schema_graph } from "../src/internal/canonical-schema/verify.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -77,4 +76,3 @@ check("explicit undefined optional fields reject", () => rejected(graph({ projec
 check("sparse graph arrays reject", () => { const choices = new Array(1); rejected(graph({ projectedRoot: 0 }, [{ kind: "projected-union", choices }]), /dense/); });
 
 testEvents.terminal("pass");
-emit_hson_live_test_completion("canonical-schema-verifier", checks, checks, 0);

@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import { create_test_event_emitter } from "../test-events.mjs";
 import assert from "node:assert/strict";
 import { Hson, hson } from "../../src/index.ts";
@@ -489,4 +488,3 @@ await check("single-host ownership conflicts and release are controlled", async 
 
 process.stdout.write(`# ${checks} strict Locus authority checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("locus.authority", checks, checks, 0);

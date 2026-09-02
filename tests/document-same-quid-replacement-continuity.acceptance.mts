@@ -1,6 +1,5 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import {
   element,
@@ -546,4 +545,3 @@ check("throwing resource cleanup is isolated while A to B runtime transfer compl
 assert.equal(checks, 27);
 process.stdout.write(`1..${checks}\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("reflect.document-same-quid-replacement-continuity", checks, checks, 0);

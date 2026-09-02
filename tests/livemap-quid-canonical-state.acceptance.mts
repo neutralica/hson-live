@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
@@ -254,4 +253,3 @@ check("reparsing noQuid output yields an identity-stripped, not exact-equal, gra
 
 process.stdout.write(`# ${checks} LiveMap QUID canonical-state checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.quid-canonical-state", checks, checks, 0);

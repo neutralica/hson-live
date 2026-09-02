@@ -1,7 +1,6 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { hsonTransform } from "../src/api/transform/index.ts";
 
@@ -213,4 +212,3 @@ await check("a missing WebCrypto subtle capability rejects clearly", async () =>
 
 process.stdout.write(`1..${checks}\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("transform.sha256", checks, checks, 0);

@@ -1,6 +1,5 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import {
   HSON_NUMBER_NONFINITE,
@@ -351,4 +350,3 @@ check("transport carries ordinary numbers and requires fresh admission proof", (
 
 process.stdout.write(`# ${checks} Hson numeric admission checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("core.hson-number", checks, checks, 0);

@@ -1,6 +1,5 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { hson } from "../src/index.ts";
 import { collect_hson_node_quid_claims, PERSISTED_QUID_ALPHABET } from "../src/core/hson-node-quid.ts";
@@ -66,4 +65,3 @@ check("bounded acquire-retire cycles retain O(I) strings and no active claims", 
 
 process.stdout.write(`1..${checks}\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.issued-quid-ledger", checks, checks, 0);

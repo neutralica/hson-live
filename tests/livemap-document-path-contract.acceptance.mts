@@ -18,7 +18,6 @@ import {
 } from "../src/api/livemap/livemap.document.path.ts";
 import { LiveMapDocumentMutationError } from "../src/api/livemap/livemap.error.ts";
 import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -240,4 +239,3 @@ check("root replacement retires every old path and malformed effects are explici
 
 process.stdout.write(`# ${checks} canonical document-path checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.document-path-contract", checks, checks, 0);

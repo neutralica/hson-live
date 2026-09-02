@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import { create_test_event_emitter } from "../test-events.mjs";
 import assert from "node:assert/strict";
 import { WebSocket, WebSocketServer } from "ws";
@@ -970,4 +969,3 @@ await check("real WebSocket reconnect uses a new session and recovers state", as
 
 process.stdout.write(`Locus client recovery acceptance checks passed (${checks}).\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("locus.client-recovery", checks, checks, 0);

@@ -14,7 +14,6 @@ import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import { create_livehost_locus_registry } from "../src/api/livehost/index.ts";
 import { install_fake_document } from "./helpers/fake-document.mts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 const StateSchema: HsonSchema = Hson`<type "data" content <theme "string" count <number <int true min 0>>>>`;
@@ -539,4 +538,3 @@ await check("public hosted failures reject before acceptance and leave the aggre
 
 process.stdout.write(`1..${checks}\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("locus.hosted-multi-library-h5", checks, checks, 0);

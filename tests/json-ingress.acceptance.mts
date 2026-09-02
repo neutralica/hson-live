@@ -1,5 +1,4 @@
 // @hson-live-external-test
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
@@ -613,4 +612,3 @@ check("late duplicate rejection settles without eager whole-source position scan
 
 process.stdout.write(`# ${checks} JSON ingress checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("transform.json-ingress", checks, checks, 0);

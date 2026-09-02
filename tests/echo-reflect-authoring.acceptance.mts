@@ -7,7 +7,6 @@ import { document_binding_for_node } from "../src/api/livetree/lifecycle/documen
 import { echo_document_authority_for } from "../src/api/echo/echo.document-authority.ts";
 import { link_node_to_el } from "../src/api/livetree/utils/node-map-helpers.ts";
 import { create_locus_internal } from "../src/api/locus/locus.core.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -237,4 +236,3 @@ await check("one-map authorization denial settles without Reflect failure and th
 });
 
 testEvents.terminal("pass");
-emit_hson_live_test_completion("echo.reflect-authoring", checks, checks, 0);

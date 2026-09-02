@@ -19,7 +19,6 @@ import type {
   LocusHostedAggregateDocumentDraft,
   LocusHostedAggregateDraft,
 } from "../src/api/locus/locus.hosted-multi-library.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 const StateSchema: HsonSchema = Hson`<type "data" content <theme "string" count <number <int true min 0>>>>`;
@@ -341,4 +340,3 @@ await check("digest and authority mismatches in checkpoint or tail reject before
 process.stdout.write(`1..${checks}\n`);
 process.stdout.write(`Hosted multi-library H4 acceptance: ${checks}/${checks}\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("locus.hosted-multi-library-h4", checks, checks, 0);

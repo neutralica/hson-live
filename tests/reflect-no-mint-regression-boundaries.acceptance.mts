@@ -1,6 +1,5 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import {
   element,
@@ -237,4 +236,3 @@ check("Unit 10 keeps acquisition internal and adds no raw reconstruction", () =>
 _dispose_livetree_runtime_test_handle(runtime);
 process.stdout.write(`Reflect no-mint regression boundaries acceptance: ${checks}/${checks}\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("reflect.no-mint-regression-boundaries", checks, checks, 0);

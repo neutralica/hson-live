@@ -1,6 +1,5 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import {
   element,
@@ -261,4 +260,3 @@ check("QUID-scoped CSS and events share one authority-owned acquisition", () => 
 _dispose_livetree_runtime_test_handle(runtime);
 process.stdout.write(`Reflect linked no-mint projection acceptance: ${checks}/${checks}\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("reflect.linked-no-mint-projection", checks, checks, 0);

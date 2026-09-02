@@ -1,6 +1,5 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { hson } from "../src/index.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
@@ -63,4 +62,3 @@ check("fresh owner epochs remain independent even when QUID bytes are equal", ()
 
 process.stdout.write(`1..${checks}\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.identity-aba-prevention", checks, checks, 0);

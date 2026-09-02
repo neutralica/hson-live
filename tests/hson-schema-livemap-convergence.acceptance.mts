@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -77,4 +76,3 @@ check("duplicate LiveMap namespace certification is retired", () => {
 });
 
 testEvents.terminal("pass");
-emit_hson_live_test_completion("hson-schema-livemap-convergence", checks, checks, 0);

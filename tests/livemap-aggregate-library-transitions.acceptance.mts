@@ -5,7 +5,6 @@ import {
   internal_livemap_aggregate_authority,
   internal_livemap_library_ownership,
 } from "../src/api/livemap/livemap.internal.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 const NumberSchema = Hson`<type "data" content <value "number">>`;
@@ -238,4 +237,3 @@ check("aggregate preparation clones only affected library candidates and publish
 
 process.stdout.write(`1..${checks}\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.aggregate-library-transitions", checks, checks, 0);

@@ -3,7 +3,6 @@ import { performance } from "node:perf_hooks";
 import { Hson, type HsonSchema } from "../src/index.ts";
 import { compile_hson_schema } from "../src/internal/hson-schema/compiler.ts";
 import { generate_hson_schema_types } from "../src/internal/hson-schema/generate-types.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -228,4 +227,3 @@ check("moderately nested recursive validation and generation remain bounded", ()
 });
 
 testEvents.terminal("pass");
-emit_hson_live_test_completion("hson-schema-composition-recursion", checks, checks, 0);

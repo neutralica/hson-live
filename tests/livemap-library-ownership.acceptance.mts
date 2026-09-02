@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { Hson, hson } from "../src/index.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { internal_livemap_library_ownership } from "../src/api/livemap/livemap.internal.ts";
 import { acquire_projected_identity } from "./helpers/livemap-identity-internal.mts";
@@ -90,4 +89,3 @@ check("document maps retain a library-local mode without a public library select
 
 process.stdout.write(`1..${checks}\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.library-ownership", checks, checks, 0);

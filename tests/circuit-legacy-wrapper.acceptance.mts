@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { hsonTransform } from "../src/api/transform/index.ts";
@@ -224,4 +223,3 @@ check("quiet reports no longer retain the forced legacy debug trace", () => {
 assert.equal(checks, 25);
 process.stdout.write(`# ${checks} legacy circuit wrapper compatibility checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion(LAUNCHER, checks, checks, 0);

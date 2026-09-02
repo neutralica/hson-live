@@ -9,7 +9,6 @@ import {
 } from "../src/api/livemap/livemap.document.identity.ts";
 import { LiveMapDocumentStagingError, LiveMapRevError } from "../src/api/livemap/livemap.error.ts";
 import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -287,4 +286,3 @@ check("malformed whole-root restore remains atomic", () => {
 
 process.stdout.write(`1..${checks}\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.document-atomic-reconciliation", checks, checks, 0);

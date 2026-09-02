@@ -1,6 +1,5 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { element } from "./helpers/reflect-unit6.mts";
 import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
@@ -261,4 +260,3 @@ check("the existing 9-character QUID encoding remains unchanged", () => {
 
 process.stdout.write(`1..${checks}\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.document-identity-acquisition", checks, checks, 0);

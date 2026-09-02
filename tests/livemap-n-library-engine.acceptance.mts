@@ -11,7 +11,6 @@ import {
   make_livemap_library_registry,
 } from "../src/api/livemap/livemap.library.ts";
 import { prepare_livemap_root } from "../src/api/livemap/livemap.document.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 const DataSchema = Hson`<type "data" content <value "number">>`;
@@ -294,4 +293,3 @@ check("performance telemetry clones and validates only touched libraries", () =>
 
 process.stdout.write(`1..${checks}\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.n-library-engine", checks, checks, 0);

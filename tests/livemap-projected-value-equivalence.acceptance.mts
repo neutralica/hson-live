@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 
@@ -379,4 +378,3 @@ check("generic array-item replacement uses the canonical indexed relationship", 
 
 process.stdout.write(`# ${checks} LiveMap projected-value equivalence checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.projected-value-equivalence", checks, checks, 0);

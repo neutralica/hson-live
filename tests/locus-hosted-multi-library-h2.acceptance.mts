@@ -11,7 +11,6 @@ import {
   type LocusHostedAggregateDraft,
 } from "../src/api/locus/locus.hosted-multi-library.ts";
 import { install_fake_document } from "./helpers/fake-document.mts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 const StateSchema: HsonSchema = Hson`<type "data" content <theme "string" count <number <int true min 0>> box <content <id "number">>>>`;
@@ -290,4 +289,3 @@ await check("hosted actions remain FIFO and report focused prepare/replay teleme
 process.stdout.write(`1..${checks}\n`);
 process.stdout.write(`Hosted multi-library H2 acceptance: ${checks}/${checks}\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("locus.hosted-multi-library-h2", checks, checks, 0);

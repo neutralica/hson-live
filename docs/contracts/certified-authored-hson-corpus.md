@@ -81,15 +81,11 @@ No parser, serializer, invariant, equality, normalization, transport,
 diagnostic-circuit, or public-facade behavior was changed to introduce this
 corpus.
 
-## Integrated accounting
+## Test authority
 
-After the quoted-name delimiter amendment, the registered hson-live inventory
-is 1,428 authoritative checks across 59 launchers. The hson-demo2 Node catalog
-contains 2,438 cases, for a combined total of 3,866. The launcher manifest
-fingerprint is
-`42e4d5aac15f36a3c420589ff6a36c0c02e9870fbd60d52f670967a75a252645`;
-the Node catalog fingerprint is `fnv1a32-fe2e33a7`, and the Worker catalog
-fingerprint is `fnv1a32-18e3249e`.
+Executable suites and their suite-owned metadata are authoritative. Reports
+count the actual emitted case terminals; this corpus does not participate in a
+launcher manifest, duplicate catalog, or historical inventory reconciliation.
 
 The completed human worksheet remains immutable historical input. Current
 membership records are amendment-aware. The next authored-Hson decisions are

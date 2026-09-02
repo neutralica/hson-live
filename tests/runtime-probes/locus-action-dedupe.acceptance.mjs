@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import { create_test_event_emitter } from "../test-events.mjs";
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -848,4 +847,3 @@ process.stdout.write(
     `Locus action dedupe acceptance checks passed (${checks}).\n`,
 );
 testEvents.terminal("pass");
-emit_hson_live_test_completion("locus.action-dedupe", checks, checks, 0);

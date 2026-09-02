@@ -1,6 +1,5 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { hson } from "../src/index.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
@@ -74,4 +73,3 @@ check("independent Locus map epochs may carry equal QUID bytes", () => { const a
 
 process.stdout.write(`1..${checks}\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.identity-replay-provenance", checks, checks, 0);

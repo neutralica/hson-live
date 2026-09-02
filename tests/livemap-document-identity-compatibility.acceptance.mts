@@ -1,6 +1,5 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { element, mount } from "./helpers/reflect-unit6.mts";
 import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
@@ -287,4 +286,3 @@ check("internal identity acquisition adds no public Locus or remote registration
 
 process.stdout.write(`1..${checks}\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.document-identity-compatibility", checks, checks, 0);

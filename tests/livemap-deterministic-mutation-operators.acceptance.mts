@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 
@@ -57,4 +56,3 @@ check(mutation_operators[19]!);
 assert.equal(checks, 20);
 process.stdout.write(`# ${checks} deterministic LiveMap mutation operators passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.deterministic-mutation-operators", checks, checks, 0);

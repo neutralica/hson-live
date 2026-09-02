@@ -1,5 +1,4 @@
 // @hson-live-external-test
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 
@@ -220,4 +219,3 @@ check("multiline source canonicalizes after complete reconstruction", () => {
 
 process.stdout.write(`# ${checks} tagged-template checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("transform.hson-tagged-template", checks, checks, 0);

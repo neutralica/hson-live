@@ -11,7 +11,6 @@ import {
 } from "../src/api/livemap/livemap.document.identity.ts";
 import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 import { LiveMapDocumentStagingError } from "../src/api/livemap/livemap.error.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -210,4 +209,3 @@ check("agreement assertion rejects a same-size foreign QUID substitution", () =>
 
 process.stdout.write(`1..${checks}\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.document-identity-overlay-lookup", checks, checks, 0);

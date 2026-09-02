@@ -1,4 +1,3 @@
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { hson, LiveMapDocumentMutationError } from "../src/index.ts";
@@ -618,4 +617,3 @@ check("sequential changes advance once while failures and no-ops consume no revi
 
 process.stdout.write(`# ${checks} LiveMap document mutation checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.document-mutation", checks, checks, 0);

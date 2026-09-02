@@ -5,7 +5,6 @@ import { compile_hson_schema } from "../src/internal/hson-schema/compiler.ts";
 import { generate_hson_schema_types } from "../src/internal/hson-schema/generate-types.ts";
 import { evaluate_canonical_document_schema } from "../src/internal/canonical-schema/evaluate.ts";
 import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -236,4 +235,3 @@ const performanceTelemetry = performanceCases.map(([name, source, candidate]) =>
 console.log(JSON.stringify({ documentBreadthPerformance: performanceTelemetry }));
 
 testEvents.terminal("pass");
-emit_hson_live_test_completion("hson-schema-document", checks, checks, 0);

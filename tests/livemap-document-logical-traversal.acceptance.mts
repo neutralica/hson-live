@@ -22,7 +22,6 @@ import type {
 } from "../src/types/livemap.types.ts";
 import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 import { FakeElement, install_fake_document } from "./helpers/fake-document.mts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -651,4 +650,3 @@ check("Reflection consumes first carrier materialization through existing commit
 
 process.stdout.write(`# ${checks} internal logical document traversal checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.document-logical-traversal", checks, checks, 0);

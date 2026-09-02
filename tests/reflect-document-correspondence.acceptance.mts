@@ -21,7 +21,6 @@ import type {
   LiveMapCommitObservation,
   LiveMapGraphOp,
 } from "../src/types/livemap.types.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -315,4 +314,3 @@ check("QUID-free repeated local operations remain incrementally routable", () =>
 
 process.stdout.write(`# ${checks} Unit 6 correspondence and failure checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("reflect.document-correspondence", checks, checks, 0);

@@ -13,7 +13,6 @@ import {
   LiveMapDocumentStagingError,
 } from "../src/api/livemap/livemap.error.ts";
 import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
-import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 const Q1 = "000000701";
@@ -287,4 +286,3 @@ check("canonical target JSON contains no unresolved QUID branch", () => {
 
 process.stdout.write(`# ${checks} document request-lowering checks passed\n`);
 testEvents.terminal("pass");
-emit_hson_live_test_completion("livemap.document-request-lowering", checks, checks, 0);
