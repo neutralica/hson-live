@@ -238,18 +238,6 @@ A reviewer does not need to execute these helpers because the committed review a
 
 Its renderer is at [corpus-review.mts](/Users/philliphanson/Documents/Design/web/hson/hson-live/tests/certified-corpus/corpus-review.mts:45). The external provenance artifact supplies the missing audit layer.
 
-## Minimum human-certification workflow
-
-1. Freeze the candidate commit and fingerprints.
-2. Review all 179 critical cases first. For runtime-derived diagnostics and outputs, derive the intended result from the settled contract or explicitly ratify current behavior.
-3. Review all 85 high cases independently, comparing complete graphs and exact output code units.
-4. Review the 41 medium family cases at both family-definition and concrete-boundary levels.
-5. Confirm the 34 low cases against their exact predecessor fixtures.
-6. Record reviewer identity, decision, provenance, and rationale per descriptor.
-7. Resolve the two malformed-backtick diagnostic choices explicitly.
-8. Regenerate the semantic and provenance artifacts, then run the candidate and specialized suites.
-9. Only after sign-off should the project describe the corpus as human-reviewed or certified.
-
 ## Repository state
 
 This audit created or modified no repository file and did not interfere with the incoming test-side refactor.

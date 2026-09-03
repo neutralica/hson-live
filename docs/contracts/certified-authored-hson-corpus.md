@@ -5,8 +5,7 @@ settled authored language and its graph, structural JSON, and structural HTML
 transport boundaries. It is a finite contract inventory, not a fuzz suite or a
 second implementation of the parser.
 
-The authoritative launcher is
-`transform.certified-authored-hson-corpus`. Run it with:
+Run the executable suite with:
 
 ```sh
 npm run test:certified-authored-hson-corpus
@@ -14,7 +13,7 @@ npm run test:certified-authored-hson-corpus
 
 Regenerate the review artifact with `npm run corpus:review`. The committed
 artifact is `docs/contracts/certified-authored-hson-corpus.review.txt`; the
-launcher rejects stale or nondeterministic regeneration.
+suite rejects stale or nondeterministic regeneration.
 
 ## Descriptor architecture
 
@@ -26,37 +25,17 @@ cross-references. Every materialized case has a stable ID, explicit taxonomy,
 hand-authored expected graph or structured rejection, and exact applicable
 wire output. The inventory contains no callback-driven fixture logic.
 
-`corpus-manifest.mts` materializes and sorts the descriptors and derives every
-count. `corpus-runner.mts` owns executable semantic assertions.
+`corpus-manifest.mts` materializes and sorts the descriptors.
+`corpus-runner.mts` owns executable semantic assertions.
 `corpus-integrity.mts` owns inventory and review-artifact integrity. Expected
 graphs and outputs are constructed explicitly; neither the parser nor the
 serializer under test generates them.
 
-## Candidate totals
-
-| Classification | Concrete descriptors |
-| --- | ---: |
-| Literal accepted authored-Hson | 51 |
-| Transparent accepted authored-Hson | 50 |
-| Literal rejected authored-Hson | 55 |
-| Transparent rejected authored-Hson | 117 |
-| Graph-only accepted transport | 11 |
-| Graph-only rejected transport | 9 |
-| Structural JSON transport | 14 |
-| Structural HTML transport | 49 |
-| Diagnostic-circuit regressions | 4 |
-| Specialized-test cross-references | 10 |
-| **Total concrete descriptors** | **370** |
-
-The authored subset has 273 unique sources and zero declared source reuse.
-The runner executes 1,089 accepted assertions, 1,764 rejected assertions, and
-24 integrity assertions: 2,877 weighted assertions in total.
-
 ## Coverage boundaries
 
 The candidate covers the full finite quoted-string and single-quoted-name escape
-families, including all 32 raw C0 rejection cases for each token role. It
-certifies object, array, and element grammar; mode-sensitive scalar admission;
+families, including all raw C0 rejection cases for each token role. It checks
+object, array, and element grammar; mode-sensitive scalar admission;
 negative-zero identity; exact structural JSON order and decoded duplicate-key
 evidence; and structural HTML totality for detached scalars, explicit string
 segmentation, controls, Unicode, and raw `style`/`script` text.

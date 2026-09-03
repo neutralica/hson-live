@@ -108,8 +108,6 @@
     "hson-schema:check": "node --import=tsx scripts/hson-schema.mts check --project tsconfig.json",
     "hson-schema:build": "node --import=tsx scripts/hson-schema.mts build --project tsconfig.json",
     "hson-schema:watch": "node --import=tsx scripts/hson-schema.mts watch --project tsconfig.json",
-    "pack:consumer": "node ../hson-demo2/scripts/certified-package.mjs pack",
-    "certify:consumer": "node ../hson-demo2/scripts/certified-package.mjs certify",
     "check:source": "tsc -p tsconfig.json --noEmit",
     "check:tests": "tsc -p tests/tsconfig.json --noEmit",
     "check:tooling": "tsc -p scripts/tsconfig.json --noEmit",
