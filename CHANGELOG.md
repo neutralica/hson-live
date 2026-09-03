@@ -1,6 +1,8 @@
 // hson changelog.md
 
-## 03JNU2026
+## 3.4.0
+
+See the [Hson 3.4.0 release notes](docs/release-notes/v3-4-0.md) for the complete release summary.
 
 ## 2.3.2
 ### changes
