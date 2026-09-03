@@ -1,6 +1,6 @@
 export const HSON_TEST_EVENT_PREFIX: "<HSON_TEST_EVENT>";
 
-export type HsonTestCaseStatus = "pass" | "fail" | "skip" | "unsupported" | "cancelled";
+export type HsonTestCaseStatus = "pass" | "fail" | "skip" | "unsupported" | "cancelled" | "error";
 
 export type HsonTestEventEmitter = Readonly<{
   case_begin(caseId: string, title: string): void;

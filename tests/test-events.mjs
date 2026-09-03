@@ -1,6 +1,6 @@
 export const HSON_TEST_EVENT_PREFIX = "<HSON_TEST_EVENT>";
 
-const CASE_STATUSES = new Set(["pass", "fail", "skip", "unsupported", "cancelled"]);
+const CASE_STATUSES = new Set(["pass", "fail", "skip", "unsupported", "cancelled", "error"]);
 
 function emit(record) {
   process.stdout.write(`${HSON_TEST_EVENT_PREFIX}${JSON.stringify(record)}\n`);
@@ -13,6 +13,7 @@ function require_string(value, label) {
 }
 
 function derive_terminal_status(statuses) {
+  if (statuses.includes("error")) return "error";
   if (statuses.includes("fail")) return "fail";
   if (statuses.includes("cancelled")) return "cancelled";
   if (statuses.includes("pass")) return "pass";

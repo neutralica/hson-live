@@ -37,6 +37,23 @@ assert.equal(terminalRecords.length, 1);
 assert.equal(terminalRecords[0].status, "fail");
 assert.equal("count" in terminalRecords[0], false);
 
+const errorWrites = [];
+process.stdout.write = (value) => { errorWrites.push(String(value)); return true; };
+try {
+  const events = create_test_event_emitter("fixture.infrastructure-error");
+  events.case_begin("startup", "Startup");
+  events.diagnostic("startup", "infrastructure", "runtime unavailable");
+  events.case_end("startup", "error");
+  events.terminal("error");
+} finally {
+  process.stdout.write = originalWrite;
+}
+const errorRecords = errorWrites.map((line) => JSON.parse(line.slice(HSON_TEST_EVENT_PREFIX.length)));
+assert.deepEqual(
+  errorRecords.map((record) => [record.t, record.status].filter((value) => value !== undefined)),
+  [["case_begin"], ["diagnostic"], ["case_end", "error"], ["terminal", "error"]],
+);
+
 const failingCommandSource = [
   `import { run_command_test_case } from ${JSON.stringify(new URL("./command-test-case.mjs", import.meta.url).href)};`,
   "run_command_test_case({",
