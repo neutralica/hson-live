@@ -1,116 +1,14 @@
 # Hson Language for VS Code
 
-This extension provides syntax highlighting and authoritative parser diagnostics
-for standalone `.hson` files, supported `Hson` tagged templates, and statically
-recoverable strings passed to official `fromHson` boundaries in TypeScript and
-TSX.
+Hson Language v0.1
 
-Highlighting and diagnostics share TypeScript binding-aware discovery of named
-`Hson` imports from `hson-live` and `hson-live/hson`, including renamed imports.
-Local/shadowed names, wrong packages, copied functions and wrappers are excluded.
-The existing Hson TextMate grammar supplies the template tokens, published through
-VS Code semantic tokens with Hson scope fallbacks. A spelling-only injection is
-not contributed. Invalid Hson and literal segments around interpolation are still
-highlighted. Neither highlighting nor secure diagnostics requires Schema,
-Workspace Trust, or application execution.
+• syntax highlighting, definitions, and contextual diagnostics for `.hson` files
+• schema-aware editing for `Hson`\`\` tagged templates including path-backed auto-completion
+• auto-generated TypeScript types from HsonSchema declarations for a reliable coupling of schema and type to a single source
+• `check` and `watch` modes to generate types one time or debounced on Schema revision
 
-Literal usage references to the official `hson` facade carry strong blue, yellow,
-pink, and green family colors; literal usage references to official `Hson` use
-the same hues with softer opacity. This includes bare references, member roots,
-validation calls, and `Hson` tagged templates. The first member-access period
-after an official lowercase `hson` root is violet; later periods are ordinary.
-Import/export declarations and renamed imports retain ordinary host-theme
-presentation. Local, shadowed, wrong-package, property-name, and otherwise
-unrelated lookalikes receive no marker. Standalone `.hson` files do not invent
-one. All ordinary Hson body syntax remains controlled by the active syntax theme.
-
-## Settings
-
-Run **Hson: Open Settings** or search Settings for `@ext:terminal-gothic.hson-language`.
-The initial user-facing surface is deliberately compact:
-
-- **Hson › Appearance: Library Marker Strength**
-  (`hson.appearance.libraryMarkerStrength`, default `1.0`) controls the presence
-  of official literal `hson` markers.
-- **Hson › Appearance: Authoring Marker Strength**
-  (`hson.appearance.authoringMarkerStrength`, default `0.70`) keeps official
-  literal `Hson` markers visibly quieter.
-- **Hson › Appearance: Blue / Yellow / Pink / Green**
-  (`hson.appearance.blue`, `.yellow`, `.pink`, `.green`) are hexadecimal colors
-  shared by the corresponding `hson` and `Hson` letters. Their shipped defaults
-  are `#00adf6`, `#c9d100`, `#ff4a8c`, and `#39a500`. The fields accept `#RGB`,
-  `#RGBA`, `#RRGGBB`, or `#RRGGBBAA`.
-- **Hson › Appearance: Color Library hson**
-  (`hson.appearance.colorLibraryMarker`, default `true`) controls only the
-  lowercase official library marker and its violet separator. Uppercase `Hson`,
-  Hson bodies, imports, and diagnostics are unaffected.
-- **Hson › Appearance: Library Separator Color**
-  (`hson.appearance.librarySeparatorColor`, default `#7247d4`) controls the first
-  member-access period immediately after an official lowercase `hson` root.
-Changing a strength, shared color, lowercase toggle, or separator color recreates
-the presentation decorations and refreshes visible editors immediately; no
-rebuild, reinstall, window reload, or runtime restart is required.
-
-When no non-empty user/workspace Appearance color override is configured, each
-marker uses its contributed theme color identity. `workbench.colorCustomizations`
-therefore remains the advanced override path:
-
-```json
-{
-  "workbench.colorCustomizations": {
-    "hson.libraryMarker.h": "#00adf6",
-    "hson.libraryMarker.s": "#c9d100",
-    "hson.libraryMarker.o": "#ff4a8c",
-    "hson.libraryMarker.n": "#39a500",
-    "hson.authoringMarker.h": "#00adf6",
-    "hson.authoringMarker.s": "#c9d100",
-    "hson.authoringMarker.o": "#ff4a8c",
-    "hson.authoringMarker.n": "#39a500",
-    "hson.libraryMarker.separator": "#7247d4"
-  }
-}
-```
-
-The contributed defaults use the approved blue `#00adf6`, yellow `#c9d100`, pink
-`#ff4a8c`, green `#39a500`, and separator violet `#7247d4` identities across
-dark, light, and high-contrast variants. Precedence is: a non-empty explicitly
-configured Hson Appearance color, then the corresponding theme color identity
-(including `workbench.colorCustomizations`), then its contributed default. An
-empty explicit field also falls back to the theme identity. The authoring IDs use
-the same hues; Authoring Marker Strength supplies the default `0.70` opacity.
-Library Marker Strength applies equally to lowercase letters and the violet
-separator. A supplied alpha channel is respected and multiplied by strength.
-
-Ordinary project-owned TS/TSX source receives proactive workspace Hson
-diagnostics, including files that have never been opened, and standalone
-`.hson` is discovered directly across every workspace folder. TS/TSX ownership
-follows TypeScript project configuration (`include`, `exclude`, `extends`, and
-project references). Loose or otherwise unowned TS/TSX files are diagnosed when
-explicitly opened, matching TypeScript's project-ownership model. Declarations,
-generated Schema artifacts, dependencies, configured output directories, and
-explicit diagnostic fixtures remain excluded. An open editor's in-memory text
-is authoritative, while closing it restores the saved-file result instead of
-removing its Problems. In the default secure mode the extension parses project
-configuration but does not execute workspace code. It does not write helper
-files or modify user source. This scan is independent of Schema Generate,
-Schema Watch and Workspace Trust; stopping Schema Watch
-does not reduce ordinary Hson diagnostic coverage.
-Substitution-free templates receive authoritative whole-Hson tag admission
-diagnostics, including raw-template newline normalization and UTF-16 mapping.
-Readable noncanonical formatting is accepted when the actual tag accepts it.
-Interpolated templates are discovered, but receive no speculative whole-source
-syntax diagnostic because their primitive values are known only at runtime.
-Irrevocable tokenizer failures before the first interpolation can still be
-reported securely; incomplete prefixes and unknown completed candidates cannot.
-
-Official Transform, LiveMap, and LiveTree `fromHson` calls also receive secure
-syntax checking when their argument is a direct string/no-substitution template
-literal or a finite local `const` identifier-only alias of one. JavaScript's
-cooked string value is checked, and escape-produced characters map back to the
-complete authored escape. Dynamic templates, concatenation, helper results,
-imports, properties, `let`/`var`, and runtime file/network input remain
-runtime-only. Recognition follows official import binding identity; unrelated
-methods that merely share the name `fromHson` are ignored.
+Highlighting and diagnostics share TypeScript binding-aware discovery of named `Hson` imports from `hson-live` and `hson-live/hson`, including renamed imports. 
+ 
 
 ## HsonSchema authoring and diagnostics
 
@@ -122,7 +20,16 @@ import { Hson, type HsonSchema } from "hson-live/hson";
 import { hsonLiveMap } from "hson-live/livemap";
 
 export const UserSchema: HsonSchema = Hson`
-  <type "data" content <user <content <age "number">>>>
+  <type "data" 
+   content 
+    <user 
+     <content 
+      <age 
+       "number"
+      >
+     >
+    >
+  >
 `;
 
 const user = Hson`<user <age 37>>`;
@@ -130,17 +37,9 @@ Hson.certify(UserSchema, user);
 hsonLiveMap.fromHson(user).schema.use(UserSchema);
 ```
 
-The extension discovers static `HsonSchema` declarations and generated evidence.
-It provides Schema-aware diagnostics and completion without executing callback
-validators.
+The extension discovers static `HsonSchema` declarations and generated evidence. It provides Schema-aware diagnostics and completion without executing callback validators.
 
-Local Schema definitions are editor symbols: inside `<ref "…">`, completion
-offers the current declaration's `defs`; **Go to Definition**, **Find
-References**, **Rename Symbol**, and hover follow only those semantic local
-references. Rename changes the authored Schema declaration and its resolved ref
-strings as one editor edit; it never edits generated files. Use Schema Watch or
-**Hson: Generate Schema Types** afterward to reconcile generated evidence (the
-usual stale-evidence quick fixes remain available).
+Local Schema definitions are editor symbols and also offer semantic auto-complete. Inside `<ref "…">` tags, for example, completion always offers the current declaration's `defs`; **Go to Definition**, **Find References**, **Rename Symbol**, and hover follow only those semantic local references. Use Schema Watch or Check afterward to reconcile generated evidence.
 
 For headless development and CI, the package remains authoritative:
 
@@ -149,17 +48,7 @@ hson-schema generate --project tsconfig.json
 hson-schema watch --project tsconfig.json
 ```
 
-In VS Code, use **Hson: Generate Schema Types**, **Hson: Start Schema Watch**,
-**Hson: Stop Schema Watch**, and **Hson: Check Schemas**. The extension resolves
-and runs only the selected workspace's installed `hson-live` `hson-schema`
-executable; it never downloads or supplies a generator. Watch automatically
-regenerates after relevant saved edits. Its compact status reports Stopped,
-Checking, Current, Stale, or Error for extension-managed processes; lifecycle
-details remain in the Hson Schema output channel. Missing or stale local
-evidence offers Generate and Start Watch quick fixes. Commands are explicit
-trusted-workspace operations; opening a project does not start them. Generated
-declarations are ordinary TypeScript files, so their updates do not require a
-window reload.
+**Hson: Generate Schema Types**, **Hson: Start Schema Watch**, **Hson: Stop Schema Watch**, and **Hson: Check Schemas** do not execute automatically on startup. Schema-generated type declarations are ordinary TypeScript files.
 
 Interpolations remain ordinary TypeScript expressions; runtime values can be
 certified explicitly with `Hson.certify`.
@@ -262,23 +151,12 @@ debugging, but it is not the ordinary local installation workflow.
    `;
    ```
 
-Direct and renamed official imports receive the same grammar-backed highlighting
-and admission diagnostics because both use the same TypeScript binding identity.
+Direct and renamed official imports receive the same grammar-backed highlighting and admission diagnostics because both use the same TypeScript binding identity.
 
-Ordinary strings and templates inside `fromHson(...)` intentionally retain
-ordinary TypeScript coloring. Schema tooling adds semantic diagnostics, not spelling-based
-TextMate injection. `Hson\`...\`` remains the preferred embedded authoring form
-with first-class Hson presentation.
+Ordinary strings and templates inside `fromHson(...)` intentionally retain ordinary TypeScript coloring. Schema tooling adds semantic diagnostics, not spelling-based TextMate injection. `Hson\`...\`` remains the preferred embedded authoring form with first-class Hson presentation.
 
-Use **Developer: Inspect Editor Tokens and Scopes** in the Command Palette to
-inspect the emitted Hson semantic tokens and their TextMate scope fallbacks.
+Use **Developer: Inspect Editor Tokens and Scopes** in the Command Palette to inspect the emitted Hson semantic tokens and their TextMate scope fallbacks.
 
 ### Zero-Schema regression verification
 
-`npm run test:baseline` runs 24 focused recognition, grammar, admission, mapping
-and stale-publication checks. `npm run test:baseline:integration` runs the unsaved
-edit journey in trusted and genuinely restricted workspaces. Set
-`HSON_VSCODE_EXECUTABLE` to select a VS Code binary (the runner defaults to the
-ordinary macOS installation). `npm run test:baseline:installed` builds the actual
-VSIX and runs the same journey from a clean installed-extension directory, using
-an empty test-driver extension rather than a development override for Hson.
+`npm run test:baseline` runs 24 focused recognition, grammar, admission, mapping and stale-publication checks. `npm run test:baseline:integration` runs the unsaved edit journey in trusted and genuinely restricted workspaces. Set `HSON_VSCODE_EXECUTABLE` to select a VS Code binary (the runner defaults to the ordinary macOS installation). `npm run test:baseline:installed` builds the actual VSIX and runs the same journey from a clean installed-extension directory, using an empty test-driver extension rather than a development override for Hson.
