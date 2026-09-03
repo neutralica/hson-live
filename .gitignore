@@ -32,3 +32,6 @@ _archive/
 
 # tarballs
 *.tgz
+
+# generated schema & types
+tests/fixtures/hson-schema-document/out/
