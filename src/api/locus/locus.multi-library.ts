@@ -116,6 +116,10 @@ export function create_multi_library_locus_internal<
     ...(options.sessions === undefined ? {} : { sessions: options.sessions }),
     ...(options.actionDedupe === undefined ? {} : { actionDedupe: options.actionDedupe }),
     ...(options.schema === undefined ? {} : { schema: options.schema }),
+    internal: Object.freeze({
+      acquireActionActivity: () => activity.acquire("action"),
+      acquireConnectionActivity: () => activity.acquire("connection"),
+    }),
   });
 
   const mutate: LocusMultiLibrary<TMap, TActions>["mutate"] = async (mutation) => {
@@ -138,16 +142,8 @@ export function create_multi_library_locus_internal<
 
   const connect: LocusMultiLibrary<TMap, TActions>["connect"] = (socket, _context?: LocusConnectionContext) => {
     if (disposed) return Object.assign(() => {}, { emit_event: () => {} });
-    const release = activity.acquire("connection");
     const stop = authority.connect(socket, _context);
-    let connected = true;
-    const close = (): void => {
-      if (!connected) return;
-      connected = false;
-      stop();
-      release();
-    };
-    return Object.assign(close, { emit_event: () => {} }) as LocusConnection;
+    return Object.assign(stop, { emit_event: () => {} }) as LocusConnection;
   };
 
   const locus = Object.freeze({

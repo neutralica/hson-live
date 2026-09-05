@@ -298,6 +298,11 @@ export function create_multi_library_echo_socket_client_internal(
       if (sessionId !== message.sessionId || sessionEpoch !== message.epoch) return;
       sessionStatus = "detached";
       sessionFencingCount += 1;
+      const error = new Error("Hosted aggregate session attachment was fenced.");
+      for (const pending of pendingActions.values()) pending.reject(error);
+      pendingActions.clear();
+      for (const pending of pendingStatuses.values()) pending.reject(error);
+      pendingStatuses.clear();
       return;
     }
     if (message.type === "session-ended") {

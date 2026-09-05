@@ -9,9 +9,9 @@ import type {
 } from "../../types/livemap.types.js";
 import type {
   LocusActionAuthorizer,
-  LocusActionDelivery,
   LocusActionPayloads,
   LocusActionTerminalOutcome,
+  LocusClientActionMessage,
   LocusClientActionResult,
   LocusConnectionContext,
   LocusDisposer,
@@ -33,7 +33,6 @@ import { make_livemap_hosted_mirror_from_snapshot_internal } from "../livemap/li
 import { node_to_json_value } from "../livemap/livemap.editor.js";
 import { validate_document_path } from "../livemap/livemap.document.path.js";
 import { make_locus_action_dedupe_store } from "./locus.actions.js";
-import { authorize_locus_action } from "./locus.action-authorization.js";
 import { make_locus_session_manager } from "./locus.session.js";
 import { decode_locus_action_payload, locus_schema_error_message } from "./locus.action-validation.js";
 import {
@@ -63,6 +62,7 @@ import {
   type LocusHostedAggregateWireEnvelope,
 } from "./locus.hosted-multi-library.js";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "./locus.hosted-multi-library.protocol.js";
+import { admit_locus_aggregate_external_action } from "./locus.hosted-multi-library.action-admission.js";
 
 /** The established Locus retained live-history budget. */
 export const DEFAULT_LOCUS_HOSTED_AGGREGATE_HISTORY_BYTES = 4 * 1_024 * 1_024;
@@ -115,6 +115,7 @@ type HostedConnection = {
   closed: boolean;
   stopMessage?: LocusDisposer;
   stopClose?: LocusDisposer;
+  releaseActivity?: LocusDisposer;
   readonly context?: LocusConnectionContext;
   sessionId: string | undefined;
   sessionEpoch: number | undefined;
@@ -138,6 +139,8 @@ export type LocusHostedAggregateSocketOptions<
   /** Internal deterministic interleave seam for pending-live proof coverage. */
   internal?: Readonly<{
     afterRecoveryCut?: () => void | Promise<void>;
+    acquireActionActivity?: () => LocusDisposer;
+    acquireConnectionActivity?: () => LocusDisposer;
   }>;
 }>;
 
@@ -216,6 +219,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     () => seq,
     options.actionDedupe,
   );
+  const acquireActionActivity = options.internal?.acquireActionActivity ?? (() => () => {});
 
   function next_session_id(): string {
     const configured = options.sessionId;
@@ -271,6 +275,14 @@ export function create_locus_hosted_aggregate_socket_internal<
     const raw = JSON.stringify(message);
     if (utf8_bytes(raw) > limit) throw new Error("Hosted aggregate socket message exceeds its configured byte limit.");
     connection.socket.send(raw);
+  }
+
+  function attachment_current(connection: HostedConnection, sessionId: string, epoch: number): boolean {
+    return !connection.closed
+      && !connection.fenced
+      && connection.sessionId === sessionId
+      && connection.sessionEpoch === epoch
+      && sessions.is_active(sessionId, epoch);
   }
 
   function reject(connection: HostedConnection, code: string, message: string, id?: string): void {
@@ -565,43 +577,9 @@ export function create_locus_hosted_aggregate_socket_internal<
 
   function send_action_result(
     connection: HostedConnection,
-    request: Extract<HostedRequest, { type: "action" }>,
-    outcome: LocusActionTerminalOutcome,
-    delivery?: LocusActionDelivery,
+    response: LocusClientActionResult,
   ): void {
-    const common = {
-      format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
-      id: request.id,
-      seq: outcome.seq,
-      completionRev: outcome.completionRev,
-      ...(request.requestId === undefined ? {} : { requestId: request.requestId }),
-      ...(request.attemptId === undefined ? {} : { attemptId: request.attemptId }),
-      ...(delivery === undefined ? {} : { delivery }),
-    };
-    if (outcome.state === "succeeded") {
-      send(connection, Object.freeze({
-        type: "ack",
-        ok: true,
-        ...common,
-        ...(outcome.result === undefined ? {} : { result: outcome.result }),
-      }));
-      return;
-    }
-    send(connection, Object.freeze({ type: "error", ok: false, ...common, error: outcome.error }));
-  }
-
-  function rejected_action(
-    connection: HostedConnection,
-    request: Extract<HostedRequest, { type: "action" }>,
-    code: string,
-    message: string,
-  ): void {
-    send_action_result(connection, request, Object.freeze({
-      state: "failed",
-      seq,
-      completionRev: locus.rev,
-      error: Object.freeze({ code, message }),
-    }), "rejected");
+    send(connection, Object.freeze({ ...response, format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT }));
   }
 
   async function execute_action(
@@ -640,49 +618,32 @@ export function create_locus_hosted_aggregate_socket_internal<
 
   async function action(connection: HostedConnection, request: Extract<HostedRequest, { type: "action" }>): Promise<void> {
     if (!bind_session(connection, false) || connection.sessionId === undefined || connection.sessionEpoch === undefined) return;
-    const validation = validate_action_request(request);
-    if (!validation.ok) {
-      rejected_action(connection, request, validation.code, validation.message);
-      return;
-    }
+    const capturedSessionId = connection.sessionId;
+    const capturedEpoch = connection.sessionEpoch;
     const origin = Object.freeze({
       kind: "session" as const,
-      sessionId: connection.sessionId,
-      epoch: connection.sessionEpoch,
+      sessionId: capturedSessionId,
+      epoch: capturedEpoch,
       resumable: connection.sessionResumable,
     });
-    const authorization = authorize_locus_action<TActions>({
+    const admitted = await admit_locus_aggregate_external_action<TActions>({
       authorizer: options.authorizeAction,
-      action: request.name,
-      payload: validation.payload,
-      origin,
+      actionRequests,
       logicalMapId: locus.logicalMapId,
       incarnationId: locus.incarnationId,
+      currentSeq: () => seq,
+      headRev: () => locus.rev,
+      validateAction: validate_action_request,
+      executeAction: execute_action,
+      acquireActionActivity,
+    }, {
+      message: request as LocusClientActionMessage<TActions>,
+      origin,
       ...(connection.context === undefined ? {} : { connection: connection.context }),
+      attachmentCurrent: () => attachment_current(connection, capturedSessionId, capturedEpoch),
     });
-    const authorized = authorization instanceof Promise ? await authorization : authorization;
-    if (!authorized.ok) {
-      rejected_action(connection, request, authorized.code, authorized.message);
-      return;
-    }
-    if (request.requestId === undefined || request.clientId === undefined) {
-      send_action_result(connection, request, await execute_action(request, authorized.payload));
-      return;
-    }
-    const result = await actionRequests.execute({
-      clientId: request.clientId,
-      requestId: request.requestId,
-      ownerPrincipalId: connection.context?.principalId,
-      actionName: request.name,
-      payload: authorized.payload,
-      retry: request.retry === true,
-      run: () => execute_action(request, authorized.payload),
-    });
-    if (!result.ok) {
-      rejected_action(connection, request, result.code, result.message);
-      return;
-    }
-    send_action_result(connection, request, result.outcome, result.delivery);
+    if (!attachment_current(connection, capturedSessionId, capturedEpoch)) return;
+    send_action_result(connection, admitted.response);
   }
 
   function validate_action_request(
@@ -799,6 +760,7 @@ export function create_locus_hosted_aggregate_socket_internal<
 
   function connect(socket: LocusSocketLike, context?: LocusConnectionContext): LocusDisposer {
     if (disposed) return () => {};
+    const releaseConnectionActivity = options.internal?.acquireConnectionActivity?.();
     const connection: HostedConnection = {
       socket,
       subscriptions: new Map(),
@@ -811,6 +773,7 @@ export function create_locus_hosted_aggregate_socket_internal<
       sessionEpoch: undefined,
       sessionResumable: false,
       fenced: false,
+      ...(releaseConnectionActivity === undefined ? {} : { releaseActivity: releaseConnectionActivity }),
       ...(context === undefined ? {} : { context }),
     };
     connections.add(connection);
@@ -824,6 +787,8 @@ export function create_locus_hosted_aggregate_socket_internal<
       if (connection.sessionId !== undefined && connection.sessionEpoch !== undefined) {
         sessions.detach(connection.sessionId, connection.sessionEpoch);
       }
+      connection.releaseActivity?.();
+      connection.releaseActivity = undefined;
     };
     connection.stopMessage = socket.onMessage((raw) => {
       let request: HostedRequest;
@@ -845,7 +810,12 @@ export function create_locus_hosted_aggregate_socket_internal<
       else if (request.type === "session-goodbye") session_goodbye(connection, request);
       else if (request.type === "action-status") {
         if (!bind_session(connection, false)) return;
+        if (connection.sessionId === undefined || connection.sessionEpoch === undefined) return;
+        const capturedSessionId = connection.sessionId;
+        const capturedEpoch = connection.sessionEpoch;
+        if (!attachment_current(connection, capturedSessionId, capturedEpoch)) return;
         const status = actionRequests.status(request.clientId, request.requestId, connection.context?.principalId);
+        if (!attachment_current(connection, capturedSessionId, capturedEpoch)) return;
         if (!status.ok) {
           send(connection, Object.freeze({
             type: "session-rejected",
@@ -905,6 +875,8 @@ export function create_locus_hosted_aggregate_socket_internal<
         connection.closed = true;
         connection.stopMessage?.();
         connection.stopClose?.();
+        connection.releaseActivity?.();
+        connection.releaseActivity = undefined;
       }
       connections.clear();
       actionRequests.dispose();

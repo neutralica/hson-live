@@ -63,6 +63,7 @@ function wait_for_revision(map: ReturnType<typeof make_map>, revision: number): 
 function socket_pair(): Readonly<{
   client: LocusSocketLike;
   server: LocusSocketLike;
+  received: readonly Readonly<{ type?: string; requestId?: string }>[];
   dropNextActionResult: () => void;
   disconnect: () => void;
 }> {
@@ -72,6 +73,7 @@ function socket_pair(): Readonly<{
   const serverCloses = new Set<() => void>();
   let dropActionResult = false;
   let closed = false;
+  const received: Readonly<{ type?: string; requestId?: string }>[] = [];
   const disconnect = (): void => {
     if (closed) return;
     closed = true;
@@ -91,13 +93,20 @@ function socket_pair(): Readonly<{
         dropActionResult = false;
         return;
       }
+      received.push(message);
       for (const listener of [...clientMessages]) listener(raw);
     },
     close: disconnect,
     onMessage(listener: (raw: string) => void) { serverMessages.add(listener); return () => serverMessages.delete(listener); },
     onClose(listener: () => void) { serverCloses.add(listener); return () => serverCloses.delete(listener); },
   });
-  return Object.freeze({ client, server, dropNextActionResult: () => { dropActionResult = true; }, disconnect });
+  return Object.freeze({ client, server, received, dropNextActionResult: () => { dropActionResult = true; }, disconnect });
+}
+
+function deferred() {
+  let resolve: () => void = () => {};
+  const promise = new Promise<void>((done) => { resolve = done; });
+  return Object.freeze({ promise, resolve });
 }
 
 install_fake_document();
@@ -373,6 +382,153 @@ await check("built-ins and single- or cross-library application actions share on
   assert.equal(echo.map.rev, 3);
   stop();
   echo.dispose();
+  locus.dispose();
+});
+
+await check("replacement during authorization cannot cross aggregate admission", async () => {
+  const authorizationEntered = deferred();
+  const authorizationRelease = deferred();
+  let executions = 0;
+  const locus = hsonLocus.create({
+    map: make_map(),
+    sessions: { graceMs: 10_000, credential: () => "aggregate-auth-fence-credential" },
+    authorizeAction: async () => {
+      authorizationEntered.resolve();
+      await authorizationRelease.promise;
+      return true;
+    },
+    actions: { held: () => { executions += 1; } },
+  });
+  const firstPair = socket_pair();
+  locus.connect(firstPair.server, { principalId: "alice" });
+  const first = hsonEcho.create({ socket: firstPair.client, map: make_map(), recovery: { logicalMapId: locus.logicalMapId }, clientId: "auth-fence-client" });
+  await first.connect();
+  const credential = first.session.credential;
+  assert.ok(credential);
+  const pending = first.action("held");
+  await authorizationEntered.promise;
+
+  const secondPair = socket_pair();
+  locus.connect(secondPair.server, { principalId: "alice" });
+  const second = hsonEcho.create({
+    socket: secondPair.client,
+    map: make_map(),
+    recovery: { logicalMapId: locus.logicalMapId },
+    clientId: "auth-fence-client",
+    session: { credential },
+  });
+  await second.connect();
+  assert.equal(second.session.epoch, 2);
+  authorizationRelease.resolve();
+  await assert.rejects(pending, /fenced/i);
+  await Promise.resolve();
+  assert.equal(executions, 0);
+  assert.equal(locus.rev, 0);
+  assert.equal(locus.actionRequests.debug().pendingRequestCount, 0);
+  assert.equal(locus.actionRequests.debug().retainedTerminalCount, 0);
+  assert.equal(firstPair.received.some((message) => (message.type === "ack" || message.type === "error") && message.requestId === pending.request.requestId), false);
+  first.dispose();
+  second.dispose();
+  locus.dispose();
+});
+
+await check("replacement after admission retains the outcome but fences late delivery", async () => {
+  const handlerEntered = deferred();
+  const handlerRelease = deferred();
+  const authority = make_map();
+  const locus = hsonLocus.create({
+    map: authority,
+    sessions: { graceMs: 10_000, credential: () => "aggregate-post-admit-credential" },
+    actions: {
+      held: async (context) => {
+        handlerEntered.resolve();
+        await handlerRelease.promise;
+        await context.mutate((draft) => draft.lib("state").at(["value"]).set(9));
+      },
+    },
+  });
+  const firstPair = socket_pair();
+  locus.connect(firstPair.server, { principalId: "alice" });
+  const first = hsonEcho.create({ socket: firstPair.client, map: make_map(), recovery: { logicalMapId: locus.logicalMapId }, clientId: "post-admit-client" });
+  await first.connect();
+  const credential = first.session.credential;
+  assert.ok(credential);
+  const pending = first.action("held");
+  await handlerEntered.promise;
+  assert.equal(locus.activity.snapshot().actionCount, 1);
+
+  const secondPair = socket_pair();
+  locus.connect(secondPair.server, { principalId: "alice" });
+  const second = hsonEcho.create({
+    socket: secondPair.client,
+    map: make_map(),
+    recovery: { logicalMapId: locus.logicalMapId },
+    clientId: "post-admit-client",
+    session: { credential },
+  });
+  await second.connect();
+  handlerRelease.resolve();
+  await assert.rejects(pending, /fenced/i);
+  const recovered = await second.retryAction(pending.request);
+  assert.equal(recovered.type, "ack");
+  if (recovered.type === "ack") assert.ok(recovered.delivery === "joined" || recovered.delivery === "cached");
+  assert.equal(authority.rev, 1);
+  assert.equal(authority.lib("state").snap(["value"]), 9);
+  assert.equal(recovered.completionRev, 1);
+  assert.equal((await second.actionStatus(pending.request.requestId)).state, "succeeded");
+  assert.equal(locus.activity.snapshot().actionCount, 0);
+  assert.equal(firstPair.received.some((message) => (message.type === "ack" || message.type === "error") && message.requestId === pending.request.requestId), false);
+  first.dispose();
+  second.dispose();
+  locus.dispose();
+});
+
+await check("disconnect after admission cannot evict or cancel aggregate authority work", async () => {
+  const handlerEntered = deferred();
+  const handlerRelease = deferred();
+  const authority = make_map();
+  const locus = hsonLocus.create({
+    map: authority,
+    sessions: { graceMs: 10_000, credential: () => "aggregate-disconnect-credential" },
+    actions: {
+      held: async (context) => {
+        handlerEntered.resolve();
+        await handlerRelease.promise;
+        await context.mutate((draft) => draft.lib("state").at(["value"]).set(11));
+      },
+    },
+  });
+  const firstPair = socket_pair();
+  locus.connect(firstPair.server, { principalId: "alice" });
+  const first = hsonEcho.create({ socket: firstPair.client, map: make_map(), recovery: { logicalMapId: locus.logicalMapId }, clientId: "disconnect-client" });
+  await first.connect();
+  const credential = first.session.credential;
+  assert.ok(credential);
+  const pending = first.action("held");
+  await handlerEntered.promise;
+  firstPair.disconnect();
+  await assert.rejects(pending, /closed/i);
+  assert.equal(locus.activity.snapshot().connectionCount, 0);
+  assert.equal(locus.activity.snapshot().actionCount, 1);
+  handlerRelease.resolve();
+
+  const secondPair = socket_pair();
+  locus.connect(secondPair.server, { principalId: "alice" });
+  const second = hsonEcho.create({
+    socket: secondPair.client,
+    map: make_map(),
+    recovery: { logicalMapId: locus.logicalMapId },
+    clientId: "disconnect-client",
+    session: { credential },
+  });
+  await second.connect();
+  const recovered = await second.retryAction(pending.request);
+  assert.equal(recovered.type, "ack");
+  assert.equal(recovered.completionRev, 1);
+  assert.equal(authority.lib("state").snap(["value"]), 11);
+  assert.equal(locus.activity.snapshot().actionCount, 0);
+  first.dispose();
+  second.dispose();
   locus.dispose();
 });
 
