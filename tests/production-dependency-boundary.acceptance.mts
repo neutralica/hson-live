@@ -70,6 +70,20 @@ check("production runtime modules do not import test-only modules", () => {
   );
 });
 
+check("endpoint-only Echo has no replica, LiveMap, Reflect, or LiveTree runtime dependency", () => {
+  const endpointClient = readFileSync(resolve(sourceRoot, "api", "echo", "echo.client.ts"), "utf8");
+  const specifiers = [...endpointClient.matchAll(importSpecifierPattern)]
+    .map((match) => match[1])
+    .filter((specifier): specifier is string => specifier !== undefined);
+  for (const forbidden of ["livemap", "locus.protocol", "recovery", "aggregate", "echo.solo", "reflect", "livetree"]) {
+    assert.equal(
+      specifiers.some((specifier) => specifier.toLowerCase().includes(forbidden)),
+      false,
+      `endpoint-only Echo must not import ${forbidden} runtime machinery`,
+    );
+  }
+});
+
 check("removed LiveTree construction engine and graft_body stay absent", () => {
   const productionSource = files.map((path) => readFileSync(path, "utf8")).join("\n");
   assert.equal(

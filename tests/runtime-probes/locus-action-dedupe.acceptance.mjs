@@ -122,6 +122,7 @@ function connect(host, clientId, options = {}, connectionContext) {
         ...options,
     });
     client.connect();
+    if (options.session === undefined) void client.session.create();
     return { pair, client };
 }
 
@@ -785,6 +786,8 @@ await check(
     async () => {
         const f = fixture();
         const a = connect(f.host, 'reentrant-client', {
+            map: hson.liveMap.fromJson({ value: 0 }),
+            recovery: { logicalMapId: f.host.stream.logicalMapId },
             actionId: () => 'reentrant-request',
         });
         const b = connect(f.host, 'reentrant-client');
@@ -933,9 +936,11 @@ await check(
         const clientA = hson.echo.create({
             socket: ws_socket(wsA),
             clientId: 'real-browser',
+            map: hson.liveMap.fromJson({ value: 0 }),
             recovery: { logicalMapId: f.host.stream.logicalMapId },
         });
         clientA.connect();
+        await clientA.session.create();
         await clientA.recovery.recover();
         const original = clientA.action('gated', 42);
         const request = original.request;
@@ -949,6 +954,7 @@ await check(
             incarnationId: clientA.recovery.incarnationId,
             lastAppliedRev: clientA.recovery.lastAppliedRev,
         };
+        const credential = clientA.session.credential;
         clientA.dispose();
 
         const wsB = new WebSocket(url);
@@ -961,8 +967,10 @@ await check(
                 logicalMapId: f.host.stream.logicalMapId,
                 cursor: savedCursor,
             },
+            session: { credential },
         });
         clientB.connect();
+        await clientB.session.reattach();
         await clientB.recovery.recover();
         assert.equal(
             (await clientB.actionStatus(request.requestId)).state,

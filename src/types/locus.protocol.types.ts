@@ -485,6 +485,8 @@ export type LocusServerSessionCreatedMessage = Readonly<{
   sessionId: LocusSessionId;
   credential: LocusSessionCredential;
   epoch: LocusConnectionEpoch;
+  logicalMapId: LocusLogicalMapId;
+  incarnationId: LocusIncarnationId;
 }>;
 
 export type LocusServerSessionAttachedMessage = Readonly<{
@@ -492,6 +494,8 @@ export type LocusServerSessionAttachedMessage = Readonly<{
   id: LocusSessionRequestId;
   sessionId: LocusSessionId;
   epoch: LocusConnectionEpoch;
+  logicalMapId: LocusLogicalMapId;
+  incarnationId: LocusIncarnationId;
 }>;
 
 export type LocusServerSessionRejectedMessage = Readonly<{

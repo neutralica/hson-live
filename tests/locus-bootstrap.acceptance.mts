@@ -538,7 +538,7 @@ check("different logical authority rejects continuation", async () => {
   const pair = socket_pair();
   wrong.connect(pair.server);
   const client = create_locus_bootstrap_echo(install_locus_bootstrap(first.bootstrap), { socket: pair.client });
-  await assert.rejects(client.connectAndRecover(), /different logical map|invalid target/i);
+  await assert.rejects(client.connectAndRecover(), /different logical map|invalid target|authority does not match/i);
   assert.equal(client.echo.recovery.status, "failed");
   client.dispose();
 });

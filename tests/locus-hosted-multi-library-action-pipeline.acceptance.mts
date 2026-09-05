@@ -49,6 +49,17 @@ function make_map() {
   });
 }
 
+async function activate_echo(echo: Readonly<{
+  connect: () => unknown;
+  session: Readonly<{ credential: string | undefined; create: () => Promise<unknown>; reattach: () => Promise<unknown> }>;
+  recovery: Readonly<{ recover: () => Promise<unknown> }>;
+}>): Promise<void> {
+  echo.connect();
+  if (echo.session.credential === undefined) await echo.session.create();
+  else await echo.session.reattach();
+  await echo.recovery.recover();
+}
+
 function wait_for_revision(map: ReturnType<typeof make_map>, revision: number): Promise<void> {
   if (map.rev >= revision) return Promise.resolve();
   return new Promise((resolve) => {
@@ -167,7 +178,7 @@ await check("aggregate retry request payloads detach nested records and arrays f
   const pair = socket_pair();
   locus.connect(pair.server);
   const echo = hsonEcho.create({ socket: pair.client, map: make_map(), recovery: { logicalMapId: locus.logicalMapId } });
-  await echo.connect();
+  await activate_echo(echo);
 
   const payload = {
     nested: { value: 1 },
@@ -227,7 +238,7 @@ await check("named document denial is terminal without mutation and the next que
   locus.connect(pair.server, { principalId: "principal-a", attachment: { transport: "test" } });
   const echoMap = make_map();
   const echo = hsonEcho.create({ socket: pair.client, map: echoMap, recovery: { logicalMapId: locus.logicalMapId } });
-  await echo.connect();
+  await activate_echo(echo);
   const denied = await echo.action("document.attrs.set", {
     library: "page",
     target: { kind: "path", path: [0] },
@@ -279,7 +290,7 @@ await check("application payload decoding precedes authorization and mutation", 
   const pair = socket_pair();
   locus.connect(pair.server);
   const echo = hsonEcho.create({ socket: pair.client, map: make_map(), recovery: { logicalMapId: locus.logicalMapId } });
-  await echo.connect();
+  await activate_echo(echo);
   const invalid = await echo.action("validated", { value: "wrong" } as never);
   assert.equal(invalid.type, "error");
   if (invalid.type === "error") assert.equal(invalid.error.code, "LOCUS_SCHEMA_INVALID_PAYLOAD");
@@ -309,7 +320,7 @@ await check("resumable session reattachment retains one complete aggregate autho
   const firstPair = socket_pair();
   locus.connect(firstPair.server, { principalId: "principal-a" });
   const first = hsonEcho.create({ socket: firstPair.client, map: make_map(), recovery: { logicalMapId: locus.logicalMapId }, clientId: "stable-aggregate-client" });
-  await first.connect();
+  await activate_echo(first);
   const credential = first.session.credential;
   const sessionId = first.session.sessionId;
   assert.ok(credential);
@@ -326,9 +337,11 @@ await check("resumable session reattachment retains one complete aggregate autho
     clientId: "stable-aggregate-client",
     session: { credential },
   });
-  await second.connect();
+  await activate_echo(second);
   assert.equal(second.session.sessionId, sessionId);
   assert.equal(second.session.epoch, 2);
+  assert.equal(second.session.logicalMapId, locus.logicalMapId);
+  assert.equal(second.session.incarnationId, locus.incarnationId);
   assert.equal(second.session.debug().reattachCount, 1);
   await second.action("state.set", { value: 2 });
   assert.equal(authority.lib("state").snap(["value"]), 2);
@@ -353,7 +366,7 @@ await check("retry, dedupe conflict, and action status match the one-map request
   const firstPair = socket_pair();
   locus.connect(firstPair.server);
   const first = hsonEcho.create({ socket: firstPair.client, map: make_map(), recovery: { logicalMapId: locus.logicalMapId }, clientId: "dedupe-client" });
-  await first.connect();
+  await activate_echo(first);
   const credential = first.session.credential;
   firstPair.dropNextActionResult();
   const pending = first.action("state.set", { value: 7 });
@@ -368,7 +381,7 @@ await check("retry, dedupe conflict, and action status match the one-map request
   const secondPair = socket_pair();
   locus.connect(secondPair.server);
   const second = hsonEcho.create({ socket: secondPair.client, map: make_map(), recovery: { logicalMapId: locus.logicalMapId }, clientId: "dedupe-client", session: { credential } });
-  await second.connect();
+  await activate_echo(second);
   const retried = await second.retryAction(stable);
   assert.equal(retried.type, "ack");
   if (retried.type === "ack") assert.equal(retried.delivery, "cached");
@@ -405,7 +418,7 @@ await check("aggregate retained action lineage enforces exact principal continui
     recovery: { logicalMapId: locus.logicalMapId },
     clientId: "aggregate-owned-client",
   });
-  await alice.connect();
+  await activate_echo(alice);
   const first = alice.action("owned");
   await first;
 
@@ -417,7 +430,7 @@ await check("aggregate retained action lineage enforces exact principal continui
     recovery: { logicalMapId: locus.logicalMapId },
     clientId: "aggregate-owned-client",
   });
-  await nextAlice.connect();
+  await activate_echo(nextAlice);
   assert.equal((await nextAlice.actionStatus(first.request.requestId)).state, "succeeded");
   assert.equal((await nextAlice.retryAction(first.request)).delivery, "cached");
 
@@ -429,7 +442,7 @@ await check("aggregate retained action lineage enforces exact principal continui
     recovery: { logicalMapId: locus.logicalMapId },
     clientId: "aggregate-owned-client",
   });
-  await bob.connect();
+  await activate_echo(bob);
   await assert.rejects(bob.actionStatus(first.request.requestId), /session access is unavailable/i);
   const denied = await bob.retryAction(first.request);
   assert.equal(denied.type, "error");
@@ -464,7 +477,7 @@ await check("built-ins and single- or cross-library application actions share on
   const pair = socket_pair();
   locus.connect(pair.server);
   const echo = hsonEcho.create({ socket: pair.client, map: make_map(), recovery: { logicalMapId: locus.logicalMapId } });
-  await echo.connect();
+  await activate_echo(echo);
   const revisions: number[] = [];
   const libraries: string[][] = [];
   const stop = authority.commits.observe((commit) => {
@@ -503,7 +516,7 @@ await check("replacement during authorization cannot cross aggregate admission",
   const firstPair = socket_pair();
   locus.connect(firstPair.server, { principalId: "alice" });
   const first = hsonEcho.create({ socket: firstPair.client, map: make_map(), recovery: { logicalMapId: locus.logicalMapId }, clientId: "auth-fence-client" });
-  await first.connect();
+  await activate_echo(first);
   const credential = first.session.credential;
   assert.ok(credential);
   const pending = first.action("held");
@@ -518,7 +531,7 @@ await check("replacement during authorization cannot cross aggregate admission",
     clientId: "auth-fence-client",
     session: { credential },
   });
-  await second.connect();
+  await activate_echo(second);
   assert.equal(second.session.epoch, 2);
   authorizationRelease.resolve();
   await assert.rejects(pending, /fenced/i);
@@ -551,7 +564,7 @@ await check("replacement after admission retains the outcome but fences late del
   const firstPair = socket_pair();
   locus.connect(firstPair.server, { principalId: "alice" });
   const first = hsonEcho.create({ socket: firstPair.client, map: make_map(), recovery: { logicalMapId: locus.logicalMapId }, clientId: "post-admit-client" });
-  await first.connect();
+  await activate_echo(first);
   const credential = first.session.credential;
   assert.ok(credential);
   const pending = first.action("held");
@@ -567,7 +580,7 @@ await check("replacement after admission retains the outcome but fences late del
     clientId: "post-admit-client",
     session: { credential },
   });
-  await second.connect();
+  await activate_echo(second);
   handlerRelease.resolve();
   await assert.rejects(pending, /fenced/i);
   const recovered = await second.retryAction(pending.request);
@@ -602,7 +615,7 @@ await check("disconnect after admission cannot evict or cancel aggregate authori
   const firstPair = socket_pair();
   locus.connect(firstPair.server, { principalId: "alice" });
   const first = hsonEcho.create({ socket: firstPair.client, map: make_map(), recovery: { logicalMapId: locus.logicalMapId }, clientId: "disconnect-client" });
-  await first.connect();
+  await activate_echo(first);
   const credential = first.session.credential;
   assert.ok(credential);
   const pending = first.action("held");
@@ -622,7 +635,7 @@ await check("disconnect after admission cannot evict or cancel aggregate authori
     clientId: "disconnect-client",
     session: { credential },
   });
-  await second.connect();
+  await activate_echo(second);
   const recovered = await second.retryAction(pending.request);
   assert.equal(recovered.type, "ack");
   assert.equal(recovered.completionRev, 1);

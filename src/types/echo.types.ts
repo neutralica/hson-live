@@ -23,7 +23,4 @@ export type {
   EchoSessionOptions,
   EchoSessionResult,
   EchoSessionStatus,
-  MultiLibraryEcho,
-  MultiLibraryEchoOptions,
-  MultiLibraryEchoRecovery,
 } from "./locus.core.types.js";

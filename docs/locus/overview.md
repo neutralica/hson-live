@@ -27,7 +27,7 @@ Locus
   authority, ordering, actions, authorization, sessions, history,
   recovery, persistence, and client publication
 Echo
-  subjugated client endpoint governing one exact replicated LiveMap
+  semantic hosted client participation, optionally carrying an exact LiveMap replica
 Reflect
   LiveTree ↔ LiveMap bridge
 
@@ -39,6 +39,11 @@ persistent storage → Locus → authoritative DocumentLiveMap
                          Echo protocol
                               ↕
 Echo → replica DocumentLiveMap ↔ Reflect ↔ LiveTree / DOM
+
+Endpoint-only Echo omits the replica/Reflect portion. A replica-bearing Echo
+requires an explicit map and recovery configuration; caught-up recovery state,
+not map presence, establishes exactness. Transport connection, semantic
+session establishment, and recovery are separate lifecycle layers.
 
 Locus does not replace LiveMap. LiveMap remains the graph reducer; Locus owns ordering, optional durability, accepted history, publication, and recovery.
 

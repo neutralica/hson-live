@@ -79,9 +79,9 @@ per-Library HsonSchemas. Actions use the same `context.mutate(...)` model, with
 `draft.lib("name")` selecting the Library for that one atomic global action.
 There is still one revision cursor and one ordered commit stream, not a stream
 per Library. The normal `hsonEcho.create({ map, socket, recovery })` route
-bootstraps and recovers one complete same-topology mirror; data subscriptions
-are library-qualified. Named document Libraries work with `hsonReflect` across
-live updates and in-place replacement recovery.
+has one complete same-topology mirror. Connection, session establishment, and
+recovery are explicit separate operations. Named document Libraries work with
+`hsonReflect` across live updates and in-place replacement recovery.
 
 Fixed multi-library construction reuses the ordinary action authority options:
 `schema.actions`, `authorizeAction`, `sessionId`, `sessions`, and
@@ -93,8 +93,10 @@ Library.
 
 ## Client and protocol
 
-`create_echo` creates an Echo over `LocusSocketLike`. Echo exclusively governs
-one exact client LiveMap replica. Public mutation of that replica is fenced;
+`create_echo` creates an Echo over `LocusSocketLike`. Without `map` and
+`recovery`, it creates an endpoint-only semantic client. With both, Echo
+exclusively governs the supplied exact-replica target; map presence alone does
+not establish caught-up readiness. Public mutation of that replica is fenced;
 bootstrap, restore, recovery, and accepted canonical replay are its state-changing paths. The
 protocol codec functions are:
 
@@ -108,6 +110,12 @@ Message discriminators such as `action`, `recover`, `commit`, and
 `session-create` remain semantic message kinds. A hello message admits exactly
 `type` and an optional `clientId`; every other field rejects through ordinary
 exact-shape validation.
+
+Successful `session-created` and `session-attached` messages establish the
+stream's `logicalMapId` and `incarnationId`. Echo retains that evidence in its
+session state and rejects a contradictory reattachment. `completionRev`
+remains relative to that established authority identity and does not by itself
+assert local replica convergence.
 
 The core depends only on `LocusSocketLike`: text `send`, close, message
 subscription, and close subscription. `create_browser_locus_socket` adapts the

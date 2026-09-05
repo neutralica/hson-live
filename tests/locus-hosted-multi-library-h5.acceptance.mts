@@ -213,16 +213,20 @@ await check("the public Locus and Echo paths bootstrap one typed aggregate mirro
     assert.equal(removed in client, false, `unexpected multi-library Echo method ${removed}`);
   }
   const started = performance.now();
-  const bootstrap = await client.connect();
+  client.connect();
+  const established = await client.session.create();
+  assert.equal(established.logicalMapId, locus.logicalMapId);
+  assert.equal(established.incarnationId, locus.incarnationId);
+  assert.equal(client.session.logicalMapId, locus.logicalMapId);
+  assert.equal(client.session.incarnationId, locus.incarnationId);
+  const bootstrap = await client.recovery.recover();
   const bootstrapMs = performance.now() - started;
-  assert.equal(bootstrap.outcome, "snapshot");
+  assert.equal(bootstrap.strategy, "snapshot");
   assert.equal(client.map, clientMap);
   assert.equal(client.map.rev, 0);
   assert.throws(() => clientMap.lib("state").at(["count"]).set(9), /exclusive Locus authority/i);
-  assert.throws(() => {
-    // @ts-expect-error Runtime input can still contain an unknown library name.
-    client.subscribe("missing", [], () => {});
-  }, /unknown/i);
+  assert.equal("subscribe" in client, false);
+  assert.equal("unsubscribe" in client, false);
   const invalid = await client.action("invalid");
   assert.equal(invalid.type, "error");
   if (invalid.type === "error") assert.match(invalid.error.message, /schema/i);
@@ -238,8 +242,8 @@ await check("the public Locus and Echo paths bootstrap one typed aggregate mirro
   const reflection = hsonReflect(page);
   const stateValues: unknown[] = [];
   const colorsValues: unknown[] = [];
-  const stopState = client.subscribe("state", ["theme"], (value, revision) => stateValues.push([value, revision]));
-  const stopColors = client.subscribe("colors", ["theme"], (value, revision) => colorsValues.push([value, revision]));
+  const stopState = client.map.commits.observe((commit) => stateValues.push([client.map.lib("state").snap(["theme"]), commit.rev]));
+  const stopColors = client.map.commits.observe((commit) => colorsValues.push([client.map.lib("colors").snap(["theme"]), commit.rev]));
   const aggregateStarted = performance.now();
   const themeAll = await client.action("theme.all");
   assert.equal(themeAll.type, "ack");
@@ -263,7 +267,7 @@ await check("the public Locus and Echo paths bootstrap one typed aggregate mirro
   const stateOnlyMs = performance.now() - stateOnlyStarted;
   assert.equal(reflection.sourceRevision, 2);
   assert.equal(reflection.diagnostics().updatesApplied, 1);
-  assert.equal(client.lastAppliedRev, 2);
+  assert.equal(client.recovery.lastAppliedRev, 2);
   const reflectedMain = reflected_document_element(reflection);
   reflectedMain.attrs.set("title", "echoed");
   assert.equal(serverMap.lib("page").document.attrs.get({ kind: "path", path: [0] }, "title"), undefined);
@@ -272,7 +276,7 @@ await check("the public Locus and Echo paths bootstrap one typed aggregate mirro
   assert.equal(reflectedMain.attrs.get("title"), "echoed");
   assert.equal(reflection.sourceRevision, 3);
   stopState();
-  client.unsubscribe("colors", ["theme"]);
+  stopColors();
   reflection.dispose();
   process.stdout.write(`# telemetry ${JSON.stringify({ bootstrapMs, stateOnlyMs, stateColorsPageMs, aggregateCommitBytes: new TextEncoder().encode(JSON.stringify(published)).byteLength })}\n`);
   client.dispose();
@@ -295,7 +299,9 @@ await check("named document Echo authoring honors aggregate authorization and co
     map: clientMap,
     recovery: { logicalMapId: locus.logicalMapId },
   });
-  await echo.connect();
+  echo.connect();
+  await echo.session.create();
+  await echo.recovery.recover();
   const reflection = hsonReflect(clientMap.lib("page"));
   const main = reflected_document_element(reflection);
   main.attrs.set("title", "denied");
@@ -311,7 +317,7 @@ await check("named document Echo authoring honors aggregate authorization and co
   locus.dispose();
 });
 
-await check("public recovery replays retained history, replaces one complete mirror in place, and resynchronizes qualified subscriptions", async () => {
+await check("public recovery replays retained history and replaces one complete observed mirror in place", async () => {
   install_fake_document();
   const serverMap = make_map();
   const locus = hsonLocus.create({ map: serverMap });
@@ -331,7 +337,9 @@ await check("public recovery replays retained history, replaces one complete mir
     recovery: { logicalMapId: locus.logicalMapId },
   });
   const snapshotStarted = performance.now();
-  assert.equal((await snapshotClient.connect()).outcome, "snapshot");
+  snapshotClient.connect();
+  await snapshotClient.session.create();
+  assert.equal((await snapshotClient.recovery.recover()).strategy, "snapshot");
   const snapshotReplacementMs = performance.now() - snapshotStarted;
   assert.equal(snapshotClient.map, staleMap);
   assert.equal(stateHandle.snap(), "dark");
@@ -352,14 +360,13 @@ await check("public recovery replays retained history, replaces one complete mir
     recovery: { logicalMapId: locus.logicalMapId },
   });
   const replayStarted = performance.now();
-  assert.equal((await replayClient.connect()).outcome, "replay");
+  replayClient.connect();
+  await replayClient.session.create();
+  assert.equal((await replayClient.recovery.recover()).strategy, "replay");
   const retainedReplayMs = performance.now() - replayStarted;
   assert.deepEqual([staleMap.rev, stateHandle.snap(), reflection.sourceRevision], [2, "dark", 2]);
   assert.equal(staleMap.lib("page").document.byQuid(RECOVERY_NEXT_QUID)?.$_tag, "item");
-  const values: unknown[] = [];
-  replayClient.subscribe("state", ["theme"], (value, revision) => values.push([value, revision]));
-  assert.equal((await replayClient.connect()).outcome, "current");
-  assert.deepEqual(values, [["dark", 2], ["dark", 2]]);
+  assert.equal((await replayClient.recovery.recover()).strategy, "current");
   process.stdout.write(`# telemetry ${JSON.stringify({ snapshotReplacementMs, retainedReplayMs })}\n`);
   reflection.dispose();
   replayClient.dispose();
@@ -441,7 +448,9 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   host.connect(first.server);
   const clientMap = make_map();
   const client = hsonEcho.create({ socket: first.client, map: clientMap, recovery: { logicalMapId: host.logicalMapId } });
-  await client.connect();
+  client.connect();
+  await client.session.create();
+  await client.recovery.recover();
   const reflection = hsonReflect(clientMap.lib("page"));
   await client.action("state.page");
   assert.equal(clientMap.rev, 1);
@@ -480,7 +489,9 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   restored.connect(second.server);
   const recovered = hsonEcho.create({ socket: second.client, map: clientMap, recovery: { logicalMapId: restored.logicalMapId } });
   const reconnectStarted = performance.now();
-  assert.equal((await recovered.connect()).outcome, "current");
+  recovered.connect();
+  await recovered.session.create();
+  assert.equal((await recovered.recovery.recover()).strategy, "current");
   const reconnectMs = performance.now() - reconnectStarted;
   assert.equal(clientMap.lib("page").document.byQuid(PERSISTED_QUID), undefined);
   assert.equal(reflection.sourceRevision, 2);

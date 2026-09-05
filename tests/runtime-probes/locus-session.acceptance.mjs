@@ -122,6 +122,7 @@ function connect_client(host, options = {}) {
 
 async function create_recovered(host) {
   const fixture = connect_client(host, {
+    map: hson.liveMap.fromJson({ value: 0 }),
     session: {},
     recovery: { logicalMapId: host.stream.logicalMapId },
   });
@@ -160,10 +161,9 @@ function restore_projected_revision(map, rev) {
   return map;
 }
 
-await check("basic reattachment restores session subscriptions and uses replay", async () => {
+await check("basic reattachment preserves identity and uses replica replay", async () => {
   const { host } = host_fixture({ logicalMapId: "basic" });
   const first = await create_recovered(host);
-  first.client.subscribe(["value"]);
   const credential = first.client.session.credential;
   const originalSessionId = first.client.session.sessionId;
   const options = resume_options(host, first.client, credential);
@@ -177,7 +177,7 @@ await check("basic reattachment restores session subscriptions and uses replay",
   const recovered = await second.client.recovery.recover();
   assert.equal(recovered.strategy, "replay");
   assert.deepEqual(second.client.map.snap(), host.map.snap());
-  assert.equal(host.sessions.debug().sessions.find((item) => item.sessionId === originalSessionId).subscriptionCount, 1);
+  assert.equal(host.sessions.debug().sessions.find((item) => item.sessionId === originalSessionId).subscriptionCount, 0);
   await second.client.action("set", 2);
   assert.deepEqual(second.client.map.snap(), { value: 2 });
   assert.equal(second.client.recovery.lastAppliedRev, host.stream.headRev);
@@ -186,7 +186,6 @@ await check("basic reattachment restores session subscriptions and uses replay",
 await check("new attachment fences the old transport and rejects late authority", async () => {
   const { host } = host_fixture({ logicalMapId: "fence" });
   const first = await create_recovered(host);
-  first.client.subscribe(["value"]);
   const initialSubscriptions = host.sessions.debug().sessions[0].subscriptionCount;
   const second = connect_client(host, resume_options(host, first.client, first.client.session.credential));
   const attached = await second.client.session.reattach();
@@ -318,7 +317,7 @@ await check("expired session can create a new session and snapshot-recover the s
   first.pair.close();
   await host.mutate((draft) => draft.set(["value"], 8));
   clock.advance(6);
-  const fresh = connect_client(host, { session: {}, recovery: { logicalMapId: host.stream.logicalMapId } });
+  const fresh = connect_client(host, { map: hson.liveMap.fromJson({ value: 0 }), session: {}, recovery: { logicalMapId: host.stream.logicalMapId } });
   await fresh.client.session.create();
   const result = await fresh.client.recovery.recover();
   assert.equal(result.strategy, "snapshot");
@@ -377,7 +376,6 @@ await check("expiry disposes subscriptions and scheduler resources without socke
   const { host, clock } = host_fixture({ logicalMapId: "leaks", graceMs: 5 });
   for (let index = 0; index < 3; index += 1) {
     const fixture = await create_recovered(host);
-    fixture.client.subscribe(["value"]);
     fixture.pair.close();
     clock.advance(6);
   }
@@ -407,7 +405,7 @@ await check("real WebSocket reattachment fences A before B recovers", async () =
   const url = `ws://127.0.0.1:${address.port}`;
   const wsA = new WebSocket(url);
   await opened(wsA);
-  const clientA = hson.echo.create({ socket: ws_socket(wsA), session: {}, recovery: { logicalMapId: host.stream.logicalMapId } });
+  const clientA = hson.echo.create({ socket: ws_socket(wsA), map: hson.liveMap.fromJson({ value: 0 }), session: {}, recovery: { logicalMapId: host.stream.logicalMapId } });
   clientA.connect();
   await clientA.session.create();
   await clientA.recovery.recover();

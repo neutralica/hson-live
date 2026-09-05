@@ -93,7 +93,7 @@ await check("removed architectural endpoint runtime names have no aliases", asyn
   assert.equal("create_locus_bootstrap_echo" in locus, false);
 });
 
-await check("solo Echo exposes only the camelCase endpoint method spellings", async () => {
+await check("endpoint-only Echo exposes only the common semantic client surface", async () => {
   const { create_echo } = await import("hson-live/echo");
   const socket = {
     send() {},
@@ -102,14 +102,23 @@ await check("solo Echo exposes only the camelCase endpoint method spellings", as
     onClose() { return () => {}; },
   };
   const endpoint = create_echo({ socket });
-  for (const name of ["onEvent", "retryAction", "actionStatus", "dispose"]) {
+  for (const name of ["connect", "disconnect", "retryAction", "actionStatus", "dispose"]) {
     assert.equal(typeof endpoint[name], "function", `missing Echo method ${name}`);
   }
-  assert.equal(typeof endpoint.recovery.onChange, "function");
-  for (const name of ["on_event", "retry_action", "action_status"]) {
+  assert.equal(typeof endpoint.session.create, "function");
+  for (const name of [
+    "map",
+    "recovery",
+    "subscribe",
+    "unsubscribe",
+    "seq",
+    "onEvent",
+    "on_event",
+    "retry_action",
+    "action_status",
+  ]) {
     assert.equal(name in endpoint, false, `unexpected Echo method ${name}`);
   }
-  assert.equal("on_change" in endpoint.recovery, false);
   endpoint.dispose();
 });
 

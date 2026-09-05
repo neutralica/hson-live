@@ -9,7 +9,7 @@ LiveHost, and the Node runtime.
 |---|---|---|
 | LiveMap | Canonical graph state, revision, mutation, schema enforcement, capture/apply/replay, paths, and graph equality | May exist without a Locus |
 | Locus | Exclusive authority over one LiveMap, FIFO mutation admission, canonical history, recovery, sessions, actions, one-map persistence and synchronization, bootstrap state, and activity | Exactly one LiveMap |
-| Echo | Subjugated client endpoint governing one exact replica LiveMap and its connection, recovery, session, and request lifecycle | One solo map or one exact fixed multi-library topology |
+| Echo | Semantic hosted client endpoint and request/session lifecycle, optionally governing an explicit exact-replica LiveMap | Endpoint-only or one solo/fixed-library replica capability |
 | Reflect | LiveTree ↔ LiveMap bridge; delegates supported hosted authoring through Echo without owning transport policy | One binding |
 | Application | Domain meaning, custom actions and side effects, authorization policy, event semantics, topology, acquisition-key meaning, retention policy, and cross-Locus workflows | Zero or more Loci |
 | LiveHost | Application registration and dispatch, generic application context, principal evidence, readiness/disposal, runtime adaptation boundaries, and the optional bounded Locus registry | Zero or more applications |

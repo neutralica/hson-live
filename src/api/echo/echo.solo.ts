@@ -10,11 +10,8 @@ import type {
   LiveMapProjectedGraphEnsureQuidOp,
 } from "../../types/livemap.types.js";
 import { parse_hson } from "../transform/parsers/parse-hson.js";
-import { parse_json } from "../transform/parsers/parse-json.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
 import { make_canonical_livemap_projected_capture } from "../livemap/livemap.projected.capture.js";
-import { decode_projected_value_payload } from "../livemap/livemap.transport.js";
-import { livemap_projected_propagation } from "../livemap/livemap.projected-propagation.js";
 import {
   make_echo_document_authority,
   register_echo_document_authority,
@@ -37,13 +34,12 @@ import type {
   EchoRecoveryChangeListener,
   EchoRecoveryDiagnostics,
   EchoRecoveryFailure,
+  EchoRecoveryOptions,
   EchoRecoveryResult,
   EchoRecoveryStatus,
   EchoRecoveryStrategy,
   LocusDisposer,
-  LocusEventListener,
   LocusRecoveryId,
-  LocusSeq,
   LocusServerMessage,
   LocusServerRecoveryPlanMessage,
   LocusSnapshotCapabilities,
@@ -171,44 +167,32 @@ function projected_identity_replay(
 }
 
 export function create_solo_echo_internal<
-  TState extends JsonValue | undefined = JsonValue | undefined,
-  TActions extends LocusActionPayloads = LocusActionPayloads,
->(options: EchoOptions<LiveMap<TState>>): Echo<LiveMap<TState>, TActions>;
-export function create_solo_echo_internal<
   TMap extends LiveMapAuthority,
   TActions extends LocusActionPayloads = LocusActionPayloads,
->(options: EchoOptions<TMap> & Readonly<{ map: TMap }>): Echo<TMap, TActions>;
-export function create_solo_echo_internal<
-  TActions extends LocusActionPayloads = LocusActionPayloads,
->(options: EchoOptions<LiveMapAuthority>): unknown {
-  if (options.recovery?.cursor && !options.map) {
-    throw new Error("Locus recovery cursor requires the exact corresponding mirror.");
-  }
+>(options: EchoOptions<TMap> & Readonly<{ map: TMap; recovery: EchoRecoveryOptions }>): Echo<TMap, TActions> {
 
   const internalOptions = options as EchoOptions<LiveMapAuthority> & EchoInternalIdFactories;
-  let map: ClassifiedLiveMap = classified_live_map(options.map);
-  const initialRecoveryCursor = options.recovery?.cursor;
+  const map: ClassifiedLiveMap = classified_live_map(options.map);
+  const initialRecoveryCursor = options.recovery.cursor;
   if (initialRecoveryCursor !== undefined && initialRecoveryCursor.lastAppliedRev !== map.rev) {
     throw new EchoRecoveryError(
       "LOCUS_RECOVERY_CURSOR_MISMATCH",
       `Locus recovery cursor revision ${initialRecoveryCursor.lastAppliedRev} does not match mirror revision ${map.rev}.`,
     );
   }
-  const replica = create_echo_solo_replica_capability_internal(map, options.recovery === undefined);
+  const replica = create_echo_solo_replica_capability_internal(map, false);
   let echoDisposed = false;
   let documentAuthority: EchoDocumentAuthority | undefined;
   const run_echo_owned = <T>(operation: () => T): T => replica.runManaged(operation);
-  const eventListeners = new Set<LocusEventListener>();
   const recoveryListeners = new Set<EchoRecoveryChangeListener<ClassifiedLiveMap>>();
   const disposers: LocusDisposer[] = [];
   const readyWaiters = new Set<() => void>();
-  let seq: LocusSeq = 0;
   let isConnected = false;
   let recoveryDisposed = false;
   let recoveryStatus: EchoRecoveryStatus = "idle";
   let recoveryStrategy: EchoRecoveryStrategy | undefined;
-  let incarnationId = options.recovery?.cursor?.incarnationId;
-  let lastAppliedRev = options.recovery?.cursor?.lastAppliedRev;
+  let incarnationId = options.recovery.cursor?.incarnationId;
+  let lastAppliedRev = options.recovery.cursor?.lastAppliedRev;
   let firstFailure: EchoRecoveryFailure | undefined;
   let pendingRecovery: PendingRecovery | undefined;
   let recoveryLifecycle: ClientRecoveryLifecycle = Object.freeze({ phase: "disconnected" });
@@ -229,10 +213,9 @@ export function create_solo_echo_internal<
       send: (message) => options.socket.send(encode_client_message(message)),
     },
     ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
-    sessionRequired: options.session !== undefined,
+    sessionRequired: true,
     ...(options.session?.credential === undefined ? {} : { credential: options.session.credential }),
     ids: internalOptions,
-    onSequence: (value) => { seq = value; },
     onReadyChange: notify_echo_ready,
     onAttachmentLost: (reason, error) => {
       if (reason !== "ended" && (recoveryStatus === "recovering" || recoveryStatus === "caught_up")) {
@@ -368,7 +351,7 @@ export function create_solo_echo_internal<
 
   function apply_commit(commit: LocusCanonicalCommit, phase: "body" | "tail" | "live"): void {
     if (recoveryStatus === "failed" || recoveryStatus === "disposed") return;
-    const logicalMapId = options.recovery?.logicalMapId;
+    const logicalMapId = options.recovery.logicalMapId;
     if (!logicalMapId || commit.logicalMapId !== logicalMapId || commit.incarnationId !== incarnationId) {
       fail_recovery("LOCUS_RECOVERY_STREAM_MISMATCH", "Canonical commit does not match the active recovery stream.");
       return;
@@ -523,7 +506,9 @@ export function create_solo_echo_internal<
         fail_recovery("LOCUS_RECOVERY_MESSAGE_OUT_OF_ORDER", "Locus sent more than one recovery plan for one recovery lifecycle.");
         return true;
       }
-      if (message.logicalMapId !== options.recovery?.logicalMapId) {
+      if (message.logicalMapId !== options.recovery.logicalMapId
+        || message.logicalMapId !== endpoint.session.logicalMapId
+        || message.incarnationId !== endpoint.session.incarnationId) {
         fail_recovery("LOCUS_RECOVERY_STREAM_MISMATCH", "Recovery plan targets a different logical map.");
         return true;
       }
@@ -709,46 +694,6 @@ export function create_solo_echo_internal<
       endpoint.receive(message);
       return;
     }
-    if (message.type === "event") {
-      for (const listener of [...eventListeners]) listener(message);
-      return;
-    }
-    if (message.type === "hello") {
-      seq = message.seq;
-      if (is_projected_live_map(map)) {
-        run_echo_owned(() => {
-          if (has_projected_transport(message)) {
-            apply_projected_message(map, [], message, "replace");
-          } else if (is_locus_json_value(message.snapshot)) {
-            map.replace(message.snapshot);
-          }
-        });
-      }
-      return;
-    }
-    if (message.type === "sync") {
-      seq = message.seq;
-
-      if (is_projected_live_map(map)) {
-        run_echo_owned(() => {
-          if (has_projected_transport(message)) {
-            apply_projected_message(map, message.path, message, message.path.length === 0 ? "replace" : "set");
-          } else if (message.path.length === 0) {
-            if (is_locus_json_value(message.value)) map.replace(message.value);
-          } else if (message.value === undefined) {
-            map.delete(message.path);
-          } else {
-            map.set(message.path, message.value);
-          }
-        });
-      }
-
-      return;
-    }
-    if (message.type === "patch") {
-      seq = message.seq;
-      return;
-    }
     if (message.type === "action-status") {
       endpoint.receive(message);
       return;
@@ -778,8 +723,7 @@ export function create_solo_echo_internal<
     const stopClose = options.socket.onClose(disconnect);
     if (stopClose) disposers.push(stopClose);
     endpoint.connect();
-    if (options.recovery) install_recovery_messages();
-    if (!options.recovery && !options.session) send({ type: "hello", clientId });
+    install_recovery_messages();
     notify_echo_ready();
     return disconnect;
   }
@@ -811,8 +755,13 @@ export function create_solo_echo_internal<
 
   function recover(): Promise<EchoRecoveryResult> {
     if (recoveryDisposed) return Promise.reject(new EchoRecoveryError("LOCUS_RECOVERY_DISPOSED", "Echo recovery is disposed."));
-    if (!options.recovery) return Promise.reject(new EchoRecoveryError("LOCUS_RECOVERY_NOT_CONFIGURED", "Echo recovery is not configured."));
     if (!isConnected) return Promise.reject(new EchoRecoveryError("LOCUS_RECOVERY_DISCONNECTED", "Locus recovery requires a connected transport."));
+    if (endpoint.session.status !== "attached") return Promise.reject(new EchoRecoveryError("LOCUS_SESSION_NOT_ATTACHED", "Locus recovery requires an attached session."));
+    if (endpoint.session.logicalMapId !== options.recovery.logicalMapId) {
+      const error = new EchoRecoveryError("LOCUS_SESSION_AUTHORITY_MISMATCH", "Locus session authority does not match the configured recovery target.");
+      fail_recovery(error.code, error.message, error);
+      return Promise.reject(error);
+    }
     if (pendingRecovery) return Promise.reject(new EchoRecoveryError("LOCUS_RECOVERY_IN_PROGRESS", "Locus recovery is already in progress."));
     if (recoveryStatus === "failed") return Promise.reject(new EchoRecoveryError("LOCUS_RECOVERY_LIFECYCLE_INVALID", "Locus recovery requires a reconnect after failure."));
     const id = make_recovery_id();
@@ -900,7 +849,7 @@ export function create_solo_echo_internal<
     return Object.freeze({
       status: recoveryStatus,
       ...(recoveryStrategy ? { strategy: recoveryStrategy } : {}),
-      ...(options.recovery ? { logicalMapId: options.recovery.logicalMapId } : {}),
+      logicalMapId: options.recovery.logicalMapId,
       ...(incarnationId ? { incarnationId } : {}),
       ...(lastAppliedRev !== undefined ? { lastAppliedRev } : {}),
       bodyCommitsApplied,
@@ -916,20 +865,13 @@ export function create_solo_echo_internal<
     });
   }
 
-  function subscribe(path: readonly (string | number)[]): void { send({ type: "subscribe", path: [...path] }); }
-  function unsubscribe(path: readonly (string | number)[]): void { send({ type: "unsubscribe", path: [...path] }); }
-  function onEvent(listener: LocusEventListener): LocusDisposer {
-    eventListeners.add(listener);
-    return () => eventListeners.delete(listener);
-  }
-
   const action = endpoint.action;
   const retryAction = endpoint.retryAction;
   const actionStatus = endpoint.actionStatus;
 
   const recovery = Object.freeze({
     get status() { return recoveryStatus; },
-    get logicalMapId() { return options.recovery?.logicalMapId; },
+    get logicalMapId() { return options.recovery.logicalMapId; },
     get incarnationId() { return incarnationId; },
     get lastAppliedRev() { return lastAppliedRev; },
     get map() { return map; },
@@ -1012,17 +954,13 @@ export function create_solo_echo_internal<
     clientId,
     recovery,
     session,
-    get seq() { return seq; },
     connect,
     disconnect,
-    subscribe,
-    unsubscribe,
-    onEvent,
     action,
     retryAction,
     actionStatus,
     dispose,
-  });
+  }) as unknown as Echo<TMap, TActions>;
 }
 
 function is_projected_live_map(map: LiveMapAuthority): map is LiveMap {
@@ -1031,39 +969,13 @@ function is_projected_live_map(map: LiveMapAuthority): map is LiveMap {
     && typeof map.replace === "function";
 }
 
-function has_projected_transport(value: object): boolean {
-  return Object.hasOwn(value, "format")
-    || Object.hasOwn(value, "payload");
-}
-
-function apply_projected_message(
-  map: LiveMap,
-  path: readonly (string | number)[],
-  message: Readonly<{ format?: unknown; payload?: unknown }>,
-  kind: "set" | "replace",
-): void {
-  if (message.format !== "structural-json" || typeof message.payload !== "string") {
-    throw new Error("Locus projected message has an invalid exact transport envelope.");
-  }
-  const projected = livemap_projected_propagation(map);
-  if (projected === undefined) {
-    throw new Error("Locus projected mirror has no carrier propagation capability.");
-  }
-  projected.commit([Object.freeze({
-    kind,
-    path: Object.freeze([...path]),
-    value: decode_projected_value_payload(message.payload),
-  })]);
-}
-
 function is_document_live_map(map: LiveMapAuthority): map is Extract<ClassifiedLiveMap, { mode: "document" }> {
   return (map.mode === "document")
     && "replay" in map
     && typeof map.replay === "function";
 }
 
-function classified_live_map(map: LiveMapAuthority | undefined): ClassifiedLiveMap {
-  if (map === undefined) return make_classified_livemap(parse_json({}));
+function classified_live_map(map: LiveMapAuthority): ClassifiedLiveMap {
   if (is_projected_live_map(map) || is_document_live_map(map)) return map;
   throw new Error("Echo map is not a classified LiveMap authority.");
 }

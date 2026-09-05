@@ -113,6 +113,7 @@ function connect_endpoint(
     logicalMapId: server.logicalMapId,
     ...(credential === undefined ? {} : { session: { credential } }),
   });
+  client.attachTransport();
   return Object.freeze({ pair, client });
 }
 
@@ -235,6 +236,7 @@ await check("stale recovery identity cannot settle a replacement recovery on the
   const pair = socket_pair();
   const mirror = make_map();
   const client = create_multi_library_echo_socket_client_internal({ socket: pair.client, map: mirror });
+  client.attachTransport();
   const created = client.session.create();
   const createRequest = pair.clientSent.findLast((message) => message.type === "session-create");
   assert.ok(createRequest);
@@ -245,6 +247,8 @@ await check("stale recovery identity cannot settle a replacement recovery on the
     sessionId: "session-a",
     credential: "aggregate-recovery-credential",
     epoch: 1,
+    logicalMapId: client.logicalMapId,
+    incarnationId: client.incarnationId,
   });
   await created;
   const recoveryA = client.connect();
@@ -268,6 +272,8 @@ await check("stale recovery identity cannot settle a replacement recovery on the
     id: attachRequest.id,
     sessionId: "session-a",
     epoch: 2,
+    logicalMapId: client.logicalMapId,
+    incarnationId: client.incarnationId,
   });
   await attached;
   let replacementSettled = false;
@@ -328,7 +334,7 @@ await check("physical disconnect settles active recovery and a fresh endpoint ca
   const interrupted = first.client.connect();
   await entered.promise;
   first.pair.disconnect();
-  await assert.rejects(interrupted, /closed/i);
+  await assert.rejects(interrupted, /disconnect/i);
   release.resolve();
   const replacement = connect_endpoint(server);
   assert.equal((await replacement.client.connect()).revision, 0);
@@ -354,6 +360,8 @@ await check("replica recovery failure leaves the attached endpoint usable for un
     sessionId: "healthy-endpoint-session",
     credential: "healthy-endpoint-credential",
     epoch: 1,
+    logicalMapId: client.logicalMapId,
+    incarnationId: client.incarnationId,
   });
   await new Promise<void>((resolve) => setImmediate(resolve));
   const recover = pair.clientSent.findLast((message) => message.type === "recover");

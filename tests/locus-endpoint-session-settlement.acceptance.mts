@@ -77,6 +77,8 @@ await check("solo fencing rejects and clears a pending session waiter while stal
     sessionId: "solo-session",
     credential: "solo-session-credential",
     epoch: 1,
+    logicalMapId: "solo-map",
+    incarnationId: "solo-incarnation",
   });
   await created;
 
@@ -94,7 +96,7 @@ await check("solo fencing rejects and clears a pending session waiter while stal
   const replacementRequest = last_sent(pair, "session-attach");
   pair.deliver({ type: "session-ended", id: goodbyeRequest.id, sessionId: "solo-session", epoch: 1 });
   assert.equal(echo.session.status, "attaching");
-  pair.deliver({ type: "session-attached", id: replacementRequest.id, sessionId: "solo-session", epoch: 2 });
+  pair.deliver({ type: "session-attached", id: replacementRequest.id, sessionId: "solo-session", epoch: 2, logicalMapId: "solo-map", incarnationId: "solo-incarnation" });
   assert.equal((await replacement).epoch, 2);
   assert.equal(echo.session.status, "attached");
   echo.dispose();
@@ -103,6 +105,7 @@ await check("solo fencing rejects and clears a pending session waiter while stal
 await check("aggregate fencing rejects and clears a pending session waiter while stale completion stays inert", async () => {
   const pair = controlled_socket();
   const echo = create_multi_library_echo_socket_client_internal({ socket: pair.socket, logicalMapId: "aggregate-fence" });
+  echo.attachTransport();
   const created = echo.session.create();
   const createRequest = last_sent(pair, "session-create");
   pair.deliver(aggregate_message({
@@ -111,6 +114,8 @@ await check("aggregate fencing rejects and clears a pending session waiter while
     sessionId: "aggregate-session",
     credential: "aggregate-session-credential",
     epoch: 1,
+    logicalMapId: "aggregate-fence",
+    incarnationId: "aggregate-incarnation",
   }));
   await created;
 
@@ -128,7 +133,7 @@ await check("aggregate fencing rejects and clears a pending session waiter while
   const replacementRequest = last_sent(pair, "session-attach");
   pair.deliver(aggregate_message({ type: "session-ended", id: goodbyeRequest.id, sessionId: "aggregate-session", epoch: 1 }));
   assert.equal(echo.session.status, "attaching");
-  pair.deliver(aggregate_message({ type: "session-attached", id: replacementRequest.id, sessionId: "aggregate-session", epoch: 2 }));
+  pair.deliver(aggregate_message({ type: "session-attached", id: replacementRequest.id, sessionId: "aggregate-session", epoch: 2, logicalMapId: "aggregate-fence", incarnationId: "aggregate-incarnation" }));
   assert.equal((await replacement).epoch, 2);
   assert.equal(echo.session.status, "attached");
   echo.dispose();
@@ -137,6 +142,7 @@ await check("aggregate fencing rejects and clears a pending session waiter while
 await check("aggregate session disposal rejects pending work and stale responses cannot resurrect it", async () => {
   const pair = controlled_socket();
   const echo = create_multi_library_echo_socket_client_internal({ socket: pair.socket, logicalMapId: "aggregate-dispose" });
+  echo.attachTransport();
   const pending = echo.session.create();
   const request = last_sent(pair, "session-create");
   echo.session.dispose();
@@ -148,6 +154,8 @@ await check("aggregate session disposal rejects pending work and stale responses
     sessionId: "disposed-session",
     credential: "disposed-session-credential",
     epoch: 1,
+    logicalMapId: "aggregate-dispose",
+    incarnationId: "aggregate-incarnation",
   }));
   assert.equal(echo.session.status, "disposed");
   assert.equal(echo.session.sessionId, undefined);
@@ -158,6 +166,7 @@ await check("aggregate session disposal rejects pending work and stale responses
 await check("aggregate session ending settles goodbye, action, and status while preserving retry lineage", async () => {
   const pair = controlled_socket();
   const echo = create_multi_library_echo_socket_client_internal({ socket: pair.socket, logicalMapId: "aggregate-ended" });
+  echo.attachTransport();
   const created = echo.session.create();
   const createRequest = last_sent(pair, "session-create");
   pair.deliver(aggregate_message({
@@ -166,6 +175,8 @@ await check("aggregate session ending settles goodbye, action, and status while 
     sessionId: "ending-session",
     credential: "ending-session-credential",
     epoch: 1,
+    logicalMapId: "aggregate-ended",
+    incarnationId: "aggregate-incarnation",
   }));
   await created;
 
@@ -187,6 +198,8 @@ await check("aggregate session ending settles goodbye, action, and status while 
     sessionId: "replacement-session",
     credential: "replacement-session-credential",
     epoch: 1,
+    logicalMapId: "aggregate-ended",
+    incarnationId: "aggregate-incarnation",
   }));
   await replacement;
   const retry = echo.retryAction(action.request);

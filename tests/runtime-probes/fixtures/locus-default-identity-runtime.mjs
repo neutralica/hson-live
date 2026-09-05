@@ -12,4 +12,5 @@ const socket = {
 const client = hson.echo.create({ socket });
 client.connect();
 const action = client.action("echo", 1);
+void action.catch(() => {});
 process.stdout.write(JSON.stringify({ clientId: client.clientId, requestId: action.request.requestId }));

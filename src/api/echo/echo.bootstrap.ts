@@ -20,9 +20,9 @@ export type LocusBootstrapEcho<TMap extends LiveMapAuthority = ClassifiedLiveMap
 /** Continue one installed authoritative Locus bootstrap through an active Echo. */
 export function create_locus_bootstrap_echo<TMap extends LiveMapAuthority>(
   install: LocusBootstrapInstall & Readonly<{ map: TMap }>,
-  options: Omit<EchoOptions<TMap>, "map" | "recovery">,
+  options: Omit<EchoOptions<undefined>, "map" | "recovery">,
 ): LocusBootstrapEcho<TMap> {
-  const echo = create_echo({ ...options, map: install.map, recovery: install.recovery });
+  const echo: Echo<TMap> = create_echo<TMap>({ ...options, map: install.map, recovery: install.recovery });
   let disposed = false;
   let connected = false;
   let status: LocusBootstrapEcho<TMap>["status"] = "installed";
@@ -40,6 +40,10 @@ export function create_locus_bootstrap_echo<TMap extends LiveMapAuthority>(
           status = "socket-connecting";
           echo.connect();
           connected = true;
+        }
+        if (echo.session.status !== "attached") {
+          if (echo.session.credential === undefined) await echo.session.create();
+          else await echo.session.reattach();
         }
         status = "recovering";
         const recovered = await echo.recovery.recover();

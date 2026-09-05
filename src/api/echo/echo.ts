@@ -1,33 +1,35 @@
-import type { JsonValue } from "../../core/types.js";
-import type { LiveMap, LiveMapAuthority, LiveMapLibraries } from "../../types/livemap.types.js";
+import type { LiveMapAuthority, LiveMapLibraries } from "../../types/livemap.types.js";
 import type {
   Echo,
   EchoOptions,
+  EchoRecoveryOptions,
   LocusActionPayloads,
-  MultiLibraryEcho,
-  MultiLibraryEchoOptions,
 } from "../../types/locus.types.js";
 import { is_public_multi_library_livemap } from "../livemap/livemap.libraries.js";
+import { create_endpoint_echo_internal } from "./echo.client.js";
 import { create_multi_library_echo } from "./echo.multi-library.js";
 import { create_solo_echo_internal } from "./echo.solo.js";
 
 export function create_echo<
-  TMap extends LiveMapLibraries,
+  TMap extends undefined = undefined,
   TActions extends LocusActionPayloads = LocusActionPayloads,
->(options: MultiLibraryEchoOptions<TMap>): MultiLibraryEcho<TMap, TActions>;
+>(options: EchoOptions<TMap>): Echo<TMap, TActions>;
 export function create_echo<
-  TState extends JsonValue | undefined = JsonValue | undefined,
+  TMap extends LiveMapAuthority | LiveMapLibraries,
   TActions extends LocusActionPayloads = LocusActionPayloads,
->(options: EchoOptions<LiveMap<TState>>): Echo<LiveMap<TState>, TActions>;
-export function create_echo<
-  TMap extends LiveMapAuthority,
-  TActions extends LocusActionPayloads = LocusActionPayloads,
->(options: EchoOptions<TMap> & Readonly<{ map: TMap }>): Echo<TMap, TActions>;
+>(options: Omit<EchoOptions<undefined>, "map" | "recovery"> & Readonly<{
+  map: TMap;
+  recovery: EchoRecoveryOptions;
+}>): Echo<TMap, TActions>;
 export function create_echo(
-  options: EchoOptions<LiveMapAuthority> | MultiLibraryEchoOptions<LiveMapLibraries>,
+  options: EchoOptions<undefined> | EchoOptions<LiveMapAuthority> | EchoOptions<LiveMapLibraries>,
 ): unknown {
-  if (options.map !== undefined && is_public_multi_library_livemap(options.map)) {
-    return create_multi_library_echo(options as MultiLibraryEchoOptions<LiveMapLibraries>);
+  const map = options.map;
+  const recovery = options.recovery;
+  if ((map === undefined) !== (recovery === undefined)) {
+    throw new Error("Echo replica construction requires map and recovery together.");
   }
-  return create_solo_echo_internal(options as EchoOptions<LiveMapAuthority> & Readonly<{ map: LiveMapAuthority }>);
+  if (map === undefined) return create_endpoint_echo_internal(options as EchoOptions<undefined>);
+  if (is_public_multi_library_livemap(map)) return create_multi_library_echo(options as EchoOptions<LiveMapLibraries>);
+  return create_solo_echo_internal(options as EchoOptions<LiveMapAuthority>);
 }

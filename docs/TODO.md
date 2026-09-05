@@ -2,6 +2,11 @@
 
 # 2DÜ
 
+## Phase 8 LiveMap/Locus follow-ups
+
+• convenient selected-data-library observation on aggregate LiveMaps;
+• future library replication scopes (client-only, server-only, and shared semantics).
+
 ## still TODO 20JUL2026 (priorities tbc)
 • configurable bind host and port;
 • /healthz; (???)

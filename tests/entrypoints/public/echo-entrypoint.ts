@@ -28,9 +28,6 @@ import {
   type EchoSessionResult,
   type EchoSessionStatus,
   type LocusBootstrapEcho,
-  type MultiLibraryEcho,
-  type MultiLibraryEchoOptions,
-  type MultiLibraryEchoRecovery,
 } from "hson-live/echo";
 import type { LiveMap } from "hson-live/livemap";
 import type { LocusSocketLike } from "hson-live/locus";
@@ -56,27 +53,68 @@ import type { LocusBootstrapClient } from "hson-live/echo";
 
 declare const socket: LocusSocketLike;
 declare const echo: Echo;
-declare const multiEcho: MultiLibraryEcho;
+declare const replicaEcho: Echo<LiveMap>;
 declare const bootstrapEcho: LocusBootstrapEcho<LiveMap>;
+const endpointEcho = create_echo({ socket });
+void endpointEcho.clientId;
+void endpointEcho.session;
+void endpointEcho.connect;
+void endpointEcho.disconnect;
+void endpointEcho.action;
+void endpointEcho.retryAction;
+void endpointEcho.actionStatus;
+void endpointEcho.dispose;
+// @ts-expect-error endpoint-only Echo has no map
+endpointEcho.map;
+// @ts-expect-error endpoint-only Echo has no recovery
+endpointEcho.recovery;
+// @ts-expect-error endpoint-only Echo has no replica subscription surface
+endpointEcho.subscribe;
+// @ts-expect-error endpoint-only Echo has no legacy revision cursor
+endpointEcho.seq;
+// @ts-expect-error endpoint-only Echo has no public transient event surface
+endpointEcho.onEvent;
+// @ts-expect-error endpoint-only Echo does not imply LiveTree capability
+endpointEcho.liveTree;
+declare const replicaMap: LiveMap;
+const constructedReplicaEcho = create_echo({
+  socket,
+  map: replicaMap,
+  recovery: { logicalMapId: "entrypoint-replica" },
+});
+void constructedReplicaEcho.map;
+void constructedReplicaEcho.recovery;
+void constructedReplicaEcho.session;
+void constructedReplicaEcho.connect;
+void constructedReplicaEcho.disconnect;
+// @ts-expect-error replica-bearing Echo does not imply LiveTree capability
+constructedReplicaEcho.liveTree;
+// @ts-expect-error replica construction requires recovery configuration
+create_echo({ socket, map: replicaMap });
+// @ts-expect-error recovery configuration requires a supplied map
+create_echo({ socket, recovery: { logicalMapId: "entrypoint-replica" } });
+// @ts-expect-error no-map construction cannot claim an arbitrary map type
+create_echo<LiveMap>({ socket });
 // @ts-expect-error Protocol correlation-ID generation is not public configuration.
 create_echo({ socket, actionId: () => "test-request" });
+// @ts-expect-error public onEvent was removed
 echo.onEvent(() => {});
 echo.retryAction({ requestId: "request", name: "action" });
 void echo.actionStatus("request");
-echo.recovery.onChange(() => {});
-void multiEcho.retryAction;
-void multiEcho.actionStatus;
-multiEcho.dispose();
+// @ts-expect-error endpoint-only Echo has no recovery
+echo.recovery;
+replicaEcho.recovery.onChange(() => {});
+void replicaEcho.retryAction;
+void replicaEcho.actionStatus;
+replicaEcho.dispose();
 void bootstrapEcho.connectAndRecover;
 void bootstrapEcho.echo;
 // @ts-expect-error Removed snake_case continuation has no alias.
 void bootstrapEcho.connect_and_recover;
 // @ts-expect-error Active continuation is named echo, not client.
 void bootstrapEcho.client;
-// @ts-expect-error Multi-library connect and recover are one operation, not aliases.
-void multiEcho.recover();
 // @ts-expect-error Terminal endpoint disposal has no close alias.
-multiEcho.close();
+replicaEcho.close();
 // @ts-expect-error Removed snake_case endpoint method has no alias.
 echo.on_event(() => {});
 // @ts-expect-error Removed snake_case endpoint method has no alias.
@@ -115,6 +153,11 @@ void (0 as unknown as EchoSessionOptions);
 void (0 as unknown as EchoSessionResult);
 void (0 as unknown as EchoSessionStatus);
 void (0 as unknown as LocusBootstrapEcho<LiveMap>);
-void (0 as unknown as MultiLibraryEcho);
-void (0 as unknown as MultiLibraryEchoOptions<never>);
-void (0 as unknown as MultiLibraryEchoRecovery);
+// @ts-expect-error obsolete topology-specific Echo type is absent
+import type { MultiLibraryEcho } from "hson-live/echo";
+// @ts-expect-error obsolete topology-specific Echo options are absent
+import type { MultiLibraryEchoOptions } from "hson-live/echo";
+// @ts-expect-error obsolete topology-specific Echo recovery is absent
+import type { MultiLibraryEchoRecovery } from "hson-live/echo";
+// @ts-expect-error Scout is deliberately not part of the Echo package
+import type { Scout } from "hson-live/echo";

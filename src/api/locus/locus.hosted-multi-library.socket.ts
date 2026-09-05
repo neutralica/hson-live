@@ -584,6 +584,8 @@ export function create_locus_hosted_aggregate_socket_internal<
       sessionId: created.value.sessionId,
       credential: created.value.credential,
       epoch: created.value.epoch,
+      logicalMapId: locus.logicalMapId,
+      incarnationId: locus.incarnationId,
     }));
   }
 
@@ -601,7 +603,15 @@ export function create_locus_hosted_aggregate_socket_internal<
     connection.sessionEpoch = attached.value.epoch;
     connection.sessionResumable = attached.value.resumable;
     connection.subscriptions = sessionResources.get(attached.value.sessionId) ?? new Map();
-    send(connection, Object.freeze({ type: "session-attached", format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT, id: request.id, sessionId: attached.value.sessionId, epoch: attached.value.epoch }));
+    send(connection, Object.freeze({
+      type: "session-attached",
+      format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
+      id: request.id,
+      sessionId: attached.value.sessionId,
+      epoch: attached.value.epoch,
+      logicalMapId: locus.logicalMapId,
+      incarnationId: locus.incarnationId,
+    }));
   }
 
   function session_goodbye(connection: HostedConnection, request: Extract<HostedRequest, { type: "session-goodbye" }>): void {
@@ -1001,8 +1011,8 @@ type DecodedServerMessage =
   | Readonly<{ type: "error"; id?: string; message: string }>
   | LocusClientActionResult
   | Readonly<{ type: "action-status"; id: string; requestId: string; state: "pending" | "succeeded" | "failed" | "unknown" | "expired"; outcome?: LocusActionTerminalOutcome }>
-  | Readonly<{ type: "session-created"; id: string; sessionId: string; credential: string; epoch: number }>
-  | Readonly<{ type: "session-attached"; id: string; sessionId: string; epoch: number }>
+  | Readonly<{ type: "session-created"; id: string; sessionId: string; credential: string; epoch: number; logicalMapId: string; incarnationId: string }>
+  | Readonly<{ type: "session-attached"; id: string; sessionId: string; epoch: number; logicalMapId: string; incarnationId: string }>
   | Readonly<{ type: "session-rejected"; id: string; code: string; message: string }>
   | Readonly<{ type: "session-fenced"; sessionId: string; epoch: number; code: "LOCUS_SESSION_ATTACHMENT_FENCED" }>
   | Readonly<{ type: "session-ended"; id: string; sessionId: string; epoch: number }>

@@ -788,7 +788,15 @@ function create_locus_for_map<
       sessionId = created.value.sessionId;
       connectionEpoch = created.value.epoch;
       sessionResumable = created.value.resumable;
-      raw_send({ type: "session-created", id, sessionId, credential: created.value.credential, epoch: connectionEpoch });
+      raw_send({
+        type: "session-created",
+        id,
+        sessionId,
+        credential: created.value.credential,
+        epoch: connectionEpoch,
+        logicalMapId: stream.logicalMapId,
+        incarnationId: stream.incarnationId,
+      });
     }
 
     function reattach_session(message: LocusClientSessionAttachMessage): void {
@@ -813,7 +821,14 @@ function create_locus_for_map<
         reject_session(message.id, "LOCUS_SESSION_NOT_ATTACHED", rebound.error.message);
         return;
       }
-      raw_send({ type: "session-attached", id: message.id, sessionId, epoch: connectionEpoch });
+      raw_send({
+        type: "session-attached",
+        id: message.id,
+        sessionId,
+        epoch: connectionEpoch,
+        logicalMapId: stream.logicalMapId,
+        incarnationId: stream.incarnationId,
+      });
     }
 
     function recovery_error(id: string, cause: unknown, trace?: LiveTraceContext, startedAt?: number): void {

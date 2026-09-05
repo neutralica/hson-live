@@ -74,7 +74,11 @@ export type MultiLibraryEchoSocketClient = Readonly<{
   readonly replica: EchoAggregateReplicaCapability;
   readonly clientId: string;
   readonly session: EchoSession;
+  /** @internal Legacy orchestration retained for aggregate mechanism proofs. */
   connect: () => Promise<MultiLibraryEchoSocketRecovery>;
+  attachTransport: () => LocusDisposer;
+  disconnect: () => void;
+  recover: () => Promise<MultiLibraryEchoSocketRecovery>;
   subscribe: (library: string, path: LivePath, listener: (value: JsonValue | undefined, revision: number) => void) => LocusDisposer;
   unsubscribe: (library: string, path: LivePath) => void;
   action: (name: string, payload?: JsonValue) => Promise<LocusClientActionResult> & Readonly<{ request: EchoActionRequest }>;
@@ -130,6 +134,9 @@ export function create_multi_library_echo_socket_client_internal(
     value: JsonValue | undefined;
   }>>();
   let status: "idle" | "recovering" | "live" | "failed" | "closed" = "idle";
+  let connected = false;
+  let stopMessage: LocusDisposer | undefined;
+  let stopClose: LocusDisposer | undefined;
   let nextId = 0;
   let recovery: Readonly<{
     id: string;
@@ -164,29 +171,6 @@ export function create_multi_library_echo_socket_client_internal(
     onAttachmentLost: (_reason, error) => interruptRecovery(error),
   });
   const clientId = endpoint.clientId;
-
-  const stopMessage = options.socket.onMessage((raw) => {
-    let message: DecodedServerMessage;
-    try {
-      message = decode_server_message(raw);
-    } catch (cause) {
-      failEndpoint(cause instanceof Error ? cause : new Error("Hosted aggregate Echo protocol failed."));
-      return;
-    }
-    if (is_endpoint_server_message(message)) {
-      endpoint.receive(message);
-      return;
-    }
-    try {
-      receiveReplica(message);
-    } catch (cause) {
-      failReplica(cause instanceof Error ? cause : new Error("Hosted aggregate replica failed."));
-    }
-  });
-  const stopClose = options.socket.onClose(() => {
-    if (status !== "closed") failEndpoint(new Error("Hosted aggregate socket closed."));
-  });
-  endpoint.connect();
 
   function next(prefix: string): string {
     nextId += 1;
@@ -233,11 +217,55 @@ export function create_multi_library_echo_socket_client_internal(
     endpoint.disconnect();
   }
 
+  function disconnect(): void {
+    if (!connected) return;
+    connected = false;
+    stopMessage?.();
+    stopMessage = undefined;
+    stopClose?.();
+    stopClose = undefined;
+    const error = new Error("Hosted aggregate socket Echo disconnected.");
+    interruptRecovery(error);
+    replica.markFailed(error);
+    endpoint.disconnect();
+    if (status !== "closed") status = "idle";
+  }
+
+  function attachTransport(): LocusDisposer {
+    if (status === "closed" || connected) return disconnect;
+    connected = true;
+    stopMessage = options.socket.onMessage((raw) => {
+      let message: DecodedServerMessage;
+      try {
+        message = decode_server_message(raw);
+      } catch (cause) {
+        failEndpoint(cause instanceof Error ? cause : new Error("Hosted aggregate Echo protocol failed."));
+        return;
+      }
+      if (is_endpoint_server_message(message)) {
+        endpoint.receive(message);
+        return;
+      }
+      try {
+        receiveReplica(message);
+      } catch (cause) {
+        failReplica(cause instanceof Error ? cause : new Error("Hosted aggregate replica failed."));
+      }
+    }) ?? undefined;
+    stopClose = options.socket.onClose(disconnect) ?? undefined;
+    endpoint.connect();
+    return disconnect;
+  }
+
   function recover_wire(): Promise<MultiLibraryEchoSocketRecovery> {
     if (status === "closed") return Promise.reject(new Error("Hosted aggregate socket Echo is closed."));
+    if (!connected) return Promise.reject(new Error("Hosted aggregate recovery requires a connected transport."));
     if (recovery !== undefined) return Promise.reject(new Error("Hosted aggregate recovery is already in progress."));
     if (endpoint.session.status !== "attached" || endpoint.session.sessionId === undefined || endpoint.session.epoch === undefined) {
       return Promise.reject(new Error("Hosted aggregate recovery requires an attached session."));
+    }
+    if (endpoint.session.logicalMapId !== clientLogicalMapId) {
+      return Promise.reject(new Error("Hosted aggregate session authority does not match the configured recovery target."));
     }
     if (map !== undefined) {
       const snapshot = replica.captureHosted();
@@ -272,6 +300,7 @@ export function create_multi_library_echo_socket_client_internal(
   }
 
   async function connect_client(): Promise<MultiLibraryEchoSocketRecovery> {
+    attachTransport();
     if (endpoint.session.status !== "attached") {
       if (endpoint.session.credential === undefined) await endpoint.session.create();
       else await endpoint.session.reattach(endpoint.session.credential);
@@ -288,7 +317,11 @@ export function create_multi_library_echo_socket_client_internal(
     if (message.type === "recovery-plan") {
       const active = current_recovery(message.id);
       if (active === undefined) return;
-      if (message.logicalMapId !== clientLogicalMapId) throw new Error("Hosted recovery plan logical map fence is incompatible.");
+      if (message.logicalMapId !== clientLogicalMapId
+        || message.logicalMapId !== endpoint.session.logicalMapId
+        || message.incarnationId !== endpoint.session.incarnationId) {
+        throw new Error("Hosted recovery plan authority fence is incompatible with the attached session.");
+      }
       if (message.outcome === "reject") throw new Error(message.error.message);
       if (map !== undefined && registryDigest !== undefined && message.registryDigest !== registryDigest) {
         throw new Error("Hosted recovery registry mismatch requires a fresh aggregate bootstrap.");
@@ -473,6 +506,9 @@ export function create_multi_library_echo_socket_client_internal(
     clientId,
     session,
     connect: connect_client,
+    attachTransport,
+    disconnect,
+    recover: recover_wire,
     subscribe,
     unsubscribe,
     action,
@@ -482,8 +518,7 @@ export function create_multi_library_echo_socket_client_internal(
     dispose: () => {
       if (status === "closed") return;
       status = "closed";
-      stopMessage?.();
-      stopClose?.();
+      disconnect();
       const error = new Error("Hosted aggregate socket Echo is closed.");
       interruptRecovery(error);
       endpoint.dispose();
@@ -510,8 +545,8 @@ type DecodedServerMessage =
   | Readonly<{ type: "error"; id?: string; message: string }>
   | LocusClientActionResult
   | Readonly<{ type: "action-status"; id: string; requestId: string; state: "pending" | "succeeded" | "failed" | "unknown" | "expired"; outcome?: LocusActionTerminalOutcome }>
-  | Readonly<{ type: "session-created"; id: string; sessionId: string; credential: string; epoch: number }>
-  | Readonly<{ type: "session-attached"; id: string; sessionId: string; epoch: number }>
+  | Readonly<{ type: "session-created"; id: string; sessionId: string; credential: string; epoch: number; logicalMapId: string; incarnationId: string }>
+  | Readonly<{ type: "session-attached"; id: string; sessionId: string; epoch: number; logicalMapId: string; incarnationId: string }>
   | Readonly<{ type: "session-rejected"; id: string; code: string; message: string }>
   | Readonly<{ type: "session-fenced"; sessionId: string; epoch: number; code: "LOCUS_SESSION_ATTACHMENT_FENCED" }>
   | Readonly<{ type: "session-ended"; id: string; sessionId: string; epoch: number }>

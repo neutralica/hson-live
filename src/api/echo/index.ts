@@ -25,8 +25,5 @@ export type {
   EchoSessionResult,
   EchoSessionStatus,
   EchoRetryActionFn,
-  MultiLibraryEchoOptions,
-  MultiLibraryEchoRecovery,
-  MultiLibraryEcho,
 } from "../../types/echo.types.js";
 export { EchoRecoveryError, EchoSessionError } from "./echo.error.js";

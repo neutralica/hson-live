@@ -133,6 +133,8 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
   let sessionId: string | undefined;
   let credential = options.credential;
   let sessionEpoch: number | undefined;
+  let logicalMapId: string | undefined;
+  let incarnationId: string | undefined;
   let sessionFailure: Readonly<{ code: string; message: string }> | undefined;
   let pendingSession: PendingSession | undefined;
   let sessionCreateCount = 0;
@@ -274,15 +276,38 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
       options.onReadyChange?.();
       return true;
     }
+    if ((logicalMapId !== undefined && logicalMapId !== message.logicalMapId)
+      || (incarnationId !== undefined && incarnationId !== message.incarnationId)) {
+      const mismatch = new EchoSessionError(
+        "LOCUS_SESSION_AUTHORITY_MISMATCH",
+        "Locus session authority identity contradicts the established session authority.",
+      );
+      sessionStatus = "failed";
+      sessionFailure ??= Object.freeze({ code: mismatch.code, message: mismatch.message });
+      sessionRejectionCount += 1;
+      rejectEndpointOperations(mismatch);
+      pending.reject(mismatch);
+      options.onAttachmentLost?.("fenced", mismatch);
+      options.onReadyChange?.();
+      return true;
+    }
     sessionId = message.sessionId;
     sessionEpoch = message.epoch;
+    logicalMapId = message.logicalMapId;
+    incarnationId = message.incarnationId;
     sessionStatus = "attached";
     sessionFailure = undefined;
     if (message.type === "session-created") {
       credential = message.credential;
       sessionCreateCount += 1;
     } else sessionReattachCount += 1;
-    pending.resolve(Object.freeze({ sessionId: message.sessionId, epoch: message.epoch, reattached: message.type === "session-attached" }));
+    pending.resolve(Object.freeze({
+      sessionId: message.sessionId,
+      epoch: message.epoch,
+      logicalMapId: message.logicalMapId,
+      incarnationId: message.incarnationId,
+      reattached: message.type === "session-attached",
+    }));
     notifyReadyChange();
     return true;
   }
@@ -440,6 +465,8 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
     get sessionId() { return sessionId; },
     get credential() { return credential; },
     get epoch() { return sessionEpoch; },
+    get logicalMapId() { return logicalMapId; },
+    get incarnationId() { return incarnationId; },
     get failure() { return sessionFailure; },
     create: createSession,
     reattach: reattachSession,

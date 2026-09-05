@@ -119,27 +119,36 @@ const socket = {
   onClose() {},
 };
 
-const inferredProjectedClient = create_echo<{ count: number }>({ socket });
-inferredProjectedClient.subscribe([]);
-inferredProjectedClient.unsubscribe(["count"]);
-type InferredProjectedSubscribeIsCallable = Assert<
-  Equal<typeof inferredProjectedClient.subscribe, (path: readonly (string | number)[]) => void>
->;
+const endpointOnlyClient = create_echo({ socket });
+void endpointOnlyClient.session;
+void endpointOnlyClient.actionStatus;
+endpointOnlyClient.connect();
+endpointOnlyClient.disconnect();
+// @ts-expect-error omitted-map Echo cannot claim an arbitrary state generic
+create_echo<{ count: number }>({ socket });
+// @ts-expect-error endpoint-only Echo has no replica map
+endpointOnlyClient.map;
+// @ts-expect-error endpoint-only Echo has no recovery capability
+endpointOnlyClient.recovery;
+// @ts-expect-error Echo-level topology subscriptions were removed
+endpointOnlyClient.subscribe([]);
 
 declare const projectedClientAlias: Echo<LiveMap<{ count: number }>>;
+// @ts-expect-error replica observation belongs to LiveMap
 projectedClientAlias.subscribe([]);
-projectedClientAlias.unsubscribe(["count"]);
-type ProjectedAliasSubscribeIsCallable = Assert<
-  Equal<typeof projectedClientAlias.subscribe, (path: readonly (string | number)[]) => void>
->;
 
 const existingProjectedMap = hson.liveMap.fromJson({ count: 0 });
-const existingProjectedClient = create_echo({ socket, map: existingProjectedMap });
-existingProjectedClient.subscribe([]);
-existingProjectedClient.unsubscribe(["count"]);
-type ExistingProjectedSubscribeIsCallable = Assert<
-  Equal<typeof existingProjectedClient.subscribe, (path: readonly (string | number)[]) => void>
->;
+const existingProjectedClient = create_echo({
+  socket,
+  map: existingProjectedMap,
+  recovery: { logicalMapId: "projected-map" },
+});
+type ExistingProjectedMapIsExact = Assert<Equal<typeof existingProjectedClient.map, typeof existingProjectedMap>>;
+void existingProjectedClient.recovery;
+// @ts-expect-error map without recovery is an invalid Echo capability combination
+create_echo({ socket, map: existingProjectedMap });
+// @ts-expect-error recovery without map is an invalid Echo capability combination
+create_echo({ socket, recovery: { logicalMapId: "projected-map" } });
 
 const elementCandidate = hson.liveMap.fromHson(`<main/>`);
 if (elementCandidate.mode !== "document") throw new Error("Expected element map");
@@ -223,14 +232,19 @@ type DocumentSequenceMapIsExact = Assert<typeof multiNodeDocumentHost.map extend
 const client = create_echo({
   socket,
   map: elementCandidate,
+  recovery: { logicalMapId: "document-map" },
 });
 type ClientElementMapIsExact = Assert<Equal<typeof client.map, DocumentLiveMap>>;
-type DocumentSubscribeIsGated = Assert<Equal<typeof client.subscribe, never>>;
-type DocumentUnsubscribeIsGated = Assert<Equal<typeof client.unsubscribe, never>>;
+// @ts-expect-error Echo-level subscriptions were removed for every map mode
+client.subscribe([]);
 
-const multiNodeDocumentClient = create_echo({ socket, map: multiNodeDocumentCandidate });
-type DocumentSequenceSubscribeIsGated = Assert<Equal<typeof multiNodeDocumentClient.subscribe, never>>;
-type DocumentSequenceUnsubscribeIsGated = Assert<Equal<typeof multiNodeDocumentClient.unsubscribe, never>>;
+const multiNodeDocumentClient = create_echo({
+  socket,
+  map: multiNodeDocumentCandidate,
+  recovery: { logicalMapId: "document-sequence-map" },
+});
+// @ts-expect-error Echo-level subscriptions were removed for document sequences
+multiNodeDocumentClient.subscribe([]);
 
 type BothForms = Readonly<{ state: { count: number }; map: DocumentLiveMap }>;
 type ConstructorOptions = ProjectedLocusOptions<{ count: number }> | LocusOptions<DocumentLiveMap>;
@@ -240,24 +254,16 @@ void elementHostAlias;
 void projectedMap;
 type TypeAssertions =
   | ProjectedMapIsNarrow
-  | InferredProjectedSubscribeIsCallable
-  | ProjectedAliasSubscribeIsCallable
-  | ExistingProjectedSubscribeIsCallable
+  | ExistingProjectedMapIsExact
   | ElementMapIsExact
   | DocumentSequenceMapIsExact
   | ClientElementMapIsExact
-  | DocumentSubscribeIsGated
-  | DocumentUnsubscribeIsGated
-  | DocumentSequenceSubscribeIsGated
-  | DocumentSequenceUnsubscribeIsGated
   | StateAndMapAreRejected;
 const assertions: TypeAssertions = true;
 void assertions;
 
 type CustomActions = Readonly<{ custom: number }>;
 declare const typedProjectedClient: Echo<LiveMap<{ count: number }>, CustomActions>;
-typedProjectedClient.subscribe(["count"]);
-typedProjectedClient.unsubscribe([]);
 typedProjectedClient.action("custom", 1);
 
 declare const typedDocumentClient: Echo<DocumentLiveMap, CustomActions>;

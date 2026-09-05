@@ -103,9 +103,9 @@ or:
                 ⇅
               Locus
                 ⇅
-               Echo
+               Echo ───────── endpoint-only participation
                 ⇅
-          Echo LiveMap
+     replica-bearing Echo LiveMap
                 ⇅
              Reflect
                 ⇅
@@ -392,10 +392,10 @@ failure, and lifecycle boundaries.
 
 Locus makes exactly one LiveMap authoritative.
 
-A Locus authority owns one LiveMap and its ordered commit history. Echo
-endpoints do not independently simulate the same application and exchange
-events afterward; each governs an exact revisioned replica and follows the
-same accepted commit stream.
+A Locus authority owns one LiveMap and its ordered commit history. Echo is the
+semantic hosted client: it may be endpoint-only, or it may govern an explicit
+exact-replica LiveMap that follows the accepted commit stream. Connection,
+session establishment, and replica recovery are separate operations.
 
 Locus provides:
 

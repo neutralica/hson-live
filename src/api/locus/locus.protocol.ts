@@ -832,13 +832,17 @@ function decode_session_server_message(value: Readonly<Record<string, unknown>>)
   if (!id) return fail("Locus session server message requires non-empty id.");
   if (value.type === "session-created") {
     const credential = required_string(value.credential);
-    if (!sessionId || !credential || epoch === undefined || !has_exact_keys(value, ["type", "id", "sessionId", "credential", "epoch"])) return fail("Malformed Locus session-created message.");
-    const message: LocusServerSessionCreatedMessage = { type: "session-created", id, sessionId, credential, epoch };
+    const logicalMapId = required_string(value.logicalMapId);
+    const incarnationId = required_string(value.incarnationId);
+    if (!sessionId || !credential || epoch === undefined || !logicalMapId || !incarnationId || !has_exact_keys(value, ["type", "id", "sessionId", "credential", "epoch", "logicalMapId", "incarnationId"])) return fail("Malformed Locus session-created message.");
+    const message: LocusServerSessionCreatedMessage = { type: "session-created", id, sessionId, credential, epoch, logicalMapId, incarnationId };
     return ok(message);
   }
   if (value.type === "session-attached") {
-    if (!sessionId || epoch === undefined || !has_exact_keys(value, ["type", "id", "sessionId", "epoch"])) return fail("Malformed Locus session-attached message.");
-    const message: LocusServerSessionAttachedMessage = { type: "session-attached", id, sessionId, epoch };
+    const logicalMapId = required_string(value.logicalMapId);
+    const incarnationId = required_string(value.incarnationId);
+    if (!sessionId || epoch === undefined || !logicalMapId || !incarnationId || !has_exact_keys(value, ["type", "id", "sessionId", "epoch", "logicalMapId", "incarnationId"])) return fail("Malformed Locus session-attached message.");
+    const message: LocusServerSessionAttachedMessage = { type: "session-attached", id, sessionId, epoch, logicalMapId, incarnationId };
     return ok(message);
   }
   if (value.type === "session-ended") {

@@ -125,8 +125,8 @@ const socket = {
   onClose(_listener: () => void) {},
 };
 
-const inferredClient = create_echo({ socket, map: governedMap });
-const explicitClient = create_echo<typeof governedMap>({ socket, map: governedMap });
+const inferredClient = create_echo({ socket, map: governedMap, recovery: { logicalMapId: "governed-map" } });
+const explicitClient = create_echo<typeof governedMap>({ socket, map: governedMap, recovery: { logicalMapId: "governed-map" } });
 type InferredClientMapIsExact = Assert<Equal<typeof inferredClient.map, typeof governedMap>>;
 type ExplicitClientMapIsExact = Assert<Equal<typeof explicitClient.map, typeof governedMap>>;
 const clientState: UserSchemaType = inferredClient.map.snap();
@@ -159,14 +159,14 @@ if (false) {
 const ordinaryMap = hsonLiveMap.fromJson({ count: 0 });
 type OrdinaryMapValueIsUnchanged = Assert<Equal<LocusMapValue<typeof ordinaryMap>, JsonValue | undefined>>;
 const ordinaryAuthority = create_locus({ map: ordinaryMap });
-const ordinaryClient = create_echo({ socket, map: ordinaryMap });
+const ordinaryClient = create_echo({ socket, map: ordinaryMap, recovery: { logicalMapId: "ordinary-map" } });
 const ordinaryCount: JsonValue | undefined = ordinaryClient.map.at(["count"]).snap();
 
 const documentCandidate = hsonLiveMap.fromHson("<main/>");
 if (documentCandidate.mode === "document") {
   type DocumentMapValueIsUndefined = Assert<Equal<LocusMapValue<typeof documentCandidate>, undefined>>;
   const documentAuthority: Locus<DocumentLiveMap> = create_locus({ map: documentCandidate });
-  const documentClient: Echo<DocumentLiveMap> = create_echo({ socket, map: documentCandidate });
+  const documentClient: Echo<DocumentLiveMap> = create_echo({ socket, map: documentCandidate, recovery: { logicalMapId: "document-map" } });
   declare_document_persistence(documentCandidate);
   void documentAuthority;
   void documentClient;
@@ -184,6 +184,9 @@ const multiClient = create_echo({
   map: libraries,
   recovery: { logicalMapId: "proof-bearing-multi-library" },
 });
+type MultiClientUsesEchoFamily = Assert<Equal<typeof multiClient, Echo<typeof libraries>>>;
+const exactUserName: string = multiClient.map.lib("user").snap().name;
+void exactUserName;
 multiClient.connect();
 declare const multiPersistence: LocusMultiLibraryPersistenceAdapter;
 create_persistent_locus({ map: libraries, persistence: multiPersistence });
