@@ -225,13 +225,32 @@ await check("direct seam joins pending work and reuses its cached terminal outco
 });
 
 await check("direct seam preserves the distinct legacy non-deduped branch", async () => {
-  const f = fixture({ authorizer: () => true });
+  let context;
+  const f = fixture({ authorizer(value) { context = value; return true; } });
   const admitted = await f.admit({ type: "action", id: "legacy-1", name: "set", payload: { value: 10 } });
   assert.equal(admitted.kind, "legacy");
   assert.equal(admitted.response.type, "ack");
   assert.equal(admitted.response.delivery, undefined);
   assert.equal(admitted.response.completionRev, 1);
+  assert.equal(context.session.sessionId, "logical-session");
+  assert.deepEqual(context.connection.attachment, { role: "editor" });
   assert.deepEqual(f.map.snap(), { value: 10 });
+  f.dispose();
+});
+
+await check("legacy attachment-based denial is mutation-inert and retains no request lineage", async () => {
+  const f = fixture({ authorizer: (context) => context.connection.attachment.role !== "editor" });
+  const before = f.map.capture();
+  const admitted = await f.admit({ type: "action", id: "legacy-denied", name: "set", payload: { value: 14 } });
+  assert.equal(admitted.kind, "rejected");
+  assert.equal(admitted.response.error.code, "LOCUS_ACTION_FORBIDDEN");
+  assert.equal(admitted.response.delivery, undefined);
+  assert.equal(f.authority.actionRequests.debug().executionsStarted, 0);
+  assert.equal(f.authority.actionRequests.debug().pendingRequestCount, 0);
+  assert.equal(f.authority.actionRequests.debug().retainedTerminalCount, 0);
+  assert.equal(f.map.rev, 0);
+  assert.deepEqual(f.map.capture(), before);
+  assert.equal(f.actionActivity(), 0);
   f.dispose();
 });
 

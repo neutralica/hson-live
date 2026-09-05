@@ -342,11 +342,9 @@ export async function admit_locus_solo_external_action<
     });
   }
 
-  // Stable attempts include server-established attachment evidence. Legacy
-  // attempts intentionally retain their existing context discrepancy.
   const authorization = authorizeAction(
     authority, message, validated.payload, origin, trace, parentSpanId,
-    stable ? attempt.connection : undefined,
+    attempt.connection,
   );
   const authorized = authorization instanceof Promise ? await authorization : authorization;
   if (!authorized.ok) {

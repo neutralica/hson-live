@@ -40,6 +40,18 @@ function connect(host, clientId, context, options = {}) {
   const client = hson.echo.create({ socket: pair.client, clientId, actionId: () => `${clientId}-request-${++request}`, actionAttemptId: () => `${clientId}-attempt-${++attempt}`, ...options });
   client.connect(); return { client, pair };
 }
+function legacy_action(host, context, message) {
+  const pair = socket_pair();
+  host.connect(pair.server, context);
+  const response = new Promise((resolve) => {
+    pair.client.onMessage((raw) => {
+      const value = JSON.parse(raw);
+      if ((value.type === "ack" || value.type === "error") && value.id === message.id) resolve(value);
+    });
+  });
+  pair.client.send(JSON.stringify(message));
+  return { pair, response };
+}
 function fixture(options = {}) {
   let executions = 0, session = 0;
   const host = hson.locus.create({
@@ -169,16 +181,42 @@ await check("authorization adds no protocol fields", async () => {
 
 await check("opaque connection attachment reaches action policy without entering protocol", async () => {
   const attachment = Object.freeze({ roles: ["writer"], secret: "attachment-only" });
-  let seen;
-  const f = fixture({ authorizeAction(context) { seen = context.connection; return true; } });
+  const seen = [];
+  const f = fixture({ authorizeAction(context) { seen.push(context.connection); return true; } });
   const { client, pair } = connect(f.host, "attached", {
     principalId: "principal-a",
     attachment,
   });
   assert.equal((await client.action("set", { value: 16 })).type, "ack");
-  assert.equal(seen.principalId, "principal-a");
-  assert.equal(seen.attachment, attachment);
+  const legacy = legacy_action(f.host, { principalId: "principal-a", attachment }, {
+    type: "action", id: "legacy-attached", name: "set", payload: { value: 17 },
+  });
+  assert.equal((await legacy.response).type, "ack");
+  assert.equal(seen.length, 2);
+  for (const connection of seen) {
+    assert.equal(connection.principalId, "principal-a");
+    assert.equal(connection.attachment, attachment);
+  }
   assert.equal([...pair.clientSent, ...pair.serverSent].some((raw) => raw.includes("attachment-only")), false);
+  assert.equal([...legacy.pair.clientSent, ...legacy.pair.serverSent].some((raw) => raw.includes("attachment-only")), false);
+});
+
+await check("legacy attachment-based denial does not execute or advance authority", async () => {
+  const attachment = Object.freeze({ allow: false });
+  const f = fixture({ authorizeAction(context) { return context.connection.attachment.allow; } });
+  const before = f.host.map.capture();
+  const legacy = legacy_action(f.host, { principalId: "principal-denied", attachment }, {
+    type: "action", id: "legacy-denied", name: "set", payload: { value: 18 },
+  });
+  const result = await legacy.response;
+  assert.equal(result.error.code, "LOCUS_ACTION_FORBIDDEN");
+  assert.equal(result.delivery, undefined);
+  assert.equal(f.executions(), 0);
+  assert.equal(f.host.map.rev, 0);
+  assert.deepEqual(f.host.map.capture(), before);
+  assert.equal(f.host.actionRequests.debug().executionsStarted, 0);
+  assert.equal(f.host.actionRequests.debug().pendingRequestCount, 0);
+  assert.equal(f.host.actionRequests.debug().retainedTerminalCount, 0);
 });
 
 await check("direct dispatch intentionally bypasses session-origin application authorization", async () => {
