@@ -194,6 +194,7 @@
     "test:locus-hosted-multi-library-h5": "node --import=tsx tests/locus-hosted-multi-library-h5.acceptance.mts",
     "test:locus-hosted-multi-library-action-pipeline": "node --import=tsx tests/locus-hosted-multi-library-action-pipeline.acceptance.mts",
     "test:locus-hosted-multi-library-recovery-fencing": "node --import=tsx tests/locus-hosted-multi-library-recovery-fencing.acceptance.mts",
+    "test:locus-hosted-multi-library-session-activity": "node --import=tsx tests/locus-hosted-multi-library-session-activity.acceptance.mts",
     "test:locus-hosted-multi-library-admission": "node --import=tsx tests/locus-hosted-multi-library-admission.acceptance.mts",
     "test:livemap-identity-aba-prevention": "node --import=tsx tests/livemap-identity-aba-prevention.acceptance.mts",
     "test:livemap-quid-canonical-state": "node --import=tsx tests/livemap-quid-canonical-state.acceptance.mts",

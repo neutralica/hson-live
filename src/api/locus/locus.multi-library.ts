@@ -121,6 +121,17 @@ export function create_multi_library_locus_internal<
       acquireConnectionActivity: () => activity.acquire("connection"),
     }),
   });
+  const retainedSessionReleases = new Map<string, () => void>();
+  const stopSessionActivity = authority.sessions.on_change((event) => {
+    if (event.kind === "attached" && event.session.resumable && !retainedSessionReleases.has(event.session.sessionId)) {
+      retainedSessionReleases.set(event.session.sessionId, activity.acquire("session"));
+      return;
+    }
+    if (event.kind !== "expired" && event.kind !== "revoked") return;
+    const release = retainedSessionReleases.get(event.session.sessionId);
+    retainedSessionReleases.delete(event.session.sessionId);
+    release?.();
+  });
 
   const mutate: LocusMultiLibrary<TMap, TActions>["mutate"] = async (mutation) => {
     const release = activity.acquire("mutation");
@@ -161,6 +172,9 @@ export function create_multi_library_locus_internal<
       if (disposed) return;
       disposed = true;
       authority.dispose();
+      stopSessionActivity();
+      for (const release of retainedSessionReleases.values()) release();
+      retainedSessionReleases.clear();
       activity.dispose();
     },
   });
