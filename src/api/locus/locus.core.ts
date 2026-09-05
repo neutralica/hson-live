@@ -5,13 +5,10 @@ import type { ClassifiedLiveMap, LiveMap, LiveMapAnyOp, LiveMapAuthority, LiveMa
 import type {
   Locus,
   LocusActionContext,
-  LocusActionDelivery,
   LocusActionOrigin,
   LocusActionPayloads,
-  LocusActionTerminalOutcome,
   LocusActions,
   LocusClientActionMessage,
-  LocusClientActionResult,
   LocusClientRecoverMessage,
   LocusClientSessionAttachMessage,
   LocusCanonicalCommit,
@@ -23,7 +20,6 @@ import type {
   LocusMultiLibrary,
   LocusMultiLibraryOptions,
   LocusMutationDraft,
-  LocusSchemaResult,
   LocusSeq,
   LocusServerMessage,
   LocusSessionId,
@@ -31,7 +27,7 @@ import type {
   LocusSnapshotCapabilities,
   LocusSnapshotEncodingSelection,
 } from "../../types/locus.types.js";
-import { decode_locus_message, encode_locus_message, is_locus_json_value } from "./locus.protocol.js";
+import { decode_locus_message, encode_locus_message } from "./locus.protocol.js";
 import { make_locus_sync_manager } from "./locus.sync.js";
 import { make_locus_canonical_stream_runtime } from "./locus.history.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
@@ -56,9 +52,15 @@ import {
 import type { PreparedLiveMapTransition } from "../livemap/livemap.authority.js";
 import { make_locus_session_manager } from "./locus.session.js";
 import { make_locus_action_dedupe_store } from "./locus.actions.js";
-import { authorize_locus_action } from "./locus.action-authorization.js";
-import { decode_locus_action_payload, locus_schema_error_message } from "./locus.action-validation.js";
-import { is_locus_document_action_target, resolve_locus_document_action } from "./locus.document-actions.js";
+import {
+  admit_locus_solo_external_action,
+  execute_locus_action_handler,
+  locus_action_public_error_code,
+  make_locus_action_response,
+  resolve_locus_action_for_execution,
+  type LocusSoloExternalActionAuthority,
+} from "./locus.action-admission.js";
+import { decode_locus_action_payload } from "./locus.action-validation.js";
 import {
   create_live_trace_context,
   type LocusCommitCausation,
@@ -354,50 +356,6 @@ function create_locus_for_map<
     return seq;
   }
 
-  function action_context(
-    origin: LocusActionOrigin,
-    emitEvent: LocusActionContext<TMap>["emit_event"],
-    causation?: LocusCommitCausation,
-  ): Readonly<{
-    context: LocusActionContext<TMap>;
-    finish: () => Promise<void> | undefined;
-  }> {
-    let open = true;
-    const pending: Promise<LiveMapCommit<LiveMapAnyOp>>[] = [];
-    const context: LocusActionContext<TMap> = Object.freeze({
-      map: readonlyMap,
-      mutate(mutation: (draft: LocusMutationDraft<TMap>) => LiveMapCommit<LiveMapAnyOp>) {
-        if (!open) {
-          return Promise.reject(new LocusAuthorityError(
-            "LOCUS_AUTHORITY_CLOSED",
-            "Locus action mutation context is expired.",
-          ));
-        }
-        const operation = exclusiveAuthority.mutate(
-          mutation as unknown as (draft: TMap) => LiveMapCommit<LiveMapAnyOp>,
-          "action",
-          causation,
-        );
-        pending.push(operation);
-        return operation;
-      },
-      seq,
-      origin,
-      emit_event: emitEvent,
-    });
-    return Object.freeze({
-      context,
-      finish(): Promise<void> | undefined {
-        open = false;
-        if (pending.length === 0) return undefined;
-        return Promise.allSettled(pending).then((results) => {
-          const failed = results.find((result) => result.status === "rejected");
-          if (failed?.status === "rejected") throw failed.reason;
-        });
-      },
-    });
-  }
-
   function make_action_trace(
     message: LocusClientActionMessage<TActions>,
     origin: LocusActionOrigin,
@@ -490,234 +448,23 @@ function create_locus_for_map<
     });
   }
 
-  function validate_action(
-    message: LocusClientActionMessage<TActions>,
-    trace?: LiveTraceContext,
-    parentSpanId?: string,
-    causation?: LocusCommitCausation,
-  ):
-    | Readonly<{ ok: true; handler: NonNullable<Partial<LocusActions<TActions, TMap>>[keyof TActions & string]>; payload: JsonValue | undefined }>
-    | Readonly<{ ok: false; code: "LOCUS_ACTION_UNKNOWN" | "LOCUS_ACTION_UNAVAILABLE" | "LOCUS_ACTION_INVALID"; message: string }> {
-    const lookupSpan = trace?.beginSpan(
-      "locus",
-      "action.lookup",
-      parentSpanId,
-      () => ({ action: message.name }),
-    );
-    const documentAction = resolve_locus_document_action(map, message.name, message.payload);
-    if (documentAction.kind === "unavailable") {
-      lookupSpan?.failure(() => ({ action: message.name, errorCode: "LOCUS_ACTION_UNAVAILABLE" }));
-      return { ok: false, code: "LOCUS_ACTION_UNAVAILABLE", message: documentAction.message };
-    }
-    const configuredHandler = application.actions[message.name];
-    if (documentAction.kind === "not-document-action" && !configuredHandler) {
-      lookupSpan?.failure(() => ({ action: message.name, errorCode: "LOCUS_UNKNOWN_ACTION" }));
-      return { ok: false, code: "LOCUS_ACTION_UNKNOWN", message: `Unknown Locus action: ${message.name}` };
-    }
-    lookupSpan?.success(() => ({ action: message.name }));
-
-    const validationSpan = trace?.beginSpan(
-      "locus",
-      "payload.validation",
-      parentSpanId,
-      () => ({ action: message.name, payloadPresent: message.payload !== undefined }),
-    );
-    if (documentAction.kind === "invalid") {
-      validationSpan?.failure(() => ({ action: message.name, errorCode: "LOCUS_SCHEMA_INVALID_PAYLOAD", issueCount: 1 }));
-      return { ok: false, code: "LOCUS_ACTION_INVALID", message: documentAction.message };
-    }
-    if (documentAction.kind === "ready") {
-      const handler: NonNullable<Partial<LocusActions<TActions, TMap>>[keyof TActions & string]> = async (context) => {
-        await context.mutate((draft) => {
-          if (!is_locus_document_action_target(draft)) throw new Error("Locus document action draft mode is unavailable.");
-          return documentAction.execute(draft);
-        });
-      };
-      validationSpan?.success(() => ({ action: message.name, schemaConfigured: true }));
-      return { ok: true, handler, payload: documentAction.payload };
-    }
-    const handler = configuredHandler;
-    if (!handler) {
-      throw new Error("Locus action resolution lost its configured handler.");
-    }
-    const actionSchema = options.schema?.actions?.[message.name];
-    let payloadResult: LocusSchemaResult<JsonValue | undefined>;
-    try {
-      payloadResult = decode_locus_action_payload(actionSchema?.payload, message.payload);
-    } catch (cause) {
-      validationSpan?.failure(() => ({ action: message.name, errorCode: safe_error_code(cause, "LOCUS_SCHEMA_DECODER_FAILED") }));
-      throw cause;
-    }
-    if (!payloadResult.ok) {
-      validationSpan?.failure(() => ({
-        action: message.name,
-        errorCode: "LOCUS_SCHEMA_INVALID_PAYLOAD",
-        issueCount: payloadResult.issues.length,
-      }));
-      return { ok: false, code: "LOCUS_ACTION_INVALID", message: locus_schema_error_message(payloadResult.issues) };
-    }
-    validationSpan?.success(() => ({ action: message.name, schemaConfigured: actionSchema?.payload !== undefined }));
-    return { ok: true, handler, payload: payloadResult.value };
-  }
-
-  function public_action_error_code(
-    code: "LOCUS_ACTION_UNKNOWN" | "LOCUS_ACTION_UNAVAILABLE" | "LOCUS_ACTION_INVALID",
-  ): "LOCUS_UNKNOWN_ACTION" | "LOCUS_ACTION_UNAVAILABLE" | "LOCUS_SCHEMA_INVALID_PAYLOAD" {
-    if (code === "LOCUS_ACTION_UNKNOWN") return "LOCUS_UNKNOWN_ACTION";
-    if (code === "LOCUS_ACTION_UNAVAILABLE") return "LOCUS_ACTION_UNAVAILABLE";
-    return "LOCUS_SCHEMA_INVALID_PAYLOAD";
-  }
-
-  function authorize_validated_action(
-    message: LocusClientActionMessage<TActions>,
-    payload: JsonValue | undefined,
-    origin: Extract<LocusActionOrigin, { kind: "session" }>,
-    trace?: LiveTraceContext,
-    parentSpanId?: string,
-    connectionContext?: LocusConnectionContext,
-  ): ReturnType<typeof authorize_locus_action<TActions>> {
-    const authorizer = application.authorizeAction;
-    if (authorizer === undefined) {
-      trace?.emit({
-        subsystem: "locus",
-        phase: "action.authorization",
-        status: "skip",
-        ...(parentSpanId !== undefined ? { parentSpanId } : {}),
-        details: () => ({ action: message.name, reason: "implicit-allow" }),
-      });
-      return { ok: true, payload };
-    }
-
-    const authorizationSpan = trace?.beginSpan(
-      "locus",
-      "action.authorization",
-      parentSpanId,
-      () => ({ action: message.name }),
-    );
-    const authorization = authorize_locus_action<TActions>({
-      authorizer,
-      action: message.name,
-      payload,
-      origin,
-      logicalMapId: stream.logicalMapId,
-      incarnationId: stream.incarnationId,
-      ...(connectionContext === undefined ? {} : { connection: connectionContext }),
-    });
-    function finish(result: Awaited<typeof authorization>) {
-      if (!result.ok) {
-        authorizationSpan?.failure(() => ({
-          action: message.name,
-          outcome: result.code === "LOCUS_ACTION_FORBIDDEN" ? "denied" : "failed",
-          errorCode: result.code,
-        }));
-        return result;
-      }
-      authorizationSpan?.success(() => ({ action: message.name, outcome: "allowed" }));
-      return result;
-    }
-    return authorization instanceof Promise ? authorization.then(finish) : finish(authorization);
-  }
-
-  async function execute_validated_action(
-    message: LocusClientActionMessage<TActions>,
-    handler: NonNullable<Partial<LocusActions<TActions, TMap>>[keyof TActions & string]>,
-    payload: JsonValue | undefined,
-    origin: LocusActionOrigin,
-    emitEvent: LocusActionContext<TMap>["emit_event"],
-    trace?: LiveTraceContext,
-    parentSpanId?: string,
-    causation?: LocusCommitCausation,
-  ): Promise<LocusActionTerminalOutcome> {
-    const previousRev = stream.headRev;
-    const handlerSpan = trace?.beginSpan(
-      "locus",
-      "handler.execute",
-      parentSpanId,
-      () => ({ action: message.name, origin: origin.kind }),
-    );
-    const scope = action_context(origin, emitEvent, causation);
-    try {
-      const result = await handler(scope.context, payload as never, message);
-      const tracked = scope.finish();
-      if (tracked !== undefined) await tracked;
-      if (result !== undefined && !is_locus_json_value(result)) {
-        handlerSpan?.failure(() => ({
-          action: message.name,
-          errorCode: "LOCUS_ACTION_OUTCOME_NORMALIZATION_FAILED",
-        }));
-        trace_state_boundary(trace, parentSpanId, previousRev);
-        return Object.freeze({
-          state: "failed",
-          seq,
-          completionRev: stream.headRev,
-          error: Object.freeze({
-            message: "Locus action result could not be normalized for transport.",
-            code: "LOCUS_ACTION_OUTCOME_NORMALIZATION_FAILED",
-          }),
-        });
-      }
-      handlerSpan?.success(() => ({ action: message.name, resultPresent: result !== undefined }));
-      trace_state_boundary(trace, parentSpanId, previousRev);
-      return Object.freeze({
-        state: "succeeded",
-        seq: next_seq(),
-        completionRev: stream.headRev,
-        ...(result !== undefined ? { result } : {}),
-      });
-    } catch (cause) {
-      try {
-        const tracked = scope.finish();
-        if (tracked !== undefined) await tracked;
-      } catch (trackedCause) {
-        cause = trackedCause;
-      }
-      const causeCode = safe_error_code(cause, "LOCUS_ACTION_FAILED");
-      handlerSpan?.failure(() => ({ action: message.name, errorCode: causeCode }));
-      trace_state_boundary(trace, parentSpanId, previousRev);
-      return Object.freeze({
-        state: "failed",
-        seq,
-        completionRev: stream.headRev,
-        error: Object.freeze({
-          message: cause instanceof Error ? cause.message : "Locus action failed.",
-          code: causeCode,
-        }),
-      });
-    }
-  }
-
-  function action_response(
-    id: string,
-    outcome: LocusActionTerminalOutcome,
-    requestId?: string,
-    delivery?: LocusActionDelivery,
-    attemptId?: string,
-  ): LocusClientActionResult {
-    if (outcome.state === "succeeded") {
-      return {
-        type: "ack",
-        id,
-        ok: true,
-        seq: outcome.seq,
-        completionRev: outcome.completionRev,
-        ...(requestId ? { requestId } : {}),
-        ...(attemptId ? { attemptId } : {}),
-        ...(delivery ? { delivery } : {}),
-        ...(outcome.result !== undefined ? { result: outcome.result } : {}),
-      };
-    }
-    return {
-      type: "error",
-      id,
-      ok: false,
-      seq: outcome.seq,
-      completionRev: outcome.completionRev,
-      ...(requestId ? { requestId } : {}),
-      ...(attemptId ? { attemptId } : {}),
-      ...(delivery ? { delivery } : {}),
-      error: outcome.error,
-    };
-  }
+  const externalActionAuthority: LocusSoloExternalActionAuthority<TMap, TActions> = Object.freeze({
+    map,
+    readonlyMap,
+    actions: application.actions,
+    schema: options.schema,
+    get authorizer() { return application.authorizeAction; },
+    actionRequests,
+    mutations: exclusiveAuthority,
+    logicalMapId: stream.logicalMapId,
+    incarnationId: stream.incarnationId,
+    mapMode: map.mode,
+    currentSeq: () => seq,
+    nextSeq: next_seq,
+    headRev: () => stream.headRev,
+    disposed: () => disposed,
+    traceStateBoundary: trace_state_boundary,
+  });
 
   async function dispatch_action_scoped_internal(
     message: LocusClientActionMessage<TActions>,
@@ -748,14 +495,14 @@ function create_locus_for_map<
     }
     const validated = (() => {
       try {
-        return validate_action(message, trace, actionSpan?.spanId, causation);
+        return resolve_locus_action_for_execution(externalActionAuthority, message, trace, actionSpan?.spanId);
       } catch (cause) {
         actionSpan?.failure(() => ({ action: message.name, errorCode: safe_error_code(cause, "LOCUS_SCHEMA_DECODER_FAILED") }));
         throw cause;
       }
     })();
     if (!validated.ok) {
-      const code = public_action_error_code(validated.code);
+      const code = locus_action_public_error_code(validated.code);
       actionSpan?.failure(() => ({ action: message.name, errorCode: code }));
       return {
         type: "error",
@@ -769,43 +516,19 @@ function create_locus_for_map<
         },
       };
     }
-    const authorization = origin.kind === "session"
-      ? authorize_validated_action(
-        message,
-        validated.payload,
-        origin,
-        trace,
-        actionSpan?.spanId,
-      )
-      : { ok: true as const, payload: validated.payload };
-    const authorized = authorization instanceof Promise
-      ? await authorization
-      : authorization;
-    if (!authorized.ok) {
-      actionSpan?.failure(() => ({ action: message.name, errorCode: authorized.code }));
-      return {
-        type: "error",
-        id: message.id,
-        ok: false,
-        seq,
-        completionRev: stream.headRev,
-        error: {
-          message: authorized.message,
-          code: authorized.code,
-        },
-      };
-    }
-    const response = action_response(
+    const response = make_locus_action_response(
       message.id,
-      await execute_validated_action(
+      await execute_locus_action_handler({
+        authority: externalActionAuthority,
         message,
-        validated.handler,
-        authorized.payload,
+        handler: validated.handler,
+        payload: validated.payload,
         origin,
         emitEvent,
-        trace,
-        actionSpan?.spanId,
-      ),
+        ...(trace !== undefined ? { trace } : {}),
+        ...(actionSpan !== undefined ? { parentSpanId: actionSpan.spanId } : {}),
+        ...(causation !== undefined ? { causation } : {}),
+      }),
     );
     trace?.emit({
       subsystem: "transport",
@@ -1122,229 +845,81 @@ function create_locus_for_map<
       origin: Extract<LocusActionOrigin, { kind: "session" }>,
       trace?: LiveTraceContext,
     ): Promise<void> {
-      if (!message.requestId || !message.clientId) {
-        const response = await dispatch_action_scoped(
-          message,
-          origin,
-          emit_connection_event,
-          trace,
-        );
-
-        send(response);
-        trace?.emit({
-          subsystem: "transport",
-          phase: "response.dispatch",
-          status: response.type === "ack" ? "success" : "failure",
-          details: () => ({
-            action: message.name,
-            responseType: response.type,
-            ...(response.type === "error" ? { errorCode: response.error.code ?? "LOCUS_ACTION_FAILED" } : {}),
-          }),
-        });
-
-        if (response.type === "ack") {
-          sync.sync_all(response.seq);
-        }
-
-        return;
-      }
-
       const actionSpan = trace?.beginSpan(
         "locus",
         "action.execute",
         undefined,
         () => ({ action: message.name, origin: origin.kind }),
       );
-      const causation = action_causation(message, origin, trace);
-      const validated = (() => {
-        try {
-          return validate_action(message, trace, actionSpan?.spanId, causation);
-        } catch (cause) {
-          actionSpan?.failure(() => ({ action: message.name, errorCode: safe_error_code(cause, "LOCUS_SCHEMA_DECODER_FAILED") }));
-          throw cause;
-        }
-      })();
-
-      if (!validated.ok) {
-        const code = public_action_error_code(validated.code);
-
-        const response: LocusClientActionResult = {
-          type: "error",
-          id: message.id,
-          ...(message.requestId !== undefined ? { requestId: message.requestId } : {}),
-          ...(message.attemptId !== undefined
-            ? { attemptId: message.attemptId }
-            : {}),
-          ok: false,
-          seq,
-          completionRev: stream.headRev,
-          delivery: "rejected",
-          error: {
-            code,
-            message: validated.message,
-          },
-        };
-        send(response);
-        trace?.emit({
-          subsystem: "transport",
-          phase: "response.dispatch",
-          status: "failure",
-          ...(actionSpan !== undefined ? { parentSpanId: actionSpan.spanId } : {}),
-          details: () => ({ action: message.name, responseType: response.type, errorCode: code }),
-        });
-        actionSpan?.failure(() => ({ action: message.name, errorCode: code }));
-
-        return;
-      }
-
-      const authorization = authorize_validated_action(
-        message,
-        validated.payload,
-        origin,
-        trace,
-        actionSpan?.spanId,
-        attachedContext,
-      );
-      const authorized = authorization instanceof Promise
-        ? await authorization
-        : authorization;
-      if (!authorized.ok) {
-        const response: LocusClientActionResult = {
-          type: "error",
-          id: message.id,
-          ...(message.requestId !== undefined ? { requestId: message.requestId } : {}),
-          ...(message.attemptId !== undefined
-            ? { attemptId: message.attemptId }
-            : {}),
-          ok: false,
-          seq,
-          completionRev: stream.headRev,
-          delivery: "rejected",
-          error: {
-            code: authorized.code,
-            message: authorized.message,
-          },
-        };
-        send(response);
-        trace?.emit({
-          subsystem: "transport",
-          phase: "response.dispatch",
-          status: "failure",
-          ...(actionSpan !== undefined ? { parentSpanId: actionSpan.spanId } : {}),
-          details: () => ({ action: message.name, responseType: response.type, errorCode: authorized.code }),
-        });
-        actionSpan?.failure(() => ({ action: message.name, errorCode: authorized.code }));
-        return;
-      }
-
-      const result = await actionRequests.execute({
-        clientId: message.clientId,
-        requestId: message.requestId,
-        actionName: message.name,
-        payload: authorized.payload,
-        retry: message.retry === true,
-        ...(trace !== undefined ? { sourceTraceId: trace.traceId } : {}),
-        run: () => execute_validated_action(
+      const releaseActionActivity = message.requestId === undefined || message.clientId === undefined
+        ? activity.acquire("action")
+        : undefined;
+      let admitted;
+      try {
+        admitted = await admit_locus_solo_external_action(externalActionAuthority, {
           message,
-          validated.handler,
-          authorized.payload,
           origin,
-          emit_connection_event,
-          trace,
-          actionSpan?.spanId,
-          causation,
-        ),
-      });
+          ...(attachedContext === undefined ? {} : { connection: attachedContext }),
+          emitEvent: emit_connection_event,
+          ...(trace === undefined ? {} : { trace }),
+          ...(actionSpan === undefined ? {} : { parentSpanId: actionSpan.spanId }),
+        });
+      } catch (cause) {
+        actionSpan?.failure(() => ({
+          action: message.name,
+          errorCode: safe_error_code(cause, "LOCUS_SCHEMA_DECODER_FAILED"),
+        }));
+        throw cause;
+      } finally {
+        releaseActionActivity?.();
+      }
 
-      if (!result.ok) {
+      const response = admitted.response;
+      const stableIdentity = message.requestId !== undefined && message.clientId !== undefined;
+      if (!stableIdentity) {
         trace?.emit({
-          subsystem: "locus",
-          phase: "action.dedupe",
-          status: "failure",
+          subsystem: "transport",
+          phase: "response.created",
+          status: response.type === "ack" ? "success" : "failure",
           ...(actionSpan !== undefined ? { parentSpanId: actionSpan.spanId } : {}),
           details: () => ({
             action: message.name,
-            sourceAction: message.name,
-            delivery: "rejected",
-            ...(trace !== undefined ? { sourceTraceId: trace.traceId } : {}),
-            ...(message.requestId !== undefined ? { requestId: message.requestId } : {}),
-            ...(message.attemptId !== undefined ? { attemptId: message.attemptId } : {}),
-            errorCode: result.code,
+            responseType: response.type,
+            ...(response.type === "error" ? { errorCode: response.error.code ?? "LOCUS_ACTION_FAILED" } : {}),
           }),
         });
-        const response: LocusClientActionResult = {
-          type: "error",
-          id: message.id,
-          requestId: message.requestId,
-          ...(message.attemptId !== undefined
-            ? { attemptId: message.attemptId }
-            : {}),
-          ok: false,
-          seq,
-          completionRev: stream.headRev,
-          delivery: "rejected",
-          error: {
-            code: result.code,
-            message: result.message,
-          },
-        };
-        send(response);
-        trace?.emit({
-          subsystem: "transport",
-          phase: "response.dispatch",
-          status: "failure",
-          ...(actionSpan !== undefined ? { parentSpanId: actionSpan.spanId } : {}),
-          details: () => ({ action: message.name, responseType: response.type, errorCode: result.code }),
-        });
-        actionSpan?.failure(() => ({ action: message.name, errorCode: result.code }));
-
-        return;
+        if (response.type === "ack") {
+          actionSpan?.success(() => ({ action: message.name, responseType: response.type }));
+        } else {
+          actionSpan?.failure(() => ({
+            action: message.name,
+            responseType: response.type,
+            errorCode: response.error.code ?? "LOCUS_ACTION_FAILED",
+          }));
+        }
       }
-
-      trace?.emit({
-        subsystem: "locus",
-        phase: "action.dedupe",
-        status: result.delivery === "executed" ? "success" : "skip",
-        ...(actionSpan !== undefined ? { parentSpanId: actionSpan.spanId } : {}),
-        details: () => ({
-          action: message.name,
-          sourceAction: message.name,
-          delivery: result.delivery,
-          ...(result.sourceTraceId !== undefined ? { sourceTraceId: result.sourceTraceId } : {}),
-          ...(message.requestId !== undefined ? { requestId: message.requestId } : {}),
-          ...(message.attemptId !== undefined ? { attemptId: message.attemptId } : {}),
-        }),
-      });
-
-      const response = action_response(
-        message.id,
-        result.outcome,
-        message.requestId,
-        result.delivery,
-        message.attemptId,
-      );
 
       send(response);
       trace?.emit({
         subsystem: "transport",
         phase: "response.dispatch",
         status: response.type === "ack" ? "success" : "failure",
-        ...(actionSpan !== undefined ? { parentSpanId: actionSpan.spanId } : {}),
+        ...(stableIdentity && actionSpan !== undefined ? { parentSpanId: actionSpan.spanId } : {}),
         details: () => ({
           action: message.name,
           responseType: response.type,
-          delivery: result.delivery,
+          ...(admitted.kind === "deduped" ? { delivery: admitted.delivery } : {}),
           ...(response.type === "error" ? { errorCode: response.error.code ?? "LOCUS_ACTION_FAILED" } : {}),
         }),
       });
 
-      if (result.delivery === "executed" && response.type === "ack") {
+      if ((admitted.kind === "legacy" || (admitted.kind === "deduped" && admitted.delivery === "executed")) && response.type === "ack") {
         sync.sync_all(response.seq);
         trace?.emit({
           subsystem: "locus",
           phase: "subscription.publication",
           status: "success",
-          ...(actionSpan !== undefined ? { parentSpanId: actionSpan.spanId } : {}),
+          ...(stableIdentity && actionSpan !== undefined ? { parentSpanId: actionSpan.spanId } : {}),
           details: () => ({
             sequence: response.seq,
             subscriberCount: sync.debug_sessions().reduce((count, session) => count + session.paths.length, 0),
@@ -1352,15 +927,17 @@ function create_locus_for_map<
         });
       }
 
-      if (response.type === "ack") {
-        actionSpan?.success(() => ({ action: message.name, responseType: response.type, delivery: result.delivery }));
-      } else {
-        actionSpan?.failure(() => ({
-          action: message.name,
-          responseType: response.type,
-          delivery: result.delivery,
-          errorCode: response.error.code ?? "LOCUS_ACTION_FAILED",
-        }));
+      if (stableIdentity) {
+        if (response.type === "ack") {
+          actionSpan?.success(() => ({ action: message.name, responseType: response.type, ...(admitted.kind === "deduped" ? { delivery: admitted.delivery } : {}) }));
+        } else {
+          actionSpan?.failure(() => ({
+            action: message.name,
+            responseType: response.type,
+            ...(admitted.kind === "deduped" ? { delivery: admitted.delivery } : {}),
+            errorCode: response.error.code ?? "LOCUS_ACTION_FAILED",
+          }));
+        }
       }
     }
 

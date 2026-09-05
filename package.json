@@ -248,6 +248,7 @@
     "test:locus-document-request-compatibility": "node --import=tsx tests/locus-document-request-compatibility.acceptance.mts",
     "test:locus-session": "node --import=tsx tests/runtime-probes/locus-session.acceptance.mjs",
     "test:locus-action-dedupe": "node --import=tsx tests/runtime-probes/locus-action-dedupe.acceptance.mjs",
+    "test:locus-action-admission": "node --import=tsx tests/runtime-probes/locus-action-admission.acceptance.mjs",
     "test:locus-trace": "node --import=tsx tests/runtime-probes/locus-trace.acceptance.mjs",
     "test:locus-authorization": "node --import=tsx tests/runtime-probes/locus-authorization.acceptance.mjs",
     "test:livehost-node-http2": "node --import=tsx tests/livehost-node-http2.acceptance.mts",
