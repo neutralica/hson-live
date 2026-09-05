@@ -1160,7 +1160,11 @@ function create_locus_for_map<
         return;
       }
       if (message.type === "action-status") {
-        const status = actionRequests.status(message.clientId, message.requestId);
+        const status = actionRequests.status(message.clientId, message.requestId, attachedContext?.principalId);
+        if (!status.ok) {
+          reject_session(message.id, status.code, status.message);
+          return;
+        }
         send({
           type: "action-status",
           id: message.id,

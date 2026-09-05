@@ -275,6 +275,63 @@ await check("retry, dedupe conflict, and action status match the one-map request
   locus.dispose();
 });
 
+await check("aggregate retained action lineage enforces exact principal continuity", async () => {
+  const authority = make_map();
+  let executions = 0;
+  const locus = hsonLocus.create({
+    map: authority,
+    actions: {
+      owned() {
+        executions += 1;
+        return { owner: "alice" };
+      },
+    },
+  });
+  const alicePair = socket_pair();
+  locus.connect(alicePair.server, { principalId: "alice" });
+  const alice = hsonEcho.create({
+    socket: alicePair.client,
+    map: make_map(),
+    recovery: { logicalMapId: locus.logicalMapId },
+    clientId: "aggregate-owned-client",
+  });
+  await alice.connect();
+  const first = alice.action("owned");
+  await first;
+
+  const nextAlicePair = socket_pair();
+  locus.connect(nextAlicePair.server, { principalId: "alice" });
+  const nextAlice = hsonEcho.create({
+    socket: nextAlicePair.client,
+    map: make_map(),
+    recovery: { logicalMapId: locus.logicalMapId },
+    clientId: "aggregate-owned-client",
+  });
+  await nextAlice.connect();
+  assert.equal((await nextAlice.actionStatus(first.request.requestId)).state, "succeeded");
+  assert.equal((await nextAlice.retryAction(first.request)).delivery, "cached");
+
+  const bobPair = socket_pair();
+  locus.connect(bobPair.server, { principalId: "bob" });
+  const bob = hsonEcho.create({
+    socket: bobPair.client,
+    map: make_map(),
+    recovery: { logicalMapId: locus.logicalMapId },
+    clientId: "aggregate-owned-client",
+  });
+  await bob.connect();
+  await assert.rejects(bob.actionStatus(first.request.requestId), /session access is unavailable/i);
+  const denied = await bob.retryAction(first.request);
+  assert.equal(denied.type, "error");
+  if (denied.type === "error") assert.equal(denied.error.code, "LOCUS_SESSION_CREDENTIAL_UNKNOWN");
+  assert.equal(executions, 1);
+
+  alice.dispose();
+  nextAlice.dispose();
+  bob.dispose();
+  locus.dispose();
+});
+
 await check("built-ins and single- or cross-library application actions share one FIFO and revision stream", async () => {
   const authority = make_map();
   const order: string[] = [];

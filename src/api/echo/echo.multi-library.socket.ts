@@ -279,6 +279,12 @@ export function create_multi_library_echo_socket_client_internal(
       return;
     }
     if (message.type === "session-rejected") {
+      const pendingStatus = pendingStatuses.get(message.id);
+      if (pendingStatus !== undefined) {
+        pendingStatuses.delete(message.id);
+        pendingStatus.reject(new Error(message.message));
+        return;
+      }
       const pending = pendingSession;
       if (pending === undefined || pending.id !== message.id) throw new Error("Hosted aggregate session rejection is unknown.");
       pendingSession = undefined;

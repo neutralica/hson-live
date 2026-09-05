@@ -19,10 +19,20 @@ const DEFAULT_MAX_TERMINAL_BYTES = 4 * 1_024 * 1_024;
 const DEFAULT_TERMINAL_RETENTION_MS = 5 * 60_000;
 const DEFAULT_MAX_EXPIRED_TOMBSTONES = 1_024;
 const textEncoder = new TextEncoder();
+const ownershipMismatch: Readonly<{
+  ok: false;
+  code: "LOCUS_SESSION_CREDENTIAL_UNKNOWN";
+  message: string;
+}> = Object.freeze({
+  ok: false,
+  code: "LOCUS_SESSION_CREDENTIAL_UNKNOWN",
+  message: "Locus session access is unavailable.",
+});
 
 type PendingRecord = {
   readonly state: "pending";
   readonly key: string;
+  readonly ownerPrincipalId: string | undefined;
   readonly fingerprint: string;
   readonly sourceTraceId?: string;
   readonly promise: Promise<LocusActionTerminalOutcome | undefined>;
@@ -33,6 +43,7 @@ type PendingRecord = {
 type TerminalRecord = {
   readonly state: "succeeded" | "failed";
   readonly key: string;
+  readonly ownerPrincipalId: string | undefined;
   readonly fingerprint: string;
   readonly sourceTraceId?: string;
   readonly outcome: LocusActionTerminalOutcome;
@@ -46,6 +57,7 @@ type ActionRecord = PendingRecord | TerminalRecord;
 export type LocusActionExecuteRequest = Readonly<{
   clientId: ClientIdentity;
   requestId: LocusActionRequestId;
+  ownerPrincipalId: string | undefined;
   actionName: string;
   payload: JsonValue | undefined;
   retry: boolean;
@@ -63,18 +75,25 @@ export type LocusActionExecuteResult =
   }>
   | Readonly<{
     ok: false;
-    code: LocusActionRequestErrorCode;
+    code: LocusActionRequestErrorCode | "LOCUS_SESSION_CREDENTIAL_UNKNOWN";
     message: string;
   }>;
 
-export type LocusActionStatusResult = Readonly<{
-  state: LocusActionStatusState;
-  outcome?: LocusActionTerminalOutcome;
-}>;
+export type LocusActionStatusResult =
+  | Readonly<{
+    ok: true;
+    state: LocusActionStatusState;
+    outcome?: LocusActionTerminalOutcome;
+  }>
+  | Readonly<{
+    ok: false;
+    code: "LOCUS_SESSION_CREDENTIAL_UNKNOWN";
+    message: string;
+  }>;
 
 export type LocusActionDedupeStore = Readonly<{
   execute: (request: LocusActionExecuteRequest) => Promise<LocusActionExecuteResult>;
-  status: (clientId: ClientIdentity, requestId: LocusActionRequestId) => LocusActionStatusResult;
+  status: (clientId: ClientIdentity, requestId: LocusActionRequestId, ownerPrincipalId: string | undefined) => LocusActionStatusResult;
   debug: () => LocusActionDedupeDiagnostics;
   dispose: LocusDisposer;
 }>;
@@ -147,8 +166,11 @@ function valid_identity(value: string): boolean {
   return value.length > 0 && value.length <= 256;
 }
 
-function encoded_bytes(outcome: LocusActionTerminalOutcome): number {
-  return textEncoder.encode(JSON.stringify(outcome)).byteLength;
+function encoded_bytes(outcome: LocusActionTerminalOutcome, ownerPrincipalId: string | undefined): number {
+  const ownerBytes = ownerPrincipalId === undefined
+    ? 0
+    : textEncoder.encode(JSON.stringify(ownerPrincipalId)).byteLength;
+  return textEncoder.encode(JSON.stringify(outcome)).byteLength + ownerBytes;
 }
 
 export function make_locus_action_dedupe_store(
@@ -165,7 +187,7 @@ export function make_locus_action_dedupe_store(
   const schedule = options.schedule ?? default_schedule;
   const records = new Map<string, ActionRecord>();
   const terminalOrder: string[] = [];
-  const tombstones = new Set<string>();
+  const tombstones = new Map<string, string | undefined>();
   const tombstoneOrder: string[] = [];
   let terminalBytes = 0;
   let disposed = false;
@@ -179,9 +201,9 @@ export function make_locus_action_dedupe_store(
   let executionsFailed = 0;
   let outcomeNormalizationFailureCount = 0;
 
-  function add_tombstone(key: string): void {
+  function add_tombstone(key: string, ownerPrincipalId: string | undefined): void {
     if (maxExpiredTombstones === 0 || tombstones.has(key)) return;
-    tombstones.add(key);
+    tombstones.set(key, ownerPrincipalId);
     tombstoneOrder.push(key);
     while (tombstoneOrder.length > maxExpiredTombstones) {
       const removed = tombstoneOrder.shift();
@@ -196,7 +218,7 @@ export function make_locus_action_dedupe_store(
     terminalBytes -= record.encodedBytes;
     const index = terminalOrder.indexOf(record.key);
     if (index >= 0) terminalOrder.splice(index, 1);
-    add_tombstone(record.key);
+    add_tombstone(record.key, record.ownerPrincipalId);
     expiredRecordCount += 1;
   }
 
@@ -229,7 +251,7 @@ export function make_locus_action_dedupe_store(
     let outcome: LocusActionTerminalOutcome;
     try {
       outcome = clone_outcome(candidate);
-      encoded_bytes(outcome);
+      encoded_bytes(outcome, pending.ownerPrincipalId);
     } catch {
       outcome = infrastructure_outcome();
     }
@@ -240,10 +262,11 @@ export function make_locus_action_dedupe_store(
     const terminal: TerminalRecord = {
       state: outcome.state,
       key: pending.key,
+      ownerPrincipalId: pending.ownerPrincipalId,
       fingerprint: pending.fingerprint,
       ...(pending.sourceTraceId !== undefined ? { sourceTraceId: pending.sourceTraceId } : {}),
       outcome,
-      encodedBytes: encoded_bytes(outcome),
+      encodedBytes: encoded_bytes(outcome, pending.ownerPrincipalId),
       completedAt,
       stopExpiry: () => {},
     };
@@ -268,6 +291,11 @@ export function make_locus_action_dedupe_store(
     const requestFingerprint = fingerprint(namespace, request.actionName, request.payload);
     const existing = records.get(key);
     if (existing) {
+      // Ownership precedes fingerprint and state so mismatched attempts cannot
+      // distinguish conflict, pending, or terminal lineage details.
+      if (existing.ownerPrincipalId !== request.ownerPrincipalId) {
+        return ownershipMismatch;
+      }
       if (existing.fingerprint !== requestFingerprint) {
         requestIdConflictCount += 1;
         return { ok: false, code: "LOCUS_ACTION_REQUEST_ID_CONFLICT", message: "Locus action request ID was reused with different content." };
@@ -293,6 +321,9 @@ export function make_locus_action_dedupe_store(
       };
     }
     if (tombstones.has(key)) {
+      if (tombstones.get(key) !== request.ownerPrincipalId) {
+        return ownershipMismatch;
+      }
       return { ok: false, code: "LOCUS_ACTION_REQUEST_EXPIRED", message: "Locus action request outcome has expired." };
     }
     if (request.retry) {
@@ -304,6 +335,7 @@ export function make_locus_action_dedupe_store(
     const pending: PendingRecord = {
       state: "pending",
       key,
+      ownerPrincipalId: request.ownerPrincipalId,
       fingerprint: requestFingerprint,
       ...(request.sourceTraceId !== undefined ? { sourceTraceId: request.sourceTraceId } : {}),
       promise,
@@ -332,15 +364,23 @@ export function make_locus_action_dedupe_store(
     };
   }
 
-  function status(clientId: ClientIdentity, requestId: LocusActionRequestId): LocusActionStatusResult {
-    if (!valid_identity(clientId) || !valid_identity(requestId)) return Object.freeze({ state: "unknown" });
+  function status(clientId: ClientIdentity, requestId: LocusActionRequestId, ownerPrincipalId: string | undefined): LocusActionStatusResult {
+    if (!valid_identity(clientId) || !valid_identity(requestId)) return Object.freeze({ ok: true, state: "unknown" });
     const key = client_request_key(clientId, requestId);
     const record = records.get(key);
-    if (record?.state === "pending") return Object.freeze({ state: "pending" });
-    if (record) return Object.freeze({ state: record.state, outcome: record.outcome });
-    if (tombstones.has(key)) return Object.freeze({ state: "expired" });
+    if (record && record.ownerPrincipalId !== ownerPrincipalId) {
+      return ownershipMismatch;
+    }
+    if (record?.state === "pending") return Object.freeze({ ok: true, state: "pending" });
+    if (record) return Object.freeze({ ok: true, state: record.state, outcome: record.outcome });
+    if (tombstones.has(key)) {
+      if (tombstones.get(key) !== ownerPrincipalId) {
+        return ownershipMismatch;
+      }
+      return Object.freeze({ ok: true, state: "expired" });
+    }
     unknownStatusQueryCount += 1;
-    return Object.freeze({ state: "unknown" });
+    return Object.freeze({ ok: true, state: "unknown" });
   }
 
   function debug(): LocusActionDedupeDiagnostics {

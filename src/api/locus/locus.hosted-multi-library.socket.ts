@@ -672,6 +672,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     const result = await actionRequests.execute({
       clientId: request.clientId,
       requestId: request.requestId,
+      ownerPrincipalId: connection.context?.principalId,
       actionName: request.name,
       payload: authorized.payload,
       retry: request.retry === true,
@@ -844,7 +845,17 @@ export function create_locus_hosted_aggregate_socket_internal<
       else if (request.type === "session-goodbye") session_goodbye(connection, request);
       else if (request.type === "action-status") {
         if (!bind_session(connection, false)) return;
-        const status = actionRequests.status(request.clientId, request.requestId);
+        const status = actionRequests.status(request.clientId, request.requestId, connection.context?.principalId);
+        if (!status.ok) {
+          send(connection, Object.freeze({
+            type: "session-rejected",
+            format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
+            id: request.id,
+            code: status.code,
+            message: status.message,
+          }));
+          return;
+        }
         send(connection, Object.freeze({
           type: "action-status",
           format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,

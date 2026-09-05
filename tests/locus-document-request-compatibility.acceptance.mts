@@ -250,6 +250,7 @@ check("deduplicated QUID action executes and resolves once", async () => {
   const request = {
     clientId: "unit-5-client",
     requestId: "same-request",
+    ownerPrincipalId: undefined,
     actionName: "document.attrs.set",
     payload: { target: { kind: "quid" as const, quid: Q1 }, name: "id", value: "once" },
     retry: false,

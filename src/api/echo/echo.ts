@@ -182,7 +182,7 @@ type EchoInternalIdFactories = Readonly<{
 type PendingActionStatus = Readonly<{
   requestId: LocusActionRequestId;
   resolve: (result: EchoActionStatusResult) => void;
-  reject: (error: LocusDisconnectedError) => void;
+  reject: (error: LocusDisconnectedError | EchoSessionError) => void;
 }>;
 
 type PendingRecovery = {
@@ -803,6 +803,14 @@ export function create_echo<
     message: Extract<LocusServerMessage, { type: "session-created" | "session-attached" | "session-rejected" | "session-fenced" | "session-ended" }>,
   ): void {
     if (sessionDisposed) return;
+    if (message.type === "session-rejected") {
+      const pendingStatus = pendingActionStatuses.get(message.id);
+      if (pendingStatus !== undefined) {
+        pendingActionStatuses.delete(message.id);
+        pendingStatus.reject(new EchoSessionError(message.code, message.message));
+        return;
+      }
+    }
     if (message.type === "session-fenced") {
       if (sessionId !== message.sessionId || sessionEpoch !== message.epoch) return;
       sessionFencingCount += 1;

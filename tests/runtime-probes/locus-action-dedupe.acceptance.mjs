@@ -113,9 +113,9 @@ function socket_pair() {
     return { client, server, clientSent, serverSent, close };
 }
 
-function connect(host, clientId, options = {}) {
+function connect(host, clientId, options = {}, connectionContext) {
     const pair = socket_pair();
-    host.connect(pair.server);
+    host.connect(pair.server, connectionContext);
     const client = hson.echo.create({
         socket: pair.client,
         clientId,
@@ -123,6 +123,10 @@ function connect(host, clientId, options = {}) {
     });
     client.connect();
     return { pair, client };
+}
+
+function principal(id) {
+    return { principalId: id };
 }
 
 function separately_initialized_default_identity() {
@@ -154,6 +158,7 @@ function fixture(options = {}) {
         logicalMapId: options.logicalMapId ?? 'action-map',
         incarnationId: options.incarnationId,
         actionDedupe: options.actionDedupe,
+        authorizeAction: options.authorizeAction,
         actions: {
             async gated(ctx, value) {
                 executions += 1;
@@ -264,6 +269,116 @@ await check('completed duplicate returns cached outcome', async () => {
     assert.equal(cached.completionRev, first.completionRev);
     assert.deepEqual(cached.result, first.result);
     assert.equal(f.executions(), 2);
+});
+
+await check('same principal retains lineage across a new session', async () => {
+    const f = fixture();
+    const aliceA = connect(f.host, 'owned-client', {}, principal('alice')).client;
+    const first = aliceA.action('echo', { owner: 'alice' });
+    const outcome = await first;
+    const aliceB = connect(f.host, 'owned-client', {}, principal('alice')).client;
+    const status = await aliceB.actionStatus(first.request.requestId);
+    assert.equal(status.state, 'succeeded');
+    assert.deepEqual(status.outcome, {
+        state: 'succeeded',
+        seq: outcome.seq,
+        completionRev: outcome.completionRev,
+        result: { owner: 'alice' },
+    });
+    assert.equal((await aliceB.retryAction(first.request)).delivery, 'cached');
+    assert.equal(f.executions(), 1);
+});
+
+await check('different principal cannot inspect, join, conflict, or cache a lineage', async () => {
+    let authorizations = 0;
+    const f = fixture({
+        authorizeAction() {
+            authorizations += 1;
+            return true;
+        },
+    });
+    const alice = connect(f.host, 'shared-owned-client', {}, principal('alice')).client;
+    const bob = connect(f.host, 'shared-owned-client', {}, principal('bob')).client;
+    const pending = alice.action('gated', 17);
+    await f.entered.promise;
+
+    await assert.rejects(
+        bob.actionStatus(pending.request.requestId),
+        (error) => error.code === 'LOCUS_SESSION_CREDENTIAL_UNKNOWN',
+    );
+    const deniedJoin = await bob.retryAction(pending.request);
+    assert.equal(deniedJoin.type, 'error');
+    assert.equal(deniedJoin.error.code, 'LOCUS_SESSION_CREDENTIAL_UNKNOWN');
+    assert.equal(authorizations, 2);
+    assert.equal(f.host.actionRequests.debug().pendingWaiterCount, 1);
+    assert.equal(f.executions(), 1);
+
+    f.gate.resolve();
+    await pending;
+    const deniedConflict = await bob.retryAction({
+        ...pending.request,
+        payload: 99,
+    });
+    assert.equal(deniedConflict.type, 'error');
+    assert.equal(deniedConflict.error.code, 'LOCUS_SESSION_CREDENTIAL_UNKNOWN');
+    assert.equal(f.host.actionRequests.debug().requestIdConflictCount, 0);
+    const deniedCached = await bob.retryAction(pending.request);
+    assert.equal(deniedCached.type, 'error');
+    assert.equal(deniedCached.error.code, 'LOCUS_SESSION_CREDENTIAL_UNKNOWN');
+    await assert.rejects(
+        bob.actionStatus(pending.request.requestId),
+        (error) => error.code === 'LOCUS_SESSION_CREDENTIAL_UNKNOWN',
+    );
+    assert.equal((await alice.actionStatus(pending.request.requestId)).state, 'succeeded');
+    assert.equal((await alice.retryAction(pending.request)).delivery, 'cached');
+    assert.equal(authorizations, 5);
+});
+
+await check('anonymous lineage survives a new anonymous session and rejects principal takeover', async () => {
+    const f = fixture();
+    const anonymousA = connect(f.host, 'anonymous-client').client;
+    const first = anonymousA.action('echo', 'anonymous');
+    await first;
+    const anonymousB = connect(f.host, 'anonymous-client').client;
+    assert.equal((await anonymousB.actionStatus(first.request.requestId)).state, 'succeeded');
+    assert.equal((await anonymousB.retryAction(first.request)).delivery, 'cached');
+
+    const alice = connect(f.host, 'anonymous-client', {}, principal('alice')).client;
+    await assert.rejects(
+        alice.actionStatus(first.request.requestId),
+        (error) => error.code === 'LOCUS_SESSION_CREDENTIAL_UNKNOWN',
+    );
+    const denied = await alice.retryAction(first.request);
+    assert.equal(denied.type, 'error');
+    assert.equal(denied.error.code, 'LOCUS_SESSION_CREDENTIAL_UNKNOWN');
+    assert.equal(f.executions(), 1);
+});
+
+await check('anonymous caller cannot access principal lineage, including its tombstone', async () => {
+    const clock = fake_clock();
+    const f = fixture({
+        actionDedupe: {
+            maxTerminalRecords: 0,
+            maxTerminalBytes: 0,
+            maxExpiredTombstones: 2,
+            now: clock.now,
+            schedule: clock.schedule,
+        },
+    });
+    const alice = connect(f.host, 'principal-client', {}, principal('alice')).client;
+    const first = alice.action('echo', 'principal');
+    await first;
+    assert.equal((await alice.actionStatus(first.request.requestId)).state, 'expired');
+
+    const anonymous = connect(f.host, 'principal-client').client;
+    await assert.rejects(
+        anonymous.actionStatus(first.request.requestId),
+        (error) => error.code === 'LOCUS_SESSION_CREDENTIAL_UNKNOWN',
+    );
+    const denied = await anonymous.retryAction(first.request);
+    assert.equal(denied.type, 'error');
+    assert.equal(denied.error.code, 'LOCUS_SESSION_CREDENTIAL_UNKNOWN');
+    assert.equal(f.executions(), 1);
 });
 
 await check(

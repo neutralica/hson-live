@@ -392,6 +392,7 @@ export async function admit_locus_solo_external_action<
   const result = await authority.actionRequests.execute({
     clientId: message.clientId,
     requestId: message.requestId,
+    ownerPrincipalId: attempt.connection?.principalId,
     actionName: message.name,
     payload: authorized.payload,
     retry: message.retry === true,
