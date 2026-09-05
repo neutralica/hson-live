@@ -250,6 +250,7 @@
     "test:locus-action-dedupe": "node --import=tsx tests/runtime-probes/locus-action-dedupe.acceptance.mjs",
     "test:locus-trace": "node --import=tsx tests/runtime-probes/locus-trace.acceptance.mjs",
     "test:locus-authorization": "node --import=tsx tests/runtime-probes/locus-authorization.acceptance.mjs",
+    "test:livehost-node-http2": "node --import=tsx tests/livehost-node-http2.acceptance.mts",
     "test:livehost-node-hosting": "node --import=tsx tests/livehost-node-hosting.acceptance.mts",
     "test:hson-structural-mode": "node --import=tsx tests/hson-structural-mode.acceptance.mts",
     "test:hson-completion-context": "node --import=tsx tests/hson-completion-context.acceptance.mts",

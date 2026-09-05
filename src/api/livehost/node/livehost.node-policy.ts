@@ -121,12 +121,12 @@ function forwarded_value(value: string | undefined, hop: "first" | "last"): stri
   return hop === "first" ? values[0] : values.at(-1);
 }
 
-function raw_scheme(request: IncomingMessage): "http" | "https" {
+function raw_scheme(request: Pick<IncomingMessage, "socket">): "http" | "https" {
   return Reflect.get(request.socket, "encrypted") === true ? "https" : "http";
 }
 
 export function normalize_node_request(
-  request: IncomingMessage,
+  request: Pick<IncomingMessage, "headers" | "socket" | "url" | "method">,
   input: Readonly<{
     transport: NodeRequestTransport;
     application: string;
@@ -148,7 +148,7 @@ export function normalize_node_request(
     }
     const headers = detached_headers(request.headers);
     const scheme = raw_scheme(request);
-    const rawHost = normalize_host(scheme, headers.get("host") ?? "");
+    const rawHost = normalize_host(scheme, headers.get(":authority") ?? headers.get("host") ?? "");
     const peer = request.socket.remoteAddress ?? "unknown";
     const trusted = options.proxy?.trustImmediatePeer(peer) === true;
     let effectiveScheme = scheme;

@@ -19,3 +19,9 @@ void start_node_application_host({ applications: [application] });
 void handle_node_locus_bootstrap_request;
 void create_node_livehost_socket;
 void misplaced_locus_socket;
+
+// TLS material is an explicit Node-only startup choice; the application stays unchanged.
+void start_node_application_host({ applications: [application], http2: { key: "PEM key", cert: "PEM certificate" } });
+void start_node_application_host({ applications: [application], http2: { key: Buffer.from("key"), cert: Buffer.from("cert") } });
+// @ts-expect-error Secure HTTP/2 requires both key and certificate material.
+void start_node_application_host({ applications: [application], http2: { key: "PEM key" } });

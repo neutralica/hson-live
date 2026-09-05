@@ -1,5 +1,6 @@
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
+import { createServer, type IncomingMessage } from "node:http";
+import { createSecureServer, Http2ServerRequest, Http2ServerResponse, type ServerHttp2Session } from "node:http2";
+import type { AddressInfo, Socket } from "node:net";
 import { Duplex, Readable } from "node:stream";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import type {
@@ -81,6 +82,8 @@ export type NodeApplicationHostOptions = Readonly<{
   host?: string;
   port?: number;
   shutdownTimeoutMs?: number;
+  /** Serve HTTPS with HTTP/2 and HTTP/1 compatibility using PEM TLS material. */
+  http2?: Readonly<{ key: string | Buffer; cert: string | Buffer }>;
   deployment?: NodeHostDeployment;
   applications: readonly LiveHostApplication[];
   security?: ReadonlyMap<string, NodeApplicationSecurity>;
@@ -95,6 +98,22 @@ export type NodeApplicationHost = LiveHost & Readonly<{
   connectionCount(applicationName?: string): number;
   disconnectConnections(applicationName?: string): void;
 }>;
+
+// Both compatibility APIs use the same routing, policy, and streaming adapters.
+type NodeRequest = IncomingMessage | Http2ServerRequest;
+type NodeResponse = {
+  readonly destroyed: boolean;
+  readonly writableEnded: boolean;
+  readonly headersSent: boolean;
+  setHeader(name: string, value: string | string[]): void;
+  writeHead(status: number, headers?: Record<string, string>): void;
+  write(chunk: Uint8Array): boolean;
+  end(): void;
+  end(data: string): void;
+  destroy(): void;
+  once(event: string, listener: () => void): unknown;
+  off(event: string, listener: () => void): unknown;
+};
 
 type RegisteredRequestRoute = Readonly<{
   application: LiveHostApplication;
@@ -249,7 +268,7 @@ function reject_upgrade(socket: Duplex, status: number, message: string): void {
   socket.destroy();
 }
 
-function reject_http(response: ServerResponse, rejection: NodePolicyRejection): void {
+function reject_http(response: NodeResponse, rejection: NodePolicyRejection): void {
   response.writeHead(rejection.status, {
     "content-type": "application/json; charset=utf-8",
     "cache-control": "no-store",
@@ -296,15 +315,16 @@ async function bounded_policy<T>(
   }
 }
 
-function request_has_body(request: IncomingMessage): boolean {
+function request_has_body(request: NodeRequest): boolean {
+  if (request instanceof Http2ServerRequest) return !request.stream.endAfterHeaders;
   return request.headers["transfer-encoding"] !== undefined
     || Number(request.headers["content-length"] ?? "0") !== 0;
 }
 
-function make_web_request(request: IncomingMessage, url: URL): Request {
+function make_web_request(request: NodeRequest, url: URL): Request {
   const headers = new Headers();
   for (const [name, value] of Object.entries(request.headers)) {
-    if (value === undefined) continue;
+    if (value === undefined || name.startsWith(":")) continue;
     if (Array.isArray(value)) {
       for (const item of value) headers.append(name, item);
     } else {
@@ -320,15 +340,22 @@ function make_web_request(request: IncomingMessage, url: URL): Request {
   return new Request(url, init);
 }
 
-function apply_web_response_headers(target: ServerResponse, headers: Headers): void {
+function apply_web_response_headers(target: NodeResponse, headers: Headers): void {
+  const omitted = new Set<string>();
+  if (target instanceof Http2ServerResponse) {
+    for (const name of ["connection", "keep-alive", "proxy-connection", "transfer-encoding", "upgrade", "te"]) {
+      omitted.add(name);
+    }
+    for (const name of (headers.get("connection") ?? "").split(",")) omitted.add(name.trim().toLowerCase());
+  }
   headers.forEach((value, name) => {
-    if (name !== "set-cookie") target.setHeader(name, value);
+    if (name !== "set-cookie" && !omitted.has(name)) target.setHeader(name, value);
   });
   const cookies = headers.getSetCookie();
-  if (cookies.length > 0) target.setHeader("set-cookie", cookies);
+  if (cookies.length > 0 && !omitted.has("set-cookie")) target.setHeader("set-cookie", cookies);
 }
 
-function wait_for_node_response_drain(target: ServerResponse): Promise<boolean> {
+function wait_for_node_response_drain(target: NodeResponse): Promise<boolean> {
   return new Promise((resolve) => {
     const cleanup = (): void => {
       target.off("drain", drained);
@@ -350,7 +377,7 @@ function wait_for_node_response_drain(target: ServerResponse): Promise<boolean> 
 }
 
 async function write_web_response(
-  target: ServerResponse,
+  target: NodeResponse,
   source: Response,
   headRequest: boolean,
 ): Promise<void> {
@@ -364,6 +391,10 @@ async function write_web_response(
     return;
   }
 
+  if (target.destroyed) {
+    await source.body.cancel("Node response transport disconnected.").catch(() => undefined);
+    return;
+  }
   const reader = source.body.getReader();
   let disconnected = false;
   const cancel_reader = (): void => {
@@ -576,6 +607,8 @@ function make_connection(
 export async function start_node_application_host(
   options: NodeApplicationHostOptions,
 ): Promise<NodeApplicationHost> {
+  const secure = options.http2 !== undefined;
+  const scheme = secure ? "https" : "http";
   const bindHost = options.host ?? "127.0.0.1";
   const bindPort = options.port ?? 8787;
   const shutdownTimeoutMs = positive_integer(options.shutdownTimeoutMs ?? 5_000, "Node application host shutdown timeout");
@@ -654,8 +687,25 @@ export async function start_node_application_host(
     code: rejection.code,
   });
 
-  const server = createServer({ maxHeaderSize: limits.maxHeaderBytes }, (request, response) => {
+  const handle_request = (request: NodeRequest, response: NodeResponse): void => {
     void (async () => {
+      if (request instanceof Http2ServerRequest) {
+        // Bound ingress only: a long-lived response must not inherit an upload deadline.
+        if (!request.stream.endAfterHeaders) {
+          const timer = setTimeout(() => {
+            // END_STREAM may already be received while the application leaves body bytes buffered.
+            if (!response.destroyed && request.stream.state.remoteClose !== 1) response.destroy();
+          }, limits.requestTimeoutMs);
+          const clear = (): void => { clearTimeout(timer); };
+          request.once("end", clear);
+          request.once("close", clear);
+        }
+        const headerBytes = request.rawHeaders.reduce((sum, value) => sum + Buffer.byteLength(value), 0);
+        if (headerBytes > limits.maxHeaderBytes) {
+          reject_http(response, { ok: false, status: 413, code: "NODE_HOST_HEADER_LIMIT" });
+          return;
+        }
+      }
       if (!operational || stopping) {
         response.writeHead(503, { "content-type": "application/json; charset=utf-8" });
         response.end(JSON.stringify({ ready: false }));
@@ -667,7 +717,7 @@ export async function start_node_application_host(
       }
       let requestUrl: URL;
       try {
-        requestUrl = new URL(request.url ?? "/", `http://${request.headers.host ?? bindHost}`);
+        requestUrl = new URL(request.url ?? "/", `${scheme}://${request.headers[":authority"] ?? request.headers.host ?? bindHost}`);
       } catch {
         reject_http(response, { ok: false, status: 400, code: "NODE_HOST_REQUEST_MALFORMED" });
         return;
@@ -708,6 +758,7 @@ export async function start_node_application_host(
         return;
       }
       const authorization = await authorize(registered.application, normalized.value);
+      if (response.destroyed) return;
       if (!authorization.ok) {
         log_rejection(registered.application, normalized.value, "http", authorization);
         reject_http(response, authorization);
@@ -739,9 +790,46 @@ export async function start_node_application_host(
         response.end("Application request failed.\n");
       }
     })();
+  };
+  let server: ReturnType<typeof createServer> | ReturnType<typeof createSecureServer>;
+  try {
+    server = options.http2 === undefined
+      ? createServer({ maxHeaderSize: limits.maxHeaderBytes }, handle_request)
+      : createSecureServer({
+          key: options.http2.key,
+          cert: options.http2.cert,
+          allowHTTP1: true,
+          handshakeTimeout: limits.handshakeTimeoutMs,
+          settings: { maxHeaderListSize: limits.maxHeaderBytes },
+        }, handle_request);
+  } catch (error) {
+    await dispose_once(applications, disposedApplications);
+    log({ type: "startup-failure", code: "NODE_HOST_TLS_FAILED", error: "Node application host TLS setup failed." });
+    throw error;
+  }
+  // Node's HTTP/1 compatibility parser reads these properties too.
+  Object.assign(server, {
+    maxHeaderSize: limits.maxHeaderBytes,
+    headersTimeout: limits.headersTimeoutMs,
+    requestTimeout: limits.requestTimeoutMs,
   });
-  server.headersTimeout = limits.headersTimeoutMs;
-  server.requestTimeout = limits.requestTimeoutMs;
+  const sockets = new Set<Socket>();
+  server.on("connection", (socket: Socket) => {
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
+  });
+  const sessions = new Set<ServerHttp2Session>();
+  const sessionClosures = new Set<Promise<void>>();
+  if ("updateSettings" in server) {
+    server.on("session", (session) => {
+      if (stopping) { session.destroy(); return; }
+      sessions.add(session);
+      const closed = new Promise<void>((resolve) => session.once("close", resolve));
+      sessionClosures.add(closed);
+      void closed.then(() => { sessions.delete(session); sessionClosures.delete(closed); });
+      session.on("error", () => undefined);
+    });
+  }
 
   server.on("upgrade", (request, socket, head) => {
     void (async () => {
@@ -760,7 +848,7 @@ export async function start_node_application_host(
       }
       let requestUrl: URL;
       try {
-        requestUrl = new URL(request.url ?? "/", `http://${request.headers.host ?? bindHost}`);
+        requestUrl = new URL(request.url ?? "/", `${scheme}://${request.headers[":authority"] ?? request.headers.host ?? bindHost}`);
       } catch {
         reject_upgrade(socket, 400, "Malformed connection request.");
         return;
@@ -961,6 +1049,8 @@ export async function start_node_application_host(
     const serverClosed = new Promise<void>((resolve, reject) => {
       server.close((error) => error === undefined ? resolve() : reject(error));
     });
+    // Cancel every H2 stream on disposal; ordinary stream cancellation never touches its session.
+    for (const session of sessions) session.destroy();
     const shutdownWork = (async () => {
       let disposalError: unknown;
       try {
@@ -972,7 +1062,7 @@ export async function start_node_application_host(
         if (state.heartbeatDeadline !== undefined) clearTimeout(state.heartbeatDeadline);
         websocket.close(1001, "Node application host stopping.");
       }
-      await serverClosed;
+      await Promise.all([serverClosed, ...sessionClosures]);
       activeConnections.clear();
       if (disposalError !== undefined) throw disposalError;
     })();
@@ -980,7 +1070,8 @@ export async function start_node_application_host(
     const timeout = new Promise<never>((_resolve, reject) => {
       timer = setTimeout(() => {
         for (const websocket of [...activeConnections.keys()]) websocket.terminate();
-        server.closeAllConnections();
+        for (const session of sessions) session.destroy();
+        for (const socket of sockets) socket.destroy();
         reject(new Error(`Node application host shutdown exceeded ${shutdownTimeoutMs}ms.`));
       }, shutdownTimeoutMs);
     });
@@ -1002,8 +1093,8 @@ export async function start_node_application_host(
   return Object.freeze({
     host: bindHost,
     port,
-    url: `ws://${bindHost}:${port}`,
-    httpUrl: `http://${bindHost}:${port}`,
+    url: `${secure ? "wss" : "ws"}://${bindHost}:${port}`,
+    httpUrl: `${scheme}://${bindHost}:${port}`,
     applicationNames: Object.freeze(applications.map((application) => application.name)),
     ready: () => operational && !stopping && applications.every((application) => application.ready?.() ?? true),
     connectionCount(applicationName?: string) {
