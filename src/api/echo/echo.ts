@@ -799,6 +799,9 @@ export function create_echo<
       sessionFailure ??= Object.freeze({ code: message.code, message: "Locus session attachment was fenced." });
       reject_pending_actions(pendingActions, pendingActionAttemptsByRequest, new LocusDisconnectedError());
       reject_pending_action_statuses(pendingActionStatuses, new LocusDisconnectedError());
+      const sessionPending = pendingSession;
+      pendingSession = undefined;
+      sessionPending?.reject(new EchoSessionError(message.code, "Locus session attachment was fenced."));
       if (recoveryStatus === "recovering" || recoveryStatus === "caught_up") {
         fail_recovery(message.code, "Locus session attachment was fenced.");
       }
@@ -1101,11 +1104,18 @@ export function create_echo<
     if (kind === "create") sessionStatus = "creating";
     if (kind === "reattach") sessionStatus = "attaching";
     const id = "id" in message && typeof message.id === "string" ? message.id : make_session_request_id();
-    const promise = new Promise<EchoSessionResult | undefined>((resolve, reject) => {
-      pendingSession = { id, kind, resolve, reject };
+    return new Promise<EchoSessionResult | undefined>((resolve, reject) => {
+      const pending: PendingSession = { id, kind, resolve, reject };
+      pendingSession = pending;
+      try {
+        send(message);
+      } catch (cause) {
+        if (pendingSession === pending) pendingSession = undefined;
+        pending.reject(cause instanceof EchoSessionError
+          ? cause
+          : new EchoSessionError("LOCUS_SESSION_DISCONNECTED", "Locus session request could not be sent."));
+      }
     });
-    send(message);
-    return promise;
   }
 
   async function create_session(): Promise<EchoSessionResult> {

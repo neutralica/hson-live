@@ -105,6 +105,12 @@ type HostedHistoryEntry = Readonly<{
   bytes: number;
 }>;
 
+type HostedRecoveryAttachment = Readonly<{
+  id: string;
+  sessionId: string;
+  epoch: number;
+}>;
+
 type HostedConnection = {
   readonly socket: LocusSocketLike;
   subscriptions: Map<string, HostedSubscription>;
@@ -139,6 +145,8 @@ export type LocusHostedAggregateSocketOptions<
   /** Internal deterministic interleave seam for pending-live proof coverage. */
   internal?: Readonly<{
     afterRecoveryCut?: () => void | Promise<void>;
+    beforeRecoveryCaughtUp?: () => void | Promise<void>;
+    afterRecoveryCaughtUp?: () => void | Promise<void>;
     acquireActionActivity?: () => LocusDisposer;
     acquireConnectionActivity?: () => LocusDisposer;
   }>;
@@ -285,6 +293,22 @@ export function create_locus_hosted_aggregate_socket_internal<
       && sessions.is_active(sessionId, epoch);
   }
 
+  function recovery_attachment_current(connection: HostedConnection, recovery: HostedRecoveryAttachment): boolean {
+    return connection.recoveryId === recovery.id
+      && attachment_current(connection, recovery.sessionId, recovery.epoch);
+  }
+
+  function recovery_delivery_current(connection: HostedConnection, recovery: HostedRecoveryAttachment): boolean {
+    return connection.recovering && recovery_attachment_current(connection, recovery);
+  }
+
+  function stop_recovery(connection: HostedConnection): void {
+    connection.recovering = false;
+    connection.live = false;
+    connection.recoveryId = undefined;
+    connection.pendingLive.length = 0;
+  }
+
   function reject(connection: HostedConnection, code: string, message: string, id?: string): void {
     send(connection, Object.freeze({
       type: "error",
@@ -320,8 +344,11 @@ export function create_locus_hosted_aggregate_socket_internal<
     }));
   }
 
-  function sync_all(connection: HostedConnection): void {
-    for (const subscription of connection.subscriptions.values()) send_sync(connection, subscription);
+  function sync_all(connection: HostedConnection, recovery?: HostedRecoveryAttachment): void {
+    for (const subscription of connection.subscriptions.values()) {
+      if (recovery !== undefined && !recovery_attachment_current(connection, recovery)) return;
+      send_sync(connection, subscription);
+    }
   }
 
   async function recover(connection: HostedConnection, request: Extract<HostedRequest, { type: "recover" }>): Promise<void> {
@@ -350,6 +377,13 @@ export function create_locus_hosted_aggregate_socket_internal<
       reject(connection, "LOCUS_RECOVERY_IN_PROGRESS", "Hosted aggregate recovery is already in progress.", request.id);
       return;
     }
+
+    if (connection.sessionId === undefined || connection.sessionEpoch === undefined) return;
+    const activeRecovery: HostedRecoveryAttachment = Object.freeze({
+      id: request.id,
+      sessionId: connection.sessionId,
+      epoch: connection.sessionEpoch,
+    });
 
     connection.recoveryId = request.id;
     connection.recovering = true;
@@ -388,7 +422,9 @@ export function create_locus_hosted_aggregate_socket_internal<
     }
     const cut = snapshot?.revision ?? head;
     await options.internal?.afterRecoveryCut?.();
+    if (!recovery_delivery_current(connection, activeRecovery)) return;
     send(connection, recovery_plan(request.id, outcome, cut, reason === undefined ? undefined : { reason }));
+    if (!recovery_delivery_current(connection, activeRecovery)) return;
     if (snapshot !== undefined) {
       send(connection, Object.freeze({
         type: "recovery-snapshot",
@@ -396,8 +432,10 @@ export function create_locus_hosted_aggregate_socket_internal<
         id: request.id,
         snapshot,
       }), HOSTED_MAX_SNAPSHOT_BYTES);
+      if (!recovery_delivery_current(connection, activeRecovery)) return;
     } else {
       for (const entry of replay) {
+        if (!recovery_delivery_current(connection, activeRecovery)) return;
         send(connection, Object.freeze({
           type: "recovery-commit",
           format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
@@ -405,8 +443,11 @@ export function create_locus_hosted_aggregate_socket_internal<
           phase: "body",
           commit: entry.envelope,
         }));
+        if (!recovery_delivery_current(connection, activeRecovery)) return;
       }
     }
+    await options.internal?.beforeRecoveryCaughtUp?.();
+    if (!recovery_delivery_current(connection, activeRecovery)) return;
     send(connection, Object.freeze({
       type: "recovery-caught-up",
       format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
@@ -416,17 +457,22 @@ export function create_locus_hosted_aggregate_socket_internal<
       registryDigest: registry.digest,
       throughRev: cut,
     }));
+    if (!recovery_delivery_current(connection, activeRecovery)) return;
+    await options.internal?.afterRecoveryCaughtUp?.();
+    if (!recovery_delivery_current(connection, activeRecovery)) return;
     connection.recovering = false;
     connection.live = true;
     while (connection.pendingLive.length > 0) {
+      if (!recovery_attachment_current(connection, activeRecovery) || !connection.live) return;
       const pending = connection.pendingLive.shift();
       if (pending === undefined) continue;
       if (pending.commit.prevRev < cut) continue;
       send_live_commit(connection, request.id, pending);
+      if (!recovery_attachment_current(connection, activeRecovery) || !connection.live) return;
     }
     // Recover the complete mirror first; values are synchronized only after
     // the global stream has crossed its recovery boundary.
-    sync_all(connection);
+    sync_all(connection, activeRecovery);
   }
 
   function replay_after(revision: number, head: number): readonly HostedHistoryEntry[] | undefined {
@@ -475,7 +521,7 @@ export function create_locus_hosted_aggregate_socket_internal<
           code: "LOCUS_SESSION_ATTACHMENT_FENCED",
         }));
         connection.fenced = true;
-        connection.live = false;
+        stop_recovery(connection);
       },
     });
   }
@@ -572,7 +618,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     }
     send(connection, Object.freeze({ type: "session-ended", format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT, id: request.id, sessionId, epoch }));
     connection.fenced = true;
-    connection.live = false;
+    stop_recovery(connection);
   }
 
   function send_action_result(
@@ -780,7 +826,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     const dispose = (): void => {
       if (connection.closed) return;
       connection.closed = true;
-      connection.pendingLive.length = 0;
+      stop_recovery(connection);
       connection.stopMessage?.();
       connection.stopClose?.();
       connections.delete(connection);
@@ -800,7 +846,8 @@ export function create_locus_hosted_aggregate_socket_internal<
       }
       if (request.type === "recover") {
         void recover(connection, request).catch((cause: unknown) => {
-          connection.recovering = false;
+          if (connection.closed || connection.fenced || connection.recoveryId !== request.id) return;
+          stop_recovery(connection);
           reject(connection, "LOCUS_RECOVERY_FAILED", cause instanceof Error ? cause.message : "Hosted aggregate recovery failed.", request.id);
         });
       }

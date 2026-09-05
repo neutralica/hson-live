@@ -137,11 +137,14 @@ export function create_multi_library_echo_socket_client_internal(
   let nextId = 0;
   let recovery: Readonly<{
     id: string;
+    sessionId: string;
+    sessionEpoch: number;
     resolve: (value: MultiLibraryEchoSocketRecovery) => void;
     reject: (reason: Error) => void;
     outcome?: Exclude<HostedPlanOutcome, "reject">;
     snapshotReceived: boolean;
   }> | undefined;
+  let liveRecovery: Readonly<{ id: string; sessionId: string; sessionEpoch: number }> | undefined;
   const pendingActions = new Map<string, Readonly<{
     resolve: (value: LocusClientActionResult) => void;
     reject: (reason: Error) => void;
@@ -160,6 +163,7 @@ export function create_multi_library_echo_socket_client_internal(
   let sessionReattachCount = 0;
   let sessionFencingCount = 0;
   let sessionRejectionCount = 0;
+  let sessionDisposed = false;
   let pendingSession: Readonly<{
     id: string;
     kind: "create" | "attach" | "goodbye";
@@ -193,18 +197,37 @@ export function create_multi_library_echo_socket_client_internal(
     options.socket.send(raw);
   }
 
+  function rejectPendingSession(error: Error): void {
+    const pending = pendingSession;
+    pendingSession = undefined;
+    pending?.reject(error);
+  }
+
+  function interruptRecovery(error: Error): void {
+    const active = recovery;
+    recovery = undefined;
+    liveRecovery = undefined;
+    pendingSync.clear();
+    if (status === "recovering" || status === "live") status = "idle";
+    active?.reject(error);
+  }
+
+  function recoveryCurrent(active: NonNullable<typeof recovery>): boolean {
+    return recovery === active
+      && sessionStatus === "attached"
+      && sessionId === active.sessionId
+      && sessionEpoch === active.sessionEpoch;
+  }
+
   function fail(error: Error): void {
     if (status === "closed" || status === "failed") return;
     status = "failed";
-    const active = recovery;
-    recovery = undefined;
-    active?.reject(error);
+    interruptRecovery(error);
     for (const pending of pendingActions.values()) pending.reject(error);
     pendingActions.clear();
     for (const pending of pendingStatuses.values()) pending.reject(error);
     pendingStatuses.clear();
-    pendingSession?.reject(error);
-    pendingSession = undefined;
+    rejectPendingSession(error);
     if (sessionStatus === "attached") sessionStatus = "detached";
     pendingSync.clear();
   }
@@ -212,6 +235,9 @@ export function create_multi_library_echo_socket_client_internal(
   function recover_wire(): Promise<MultiLibraryEchoSocketRecovery> {
     if (status === "closed") return Promise.reject(new Error("Hosted aggregate socket Echo is closed."));
     if (recovery !== undefined) return Promise.reject(new Error("Hosted aggregate recovery is already in progress."));
+    if (sessionStatus !== "attached" || sessionId === undefined || sessionEpoch === undefined) {
+      return Promise.reject(new Error("Hosted aggregate recovery requires an attached session."));
+    }
     if (map !== undefined) {
       const snapshot = internal_livemap_aggregate_authority(map).captureHosted();
       incarnationId = snapshot.authority.incarnationId;
@@ -221,8 +247,17 @@ export function create_multi_library_echo_socket_client_internal(
     status = "recovering";
     pendingSync.clear();
     const id = next("recover");
+    const recoverySessionId = sessionId;
+    const recoverySessionEpoch = sessionEpoch;
     return new Promise<MultiLibraryEchoSocketRecovery>((resolve, reject) => {
-      recovery = Object.freeze({ id, resolve, reject, snapshotReceived: false });
+      recovery = Object.freeze({
+        id,
+        sessionId: recoverySessionId,
+        sessionEpoch: recoverySessionEpoch,
+        resolve,
+        reject,
+        snapshotReceived: false,
+      });
       send(Object.freeze({
         type: "recover",
         id,
@@ -269,8 +304,10 @@ export function create_multi_library_echo_socket_client_internal(
       return;
     }
     if (message.type === "session-created" || message.type === "session-attached") {
+      if (sessionDisposed) return;
       const pending = pendingSession;
-      if (pending === undefined || pending.id !== message.id) throw new Error("Hosted aggregate session response is unknown.");
+      const expectedKind = message.type === "session-created" ? "create" : "attach";
+      if (pending === undefined || pending.id !== message.id || pending.kind !== expectedKind) return;
       pendingSession = undefined;
       sessionStatus = "attached";
       sessionId = message.sessionId;
@@ -290,8 +327,9 @@ export function create_multi_library_echo_socket_client_internal(
         pendingStatus.reject(new Error(message.message));
         return;
       }
+      if (sessionDisposed) return;
       const pending = pendingSession;
-      if (pending === undefined || pending.id !== message.id) throw new Error("Hosted aggregate session rejection is unknown.");
+      if (pending === undefined || pending.id !== message.id) return;
       pendingSession = undefined;
       sessionStatus = "failed";
       sessionFailure = Object.freeze({ code: message.code, message: message.message });
@@ -300,6 +338,7 @@ export function create_multi_library_echo_socket_client_internal(
       return;
     }
     if (message.type === "session-fenced") {
+      if (sessionDisposed) return;
       if (sessionId !== message.sessionId || sessionEpoch !== message.epoch) return;
       sessionStatus = "detached";
       sessionFencingCount += 1;
@@ -308,46 +347,64 @@ export function create_multi_library_echo_socket_client_internal(
       pendingActions.clear();
       for (const pending of pendingStatuses.values()) pending.reject(error);
       pendingStatuses.clear();
+      rejectPendingSession(error);
+      interruptRecovery(error);
       return;
     }
     if (message.type === "session-ended") {
+      if (sessionDisposed) return;
       const pending = pendingSession;
-      if (pending === undefined || pending.id !== message.id) throw new Error("Hosted aggregate session end is unknown.");
+      if (pending === undefined || pending.id !== message.id) return;
+      if (sessionId !== message.sessionId || sessionEpoch !== message.epoch) return;
       pendingSession = undefined;
       sessionStatus = "ended";
-      pending.resolve(undefined);
+      sessionCredential = undefined;
+      const error = new Error("Hosted aggregate Echo session ended before the pending operation completed.");
+      for (const action of pendingActions.values()) action.reject(error);
+      pendingActions.clear();
+      for (const statusRequest of pendingStatuses.values()) statusRequest.reject(error);
+      pendingStatuses.clear();
+      interruptRecovery(error);
+      if (pending.kind === "goodbye") pending.resolve(undefined);
+      else pending.reject(error);
       return;
     }
     if (message.type === "recovery-plan") {
-      const active = require_recovery(message.id);
+      const active = current_recovery(message.id);
+      if (active === undefined) return;
       if (message.logicalMapId !== clientLogicalMapId) throw new Error("Hosted recovery plan logical map fence is incompatible.");
       if (message.outcome === "reject") throw new Error(message.error.message);
       if (map !== undefined && registryDigest !== undefined && message.registryDigest !== registryDigest) {
         throw new Error("Hosted recovery registry mismatch requires a fresh aggregate bootstrap.");
       }
-      recovery = Object.freeze({ ...active, outcome: message.outcome });
+      if (recoveryCurrent(active)) recovery = Object.freeze({ ...active, outcome: message.outcome });
       return;
     }
     if (message.type === "recovery-snapshot") {
-      const active = require_recovery(message.id);
+      const active = current_recovery(message.id);
+      if (active === undefined) return;
       if (active.outcome !== "snapshot") throw new Error("Hosted recovery received an unexpected aggregate snapshot.");
       install_snapshot(message.snapshot);
-      recovery = Object.freeze({ ...active, snapshotReceived: true });
+      if (recoveryCurrent(active)) recovery = Object.freeze({ ...active, snapshotReceived: true });
       return;
     }
     if (message.type === "recovery-commit") {
-      const active = require_recovery(message.id);
+      const active = current_recovery(message.id);
+      if (active === undefined) return;
       if (active.outcome !== "replay" && active.outcome !== "snapshot") throw new Error("Hosted recovery received an unexpected aggregate commit.");
       apply_envelope(message.commit);
       return;
     }
     if (message.type === "commit") {
-      if (status !== "live" || recovery === undefined && map === undefined) throw new Error("Hosted live commit arrived before aggregate recovery completed.");
+      const active = liveRecovery;
+      if (status !== "live" || active === undefined || active.id !== message.id) return;
+      if (sessionStatus !== "attached" || sessionId !== active.sessionId || sessionEpoch !== active.sessionEpoch) return;
       apply_envelope(message.commit);
       return;
     }
     if (message.type === "recovery-caught-up") {
-      const active = require_recovery(message.id);
+      const active = current_recovery(message.id);
+      if (active === undefined) return;
       if (message.logicalMapId !== clientLogicalMapId || message.incarnationId !== incarnationId || message.registryDigest !== registryDigest) {
         throw new Error("Hosted recovery caught-up fence is incompatible with this mirror.");
       }
@@ -356,6 +413,7 @@ export function create_multi_library_echo_socket_client_internal(
       }
       status = "live";
       recovery = undefined;
+      liveRecovery = Object.freeze({ id: active.id, sessionId: active.sessionId, sessionEpoch: active.sessionEpoch });
       flush_sync();
       active.resolve(Object.freeze({ outcome: active.outcome ?? "current", revision: message.throughRev }));
       if (sessionStatus === "attached") {
@@ -365,6 +423,7 @@ export function create_multi_library_echo_socket_client_internal(
       return;
     }
     if (message.type === "sync") {
+      if (sessionStatus !== "attached" || status !== "recovering" && status !== "live") return;
       if (message.registryDigest !== registryDigest) throw new Error("Hosted subscription sync registry digest is incompatible.");
       const key = subscription_key(message.library, message.path);
       if (!subscriptions.has(key)) throw new Error("Hosted subscription sync has no matching library-qualified subscription.");
@@ -381,9 +440,10 @@ export function create_multi_library_echo_socket_client_internal(
     throw new Error("Unknown hosted aggregate socket message.");
   }
 
-  function require_recovery(id: string): NonNullable<typeof recovery> {
-    if (recovery === undefined || recovery.id !== id) throw new Error("Hosted recovery message has no active request.");
-    return recovery;
+  function current_recovery(id: string): NonNullable<typeof recovery> | undefined {
+    const active = recovery;
+    if (active === undefined || active.id !== id || !recoveryCurrent(active)) return undefined;
+    return active;
   }
 
   function install_snapshot(snapshot: HostedAggregateSnapshot): void {
@@ -481,6 +541,7 @@ export function create_multi_library_echo_socket_client_internal(
     kind: "create" | "attach" | "goodbye",
     credential?: string,
   ): Promise<Readonly<{ sessionId: string; epoch: number; reattached: boolean }> | undefined> {
+    if (sessionDisposed) return Promise.reject(new Error("Hosted aggregate session API is disposed."));
     if (pendingSession !== undefined) return Promise.reject(new Error("Hosted aggregate session request is already pending."));
     const id = next(`session-${kind}`);
     if (kind === "create") sessionStatus = "creating";
@@ -494,7 +555,7 @@ export function create_multi_library_echo_socket_client_internal(
           ...(kind === "attach" && credential !== undefined ? { credential } : {}),
         }));
       } catch (cause) {
-        pendingSession = undefined;
+        if (pendingSession?.id === id) pendingSession = undefined;
         reject(cause);
       }
     });
@@ -594,7 +655,12 @@ export function create_multi_library_echo_socket_client_internal(
     create: create_session,
     reattach: reattach_session,
     goodbye: goodbye_session,
-    dispose: () => { sessionStatus = "disposed"; },
+    dispose: () => {
+      if (sessionDisposed) return;
+      sessionDisposed = true;
+      sessionStatus = "disposed";
+      rejectPendingSession(new Error("Hosted aggregate session API was disposed."));
+    },
     debug: () => Object.freeze({
       status: sessionStatus,
       ...(sessionId === undefined ? {} : { sessionId }),
@@ -628,14 +694,12 @@ export function create_multi_library_echo_socket_client_internal(
       stopMessage?.();
       stopClose?.();
       const error = new Error("Hosted aggregate socket Echo is closed.");
-      recovery?.reject(error);
-      recovery = undefined;
+      interruptRecovery(error);
       for (const pending of pendingActions.values()) pending.reject(error);
       pendingActions.clear();
       for (const pending of pendingStatuses.values()) pending.reject(error);
       pendingStatuses.clear();
-      pendingSession?.reject(error);
-      pendingSession = undefined;
+      rejectPendingSession(error);
       for (const waiter of readyWaiters) waiter.reject(error);
       readyWaiters.clear();
       sessionStatus = "disposed";
