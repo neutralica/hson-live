@@ -253,6 +253,7 @@
     "test:locus-action-dedupe": "node --import=tsx tests/runtime-probes/locus-action-dedupe.acceptance.mjs",
     "test:locus-action-admission": "node --import=tsx tests/runtime-probes/locus-action-admission.acceptance.mjs",
     "test:locus-endpoint-session-settlement": "node --import=tsx tests/locus-endpoint-session-settlement.acceptance.mts",
+    "test:echo-endpoint-core": "node --import=tsx tests/echo-endpoint-core.acceptance.mts",
     "test:locus-trace": "node --import=tsx tests/runtime-probes/locus-trace.acceptance.mjs",
     "test:locus-authorization": "node --import=tsx tests/runtime-probes/locus-authorization.acceptance.mjs",
     "test:livehost-node-http2": "node --import=tsx tests/livehost-node-http2.acceptance.mts",

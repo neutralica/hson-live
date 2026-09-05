@@ -26,19 +26,12 @@ import {
   type EchoDocumentAuthority,
 } from "./echo.document-authority.js";
 import type {
-  LocusActionId,
   LocusActionPayloads,
-  LocusActionRequestId,
-  LocusActionStatusId,
   LocusCanonicalCommit,
   Echo,
   MultiLibraryEcho,
   MultiLibraryEchoOptions,
-  LocusClientActionMessage,
-  EchoActionPromise,
-  EchoActionRequest,
   LocusClientActionResult,
-  EchoActionStatusResult,
   LocusDocumentActionFn,
   LocusDocumentActionPromise,
   LocusDocumentActionRequest,
@@ -52,27 +45,18 @@ import type {
   EchoRecoveryResult,
   EchoRecoveryStatus,
   EchoRecoveryStrategy,
-  EchoSessionDiagnostics,
-  EchoSessionResult,
-  EchoSessionStatus,
   LocusDisposer,
   LocusEventListener,
-  LocusClientId,
   LocusRecoveryId,
-  LocusSessionCredential,
-  LocusSessionRequestId,
   LocusSeq,
   LocusServerMessage,
   LocusServerRecoveryPlanMessage,
   LocusSnapshotCapabilities,
   LocusSnapshotEncodingSelection,
 } from "../../types/locus.types.js";
-import {
-  LocusDisconnectedError,
-  LocusDuplicateActionIdError,
-} from "../locus/locus.error.js";
-import { EchoRecoveryError, EchoSessionError } from "./echo.error.js";
-import { clone_echo_action_payload, make_echo_reload_safe_id } from "./echo.request.js";
+import { LocusDisconnectedError } from "../locus/locus.error.js";
+import { EchoRecoveryError } from "./echo.error.js";
+import { create_echo_endpoint_internal, type EchoEndpointIdFactories } from "./echo.endpoint.js";
 import {
   decode_locus_server_message,
   replay_locus_document_commit,
@@ -89,43 +73,18 @@ import {
   type LocusValidatedSnapshotEnvelope,
 } from "../locus/locus.document-snapshot.js";
 
-let nextActionAttemptId = 0;
 let nextRecoveryId = 0;
-let nextSessionRequestId = 0;
-let nextActionStatusId = 0;
 
 const CLIENT_SNAPSHOT_CAPABILITIES: LocusSnapshotCapabilities = Object.freeze({
   hson: true,
   viewState: true,
 });
 
-function make_client_id(): LocusClientId {
-  return make_echo_reload_safe_id("lhc");
-}
-
-function make_action_id(): LocusActionId {
-  return make_echo_reload_safe_id("lha");
-}
-
-function make_action_attempt_id(): LocusActionId {
-  nextActionAttemptId += 1;
-  return `lhaa-${nextActionAttemptId}`;
-}
-
 function make_recovery_id(): LocusRecoveryId {
   nextRecoveryId += 1;
   return `lhr-${nextRecoveryId}`;
 }
 
-function make_session_request_id(): LocusSessionRequestId {
-  nextSessionRequestId += 1;
-  return `lhsr-${nextSessionRequestId}`;
-}
-
-function make_action_status_id(): LocusActionStatusId {
-  nextActionStatusId += 1;
-  return `lhas-${nextActionStatusId}`;
-}
 
 function recovery_trace_strategy(strategy: EchoRecoveryStrategy | undefined): string {
   if (strategy === "current") return "already-current";
@@ -160,23 +119,8 @@ function encode_client_message<TActions extends LocusActionPayloads>(message: Lo
   });
 }
 
-type PendingAction = Readonly<{
-  resolve: (result: LocusClientActionResult) => void;
-  reject: (error: LocusDisconnectedError) => void;
-}>;
-
 /** @internal Deterministic correlation seam used only by repository proof fixtures. */
-type EchoInternalIdFactories = Readonly<{
-  actionId?: () => LocusActionId;
-  actionAttemptId?: () => LocusActionId;
-  actionStatusId?: () => LocusActionStatusId;
-}>;
-
-type PendingActionStatus = Readonly<{
-  requestId: LocusActionRequestId;
-  resolve: (result: EchoActionStatusResult) => void;
-  reject: (error: LocusDisconnectedError | EchoSessionError) => void;
-}>;
+type EchoInternalIdFactories = EchoEndpointIdFactories;
 
 type PendingRecovery = {
   id: LocusRecoveryId;
@@ -204,32 +148,6 @@ type ClientRecoveryLifecycle =
   }>
   | Readonly<{ phase: "caught-up"; requestId: LocusRecoveryId }>;
 
-type PendingSession = Readonly<{
-  id: LocusSessionRequestId;
-  kind: "create" | "reattach" | "goodbye";
-  resolve: (result: EchoSessionResult | undefined) => void;
-  reject: (error: EchoSessionError) => void;
-}>;
-
-function reject_pending_actions(
-  pendingActions: Map<LocusActionId, PendingAction[]>,
-  pendingAttempts: Map<LocusActionRequestId, LocusActionId[]>,
-  error: LocusDisconnectedError,
-): void {
-  const actions = [...pendingActions.values()].flat();
-  pendingActions.clear();
-  pendingAttempts.clear();
-  for (const action of actions) action.reject(error);
-}
-
-function reject_pending_action_statuses(
-  pendingStatuses: Map<LocusActionStatusId, PendingActionStatus>,
-  error: LocusDisconnectedError,
-): void {
-  const statuses = [...pendingStatuses.values()];
-  pendingStatuses.clear();
-  for (const status of statuses) status.reject(error);
-}
 
 function projected_identity_replay(
   commit: LocusCanonicalCommit,
@@ -279,11 +197,7 @@ export function create_echo<
     throw new Error("Locus recovery cursor requires the exact corresponding mirror.");
   }
 
-  const clientId = options.clientId ?? make_client_id();
   const internalOptions = options as EchoOptions<LiveMapAuthority> & EchoInternalIdFactories;
-  const makeActionId = internalOptions.actionId ?? make_action_id;
-  const makeActionAttemptId = internalOptions.actionAttemptId ?? make_action_attempt_id;
-  const makeActionStatusId = internalOptions.actionStatusId ?? make_action_status_id;
   let map: ClassifiedLiveMap = classified_live_map(options.map);
   const echoOwner = Object.freeze({});
   const mapAuthority = get_livemap_staged_authority(map);
@@ -301,9 +215,6 @@ export function create_echo<
     "LIVEMAP_MANAGED_MUTATION_REJECTED",
     "Echo LiveMap mutation is reserved for accepted canonical replay.",
   )));
-  const pendingActions = new Map<LocusActionId, PendingAction[]>();
-  const pendingActionAttemptsByRequest = new Map<LocusActionRequestId, LocusActionId[]>();
-  const pendingActionStatuses = new Map<LocusActionStatusId, PendingActionStatus>();
   const eventListeners = new Set<LocusEventListener>();
   const recoveryListeners = new Set<EchoRecoveryChangeListener<ClassifiedLiveMap>>();
   const disposers: LocusDisposer[] = [];
@@ -330,23 +241,32 @@ export function create_echo<
   let recoveryFailures = 0;
   let consumerNotifications = 0;
   let observerFailures = 0;
-  let sessionStatus: EchoSessionStatus = "idle";
-  let sessionId: string | undefined;
-  let sessionCredential: LocusSessionCredential | undefined = options.session?.credential;
-  let sessionEpoch: number | undefined;
-  let sessionFailure: Readonly<{ code: string; message: string }> | undefined;
-  let pendingSession: PendingSession | undefined;
-  let sessionDisposed = false;
-  let sessionCreateCount = 0;
-  let sessionReattachCount = 0;
-  let sessionFencingCount = 0;
-  let sessionRejectionCount = 0;
+  const endpoint = create_echo_endpoint_internal<TActions>({
+    transport: {
+      send: (message) => options.socket.send(encode_client_message(message)),
+    },
+    ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
+    sessionRequired: options.session !== undefined,
+    ...(options.session?.credential === undefined ? {} : { credential: options.session.credential }),
+    ids: internalOptions,
+    onSequence: (value) => { seq = value; },
+    onReadyChange: notify_echo_ready,
+    onAttachmentLost: (reason, error) => {
+      if (reason !== "ended" && (recoveryStatus === "recovering" || recoveryStatus === "caught_up")) {
+        fail_recovery(
+          reason === "fenced" ? "LOCUS_SESSION_ATTACHMENT_FENCED" : "LOCUS_RECOVERY_DISCONNECTED",
+          reason === "fenced" ? "Locus session attachment was fenced." : "Locus recovery transport disconnected.",
+          error,
+        );
+      }
+    },
+  });
+  const clientId = endpoint.clientId;
 
   function echo_ready(): boolean {
     return !echoDisposed
-      && isConnected
-      && (options.recovery === undefined || recoveryStatus === "caught_up")
-      && (options.session === undefined || sessionStatus === "attached");
+      && endpoint.ready
+      && (options.recovery === undefined || recoveryStatus === "caught_up");
   }
 
   function notify_echo_ready(): void {
@@ -780,64 +700,6 @@ export function create_echo<
       || message.type === "session-ended";
   }
 
-  function handle_session_message(
-    message: Extract<LocusServerMessage, { type: "session-created" | "session-attached" | "session-rejected" | "session-fenced" | "session-ended" }>,
-  ): void {
-    if (sessionDisposed) return;
-    if (message.type === "session-rejected") {
-      const pendingStatus = pendingActionStatuses.get(message.id);
-      if (pendingStatus !== undefined) {
-        pendingActionStatuses.delete(message.id);
-        pendingStatus.reject(new EchoSessionError(message.code, message.message));
-        return;
-      }
-    }
-    if (message.type === "session-fenced") {
-      if (sessionId !== message.sessionId || sessionEpoch !== message.epoch) return;
-      sessionFencingCount += 1;
-      sessionStatus = "detached";
-      sessionFailure ??= Object.freeze({ code: message.code, message: "Locus session attachment was fenced." });
-      reject_pending_actions(pendingActions, pendingActionAttemptsByRequest, new LocusDisconnectedError());
-      reject_pending_action_statuses(pendingActionStatuses, new LocusDisconnectedError());
-      const sessionPending = pendingSession;
-      pendingSession = undefined;
-      sessionPending?.reject(new EchoSessionError(message.code, "Locus session attachment was fenced."));
-      if (recoveryStatus === "recovering" || recoveryStatus === "caught_up") {
-        fail_recovery(message.code, "Locus session attachment was fenced.");
-      }
-      return;
-    }
-    const pending = pendingSession;
-    if (!pending || pending.id !== message.id) return;
-    pendingSession = undefined;
-    if (message.type === "session-rejected") {
-      sessionRejectionCount += 1;
-      sessionStatus = "failed";
-      sessionFailure ??= Object.freeze({ code: message.code, message: message.message });
-      pending.reject(new EchoSessionError(message.code, message.message));
-      return;
-    }
-    if (message.type === "session-ended") {
-      sessionStatus = "ended";
-      sessionCredential = undefined;
-      reject_pending_actions(pendingActions, pendingActionAttemptsByRequest, new LocusDisconnectedError());
-      reject_pending_action_statuses(pendingActionStatuses, new LocusDisconnectedError());
-      pending.resolve(undefined);
-      return;
-    }
-    sessionId = message.sessionId;
-    sessionEpoch = message.epoch;
-    sessionStatus = "attached";
-    if (message.type === "session-created") {
-      sessionCredential = message.credential;
-      sessionCreateCount += 1;
-    } else {
-      sessionReattachCount += 1;
-    }
-    pending.resolve({ sessionId: message.sessionId, epoch: message.epoch, reattached: message.type === "session-attached" });
-    notify_echo_ready();
-  }
-
   function install_recovery_messages(): void {
     if (stopRecoveryMessages || recoveryDisposed) return;
     stopRecoveryMessages = options.socket.onMessage((raw) => {
@@ -859,7 +721,7 @@ export function create_echo<
   function handle_server_message(message: LocusDecodedServerMessage): void {
     if (handle_recovery_message(message)) return;
     if (is_session_message(message)) {
-      handle_session_message(message);
+      endpoint.receive(message);
       return;
     }
     if (message.type === "event") {
@@ -903,33 +765,11 @@ export function create_echo<
       return;
     }
     if (message.type === "action-status") {
-      const pending = pendingActionStatuses.get(message.id);
-      if (!pending || pending.requestId !== message.requestId) return;
-      pendingActionStatuses.delete(message.id);
-      pending.resolve({
-        requestId: message.requestId,
-        state: message.state,
-        ...(message.outcome ? { outcome: message.outcome } : {}),
-      });
+      endpoint.receive(message);
       return;
     }
     if (message.type === "ack" || message.type === "error") {
-      seq = message.seq;
-      if (!message.id) return;
-      const requestAttempts = pendingActionAttemptsByRequest.get(message.id);
-      const routeId = message.attemptId ?? (pendingActions.has(message.id) ? message.id : requestAttempts?.[0] ?? message.id);
-      const actions = pendingActions.get(routeId);
-      const action = actions?.shift();
-      if (!action) return;
-      if (actions?.length === 0) pendingActions.delete(routeId);
-      for (const [requestId, attempts] of pendingActionAttemptsByRequest) {
-        const index = attempts.indexOf(routeId);
-        if (index < 0) continue;
-        attempts.splice(index, 1);
-        if (attempts.length === 0) pendingActionAttemptsByRequest.delete(requestId);
-        break;
-      }
-      action.resolve(message);
+      endpoint.receive(message);
     }
   }
 
@@ -952,6 +792,7 @@ export function create_echo<
     if (stopMessage) disposers.push(stopMessage);
     const stopClose = options.socket.onClose(disconnect);
     if (stopClose) disposers.push(stopClose);
+    endpoint.connect();
     if (options.recovery) install_recovery_messages();
     if (!options.recovery && !options.session) send({ type: "hello", clientId });
     notify_echo_ready();
@@ -965,15 +806,7 @@ export function create_echo<
     while (disposers.length) disposers.pop()?.();
     stopRecoveryMessages?.();
     stopRecoveryMessages = undefined;
-    reject_pending_actions(pendingActions, pendingActionAttemptsByRequest, new LocusDisconnectedError());
-    reject_pending_action_statuses(pendingActionStatuses, new LocusDisconnectedError());
-    const sessionPending = pendingSession;
-    pendingSession = undefined;
-    sessionPending?.reject(new EchoSessionError("LOCUS_SESSION_DISCONNECTED", "Locus session transport disconnected."));
-    if (sessionStatus === "attached") sessionStatus = "detached";
-    if (recoveryStatus === "recovering" || recoveryStatus === "caught_up") {
-      fail_recovery("LOCUS_RECOVERY_DISCONNECTED", "Locus recovery transport disconnected.");
-    }
+    endpoint.disconnect();
     recoveryLifecycle = Object.freeze({ phase: "disconnected" });
   }
 
@@ -982,7 +815,7 @@ export function create_echo<
     echoDisposed = true;
     disconnect();
     dispose_recovery();
-    dispose_session();
+    endpoint.dispose();
     if (documentAuthority !== undefined) unregister_echo_document_authority(map, documentAuthority);
     mapAuthority.releaseManagement(echoOwner);
     notify_echo_ready();
@@ -1094,81 +927,6 @@ export function create_echo<
     });
   }
 
-  function begin_session_request(
-    kind: PendingSession["kind"],
-    message: LocusClientMessage<TActions>,
-  ): Promise<EchoSessionResult | undefined> {
-    if (sessionDisposed) return Promise.reject(new EchoSessionError("LOCUS_SESSION_DISPOSED", "Echo session API is disposed."));
-    if (!isConnected) return Promise.reject(new EchoSessionError("LOCUS_SESSION_DISCONNECTED", "Locus session requires a connected transport."));
-    if (pendingSession) return Promise.reject(new EchoSessionError("LOCUS_SESSION_REQUEST_PENDING", "A Locus session request is already pending."));
-    if (kind === "create") sessionStatus = "creating";
-    if (kind === "reattach") sessionStatus = "attaching";
-    const id = "id" in message && typeof message.id === "string" ? message.id : make_session_request_id();
-    return new Promise<EchoSessionResult | undefined>((resolve, reject) => {
-      const pending: PendingSession = { id, kind, resolve, reject };
-      pendingSession = pending;
-      try {
-        send(message);
-      } catch (cause) {
-        if (pendingSession === pending) pendingSession = undefined;
-        pending.reject(cause instanceof EchoSessionError
-          ? cause
-          : new EchoSessionError("LOCUS_SESSION_DISCONNECTED", "Locus session request could not be sent."));
-      }
-    });
-  }
-
-  async function create_session(): Promise<EchoSessionResult> {
-    if (sessionStatus === "attached") throw new EchoSessionError("LOCUS_SESSION_ALREADY_ATTACHED", "A Locus session is already attached.");
-    const id = make_session_request_id();
-    const result = await begin_session_request("create", { type: "session-create", id });
-    if (!result) throw new EchoSessionError("LOCUS_SESSION_CREATE_FAILED", "Locus session creation produced no result.");
-    return result;
-  }
-
-  async function reattach_session(credential = sessionCredential): Promise<EchoSessionResult> {
-    if (sessionStatus === "attached") throw new EchoSessionError("LOCUS_SESSION_ALREADY_ATTACHED", "A Locus session is already attached.");
-    const id = make_session_request_id();
-    const result = await begin_session_request("reattach", {
-      type: "session-attach",
-      id,
-      ...(credential !== undefined ? { credential } : {}),
-    });
-    if (!result) throw new EchoSessionError("LOCUS_SESSION_ATTACH_FAILED", "Locus session reattachment produced no result.");
-    sessionCredential = credential;
-    return result;
-  }
-
-  async function goodbye_session(): Promise<void> {
-    if (sessionStatus === "ended") throw new EchoSessionError("LOCUS_SESSION_ALREADY_GONE", "Locus session is already ended.");
-    if (sessionStatus !== "attached") throw new EchoSessionError("LOCUS_SESSION_NOT_ATTACHED", "No authoritative Locus session is attached.");
-    const id = make_session_request_id();
-    const result = await begin_session_request("goodbye", { type: "session-goodbye", id });
-    void result;
-  }
-
-  function dispose_session(): void {
-    if (sessionDisposed) return;
-    sessionDisposed = true;
-    const pending = pendingSession;
-    pendingSession = undefined;
-    sessionStatus = "disposed";
-    pending?.reject(new EchoSessionError("LOCUS_SESSION_DISPOSED", "Echo session API was disposed."));
-  }
-
-  function debug_session(): EchoSessionDiagnostics {
-    return Object.freeze({
-      status: sessionStatus,
-      ...(sessionId ? { sessionId } : {}),
-      ...(sessionEpoch !== undefined ? { epoch: sessionEpoch } : {}),
-      hasCredential: sessionCredential !== undefined,
-      createCount: sessionCreateCount,
-      reattachCount: sessionReattachCount,
-      fencingCount: sessionFencingCount,
-      rejectionCount: sessionRejectionCount,
-    });
-  }
-
   function subscribe(path: readonly (string | number)[]): void { send({ type: "subscribe", path: [...path] }); }
   function unsubscribe(path: readonly (string | number)[]): void { send({ type: "unsubscribe", path: [...path] }); }
   function onEvent(listener: LocusEventListener): LocusDisposer {
@@ -1176,76 +934,9 @@ export function create_echo<
     return () => eventListeners.delete(listener);
   }
 
-  function action_handle<TName extends keyof TActions & string>(
-    request: EchoActionRequest<TActions, TName>,
-    retry: boolean,
-  ): EchoActionPromise<TActions, TName> {
-    const attemptId = makeActionAttemptId();
-    const connected = isConnected && (options.session === undefined || sessionStatus === "attached");
-    const duplicateNewId = pendingActions.has(attemptId);
-    const promise = connected && !duplicateNewId
-      ? new Promise<LocusClientActionResult>((resolve, reject) => {
-        const waiters = pendingActions.get(attemptId) ?? [];
-        waiters.push({ resolve, reject });
-        pendingActions.set(attemptId, waiters);
-        const attempts = pendingActionAttemptsByRequest.get(request.requestId) ?? [];
-        attempts.push(attemptId);
-        pendingActionAttemptsByRequest.set(request.requestId, attempts);
-      })
-      : Promise.reject(duplicateNewId
-        ? new LocusDuplicateActionIdError(attemptId)
-        : new LocusDisconnectedError());
-    const handle: EchoActionPromise<TActions, TName> = Object.assign(promise, { request });
-    if (connected && !duplicateNewId) {
-      const message = {
-        type: "action",
-        id: request.requestId,
-        requestId: request.requestId,
-        attemptId,
-        clientId,
-        name: request.name,
-        ...(request.payload !== undefined ? { payload: request.payload } : {}),
-        ...(retry ? { retry: true as const } : {}),
-      } as LocusClientActionMessage<TActions>;
-      send(message);
-    }
-    return handle;
-  }
-
-  function action<TName extends keyof TActions & string>(
-    name: TName,
-    ...args: undefined extends TActions[TName] ? [payload?: TActions[TName]] : [payload: TActions[TName]]
-  ): EchoActionPromise<TActions, TName> {
-    const requestId = makeActionId();
-    const payload = args[0];
-    const request = Object.freeze({
-      requestId,
-      name,
-      ...(payload !== undefined ? { payload: clone_echo_action_payload(payload as JsonValue) as TActions[TName] } : {}),
-    });
-    return action_handle(request, false);
-  }
-
-  function retryAction<TName extends keyof TActions & string>(
-    request: EchoActionRequest<TActions, TName>,
-  ): EchoActionPromise<TActions, TName> {
-    const stableRequest: EchoActionRequest<TActions, TName> = Object.freeze({
-      requestId: request.requestId,
-      name: request.name,
-      ...(request.payload !== undefined ? { payload: clone_echo_action_payload(request.payload as JsonValue) as TActions[TName] } : {}),
-    });
-    return action_handle(stableRequest, true);
-  }
-
-  function actionStatus(requestId: LocusActionRequestId): Promise<EchoActionStatusResult> {
-    if (!isConnected || (options.session !== undefined && sessionStatus !== "attached")) return Promise.reject(new LocusDisconnectedError());
-    const id = makeActionStatusId();
-    const result = new Promise<EchoActionStatusResult>((resolve, reject) => {
-      pendingActionStatuses.set(id, { requestId, resolve, reject });
-    });
-    send({ type: "action-status", id, clientId, requestId });
-    return result;
-  }
+  const action = endpoint.action;
+  const retryAction = endpoint.retryAction;
+  const actionStatus = endpoint.actionStatus;
 
   const recovery = Object.freeze({
     get status() { return recoveryStatus; },
@@ -1261,18 +952,7 @@ export function create_echo<
     debug,
   });
 
-  const session = Object.freeze({
-    get status() { return sessionStatus; },
-    get sessionId() { return sessionId; },
-    get credential() { return sessionCredential; },
-    get epoch() { return sessionEpoch; },
-    get failure() { return sessionFailure; },
-    create: create_session,
-    reattach: reattach_session,
-    goodbye: goodbye_session,
-    dispose: dispose_session,
-    debug: debug_session,
-  });
+  const session = endpoint.session;
 
   if (is_document_live_map(map)) {
     const documentAction = action as LocusDocumentActionFn;

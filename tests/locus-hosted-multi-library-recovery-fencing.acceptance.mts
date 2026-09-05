@@ -337,5 +337,62 @@ await check("physical disconnect settles active recovery and a fresh endpoint ca
   server.dispose();
 });
 
+await check("replica recovery failure leaves the attached endpoint usable for unrelated actions", async () => {
+  const pair = socket_pair();
+  const client = create_multi_library_echo_socket_client_internal({
+    socket: pair.client,
+    map: make_map(),
+    logicalMapId: "replica-failure-isolation",
+  });
+  const connecting = client.connect();
+  const create = pair.clientSent.findLast((message) => message.type === "session-create");
+  assert.ok(create);
+  pair.deliverToClient({
+    type: "session-created",
+    format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
+    id: create.id,
+    sessionId: "healthy-endpoint-session",
+    credential: "healthy-endpoint-credential",
+    epoch: 1,
+  });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const recover = pair.clientSent.findLast((message) => message.type === "recover");
+  assert.ok(recover);
+  assert.ok(client.incarnationId);
+  assert.ok(client.registryDigest);
+  pair.deliverToClient({
+    type: "recovery-plan",
+    format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
+    id: recover.id,
+    logicalMapId: client.logicalMapId,
+    incarnationId: client.incarnationId,
+    registryDigest: "0".repeat(64),
+    headRev: 0,
+    outcome: "current",
+  });
+  await assert.rejects(connecting, /registry mismatch/i);
+  assert.equal(client.diagnostics().status, "failed");
+  assert.equal(client.session.status, "attached");
+
+  const action = client.action("endpoint.probe");
+  const request = pair.clientSent.findLast((message) => message.type === "action");
+  assert.ok(request);
+  assert.equal(typeof request.id, "string");
+  assert.equal(typeof request.requestId, "string");
+  assert.equal(typeof request.attemptId, "string");
+  pair.deliverToClient({
+    type: "ack",
+    format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
+    id: request.id,
+    requestId: request.requestId,
+    attemptId: request.attemptId,
+    ok: true,
+    seq: 0,
+  });
+  assert.equal((await action).type, "ack");
+  assert.equal(client.diagnostics().status, "failed");
+  client.dispose();
+});
+
 testEvents.terminal("pass");
 process.stdout.write(`Hosted multi-library recovery fencing acceptance checks passed (${checks}).\n`);

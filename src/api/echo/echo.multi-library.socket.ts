@@ -32,7 +32,8 @@ import {
   type LocusHostedAggregateWireEnvelope,
 } from "../locus/locus.hosted-multi-library.js";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../locus/locus.hosted-multi-library.protocol.js";
-import { clone_echo_action_payload, make_echo_reload_safe_id } from "./echo.request.js";
+import { create_echo_endpoint_internal, type EchoEndpointServerMessage } from "./echo.endpoint.js";
+import { make_echo_reload_safe_id } from "./echo.request.js";
 
 
 type HostedPlanOutcome = "current" | "replay" | "snapshot" | "reject";
@@ -93,14 +94,6 @@ export function create_multi_library_echo_socket_client_internal(
     generatedId += 1;
     return `${prefix}-${Date.now().toString(36)}-${generatedId.toString(36)}`;
   };
-  const freshIdentityId = (prefix: string): string => {
-    generatedId += 1;
-    return make_echo_reload_safe_id(prefix);
-  };
-  const clientId = options.clientId ?? freshIdentityId("echo-client");
-  const makeActionId = options.actionId ?? (() => freshIdentityId("action"));
-  const makeAttemptId = options.actionAttemptId ?? (() => fresh_id("attempt"));
-  const makeStatusId = options.actionStatusId ?? (() => fresh_id("action-status"));
   let map = options.map;
   const mirrorOwner = Object.freeze({});
   let mirrorClaimed = false;
@@ -145,43 +138,52 @@ export function create_multi_library_echo_socket_client_internal(
     snapshotReceived: boolean;
   }> | undefined;
   let liveRecovery: Readonly<{ id: string; sessionId: string; sessionEpoch: number }> | undefined;
-  const pendingActions = new Map<string, Readonly<{
-    resolve: (value: LocusClientActionResult) => void;
-    reject: (reason: Error) => void;
-  }>>();
-  const pendingStatuses = new Map<string, Readonly<{
-    requestId: string;
-    resolve: (value: EchoActionStatusResult) => void;
-    reject: (reason: Error) => void;
-  }>>();
-  let sessionStatus: "idle" | "creating" | "attaching" | "attached" | "detached" | "failed" | "ended" | "disposed" = "idle";
-  let sessionId: string | undefined;
-  let sessionCredential = options.session?.credential;
-  let sessionEpoch: number | undefined;
-  let sessionFailure: Readonly<{ code: string; message: string }> | undefined;
-  let sessionCreateCount = 0;
-  let sessionReattachCount = 0;
-  let sessionFencingCount = 0;
-  let sessionRejectionCount = 0;
-  let sessionDisposed = false;
-  let pendingSession: Readonly<{
-    id: string;
-    kind: "create" | "attach" | "goodbye";
-    resolve: (value: Readonly<{ sessionId: string; epoch: number; reattached: boolean }> | undefined) => void;
-    reject: (reason: Error) => void;
-  }> | undefined;
   const readyWaiters = new Set<Readonly<{ resolve: () => void; reject: (reason: Error) => void }>>();
 
+  const endpoint = create_echo_endpoint_internal({
+    transport: { send },
+    clientId: options.clientId ?? make_echo_reload_safe_id("echo-client"),
+    sessionRequired: true,
+    ...(options.session?.credential === undefined ? {} : { credential: options.session.credential }),
+    ids: {
+      actionId: options.actionId ?? (() => make_echo_reload_safe_id("action")),
+      actionAttemptId: options.actionAttemptId ?? (() => fresh_id("attempt")),
+      actionStatusId: options.actionStatusId ?? (() => fresh_id("action-status")),
+      sessionRequestId: (kind) => next(`session-${kind === "reattach" ? "attach" : kind}`),
+    },
+    actionMessageId: "attempt",
+    validateActionPayload: is_locus_json_value,
+    operationLossError: (reason) => new Error(reason === "ended"
+      ? "Hosted aggregate Echo session ended before the pending operation completed."
+      : reason === "fenced"
+        ? "Hosted aggregate session attachment was fenced."
+        : "Hosted aggregate socket closed."),
+    onAttachmentLost: (_reason, error) => interruptRecovery(error),
+  });
+  const clientId = endpoint.clientId;
+
   const stopMessage = options.socket.onMessage((raw) => {
+    let message: DecodedServerMessage;
     try {
-      receive(raw);
+      message = decode_server_message(raw);
     } catch (cause) {
-      fail(cause instanceof Error ? cause : new Error("Hosted aggregate Echo protocol failed."));
+      failEndpoint(cause instanceof Error ? cause : new Error("Hosted aggregate Echo protocol failed."));
+      return;
+    }
+    if (is_endpoint_server_message(message)) {
+      endpoint.receive(message);
+      return;
+    }
+    try {
+      receiveReplica(message);
+    } catch (cause) {
+      failReplica(cause instanceof Error ? cause : new Error("Hosted aggregate replica failed."));
     }
   });
   const stopClose = options.socket.onClose(() => {
-    if (status !== "closed") fail(new Error("Hosted aggregate socket closed."));
+    if (status !== "closed") failEndpoint(new Error("Hosted aggregate socket closed."));
   });
+  endpoint.connect();
 
   function next(prefix: string): string {
     nextId += 1;
@@ -197,12 +199,6 @@ export function create_multi_library_echo_socket_client_internal(
     options.socket.send(raw);
   }
 
-  function rejectPendingSession(error: Error): void {
-    const pending = pendingSession;
-    pendingSession = undefined;
-    pending?.reject(error);
-  }
-
   function interruptRecovery(error: Error): void {
     const active = recovery;
     recovery = undefined;
@@ -214,28 +210,29 @@ export function create_multi_library_echo_socket_client_internal(
 
   function recoveryCurrent(active: NonNullable<typeof recovery>): boolean {
     return recovery === active
-      && sessionStatus === "attached"
-      && sessionId === active.sessionId
-      && sessionEpoch === active.sessionEpoch;
+      && endpoint.session.status === "attached"
+      && endpoint.session.sessionId === active.sessionId
+      && endpoint.session.epoch === active.sessionEpoch;
   }
 
-  function fail(error: Error): void {
+  function failReplica(error: Error): void {
     if (status === "closed" || status === "failed") return;
     status = "failed";
     interruptRecovery(error);
-    for (const pending of pendingActions.values()) pending.reject(error);
-    pendingActions.clear();
-    for (const pending of pendingStatuses.values()) pending.reject(error);
-    pendingStatuses.clear();
-    rejectPendingSession(error);
-    if (sessionStatus === "attached") sessionStatus = "detached";
     pendingSync.clear();
+    for (const waiter of readyWaiters) waiter.reject(error);
+    readyWaiters.clear();
+  }
+
+  function failEndpoint(error: Error): void {
+    failReplica(error);
+    endpoint.disconnect();
   }
 
   function recover_wire(): Promise<MultiLibraryEchoSocketRecovery> {
     if (status === "closed") return Promise.reject(new Error("Hosted aggregate socket Echo is closed."));
     if (recovery !== undefined) return Promise.reject(new Error("Hosted aggregate recovery is already in progress."));
-    if (sessionStatus !== "attached" || sessionId === undefined || sessionEpoch === undefined) {
+    if (endpoint.session.status !== "attached" || endpoint.session.sessionId === undefined || endpoint.session.epoch === undefined) {
       return Promise.reject(new Error("Hosted aggregate recovery requires an attached session."));
     }
     if (map !== undefined) {
@@ -247,8 +244,8 @@ export function create_multi_library_echo_socket_client_internal(
     status = "recovering";
     pendingSync.clear();
     const id = next("recover");
-    const recoverySessionId = sessionId;
-    const recoverySessionEpoch = sessionEpoch;
+    const recoverySessionId = endpoint.session.sessionId;
+    const recoverySessionEpoch = endpoint.session.epoch;
     return new Promise<MultiLibraryEchoSocketRecovery>((resolve, reject) => {
       recovery = Object.freeze({
         id,
@@ -270,103 +267,17 @@ export function create_multi_library_echo_socket_client_internal(
   }
 
   async function connect_client(): Promise<MultiLibraryEchoSocketRecovery> {
-    if (sessionStatus !== "attached") {
-      if (sessionCredential === undefined) await create_session();
-      else await reattach_session(sessionCredential);
+    if (endpoint.session.status !== "attached") {
+      if (endpoint.session.credential === undefined) await endpoint.session.create();
+      else await endpoint.session.reattach(endpoint.session.credential);
     }
     return recover_wire();
   }
 
-  function receive(raw: string): void {
-    const message = decode_server_message(raw);
+  function receiveReplica(message: Exclude<DecodedServerMessage, EchoEndpointServerMessage>): void {
     if (message.type === "error") {
-      if ("ok" in message && message.ok === false && message.id !== undefined && pendingActions.has(message.id)) {
-        pendingActions.get(message.id)?.resolve(message);
-        pendingActions.delete(message.id);
-        return;
-      }
-      const error = new Error("message" in message ? message.message : message.error.message);
-      fail(error);
-      return;
-    }
-    if (message.type === "ack") {
-      const pending = pendingActions.get(message.id);
-      if (pending === undefined) throw new Error("Hosted aggregate action acknowledgement is unknown.");
-      pendingActions.delete(message.id);
-      pending.resolve(message);
-      return;
-    }
-    if (message.type === "action-status") {
-      const pending = pendingStatuses.get(message.id);
-      if (pending === undefined || pending.requestId !== message.requestId) throw new Error("Hosted aggregate action status is unknown.");
-      pendingStatuses.delete(message.id);
-      pending.resolve(Object.freeze({ requestId: message.requestId, state: message.state, ...(message.outcome === undefined ? {} : { outcome: message.outcome }) }));
-      return;
-    }
-    if (message.type === "session-created" || message.type === "session-attached") {
-      if (sessionDisposed) return;
-      const pending = pendingSession;
-      const expectedKind = message.type === "session-created" ? "create" : "attach";
-      if (pending === undefined || pending.id !== message.id || pending.kind !== expectedKind) return;
-      pendingSession = undefined;
-      sessionStatus = "attached";
-      sessionId = message.sessionId;
-      sessionEpoch = message.epoch;
-      sessionFailure = undefined;
-      if (message.type === "session-created") {
-        sessionCredential = message.credential;
-        sessionCreateCount += 1;
-      } else sessionReattachCount += 1;
-      pending.resolve(Object.freeze({ sessionId: message.sessionId, epoch: message.epoch, reattached: message.type === "session-attached" }));
-      return;
-    }
-    if (message.type === "session-rejected") {
-      const pendingStatus = pendingStatuses.get(message.id);
-      if (pendingStatus !== undefined) {
-        pendingStatuses.delete(message.id);
-        pendingStatus.reject(new Error(message.message));
-        return;
-      }
-      if (sessionDisposed) return;
-      const pending = pendingSession;
-      if (pending === undefined || pending.id !== message.id) return;
-      pendingSession = undefined;
-      sessionStatus = "failed";
-      sessionFailure = Object.freeze({ code: message.code, message: message.message });
-      sessionRejectionCount += 1;
-      pending.reject(new Error(message.message));
-      return;
-    }
-    if (message.type === "session-fenced") {
-      if (sessionDisposed) return;
-      if (sessionId !== message.sessionId || sessionEpoch !== message.epoch) return;
-      sessionStatus = "detached";
-      sessionFencingCount += 1;
-      const error = new Error("Hosted aggregate session attachment was fenced.");
-      for (const pending of pendingActions.values()) pending.reject(error);
-      pendingActions.clear();
-      for (const pending of pendingStatuses.values()) pending.reject(error);
-      pendingStatuses.clear();
-      rejectPendingSession(error);
-      interruptRecovery(error);
-      return;
-    }
-    if (message.type === "session-ended") {
-      if (sessionDisposed) return;
-      const pending = pendingSession;
-      if (pending === undefined || pending.id !== message.id) return;
-      if (sessionId !== message.sessionId || sessionEpoch !== message.epoch) return;
-      pendingSession = undefined;
-      sessionStatus = "ended";
-      sessionCredential = undefined;
-      const error = new Error("Hosted aggregate Echo session ended before the pending operation completed.");
-      for (const action of pendingActions.values()) action.reject(error);
-      pendingActions.clear();
-      for (const statusRequest of pendingStatuses.values()) statusRequest.reject(error);
-      pendingStatuses.clear();
-      interruptRecovery(error);
-      if (pending.kind === "goodbye") pending.resolve(undefined);
-      else pending.reject(error);
+      const error = new Error(message.message);
+      failEndpoint(error);
       return;
     }
     if (message.type === "recovery-plan") {
@@ -398,7 +309,7 @@ export function create_multi_library_echo_socket_client_internal(
     if (message.type === "commit") {
       const active = liveRecovery;
       if (status !== "live" || active === undefined || active.id !== message.id) return;
-      if (sessionStatus !== "attached" || sessionId !== active.sessionId || sessionEpoch !== active.sessionEpoch) return;
+      if (endpoint.session.status !== "attached" || endpoint.session.sessionId !== active.sessionId || endpoint.session.epoch !== active.sessionEpoch) return;
       apply_envelope(message.commit);
       return;
     }
@@ -416,14 +327,14 @@ export function create_multi_library_echo_socket_client_internal(
       liveRecovery = Object.freeze({ id: active.id, sessionId: active.sessionId, sessionEpoch: active.sessionEpoch });
       flush_sync();
       active.resolve(Object.freeze({ outcome: active.outcome ?? "current", revision: message.throughRev }));
-      if (sessionStatus === "attached") {
+      if (endpoint.ready) {
         for (const waiter of [...readyWaiters]) waiter.resolve();
         readyWaiters.clear();
       }
       return;
     }
     if (message.type === "sync") {
-      if (sessionStatus !== "attached" || status !== "recovering" && status !== "live") return;
+      if (!endpoint.ready || status !== "recovering" && status !== "live") return;
       if (message.registryDigest !== registryDigest) throw new Error("Hosted subscription sync registry digest is incompatible.");
       const key = subscription_key(message.library, message.path);
       if (!subscriptions.has(key)) throw new Error("Hosted subscription sync has no matching library-qualified subscription.");
@@ -537,141 +448,16 @@ export function create_multi_library_echo_socket_client_internal(
     send(Object.freeze({ type: "unsubscribe", library, path: stablePath, registryDigest }));
   }
 
-  function session_request(
-    kind: "create" | "attach" | "goodbye",
-    credential?: string,
-  ): Promise<Readonly<{ sessionId: string; epoch: number; reattached: boolean }> | undefined> {
-    if (sessionDisposed) return Promise.reject(new Error("Hosted aggregate session API is disposed."));
-    if (pendingSession !== undefined) return Promise.reject(new Error("Hosted aggregate session request is already pending."));
-    const id = next(`session-${kind}`);
-    if (kind === "create") sessionStatus = "creating";
-    else if (kind === "attach") sessionStatus = "attaching";
-    return new Promise((resolve, reject) => {
-      pendingSession = Object.freeze({ id, kind, resolve, reject });
-      try {
-        send(Object.freeze({
-          type: kind === "create" ? "session-create" : kind === "attach" ? "session-attach" : "session-goodbye",
-          id,
-          ...(kind === "attach" && credential !== undefined ? { credential } : {}),
-        }));
-      } catch (cause) {
-        if (pendingSession?.id === id) pendingSession = undefined;
-        reject(cause);
-      }
-    });
-  }
-
-  async function create_session(): Promise<Readonly<{ sessionId: string; epoch: number; reattached: boolean }>> {
-    const result = await session_request("create");
-    if (result === undefined) throw new Error("Hosted aggregate session creation did not return a session.");
-    return result;
-  }
-
-  async function reattach_session(credential = sessionCredential): Promise<Readonly<{ sessionId: string; epoch: number; reattached: boolean }>> {
-    const result = await session_request("attach", credential);
-    if (result === undefined) throw new Error("Hosted aggregate session attachment did not return a session.");
-    return result;
-  }
-
-  async function goodbye_session(): Promise<void> {
-    await session_request("goodbye");
-  }
-
-  function action_handle(request: EchoActionRequest, retry: boolean): Promise<LocusClientActionResult> & Readonly<{ request: EchoActionRequest }> {
-    const attemptId = makeAttemptId();
-    const promise = new Promise<LocusClientActionResult>((resolve, reject) => {
-      if (sessionStatus !== "attached") {
-        reject(new Error("Hosted aggregate Echo is disconnected."));
-        return;
-      }
-      pendingActions.set(attemptId, Object.freeze({ resolve, reject }));
-      try {
-        send(Object.freeze({
-          type: "action",
-          id: attemptId,
-          requestId: request.requestId,
-          attemptId,
-          clientId,
-          name: request.name,
-          ...(request.payload === undefined ? {} : { payload: request.payload }),
-          ...(retry ? { retry: true as const } : {}),
-        }));
-      } catch (cause) {
-        pendingActions.delete(attemptId);
-        reject(cause);
-      }
-    });
-    return Object.assign(promise, { request });
-  }
-
-  function action(name: string, payload?: JsonValue): Promise<LocusClientActionResult> & Readonly<{ request: EchoActionRequest }> {
-    const requestId = makeActionId();
-    if (payload !== undefined && !is_locus_json_value(payload)) {
-      const request = Object.freeze({ requestId, name, payload });
-      return Object.assign(Promise.reject(new Error("Hosted action payload must be JSON-serializable.")), { request });
-    }
-    const request = Object.freeze({
-      requestId,
-      name,
-      ...(payload === undefined ? {} : { payload: clone_echo_action_payload(payload) }),
-    });
-    return action_handle(request, false);
-  }
-
-  function retryAction(request: EchoActionRequest): Promise<LocusClientActionResult> & Readonly<{ request: EchoActionRequest }> {
-    const stable = Object.freeze({
-      requestId: request.requestId,
-      name: request.name,
-      ...(request.payload === undefined ? {} : { payload: clone_echo_action_payload(request.payload) }),
-    });
-    return action_handle(stable, true);
-  }
-
-  function actionStatus(requestId: string): Promise<EchoActionStatusResult> {
-    const id = makeStatusId();
-    return new Promise((resolve, reject) => {
-      if (sessionStatus !== "attached") {
-        reject(new Error("Hosted aggregate Echo is disconnected."));
-        return;
-      }
-      pendingStatuses.set(id, Object.freeze({ requestId, resolve, reject }));
-      try { send(Object.freeze({ type: "action-status", id, clientId, requestId })); }
-      catch (cause) { pendingStatuses.delete(id); reject(cause); }
-    });
-  }
-
   function wait_until_ready(): Promise<void> {
-    if (status === "live" && sessionStatus === "attached") return Promise.resolve();
+    if (status === "live" && endpoint.ready) return Promise.resolve();
     if (status === "closed") return Promise.reject(new Error("Hosted aggregate socket Echo is closed."));
     return new Promise((resolve, reject) => { readyWaiters.add(Object.freeze({ resolve, reject })); });
   }
 
-  const session: EchoSession = Object.freeze({
-    get status() { return sessionStatus; },
-    get sessionId() { return sessionId; },
-    get credential() { return sessionCredential; },
-    get epoch() { return sessionEpoch; },
-    get failure() { return sessionFailure; },
-    create: create_session,
-    reattach: reattach_session,
-    goodbye: goodbye_session,
-    dispose: () => {
-      if (sessionDisposed) return;
-      sessionDisposed = true;
-      sessionStatus = "disposed";
-      rejectPendingSession(new Error("Hosted aggregate session API was disposed."));
-    },
-    debug: () => Object.freeze({
-      status: sessionStatus,
-      ...(sessionId === undefined ? {} : { sessionId }),
-      ...(sessionEpoch === undefined ? {} : { epoch: sessionEpoch }),
-      hasCredential: sessionCredential !== undefined,
-      createCount: sessionCreateCount,
-      reattachCount: sessionReattachCount,
-      fencingCount: sessionFencingCount,
-      rejectionCount: sessionRejectionCount,
-    }),
-  });
+  const session = endpoint.session;
+  const action = endpoint.action;
+  const retryAction = endpoint.retryAction;
+  const actionStatus = endpoint.actionStatus;
 
   return Object.freeze({
     get map() { return map; },
@@ -695,14 +481,9 @@ export function create_multi_library_echo_socket_client_internal(
       stopClose?.();
       const error = new Error("Hosted aggregate socket Echo is closed.");
       interruptRecovery(error);
-      for (const pending of pendingActions.values()) pending.reject(error);
-      pendingActions.clear();
-      for (const pending of pendingStatuses.values()) pending.reject(error);
-      pendingStatuses.clear();
-      rejectPendingSession(error);
+      endpoint.dispose();
       for (const waiter of readyWaiters) waiter.reject(error);
       readyWaiters.clear();
-      sessionStatus = "disposed";
       pendingSync.clear();
       subscriptions.clear();
       if (map !== undefined && mirrorClaimed) {
@@ -739,6 +520,17 @@ type DecodedServerMessage =
   | Readonly<{ type: "commit"; id: string; commit: LocusHostedAggregateWireEnvelope }>
   | Readonly<{ type: "recovery-caught-up"; id: string; logicalMapId: string; incarnationId: string; registryDigest: string; throughRev: number }>
   | Readonly<{ type: "sync"; registryDigest: string; revision: number; library: string; path: LivePath; value: JsonValue | undefined }>;
+
+function is_endpoint_server_message(message: DecodedServerMessage): message is EchoEndpointServerMessage {
+  return message.type === "ack"
+    || message.type === "action-status"
+    || message.type === "session-created"
+    || message.type === "session-attached"
+    || message.type === "session-rejected"
+    || message.type === "session-fenced"
+    || message.type === "session-ended"
+    || (message.type === "error" && "ok" in message);
+}
 
 function decode_server_message(raw: string): DecodedServerMessage {
   if (typeof raw !== "string" || utf8_bytes(raw) > HOSTED_MAX_SNAPSHOT_BYTES) throw new Error("Hosted aggregate server message exceeds its byte limit.");
