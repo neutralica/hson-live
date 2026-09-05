@@ -4,6 +4,7 @@ import type {
   LocusActionAuthorizer, LocusActionContext, LocusActionDelivery, LocusActionOrigin, LocusActionPayloads,
   LocusActionTerminalOutcome, LocusActions, LocusClientActionMessage, LocusClientActionResult,
   LocusConnectionContext, LocusMapValue, LocusMutationDraft, LocusReadonlyMap, LocusSchema, LocusSeq,
+  LocusDisposer,
 } from "../../types/locus.types.js";
 import type { LocusActionDedupeStore } from "./locus.actions.js";
 import { authorize_locus_action } from "./locus.action-authorization.js";
@@ -37,6 +38,7 @@ export type LocusSoloExternalActionAuthority<TMap extends LiveMapAuthority, TAct
   nextSeq: () => LocusSeq;
   headRev: () => number;
   disposed: () => boolean;
+  acquireActionActivity: () => LocusDisposer;
   traceStateBoundary: (trace: LiveTraceContext | undefined, parentSpanId: string | undefined, previousRev: number) => void;
 }>;
 
@@ -47,6 +49,7 @@ export type LocusSoloExternalActionAttempt<TActions extends LocusActionPayloads,
   emitEvent?: LocusActionContext<TMap>["emit_event"];
   trace?: LiveTraceContext;
   parentSpanId?: string;
+  attachmentCurrent: () => boolean;
 }>;
 
 export type LocusSoloActionAdmissionResult =
@@ -309,6 +312,18 @@ export async function admit_locus_solo_external_action<
 ): Promise<LocusSoloActionAdmissionResult> {
   const { message, origin, trace, parentSpanId } = attempt;
   const stable = message.requestId !== undefined && message.clientId !== undefined;
+  const rejectStaleAttachment = (): LocusSoloActionAdmissionResult => Object.freeze({
+    kind: "rejected",
+    response: rejectionResponse(
+      message,
+      authority.currentSeq(),
+      authority.headRev(),
+      "LOCUS_SESSION_ATTACHMENT_FENCED",
+      "Locus session attachment is no longer authoritative.",
+      stable,
+    ),
+  });
+  if (!attempt.attachmentCurrent()) return rejectStaleAttachment();
   if (!stable && authority.disposed()) {
     return Object.freeze({
       kind: "rejected",
@@ -344,6 +359,11 @@ export async function admit_locus_solo_external_action<
     });
   }
 
+  // Authorization may yield while this logical session is replaced or
+  // detached. This is the final check before any request-record access or
+  // legacy execution can acquire authority-work admission.
+  if (!attempt.attachmentCurrent()) return rejectStaleAttachment();
+
   const causation = actionCausation(authority, message, origin, trace);
   const run = () => execute_locus_action_handler({
     authority,
@@ -358,10 +378,15 @@ export async function admit_locus_solo_external_action<
   });
 
   if (!stable) {
-    return Object.freeze({
-      kind: "legacy",
-      response: make_locus_action_response(message.id, await run()),
-    });
+    const releaseActivity = authority.acquireActionActivity();
+    try {
+      return Object.freeze({
+        kind: "legacy",
+        response: make_locus_action_response(message.id, await run()),
+      });
+    } finally {
+      releaseActivity();
+    }
   }
 
   const result = await authority.actionRequests.execute({
@@ -370,6 +395,7 @@ export async function admit_locus_solo_external_action<
     actionName: message.name,
     payload: authorized.payload,
     retry: message.retry === true,
+    acquireExecutionActivity: authority.acquireActionActivity,
     ...(trace !== undefined ? { sourceTraceId: trace.traceId } : {}),
     run,
   });

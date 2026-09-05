@@ -293,6 +293,61 @@ check("connection and retained-session activity block ordinary registry eviction
   await fixture.value.dispose();
 });
 
+check("admitted external work remains an eviction blocker after transport loss", async () => {
+  const entered = deferred<void>();
+  const gate = deferred<void>();
+  const fixture = registry({
+    create(key) {
+      return create_locus<TestState>({
+        state: { value: 0 },
+        logicalMapId: key,
+        actions: {
+          async slow(context) {
+            entered.resolve();
+            await gate.promise;
+            await context.mutate((draft) => draft.set(["value"], 1));
+          },
+        },
+      });
+    },
+  });
+  const acquired = await fixture.value.acquire("external-action");
+  assert.equal(acquired.ok, true);
+  if (!acquired.ok) return;
+  const host = acquired.value.locus;
+  const socket = socket_fixture();
+  host.connect(socket.socket);
+  socket.message(JSON.stringify({
+    type: "action",
+    id: "external-action-attempt",
+    clientId: "external-action-client",
+    requestId: "external-action-request",
+    name: "slow",
+  }));
+  await entered.promise;
+  assert.equal(host.activity.snapshot().actionCount, 1);
+  acquired.value.release();
+  socket.close();
+  assert.equal(host.activity.snapshot().connectionCount, 0);
+  assert.equal(host.activity.snapshot().retainedSessionCount, 0);
+  const busy = await fixture.value.evict("external-action");
+  assert.equal(busy.status, "busy");
+  if (busy.status === "busy") assert.ok(busy.blockers.includes("action"));
+  const settled = new Promise<void>((resolve) => {
+    const stop = host.activity.on_change((snapshot) => {
+      if (snapshot.actionCount !== 0) return;
+      stop();
+      resolve();
+    });
+  });
+  gate.resolve();
+  await settled;
+  assert.equal(host.map.rev, 1);
+  assert.equal(host.actionRequests.debug().retainedTerminalCount, 1);
+  assert.equal((await fixture.value.evict("external-action")).status, "evicted");
+  await fixture.value.dispose();
+});
+
 check("concurrent same-key acquisition deduplicates one asynchronous creation", async () => {
   const gate = deferred<void>();
   let creations = 0;

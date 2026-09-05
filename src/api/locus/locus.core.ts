@@ -463,6 +463,7 @@ function create_locus_for_map<
     nextSeq: next_seq,
     headRev: () => stream.headRev,
     disposed: () => disposed,
+    acquireActionActivity: () => activity.acquire("action"),
     traceStateBoundary: trace_state_boundary,
   });
 
@@ -851,9 +852,6 @@ function create_locus_for_map<
         undefined,
         () => ({ action: message.name, origin: origin.kind }),
       );
-      const releaseActionActivity = message.requestId === undefined || message.clientId === undefined
-        ? activity.acquire("action")
-        : undefined;
       let admitted;
       try {
         admitted = await admit_locus_solo_external_action(externalActionAuthority, {
@@ -863,6 +861,7 @@ function create_locus_for_map<
           emitEvent: emit_connection_event,
           ...(trace === undefined ? {} : { trace }),
           ...(actionSpan === undefined ? {} : { parentSpanId: actionSpan.spanId }),
+          attachmentCurrent: authoritative,
         });
       } catch (cause) {
         actionSpan?.failure(() => ({
@@ -870,8 +869,6 @@ function create_locus_for_map<
           errorCode: safe_error_code(cause, "LOCUS_SCHEMA_DECODER_FAILED"),
         }));
         throw cause;
-      } finally {
-        releaseActionActivity?.();
       }
 
       const response = admitted.response;

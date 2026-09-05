@@ -54,6 +54,8 @@ function fixture(options = {}) {
     },
   };
   let seq = 0;
+  let attachmentEpoch = 1;
+  let actionActivity = 0;
   const actionRequests = make_locus_action_dedupe_store(() => map.rev, () => seq);
   const authority = Object.freeze({
     map,
@@ -70,18 +72,35 @@ function fixture(options = {}) {
     nextSeq: () => ++seq,
     headRev: () => map.rev,
     disposed: () => false,
+    acquireActionActivity: () => {
+      actionActivity += 1;
+      let held = true;
+      return () => {
+        if (!held) return;
+        held = false;
+        actionActivity -= 1;
+      };
+    },
     traceStateBoundary: () => {},
   });
   const origin = Object.freeze({ kind: "session", sessionId: "logical-session", epoch: 1, resumable: true });
   const connection = Object.freeze({ principalId: "principal", attachment: Object.freeze({ role: "editor" }) });
-  function admit(message) {
+  function admit(message, epoch = attachmentEpoch) {
     return admit_locus_solo_external_action(authority, {
       message,
       origin,
       connection,
+      attachmentCurrent: () => epoch === attachmentEpoch,
     });
   }
-  return { map, authority, admit, dispose: actionRequests.dispose };
+  return {
+    map,
+    authority,
+    admit,
+    replaceAttachment: () => { attachmentEpoch += 1; },
+    actionActivity: () => actionActivity,
+    dispose: actionRequests.dispose,
+  };
 }
 
 await check("direct seam validates, authorizes, executes, settles, and constructs a terminal response", async () => {
@@ -114,6 +133,71 @@ await check("direct seam denies before dedupe or execution", async () => {
   assert.equal(admitted.response.delivery, "rejected");
   assert.equal(f.authority.actionRequests.debug().executionsStarted, 0);
   assert.deepEqual(f.map.snap(), { value: 0 });
+  f.dispose();
+});
+
+await check("attachment fenced during asynchronous authorization cannot cross admission", async () => {
+  const authorization = deferred();
+  const f = fixture({ authorizer: () => authorization.promise });
+  const attempt = f.admit({
+    type: "action", id: "wire-fenced-before", name: "set", payload: { value: 11 },
+    clientId: "client-fenced-before", requestId: "request-fenced-before",
+  });
+  f.replaceAttachment();
+  authorization.resolve(true);
+  const admitted = await attempt;
+  assert.equal(admitted.kind, "rejected");
+  assert.equal(admitted.response.error.code, "LOCUS_SESSION_ATTACHMENT_FENCED");
+  assert.equal(admitted.response.delivery, "rejected");
+  assert.equal(f.authority.actionRequests.debug().executionsStarted, 0);
+  assert.equal(f.authority.actionRequests.debug().pendingRequestCount, 0);
+  assert.equal(f.authority.actionRequests.debug().retainedTerminalCount, 0);
+  assert.equal(f.map.rev, 0);
+  assert.deepEqual(f.map.snap(), { value: 0 });
+  assert.equal(f.actionActivity(), 0);
+  f.dispose();
+});
+
+await check("legacy attachment fenced during authorization cannot begin non-deduped execution", async () => {
+  const authorization = deferred();
+  const f = fixture({ authorizer: () => authorization.promise });
+  const attempt = f.admit({ type: "action", id: "legacy-fenced-before", name: "set", payload: { value: 13 } });
+  f.replaceAttachment();
+  authorization.resolve(true);
+  const admitted = await attempt;
+  assert.equal(admitted.kind, "rejected");
+  assert.equal(admitted.response.error.code, "LOCUS_SESSION_ATTACHMENT_FENCED");
+  assert.equal(admitted.response.delivery, undefined);
+  assert.equal(f.map.rev, 0);
+  assert.deepEqual(f.map.snap(), { value: 0 });
+  assert.equal(f.actionActivity(), 0);
+  f.dispose();
+});
+
+await check("attachment fenced after admission cannot cancel retained authority work", async () => {
+  const gate = deferred();
+  const f = fixture({ gate, authorizer: () => true });
+  const message = {
+    type: "action", id: "wire-fenced-after", name: "gated", payload: 12,
+    clientId: "client-fenced-after", requestId: "request-fenced-after",
+  };
+  const attempt = f.admit(message);
+  assert.equal(f.authority.actionRequests.debug().executionsStarted, 1);
+  assert.equal(f.authority.actionRequests.debug().pendingRequestCount, 1);
+  assert.equal(f.actionActivity(), 1);
+  f.replaceAttachment();
+  gate.resolve();
+  const admitted = await attempt;
+  assert.equal(admitted.kind, "deduped");
+  assert.equal(admitted.delivery, "executed");
+  assert.equal(admitted.response.completionRev, 0);
+  assert.equal(f.authority.actionRequests.debug().retainedTerminalCount, 1);
+  assert.equal(f.actionActivity(), 0);
+  const cached = await f.admit({ ...message, id: "wire-fenced-after-retry", retry: true });
+  assert.equal(cached.kind, "deduped");
+  assert.equal(cached.delivery, "cached");
+  assert.deepEqual(cached.response.result, 12);
+  assert.equal(cached.response.completionRev, admitted.response.completionRev);
   f.dispose();
 });
 

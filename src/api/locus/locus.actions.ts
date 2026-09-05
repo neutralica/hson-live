@@ -50,6 +50,7 @@ export type LocusActionExecuteRequest = Readonly<{
   payload: JsonValue | undefined;
   retry: boolean;
   sourceTraceId?: string;
+  acquireExecutionActivity?: () => LocusDisposer;
   run: () => Promise<LocusActionTerminalOutcome>;
 }>;
 
@@ -311,11 +312,14 @@ export function make_locus_action_dedupe_store(
     };
     records.set(key, pending);
     executionsStarted += 1;
+    const releaseExecutionActivity = request.acquireExecutionActivity?.();
     void (async () => {
       try {
         settle(pending, await request.run());
       } catch {
         settle(pending, infrastructure_outcome());
+      } finally {
+        releaseExecutionActivity?.();
       }
     })();
     const outcome = await promise;

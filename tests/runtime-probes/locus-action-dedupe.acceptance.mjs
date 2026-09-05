@@ -716,6 +716,41 @@ await check('fenced transport cannot create a dedupe record', async () => {
     );
 });
 
+await check('fencing after admission preserves work and retention but suppresses old delivery', async () => {
+    const f = fixture();
+    const first = connect(f.host, 'post-admission-fence', { session: {} });
+    await first.client.session.create();
+    const original = first.client.action('gated', 43);
+    await f.entered.promise;
+    assert.equal(f.host.actionRequests.debug().pendingRequestCount, 1);
+    assert.equal(f.host.activity.snapshot().actionCount, 1);
+    const originalRequest = original.request;
+    const originalAttemptId = first.pair.clientSent.map(JSON.parse)
+        .findLast((message) => message.type === 'action').attemptId;
+    const second = connect(f.host, 'post-admission-fence', {
+        session: { credential: first.client.session.credential },
+    });
+    await second.client.session.reattach();
+    await assert.rejects(original);
+    assert.equal((await second.client.actionStatus(originalRequest.requestId)).state, 'pending');
+    const joined = second.client.retryAction(originalRequest);
+    f.gate.resolve();
+    const outcome = await joined;
+    assert.equal(outcome.delivery, 'joined');
+    assert.equal(outcome.completionRev, 1);
+    assert.deepEqual(f.host.map.snap(), { value: 43 });
+    assert.equal(f.executions(), 1);
+    assert.equal(f.host.actionRequests.debug().retainedTerminalCount, 1);
+    assert.equal(f.host.activity.snapshot().actionCount, 0);
+    const oldTerminalDelivery = first.pair.serverSent.map(JSON.parse).some((message) =>
+        message.attemptId === originalAttemptId && (message.type === 'ack' || message.type === 'error'));
+    assert.equal(oldTerminalDelivery, false);
+    const status = await second.client.actionStatus(originalRequest.requestId);
+    assert.equal(status.state, 'succeeded');
+    assert.equal(status.outcome.completionRev, outcome.completionRev);
+    assert.equal((await second.client.retryAction(originalRequest)).delivery, 'cached');
+});
+
 await check(
     'dedupe store disposal releases waiters and stays unavailable',
     async () => {

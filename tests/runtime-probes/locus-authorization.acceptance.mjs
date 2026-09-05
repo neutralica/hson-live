@@ -34,10 +34,10 @@ function socket_pair() {
     server: { send(raw) { serverSent.push(raw); for (const fn of clientListeners) fn(raw); }, close() {}, onMessage(fn) { serverListeners.add(fn); return () => serverListeners.delete(fn); }, onClose() { return () => {}; } },
   };
 }
-function connect(host, clientId, context) {
+function connect(host, clientId, context, options = {}) {
   const pair = socket_pair(); let request = 0, attempt = 0;
   host.connect(pair.server, context);
-  const client = hson.echo.create({ socket: pair.client, clientId, actionId: () => `${clientId}-request-${++request}`, actionAttemptId: () => `${clientId}-attempt-${++attempt}` });
+  const client = hson.echo.create({ socket: pair.client, clientId, actionId: () => `${clientId}-request-${++request}`, actionAttemptId: () => `${clientId}-attempt-${++attempt}`, ...options });
   client.connect(); return { client, pair };
 }
 function fixture(options = {}) {
@@ -108,6 +108,34 @@ await check("joining attempts authorize separately without cancelling the origin
   assert.equal((await b.retryAction(original.request)).error.code, "LOCUS_ACTION_FORBIDDEN"); assert.equal(f.executions(), 1);
   allow = true; const joined = b.retryAction(original.request); gate.resolve();
   const [first, second] = await Promise.all([original, joined]); assert.equal(first.delivery, "executed"); assert.equal(second.delivery, "joined"); assert.equal(calls, 3);
+});
+
+await check("replacement while asynchronous authorization is pending fences admission", async () => {
+  const authorization = deferred();
+  const f = fixture({ authorizeAction: () => authorization.promise });
+  const first = connect(f.host, "authorization-fence", undefined, { session: {} });
+  await first.client.session.create();
+  const original = first.client.action("set", { value: 19 });
+  const secondPair = socket_pair();
+  f.host.connect(secondPair.server);
+  const second = hson.echo.create({
+    socket: secondPair.client,
+    clientId: "authorization-fence",
+    session: { credential: first.client.session.credential },
+  });
+  second.connect();
+  await second.session.reattach();
+  await assert.rejects(original);
+  authorization.resolve(true);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(f.executions(), 0);
+  assert.equal(f.host.map.rev, 0);
+  assert.equal(f.host.actionRequests.debug().executionsStarted, 0);
+  assert.equal(f.host.actionRequests.debug().pendingRequestCount, 0);
+  assert.equal(f.host.actionRequests.debug().retainedTerminalCount, 0);
+  assert.equal(f.host.activity.snapshot().actionCount, 0);
+  assert.equal((await second.actionStatus(original.request.requestId)).state, "unknown");
 });
 
 await check("cached attempts reauthorize and policy decisions are not cached", async () => {
