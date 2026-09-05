@@ -91,7 +91,6 @@ function fakeReplicaLoaders(calls: { count: number }): EchoReplicaLoaders {
           failure: undefined,
           strategy: "current" as const,
           async recover() { status = "caught_up"; return result; },
-          onChange: () => () => {},
           dispose() { status = "disposed"; },
           debug: () => Object.freeze({
             status,
@@ -107,7 +106,6 @@ function fakeReplicaLoaders(calls: { count: number }): EchoReplicaLoaders {
             tailCommitsApplied: 0,
             liveCommitsApplied: 0,
             recoveryFailures: 0,
-            consumerNotifications: 0,
             observerFailures: 0,
           }),
         }),

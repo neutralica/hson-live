@@ -18,8 +18,6 @@ import {
 } from "./locus.hosted-multi-library.socket.js";
 import type { LocusHostedAggregateGateInput } from "./locus.hosted-multi-library.js";
 
-const DIRECT_ORIGIN = Object.freeze({ kind: "direct" as const });
-
 function establish_authority_identity(
   map: LiveMapLibraries,
   logicalMapId: string | undefined,
@@ -82,13 +80,14 @@ export function create_multi_library_locus_internal<
       actionSequence += 1;
       const aggregateContext = context as Readonly<{
         map: LiveMapLibraries;
+        origin: LocusMultiLibraryActionContext<TMap>["origin"];
         mutate: (mutation: (draft: unknown) => void) => Promise<void>;
       }>;
       const publicContext: LocusMultiLibraryActionContext<TMap> = Object.freeze({
         map: aggregateContext.map as TMap,
         mutate: async (mutation) => aggregateContext.mutate(mutation as (draft: unknown) => void),
         seq: actionSequence,
-        origin: DIRECT_ORIGIN,
+        origin: aggregateContext.origin,
         // Aggregate transport does not carry application events. Keep the
         // established action context callable without fabricating a stream.
         emitEvent: () => false,
@@ -119,6 +118,7 @@ export function create_multi_library_locus_internal<
     internal: Object.freeze({
       acquireActionActivity: () => activity.acquire("action"),
       acquireConnectionActivity: () => activity.acquire("connection"),
+      acquireRecoveryActivity: () => activity.acquire("recovery"),
     }),
   });
   const retainedSessionReleases = new Map<string, () => void>();

@@ -3,14 +3,11 @@
 import type {
   LocusClientActionMessage,
   LocusClientActionStatusMessage,
-  LocusClientHelloMessage,
   LocusClientMessage,
   LocusClientRecoverMessage,
   LocusClientSessionAttachMessage,
   LocusClientSessionCreateMessage,
   LocusClientSessionGoodbyeMessage,
-  LocusClientSubscribeMessage,
-  LocusClientUnsubscribeMessage,
   LocusError,
   LocusResult,
   LocusServerMessage,
@@ -539,18 +536,6 @@ function optional_string(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-function decode_hello_message(value: Readonly<Record<string, unknown>>): LocusResult<LocusClientHelloMessage> {
-  const clientId = optional_string(value.clientId);
-  if (!has_exact_keys(value, clientId === undefined ? ["type"] : ["type", "clientId"])) {
-    return fail("Malformed Locus hello message.");
-  }
-
-  return ok({
-    type: "hello",
-    ...(clientId ? { clientId } : {}),
-  });
-}
-
 function decode_action_message<TActions extends LocusActionPayloads>(value: Readonly<Record<string, unknown>>): LocusResult<LocusClientActionMessage<TActions>> {
   const id = optional_string(value.id);
   if (!id) return fail("Locus action message requires string id.");
@@ -600,16 +585,6 @@ function decode_action_status_message(value: Readonly<Record<string, unknown>>):
     return fail("Malformed Locus action-status request.", { code: "LOCUS_ACTION_REQUEST_ID_MALFORMED" });
   }
   return ok({ type: "action-status", id, clientId, requestId });
-}
-
-function decode_subscribe_message(value: Readonly<Record<string, unknown>>): LocusResult<LocusClientSubscribeMessage> {
-  if (!is_live_path(value.path)) return fail("Locus subscribe message requires path.");
-  return ok({ type: "subscribe", path: value.path });
-}
-
-function decode_unsubscribe_message(value: Readonly<Record<string, unknown>>): LocusResult<LocusClientUnsubscribeMessage> {
-  if (!is_live_path(value.path)) return fail("Locus unsubscribe message requires path.");
-  return ok({ type: "unsubscribe", path: value.path });
 }
 
 function decode_recover_message(value: Readonly<Record<string, unknown>>): LocusResult<LocusClientRecoverMessage> {
@@ -902,9 +877,7 @@ export function decode_locus_server_message(message: string): LocusResult<LocusS
     }
     if (value.type === "action-status") return decode_action_status_server_message(value);
     if (
-      value.type === "hello"
-      || value.type === "patch"
-      || value.type === "sync"
+      value.type === "patch"
       || value.type === "ack"
       || value.type === "error"
     ) {
@@ -922,11 +895,8 @@ export function decode_locus_message<TActions extends LocusActionPayloads = Locu
     if (!is_record(value)) return fail("Locus message must be an object.");
 
     const type = value.type;
-    if (type === "hello") return decode_hello_message(value);
     if (type === "action") return decode_action_message<TActions>(value);
     if (type === "action-status") return decode_action_status_message(value);
-    if (type === "subscribe") return decode_subscribe_message(value);
-    if (type === "unsubscribe") return decode_unsubscribe_message(value);
     if (type === "recover") return decode_recover_message(value);
     if (type === "session-create") return decode_session_create_message(value);
     if (type === "session-attach") return decode_session_attach_message(value);

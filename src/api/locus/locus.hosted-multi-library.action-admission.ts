@@ -29,6 +29,7 @@ export type LocusAggregateExternalActionAuthority<TActions extends LocusActionPa
   executeAction: (
     message: LocusClientActionMessage<TActions>,
     payload: JsonValue | undefined,
+    origin: LocusActionOrigin,
   ) => Promise<LocusActionTerminalOutcome>;
   acquireActionActivity: () => LocusDisposer;
 }>;
@@ -119,7 +120,7 @@ export async function admit_locus_aggregate_external_action<
   // is installed, aggregate authority work is independent of its transport.
   if (!attempt.attachmentCurrent()) return rejectStaleAttachment();
 
-  const run = () => authority.executeAction(message, authorized.payload);
+  const run = () => authority.executeAction(message, authorized.payload, attempt.origin);
   if (!stable) {
     const releaseActivity = authority.acquireActionActivity();
     try {

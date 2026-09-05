@@ -1,8 +1,6 @@
-import { is_Node } from "../../core/node-guards.js";
 import type { JsonValue } from "../../core/types.js";
 import type {
   LiveMapLibraries,
-  LivePath,
 } from "../../types/livemap.types.js";
 import type {
   LocusActionTerminalOutcome,
@@ -19,8 +17,6 @@ import type { EchoMapManagementLease } from "../../internal/echo-map-capability.
 import { decode_locus_server_message } from "../locus/locus.protocol.js";
 import { is_locus_json_value } from "../locus/locus.protocol.js";
 import { make_livemap_hosted_mirror_from_snapshot_internal } from "../livemap/livemap.libraries.js";
-import { node_to_json_value } from "../livemap/livemap.editor.js";
-import { decode_exact_hson_value } from "../livemap/livemap.document.view-state-codec.js";
 import {
   HOSTED_MAX_SNAPSHOT_BYTES,
   assert_hosted_snapshot_bound,
@@ -86,8 +82,6 @@ export type MultiLibraryEchoSocketClient = Readonly<{
   attachTransport: () => LocusDisposer;
   disconnect: () => void;
   recover: () => Promise<MultiLibraryEchoSocketRecovery>;
-  subscribe: (library: string, path: LivePath, listener: (value: JsonValue | undefined, revision: number) => void) => LocusDisposer;
-  unsubscribe: (library: string, path: LivePath) => void;
   action: (name: string, payload?: JsonValue) => Promise<LocusClientActionResult> & Readonly<{ request: EchoActionRequest }>;
   retryAction: (request: EchoActionRequest) => Promise<LocusClientActionResult> & Readonly<{ request: EchoActionRequest }>;
   actionStatus: (requestId: string) => Promise<EchoActionStatusResult>;
@@ -96,8 +90,6 @@ export type MultiLibraryEchoSocketClient = Readonly<{
   diagnostics: () => Readonly<{
     status: "idle" | "recovering" | "live" | "failed" | "closed";
     pendingLive: number;
-    pendingSync: number;
-    subscriptions: readonly Readonly<{ library: string; path: LivePath; revision?: number }>[];
   }>;
 }>;
 
@@ -128,18 +120,6 @@ export function create_multi_library_echo_socket_client_internal<
     throw new Error("Hosted aggregate socket Echo requires logicalMapId before bootstrap.");
   }
   const clientLogicalMapId = logicalMapId;
-  const subscriptions = new Map<string, Readonly<{
-    library: string;
-    path: LivePath;
-    listener: (value: JsonValue | undefined, revision: number) => void;
-    revision?: number;
-  }>>();
-  const pendingSync = new Map<string, Readonly<{
-    library: string;
-    path: LivePath;
-    revision: number;
-    value: JsonValue | undefined;
-  }>>();
   let status: "idle" | "recovering" | "live" | "failed" | "closed" = "idle";
   let connected = false;
   let stopMessage: LocusDisposer | undefined;
@@ -240,7 +220,6 @@ export function create_multi_library_echo_socket_client_internal<
     const active = recovery;
     recovery = undefined;
     liveRecovery = undefined;
-    pendingSync.clear();
     if (status === "recovering" || status === "live") status = "idle";
     active?.reject(error);
   }
@@ -257,7 +236,6 @@ export function create_multi_library_echo_socket_client_internal<
     status = "failed";
     replica.markFailed(error);
     interruptRecovery(error);
-    pendingSync.clear();
     for (const waiter of readyWaiters) waiter.reject(error);
     readyWaiters.clear();
   }
@@ -313,7 +291,6 @@ export function create_multi_library_echo_socket_client_internal<
     }
     status = "recovering";
     replica.markRecovering();
-    pendingSync.clear();
     const id = next("recover");
     const recoverySessionId = endpoint.session.sessionId;
     const recoverySessionEpoch = endpoint.session.epoch;
@@ -402,26 +379,10 @@ export function create_multi_library_echo_socket_client_internal<
       replica.markReady();
       recovery = undefined;
       liveRecovery = Object.freeze({ id: active.id, sessionId: active.sessionId, sessionEpoch: active.sessionEpoch });
-      flush_sync();
       active.resolve(Object.freeze({ outcome: active.outcome ?? "current", revision: message.throughRev }));
       if (endpoint.ready) {
         for (const waiter of [...readyWaiters]) waiter.resolve();
         readyWaiters.clear();
-      }
-      return;
-    }
-    if (message.type === "sync") {
-      if (!endpoint.ready || status !== "recovering" && status !== "live") return;
-      if (message.registryDigest !== registryDigest) throw new Error("Hosted subscription sync registry digest is incompatible.");
-      const key = subscription_key(message.library, message.path);
-      if (!subscriptions.has(key)) throw new Error("Hosted subscription sync has no matching library-qualified subscription.");
-      if (map === undefined || lastAppliedRev === undefined || message.revision > lastAppliedRev) {
-        if (status !== "recovering") throw new Error("Hosted subscription sync is ahead of the complete Echo replica.");
-        pendingSync.set(key, message);
-      } else if (status === "recovering") {
-        pendingSync.set(key, message);
-      } else {
-        publish_sync(key, message);
       }
       return;
     }
@@ -468,61 +429,6 @@ export function create_multi_library_echo_socket_client_internal<
     lastAppliedRev = replica.replayHosted(commit);
   }
 
-  function flush_sync(): void {
-    const items = [...pendingSync.entries()];
-    pendingSync.clear();
-    for (const [key, message] of items) {
-      if (lastAppliedRev === undefined || message.revision > lastAppliedRev) {
-        throw new Error("Hosted subscription sync remained ahead after recovery.");
-      }
-      publish_sync(key, message);
-    }
-  }
-
-  function publish_sync(
-    key: string,
-    message: Readonly<{ library: string; path: LivePath; revision: number; value: JsonValue | undefined }>,
-  ): void {
-    const current = subscriptions.get(key);
-    if (current === undefined) return;
-    if (current.revision !== undefined && message.revision < current.revision) return;
-    const library = map?.lib(message.library);
-    if (library === undefined || !("snap" in library)) throw new Error("Hosted sync Library is not an active data Library.");
-    const local = library.snap(message.path);
-    if (!same_json(local, message.value)) throw new Error("Hosted subscription sync does not match the complete Echo replica.");
-    subscriptions.set(key, Object.freeze({ ...current, revision: message.revision }));
-    current.listener(message.value, message.revision);
-  }
-
-  function subscribe(library: string, path: LivePath, listener: (value: JsonValue | undefined, revision: number) => void): LocusDisposer {
-    if (map === undefined || registryDigest === undefined || status !== "live") {
-      throw new Error("Hosted subscriptions require a live aggregate mirror.");
-    }
-    let selected;
-    try {
-      selected = map.lib(library);
-    } catch {
-      throw new Error(`Unknown hosted Library ${JSON.stringify(library)}.`);
-    }
-    if (!("snap" in selected)) {
-      throw new Error("Hosted document library subscriptions are not implemented for multi-library Locus.");
-    }
-    const stablePath = clone_path(path);
-    const key = subscription_key(library, stablePath);
-    if (subscriptions.has(key)) throw new Error("Hosted library-qualified subscription already exists.");
-    subscriptions.set(key, Object.freeze({ library, path: stablePath, listener }));
-    send(Object.freeze({ type: "subscribe", library, path: stablePath, registryDigest }));
-    return () => unsubscribe(library, stablePath);
-  }
-
-  function unsubscribe(library: string, path: LivePath): void {
-    if (registryDigest === undefined) return;
-    const stablePath = clone_path(path);
-    const key = subscription_key(library, stablePath);
-    if (!subscriptions.delete(key)) return;
-    send(Object.freeze({ type: "unsubscribe", library, path: stablePath, registryDigest }));
-  }
-
   function wait_until_ready(): Promise<void> {
     if (status === "live" && endpoint.ready) return Promise.resolve();
     if (status === "closed") return Promise.reject(new Error("Hosted aggregate socket Echo is closed."));
@@ -547,8 +453,6 @@ export function create_multi_library_echo_socket_client_internal<
     attachTransport,
     disconnect,
     recover: recover_wire,
-    subscribe,
-    unsubscribe,
     action: action as MultiLibraryEchoSocketClient["action"],
     retryAction: retryAction as MultiLibraryEchoSocketClient["retryAction"],
     actionStatus,
@@ -563,19 +467,11 @@ export function create_multi_library_echo_socket_client_internal<
       while (compositionDisposers.length > 0) compositionDisposers.pop()?.();
       for (const waiter of readyWaiters) waiter.reject(error);
       readyWaiters.clear();
-      pendingSync.clear();
-      subscriptions.clear();
       replica.dispose();
     },
     diagnostics: () => Object.freeze({
       status,
       pendingLive: 0,
-      pendingSync: pendingSync.size,
-      subscriptions: Object.freeze([...subscriptions.values()].map((subscription) => Object.freeze({
-        library: subscription.library,
-        path: clone_path(subscription.path),
-        ...(subscription.revision === undefined ? {} : { revision: subscription.revision }),
-      }))),
     }),
   });
 }
@@ -594,8 +490,7 @@ type DecodedServerMessage =
   | Readonly<{ type: "recovery-snapshot"; id: string; snapshot: HostedAggregateSnapshot }>
   | Readonly<{ type: "recovery-commit"; id: string; commit: LocusHostedAggregateWireEnvelope }>
   | Readonly<{ type: "commit"; id: string; commit: LocusHostedAggregateWireEnvelope }>
-  | Readonly<{ type: "recovery-caught-up"; id: string; logicalMapId: string; incarnationId: string; registryDigest: string; throughRev: number }>
-  | Readonly<{ type: "sync"; registryDigest: string; revision: number; library: string; path: LivePath; value: JsonValue | undefined }>;
+  | Readonly<{ type: "recovery-caught-up"; id: string; logicalMapId: string; incarnationId: string; registryDigest: string; throughRev: number }>;
 
 function is_endpoint_server_message(message: DecodedServerMessage): message is EchoEndpointServerMessage {
   return message.type === "ack"
@@ -697,36 +592,7 @@ function decode_server_message(raw: string): DecodedServerMessage {
     if (id === undefined || logicalMapId === undefined || incarnationId === undefined || registryDigest === undefined || throughRev === undefined) throw new Error("Hosted recovery caught-up is malformed.");
     return Object.freeze({ type: "recovery-caught-up", id, logicalMapId, incarnationId, registryDigest, throughRev });
   }
-  if (value.type === "sync") {
-    exact_keys(value, ["type", "format", "registryDigest", "revision", "library", "path", "present", "payload"], "Hosted subscription sync");
-    const registryDigest = required_digest(value.registryDigest);
-    const revision = required_revision(value.revision);
-    const library = required_string(value.library);
-    if (registryDigest === undefined || revision === undefined || library === undefined || !is_live_path(value.path) || typeof value.present !== "boolean" || typeof value.payload !== "string") throw new Error("Hosted subscription sync is malformed.");
-    let decoded: JsonValue | undefined;
-    if (value.present) {
-      const exact = decode_exact_hson_value(value.payload);
-      decoded = is_Node(exact) ? node_to_json_value(exact) : exact;
-    } else if (value.payload !== "") {
-      throw new Error("Hosted absent subscription sync must not carry a payload.");
-    }
-    return Object.freeze({ type: "sync", registryDigest, revision, library, path: clone_path(value.path), value: decoded });
-  }
   throw new Error("Hosted aggregate server message type is unknown.");
-}
-
-function same_json(left: JsonValue | undefined, right: JsonValue | undefined): boolean {
-  if (left === right) return true;
-  if (typeof left !== "object" || left === null || typeof right !== "object" || right === null) return false;
-  if (Array.isArray(left) || Array.isArray(right)) {
-    return Array.isArray(left) && Array.isArray(right)
-      && left.length === right.length
-      && left.every((item, index) => same_json(item, right[index]));
-  }
-  const leftKeys = Object.keys(left);
-  const rightKeys = Object.keys(right);
-  return leftKeys.length === rightKeys.length
-    && leftKeys.every((key) => Object.hasOwn(right, key) && same_json(left[key], right[key]));
 }
 
 function bounded(value: number | undefined, fallback: number, label: string, ceiling: number): number {
@@ -770,18 +636,6 @@ function required_revision(value: unknown): number | undefined {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 
-function is_live_path(value: unknown): value is LivePath {
-  return Array.isArray(value) && value.every((part) => typeof part === "string"
-    || (typeof part === "number" && Number.isSafeInteger(part) && part >= 0));
-}
-
-function clone_path(path: LivePath): LivePath {
-  return Object.freeze([...path]);
-}
-
-function subscription_key(library: string, path: LivePath): string {
-  return `${library}\u0000${JSON.stringify(path)}`;
-}
 
 function is_snapshot_reason(value: unknown): value is HostedSnapshotReason {
   return value === "no_usable_revision" || value === "incarnation_mismatch" || value === "registry_mismatch" || value === "history_unavailable";

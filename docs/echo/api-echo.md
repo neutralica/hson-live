@@ -65,8 +65,8 @@ hierarchy. Direct public mutation rejects with the managed-mutation authority
 error; only accepted canonical replay mutates an Echo-governed map.
 
 Replica state observation belongs to LiveMap commit/sub/feed/watch facilities.
-Echo has no topology-aware `subscribe`/`unsubscribe`, public `seq`, or
-`onEvent` surface.
+`EchoRecovery` has no `onChange` observation member. Echo has no topology-aware
+`subscribe`/`unsubscribe`, public `seq`, or `onEvent` surface.
 
 Bootstrap continuation is `create_locus_bootstrap_echo(...)`. Its
 `LocusBootstrapEcho.echo` owns the live continuation and

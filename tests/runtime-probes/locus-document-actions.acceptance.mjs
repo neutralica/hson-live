@@ -92,8 +92,8 @@ async function assert_single_hosted_commit({ host, client, action, payload, veri
   client.map.commits.observe((event) => {
     if (event.kind === "commit" && event.origin === "replay") replayed += 1;
   });
-  client.recovery.onChange((event) => {
-    if (event.kind === "commit") clientChanges += 1;
+  client.map.commits.observe((event) => {
+    if (event.kind === "commit" && event.origin === "replay") clientChanges += 1;
   });
   const beforeRev = host.map.rev;
   const beforeHistory = host.stream.history.debug().retainedCommitCount;

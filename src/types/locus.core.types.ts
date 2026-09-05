@@ -605,20 +605,6 @@ export type EchoRecoveryFailure = Readonly<{
   cause?: unknown;
 }>;
 
-export type EchoRecoveryChange<
-  TMap extends LiveMapAuthority | LiveMapLibraries = LiveMap<JsonValue | undefined>,
-> = Readonly<{
-  kind: "commit" | "snapshot";
-  logicalMapId: LocusLogicalMapId;
-  incarnationId: LocusIncarnationId;
-  rev: number;
-  map: TMap;
-}>;
-
-export type EchoRecoveryChangeListener<
-  TMap extends LiveMapAuthority | LiveMapLibraries = LiveMap<JsonValue | undefined>,
-> = (change: EchoRecoveryChange<TMap>) => void;
-
 export type EchoRecoveryResult = Readonly<{
   strategy: Exclude<EchoRecoveryStrategy, "reject">;
   sessionId: LocusSessionId;
@@ -642,7 +628,6 @@ export type EchoRecoveryDiagnostics = Readonly<{
   tailCommitsApplied: number;
   liveCommitsApplied: number;
   recoveryFailures: number;
-  consumerNotifications: number;
   observerFailures: number;
 }>;
 
@@ -657,7 +642,6 @@ export type EchoRecovery<
   readonly failure: EchoRecoveryFailure | undefined;
   readonly strategy: EchoRecoveryStrategy | undefined;
   recover: () => Promise<EchoRecoveryResult>;
-  onChange: (listener: EchoRecoveryChangeListener<TMap>) => LocusDisposer;
   dispose: LocusDisposer;
   debug: () => EchoRecoveryDiagnostics;
 }>;

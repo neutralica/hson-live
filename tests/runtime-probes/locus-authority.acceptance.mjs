@@ -359,44 +359,6 @@ await check("Host history advances before fallible external publication", async 
   host.dispose();
 });
 
-await check("hello is current-only while live subscribe sync and action seq remain useful", async () => {
-  const host = hson.locus.create({
-    state: { value: 0 },
-    actions: {
-      set: async (context, payload) => {
-        await context.mutate((draft) => draft.set(["value"], payload));
-      },
-    },
-  });
-  const first = test_socket();
-  host.connect(first.socket);
-  first.receive({ type: "hello", clientId: "first" });
-  first.receive({ type: "subscribe", path: ["value"] });
-  assert.deepEqual(first.sent.map((message) => message.type), ["hello", "sync"]);
-  assert.equal(first.sent[1].value, 0);
-
-  const response = await host.dispatch_action({ type: "action", id: "set-one", name: "set", payload: 1 });
-  assert.equal(response.type, "ack");
-  assert.deepEqual([host.seq, host.map.rev, host.stream.headRev], [1, 1, 1]);
-  first.close();
-  await host.mutate((draft) => draft.set(["value"], 2));
-  assert.deepEqual([host.seq, host.map.rev, host.stream.headRev], [1, 2, 2]);
-
-  const second = test_socket();
-  host.connect(second.socket);
-  second.receive({ type: "hello", clientId: "second" });
-  assert.deepEqual(second.sent.map((message) => message.type), ["hello"]);
-  assert.deepEqual(second.sent[0].snapshot, { value: 2 });
-  second.receive({ type: "subscribe", path: ["value"] });
-  assert.deepEqual(second.sent.map((message) => message.type), ["hello", "sync"]);
-  assert.equal(second.sent[1].value, 2);
-
-  const legacy = hson.locus.protocol.decode(JSON.stringify({ type: "hello", clientId: "legacy", lastSeq: 0 }));
-  assert.equal(legacy.ok, false);
-  second.close();
-  host.dispose();
-});
-
 await check("authority traces expose lifecycle metadata without mutation content", async () => {
   const trace = create_live_trace_collector({ capacity: 32 });
   const map = hson.liveMap.fromJson({ secret: "do-not-trace" });

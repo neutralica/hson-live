@@ -98,6 +98,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     libraries: readonly LiveMapLibraryIdentity[];
     /** Libraries whose canonical roots actually changed at this boundary. */
     changedLibraries: readonly LiveMapLibraryIdentity[];
+    continuity: "same-epoch" | "new-epoch";
   }>) => void) => () => void;
   watch: (
     library: LiveMapLibraryIdentity,

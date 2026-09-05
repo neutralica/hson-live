@@ -505,8 +505,8 @@ check("connection paths select applications without interpreting Locus topology"
   const host = await start_node_application_host({ port: 0, applications: [application] });
   const websocket = await open_websocket(`${host.url}/rooms?locus=room-b`);
   const message = next_message(websocket);
-  websocket.send(JSON.stringify({ type: "hello" }));
-  assert.equal(JSON.parse((await message).toString()).type, "hello");
+  websocket.send(JSON.stringify({ type: "session-create", id: "host-session" }));
+  assert.equal(JSON.parse((await message).toString()).type, "session-created");
   assert.deepEqual(selections, ["room-b"]);
   assert.equal(loci.get("room-a")?.stream.logicalMapId, "logical-a");
   assert.equal(loci.get("room-b")?.stream.logicalMapId, "logical-b");

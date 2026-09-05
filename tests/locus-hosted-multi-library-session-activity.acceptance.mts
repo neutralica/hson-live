@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonLocus, type HsonSchema } from "../src/index.ts";
 import { create_livehost_locus_registry_internal } from "../src/api/livehost/services/livehost.authority-registry.ts";
+import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.hosted-multi-library.socket.ts";
+import { make_locus_activity_controller } from "../src/api/locus/locus.activity.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -121,6 +123,144 @@ function create_session(socket: ReturnType<typeof socket_fixture>, id = "session
   socket.message({ type: "session-create", id });
   return created_credential(socket);
 }
+
+async function next_turn(): Promise<void> {
+  await new Promise<void>((resolve) => setImmediate(resolve));
+}
+
+await check("aggregate recovery activity releases on success", async () => {
+  const entered = deferred();
+  const release = deferred();
+  const activity = make_locus_activity_controller();
+  const server = create_locus_hosted_aggregate_socket_internal({
+    map: make_map(),
+    internal: {
+      afterRecoveryCut: async () => { entered.resolve(); await release.promise; },
+      acquireRecoveryActivity: () => activity.acquire("recovery"),
+    },
+  });
+  const socket = socket_fixture();
+  server.connect(socket.socket);
+  create_session(socket);
+  socket.message({ type: "recover", id: "recover-success", logicalMapId: server.logicalMapId });
+  await entered.promise;
+  assert.deepEqual(activity.public.snapshot(), {
+    state: "active", connectionCount: 0, retainedSessionCount: 0, actionCount: 0,
+    recoveryCount: 1, mutationCount: 0, persistenceCount: 0, blockerCount: 1, blockers: ["recovery"],
+  });
+  release.resolve();
+  await next_turn();
+  assert.equal(activity.public.snapshot().recoveryCount, 0);
+  server.dispose();
+  activity.dispose();
+});
+
+await check("aggregate recovery activity releases on failure", async () => {
+  const entered = deferred();
+  const release = deferred();
+  const activity = make_locus_activity_controller();
+  const server = create_locus_hosted_aggregate_socket_internal({
+    map: make_map(),
+    internal: {
+      afterRecoveryCut: async () => { entered.resolve(); await release.promise; throw new Error("forced recovery failure"); },
+      acquireRecoveryActivity: () => activity.acquire("recovery"),
+    },
+  });
+  const socket = socket_fixture();
+  server.connect(socket.socket);
+  create_session(socket);
+  socket.message({ type: "recover", id: "recover-failure", logicalMapId: server.logicalMapId });
+  await entered.promise;
+  assert.equal(activity.public.snapshot().recoveryCount, 1);
+  release.resolve();
+  await next_turn();
+  assert.equal(activity.public.snapshot().recoveryCount, 0);
+  assert.equal(socket.sent.some((message) => message.type === "error" && message.id === "recover-failure"), true);
+  server.dispose();
+  activity.dispose();
+});
+
+await check("aggregate recovery activity releases on disconnect", async () => {
+  const entered = deferred();
+  const release = deferred();
+  const activity = make_locus_activity_controller();
+  const server = create_locus_hosted_aggregate_socket_internal({
+    map: make_map(),
+    internal: {
+      afterRecoveryCut: async () => { entered.resolve(); await release.promise; },
+      acquireRecoveryActivity: () => activity.acquire("recovery"),
+    },
+  });
+  const socket = socket_fixture();
+  server.connect(socket.socket);
+  create_session(socket);
+  socket.message({ type: "recover", id: "recover-disconnect", logicalMapId: server.logicalMapId });
+  await entered.promise;
+  assert.equal(activity.public.snapshot().recoveryCount, 1);
+  socket.close();
+  assert.equal(activity.public.snapshot().recoveryCount, 0);
+  release.resolve();
+  await next_turn();
+  assert.equal(activity.public.snapshot().recoveryCount, 0);
+  server.dispose();
+  activity.dispose();
+});
+
+await check("aggregate recovery activity releases when the session attachment is fenced", async () => {
+  const entered = deferred();
+  const release = deferred();
+  const activity = make_locus_activity_controller();
+  const server = create_locus_hosted_aggregate_socket_internal({
+    map: make_map(),
+    sessions: { credential: () => "aggregate-recovery-fence-credential" },
+    internal: {
+      afterRecoveryCut: async () => { entered.resolve(); await release.promise; },
+      acquireRecoveryActivity: () => activity.acquire("recovery"),
+    },
+  });
+  const first = socket_fixture();
+  server.connect(first.socket);
+  const credential = create_session(first);
+  first.message({ type: "recover", id: "recover-fenced", logicalMapId: server.logicalMapId });
+  await entered.promise;
+  assert.equal(activity.public.snapshot().recoveryCount, 1);
+  const replacement = socket_fixture();
+  server.connect(replacement.socket);
+  replacement.message({ type: "session-attach", id: "attach-replacement", credential });
+  assert.equal(activity.public.snapshot().recoveryCount, 0);
+  assert.equal(first.sent.some((message) => message.type === "session-fenced"), true);
+  release.resolve();
+  await next_turn();
+  assert.equal(activity.public.snapshot().recoveryCount, 0);
+  server.dispose();
+  activity.dispose();
+});
+
+await check("aggregate recovery activity releases idempotently on authority disposal", async () => {
+  const entered = deferred();
+  const release = deferred();
+  const activity = make_locus_activity_controller();
+  const server = create_locus_hosted_aggregate_socket_internal({
+    map: make_map(),
+    internal: {
+      afterRecoveryCut: async () => { entered.resolve(); await release.promise; },
+      acquireRecoveryActivity: () => activity.acquire("recovery"),
+    },
+  });
+  const socket = socket_fixture();
+  server.connect(socket.socket);
+  create_session(socket);
+  socket.message({ type: "recover", id: "recover-dispose", logicalMapId: server.logicalMapId });
+  await entered.promise;
+  assert.equal(activity.public.snapshot().recoveryCount, 1);
+  server.dispose();
+  server.dispose();
+  assert.equal(activity.public.snapshot().recoveryCount, 0);
+  release.resolve();
+  await next_turn();
+  assert.equal(activity.public.snapshot().recoveryCount, 0);
+  activity.dispose();
+});
 
 await check("disconnect retains one resumable session blocker until deterministic grace expiry", () => {
   const clock = controlled_schedule();

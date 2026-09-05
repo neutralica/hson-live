@@ -4,7 +4,6 @@ import type { LiveMapLibraries } from "../../types/livemap.types.js";
 import type {
   Echo,
   EchoRecoveryDiagnostics,
-  EchoRecoveryChangeListener,
   EchoRecoveryFailure,
   EchoRecoveryOptions,
   EchoRecoveryStatus,
@@ -145,20 +144,6 @@ export function create_multi_library_echo<
         throw cause;
       }
     },
-    onChange(listener: EchoRecoveryChangeListener<TMap>) {
-      if (recoveryDisposed) return () => {};
-      return options.map.commits.observe((commit) => {
-        const incarnationId = endpoint.incarnationId;
-        if (incarnationId === undefined) return;
-        listener(Object.freeze({
-          kind: "commit",
-          logicalMapId: options.recovery.logicalMapId,
-          incarnationId,
-          rev: commit.rev,
-          map: options.map,
-        }));
-      });
-    },
     dispose() {
       if (recoveryDisposed) return;
       recoveryDisposed = true;
@@ -179,7 +164,6 @@ export function create_multi_library_echo<
         tailCommitsApplied: 0,
         liveCommitsApplied: 0,
         recoveryFailures: recoveryFailure === undefined ? 0 : 1,
-        consumerNotifications: 0,
         observerFailures: 0,
       });
     },

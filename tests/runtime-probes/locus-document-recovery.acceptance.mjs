@@ -770,31 +770,22 @@ await check("document history gap falls back to a same-mode snapshot", async () 
   assert.equal(client.map.document.byQuid("000000009")?.$_attrs?.title, "two");
 });
 
-await check("projected subscription requests are rejected on document authorities without stream damage", async () => {
+await check("retired synchronization requests are rejected without stream damage", async () => {
   const authority = element(`<main/>`);
   const host = hson.locus.create({ map: authority, logicalMapId: "document-subscription-gate" });
   const pair = socket_pair();
   host.connect(pair.server);
   const before = host.stream.history.debug();
-  pair.client.send(JSON.stringify({ type: "subscribe", path: [] }));
-  await Promise.resolve();
-  const response = pair.serverSent.map(JSON.parse).at(-1);
-  assert.equal(response.type, "error");
-  assert.equal(response.error.code, "LOCUS_PROJECTED_SUBSCRIPTION_UNSUPPORTED");
+  for (const request of [{ type: "hello" }, { type: "subscribe", path: [] }, { type: "unsubscribe", path: [] }]) {
+    pair.client.send(JSON.stringify(request));
+    await Promise.resolve();
+    const response = pair.serverSent.map(JSON.parse).at(-1);
+    assert.equal(response.type, "error");
+    assert.match(response.error.message, /unknown.*message type/i);
+  }
   assert.equal(authority.rev, 0);
   assert.equal(host.stream.headRev, 0);
   assert.deepEqual(host.stream.history.debug(), before);
-});
-
-await check("legacy projected hello is classified as recovery-required for document authorities", async () => {
-  const host = hson.locus.create({ map: element(`<main/>`) });
-  const pair = socket_pair();
-  host.connect(pair.server);
-  pair.client.send(JSON.stringify({ type: "hello" }));
-  await Promise.resolve();
-  const response = pair.serverSent.map(JSON.parse).at(-1);
-  assert.equal(response.type, "error");
-  assert.equal(response.error.code, "LOCUS_DOCUMENT_RECOVERY_REQUIRED");
 });
 
 await check("document tracing summarizes domain, origin, mode, revision, and recovery material without content", async () => {

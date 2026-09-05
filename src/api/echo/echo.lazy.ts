@@ -3,7 +3,6 @@ import type {
   Echo,
   EchoOptions,
   EchoRecovery,
-  EchoRecoveryChangeListener,
   EchoRecoveryDiagnostics,
   EchoRecoveryFailure,
   EchoRecoveryOptions,
@@ -96,7 +95,6 @@ function initialDiagnostics(
     tailCommitsApplied: 0,
     liveCommitsApplied: 0,
     recoveryFailures: failure === undefined ? 0 : 1,
-    consumerNotifications: 0,
     observerFailures: 0,
   });
 }
@@ -152,8 +150,6 @@ export function create_lazy_replica_echo_internal<
     register_echo_document_authority(map, deferred.authority);
     return Object.freeze({ map, ...deferred });
   });
-  const listeners = new Set<EchoRecoveryChangeListener<TMap>>();
-  const listenerDisposers = new Map<EchoRecoveryChangeListener<TMap>, LocusDisposer>();
   let strategy: ReplicaStrategy<TMap, TActions> | undefined;
   let initialization: Promise<ReplicaStrategy<TMap, TActions>> | undefined;
   let pendingRecovery = false;
@@ -182,9 +178,6 @@ export function create_lazy_replica_echo_internal<
         }
         const created = createReplica<TMap, TActions>(options, Object.freeze({ connection, management }));
         strategy = created;
-        for (const listener of listeners) {
-          listenerDisposers.set(listener, created.recovery.onChange(listener));
-        }
         return created;
       })
       .catch((cause: unknown) => {
@@ -273,23 +266,10 @@ export function create_lazy_replica_echo_internal<
     get failure(): EchoRecoveryFailure | undefined { return strategy?.recovery.failure ?? shellFailure; },
     get strategy(): EchoRecoveryStrategy | undefined { return strategy?.recovery.strategy; },
     recover,
-    onChange(listener: EchoRecoveryChangeListener<TMap>): LocusDisposer {
-      if (recoveryDisposed) return () => {};
-      listeners.add(listener);
-      if (strategy !== undefined) listenerDisposers.set(listener, strategy.recovery.onChange(listener));
-      return () => {
-        listeners.delete(listener);
-        listenerDisposers.get(listener)?.();
-        listenerDisposers.delete(listener);
-      };
-    },
     dispose(): void {
       if (recoveryDisposed) return;
       recoveryDisposed = true;
       shellStatus = "disposed";
-      for (const disposeListener of listenerDisposers.values()) disposeListener();
-      listenerDisposers.clear();
-      listeners.clear();
       strategy?.recovery.dispose();
     },
     debug(): EchoRecoveryDiagnostics {
@@ -313,9 +293,6 @@ export function create_lazy_replica_echo_internal<
       disposed = true;
       recoveryDisposed = true;
       shellStatus = "disposed";
-      for (const disposeListener of listenerDisposers.values()) disposeListener();
-      listenerDisposers.clear();
-      listeners.clear();
       if (strategy === undefined) management.release();
       else strategy.dispose();
       for (const deferred of deferredDocumentAuthorities) {

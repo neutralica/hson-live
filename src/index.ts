@@ -155,12 +155,6 @@ export {
     LocusRecoveryError,
 } from "./api/locus/locus.error.js";
 export { EchoRecoveryError, EchoSessionError } from "./api/echo/echo.error.js";
-export {
-    make_locus_sync_manager,
-    type LocusSyncManager,
-    type LocusSyncSend,
-    type LocusSyncSession,
-} from "./api/locus/locus.sync.js";
 export { make_locus_canonical_stream } from "./api/locus/locus.history.js";
 export { make_locus_recovery_planner } from "./api/locus/locus.recovery.js";
 export { decode_locus_message, decode_locus_server_message, encode_locus_message } from "./api/locus/locus.protocol.js";

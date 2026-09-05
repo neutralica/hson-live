@@ -8,7 +8,7 @@ import type {
   LiveMapLibraries,
   LivePath,
 } from "../../types/livemap.types.js";
-import type { LocusClientActionMessage } from "../../types/locus.types.js";
+import type { LocusActionOrigin, LocusClientActionMessage } from "../../types/locus.types.js";
 import {
   internal_livemap_aggregate_authority,
   type InternalLiveMapAggregateAuthority,
@@ -76,6 +76,7 @@ export type LocusHostedAggregateDraft = Readonly<{
 
 export type LocusHostedAggregateActionContext = Readonly<{
   map: LiveMapLibraries;
+  origin: LocusActionOrigin;
   /**
    * Add work to this action's one aggregate candidate. Nothing becomes visible
    * until the action returns and the single prepared transition is accepted.
@@ -113,7 +114,7 @@ export type LocusHostedAggregate = Readonly<{
   readonly registryDigest: string;
   readonly rev: number;
   mutate: (mutation: (draft: LocusHostedAggregateDraft) => void | Promise<void>) => Promise<HostedAggregateCommit | undefined>;
-  dispatch_action: (name: string, payload?: JsonValue, message?: LocusClientActionMessage) => Promise<JsonValue | void>;
+  dispatch_action: (name: string, payload?: JsonValue, message?: LocusClientActionMessage, origin?: LocusActionOrigin) => Promise<JsonValue | void>;
   /** @internal Ordered non-mutation barrier shared with aggregate mutations. */
   run_exclusive: <TResult>(operation: () => TResult | Promise<TResult>) => Promise<TResult>;
   on_wire: (listener: (wire: string) => void) => () => void;
@@ -143,6 +144,7 @@ export function create_locus_hosted_aggregate_internal(
   const listeners = new Set<(wire: string) => void>();
   let disposed = false;
   let tail = Promise.resolve();
+  const directOrigin: LocusActionOrigin = Object.freeze({ kind: "direct" });
 
   aggregate.claimManagement(owner);
 
@@ -212,12 +214,13 @@ export function create_locus_hosted_aggregate_internal(
     async mutate(mutation) {
       return (await enqueue(mutation)).commit;
     },
-    async dispatch_action(name, payload, message) {
+    async dispatch_action(name, payload, message, origin = directOrigin) {
       const action = options.actions?.[name];
       if (action === undefined) throw new Error(`Unknown hosted aggregate Locus action: ${name}`);
       return (await enqueue(async (draft) => {
         const context: LocusHostedAggregateActionContext = Object.freeze({
           map: options.map,
+          origin,
           mutate: async (mutation) => { mutation(draft); },
         });
         return action(context, payload, message);

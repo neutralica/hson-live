@@ -7,8 +7,6 @@ export type {
   EchoActionStatusResult,
   EchoOptions,
   EchoRecovery,
-  EchoRecoveryChange,
-  EchoRecoveryChangeListener,
   EchoRecoveryCursor,
   EchoRecoveryDiagnostics,
   EchoRecoveryFailure,

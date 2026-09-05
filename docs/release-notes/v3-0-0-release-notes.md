@@ -191,15 +191,11 @@ The host:
 Actions provide a controlled alternative to allowing clients to mutate
 hosted state directly.
 
-### Sessions and subscriptions
+### Sessions
 
-Connected sessions can subscribe to selected state paths.
-
-Subscriptions publish an immediate current value and later publish
-changes affecting the subscribed region.
-
-Session ownership controls cleanup of subscriptions, pending requests,
-and connection-local resources.
+Session ownership controls cleanup of pending requests and connection-local
+resources. Replica state observation is provided by LiveMap rather than the
+retired Locus path-subscription protocol.
 
 ### Events versus state
 

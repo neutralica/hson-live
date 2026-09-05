@@ -54,7 +54,34 @@ function socket_pair() {
   return { client, server, clientSent, serverSent };
 }
 
-function fixture(trace, identity = {}) {
+function normalized_protocol_records(records) {
+  const dynamicKeys = new Set(["id", "requestId", "attemptId", "sessionId", "credential"]);
+  const values = new Map();
+  return records.map((record) => {
+    const normalized = { ...record };
+    for (const key of dynamicKeys) {
+      if (typeof normalized[key] !== "string") continue;
+      let keyed = values.get(key);
+      if (keyed === undefined) {
+        keyed = new Map();
+        values.set(key, keyed);
+      }
+      let token = keyed.get(normalized[key]);
+      if (token === undefined) {
+        token = `<${key}:${keyed.size + 1}>`;
+        keyed.set(normalized[key], token);
+      }
+      normalized[key] = token;
+    }
+    return normalized;
+  });
+}
+
+function normalized_protocol_messages(messages) {
+  return normalized_protocol_records(messages.map((raw) => JSON.parse(raw)));
+}
+
+async function fixture(trace) {
   const pair = socket_pair();
   const host = hson.locus.create({
     state: { value: 0 },
@@ -89,19 +116,20 @@ function fixture(trace, identity = {}) {
   const client = hson.echo.create({
     socket: pair.client,
     clientId: "trace-client",
-    actionId: identity.actionId ?? (() => "request-1"),
-    actionAttemptId: identity.actionAttemptId ?? (() => "attempt-1"),
   });
   client.connect();
+  await client.session.create();
   return { host, client, pair };
 }
 
 async function run_success(trace) {
-  const f = fixture(trace);
-  const result = await f.client.action("update", { value: 2, secret: "payload-secret" });
+  const f = await fixture(trace);
+  const action = f.client.action("update", { value: 2, secret: "payload-secret" });
+  const result = await action;
   return {
     ...f,
     result,
+    request: action.request,
     state: f.host.map.snap(),
     rev: f.host.map.rev,
     history: f.host.stream.history.replay_after(0, f.host.stream.headRev),
@@ -127,8 +155,7 @@ await check("successful remote action emits ordered redacted lifecycle events", 
   const traceId = actionRoot?.traceId;
   assert.ok(traceId);
   assert.match(traceId, /^locus-trace-[a-z0-9]+-[a-z0-9]+$/);
-  assert.notEqual(traceId, "attempt-1");
-  assert.notEqual(traceId, "request-1");
+  assert.notEqual(traceId, traced.request.requestId);
   const actionEvents = events.filter((event) => event.traceId === traceId);
   assert.deepEqual(actionEvents.map((event) => event.sequence), actionEvents.map((_, index) => index + 1));
   const phases = actionEvents.map((event) => `${event.phase}:${event.status}`);
@@ -142,7 +169,6 @@ await check("successful remote action emits ordered redacted lifecycle events", 
     "handler.execute:success",
     "state.transition:event",
     "response.dispatch:success",
-    "subscription.publication:success",
     "action.execute:success",
   ]) assert.ok(phases.includes(expected), `missing ${expected}`);
 
@@ -154,8 +180,8 @@ await check("successful remote action emits ordered redacted lifecycle events", 
     logicalMapId: "trace-map",
     incarnationId: "trace-incarnation",
     mapMode: "data-object",
-    requestId: "request-1",
-    attemptId: "attempt-1",
+    requestId: traced.request.requestId,
+    attemptId: actionRoot.details.attemptId,
   });
   const transition = actionEvents.find((event) => event.phase === "state.transition");
   assert.deepEqual(transition?.details, {
@@ -172,8 +198,8 @@ await check("successful remote action emits ordered redacted lifecycle events", 
   assert.ok(events.indexOf(publication) < events.indexOf(transition));
   for (const event of [creation, publication]) {
     assert.equal(event?.details.sourceTraceId, traceId);
-    assert.equal(event?.details.requestId, "request-1");
-    assert.equal(event?.details.attemptId, "attempt-1");
+    assert.equal(event?.details.requestId, traced.request.requestId);
+    assert.equal(event?.details.attemptId, actionRoot.details.attemptId);
     assert.equal(event?.details.sourceAction, "update");
     assert.equal(event?.details.logicalMapId, "trace-map");
     assert.equal(event?.details.incarnationId, "trace-incarnation");
@@ -205,7 +231,7 @@ await check("successful remote action emits ordered redacted lifecycle events", 
 
 await check("unchanged action stays in its action trace without a fake commit", async () => {
   const collector = create_live_trace_collector({ capacity: 64 });
-  const f = fixture(collector);
+  const f = await fixture(collector);
   const result = await f.client.action("unchanged");
   assert.equal(result.type, "ack");
   assert.equal(f.host.map.rev, 0);
@@ -225,7 +251,7 @@ await check("unchanged action stays in its action trace without a fake commit", 
 
 await check("publication failure retains action causation and emits one aggregate failure", async () => {
   const collector = create_live_trace_collector({ capacity: 64 });
-  const f = fixture(collector);
+  const f = await fixture(collector);
   f.host.stream.on_commit(() => { throw new Error("observer-secret"); });
   const result = await f.client.action("update", { value: 4, secret: "publication-secret" });
   assert.equal(result.type, "ack");
@@ -255,18 +281,16 @@ await check("overlapping async actions keep commit causation isolated", async ()
     },
   });
   host.connect(pair.server);
-  let request = 0;
-  let attempt = 0;
   const client = hson.echo.create({
     socket: pair.client,
     clientId: "overlap-client",
-    actionId: () => `overlap-request-${++request}`,
-    actionAttemptId: () => `overlap-attempt-${++attempt}`,
   });
   client.connect();
+  await client.session.create();
   const slow = client.action("slow");
   const joined = client.retryAction(slow.request);
-  const fast = await client.action("fast");
+  const fastAction = client.action("fast");
+  const fast = await fastAction;
   releaseSlow();
   const [slowResult, joinedResult] = await Promise.all([slow, joined]);
   assert.equal(fast.type, "ack");
@@ -277,20 +301,18 @@ await check("overlapping async actions keep commit causation isolated", async ()
   const fastCommit = creations.find((event) => event.details.rev === 1);
   const slowCommit = creations.find((event) => event.details.rev === 2);
   assert.equal(fastCommit?.details.sourceAction, "fast");
-  assert.equal(fastCommit?.details.requestId, "overlap-request-2");
-  assert.equal(fastCommit?.details.attemptId, "overlap-attempt-3");
+  assert.equal(fastCommit?.details.requestId, fastAction.request.requestId);
   assert.equal(slowCommit?.details.sourceAction, "slow");
-  assert.equal(slowCommit?.details.requestId, "overlap-request-1");
-  assert.equal(slowCommit?.details.attemptId, "overlap-attempt-1");
+  assert.equal(slowCommit?.details.requestId, slow.request.requestId);
   assert.notEqual(fastCommit?.details.sourceTraceId, slowCommit?.details.sourceTraceId);
   const joinedDedupe = collector.events().find((event) => event.phase === "action.dedupe" && event.details?.delivery === "joined");
   assert.equal(joinedDedupe?.details.sourceTraceId, slowCommit?.details.sourceTraceId);
-  assert.equal(joinedDedupe?.details.attemptId, "overlap-attempt-2");
+  assert.notEqual(joinedDedupe?.details.attemptId, slowCommit?.details.attemptId);
 });
 
 await check("schema rejection traces the rejecting stage without reaching handler or mutation", async () => {
   const collector = create_live_trace_collector({ capacity: 64 });
-  const f = fixture(collector);
+  const f = await fixture(collector);
   const before = f.host.map.capture();
   const result = await f.client.action("update", { value: "invalid", secret: "rejection-secret" });
   assert.equal(result.type, "error");
@@ -309,18 +331,18 @@ await check("throwing sinks and writers cannot affect success or rejection seman
   const throwing = { emit() { throw new Error("sink failed"); } };
   const off = await run_success(undefined);
   const on = await run_success(throwing);
-  assert.deepEqual(on.result, off.result);
+  assert.deepEqual(normalized_protocol_records([on.result]), normalized_protocol_records([off.result]));
   assert.deepEqual(on.state, off.state);
   assert.equal(on.rev, off.rev);
-  assert.deepEqual(on.history, off.history);
-  assert.deepEqual(on.pair.serverSent, off.pair.serverSent);
+  assert.deepEqual(on.history?.map((commit) => ({ prevRev: commit.prevRev, rev: commit.rev, ops: commit.ops })), off.history?.map((commit) => ({ prevRev: commit.prevRev, rev: commit.rev, ops: commit.ops })));
+  assert.deepEqual(normalized_protocol_messages(on.pair.serverSent), normalized_protocol_messages(off.pair.serverSent));
 
-  const writerFailure = fixture(create_live_trace_console_sink({ write() { throw new Error("writer failed"); } }));
+  const writerFailure = await fixture(create_live_trace_console_sink({ write() { throw new Error("writer failed"); } }));
   const writerResult = await writerFailure.client.action("update", { value: 3, secret: "writer-secret" });
   assert.equal(writerResult.type, "ack");
   assert.deepEqual(writerFailure.host.map.snap(), { value: 3 });
 
-  const rejected = fixture(throwing);
+  const rejected = await fixture(throwing);
   const rejectedResult = await rejected.client.action("update", { value: false, secret: "sink-secret" });
   assert.equal(rejectedResult.type, "error");
   assert.equal(rejectedResult.error.code, "LOCUS_SCHEMA_INVALID_PAYLOAD");
@@ -400,8 +422,8 @@ await check("tracing does not alter action protocol envelopes", async () => {
   const collector = create_live_trace_collector({ capacity: 64 });
   const off = await run_success(undefined);
   const on = await run_success(collector);
-  assert.deepEqual(on.pair.clientSent, off.pair.clientSent);
-  assert.deepEqual(on.pair.serverSent, off.pair.serverSent);
+  assert.deepEqual(normalized_protocol_messages(on.pair.clientSent), normalized_protocol_messages(off.pair.clientSent));
+  assert.deepEqual(normalized_protocol_messages(on.pair.serverSent), normalized_protocol_messages(off.pair.serverSent));
   for (const raw of on.pair.clientSent.concat(on.pair.serverSent)) {
     const value = JSON.parse(raw);
     assert.equal("trace" in value, false);
@@ -409,13 +431,9 @@ await check("tracing does not alter action protocol envelopes", async () => {
   }
 });
 
-await check("host trace identity is distinct per processing attempt despite retries and reused client attempt IDs", async () => {
+await check("host trace identity is distinct per processing attempt while retry causation stays correlated", async () => {
   const collector = create_live_trace_collector({ capacity: 128 });
-  let request = 0;
-  const f = fixture(collector, {
-    actionId: () => `request-${++request}`,
-    actionAttemptId: () => "client-attempt-reused",
-  });
+  const f = await fixture(collector);
 
   const firstCall = f.client.action("update", { value: 1, secret: "first-secret" });
   const first = await firstCall;
@@ -447,7 +465,7 @@ await check("host trace identity is distinct per processing attempt despite retr
   assert.ok(cachedTrace);
   assert.equal(cachedTrace.some((event) => event.phase === "handler.execute"), false);
   assert.equal(events.filter((event) => event.phase === "commit.creation").length, 2);
-  const originalRoot = events.find((event) => event.phase === "action.received" && event.details?.requestId === "request-1");
+  const originalRoot = events.find((event) => event.phase === "action.received" && event.details?.requestId === firstCall.request.requestId);
   const cachedDedupe = cachedTrace.find((event) => event.phase === "action.dedupe");
   assert.equal(cachedDedupe?.details.sourceTraceId, originalRoot?.traceId);
 });

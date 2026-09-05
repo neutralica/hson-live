@@ -32,12 +32,6 @@ export {
   create_persistent_locus,
   LocusPersistenceError,
 } from "./locus.persistence.js";
-export {
-  make_locus_sync_manager,
-  type LocusSyncManager,
-  type LocusSyncSend,
-  type LocusSyncSession,
-} from "./locus.sync.js";
 export { make_locus_canonical_stream } from "./locus.history.js";
 export { make_locus_recovery_planner } from "./locus.recovery.js";
 export {

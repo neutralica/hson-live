@@ -193,7 +193,6 @@ await check("new attachment fences the old transport and rejects late authority"
   assert.equal(first.client.session.status, "detached");
   assert.equal(first.client.session.failure.code, "LOCUS_SESSION_ATTACHMENT_FENCED");
   first.pair.client.send(JSON.stringify({ type: "action", id: "late", name: "increment" }));
-  first.pair.client.send(JSON.stringify({ type: "subscribe", path: ["late"] }));
   assert.deepEqual(host.map.snap(), { value: 0 });
   assert.equal(host.sessions.debug().sessions[0].subscriptionCount, initialSubscriptions);
   first.connection.emit_event("late-event", { ignored: true });
@@ -372,7 +371,7 @@ await check("two independent sessions fence independently", async () => {
   assert.equal(host.sessions.debug().fencingCount, 1);
 });
 
-await check("expiry disposes subscriptions and scheduler resources without socket retention", async () => {
+await check("expiry disposes scheduler resources without socket retention", async () => {
   const { host, clock } = host_fixture({ logicalMapId: "leaks", graceMs: 5 });
   for (let index = 0; index < 3; index += 1) {
     const fixture = await create_recovered(host);

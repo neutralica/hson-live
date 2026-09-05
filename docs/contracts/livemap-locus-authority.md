@@ -196,7 +196,6 @@ A session groups one client’s host-side resources.
 A session may own:
 
 * connection state;
-* subscriptions;
 * acknowledged revision;
 * action requests;
 * cancellation handles;
@@ -205,20 +204,8 @@ A session may own:
 
 Session identity is distinct from graph identity and user identity.
 
-Subscriptions
-
-A client may subscribe to:
-
-* complete map updates;
-* selected paths;
-* named host channels;
-* domain-specific event streams.
-
-Subscription delivery must respect canonical commit order.
-
-Subscription disposal must be deterministic.
-
-A disconnected or disposed session must not continue receiving updates.
+Replica state observation is a LiveMap responsibility. Locus protocol sessions
+do not own the retired `subscribe` or `unsubscribe` message resources.
 
 Rejection
 

@@ -320,7 +320,7 @@ function make_document_library(
       });
       const stopRestore = aggregate.observeRestore((event) => {
         if (!event.libraries.includes(library.identity)) return;
-        if (!event.changedLibraries.includes(library.identity)) {
+        if (!event.changedLibraries.includes(library.identity) && event.continuity === "same-epoch") {
           const commit: LiveMapGraphCommit = Object.freeze({
             changed: false,
             prevRev: event.previousRevision,
@@ -336,7 +336,7 @@ function make_document_library(
             mode: "document" as const,
             revision: event.revision,
             root: root(),
-            continuity: "same-epoch" as const,
+            continuity: event.continuity,
           }));
           listener(observation);
           return;
@@ -350,7 +350,7 @@ function make_document_library(
           mode: "document" as const,
           revision: event.revision,
           root: root(),
-          continuity: "same-epoch" as const,
+          continuity: event.continuity,
         }));
         listener(observation);
       });

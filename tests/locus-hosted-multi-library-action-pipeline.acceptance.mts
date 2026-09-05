@@ -122,6 +122,33 @@ function deferred() {
 
 install_fake_document();
 
+await check("aggregate application handlers receive session origin externally and direct origin for trusted dispatch", async () => {
+  const origins: unknown[] = [];
+  const locus = hsonLocus.create({
+    map: make_map(),
+    actions: {
+      probe(context) { origins.push(context.origin); },
+    },
+  });
+  const pair = socket_pair();
+  locus.connect(pair.server);
+  const echo = hsonEcho.create({ socket: pair.client, map: make_map(), recovery: { logicalMapId: locus.logicalMapId } });
+  await activate_echo(echo);
+  const external = await echo.action("probe");
+  assert.equal(external.type, "ack");
+  assert.deepEqual(origins[0], {
+    kind: "session",
+    sessionId: echo.session.sessionId,
+    epoch: echo.session.epoch,
+    resumable: true,
+  });
+  const trusted = await locus.dispatchAction({ type: "action", id: "trusted-origin", name: "probe" });
+  assert.equal(trusted.type, "ack");
+  assert.deepEqual(origins[1], { kind: "direct" });
+  echo.dispose();
+  locus.dispose();
+});
+
 await check("independent aggregate endpoints use reload-safe client and request identities at equal time", async () => {
   const originalDateNow = Date.now;
   const hadOwnRandomUuid = Object.hasOwn(globalThis.crypto, "randomUUID");

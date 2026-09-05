@@ -166,6 +166,12 @@ import type { LiveMapSchemaInput as RemovedTypesSchemaInput } from "hson-live/ty
 import type { InferLiveMapSchemaToken as RemovedTypesSchemaTokenInference } from "hson-live/types";
 // @ts-expect-error BindingSource is intentionally not a public export.
 import type { BindingSource } from "hson-live/livetree";
+// @ts-expect-error Legacy hello messages are not public protocol forms.
+import type { LocusClientHelloMessage } from "hson-live/locus";
+// @ts-expect-error Legacy subscribe messages are not public protocol forms.
+import type { LocusClientSubscribeMessage } from "hson-live/locus";
+// @ts-expect-error Legacy unsubscribe messages are not public protocol forms.
+import type { LocusClientUnsubscribeMessage } from "hson-live/locus";
 // @ts-expect-error DocumentBindingSource is intentionally not a public export.
 import type { DocumentBindingSource } from "hson-live/livetree";
 import {
@@ -178,9 +184,6 @@ import {
   type LocusReadonlyMap,
   type LocusMultiLibrary,
   type LocusMultiLibraryActionContext,
-  type LocusSyncManager,
-  type LocusSyncSend,
-  type LocusSyncSession,
 } from "hson-live/locus";
 void (0 as unknown as LocusClientId);
 void (0 as unknown as LocusClientMessage);
@@ -575,11 +578,7 @@ type PublicLiveTreeClosure =
 type PublicLiveMapClosure =
   | ProjectedValueAdmissionCode
   | ProjectedValuePath;
-type PublicLocusClosure =
-  | LocusAuthorityErrorCode
-  | LocusSyncManager
-  | LocusSyncSend
-  | LocusSyncSession;
+type PublicLocusClosure = LocusAuthorityErrorCode;
 declare const publicDeclarationClosure:
   | PublicTransformClosure
   | PublicLiveTreeClosure

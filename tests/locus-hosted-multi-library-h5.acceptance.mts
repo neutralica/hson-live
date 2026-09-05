@@ -15,6 +15,7 @@ import { create_livehost_locus_registry } from "../src/api/livehost/index.ts";
 import { install_fake_document } from "./helpers/fake-document.mts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
+import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 
 const StateSchema: HsonSchema = Hson`<type "data" content <theme "string" count <number <int true min 0>>>>`;
 const ColorsSchema: HsonSchema = Hson`<type "data" content <theme "string" accent "string">>`;
@@ -327,8 +328,24 @@ await check("public recovery replays retained history and replaces one complete 
   });
 
   const staleMap = make_map();
+  const staleAuthority = internal_livemap_aggregate_authority(staleMap);
+  const pageIndex = staleAuthority.hostedRegistry().libraries.findIndex((library) => library.name === "page");
+  const pageIdentity = staleAuthority.libraries()[pageIndex];
+  if (pageIdentity === undefined) throw new Error("Expected page Library identity.");
+  staleAuthority.commit([{
+    target: staleAuthority.target(pageIdentity, [0]),
+    kind: "graph",
+    operation: insert_item(RECOVERY_QUID),
+  }]);
   const stateHandle = staleMap.lib("state").at(["theme"]);
   const reflection = hsonReflect(staleMap.lib("page"));
+  const staleMain = reflected_document_element(reflection);
+  const staleItem = staleMain.content.mustOnly({ warn: false });
+  const staleMainNode = staleMain.node;
+  const staleItemNode = staleItem.node;
+  staleAuthority.restoreHosted(staleAuthority.captureHosted());
+  assert.equal(reflected_document_element(reflection).node, staleMain.node);
+  assert.equal(staleItem.isDisposed, false);
   const first = socket_pair();
   locus.connect(first.server);
   const snapshotClient = hsonEcho.create({
@@ -336,6 +353,7 @@ await check("public recovery replays retained history and replaces one complete 
     map: staleMap,
     recovery: { logicalMapId: locus.logicalMapId },
   });
+  assert.equal("onChange" in snapshotClient.recovery, false);
   const snapshotStarted = performance.now();
   snapshotClient.connect();
   await snapshotClient.session.create();
@@ -345,6 +363,12 @@ await check("public recovery replays retained history and replaces one complete 
   assert.equal(stateHandle.snap(), "dark");
   assert.equal(staleMap.lib("page").document.byQuid(RECOVERY_QUID)?.$_tag, "item");
   assert.equal(reflection.sourceRevision, 1);
+  const restoredMain = reflected_document_element(reflection);
+  const restoredItem = restoredMain.content.mustOnly({ warn: false });
+  assert.equal(staleMain.isDisposed, true);
+  assert.equal(staleItem.isDisposed, true);
+  assert.notEqual(restoredMain.node, staleMainNode);
+  assert.notEqual(restoredItem.node, staleItemNode);
   snapshotClient.dispose();
 
   await locus.mutate((draft) => {
@@ -366,6 +390,8 @@ await check("public recovery replays retained history and replaces one complete 
   const retainedReplayMs = performance.now() - replayStarted;
   assert.deepEqual([staleMap.rev, stateHandle.snap(), reflection.sourceRevision], [2, "dark", 2]);
   assert.equal(staleMap.lib("page").document.byQuid(RECOVERY_NEXT_QUID)?.$_tag, "item");
+  assert.equal(reflected_document_element(reflection).node, restoredMain.node);
+  assert.equal(staleItem.isDisposed, true);
   assert.equal((await replayClient.recovery.recover()).strategy, "current");
   process.stdout.write(`# telemetry ${JSON.stringify({ snapshotReplacementMs, retainedReplayMs })}\n`);
   reflection.dispose();

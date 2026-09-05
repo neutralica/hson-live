@@ -1045,6 +1045,7 @@ function make_livemap_core_from_owned_root(
     revision: number;
     libraries: readonly LiveMapLibraryIdentity[];
     changedLibraries: readonly LiveMapLibraryIdentity[];
+    continuity: "same-epoch" | "new-epoch";
   }>) => void> = [];
   const aggregateWatches: AggregateWatch[] = [];
   const aggregateFeeds: AggregateFeed[] = [];
@@ -1721,6 +1722,12 @@ function make_livemap_core_from_owned_root(
     // All fallible decoding, compilation, Schema, mode, identity, and bound checks
     // are complete before this single installation section begins.
     const previousRevision = mapRevision;
+    const continuity = hosted.fence.logicalMapId === snapshot.authority.logicalMapId
+      && hosted.fence.incarnationId === snapshot.authority.incarnationId
+      && mapIdentityEpoch.current() === snapshot.identity.epoch
+      && enumerate_livemap_issued_quids(mapIdentityEpoch.issued()).every((quid) => issuedLedger.has(quid))
+      ? "same-epoch" as const
+      : "new-epoch" as const;
     const changedLibraries = Object.freeze(candidates
       .filter((candidate) => !canonical_graph_equal(candidate.library.root, candidate.root))
       .map((candidate) => candidate.library.identity));
@@ -1750,6 +1757,7 @@ function make_livemap_core_from_owned_root(
       revision: snapshot.revision,
       libraries: restored,
       changedLibraries,
+      continuity,
     });
     enqueuePublication(() => {
       for (const observer of [...aggregateRestoreObservers]) observer(event);

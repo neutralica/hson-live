@@ -204,7 +204,7 @@ await check("old aggregate socket discriminator rejects as an ordinary non-curre
   server.dispose();
 });
 
-await check("custom socket action preserves one global commit, complete mirror replay, and library-qualified same-path subscriptions", async () => {
+await check("custom socket action preserves one global commit and complete mirror replay", async () => {
   const map = make_map();
   const server = create_locus_hosted_aggregate_socket_internal({
     map,
@@ -217,24 +217,13 @@ await check("custom socket action preserves one global commit, complete mirror r
   });
   const attached = await attach(server);
   const clientMap = attached.client.map!;
-  const stateValues: unknown[] = [];
-  const colorValues: unknown[] = [];
-  const stopState = attached.client.subscribe("state", ["theme"], (value, revision) => stateValues.push([value, revision]));
-  attached.client.subscribe("colors", ["theme"], (value, revision) => colorValues.push([value, revision]));
   await attached.client.action("theme.all");
   assert.equal(clientMap.rev, 1);
   assert.equal(data_library(clientMap, "state").snap(["theme"]), "dark");
   assert.equal(data_library(clientMap, "colors").snap(["theme"]), "blue");
-  assert.deepEqual(stateValues.at(-1), ["dark", 1]);
-  assert.deepEqual(colorValues.at(-1), ["blue", 1]);
-  assert.equal(server.debug().subscriptions.length, 2);
-  assert.throws(() => attached.client.subscribe("missing", [], () => {}), /unknown|subscription/i);
-  const stateSyncCount = stateValues.length;
-  stopState();
   await server.mutate((draft) => data(draft, "colors").at(["accent"]).set("#fff"));
   assert.equal(clientMap.rev, 2);
-  assert.equal(stateValues.length, stateSyncCount);
-  assert.equal(server.debug().subscriptions.length, 1);
+  assert.equal(data_library(clientMap, "colors").snap(["accent"]), "#fff");
   server.dispose();
 });
 
@@ -373,7 +362,7 @@ await check("registry mismatch refuses replay against an existing topology and l
   server.dispose();
 });
 
-await check("snapshot cut buffers an accepted aggregate tail, drains it in global order, then synchronizes subscriptions", async () => {
+await check("snapshot cut buffers an accepted aggregate tail and drains it in global order", async () => {
   const map = make_map();
   const seed = internal_livemap_aggregate_authority(map).captureHosted();
   let server!: ReturnType<typeof create_locus_hosted_aggregate_socket_internal>;
@@ -396,21 +385,18 @@ await check("snapshot cut buffers an accepted aggregate tail, drains it in globa
   assert.equal(attached.client.lastAppliedRev, 2);
   assert.equal(data_library(stale, "state").snap(["theme"]), "dark");
   assert.equal(data_library(stale, "colors").snap(["accent"]), "#fff");
-  const values: unknown[] = [];
-  attached.client.subscribe("state", ["theme"], (value, revision) => values.push([value, revision]));
-  assert.deepEqual(values, [["dark", 2]]);
   server.dispose();
 });
 
-await check("current recovery preserves the global cursor and resynchronizes an existing library-qualified subscription", async () => {
+await check("current recovery preserves the global cursor and complete mirror", async () => {
   const server = create_locus_hosted_aggregate_socket_internal({ map: make_map() });
   const attached = await attach(server);
-  const values: unknown[] = [];
-  attached.client.subscribe("state", ["theme"], (value, revision) => values.push([value, revision]));
+  const mirror = attached.client.map;
   const recovered = await attached.client.connect();
   assert.equal(recovered.outcome, "current");
   assert.equal(recovered.revision, 0);
-  assert.deepEqual(values, [["light", 0], ["light", 0]]);
+  assert.equal(attached.client.map, mirror);
+  assert.equal(data_library(attached.client.map!, "state").snap(["theme"]), "light");
   server.dispose();
 });
 

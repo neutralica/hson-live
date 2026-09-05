@@ -195,7 +195,7 @@ await check("replacement immediately before caught-up prevents completion and st
   server.dispose();
 });
 
-await check("replacement after caught-up suppresses queued live drain and recovery subscription sync", async () => {
+await check("replacement after caught-up suppresses queued live drain", async () => {
   const entered = deferred();
   const release = deferred();
   let caughtUpCount = 0;
@@ -212,8 +212,6 @@ await check("replacement after caught-up suppresses queued live drain and recove
   });
   const first = connect_endpoint(server);
   await first.client.connect();
-  first.client.subscribe("state", ["value"], () => {});
-  const syncCountBefore = types(first.pair.serverSent).filter((type) => type === "sync").length;
   const caughtUp = first.client.connect();
   await entered.promise;
   await caughtUp;
@@ -225,7 +223,6 @@ await check("replacement after caught-up suppresses queued live drain and recove
   release.resolve();
   assert.equal((await replacement.client.connect()).revision, 1);
   assert.equal(types(first.pair.serverSent).filter((type) => type === "commit").length, 0);
-  assert.equal(types(first.pair.serverSent).filter((type) => type === "sync").length, syncCountBefore);
   assert.equal(first.client.lastAppliedRev, 0);
   first.client.dispose();
   replacement.client.dispose();

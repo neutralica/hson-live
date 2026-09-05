@@ -107,9 +107,9 @@ decode_locus_server_message(text);
 ```
 
 Message discriminators such as `action`, `recover`, `commit`, and
-`session-create` remain semantic message kinds. A hello message admits exactly
-`type` and an optional `clientId`; every other field rejects through ordinary
-exact-shape validation.
+`session-create` remain semantic message kinds. Retired `hello`, `subscribe`,
+and `unsubscribe` client messages are unsupported and reject through ordinary
+protocol admission.
 
 Successful `session-created` and `session-attached` messages establish the
 stream's `logicalMapId` and `incarnationId`. Echo retains that evidence in its

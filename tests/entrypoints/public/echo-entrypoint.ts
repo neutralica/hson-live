@@ -11,8 +11,6 @@ import {
   type EchoActionStatusResult,
   type EchoOptions,
   type EchoRecovery,
-  type EchoRecoveryChange,
-  type EchoRecoveryChangeListener,
   type EchoRecoveryCursor,
   type EchoRecoveryDiagnostics,
   type EchoRecoveryFailure,
@@ -29,6 +27,10 @@ import {
   type EchoSessionStatus,
   type LocusBootstrapEcho,
 } from "hson-live/echo";
+// @ts-expect-error Recovery change observation is not a public Echo type.
+import type { EchoRecoveryChange } from "hson-live/echo";
+// @ts-expect-error Recovery change listeners are not a public Echo type.
+import type { EchoRecoveryChangeListener } from "hson-live/echo";
 import type { LiveMap } from "hson-live/livemap";
 import type { LocusSocketLike } from "hson-live/locus";
 
@@ -103,6 +105,7 @@ echo.retryAction({ requestId: "request", name: "action" });
 void echo.actionStatus("request");
 // @ts-expect-error endpoint-only Echo has no recovery
 echo.recovery;
+// @ts-expect-error Recovery state observation belongs to LiveMap.
 replicaEcho.recovery.onChange(() => {});
 void replicaEcho.retryAction;
 void replicaEcho.actionStatus;
@@ -136,8 +139,6 @@ void (0 as unknown as EchoActionRequest);
 void (0 as unknown as EchoActionStatusResult);
 void (0 as unknown as EchoOptions);
 void (0 as unknown as EchoRecovery);
-void (0 as unknown as EchoRecoveryChange);
-void (0 as unknown as EchoRecoveryChangeListener);
 void (0 as unknown as EchoRecoveryCursor);
 void (0 as unknown as EchoRecoveryDiagnostics);
 void (0 as unknown as EchoRecoveryFailure);

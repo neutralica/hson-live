@@ -59,7 +59,6 @@ const locusRuntimeExports = [
   "is_locus_encoded_graph_content",
   "make_locus_canonical_stream",
   "make_locus_recovery_planner",
-  "make_locus_sync_manager",
 ].sort();
 
 await check("the Locus package resolves with its exact runtime surface", async () => {
@@ -91,6 +90,19 @@ await check("removed architectural endpoint runtime names have no aliases", asyn
   }
   assert.equal("create_locus_bootstrap_echo" in echo, true);
   assert.equal("create_locus_bootstrap_echo" in locus, false);
+});
+
+await check("retired Locus client protocol forms are rejected", async () => {
+  const { decode_locus_message } = await import("hson-live/locus");
+  for (const message of [
+    { type: "hello" },
+    { type: "subscribe", path: [] },
+    { type: "unsubscribe", path: [] },
+  ]) {
+    const decoded = decode_locus_message(JSON.stringify(message));
+    assert.equal(decoded.ok, false);
+    assert.match(decoded.error.message, /unknown.*message type/i);
+  }
 });
 
 await check("endpoint-only Echo exposes only the common semantic client surface", async () => {

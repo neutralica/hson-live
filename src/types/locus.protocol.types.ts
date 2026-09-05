@@ -236,11 +236,6 @@ export type LocusSocketLike = Readonly<{
   onClose: (listener: () => void) => LocusDisposer | void;
 }>;
 
-export type LocusClientHelloMessage = Readonly<{
-  type: "hello";
-  clientId?: LocusClientId;
-}>; 
-
 export type LocusClientActionMessageFor<
   TActions extends LocusActionPayloads,
   TName extends keyof TActions & string,
@@ -271,16 +266,6 @@ export type LocusClientActionMessage<
 > = {
   [TName in keyof TActions & string]: LocusClientActionMessageFor<TActions, TName>;
 }[keyof TActions & string];
-
-export type LocusClientSubscribeMessage = Readonly<{
-  type: "subscribe";
-  path: LivePath;
-}>;
-
-export type LocusClientUnsubscribeMessage = Readonly<{
-  type: "unsubscribe";
-  path: LivePath;
-}>;
 
 export type LocusClientActionStatusMessage = Readonly<{
   type: "action-status";
@@ -317,22 +302,12 @@ export type LocusClientSessionGoodbyeMessage = Readonly<{
 export type LocusClientMessage<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > =
-  | LocusClientHelloMessage
   | LocusClientActionMessage<TActions>
   | LocusClientActionStatusMessage
-  | LocusClientSubscribeMessage
-  | LocusClientUnsubscribeMessage
   | LocusClientRecoverMessage
   | LocusClientSessionCreateMessage
   | LocusClientSessionAttachMessage
   | LocusClientSessionGoodbyeMessage;
-
-export type LocusServerHelloMessage<TState extends JsonValue | undefined = JsonValue | undefined> = Readonly<{
-  type: "hello";
-  sessionId: LocusSessionId;
-  seq: LocusSeq;
-  snapshot: TState;
-}> & Partial<LiveMapStructuralJsonEnvelope>;
 
 export type LocusServerPatchMessage = Readonly<{
   type: "patch";
@@ -345,13 +320,6 @@ export type LocusServerEventMessage = Readonly<{
   event: string;
   payload: JsonValue;
 }>;
-
-export type LocusServerSyncMessage<TValue extends JsonValue | undefined = JsonValue | undefined> = Readonly<{
-  type: "sync";
-  seq: LocusSeq;
-  path: LivePath;
-  value: TValue;
-}> & Partial<LiveMapStructuralJsonEnvelope>;
 
 export type LocusServerAckMessage = Readonly<{
   type: "ack";
@@ -520,10 +488,8 @@ export type LocusServerSessionEndedMessage = Readonly<{
 }>;
 
 export type LocusServerMessage<TState extends JsonValue | undefined = JsonValue | undefined> =
-  | LocusServerHelloMessage<TState>
   | LocusServerEventMessage
   | LocusServerPatchMessage
-  | LocusServerSyncMessage
   | LocusServerAckMessage
   | LocusServerErrorMessage
   | LocusServerActionStatusMessage

@@ -9,7 +9,6 @@ import { livemap_projected_propagation } from "../src/api/livemap/livemap.projec
 import { decode_projected_value_payload } from "../src/api/livemap/livemap.transport.ts";
 import { make_locus_canonical_stream } from "../src/api/locus/locus.history.ts";
 import { make_locus_recovery_planner } from "../src/api/locus/locus.recovery.ts";
-import { make_locus_sync_manager } from "../src/api/locus/locus.sync.ts";
 import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
 import {
   is_ordered_projected_object,
@@ -24,7 +23,7 @@ import {
 } from "../src/core/projected-value-graph.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import type { JsonValue } from "../src/core/types.ts";
-import type { LocusCanonicalCommit, LocusServerSyncMessage } from "../src/types/locus.types.ts";
+import type { LocusCanonicalCommit } from "../src/types/locus.types.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livemap.exact-propagation",
@@ -285,14 +284,8 @@ check("Locus canonical commits retain exact payloads", () => {
   assert.equal(typeof canonical?.payload, "string");
 });
 
-check("Locus sync and recovery use exact projected transport", () => {
+check("Locus recovery uses exact projected transport", () => {
   const valueMap = map(object([["value", ordered]]));
-  const sent: LocusServerSyncMessage[] = [];
-  const sync = make_locus_sync_manager(valueMap);
-  assert.equal(sync.add_session("session", (message) => { sent.push(message); }).ok, true);
-  assert.equal(sync.subscribe("session", ["value"], 1).ok, true);
-  assert.deepEqual(keys(decode_projected_value_payload(sent[0]!.payload!)), ["10", "2", "1"]);
-
   const stream = make_locus_canonical_stream(valueMap, { logicalMapId: "recovery-map", incarnationId: "recovery-inc" });
   const recovery = make_locus_recovery_planner(valueMap, stream);
   const plan = recovery.plan({ logicalMapId: stream.logicalMapId });

@@ -145,12 +145,6 @@ inferredClient.map.sub.path(["age"], (next) => {
   const exact: UserSchemaType["age"] = next;
   void exact;
 });
-inferredClient.recovery.onChange((change) => {
-  const exactMap: typeof governedMap = change.map;
-  const exactState: UserSchemaType = change.map.snap();
-  void exactMap;
-  void exactState;
-});
 if (false) {
   // @ts-expect-error Client mirrors retain generated mutation candidate checking.
   inferredClient.map.at(["age"]).replace("39");

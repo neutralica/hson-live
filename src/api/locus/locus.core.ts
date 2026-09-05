@@ -28,14 +28,10 @@ import type {
   LocusSnapshotEncodingSelection,
 } from "../../types/locus.types.js";
 import { decode_locus_message, encode_locus_message } from "./locus.protocol.js";
-import { make_locus_sync_manager } from "./locus.sync.js";
 import { make_locus_canonical_stream_runtime } from "./locus.history.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
 import { is_public_multi_library_livemap } from "../livemap/livemap.libraries.js";
 import { create_multi_library_locus } from "./locus.multi-library.js";
-import { livemap_projected_propagation } from "../livemap/livemap.projected-propagation.js";
-import { encode_projected_value_transport } from "../livemap/livemap.transport.js";
-import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import { parse_json } from "../transform/parsers/parse-json.js";
 import {
   make_locus_recovery_planner_internal,
@@ -262,7 +258,6 @@ function create_locus_for_map<
       else recoveryActivityReleases.pop()?.();
     },
   );
-  const sync = make_locus_sync_manager(map);
   const sessions = make_locus_session_manager(options.sessions);
   const retainedSessions = new Set<LocusSessionId>();
   const retainedSessionReleases = new Map<LocusSessionId, LocusDisposer>();
@@ -723,25 +718,18 @@ function create_locus_for_map<
 
     const attachment = Object.freeze({ fence: fence_attachment });
 
-    function session_subscription_count(id: LocusSessionId): number {
-      return sync.debug_sessions().find((item) => item.sessionId === id)?.paths.length ?? 0;
-    }
-
     function bind_new_session(resumable: boolean): boolean {
       if (sessionId !== undefined) return authoritative();
       const id = resolve_session_id(options.sessionId);
-      const added = sync.add_session(id, send);
-      if (!added.ok) return false;
       const created = sessions.create(
         id,
         resumable,
         attachment,
-        () => sync.remove_session(id),
-        () => session_subscription_count(id),
+        () => {},
+        () => 0,
         attachedContext,
       );
       if (!created.ok) {
-        sync.remove_session(id);
         return false;
       }
       sessionId = created.value.sessionId;
@@ -767,21 +755,15 @@ function create_locus_for_map<
         return;
       }
       const nextSessionId = resolve_session_id(options.sessionId);
-      const added = sync.add_session(nextSessionId, send);
-      if (!added.ok) {
-        reject_session(id, "LOCUS_SESSION_NOT_ATTACHED", added.error.message);
-        return;
-      }
       const created = sessions.create(
         nextSessionId,
         true,
         attachment,
-        () => sync.remove_session(nextSessionId),
-        () => session_subscription_count(nextSessionId),
+        () => {},
+        () => 0,
         attachedContext,
       );
       if (!created.ok || !created.value.credential) {
-        sync.remove_session(nextSessionId);
         reject_session(id, "LOCUS_SESSION_NOT_ATTACHED", "Locus could not create a resumable session.");
         return;
       }
@@ -816,11 +798,6 @@ function create_locus_for_map<
       sessionId = attached.value.sessionId;
       connectionEpoch = attached.value.epoch;
       sessionResumable = attached.value.resumable;
-      const rebound = sync.attach_session(sessionId, send);
-      if (!rebound.ok) {
-        reject_session(message.id, "LOCUS_SESSION_NOT_ATTACHED", rebound.error.message);
-        return;
-      }
       raw_send({
         type: "session-attached",
         id: message.id,
@@ -924,20 +901,6 @@ function create_locus_for_map<
           ...(response.type === "error" ? { errorCode: response.error.code ?? "LOCUS_ACTION_FAILED" } : {}),
         }),
       });
-
-      if ((admitted.kind === "legacy" || (admitted.kind === "deduped" && admitted.delivery === "executed")) && response.type === "ack") {
-        sync.sync_all(response.seq);
-        trace?.emit({
-          subsystem: "locus",
-          phase: "subscription.publication",
-          status: "success",
-          ...(stableIdentity && actionSpan !== undefined ? { parentSpanId: actionSpan.spanId } : {}),
-          details: () => ({
-            sequence: response.seq,
-            subscriberCount: sync.debug_sessions().reduce((count, session) => count + session.paths.length, 0),
-          }),
-        });
-      }
 
       if (stableIdentity) {
         if (response.type === "ack") {
@@ -1155,21 +1118,6 @@ function create_locus_for_map<
         fenced = true;
         return;
       }
-      if (message.type === "hello") {
-        if (!is_projected_live_map(map)) {
-          send_without_record({
-            type: "error",
-            seq,
-            error: {
-              code: "LOCUS_DOCUMENT_RECOVERY_REQUIRED",
-              message: "Document mirrors initialize through canonical recovery.",
-            },
-          });
-          return;
-        }
-        send_without_record({ type: "hello", sessionId, seq, ...hello_snapshot(map) });
-        return;
-      }
       if (message.type === "recover") {
         handle_recover(message);
         return;
@@ -1203,15 +1151,6 @@ function create_locus_for_map<
         if (!sessions.is_active(capturedSessionId, capturedEpoch)) return;
         return;
       }
-      if (message.type === "subscribe") {
-        const result = sync.subscribe(sessionId, message.path, seq);
-        if (!result.ok) send({ type: "error", seq, error: result.error });
-        return;
-      }
-      if (message.type === "unsubscribe") {
-        const result = sync.unsubscribe(sessionId, message.path);
-        if (!result.ok) send({ type: "error", seq, error: result.error });
-      }
     }
 
     let stopMessage: LocusDisposer | void;
@@ -1230,7 +1169,6 @@ function create_locus_for_map<
       recoveryState = Object.freeze({ phase: "awaiting-recovery" });
       dispose_recovery_channel();
       if (!hostShutdown && sessionId && connectionEpoch !== undefined && sessions.is_active(sessionId, connectionEpoch)) {
-        sync.detach_session(sessionId);
         sessions.detach(sessionId, connectionEpoch);
       }
       while (disposers.length) disposers.pop()?.();
@@ -1347,33 +1285,4 @@ function assert_locus_map_available(map: object): void {
 
 function release_locus_map(map: object, owner: object): void {
   if (locusMapAuthorities.get(map) === owner) locusMapAuthorities.delete(map);
-}
-
-function is_projected_live_map(map: LiveMapAuthority): map is LiveMap {
-  return (map.mode === "data-object" || map.mode === "data-array")
-    && "snap" in map
-    && typeof map.snap === "function";
-}
-
-function hello_snapshot(map: LiveMapAuthority): Readonly<{
-  snapshot: JsonValue | undefined;
-  format?: "structural-json";
-  payload?: string;
-}> {
-  if (!is_projected_live_map(map)) {
-    const snapshot = "snap" in map && typeof map.snap === "function"
-      ? map.snap() as JsonValue | undefined
-      : undefined;
-    return Object.freeze({ snapshot });
-  }
-  const propagation = livemap_projected_propagation(map);
-  if (propagation === undefined) {
-    throw new Error("Locus projected hello requires a carrier propagation capability.");
-  }
-  const projected = propagation.read([]);
-  if (projected === undefined) return Object.freeze({ snapshot: undefined });
-  return Object.freeze({
-    snapshot: materialize_projected_value(projected),
-    ...encode_projected_value_transport(projected),
-  });
 }

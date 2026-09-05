@@ -59,12 +59,11 @@ check("current server message encoding closes through the sole server decoder", 
   assert.deepEqual(decoded.ok && decoded.value, message);
 });
 
-check("hello rejects the removed hostId field", () => {
+check("retired hello is rejected with or without historical routing fields", () => {
   const withoutHostId = decode_locus_message(JSON.stringify({ type: "hello", clientId: "client-a" }));
   const withHostId = decode_locus_message(JSON.stringify({ type: "hello", clientId: "client-a", hostId: "ignored-route" }));
-  assert.equal(withoutHostId.ok, true);
+  assert.equal(withoutHostId.ok, false);
   assert.equal(withHostId.ok, false);
-  assert.equal(withoutHostId.ok && withoutHostId.value.clientId, "client-a");
 });
 
 check("data commits retain their exact data operation domain", () => {

@@ -289,8 +289,6 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
   });
   const client = attach(host, pair, { map: mirror, recovery: { logicalMapId: host.stream.logicalMapId }, trace });
   const oldMap = client.map;
-  const observed = [];
-  client.recovery.onChange((change) => observed.push({ kind: change.kind, value: change.map.snap(), active: change.map === client.map }));
   const result = await client.recovery.recover();
   assert.equal(result.strategy, "snapshot");
   assert.equal(client.recovery.incarnationId, host.stream.incarnationId);
@@ -300,11 +298,6 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
   assert.deepEqual(oldMap.snap(), host.map.snap());
   assert.equal(client.map.schema.get(), schema);
   assert.equal(client.recovery.debug().snapshotInstalls, 1);
-  assert.equal(observed.filter((change) => change.kind === "snapshot").length, 1);
-  assert.deepEqual(observed, [
-    { kind: "snapshot", value: { value: 8 }, active: true },
-    { kind: "commit", value: { value: 9 }, active: true },
-  ]);
   assert.deepEqual(watched, [8, 9]);
   assert.equal(boundTree.text.get(), "9");
   assert.equal(bindingCalls, 3);
@@ -379,7 +372,9 @@ await check("replay applies exact commits once and current emits no body", async
   const pair = socket_pair();
   const client = attach(host, pair, { ...recovery_options(host, mirror, base), trace });
   const revs = [];
-  client.recovery.onChange((change) => revs.push(change.rev));
+  client.map.commits.observe((observation) => {
+    if (observation.kind === "commit") revs.push(observation.commit.rev);
+  });
   const replay = await client.recovery.recover();
   assert.equal(replay.strategy, "replay");
   assert.deepEqual(revs, [base + 1, base + 2]);
@@ -387,12 +382,10 @@ await check("replay applies exact commits once and current emits no body", async
   assert.equal(boundTree.text.get(), "2");
   assert.equal(bindingCalls, 3);
   assert.deepEqual(client.map.snap(), host.map.snap());
-  const notifications = client.recovery.debug().consumerNotifications;
   const current = await client.recovery.recover();
   assert.equal(current.strategy, "current");
   assert.equal(client.map.rev, client.recovery.lastAppliedRev);
   assert.equal(client.recovery.lastAppliedRev, current.headRev);
-  assert.equal(client.recovery.debug().consumerNotifications, notifications);
   disposeBinding();
   const requestIds = pair.clientSent.map(JSON.parse).filter((message) => message.type === "recover").map((message) => message.id);
   const emitted = pair.serverSent.map(JSON.parse);
@@ -545,7 +538,9 @@ await check("cut boundary puts pre-cut in body and post-cut in tail", async () =
   });
   const client = attach(host, pair, recovery_options(host, mirror, base));
   const revs = [];
-  client.recovery.onChange((change) => revs.push(change.rev));
+  client.map.commits.observe((observation) => {
+    if (observation.kind === "commit") revs.push(observation.commit.rev);
+  });
   const result = await client.recovery.recover();
   assert.equal(result.headRev, base + 2);
   assert.deepEqual(revs, [base + 1, base + 2]);
@@ -561,9 +556,10 @@ await check("reentrant canonical publication remains ordered", async () => {
   await client.recovery.recover();
   const base = client.recovery.lastAppliedRev;
   const revs = [];
-  client.recovery.onChange((change) => {
-    revs.push(change.rev);
-    if (change.map.snap().value === 1) void host.mutate((draft) => draft.set(["value"], 2));
+  client.map.commits.observe((observation) => {
+    if (observation.kind !== "commit") return;
+    revs.push(observation.commit.rev);
+    if (client.map.snap().value === 1) void host.mutate((draft) => draft.set(["value"], 2));
   });
   await host.mutate((draft) => draft.set(["value"], 1));
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -580,10 +576,8 @@ await check("valid duplicate is ignored after full decode", async () => {
   await host.mutate((draft) => draft.set(["value"], 1));
   const commit = host.stream.history.replay_after(base, base + 1)[0];
   const recoverRequest = pair.clientSent.map(JSON.parse).find((message) => message.type === "recover");
-  const before = client.recovery.debug().consumerNotifications;
   pair.push_server({ type: "commit", id: recoverRequest.id, commit });
   assert.equal(client.recovery.lastAppliedRev, base + 1);
-  assert.equal(client.recovery.debug().consumerNotifications, before);
   assert.equal(client.recovery.debug().duplicateCommitsIgnored, 1);
 });
 
@@ -796,8 +790,6 @@ await check("malformed snapshot Hson fails installation without advancing state"
   const client = hson.echo.create({ socket: pair.client, map: mirror, recovery: { logicalMapId: "malformed-hson", cursor: { incarnationId: "old", lastAppliedRev: 4 } } });
   client.connect();
   establish_scripted_session(pair, client, "malformed-hson", "new");
-  let notifications = 0;
-  client.recovery.onChange(() => { notifications += 1; });
   const promise = client.recovery.recover();
   const id = (await waitForClientMessage(pair, "recover")).id;
   pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "malformed-hson", incarnationId: "new", headRev: 5, outcome: "snapshot", reason: "incarnation_mismatch", snapshotEncoding: { format: "hson" } });
@@ -811,7 +803,6 @@ await check("malformed snapshot Hson fails installation without advancing state"
   assert.equal(client.recovery.incarnationId, "old");
   assert.equal(client.recovery.lastAppliedRev, 4);
   assert.equal(client.recovery.debug().snapshotInstalls, 0);
-  assert.equal(notifications, 0);
   assert.ok(client.recovery.failure.cause instanceof Error);
 });
 

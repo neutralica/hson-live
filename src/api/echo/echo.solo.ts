@@ -30,8 +30,6 @@ import type {
   LocusDocumentRetryActionFn,
   LocusClientMessage,
   EchoOptions,
-  EchoRecoveryChange,
-  EchoRecoveryChangeListener,
   EchoRecoveryDiagnostics,
   EchoRecoveryFailure,
   EchoRecoveryOptions,
@@ -192,7 +190,6 @@ export function create_solo_echo_internal<
   let echoDisposed = false;
   let documentAuthority: EchoDocumentAuthority | undefined;
   const run_echo_owned = <T>(operation: () => T): T => replica.runManaged(operation);
-  const recoveryListeners = new Set<EchoRecoveryChangeListener<ClassifiedLiveMap>>();
   const disposers: LocusDisposer[] = [];
   const readyWaiters = new Set<() => void>();
   let isConnected = false;
@@ -214,7 +211,6 @@ export function create_solo_echo_internal<
   let tailCommitsApplied = 0;
   let liveCommitsApplied = 0;
   let recoveryFailures = 0;
-  let consumerNotifications = 0;
   let observerFailures = 0;
   const endpoint = composition?.connection.endpoint ?? create_echo_endpoint_internal<TActions>({
     transport: {
@@ -342,16 +338,6 @@ export function create_solo_echo_internal<
     pending?.reject(new EchoRecoveryError(code, message, cause));
   }
 
-  function notify(change: EchoRecoveryChange<ClassifiedLiveMap>): void {
-    consumerNotifications += 1;
-    try {
-      for (const listener of [...recoveryListeners]) listener(change);
-    } catch (cause) {
-      observerFailures += 1;
-      fail_recovery("LOCUS_RECOVERY_OBSERVER_FAILED", "Locus recovery observer failed after state application.", cause);
-    }
-  }
-
   function require_plan(messageId: string): LocusServerRecoveryPlanMessage | undefined {
     if (recoveryLifecycle.phase !== "consuming" || recoveryLifecycle.requestId !== messageId) return undefined;
     return recoveryLifecycle.plan;
@@ -460,7 +446,6 @@ export function create_solo_echo_internal<
     if (phase === "body") bodyCommitsApplied += 1;
     if (phase === "tail") tailCommitsApplied += 1;
     if (phase === "live") liveCommitsApplied += 1;
-    notify({ kind: "commit", logicalMapId, incarnationId: commit.incarnationId, rev: commit.rev, map });
   }
 
   function install_snapshot(messageId: string, snapshot: LocusValidatedSnapshotEnvelope): void {
@@ -518,7 +503,6 @@ export function create_solo_echo_internal<
       if (recoveryLifecycle.phase === "consuming" && recoveryLifecycle.requestId === messageId) {
         recoveryLifecycle = Object.freeze({ ...recoveryLifecycle, snapshotReceived: true });
       }
-      notify({ kind: "snapshot", logicalMapId: snapshot.logicalMapId, incarnationId: snapshot.incarnationId, rev: snapshot.rev, map });
     } catch (cause) {
       if (cause instanceof LocusDocumentSnapshotDecodeError) {
         fail_recovery(cause.code, cause.message, cause.cause);
@@ -882,13 +866,6 @@ export function create_solo_echo_internal<
       }),
     });
     pending?.reject(new EchoRecoveryError("LOCUS_RECOVERY_DISPOSED", "Echo recovery was disposed."));
-    recoveryListeners.clear();
-  }
-
-  function onChange(listener: EchoRecoveryChangeListener<ClassifiedLiveMap>): LocusDisposer {
-    if (recoveryDisposed) return () => { };
-    recoveryListeners.add(listener);
-    return () => recoveryListeners.delete(listener);
   }
 
   function debug(): EchoRecoveryDiagnostics {
@@ -906,7 +883,6 @@ export function create_solo_echo_internal<
       tailCommitsApplied,
       liveCommitsApplied,
       recoveryFailures,
-      consumerNotifications,
       observerFailures,
     });
   }
@@ -924,7 +900,6 @@ export function create_solo_echo_internal<
     get failure() { return firstFailure; },
     get strategy() { return recoveryStrategy; },
     recover,
-    onChange,
     dispose: dispose_recovery,
     debug,
   });
