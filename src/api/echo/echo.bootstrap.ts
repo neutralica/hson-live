@@ -55,9 +55,7 @@ export function create_locus_bootstrap_echo<TMap extends LiveMapAuthority>(
       if (disposed) return;
       disposed = true;
       status = "disposed";
-      echo.recovery.dispose();
-      echo.session.dispose();
-      echo.disconnect();
+      echo.dispose();
       options.socket.close(1000, "Locus bootstrap Echo disposed.");
     },
   });

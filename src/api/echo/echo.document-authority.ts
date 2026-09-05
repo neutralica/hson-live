@@ -20,6 +20,9 @@ export type EchoDocumentAction =
 
 export type EchoDocumentAuthority = Readonly<{
   enqueue: (lower: () => EchoDocumentAction | undefined) => void;
+  dispose: () => void;
+  /** @internal Deterministic lifecycle proof seam. */
+  pendingRevisionWaits: () => number;
   rejectIdentityDemand: true;
 }>;
 
@@ -27,23 +30,58 @@ export function make_echo_document_authority(
   dispatch: (action: EchoDocumentAction) => Promise<Readonly<{ accepted: boolean; completionRev?: number }>>,
   revision: () => number,
   observe: (listener: () => void) => () => void,
+  replicaReady: () => boolean = () => true,
+  onReplicaDispose?: (listener: (reason: Error) => void) => () => void,
+  waitUntilReplicaReady?: () => Promise<void>,
 ): EchoDocumentAuthority {
   let tail = Promise.resolve();
+  let disposed = false;
+  const revisionWaits = new Set<Readonly<{ off: () => void; reject: (reason: Error) => void }>>();
+
+  const terminalError = (): Error => new Error("Echo document authority is disposed.");
+
+  const cancel_revision_waits = (reason: Error): void => {
+    for (const waiter of [...revisionWaits]) {
+      revisionWaits.delete(waiter);
+      waiter.off();
+      waiter.reject(reason);
+    }
+  };
+
+  const stopReplicaDispose = onReplicaDispose?.((reason) => {
+    disposed = true;
+    cancel_revision_waits(reason);
+  });
 
   const wait_for_revision = (target: number): Promise<void> => {
+    if (disposed) return Promise.reject(terminalError());
     if (revision() >= target) return Promise.resolve();
-    return new Promise((resolve) => {
-      const off = observe(() => {
+    return new Promise((resolve, reject) => {
+      let off = (): void => {};
+      const waiter = Object.freeze({ off: () => off(), reject });
+      revisionWaits.add(waiter);
+      off = observe(() => {
         if (revision() < target) return;
-        off();
+        if (!revisionWaits.delete(waiter)) return;
+        waiter.off();
         resolve();
       });
+      if (revision() >= target && revisionWaits.delete(waiter)) {
+        waiter.off();
+        resolve();
+      }
     });
   };
 
   return Object.freeze({
     enqueue(lower): void {
       tail = tail.then(async () => {
+        if (disposed) throw terminalError();
+        if (!replicaReady()) {
+          if (waitUntilReplicaReady === undefined) throw new Error("Echo document authority requires an exact replica.");
+          await waitUntilReplicaReady();
+        }
+        if (disposed || !replicaReady()) throw new Error("Echo document authority requires an exact replica.");
         const action = lower();
         if (action === undefined) return;
         const result = await dispatch(action);
@@ -54,6 +92,13 @@ export function make_echo_document_authority(
         // no accepted canonical evidence failed to project.
       });
     },
+    dispose(): void {
+      if (disposed) return;
+      disposed = true;
+      stopReplicaDispose?.();
+      cancel_revision_waits(terminalError());
+    },
+    pendingRevisionWaits: () => revisionWaits.size,
     rejectIdentityDemand: true,
   });
 }

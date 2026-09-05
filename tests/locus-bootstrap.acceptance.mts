@@ -144,6 +144,7 @@ function socket_pair(): Readonly<{
   client: LocusSocketLike;
   server: LocusSocketLike;
   clientSent: readonly string[];
+  clientLifecycle(): Readonly<{ messageListeners: number; closeListeners: number; closeCalls: number }>;
   before_server_delivery(listener: (message: Readonly<{ type?: string }>) => void): void;
   close(): void;
 }> {
@@ -153,6 +154,7 @@ function socket_pair(): Readonly<{
   const serverCloses = new Set<() => void>();
   let beforeServerDelivery: ((message: Readonly<{ type?: string }>) => void) | undefined;
   const clientSent: string[] = [];
+  let clientCloseCalls = 0;
   return Object.freeze({
     client: Object.freeze({
       send(message: string) {
@@ -167,9 +169,16 @@ function socket_pair(): Readonly<{
         clientCloses.add(listener);
         return () => clientCloses.delete(listener);
       },
-      close() {},
+      close() { clientCloseCalls += 1; },
     }),
     clientSent,
+    clientLifecycle() {
+      return Object.freeze({
+        messageListeners: clientMessages.size,
+        closeListeners: clientCloses.size,
+        closeCalls: clientCloseCalls,
+      });
+    },
     server: Object.freeze({
       send(message: string) {
         beforeServerDelivery?.(JSON.parse(message));
@@ -407,6 +416,14 @@ check("preinstalled mirror continues as current through existing recovery", asyn
   client.dispose();
   client.dispose();
   assert.equal(client.status, "disposed");
+  assert.equal(client.echo.recovery.status, "disposed");
+  assert.equal(client.echo.session.status, "disposed");
+  assert.deepEqual(pair.clientLifecycle(), { messageListeners: 0, closeListeners: 0, closeCalls: 1 });
+  const releasedMap = client.map;
+  if (releasedMap.mode !== "data-object" && releasedMap.mode !== "data-array") {
+    throw new Error("Expected projected bootstrap mirror.");
+  }
+  assert.doesNotThrow(() => releasedMap.set(["value"], 2));
 });
 
 check("commits after HTTP cut replay exactly once", async () => {

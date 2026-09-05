@@ -61,6 +61,9 @@ export function create_multi_library_echo<
         },
         () => options.map.rev,
         (listener) => options.map.commits.observe(listener),
+        () => endpoint.replica.ready,
+        endpoint.replica.onDispose,
+        endpoint.replica.waitUntilReady,
       );
       register_echo_document_authority(map, authority);
       return Object.freeze({ map, authority });
@@ -68,6 +71,7 @@ export function create_multi_library_echo<
 
   const dispose = (): void => {
     for (const registration of documentAuthorities) {
+      registration.authority.dispose();
       unregister_echo_document_authority(registration.map, registration.authority);
     }
     endpoint.dispose();
