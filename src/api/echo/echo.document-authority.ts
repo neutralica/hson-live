@@ -5,6 +5,13 @@ import type {
   LiveMapDocumentContent,
   LiveMapDocumentRequestTarget,
 } from "../../types/livemap.types.js";
+import type { EchoDocumentAuthority } from "./echo.document-authority-registry.js";
+export {
+  echo_document_authority_for,
+  register_echo_document_authority,
+  unregister_echo_document_authority,
+} from "./echo.document-authority-registry.js";
+export type { EchoDocumentAuthority } from "./echo.document-authority-registry.js";
 
 export type EchoDocumentAction =
   | Readonly<{ name: "document.attrs.set"; payload: { target: LiveMapDocumentRequestTarget; name: string; value: LiveMapDocumentAttributeValue } }>
@@ -17,14 +24,6 @@ export type EchoDocumentAction =
   | Readonly<{ name: "document.content.insert"; payload: { target: LiveMapDocumentRequestTarget; index: number; content: LiveMapDocumentContent } }>
   | Readonly<{ name: "document.content.remove"; payload: { target: LiveMapDocumentRequestTarget; index: number } }>
   | Readonly<{ name: "document.content.move"; payload: { target: LiveMapDocumentRequestTarget; from: number; to: number } }>;
-
-export type EchoDocumentAuthority = Readonly<{
-  enqueue: (lower: () => EchoDocumentAction | undefined) => void;
-  dispose: () => void;
-  /** @internal Deterministic lifecycle proof seam. */
-  pendingRevisionWaits: () => number;
-  rejectIdentityDemand: true;
-}>;
 
 export function make_echo_document_authority(
   dispatch: (action: EchoDocumentAction) => Promise<Readonly<{ accepted: boolean; completionRev?: number }>>,
@@ -101,20 +100,6 @@ export function make_echo_document_authority(
     pendingRevisionWaits: () => revisionWaits.size,
     rejectIdentityDemand: true,
   });
-}
-
-const AUTHORITIES = new WeakMap<object, EchoDocumentAuthority>();
-
-export function register_echo_document_authority(map: object, authority: EchoDocumentAuthority): void {
-  AUTHORITIES.set(map, authority);
-}
-
-export function unregister_echo_document_authority(map: object, authority: EchoDocumentAuthority): void {
-  if (AUTHORITIES.get(map) === authority) AUTHORITIES.delete(map);
-}
-
-export function echo_document_authority_for(map: object): EchoDocumentAuthority | undefined {
-  return AUTHORITIES.get(map);
 }
 
 export function document_action_payload_with_library(

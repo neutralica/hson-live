@@ -64,6 +64,10 @@ await check("untyped Echo construction rejects incomplete replica capability pai
   const createUntyped = (options: unknown): unknown => Reflect.apply(create_echo, undefined, [options]);
   assert.throws(() => createUntyped({ socket: pair.client, map: Object.freeze({}) }), /map and recovery together/i);
   assert.throws(() => createUntyped({ socket: pair.client, recovery: { logicalMapId: "untyped-map" } }), /map and recovery together/i);
+  assert.throws(
+    () => createUntyped({ socket: pair.client, map: Object.freeze({}), recovery: { logicalMapId: "untyped-map" } }),
+    /not a LiveMap authority/i,
+  );
 });
 
 await check("public endpoint-only Echo uses explicit session lifecycle without replica state", async () => {

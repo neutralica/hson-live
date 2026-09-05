@@ -520,6 +520,7 @@ await check("replacement during authorization cannot cross aggregate admission",
   const credential = first.session.credential;
   assert.ok(credential);
   const pending = first.action("held");
+  void pending.catch(() => {});
   await authorizationEntered.promise;
 
   const secondPair = socket_pair();
@@ -568,6 +569,7 @@ await check("replacement after admission retains the outcome but fences late del
   const credential = first.session.credential;
   assert.ok(credential);
   const pending = first.action("held");
+  void pending.catch(() => {});
   await handlerEntered.promise;
   assert.equal(locus.activity.snapshot().actionCount, 1);
 

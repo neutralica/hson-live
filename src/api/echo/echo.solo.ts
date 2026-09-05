@@ -45,9 +45,11 @@ import type {
   LocusSnapshotCapabilities,
   LocusSnapshotEncodingSelection,
 } from "../../types/locus.types.js";
+import type { EchoMapManagementLease } from "../../internal/echo-map-capability.js";
 import { LocusDisconnectedError } from "../locus/locus.error.js";
 import { EchoRecoveryError } from "./echo.error.js";
 import { create_echo_endpoint_internal, type EchoEndpointIdFactories } from "./echo.endpoint.js";
+import type { EchoEndpointConnection } from "./echo.client.js";
 import { create_echo_solo_replica_capability_internal } from "./echo.solo-replica.js";
 import {
   decode_locus_server_message,
@@ -169,7 +171,13 @@ function projected_identity_replay(
 export function create_solo_echo_internal<
   TMap extends LiveMapAuthority,
   TActions extends LocusActionPayloads = LocusActionPayloads,
->(options: EchoOptions<TMap> & Readonly<{ map: TMap; recovery: EchoRecoveryOptions }>): Echo<TMap, TActions> {
+>(
+  options: EchoOptions<TMap> & Readonly<{ map: TMap; recovery: EchoRecoveryOptions }>,
+  composition?: Readonly<{
+    connection: EchoEndpointConnection<TActions>;
+    management: EchoMapManagementLease;
+  }>,
+): Echo<TMap, TActions> {
 
   const internalOptions = options as EchoOptions<LiveMapAuthority> & EchoInternalIdFactories;
   const map: ClassifiedLiveMap = classified_live_map(options.map);
@@ -180,7 +188,7 @@ export function create_solo_echo_internal<
       `Locus recovery cursor revision ${initialRecoveryCursor.lastAppliedRev} does not match mirror revision ${map.rev}.`,
     );
   }
-  const replica = create_echo_solo_replica_capability_internal(map, false);
+  const replica = create_echo_solo_replica_capability_internal(map, false, composition?.management);
   let echoDisposed = false;
   let documentAuthority: EchoDocumentAuthority | undefined;
   const run_echo_owned = <T>(operation: () => T): T => replica.runManaged(operation);
@@ -208,7 +216,7 @@ export function create_solo_echo_internal<
   let recoveryFailures = 0;
   let consumerNotifications = 0;
   let observerFailures = 0;
-  const endpoint = create_echo_endpoint_internal<TActions>({
+  const endpoint = composition?.connection.endpoint ?? create_echo_endpoint_internal<TActions>({
     transport: {
       send: (message) => options.socket.send(encode_client_message(message)),
     },
@@ -227,6 +235,35 @@ export function create_solo_echo_internal<
       }
     },
   });
+  if (composition !== undefined) {
+    disposers.push(composition.connection.onReadyChange(notify_echo_ready));
+    disposers.push(composition.connection.onAttachmentLost((reason, error) => {
+      if (reason !== "ended" && (recoveryStatus === "recovering" || recoveryStatus === "caught_up")) {
+        fail_recovery(
+          reason === "fenced" ? "LOCUS_SESSION_ATTACHMENT_FENCED" : "LOCUS_RECOVERY_DISCONNECTED",
+          reason === "fenced" ? "Locus session attachment was fenced." : "Locus recovery transport disconnected.",
+          error,
+        );
+      }
+    }));
+    disposers.push(composition.connection.onConnectionChange((connected) => {
+      isConnected = connected;
+      if (connected) {
+        recoveryLifecycle = Object.freeze({ phase: "idle" });
+        if (recoveryStatus === "failed" || recoveryStatus === "caught_up") {
+          recoveryStatus = "idle";
+          recoveryStrategy = undefined;
+          firstFailure = undefined;
+        }
+      } else {
+        negotiatedSnapshotEncoding = undefined;
+        stopRecoveryMessages?.();
+        stopRecoveryMessages = undefined;
+        recoveryLifecycle = Object.freeze({ phase: "disconnected" });
+      }
+    }));
+    disposers.push(composition.connection.setMessageEncoder(encode_client_message));
+  }
   const clientId = endpoint.clientId;
 
   function echo_ready(): boolean {
@@ -672,7 +709,10 @@ export function create_solo_echo_internal<
 
   function install_recovery_messages(): void {
     if (stopRecoveryMessages || recoveryDisposed) return;
-    stopRecoveryMessages = options.socket.onMessage((raw) => {
+    const observe = composition === undefined
+      ? options.socket.onMessage.bind(options.socket)
+      : composition.connection.onRawMessage;
+    stopRecoveryMessages = observe((raw) => {
       const decoded = decode_locus_server_message(raw);
       if (!decoded.ok) {
         if (recoveryStatus === "recovering" || recoveryStatus === "caught_up") {
@@ -704,6 +744,7 @@ export function create_solo_echo_internal<
   }
 
   function connect(): LocusDisposer {
+    if (composition !== undefined) return composition.connection.echo.connect();
     if (isConnected) return disconnect;
     isConnected = true;
     if (!recoveryDisposed) {
@@ -729,6 +770,10 @@ export function create_solo_echo_internal<
   }
 
   function disconnect(): void {
+    if (composition !== undefined) {
+      composition.connection.echo.disconnect();
+      return;
+    }
     if (!isConnected) return;
     isConnected = false;
     negotiatedSnapshotEncoding = undefined;
@@ -742,9 +787,10 @@ export function create_solo_echo_internal<
   function dispose(): void {
     if (echoDisposed) return;
     echoDisposed = true;
-    disconnect();
+    if (composition === undefined) disconnect();
     dispose_recovery();
-    endpoint.dispose();
+    if (composition === undefined) endpoint.dispose();
+    if (composition !== undefined) while (disposers.length) disposers.pop()?.();
     if (documentAuthority !== undefined) {
       documentAuthority.dispose();
       unregister_echo_document_authority(map, documentAuthority);

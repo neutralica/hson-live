@@ -12,8 +12,10 @@ import type {
   EchoActionStatusResult,
   EchoSession,
   EchoSessionOptions,
+  LocusActionPayloads,
   LocusSocketLike,
 } from "../../types/locus.types.js";
+import type { EchoMapManagementLease } from "../../internal/echo-map-capability.js";
 import { decode_locus_server_message } from "../locus/locus.protocol.js";
 import { is_locus_json_value } from "../locus/locus.protocol.js";
 import { make_livemap_hosted_mirror_from_snapshot_internal } from "../livemap/livemap.libraries.js";
@@ -32,6 +34,7 @@ import {
 } from "../locus/locus.hosted-multi-library.js";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../locus/locus.hosted-multi-library.protocol.js";
 import { create_echo_endpoint_internal, type EchoEndpointServerMessage } from "./echo.endpoint.js";
+import type { EchoEndpointConnection } from "./echo.client.js";
 import { make_echo_reload_safe_id } from "./echo.request.js";
 import {
   create_echo_aggregate_replica_capability_internal,
@@ -43,7 +46,7 @@ type HostedPlanOutcome = "current" | "replay" | "snapshot" | "reject";
 type HostedSnapshotReason = "no_usable_revision" | "incarnation_mismatch" | "registry_mismatch" | "history_unavailable";
 
 /** @internal */
-export type MultiLibraryEchoSocketClientOptions = Readonly<{
+export type MultiLibraryEchoSocketClientOptions<TActions extends LocusActionPayloads = LocusActionPayloads> = Readonly<{
   socket: LocusSocketLike;
   /** Required for an unbootstrapped Echo; an existing mirror supplies it. */
   logicalMapId?: string;
@@ -54,6 +57,10 @@ export type MultiLibraryEchoSocketClientOptions = Readonly<{
   actionAttemptId?: () => string;
   actionStatusId?: () => string;
   session?: EchoSessionOptions;
+  /** @internal Common public Echo shell supplied by deferred replica composition. */
+  connection?: EchoEndpointConnection<TActions>;
+  /** @internal Management acquired synchronously by the public Echo shell. */
+  management?: EchoMapManagementLease;
 }>;
 
 /** @internal */
@@ -95,16 +102,16 @@ export type MultiLibraryEchoSocketClient = Readonly<{
 }>;
 
 /** @internal Aggregate replica/recovery capability composed with the common endpoint. */
-export function create_multi_library_echo_socket_client_internal(
-  options: MultiLibraryEchoSocketClientOptions,
-): MultiLibraryEchoSocketClient {
+export function create_multi_library_echo_socket_client_internal<
+  TActions extends LocusActionPayloads = LocusActionPayloads,
+>(options: MultiLibraryEchoSocketClientOptions<TActions>): MultiLibraryEchoSocketClient {
   let generatedId = 0;
   const fresh_id = (prefix: string): string => {
     generatedId += 1;
     return `${prefix}-${Date.now().toString(36)}-${generatedId.toString(36)}`;
   };
   let map = options.map;
-  const replica = create_echo_aggregate_replica_capability_internal(map);
+  const replica = create_echo_aggregate_replica_capability_internal(map, options.management);
   let logicalMapId = options.logicalMapId;
   let incarnationId: string | undefined;
   let registryDigest: string | undefined;
@@ -137,6 +144,7 @@ export function create_multi_library_echo_socket_client_internal(
   let connected = false;
   let stopMessage: LocusDisposer | undefined;
   let stopClose: LocusDisposer | undefined;
+  const compositionDisposers: LocusDisposer[] = [];
   let nextId = 0;
   let recovery: Readonly<{
     id: string;
@@ -150,7 +158,7 @@ export function create_multi_library_echo_socket_client_internal(
   let liveRecovery: Readonly<{ id: string; sessionId: string; sessionEpoch: number }> | undefined;
   const readyWaiters = new Set<Readonly<{ resolve: () => void; reject: (reason: Error) => void }>>();
 
-  const endpoint = create_echo_endpoint_internal({
+  const endpoint = options.connection?.endpoint ?? create_echo_endpoint_internal({
     transport: { send },
     clientId: options.clientId ?? make_echo_reload_safe_id("echo-client"),
     sessionRequired: true,
@@ -171,6 +179,48 @@ export function create_multi_library_echo_socket_client_internal(
     onAttachmentLost: (_reason, error) => interruptRecovery(error),
   });
   const clientId = endpoint.clientId;
+
+  const receiveRaw = (raw: string): void => {
+    let message: DecodedServerMessage;
+    try {
+      message = decode_server_message(raw);
+    } catch (cause) {
+      failEndpoint(cause instanceof Error ? cause : new Error("Hosted aggregate Echo protocol failed."));
+      return;
+    }
+    if (is_endpoint_server_message(message)) {
+      if (options.connection === undefined) endpoint.receive(message);
+      return;
+    }
+    try {
+      receiveReplica(message);
+    } catch (cause) {
+      failReplica(cause instanceof Error ? cause : new Error("Hosted aggregate replica failed."));
+    }
+  };
+
+  if (options.connection !== undefined) {
+    compositionDisposers.push(options.connection.onRawMessage(receiveRaw));
+    compositionDisposers.push(options.connection.onConnectionChange((nextConnected) => {
+      if (nextConnected) {
+        connected = true;
+        return;
+      }
+      if (!connected) return;
+      connected = false;
+      const error = new Error("Hosted aggregate socket Echo disconnected.");
+      interruptRecovery(error);
+      replica.markFailed(error);
+      if (status !== "closed") status = "idle";
+    }));
+    compositionDisposers.push(options.connection.setMessageEncoder((message) => {
+      const raw = JSON.stringify(message);
+      if (utf8_bytes(raw) > DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES) {
+        throw new Error("Hosted aggregate Echo message exceeds the live wire byte limit.");
+      }
+      return raw;
+    }));
+  }
 
   function next(prefix: string): string {
     nextId += 1;
@@ -218,6 +268,10 @@ export function create_multi_library_echo_socket_client_internal(
   }
 
   function disconnect(): void {
+    if (options.connection !== undefined) {
+      options.connection.echo.disconnect();
+      return;
+    }
     if (!connected) return;
     connected = false;
     stopMessage?.();
@@ -232,26 +286,10 @@ export function create_multi_library_echo_socket_client_internal(
   }
 
   function attachTransport(): LocusDisposer {
+    if (options.connection !== undefined) return options.connection.echo.connect();
     if (status === "closed" || connected) return disconnect;
     connected = true;
-    stopMessage = options.socket.onMessage((raw) => {
-      let message: DecodedServerMessage;
-      try {
-        message = decode_server_message(raw);
-      } catch (cause) {
-        failEndpoint(cause instanceof Error ? cause : new Error("Hosted aggregate Echo protocol failed."));
-        return;
-      }
-      if (is_endpoint_server_message(message)) {
-        endpoint.receive(message);
-        return;
-      }
-      try {
-        receiveReplica(message);
-      } catch (cause) {
-        failReplica(cause instanceof Error ? cause : new Error("Hosted aggregate replica failed."));
-      }
-    }) ?? undefined;
+    stopMessage = options.socket.onMessage(receiveRaw) ?? undefined;
     stopClose = options.socket.onClose(disconnect) ?? undefined;
     endpoint.connect();
     return disconnect;
@@ -511,17 +549,18 @@ export function create_multi_library_echo_socket_client_internal(
     recover: recover_wire,
     subscribe,
     unsubscribe,
-    action,
-    retryAction,
+    action: action as MultiLibraryEchoSocketClient["action"],
+    retryAction: retryAction as MultiLibraryEchoSocketClient["retryAction"],
     actionStatus,
     wait_until_ready,
     dispose: () => {
       if (status === "closed") return;
       status = "closed";
-      disconnect();
+      if (options.connection === undefined) disconnect();
       const error = new Error("Hosted aggregate socket Echo is closed.");
       interruptRecovery(error);
-      endpoint.dispose();
+      if (options.connection === undefined) endpoint.dispose();
+      while (compositionDisposers.length > 0) compositionDisposers.pop()?.();
       for (const waiter of readyWaiters) waiter.reject(error);
       readyWaiters.clear();
       pendingSync.clear();

@@ -1,6 +1,7 @@
 // core.ts
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
+import { register_echo_map_capability_internal } from "../../internal/echo-map-capability.js";
 import type { HsonSchema } from "../transform/transform.types.js";
 import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
 import type { ClassifiedLiveMap, LiveMap, LiveMapAnyOp, LiveMapCommit, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapDataOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapCaptureOptions, LiveMapApply, LiveMapGraphCommit, LiveMapProjectedGraphEnsureQuidOp, LiveMapGraphOp, LiveMapGraphReplaceRootOp, LiveMapRootMode } from "../../types/livemap.types.js";
@@ -69,6 +70,7 @@ import {
   LiveMapTransitionError,
   make_livemap_transition_controller,
   register_livemap_staged_authority,
+  type LiveMapStagedAuthority,
   type LiveMapTransitionController,
   type PreparedLiveMapTransition,
 } from "./livemap.authority.js";
@@ -2212,7 +2214,7 @@ function make_livemap_core_from_owned_root(
 
 /** Register the internal callback-based staging seam on one completed façade. */
 function register_staged_facade<TMap extends object>(map: TMap, built: BuiltLiveMapCore): void {
-  register_livemap_staged_authority(map, Object.freeze({
+  const stagedAuthority: LiveMapStagedAuthority<TMap> = Object.freeze({
     prepare(mutation): PreparedLiveMapTransition {
       type DetachedFallback = Readonly<{
         preparedDraft: ReturnType<typeof prepare_livemap_root>;
@@ -2363,6 +2365,22 @@ function register_staged_facade<TMap extends object>(map: TMap, built: BuiltLive
     scheduleManaged: (mutation) => built.transitionController.scheduleManaged(
       mutation as (draft: object) => LiveMapCommit<LiveMapAnyOp>,
     ),
+  });
+  register_livemap_staged_authority(map, stagedAuthority);
+  register_echo_map_capability_internal(map, Object.freeze({
+    topology: "solo" as const,
+    revision: () => built.core.rev,
+    documentMaps: () => built.core.mode === "document" ? Object.freeze([map]) : Object.freeze([]),
+    acquire(owner: object) {
+      stagedAuthority.claimManagement(owner, () => Promise.reject(new LiveMapTransitionError(
+        "LIVEMAP_MANAGED_MUTATION_REJECTED",
+        "Echo LiveMap mutation is reserved for accepted canonical replay.",
+      )));
+      return Object.freeze({
+        runManaged: <T>(operation: () => T): T => stagedAuthority.runManaged(owner, operation),
+        release: (): void => stagedAuthority.releaseManagement(owner),
+      });
+    },
   }));
 }
 

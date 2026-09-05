@@ -1,10 +1,18 @@
 import type {
   Echo,
   EchoOptions,
+  EchoSessionOptions,
   LocusActionPayloads,
+  LocusClientMessage,
   LocusDisposer,
+  LocusSocketLike,
 } from "../../types/locus.types.js";
-import { create_echo_endpoint_internal, type EchoEndpointServerMessage } from "./echo.endpoint.js";
+import {
+  create_echo_endpoint_internal,
+  type EchoEndpoint,
+  type EchoEndpointIdFactories,
+  type EchoEndpointServerMessage,
+} from "./echo.endpoint.js";
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -25,7 +33,7 @@ function hasExactKeys(value: Readonly<Record<string, unknown>>, keys: readonly s
 }
 
 /** @internal Endpoint-only wire admission without importing replica protocol machinery. */
-function decodeEndpointMessage(raw: string): EchoEndpointServerMessage | undefined {
+function decodeEndpointMessage(raw: string, format?: string): EchoEndpointServerMessage | undefined {
   let value: unknown;
   try {
     value = JSON.parse(raw);
@@ -33,6 +41,8 @@ function decodeEndpointMessage(raw: string): EchoEndpointServerMessage | undefin
     return undefined;
   }
   if (!isRecord(value) || !isNonemptyString(value.type)) return undefined;
+  const exactKeys = (keys: readonly string[]): boolean => hasExactKeys(value, format === undefined ? keys : [...keys, "format"])
+    && (format === undefined || value.format === format);
   if (value.type === "ack" || value.type === "error") {
     return value as EchoEndpointServerMessage;
   }
@@ -42,14 +52,14 @@ function decodeEndpointMessage(raw: string): EchoEndpointServerMessage | undefin
     return value as EchoEndpointServerMessage;
   }
   if (value.type === "session-fenced") {
-    if (!hasExactKeys(value, ["type", "sessionId", "epoch", "code"])
+    if (!exactKeys(["type", "sessionId", "epoch", "code"])
       || !isNonemptyString(value.sessionId)
       || !isRevision(value.epoch)
       || value.code !== "LOCUS_SESSION_ATTACHMENT_FENCED") return undefined;
     return value as EchoEndpointServerMessage;
   }
   if (value.type === "session-created") {
-    if (!hasExactKeys(value, ["type", "id", "sessionId", "credential", "epoch", "logicalMapId", "incarnationId"])
+    if (!exactKeys(["type", "id", "sessionId", "credential", "epoch", "logicalMapId", "incarnationId"])
       || !isNonemptyString(value.id)
       || !isNonemptyString(value.sessionId)
       || !isNonemptyString(value.credential)
@@ -59,7 +69,7 @@ function decodeEndpointMessage(raw: string): EchoEndpointServerMessage | undefin
     return value as EchoEndpointServerMessage;
   }
   if (value.type === "session-attached") {
-    if (!hasExactKeys(value, ["type", "id", "sessionId", "epoch", "logicalMapId", "incarnationId"])
+    if (!exactKeys(["type", "id", "sessionId", "epoch", "logicalMapId", "incarnationId"])
       || !isNonemptyString(value.id)
       || !isNonemptyString(value.sessionId)
       || !isRevision(value.epoch)
@@ -68,14 +78,14 @@ function decodeEndpointMessage(raw: string): EchoEndpointServerMessage | undefin
     return value as EchoEndpointServerMessage;
   }
   if (value.type === "session-rejected") {
-    if (!hasExactKeys(value, ["type", "id", "code", "message"])
+    if (!exactKeys(["type", "id", "code", "message"])
       || !isNonemptyString(value.id)
       || !isNonemptyString(value.code)
       || !isNonemptyString(value.message)) return undefined;
     return value as EchoEndpointServerMessage;
   }
   if (value.type === "session-ended") {
-    if (!hasExactKeys(value, ["type", "id", "sessionId", "epoch"])
+    if (!exactKeys(["type", "id", "sessionId", "epoch"])
       || !isNonemptyString(value.id)
       || !isNonemptyString(value.sessionId)
       || !isRevision(value.epoch)) return undefined;
@@ -84,15 +94,52 @@ function decodeEndpointMessage(raw: string): EchoEndpointServerMessage | undefin
   return undefined;
 }
 
-/** @internal Replica-independent public Echo composition. */
-export function create_endpoint_echo_internal<
+/** @internal Lightweight options for the common Echo transport/session connection. */
+export type EchoEndpointConnectionOptions<TActions extends LocusActionPayloads = LocusActionPayloads> = Readonly<{
+  socket: LocusSocketLike;
+  clientId?: string;
+  session?: EchoSessionOptions;
+  ids?: EchoEndpointIdFactories;
+  actionMessageId?: "request" | "attempt";
+  validateActionPayload?: (payload: unknown) => boolean;
+  operationLossError?: (reason: "disconnect" | "fenced" | "ended") => Error;
+  endpointMessageFormat?: string;
+}>;
+
+/** @internal Shared transport/session shell used by endpoint-only and deferred-replica Echo. */
+export type EchoEndpointConnection<TActions extends LocusActionPayloads = LocusActionPayloads> = Readonly<{
+  endpoint: EchoEndpoint<TActions>;
+  echo: Echo<undefined, TActions>;
+  readonly connected: boolean;
+  onRawMessage: (listener: (raw: string) => void) => LocusDisposer;
+  onConnectionChange: (listener: (connected: boolean) => void) => LocusDisposer;
+  onReadyChange: (listener: () => void) => LocusDisposer;
+  onAttachmentLost: (listener: (reason: "disconnect" | "fenced" | "ended", error: Error) => void) => LocusDisposer;
+  setMessageEncoder: (encoder: (message: LocusClientMessage<TActions>) => string) => LocusDisposer;
+}>;
+
+/** @internal Construct the lightweight common endpoint and own its socket listeners. */
+export function create_echo_endpoint_connection_internal<
   TActions extends LocusActionPayloads = LocusActionPayloads,
->(options: EchoOptions<undefined>): Echo<undefined, TActions> {
+>(options: EchoEndpointConnectionOptions<TActions>): EchoEndpointConnection<TActions> {
+  const rawListeners = new Set<(raw: string) => void>();
+  const connectionListeners = new Set<(connected: boolean) => void>();
+  const readyListeners = new Set<() => void>();
+  const attachmentLostListeners = new Set<(reason: "disconnect" | "fenced" | "ended", error: Error) => void>();
+  let encodeMessage = (message: LocusClientMessage<TActions>): string => JSON.stringify(message);
   const endpoint = create_echo_endpoint_internal<TActions>({
-    transport: { send: (message) => options.socket.send(JSON.stringify(message)) },
+    transport: { send: (message) => options.socket.send(encodeMessage(message)) },
     ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
     ...(options.session?.credential === undefined ? {} : { credential: options.session.credential }),
     sessionRequired: true,
+    ...(options.ids === undefined ? {} : { ids: options.ids }),
+    ...(options.actionMessageId === undefined ? {} : { actionMessageId: options.actionMessageId }),
+    ...(options.validateActionPayload === undefined ? {} : { validateActionPayload: options.validateActionPayload }),
+    ...(options.operationLossError === undefined ? {} : { operationLossError: options.operationLossError }),
+    onReadyChange: () => { for (const listener of [...readyListeners]) listener(); },
+    onAttachmentLost: (reason, error) => {
+      for (const listener of [...attachmentLostListeners]) listener(reason, error);
+    },
   });
   let connected = false;
   let disposed = false;
@@ -103,23 +150,37 @@ export function create_endpoint_echo_internal<
     connected = false;
     while (transportDisposers.length > 0) transportDisposers.pop()?.();
     endpoint.disconnect();
+    for (const listener of [...connectionListeners]) listener(false);
   }
 
   function connect(): LocusDisposer {
     if (disposed || connected) return disconnect;
     connected = true;
     const stopMessage = options.socket.onMessage((raw) => {
-      const decoded = decodeEndpointMessage(raw);
+      const decoded = decodeEndpointMessage(raw, options.endpointMessageFormat);
       if (decoded !== undefined) endpoint.receive(decoded);
+      for (const listener of [...rawListeners]) listener(raw);
     });
     if (stopMessage !== undefined) transportDisposers.push(stopMessage);
     const stopClose = options.socket.onClose(disconnect);
     if (stopClose !== undefined) transportDisposers.push(stopClose);
     endpoint.connect();
+    for (const listener of [...connectionListeners]) listener(true);
     return disconnect;
   }
 
-  return Object.freeze({
+  function dispose(): void {
+    if (disposed) return;
+    disposed = true;
+    disconnect();
+    endpoint.dispose();
+    rawListeners.clear();
+    connectionListeners.clear();
+    readyListeners.clear();
+    attachmentLostListeners.clear();
+  }
+
+  const echo = Object.freeze({
     clientId: endpoint.clientId,
     session: endpoint.session,
     connect,
@@ -127,11 +188,48 @@ export function create_endpoint_echo_internal<
     action: endpoint.action,
     retryAction: endpoint.retryAction,
     actionStatus: endpoint.actionStatus,
-    dispose: () => {
-      if (disposed) return;
-      disposed = true;
-      disconnect();
-      endpoint.dispose();
-    },
+    dispose,
   }) as unknown as Echo<undefined, TActions>;
+
+  return Object.freeze({
+    endpoint,
+    echo,
+    get connected() { return connected; },
+    onRawMessage(listener) {
+      if (disposed) return () => {};
+      rawListeners.add(listener);
+      return () => rawListeners.delete(listener);
+    },
+    onConnectionChange(listener) {
+      if (disposed) return () => {};
+      connectionListeners.add(listener);
+      listener(connected);
+      return () => connectionListeners.delete(listener);
+    },
+    onReadyChange(listener) {
+      if (disposed) return () => {};
+      readyListeners.add(listener);
+      return () => readyListeners.delete(listener);
+    },
+    onAttachmentLost(listener) {
+      if (disposed) return () => {};
+      attachmentLostListeners.add(listener);
+      return () => attachmentLostListeners.delete(listener);
+    },
+    setMessageEncoder(encoder) {
+      if (disposed) return () => {};
+      const previous = encodeMessage;
+      encodeMessage = encoder;
+      return () => {
+        if (encodeMessage === encoder) encodeMessage = previous;
+      };
+    },
+  });
+}
+
+/** @internal Replica-independent public Echo composition. */
+export function create_endpoint_echo_internal<
+  TActions extends LocusActionPayloads = LocusActionPayloads,
+>(options: EchoOptions<undefined>): Echo<undefined, TActions> {
+  return create_echo_endpoint_connection_internal<TActions>(options).echo;
 }

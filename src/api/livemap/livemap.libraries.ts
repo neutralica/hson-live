@@ -1,4 +1,5 @@
 import { clone_node } from "../../core/clone-node.js";
+import { register_echo_map_capability_internal } from "../../internal/echo-map-capability.js";
 import { is_Node } from "../../core/node-guards.js";
 import { is_persisted_quid } from "../../core/persisted-quid.js";
 import type { HsonNode, JsonValue, Primitive } from "../../core/types.js";
@@ -151,6 +152,30 @@ export function make_livemap_libraries<const TLibraries extends LiveMapLibraries
     }),
   });
   register_internal_livemap_aggregate_owner(libraries, aggregate);
+  register_echo_map_capability_internal(libraries, Object.freeze({
+    topology: "aggregate" as const,
+    revision: () => aggregate.inspect().revision,
+    documentMaps: () => Object.freeze([...named.values()]
+      .filter((entry) => "document" in entry.input)
+      .map((entry) => selected(entry.name))),
+    acquire(owner: object) {
+      aggregate.claimManagement(owner);
+      try {
+        const snapshot = aggregate.captureHosted();
+        return Object.freeze({
+          runManaged: <T>(operation: () => T): T => operation(),
+          release: (): void => aggregate.releaseManagement(owner),
+          initialRecovery: Object.freeze({
+            incarnationId: snapshot.authority.incarnationId,
+            lastAppliedRev: snapshot.revision,
+          }),
+        });
+      } catch (cause) {
+        aggregate.releaseManagement(owner);
+        throw cause;
+      }
+    },
+  }));
   PUBLIC_MULTI_LIBRARY_MAPS.add(libraries);
   return libraries as unknown as LiveMapLibraries<TLibraries>;
 }

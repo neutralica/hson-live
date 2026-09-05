@@ -1,4 +1,5 @@
 import type { JsonValue } from "../../core/types.js";
+import type { EchoMapManagementLease } from "../../internal/echo-map-capability.js";
 import type { LiveMapLibraries } from "../../types/livemap.types.js";
 import type {
   Echo,
@@ -21,18 +22,29 @@ import {
 } from "./echo.document-authority.js";
 import { create_multi_library_echo_socket_client_internal } from "./echo.multi-library.socket.js";
 import { encode_locus_graph_content } from "../locus/locus.graph-content-codec.js";
+import type { EchoEndpointConnection } from "./echo.client.js";
 
 /** Create one complete exact-topology Echo replica. */
 export function create_multi_library_echo<
   TMap extends LiveMapLibraries,
   TActions extends LocusActionPayloads = LocusActionPayloads,
->(options: EchoOptions<TMap> & Readonly<{ map: TMap; recovery: EchoRecoveryOptions }>): Echo<TMap, TActions> {
-  const endpoint = create_multi_library_echo_socket_client_internal({
+>(
+  options: EchoOptions<TMap> & Readonly<{ map: TMap; recovery: EchoRecoveryOptions }>,
+  composition?: Readonly<{
+    connection: EchoEndpointConnection<TActions>;
+    management: EchoMapManagementLease;
+  }>,
+): Echo<TMap, TActions> {
+  const endpoint = create_multi_library_echo_socket_client_internal<TActions>({
     socket: options.socket,
     map: options.map,
     logicalMapId: options.recovery.logicalMapId,
     ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
     ...(options.session === undefined ? {} : { session: options.session }),
+    ...(composition === undefined ? {} : {
+      connection: composition.connection,
+      management: composition.management,
+    }),
   });
   const documentAuthorities: ReadonlyArray<Readonly<{
     map: object;

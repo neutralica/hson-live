@@ -1,5 +1,6 @@
 import type { LiveMapLibraries } from "../../types/livemap.types.js";
 import type { LocusDisposer } from "../../types/locus.types.js";
+import type { EchoMapManagementLease } from "../../internal/echo-map-capability.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import type { HostedAggregateCommit, HostedAggregateSnapshot } from "../livemap/livemap.hosted.js";
 import type { EchoReplicaCapability } from "./echo.replica.js";
@@ -15,15 +16,19 @@ export type EchoAggregateReplicaCapability = EchoReplicaCapability<LiveMapLibrar
 /** @internal Construct an aggregate replica independently of endpoint/session mechanics. */
 export function create_echo_aggregate_replica_capability_internal(
   initialMap?: LiveMapLibraries,
+  management?: EchoMapManagementLease,
 ): EchoAggregateReplicaCapability {
-  const owner = Object.freeze({});
+  if (management !== undefined && management.topology !== "aggregate") {
+    throw new Error("Echo aggregate replica received incompatible map management.");
+  }
+  const owner = management?.owner ?? Object.freeze({});
   const readyWaiters = new Set<Readonly<{ resolve: () => void; reject: (reason: Error) => void }>>();
   const disposeListeners = new Set<(reason: Error) => void>();
   let map = initialMap;
   let ready = false;
   let disposed = false;
   let failure: unknown;
-  if (map !== undefined) internal_livemap_aggregate_authority(map).claimManagement(owner);
+  if (map !== undefined && management === undefined) internal_livemap_aggregate_authority(map).claimManagement(owner);
 
   const terminalError = (): Error => new Error("Hosted aggregate replica capability is disposed.");
 
@@ -89,7 +94,8 @@ export function create_echo_aggregate_replica_capability_internal(
       disposeListeners.clear();
       for (const waiter of [...readyWaiters]) waiter.reject(reason);
       readyWaiters.clear();
-      if (map !== undefined) internal_livemap_aggregate_authority(map).releaseManagement(owner);
+      if (management !== undefined) management.release();
+      else if (map !== undefined) internal_livemap_aggregate_authority(map).releaseManagement(owner);
     },
   });
 }

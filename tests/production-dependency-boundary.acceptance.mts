@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { relative, resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
+import { gzipSync } from "node:zlib";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -38,6 +40,17 @@ function production_source_files(directory: string): string[] {
 
 const violations: string[] = [];
 const files = production_source_files(sourceRoot);
+const require = createRequire(new URL("../editors/vscode-hson/package.json", import.meta.url));
+type BundleOutput = Readonly<{
+  entryPoint?: string;
+  imports: readonly Readonly<{ path: string; kind: string; external?: boolean }>[];
+  inputs: Readonly<Record<string, Readonly<{ bytesInOutput: number }>>>;
+}>;
+type BundleResult = Readonly<{
+  metafile?: Readonly<{ outputs: Readonly<Record<string, BundleOutput>> }>;
+  outputFiles?: readonly Readonly<{ path: string; contents: Uint8Array }>[];
+}>;
+const esbuild: Readonly<{ buildSync: (options: object) => BundleResult }> = require("esbuild");
 for (const file of files) {
   const source = readFileSync(file, "utf8");
   for (const match of source.matchAll(importSpecifierPattern)) {
@@ -82,6 +95,92 @@ check("endpoint-only Echo has no replica, LiveMap, Reflect, or LiveTree runtime 
       `endpoint-only Echo must not import ${forbidden} runtime machinery`,
     );
   }
+});
+
+check("public endpoint-only Echo initial browser graph excludes deferred replica families", () => {
+  const build = esbuild.buildSync({
+    absWorkingDir: repositoryRoot,
+    stdin: {
+      contents: `
+        import { create_echo } from "hson-live/echo";
+        const socket = {
+          send() {}, close() {}, onMessage() {}, onClose() {},
+        };
+        globalThis.__endpoint_echo_boundary__ = create_echo({ socket });
+      `,
+      resolveDir: repositoryRoot,
+      sourcefile: "endpoint-only-public.mjs",
+    },
+    bundle: true,
+    splitting: true,
+    write: false,
+    outdir: "dependency-boundary-out",
+    format: "esm",
+    platform: "browser",
+    target: "es2022",
+    treeShaking: true,
+    minify: true,
+    legalComments: "none",
+    metafile: true,
+  });
+  const outputs = build.metafile?.outputs;
+  assert.ok(outputs !== undefined, "endpoint-only browser proof requires an esbuild metafile");
+  const entry = Object.entries(outputs).find(([, output]) => output.entryPoint?.endsWith("endpoint-only-public.mjs"));
+  assert.ok(entry !== undefined, "endpoint-only browser proof could not locate its entry output");
+  const byAbsolutePath = new Map(Object.keys(outputs).map((path) => [resolve(repositoryRoot, path), path]));
+  const initialOutputs = new Set<string>();
+  const visit = (path: string): void => {
+    if (initialOutputs.has(path)) return;
+    initialOutputs.add(path);
+    const output = outputs[path];
+    if (output === undefined) return;
+    for (const imported of output.imports) {
+      if (imported.kind === "dynamic-import" || imported.external) continue;
+      const target = byAbsolutePath.get(resolve(repositoryRoot, imported.path))
+        ?? byAbsolutePath.get(resolve(repositoryRoot, dirname(path), imported.path));
+      if (target !== undefined) visit(target);
+    }
+  };
+  visit(entry[0]);
+  const initialInputs = new Set<string>();
+  for (const outputPath of initialOutputs) {
+    const output = outputs[outputPath];
+    if (output === undefined) continue;
+    for (const [input, contribution] of Object.entries(output.inputs)) {
+      if (contribution.bytesInOutput > 0) initialInputs.add(input);
+    }
+  }
+  const prohibited = [
+    /echo\.solo/i,
+    /echo\.aggregate-replica/i,
+    /echo\.multi-library/i,
+    /api\/livemap\//i,
+    /api\/reflect\//i,
+    /api\/livetree\//i,
+    /api\/transform\//i,
+    /schema-hson-validation/i,
+    /htmlparser2/i,
+    /node_modules\/entities\//i,
+    /dompurify/i,
+  ];
+  const retainedProhibited = [...initialInputs].filter((input) => prohibited.some((pattern) => pattern.test(input)));
+  assert.deepEqual(
+    retainedProhibited,
+    [],
+    `endpoint-only static browser graph retained deferred implementation modules:\n${retainedProhibited.join("\n")}`,
+  );
+  const initialBytes = Buffer.concat([...initialOutputs].flatMap((outputPath) => {
+    const absolute = resolve(repositoryRoot, outputPath);
+    const file = build.outputFiles?.find((candidate) => resolve(candidate.path) === absolute);
+    return file === undefined ? [] : [file.contents, Buffer.from("\n")];
+  }));
+  const initialGzipBytes = gzipSync(initialBytes, { level: 9 }).length;
+  assert.ok(
+    initialGzipBytes <= 20_000,
+    `endpoint-only public initial browser graph exceeds the 20 KiB gzip guard: ${initialGzipBytes} bytes`,
+  );
+  const dynamicImports = Object.values(outputs).flatMap((output) => output.imports.filter((item) => item.kind === "dynamic-import"));
+  assert.ok(dynamicImports.length >= 2, "browser proof should retain deferred solo and aggregate chunks");
 });
 
 check("removed LiveTree construction engine and graft_body stay absent", () => {

@@ -5,10 +5,13 @@ import type {
   EchoRecoveryOptions,
   LocusActionPayloads,
 } from "../../types/locus.types.js";
-import { is_public_multi_library_livemap } from "../livemap/livemap.libraries.js";
+import { acquire_echo_map_management_internal } from "../../internal/echo-map-capability.js";
 import { create_endpoint_echo_internal } from "./echo.client.js";
-import { create_multi_library_echo } from "./echo.multi-library.js";
-import { create_solo_echo_internal } from "./echo.solo.js";
+import {
+  create_lazy_replica_echo_internal,
+  DEFAULT_ECHO_REPLICA_LOADERS,
+  type EchoReplicaLoaders,
+} from "./echo.lazy.js";
 
 export function create_echo<
   TMap extends undefined = undefined,
@@ -30,6 +33,59 @@ export function create_echo(
     throw new Error("Echo replica construction requires map and recovery together.");
   }
   if (map === undefined) return create_endpoint_echo_internal(options as EchoOptions<undefined>);
-  if (is_public_multi_library_livemap(map)) return create_multi_library_echo(options as EchoOptions<LiveMapLibraries>);
-  return create_solo_echo_internal(options as EchoOptions<LiveMapAuthority>);
+  if (recovery === undefined) throw new Error("Echo replica construction requires map and recovery together.");
+  const management = acquire_echo_map_management_internal(map);
+  try {
+    const replicaOptions: Omit<EchoOptions<undefined>, "map" | "recovery"> & Readonly<{
+      map: LiveMapAuthority | LiveMapLibraries;
+      recovery: EchoRecoveryOptions;
+    }> = { ...options, map, recovery };
+    return create_lazy_replica_echo_internal<LiveMapAuthority | LiveMapLibraries>(
+      replicaOptions,
+      management,
+      DEFAULT_ECHO_REPLICA_LOADERS,
+    );
+  } catch (cause) {
+    management.release();
+    throw cause;
+  }
+}
+
+/** @internal Test seam for deterministic deferred-loader lifecycle proofs. */
+export function create_echo_with_replica_loaders_internal(
+  options: EchoOptions<undefined>,
+  loaders: EchoReplicaLoaders,
+): Echo<undefined>;
+/** @internal Test seam for deterministic deferred-loader lifecycle proofs. */
+export function create_echo_with_replica_loaders_internal(
+  options: EchoOptions<LiveMapAuthority> | EchoOptions<LiveMapLibraries>,
+  loaders: EchoReplicaLoaders,
+): Echo<LiveMapAuthority | LiveMapLibraries>;
+/** @internal Test seam for deterministic deferred-loader lifecycle proofs. */
+export function create_echo_with_replica_loaders_internal(
+  options: EchoOptions<undefined> | EchoOptions<LiveMapAuthority> | EchoOptions<LiveMapLibraries>,
+  loaders: EchoReplicaLoaders,
+): Echo<undefined> | Echo<LiveMapAuthority | LiveMapLibraries> {
+  const map = options.map;
+  const recovery = options.recovery;
+  if ((map === undefined) !== (recovery === undefined)) {
+    throw new Error("Echo replica construction requires map and recovery together.");
+  }
+  if (map === undefined) return create_endpoint_echo_internal(options as EchoOptions<undefined>);
+  if (recovery === undefined) throw new Error("Echo replica construction requires map and recovery together.");
+  const management = acquire_echo_map_management_internal(map);
+  try {
+    const replicaOptions: Omit<EchoOptions<undefined>, "map" | "recovery"> & Readonly<{
+      map: LiveMapAuthority | LiveMapLibraries;
+      recovery: EchoRecoveryOptions;
+    }> = { ...options, map, recovery };
+    return create_lazy_replica_echo_internal<LiveMapAuthority | LiveMapLibraries>(
+      replicaOptions,
+      management,
+      loaders,
+    );
+  } catch (cause) {
+    management.release();
+    throw cause;
+  }
 }

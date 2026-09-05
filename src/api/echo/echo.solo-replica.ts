@@ -1,5 +1,6 @@
 import type { ClassifiedLiveMap } from "../../types/livemap.types.js";
 import type { LocusDisposer } from "../../types/locus.types.js";
+import type { EchoMapManagementLease } from "../../internal/echo-map-capability.js";
 import { get_livemap_staged_authority, LiveMapTransitionError } from "../livemap/livemap.authority.js";
 import type { EchoReplicaCapability } from "./echo.replica.js";
 
@@ -12,19 +13,24 @@ export type EchoSoloReplicaCapability = EchoReplicaCapability<ClassifiedLiveMap>
 export function create_echo_solo_replica_capability_internal(
   map: ClassifiedLiveMap,
   initiallyReady: boolean,
+  management?: EchoMapManagementLease,
 ): EchoSoloReplicaCapability {
-  const authority = get_livemap_staged_authority(map);
-  const owner = Object.freeze({});
+  const authority = management === undefined ? get_livemap_staged_authority(map) : undefined;
+  const owner = management?.owner ?? Object.freeze({});
   const readyWaiters = new Set<Readonly<{ resolve: () => void; reject: (reason: Error) => void }>>();
   const disposeListeners = new Set<(reason: Error) => void>();
   let ready = initiallyReady;
   let disposed = false;
   let failure: unknown;
 
-  authority.claimManagement(owner, () => Promise.reject(new LiveMapTransitionError(
-    "LIVEMAP_MANAGED_MUTATION_REJECTED",
-    "Echo LiveMap mutation is reserved for accepted canonical replay.",
-  )));
+  if (management === undefined) {
+    authority?.claimManagement(owner, () => Promise.reject(new LiveMapTransitionError(
+      "LIVEMAP_MANAGED_MUTATION_REJECTED",
+      "Echo LiveMap mutation is reserved for accepted canonical replay.",
+    )));
+  } else if (management.topology !== "solo") {
+    throw new Error("Echo solo replica received incompatible map management.");
+  }
 
   const terminalError = (): Error => new Error("Echo replica capability is disposed.");
 
@@ -33,7 +39,9 @@ export function create_echo_solo_replica_capability_internal(
     get ready() { return ready; },
     get disposed() { return disposed; },
     get failure() { return failure; },
-    runManaged: <T>(operation: () => T): T => authority.runManaged(owner, operation),
+    runManaged: <T>(operation: () => T): T => management === undefined
+      ? authority!.runManaged(owner, operation)
+      : management.runManaged(operation),
     markRecovering(): void {
       if (disposed) return;
       ready = false;
@@ -73,7 +81,8 @@ export function create_echo_solo_replica_capability_internal(
       disposeListeners.clear();
       for (const waiter of [...readyWaiters]) waiter.reject(reason);
       readyWaiters.clear();
-      authority.releaseManagement(owner);
+      if (management === undefined) authority?.releaseManagement(owner);
+      else management.release();
     },
   });
 }

@@ -152,6 +152,7 @@
     "test:public-boundaries": "node --import=tsx tests/public-boundaries.acceptance.mts",
     "test:public-entrypoint-runtime": "node --import=tsx tests/public-entrypoint-runtime.acceptance.mts",
     "test:production-dependency-boundary": "node --import=tsx tests/production-dependency-boundary.acceptance.mts",
+    "measure:echo-browser-packaging": "node scripts/measure-echo-browser-packaging.mjs",
     "test:locus-public-contract": "node tests/locus-public-contract.acceptance.mjs",
     "test:root-compatibility": "node --import=tsx tests/root-compatibility.acceptance.mts",
     "test:transform-worker": "node --import=tsx tests/transform-worker.acceptance.mts",
