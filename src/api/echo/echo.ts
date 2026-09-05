@@ -72,6 +72,7 @@ import {
   LocusDuplicateActionIdError,
 } from "../locus/locus.error.js";
 import { EchoRecoveryError, EchoSessionError } from "./echo.error.js";
+import { clone_echo_action_payload, make_echo_reload_safe_id } from "./echo.request.js";
 import {
   decode_locus_server_message,
   replay_locus_document_commit,
@@ -88,7 +89,6 @@ import {
   type LocusValidatedSnapshotEnvelope,
 } from "../locus/locus.document-snapshot.js";
 
-let nextFallbackIdentityId = 0;
 let nextActionAttemptId = 0;
 let nextRecoveryId = 0;
 let nextSessionRequestId = 0;
@@ -99,19 +99,12 @@ const CLIENT_SNAPSHOT_CAPABILITIES: LocusSnapshotCapabilities = Object.freeze({
   viewState: true,
 });
 
-function make_reload_safe_id(prefix: string): string {
-  const uuid = globalThis.crypto?.randomUUID?.();
-  if (uuid !== undefined) return `${prefix}-${uuid}`;
-  nextFallbackIdentityId += 1;
-  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${nextFallbackIdentityId.toString(36)}`;
-}
-
 function make_client_id(): LocusClientId {
-  return make_reload_safe_id("lhc");
+  return make_echo_reload_safe_id("lhc");
 }
 
 function make_action_id(): LocusActionId {
-  return make_reload_safe_id("lha");
+  return make_echo_reload_safe_id("lha");
 }
 
 function make_action_attempt_id(): LocusActionId {
@@ -261,18 +254,6 @@ function projected_identity_replay(
     rev: prevRev + 1,
     ops: Object.freeze(operations),
   });
-}
-
-function clone_action_payload(value: JsonValue): JsonValue {
-  if (value === null || typeof value !== "object") return value;
-  if (Array.isArray(value)) {
-    const clone = value.map(clone_action_payload);
-    Object.freeze(clone);
-    return clone;
-  }
-  const clone: Record<string, JsonValue> = {};
-  for (const key of Object.keys(value)) clone[key] = clone_action_payload(value[key]);
-  return Object.freeze(clone);
 }
 
 export function create_echo<
@@ -1230,7 +1211,7 @@ export function create_echo<
     const request = Object.freeze({
       requestId,
       name,
-      ...(payload !== undefined ? { payload: clone_action_payload(payload as JsonValue) as TActions[TName] } : {}),
+      ...(payload !== undefined ? { payload: clone_echo_action_payload(payload as JsonValue) as TActions[TName] } : {}),
     });
     return action_handle(request, false);
   }
@@ -1241,7 +1222,7 @@ export function create_echo<
     const stableRequest: EchoActionRequest<TActions, TName> = Object.freeze({
       requestId: request.requestId,
       name: request.name,
-      ...(request.payload !== undefined ? { payload: clone_action_payload(request.payload as JsonValue) as TActions[TName] } : {}),
+      ...(request.payload !== undefined ? { payload: clone_echo_action_payload(request.payload as JsonValue) as TActions[TName] } : {}),
     });
     return action_handle(stableRequest, true);
   }

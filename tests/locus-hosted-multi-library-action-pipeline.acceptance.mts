@@ -111,6 +111,107 @@ function deferred() {
 
 install_fake_document();
 
+await check("independent aggregate endpoints use reload-safe client and request identities at equal time", async () => {
+  const originalDateNow = Date.now;
+  const hadOwnRandomUuid = Object.hasOwn(globalThis.crypto, "randomUUID");
+  const originalRandomUuid = globalThis.crypto.randomUUID;
+  let nextUuid = 0;
+  Date.now = () => 1_700_000_000_000;
+  Object.defineProperty(globalThis.crypto, "randomUUID", {
+    configurable: true,
+    value: () => {
+      nextUuid += 1;
+      return `00000000-0000-4000-8000-${nextUuid.toString().padStart(12, "0")}`;
+    },
+  });
+
+  const firstPair = socket_pair();
+  const secondPair = socket_pair();
+  const explicitPair = socket_pair();
+  const first = hsonEcho.create({ socket: firstPair.client, map: make_map(), recovery: { logicalMapId: "identity-test" } });
+  const second = hsonEcho.create({ socket: secondPair.client, map: make_map(), recovery: { logicalMapId: "identity-test" } });
+  const explicit = hsonEcho.create({
+    socket: explicitPair.client,
+    map: make_map(),
+    recovery: { logicalMapId: "identity-test" },
+    clientId: "caller-owned-client-id",
+  });
+  try {
+    assert.notEqual(first.clientId, second.clientId);
+    assert.equal(explicit.clientId, "caller-owned-client-id");
+    const firstAction = first.action("identity.probe", { value: 1 });
+    const secondAction = second.action("identity.probe", { value: 1 });
+    void firstAction.catch(() => {});
+    void secondAction.catch(() => {});
+    assert.notEqual(firstAction.request.requestId, secondAction.request.requestId);
+  } finally {
+    first.dispose();
+    second.dispose();
+    explicit.dispose();
+    Date.now = originalDateNow;
+    if (hadOwnRandomUuid) {
+      Object.defineProperty(globalThis.crypto, "randomUUID", { configurable: true, value: originalRandomUuid });
+    } else {
+      delete (globalThis.crypto as { randomUUID?: () => string }).randomUUID;
+    }
+  }
+});
+
+await check("aggregate retry request payloads detach nested records and arrays from caller mutation", async () => {
+  const locus = hsonLocus.create({
+    map: make_map(),
+    actions: {
+      stable: (_context, payload) => payload,
+    },
+  });
+  const pair = socket_pair();
+  locus.connect(pair.server);
+  const echo = hsonEcho.create({ socket: pair.client, map: make_map(), recovery: { logicalMapId: locus.logicalMapId } });
+  await echo.connect();
+
+  const payload = {
+    nested: { value: 1 },
+    rows: [[1, 2], { label: "original" }],
+  };
+  const initial = echo.action("stable", payload);
+  const retained = initial.request.payload as typeof payload;
+  assert.notEqual(retained, payload);
+  assert.notEqual(retained.nested, payload.nested);
+  assert.notEqual(retained.rows, payload.rows);
+  assert.notEqual(retained.rows[0], payload.rows[0]);
+  assert.equal(Object.isFrozen(retained), true);
+  assert.equal(Object.isFrozen(retained.nested), true);
+  assert.equal(Object.isFrozen(retained.rows), true);
+  assert.equal(Object.isFrozen(retained.rows[0]), true);
+  assert.equal((await initial).type, "ack");
+
+  const unchangedRetry = await echo.retryAction(initial.request);
+  assert.equal(unchangedRetry.type, "ack");
+  if (unchangedRetry.type === "ack") assert.equal(unchangedRetry.delivery, "cached");
+
+  payload.nested.value = 2;
+  const firstRow = payload.rows[0];
+  if (Array.isArray(firstRow)) firstRow.push(3);
+  const row = payload.rows[1];
+  if (!Array.isArray(row)) row.label = "caller-mutated";
+
+  const retry = echo.retryAction(initial.request);
+  const retryPayload = retry.request.payload as typeof payload;
+  assert.deepEqual(retryPayload, {
+    nested: { value: 1 },
+    rows: [[1, 2], { label: "original" }],
+  });
+  assert.notEqual(retryPayload, retained);
+  assert.equal(Object.isFrozen(retryPayload.nested), true);
+  assert.equal(Object.isFrozen(retryPayload.rows), true);
+  const result = await retry;
+  assert.equal(result.type, "ack");
+  if (result.type === "ack") assert.equal(result.delivery, "cached");
+
+  echo.dispose();
+  locus.dispose();
+});
+
 await check("named document denial is terminal without mutation and the next queued request proceeds", async () => {
   const authority = make_map();
   const decisions: unknown[] = [];

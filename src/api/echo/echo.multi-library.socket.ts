@@ -32,6 +32,7 @@ import {
   type LocusHostedAggregateWireEnvelope,
 } from "../locus/locus.hosted-multi-library.js";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../locus/locus.hosted-multi-library.protocol.js";
+import { clone_echo_action_payload, make_echo_reload_safe_id } from "./echo.request.js";
 
 
 type HostedPlanOutcome = "current" | "replay" | "snapshot" | "reject";
@@ -92,8 +93,12 @@ export function create_multi_library_echo_socket_client_internal(
     generatedId += 1;
     return `${prefix}-${Date.now().toString(36)}-${generatedId.toString(36)}`;
   };
-  const clientId = options.clientId ?? fresh_id("echo-client");
-  const makeActionId = options.actionId ?? (() => fresh_id("action"));
+  const freshIdentityId = (prefix: string): string => {
+    generatedId += 1;
+    return make_echo_reload_safe_id(prefix);
+  };
+  const clientId = options.clientId ?? freshIdentityId("echo-client");
+  const makeActionId = options.actionId ?? (() => freshIdentityId("action"));
   const makeAttemptId = options.actionAttemptId ?? (() => fresh_id("attempt"));
   const makeStatusId = options.actionStatusId ?? (() => fresh_id("action-status"));
   let map = options.map;
@@ -539,15 +544,25 @@ export function create_multi_library_echo_socket_client_internal(
   }
 
   function action(name: string, payload?: JsonValue): Promise<LocusClientActionResult> & Readonly<{ request: EchoActionRequest }> {
-    const request = Object.freeze({ requestId: makeActionId(), name, ...(payload === undefined ? {} : { payload }) });
+    const requestId = makeActionId();
     if (payload !== undefined && !is_locus_json_value(payload)) {
+      const request = Object.freeze({ requestId, name, payload });
       return Object.assign(Promise.reject(new Error("Hosted action payload must be JSON-serializable.")), { request });
     }
+    const request = Object.freeze({
+      requestId,
+      name,
+      ...(payload === undefined ? {} : { payload: clone_echo_action_payload(payload) }),
+    });
     return action_handle(request, false);
   }
 
   function retryAction(request: EchoActionRequest): Promise<LocusClientActionResult> & Readonly<{ request: EchoActionRequest }> {
-    const stable = Object.freeze({ requestId: request.requestId, name: request.name, ...(request.payload === undefined ? {} : { payload: request.payload }) });
+    const stable = Object.freeze({
+      requestId: request.requestId,
+      name: request.name,
+      ...(request.payload === undefined ? {} : { payload: clone_echo_action_payload(request.payload) }),
+    });
     return action_handle(stable, true);
   }
 
