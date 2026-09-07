@@ -23,6 +23,7 @@ import {
   assert_graph_runtime_available,
   bind_graph_runtime,
   default_livetree_runtime,
+  release_nodes_runtime,
   runtime_for_node,
   type LiveTreeRuntime,
 } from "../runtime/livetree-runtime.js";
@@ -54,6 +55,13 @@ export type SuppliedLiveTreeQuidReservation = Readonly<{
 
 export type LiveTreeQuidLineageTransfer = Readonly<{
   apply: () => void;
+}>;
+
+type FullLiveTreeQuidPlan = Readonly<{
+  identities: ReadonlyMap<HsonNode, string>;
+  revalidate: () => void;
+  publish: () => void;
+  rollback: () => void;
 }>;
 
 function runtime_for_operation(n: HsonNode, runtime?: LiveTreeRuntime): LiveTreeRuntime {
@@ -237,6 +245,88 @@ export function preflight_livetree_quid_graph(
   assert_graph_runtime_available(root, runtime);
   assert_claims_available(claims, runtime);
   return claims;
+}
+
+/** Plan complete standalone identity for every ordinary element in a graph. @internal */
+export function plan_full_livetree_quid_graph(
+  root: HsonNode,
+  runtime: LiveTreeRuntime = runtime_for_operation(root),
+): FullLiveTreeQuidPlan {
+  assert_livetree_quid_eligible(root, "admit");
+  const suppliedClaims = preflight_livetree_quid_graph(root, runtime);
+
+  const ordinaryNodes = collect_subtree_nodes(root, "pre").filter(is_ordinary_element_node);
+  const identities = new Map<HsonNode, string>();
+  const mintedNodes = new Set<HsonNode>();
+  const reserved = new Set(suppliedClaims.map((claim) => claim.quid));
+
+  for (const node of ordinaryNodes) {
+    const existing = read_hson_node_quid(node);
+    const quid = existing ?? mint_available_quid(runtime, reserved);
+    identities.set(node, quid);
+    reserved.add(quid);
+    if (existing === undefined) mintedNodes.add(node);
+  }
+
+  let applied = false;
+  const revalidate = (): void => {
+    assert_livetree_quid_eligible(root, "admit");
+    assert_graph_runtime_available(root, runtime);
+    const currentOrdinaryNodes = collect_subtree_nodes(root, "pre").filter(is_ordinary_element_node);
+    if (
+      currentOrdinaryNodes.length !== ordinaryNodes.length
+      || currentOrdinaryNodes.some((node, index) => node !== ordinaryNodes[index])
+    ) {
+      throw new Error("LiveTree QUID plan graph changed before publication.");
+    }
+    unique_incoming_claims(root);
+    for (const [node, quid] of identities) {
+      const current = read_hson_node_quid(node);
+      if (mintedNodes.has(node) ? current !== undefined : current !== quid) {
+        throw new Error("LiveTree QUID plan metadata changed before publication.");
+      }
+      assert_quid_available(quid, node, runtime);
+    }
+  };
+
+  const rollback = (): void => {
+    if (!applied) return;
+    for (const [node, quid] of identities) {
+      if (runtime.quidToNode.get(quid) === node) runtime.quidToNode.delete(quid);
+      if (runtime.nodeToQuid.get(node) === quid) runtime.nodeToQuid.delete(node);
+      runtime.issuedQuids.delete(quid);
+      if (mintedNodes.has(node) && read_hson_node_quid(node) === quid) {
+        remove_hson_node_quid(node);
+      }
+    }
+    release_nodes_runtime(collect_subtree_nodes(root, "pre"), runtime);
+    applied = false;
+  };
+
+  return Object.freeze({
+    identities,
+    revalidate,
+    publish(): void {
+      if (applied) return;
+      revalidate();
+      applied = true;
+      try {
+        bind_graph_runtime(root, runtime);
+        for (const [node, quid] of identities) {
+          if (mintedNodes.has(node)) assign_hson_node_quid(node, quid);
+          runtime.quidToNode.set(quid, node);
+          runtime.nodeToQuid.set(node, quid);
+          record_issued_quid(quid, runtime);
+        }
+        record_livetree_materialization("quidEnsureCalls", identities.size);
+        record_livetree_materialization("quidRegistryWrites", identities.size * 2);
+      } catch (cause) {
+        rollback();
+        throw cause;
+      }
+    },
+    rollback,
+  });
 }
 
 /**

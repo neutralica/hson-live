@@ -73,7 +73,15 @@ const app = hson.liveTree.queryDom("#app").graft();
 const body = hson.liveTree.queryBody().graft();
 ```
 
-Grafting parses the selected DOM subtree, replaces it with a managed projection, and returns the controlling LiveTree. The public LiveTree facade spells the method `queryDom`, not `queryDOM`. The selected Element itself is the managed source root.
+Grafting parses and adopts the selected realized DOM subtree and returns the controlling LiveTree. The selected root and every graft-compatible ordinary descendant `Element` retain their exact browser object identity; graft does not reconstruct their ordinary attributes or inline styles. Valid supplied `hson:quid` values are preserved, missing required values are added, and malformed, duplicate, reused, conflicting, or otherwise inadmissible values reject.
+
+Initial graft is semi-destructive for non-Element content. Comments, layout-only whitespace, empty text, and other non-Element nodes absent from canonical Hson are removed. Represented text is recreated in the trimmed/canonical form produced by the HTML parser, including the parser's `style`/`script` text rules. Text and Comment object identity, Ranges anchored in rewritten text, and MutationObserver silence are therefore not guaranteed. Custom elements observing `hson:quid` may also observe identity writes. Ordinary application listeners, custom-element instances/private state, form-control live properties, focus, and Element-keyed application state survive naturally because their Elements survive.
+
+QUID writes may synchronously invoke custom-element reactions. Graft keeps runtime identity unpublished during those writes and verifies the retained realization after the reactions complete. An incompatible synchronous QUID or structural mutation rejects, as does a nested graft on the same, ancestor, or descendant subtree while graft is in progress. Failure restores graft-owned text/non-Element and QUID changes without intentionally replacing retained ordinary Elements, but it does not promise transactional rollback of arbitrary application side effects performed by custom-element callbacks.
+
+Physical `_hson_*` transport/carrier Elements, non-HTML/SVG roots, and namespace realizations that current LiveTree mutation semantics cannot reproduce safely are rejected before normalization instead of being silently rebuilt. Graft establishes an initial managed snapshot; it does not observe or reconcile arbitrary later structural DOM mutations performed outside LiveTree.
+
+The public LiveTree facade spells the method `queryDom`, not `queryDOM`.
 
 When an HTML source constructor receives an `Element`, it snapshots that element as the source root, including its attributes, metadata, and descendants. It does not reinterpret the input as child-only `innerHTML`. Untrusted input passes through its sanitizer, but syntactic Hson metadata candidates remain subject to the canonical metadata registry afterward. Valid supplied root and descendant QUIDs are preserved as cold graph identity; malformed or unknown metadata rejects.
 

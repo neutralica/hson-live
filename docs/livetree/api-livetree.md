@@ -89,6 +89,29 @@ Its attributes, metadata, and descendants enter the graph. `queryDom` and
 lower-level Transform `queryDOM`/`queryBody` snapshot helpers, which
 intentionally parse only selected children/body content.
 
+Graft adopts graft-compatible ordinary Elements in place: the selected root
+and its ordinary descendants keep exact DOM object identity, while required
+`hson:quid` metadata is installed. Ordinary attributes and styles are not
+rebuilt from the parsed graph. To retain LiveTree's canonical child-index
+semantics, graft removes comments, ignored whitespace, empty/unrepresented
+nodes, and recreates represented Text nodes in parser-canonical form. Text and
+Comment identity, text-anchored Ranges, and MutationObserver silence are not
+guaranteed. Physical `_hson_*` carrier Elements and HTML/SVG namespace shapes
+that cannot satisfy current mutation semantics reject before normalization.
+Graft captures initial structure only; later direct DOM structural writes are
+not automatically synchronized back into LiveTree.
+
+Valid supplied QUIDs are preserved and missing required QUIDs are added;
+malformed, duplicate, reused, conflicting, or otherwise inadmissible QUIDs
+reject. QUID attribute writes may synchronously invoke custom-element
+reactions. Graft verifies the retained realization after those reactions and
+before publishing runtime ownership. Incompatible synchronous mutations and
+overlapping graft attempts on the same, ancestor, or descendant subtree
+reject. Failure does not publish a successful adoption and does not
+intentionally replace retained ordinary Elements during rollback, but graft
+cannot transactionally undo arbitrary application side effects performed by a
+custom-element callback.
+
 ---
 
 ## Core LiveTree

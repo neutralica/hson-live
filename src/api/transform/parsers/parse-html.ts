@@ -102,7 +102,32 @@ function snip_context(s: string, at: number, radius = 80): string {
  * @see wrap_as_root
  * @see assert_invariants
  */
+type ElementProvenanceRecorder = (node: HsonNode, element: Element) => void;
+
+type ParsedHtmlElementProvenance = Readonly<{
+    root: HsonNode;
+    elements: ReadonlyMap<HsonNode, Element>;
+}>;
+
 export function parse_html(input: string | Element): HsonNode {
+    return parse_html_internal(input);
+}
+
+/** Parse one realized Element while retaining exact ordinary-node provenance. @internal */
+export function parse_html_with_element_provenance(
+    input: Element,
+): ParsedHtmlElementProvenance {
+    const elements = new Map<HsonNode, Element>();
+    const root = parse_html_internal(input, (node, element) => {
+        elements.set(node, element);
+    });
+    return Object.freeze({ root, elements });
+}
+
+function parse_html_internal(
+    input: string | Element,
+    recordElement?: ElementProvenanceRecorder,
+): HsonNode {
     let inputElement: Element;
     const allowHsonTransit = typeof input === "string";
     if (typeof input === "string") {
@@ -275,7 +300,7 @@ export function parse_html(input: string | Element): HsonNode {
     } else {
         inputElement = input;
     }
-    const actualContentRootNode = convert(inputElement, undefined, allowHsonTransit);
+    const actualContentRootNode = convert(inputElement, undefined, allowHsonTransit, recordElement);
     const final = normalize_hson_array_index_order(
         wrap_as_root(actualContentRootNode),
         "parse-html",
@@ -334,6 +359,7 @@ function convert(
     el: Element,
     parentTag?: string,
     allowHsonTransit = false,
+    recordElement?: ElementProvenanceRecorder,
 ): HsonNode {
     const baseTag = el.tagName;
     const tagLower = baseTag.toLowerCase();
@@ -358,6 +384,11 @@ function convert(
             assign_ingested_hson_node_quid(node, quid, "parse-html");
         }
         return node;
+    };
+    const finishOrdinary = (node: HsonNode): HsonNode => {
+        const finished = finish(node);
+        recordElement?.(finished, el);
+        return finished;
     };
     if (dec.startsWith(HSON_SYS_PREFIX) && !EVERY_VSN.includes(dec)) {
         if (quid !== undefined) {
@@ -405,7 +436,7 @@ function convert(
         }
 
         if (text_content) {
-            return finish(CREATE_NODE({
+            return finishOrdinary(CREATE_NODE({
                 $_tag: dec,
                 $_attrs: sortedAcc,
                 $_meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
@@ -424,7 +455,7 @@ function convert(
 
     // Build children (DOM → Hson)
     const childNodes: HsonNode[] = [];
-    const children = elementToNode(el.childNodes, dec, allowHsonTransit);
+    const children = elementToNode(el.childNodes, dec, allowHsonTransit, recordElement);
 
     for (const child of children) {
         if (is_Primitive(child)) {
@@ -511,7 +542,7 @@ function convert(
 
     if (childNodes.length === 0) {
         // Empty and void ordinary elements use canonical empty content.
-        return finish(CREATE_NODE({
+        return finishOrdinary(CREATE_NODE({
             $_tag: dec,
             $_attrs: sortedAcc,
             $_meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
@@ -525,7 +556,7 @@ function convert(
         // Pass through explicit clusters untouched (no mixing, no extra box)
         if (only.$_tag === OBJ_TAG || only.$_tag === ARR_TAG || only.$_tag === ELEM_TAG
             || (!is_Primitive(children[0]) && (only.$_tag === STR_TAG || only.$_tag === VAL_TAG))) {
-            return finish(CREATE_NODE({
+            return finishOrdinary(CREATE_NODE({
                 $_tag: dec,
                 $_attrs: sortedAcc,
                 $_meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
@@ -543,7 +574,7 @@ function convert(
 
     // Otherwise, we have multiple non-cluster children (text/elements):
     // wrap once in _hson_elem (pure element mode).
-    return finish(CREATE_NODE({
+    return finishOrdinary(CREATE_NODE({
         $_tag: dec,
         $_attrs: sortedAcc,
         $_meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
@@ -622,12 +653,13 @@ function elementToNode(
     els: NodeListOf<ChildNode>,
     parentTag: string, // already lowercased
     allowHsonTransit: boolean,
+    recordElement?: ElementProvenanceRecorder,
 ): (HsonNode | Primitive)[] {
     const contents: (HsonNode | Primitive)[] = [];
 
     for (const item of Array.from(els)) {
         if (item.nodeType === 1) {
-            contents.push(convert(item as Element, parentTag, allowHsonTransit));
+            contents.push(convert(item as Element, parentTag, allowHsonTransit, recordElement));
             continue;
         }
 

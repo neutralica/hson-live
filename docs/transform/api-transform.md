@@ -461,7 +461,7 @@ hson.liveTree.queryBody().graft()
 hson.liveTree.create.div()
 ```
 
-The `from*` LiveTree methods return detached branches. The DOM query methods return a graft handle; calling `.graft()` parses the selected live DOM subtree, re-projects it as managed LiveTree DOM, and returns the controlling `LiveTree`. The selected Element itself is the graft root.
+The `from*` LiveTree methods return detached branches. The DOM query methods return a graft handle; calling `.graft()` parses and adopts the selected live DOM subtree and returns the controlling `LiveTree`. Graft-compatible ordinary Elements retain object identity. Graft may remove or recreate non-Element children to match canonical Hson text/child positions and may write required `hson:quid` metadata, but it does not rebuild ordinary attributes/styles merely for adoption. Valid supplied QUIDs are preserved, missing required QUIDs are added, and inadmissible QUIDs reject. Physical `_hson_*` carriers and incompatible namespace realizations reject rather than silently reconstruct Elements. Text/Comment identity and mutation-observer silence are not guaranteed, and graft does not track later out-of-band DOM structure changes. Synchronous custom-element reactions run before runtime publication; graft reverifies afterward and rejects incompatible mutations or overlapping graft attempts. Rollback restores graft-owned DOM changes without claiming to undo arbitrary application callback side effects.
 
 Use `queryDom`, not `queryDOM`, on the public `hson.liveTree` facade.
 

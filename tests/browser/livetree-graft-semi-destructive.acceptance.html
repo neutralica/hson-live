@@ -1,0 +1,336 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>LiveTree semi-destructive graft acceptance</title>
+<script type="importmap">
+{"imports":{"dompurify":"../../node_modules/dompurify/dist/purify.es.mjs"}}
+</script>
+<body>
+<script type="module">
+import { hsonLiveTree } from "../../dist/api/livetree/index.js";
+import { graft as graftElement } from "../../dist/api/livetree/creation/graft.js";
+import { get_node_for_el } from "../../dist/api/livetree/utils/node-map-helpers.js";
+import { get_node_by_quid } from "../../dist/api/livetree/quid/data-quid.js";
+import {
+  create_livetree_runtime,
+  default_livetree_runtime,
+  dispose_livetree_runtime,
+  register_runtime_document,
+  runtime_owns_document,
+} from "../../dist/api/livetree/runtime/livetree-runtime.js";
+
+const results = [];
+const check = (name, condition) => {
+  results.push({ name, pass: Boolean(condition) });
+  if (!condition) throw new Error(name);
+};
+
+class GraftWitness extends HTMLElement {
+  #token = "retained-private-state";
+  token() { return this.#token; }
+}
+customElements.define("graft-witness", GraftWitness);
+
+const fixture = document.createElement("section");
+fixture.id = "graft-fixture";
+fixture.setAttribute("hson:quid", "000000001");
+fixture.innerHTML = `
+  <!-- discarded -->
+  before
+  <graft-witness id="witness"><button id="button">go</button></graft-witness>
+  <input id="control" type="checkbox" value="authored">
+  <p id="text-host">alpha<span id="middle">middle</span>omega</p>
+  <style id="style-host">  .graft-probe { color: red; }  </style>
+  <script id="script-host" type="application/json">  {"ready":true}  <\/script>
+  after
+`;
+document.body.append(fixture);
+
+const witness = fixture.querySelector("#witness");
+const button = fixture.querySelector("#button");
+const control = fixture.querySelector("#control");
+const textHost = fixture.querySelector("#text-host");
+const middle = fixture.querySelector("#middle");
+const styleHost = fixture.querySelector("#style-host");
+const scriptHost = fixture.querySelector("#script-host");
+const identity = new WeakMap([[witness, "same"]]);
+witness.applicationExpando = { retained: true };
+control.value = "dirty-live-value";
+control.checked = true;
+control.focus();
+let clicks = 0;
+button.addEventListener("click", () => { clicks += 1; });
+
+const tree = hsonLiveTree.queryDom("#graft-fixture").graft();
+check("selected root identity", tree.dom.el() === fixture);
+check("custom element identity", tree.find.byId("witness")?.dom.el() === witness);
+check("button identity", tree.find.byId("button")?.dom.el() === button);
+check("input identity", tree.find.byId("control")?.dom.el() === control);
+check("nested text element identity", tree.find.byId("middle")?.dom.el() === middle);
+check("custom private field", witness.token() === "retained-private-state");
+check("expando retained", witness.applicationExpando.retained === true);
+check("WeakMap witness retained", identity.get(witness) === "same");
+check("dirty form value retained", control.value === "dirty-live-value");
+check("dirty checked state retained", control.checked === true);
+check("focus retained", document.activeElement === control);
+button.click();
+check("direct listener retained", clicks === 1);
+
+check("comments removed", fixture.querySelectorAll("*").length > 0 && !Array.from(fixture.childNodes).some((n) => n.nodeType === Node.COMMENT_NODE));
+check("root child positions canonical", Array.from(fixture.childNodes).every((n) => n.nodeType === Node.ELEMENT_NODE || (n.nodeType === Node.TEXT_NODE && n.textContent.length > 0)));
+check("ordinary text trimmed", fixture.firstChild.nodeType === Node.TEXT_NODE && fixture.firstChild.textContent === "before");
+check("style text canonicalized", styleHost.textContent === ".graft-probe { color: red; }");
+check("script text canonicalized", scriptHost.textContent === '{"ready":true}');
+
+tree.create.at(1).em().attrs.set("id", "inserted");
+check("indexed element insertion", fixture.childNodes[1] === fixture.querySelector("#inserted"));
+check("existing following element retained", fixture.childNodes[2] === witness);
+
+const textTree = tree.find.byId("text-host");
+textTree.text.insert(1, "inserted-text");
+check("indexed text insertion", textHost.childNodes[0].textContent === "alpha" && textHost.childNodes[1].textContent === "inserted-text" && textHost.childNodes[2] === middle);
+
+const witnessTree = tree.find.byId("witness");
+witnessTree.attrs.set("data-live", "yes");
+check("retained descendant mutation", witnessTree.dom.el() === witness && witness.getAttribute("data-live") === "yes");
+
+for (const element of [fixture, witness, button, control, textHost, middle]) {
+  check(`QUID markup ${element.id || element.localName}`, /^[-0-9a-z]{9}$/.test(element.getAttribute("hson:quid") ?? ""));
+}
+check("supplied root QUID preserved", fixture.getAttribute("hson:quid") === "000000001");
+const repeated = hsonLiveTree.queryDom("#graft-fixture").graft();
+check("repeated graft node idempotence", repeated.node === tree.node);
+check("repeated graft element idempotence", repeated.dom.el() === fixture);
+
+const conflict = document.createElement("section");
+conflict.id = "conflict";
+conflict.setAttribute("hson:quid", "000000001");
+conflict.append(document.createComment("must-survive"), document.createElement("i"));
+document.body.append(conflict);
+let conflictRejected = false;
+try { hsonLiveTree.queryDom("#conflict").graft(); } catch { conflictRejected = true; }
+check("QUID conflict rejected", conflictRejected);
+check("QUID conflict failure is pre-normalization", conflict.firstChild.nodeType === Node.COMMENT_NODE && !conflict.querySelector("i").hasAttribute("hson:quid"));
+
+const carrier = document.createElement("section");
+carrier.id = "carrier";
+const physicalCarrier = document.createElement("_hson_elem");
+physicalCarrier.append(document.createComment("must-survive"), document.createElement("b"));
+carrier.append(physicalCarrier);
+document.body.append(carrier);
+let carrierRejected = false;
+try { hsonLiveTree.queryDom("#carrier").graft(); } catch { carrierRejected = true; }
+check("physical carrier rejected", carrierRejected);
+check("carrier failure is pre-normalization", physicalCarrier.firstChild.nodeType === Node.COMMENT_NODE && !carrier.hasAttribute("hson:quid"));
+
+const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+svg.id = "svg-fixture";
+const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+svg.append(circle);
+document.body.append(svg);
+const svgTree = hsonLiveTree.queryDom("#svg-fixture").graft();
+check("SVG root retained", svgTree.dom.el() === svg);
+check("SVG descendant retained", svgTree.find.byTag("circle")?.dom.el() === circle);
+
+const table = document.createElement("table");
+table.id = "table-fixture";
+table.innerHTML = "<tr id=row><td id=cell>cell</td></tr>";
+document.body.append(table);
+const tbody = table.tBodies[0];
+const row = table.querySelector("#row");
+const cell = table.querySelector("#cell");
+const tableTree = hsonLiveTree.queryDom("#table-fixture").graft();
+check("browser-generated tbody represented and retained", tableTree.find.byTag("tbody")?.dom.el() === tbody);
+check("browser-normalized row retained", tableTree.find.byId("row")?.dom.el() === row);
+check("browser-normalized cell retained", tableTree.find.byId("cell")?.dom.el() === cell);
+
+const unsafeSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+unsafeSvg.id = "foreign-object-fixture";
+const foreignObject = document.createElementNS("http://www.w3.org/2000/svg", "foreignObject");
+const htmlChild = document.createElement("div");
+htmlChild.append(document.createComment("must-survive"));
+foreignObject.append(htmlChild);
+unsafeSvg.append(foreignObject);
+document.body.append(unsafeSvg);
+let namespaceRejected = false;
+try { hsonLiveTree.queryDom("#foreign-object-fixture").graft(); } catch { namespaceRejected = true; }
+check("incompatible namespace realization rejected", namespaceRejected);
+check("namespace failure is pre-normalization", htmlChild.firstChild.nodeType === Node.COMMENT_NODE && !unsafeSvg.hasAttribute("hson:quid"));
+
+const textOnly = document.createElement("p");
+textOnly.id = "text-only-root";
+textOnly.textContent = "Hello";
+document.body.append(textOnly);
+const textOnlyTree = hsonLiveTree.queryDom("#text-only-root").graft();
+check("text-only selected root grafts", textOnlyTree.dom.el() === textOnly);
+check("text-only selected root node", textOnlyTree.node.$_tag === "p");
+textOnlyTree.attrs.set("data-after-graft", "yes");
+check("text-only root post-graft mutation", textOnly.getAttribute("data-after-graft") === "yes");
+
+class GraftTextOnly extends HTMLElement {}
+customElements.define("graft-text-only", GraftTextOnly);
+const customTextOnly = document.createElement("graft-text-only");
+customTextOnly.textContent = "custom text";
+document.body.append(customTextOnly);
+const customTextOnlyTree = graftElement(customTextOnly);
+check("custom text-only selected root grafts", customTextOnlyTree.dom.el() === customTextOnly);
+
+class GraftQuidRemover extends HTMLElement {
+  static observedAttributes = ["hson:quid"];
+  removeWrittenQuid = true;
+  lastWrittenQuid;
+  attributeChangedCallback(name, _oldValue, newValue) {
+    if (name === "hson:quid" && newValue !== null && this.removeWrittenQuid) {
+      this.lastWrittenQuid = newValue;
+      this.removeAttribute(name);
+    }
+  }
+}
+customElements.define("graft-quid-remover", GraftQuidRemover);
+const quidRemover = document.createElement("graft-quid-remover");
+quidRemover.append(document.createComment("restore-me"), document.createTextNode("content"));
+const removerComment = quidRemover.firstChild;
+document.body.append(quidRemover);
+let quidRemovalRejected = false;
+try { graftElement(quidRemover); } catch { quidRemovalRejected = true; }
+check("synchronous QUID removal rejects", quidRemovalRejected);
+check("QUID removal publishes no mapping", get_node_for_el(quidRemover) === undefined);
+check("QUID removal publishes no runtime identity", get_node_by_quid(quidRemover.lastWrittenQuid, default_livetree_runtime()) === undefined);
+check("QUID removal publishes no issued identity", !default_livetree_runtime().issuedQuids.has(quidRemover.lastWrittenQuid));
+check("QUID removal restores prior markup", !quidRemover.hasAttribute("hson:quid"));
+check("QUID removal restores original non-Element", quidRemover.firstChild === removerComment);
+quidRemover.removeWrittenQuid = false;
+const removerRetry = graftElement(quidRemover);
+check("failed QUID reaction clears graft guard", removerRetry.dom.el() === quidRemover);
+
+class GraftStructureMutator extends HTMLElement {
+  static observedAttributes = ["hson:quid"];
+  mutate = true;
+  attributeChangedCallback(name, _oldValue, newValue) {
+    if (name === "hson:quid" && newValue !== null && this.mutate) {
+      this.append(document.createElement("i"));
+    }
+  }
+}
+customElements.define("graft-structure-mutator", GraftStructureMutator);
+const structureMutator = document.createElement("graft-structure-mutator");
+structureMutator.textContent = "stable";
+document.body.append(structureMutator);
+let structureMutationRejected = false;
+try { graftElement(structureMutator); } catch { structureMutationRejected = true; }
+check("synchronous structure mutation rejects", structureMutationRejected);
+check("structure mutation publishes no mapping", get_node_for_el(structureMutator) === undefined);
+check("structure callback side effect is not silently repaired", structureMutator.querySelector("i") !== null);
+check("structure rejection restores prior QUID", !structureMutator.hasAttribute("hson:quid"));
+structureMutator.mutate = false;
+structureMutator.querySelector("i")?.remove();
+check("structure rejection clears graft guard", graftElement(structureMutator).dom.el() === structureMutator);
+
+class GraftNestedAttempt extends HTMLElement {
+  static observedAttributes = ["hson:quid"];
+  sameRejected = false;
+  descendantRejected = false;
+  attributeChangedCallback(name, _oldValue, newValue) {
+    if (name !== "hson:quid" || newValue === null) return;
+    try { graftElement(this); } catch (error) {
+      this.sameRejected = String(error).includes("overlap another graft transaction");
+    }
+    try { graftElement(this.firstElementChild); } catch (error) {
+      this.descendantRejected = String(error).includes("overlap another graft transaction");
+    }
+  }
+}
+customElements.define("graft-nested-attempt", GraftNestedAttempt);
+const nestedAttempt = document.createElement("graft-nested-attempt");
+nestedAttempt.append(document.createElement("span"));
+document.body.append(nestedAttempt);
+const nestedAttemptTree = graftElement(nestedAttempt);
+check("same-target nested graft rejects deterministically", nestedAttempt.sameRejected);
+check("descendant nested graft rejects deterministically", nestedAttempt.descendantRejected);
+check("outer graft survives caught nested attempts", nestedAttemptTree.dom.el() === nestedAttempt);
+
+const managedChildHost = document.createElement("section");
+const managedChildComment = document.createComment("must-survive");
+const managedChild = document.createElement("b");
+managedChildHost.append(managedChildComment, managedChild);
+document.body.append(managedChildHost);
+const managedChildTree = graftElement(managedChild);
+let managedDescendantRejected = false;
+try { graftElement(managedChildHost); } catch { managedDescendantRejected = true; }
+check("existing managed descendant rejects", managedDescendantRejected);
+check("managed descendant rejection is pre-normalization", managedChildHost.firstChild === managedChildComment);
+check("managed descendant mapping is not stolen", managedChildTree.dom.el() === managedChild);
+
+const rollbackFrame = document.createElement("iframe");
+document.body.append(rollbackFrame);
+const rollbackDocument = rollbackFrame.contentDocument;
+const rollbackRoot = rollbackDocument.createElement("section");
+const rollbackComment = rollbackDocument.createComment("original-comment");
+const rollbackText = rollbackDocument.createTextNode(" original text ");
+const rollbackInput = rollbackDocument.createElement("input");
+const RollbackWitnessBase = rollbackDocument.defaultView.HTMLElement;
+class GraftRollbackWitness extends RollbackWitnessBase {
+  connectedCount = 0;
+  disconnectedCount = 0;
+  connectedCallback() { this.connectedCount += 1; }
+  disconnectedCallback() { this.disconnectedCount += 1; }
+}
+rollbackDocument.defaultView.customElements.define("graft-rollback-witness", GraftRollbackWitness);
+const rollbackWitness = rollbackDocument.createElement("graft-rollback-witness");
+const rollbackThrower = rollbackDocument.createElement("span");
+rollbackRoot.append(rollbackComment, rollbackText, rollbackInput, rollbackWitness, rollbackThrower);
+rollbackDocument.body.append(rollbackRoot);
+rollbackInput.focus();
+const rollbackElements = [rollbackRoot, rollbackInput, rollbackWitness, rollbackThrower];
+const rollbackWitnessConnectedBefore = rollbackWitness.connectedCount;
+const nativeSetAttribute = rollbackDocument.defaultView.Element.prototype.setAttribute;
+let abandonedQuid;
+Object.defineProperty(rollbackThrower, "setAttribute", {
+  configurable: true,
+  value(name, value) {
+    nativeSetAttribute.call(this, name, value);
+    if (name === "hson:quid") {
+      abandonedQuid = value;
+      throw new Error("forced late graft DOM write failure");
+    }
+  },
+});
+let lateFailureRejected = false;
+try { graftElement(rollbackRoot); } catch { lateFailureRejected = true; }
+check("late QUID write failure rejects", lateFailureRejected);
+check("late rollback preserves retained Elements", rollbackRoot.children[0] === rollbackInput && rollbackRoot.children[1] === rollbackWitness && rollbackRoot.children[2] === rollbackThrower);
+check("late rollback never reconnects retained Elements", rollbackWitness.connectedCount === rollbackWitnessConnectedBefore && rollbackWitness.disconnectedCount === 0);
+check("late rollback restores original non-Elements", rollbackRoot.childNodes[0] === rollbackComment && rollbackRoot.childNodes[1] === rollbackText);
+check("late rollback restores QUID absence", rollbackElements.every((element) => !element.hasAttribute("hson:quid")));
+check("late rollback publishes no mappings", rollbackElements.every((element) => get_node_for_el(element) === undefined));
+check("late rollback publishes no active QUID", get_node_by_quid(abandonedQuid, default_livetree_runtime()) === undefined);
+check("late rollback publishes no issued QUID", !default_livetree_runtime().issuedQuids.has(abandonedQuid));
+check("late rollback leaks no document claim", !runtime_owns_document(default_livetree_runtime(), rollbackDocument));
+check("late rollback retains focus", rollbackDocument.activeElement === rollbackInput);
+delete rollbackThrower.setAttribute;
+check("late rollback clears graft guard", graftElement(rollbackRoot).dom.el() === rollbackRoot);
+
+const conflictFrame = document.createElement("iframe");
+document.body.append(conflictFrame);
+const conflictDocument = conflictFrame.contentDocument;
+const documentConflictRoot = conflictDocument.createElement("section");
+const documentConflictComment = conflictDocument.createComment("must-survive");
+documentConflictRoot.append(documentConflictComment, conflictDocument.createElement("i"));
+conflictDocument.body.append(documentConflictRoot);
+const otherRuntime = create_livetree_runtime();
+register_runtime_document(otherRuntime, conflictDocument);
+let documentConflictRejected = false;
+try { graftElement(documentConflictRoot); } catch { documentConflictRejected = true; }
+check("conflicting runtime document rejects", documentConflictRejected);
+check("document conflict is pre-normalization", documentConflictRoot.firstChild === documentConflictComment && !documentConflictRoot.hasAttribute("hson:quid"));
+check("document conflict preserves existing owner", runtime_owns_document(otherRuntime, conflictDocument));
+dispose_livetree_runtime(otherRuntime);
+
+globalThis.__livetreeGraftAcceptance = {
+  pass: results.every((result) => result.pass),
+  total: results.length,
+  results,
+};
+document.body.dataset.acceptance = "pass";
+document.body.dataset.acceptanceTotal = String(results.length);
+</script>
+</body>

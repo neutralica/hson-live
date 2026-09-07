@@ -152,6 +152,30 @@ export function register_runtime_document(runtime: LiveTreeRuntime, document: Do
   }
 }
 
+/** Validate a document claim without publishing it. @internal */
+export function assert_runtime_document_available(
+  runtime: LiveTreeRuntime,
+  document: Document,
+): void {
+  if (runtime.disposed) {
+    throw new Error("LiveTree runtime scope has been disposed.");
+  }
+  const current = RUNTIME_FOR_DOCUMENT.get(document);
+  if (current !== undefined && current !== runtime) {
+    throw new Error("DOM Document is already owned by another LiveTree runtime scope.");
+  }
+}
+
+/** Release a document claim installed by an aborted internal operation. @internal */
+export function release_runtime_document_claim(
+  runtime: LiveTreeRuntime,
+  document: Document,
+): void {
+  if (RUNTIME_FOR_DOCUMENT.get(document) !== runtime) return;
+  RUNTIME_FOR_DOCUMENT.delete(document);
+  runtime.styleDocuments.delete(document);
+}
+
 /** Release an inactive internal runtime and its physical Document claims. @internal */
 export function dispose_livetree_runtime(runtime: LiveTreeRuntime): void {
   if (runtime === DEFAULT_LIVETREE_RUNTIME) {

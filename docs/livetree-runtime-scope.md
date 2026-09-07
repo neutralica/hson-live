@@ -74,8 +74,11 @@ runtime. No path may reconstruct a handle in the compatibility default runtime.
   stages DOM, then publishes graph ownership.
 - detached content: `detach_livetree_contents()` captures content;
   `append_detached_content()` later reattaches it.
-- graft: parse target -> pre-admit -> link host element -> render children ->
-  create handle.
+- graft: parse target with private Element provenance -> select the exact source
+  node -> preflight correspondence/document/QUID ownership -> guard overlapping
+  grafts -> canonicalize non-Element children -> stage QUID markup -> reverify
+  after synchronous reactions -> admit every ordinary node -> link retained
+  Elements -> register the document -> create the handle.
 - clone: validate source graph -> deep structural clone without source QUID
   metadata -> mint every eligible clone node -> create detached branch.
 - reusable detach: `detach_livetree()` /
