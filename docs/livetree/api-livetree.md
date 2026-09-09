@@ -743,6 +743,10 @@ tree.listen.stopAll()
 tree.listen.clearStops()
 ```
 
+Options, target selection, missing-target policy, and event-flow modifiers apply
+to the next registration only. A registration attempt consumes that configuration,
+including when its target is missing or strict resolution throws.
+
 Convenience event methods:
 
 ```ts
@@ -796,8 +800,6 @@ Listener return value:
 
 ```ts
 sub.off()
-sub.count
-sub.ok
 ```
 
 Tree-local event bus:

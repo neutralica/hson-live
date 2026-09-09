@@ -49,8 +49,8 @@ resources created for a LiveTree QUID:
   subscription active; terminal removal unsubscribes before identity is
   destroyed.
 - Element, document, and window listeners are registered individually. Native
-  removal, manual `off()`, `once`, target cleanup, and terminal cleanup all
-  update the same `ListenerSub` state and unregister the same ownership record.
+  removal, manual `off()`, `once`, target cleanup, and terminal cleanup all use
+  the same exact disposer and unregister the same ownership record.
 - TreeEvents subscriptions are owned individually. Detach preserves them;
   removal clears them. Manual `off()` and `once` unregister ownership.
 - Canvas `ResizeObserver` watches remain lifecycle-owned and are classified as

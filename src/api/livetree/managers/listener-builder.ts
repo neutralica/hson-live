@@ -6,14 +6,13 @@ import { own_disposable_for_owner } from "./lifecycle-registry.js";
 import { runtime_for_tree } from "../runtime/livetree-runtime.js";
 
 
-type QueuedListener = {
-  id: number;
-  sub: ListenerSub | null;
-  type: string;
-  handler: EventListener;
-  cancelled: boolean;
-  offs: Array<() => void> | null; // filled after attach
-};
+type RegistrationConfig = Readonly<{
+  opts: Readonly<ListenOpts>;
+  missingPolicy: MissingPolicy;
+  preventDefault: boolean;
+  stopPropagation: boolean;
+  stopImmediatePropagation: boolean;
+}>;
 
 const TARGET_LISTENER_REG = new WeakMap<EventTarget, Set<() => void>>();
 
@@ -25,9 +24,6 @@ function is_event_target(value: unknown): value is EventTarget {
 }
 
 class ListenerSubscription implements ListenerSub {
-  public count = 0;
-  public ok = false;
-
   public constructor(private readonly release: () => void) {}
 
   public off(): void {
@@ -138,37 +134,39 @@ export function _listeners_debug_hard_reset(): void {
  * @returns A fluent listener-registration surface.
  */
 export function build_listener(tree: LiveTree): ListenerBuilder {
-
-
-  let nextId = 1;
-  const queue: QueuedListener[] = [];
-
   let opts: ListenOpts = {};
-  let each = false;
   let missingPolicy: MissingPolicy = "warn";
   let _prevent = false;
   let _stop = false;
   let _stopImmediate = false;
 
-  // auto-attach scheduling
-  let autoEnabled = true;
-  let lastHandle: ListenerSub | null = null;
-
-  const schedule = () => {
-    if (!autoEnabled) return;
-    lastHandle = attach(); // perform real attach immediately so handlers fire in same tick
+  const takeRegistrationConfig = (): RegistrationConfig => {
+    // Snapshot all registration behavior, then retire it before resolution can fail.
+    const config: RegistrationConfig = Object.freeze({
+      opts: Object.freeze({ ...opts }),
+      missingPolicy,
+      preventDefault: _prevent,
+      stopPropagation: _stop,
+      stopImmediatePropagation: _stopImmediate,
+    });
+    opts = {};
+    missingPolicy = "warn";
+    _prevent = false;
+    _stop = false;
+    _stopImmediate = false;
+    return config;
   };
 
-  const resolveAmbientTarget = (): EventTarget | null => {
+  const resolveAmbientTarget = (target: ListenOpts["target"]): EventTarget | null => {
     try {
       const mappedElement = tree.dom.el();
       const ownerDocument = mappedElement?.ownerDocument;
-      if (opts.target === "window") {
+      if (target === "window") {
         if (ownerDocument !== undefined) return ownerDocument.defaultView;
         return typeof window !== "undefined" ? window : null;
       }
 
-      if (opts.target === "document") {
+      if (target === "document") {
         if (ownerDocument !== undefined) return ownerDocument;
         return typeof document !== "undefined" ? document : null;
       }
@@ -179,9 +177,9 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
     }
   };
 
-  const collectTargets = (): EventTarget[] => {
-    if (opts.target === "window" || opts.target === "document") {
-      const tgt = resolveAmbientTarget();
+  const collectTargets = (target: ListenOpts["target"]): EventTarget[] => {
+    if (target === "window" || target === "document") {
+      const tgt = resolveAmbientTarget(target);
       return tgt ? [tgt] : [];
     }
 
@@ -193,55 +191,16 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
     type: K,
     handler: (ev: ElemMap[K]) => void
   ): ListenerSub => {
-    // wrap once, read flags at dispatch so end-of-chain calls work
+    const config = takeRegistrationConfig();
     const wrapped: EventListener = (ev: Event) => {
-      // enforce in this exact order
-      if (_stopImmediate) ev.stopImmediatePropagation();
-      if (_stop) ev.stopPropagation();
-      if (_prevent && !opts.passive) ev.preventDefault(); // passive forbids preventDefault()
+      if (config.stopImmediatePropagation) ev.stopImmediatePropagation();
+      if (config.stopPropagation) ev.stopPropagation();
+      if (config.preventDefault && !config.opts.passive) ev.preventDefault();
 
       handler(ev as ElemMap[K]);
     };
 
-    // queue this binding; attach() will call addEventListener with current opts
-    const job: QueuedListener = {
-      id: nextId++,
-      sub: null,
-      type: String(type),
-      handler: wrapped,
-      cancelled: false,
-      offs: null,
-    };
-
-    queue.push(job);
-    schedule();
-
-    //  return a per-call subscription handle
-    let sub: ListenerSubscription;
-    sub = new ListenerSubscription(() => {
-      // cancel if not yet attached
-      job.cancelled = true;
-
-      // detach immediately if already attached
-      if (job.offs) {
-        for (const f of [...job.offs]) f();
-        job.offs = null;
-      }
-
-      //  keep handle state honest
-      sub.count = 0;
-      sub.ok = false;
-    });
-    job.sub = sub;
-    return sub;
-  };
-  const attach = (): ListenerSub => {
-    // INVARIANT (ListenerBuilder.attach):
-    // attach() must be an edge-trigger: it attaches ONLY the jobs currently queued.
-    // Jobs are snapshotted and the queue cleared so schedule() / subsequent ticks
-    // cannot reattach old jobs, which causes duplicate listeners and “haunting” behavior.
-    // If attach() is called with an empty selection, jobs are finalized as unattached.
-    const targets = collectTargets();
+    const targets = collectTargets(config.opts.target);
 
     for (const tgt of targets) {
       if (!is_event_target(tgt)) {
@@ -251,95 +210,39 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
 
     if (targets.length === 0) {
       const msg = `listen.attach(): no targets in selection`;
-      if (missingPolicy === "throw") throw new Error(msg);
-      if (missingPolicy === "warn") console.warn(msg, { tree });
-
-      //  if no targets, mark all queued jobs as “done but unattached”
-      for (const job of queue) {
-        job.offs = null;
-        if (job.sub) {
-          job.sub.count = 0;
-          job.sub.ok = false;
-        }
-      }
-      queue.length = 0;
+      if (config.missingPolicy === "throw") throw new Error(msg);
+      if (config.missingPolicy === "warn") console.warn(msg, { tree });
       return new ListenerSubscription(() => undefined);
     }
 
-    const aelo: AddEventListenerOptions = {
-      capture: !!opts.capture,
-      once: !!opts.once,
-      passive: !!opts.passive,
-    };
+    const aelo: AddEventListenerOptions = Object.freeze({
+      capture: !!config.opts.capture,
+      once: !!config.opts.once,
+      passive: !!config.opts.passive,
+    });
+    const offs: Array<() => void> = [];
+    const sub = new ListenerSubscription(() => {
+      for (const off of [...offs]) off();
+      offs.length = 0;
+    });
 
-    //  snapshot and clear queue so future schedule() ticks don’t reattach old jobs
-    const jobs = queue.splice(0, queue.length);
-
-    const offsAll: Array<() => void> = [];
-
-    for (const job of jobs) {
-      if (job.cancelled) {
-        job.offs = null;
-
-        if (job.sub) {
-          job.sub.count = 0;
-          job.sub.ok = false;
-        }
-
-        continue;
-      }
-
-      const jobOffs: Array<() => void> = [];
-
+    try {
       for (const tgt of targets) {
         let off: () => void = () => undefined;
-        off = addWithOff(tgt, job.type, job.handler, aelo, tree.quid, tree, () => {
-          if (!job.offs) return;
-          const index = job.offs.indexOf(off);
-          if (index >= 0) job.offs.splice(index, 1);
-          if (job.offs.length === 0) job.offs = null;
-          if (job.sub) {
-            job.sub.count = job.offs?.length ?? 0;
-            job.sub.ok = (job.offs?.length ?? 0) > 0;
-          }
+        off = addWithOff(tgt, String(type), wrapped, aelo, tree.quid, tree, () => {
+          const index = offs.indexOf(off);
+          if (index >= 0) offs.splice(index, 1);
         });
-        jobOffs.push(off);
+        offs.push(off);
       }
-
-      job.offs = jobOffs;
-      if (job.sub) {
-        job.sub.count = jobOffs.length;
-        job.sub.ok = jobOffs.length > 0;
-      }
-      for (const f of jobOffs) offsAll.push(f);
+    } catch (error) {
+      sub.off();
+      throw error;
     }
-    const handle = new ListenerSubscription(() => {
-      for (const job of jobs) {
-        if (!job.offs) continue;
 
-        for (const f of [...job.offs]) f();
-
-        job.offs = null;
-
-        if (job.sub) {
-          job.sub.count = 0;
-          job.sub.ok = false;
-        }
-      }
-    });
-    handle.count = offsAll.length;
-    handle.ok = offsAll.length > 0;
-
-    return handle;
+    return sub;
   };
   let api: ListenerBuilder;
-  // NEW: internal helper: allow string event types for custom events without
-  // weakening the typed `on<K extends keyof ElemMap>()`.
-  const onAny = <E extends Event>(type: string, handler: (ev: E) => void): ListenerSub => {
-    // NOTE: this is the same as `on`, but without keyof ElemMap constraint.
-    return on(type as keyof ElemMap, handler as (ev: any) => void);
-    // we deliberately reuse `on(...)` so queue/attach logic stays 1-source-of-truth.
-  };
 
   // add convenience wrappers so api satisfies ListenerBuilder
   api = {

@@ -128,8 +128,7 @@ export type ListenOpts = {
  * Policy for how to react when the intended EventTarget cannot
  * be resolved at attach time.
  *
- *   - "ignore" → silently skip attachment; `ListenerSub.ok`
- *                will be false and `count` will remain 0.
+ *   - "ignore" → silently skip attachment.
  *   - "warn"   → log a console warning but continue running.
  *   - "throw"  → throw immediately, treating missing targets
  *                as a hard configuration error.
@@ -140,26 +139,18 @@ export type ListenOpts = {
 export type MissingPolicy = "ignore" | "warn" | "throw";
 
 /**************************************************************
- * Handle returned by `.attach()` (or auto-attach).
+ * Handle returned by a listener registration.
  *
  * Represents the concrete attachment(s) made from a builder:
  *
- *   - `off()`   → idempotently remove all underlying listeners
- *                 from their EventTargets.
- *   - `count`  → number of actual `addEventListener` calls that
- *                 succeeded (e.g., 0 if target was missing).
- *   - `ok`     → shorthand for `count > 0`, useful in tests and
- *                 for defensive runtime checks.
+ *   - `off()` → idempotently remove the underlying listener from
+ *               its EventTarget.
  *
  * This is the low-level, side-effectful counterpart to the
  * fluent ListenerBuilder configuration surface.
  **************************************************************/
 export interface ListenerSub {
   off(): void;
-  /** number of concrete EventTarget attachments performed */
-  count: number;
-  /** true iff count > 0 */
-  ok: boolean;
 }
 
 export interface ListenerBuilder {
