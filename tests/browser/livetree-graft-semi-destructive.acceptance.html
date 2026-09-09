@@ -2,12 +2,24 @@
 <meta charset="utf-8">
 <title>LiveTree semi-destructive graft acceptance</title>
 <script type="importmap">
-{"imports":{"dompurify":"../../node_modules/dompurify/dist/purify.es.mjs"}}
+{"imports":{
+  "dompurify":"../../node_modules/dompurify/dist/purify.es.mjs",
+  "domelementtype":"../../node_modules/domelementtype/lib/esm/index.js",
+  "domhandler":"../../node_modules/domhandler/lib/esm/index.js",
+  "domutils":"../../node_modules/domutils/lib/esm/index.js",
+  "dom-serializer":"../../node_modules/dom-serializer/lib/esm/index.js",
+  "entities":"../../node_modules/entities/dist/esm/index.js",
+  "entities/decode":"../../node_modules/entities/dist/esm/decode.js",
+  "entities/escape":"../../node_modules/entities/dist/esm/escape.js",
+  "htmlparser2":"../../node_modules/htmlparser2/dist/esm/index.js"
+}}
 </script>
 <body>
 <script type="module">
 import { hsonLiveTree } from "../../dist/api/livetree/index.js";
+import { hsonLiveMap } from "../../dist/api/livemap/index.js";
 import { graft as graftElement } from "../../dist/api/livetree/creation/graft.js";
+import { reflect_existing_document_in_runtime } from "../../dist/api/reflect/reflect.document.js";
 import { get_node_for_el } from "../../dist/api/livetree/utils/node-map-helpers.js";
 import { get_node_by_quid } from "../../dist/api/livetree/quid/data-quid.js";
 import {
@@ -38,6 +50,7 @@ fixture.innerHTML = `
   before
   <graft-witness id="witness"><button id="button">go</button></graft-witness>
   <input id="control" type="checkbox" value="authored">
+  <input id="caret-control" type="text" value="authored-caret">
   <p id="text-host">alpha<span id="middle">middle</span>omega</p>
   <style id="style-host">  .graft-probe { color: red; }  </style>
   <script id="script-host" type="application/json">  {"ready":true}  <\/script>
@@ -48,6 +61,7 @@ document.body.append(fixture);
 const witness = fixture.querySelector("#witness");
 const button = fixture.querySelector("#button");
 const control = fixture.querySelector("#control");
+const caretControl = fixture.querySelector("#caret-control");
 const textHost = fixture.querySelector("#text-host");
 const middle = fixture.querySelector("#middle");
 const styleHost = fixture.querySelector("#style-host");
@@ -56,7 +70,9 @@ const identity = new WeakMap([[witness, "same"]]);
 witness.applicationExpando = { retained: true };
 control.value = "dirty-live-value";
 control.checked = true;
-control.focus();
+caretControl.value = "dirty-caret-value";
+caretControl.focus();
+caretControl.setSelectionRange(2, 7);
 let clicks = 0;
 button.addEventListener("click", () => { clicks += 1; });
 
@@ -65,15 +81,68 @@ check("selected root identity", tree.dom.el() === fixture);
 check("custom element identity", tree.find.byId("witness")?.dom.el() === witness);
 check("button identity", tree.find.byId("button")?.dom.el() === button);
 check("input identity", tree.find.byId("control")?.dom.el() === control);
+check("caret input identity", tree.find.byId("caret-control")?.dom.el() === caretControl);
 check("nested text element identity", tree.find.byId("middle")?.dom.el() === middle);
 check("custom private field", witness.token() === "retained-private-state");
 check("expando retained", witness.applicationExpando.retained === true);
 check("WeakMap witness retained", identity.get(witness) === "same");
 check("dirty form value retained", control.value === "dirty-live-value");
 check("dirty checked state retained", control.checked === true);
-check("focus retained", document.activeElement === control);
+check("focus retained", document.activeElement === caretControl);
+check("caret retained", caretControl.selectionStart === 2 && caretControl.selectionEnd === 7);
 button.click();
 check("direct listener retained", clicks === 1);
+
+const continuationMap = hsonLiveMap.fromNode({
+  $_tag: "_hson_root",
+  $_content: [structuredClone(tree.node)],
+});
+if (continuationMap.mode !== "document") throw new Error("expected document continuation map");
+const mutationRecords = new MutationObserver(() => {});
+mutationRecords.observe(fixture, { subtree: true, childList: true, attributes: true, characterData: true });
+const continuation = reflect_existing_document_in_runtime(
+  continuationMap,
+  tree,
+  default_livetree_runtime(),
+);
+check("borrowed Reflect returns exact grafted tree", continuation.tree === tree);
+check("borrowed Reflect preserves selected root", continuation.tree.dom.el() === fixture);
+check("borrowed Reflect performs zero initial DOM writes", mutationRecords.takeRecords().length === 0);
+check("borrowed Reflect preserves descendant identity", tree.find.byId("witness")?.dom.el() === witness);
+check("borrowed Reflect preserves custom private field", witness.token() === "retained-private-state");
+check("borrowed Reflect preserves expando", witness.applicationExpando.retained === true);
+check("borrowed Reflect preserves dirty value", control.value === "dirty-live-value");
+check("borrowed Reflect preserves dirty caret value", caretControl.value === "dirty-caret-value");
+check("borrowed Reflect preserves dirty checked state", control.checked === true);
+check("borrowed Reflect preserves focus", document.activeElement === caretControl);
+check("borrowed Reflect preserves caret", caretControl.selectionStart === 2 && caretControl.selectionEnd === 7);
+button.click();
+check("borrowed Reflect preserves direct listener", clicks === 2);
+
+const findRawPath = (node, quid, path = []) => {
+  if (node?.$_meta?.quid === quid) return path;
+  for (let index = 0; index < (node?.$_content?.length ?? 0); index += 1) {
+    const child = node.$_content[index];
+    if (child && typeof child === "object" && typeof child.$_tag === "string") {
+      const found = findRawPath(child, quid, [...path, index]);
+      if (found) return found;
+    }
+  }
+};
+const witnessPath = findRawPath(continuationMap.root(), witness.getAttribute("hson:quid"));
+if (!witnessPath) throw new Error("expected witness canonical path");
+const beforeContinuationRevision = continuationMap.rev;
+const continuationCommit = continuationMap.document.attrs.set(
+  { kind: "path", path: witnessPath },
+  "data-continuation",
+  "updated",
+);
+check("borrowed Reflect advances source revision", continuation.sourceRevision === continuationCommit.rev && continuationCommit.rev === beforeContinuationRevision + 1);
+check("borrowed Reflect steady-state update retains Element", tree.find.byId("witness")?.dom.el() === witness);
+check("borrowed Reflect steady-state update reaches DOM", witness.getAttribute("data-continuation") === "updated");
+continuation.dispose();
+mutationRecords.disconnect();
+check("borrowed Reflect disposal leaves tree alive", tree.isDisposed === false && tree.dom.el() === fixture);
 
 check("comments removed", fixture.querySelectorAll("*").length > 0 && !Array.from(fixture.childNodes).some((n) => n.nodeType === Node.COMMENT_NODE));
 check("root child positions canonical", Array.from(fixture.childNodes).every((n) => n.nodeType === Node.ELEMENT_NODE || (n.nodeType === Node.TEXT_NODE && n.textContent.length > 0)));

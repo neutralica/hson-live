@@ -166,6 +166,7 @@
     "test:livetree-terminal-reuse-boundaries": "node --import=tsx tests/livetree-terminal-reuse-boundaries.acceptance.mts",
     "test:livetree-quid-runtime-closure": "node --import=tsx tests/livetree-quid-runtime-closure.acceptance.mts",
     "test:reflect-document-attrs": "node --import=tsx tests/reflect-document-attrs.acceptance.mts",
+    "test:reflect-existing-document": "node --import=tsx tests/reflect-existing-document.acceptance.mts",
     "test:reflect-document-structure": "node --import=tsx tests/reflect-document-structure.acceptance.mts",
     "test:echo-reflect-authoring": "node --import=tsx tests/echo-reflect-authoring.acceptance.mts",
     "test:reflect-document-root": "node --import=tsx tests/reflect-document-root.acceptance.mts",
