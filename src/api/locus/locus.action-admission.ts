@@ -21,7 +21,8 @@ export type LocusValidatedAction<TMap extends LiveMapAuthority, TActions extends
   | Readonly<{ ok: true; handler: LocusActionHandler<TMap, TActions>; payload: JsonValue | undefined }>
   | Readonly<{ ok: false; code: "LOCUS_ACTION_UNKNOWN" | "LOCUS_ACTION_UNAVAILABLE" | "LOCUS_ACTION_INVALID"; message: string }>;
 
-export type LocusSoloExternalActionAuthority<TMap extends LiveMapAuthority, TActions extends LocusActionPayloads> = Readonly<{
+/** Internal authority capture installed only by the owning solo Locus runtime. */
+export type LocusSoloActionAuthorityInternals<TMap extends LiveMapAuthority, TActions extends LocusActionPayloads> = Readonly<{
   map: TMap;
   readonlyMap: LocusReadonlyMap<TMap>;
   actions: Partial<LocusActions<TActions, TMap>>;
@@ -70,7 +71,7 @@ export function locus_action_public_error_code(code: "LOCUS_ACTION_UNKNOWN" | "L
 }
 
 function actionCausation<TMap extends LiveMapAuthority, TActions extends LocusActionPayloads>(
-  authority: LocusSoloExternalActionAuthority<TMap, TActions>,
+  authority: LocusSoloActionAuthorityInternals<TMap, TActions>,
   message: LocusClientActionMessage<TActions>,
   origin: LocusActionOrigin,
   trace: LiveTraceContext | undefined,
@@ -89,7 +90,7 @@ function actionCausation<TMap extends LiveMapAuthority, TActions extends LocusAc
 }
 
 export function resolve_locus_action_for_execution<TMap extends LiveMapAuthority, TActions extends LocusActionPayloads>(
-  authority: LocusSoloExternalActionAuthority<TMap, TActions>,
+  authority: LocusSoloActionAuthorityInternals<TMap, TActions>,
   message: LocusClientActionMessage<TActions>,
   trace?: LiveTraceContext,
   parentSpanId?: string,
@@ -143,7 +144,7 @@ export function resolve_locus_action_for_execution<TMap extends LiveMapAuthority
 }
 
 function authorizeAction<TMap extends LiveMapAuthority, TActions extends LocusActionPayloads>(
-  authority: LocusSoloExternalActionAuthority<TMap, TActions>,
+  authority: LocusSoloActionAuthorityInternals<TMap, TActions>,
   message: LocusClientActionMessage<TActions>,
   payload: JsonValue | undefined,
   origin: Extract<LocusActionOrigin, { kind: "session" }>,
@@ -212,7 +213,7 @@ export async function execute_locus_action_handler<
   TMap extends LiveMapAuthority,
   TActions extends LocusActionPayloads,
 >(input: Readonly<{
-  authority: Pick<LocusSoloExternalActionAuthority<TMap, TActions>,
+  authority: Pick<LocusSoloActionAuthorityInternals<TMap, TActions>,
     "readonlyMap" | "mutations" | "currentSeq" | "nextSeq" | "headRev" | "traceStateBoundary">;
   message: LocusClientActionMessage<TActions>;
   handler: LocusActionHandler<TMap, TActions>;
@@ -307,7 +308,7 @@ export async function admit_locus_solo_external_action<
   TMap extends LiveMapAuthority,
   TActions extends LocusActionPayloads,
 >(
-  authority: LocusSoloExternalActionAuthority<TMap, TActions>,
+  authority: LocusSoloActionAuthorityInternals<TMap, TActions>,
   attempt: LocusSoloExternalActionAttempt<TActions, TMap>,
 ): Promise<LocusSoloActionAdmissionResult> {
   const { message, origin, trace, parentSpanId } = attempt;

@@ -18,7 +18,8 @@ export type LocusAggregateValidatedAction =
   | Readonly<{ ok: true; payload: JsonValue | undefined }>
   | Readonly<{ ok: false; code: string; message: string }>;
 
-export type LocusAggregateExternalActionAuthority<TActions extends LocusActionPayloads> = Readonly<{
+/** Internal authority capture installed only by the owning aggregate Locus runtime. */
+export type LocusAggregateActionAuthorityInternals<TActions extends LocusActionPayloads> = Readonly<{
   authorizer: LocusActionAuthorizer<TActions> | undefined;
   actionRequests: LocusActionDedupeStore;
   logicalMapId: string;
@@ -50,7 +51,7 @@ export type LocusAggregateActionAdmissionResult =
     }>;
 
 function rejectionResponse<TActions extends LocusActionPayloads>(
-  authority: LocusAggregateExternalActionAuthority<TActions>,
+  authority: LocusAggregateActionAuthorityInternals<TActions>,
   message: LocusClientActionMessage<TActions>,
   code: string,
   errorMessage: string,
@@ -73,7 +74,7 @@ function rejectionResponse<TActions extends LocusActionPayloads>(
 export async function admit_locus_aggregate_external_action<
   TActions extends LocusActionPayloads,
 >(
-  authority: LocusAggregateExternalActionAuthority<TActions>,
+  authority: LocusAggregateActionAuthorityInternals<TActions>,
   attempt: LocusAggregateExternalActionAttempt<TActions>,
 ): Promise<LocusAggregateActionAdmissionResult> {
   const { message } = attempt;

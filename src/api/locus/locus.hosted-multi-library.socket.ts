@@ -55,7 +55,15 @@ import {
   type LocusHostedAggregateWireEnvelope,
 } from "./locus.hosted-multi-library.js";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "./locus.hosted-multi-library.protocol.js";
-import { admit_locus_aggregate_external_action } from "./locus.hosted-multi-library.action-admission.js";
+import {
+  admit_locus_aggregate_external_action,
+  type LocusAggregateExternalActionAttempt,
+  type LocusAggregateActionAuthorityInternals,
+} from "./locus.hosted-multi-library.action-admission.js";
+import {
+  register_locus_remote_action_admission_internal,
+  type LocusRemoteActionIngress,
+} from "./locus.remote-action.internal.js";
 
 /** The established Locus retained live-history budget. */
 export const DEFAULT_LOCUS_HOSTED_AGGREGATE_HISTORY_BYTES = 4 * 1_024 * 1_024;
@@ -134,6 +142,7 @@ export type LocusHostedAggregateSocketOptions<
     beforeRecoveryCaughtUp?: () => void | Promise<void>;
     afterRecoveryCaughtUp?: () => void | Promise<void>;
     acquireActionActivity?: () => LocusDisposer;
+    acquireSessionActivity?: () => LocusDisposer;
     acquireConnectionActivity?: () => LocusDisposer;
     acquireRecoveryActivity?: () => LocusDisposer;
   }>;
@@ -213,6 +222,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     options.actionDedupe,
   );
   const acquireActionActivity = options.internal?.acquireActionActivity ?? (() => () => {});
+  const acquireEphemeralSessionActivity = options.internal?.acquireSessionActivity ?? (() => () => {});
 
   function next_session_id(): string {
     const configured = options.sessionId;
@@ -220,6 +230,11 @@ export function create_locus_hosted_aggregate_socket_internal<
     if (configured !== undefined) return configured;
     generatedSessionId += 1;
     return `locus-session-${Date.now().toString(36)}-${generatedSessionId.toString(36)}`;
+  }
+
+  function next_ephemeral_session_id(): string {
+    generatedSessionId += 1;
+    return `locus-ephemeral-session-${Date.now().toString(36)}-${generatedSessionId.toString(36)}`;
   }
 
   const stopWire = locus.on_wire((wire) => {
@@ -618,6 +633,76 @@ export function create_locus_hosted_aggregate_socket_internal<
     }
   }
 
+  const actionAuthority: LocusAggregateActionAuthorityInternals<TActions> = Object.freeze({
+    get authorizer() { return options.authorizeAction; },
+    actionRequests,
+    logicalMapId: locus.logicalMapId,
+    incarnationId: locus.incarnationId,
+    currentSeq: () => seq,
+    headRev: () => locus.rev,
+    validateAction: validate_action_request,
+    executeAction: execute_action,
+    acquireActionActivity,
+  });
+
+  function admit_external_action(
+    attempt: LocusAggregateExternalActionAttempt<TActions>,
+  ) {
+    return admit_locus_aggregate_external_action(actionAuthority, attempt);
+  }
+
+  async function admit_ephemeral_remote_action(
+    ingress: LocusRemoteActionIngress<TActions>,
+  ): Promise<LocusClientActionResult> {
+    const message = ingress.message;
+    const connection = ingress.connection === undefined
+      ? undefined
+      : Object.freeze({
+          ...(ingress.connection.principalId === undefined ? {} : { principalId: ingress.connection.principalId }),
+          ...(Object.prototype.hasOwnProperty.call(ingress.connection, "attachment")
+            ? { attachment: ingress.connection.attachment }
+            : {}),
+        });
+    let live = true;
+    const attachment = Object.freeze({ fence: () => { live = false; } });
+    const created = sessions.create(next_ephemeral_session_id(), false, attachment, () => {}, () => 0, connection);
+    if (!created.ok) {
+      return Object.freeze({
+        type: "error",
+        id: message.id,
+        ...(message.requestId === undefined ? {} : { requestId: message.requestId }),
+        ...(message.attemptId === undefined ? {} : { attemptId: message.attemptId }),
+        ok: false,
+        seq,
+        completionRev: locus.rev,
+        ...(message.requestId !== undefined && message.clientId !== undefined
+          ? { delivery: "rejected" as const }
+          : {}),
+        error: Object.freeze({ code: "LOCUS_DISPOSED", message: "Locus is disposed." }),
+      });
+    }
+    const origin = Object.freeze({
+      kind: "session" as const,
+      sessionId: created.value.sessionId,
+      epoch: created.value.epoch,
+      resumable: false,
+    });
+    const releaseSessionActivity = acquireEphemeralSessionActivity();
+    try {
+      const admitted = await admit_external_action({
+        message,
+        origin,
+        ...(connection === undefined ? {} : { connection }),
+        attachmentCurrent: () => live && sessions.is_active(origin.sessionId, origin.epoch),
+      });
+      return admitted.response;
+    } finally {
+      live = false;
+      sessions.release_ephemeral(origin.sessionId, origin.epoch);
+      releaseSessionActivity();
+    }
+  }
+
   async function action(connection: HostedConnection, request: Extract<HostedRequest, { type: "action" }>): Promise<void> {
     if (!bind_session(connection, false) || connection.sessionId === undefined || connection.sessionEpoch === undefined) return;
     const capturedSessionId = connection.sessionId;
@@ -628,17 +713,7 @@ export function create_locus_hosted_aggregate_socket_internal<
       epoch: capturedEpoch,
       resumable: connection.sessionResumable,
     });
-    const admitted = await admit_locus_aggregate_external_action<TActions>({
-      authorizer: options.authorizeAction,
-      actionRequests,
-      logicalMapId: locus.logicalMapId,
-      incarnationId: locus.incarnationId,
-      currentSeq: () => seq,
-      headRev: () => locus.rev,
-      validateAction: validate_action_request,
-      executeAction: execute_action,
-      acquireActionActivity,
-    }, {
+    const admitted = await admit_external_action({
       message: request as LocusClientActionMessage<TActions>,
       origin,
       ...(connection.context === undefined ? {} : { connection: connection.context }),
@@ -803,7 +878,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     return dispose;
   }
 
-  return Object.freeze({
+  const server = Object.freeze({
     map: options.map,
     logicalMapId: locus.logicalMapId,
     incarnationId: locus.incarnationId,
@@ -842,6 +917,11 @@ export function create_locus_hosted_aggregate_socket_internal<
       locus.dispose();
     },
   });
+  register_locus_remote_action_admission_internal(
+    server,
+    (ingress) => admit_ephemeral_remote_action(ingress as LocusRemoteActionIngress<TActions>),
+  );
+  return server;
 }
 
 

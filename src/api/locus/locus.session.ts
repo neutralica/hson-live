@@ -61,6 +61,8 @@ export type LocusSessionManager = Readonly<{
   ) => LocusResult<SessionSuccess>;
   detach: (sessionId: LocusSessionId, epoch: LocusConnectionEpoch) => boolean;
   goodbye: (sessionId: LocusSessionId, epoch: LocusConnectionEpoch) => LocusResult<void>;
+  /** Permanently release one attached non-resumable operation session. */
+  release_ephemeral: (sessionId: LocusSessionId, epoch: LocusConnectionEpoch) => boolean;
   is_active: (sessionId: LocusSessionId, epoch: LocusConnectionEpoch) => boolean;
   debug: () => LocusSessionDiagnostics;
   on_change: (listener: (event: LocusSessionLifecycleEvent) => void) => LocusDisposer;
@@ -266,6 +268,21 @@ export function make_locus_session_manager(options: LocusSessionOptions = {}): L
     return ok(undefined);
   }
 
+  function release_ephemeral(sessionId: LocusSessionId, epoch: LocusConnectionEpoch): boolean {
+    const record = sessions.get(sessionId);
+    if (!record || record.resumable || record.epoch !== epoch) return false;
+    if (record.state === "attached") {
+      record.attachment = undefined;
+      record.state = "revoked";
+      dispose_resources(record);
+      emit(Object.freeze({ kind: "revoked", session: diagnostic(record), reason: "goodbye" }));
+    } else if (record.state !== "revoked" && record.state !== "expired") {
+      return false;
+    }
+    sessions.delete(sessionId);
+    return true;
+  }
+
   function is_active(sessionId: LocusSessionId, epoch: LocusConnectionEpoch): boolean {
     const record = sessions.get(sessionId);
     return record?.state === "attached" && record.epoch === epoch && record.attachment !== undefined;
@@ -324,5 +341,5 @@ export function make_locus_session_manager(options: LocusSessionOptions = {}): L
     listeners.clear();
   }
 
-  return Object.freeze({ create, reattach, detach, goodbye, is_active, debug, on_change, dispose });
+  return Object.freeze({ create, reattach, detach, goodbye, release_ephemeral, is_active, debug, on_change, dispose });
 }

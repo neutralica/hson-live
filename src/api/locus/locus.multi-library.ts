@@ -11,6 +11,7 @@ import type {
   LocusMultiLibraryActionContext,
   LocusMultiLibraryOptions,
 } from "../../types/locus.types.js";
+import { alias_locus_remote_action_admission_internal } from "./locus.remote-action.internal.js";
 import { make_locus_activity_controller } from "./locus.activity.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import {
@@ -117,6 +118,7 @@ export function create_multi_library_locus_internal<
     ...(options.schema === undefined ? {} : { schema: options.schema }),
     internal: Object.freeze({
       acquireActionActivity: () => activity.acquire("action"),
+      acquireSessionActivity: () => activity.acquire("session"),
       acquireConnectionActivity: () => activity.acquire("connection"),
       acquireRecoveryActivity: () => activity.acquire("recovery"),
     }),
@@ -178,5 +180,6 @@ export function create_multi_library_locus_internal<
       activity.dispose();
     },
   });
+  alias_locus_remote_action_admission_internal(locus, authority);
   return Object.freeze({ locus, run_exclusive: authority.run_exclusive });
 }

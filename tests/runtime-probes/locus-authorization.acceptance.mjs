@@ -38,7 +38,7 @@ function connect(host, clientId, context, options = {}) {
   const pair = socket_pair(); let request = 0, attempt = 0;
   host.connect(pair.server, context);
   const client = hson.echo.create({ socket: pair.client, clientId, actionId: () => `${clientId}-request-${++request}`, actionAttemptId: () => `${clientId}-attempt-${++attempt}`, ...options });
-  client.connect(); return { client, pair };
+  client.connect(); if (!Object.hasOwn(options, "session")) void client.session.create(); return { client, pair };
 }
 function legacy_action(host, context, message) {
   const pair = socket_pair();
@@ -258,14 +258,13 @@ await check("custom application handlers can use external state and emit non-can
       },
     },
   });
-  const { client } = connect(host, "application");
-  const events = [];
-  client.onEvent((event) => events.push(event));
+  const { client, pair } = connect(host, "application");
   const beforeMap = host.map.capture();
   const beforeRev = host.map.rev;
   const beforeHistory = host.stream.history.debug().retainedCommitCount;
 
   const result = await client.action("notify", { source: "application" });
+  const events = pair.serverSent.map((raw) => JSON.parse(raw)).filter((message) => message.type === "event");
 
   assert.equal(result.type, "ack");
   assert.deepEqual(result.result, { delivered: true });

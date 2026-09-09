@@ -54,7 +54,8 @@ import {
   locus_action_public_error_code,
   make_locus_action_response,
   resolve_locus_action_for_execution,
-  type LocusSoloExternalActionAuthority,
+  type LocusSoloActionAuthorityInternals,
+  type LocusSoloExternalActionAttempt,
 } from "./locus.action-admission.js";
 import { decode_locus_action_payload } from "./locus.action-validation.js";
 import {
@@ -67,6 +68,10 @@ import {
   make_locus_activity_controller,
   register_locus_activity_controller,
 } from "./locus.activity.js";
+import {
+  register_locus_remote_action_admission_internal,
+  type LocusRemoteActionIngress,
+} from "./locus.remote-action.internal.js";
 
 let locus_session_inc = 0;
 let locus_trace_inc = 0;
@@ -443,7 +448,7 @@ function create_locus_for_map<
     });
   }
 
-  const externalActionAuthority: LocusSoloExternalActionAuthority<TMap, TActions> = Object.freeze({
+  const actionAuthority: LocusSoloActionAuthorityInternals<TMap, TActions> = Object.freeze({
     map,
     readonlyMap,
     actions: application.actions,
@@ -461,6 +466,85 @@ function create_locus_for_map<
     acquireActionActivity: () => activity.acquire("action"),
     traceStateBoundary: trace_state_boundary,
   });
+
+  function admit_external_action(
+    attempt: LocusSoloExternalActionAttempt<TActions, TMap>,
+  ) {
+    return admit_locus_solo_external_action(actionAuthority, attempt);
+  }
+
+  async function admit_ephemeral_remote_action(
+    ingress: LocusRemoteActionIngress<TActions>,
+  ) {
+    const message = ingress.message;
+    const connection = ingress.connection === undefined
+      ? undefined
+      : Object.freeze({
+          ...(ingress.connection.principalId === undefined ? {} : { principalId: ingress.connection.principalId }),
+          ...(Object.prototype.hasOwnProperty.call(ingress.connection, "attachment")
+            ? { attachment: ingress.connection.attachment }
+            : {}),
+        });
+    let live = true;
+    const attachment = Object.freeze({ fence: () => { live = false; } });
+    const created = sessions.create(make_locus_session_id(), false, attachment, () => {}, () => 0, connection);
+    if (!created.ok) {
+      return Object.freeze({
+        type: "error" as const,
+        id: message.id,
+        ...(message.requestId === undefined ? {} : { requestId: message.requestId }),
+        ...(message.attemptId === undefined ? {} : { attemptId: message.attemptId }),
+        ok: false as const,
+        seq,
+        completionRev: stream.headRev,
+        ...(message.requestId !== undefined && message.clientId !== undefined
+          ? { delivery: "rejected" as const }
+          : {}),
+        error: Object.freeze({ code: "LOCUS_DISPOSED", message: "Locus is disposed." }),
+      });
+    }
+    const origin = Object.freeze({
+      kind: "session" as const,
+      sessionId: created.value.sessionId,
+      epoch: created.value.epoch,
+      resumable: false,
+    });
+    const trace = make_action_trace(message, origin, true);
+    const actionSpan = trace?.beginSpan(
+      "locus", "action.execute", undefined,
+      () => ({ action: message.name, origin: origin.kind }),
+    );
+    try {
+      const admitted = await admit_external_action({
+        message,
+        origin,
+        ...(connection === undefined ? {} : { connection }),
+        emitEvent: () => false,
+        ...(trace === undefined ? {} : { trace }),
+        ...(actionSpan === undefined ? {} : { parentSpanId: actionSpan.spanId }),
+        attachmentCurrent: () => live && sessions.is_active(origin.sessionId, origin.epoch),
+      });
+      const response = admitted.response;
+      if (response.type === "ack") {
+        actionSpan?.success(() => ({
+          action: message.name,
+          responseType: response.type,
+          ...(admitted.kind === "deduped" ? { delivery: admitted.delivery } : {}),
+        }));
+      } else {
+        actionSpan?.failure(() => ({
+          action: message.name,
+          responseType: response.type,
+          ...(admitted.kind === "deduped" ? { delivery: admitted.delivery } : {}),
+          errorCode: response.error.code ?? "LOCUS_ACTION_FAILED",
+        }));
+      }
+      return response;
+    } finally {
+      live = false;
+      sessions.release_ephemeral(origin.sessionId, origin.epoch);
+    }
+  }
 
   async function dispatch_action_scoped_internal(
     message: LocusClientActionMessage<TActions>,
@@ -491,7 +575,7 @@ function create_locus_for_map<
     }
     const validated = (() => {
       try {
-        return resolve_locus_action_for_execution(externalActionAuthority, message, trace, actionSpan?.spanId);
+        return resolve_locus_action_for_execution(actionAuthority, message, trace, actionSpan?.spanId);
       } catch (cause) {
         actionSpan?.failure(() => ({ action: message.name, errorCode: safe_error_code(cause, "LOCUS_SCHEMA_DECODER_FAILED") }));
         throw cause;
@@ -515,7 +599,7 @@ function create_locus_for_map<
     const response = make_locus_action_response(
       message.id,
       await execute_locus_action_handler({
-        authority: externalActionAuthority,
+        authority: actionAuthority,
         message,
         handler: validated.handler,
         payload: validated.payload,
@@ -846,7 +930,7 @@ function create_locus_for_map<
       );
       let admitted;
       try {
-        admitted = await admit_locus_solo_external_action(externalActionAuthority, {
+        admitted = await admit_external_action({
           message,
           origin,
           ...(attachedContext === undefined ? {} : { connection: attachedContext }),
@@ -1240,6 +1324,10 @@ function create_locus_for_map<
     },
   };
   register_locus_activity_controller(locus, activity);
+  register_locus_remote_action_admission_internal(
+    locus,
+    (ingress) => admit_ephemeral_remote_action(ingress as LocusRemoteActionIngress<TActions>),
+  );
   exclusiveLocusAuthorities.set(locus, exclusiveAuthority as ReturnType<typeof make_locus_exclusive_authority>);
   return locus;
 }

@@ -10,6 +10,7 @@ import { canonical_hson_graph_equal } from "../../src/core/canonical-hson-equal.
 import { create_persistent_locus_internal } from "../../src/api/locus/locus.persistence.ts";
 import { LocusAuthorityError } from "../../src/api/locus/locus.authority.ts";
 import { get_livemap_staged_authority } from "../../src/api/livemap/livemap.authority.ts";
+import { admit_locus_remote_action_internal } from "../../src/api/locus/locus.remote-action.internal.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "locus.persistence",
@@ -466,11 +467,19 @@ await check("exclusive actions persist through the gate and projected persistenc
     },
   });
   const actionAppend = actionAdapter.deferAppend();
-  const action = actionHost.dispatch_action({ type: "action", id: "persistent-action", name: "set" });
+  const action = admit_locus_remote_action_internal(actionHost, {
+    message: {
+      type: "action", id: "persistent-action", name: "set",
+      clientId: "persistent-client", requestId: "persistent-request", attemptId: "persistent-attempt",
+    },
+  });
   await tick();
   assert.equal(actionMap.rev, 0);
   actionAppend.resolve();
-  assert.equal((await action).type, "ack");
+  const actionResult = await action;
+  assert.equal(actionResult.type, "ack");
+  assert.equal(actionResult.completionRev, 1);
+  assert.equal(actionResult.delivery, "executed");
   assert.equal(actionMap.rev, 1);
 
   const source = hson.liveMap.fromJson({ value: 0 });
