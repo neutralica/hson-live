@@ -64,6 +64,10 @@ import {
   register_locus_remote_action_admission_internal,
   type LocusRemoteActionIngress,
 } from "./locus.remote-action.internal.js";
+import {
+  read_locus_retained_action_status_internal,
+  register_locus_retained_action_status_internal,
+} from "./locus.action-status.internal.js";
 
 /** The established Locus retained live-history budget. */
 export const DEFAULT_LOCUS_HOSTED_AGGREGATE_HISTORY_BYTES = 4 * 1_024 * 1_024;
@@ -851,7 +855,11 @@ export function create_locus_hosted_aggregate_socket_internal<
         const capturedSessionId = connection.sessionId;
         const capturedEpoch = connection.sessionEpoch;
         if (!attachment_current(connection, capturedSessionId, capturedEpoch)) return;
-        const status = actionRequests.status(request.clientId, request.requestId, connection.context?.principalId);
+        const status = read_locus_retained_action_status_internal(server, {
+          clientId: request.clientId,
+          requestId: request.requestId,
+          ...(connection.context === undefined ? {} : { connection: connection.context }),
+        });
         if (!attachment_current(connection, capturedSessionId, capturedEpoch)) return;
         if (!status.ok) {
           send(connection, Object.freeze({
@@ -921,6 +929,14 @@ export function create_locus_hosted_aggregate_socket_internal<
     server,
     (ingress) => admit_ephemeral_remote_action(ingress as LocusRemoteActionIngress<TActions>),
   );
+  register_locus_retained_action_status_internal(server, (ingress) => {
+    if (disposed) throw new Error("Locus retained action status authority is unavailable.");
+    return actionRequests.status(
+      ingress.clientId,
+      ingress.requestId,
+      ingress.connection?.principalId,
+    );
+  });
   return server;
 }
 

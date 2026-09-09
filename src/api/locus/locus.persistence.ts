@@ -38,6 +38,7 @@ import { LocusPersistenceError } from "./locus.persistence.error.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
 import { acquire_locus_internal_activity } from "./locus.activity.js";
 import { alias_locus_remote_action_admission_internal } from "./locus.remote-action.internal.js";
+import { alias_locus_retained_action_status_internal } from "./locus.action-status.internal.js";
 import type { PreparedLiveMapTransition } from "../livemap/livemap.authority.js";
 import type {
   PersistentLocusMultiLibrary,
@@ -190,6 +191,7 @@ function persistent_locus_view<TMap extends DocumentLiveMap, TActions extends Lo
   const locus = Object.freeze({ ...authorityLocus, checkpoint });
   persistentLocusInternals.set(locus, { authorityLocus });
   alias_locus_remote_action_admission_internal(locus, authorityLocus);
+  alias_locus_retained_action_status_internal(locus, authorityLocus);
   return locus;
 }
 

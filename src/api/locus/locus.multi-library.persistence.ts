@@ -15,6 +15,7 @@ import {
 } from "./locus.hosted-multi-library.persistence.js";
 import { create_multi_library_locus_internal } from "./locus.multi-library.js";
 import { alias_locus_remote_action_admission_internal } from "./locus.remote-action.internal.js";
+import { alias_locus_retained_action_status_internal } from "./locus.action-status.internal.js";
 
 function checkpoint_record(snapshot: HostedAggregateSnapshot): object {
   return Object.freeze({
@@ -125,6 +126,7 @@ async function persistent_view<
     checkpoint: Object.freeze({ value: checkpoint, enumerable: true }),
   })) as PersistentLocusMultiLibrary<TMap, TActions>;
   alias_locus_remote_action_admission_internal(locus, runtime.locus);
+  alias_locus_retained_action_status_internal(locus, runtime.locus);
   return locus;
 }
 

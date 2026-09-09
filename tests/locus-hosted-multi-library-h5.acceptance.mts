@@ -16,6 +16,7 @@ import { install_fake_document } from "./helpers/fake-document.mts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
+import { read_locus_retained_action_status_internal } from "../src/api/locus/locus.action-status.internal.ts";
 
 const StateSchema: HsonSchema = Hson`<type "data" content <theme "string" count <number <int true min 0>>>>`;
 const ColorsSchema: HsonSchema = Hson`<type "data" content <theme "string" accent "string">>`;
@@ -478,7 +479,13 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   await client.session.create();
   await client.recovery.recover();
   const reflection = hsonReflect(clientMap.lib("page"));
-  await client.action("state.page");
+  const retainedAction = client.action("state.page");
+  await retainedAction;
+  const retainedStatus = read_locus_retained_action_status_internal(host, {
+    clientId: client.clientId,
+    requestId: retainedAction.request.requestId,
+  });
+  assert.equal(retainedStatus.ok && retainedStatus.state, "succeeded");
   assert.equal(clientMap.rev, 1);
   await client.action("page.retire");
   assert.equal(clientMap.rev, 2);
@@ -487,6 +494,10 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   await host.checkpoint();
   const checkpointMs = performance.now() - checkpointStarted;
   host.dispose();
+  assert.throws(() => read_locus_retained_action_status_internal(host, {
+    clientId: client.clientId,
+    requestId: retainedAction.request.requestId,
+  }), /authority is unavailable/i);
   client.dispose();
 
   const restoredMap = make_map();
@@ -511,6 +522,11 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   assert.ok(restored);
   assert.equal(restored.map, restoredMap);
   assert.equal(restoredMap.rev, 2);
+  const restoredRetainedStatus = read_locus_retained_action_status_internal(restored, {
+    clientId: client.clientId,
+    requestId: retainedAction.request.requestId,
+  });
+  assert.equal(restoredRetainedStatus.ok && restoredRetainedStatus.state, "unknown");
   const second = socket_pair();
   restored.connect(second.server);
   const recovered = hsonEcho.create({ socket: second.client, map: clientMap, recovery: { logicalMapId: restored.logicalMapId } });

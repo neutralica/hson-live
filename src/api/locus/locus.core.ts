@@ -72,6 +72,10 @@ import {
   register_locus_remote_action_admission_internal,
   type LocusRemoteActionIngress,
 } from "./locus.remote-action.internal.js";
+import {
+  read_locus_retained_action_status_internal,
+  register_locus_retained_action_status_internal,
+} from "./locus.action-status.internal.js";
 
 let locus_session_inc = 0;
 let locus_trace_inc = 0;
@@ -1207,7 +1211,11 @@ function create_locus_for_map<
         return;
       }
       if (message.type === "action-status") {
-        const status = actionRequests.status(message.clientId, message.requestId, attachedContext?.principalId);
+        const status = read_locus_retained_action_status_internal(locus, {
+          clientId: message.clientId,
+          requestId: message.requestId,
+          ...(attachedContext === undefined ? {} : { connection: attachedContext }),
+        });
         if (!status.ok) {
           reject_session(message.id, status.code, status.message);
           return;
@@ -1328,6 +1336,14 @@ function create_locus_for_map<
     locus,
     (ingress) => admit_ephemeral_remote_action(ingress as LocusRemoteActionIngress<TActions>),
   );
+  register_locus_retained_action_status_internal(locus, (ingress) => {
+    if (disposed) throw new Error("Locus retained action status authority is unavailable.");
+    return actionRequests.status(
+      ingress.clientId,
+      ingress.requestId,
+      ingress.connection?.principalId,
+    );
+  });
   exclusiveLocusAuthorities.set(locus, exclusiveAuthority as ReturnType<typeof make_locus_exclusive_authority>);
   return locus;
 }

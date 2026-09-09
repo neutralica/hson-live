@@ -11,6 +11,7 @@ import { create_persistent_locus_internal } from "../../src/api/locus/locus.pers
 import { LocusAuthorityError } from "../../src/api/locus/locus.authority.ts";
 import { get_livemap_staged_authority } from "../../src/api/livemap/livemap.authority.ts";
 import { admit_locus_remote_action_internal } from "../../src/api/locus/locus.remote-action.internal.ts";
+import { read_locus_retained_action_status_internal } from "../../src/api/locus/locus.action-status.internal.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "locus.persistence",
@@ -481,6 +482,10 @@ await check("exclusive actions persist through the gate and projected persistenc
   assert.equal(actionResult.completionRev, 1);
   assert.equal(actionResult.delivery, "executed");
   assert.equal(actionMap.rev, 1);
+  assert.equal(read_locus_retained_action_status_internal(actionHost, {
+    clientId: "persistent-client",
+    requestId: "persistent-request",
+  }).state, "succeeded");
 
   const source = hson.liveMap.fromJson({ value: 0 });
   const targetMap = hson.liveMap.fromJson({ value: 0 });
@@ -493,6 +498,10 @@ await check("exclusive actions persist through the gate and projected persistenc
   source.set(["value"], 1);
   assert.equal(targetMap.rev, 0);
   actionHost.dispose();
+  assert.throws(() => read_locus_retained_action_status_internal(actionHost, {
+    clientId: "persistent-client",
+    requestId: "persistent-request",
+  }), /authority is unavailable/i);
 });
 
 await check("host destruction waits for an active durable append before releasing management", async () => {
