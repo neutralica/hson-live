@@ -25,14 +25,14 @@ export {
 } from "./api/transform/hson-number.js";
 export { hsonReflect, type Reflect } from "./api/reflect/reflect.facade.js";
 export { LiveTree } from "./api/livetree/livetree.js";
-export {
+export type {
     AsyncLiveTree,
-    type AsyncLiveTreeAttrs,
-    type AsyncLiveTreeClasslist,
-    type AsyncLiveTreeFlags,
-    type AsyncLiveTreeForm,
-    type AsyncLiveTreeId,
-    type AsyncLiveTreeText,
+    AsyncLiveTreeAttrs,
+    AsyncLiveTreeClasslist,
+    AsyncLiveTreeFlags,
+    AsyncLiveTreeForm,
+    AsyncLiveTreeId,
+    AsyncLiveTreeText,
 } from "./api/livetree/async-livetree.js";
 export {
     LIVETREE_ALREADY_ATTACHED_ERROR_CODE,

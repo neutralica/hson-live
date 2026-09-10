@@ -55,7 +55,19 @@ export type AsyncLiveTreeForm<TOwner extends LiveTree> = Readonly<{
 }>;
 
 /** Explicit Promise-settled exact document-authoring context for one LiveTree. */
-export class AsyncLiveTree<TOwner extends LiveTree = LiveTree> {
+export interface AsyncLiveTree<TOwner extends LiveTree = LiveTree> {
+  readonly attrs: AsyncLiveTreeAttrs<TOwner>;
+  readonly flags: AsyncLiveTreeFlags<TOwner>;
+  readonly id: AsyncLiveTreeId<TOwner>;
+  readonly classlist: AsyncLiveTreeClasslist<TOwner>;
+  readonly text: AsyncLiveTreeText<TOwner>;
+  readonly form: AsyncLiveTreeForm<TOwner>;
+  readonly sync: TOwner;
+  empty(): Promise<AsyncLiveTree<TOwner>>;
+  remove(): Promise<void>;
+}
+
+class AsyncLiveTreeImplementation<TOwner extends LiveTree> implements AsyncLiveTree<TOwner> {
   public readonly attrs: AsyncLiveTreeAttrs<TOwner>;
   public readonly flags: AsyncLiveTreeFlags<TOwner>;
   public readonly id: AsyncLiveTreeId<TOwner>;
@@ -240,4 +252,9 @@ export class AsyncLiveTree<TOwner extends LiveTree = LiveTree> {
       return Promise.reject(cause);
     }
   }
+}
+
+/** @internal Construct the one facade owned by LiveTree.async. */
+export function create_async_livetree_internal<TOwner extends LiveTree>(owner: TOwner): AsyncLiveTree<TOwner> {
+  return new AsyncLiveTreeImplementation(owner);
 }

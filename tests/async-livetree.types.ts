@@ -1,4 +1,4 @@
-import { AsyncLiveTree, LiveTree } from "../src/index.ts";
+import { LiveTree, type AsyncLiveTree } from "../src/index.ts";
 
 type Equal<TLeft, TRight> =
   (<T>() => T extends TLeft ? 1 : 2) extends (<T>() => T extends TRight ? 1 : 2)
@@ -12,6 +12,9 @@ declare const tree: LiveTree;
 const asyncTree = tree.async;
 type EntryIsAsync = Assert<Equal<typeof asyncTree, AsyncLiveTree<LiveTree>>>;
 type SyncReturnsOrigin = Assert<Equal<typeof asyncTree.sync, LiveTree>>;
+
+// @ts-expect-error AsyncLiveTree is a public view, not a constructible value.
+new AsyncLiveTree(tree);
 
 const attrs = await asyncTree.attrs.set("id", "main");
 const flags = await attrs.flags.set("hidden");

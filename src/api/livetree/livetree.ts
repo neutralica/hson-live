@@ -36,7 +36,7 @@ import { make_svg_api, SvgApi } from "./managers/svg-api.js";
 import { AppendableLiveBranch, LiveFormApi, LiveTreeApi } from "../../types/livetree-internals.types.js";
 import { make_canvas_api } from "./managers/canvas/make-canvas-api.js";
 import { CanvasApi } from "./managers/canvas/canvas.types.js";
-import { AsyncLiveTree } from "./async-livetree.js";
+import { create_async_livetree_internal, type AsyncLiveTree } from "./async-livetree.js";
 import { LiveTreeBindApi, make_livetree_bind_api } from "./methods/livetree.bind.js";
 import { assert_livetree_node_active, is_livetree_node_disposed } from "./livetree-state.js";
 import { index_subtree_ownership } from "./lifecycle/graph-ownership.js";
@@ -538,7 +538,7 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
   /** Enter explicit Promise-settled exact document authoring. */
   public get async(): AsyncLiveTree<this> {
     this.assertActive("access async document authoring");
-    return this.asyncApiInternal ??= new AsyncLiveTree(this);
+    return this.asyncApiInternal ??= create_async_livetree_internal(this);
   }
   
   /***************************************

@@ -242,35 +242,93 @@ await check("terminal replica disposal cancels document revision observers and d
   authority.dispose();
 });
 
-await check("numeric revision coincidence across a recovered incompatible incarnation cannot settle", async () => {
+await check("replacement snapshot publication cannot settle an old-incarnation waiter", async () => {
+  const StateSchema = Hson`<type "data" content <value "number">>`;
+  const scenarios = [
+    Object.freeze({
+      name: "solo",
+      create: () => create_echo_solo_replica_capability_internal(hsonLiveMap.fromHson("<main/>"), true),
+    }),
+    Object.freeze({
+      name: "aggregate",
+      create: () => create_echo_aggregate_replica_capability_internal(
+        hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema: StateSchema } }),
+      ),
+    }),
+  ];
+
+  for (const scenario of scenarios) {
+    const replica = scenario.create();
+    replica.markReady();
+    let revision = 0;
+    let incarnationId = "incarnation-x";
+    let resolved = false;
+    const observers = new Set<() => void>();
+    const authority = make_echo_document_authority(
+      async () => Object.freeze({ accepted: true, completionRev: 2 }),
+      () => revision,
+      (listener) => { observers.add(listener); return () => observers.delete(listener); },
+      () => replica.ready,
+      replica.onDispose,
+      replica.waitUntilReady,
+      () => ({ logicalMapId: "identity-map", incarnationId }),
+      replica.onStateChange,
+    );
+    const pending = authority.enqueue(() => Object.freeze({
+      name: "document.attrs.set" as const,
+      payload: { target: { kind: "path" as const, path: [] }, name: "id", value: scenario.name },
+    })).then(() => { resolved = true; });
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(authority.pendingRevisionWaits(), 1, scenario.name);
+
+    replica.markRecovering();
+    revision = 2;
+    assert.equal(incarnationId, "incarnation-x", `${scenario.name}: replacement revision publishes before identity`);
+    for (const observer of [...observers]) observer();
+    incarnationId = "incarnation-y";
+    replica.markReady();
+
+    await assert.rejects(pending, /identity.*incompatible/i, scenario.name);
+    assert.equal(resolved, false, scenario.name);
+    assert.equal(authority.pendingRevisionWaits(), 0, scenario.name);
+    authority.dispose();
+    replica.dispose();
+  }
+});
+
+await check("accepted document results require a valid completionRev without poisoning the queue", async () => {
   const map = hsonLiveMap.fromHson("<main/>");
   const replica = create_echo_solo_replica_capability_internal(map, true);
-  let revision = 0;
-  let incarnationId = "incarnation-x";
-  const observers = new Set<() => void>();
+  let dispatches = 0;
+  let lowerings = 0;
   const authority = make_echo_document_authority(
-    async () => Object.freeze({ accepted: true, completionRev: 2 }),
-    () => revision,
-    (listener) => { observers.add(listener); return () => observers.delete(listener); },
+    async () => {
+      dispatches += 1;
+      if (dispatches === 1) return Object.freeze({ accepted: true });
+      if (dispatches === 2) return Object.freeze({ accepted: true, completionRev: -1 });
+      return Object.freeze({ accepted: true, completionRev: 0 });
+    },
+    () => 0,
+    () => () => {},
     () => replica.ready,
     replica.onDispose,
     replica.waitUntilReady,
-    () => ({ logicalMapId: "identity-map", incarnationId }),
+    () => ({ logicalMapId: "completion-map", incarnationId: "completion-incarnation" }),
     replica.onStateChange,
   );
-  const pending = authority.enqueue(() => Object.freeze({
-    name: "document.attrs.set" as const,
-    payload: { target: { kind: "path" as const, path: [] }, name: "id", value: "x" },
-  }));
-  await Promise.resolve();
-  await Promise.resolve();
-  assert.equal(authority.pendingRevisionWaits(), 1);
-  replica.markRecovering();
-  incarnationId = "incarnation-y";
-  revision = 2;
-  replica.markReady();
-  await assert.rejects(pending, /identity.*incompatible/i);
-  assert.equal(authority.pendingRevisionWaits(), 0);
+  const lower = () => {
+    lowerings += 1;
+    return Object.freeze({
+      name: "document.attrs.clear" as const,
+      payload: { target: { kind: "path" as const, path: [] } },
+    });
+  };
+
+  await assert.rejects(authority.enqueue(lower), /valid completionRev/i);
+  await assert.rejects(authority.enqueue(lower), /valid completionRev/i);
+  await assert.doesNotReject(authority.enqueue(lower));
+  assert.deepEqual({ dispatches, lowerings }, { dispatches: 3, lowerings: 3 });
   authority.dispose();
   replica.dispose();
 });

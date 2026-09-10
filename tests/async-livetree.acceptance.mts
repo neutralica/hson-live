@@ -1,6 +1,6 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { AsyncLiveTree, hson } from "../src/index.ts";
+import { hson } from "../src/index.ts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import { link_node_to_el, unlinkElement } from "../src/api/livetree/utils/node-map-helpers.ts";
 import { create_locus_internal } from "../src/api/locus/locus.core.ts";
@@ -143,7 +143,6 @@ await check("standalone calls are promises closed over AsyncLiveTree and preserv
   const operation = tree.async.attrs.set("id", "main");
   assert.equal(operation instanceof Promise, true);
   const owner = await operation;
-  assert.equal(owner instanceof AsyncLiveTree, true);
   assert.equal(owner, tree.async);
   assert.equal(owner.sync, tree);
   assert.equal(tree.attrs.get("id"), "main");

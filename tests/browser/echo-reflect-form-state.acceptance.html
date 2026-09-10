@@ -159,7 +159,8 @@ try {
   check("held authority live form state stays old", deniedInput.value === "old" && deniedInput.checked === true && denied.tree.form.getValue() === "old" && denied.tree.form.getChecked() === true);
   denied.release();
   const deniedDrain = denied.tree.async.attrs.set("data-drain", "accepted");
-  await Promise.allSettled([deniedValue, deniedChecked]);
+  const deniedResults = await Promise.allSettled([deniedValue, deniedChecked]);
+  check("denied async form operations reject", deniedResults.every((result) => result.status === "rejected"));
   await deniedDrain;
   await waitForRevision(denied.replica, deniedBase + 1);
   check("denial leaves canonical form state old", denied.authoritative.document.attrs.get(target, "value") === "old" && denied.replica.document.attrs.get(target, "checked") === true);
@@ -182,7 +183,8 @@ try {
   check("held requests preserve native dirty state", dirtyInput.value === "draft" && dirtyInput.checked === false);
   dirty.release();
   const dirtyUnrelated = dirty.tree.async.attrs.set("data-unrelated", "accepted");
-  await Promise.allSettled([dirtyValue, dirtyChecked]);
+  const dirtyResults = await Promise.allSettled([dirtyValue, dirtyChecked]);
+  check("dirty denied async form operations reject", dirtyResults.every((result) => result.status === "rejected"));
   await dirtyUnrelated;
   await waitForRevision(dirty.replica, dirtyBase + 1);
   check("denial preserves native dirty state", dirtyInput.value === "draft" && dirtyInput.checked === false);

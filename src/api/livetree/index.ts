@@ -1,13 +1,13 @@
 export { hsonLiveTree } from "./livetree.facade.js";
 export { LiveTree } from "./livetree.js";
-export {
+export type {
   AsyncLiveTree,
-  type AsyncLiveTreeAttrs,
-  type AsyncLiveTreeClasslist,
-  type AsyncLiveTreeFlags,
-  type AsyncLiveTreeForm,
-  type AsyncLiveTreeId,
-  type AsyncLiveTreeText,
+  AsyncLiveTreeAttrs,
+  AsyncLiveTreeClasslist,
+  AsyncLiveTreeFlags,
+  AsyncLiveTreeForm,
+  AsyncLiveTreeId,
+  AsyncLiveTreeText,
 } from "./async-livetree.js";
 export {
   LIVETREE_ALREADY_ATTACHED_ERROR_CODE,

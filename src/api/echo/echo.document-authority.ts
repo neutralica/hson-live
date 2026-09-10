@@ -36,6 +36,10 @@ type EchoDocumentDispatchResult = Readonly<{
   error?: Readonly<{ code?: string; message: string }>;
 }>;
 
+function valid_revision(value: unknown): value is number {
+  return Number.isSafeInteger(value) && typeof value === "number" && value >= 0;
+}
+
 export function make_echo_document_authority(
   dispatch: (action: EchoDocumentAction, identity: EchoDocumentStreamIdentity) => Promise<EchoDocumentDispatchResult>,
   revision: () => number,
@@ -183,8 +187,13 @@ export function make_echo_document_authority(
           if (result.error !== undefined) Object.defineProperty(denial, "cause", { value: result.error });
           throw denial;
         }
+        const completionRev = result.completionRev;
+        if (!valid_revision(completionRev)) {
+          throw new Error("Accepted Echo document operation requires a valid completionRev.");
+        }
         if (!identity_matches(identity)) throw new Error("Echo document authority stream identity became incompatible.");
-        if (result.completionRev !== undefined) await wait_for_revision(result.completionRev, identity);
+        await wait_for_revision(completionRev, identity);
+        if (!identity_matches(identity)) throw new Error("Echo document authority stream identity became incompatible.");
       });
       tail = operation.catch(() => {
         // Keep serialization failure-isolated while returning the actual
