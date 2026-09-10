@@ -5,12 +5,15 @@ import type { HsonNode } from "../src/core/types.ts";
 import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
 import { create_linked_livetree_in_runtime, create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import { get_el_for_node, link_node_to_el } from "../src/api/livetree/utils/node-map-helpers.ts";
-import { lifecycle_resource_counts_for_subject } from "../src/api/livetree/managers/lifecycle-registry.ts";
+import {
+  disposables_drain_for_subjects,
+  lifecycle_resource_counts_for_subject,
+  own_disposable_for_subject,
+} from "../src/api/livetree/managers/lifecycle-registry.ts";
 import { create_livetree_runtime, runtime_for_tree } from "../src/api/livetree/runtime/livetree-runtime.ts";
 import {
   _create_livetree_for_runtime_test,
   _create_livetree_runtime_test_handle,
-  _livetree_runtime_test_resource_counts,
   _reflect_document_for_runtime_test,
 } from "../src/diagnostics/index.ts";
 import { element, path, projected_element, raw_node } from "./helpers/reflect-unit6.mts";
@@ -279,13 +282,62 @@ await check("incompatible same-QUID replacement cleans the outgoing subject with
   const binding = _reflect_document_for_runtime_test(runtime, map);
   const original = raw_node(binding.tree.node, [0, 0]);
   const tree = _create_livetree_for_runtime_test(runtime, original).adoptRoots(binding.tree.hostRootNode());
-  tree.events.on("probe", () => undefined);
+  const outgoingEvents = tree.events;
+  let calls = 0;
+  const off = outgoingEvents.on("probe", () => { calls += 1; });
+  assert.equal(lifecycle_resource_counts_for_subject(original, runtime_for_tree(tree)).treeEvent, 1);
+  outgoingEvents.emit("probe");
+  assert.equal(calls, 1);
 
   map.document.content.replace(path(0), 0, projected_element(`<i @000000r02/>`));
   const replacement = raw_node(binding.tree.node, [0, 0]);
   assert.notEqual(replacement, original);
-  assert.equal(_livetree_runtime_test_resource_counts(runtime, "000000r02").treeEvent, 0);
+  assert.equal(lifecycle_resource_counts_for_subject(original, runtime_for_tree(tree)).treeEvent, 0);
+  assert.equal(lifecycle_resource_counts_for_subject(replacement, runtime_for_tree(tree)).treeEvent, 0);
+  assert.throws(() => outgoingEvents.emit("probe"), /disposed/);
+  assert.equal(calls, 1);
+  off();
   binding.dispose();
+});
+
+await check("exact-subject terminal draining reaches a fixed point after isolated failure", () => {
+  const node: HsonNode = { $_tag: "main", $_content: [] };
+  const runtime = create_livetree_runtime();
+  const tree = create_linked_livetree_in_runtime(node, runtime);
+  const calls = { initial: 0, reentrant: 0, throwing: 0, following: 0 };
+  const warnings: unknown[][] = [];
+  const priorWarn = console.warn;
+
+  own_disposable_for_subject(node, () => {
+    calls.initial += 1;
+    own_disposable_for_subject(node, () => { calls.reentrant += 1; }, "binding", runtime);
+  }, "listener", runtime);
+  own_disposable_for_subject(node, () => {
+    calls.throwing += 1;
+    throw new Error("expected cleanup failure");
+  }, "other", runtime);
+  own_disposable_for_subject(node, () => { calls.following += 1; }, "tree-event", runtime);
+
+  let drain: ReturnType<typeof disposables_drain_for_subjects>;
+  console.warn = (...values: unknown[]) => { warnings.push(values); };
+  try {
+    drain = disposables_drain_for_subjects([node], undefined, runtime);
+  } finally {
+    console.warn = priorWarn;
+  }
+
+  assert.deepEqual(calls, { initial: 1, reentrant: 1, throwing: 1, following: 1 });
+  assert.deepEqual(drain, { passes: 2, callbacks: 4, bounded: false });
+  assert.equal(warnings.length, 1);
+  assert.deepEqual(lifecycle_resource_counts_for_subject(node, runtime), {
+    total: 0,
+    binding: 0,
+    listener: 0,
+    treeEvent: 0,
+    resizeObserver: 0,
+    other: 0,
+  });
+  tree.remove();
 });
 
 await check("QUID-free hosted Reflect registration stays browser-local and submits no operation", async () => {

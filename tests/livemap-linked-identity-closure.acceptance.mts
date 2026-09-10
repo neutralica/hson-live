@@ -177,19 +177,46 @@ check("first linked CSS demand acquires canonical identity", () => {
   close(binding);
 });
 
-check("first linked event-registry demand acquires canonical identity", () => {
+check("linked TreeEvents registration remains realization-local", () => {
   const { map, binding } = reflected(`<main/>`);
-  assert.ok(authoredRoot(binding).events);
-  assert.equal(map.rev, 1);
+  const root = authoredRoot(binding);
+  const subject = root.node;
+  const initialRevision = map.rev;
+  let publications = 0;
+  const stop = map.commits.observe(() => { publications += 1; });
+  let calls = 0;
+
+  assert.equal(subject.$_meta?.quid, undefined);
+  const events = root.events;
+  const off = events.on("probe", () => { calls += 1; });
+  assert.equal(subject.$_meta?.quid, undefined);
+  assert.equal(map.rev, initialRevision);
+  assert.equal(publications, 0);
+
+  events.emit("probe");
+  assert.equal(calls, 1);
+  off();
+  events.emit("probe");
+  assert.equal(calls, 1);
+  assert.equal(subject.$_meta?.quid, undefined);
+  assert.equal(map.rev, initialRevision);
+  assert.equal(publications, 0);
+
+  stop();
   close(binding);
+  assert.equal(subject.$_meta?.quid, undefined);
+  assert.equal(map.rev, initialRevision);
 });
 
-check("QUID-owned managers share one registration", () => {
+check("QUID-scoped CSS remains the sole identity registration before TreeEvents access", () => {
   const { map, binding } = reflected(`<main/>`);
   const root = authoredRoot(binding);
   void root.css;
+  const revisionAfterCss = map.rev;
+  assert.equal(revisionAfterCss, 1);
+  assert.equal(_livetree_runtime_test_claim_count(runtime), 1);
   void root.events;
-  assert.equal(map.rev, 1);
+  assert.equal(map.rev, revisionAfterCss);
   assert.equal(_livetree_runtime_test_claim_count(runtime), 1);
   close(binding);
 });

@@ -216,7 +216,7 @@ tables, CSS pseudo keys, proxy reserved keys, and serializer raw-text tags.
 The narrow runtime context contains:
 
 - active forward and reverse QUID claim indexes;
-- QUID-owned disposable and resource-kind indexes;
+- exact-realization-owned disposable and resource-kind indexes;
 - runtime-owned CSS/keyframe/global-selector manager state;
 - the set of DOM documents hosting that runtime’s projection;
 - no serialized identifier and no public composite identity.

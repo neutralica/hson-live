@@ -243,16 +243,18 @@ check("linked QUID access acquires exactly one canonical claim", () => {
   close(binding);
 });
 
-check("QUID-scoped CSS and events share one authority-owned acquisition", () => {
+check("QUID-scoped CSS acquires once and later TreeEvents access adds no acquisition", () => {
   const profile = begin_livetree_materialization_profile();
   const { map, binding } = reflected(`<main/>`);
   const root = authoredRoot(binding);
   assert.ok(root.css);
+  const revisionAfterCss = map.rev;
+  assert.equal(revisionAfterCss, 1);
   assert.ok(root.events);
   const result = profile.stop();
   assert.equal(result.quidEnsureCalls, 0);
   assert.equal(result.quidRegistryWrites, 2);
-  assert.equal(map.rev, 1);
+  assert.equal(map.rev, revisionAfterCss);
   assert.equal(_livetree_runtime_test_claim_count(runtime), 1);
   close(binding);
 });

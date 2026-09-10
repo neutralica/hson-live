@@ -75,7 +75,7 @@ LiveTree preserves these semantics:
 - handles remain anchored to the exact node, not merely a raw QUID lookup;
 - query materialization may establish identity for the returned exact node;
 - detach and same-runtime movement preserve identity and owned resources;
-- terminal disposal invalidates the node and cleans QUID-owned CSS, events, animation, resources, reflection, and lifecycle state;
+- terminal disposal invalidates the node, cleans QUID-owned CSS, and cleans realization-local events, animation, resources, reflection, and lifecycle state;
 - clones receive fresh identity; and
 - malformed or duplicate active claims reject without partial admission.
 

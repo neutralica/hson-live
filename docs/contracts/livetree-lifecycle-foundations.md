@@ -42,7 +42,7 @@ in that runtime. A fresh runtime starts a fresh issued lifetime. No restoration
 artifact, identity generation, or second identifier is introduced.
 
 Patch 3 makes the lifecycle registry the canonical owner of continuing runtime
-resources created for a LiveTree QUID:
+resources created for an exact LiveTree realization subject:
 
 - LiveMap bindings are registered as one logical owned resource. Manual
   unsubscribe unregisters that ownership and is idempotent. Detach keeps the
