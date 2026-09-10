@@ -2,7 +2,7 @@
 
 import { ListenerBuilder, ListenOpts, MissingPolicy, ListenerSub, ElemMap } from "../../../types/listen.types.js";
 import { LiveTree } from "../livetree.js";
-import { own_disposable_for_owner } from "./lifecycle-registry.js";
+import { own_disposable_for_subject } from "./lifecycle-registry.js";
 import { runtime_for_tree } from "../runtime/livetree-runtime.js";
 
 
@@ -54,7 +54,7 @@ function addWithOff(
   type: string,
   handler: EventListener,
   opts: AddEventListenerOptions,
-  ownerQuid: string,
+  owner: LiveTree["node"],
   tree: LiveTree,
   onOff: () => void,
 ): () => void {
@@ -71,7 +71,7 @@ function addWithOff(
   let set = TARGET_LISTENER_REG.get(target);
   if (!set) { set = new Set(); TARGET_LISTENER_REG.set(target, set); }
 
-  off = own_disposable_for_owner(ownerQuid, () => {
+  off = own_disposable_for_subject(owner, () => {
     target.removeEventListener(type, nativeHandler, opts);
     set?.delete(off);
     if (set?.size === 0) TARGET_LISTENER_REG.delete(target);
@@ -127,8 +127,8 @@ export function _listeners_debug_hard_reset(): void {
  * - event-flow modifiers: `preventDefault`, `stopProp`, `stopImmediateProp`
  * - missing-target handling via `strict('ignore' | 'warn' | 'throw')`
  *
- * Ambient `document` and `window` listeners are tracked by owner QUID so they
- * can be removed automatically when the owning tree is removed.
+ * Ambient `document` and `window` listeners follow the exact realized subject
+ * so cleanup never demands canonical QUID identity.
  *
  * @param tree - The owning `LiveTree`.
  * @returns A fluent listener-registration surface.
@@ -229,7 +229,7 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
     try {
       for (const tgt of targets) {
         let off: () => void = () => undefined;
-        off = addWithOff(tgt, String(type), wrapped, aelo, tree.quid, tree, () => {
+        off = addWithOff(tgt, String(type), wrapped, aelo, tree.node, tree, () => {
           const index = offs.indexOf(off);
           if (index >= 0) offs.splice(index, 1);
         });

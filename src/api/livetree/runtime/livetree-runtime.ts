@@ -15,8 +15,9 @@ export type LiveTreeRuntime = {
   readonly pendingQuidClaims: Map<string, HsonNode>;
   /** Every QUID lineage admitted or minted during this runtime lifetime. */
   readonly issuedQuids: Set<string>;
-  readonly ownerDisposables: Map<string, Set<() => void>>;
-  readonly ownerDisposableKinds: Map<string, Map<() => void, LifecycleResourceKind>>;
+  /** Runtime resources follow exact realized subjects, never canonical QUID equality. */
+  readonly ownerDisposables: Map<HsonNode, Set<() => void>>;
+  readonly ownerDisposableKinds: Map<HsonNode, Map<() => void, LifecycleResourceKind>>;
   readonly styleDocuments: Set<Document>;
   readonly styleDocumentListeners: Set<(document: Document) => void>;
   cssManager: unknown;
@@ -43,6 +44,7 @@ function make_runtime(): LiveTreeRuntime {
 const DEFAULT_LIVETREE_RUNTIME = make_runtime();
 const RUNTIME_FOR_NODE = new WeakMap<HsonNode, LiveTreeRuntime>();
 const RUNTIME_FOR_TREE = new WeakMap<object, LiveTreeRuntime>();
+const SUBJECT_FOR_TREE = new WeakMap<object, HsonNode>();
 const REQUESTED_CONSTRUCTION_RUNTIME = new WeakMap<HsonNode, LiveTreeRuntime>();
 const REQUESTED_LINKED_CONSTRUCTION = new WeakSet<HsonNode>();
 const RUNTIME_FOR_DOCUMENT = new WeakMap<Document, LiveTreeRuntime>();
@@ -83,12 +85,20 @@ export function runtime_for_tree(tree: object): LiveTreeRuntime {
 }
 
 /** @internal */
-export function bind_tree_runtime(tree: object, runtime: LiveTreeRuntime): void {
+export function bind_tree_runtime(tree: object, runtime: LiveTreeRuntime, subject: HsonNode): void {
   const current = RUNTIME_FOR_TREE.get(tree);
   if (current !== undefined && current !== runtime) {
     throw new Error("LiveTree handle cannot change runtime scope.");
   }
   RUNTIME_FOR_TREE.set(tree, runtime);
+  SUBJECT_FOR_TREE.set(tree, subject);
+}
+
+/** Resolve the exact runtime realization subject pinned by a LiveTree alias. @internal */
+export function subject_for_tree(tree: object): HsonNode {
+  const subject = SUBJECT_FOR_TREE.get(tree);
+  if (subject === undefined) throw new Error("LiveTree handle has no runtime subject.");
+  return subject;
 }
 
 /** Validate one complete graph before publishing any runtime correspondence. @internal */

@@ -1,10 +1,11 @@
 // make-events.ts
 
 import { TreeEventHandler, TreeEvents } from "../../../types/events.types.js";
-import { own_disposable_for_owner } from "./lifecycle-registry.js";
+import { own_disposable_for_subject } from "./lifecycle-registry.js";
 import type { LiveTreeRuntime } from "../runtime/livetree-runtime.js";
+import type { HsonNode } from "../../../core/types.js";
 
-export function make_tree_events(ownerQuid: string, runtime: LiveTreeRuntime): TreeEvents {
+export function make_tree_events(owner: HsonNode, runtime: LiveTreeRuntime): TreeEvents {
   const listeners = new Map<string, Set<TreeEventHandler>>();
 
   const on = (type: string, handler: TreeEventHandler) => {
@@ -15,7 +16,7 @@ export function make_tree_events(ownerQuid: string, runtime: LiveTreeRuntime): T
     }
     set.add(handler);
 
-    return own_disposable_for_owner(ownerQuid, () => {
+    return own_disposable_for_subject(owner, () => {
       set!.delete(handler);
       if (set!.size === 0) listeners.delete(type);
     }, "tree-event", runtime);

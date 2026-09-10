@@ -4,7 +4,7 @@ import { _listeners_off_for_target } from "../managers/listener-builder.js";
 import { HsonNode } from "../../../core/types.js";
 import { get_el_for_node, unlinkNode } from "./node-map-helpers.js";
 import { CssManager } from "../managers/css-manager.js";
-import { disposables_off_for_owner } from "../managers/lifecycle-registry.js";
+import { disposables_off_for_subject } from "../managers/lifecycle-registry.js";
 import { get_quid } from "../quid/data-quid.js";
 import { collect_subtree_nodes } from "./subtree-traversal.js";
 import {
@@ -26,7 +26,7 @@ import {
  *    - removes all listeners registered via the listener system for that element,
  *    - removes all listeners for every DOM descendant of that element (defensive cleanup),
  *    - removes the element from its parent DOM node.
- * 3) Releases runtime side effects owned by the node QUID, such as scoped CSS,
+ * 3) Releases runtime side effects owned by the realized node, plus QUID-scoped CSS,
  *    listener-owner registrations, and lifecycle disposables.
  * 4) Deletes the node→element association from `NODE_ELEMENT_MAP`.
  *
@@ -64,11 +64,12 @@ function detach_node_runtime(node: HsonNode, runtime: LiveTreeRuntime): void {
     el.remove();
   }
 
-  // Clear runtime artifacts owned by this node QUID, but keep QUID ownership.
+  // Runtime resources belong to this exact realization; QUID remains only the
+  // canonical identity used by scoped CSS.
+  disposables_off_for_subject(node, runtime);
   const quid = get_quid(node, runtime);
   if (typeof quid === "string" && quid.length) {
     CssManager.forRuntime(runtime).releaseOwnedCssForQuid(quid);
-    disposables_off_for_owner(quid, runtime);
   }
   // 3) finally drop the map entry
   unlinkNode(node);

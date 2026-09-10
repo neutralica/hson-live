@@ -1,6 +1,6 @@
 import type { HsonNode } from "../../../core/types.js";
 import {
-  disposables_drain_for_owners,
+  disposables_drain_for_subjects,
 } from "../managers/lifecycle-registry.js";
 import {
   destroy_subtree_quids,
@@ -49,14 +49,14 @@ export function dispose_node_deep(
     if (element) mappedElements.push(element);
   }
 
-  // Runtime teardown preserves identity so every owner QUID remains available
-  // while listeners, CSS, observers, and mappings are released.
+  // Browser-local lifecycle owners are exact realized nodes, independent of
+  // canonical QUID identity and any later identity acquisition.
   detach_node_deep(root, runtime);
 
   // Runtime callbacks may register more work, including against an owner that
   // was processed earlier in post-order. Drain the complete owner set to a
   // fixed point before destroying identity.
-  const drain = disposables_drain_for_owners([...formerQuids.values()], undefined, runtime);
+  const drain = disposables_drain_for_subjects(nodes, undefined, runtime);
 
   const identitiesDestroyed = destroy_subtree_quids(root, runtime);
 

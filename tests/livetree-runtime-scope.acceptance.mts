@@ -366,7 +366,7 @@ check("text overwrite terminally disposes displaced descendants and leaves its o
   parent.remove();
 });
 
-check("QUID-owned resource kinds are isolated across equal-valued claims", () => {
+check("realization-owned resource kinds are isolated across equal-valued claims", () => {
   const left = _create_livetree_runtime_test_handle();
   const right = _create_livetree_runtime_test_handle();
   const leftTree = runtimeTree(left, node("main", SAME_QUID));

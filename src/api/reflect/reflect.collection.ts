@@ -3,7 +3,7 @@ import { LiveTree } from "../livetree/livetree.js";
 import { append_branches_atomic } from "../livetree/methods/appends.js";
 import { record_livetree_materialization } from "../livetree/debug/materialization-profile.js";
 import { parent_for_node } from "../livetree/lifecycle/graph-ownership.js";
-import { own_disposable_for_owner } from "../livetree/managers/lifecycle-registry.js";
+import { own_disposable_for_subject } from "../livetree/managers/lifecycle-registry.js";
 import { runtime_for_tree } from "../livetree/runtime/livetree-runtime.js";
 import { get_el_for_node } from "../livetree/utils/node-map-helpers.js";
 import { path_is_prefix, paths_equal, relative_live_path } from "../livemap/livemap.path.js";
@@ -730,8 +730,8 @@ function makeRendererOwner(): RendererOwner {
     };
     resources.add(resource);
     if (attachedTree !== undefined) {
-      resource.off = own_disposable_for_owner(
-        attachedTree.quid,
+      resource.off = own_disposable_for_subject(
+        attachedTree.node,
         resource.run,
         "other",
         runtime_for_tree(attachedTree),
@@ -748,8 +748,8 @@ function makeRendererOwner(): RendererOwner {
     attach: (tree: LiveTree) => {
       attachedTree = tree;
       for (const resource of resources) {
-        resource.off = own_disposable_for_owner(
-          tree.quid,
+        resource.off = own_disposable_for_subject(
+          tree.node,
           resource.run,
           "other",
           runtime_for_tree(tree),

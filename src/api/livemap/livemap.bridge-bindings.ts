@@ -5,7 +5,7 @@ import type { JsonValue } from "../../core/types.js";
 import type { LiveTextBridgeTarget, LiveMapBridgeBinding, LiveAttrBridgeTarget, LiveInputBridgeTarget, LiveMapControlNode } from "../../types/bridge.types.js";
 import type { LiveMapPathHandle } from "../../types/livemap.types.js";
 import { LiveTree } from "../livetree/livetree.js";
-import { own_disposable_for_owner } from "../livetree/managers/lifecycle-registry.js";
+import { own_disposable_for_subject } from "../livetree/managers/lifecycle-registry.js";
 import { runtime_for_tree } from "../livetree/runtime/livetree-runtime.js";
 
 // bridge-bindings.ts
@@ -250,8 +250,8 @@ export function bind_livetree_schema_enum_input(
 function owned_bridge_binding(target: object, dispose: () => void): LiveMapBridgeBinding {
   if (!(target instanceof LiveTree)) return { dispose };
   return {
-    dispose: own_disposable_for_owner(
-      target.quid,
+    dispose: own_disposable_for_subject(
+      target.node,
       dispose,
       "binding",
       runtime_for_tree(target),

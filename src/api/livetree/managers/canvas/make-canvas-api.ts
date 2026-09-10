@@ -1,7 +1,7 @@
 // make-canvas-api.ts
 
 import { LiveTree } from "../../livetree.js";
-import { disposable_add_for_owner, disposable_remove_for_owner } from "../lifecycle-registry.js";
+import { disposable_add_for_subject, disposable_remove_for_subject } from "../lifecycle-registry.js";
 import { runtime_for_tree } from "../../runtime/livetree-runtime.js";
 import { CanvasApi, CanvasDisplayMatchOptions, CanvasDisplaySize, CanvasMatchFn, CanvasPoint, CanvasSize, CanvasWatchHandle } from "./canvas.types.js";
 
@@ -144,11 +144,11 @@ export function make_canvas_api<TTree extends LiveTree>(
 
       active = false;
       observer.disconnect();
-      disposable_remove_for_owner(tree.quid, off, runtime_for_tree(tree));
+      disposable_remove_for_subject(tree.node, off, runtime_for_tree(tree));
     };
 
-    disposable_add_for_owner(
-      tree.quid,
+    disposable_add_for_subject(
+      tree.node,
       off,
       "resize-observer",
       runtime_for_tree(tree),

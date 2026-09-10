@@ -247,7 +247,7 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
     } else {
       admit_livetree_quid_graph(inputNode, runtime);
     }
-    bind_tree_runtime(this, runtime);
+    bind_tree_runtime(this, runtime, inputNode);
     record_livetree_materialization("liveTreeInstances");
     this.setRoot(input);
     this.setRef(input);
@@ -502,7 +502,7 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
     this.assertActive("access events");
     if (!this.eventsInternal) {
       this.eventsInternal = guard_api_surface(
-        make_tree_events(this.quid, runtime_for_tree(this)),
+        make_tree_events(this.node, runtime_for_tree(this)),
         () => this.assertActive("access events"),
         this,
       );

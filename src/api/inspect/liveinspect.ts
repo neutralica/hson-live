@@ -24,7 +24,7 @@ import type {
 import type { CollectionReflect, CollectionReflectChange, CollectionReflectKey } from "../../types/reflect.types.js";
 import { LiveTree } from "../livetree/livetree.js";
 import { make_detached_livetree_create } from "../livetree/creation/make-detached-livetree.js";
-import { own_disposable_for_owner } from "../livetree/managers/lifecycle-registry.js";
+import { own_disposable_for_subject } from "../livetree/managers/lifecycle-registry.js";
 import { format_live_path, path_is_prefix, paths_overlap, relative_live_path } from "../livemap/livemap.path.js";
 import { internal_livemap_node } from "../livemap/livemap.internal.js";
 import { reflect_collection } from "../reflect/reflect.collection.js";
@@ -238,8 +238,8 @@ class InspectorController {
       }));
       this.recordMaterialization(this.rootProjection, rootStarted);
       this.rootProjectionOff = this.rootProjection.subscribe(() => this.onRootProjectionChange());
-      own_disposable_for_owner(
-        this.inspectorRoot.quid,
+      own_disposable_for_subject(
+        this.inspectorRoot.node,
         () => this.dispose(),
         "other",
         runtime_for_tree(this.inspectorRoot),
@@ -1246,8 +1246,8 @@ class BranchController {
       const normalized = normalizeAuxiliary(result);
       this.previewHost.append(normalized.tree);
       if (normalized.dispose !== undefined) {
-        own_disposable_for_owner(
-          normalized.tree.quid,
+        own_disposable_for_subject(
+          normalized.tree.node,
           normalized.dispose,
           "other",
           runtime_for_tree(normalized.tree),

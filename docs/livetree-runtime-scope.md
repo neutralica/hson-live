@@ -247,7 +247,7 @@ Production minting is limited to verified identity-bearing operations:
 | Call path | Operational need |
 |---|---|
 | `LiveTree` admission | The materialized root is a handle root; supplied descendant claims are registered, while absent inactive descendants remain sparse. |
-| DOM projection | Each projected ordinary element needs canonical runtime identity for DOM correspondence and QUID-owned resources. |
+| DOM projection | Standalone projected ordinary elements retain canonical DOM correspondence; QUID-scoped CSS remains an explicit canonical-identity operation. |
 | explicit clone | Every eligible clone node receives fresh canonical identity by the documented structural-clone contract. |
 
 Graft admission now supplies its root QUID to DOM synchronization; the former
@@ -295,7 +295,7 @@ runtime or CSS state unless it actually performs LiveTree rendering or
 projection. No runtime is created per tree, root, QUID, LiveMap, or client.
 
 `LiveTree runtime` means the internal JavaScript ownership context containing
-active QUID claims, QUID-owned resources, runtime-local CSS/keyframe state, and
+active QUID claims, exact-realization lifecycle resources, runtime-local CSS/keyframe state, and
 their cleanup. It does not mean a JavaScript engine, Node process, browser tab,
 LiveTree instance, root node, client, or identity value.
 

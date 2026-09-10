@@ -5,8 +5,8 @@ import type { DocumentLiveMap, HsonNode, LiveMapPathHandle } from "../../../type
 import { is_livemap_document_location } from "../../livemap/livemap.document.location.js";
 import { is_livemap_projected_location } from "../../livemap/livemap.handle.js";
 import type { LiveTree } from "../livetree.js";
-import { own_disposable_for_owner } from "../managers/lifecycle-registry.js";
-import { runtime_for_tree } from "../runtime/livetree-runtime.js";
+import { own_disposable_for_subject } from "../managers/lifecycle-registry.js";
+import { runtime_for_tree, subject_for_tree } from "../runtime/livetree-runtime.js";
 
 type LiveTreeBindable = Pick<LiveTree, "quid" | "text" | "attrs" | "css">;
 
@@ -123,8 +123,8 @@ function bind_path_for<TTree extends LiveTreeBindable, TValue>(
   };
 
   sync(source.snap());
-  return own_disposable_for_owner(
-    tree.quid,
+  return own_disposable_for_subject(
+    subject_for_tree(tree),
     source.watch(sync),
     "binding",
     runtime_for_tree(tree),
@@ -147,8 +147,8 @@ function bind_paths_for<TTree extends LiveTreeBindable, const TSources extends r
 
   sync();
   const disposers = sources.map((source) => source.watch(sync));
-  return own_disposable_for_owner(
-    tree.quid,
+  return own_disposable_for_subject(
+    subject_for_tree(tree),
     () => dispose_all(disposers),
     "binding",
     runtime_for_tree(tree),

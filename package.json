@@ -161,6 +161,7 @@
     "test:livetree-attrs": "node --import=tsx tests/livetree-attrs.acceptance.mts",
     "test:livetree-dom-realm": "node --import=tsx tests/livetree-dom-realm.acceptance.mts",
     "test:livetree-listener-contract": "node --import=tsx tests/livetree-listener-contract.acceptance.mts",
+    "test:livetree-realization-resource-ownership": "node --import=tsx tests/livetree-realization-resource-ownership.acceptance.mts",
     "test:livetree-quid-eligibility": "node --import=tsx tests/livetree-quid-eligibility.acceptance.mts",
     "test:livetree-runtime-scope": "node --import=tsx tests/livetree-runtime-scope.acceptance.mts",
     "test:livetree-issued-quid-lifecycle": "node --import=tsx tests/livetree-issued-quid-lifecycle.acceptance.mts",

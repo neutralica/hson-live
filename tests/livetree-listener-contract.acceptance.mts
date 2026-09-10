@@ -131,6 +131,23 @@ check("a normal listener attaches, receives events, and has an idempotent off ha
   assert.equal(element.listeners.has("click"), false);
 });
 
+check("off retires only the exact registration on a shared target", () => {
+  const { tree, element } = fixture();
+  let firstCalls = 0;
+  let secondCalls = 0;
+  const first = tree.listen.onClick(() => { firstCalls += 1; });
+  const second = tree.listen.onClick(() => { secondCalls += 1; });
+
+  element.dispatch("click", new Event("click"));
+  first.off();
+  element.dispatch("click", new Event("click"));
+  assert.deepEqual([firstCalls, secondCalls], [1, 2]);
+  assert.equal(element.listeners.get("click")?.size, 1);
+
+  second.off();
+  assert.equal(element.listeners.has("click"), false);
+});
+
 check("once retires native and lifecycle bookkeeping even when the callback throws", () => {
   const { tree, element } = fixture();
   let calls = 0;

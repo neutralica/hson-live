@@ -396,7 +396,7 @@ Unit 10R-A checks distinguish root and descendants:
 - `find`/DOM traversal does not mint;
 - attrs, text, data, and inline style do not mint;
 - supplied root and descendant QUIDs register unchanged;
-- `.quid` and first QUID-owned resource reject explicitly on an unquidded linked node;
+- explicit `.quid` rejects on an unquidded hosted linked node, while runtime-local resources do not demand identity;
 - removal/disposal works for both quidded and unquidded projected nodes.
 
 Unit 10R-B must add collision preflight, failed-preflight atomicity, exactly-once delegation, and later canonical-q attachment coverage when those mechanisms exist.
