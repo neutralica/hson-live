@@ -4,6 +4,7 @@ import { HSON_TEST_EVENT_PREFIX, create_test_event_emitter } from "./test-events
 
 const writes = [];
 const originalWrite = process.stdout.write;
+const originalExitCode = process.exitCode;
 process.stdout.write = (value) => { writes.push(String(value)); return true; };
 try {
   const events = create_test_event_emitter("fixture.events");
@@ -11,6 +12,7 @@ try {
   events.diagnostic("first", "assertion", "useful failure detail");
   events.case_end("first", "fail");
   events.terminal("fail");
+  assert.equal(process.exitCode, 1, "a failed terminal event must make the suite process unsuccessful");
   assert.throws(() => events.terminal("fail"), /only be emitted once/);
   assert.throws(() => create_test_event_emitter("x").case_begin("", "no"), /caseId/);
   const duplicate = create_test_event_emitter("duplicates");
@@ -18,6 +20,7 @@ try {
   assert.throws(() => duplicate.case_begin("same", "Same"), /Duplicate/);
 } finally {
   process.stdout.write = originalWrite;
+  process.exitCode = originalExitCode ?? 0;
 }
 
 const records = writes.map((line) => {
@@ -53,6 +56,20 @@ assert.deepEqual(
   errorRecords.map((record) => [record.t, record.status].filter((value) => value !== undefined)),
   [["case_begin"], ["diagnostic"], ["case_end", "error"], ["terminal", "error"]],
 );
+
+const reportedFailureSource = [
+  `import { create_test_event_emitter } from ${JSON.stringify(new URL("./test-events.mjs", import.meta.url).href)};`,
+  'const events = create_test_event_emitter("fixture.reported-failure");',
+  'events.case_begin("reported failure", "reported failure");',
+  'events.case_end("reported failure", "fail");',
+  'events.terminal("fail");',
+].join("\n");
+const reportedFailure = spawnSync(
+  process.execPath,
+  ["--input-type=module", "--eval", reportedFailureSource],
+  { encoding: "utf8" },
+);
+assert.notEqual(reportedFailure.status, 0, "a reported failed check must keep non-success process behavior");
 
 const failingCommandSource = [
   `import { run_command_test_case } from ${JSON.stringify(new URL("./command-test-case.mjs", import.meta.url).href)};`,

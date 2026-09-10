@@ -80,6 +80,16 @@ async function connected_document_client(host, mirror, cursor = { incarnationId:
   return client;
 }
 
+async function connected_endpoint_client(host) {
+  const pair = socket_pair();
+  host.connect(pair.server);
+  const client = hson.echo.create({ socket: pair.client, session: {} });
+  assert.equal("map" in client, false);
+  client.connect();
+  await client.session.create();
+  return client;
+}
+
 async function assert_single_hosted_commit({ host, client, action, payload, verify }) {
   let authoritative = 0;
   let published = 0;
@@ -340,10 +350,7 @@ await check("each hosted operation accepts its alternate path or persisted-QUID 
 await check("all ten names are recognized but unavailable for data-object and data-array authorities", async () => {
   for (const state of [{ value: 1 }, [1]]) {
     const host = hson.locus.create({ state });
-    const pair = socket_pair();
-    host.connect(pair.server);
-    const client = hson.echo.create({ socket: pair.client });
-    client.connect();
+    const client = await connected_endpoint_client(host);
     for (const [name, payload] of [
       ["document.attrs.set", { target: rootPath, name: "id", value: "x" }],
       ["document.attrs.drop", { target: rootPath, name: "id" }],

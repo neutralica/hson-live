@@ -64,6 +64,7 @@ export function create_test_event_emitter(suiteId) {
     if (status !== derived) throw new Error(`Test event terminal ${status} contradicts completed cases (${derived}).`);
     terminalEmitted = true;
     emit({ t: "terminal", suiteId, status });
+    if (status === "fail") process.exitCode = 1;
   }
 
   return Object.freeze({ case_begin, diagnostic, case_end, terminal });
