@@ -373,7 +373,54 @@ function project_attrs_replacement(
   for (const name of Object.keys(current)) {
     if (!Object.prototype.hasOwnProperty.call(next, name)) element.removeAttribute(name);
   }
-  for (const [name, value] of Object.entries(next)) project_attr_value(element, name, value);
+  for (const [name, value] of Object.entries(next)) {
+    if (is_boolean_checked_realization(element, name, value)) {
+      if (value) element.setAttribute(name, "");
+      else element.removeAttribute(name);
+      continue;
+    }
+    project_attr_value(element, name, value);
+  }
+  realize_changed_form_properties(element, current, next);
+}
+
+function is_boolean_checked_realization(
+  element: Element,
+  name: string,
+  value: CanonicalPublicAttrValue,
+): value is boolean {
+  const tagName = (element as { tagName?: unknown }).tagName;
+  return typeof tagName === "string"
+    && tagName.toLowerCase() === "input"
+    && name === "checked"
+    && typeof value === "boolean";
+}
+
+function realize_changed_form_properties(
+  element: Element,
+  current: CanonicalPublicAttrs,
+  next: CanonicalPublicAttrs,
+): void {
+  const tagName = (element as { tagName?: unknown }).tagName;
+  if (typeof tagName !== "string") return;
+  const tag = tagName.toLowerCase();
+  if ((tag === "input" || tag === "textarea" || tag === "select")
+    && current.value !== next.value) {
+    const value = next.value;
+    (element as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).value = value == null
+      ? ""
+      : String(value);
+  }
+  if (tag === "input" && current.checked !== next.checked) {
+    const checked = next.checked;
+    (element as HTMLInputElement).checked = typeof checked === "boolean"
+      ? checked
+      : typeof checked === "string"
+        ? checked === "true"
+        : typeof checked === "number"
+          ? checked !== 0
+          : false;
+  }
 }
 
 function project_attr_value(element: Element, name: string, value: CanonicalPublicAttrValue): void {

@@ -1690,10 +1690,15 @@ function validate_dom_attrs(
   if (element === undefined) return;
   const expectedNames = new Set<string>();
   for (const [name, value] of Object.entries(attrs)) {
+    const booleanChecked = registration.node.$_tag.toLowerCase() === "input"
+      && name === "checked"
+      && typeof value === "boolean";
     const styleText = name === "style" && typeof value === "object" && value !== null
       ? serialize_style(value)
       : undefined;
-    const expected = styleText === ""
+    const expected = booleanChecked
+      ? value ? "" : null
+      : styleText === ""
       ? null
       : styleText !== undefined
         ? styleText

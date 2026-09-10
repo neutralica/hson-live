@@ -33,6 +33,10 @@ a generalized synchronization algorithm.
 Selected public mutations delegate only where their existing semantics map to
 one exact canonical operation. The binding performs no optimistic projected
 write; the normal commit update remains the sole graph/DOM update path.
+For form controls, native dirty value or checkedness remains realization-local
+across unrelated commits and rejected requests. An accepted canonical change to
+`value` or `checked` explicitly realizes the corresponding live property, so
+same-field authority still controls an already-dirty input, textarea, or select.
 
 | LiveTree method/category | Bound behavior | Canonical mapping | Limitation |
 | --- | --- | --- | --- |

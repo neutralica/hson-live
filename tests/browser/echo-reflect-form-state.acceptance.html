@@ -1,0 +1,271 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Echo Reflect form-state acceptance</title>
+<script type="importmap">
+{"imports":{
+  "dompurify":"../../node_modules/dompurify/dist/purify.es.mjs",
+  "domelementtype":"../../node_modules/domelementtype/lib/esm/index.js",
+  "domhandler":"../../node_modules/domhandler/lib/esm/index.js",
+  "domutils":"../../node_modules/domutils/lib/esm/index.js",
+  "dom-serializer":"../../node_modules/dom-serializer/lib/esm/index.js",
+  "entities":"../../node_modules/entities/dist/esm/index.js",
+  "entities/decode":"../../node_modules/entities/dist/esm/decode.js",
+  "entities/escape":"../../node_modules/entities/dist/esm/escape.js",
+  "htmlparser2":"../../node_modules/htmlparser2/dist/esm/index.js"
+}}
+</script>
+<body>
+<script type="module">
+import { hson } from "../../dist/index.js";
+import { create_livetree } from "../../dist/api/livetree/creation/create-livetree.js";
+import { project_livetree } from "../../dist/api/livetree/creation/project-live-tree.js";
+import { create_locus_internal } from "../../dist/api/locus/locus.core.js";
+
+const results = [];
+const check = (name, condition) => {
+  results.push({ name, pass: Boolean(condition) });
+  if (!condition) throw new Error(name);
+};
+
+const target = { kind: "path", path: [0] };
+let fixtureId = 0;
+
+function documentMap(source) {
+  const map = hson.liveMap.fromHson(source);
+  if (map.mode !== "document") throw new Error("expected document LiveMap");
+  return map;
+}
+
+function socketPair() {
+  const clientMessages = new Set();
+  const serverMessages = new Set();
+  return {
+    client: {
+      send(raw) { for (const listener of [...serverMessages]) listener(raw); },
+      close() {},
+      onMessage(listener) { clientMessages.add(listener); return () => clientMessages.delete(listener); },
+      onClose() { return () => {}; },
+    },
+    server: {
+      send(raw) { for (const listener of [...clientMessages]) listener(raw); },
+      close() {},
+      onMessage(listener) { serverMessages.add(listener); return () => serverMessages.delete(listener); },
+      onClose() { return () => {}; },
+    },
+  };
+}
+
+function waitForRevision(map, revision) {
+  if (map.rev >= revision) return Promise.resolve();
+  return new Promise((resolve) => {
+    const off = map.commits.observe(() => {
+      if (map.rev < revision) return;
+      off();
+      resolve();
+    });
+  });
+}
+
+async function hostedFixture(source, { decisions, held = false, prepare } = {}) {
+  const authoritative = documentMap(source);
+  const replica = documentMap(source);
+  prepare?.(authoritative);
+  prepare?.(replica);
+  let release;
+  const gate = held ? new Promise((resolve) => { release = resolve; }) : Promise.resolve();
+  const host = create_locus_internal({
+    map: authoritative,
+    logicalMapId: `form-browser-${fixtureId += 1}`,
+    sessions: {},
+    ...(decisions === undefined ? {} : { authorizeAction: () => decisions.shift() ?? true }),
+  }, { authorityGate: async () => { await gate; } });
+  const pair = socketPair();
+  host.connect(pair.server);
+  const echo = hson.echo.create({
+    socket: pair.client,
+    map: replica,
+    session: {},
+    recovery: { logicalMapId: host.stream.logicalMapId },
+  });
+  echo.connect();
+  await echo.session.create();
+  await echo.recovery.recover();
+  const binding = hson.reflect(replica);
+  const mount = document.createElement("section");
+  mount.hidden = true;
+  mount.append(project_livetree(binding.tree.node));
+  document.body.append(mount);
+  const node = binding.tree.node.$_content[0];
+  const tree = create_livetree(node).adoptRoots(binding.tree.hostRootNode());
+  const control = tree.dom.must.el();
+  return {
+    authoritative,
+    replica,
+    host,
+    echo,
+    binding,
+    mount,
+    tree,
+    control,
+    release: () => release?.(),
+    dispose() { binding.dispose(); echo.dispose(); mount.remove(); },
+  };
+}
+
+try {
+  const standaloneTree = create_livetree({
+    $_tag: "input",
+    $_attrs: { value: "old", checked: true },
+    $_content: [],
+  });
+  const standaloneInput = project_livetree(standaloneTree.node);
+  document.body.append(standaloneInput);
+  standaloneTree.form.setValue("standalone");
+  standaloneTree.form.setChecked(false);
+  check("standalone setters remain immediate", standaloneTree.attrs.get("value") === "standalone" && standaloneTree.attrs.get("checked") === false && standaloneInput.value === "standalone" && standaloneInput.checked === false);
+  standaloneInput.remove();
+
+  const localMap = documentMap(`<input value="old"/>`);
+  localMap.document.attrs.set(target, "checked", true);
+  const localBinding = hson.reflect(localMap);
+  const localMount = document.createElement("section");
+  localMount.hidden = true;
+  localMount.append(project_livetree(localBinding.tree.node));
+  document.body.append(localMount);
+  const localNode = localBinding.tree.node.$_content[0];
+  const localTree = create_livetree(localNode).adoptRoots(localBinding.tree.hostRootNode());
+  const localInput = localTree.dom.must.el();
+  const localBase = localMap.rev;
+  localTree.form.setValue("local");
+  localTree.form.setChecked(false);
+  check("local Reflect setters synchronously realize accepted state", localMap.rev === localBase + 2 && localBinding.sourceRevision === localBase + 2 && localInput.value === "local" && localInput.checked === false);
+  check("local Reflect false checkedness uses absence", localTree.attrs.get("checked") === false && !localInput.hasAttribute("checked") && localInput.defaultChecked === false);
+  localBinding.dispose();
+  localMount.remove();
+
+  const denied = await hostedFixture(`<input value="old"/>`, {
+    decisions: [false, false, true],
+    held: true,
+    prepare: (map) => map.document.attrs.set(target, "checked", true),
+  });
+  const deniedBase = denied.replica.rev;
+  const deniedInput = denied.control;
+  denied.tree.form.setValue("requested");
+  denied.tree.form.setChecked(false);
+  await Promise.resolve();
+  check("held authority revisions stay old", denied.authoritative.rev === deniedBase && denied.replica.rev === deniedBase && denied.binding.sourceRevision === deniedBase);
+  check("held authority canonical form state stays old", denied.tree.attrs.get("value") === "old" && denied.tree.attrs.get("checked") === true);
+  check("held authority DOM defaults stay old", deniedInput.getAttribute("value") === "old" && deniedInput.defaultValue === "old" && deniedInput.hasAttribute("checked") && deniedInput.defaultChecked === true);
+  check("held authority live form state stays old", deniedInput.value === "old" && deniedInput.checked === true && denied.tree.form.getValue() === "old" && denied.tree.form.getChecked() === true);
+  denied.release();
+  denied.tree.attrs.set("data-drain", "accepted");
+  await waitForRevision(denied.replica, deniedBase + 1);
+  check("denial leaves canonical form state old", denied.authoritative.document.attrs.get(target, "value") === "old" && denied.replica.document.attrs.get(target, "checked") === true);
+  check("denial leaves live form state old", deniedInput.value === "old" && deniedInput.checked === true);
+  check("unrelated acceptance cannot reveal denied form state", deniedInput.getAttribute("value") === "old" && deniedInput.hasAttribute("checked") && deniedInput.dataset.drain === "accepted");
+  denied.dispose();
+
+  const dirty = await hostedFixture(`<input value="old"/>`, {
+    decisions: [false, false, true],
+    held: true,
+    prepare: (map) => map.document.attrs.set(target, "checked", true),
+  });
+  const dirtyBase = dirty.replica.rev;
+  const dirtyInput = dirty.control;
+  dirtyInput.value = "draft";
+  dirtyInput.checked = false;
+  dirty.tree.form.setValue("denied-value");
+  dirty.tree.form.setChecked(true);
+  await Promise.resolve();
+  check("held requests preserve native dirty state", dirtyInput.value === "draft" && dirtyInput.checked === false);
+  dirty.release();
+  dirty.tree.attrs.set("data-unrelated", "accepted");
+  await waitForRevision(dirty.replica, dirtyBase + 1);
+  check("denial preserves native dirty state", dirtyInput.value === "draft" && dirtyInput.checked === false);
+  check("unrelated accepted change preserves native dirty state", dirtyInput.dataset.unrelated === "accepted" && dirtyInput.value === "draft" && dirtyInput.checked === false);
+  dirty.dispose();
+
+  const accepted = await hostedFixture(`<input value="old"/>`, {
+    held: true,
+    prepare: (map) => map.document.attrs.set(target, "checked", true),
+  });
+  const acceptedBase = accepted.replica.rev;
+  const acceptedInput = accepted.control;
+  accepted.tree.form.setValue("accepted");
+  accepted.tree.form.setChecked(false);
+  await Promise.resolve();
+  check("accepted setters remain pessimistic while held", acceptedInput.value === "old" && acceptedInput.checked === true && accepted.replica.rev === acceptedBase);
+  accepted.release();
+  await waitForRevision(accepted.replica, acceptedBase + 2);
+  check("accepted revisions converge", accepted.authoritative.rev === acceptedBase + 2 && accepted.replica.rev === acceptedBase + 2 && accepted.binding.sourceRevision === acceptedBase + 2);
+  check("accepted canonical form state converges", accepted.tree.attrs.get("value") === "accepted" && accepted.tree.attrs.get("checked") === false);
+  check("accepted value explicitly realizes", acceptedInput.getAttribute("value") === "accepted" && acceptedInput.defaultValue === "accepted" && acceptedInput.value === "accepted" && accepted.tree.form.getValue() === "accepted");
+  check("accepted false checkedness uses absence", !acceptedInput.hasAttribute("checked") && acceptedInput.defaultChecked === false && acceptedInput.checked === false && accepted.tree.form.getChecked() === false);
+
+  acceptedInput.value = "local-draft";
+  acceptedInput.checked = true;
+  await accepted.host.mutate((draft) => draft.document.attrs.set(target, "class", "unrelated"));
+  await waitForRevision(accepted.replica, acceptedBase + 3);
+  check("server unrelated mutation preserves dirty state", acceptedInput.value === "local-draft" && acceptedInput.checked === true);
+  await accepted.host.mutate((draft) => draft.document.attrs.setMany(target, { value: "server", checked: true }));
+  await waitForRevision(accepted.replica, acceptedBase + 4);
+  check("server same-field mutation advances canonical state", accepted.tree.attrs.get("value") === "server" && accepted.tree.attrs.get("checked") === true && accepted.binding.sourceRevision === acceptedBase + 4);
+  check("server same-field mutation overrides dirty value", acceptedInput.value === "server" && accepted.tree.form.getValue() === "server");
+  acceptedInput.value = "second-draft";
+  acceptedInput.checked = true;
+  await accepted.host.mutate((draft) => draft.document.attrs.setMany(target, { value: "final", checked: false }));
+  await waitForRevision(accepted.replica, acceptedBase + 5);
+  check("later same-field authority overrides dirty value and checkedness", acceptedInput.value === "final" && acceptedInput.checked === false && accepted.tree.form.getValue() === "final" && accepted.tree.form.getChecked() === false);
+  check("server false checkedness keeps correct defaults", !acceptedInput.hasAttribute("checked") && acceptedInput.defaultChecked === false);
+  accepted.dispose();
+
+  const textarea = await hostedFixture(`<textarea "old"/>`);
+  const textareaBase = textarea.replica.rev;
+  const textareaControl = textarea.control;
+  textarea.tree.form.setValue("accepted-textarea");
+  check("textarea setter does not prewrite property", textareaControl.value === "old");
+  await waitForRevision(textarea.replica, textareaBase + 1);
+  check("accepted textarea value realizes despite attribute mechanics", textareaControl.value === "accepted-textarea" && textarea.tree.form.getValue() === "accepted-textarea");
+  textareaControl.value = "dirty-textarea";
+  await textarea.host.mutate((draft) => draft.document.attrs.set(target, "value", "server-textarea"));
+  await waitForRevision(textarea.replica, textareaBase + 2);
+  check("same-field authority overrides dirty textarea", textareaControl.value === "server-textarea" && textarea.tree.form.getValue() === "server-textarea");
+  textarea.dispose();
+
+  const select = await hostedFixture(`<select <option value="old"/> <option value="next"/> <option value="server"/>/>`);
+  const selectBase = select.replica.rev;
+  const selectControl = select.control;
+  check("select begins with native first-option value", selectControl.value === "old");
+  select.tree.form.setValue("next");
+  check("select setter does not prewrite selectedness", selectControl.value === "old");
+  await waitForRevision(select.replica, selectBase + 1);
+  check("accepted select value explicitly realizes", selectControl.value === "next" && select.tree.form.getValue() === "next");
+  selectControl.value = "old";
+  await select.host.mutate((draft) => draft.document.attrs.set(target, "class", "unrelated"));
+  await waitForRevision(select.replica, selectBase + 2);
+  check("unrelated authority preserves dirty select", selectControl.value === "old");
+  await select.host.mutate((draft) => draft.document.attrs.set(target, "value", "server"));
+  await waitForRevision(select.replica, selectBase + 3);
+  check("later changed authority overrides dirty select", selectControl.value === "server" && select.tree.form.getValue() === "server");
+  select.dispose();
+
+  globalThis.__echoReflectFormStateAcceptance = {
+    pass: results.every((result) => result.pass),
+    total: results.length,
+    results,
+  };
+  document.body.dataset.acceptance = "pass";
+  document.body.dataset.acceptanceTotal = String(results.length);
+} catch (error) {
+  globalThis.__echoReflectFormStateAcceptance = {
+    pass: false,
+    total: results.length,
+    results,
+    error: error instanceof Error ? error.message : String(error),
+  };
+  document.body.dataset.acceptance = "fail";
+  document.body.dataset.acceptanceError = error instanceof Error ? error.message : String(error);
+  throw error;
+}
+</script>
+</body>

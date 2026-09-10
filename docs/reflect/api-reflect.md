@@ -96,6 +96,13 @@ is queued by Echo and lowered only at queue head against the latest accepted
 replica. No optimistic LiveTree or DOM mutation occurs. Authorization rejection
 leaves Reflect active because there is no accepted evidence to project.
 
+Native form editing remains browser-owned realization state: unrelated accepted
+document changes do not reset a dirty control, and denial does not roll native
+state back. A bound `form.setValue(...)` or `form.setChecked(...)` performs no
+independent property write. When accepted canonical evidence changes that same
+field, Reflect explicitly realizes the accepted `.value` or `.checked` property,
+including on an already-dirty input, textarea, or select as applicable.
+
 Hosted QUID demand is intentionally bounded: QUIDs already present in accepted
 state remain readable, while synchronous identity demand for an unquidded
 Echo-bound node rejects without a local `ensure-quid` commit.

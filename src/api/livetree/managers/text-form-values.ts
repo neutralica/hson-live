@@ -142,12 +142,17 @@ export function get_node_text_content(node: HsonNode): string {
  */
 export function set_form_value(node: HsonNode, value: string, opts?: SetNodeFormOpts): void {
   const binding = document_binding_for_node(node);
-  if (binding === undefined) {
-    const attrs = ensure_attrs(node);
-    attrs.value = value;
-  } else {
+  if (binding !== undefined) {
     binding.delegateAttrs({ kind: "set", name: "value", value });
+    const el = form_el_for_node(node);
+    if (!el && (opts?.strict || opts?.silent === false)) {
+      throw_missing_el(node, "setNodeFormValue");
+    }
+    return;
   }
+
+  const attrs = ensure_attrs(node);
+  attrs.value = value;
 
   const el = form_el_for_node(node);
   if (!el) {
@@ -191,12 +196,17 @@ export function get_form_value(node: HsonNode): string {
  */
 export function set_input_checked(node: HsonNode, checked: boolean, opts?: SetNodeFormOpts): void {
   const binding = document_binding_for_node(node);
-  if (binding === undefined) {
-    const attrs = ensure_attrs(node);
-    attrs.checked = checked;
-  } else {
+  if (binding !== undefined) {
     binding.delegateAttrs({ kind: "set", name: "checked", value: checked });
+    const el = form_el_for_node(node);
+    if (!el && (opts?.strict || opts?.silent === false)) {
+      throw_missing_el(node, "setNodeFormChecked");
+    }
+    return;
   }
+
+  const attrs = ensure_attrs(node);
+  attrs.checked = checked;
 
   const el = form_el_for_node(node);
   if (!el) {
