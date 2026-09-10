@@ -937,9 +937,13 @@ export function create_solo_echo_internal<
         case "document.content.move": return documentRetryAction(request);
       }
     };
-    const dispatch_document_action = async (request: EchoDocumentAction): Promise<Readonly<{
+    const dispatch_document_action = async (
+      request: EchoDocumentAction,
+      expectedIdentity: Readonly<{ logicalMapId: string; incarnationId: string }>,
+    ): Promise<Readonly<{
       accepted: boolean;
       completionRev?: number;
+      error?: Readonly<{ code?: string; message: string }>;
     }>> => {
       let pending = send_document_action(request);
       let result: LocusClientActionResult;
@@ -951,12 +955,17 @@ export function create_solo_echo_internal<
           if (!(cause instanceof LocusDisconnectedError)) throw cause;
           const stableRequest = pending.request;
           await wait_until_echo_ready();
+          if (options.recovery.logicalMapId !== expectedIdentity.logicalMapId
+            || incarnationId !== expectedIdentity.incarnationId) {
+            throw new Error("Echo document authority stream identity became incompatible before retry.");
+          }
           pending = retry_document_action(stableRequest);
         }
       }
       return Object.freeze({
         accepted: result.type === "ack" && result.ok === true,
         ...(result.completionRev === undefined ? {} : { completionRev: result.completionRev }),
+        ...(result.type === "error" ? { error: result.error } : {}),
       });
     };
     documentAuthority = make_echo_document_authority(
@@ -966,6 +975,9 @@ export function create_solo_echo_internal<
       () => replica.ready,
       replica.onDispose,
       replica.waitUntilReady,
+      () => ({ logicalMapId: options.recovery.logicalMapId, incarnationId }),
+      replica.onStateChange,
+      () => replica.failure,
     );
     register_echo_document_authority(map, documentAuthority);
   }

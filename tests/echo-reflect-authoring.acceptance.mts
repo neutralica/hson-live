@@ -132,13 +132,14 @@ await check("hosted nested remove is a void request and changes projection only 
   const span = main.content.mustOnly({ warn: false });
   assert.deepEqual(document_binding_for_node(span.node)?.canonicalPath, [0, 0, 0]);
   assert.notEqual(echo_document_authority_for(replica), undefined);
-  const result: void = span.remove();
-  assert.equal(result, undefined);
+  const result = span.async.remove();
+  assert.equal(result instanceof Promise, true);
   assert.equal(authoritative.rev, 0);
   assert.equal(replica.rev, 0);
   assert.equal(span.isDisposed, false);
   assert.equal(binding.status, "active");
   await wait_for_revision(replica, 1);
+  await result;
   assert.equal(authoritative.rev, 1);
   assert.equal(replica.rev, 1);
   assert.equal(span.isDisposed, true);
@@ -172,11 +173,10 @@ await check("hosted Reflect stays pessimistic and queued convenience edits lower
   const tree = authored_element(binding);
   const dom = mount(tree.node);
 
-  tree.attrs.set("title", "accepted");
-  tree.classlist.add("one");
-  tree.classlist.add("two");
-  tree.style.set.color("red");
-  tree.style.set.backgroundColor("black");
+  const title = tree.async.attrs.set("title", "accepted");
+  const one = tree.async.classlist.add("one");
+  const two = tree.async.classlist.add("two");
+  assert.throws(() => tree.style.set.color("red"), /tree\.async/);
   await Promise.resolve();
   assert.equal(authoritative.rev, 0);
   assert.equal(replica.rev, 0);
@@ -184,12 +184,13 @@ await check("hosted Reflect stays pessimistic and queued convenience edits lower
   assert.equal(dom.getAttribute("title"), null);
 
   releaseFirst?.();
-  await wait_for_revision(replica, 5);
-  assert.equal(authoritative.rev, 5);
-  assert.equal(replica.rev, 5);
+  await Promise.all([title, one, two]);
+  await wait_for_revision(replica, 3);
+  assert.equal(authoritative.rev, 3);
+  assert.equal(replica.rev, 3);
   assert.equal(tree.attrs.get("title"), "accepted");
   assert.equal(tree.attrs.get("class"), "base one two");
-  assert.deepEqual(tree.attrs.get("style"), { backgroundColor: "black", color: "red" });
+  assert.equal(tree.attrs.get("style"), undefined);
   assert.equal(dom.getAttribute("title"), "accepted");
   assert.equal(dom.getAttribute("class"), "base one two");
   assert.equal(binding.status, "active");
@@ -221,8 +222,10 @@ await check("one-map authorization denial settles without Reflect failure and th
   const binding = hson.reflect(replica);
   const tree = authored_element(binding);
   const dom = mount(tree.node);
-  tree.attrs.set("title", "denied");
-  tree.attrs.set("id", "accepted");
+  const denied = tree.async.attrs.set("title", "denied");
+  const accepted = tree.async.attrs.set("id", "accepted");
+  await assert.rejects(denied, (error) => Reflect.get(error as object, "code") === "LOCUS_ACTION_FORBIDDEN");
+  await accepted;
   await wait_for_revision(replica, 1);
   assert.equal(authoritative.rev, 1);
   assert.equal(replica.rev, 1);

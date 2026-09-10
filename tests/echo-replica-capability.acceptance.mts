@@ -6,6 +6,12 @@ import { create_echo_aggregate_replica_capability_internal } from "../src/api/ec
 import { create_echo_with_replica_loaders_internal } from "../src/api/echo/echo.ts";
 import type { EchoReplicaLoaders } from "../src/api/echo/echo.lazy.ts";
 import { make_echo_document_authority } from "../src/api/echo/echo.document-authority.ts";
+import {
+  create_deferred_echo_document_authority_internal,
+  register_echo_document_authority,
+  unregister_echo_document_authority,
+  type EchoDocumentAuthority,
+} from "../src/api/echo/echo.document-authority-registry.ts";
 import type { EchoRecoveryResult, LocusClientMessage, LocusSocketLike } from "../src/types/locus.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -207,8 +213,9 @@ await check("terminal replica disposal cancels document revision observers and d
     () => replica.ready,
     replica.onDispose,
     replica.waitUntilReady,
+    () => ({ logicalMapId: "capability-map", incarnationId: "capability-incarnation" }),
   );
-  authority.enqueue(() => {
+  const pending = authority.enqueue(() => {
     lowerings += 1;
     return Object.freeze({ name: "document.attrs.clear" as const, payload: { target: { kind: "path" as const, path: [] } } });
   });
@@ -218,20 +225,101 @@ await check("terminal replica disposal cancels document revision observers and d
   assert.equal(authority.pendingRevisionWaits(), 1);
   assert.equal(observers.size, 1);
   replica.dispose();
+  await assert.rejects(pending, /disposed/i);
   await Promise.resolve();
   await Promise.resolve();
   assert.equal(authority.pendingRevisionWaits(), 0);
   assert.equal(observers.size, 0);
   revision = 2;
   for (const observer of [...observers]) observer();
-  authority.enqueue(() => {
+  await assert.rejects(authority.enqueue(() => {
     lowerings += 1;
     return Object.freeze({ name: "document.attrs.clear" as const, payload: { target: { kind: "path" as const, path: [] } } });
-  });
+  }), /disposed/i);
   await Promise.resolve();
   await Promise.resolve();
   assert.deepEqual({ dispatches, lowerings }, { dispatches: 1, lowerings: 1 });
   authority.dispose();
+});
+
+await check("numeric revision coincidence across a recovered incompatible incarnation cannot settle", async () => {
+  const map = hsonLiveMap.fromHson("<main/>");
+  const replica = create_echo_solo_replica_capability_internal(map, true);
+  let revision = 0;
+  let incarnationId = "incarnation-x";
+  const observers = new Set<() => void>();
+  const authority = make_echo_document_authority(
+    async () => Object.freeze({ accepted: true, completionRev: 2 }),
+    () => revision,
+    (listener) => { observers.add(listener); return () => observers.delete(listener); },
+    () => replica.ready,
+    replica.onDispose,
+    replica.waitUntilReady,
+    () => ({ logicalMapId: "identity-map", incarnationId }),
+    replica.onStateChange,
+  );
+  const pending = authority.enqueue(() => Object.freeze({
+    name: "document.attrs.set" as const,
+    payload: { target: { kind: "path" as const, path: [] }, name: "id", value: "x" },
+  }));
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(authority.pendingRevisionWaits(), 1);
+  replica.markRecovering();
+  incarnationId = "incarnation-y";
+  revision = 2;
+  replica.markReady();
+  await assert.rejects(pending, /identity.*incompatible/i);
+  assert.equal(authority.pendingRevisionWaits(), 0);
+  authority.dispose();
+  replica.dispose();
+});
+
+await check("pre-readiness deferred document requests retain their own settlement channel", async () => {
+  const map = hsonLiveMap.fromHson("<main/>");
+  const deferred = create_deferred_echo_document_authority_internal();
+  register_echo_document_authority(map, deferred.authority);
+  const expected = new Error("attached operation failed");
+  const pending = deferred.authority.enqueue(() => Object.freeze({
+    name: "document.attrs.clear" as const,
+    payload: { target: { kind: "path" as const, path: [] } },
+  }));
+  const attached: EchoDocumentAuthority = Object.freeze({
+    enqueue: async () => { throw expected; },
+    dispose() {},
+    pendingRevisionWaits: () => 0,
+    rejectIdentityDemand: true,
+  });
+  register_echo_document_authority(map, attached);
+  await assert.rejects(pending, (error) => error === expected);
+  unregister_echo_document_authority(map, attached);
+  deferred.dispose();
+});
+
+await check("terminal recovery failure rejects a queued document operation", async () => {
+  const map = hsonLiveMap.fromHson("<main/>");
+  const replica = create_echo_solo_replica_capability_internal(map, true);
+  replica.markRecovering();
+  const authority = make_echo_document_authority(
+    async () => Object.freeze({ accepted: true }),
+    () => map.rev,
+    (listener) => map.commits.observe(listener),
+    () => replica.ready,
+    replica.onDispose,
+    replica.waitUntilReady,
+    () => ({ logicalMapId: "failed-recovery", incarnationId: "incarnation" }),
+    replica.onStateChange,
+    () => replica.failure,
+  );
+  const pending = authority.enqueue(() => Object.freeze({
+    name: "document.attrs.clear" as const,
+    payload: { target: { kind: "path" as const, path: [] } },
+  }));
+  const failure = Object.freeze({ code: "RECOVERY_TERMINAL", message: "Recovery failed terminally." });
+  replica.markFailed(failure);
+  await assert.rejects(pending, (error) => Reflect.get(error as object, "code") === failure.code);
+  authority.dispose();
+  replica.dispose();
 });
 
 await check("endpoint-only construction and use never calls a replica loader", async () => {

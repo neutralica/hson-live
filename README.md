@@ -295,6 +295,29 @@ At a high level, LiveMap occupies the role usually assigned to JSON application 
 LiveTree turns Hson into live browser documents.
 
 The Hson graph is the mutable source of truth. The DOM is its projection.
+Ordinary `LiveTree` authoring is always synchronous. On an Echo authority-bound
+document, exact canonical writes use the explicit `tree.async` context:
+
+```ts
+const asyncTree = tree.async;
+await asyncTree.attrs.set("aria-label", "Saved");
+await asyncTree.classlist.add("ready");
+const projectedTree = asyncTree.sync;
+```
+
+`AsyncLiveTree` is intentionally narrower than `LiveTree`: it contains only
+settled exact document writes. Projected reads, DOM access, listeners, bindings,
+runtime CSS, SVG/canvas runtime APIs, and other browser capabilities remain on
+the ordinary tree through `.sync`. Application/domain actions remain Locus/Echo
+actions rather than AsyncLiveTree document operations.
+
+Standalone and local-Reflect async writes resolve after their local canonical
+operation completes. Hosted resolution means Locus accepted the exact request
+and the matching logical-map/incarnation Echo reached its `completionRev`. It
+does not mean Reflect or the DOM realized that revision; Reflect health remains
+separately observable. An ordinary synchronous canonical write on a hosted
+projection throws before publishing authority work instead of being silently
+queued.
 
 ```ts
 const body = hson.liveTree.queryBody().graft();

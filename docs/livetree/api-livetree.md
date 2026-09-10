@@ -116,6 +116,33 @@ custom-element callback.
 
 ## Core LiveTree
 
+### Explicit async document authoring
+
+Ordinary `LiveTree` remains genuinely synchronous. `tree.async` returns an
+`AsyncLiveTree` facade whose authoring methods return Promises; `.sync` returns
+the exact originating ordinary tree (including its more specific subtype).
+
+```ts
+const authored = await tree.async.attrs.set("title", "accepted");
+await authored.text.add("done");
+authored.sync.dom.el();
+```
+
+The first facade contains attrs `set`, `setMany`, `drop`, `dropMany`, `clear`,
+and `replace`; flags `set`/`clear`; id `set`/`clear`; classlist `set`, `add`,
+`remove`, `toggle`, and `clear`; text `set`, `add`, and `insert`; form
+`setValue`/`setChecked`; exact `empty()`; and non-root terminal `remove()`.
+There are no reads or DOM/runtime/listener/binding/creation APIs on this facade.
+
+Standalone settlement follows the completed local LiveTree operation. Local
+Reflect settlement follows the synchronous canonical LiveMap commit. Hosted
+settlement requires authoritative success and matching Echo logical-map,
+incarnation, and `completionRev` convergence. Reflect and DOM realization are
+not part of hosted success. Use `.sync` for projected/runtime reads and inspect
+Reflect health independently. A hosted canonical mutation attempted through
+ordinary LiveTree—including through `.async.sync`—throws synchronously before
+enqueueing any request.
+
 ```ts
 tree.node
 tree.quid

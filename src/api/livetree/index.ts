@@ -1,6 +1,15 @@
 export { hsonLiveTree } from "./livetree.facade.js";
 export { LiveTree } from "./livetree.js";
 export {
+  AsyncLiveTree,
+  type AsyncLiveTreeAttrs,
+  type AsyncLiveTreeClasslist,
+  type AsyncLiveTreeFlags,
+  type AsyncLiveTreeForm,
+  type AsyncLiveTreeId,
+  type AsyncLiveTreeText,
+} from "./async-livetree.js";
+export {
   LIVETREE_ALREADY_ATTACHED_ERROR_CODE,
   LIVETREE_ATTRIBUTE_NOT_FOUND_ERROR_CODE,
   LIVETREE_BATCH_ATTACHMENT_ERROR_CODE,

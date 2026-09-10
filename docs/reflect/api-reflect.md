@@ -90,11 +90,21 @@ LiveMap remains canonical. Reflect consumes exact accepted-state evidence and
 ordered commit revisions; it never infers canonical state from the projected
 tree or DOM.
 
-With a local authoritative LiveMap, supported LiveTree requests lower and
-commit synchronously. With an Echo-governed map, the same semantic descriptor
-is queued by Echo and lowered only at queue head against the latest accepted
-replica. No optimistic LiveTree or DOM mutation occurs. Authorization rejection
-leaves Reflect active because there is no accepted evidence to project.
+With a local authoritative LiveMap, supported ordinary LiveTree requests lower
+and commit synchronously. With an Echo-governed map, ordinary synchronous
+canonical authoring throws before publishing a request. Callers enter the
+explicit `tree.async` context; its exact semantic descriptor is queued by Echo
+and lowered only at queue head against the latest accepted replica. No
+optimistic LiveTree or DOM mutation occurs. Authorization rejection rejects the
+initiating Promise and leaves Reflect active because there is no accepted
+evidence to project.
+
+A hosted AsyncLiveTree Promise resolves after Locus terminal success and after
+the same logical-map/incarnation Echo reaches the returned `completionRev`.
+That revision is authoritative-head evidence used as an exact client barrier,
+not a statement that Reflect or DOM realization succeeded. Read projected or
+runtime state explicitly through `asyncTree.sync` and inspect Reflect status
+separately.
 
 Native form editing remains browser-owned realization state: unrelated accepted
 document changes do not reset a dirty control, and denial does not roll native
@@ -123,8 +133,9 @@ the exact source revision after each successful projection update.
 
 ### Mutating a bound LiveTree
 
-Supported bound mutations delegate to LiveMap rather than editing a second
-authority:
+Supported local bound mutations delegate synchronously to LiveMap. The hosted
+subset is available through `tree.async` rather than hidden synchronous
+enqueueing:
 
 - ordinary attribute `set`, `setMany`, `drop`, `dropMany`, `clear`, and
   complete replacement;
@@ -132,7 +143,13 @@ authority:
   single exact operation lowering;
 - `empty()` when the canonical content can be removed by one exact operation;
 - removing a non-root bound element; and
-- root removal as terminal teardown of the borrowed projection.
+- hosted removal of a non-root bound element.
+
+The first AsyncLiveTree surface also includes `flags.set/clear`, `id.set/clear`,
+`classlist.set/add/remove/toggle/clear`, and `form.setValue/setChecked`.
+`text.overwrite`, `form.setSelected`, arbitrary append/create/reparent/detach,
+style/data/SVG/canvas convenience parity, reads, DOM/runtime capabilities, and
+application/domain actions are intentionally absent.
 
 Direct structural LiveTree operations that cannot be expressed as one
 supported canonical map operation are rejected with

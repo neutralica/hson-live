@@ -46,10 +46,14 @@ export type DocumentBindingNodeRegistration = Readonly<{
   persistedQuid?: string;
   requireCanonicalIdentity: () => string;
   delegateAttrs: (mutation: DocumentBoundAttrsMutation) => void;
+  delegateAttrsAsync: (mutation: DocumentBoundAttrsMutation) => Promise<void>;
   delegateText: (mutation: DocumentBoundTextMutation) => void;
+  delegateTextAsync: (mutation: DocumentBoundTextMutation) => Promise<void>;
   delegateEmpty: () => void;
+  delegateEmptyAsync: () => Promise<void>;
   /** True when authority handled removal; false when caller must perform local root teardown. */
   delegateRemove: () => boolean;
+  delegateRemoveAsync: () => Promise<void>;
   rejectStructuralMutation: (operation: string) => never;
 }>;
 

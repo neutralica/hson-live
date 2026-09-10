@@ -24,6 +24,7 @@ export function create_echo_aggregate_replica_capability_internal(
   const owner = management?.owner ?? Object.freeze({});
   const readyWaiters = new Set<Readonly<{ resolve: () => void; reject: (reason: Error) => void }>>();
   const disposeListeners = new Set<(reason: Error) => void>();
+  const stateListeners = new Set<() => void>();
   let map = initialMap;
   let ready = false;
   let disposed = false;
@@ -59,6 +60,7 @@ export function create_echo_aggregate_replica_capability_internal(
     markRecovering(): void {
       if (disposed) return;
       ready = false;
+      for (const listener of [...stateListeners]) listener();
     },
     markReady(): void {
       if (disposed) return;
@@ -66,16 +68,23 @@ export function create_echo_aggregate_replica_capability_internal(
       failure = undefined;
       for (const waiter of [...readyWaiters]) waiter.resolve();
       readyWaiters.clear();
+      for (const listener of [...stateListeners]) listener();
     },
     markFailed(reason): void {
       if (disposed) return;
       ready = false;
       failure ??= reason;
+      for (const listener of [...stateListeners]) listener();
     },
     waitUntilReady(): Promise<void> {
       if (ready) return Promise.resolve();
       if (disposed) return Promise.reject(terminalError());
       return new Promise((resolve, reject) => readyWaiters.add(Object.freeze({ resolve, reject })));
+    },
+    onStateChange(listener): LocusDisposer {
+      if (disposed) return () => {};
+      stateListeners.add(listener);
+      return () => stateListeners.delete(listener);
     },
     onDispose(listener): LocusDisposer {
       if (disposed) {
@@ -92,6 +101,8 @@ export function create_echo_aggregate_replica_capability_internal(
       const reason = terminalError();
       for (const listener of [...disposeListeners]) listener(reason);
       disposeListeners.clear();
+      for (const listener of [...stateListeners]) listener();
+      stateListeners.clear();
       for (const waiter of [...readyWaiters]) waiter.reject(reason);
       readyWaiters.clear();
       if (management !== undefined) management.release();

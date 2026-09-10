@@ -271,9 +271,10 @@ await check("the public Locus and Echo paths bootstrap one typed aggregate mirro
   assert.equal(reflection.diagnostics().updatesApplied, 1);
   assert.equal(client.recovery.lastAppliedRev, 2);
   const reflectedMain = reflected_document_element(reflection);
-  reflectedMain.attrs.set("title", "echoed");
+  const reflectedWrite = reflectedMain.async.attrs.set("title", "echoed");
   assert.equal(serverMap.lib("page").document.attrs.get({ kind: "path", path: [0] }, "title"), undefined);
   await wait_for_aggregate_revision(clientMap, 3);
+  await reflectedWrite;
   assert.equal(serverMap.lib("page").document.attrs.get({ kind: "path", path: [0] }, "title"), "echoed");
   assert.equal(reflectedMain.attrs.get("title"), "echoed");
   assert.equal(reflection.sourceRevision, 3);
@@ -306,8 +307,10 @@ await check("named document Echo authoring honors aggregate authorization and co
   await echo.recovery.recover();
   const reflection = hsonReflect(clientMap.lib("page"));
   const main = reflected_document_element(reflection);
-  main.attrs.set("title", "denied");
-  main.attrs.set("id", "accepted");
+  const denied = main.async.attrs.set("title", "denied");
+  const accepted = main.async.attrs.set("id", "accepted");
+  await assert.rejects(denied, (error) => Reflect.get(error as object, "code") === "LOCUS_ACTION_FORBIDDEN");
+  await accepted;
   await wait_for_aggregate_revision(clientMap, 1);
   assert.equal(serverMap.rev, 1);
   assert.equal(clientMap.rev, 1);

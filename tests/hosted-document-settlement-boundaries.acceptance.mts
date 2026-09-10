@@ -175,8 +175,8 @@ await check("authority ack, Echo convergence, Reflect failure, and queue progres
 
   pair.holdCommits();
   const firstAckPending = pair.nextDelivered((message) => message.type === "ack" && message.completionRev === 1);
-  const firstResult = projectedTree.text.set("first");
-  assert.equal(firstResult, projectedTree);
+  const firstResult = projectedTree.async.text.set("first");
+  assert.equal(firstResult instanceof Promise, true);
 
   const secondLowered = deferred();
   let secondLowerings = 0;
@@ -230,6 +230,7 @@ await check("authority ack, Echo convergence, Reflect failure, and queue progres
   const deliveredFirstCommit = pair.releaseNextCommit();
   assert.equal(deliveredFirstCommit.commit?.rev, 1);
   await secondLowered.promise;
+  assert.equal(await firstResult, projectedTree.async);
   assert.equal(replica.rev, 1);
   assert.equal(echo.recovery.lastAppliedRev, 1);
   assert.deepEqual(replica.at([]).snap(), document(`<main "first"/>`).at([]).snap());

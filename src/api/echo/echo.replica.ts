@@ -10,6 +10,7 @@ export type EchoReplicaCapability<TMap> = Readonly<{
   markReady: () => void;
   markFailed: (failure: unknown) => void;
   waitUntilReady: () => Promise<void>;
+  onStateChange: (listener: () => void) => LocusDisposer;
   onDispose: (listener: (reason: Error) => void) => LocusDisposer;
   dispose: () => void;
 }>;

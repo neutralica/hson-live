@@ -274,7 +274,22 @@ function reflect_document_binding_in_runtime(
     assert_delegation_ready(registration);
     const authority = echo_document_authority_for(map);
     if (authority !== undefined) {
-      authority.enqueue(() => {
+      throw new DocumentReflectError(
+        DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
+        "Synchronous LiveTree document authoring requires tree.async while authority-bound.",
+      );
+    }
+    execute_document_action(map, lower_attrs_action(registration.canonicalTarget, mutation));
+  };
+
+  const delegate_attrs_async = async (
+    registration: ProjectedRegistration,
+    mutation: DocumentBoundAttrsMutation,
+  ): Promise<void> => {
+    assert_delegation_ready(registration);
+    const authority = echo_document_authority_for(map);
+    if (authority !== undefined) {
+      await authority.enqueue(() => {
         assert_delegation_ready(registration);
         return lower_attrs_action(registration.canonicalTarget, mutation);
       });
@@ -346,10 +361,22 @@ function reflect_document_binding_in_runtime(
     assert_delegation_ready(registration);
     const authority = echo_document_authority_for(map);
     if (authority !== undefined) {
-      // Preserve Reflect's synchronous support boundary while still lowering
-      // the authoritative request again at queue head against accepted state.
-      lower_text_action(registration, mutation);
-      authority.enqueue(() => lower_text_action(registration, mutation));
+      throw new DocumentReflectError(
+        DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
+        "Synchronous LiveTree document authoring requires tree.async while authority-bound.",
+      );
+    }
+    execute_document_action(map, lower_text_action(registration, mutation));
+  };
+
+  const delegate_text_async = async (
+    registration: ProjectedRegistration,
+    mutation: DocumentBoundTextMutation,
+  ): Promise<void> => {
+    assert_delegation_ready(registration);
+    const authority = echo_document_authority_for(map);
+    if (authority !== undefined) {
+      await authority.enqueue(() => lower_text_action(registration, mutation));
       return;
     }
     execute_document_action(map, lower_text_action(registration, mutation));
@@ -406,8 +433,20 @@ function reflect_document_binding_in_runtime(
     assert_delegation_ready(registration);
     const authority = echo_document_authority_for(map);
     if (authority !== undefined) {
-      lower_empty_action(registration);
-      authority.enqueue(() => lower_empty_action(registration));
+      throw new DocumentReflectError(
+        DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
+        "Synchronous LiveTree document authoring requires tree.async while authority-bound.",
+      );
+    }
+    const action = lower_empty_action(registration);
+    if (action !== undefined) execute_document_action(map, action);
+  };
+
+  const delegate_empty_async = async (registration: ProjectedRegistration): Promise<void> => {
+    assert_delegation_ready(registration);
+    const authority = echo_document_authority_for(map);
+    if (authority !== undefined) {
+      await authority.enqueue(() => lower_empty_action(registration));
       return;
     }
     const action = lower_empty_action(registration);
@@ -457,7 +496,19 @@ function reflect_document_binding_in_runtime(
       dispose_binding();
       return false;
     }
-    const lower = (): EchoDocumentAction => {
+    const lower = (): EchoDocumentAction => lower_remove_action(registration);
+    const authority = echo_document_authority_for(map);
+    if (authority !== undefined) {
+      throw new DocumentReflectError(
+        DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
+        "Synchronous LiveTree document authoring requires tree.async while authority-bound.",
+      );
+    }
+    execute_document_action(map, lower());
+    return true;
+  };
+
+  const lower_remove_action = (registration: ProjectedRegistration): EchoDocumentAction => {
       canonical_node_for(registration);
       let index = registration.canonicalPath[registration.canonicalPath.length - 1]!;
       let parentPath = validate_document_path(registration.canonicalPath.slice(0, -1));
@@ -470,14 +521,29 @@ function reflect_document_binding_in_runtime(
         name: "document.content.remove",
         payload: { target: Object.freeze({ kind: "path", path: parentPath }), index },
       });
-    };
+  };
+
+  const delegate_remove_async = async (registration: ProjectedRegistration): Promise<void> => {
+    canonical_node_for(registration);
+    if (borrowed && registration.node === tree.node) {
+      throw new DocumentReflectError(
+        DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
+        "Borrowed document root removal is unavailable while document-bound.",
+      );
+    }
+    if (registration.canonicalPath.length === 0) {
+      throw new DocumentReflectError(
+        DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
+        "Root removal is not part of AsyncLiveTree document authoring.",
+      );
+    }
+    const lower = (): EchoDocumentAction => lower_remove_action(registration);
     const authority = echo_document_authority_for(map);
     if (authority !== undefined) {
-      authority.enqueue(lower);
-      return true;
+      await authority.enqueue(lower);
+      return;
     }
     execute_document_action(map, lower());
-    return true;
   };
 
   const reject_structural_mutation = (operation: string): never => {
@@ -502,12 +568,16 @@ function reflect_document_binding_in_runtime(
         throw new LiveTreeLinkedIdentityRequiredError("QUID access on internal document root");
       },
       delegateAttrs: (): never => reject_structural_mutation("mutate internal document-root attributes"),
+      delegateAttrsAsync: async (): Promise<never> => reject_structural_mutation("mutate internal document-root attributes"),
       delegateText: (): never => reject_structural_mutation("mutate internal document-root text"),
+      delegateTextAsync: async (): Promise<never> => reject_structural_mutation("mutate internal document-root text"),
       delegateEmpty: (): never => reject_structural_mutation("empty internal document root"),
+      delegateEmptyAsync: async (): Promise<never> => reject_structural_mutation("empty internal document root"),
       delegateRemove: (): false => {
         dispose_binding();
         return false;
       },
+      delegateRemoveAsync: async (): Promise<never> => reject_structural_mutation("remove internal document root"),
       rejectStructuralMutation: reject_structural_mutation,
     });
     register_document_binding_node(root, rootRegistration);
@@ -540,9 +610,13 @@ function reflect_document_binding_in_runtime(
         return require_livemap_document_canonical_identity(map.document, registration.canonicalTarget);
       },
       delegateAttrs: (mutation) => delegate_attrs(registration, mutation),
+      delegateAttrsAsync: (mutation) => delegate_attrs_async(registration, mutation),
       delegateText: (mutation) => delegate_text(registration, mutation),
+      delegateTextAsync: (mutation) => delegate_text_async(registration, mutation),
       delegateEmpty: () => delegate_empty(registration),
+      delegateEmptyAsync: () => delegate_empty_async(registration),
       delegateRemove: () => delegate_remove(registration),
+      delegateRemoveAsync: () => delegate_remove_async(registration),
       rejectStructuralMutation: reject_structural_mutation,
     });
     if (byPath.has(pathKey)) {

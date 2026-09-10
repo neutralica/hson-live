@@ -19,6 +19,7 @@ export function create_echo_solo_replica_capability_internal(
   const owner = management?.owner ?? Object.freeze({});
   const readyWaiters = new Set<Readonly<{ resolve: () => void; reject: (reason: Error) => void }>>();
   const disposeListeners = new Set<(reason: Error) => void>();
+  const stateListeners = new Set<() => void>();
   let ready = initiallyReady;
   let disposed = false;
   let failure: unknown;
@@ -45,6 +46,7 @@ export function create_echo_solo_replica_capability_internal(
     markRecovering(): void {
       if (disposed) return;
       ready = false;
+      for (const listener of [...stateListeners]) listener();
     },
     markReady(): void {
       if (disposed) return;
@@ -53,16 +55,23 @@ export function create_echo_solo_replica_capability_internal(
       const waiters = [...readyWaiters];
       readyWaiters.clear();
       for (const waiter of waiters) waiter.resolve();
+      for (const listener of [...stateListeners]) listener();
     },
     markFailed(reason): void {
       if (disposed) return;
       ready = false;
       failure ??= reason;
+      for (const listener of [...stateListeners]) listener();
     },
     waitUntilReady(): Promise<void> {
       if (ready) return Promise.resolve();
       if (disposed) return Promise.reject(terminalError());
       return new Promise((resolve, reject) => readyWaiters.add(Object.freeze({ resolve, reject })));
+    },
+    onStateChange(listener): LocusDisposer {
+      if (disposed) return () => {};
+      stateListeners.add(listener);
+      return () => stateListeners.delete(listener);
     },
     onDispose(listener): LocusDisposer {
       if (disposed) {
@@ -79,6 +88,8 @@ export function create_echo_solo_replica_capability_internal(
       const reason = terminalError();
       for (const listener of [...disposeListeners]) listener(reason);
       disposeListeners.clear();
+      for (const listener of [...stateListeners]) listener();
+      stateListeners.clear();
       for (const waiter of [...readyWaiters]) waiter.reject(reason);
       readyWaiters.clear();
       if (management === undefined) authority?.releaseManagement(owner);

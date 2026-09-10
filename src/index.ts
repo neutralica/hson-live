@@ -26,6 +26,15 @@ export {
 export { hsonReflect, type Reflect } from "./api/reflect/reflect.facade.js";
 export { LiveTree } from "./api/livetree/livetree.js";
 export {
+    AsyncLiveTree,
+    type AsyncLiveTreeAttrs,
+    type AsyncLiveTreeClasslist,
+    type AsyncLiveTreeFlags,
+    type AsyncLiveTreeForm,
+    type AsyncLiveTreeId,
+    type AsyncLiveTreeText,
+} from "./api/livetree/async-livetree.js";
+export {
     LIVETREE_ALREADY_ATTACHED_ERROR_CODE,
     LIVETREE_DISPOSED_ERROR_CODE,
     LIVETREE_PROTECTED_ROOT_ERROR_CODE,

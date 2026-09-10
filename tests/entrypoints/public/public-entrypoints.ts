@@ -6,6 +6,7 @@ import {
   hsonLiveTree,
   hsonInspect,
   hsonCalc,
+  AsyncLiveTree as RootAsyncLiveTree,
   type HsonSchema,
   type HsonNumber,
 } from "hson-live";
@@ -97,6 +98,7 @@ import type { HSON_NUMBER_BRAND } from "hson-live/transform";
 import type { HsonCanonical as RootHsonCanonical } from "hson-live";
 import {
   ContentManager,
+  AsyncLiveTree,
   LIVETREE_LINKED_IDENTITY_REQUIRED_ERROR_CODE,
   LIVETREE_QUID_REUSE_ERROR_CODE,
   LiveTreeLinkedIdentityRequiredError,
@@ -121,6 +123,11 @@ import {
   type TreeEvents,
 } from "hson-live/livetree";
 declare const liveTree: LiveTree;
+const asyncLiveTree: AsyncLiveTree = liveTree.async;
+const rootAsyncLiveTree: RootAsyncLiveTree = asyncLiveTree;
+const asyncOwner: Promise<AsyncLiveTree> = asyncLiveTree.attrs.set("id", "entrypoint");
+const syncOwner: LiveTree = asyncLiveTree.sync;
+void [rootAsyncLiveTree, asyncOwner, syncOwner];
 // @ts-expect-error Deprecated lifecycle compatibility method was hard-removed.
 liveTree.removeChildren();
 // @ts-expect-error Deprecated lifecycle compatibility method was hard-removed.

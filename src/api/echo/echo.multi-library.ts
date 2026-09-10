@@ -53,7 +53,7 @@ export function create_multi_library_echo<
     .map((entry) => {
       const map = options.map.lib(entry.name);
       const authority = make_echo_document_authority(
-        async (action) => {
+        async (action, expectedIdentity) => {
           const payload: JsonValue = (action.name === "document.content.insert"
             ? Object.freeze({ ...action.payload, library: entry.name, content: encode_locus_graph_content(action.payload.content) })
             : action.name === "document.content.replace"
@@ -68,12 +68,17 @@ export function create_multi_library_echo<
             } catch {
               const stable = pending.request;
               await endpoint.wait_until_ready();
+              if (options.recovery.logicalMapId !== expectedIdentity.logicalMapId
+                || endpoint.incarnationId !== expectedIdentity.incarnationId) {
+                throw new Error("Echo document authority stream identity became incompatible before retry.");
+              }
               pending = endpoint.retryAction(stable);
             }
           }
           return Object.freeze({
             accepted: result.type === "ack" && result.ok === true,
             ...(result.completionRev === undefined ? {} : { completionRev: result.completionRev }),
+            ...(result.type === "error" ? { error: result.error } : {}),
           });
         },
         () => options.map.rev,
@@ -81,6 +86,9 @@ export function create_multi_library_echo<
         () => endpoint.replica.ready,
         endpoint.replica.onDispose,
         endpoint.replica.waitUntilReady,
+        () => ({ logicalMapId: options.recovery.logicalMapId, incarnationId: endpoint.incarnationId }),
+        endpoint.replica.onStateChange,
+        () => endpoint.replica.failure,
       );
       register_echo_document_authority(map, authority);
       return Object.freeze({ map, authority });
