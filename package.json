@@ -171,6 +171,7 @@
     "test:reflect-existing-document": "node --import=tsx tests/reflect-existing-document.acceptance.mts",
     "test:reflect-document-structure": "node --import=tsx tests/reflect-document-structure.acceptance.mts",
     "test:echo-reflect-authoring": "node --import=tsx tests/echo-reflect-authoring.acceptance.mts",
+    "test:hosted-document-settlement-boundaries": "node --import=tsx tests/hosted-document-settlement-boundaries.acceptance.mts",
     "test:reflect-document-root": "node --import=tsx tests/reflect-document-root.acceptance.mts",
     "test:reflect-document-snapshot": "node --import=tsx tests/reflect-document-snapshot.acceptance.mts",
     "test:reflect-document-path-authority": "node --import=tsx tests/reflect-document-path-authority.acceptance.mts",
