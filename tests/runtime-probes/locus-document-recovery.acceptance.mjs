@@ -19,6 +19,7 @@ export const HSON_LIVE_TEST_METADATA = Object.freeze({
 
 const testEvents = create_test_event_emitter("locus.document-recovery");
 let checks = 0;
+const attachedClients = new Set();
 
 async function check(name, fn) {
 
@@ -81,22 +82,37 @@ function multiNodeDocument(source) {
   return map;
 }
 
-function attach(host, map, cursor) {
+async function attach(host, map, cursor) {
   const pair = socket_pair();
   const disconnectHost = host.connect(pair.server);
   const client = hson.echo.create({
     socket: pair.client,
     map,
+    session: {},
     recovery: {
       logicalMapId: host.stream.logicalMapId,
       ...(cursor === undefined ? {} : { cursor }),
     },
   });
   client.connect();
+  const session = await client.session.create();
+  assert.equal(session.logicalMapId, host.stream.logicalMapId);
+  assert.equal(session.incarnationId, host.stream.incarnationId);
+  assert.equal(client.session.status, "attached");
+  attachedClients.add(client);
   return { client, pair, disconnectHost };
 }
 
-function raw_recovery(host, id, snapshotCapabilities, cursor) {
+async function release_attached_clients() {
+  for (const client of attachedClients) {
+    if (client.session.status === "attached") await client.session.goodbye();
+    client.dispose();
+  }
+  attachedClients.clear();
+}
+
+/** Endpoint-only protocol fixture: no Echo replica or semantic Locus session is constructed here. */
+function raw_endpoint_recovery(host, id, snapshotCapabilities, cursor) {
   const pair = socket_pair();
   const disconnectHost = host.connect(pair.server);
   pair.client.send(JSON.stringify({
@@ -119,19 +135,41 @@ function find_node(node, tag) {
   return undefined;
 }
 
-function begin_scripted_snapshot_recovery(map, logicalMapId, incarnationId, headRev) {
+async function wait_for_client_message(pair, type) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const message = pair.clientSent.map(JSON.parse).find((candidate) => candidate.type === type);
+    if (message !== undefined) return message;
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  throw new Error(`Timed out waiting for client ${type} message.`);
+}
+
+async function begin_scripted_snapshot_recovery(map, logicalMapId, incarnationId, headRev) {
   const pair = socket_pair();
   const client = hson.echo.create({
     socket: pair.client,
     map,
+    session: {},
     recovery: {
       logicalMapId,
       cursor: { incarnationId: "previous-incarnation", lastAppliedRev: map.rev },
     },
   });
   client.connect();
+  const session = client.session.create();
+  const sessionRequest = pair.clientSent.map(JSON.parse).find((message) => message.type === "session-create");
+  pair.server.send(JSON.stringify({
+    type: "session-created",
+    id: sessionRequest.id,
+    sessionId: "view-state-snapshot-session",
+    credential: "view-state-snapshot-credential",
+    epoch: 1,
+    logicalMapId,
+    incarnationId,
+  }));
+  await session;
   const promise = client.recovery.recover();
-  const request = pair.clientSent.map(JSON.parse).find((message) => message.type === "recover");
+  const request = await wait_for_client_message(pair, "recover");
   pair.server.send(JSON.stringify({
     type: "recovery-plan",
     id: request.id,
@@ -154,7 +192,7 @@ async function expect_scripted_snapshot_failure(snapshotBody, expectedCode, forb
   const headRev = snapshotBody.rev ?? 0;
   const mirror = element(`<aside @000000050/>`);
   const before = mirror.capture();
-  const { pair, client, promise, requestId } = begin_scripted_snapshot_recovery(
+  const { pair, client, promise, requestId } = await begin_scripted_snapshot_recovery(
     mirror,
     logicalMapId,
     incarnationId,
@@ -264,7 +302,7 @@ await check("existing element authority publishes detached graph history and rep
   });
 
   const mirror = element(initial);
-  const { client } = attach(host, mirror, { incarnationId: host.stream.incarnationId, lastAppliedRev: 0 });
+  const { client } = await attach(host, mirror, { incarnationId: host.stream.incarnationId, lastAppliedRev: 0 });
   const result = await client.recovery.recover();
   assert.equal(result.strategy, "replay");
   assert.equal(client.map, mirror);
@@ -294,7 +332,7 @@ await check("node-bearing multiNodeDocument history is detached and incremental 
   );
 
   const mirror = multiNodeDocument(initial);
-  const { client } = attach(host, mirror, { incarnationId: host.stream.incarnationId, lastAppliedRev: 0 });
+  const { client } = await attach(host, mirror, { incarnationId: host.stream.incarnationId, lastAppliedRev: 0 });
   assert.equal((await client.recovery.recover()).strategy, "replay");
   assert.equal(client.map.mode, "document");
   assert.deepEqual(client.map.capture(), authority.capture());
@@ -328,7 +366,7 @@ await check("element snapshot recovery restores exact revision, mode, and persis
   const host = hson.locus.create({ map: authority, logicalMapId: "document-element-snapshot" });
   await host.mutate((draft) => draft.document.attrs.set(root, "class", "ready"));
   const mirror = element(`<aside @000000007/>`);
-  const { client } = attach(host, mirror);
+  const { client } = await attach(host, mirror);
   assert.equal((await client.recovery.recover()).strategy, "snapshot");
   assert.equal(client.map, mirror);
   assert.equal(client.map.mode, "document");
@@ -342,7 +380,7 @@ await check("multiNodeDocument snapshot recovery reconstructs multiNodeDocument 
   const authority = multiNodeDocument(`"lead" <section @000000008/>`);
   const host = hson.locus.create({ map: authority, logicalMapId: "document-multiNodeDocument-snapshot" });
   const mirror = multiNodeDocument(`<div/> "old"`);
-  const { client, pair } = attach(host, mirror);
+  const { client, pair } = await attach(host, mirror);
   assert.equal((await client.recovery.recover()).strategy, "snapshot");
   assert.equal(client.map.mode, "document");
   assert.deepEqual(client.map.capture(), authority.capture());
@@ -385,7 +423,7 @@ await check("Hson-only capability advertisements select Hson explicitly", async 
   const authority = element(`<main @000000040/>`);
   const host = hson.locus.create({ map: authority, logicalMapId: "hson-capability-selection" });
   for (const [id, capabilities] of [["hson-only", { hson: true }]]) {
-    const { messages, disconnectHost } = raw_recovery(host, id, capabilities);
+    const { messages, disconnectHost } = raw_endpoint_recovery(host, id, capabilities);
     const plan = messages.find((message) => message.type === "recovery-plan");
     const snapshot = messages.find((message) => message.type === "recovery-snapshot")?.snapshot;
     assert.deepEqual(plan.snapshotEncoding, { format: "hson" });
@@ -489,7 +527,7 @@ await check("malformed snapshot capability advertisements reject without documen
     { hson: true, unexpected: true },
   ];
   for (const [index, snapshotCapabilities] of malformed.entries()) {
-    const { messages, disconnectHost } = raw_recovery(
+    const { messages, disconnectHost } = raw_endpoint_recovery(
       host,
       `malformed-capabilities-${index}`,
       snapshotCapabilities,
@@ -506,7 +544,7 @@ await check("view-state negotiation is acknowledged for replay-only recovery", a
   const host = hson.locus.create({ map: authority, logicalMapId: "view-state-replay-only" });
   const mirror = element(`<main @000000049/>`);
   await host.mutate((draft) => draft.document.attrs.set(root, "title", "replayed"));
-  const { client, pair } = attach(host, mirror, {
+  const { client, pair } = await attach(host, mirror, {
     incarnationId: host.stream.incarnationId,
     lastAppliedRev: 0,
   });
@@ -522,9 +560,9 @@ await check("view-state negotiation is acknowledged for replay-only recovery", a
 await check("snapshot negotiation is isolated across simultaneous connections and reconnect", async () => {
   const authority = element(`<main @00000004a <span/>/>`);
   const host = hson.locus.create({ map: authority, logicalMapId: "snapshot-selection-isolation" });
-  const oldConnection = raw_recovery(host, "old-connection", undefined);
+  const oldConnection = raw_endpoint_recovery(host, "old-connection", undefined);
   const modernMirror = element(`<aside/>`);
-  const modernConnection = attach(host, modernMirror);
+  const modernConnection = await attach(host, modernMirror);
   await modernConnection.client.recovery.recover();
 
   const oldPlan = oldConnection.messages.find((message) => message.type === "recovery-plan");
@@ -542,7 +580,7 @@ await check("snapshot negotiation is isolated across simultaneous connections an
 
   modernConnection.client.disconnect();
   modernConnection.disconnectHost();
-  const reconnect = raw_recovery(host, "reconnected-without-capabilities", undefined);
+  const reconnect = raw_endpoint_recovery(host, "reconnected-without-capabilities", undefined);
   const reconnectPlan = reconnect.messages.find((message) => message.type === "recovery-plan");
   const reconnectSnapshot = reconnect.messages.find((message) => message.type === "recovery-snapshot")?.snapshot;
   assert.equal("snapshotEncoding" in reconnectPlan, false);
@@ -564,7 +602,7 @@ await check("view-state element snapshot recovery preserves typed document state
   const capture = authority.capture();
   const host = hson.locus.create({ map: authority, logicalMapId, incarnationId: "view-state-element-incarnation" });
   const mirror = element(`<aside/>`);
-  const { client, pair } = attach(host, mirror);
+  const { client, pair } = await attach(host, mirror);
 
   assert.equal((await client.recovery.recover()).strategy, "snapshot");
   const snapshot = pair.serverSent.map(JSON.parse).find((message) => message.type === "recovery-snapshot")?.snapshot;
@@ -596,7 +634,7 @@ await check("view-state empty-multiNodeDocument snapshot recovery preserves an o
   const capture = authority.capture();
   const host = hson.locus.create({ map: authority, logicalMapId, incarnationId: "view-state-empty-multiNodeDocument-incarnation" });
   const mirror = multiNodeDocument(`"old"`);
-  const { client, pair } = attach(host, mirror);
+  const { client, pair } = await attach(host, mirror);
 
   await client.recovery.recover();
   const snapshot = pair.serverSent.map(JSON.parse).find((message) => message.type === "recovery-snapshot")?.snapshot;
@@ -627,9 +665,11 @@ await check("view-state snapshot recovery applies the existing JSON replay tail 
   const client = hson.echo.create({
     socket: pair.client,
     map: mirror,
+    session: {},
     recovery: { logicalMapId },
   });
   client.connect();
+  await client.session.create();
 
   await client.recovery.recover();
   const snapshotMessage = pair.serverSent.map(JSON.parse).find((message) => message.type === "recovery-snapshot");
@@ -652,6 +692,8 @@ await check("view-state snapshot recovery applies the existing JSON replay tail 
     "recovery-caught-up",
   ]);
   assert.equal(recoveryMessages.at(-1).caughtUp.throughRev, host.stream.headRev);
+  await client.session.goodbye();
+  client.dispose();
 });
 
 await check("view-state snapshot mode and revision mismatches fail before restore", async () => {
@@ -763,7 +805,7 @@ await check("document history gap falls back to a same-mode snapshot", async () 
   const mirror = element(initial);
   await host.mutate((draft) => draft.document.attrs.set(root, "class", "one"));
   await host.mutate((draft) => draft.document.attrs.set(root, "title", "two"));
-  const { client } = attach(host, mirror, { incarnationId: host.stream.incarnationId, lastAppliedRev: 0 });
+  const { client } = await attach(host, mirror, { incarnationId: host.stream.incarnationId, lastAppliedRev: 0 });
   assert.equal((await client.recovery.recover()).strategy, "snapshot");
   assert.equal(client.map.mode, "document");
   assert.deepEqual(client.map.capture(), authority.capture());
@@ -845,7 +887,7 @@ await check("hosted document action carries action causation into commit publica
     trace: { emit(event) { events.push(event); } },
   });
   const mirror = element(`<main @000000031/>`);
-  const client = await attach(host, mirror).client;
+  const { client } = await attach(host, mirror);
   const result = await client.action("document.attrs.set", {
     target: root,
     name: "title",
@@ -864,4 +906,5 @@ await check("hosted document action carries action causation into commit publica
 });
 
 process.stdout.write(`# ${checks} Locus document recovery checks passed\n`);
+await release_attached_clients();
 testEvents.terminal("pass");
