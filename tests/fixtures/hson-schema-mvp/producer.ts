@@ -8,6 +8,7 @@ export const UserSchema: HsonSchema<UserSchemaType, "data"> = Hson`
     age <number <int true min 0 under 130>>
     percent <number <min 0 max 100>>
     code <string <len 4 prefix "ID" contains "-" suffix "7">>
+    key <string <len 3 alphabet "abc">>
     status <exact "ready">
     phase <union [
       <exact "lobby">,

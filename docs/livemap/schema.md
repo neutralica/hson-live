@@ -27,6 +27,44 @@ non-string misuse throws `TypeError`. Approved declarative refinements are
 evaluated by the canonical graph authority; executable callback constraints are
 not a Schema feature.
 
+## Finite string alphabets
+
+The `alphabet` member restricts a string to a finite declared repertoire and
+composes conjunctively with the existing string refinements:
+
+```ts
+const PersistedIdSchema: HsonSchema = Hson`
+  <type "data" content <
+    id <string <len 9 alphabet "0123456789abcdefghjkmnpqrstvwxyz">>
+  >>
+`;
+```
+
+The repertoire is one ordinary Hson string. Both length and alphabet membership
+use ECMAScript string iteration (`Array.from(value)` / `for...of`): a well-formed
+non-BMP code point is one unit, while a combining sequence can contain multiple
+units; an isolated surrogate, where preserved, is also one iteration unit.
+Comparison is exact and case-sensitive. There is no Unicode
+normalization, locale behavior, grapheme segmentation, range syntax, or regular
+expression interpretation. Ordinary Hson escapes are decoded before the
+repertoire is checked.
+
+Duplicate iteration units make the Schema invalid; they are never silently
+removed. Repertoire order is preserved as canonical graph identity even though
+membership acceptance is order-independent. The empty repertoire is valid: it
+accepts only the empty candidate. It may therefore form an unsatisfiable but
+structurally valid conjunction with a positive length.
+
+An alphabet mismatch uses the existing `INVALID_CONSTRAINT` issue and
+refinement-failure evidence. Internally, evaluation records the first offending
+unit and its zero-based iteration-unit index; the index does not become a
+`LivePath` segment and user-facing expected text does not expose the complete
+repertoire.
+
+This addition is canonical Schema graph format version 2 and Hson Schema
+compatibility token `hson-schema-mvp-8`. Generated declarations and freshness
+evidence from older tokens must be regenerated.
+
 ## Trusted editor diagnostics for natural map ownership
 
 The preferred authored layout can keep Hson separate from map construction:

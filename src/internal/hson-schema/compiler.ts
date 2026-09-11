@@ -18,7 +18,7 @@ import { is_public_attr_name } from "../../core/public-attrs.js";
 import { resolve_projected_hson_location } from "../../api/livemap/livemap.editor.js";
 import { ordered_projected_value_equal } from "../../core/ordered-projected-value.js";
 
-export const HSON_SCHEMA_MVP_COMPATIBILITY_VERSION = "hson-schema-mvp-7" as const;
+export const HSON_SCHEMA_MVP_COMPATIBILITY_VERSION = "hson-schema-mvp-8" as const;
 
 export type HsonSchemaIssueCode =
   | "INVALID_ROOT"
@@ -37,7 +37,7 @@ export type HsonSchemaIssue = Readonly<{
 }>;
 
 export type HsonSchemaRefinement = Readonly<{
-  member: "int" | "min" | "max" | "over" | "under" | "len" | "minlen" | "maxlen" | "prefix" | "suffix" | "contains" | "unique";
+  member: "int" | "min" | "max" | "over" | "under" | "len" | "minlen" | "maxlen" | "prefix" | "suffix" | "contains" | "alphabet" | "unique";
   rule: CanonicalRefinementRule;
 }>;
 
@@ -348,7 +348,7 @@ function decode_expression(
 }
 
 const NUMERIC_REFINEMENTS = new Set(["int", "min", "max", "over", "under"]);
-const STRING_REFINEMENTS = new Set(["len", "minlen", "maxlen", "prefix", "suffix", "contains"]);
+const STRING_REFINEMENTS = new Set(["len", "minlen", "maxlen", "prefix", "suffix", "contains", "alphabet"]);
 const COLLECTION_REFINEMENTS = new Set(["len", "minlen", "maxlen", "unique"]);
 
 function decode_refined_primitive(kind: "number" | "string", operand: unknown, path: readonly (string | number)[], issues: HsonSchemaIssue[]): HsonSchemaDataSemanticNode | undefined {
@@ -387,6 +387,10 @@ function decode_refinements(domain: "number" | "string" | "array" | "tuple", inp
     } else if (member === "prefix" || member === "suffix" || member === "contains") {
       if (typeof value !== "string") issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, member], `\`${member}\` requires one literal string.`);
       else refinements.push(Object.freeze({ member, rule: Object.freeze({ kind: "string-pattern", dialect: "literal-string-v1", mode: member, pattern: value }) }));
+    } else if (member === "alphabet") {
+      if (typeof value !== "string") issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, member], "`alphabet` requires one literal string.");
+      else if (has_duplicate_string_units(value)) issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, member], "`alphabet` must not contain duplicate string-iteration units.");
+      else refinements.push(Object.freeze({ member, rule: Object.freeze({ kind: "string-repertoire", repertoire: value }) }));
     } else if (member === "unique") {
       if (value !== true) issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, member], "`unique` must be exactly true.");
       else refinements.push(Object.freeze({ member, rule: Object.freeze({ kind: "array-unique" }) }));
@@ -418,6 +422,15 @@ function decode_refinements(domain: "number" | "string" | "array" | "tuple", inp
     }
   }
   return issues.length > issueCount ? undefined : Object.freeze(refinements);
+}
+
+function has_duplicate_string_units(value: string): boolean {
+  const seen = new Set<string>();
+  for (const unit of value) {
+    if (seen.has(unit)) return true;
+    seen.add(unit);
+  }
+  return false;
 }
 
 function decode_object_members(input: unknown, path: readonly (string | number)[], issues: HsonSchemaIssue[], ranges: Map<HsonSchemaRangedNode, HsonSourceRange>, root: HsonNode, provenance: HsonSourceProvenance, definitionNames: ReadonlySet<string>, referenceUses: HsonSchemaReferenceUse[]): HsonSchemaDataSemanticNode | undefined {
@@ -951,7 +964,7 @@ function build_bootstrap(): VerifiedCanonicalSchemaGraph {
   const optionalText = reserve();
   const text = add({ kind: "projected-string" });
   nodes[optionalText] = { kind: "projected-optional", base: text };
-  nodes[stringRules] = { kind: "projected-object", exact: true, properties: [["len", optionalLength], ["minlen", optionalLength], ["maxlen", optionalLength], ["prefix", optionalText], ["suffix", optionalText], ["contains", optionalText]] };
+  nodes[stringRules] = { kind: "projected-object", exact: true, properties: [["len", optionalLength], ["minlen", optionalLength], ["maxlen", optionalLength], ["prefix", optionalText], ["suffix", optionalText], ["contains", optionalText], ["alphabet", optionalText]] };
   nodes[refinedString] = { kind: "projected-object", exact: true, properties: [["string", stringRules]] };
   const refinedArray = reserve();
   const arrayRules = reserve();

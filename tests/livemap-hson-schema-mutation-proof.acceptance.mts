@@ -38,6 +38,7 @@ function user(age = 37) {
     age,
     percent: 80,
     code: "ID-7",
+    key: "abc",
     status: "ready" as const,
     phase: "lobby" as const,
     turn: "player1" as const,
@@ -59,6 +60,7 @@ check("schema association supplies certified reads and ordinary typed mutation c
   const phase = map.at(["phase"]);
   const turn = map.at(["turn"]);
   const signedZeroChoice = map.at(["signedZeroChoice"]);
+  const key = map.at(["key"]);
 
   const governed: UserSchemaType = map.snap();
   const governedAge: UserSchemaType["age"] = age.snap();
@@ -80,6 +82,9 @@ check("schema association supplies certified reads and ordinary typed mutation c
   assert.equal(Object.is(signedZeroChoice.snap(), 0), true);
   signedZeroChoice.set(-0);
   assert.equal(Object.is(signedZeroChoice.snap(), -0), true);
+  key.set("cba");
+  assert.throws(() => key.set("abd"));
+  assert.equal(key.snap(), "cba");
   map.at(["nickname"]).set("grace");
 
   const libraries = hsonLiveMap.fromLibraries({

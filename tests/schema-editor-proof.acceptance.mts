@@ -41,6 +41,10 @@ const invalid = program_for(mvpConfig, new Map([[mvpConsumer, consumerText.repla
 assert.equal(verified_schema_assignment_ranges(ts, invalid, mvpConsumer).length, 3);
 assert.equal(filtered_schema_assignment_errors(invalid, mvpConsumer).length, 1);
 
+const invalidAlphabet = program_for(mvpConfig, new Map([[mvpConsumer, consumerText.replace('key "abc"', 'key "abd"')]]));
+assert.equal(verified_schema_assignment_ranges(ts, invalidAlphabet, mvpConsumer).length, 3);
+assert.equal(filtered_schema_assignment_errors(invalidAlphabet, mvpConsumer).length, 1);
+
 const wrongAssociation = program_for(mvpConfig, new Map([[mvpConsumer, consumerText.replace("Hson.certify(UserSchema, dynamic)", "Hson.certify(Hson, dynamic)")]]));
 assert.equal(verified_schema_assignment_ranges(ts, wrongAssociation, mvpConsumer).length, 3);
 assert.equal(filtered_schema_assignment_errors(wrongAssociation, mvpConsumer).length, 1);
@@ -50,7 +54,7 @@ assert.equal(verified_schema_assignment_ranges(ts, staleGenerated, mvpConsumer).
 assert.equal(filtered_schema_assignment_errors(staleGenerated, mvpConsumer).length, 2);
 assert.equal(verified_schema_assignment_ranges(ts, mvp, mvpProofs).length, 0);
 
-console.log(JSON.stringify({ schemaEditorProofAcceptance: "ok", checks: 13 }));
+console.log(JSON.stringify({ schemaEditorProofAcceptance: "ok", checks: 15 }));
 
 function program_for(configPath: string, replacements: ReadonlyMap<string, string>): ts.Program {
   const read = ts.readConfigFile(configPath, ts.sys.readFile);

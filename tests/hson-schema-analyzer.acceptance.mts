@@ -40,8 +40,8 @@ const hsonLiveTypes = join(project, "index.d.ts");
 const hsonAuthoringTypes = join(project, "hson-authoring.d.ts");
 const config = join(project, "tsconfig.json");
 
-writeFileSync(producer, `import { Hson, type HsonSchema } from "hson-live";\nexport const UserSchema: HsonSchema = Hson\`<type "data" content <name "string" age <number <int true min 0 under 130>> code <string <len 4 prefix "ID" suffix "7" contains "-">> values <array <content "number" unique true minlen 1 maxlen 2>>>>\`;\nexport const FiniteSchema: HsonSchema = Hson\`<type "data" content <phase <union [<exact "lobby">, <union [<exact "ready">, <union [<exact "playing">, <exact "finished">]>]>]> turn <union [<exact "player1">, <union [<exact "player2">, "null"]>]> signedZero <union [<exact 0>, <exact -0>]>>>\`;\nexport const TreeSchema: HsonSchema = Hson\`<type "data" defs <Age <number <int true min 0>> Leaf <content <value "string" age <ref "Age"> children <tuple []>>> Tree <content <value "string" age <ref "Age"> children <array <ref "Tree">>>>> content <ref "Tree">>\`;\nthrow new Error("the analyzer must never execute this module");\n`);
-writeFileSync(consumer, `import { Hson } from "hson-live"; import { type FiniteSchemaHson, type FiniteSchemaType, type TreeSchemaHson, type TreeSchemaType, type UserSchemaHson, type UserSchemaType } from "./producer.js";\nconst user: UserSchemaHson = Hson\`<name "Ada" age 37 code "ID-7" values [0, -0]>\`; void user;\nconst finite: FiniteSchemaHson = Hson\`<phase "playing" turn null signedZero -0>\`; void finite;\ndeclare const finiteValue: FiniteSchemaType; const phase: "lobby" | "ready" | "playing" | "finished" = finiteValue.phase; const turn: "player1" | "player2" | null = finiteValue.turn; void phase; void turn;\nconst tree: TreeSchemaHson = Hson\`<value "root" age 2 children [<value "leaf" age 0 children []>]>\`; void tree;\ndeclare const recursive: TreeSchemaType; const child: TreeSchemaType | undefined = recursive.children[0]; const recursiveAge: TreeSchemaType["age"] = recursive.age; void child; void recursiveAge;\ndeclare const value: UserSchemaType; const age: UserSchemaType["age"] = value.age; const code: UserSchemaType["code"] = value.code; const values: UserSchemaType["values"] = value.values; void age; void code; void values;\n// @ts-expect-error arithmetic erases integer proof\nconst changedAge: UserSchemaType["age"] = value.age + 1;\n// @ts-expect-error string transforms erase constraint proof\nconst changedCode: UserSchemaType["code"] = value.code.slice(0);\n// @ts-expect-error spread erases uniqueness proof\nconst changedValues: UserSchemaType["values"] = [...value.values];\n// @ts-expect-error referenced refinement proof rejects plain numbers\nconst plainRecursiveAge: TreeSchemaType["age"] = value.age;\nvoid changedAge; void changedCode; void changedValues; void plainRecursiveAge;\n`);
+writeFileSync(producer, `import { Hson, type HsonSchema } from "hson-live";\nexport const UserSchema: HsonSchema = Hson\`<type "data" content <name "string" age <number <int true min 0 under 130>> code <string <len 4 prefix "ID" suffix "7" contains "-">> key <string <len 3 alphabet "abc">> values <array <content "number" unique true minlen 1 maxlen 2>>>>\`;\nexport const FiniteSchema: HsonSchema = Hson\`<type "data" content <phase <union [<exact "lobby">, <union [<exact "ready">, <union [<exact "playing">, <exact "finished">]>]>]> turn <union [<exact "player1">, <union [<exact "player2">, "null"]>]> signedZero <union [<exact 0>, <exact -0>]>>>\`;\nexport const TreeSchema: HsonSchema = Hson\`<type "data" defs <Age <number <int true min 0>> Leaf <content <value "string" age <ref "Age"> children <tuple []>>> Tree <content <value "string" age <ref "Age"> children <array <ref "Tree">>>>> content <ref "Tree">>\`;\nthrow new Error("the analyzer must never execute this module");\n`);
+writeFileSync(consumer, `import { Hson } from "hson-live"; import { type FiniteSchemaHson, type FiniteSchemaType, type TreeSchemaHson, type TreeSchemaType, type UserSchemaHson, type UserSchemaType } from "./producer.js";\nconst user: UserSchemaHson = Hson\`<name "Ada" age 37 code "ID-7" key "abc" values [0, -0]>\`; void user;\nconst finite: FiniteSchemaHson = Hson\`<phase "playing" turn null signedZero -0>\`; void finite;\ndeclare const finiteValue: FiniteSchemaType; const phase: "lobby" | "ready" | "playing" | "finished" = finiteValue.phase; const turn: "player1" | "player2" | null = finiteValue.turn; void phase; void turn;\nconst tree: TreeSchemaHson = Hson\`<value "root" age 2 children [<value "leaf" age 0 children []>]>\`; void tree;\ndeclare const recursive: TreeSchemaType; const child: TreeSchemaType | undefined = recursive.children[0]; const recursiveAge: TreeSchemaType["age"] = recursive.age; void child; void recursiveAge;\ndeclare const value: UserSchemaType; const age: UserSchemaType["age"] = value.age; const code: UserSchemaType["code"] = value.code; const key: UserSchemaType["key"] = value.key; const values: UserSchemaType["values"] = value.values; void age; void code; void key; void values;\n// @ts-expect-error arithmetic erases integer proof\nconst changedAge: UserSchemaType["age"] = value.age + 1;\n// @ts-expect-error string transforms erase constraint proof\nconst changedCode: UserSchemaType["code"] = value.code.slice(0);\n// @ts-expect-error alphabet proof rejects plain strings\nconst changedKey: UserSchemaType["key"] = "abc";\n// @ts-expect-error spread erases uniqueness proof\nconst changedValues: UserSchemaType["values"] = [...value.values];\n// @ts-expect-error referenced refinement proof rejects plain numbers\nconst plainRecursiveAge: TreeSchemaType["age"] = value.age;\nvoid changedAge; void changedCode; void changedKey; void changedValues; void plainRecursiveAge;\n`);
 writeFileSync(aliasSchema, `import { Hson as Author, type HsonSchema as Schema } from "hson-live";\nexport const AliasSchema: Schema = Author\`<type "data" content <ok "boolean">>\`;\n`);
 writeFileSync(documentSchema, `import { Hson, type HsonSchema } from "hson-live";\nexport const PageSchema: HsonSchema = Hson\`<type "document" tag "main" attrs <props <id "string" hidden <optional "flag">> closed true> content <sequence [<tag "header" content "empty">, <tag "section" content "string">]>>\`;\nexport const RepeatSchema: HsonSchema = Hson\`<type "document" defs <Code <string <prefix "ok-">> Item <tag "item" attrs <props <code <ref "Code">>> content "empty">> tag "list" content <repeat <ref "Item"> count 2>>\`;\nexport const DocumentSequenceSchema: HsonSchema = Hson\`<type "document" defs <Item <tag "item" content "empty">> content <repeat <ref "Item"> count 2>>\`;\n`);
 writeFileSync(documentConsumer, `import { Hson } from "hson-live"; import type { DocumentSequenceSchemaHson, PageSchemaHson, PageSchemaType, RepeatSchemaHson, RepeatSchemaType } from "./document-schema.js";\nconst page: PageSchemaHson = Hson\`<main id=hero <header/> <section "body"/>/>\`; void page;\nconst repeated: RepeatSchemaHson = Hson\`<list <item code=ok-one/> <item code=ok-two/>/>\`; void repeated;\nconst documentSequence: DocumentSequenceSchemaHson = Hson\`<item/><item/>\`; void documentSequence;\ndeclare const value: PageSchemaType; const rootTag: "_hson_root" = value.$_tag; const main = value.$_content[0]; const mainTag: "main" = main.$_tag; const child = main.$_content[0].$_content[1]; const childTag: "section" = child.$_tag; void rootTag; void mainTag; void childTag;\ndeclare const repeatValue: RepeatSchemaType; const list = repeatValue.$_content[0]; const repeatedChild = list.$_content[0].$_content[0]; const repeatedTag: "item" = repeatedChild.$_tag; void repeatedTag;\n// @ts-expect-error a plain array cannot impersonate certified repeated content\nconst plainRepeated: RepeatSchemaType["$_content"][0]["$_content"][0]["$_content"] = [repeatedChild, repeatedChild]; void plainRepeated;\n// @ts-expect-error private semantic proof prevents structural fabrication\nconst fake: PageSchemaType = { $_tag: "_hson_root", $_content: [] }; void fake;\n// @ts-expect-error object spread does not preserve private semantic proof\nconst rebuilt: PageSchemaType = { ...value }; void rebuilt;\n`);
@@ -96,6 +96,8 @@ check("declaration emit preserves module reexport and private proof carrier", ()
   assert.match(readFileSync(join(project, "out/producer.d.ts"), "utf8"), /export type \{ UserSchemaType, UserSchemaHson \}/);
   const generated = readFileSync(join(project, "out/producer.UserSchema.hson-schema.generated.d.ts"), "utf8");
   assert.match(generated, /private readonly __hsonSchemaProof/); assert.match(generated, /export type UserSchemaType/); assert.match(generated, /export type UserSchemaHson/); assert.doesNotMatch(generated, /UserSchemaValue/);
+  assert.match(generated, /M3AlphabetR0Proof/);
+  assert.match(readFileSync(join(project, "producer.UserSchema.hson-schema.generated.json"), "utf8"), /string-repertoire/);
   const recursiveGenerated = readFileSync(join(project, "out/producer.TreeSchema.hson-schema.generated.d.ts"), "utf8");
   assert.match(recursiveGenerated, /type __TreeSchemaDefinition0/); assert.match(recursiveGenerated, /ReadonlyArray<__TreeSchemaDefinition0>/); assert.match(recursiveGenerated, /private readonly __hsonSchemaProof/);
   const finiteGenerated = readFileSync(join(project, "out/producer.FiniteSchema.hson-schema.generated.d.ts"), "utf8");
@@ -118,6 +120,12 @@ check("retired generated Value evidence fails freshness", () => {
 check("edited generated declaration fails closed", () => {
   const artifact = join(project, "producer.UserSchema.hson-schema.generated.ts"), original = readFileSync(artifact, "utf8");
   writeFileSync(artifact, `${original}\n// stale edit\n`); assert.notEqual(run("verify").status, 0); writeFileSync(artifact, original);
+});
+check("prior analyzer compatibility evidence fails freshness", () => {
+  const artifact = join(project, "producer.UserSchema.hson-schema.generated.json"), original = readFileSync(artifact, "utf8");
+  writeFileSync(artifact, original.replace("hson-schema-mvp-8", "hson-schema-mvp-7"));
+  assert.notEqual(run("verify").status, 0);
+  writeFileSync(artifact, original);
 });
 check("missing generated evidence fails closed", () => {
   const artifact = join(project, "producer.UserSchema.hson-schema.generated.json"), original = readFileSync(artifact, "utf8");
@@ -186,18 +194,19 @@ check("mutation-heavy freshness cases restore a current generated baseline", () 
 });
 check("every refinement family fails invalid static authored Hson without the extension", () => {
   const original = readFileSync(consumer, "utf8");
-  const valid = '<name "Ada" age 37 code "ID-7" values [0, -0]>';
+  const valid = '<name "Ada" age 37 code "ID-7" key "abc" values [0, -0]>';
   for (const candidate of [
-    '<name "Ada" age 37.5 code "ID-7" values [0, -0]>',
-    '<name "Ada" age -1 code "ID-7" values [0, -0]>',
-    '<name "Ada" age 130 code "ID-7" values [0, -0]>',
-    '<name "Ada" age 37 code "XX-7" values [0, -0]>',
-    '<name "Ada" age 37 code "ID-X" values [0, -0]>',
-    '<name "Ada" age 37 code "ID77" values [0, -0]>',
-    '<name "Ada" age 37 code "ID--7" values [0, -0]>',
-    '<name "Ada" age 37 code "ID-7" values []>',
-    '<name "Ada" age 37 code "ID-7" values [1, 1]>',
-    '<name "Ada" age 37 code "ID-7" values [1, 2, 3]>',
+    '<name "Ada" age 37.5 code "ID-7" key "abc" values [0, -0]>',
+    '<name "Ada" age -1 code "ID-7" key "abc" values [0, -0]>',
+    '<name "Ada" age 130 code "ID-7" key "abc" values [0, -0]>',
+    '<name "Ada" age 37 code "XX-7" key "abc" values [0, -0]>',
+    '<name "Ada" age 37 code "ID-X" key "abc" values [0, -0]>',
+    '<name "Ada" age 37 code "ID77" key "abc" values [0, -0]>',
+    '<name "Ada" age 37 code "ID--7" key "abc" values [0, -0]>',
+    '<name "Ada" age 37 code "ID-7" key "abd" values [0, -0]>',
+    '<name "Ada" age 37 code "ID-7" key "abc" values []>',
+    '<name "Ada" age 37 code "ID-7" key "abc" values [1, 1]>',
+    '<name "Ada" age 37 code "ID-7" key "abc" values [1, 2, 3]>',
   ]) {
     writeFileSync(consumer, original.replace(valid, candidate));
     const result = run("verify"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /does not satisfy UserSchema/);
@@ -272,7 +281,7 @@ check("retired attrs exact closure spelling fails closed", () => {
   writeFileSync(documentSchema, original);
 });
 check("static interpolation fails closed", () => {
-  const original = readFileSync(consumer, "utf8"); writeFileSync(consumer, original.replace('Hson`<name "Ada" age 37 code "ID-7" values [0, -0]>`', 'Hson`<name "Ada" age ${37} code "ID-7" values [0, -0]>`'));
+  const original = readFileSync(consumer, "utf8"); writeFileSync(consumer, original.replace('Hson`<name "Ada" age 37 code "ID-7" key "abc" values [0, -0]>`', 'Hson`<name "Ada" age ${37} code "ID-7" key "abc" values [0, -0]>`'));
   const result = run("verify"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /substitution-free/); writeFileSync(consumer, original);
 });
 check("wrong Schema-bound validation association fails closed", () => {

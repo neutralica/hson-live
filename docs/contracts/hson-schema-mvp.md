@@ -21,9 +21,19 @@ composed across files.
 
 The implemented expression vocabulary is deliberately small: `"string"`,
 `"number"`, `"boolean"`, `"null"`, `exact`, closed `content`, direct-member
-`optional`, homogeneous `array`, fixed `tuple`, and a two-branch distinguishable
-`union`. Objects are closed and members are required unless directly wrapped in
-`optional`.
+`optional`, homogeneous `array`, fixed `tuple`, distinguishable finite-domain
+`union`, local definitions/references, and approved number, string, and
+collection refinements. Objects are closed and members are required unless
+directly wrapped in `optional`.
+
+String refinements include exact/minimum/maximum iteration-unit length, literal
+prefix/suffix/contains, and `alphabet`. For example,
+`<string <len 9 alphabet "0123456789abcdefghjkmnpqrstvwxyz">>` requires nine
+ECMAScript string-iteration units, each present in the declared string
+repertoire. Alphabet comparison is case-sensitive and performs no normalization.
+Duplicate repertoire units make the Schema invalid; order is preserved in the
+canonical graph; and an empty repertoire accepts only an empty candidate. The
+constraint uses `INVALID_CONSTRAINT` when candidate evaluation fails.
 
 Generation adds `<DeclarationName>Type` and `<DeclarationName>Hson` type exports
 to the authored module. Generated application structures are deeply readonly and
@@ -85,6 +95,5 @@ not mint Schema proof. In this MVP, exact Schema-bound Hson is the public runtim
 certificate; `UserSchemaType` proves generated declaration and nominal-carrier
 fidelity without claiming a public producer.
 
-Documents, attrs, tags, open objects, records, refinements, recursion in human
-syntax, definitions/references, interpolation, mutable certified values,
-cross-file Schema composition, and materialization APIs are outside this MVP.
+Interpolation, mutable certified values, cross-file Schema composition, custom
+validators, pattern engines, and materialization APIs are outside this MVP.

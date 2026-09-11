@@ -94,7 +94,13 @@ function projected(graph: VerifiedCanonicalSchemaGraph, ref: number, value: Proj
   if (node.kind === "projected-refinement") {
     const base = projected(graph, node.base, value, path, state, depth + 1);
     if (!base.ok) return base;
-    if (refinement_matches(node.rule, value)) return valid();
+    const repertoireFailure = node.rule.kind === "string-repertoire" && typeof value === "string"
+      ? first_repertoire_failure(node.rule.repertoire, value)
+      : undefined;
+    const matches = node.rule.kind === "string-repertoire"
+      ? typeof value === "string" && repertoireFailure === undefined
+      : refinement_matches(node.rule, value);
+    if (matches) return valid();
     return invalid([make_issue("INVALID_CONSTRAINT", path, ref, node.label ?? refinement_label(node.rule), emit_ordered_json(value), {
       kind: "refinement-failure",
       detail: node.rule.kind,
@@ -104,6 +110,10 @@ function projected(graph: VerifiedCanonicalSchemaGraph, ref: number, value: Proj
         : (node.rule.kind === "collection-length" && Array.isArray(value))
           ? { actualLength: value.length }
           : {}),
+      ...(repertoireFailure === undefined ? {} : {
+        offendingUnit: repertoireFailure.unit,
+        offendingUnitIndex: repertoireFailure.index,
+      }),
     })]);
   }
   if (node.kind === "projected-array") {
@@ -246,12 +256,23 @@ function refinement_matches(rule: CanonicalRefinementRule, value: OrderedProject
   if (rule.kind === "integer") return typeof value === "number" && Number.isInteger(value);
   if (rule.kind === "string-length") return typeof value === "string" && within(Array.from(value).length, rule.minimum, rule.maximum);
   if (rule.kind === "string-pattern") return typeof value === "string" && (rule.mode === "full" ? value === rule.pattern : rule.mode === "prefix" ? value.startsWith(rule.pattern) : rule.mode === "suffix" ? value.endsWith(rule.pattern) : value.includes(rule.pattern));
+  if (rule.kind === "string-repertoire") return typeof value === "string" && first_repertoire_failure(rule.repertoire, value) === undefined;
   if (rule.kind === "collection-length") {
     const length = Array.isArray(value) ? value.length : is_ordered_projected_object(value) ? value.entries.length : -1;
     return length >= 0 && within(length, rule.minimum, rule.maximum);
   }
   if (rule.kind === "array-unique") return Array.isArray(value) && value.every((item, index) => value.slice(0, index).every((prior) => !ordered_projected_value_equal(prior, item)));
   return false;
+}
+
+function first_repertoire_failure(repertoire: string, value: string): Readonly<{ unit: string; index: number }> | undefined {
+  const allowed = new Set<string>(repertoire);
+  let index = 0;
+  for (const unit of value) {
+    if (!allowed.has(unit)) return Object.freeze({ unit, index });
+    index += 1;
+  }
+  return undefined;
 }
 
 function within(value: number, minimum?: number, maximum?: number): boolean { return (minimum === undefined || value >= minimum) && (maximum === undefined || value <= maximum); }

@@ -38,6 +38,25 @@ check("exclusive numeric lower bound", () => assert.equal(evaluate("projected-nu
 check("numeric upper bound", () => assert.equal(evaluate("projected-number", { kind: "number-upper-bound", value: 3, inclusive: true }, 4).issues[0]?.evidence.kind, "refinement-failure"));
 check("integer rule", () => assert.equal(evaluate("projected-number", { kind: "integer" }, 1.5).ok, false));
 check("string length counts Unicode code points", () => assert.equal(evaluate("projected-string", { kind: "string-length", minimum: 1, maximum: 1 }, "😀").ok, true));
+check("string repertoire uses ECMAScript string-iteration units", () => {
+  const rule = { kind: "string-repertoire", repertoire: "aé😀e\u0301\n\ud800" } as const;
+  for (const value of ["", "aaa", "é", "😀", "e\u0301", "\n", "\ud800"]) assert.equal(evaluate("projected-string", rule, value).ok, true, JSON.stringify(value));
+  for (const value of ["b", "É", "e\u0301x", "\ud801"]) assert.equal(evaluate("projected-string", rule, value).ok, false, JSON.stringify(value));
+});
+check("empty string repertoire admits only the empty candidate", () => {
+  const rule = { kind: "string-repertoire", repertoire: "" } as const;
+  assert.equal(evaluate("projected-string", rule, "").ok, true);
+  assert.equal(evaluate("projected-string", rule, "a").ok, false);
+});
+check("string repertoire failure reports the first iteration-unit index without changing LivePath", () => {
+  const result = evaluate("projected-string", { kind: "string-repertoire", repertoire: "a😀" }, "😀ab");
+  assert.equal(result.ok, false);
+  assert.equal(result.issues[0]?.code, "INVALID_CONSTRAINT");
+  assert.deepEqual(result.issues[0]?.path, []);
+  assert.equal(result.issues[0]?.evidence.kind, "refinement-failure");
+  assert.equal(result.issues[0]?.evidence.offendingUnit, "b");
+  assert.equal(result.issues[0]?.evidence.offendingUnitIndex, 2);
+});
 check("literal prefix pattern", () => assert.equal(evaluate("projected-string", { kind: "string-pattern", dialect: "literal-string-v1", mode: "prefix", pattern: "id_" }, "id_7").ok, true));
 check("pattern data has no RegExp interpretation", () => assert.equal(evaluate("projected-string", { kind: "string-pattern", dialect: "literal-string-v1", mode: "full", pattern: ".*" }, "anything").ok, false));
 check("array collection length", () => assert.equal(evaluate("projected-array", { kind: "collection-length", minimum: 2, maximum: 3 }, [1]).ok, false));

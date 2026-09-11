@@ -154,11 +154,12 @@ check("standalone astral point spans the complete surrogate pair", () => {
 const officialImport = 'import { Hson, hson } from "hson-live";';
 
 check("local Hson Schema diagnostics reuse the proof compiler without workspace execution", () => {
-  const valid = 'import { Hson, type HsonSchema } from "hson-live"; export const S: HsonSchema = Hson`<type "data" content <name "string">>`; throw new Error("not executed");';
-  const invalid = valid.replace('name "string"', 'name <literal "x">');
+  const valid = 'import { Hson, type HsonSchema } from "hson-live"; export const S: HsonSchema = Hson`<type "data" content <name <string <alphabet "abc">>>>`; throw new Error("not executed");';
   assert.deepEqual(local_hson_schema_diagnostics("/workspace/schema.ts", valid), []);
-  assert.equal(local_hson_schema_diagnostics("/workspace/schema.ts", invalid)[0]?.code, "UNKNOWN_SCHEMA_MEMBER");
-  const document = valid.replace('<type "data" content <name "string">>', '<type "document" tag "main" attrs <props <id "string">> content <sequence [<tag "section" content "string">]>>');
+  assert.equal(local_hson_schema_diagnostics("/workspace/schema.ts", valid.replace('name <string <alphabet "abc">>', 'name <literal "x">'))[0]?.code, "UNKNOWN_SCHEMA_MEMBER");
+  assert.equal(local_hson_schema_diagnostics("/workspace/schema.ts", valid.replace('alphabet "abc"', "alphabet 1"))[0]?.code, "INVALID_SCHEMA_EXPRESSION");
+  assert.equal(local_hson_schema_diagnostics("/workspace/schema.ts", valid.replace('alphabet "abc"', 'alphabet "abca"'))[0]?.code, "INVALID_SCHEMA_EXPRESSION");
+  const document = valid.replace('<type "data" content <name <string <alphabet "abc">>>>', '<type "document" tag "main" attrs <props <id "string">> content <sequence [<tag "section" content "string">]>>');
   assert.deepEqual(local_hson_schema_diagnostics("/workspace/schema.ts", document), []);
   assert.equal(local_hson_schema_diagnostics("/workspace/schema.ts", document.replace('tag "main"', 'tag "main" element true'))[0]?.code, "UNKNOWN_SCHEMA_MEMBER");
 });

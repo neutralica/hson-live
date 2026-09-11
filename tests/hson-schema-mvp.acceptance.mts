@@ -116,7 +116,7 @@ check("bootstrap has a deterministic authored Hson machine representation", () =
   assert.equal(decoded.ok, true); if (decoded.ok) assert.deepEqual(decoded.graph, HSON_SCHEMA_MVP_BOOTSTRAP);
 });
 check("approved refinements lower directly to canonical rules", () => {
-  const source = 'age <number <int true min 0 max 130 over -1 under 131>> code <string <len 4 prefix "ID" suffix "7" contains "-">> names <array <content "string" unique true minlen 1 maxlen 3>> pair <tuple <content ["string", "number"] len 2>>';
+  const source = 'age <number <int true min 0 max 130 over -1 under 131>> code <string <len 4 prefix "ID" suffix "7" contains "-" alphabet "ID-7">> names <array <content "string" unique true minlen 1 maxlen 3>> pair <tuple <content ["string", "number"] len 2>>';
   const result = compile(source), repeated = compile(source);
   assert.equal(result.ok, true);
   assert.equal(repeated.ok, true);
@@ -131,6 +131,7 @@ check("approved refinements lower directly to canonical rules", () => {
     { kind: "string-pattern", dialect: "literal-string-v1", mode: "prefix", pattern: "ID" },
     { kind: "string-pattern", dialect: "literal-string-v1", mode: "suffix", pattern: "7" },
     { kind: "string-pattern", dialect: "literal-string-v1", mode: "contains", pattern: "-" },
+    { kind: "string-repertoire", repertoire: "ID-7" },
     { kind: "string-length", minimum: 4, maximum: 4 },
     { kind: "array-unique" },
     { kind: "collection-length", minimum: 1, maximum: 3 },
@@ -145,9 +146,13 @@ check("refinement grammar rejects illegal domains and malformed operands", () =>
     'x <string <len -1>>', 'x <string <minlen 3 maxlen 2>>', 'x <string <len 2 minlen 1>>',
     'x <array <unique true>>', 'x <number <minimum 0>>', 'x <number <min 2 under 2>>',
     'x <number <int true over 0 under 1>>', 'x <string <prefix <exact "x">>>',
+    'x <string <alphabet ["a"]>>', 'x <string <alphabet <exact "a">>>', 'x <string <alphabet "abca">>',
   ]) assert.equal(compile(body).ok, false, body);
 });
-check("duplicate refinement members fail in the Hson parser", () => assert.equal(compile('x <number <min 0 min 1>>').ok, false));
+check("duplicate refinement members fail in the Hson parser", () => {
+  assert.equal(compile('x <number <min 0 min 1>>').ok, false);
+  assert.equal(compile('x <string <alphabet "abc" alphabet "def">>').ok, false);
+});
 check("refinement diagnostics retain exact authored source provenance", () => {
   const result = compile('x <number <min "bad">>');
   assert.equal(result.ok, false);
@@ -183,6 +188,60 @@ check("refinement evaluation covers numeric, Unicode, literals, length, and uniq
   assert.throws(() => Hson.certify(bounds, Hson`<n 3>`));
   const empty: HsonSchema = Hson`<type "data" content <s <string <len 0 prefix "" suffix "" contains "">> xs <array <content "number" len 0 unique true>>>>`;
   assert.doesNotThrow(() => Hson.certify(empty, Hson`<s "" xs []>`));
+});
+check("alphabet composes conjunctively with length and literal string refinements", () => {
+  const schema: HsonSchema = Hson`<type "data" content <code <string <len 4 alphabet "ID-7" prefix "ID" suffix "7" contains "-">>>>`;
+  assert.doesNotThrow(() => Hson.certify(schema, Hson`<code "ID-7">`));
+  for (const invalid of [
+    Hson`<code "ID7">`,
+    Hson`<code "ID--7">`,
+    Hson`<code "XD-7">`,
+    Hson`<code "ID-X">`,
+    Hson`<code "ID77">`,
+    Hson`<code "ID_7">`,
+  ]) assert.throws(() => Hson.certify(schema, invalid));
+  const ranged: HsonSchema = Hson`<type "data" content <code <string <minlen 2 maxlen 4 alphabet "ab">>>>`;
+  for (const valid of [Hson`<code "aa">`, Hson`<code "abab">`]) assert.doesNotThrow(() => Hson.certify(ranged, valid));
+  for (const invalid of [Hson`<code "a">`, Hson`<code "ababa">`, Hson`<code "abc">`]) assert.throws(() => Hson.certify(ranged, invalid));
+  const empty: HsonSchema = Hson`<type "data" content <onlyEmpty <string <alphabet "">>>>`;
+  assert.doesNotThrow(() => Hson.certify(empty, Hson`<onlyEmpty "">`));
+  assert.throws(() => Hson.certify(empty, Hson`<onlyEmpty "a">`));
+  const impossible: HsonSchema = Hson`<type "data" content <value <string <len 1 alphabet "">>>>`;
+  assert.throws(() => Hson.certify(impossible, Hson`<value "">`));
+});
+check("alphabet follows string iteration for Unicode, controls, repetition, and case", () => {
+  const schema: HsonSchema = Hson`<type "data" content <value <string <alphabet "aé😀e\u0301\n\ud800">>>>`;
+  for (const valid of ["", "aaa", "é", "😀", "e\u0301", "\n", "\ud800"]) {
+    const candidate = hsonTransform.fromJson({ value: valid }).toHson().serialize();
+    assert.doesNotThrow(() => Hson.certify(schema, candidate), JSON.stringify(valid));
+  }
+  for (const invalid of ["A", "É", "x", "\ud801"]) {
+    const candidate = hsonTransform.fromJson({ value: invalid }).toHson().serialize();
+    assert.throws(() => Hson.certify(schema, candidate), JSON.stringify(invalid));
+  }
+});
+check("generic length plus alphabet expresses persisted QUID validation", () => {
+  const schema: HsonSchema = Hson`<type "data" content <subjectQuid <string <len 9 alphabet "0123456789abcdefghjkmnpqrstvwxyz">>>>`;
+  for (const value of ["000000000", "012345678", "abcdefghj", "zzzzzzzzz"]) {
+    assert.doesNotThrow(() => Hson.certify(schema, hsonTransform.fromJson({ subjectQuid: value }).toHson().serialize()), value);
+  }
+  for (const value of ["00000000", "0000000000", "!!!!!!!!a", "00000000i", "00000000l", "00000000o", "00000000u", "00000000A", "00000000😀"]) {
+    assert.throws(() => Hson.certify(schema, hsonTransform.fromJson({ subjectQuid: value }).toHson().serialize()), value);
+  }
+});
+check("alphabet canonical Hson round trips repertoire order and Unicode units", () => {
+  const result = compile('value <string <alphabet "zé😀e\\u0301\\n\\ud800a">>');
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  const authored = encode_canonical_schema_graph_hson(result.value.graph);
+  const decoded = decode_canonical_schema_graph_hson(authored);
+  assert.equal(decoded.ok, true);
+  if (decoded.ok) assert.deepEqual(decoded.graph, result.value.graph);
+  const rule = result.value.graph.nodes.find((node) => node.kind === "projected-refinement" && node.rule.kind === "string-repertoire");
+  assert.equal(rule?.kind === "projected-refinement" && rule.rule.kind === "string-repertoire" ? rule.rule.repertoire : undefined, "zé😀e\u0301\n\ud800a");
+  const reordered = compile('value <string <alphabet "azé😀e\\u0301\\n\\ud800">>');
+  assert.equal(reordered.ok, true);
+  if (reordered.ok) assert.notDeepEqual(reordered.value.graph, result.value.graph);
 });
 check("runtime validation returns unchanged canonical identity", () => {
   const schema: HsonSchema = Hson`<type "data" content <name "string" score "number">>`;

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { Worker } from "node:worker_threads";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -18,6 +19,7 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const sources = {
   tag: 'import { Hson } from "hson-live/hson"; export const value = Hson`<foo/>`;',
   validation: 'import { Hson } from "hson-live/hson"; export const value = Hson.certify(globalThis.schema, Hson`<foo/>`);',
+  alphabet: 'import { Hson } from "hson-live/hson"; const schema = Hson`<type "data" content <key <string <len 3 alphabet "abc">>>>`; const valid = Hson`<key "cba">`; let rejects = false; try { Hson.certify(schema, Hson`<key "abd">`); } catch { rejects = true; } export const parity = { accepts: Hson.certify(schema, valid) === valid, rejects };',
   aggregate: 'import { hson } from "hson-live"; console.log(hson.liveMap);',
   transform: 'import { hsonTransform } from "hson-live/transform"; console.log(hsonTransform);',
   livemap: 'import { hsonLiveMap } from "hson-live/livemap"; console.log(hsonLiveMap);',
@@ -68,6 +70,17 @@ check("narrow authoring stays within the approved practical size boundary", () =
 check("referencing certify does not unexpectedly import another subsystem", () => assert.deepEqual(results.validation.inputs.filter(path => path.startsWith("dist/")), narrow.inputs.filter(path => path.startsWith("dist/"))));
 const execution = await import('data:text/javascript;base64,' + Buffer.from(narrow.code).toString('base64'));
 check("production authoring bundle executes without a browser", () => assert.equal(execution.value, "<foo/>"));
+const alphabetUrl = 'data:text/javascript;base64,' + Buffer.from(results.alphabet.code).toString('base64');
+const alphabetExecution = await import(alphabetUrl);
+check("browser-targeted authoring executes alphabet semantics", () => assert.deepEqual(alphabetExecution.parity, { accepts: true, rejects: true }));
+const workerParity = await new Promise((resolve, reject) => {
+  const source = `const { parentPort } = require("node:worker_threads"); import(${JSON.stringify(alphabetUrl)}).then(({ parity }) => parentPort.postMessage(parity), (error) => { throw error; });`;
+  const worker = new Worker(source, { eval: true });
+  worker.once("message", resolve);
+  worker.once("error", reject);
+  worker.once("exit", (code) => { if (code !== 0) reject(new Error(`alphabet Worker exited with code ${code}`)); });
+});
+check("actual Worker executes the same alphabet semantics", () => assert.deepEqual(workerParity, { accepts: true, rejects: true }));
 for (const [name, { raw, min, gzip, inputs }] of Object.entries(results)) console.log(`# ${name}: ${JSON.stringify({ raw, min, gzip, retainedModules: inputs.length })}`);
 console.log(`# ${checks} Hson authoring package checks passed`);
 testEvents.terminal("pass");

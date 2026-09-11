@@ -11,6 +11,7 @@ const tupleRead: HsonNumber = certified.pair[1];
 const refinedInteger: UserSchemaType["age"] = certified.age;
 const refinedBound: UserSchemaType["percent"] = certified.percent;
 const refinedString: UserSchemaType["code"] = certified.code;
+const refinedAlphabet: UserSchemaType["key"] = certified.key;
 const refinedUnique: UserSchemaType["flags"] = certified.flags;
 const finitePhase: "lobby" | "ready" | "playing" | "finished" = certified.phase;
 const finiteTurn: "player1" | "player2" | null = certified.turn;
@@ -49,6 +50,8 @@ const concatenatedString: UserSchemaType["code"] = certified.code + "";
 const slicedString: UserSchemaType["code"] = certified.code.slice(0);
 // @ts-expect-error case conversion erases constrained string evidence
 const casedString: UserSchemaType["code"] = certified.code.toUpperCase();
+// @ts-expect-error a plain string has no alphabet refinement evidence
+const plainAlphabet: UserSchemaType["key"] = "abc";
 // @ts-expect-error a plain number has no Hson number evidence
 const ordinaryNumber: HsonNumber = 37;
 // @ts-expect-error broad canonical Hson has no exact Schema proof
@@ -75,6 +78,7 @@ void tupleRead;
 void refinedInteger;
 void refinedBound;
 void refinedString;
+void refinedAlphabet;
 void refinedUnique;
 void finitePhase;
 void finiteTurn;
@@ -93,6 +97,7 @@ void mathInteger;
 void concatenatedString;
 void slicedString;
 void casedString;
+void plainAlphabet;
 void ordinaryNumber;
 void broadHson;
 void explicitUndefined;

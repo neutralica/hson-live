@@ -1,8 +1,8 @@
 {
-  "compatibilityVersion": "hson-schema-mvp-7",
+  "compatibilityVersion": "hson-schema-mvp-8",
   "declarationIdentity": "schema.ts#UserSchema",
   "sourceDigest": "f4c718487ab55d55cc4d7320a09da18430bc2ff14a58a2b18152def1d7e1f776",
-  "semanticGraphDigest": "6b229a322ea6c2c59fa6ed5a65d1f89de64af3e489560a426df2d3b2ba7f5e46",
-  "generatedDeclarationDigest": "338646ddd478fd25e4d82edbf5564af526d2fca8fc30c50e12b1a2234d4044e1",
-  "graphHson": "<format \"hson-canonical-schema\" version 1 capabilities <projectedRoot 0> nodes «<kind \"projected-object\" exact true properties ««\"user\",1»»>,<kind \"projected-ref\" target 2>,<kind \"projected-object\" exact true properties ««\"age\",3»»>,<kind \"projected-ref\" target 4>,<kind \"projected-number\">»>"
+  "semanticGraphDigest": "3dcd79dae89c2fd0a06a1506ece94b98df9e21ff81eb8bd3c843c7590fa9c0b0",
+  "generatedDeclarationDigest": "5aa7999ea2eff7133914f7c04e90dfe6ff270f4989340e90e493ae0ac6217b67",
+  "graphHson": "<format \"hson-canonical-schema\" version 2 capabilities <projectedRoot 0> nodes «<kind \"projected-object\" exact true properties ««\"user\",1»»>,<kind \"projected-ref\" target 2>,<kind \"projected-object\" exact true properties ««\"age\",3»»>,<kind \"projected-ref\" target 4>,<kind \"projected-number\">»>"
 }

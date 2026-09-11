@@ -39,7 +39,8 @@ check("minimal document graph verifies", () => accepted(graph(
   [{ kind: "document-root", content: 1 }, { kind: "document-sequence", items: [2] }, { kind: "document-element", content: 3 }, { kind: "document-broad-content" }],
 )));
 check("format is exact", () => rejected({ ...graph({ projectedRoot: 0 }, [{ kind: "projected-string" }]), format: "other" }, /format/i));
-check("version is supported", () => rejected({ ...graph({ projectedRoot: 0 }, [{ kind: "projected-string" }]), version: 2 }, /version/i));
+check("version is supported", () => rejected({ ...graph({ projectedRoot: 0 }, [{ kind: "projected-string" }]), version: CANONICAL_SCHEMA_VERSION + 1 }, /version/i));
+check("prior canonical graph versions are stale", () => rejected({ ...graph({ projectedRoot: 0 }, [{ kind: "projected-string" }]), version: CANONICAL_SCHEMA_VERSION - 1 }, /version/i));
 check("unknown envelope fields reject", () => rejected({ ...graph({ projectedRoot: 0 }, [{ kind: "projected-string" }]), surprise: true }, /Unknown field/));
 check("at least one capability is required", () => rejected(graph({}, [{ kind: "projected-string" }]), /capability/i));
 check("capability refs are in range", () => rejected(graph({ projectedRoot: 2 }, [{ kind: "projected-string" }]), /out of range/));
@@ -67,6 +68,16 @@ check("document child recursion is productive", () => accepted(graph(
 )));
 check("malformed refinement bound rejects", () => rejected(graph({ projectedRoot: 0 }, [{ kind: "projected-refinement", base: 1, rule: { kind: "number-lower-bound", value: Infinity, inclusive: true } }, { kind: "projected-number" }]), /finite/));
 check("closed deterministic pattern refinement verifies", () => accepted(graph({ projectedRoot: 0 }, [{ kind: "projected-refinement", base: 1, rule: { kind: "string-pattern", dialect: "literal-string-v1", mode: "prefix", pattern: "id_" } }, { kind: "projected-string" }])));
+check("closed string repertoire refinement verifies, including an empty repertoire", () => {
+  accepted(graph({ projectedRoot: 0 }, [{ kind: "projected-refinement", base: 1, rule: { kind: "string-repertoire", repertoire: "a😀e\u0301\n" } }, { kind: "projected-string" }]));
+  accepted(graph({ projectedRoot: 0 }, [{ kind: "projected-refinement", base: 1, rule: { kind: "string-repertoire", repertoire: "" } }, { kind: "projected-string" }]));
+});
+check("string repertoire rejects duplicate iteration units", () => {
+  rejected(graph({ projectedRoot: 0 }, [{ kind: "projected-refinement", base: 1, rule: { kind: "string-repertoire", repertoire: "a😀a" } }, { kind: "projected-string" }]), /duplicate iteration units/i);
+  rejected(graph({ projectedRoot: 0 }, [{ kind: "projected-refinement", base: 1, rule: { kind: "string-repertoire", repertoire: "😀a😀" } }, { kind: "projected-string" }]), /duplicate iteration units/i);
+});
+check("string repertoire rejects wrong payload type", () => rejected(graph({ projectedRoot: 0 }, [{ kind: "projected-refinement", base: 1, rule: { kind: "string-repertoire", repertoire: ["a"] } }, { kind: "projected-string" }]), /must be a string/i));
+check("string repertoire remains closed to unknown fields", () => rejected(graph({ projectedRoot: 0 }, [{ kind: "projected-refinement", base: 1, rule: { kind: "string-repertoire", repertoire: "abc", extra: true } }, { kind: "projected-string" }]), /Unknown field/));
 check("documentation metadata unknown fields reject", () => rejected(graph({ projectedRoot: 0 }, [{ kind: "projected-string" }], { documentationMetadata: { path: "/tmp/x" } }), /Unknown field/));
 check("semantic metadata refs verify", () => accepted(graph({ projectedRoot: 0 }, [{ kind: "projected-string" }], { semanticDiagnosticMetadata: { labels: [[0, "name"]] } })));
 check("function-valued escape hatch rejects", () => rejected(graph({ projectedRoot: 0 }, [{ kind: "projected-string", validate: () => true }]), /executable/));

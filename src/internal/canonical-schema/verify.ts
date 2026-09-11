@@ -193,7 +193,20 @@ function verify_refinement(value: unknown, path: readonly (string | number)[], f
     if (rule.dialect !== "literal-string-v1") fail([...path, "dialect"], "Unsupported deterministic pattern dialect.");
     if (!["full", "prefix", "suffix", "contains"].includes(String(rule.mode))) fail([...path, "mode"], "Unsupported deterministic pattern mode.");
     if (typeof rule.pattern !== "string") fail([...path, "pattern"], "Pattern must be a string.");
+  } else if (rule.kind === "string-repertoire") {
+    exact_fields(rule, ["kind", "repertoire"], path, fail);
+    if (typeof rule.repertoire !== "string") fail([...path, "repertoire"], "String repertoire must be a string.");
+    else if (has_duplicate_string_units(rule.repertoire)) fail([...path, "repertoire"], "String repertoire must not contain duplicate iteration units.");
   } else fail([...path, "kind"], `Unknown refinement rule ${JSON.stringify(rule.kind)}.`);
+}
+
+function has_duplicate_string_units(value: string): boolean {
+  const seen = new Set<string>();
+  for (const unit of value) {
+    if (seen.has(unit)) return true;
+    seen.add(unit);
+  }
+  return false;
 }
 
 function verify_length_bounds(rule: UnknownRecord, path: readonly (string | number)[], fail: (path: readonly (string | number)[], message: string) => void): void {

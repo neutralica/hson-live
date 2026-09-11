@@ -20,6 +20,8 @@ export type CanonicalGraphIssueEvidence = Readonly<{
   detail?: string;
   refinement?: CanonicalRefinementRule;
   actualLength?: number;
+  offendingUnit?: string;
+  offendingUnitIndex?: number;
 }>;
 
 export type CanonicalGraphIssue = Readonly<{

@@ -1,9 +1,9 @@
 import type { OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 
 export const CANONICAL_SCHEMA_FORMAT = "hson-canonical-schema" as const;
-export const CANONICAL_SCHEMA_VERSION = 1 as const;
+export const CANONICAL_SCHEMA_VERSION = 2 as const;
 
-/** Provisional v1 internal limits. Format and evaluator limits are intentionally separate. */
+/** Canonical graph limits. Format and evaluator limits are intentionally separate. */
 export const CANONICAL_SCHEMA_FORMAT_LIMITS = Object.freeze({
   maxGraphNodes: 100_000,
 });
@@ -51,6 +51,11 @@ export type CanonicalRefinementRule =
     mode: "full" | "prefix" | "suffix" | "contains";
     pattern: string;
   }>
+  /**
+   * Every ECMAScript string-iteration unit in the candidate must occur in the
+   * declared repertoire. Repertoire order is canonical; duplicate units reject.
+   */
+  | Readonly<{ kind: "string-repertoire"; repertoire: string }>
   | Readonly<{ kind: "collection-length"; minimum?: number; maximum?: number }>
   | Readonly<{ kind: "array-unique" }>;
 

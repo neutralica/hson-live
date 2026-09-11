@@ -42,6 +42,16 @@ check("HsonSchema rejects invalid mutation before changing state", () => {
   assert.deepEqual(map.snap(), { name: "Ada", age: 37 });
 });
 
+check("alphabet refinement governs LiveMap admission and mutation through the shared evaluator", () => {
+  const schema: HsonSchema = Hson`<type "data" content <key <string <len 3 alphabet "abc">>>>`;
+  const map = hsonLiveMap.fromJson({ key: "abc" }).schema.use(schema);
+  map.set(["key"], "cba");
+  assert.deepEqual(map.snap(), { key: "cba" });
+  assert.throws(() => map.set(["key"], "abd"));
+  assert.deepEqual(map.snap(), { key: "cba" });
+  assert.throws(() => hsonLiveMap.fromJson({ key: "ab" }).schema.use(schema));
+});
+
 check("primitive union branches govern null values", () => {
   const schema: HsonSchema = Hson`<type "data" content <value <union ["string", "null"]>>>`;
   const map = hsonLiveMap.fromJson({ value: null }).schema.use(schema);
