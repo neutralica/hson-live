@@ -62,6 +62,7 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
       case "number": return "number";
       case "boolean": return "boolean";
       case "null": return "null";
+      case "any": return "JsonValue";
       case "exact": {
         if (schema.value === null) return "null";
         if (typeof schema.value === "string" || typeof schema.value === "boolean") return JSON.stringify(schema.value);
@@ -91,6 +92,7 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
       case "number": return refined("HsonNumber & HsonSchemaMutationCandidate<number>", schema, path);
       case "boolean": return "boolean";
       case "null": return "null";
+      case "any": return "JsonValue";
       case "exact": {
         if (schema.value === null) return "null";
         if (typeof schema.value === "string" || typeof schema.value === "boolean") return JSON.stringify(schema.value);

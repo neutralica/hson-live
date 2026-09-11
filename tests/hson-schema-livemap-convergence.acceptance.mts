@@ -52,6 +52,17 @@ check("alphabet refinement governs LiveMap admission and mutation through the sh
   assert.throws(() => hsonLiveMap.fromJson({ key: "ab" }).schema.use(schema));
 });
 
+check("any governs canonical data while preserving negative zero and object order", () => {
+  const schema: HsonSchema = Hson`<type "data" content <args "any" payload "any">>`;
+  const map = hsonLiveMap.fromJson({ args: -0, payload: { z: 1, a: [true, null, {}] } }).schema.use(schema);
+  assert.equal(Object.is(map.snap(["args"]), -0), true);
+  assert.deepEqual(Object.keys(map.snap(["payload"]) as object), ["z", "a"]);
+  map.replace(["payload"], { second: [], first: { nested: "ok" } });
+  assert.deepEqual(Object.keys(map.snap(["payload"]) as object), ["second", "first"]);
+  assert.throws(() => map.set(["args"], (() => "runtime capability") as never));
+  assert.equal(Object.is(map.snap(["args"]), -0), true);
+});
+
 check("primitive union branches govern null values", () => {
   const schema: HsonSchema = Hson`<type "data" content <value <union ["string", "null"]>>>`;
   const map = hsonLiveMap.fromJson({ value: null }).schema.use(schema);

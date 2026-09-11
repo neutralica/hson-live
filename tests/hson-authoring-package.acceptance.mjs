@@ -20,6 +20,7 @@ const sources = {
   tag: 'import { Hson } from "hson-live/hson"; export const value = Hson`<foo/>`;',
   validation: 'import { Hson } from "hson-live/hson"; export const value = Hson.certify(globalThis.schema, Hson`<foo/>`);',
   alphabet: 'import { Hson } from "hson-live/hson"; const schema = Hson`<type "data" content <key <string <len 3 alphabet "abc">>>>`; const valid = Hson`<key "cba">`; let rejects = false; try { Hson.certify(schema, Hson`<key "abd">`); } catch { rejects = true; } export const parity = { accepts: Hson.certify(schema, valid) === valid, rejects };',
+  any: 'import { Hson } from "hson-live/hson"; const schema = Hson`<type "data" content <args "any" payload "any">>`; const valid = Hson`<args [null, true, -0] payload <z 1 a <nested []>>>`; let rejectsDocument = false; try { Hson.certify(schema, Hson`<main/>`); } catch { rejectsDocument = true; } export const parity = { accepts: Hson.certify(schema, valid) === valid, rejectsDocument, preservesNegativeZero: valid.includes("-0"), preservesOrder: valid.indexOf("z 1") < valid.indexOf("a <nested") };',
   aggregate: 'import { hson } from "hson-live"; console.log(hson.liveMap);',
   transform: 'import { hsonTransform } from "hson-live/transform"; console.log(hsonTransform);',
   livemap: 'import { hsonLiveMap } from "hson-live/livemap"; console.log(hsonLiveMap);',
@@ -73,6 +74,8 @@ check("production authoring bundle executes without a browser", () => assert.equ
 const alphabetUrl = 'data:text/javascript;base64,' + Buffer.from(results.alphabet.code).toString('base64');
 const alphabetExecution = await import(alphabetUrl);
 check("browser-targeted authoring executes alphabet semantics", () => assert.deepEqual(alphabetExecution.parity, { accepts: true, rejects: true }));
+const anyExecution = await import('data:text/javascript;base64,' + Buffer.from(results.any.code).toString('base64'));
+check("browser-targeted authoring executes canonical any semantics", () => assert.deepEqual(anyExecution.parity, { accepts: true, rejectsDocument: true, preservesNegativeZero: true, preservesOrder: true }));
 const workerParity = await new Promise((resolve, reject) => {
   const source = `const { parentPort } = require("node:worker_threads"); import(${JSON.stringify(alphabetUrl)}).then(({ parity }) => parentPort.postMessage(parity), (error) => { throw error; });`;
   const worker = new Worker(source, { eval: true });

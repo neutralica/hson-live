@@ -27,6 +27,41 @@ non-string misuse throws `TypeError`. Approved declarative refinements are
 evaluated by the canonical graph authority; executable callback constraints are
 not a Schema feature.
 
+## Any canonical data value
+
+The authored data expression `"any"` accepts any canonical Hson data-mode
+value: strings, finite numbers (including `-0`), booleans, null, ordered dense
+arrays, and ordered arbitrary-key data objects, recursively. Empty arrays and
+objects are included. For example, broad interaction-shaped fields can be
+expressed without a custom predicate:
+
+```ts
+const InteractionFieldsSchema: HsonSchema = Hson`
+  <type "data" content <args "any" payload "any">>
+`;
+```
+
+`"any"` does not mean arbitrary JavaScript. Document-mode Hson, document
+identity metadata, undefined, non-finite numbers, bigint, symbols, functions,
+accessors, sparse arrays, cycles, class instances, DOM values, and other
+runtime capabilities remain outside canonical data admission. Normal Hson data
+name restrictions also remain in force.
+
+Generated TypeScript represents this expression as the public `JsonValue`
+type, never TypeScript `any`. Canonical Hson equality continues to distinguish
+`0` from `-0`, and data-object member order remains semantic; Schema does not
+sort or normalize either form.
+
+The expression lowers directly to the existing canonical
+`projected-any` node. Canonical Schema graph version 2 is therefore unchanged.
+The authored-language and generated-evidence compatibility token is
+`hson-schema-mvp-9`; evidence generated under earlier tokens is stale.
+
+This local canonical-data support does not resolve generic Echo/Locus action
+payload fidelity. Negative zero, object-member-order/dedupe equivalence, and
+dangerous-key cloning behavior such as an own `__proto__` member require the
+separate hosted-action transport audit.
+
 ## Finite string alphabets
 
 The `alphabet` member restricts a string to a finite declared repertoire and
@@ -62,7 +97,7 @@ unit and its zero-based iteration-unit index; the index does not become a
 repertoire.
 
 This addition is canonical Schema graph format version 2 and Hson Schema
-compatibility token `hson-schema-mvp-8`. Generated declarations and freshness
+compatibility token `hson-schema-mvp-9`. Generated declarations and freshness
 evidence from older tokens must be regenerated.
 
 ## Trusted editor diagnostics for natural map ownership

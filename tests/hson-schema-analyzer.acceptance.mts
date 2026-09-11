@@ -123,7 +123,7 @@ check("edited generated declaration fails closed", () => {
 });
 check("prior analyzer compatibility evidence fails freshness", () => {
   const artifact = join(project, "producer.UserSchema.hson-schema.generated.json"), original = readFileSync(artifact, "utf8");
-  writeFileSync(artifact, original.replace("hson-schema-mvp-8", "hson-schema-mvp-7"));
+  writeFileSync(artifact, original.replace("hson-schema-mvp-9", "hson-schema-mvp-8"));
   assert.notEqual(run("verify").status, 0);
   writeFileSync(artifact, original);
 });

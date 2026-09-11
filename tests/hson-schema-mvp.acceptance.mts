@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { Hson, hsonTransform, type HsonSchema } from "../src/index.ts";
 import { compile_hson_schema, HSON_SCHEMA_MVP_BOOTSTRAP } from "../src/internal/hson-schema/compiler.ts";
 import { decode_canonical_schema_graph_hson, encode_canonical_schema_graph_hson } from "../src/internal/canonical-schema/encode-hson.ts";
+import { generate_hson_schema_types } from "../src/internal/hson-schema/generate-types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -33,6 +34,33 @@ check("valid primitive and closed structure lower deterministically", () => {
   const right = compile('name "string" active "boolean" nothing "null" score "number"');
   assert.equal(left.ok, true); assert.equal(right.ok, true);
   if (left.ok && right.ok) { assert.deepEqual(left.value.graph, right.value.graph); assert.deepEqual(left.value.graph.nodes.map((node) => node.kind), ["projected-object", "projected-string", "projected-boolean", "projected-null", "projected-number"]); }
+});
+check("authored any is the sole broad data atom and lowers directly", () => {
+  const result = compile('value "any"');
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.deepEqual(result.value.semantic, { kind: "object", members: [{ name: "value", optional: false, schema: { kind: "any" } }] });
+    assert.deepEqual(result.value.graph.nodes.map((node) => node.kind), ["projected-object", "projected-any"]);
+    const generated = generate_hson_schema_types("AnySchema", result.value.semantic);
+    assert.match(generated.declarations, /readonly value: JsonValue/);
+    assert.doesNotMatch(generated.declarations, /\bany\b/);
+  }
+  for (const body of ['value "Any"', 'value "data"', 'value "record"', "value <any true>", "value <record true>"]) {
+    assert.equal(compile(body).ok, false, body);
+  }
+});
+check("authored any certifies canonical nested data but not document Hson", () => {
+  const schema: HsonSchema = Hson`<type "data" content <args "any" payload "any">>`;
+  const values = [
+    Hson`<args null payload null>`,
+    Hson`<args "local" payload 37>`,
+    Hson`<args true payload []>`,
+    Hson`<args [] payload <>>`,
+    Hson`<args [null, "x", -0, <nested [true, <empty <>>]>] payload <action "rename" details <names ["Ada", "Grace"]> empty []>>`,
+  ];
+  for (const value of values) assert.equal(Hson.certify(schema, value), value);
+  assert.throws(() => Hson.certify(schema, Hson`<main/>`));
+  assert.throws(() => Hson`<_hson_private true>`);
 });
 check("invalid root envelope rejects", () => assert.equal(compile_hson_schema('<type "document" content <>>').ok, false));
 check("unknown Schema member rejects", () => { const result = compile('value <literal "x">'); assert.equal(result.ok, false); if (!result.ok) assert.equal(result.issues[0]?.code, "UNKNOWN_SCHEMA_MEMBER"); });

@@ -231,6 +231,7 @@
     "test:livemap-hson-schema-mutation-proof": "node --import=tsx tests/livemap-hson-schema-mutation-proof.acceptance.mts",
     "test:livemap-hson-schema-transition-proof": "node --import=tsx tests/livemap-hson-schema-transition-proof.acceptance.mts",
     "test:hson-schema-mvp": "node --import=tsx tests/hson-schema-mvp.acceptance.mts",
+    "test:hson-schema-any-worker": "node --import=tsx tests/hson-schema-any-worker.acceptance.mts",
     "test:hson-schema-livemap-convergence": "node --import=tsx tests/hson-schema-livemap-convergence.acceptance.mts",
     "test:hson-schema-composition-recursion": "node --import=tsx tests/hson-schema-composition-recursion.acceptance.mts",
     "test:hson-schema-document": "node --import=tsx tests/hson-schema-document.acceptance.mts",

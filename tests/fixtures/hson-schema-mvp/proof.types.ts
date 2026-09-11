@@ -1,6 +1,7 @@
 import { Hson, type HsonNumber } from "hson-live";
+import type { JsonValue } from "hson-live/types";
 import type { HsonCanonical } from "hson-live/hson";
-import { TreeSchema, UserSchema, type ReuseSchemaType, type TreeSchemaHson, type TreeSchemaType, type UserSchemaHson, type UserSchemaType } from "./producer.js";
+import { TreeSchema, UserSchema, type InteractionFieldsSchemaType, type ReuseSchemaType, type TreeSchemaHson, type TreeSchemaType, type UserSchemaHson, type UserSchemaType } from "./producer.js";
 
 declare const certified: UserSchemaType;
 declare const canonical: HsonCanonical;
@@ -21,6 +22,9 @@ declare const reuse: ReuseSchemaType;
 const recursiveChild: TreeSchemaType | undefined = recursive.children[0];
 const recursiveAge: TreeSchemaType["age"] = recursive.age;
 const sharedDefinitionCompatibility: typeof reuse.again = reuse.left;
+declare const interactionFields: InteractionFieldsSchemaType;
+const localArgs: JsonValue = interactionFields.args;
+const authoritativePayload: JsonValue = interactionFields.payload;
 
 // @ts-expect-error ordinary structural objects have no composite proof
 const fabricated: UserSchemaType = { name: "Ada", score: 37, age: 37, percent: 80, code: "ID-7", flags: [true], pair: ["x", 2], account: { kind: "user", handle: "ada" } };
@@ -104,6 +108,8 @@ void explicitUndefined;
 void recursiveChild;
 void recursiveAge;
 void sharedDefinitionCompatibility;
+void localArgs;
+void authoritativePayload;
 void fabricatedRecursive;
 void plainReferencedAge;
 void unrelatedDefinitionProof;

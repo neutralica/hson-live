@@ -18,7 +18,7 @@ import { is_public_attr_name } from "../../core/public-attrs.js";
 import { resolve_projected_hson_location } from "../../api/livemap/livemap.editor.js";
 import { ordered_projected_value_equal } from "../../core/ordered-projected-value.js";
 
-export const HSON_SCHEMA_MVP_COMPATIBILITY_VERSION = "hson-schema-mvp-8" as const;
+export const HSON_SCHEMA_MVP_COMPATIBILITY_VERSION = "hson-schema-mvp-9" as const;
 
 export type HsonSchemaIssueCode =
   | "INVALID_ROOT"
@@ -45,7 +45,7 @@ type Refined = Readonly<{ refinements: readonly HsonSchemaRefinement[] }>;
 
 export type HsonSchemaDataSemanticNode =
   | (Readonly<{ kind: "string" | "number" }> & Refined)
-  | Readonly<{ kind: "boolean" | "null" }>
+  | Readonly<{ kind: "boolean" | "null" | "any" }>
   | Readonly<{ kind: "exact"; value: string | number | boolean | null }>
   | Readonly<{ kind: "object"; members: readonly Readonly<{ name: string; optional: boolean; schema: HsonSchemaDataSemanticNode }>[] }>
   | (Readonly<{ kind: "array"; item: HsonSchemaDataSemanticNode }> & Refined)
@@ -256,7 +256,7 @@ function decode_expression(
   definitionNames: ReadonlySet<string>,
   referenceUses: HsonSchemaReferenceUse[],
 ): Readonly<{ schema: HsonSchemaDataSemanticNode; optional: boolean }> | undefined {
-  if (input === "string" || input === "number" || input === "boolean" || input === "null") {
+  if (input === "string" || input === "number" || input === "boolean" || input === "null" || input === "any") {
     const schema = input === "string" || input === "number"
       ? Object.freeze({ kind: input, refinements: Object.freeze([]) } as const)
       : Object.freeze({ kind: input } as const);
@@ -617,7 +617,7 @@ function lower_hson_schema_semantic_with_sources(root: HsonSchemaSemanticNode, d
   };
   const lowerCoreInto = (schema: HsonSchemaDataSemanticNode, ref: number): void => {
     switch (schema.kind) {
-      case "string": case "number": case "boolean": case "null": nodes[ref] = { kind: `projected-${schema.kind}` }; break;
+      case "string": case "number": case "boolean": case "null": case "any": nodes[ref] = { kind: `projected-${schema.kind}` }; break;
       case "exact": nodes[ref] = schema.value === null ? { kind: "projected-null" } : { kind: "projected-literal", values: Object.freeze([schema.value]) }; break;
       case "object": nodes[ref] = { kind: "projected-object", exact: true, properties: Object.freeze(schema.members.map((member) => Object.freeze([member.name, lower(member.schema, member.optional)] as const))) }; break;
       case "array": nodes[ref] = { kind: "projected-array", item: lower(schema.item) }; break;
@@ -908,7 +908,7 @@ function build_bootstrap(): VerifiedCanonicalSchemaGraph {
   const expression = reserve();
   const refExpression = (): number => add({ kind: "projected-ref", target: expression });
 
-  const primitiveAtoms = literal("string", "number", "boolean", "null");
+  const primitiveAtoms = literal("string", "number", "boolean", "null", "any");
   const exact = reserve();
   const exactValue = reserve();
   const exactString = add({ kind: "projected-string" });

@@ -162,6 +162,9 @@ check("local Hson Schema diagnostics reuse the proof compiler without workspace 
   const document = valid.replace('<type "data" content <name <string <alphabet "abc">>>>', '<type "document" tag "main" attrs <props <id "string">> content <sequence [<tag "section" content "string">]>>');
   assert.deepEqual(local_hson_schema_diagnostics("/workspace/schema.ts", document), []);
   assert.equal(local_hson_schema_diagnostics("/workspace/schema.ts", document.replace('tag "main"', 'tag "main" element true'))[0]?.code, "UNKNOWN_SCHEMA_MEMBER");
+  const any = valid.replace('name <string <alphabet "abc">>', 'args "any"');
+  assert.deepEqual(local_hson_schema_diagnostics("/workspace/schema.ts", any), []);
+  assert.equal(local_hson_schema_diagnostics("/workspace/schema.ts", any.replace('args "any"', 'args "anyy"'))[0]?.code, "INVALID_SCHEMA_EXPRESSION");
 });
 
 check("Schema evidence discovery stays binding-aware and does not generate", () => {

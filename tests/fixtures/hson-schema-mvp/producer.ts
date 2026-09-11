@@ -46,7 +46,13 @@ export const ReuseSchema: HsonSchema<ReuseSchemaType, "data"> = Hson`
   >
 `;
 
+export const InteractionFieldsSchema: HsonSchema<InteractionFieldsSchemaType, "data"> = Hson`
+  <type "data" content <args "any" payload "any">>
+`;
+
 // @hson-schema generated type exports
+import type { InteractionFieldsSchemaType, InteractionFieldsSchemaHson } from "./producer.InteractionFieldsSchema.hson-schema.generated.js";
+export type { InteractionFieldsSchemaType, InteractionFieldsSchemaHson };
 import type { ReuseSchemaType, ReuseSchemaHson } from "./producer.ReuseSchema.hson-schema.generated.js";
 export type { ReuseSchemaType, ReuseSchemaHson };
 import type { TreeSchemaType, TreeSchemaHson } from "./producer.TreeSchema.hson-schema.generated.js";
