@@ -1,6 +1,6 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { create_persistent_locus, hson } from "../src/index.ts";
+import { create_persistent_locus, hson, HsonData } from "../src/index.ts";
 import { create_livehost_persistent_store } from "../src/api/livehost/services/livehost.persistent-store.ts";
 import { resolve_locus_document_action } from "../src/api/locus/locus.document-actions.ts";
 import { make_locus_action_dedupe_store } from "../src/api/locus/locus.actions.ts";
@@ -252,7 +252,7 @@ check("deduplicated QUID action executes and resolves once", async () => {
     requestId: "same-request",
     ownerPrincipalId: undefined,
     actionName: "document.attrs.set",
-    payload: { target: { kind: "quid" as const, quid: Q1 }, name: "id", value: "once" },
+    payload: HsonData.from({ target: { kind: "quid" as const, quid: Q1 }, name: "id", value: "once" }),
     retry: false,
     run: async () => {
       executions += 1;

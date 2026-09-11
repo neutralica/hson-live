@@ -57,7 +57,7 @@ import {
   type LocusSoloActionAuthorityInternals,
   type LocusSoloExternalActionAttempt,
 } from "./locus.action-admission.js";
-import { decode_locus_action_payload } from "./locus.action-validation.js";
+import { decode_locus_schema_value } from "./locus.action-validation.js";
 import {
   create_live_trace_context,
   type LocusCommitCausation,
@@ -202,7 +202,7 @@ export function create_locus(
     }
     return create_locus_for_map(options.map, options);
   }
-  const stateResult = decode_locus_action_payload(options.schema?.state, options.state ?? {});
+  const stateResult = decode_locus_schema_value(options.schema?.state, options.state ?? {});
   const initialState: JsonValue = (stateResult.ok ? stateResult.value : options.state) ?? {};
   const classified = make_classified_livemap(parse_json(initialState));
   if (classified.mode !== "data-object" && classified.mode !== "data-array") {

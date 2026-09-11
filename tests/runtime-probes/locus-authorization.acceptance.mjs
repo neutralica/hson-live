@@ -1,6 +1,6 @@
 import { create_test_event_emitter } from "../test-events.mjs";
 import assert from "node:assert/strict";
-import { hson } from "../../src/index.ts";
+import { HsonData, hson } from "../../src/index.ts";
 import { create_live_trace_collector } from "../../src/diagnostics/index.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -56,9 +56,9 @@ function fixture(options = {}) {
   let executions = 0, session = 0;
   const host = hson.locus.create({
     state: { value: 0 }, logicalMapId: "auth-map", incarnationId: "auth-inc", sessionId: () => `session-${++session}`,
-    schema: { actions: { set: { payload: (v) => typeof v === "object" && v !== null && !Array.isArray(v) && typeof v.value === "number" }, gated: { payload: (v) => typeof v === "number" } } },
+    schema: { actions: { set: { payload: (v) => v instanceof HsonData && typeof v.materialize().value === "number" }, gated: { payload: (v) => v instanceof HsonData && v.kind === "number" } } },
     actions: {
-      async set(ctx, payload) { executions += 1; await ctx.mutate((draft) => draft.set(["value"], payload.value)); return payload; },
+      async set(ctx, payload) { executions += 1; await ctx.mutate((draft) => draft.set(["value"], payload.materialize().value)); return payload; },
       async gated(_ctx, payload) { executions += 1; await options.gate?.promise; return payload; },
     },
     ...(options.authorizeAction ? { authorizeAction: options.authorizeAction } : {}),
@@ -78,11 +78,11 @@ await check("omission is implicit allow; sync and async allow receive frozen val
   assert.equal(seen[0].logicalMapId, "auth-map"); assert.equal(Object.isFrozen(seen[0].payload), true);
 });
 
-await check("policy payload is detached and cannot alter handler input", async () => {
+await check("policy receives immutable exact data and cannot alter handler input", async () => {
   let blocked = false;
   const f = fixture({ authorizeAction(ctx) { try { ctx.payload.value = 99; } catch { blocked = true; } return true; } });
   const result = await connect(f.host, "detach").client.action("set", { value: 4 });
-  assert.equal(blocked, true); assert.deepEqual(result.result, { value: 4 }); assert.deepEqual(f.host.map.snap(), { value: 4 });
+  assert.equal(blocked, true); assert.deepEqual(result.result.materialize(), { value: 4 }); assert.deepEqual(f.host.map.snap(), { value: 4 });
 });
 
 await check("sync and async denial are stable, uncached, and side-effect free", async () => {
@@ -189,7 +189,7 @@ await check("opaque connection attachment reaches action policy without entering
   });
   assert.equal((await client.action("set", { value: 16 })).type, "ack");
   const legacy = legacy_action(f.host, { principalId: "principal-a", attachment }, {
-    type: "action", id: "legacy-attached", name: "set", payload: { value: 17 },
+    type: "action", id: "exact-attached", name: "set", payloadData: '{\n  "value": 17\n}',
   });
   assert.equal((await legacy.response).type, "ack");
   assert.equal(seen.length, 2);
@@ -206,7 +206,7 @@ await check("legacy attachment-based denial does not execute or advance authorit
   const f = fixture({ authorizeAction(context) { return context.connection.attachment.allow; } });
   const before = f.host.map.capture();
   const legacy = legacy_action(f.host, { principalId: "principal-denied", attachment }, {
-    type: "action", id: "legacy-denied", name: "set", payload: { value: 18 },
+    type: "action", id: "exact-denied", name: "set", payloadData: '{\n  "value": 18\n}',
   });
   const result = await legacy.response;
   assert.equal(result.error.code, "LOCUS_ACTION_FORBIDDEN");
@@ -232,7 +232,7 @@ await check("session-origin authorization observes a replacement policy after ho
   const options = {
     map: hson.liveMap.fromJson({ value: 0 }),
     actions: {
-      async set(context, value) { await context.mutate((draft) => draft.set(["value"], value)); },
+      async set(context, value) { await context.mutate((draft) => draft.set(["value"], value.scalar())); },
     },
     authorizeAction: () => false,
   };
@@ -253,8 +253,9 @@ await check("custom application handlers can use external state and emit non-can
     logicalMapId: "application-boundary",
     actions: {
       notify(context, payload, message) {
-        applicationState.deliveries.push({ origin: context.origin.kind, payload, action: message.name });
-        return { delivered: context.emit_event("application.notice", payload) };
+        const materialized = payload.materialize();
+        applicationState.deliveries.push({ origin: context.origin.kind, payload: materialized, action: message.name });
+        return { delivered: context.emit_event("application.notice", materialized) };
       },
     },
   });
@@ -267,7 +268,7 @@ await check("custom application handlers can use external state and emit non-can
   const events = pair.serverSent.map((raw) => JSON.parse(raw)).filter((message) => message.type === "event");
 
   assert.equal(result.type, "ack");
-  assert.deepEqual(result.result, { delivered: true });
+  assert.deepEqual(result.result.materialize(), { delivered: true });
   assert.deepEqual(applicationState.deliveries, [{
     origin: "session",
     payload: { source: "application" },

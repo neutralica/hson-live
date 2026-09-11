@@ -1,4 +1,5 @@
 import type { JsonValue } from "../../core/types.js";
+import type { HsonData } from "../data/hson-data.js";
 import type {
   LiveMapLibraries,
 } from "../../types/livemap.types.js";
@@ -72,9 +73,9 @@ export function create_multi_library_locus_internal<
   let disposed = false;
   const actions: Record<string, (
     context: unknown,
-    payload: JsonValue | undefined,
+    payload: HsonData | undefined,
     message?: LocusClientActionMessage,
-  ) => JsonValue | void | Promise<JsonValue | void>> = {};
+  ) => unknown | void | Promise<unknown | void>> = {};
 
   for (const [name, handler] of Object.entries(options.actions ?? {})) {
     if (handler === undefined) continue;
@@ -100,7 +101,7 @@ export function create_multi_library_locus_internal<
         name,
         ...(payload === undefined ? {} : { payload }),
       })) as LocusClientActionMessage<TActions>;
-      return (handler as (context: LocusMultiLibraryActionContext<TMap>, payload: JsonValue | undefined, message: LocusClientActionMessage<TActions>) => JsonValue | void | Promise<JsonValue | void>)(
+      return handler(
         publicContext,
         payload,
         message,

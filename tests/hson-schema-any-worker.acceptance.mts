@@ -10,7 +10,7 @@ export const HSON_LIVE_TEST_METADATA = Object.freeze({
   tags: Object.freeze(["hson-schema", "worker", "runtime-parity"]),
 });
 
-type WorkerResult = Readonly<{ certified: boolean; negativeZero: boolean; order: readonly string[] }>;
+type WorkerResult = Readonly<{ certified: boolean; negativeZero: boolean; order: readonly string[]; exactOrder: readonly string[]; exactNegativeZero: boolean; safeProto: boolean }>;
 
 const testEvents = create_test_event_emitter("hson-schema-any-worker");
 const caseId = "authored any uses canonical certification and governance in an actual Worker";
@@ -24,7 +24,7 @@ try {
       if (code !== 0) reject(new Error(`Hson Schema any Worker exited with code ${code}.`));
     });
   });
-  assert.deepEqual(result, { certified: true, negativeZero: true, order: ["second", "first"] });
+  assert.deepEqual(result, { certified: true, negativeZero: true, order: ["second", "first"], exactOrder: ["10", "2"], exactNegativeZero: true, safeProto: true });
   testEvents.case_end(caseId, "pass");
   testEvents.terminal("pass");
 } catch (error) {

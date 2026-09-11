@@ -3,6 +3,11 @@ import type {
   LocusSchemaResult,
   LocusValidator,
 } from "../../types/locus.types.js";
+import { HsonData } from "../data/hson-data.js";
+import { hson_data_value } from "../data/hson-data.js";
+import type { HsonSchema } from "../transform/transform.types.js";
+import { compile_hson_schema } from "../../internal/hson-schema/compiler.js";
+import { evaluate_canonical_projected_schema } from "../../internal/canonical-schema/evaluate.js";
 
 function is_schema_result<TValue>(value: unknown): value is LocusSchemaResult<TValue> {
   return typeof value === "object"
@@ -12,7 +17,7 @@ function is_schema_result<TValue>(value: unknown): value is LocusSchemaResult<TV
 }
 
 /** Shared configured-payload decoder used after exact protocol admission. */
-export function decode_locus_action_payload<TValue>(
+export function decode_locus_schema_value<TValue>(
   schema: LocusValidator<TValue> | LocusSchemaDecoder<TValue> | undefined,
   value: unknown,
 ): LocusSchemaResult<TValue> {
@@ -20,6 +25,38 @@ export function decode_locus_action_payload<TValue>(
   const result = schema(value);
   if (is_schema_result<TValue>(result)) return result;
   if (result === true) return { ok: true, value: value as TValue };
+  return { ok: false, issues: ["Value failed Locus schema validation."] };
+}
+
+export function decode_locus_action_payload<TValue>(
+  schema: HsonSchema | LocusValidator<TValue> | LocusSchemaDecoder<TValue> | undefined,
+  value: HsonData | undefined,
+): LocusSchemaResult<HsonData | undefined> {
+  if (!schema) return { ok: true, value };
+  if (typeof schema === "string") {
+    if (value === undefined) return { ok: false, issues: ["Hson Schema requires present action data."] };
+    const compiled = compile_hson_schema(schema);
+    if (!compiled.ok || compiled.value.graph.capabilities.projectedRoot === undefined) {
+      return { ok: false, issues: ["Configured action Hson Schema must compile in data mode."] };
+    }
+    const evaluated = evaluate_canonical_projected_schema(compiled.value.graph, hson_data_value(value));
+    return evaluated.ok
+      ? { ok: true, value }
+      : { ok: false, issues: evaluated.issues.map((issue) => (
+          `${issue.code} at ${JSON.stringify(issue.path)}`
+        )) };
+  }
+  const result = schema(value);
+  if (is_schema_result<TValue>(result)) {
+    if (!result.ok) return result;
+    if (result.value === undefined) return { ok: true, value: undefined };
+    try {
+      return { ok: true, value: HsonData.from(result.value) };
+    } catch {
+      return { ok: false, issues: ["Schema decoder output is not canonical Hson data."] };
+    }
+  }
+  if (result === true) return { ok: true, value };
   return { ok: false, issues: ["Value failed Locus schema validation."] };
 }
 

@@ -64,6 +64,31 @@ const locus = create_locus({
 });
 ```
 
+Configured action data is admitted as immutable `HsonData`. Callers retain the
+familiar `Echo.action(name, payload)` shape and may pass ordinary admissible
+JavaScript data; Echo snapshots it once through strict canonical admission.
+Schemas, authorization, and handlers then observe the same exact data value.
+Handlers explicitly call `payload.materialize()` when an ordinary detached JS
+view is sufficient. Successful handler returns are admitted the same way and
+Echo exposes a present result as `HsonData`; absence remains distinct from
+present `null`.
+
+This request/result contract preserves signed zero, exact ordered object
+entries (including otherwise-unrepresentable integer-name orders), arrays,
+and valid names such as `__proto__`, `constructor`, and `prototype`. Unsupported
+runtime values, accessors, sparse arrays, cycles, class/exotic instances, and
+non-finite numbers reject rather than undergoing JSON normalization. A custom
+schema decoder receives exact data and its transformed return is strictly
+re-admitted; an Hson Schema evaluates the exact underlying canonical carrier.
+
+Request fingerprints use the same exact deterministic data encoding as the
+transport. Consequently `0` and `-0`, absent and `null`, and equal-name objects
+with different member sequences are different requests. Joined attempts,
+cached retries, and status recovery retain the exact immutable result. The
+outer protocol remains text/JSON framed, but action data is carried as an exact
+structural string and decoded directly; this semantic codec is transport
+neutral and is not a WebSocket-specific data model.
+
 `LocusOptions<TMap, TActions>` accepts an existing authoritative map. The
 public type named `ProjectedLocusOptions<TState, TActions>` creates a data map
 from state; “projected” here is the established identifier, not the prose name

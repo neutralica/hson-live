@@ -1,4 +1,5 @@
 import type { JsonValue } from "../../core/types.js";
+import { HsonData } from "../data/hson-data.js";
 import type { LiveMapAnyOp, LiveMapAuthority, LiveMapCommit } from "../../types/livemap.types.js";
 import type {
   LocusActionAuthorizer, LocusActionContext, LocusActionDelivery, LocusActionOrigin, LocusActionPayloads,
@@ -18,7 +19,7 @@ type LocusActionHandler<TMap extends LiveMapAuthority, TActions extends LocusAct
   NonNullable<Partial<LocusActions<TActions, TMap>>[keyof TActions & string]>;
 
 export type LocusValidatedAction<TMap extends LiveMapAuthority, TActions extends LocusActionPayloads> =
-  | Readonly<{ ok: true; handler: LocusActionHandler<TMap, TActions>; payload: JsonValue | undefined }>
+  | Readonly<{ ok: true; handler: LocusActionHandler<TMap, TActions>; payload: HsonData | undefined }>
   | Readonly<{ ok: false; code: "LOCUS_ACTION_UNKNOWN" | "LOCUS_ACTION_UNAVAILABLE" | "LOCUS_ACTION_INVALID"; message: string }>;
 
 /** Internal authority capture installed only by the owning solo Locus runtime. */
@@ -95,8 +96,13 @@ export function resolve_locus_action_for_execution<TMap extends LiveMapAuthority
   trace?: LiveTraceContext,
   parentSpanId?: string,
 ): LocusValidatedAction<TMap, TActions> {
+  const admittedPayload = message.payload === undefined ? undefined : HsonData.from(message.payload);
   const lookupSpan = trace?.beginSpan("locus", "action.lookup", parentSpanId, () => ({ action: message.name }));
-  const documentAction = resolve_locus_document_action(authority.map, message.name, message.payload);
+  const documentAction = resolve_locus_document_action(
+    authority.map,
+    message.name,
+    admittedPayload?.materialize(),
+  );
   if (documentAction.kind === "unavailable") {
     lookupSpan?.failure(() => ({ action: message.name, errorCode: "LOCUS_ACTION_UNAVAILABLE" }));
     return { ok: false, code: "LOCUS_ACTION_UNAVAILABLE", message: documentAction.message };
@@ -124,13 +130,13 @@ export function resolve_locus_action_for_execution<TMap extends LiveMapAuthority
       });
     };
     validationSpan?.success(() => ({ action: message.name, schemaConfigured: true }));
-    return { ok: true, handler, payload: documentAction.payload };
+    return { ok: true, handler, payload: HsonData.from(documentAction.payload) };
   }
   if (!configuredHandler) throw new Error("Locus action resolution lost its configured handler.");
   const actionSchema = authority.schema?.actions?.[message.name];
   let payloadResult;
   try {
-    payloadResult = decode_locus_action_payload(actionSchema?.payload, message.payload);
+    payloadResult = decode_locus_action_payload(actionSchema?.payload, admittedPayload);
   } catch (cause) {
     validationSpan?.failure(() => ({ action: message.name, errorCode: safeErrorCode(cause, "LOCUS_SCHEMA_DECODER_FAILED") }));
     throw cause;
@@ -146,7 +152,7 @@ export function resolve_locus_action_for_execution<TMap extends LiveMapAuthority
 function authorizeAction<TMap extends LiveMapAuthority, TActions extends LocusActionPayloads>(
   authority: LocusSoloActionAuthorityInternals<TMap, TActions>,
   message: LocusClientActionMessage<TActions>,
-  payload: JsonValue | undefined,
+  payload: HsonData | undefined,
   origin: Extract<LocusActionOrigin, { kind: "session" }>,
   trace?: LiveTraceContext,
   parentSpanId?: string,
@@ -217,7 +223,7 @@ export async function execute_locus_action_handler<
     "readonlyMap" | "mutations" | "currentSeq" | "nextSeq" | "headRev" | "traceStateBoundary">;
   message: LocusClientActionMessage<TActions>;
   handler: LocusActionHandler<TMap, TActions>;
-  payload: JsonValue | undefined;
+  payload: HsonData | undefined;
   origin: LocusActionOrigin;
   emitEvent: LocusActionContext<TMap>["emit_event"];
   trace?: LiveTraceContext;
@@ -265,22 +271,27 @@ export async function execute_locus_action_handler<
     const result = await input.handler(context, input.payload as never, input.message);
     const tracked = finish();
     if (tracked !== undefined) await tracked;
-    if (result !== undefined && !is_locus_json_value(result)) {
-      handlerSpan?.failure(() => ({ action: input.message.name, errorCode: "LOCUS_ACTION_OUTCOME_NORMALIZATION_FAILED" }));
-      input.authority.traceStateBoundary(input.trace, input.parentSpanId, previousRev);
-      return Object.freeze({
-        state: "failed", seq: input.authority.currentSeq(), completionRev: input.authority.headRev(),
-        error: Object.freeze({
-          message: "Locus action result could not be normalized for transport.",
-          code: "LOCUS_ACTION_OUTCOME_NORMALIZATION_FAILED",
-        }),
-      });
+    let admittedResult: HsonData | undefined;
+    if (result !== undefined) {
+      try {
+        admittedResult = HsonData.from(result);
+      } catch {
+        handlerSpan?.failure(() => ({ action: input.message.name, errorCode: "LOCUS_ACTION_OUTCOME_NORMALIZATION_FAILED" }));
+        input.authority.traceStateBoundary(input.trace, input.parentSpanId, previousRev);
+        return Object.freeze({
+          state: "failed", seq: input.authority.currentSeq(), completionRev: input.authority.headRev(),
+          error: Object.freeze({
+            message: "Locus action result could not be admitted as canonical Hson data.",
+            code: "LOCUS_ACTION_OUTCOME_NORMALIZATION_FAILED",
+          }),
+        });
+      }
     }
     handlerSpan?.success(() => ({ action: input.message.name, resultPresent: result !== undefined }));
     input.authority.traceStateBoundary(input.trace, input.parentSpanId, previousRev);
     return Object.freeze({
       state: "succeeded", seq: input.authority.nextSeq(), completionRev: input.authority.headRev(),
-      ...(result !== undefined ? { result } : {}),
+      ...(admittedResult !== undefined ? { result: admittedResult } : {}),
     });
   } catch (caught) {
     let cause = caught;

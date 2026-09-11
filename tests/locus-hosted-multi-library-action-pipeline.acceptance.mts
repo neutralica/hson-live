@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   Hson,
+  HsonData,
   hsonEcho,
   hsonLiveMap,
   hsonLocus,
@@ -212,15 +213,14 @@ await check("aggregate retry request payloads detach nested records and arrays f
     rows: [[1, 2], { label: "original" }],
   };
   const initial = echo.action("stable", payload);
-  const retained = initial.request.payload as typeof payload;
+  const retained = initial.request.payload;
+  assert.ok(retained instanceof HsonData);
+  const retainedView = retained.materialize() as typeof payload;
   assert.notEqual(retained, payload);
-  assert.notEqual(retained.nested, payload.nested);
-  assert.notEqual(retained.rows, payload.rows);
-  assert.notEqual(retained.rows[0], payload.rows[0]);
+  assert.notEqual(retainedView.nested, payload.nested);
+  assert.notEqual(retainedView.rows, payload.rows);
+  assert.notEqual(retainedView.rows[0], payload.rows[0]);
   assert.equal(Object.isFrozen(retained), true);
-  assert.equal(Object.isFrozen(retained.nested), true);
-  assert.equal(Object.isFrozen(retained.rows), true);
-  assert.equal(Object.isFrozen(retained.rows[0]), true);
   assert.equal((await initial).type, "ack");
 
   const unchangedRetry = await echo.retryAction(initial.request);
@@ -234,14 +234,13 @@ await check("aggregate retry request payloads detach nested records and arrays f
   if (!Array.isArray(row)) row.label = "caller-mutated";
 
   const retry = echo.retryAction(initial.request);
-  const retryPayload = retry.request.payload as typeof payload;
-  assert.deepEqual(retryPayload, {
+  const retryPayload = retry.request.payload;
+  assert.ok(retryPayload instanceof HsonData);
+  assert.deepEqual(retryPayload.materialize(), {
     nested: { value: 1 },
     rows: [[1, 2], { label: "original" }],
   });
-  assert.notEqual(retryPayload, retained);
-  assert.equal(Object.isFrozen(retryPayload.nested), true);
-  assert.equal(Object.isFrozen(retryPayload.rows), true);
+  assert.equal(retryPayload, retained);
   const result = await retry;
   assert.equal(result.type, "ack");
   if (result.type === "ack") assert.equal(result.delivery, "cached");
@@ -257,7 +256,7 @@ await check("named document denial is terminal without mutation and the next que
     map: authority,
     authorizeAction(context) {
       decisions.push(context);
-      const payload = context.payload as { name?: string } | undefined;
+      const payload = context.payload?.materialize() as { name?: string } | undefined;
       return payload?.name !== "blocked";
     },
   });
@@ -287,10 +286,10 @@ await check("named document denial is terminal without mutation and the next que
   assert.equal(authority.rev, 1);
   assert.equal(echoMap.rev, 1);
   assert.equal(echoMap.lib("page").document.attrs.get({ kind: "path", path: [0] }, "title"), "accepted");
-  const evidence = decisions[0] as { session: { resumable: boolean }; logicalMapId: string; incarnationId: string; connection: { principalId?: string }; payload: { library?: string } };
+  const evidence = decisions[0] as { session: { resumable: boolean }; logicalMapId: string; incarnationId: string; connection: { principalId?: string }; payload: HsonData };
   assert.equal(evidence.logicalMapId, locus.logicalMapId);
   assert.equal(evidence.connection.principalId, "principal-a");
-  assert.equal(evidence.payload.library, "page");
+  assert.equal((evidence.payload.materialize() as { library?: string }).library, "page");
   echo.dispose();
   locus.dispose();
 });
@@ -301,14 +300,15 @@ await check("application payload decoding precedes authorization and mutation", 
   const locus = hsonLocus.create({
     map: authority,
     actions: {
-      validated: async (context, payload: { value: number }) => {
-        await context.mutate((draft) => draft.lib("state").at(["value"]).set(payload.value));
+      validated: async (context, payload) => {
+        const value = payload?.materialize() as { value: number };
+        await context.mutate((draft) => draft.lib("state").at(["value"]).set(value.value));
       },
     },
     schema: {
       actions: {
         validated: {
-          payload: (value: unknown): value is { value: number } => typeof value === "object" && value !== null && "value" in value && typeof value.value === "number",
+          payload: (value: unknown): value is HsonData => value instanceof HsonData && typeof (value.materialize() as { value?: unknown }).value === "number",
         },
       },
     },
@@ -339,8 +339,9 @@ await check("resumable session reattachment retains one complete aggregate autho
     sessionId: () => `aggregate-session-${++sessionNumber}`,
     sessions: { graceMs: 10_000, credential: () => "aggregate-session-credential-0001" },
     actions: {
-      "state.set": async (context, payload: { value: number }) => {
-        await context.mutate((draft) => draft.lib("state").at(["value"]).set(payload.value));
+      "state.set": async (context, payload) => {
+        const value = payload?.materialize() as { value: number };
+        await context.mutate((draft) => draft.lib("state").at(["value"]).set(value.value));
       },
     },
   });
@@ -384,9 +385,10 @@ await check("retry, dedupe conflict, and action status match the one-map request
     map: authority,
     sessions: { graceMs: 10_000, credential: () => "aggregate-dedupe-credential-01" },
     actions: {
-      "state.set": async (context, payload: { value: number }) => {
+      "state.set": async (context, payload) => {
+        const value = payload?.materialize() as { value: number };
         executions += 1;
-        await context.mutate((draft) => draft.lib("state").at(["value"]).set(payload.value));
+        await context.mutate((draft) => draft.lib("state").at(["value"]).set(value.value));
       },
     },
   });

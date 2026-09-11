@@ -62,6 +62,11 @@ import {
   is_locus_encoded_graph_content,
 } from "./locus.graph-content-codec.js";
 import { validate_document_path } from "../livemap/livemap.document.path.js";
+import {
+  decode_hson_data_internal,
+  encode_hson_data_internal,
+  HsonData,
+} from "../data/hson-data.js";
 export type LocusDecodedDocumentCommit = Omit<LiveMapGraphCommit, "ops"> & Readonly<{
   ops: readonly LiveMapGraphOp[];
 }>;
@@ -543,9 +548,15 @@ function decode_action_message<TActions extends LocusActionPayloads>(value: Read
   const name = optional_string(value.name);
   if (!name) return fail("Locus action message requires string name.");
 
-  const payload = value.payload;
-  if (payload !== undefined && !is_locus_json_value(payload)) {
-    return fail("Locus action payload must be JSON-serializable.");
+  const payloadPresent = Object.hasOwn(value, "payloadData");
+  let payload;
+  if (payloadPresent) {
+    if (typeof value.payloadData !== "string") return fail("Locus action exact data must be a string.");
+    try {
+      payload = decode_hson_data_internal(value.payloadData);
+    } catch (cause) {
+      return fail("Locus action exact data is malformed or noncanonical.", { cause });
+    }
   }
 
   const requestId = optional_string(value.requestId);
@@ -563,6 +574,16 @@ function decode_action_message<TActions extends LocusActionPayloads>(value: Read
     }
   }
 
+  const expectedKeys = [
+    "type", "id", "name",
+    ...(payloadPresent ? ["payloadData"] : []),
+    ...(requestId !== undefined ? ["requestId"] : []),
+    ...(attemptId !== undefined ? ["attemptId"] : []),
+    ...(clientId !== undefined ? ["clientId"] : []),
+    ...(value.retry === true ? ["retry"] : []),
+  ];
+  if (!has_exact_keys(value, expectedKeys)) return fail("Locus action message has unknown or legacy fields.");
+
   const message = {
     type: "action",
     id,
@@ -575,6 +596,16 @@ function decode_action_message<TActions extends LocusActionPayloads>(value: Read
   } as LocusClientActionMessage<TActions>;
 
   return ok(message);
+}
+
+/** Encode the hard-cut exact-data client protocol. */
+export function encode_locus_client_message(message: LocusClientMessage): string {
+  if (message.type !== "action") return JSON.stringify(message);
+  const { payload, ...rest } = message;
+  return JSON.stringify({
+    ...rest,
+    ...(payload === undefined ? {} : { payloadData: encode_hson_data_internal(HsonData.from(payload)) }),
+  });
 }
 
 function decode_action_status_message(value: Readonly<Record<string, unknown>>): LocusResult<LocusClientActionStatusMessage> {
@@ -662,6 +693,23 @@ export function encode_locus_message(message: LocusServerMessage): string {
     if (!is_locus_json_value(message.payload)) {
       throw new Error("Locus event payload must be JSON-serializable.");
     }
+  }
+  if (message.type === "ack") {
+    const { result, ...rest } = message;
+    return JSON.stringify({
+      ...rest,
+      ...(result === undefined ? {} : { resultData: encode_hson_data_internal(result) }),
+    });
+  }
+  if (message.type === "action-status" && message.outcome?.state === "succeeded") {
+    const { result, ...outcome } = message.outcome;
+    return JSON.stringify({
+      ...message,
+      outcome: {
+        ...outcome,
+        ...(result === undefined ? {} : { resultData: encode_hson_data_internal(result) }),
+      },
+    });
   }
   return JSON.stringify(message);
 }
@@ -852,15 +900,44 @@ function decode_action_status_server_message(value: Readonly<Record<string, unkn
   const completionRev = required_rev(outcome.completionRev);
   if (seq === undefined || completionRev === undefined || outcome.state !== state) return fail("Malformed Locus terminal action outcome.");
   if (state === "succeeded") {
-    const allowed = Object.prototype.hasOwnProperty.call(outcome, "result") ? ["state", "seq", "completionRev", "result"] : ["state", "seq", "completionRev"];
-    if (!has_exact_keys(outcome, allowed) || (Object.prototype.hasOwnProperty.call(outcome, "result") && !is_locus_json_value(outcome.result))) return fail("Malformed Locus succeeded action outcome.");
-    return ok({ type: "action-status", id, requestId, state, outcome: { state, seq, completionRev, ...(Object.prototype.hasOwnProperty.call(outcome, "result") ? { result: outcome.result as JsonValue } : {}) } });
+    const resultPresent = Object.hasOwn(outcome, "resultData");
+    const allowed = resultPresent ? ["state", "seq", "completionRev", "resultData"] : ["state", "seq", "completionRev"];
+    if (!has_exact_keys(outcome, allowed)) return fail("Malformed Locus succeeded action outcome.");
+    try {
+      const result = resultPresent
+        ? decode_hson_data_internal(outcome.resultData as string)
+        : undefined;
+      return ok({ type: "action-status", id, requestId, state, outcome: { state, seq, completionRev, ...(result === undefined ? {} : { result }) } });
+    } catch (cause) {
+      return fail("Malformed Locus succeeded action result data.", { cause });
+    }
   }
   if (!has_exact_keys(outcome, ["state", "seq", "completionRev", "error"]) || !is_record(outcome.error)) return fail("Malformed Locus failed action outcome.");
   const message = required_string(outcome.error.message);
   const code = optional_string(outcome.error.code);
   if (!message) return fail("Malformed Locus failed action error.");
   return ok({ type: "action-status", id, requestId, state, outcome: { state, seq, completionRev, error: { message, ...(code ? { code } : {}) } } });
+}
+
+function decode_action_ack_server_message(value: Readonly<Record<string, unknown>>): LocusResult<LocusServerMessage> {
+  const id = required_string(value.id);
+  const seq = required_rev(value.seq);
+  if (!id || seq === undefined || value.ok !== true) return fail("Malformed Locus action acknowledgement.");
+  const requestId = optional_string(value.requestId);
+  const attemptId = optional_string(value.attemptId);
+  const completionRev = value.completionRev === undefined ? undefined : required_rev(value.completionRev);
+  if (value.completionRev !== undefined && completionRev === undefined) return fail("Malformed Locus action acknowledgement revision.");
+  const delivery = value.delivery;
+  if (delivery !== undefined && delivery !== "executed" && delivery !== "joined" && delivery !== "cached" && delivery !== "rejected") return fail("Malformed Locus action acknowledgement delivery.");
+  const resultPresent = Object.hasOwn(value, "resultData");
+  const keys = ["type", "id", "ok", "seq", ...(resultPresent ? ["resultData"] : []), ...(requestId === undefined ? [] : ["requestId"]), ...(attemptId === undefined ? [] : ["attemptId"]), ...(completionRev === undefined ? [] : ["completionRev"]), ...(delivery === undefined ? [] : ["delivery"])];
+  if (!has_exact_keys(value, keys)) return fail("Malformed Locus action acknowledgement fields.");
+  try {
+    const result = resultPresent ? decode_hson_data_internal(value.resultData as string) : undefined;
+    return ok({ type: "ack", id, ok: true, seq, ...(result === undefined ? {} : { result }), ...(requestId === undefined ? {} : { requestId }), ...(attemptId === undefined ? {} : { attemptId }), ...(completionRev === undefined ? {} : { completionRev }), ...(delivery === undefined ? {} : { delivery }) });
+  } catch (cause) {
+    return fail("Malformed Locus action acknowledgement result data.", { cause });
+  }
 }
 
 /** Decode the current public Locus server-message contract. */
@@ -876,9 +953,9 @@ export function decode_locus_server_message(message: string): LocusResult<LocusS
       return decode_session_server_message(value);
     }
     if (value.type === "action-status") return decode_action_status_server_message(value);
+    if (value.type === "ack") return decode_action_ack_server_message(value);
     if (
       value.type === "patch"
-      || value.type === "ack"
       || value.type === "error"
     ) {
       return ok(value as LocusServerMessage);

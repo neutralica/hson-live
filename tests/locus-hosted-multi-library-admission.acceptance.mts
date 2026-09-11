@@ -32,7 +32,7 @@ await check("bound aggregate admission preserves atomic completion, authorizatio
       assert.equal(server.sessions.debug().attachedSessionCount > 0, true); return true;
     },
     actions: { cross: async (context, payload) => {
-      executions += 1; const value = (payload as { value: number }).value;
+      executions += 1; const value = (payload?.materialize() as { value: number }).value;
       await context.mutate((draft) => {
         const state = draft.lib("state"), other = draft.lib("other");
         if (!("at" in state) || !("at" in other)) throw new Error("Expected data libraries.");
@@ -56,8 +56,9 @@ await check("aggregate whole-action FIFO remains ahead of the common admission s
   const map = make_map(), gate = deferred<void>(), entered: number[] = [];
   const server = create_locus_hosted_aggregate_socket_internal<TestActions>({ map, actions: {
     held: async (context, payload) => {
-      entered.push(payload as number); if (payload === 1) await gate.promise;
-      await context.mutate((draft) => { const state = draft.lib("state"); if (!("at" in state)) throw new Error("Expected data library."); state.at(["value"]).set(payload as number); });
+      const value = payload?.scalar(); if (typeof value !== "number") throw new Error("Expected numeric action data.");
+      entered.push(value); if (value === 1) await gate.promise;
+      await context.mutate((draft) => { const state = draft.lib("state"); if (!("at" in state)) throw new Error("Expected data library."); state.at(["value"]).set(value); });
       return payload;
     },
   } });
@@ -85,7 +86,7 @@ await check("the internal admission capability remains bound after the normal ag
     actions: { held: (_context, payload) => payload },
   });
   const result = await admit_locus_remote_action_internal<TestActions>(locus, { message: message("facade", "held", 4) });
-  assert.equal(result.type, "ack"); if (result.type === "ack") assert.equal(result.result, 4);
+  assert.equal(result.type, "ack"); if (result.type === "ack") assert.equal(result.result?.scalar(), 4);
   assert.equal(locus.sessions.debug().sessions.length, 0); assert.equal(locus.activity.snapshot().retainedSessionCount, 0); locus.dispose();
 });
 

@@ -14,8 +14,7 @@ import type {
   LocusSocketLike,
 } from "../../types/locus.types.js";
 import type { EchoMapManagementLease } from "../../internal/echo-map-capability.js";
-import { decode_locus_server_message } from "../locus/locus.protocol.js";
-import { is_locus_json_value } from "../locus/locus.protocol.js";
+import { decode_locus_server_message, encode_locus_client_message } from "../locus/locus.protocol.js";
 import { make_livemap_hosted_mirror_from_snapshot_internal } from "../livemap/livemap.libraries.js";
 import {
   HOSTED_MAX_SNAPSHOT_BYTES,
@@ -150,7 +149,6 @@ export function create_multi_library_echo_socket_client_internal<
       sessionRequestId: (kind) => next(`session-${kind === "reattach" ? "attach" : kind}`),
     },
     actionMessageId: "attempt",
-    validateActionPayload: is_locus_json_value,
     operationLossError: (reason) => new Error(reason === "ended"
       ? "Hosted aggregate Echo session ended before the pending operation completed."
       : reason === "fenced"
@@ -194,7 +192,7 @@ export function create_multi_library_echo_socket_client_internal<
       if (status !== "closed") status = "idle";
     }));
     compositionDisposers.push(options.connection.setMessageEncoder((message) => {
-      const raw = JSON.stringify(message);
+      const raw = encode_locus_client_message(message);
       if (utf8_bytes(raw) > DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES) {
         throw new Error("Hosted aggregate Echo message exceeds the live wire byte limit.");
       }

@@ -2,6 +2,7 @@
 
 import type { CanonicalPublicAttrs, CanonicalPublicAttrValue, HsonNode, JsonValue, NodeContent, Primitive } from "../core/types.js";
 import type { HsonSchema, HsonSchemaMode, HsonSchemaMutationCandidate } from "../api/transform/transform.types.js";
+import type { HsonData } from "../api/data/hson-data.js";
 import type {
   DocumentAttrsEvidence,
   DocumentAttrValueEvidence,
@@ -307,6 +308,8 @@ export type LiveMapCore<
   /** Return a detached structural clone of the complete canonical root graph. */
   root: () => HsonNode;
   snap: LiveMapCoreSnap<TValue>;
+  /** Read exact canonical data without ordinary-JavaScript materialization. */
+  data: (path?: LivePath) => HsonData | undefined;
   schema: LiveMapCoreSchemaApi<TValue>;
   at: <const TPath extends LivePath>(
     path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
@@ -1407,6 +1410,8 @@ export type LiveMapLibraryPathHandle<
   readonly rev: number;
   path: () => LivePath;
   snap: () => TValue;
+  /** Read this path as exact canonical data. */
+  data: () => HsonData | undefined;
   at: <const TPath extends LivePath>(
     path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
   ) => LiveMapLibraryPathHandle<LiveMapPathValue<TValue, TPath>, TLibrary>;
@@ -1954,6 +1959,8 @@ export type LiveMapPathHandle<TValue = JsonValue | undefined> = Readonly<{
   readonly rev: number;
   path: () => LivePath;
   snap: () => TValue;
+  /** Read this path as exact canonical data. */
+  data: () => HsonData | undefined;
   /** Create a child handle relative to this handle's data path. */
   at: <const TPath extends LivePath>(
     path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),

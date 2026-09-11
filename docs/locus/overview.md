@@ -229,6 +229,7 @@ action name
 In action handlers:
 
 * `context.map` is read-only;
+* configured payloads and present successful results are immutable `HsonData`;
 * mutations use context.mutate(...);
 * awaited and unawaited action mutations are tracked;
 * acknowledgment waits until all tracked mutations settle;
@@ -237,6 +238,9 @@ In action handlers:
 One action may produce multiple accepted commits when it intentionally awaits several separate mutations. A single mutation callback produces at most one changed commit; several related writes should use the existing LiveMap batch boundary.
 
 Authorization and action deduplication occur before authoritative mutation.
+Authorization sees the same exact payload instance that execution receives.
+Fingerprint equality is canonical data equality: signed zero and ordered
+object-member sequences are semantic, while inherited properties are not data.
 
 ⸻
 

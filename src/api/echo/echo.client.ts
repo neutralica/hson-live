@@ -8,6 +8,11 @@ import type {
   LocusSocketLike,
 } from "../../types/locus.types.js";
 import {
+  decode_hson_data_internal,
+  encode_hson_data_internal,
+  HsonData,
+} from "../data/hson-data.js";
+import {
   create_echo_endpoint_internal,
   type EchoEndpoint,
   type EchoEndpointIdFactories,
@@ -32,6 +37,15 @@ function hasExactKeys(value: Readonly<Record<string, unknown>>, keys: readonly s
   return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
 }
 
+function encodeEndpointMessage(message: LocusClientMessage): string {
+  if (message.type !== "action") return JSON.stringify(message);
+  const { payload, ...rest } = message;
+  return JSON.stringify({
+    ...rest,
+    ...(payload === undefined ? {} : { payloadData: encode_hson_data_internal(HsonData.from(payload)) }),
+  });
+}
+
 /** @internal Endpoint-only wire admission without importing replica protocol machinery. */
 function decodeEndpointMessage(raw: string, format?: string): EchoEndpointServerMessage | undefined {
   let value: unknown;
@@ -43,12 +57,80 @@ function decodeEndpointMessage(raw: string, format?: string): EchoEndpointServer
   if (!isRecord(value) || !isNonemptyString(value.type)) return undefined;
   const exactKeys = (keys: readonly string[]): boolean => hasExactKeys(value, format === undefined ? keys : [...keys, "format"])
     && (format === undefined || value.format === format);
-  if (value.type === "ack" || value.type === "error") {
-    return value as EchoEndpointServerMessage;
+  if (value.type === "ack") {
+    const resultPresent = Object.hasOwn(value, "resultData");
+    const requestIdPresent = Object.hasOwn(value, "requestId");
+    const attemptIdPresent = Object.hasOwn(value, "attemptId");
+    const completionRevPresent = Object.hasOwn(value, "completionRev");
+    const deliveryPresent = Object.hasOwn(value, "delivery");
+    if (!exactKeys([
+      "type", "id", "ok", "seq",
+      ...(resultPresent ? ["resultData"] : []),
+      ...(requestIdPresent ? ["requestId"] : []),
+      ...(attemptIdPresent ? ["attemptId"] : []),
+      ...(completionRevPresent ? ["completionRev"] : []),
+      ...(deliveryPresent ? ["delivery"] : []),
+    ]) || !isNonemptyString(value.id) || value.ok !== true || !isRevision(value.seq)
+      || (requestIdPresent && !isNonemptyString(value.requestId))
+      || (attemptIdPresent && !isNonemptyString(value.attemptId))
+      || (completionRevPresent && !isRevision(value.completionRev))
+      || (deliveryPresent && value.delivery !== "executed" && value.delivery !== "joined" && value.delivery !== "cached" && value.delivery !== "rejected")
+      || (resultPresent && typeof value.resultData !== "string")) return undefined;
+    try {
+      const result = resultPresent ? decode_hson_data_internal(value.resultData as string) : undefined;
+      return Object.freeze({
+        type: "ack",
+        id: value.id,
+        ok: true,
+        seq: value.seq,
+        ...(requestIdPresent ? { requestId: value.requestId } : {}),
+        ...(attemptIdPresent ? { attemptId: value.attemptId } : {}),
+        ...(completionRevPresent ? { completionRev: value.completionRev } : {}),
+        ...(deliveryPresent ? { delivery: value.delivery } : {}),
+        ...(result === undefined ? {} : { result }),
+      }) as EchoEndpointServerMessage;
+    } catch {
+      return undefined;
+    }
   }
   if (value.type === "action-status") {
-    if (!isNonemptyString(value.id) || !isNonemptyString(value.requestId)) return undefined;
-    if (value.state !== "pending" && value.state !== "succeeded" && value.state !== "failed" && value.state !== "unknown" && value.state !== "expired") return undefined;
+    if (!isNonemptyString(value.id) || !isNonemptyString(value.requestId)
+      || (value.state !== "pending" && value.state !== "succeeded" && value.state !== "failed" && value.state !== "unknown" && value.state !== "expired")) return undefined;
+    if (value.state === "pending" || value.state === "unknown" || value.state === "expired") {
+      return exactKeys(["type", "id", "requestId", "state"])
+        ? value as EchoEndpointServerMessage
+        : undefined;
+    }
+    if (!exactKeys(["type", "id", "requestId", "state", "outcome"]) || !isRecord(value.outcome)
+      || value.outcome.state !== value.state || !isRevision(value.outcome.seq) || !isRevision(value.outcome.completionRev)) return undefined;
+    if (value.state === "succeeded") {
+      const resultPresent = Object.hasOwn(value.outcome, "resultData");
+      if (!hasExactKeys(value.outcome, ["state", "seq", "completionRev", ...(resultPresent ? ["resultData"] : [])])
+        || (resultPresent && typeof value.outcome.resultData !== "string")) return undefined;
+      try {
+        const result = resultPresent ? decode_hson_data_internal(value.outcome.resultData as string) : undefined;
+        return Object.freeze({
+          type: "action-status",
+          id: value.id,
+          requestId: value.requestId,
+          state: value.state,
+          outcome: Object.freeze({
+            state: value.state,
+            seq: value.outcome.seq,
+            completionRev: value.outcome.completionRev,
+            ...(result === undefined ? {} : { result }),
+          }),
+        }) as EchoEndpointServerMessage;
+      } catch {
+        return undefined;
+      }
+    }
+    if (!hasExactKeys(value.outcome, ["state", "seq", "completionRev", "error"])
+      || !isRecord(value.outcome.error) || !isNonemptyString(value.outcome.error.message)
+      || (Object.hasOwn(value.outcome.error, "code") && typeof value.outcome.error.code !== "string")) return undefined;
+    return value as EchoEndpointServerMessage;
+  }
+  if (value.type === "error") {
     return value as EchoEndpointServerMessage;
   }
   if (value.type === "session-fenced") {
@@ -101,7 +183,6 @@ export type EchoEndpointConnectionOptions<TActions extends LocusActionPayloads =
   session?: EchoSessionOptions;
   ids?: EchoEndpointIdFactories;
   actionMessageId?: "request" | "attempt";
-  validateActionPayload?: (payload: unknown) => boolean;
   operationLossError?: (reason: "disconnect" | "fenced" | "ended") => Error;
   endpointMessageFormat?: string;
 }>;
@@ -126,7 +207,7 @@ export function create_echo_endpoint_connection_internal<
   const connectionListeners = new Set<(connected: boolean) => void>();
   const readyListeners = new Set<() => void>();
   const attachmentLostListeners = new Set<(reason: "disconnect" | "fenced" | "ended", error: Error) => void>();
-  let encodeMessage = (message: LocusClientMessage<TActions>): string => JSON.stringify(message);
+  let encodeMessage = (message: LocusClientMessage<TActions>): string => encodeEndpointMessage(message);
   const endpoint = create_echo_endpoint_internal<TActions>({
     transport: { send: (message) => options.socket.send(encodeMessage(message)) },
     ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
@@ -134,7 +215,6 @@ export function create_echo_endpoint_connection_internal<
     sessionRequired: true,
     ...(options.ids === undefined ? {} : { ids: options.ids }),
     ...(options.actionMessageId === undefined ? {} : { actionMessageId: options.actionMessageId }),
-    ...(options.validateActionPayload === undefined ? {} : { validateActionPayload: options.validateActionPayload }),
     ...(options.operationLossError === undefined ? {} : { operationLossError: options.operationLossError }),
     onReadyChange: () => { for (const listener of [...readyListeners]) listener(); },
     onAttachmentLost: (reason, error) => {

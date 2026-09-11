@@ -99,7 +99,7 @@ function host_fixture(extra = {}) {
     history: extra.history,
     recovery: extra.recovery,
     actions: {
-      async set(ctx, value) { await ctx.mutate((draft) => draft.set(["value"], value)); },
+      async set(ctx, value) { await ctx.mutate((draft) => draft.set(["value"], value.scalar())); },
       async increment(ctx) { await ctx.mutate((draft) => draft.set(["value"], ctx.map.snap().value + 1)); },
     },
     sessions: {

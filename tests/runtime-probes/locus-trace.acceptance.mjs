@@ -1,6 +1,6 @@
 import { create_test_event_emitter } from "../test-events.mjs";
 import assert from "node:assert/strict";
-import { hson } from "../../src/index.ts";
+import { HsonData, hson } from "../../src/index.ts";
 import {
   create_live_trace_collector,
   create_live_trace_console_sink,
@@ -93,18 +93,20 @@ async function fixture(trace) {
       actions: {
         update: {
           payload(value) {
-            return typeof value === "object"
-              && value !== null
-              && !Array.isArray(value)
-              && typeof value.value === "number"
-              && typeof value.secret === "string";
+            if (!(value instanceof HsonData)) return false;
+            const ordinary = value.materialize();
+            return typeof ordinary === "object"
+              && ordinary !== null
+              && !Array.isArray(ordinary)
+              && typeof ordinary.value === "number"
+              && typeof ordinary.secret === "string";
           },
         },
       },
     },
     actions: {
       async update(ctx, payload) {
-        await ctx.mutate((draft) => draft.set(["value"], payload.value));
+        await ctx.mutate((draft) => draft.set(["value"], payload.materialize().value));
         return { accepted: true };
       },
       async unchanged(ctx) {

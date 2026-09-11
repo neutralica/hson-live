@@ -25,6 +25,9 @@ import type {
   LiveMapMultiLibraryCommit,
   LivePath,
 } from "../../types/livemap.types.js";
+import { hson_data_from_value } from "../data/hson-data.js";
+import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
+import { ordered_projected_value_at } from "../../core/ordered-projected-value-mutation.js";
 import { hsonTransform } from "../transform/transform.facade.js";
 import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { clone_live_path } from "./livemap.path.js";
@@ -234,6 +237,13 @@ function make_data_library(
       get rev() { return aggregate.inspect().revision; },
       path: () => clone_live_path(stablePath),
       snap: () => snap(stablePath) as TValue,
+      data: () => {
+        const value = ordered_projected_value_at(
+          projected_value_from_hson_node(aggregate.root(library.identity)),
+          stablePath,
+        );
+        return value === undefined ? undefined : hson_data_from_value(value);
+      },
       at: ((child: LivePath) => handle([...stablePath, ...must_live_path(child)])) as unknown as LiveMapLibraryPathHandle<TValue>["at"],
       set: (value) => public_data_commit(aggregate.commit([{
         target: aggregate.target(library.identity, stablePath),

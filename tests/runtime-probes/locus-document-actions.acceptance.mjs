@@ -485,7 +485,7 @@ await check("bulk authorization receives the complete decoded target, names and 
   const host = hson.locus.create({
     map: element(`<main/>`),
     authorizeAction(context) {
-      observed.push({ action: context.action, payload: context.payload });
+      observed.push({ action: context.action, payload: context.payload.materialize() });
       return false;
     },
   });

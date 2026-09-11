@@ -1,4 +1,5 @@
 import type { JsonValue } from "../../core/types.js";
+import { HsonData, encode_hson_data_internal } from "../data/hson-data.js";
 import type {
   LiveMapDocumentCommitTarget,
   LiveMapDocumentRequestTarget,
@@ -88,7 +89,7 @@ type HostedRequest =
     type: "action";
     id: string;
     name: string;
-    payload?: JsonValue;
+    payload?: HsonData | JsonValue;
     requestId?: string;
     attemptId?: string;
     clientId?: string;
@@ -599,16 +600,25 @@ export function create_locus_hosted_aggregate_socket_internal<
     connection: HostedConnection,
     response: LocusClientActionResult,
   ): void {
+    if (response.type === "ack") {
+      const { result, ...rest } = response;
+      send(connection, Object.freeze({
+        ...rest,
+        format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
+        ...(result === undefined ? {} : { resultData: encode_hson_data_internal(result) }),
+      }));
+      return;
+    }
     send(connection, Object.freeze({ ...response, format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT }));
   }
 
   async function execute_action(
     request: Extract<HostedRequest, { type: "action" }>,
-    payload: JsonValue | undefined,
+    payload: HsonData | undefined,
     origin: LocusActionOrigin = Object.freeze({ kind: "direct" }),
   ): Promise<LocusActionTerminalOutcome> {
     try {
-      let result: JsonValue | void;
+      let result: unknown | void;
       if (is_document_action(request.name)) {
         const validated = validate_action_request(Object.freeze({ ...request, ...(payload === undefined ? {} : { payload }) }));
         if (!validated.ok || validated.executeDocument === undefined) throw new Error(validated.ok ? "Hosted document action resolution was lost." : validated.message);
@@ -618,11 +628,12 @@ export function create_locus_hosted_aggregate_socket_internal<
         result = await locus.dispatch_action(request.name, payload, request, origin);
       }
       seq += 1;
+      const admittedResult = result === undefined ? undefined : HsonData.from(result);
       return Object.freeze({
         state: "succeeded",
         seq,
         completionRev: locus.rev,
-        ...(result === undefined ? {} : { result }),
+        ...(admittedResult === undefined ? {} : { result: admittedResult }),
       });
     } catch (cause) {
       return Object.freeze({
@@ -729,10 +740,11 @@ export function create_locus_hosted_aggregate_socket_internal<
 
   function validate_action_request(
     request: Extract<HostedRequest, { type: "action" }>,
-  ): Readonly<{ ok: true; payload: JsonValue | undefined; executeDocument?: (draft: LocusHostedAggregateDraft) => void }> | Readonly<{ ok: false; code: string; message: string }> {
+  ): Readonly<{ ok: true; payload: HsonData | undefined; executeDocument?: (draft: LocusHostedAggregateDraft) => void }> | Readonly<{ ok: false; code: string; message: string }> {
     try {
+      const admittedPayload = request.payload === undefined ? undefined : HsonData.from(request.payload);
       if (is_document_action(request.name)) {
-        const record = exact_record(request.payload, `Hosted document action ${request.name}`);
+        const record = exact_record(admittedPayload?.materialize(), `Hosted document action ${request.name}`);
         const libraryName = required_string(record.library);
         const identity = libraryName === undefined ? undefined : identitiesByName.get(libraryName);
         if (libraryName === undefined || identity === undefined) throw new Error("Hosted document action requires a known library.");
@@ -750,7 +762,7 @@ export function create_locus_hosted_aggregate_socket_internal<
         const normalized: JsonValue = normalizedCandidate;
         return Object.freeze({
           ok: true,
-          payload: normalized,
+          payload: HsonData.from(normalized),
           executeDocument: (draft: LocusHostedAggregateDraft) => {
             const target = draft.lib(libraryName);
             if (!("graph" in target)) throw new Error("Hosted document action library is not a document Library.");
@@ -760,7 +772,7 @@ export function create_locus_hosted_aggregate_socket_internal<
       } else if (options.actions?.[request.name] === undefined) {
         return Object.freeze({ ok: false, code: "LOCUS_UNKNOWN_ACTION", message: `Unknown Locus action: ${request.name}` });
       } else {
-        const decoded = decode_locus_action_payload(options.schema?.actions?.[request.name]?.payload, request.payload);
+        const decoded = decode_locus_action_payload(options.schema?.actions?.[request.name]?.payload, admittedPayload);
         if (!decoded.ok) return Object.freeze({ ok: false, code: "LOCUS_SCHEMA_INVALID_PAYLOAD", message: locus_schema_error_message(decoded.issues) });
         return Object.freeze({ ok: true, payload: decoded.value });
       }
@@ -771,7 +783,7 @@ export function create_locus_hosted_aggregate_socket_internal<
         message: cause instanceof Error ? cause.message : "Locus action payload is invalid.",
       });
     }
-    return Object.freeze({ ok: true, payload: request.payload });
+    return Object.freeze({ ok: true, payload: request.payload === undefined ? undefined : HsonData.from(request.payload) });
   }
 
   async function dispatch_message(message: import("../../types/locus.types.js").LocusClientActionMessage): Promise<LocusClientActionResult> {
@@ -871,13 +883,21 @@ export function create_locus_hosted_aggregate_socket_internal<
           }));
           return;
         }
+        const outcome = status.outcome?.state === "succeeded" && status.outcome.result !== undefined
+          ? Object.freeze({
+              state: status.outcome.state,
+              seq: status.outcome.seq,
+              completionRev: status.outcome.completionRev,
+              resultData: encode_hson_data_internal(status.outcome.result),
+            })
+          : status.outcome;
         send(connection, Object.freeze({
           type: "action-status",
           format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
           id: request.id,
           requestId: request.requestId,
           state: status.state,
-          ...(status.outcome === undefined ? {} : { outcome: status.outcome }),
+          ...(outcome === undefined ? {} : { outcome }),
         }));
       }
       else void action(connection, request);

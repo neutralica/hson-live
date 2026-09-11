@@ -1,3 +1,4 @@
+import "./api/data/hson-data-hson.js";
 import { admit_hson } from "./api/transform/hson-admission.js";
 import { validate_canonical_hson } from "./internal/schema-hson-validation/validate-canonical-hson.js";
 
@@ -9,6 +10,7 @@ export const Hson = Object.freeze(Object.assign(admit_hson, {
   certify: validate_canonical_hson,
 }));
 
+export { HsonData } from "./api/data/hson-data.js";
 export type { HsonCanonical, HsonSchema } from "./api/transform/transform.types.js";
 export { TransformError, is_transform_error, read_transform_error_details } from "./core/errors.js";
 export type { TransformErrorDetails, TransformErrorRelated, TransformErrorSource } from "./core/errors.js";

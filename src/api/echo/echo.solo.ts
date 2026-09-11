@@ -51,9 +51,11 @@ import type { EchoEndpointConnection } from "./echo.client.js";
 import { create_echo_solo_replica_capability_internal } from "./echo.solo-replica.js";
 import {
   decode_locus_server_message,
+  encode_locus_client_message,
   replay_locus_document_commit,
   is_locus_json_value,
 } from "../locus/locus.protocol.js";
+import { HsonData } from "../data/hson-data.js";
 import {
   encode_locus_graph_content,
 } from "../locus/locus.graph-content-codec.js";
@@ -85,29 +87,30 @@ function recovery_trace_strategy(strategy: EchoRecoveryStrategy | undefined): st
 }
 
 function encode_client_message<TActions extends LocusActionPayloads>(message: LocusClientMessage<TActions>): string {
-  if (message.type !== "action" || message.payload === undefined) return JSON.stringify(message);
+  if (message.type !== "action" || message.payload === undefined) return encode_locus_client_message(message);
   if (message.name !== "document.content.insert" && message.name !== "document.content.replace") {
-    return JSON.stringify(message);
+    return encode_locus_client_message(message);
   }
-  if (typeof message.payload !== "object" || message.payload === null || Array.isArray(message.payload)) {
-    return JSON.stringify(message);
+  const payload = HsonData.from(message.payload).materialize();
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    return encode_locus_client_message(message);
   }
   const field = message.name === "document.content.insert" ? "content" : "replacement";
-  if (!Object.prototype.hasOwnProperty.call(message.payload, field)) return JSON.stringify(message);
+  if (!Object.prototype.hasOwnProperty.call(payload, field)) return encode_locus_client_message(message);
   let encodedContent;
   try {
-    encodedContent = encode_locus_graph_content(message.payload[field] as LiveMapDocumentContent);
+    encodedContent = encode_locus_graph_content(payload[field] as LiveMapDocumentContent);
   } catch {
     // Preserve the established asynchronous structured action rejection path
     // without ever falling back to a raw node-shaped wire payload.
     encodedContent = { format: "hson-graph", payload: "" } as const;
   }
-  return JSON.stringify({
+  return encode_locus_client_message({
     ...message,
-    payload: {
-      ...message.payload,
+    payload: HsonData.from({
+      ...payload,
       [field]: encodedContent,
-    },
+    }),
   });
 }
 

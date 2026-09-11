@@ -593,6 +593,10 @@ same canonical string or throws the structured Schema error.
 aggregate; the retired lowercase tag has no compatibility alias. `/hson` exports
 authoring, not the aggregate or subsystem facades. `HsonCanonical` is the same
 type exported from `/transform`, not a Schema certificate.
+`HsonData` is the separate immutable, data-only semantic value: it retains exact
+object entry order and signed zero, supports strict ordinary-JavaScript admission
+and explicit Hson-authored ingress, and can materialize a detached convenience
+view or serialize back to `HsonCanonical`. It does not represent documents.
 
 The root package is the umbrella entrypoint:
 

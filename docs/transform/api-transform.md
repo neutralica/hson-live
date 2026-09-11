@@ -104,6 +104,47 @@ The returned spelling may differ from the source because the method reparses the
 
 The return is an `HsonCanonical`, a TypeScript-branded primitive string. It does not imply sanitization, authentication, or trust. The compile-time brand is lost across untyped transport or storage.
 
+## HsonData
+
+`HsonData` is the immutable semantic data-side counterpart to serialization-facing
+`HsonCanonical`. It represents exactly strings, finite numbers (with `0` and
+`-0` distinct), booleans, null, dense arrays, and ordered unique-name data
+objects. It is data-only: it is not a document, graph node, LiveMap commit,
+transport envelope, or runtime capability. No document-side semantic sibling is
+defined yet.
+
+```ts
+import { Hson, HsonData } from "hson-live/hson";
+
+const ordinary = HsonData.from({ enabled: true });
+const authored = HsonData.fromHson(Hson`<'10' -0 '2' 2 __proto__ true>`);
+
+authored.kind;          // "object"
+authored.entries();     // exact ordered [name, HsonData] pairs
+authored.materialize(); // fresh ordinary-JavaScript convenience view
+authored.toHson();      // HsonCanonical
+```
+
+`HsonData.from` strictly snapshots ordinary JavaScript data using own property
+descriptors. It rejects undefined, non-finite numbers, bigint, symbols,
+functions, sparse arrays, cycles, accessors, symbol-keyed content, class
+instances, platform objects, and unsupported prototypes. Getters are not
+invoked. Null-prototype objects are accepted, and valid names such as
+`__proto__`, `constructor`, `prototype`, the empty ordinary name, and
+integer-like names remain data.
+
+Ordinary JavaScript objects expose property order according to ECMAScript, which
+reorders integer-index names. Admission preserves the order JavaScript actually
+exposes; it does not invent an unavailable order. Use Hson authoring or an
+existing `HsonData` when an otherwise-valid integer-name order must be retained.
+Likewise, `materialize()` safely defines own properties and returns detached
+containers, but its ordinary object view necessarily follows ECMAScript integer
+enumeration order. It is a convenience view, never canonical identity.
+
+Data LiveMaps provide `map.data(path?)` and `map.at(path).data()` for exact reads
+that bypass `snap()` and ordinary object reconstruction. Document-mode maps do
+not expose this data-only route.
+
 Runtime text containing arbitrary authored Hson is a separate operation:
 
 ```ts

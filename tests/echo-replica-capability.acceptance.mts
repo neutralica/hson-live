@@ -404,7 +404,13 @@ await check("endpoint-only construction and use never calls a replica loader", a
   const status = echo.actionStatus(action.request.requestId);
   const statusRequest = pair.sent.findLast((message) => message.type === "action-status");
   if (statusRequest === undefined || statusRequest.type !== "action-status") throw new Error("Expected action-status request.");
-  pair.server.send(JSON.stringify({ type: "action-status", id: statusRequest.id, requestId: statusRequest.requestId, state: "succeeded" }));
+  pair.server.send(JSON.stringify({
+    type: "action-status",
+    id: statusRequest.id,
+    requestId: statusRequest.requestId,
+    state: "succeeded",
+    outcome: { state: "succeeded", seq: 1, completionRev: 0 },
+  }));
   await status;
   echo.disconnect();
   echo.dispose();

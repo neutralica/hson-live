@@ -89,6 +89,30 @@ check("diagnostics entrypoints exist in the package and built output", () => {
   assert.equal(existsSync(resolve(repositoryRoot, "dist", "diagnostics", "verify-universal-circuit.js")), true);
 });
 
+check("HsonData is one nominal public value across intended entrypoints", () => {
+  const source = `
+    import { HsonData as RootData } from "hson-live";
+    import { Hson, HsonData as AuthoredData } from "hson-live/hson";
+    import { HsonData as TransformData } from "hson-live/transform";
+    if (RootData !== AuthoredData || RootData !== TransformData) throw new Error("HsonData identity diverged");
+    const exact = AuthoredData.fromHson(Hson\`<'10' -0 '2' <__proto__ true>>\`);
+    if (!Object.is(exact.entries()[0][1].scalar(), -0)) throw new Error("signed zero was lost");
+    if (exact.entries().map(([name]) => name).join(",") !== "10,2") throw new Error("object order was lost");
+  `;
+  const child = spawnSync(process.execPath, ["--input-type=module", "--eval", source], {
+    cwd: repositoryRoot,
+    encoding: "utf8",
+  });
+  assert.equal(child.status, 0, child.stderr || child.stdout);
+});
+
+check("private ordered projected carriers stay out of root declarations", () => {
+  const rootDeclaration = readFileSync(resolve(repositoryRoot, "dist", "index.d.ts"), "utf8");
+  for (const privateName of ["OrderedProjectedValue", "OrderedProjectedObject"]) {
+    assert.equal(rootDeclaration.includes(privateName), false, `${privateName} must remain private`);
+  }
+});
+
 check("removed LiveMap pseudo-QUID declarations and runtime modules stay absent", () => {
   const removedSymbols = [
     "LiveMapQuid",

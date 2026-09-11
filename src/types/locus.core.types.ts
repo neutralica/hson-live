@@ -33,6 +33,7 @@ import type {
   LiveMapStructuralJsonEnvelope,
 } from "./livemap.types.js";
 import type { JsonValue } from "../core/types.js";
+import type { HsonData } from "../api/data/hson-data.js";
 import type {
   LocusCanonicalCommit,
   LocusCanonicalHistoryOptions,
@@ -273,9 +274,9 @@ export type LocusActionHandler<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = (
   ctx: LocusActionContext<TMap>,
-  payload: TPayload,
+  payload: HsonData | undefined,
   message: LocusClientActionMessage<TActions>,
-) => JsonValue | void | Promise<JsonValue | void>;
+) => unknown | void | Promise<unknown | void>;
 
 export type LocusActions<
   TActions extends LocusActionPayloads = LocusActionPayloads,
@@ -403,9 +404,9 @@ export type LocusMultiLibraryActionHandler<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = (
   ctx: LocusMultiLibraryActionContext<TMap>,
-  payload: TPayload,
+  payload: HsonData | undefined,
   message: LocusClientActionMessage<TActions>,
-) => JsonValue | void | Promise<JsonValue | void>;
+) => unknown | void | Promise<unknown | void>;
 
 export type LocusMultiLibraryActions<
   TMap extends LiveMapLibraries = LiveMapLibraries,
@@ -549,7 +550,7 @@ export type EchoActionRequest<
 > = Readonly<{
   requestId: LocusActionRequestId;
   name: TName;
-  payload?: TActions[TName];
+  payload?: HsonData | TActions[TName];
 }>;
 
 export type EchoActionPromise<
@@ -570,8 +571,8 @@ export type EchoActionFn<
 > = <TName extends keyof TActions & string>(
   name: TName,
   ...args: undefined extends TActions[TName]
-    ? [payload?: TActions[TName]]
-    : [payload: TActions[TName]]
+    ? [payload?: Exclude<TActions[TName], undefined> | HsonData]
+    : [payload: TActions[TName] | HsonData]
 ) => EchoActionPromise<TActions, TName>;
 
 export type EchoRetryActionFn<

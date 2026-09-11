@@ -1,4 +1,5 @@
-import type { JsonValue } from "../../core/types.js";
+import type { HsonData } from "../data/hson-data.js";
+import { encode_hson_data_internal } from "../data/hson-data.js";
 import type {
   LocusActionDedupeDiagnostics,
   LocusActionDedupeOptions,
@@ -59,7 +60,7 @@ export type LocusActionExecuteRequest = Readonly<{
   requestId: LocusActionRequestId;
   ownerPrincipalId: string | undefined;
   actionName: string;
-  payload: JsonValue | undefined;
+  payload: HsonData | undefined;
   retry: boolean;
   sourceTraceId?: string;
   acquireExecutionActivity?: () => LocusDisposer;
@@ -115,25 +116,13 @@ function default_schedule(delayMs: number, callback: () => void): LocusDisposer 
   return () => clearTimeout(timer);
 }
 
-function clone_json(value: JsonValue): JsonValue {
-  if (value === null || typeof value !== "object") return value;
-  if (Array.isArray(value)) {
-    const clone = value.map(clone_json);
-    Object.freeze(clone);
-    return clone;
-  }
-  const clone: Record<string, JsonValue> = {};
-  for (const key of Object.keys(value)) clone[key] = clone_json(value[key]);
-  return Object.freeze(clone);
-}
-
 function clone_outcome(outcome: LocusActionTerminalOutcome): LocusActionTerminalOutcome {
   if (outcome.state === "succeeded") {
     return Object.freeze({
       state: "succeeded",
       seq: outcome.seq,
       completionRev: outcome.completionRev,
-      ...(outcome.result !== undefined ? { result: clone_json(outcome.result) } : {}),
+      ...(outcome.result !== undefined ? { result: outcome.result } : {}),
     });
   }
   return Object.freeze({
@@ -148,14 +137,8 @@ function clone_outcome(outcome: LocusActionTerminalOutcome): LocusActionTerminal
   });
 }
 
-function canonical(value: JsonValue): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}`;
-}
-
-function fingerprint(namespace: string, actionName: string, payload: JsonValue | undefined): string {
-  return `${canonical(namespace)}|${canonical(actionName)}|${payload === undefined ? "absent" : `present:${canonical(payload)}`}`;
+function fingerprint(namespace: string, actionName: string, payload: HsonData | undefined): string {
+  return `${JSON.stringify(namespace)}|${JSON.stringify(actionName)}|${payload === undefined ? "absent" : `present:${encode_hson_data_internal(payload)}`}`;
 }
 
 function client_request_key(clientId: ClientIdentity, requestId: LocusActionRequestId): string {
@@ -170,7 +153,16 @@ function encoded_bytes(outcome: LocusActionTerminalOutcome, ownerPrincipalId: st
   const ownerBytes = ownerPrincipalId === undefined
     ? 0
     : textEncoder.encode(JSON.stringify(ownerPrincipalId)).byteLength;
-  return textEncoder.encode(JSON.stringify(outcome)).byteLength + ownerBytes;
+  const accountableOutcome = outcome.state === "succeeded" && outcome.result !== undefined
+    ? {
+        state: outcome.state,
+        seq: outcome.seq,
+        completionRev: outcome.completionRev,
+        resultData: encode_hson_data_internal(outcome.result),
+      }
+    : outcome;
+  const outcomeBytes = textEncoder.encode(JSON.stringify(accountableOutcome)).byteLength;
+  return outcomeBytes + ownerBytes;
 }
 
 export function make_locus_action_dedupe_store(

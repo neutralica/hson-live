@@ -21,7 +21,8 @@ import type {
 } from "../../types/locus.types.js";
 import { LocusDisconnectedError, LocusDuplicateActionIdError } from "../locus/locus.error.js";
 import { EchoSessionError } from "./echo.error.js";
-import { clone_echo_action_payload, make_echo_reload_safe_id } from "./echo.request.js";
+import { admit_echo_action_payload, make_echo_reload_safe_id } from "./echo.request.js";
+import type { HsonData } from "../data/hson-data.js";
 
 /** @internal Decoded server messages owned by the common endpoint. */
 export type EchoEndpointServerMessage = Extract<LocusServerMessage, {
@@ -68,7 +69,6 @@ export type EchoEndpointOptions<TActions extends LocusActionPayloads = LocusActi
   credential?: LocusSessionCredential;
   ids?: EchoEndpointIdFactories;
   actionMessageId?: "request" | "attempt";
-  validateActionPayload?: (payload: unknown) => boolean;
   onSequence?: (sequence: number) => void;
   onAttachmentLost?: (reason: "disconnect" | "fenced" | "ended", error: Error) => void;
   operationLossError?: (reason: "disconnect" | "fenced" | "ended") => Error;
@@ -86,7 +86,9 @@ export type EchoEndpoint<TActions extends LocusActionPayloads = LocusActionPaylo
   receive: (message: EchoEndpointServerMessage) => boolean;
   action: <TName extends keyof TActions & string>(
     name: TName,
-    ...args: undefined extends TActions[TName] ? [payload?: TActions[TName]] : [payload: TActions[TName]]
+    ...args: undefined extends TActions[TName]
+      ? [payload?: Exclude<TActions[TName], undefined> | HsonData]
+      : [payload: TActions[TName] | HsonData]
   ) => EchoActionPromise<TActions, TName>;
   retryAction: <TName extends keyof TActions & string>(request: EchoActionRequest<TActions, TName>) => EchoActionPromise<TActions, TName>;
   actionStatus: (requestId: LocusActionRequestId) => Promise<EchoActionStatusResult>;
@@ -402,17 +404,15 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
 
   function action<TName extends keyof TActions & string>(
     name: TName,
-    ...args: undefined extends TActions[TName] ? [payload?: TActions[TName]] : [payload: TActions[TName]]
+    ...args: undefined extends TActions[TName]
+      ? [payload?: Exclude<TActions[TName], undefined> | HsonData]
+      : [payload: TActions[TName] | HsonData]
   ): EchoActionPromise<TActions, TName> {
     const requestId = makeActionId();
-    if (args[0] !== undefined && options.validateActionPayload?.(args[0]) === false) {
-      const invalid: EchoActionRequest<TActions, TName> = Object.freeze({ requestId, name, payload: args[0] });
-      return Object.assign(Promise.reject(new Error("Hosted action payload must be JSON-serializable.")), { request: invalid });
-    }
     const request: EchoActionRequest<TActions, TName> = Object.freeze({
       requestId,
       name,
-      ...(args[0] === undefined ? {} : { payload: clone_echo_action_payload(args[0] as JsonValue) as TActions[TName] }),
+      ...(args[0] === undefined ? {} : { payload: admit_echo_action_payload(args[0]) }),
     });
     return actionHandle(request, false);
   }
@@ -421,7 +421,7 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
     const stable: EchoActionRequest<TActions, TName> = Object.freeze({
       requestId: request.requestId,
       name: request.name,
-      ...(request.payload === undefined ? {} : { payload: clone_echo_action_payload(request.payload as JsonValue) as TActions[TName] }),
+      ...(request.payload === undefined ? {} : { payload: admit_echo_action_payload(request.payload) }),
     });
     return actionHandle(stable, true);
   }

@@ -77,7 +77,9 @@ await check("public endpoint-only Echo uses explicit session lifecycle without r
     logicalMapId: "endpoint-only-map",
     incarnationId: "endpoint-only-incarnation",
     actions: {
-      async increment(context, by: number) {
+      async increment(context, payload) {
+        const by = payload?.scalar();
+        if (typeof by !== "number") throw new Error("Expected numeric action data.");
         const value = context.map.snap(["value"]);
         if (typeof value !== "number") throw new Error("Expected numeric authority state.");
         await context.mutate((draft) => draft.set(["value"], value + by));

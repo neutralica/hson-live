@@ -60,6 +60,29 @@ settlement, interpreted with the current session's `logicalMapId` and
 `incarnationId`. Receipt of that result does not claim local replica or Reflect
 convergence.
 
+Configured actions preserve full canonical Hson data fidelity in both
+directions. `Echo.action(name, payload)` accepts strictly admissible ordinary
+JavaScript data or an existing `HsonData`; absence remains distinct from present
+null. Echo admits the payload once and retains that immutable exact snapshot, so
+caller mutation cannot affect retries. Handlers and authorizers receive
+`HsonData` as the authoritative payload and may explicitly call
+`materialize()` when an ordinary view is sufficient. Successful results are
+also `HsonData`, including retained status and cached retries; handlers may
+return ordinary admissible data or `HsonData`, while void remains no result.
+
+The action fingerprint and transport use the same deterministic exact-data
+encoding. Therefore `0` differs from `-0`, object member order is semantic,
+integer-like authored order is retained, and valid own names such as
+`__proto__`, `constructor`, and `prototype` are safe. Unsupported runtime values
+reject instead of being normalized by JSON serialization. The outer protocol
+remains JSON-framed, but action data is carried as canonical structural text;
+the semantic contract is transport-neutral and does not depend on WebSocket.
+
+Custom schema decoders inspect the exact admitted value. Their successful output
+is strictly re-admitted, and that transformed `HsonData` is the single value
+seen by authorization and execution. Hson Schema action validators evaluate the
+underlying exact data carrier directly.
+
 Echo exposes its actual Schema-bound `LiveMap`, not a duplicate read-only map
 hierarchy. Direct public mutation rejects with the managed-mutation authority
 error; only accepted canonical replay mutates an Echo-governed map.

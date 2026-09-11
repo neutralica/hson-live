@@ -122,12 +122,22 @@ Those numbers traverse canonical `$_content`, not data arrays.
 map.snap();                    // cloned root value
 map.snap(["user", "name"]);   // cloned value or undefined
 map.at(["tags"]).snap();      // cloned value
+map.data();                    // exact immutable HsonData root
+map.at(["tags"]).data();      // exact HsonData value or undefined
 map.rev;                      // current revision
 map.root();                   // detached HsonNode clone
 map.capture();                // { rev, format, payload } plus non-enumerable root
 ```
 
 `snap(path?)` never returns a live object/array reference. A missing data path returns `undefined`; wrong path syntax throws. `at(path)` always creates a stable path handle, even if the path is currently missing; `handle.snap()` then returns `undefined`. There is no map-level `get`/`has` method. Use `snap`, object handle `hasKey`, schema `has`, or a proxy handle as appropriate.
+
+`data(path?)` is the exact data-only read route. It projects canonical LiveMap
+data directly into `HsonData` without `snap()` or ordinary object
+reconstruction, retaining `-0`, exact object sequence (including integer-like
+names), nested containers, and dangerous-but-valid own names. It is available
+only on data maps and data path handles; document state is not exposed through
+this route. Ordinary `snap()` remains the convenience materialization and is
+subject to ECMAScript object-enumeration ordering.
 
 `capture()` returns the exact revision, a detached canonical `root`, and the
 current structural-JSON envelope (`format`, `payload`). The payload preserves

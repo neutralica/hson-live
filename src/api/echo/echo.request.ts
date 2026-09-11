@@ -1,4 +1,4 @@
-import type { JsonValue } from "../../core/types.js";
+import { HsonData } from "../data/hson-data.js";
 
 let nextFallbackIdentityId = 0;
 
@@ -10,15 +10,7 @@ export function make_echo_reload_safe_id(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${nextFallbackIdentityId.toString(36)}`;
 }
 
-/** @internal Detach one supported action payload from caller-owned containers. */
-export function clone_echo_action_payload(value: JsonValue): JsonValue {
-  if (value === null || typeof value !== "object") return value;
-  if (Array.isArray(value)) {
-    const clone = value.map(clone_echo_action_payload);
-    Object.freeze(clone);
-    return clone;
-  }
-  const clone: Record<string, JsonValue> = {};
-  for (const key of Object.keys(value)) clone[key] = clone_echo_action_payload(value[key]);
-  return Object.freeze(clone);
+/** @internal Admit and snapshot one configured-action payload exactly once. */
+export function admit_echo_action_payload(value: unknown): HsonData {
+  return HsonData.from(value);
 }

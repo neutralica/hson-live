@@ -26,6 +26,7 @@ import { must_feed_listener, must_live_path, must_ordered_projected_object, must
 import { append_live_path, clone_live_path, format_live_path, live_path_key, paths_overlap } from "./livemap.path.js";
 import { LiveMapDocumentMutationError, LiveMapProjectedIdentityError, LiveMapProjectedMutationError, LiveMapProjectedTransportError, LiveMapReplayError, LiveMapRevError, } from "./livemap.error.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
+import { hson_data_from_value } from "../data/hson-data.js";
 import {
   is_ordered_projected_object,
   optional_ordered_projected_value_equal,
@@ -777,6 +778,12 @@ function make_livemap_core_from_owned_root(
 
     /** Read the current projected JSON value at a path, or the whole graph. */
     snap: ((path: LivePath = []) => snap_live_path(owned.root, must_live_path(path))) as LiveMapCoreSnap<JsonValue | undefined>,
+
+    /** Read exact canonical data without crossing an ordinary object. */
+    data: (path: LivePath = []) => {
+      const value = project_live_path(owned.root, must_live_path(path));
+      return value === undefined ? undefined : hson_data_from_value(value);
+    },
 
     /** Read and manage the schema currently attached to this Core, if present. */
     schema: schemaApi,

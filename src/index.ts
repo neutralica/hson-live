@@ -1,6 +1,7 @@
 // index.ts
 
 export { Hson } from "./hson-authoring.js";
+export { HsonData } from "./api/data/hson-data.js";
 export { hson, hsonCalc, hsonLocus, hsonEcho, hsonTransform, hsonLiveMap, hsonLiveTree, hsonInspect, type HsonFacade } from "./hson.js";
 export type {
     BinaryDecodeOptions,

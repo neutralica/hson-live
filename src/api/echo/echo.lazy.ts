@@ -60,18 +60,6 @@ export const DEFAULT_ECHO_REPLICA_LOADERS: EchoReplicaLoaders = Object.freeze({
   },
 });
 
-function isJsonValue(value: unknown, seen: Set<object> = new Set()): boolean {
-  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
-  if (typeof value === "number") return Number.isFinite(value);
-  if (typeof value !== "object" || seen.has(value)) return false;
-  seen.add(value);
-  const valid = Array.isArray(value)
-    ? value.every((item) => isJsonValue(item, seen))
-    : Object.values(value).every((item) => isJsonValue(item, seen));
-  seen.delete(value);
-  return valid;
-}
-
 function initialDiagnostics(
   status: EchoRecoveryStatus,
   options: EchoRecoveryOptions,
@@ -137,7 +125,6 @@ export function create_lazy_replica_echo_internal<
     ...(aggregate ? {
       endpointMessageFormat: "hson-locus-hosted-aggregate-message",
       actionMessageId: "attempt" as const,
-      validateActionPayload: isJsonValue,
       operationLossError: (reason: "disconnect" | "fenced" | "ended") => new Error(reason === "ended"
         ? "Hosted aggregate Echo session ended before the pending operation completed."
         : reason === "fenced"

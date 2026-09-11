@@ -96,14 +96,16 @@ const authoritativeProjectedHost = create_locus<{ count: number }, { increment: 
   state: { count: 0 },
     actions: {
     async increment(context, amount) {
+      const admittedAmount = amount?.scalar();
+      if (typeof admittedAmount !== "number") throw new Error("Expected numeric action data.");
       context.map.snap(["count"]);
       context.map.at(["count"]).watch((next) => {
         const exact: number = next;
         void exact;
       });
       // @ts-expect-error hosted action contexts expose a read-only map
-      context.map.set(["count"], amount);
-      await context.mutate((draft) => draft.set(["count"], amount));
+      context.map.set(["count"], admittedAmount);
+      await context.mutate((draft) => draft.set(["count"], admittedAmount));
     },
   },
 });

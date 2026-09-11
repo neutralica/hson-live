@@ -1,6 +1,6 @@
 import { create_test_event_emitter } from "../test-events.mjs";
 import assert from "node:assert/strict";
-import { hson } from "../../src/index.ts";
+import { hson, HsonData } from "../../src/index.ts";
 import { admit_locus_remote_action_internal } from "../../src/api/locus/locus.remote-action.internal.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "locus.action-admission", title: "Transport-neutral solo action admission", category: "Locus", runtime: "node", tags: Object.freeze(["actions", "admission", "authority", "transport-neutral"]) });
@@ -22,8 +22,8 @@ function fixture(options = {}) {
   host = hson.locus.create({
     state: { value: 0 }, logicalMapId: "remote-admission-map", incarnationId: "remote-admission-incarnation",
     schema: { actions: {
-      set: { payload: (value) => typeof value === "object" && value !== null && typeof value.value === "number" },
-      held: { payload: (value) => typeof value === "number" }, fail: { payload: () => true }, event: { payload: () => true },
+      set: { payload: (value) => value instanceof HsonData && typeof value.materialize().value === "number" },
+      held: { payload: (value) => value instanceof HsonData && typeof value.scalar() === "number" }, fail: { payload: () => true }, event: { payload: () => true },
     } },
     authorizeAction(context) {
       authorizationContexts.push(context);
@@ -34,7 +34,8 @@ function fixture(options = {}) {
       async set(context, payload) {
         executions += 1; handlerOrigins.push(context.origin);
         assert.equal(host.sessions.debug().sessions.some((session) => session.sessionId === context.origin.sessionId && session.state === "attached"), true);
-        await context.mutate((draft) => draft.set(["value"], payload.value)); return payload;
+        const value = payload.materialize().value;
+        await context.mutate((draft) => draft.set(["value"], value)); return payload;
       },
       async held(context, payload) { executions += 1; handlerOrigins.push(context.origin); options.entered?.resolve(); await options.gate?.promise; return payload; },
       fail() { executions += 1; throw new Error("application failed"); },
@@ -55,7 +56,8 @@ function assert_clean(host) {
 
 await check("one-shot success uses a real principal-bound non-resumable session and standard result", async () => {
   const f = fixture(); const result = await f.admit(stable("success", "set", { value: 7 }, "attempt-success"));
-  assert.deepEqual(result, { type: "ack", id: "success-wire", requestId: "success-request", attemptId: "attempt-success", ok: true, seq: 1, completionRev: 1, delivery: "executed", result: { value: 7 } });
+  assert.equal(result.type, "ack"); assert.deepEqual(result.result.materialize(), { value: 7 });
+  assert.deepEqual({ ...result, result: result.result.materialize() }, { type: "ack", id: "success-wire", requestId: "success-request", attemptId: "attempt-success", ok: true, seq: 1, completionRev: 1, delivery: "executed", result: { value: 7 } });
   const authorization = f.authorizationContexts[0];
   assert.equal(authorization.connection.principalId, "alice"); assert.deepEqual(authorization.connection.attachment, { role: "editor" });
   assert.equal(authorization.session.resumable, false); assert.equal(f.handlerOrigins[0].kind, "session");
@@ -86,7 +88,7 @@ await check("fingerprint conflicts and principal ownership use the existing requ
 
 await check("event delivery is unavailable without inventing a downstream channel", async () => {
   const f = fixture(), result = await f.admit(stable("event", "event", undefined));
-  assert.equal(result.type, "ack"); assert.deepEqual(result.result, { delivered: false }); assert_clean(f.host); f.host.dispose();
+  assert.equal(result.type, "ack"); assert.deepEqual(result.result.materialize(), { delivered: false }); assert_clean(f.host); f.host.dispose();
 });
 
 await check("rejection and handler failure paths release ephemeral state", async () => {

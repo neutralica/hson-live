@@ -28,6 +28,8 @@ import type {
   LiveMapStructuralJsonEnvelope,
 } from "./livemap.types.js";
 import type { JsonValue } from "../core/types.js";
+import type { HsonData } from "../api/data/hson-data.js";
+import type { HsonSchema } from "../api/transform/transform.types.js";
 import type {
   LocusCanonicalCommit,
   LocusSnapshotCapabilities,
@@ -202,7 +204,7 @@ export type LocusActionAuthorizationContext<
   [TName in keyof TActions & string]: Readonly<{
     action: TName;
     session: LocusActionAuthorizationSession;
-    payload: TActions[TName];
+    payload: HsonData | undefined;
     logicalMapId: LocusLogicalMapId;
     incarnationId: LocusIncarnationId;
     connection?: LocusConnectionContext;
@@ -216,7 +218,7 @@ export type LocusActionAuthorizer<
 ) => boolean | Promise<boolean>;
 
 export type LocusActionSchema<TPayload extends JsonValue | undefined = JsonValue | undefined> = Readonly<{
-  payload?: LocusValidator<TPayload> | LocusSchemaDecoder<TPayload>;
+  payload?: HsonSchema | LocusValidator<HsonData | undefined> | LocusSchemaDecoder<unknown>;
 }>;
 
 export type LocusSchema<
@@ -248,7 +250,7 @@ export type LocusClientActionMessageFor<
     clientId?: LocusClientId;
     retry?: true;
     name: TName;
-    payload?: TActions[TName];
+    payload?: HsonData | Exclude<TActions[TName], undefined>;
   }>
   : Readonly<{
     type: "action";
@@ -258,7 +260,7 @@ export type LocusClientActionMessageFor<
     clientId?: LocusClientId;
     retry?: true;
     name: TName;
-    payload: TActions[TName];
+    payload: HsonData | TActions[TName];
   }>;
 
 export type LocusClientActionMessage<
@@ -326,7 +328,7 @@ export type LocusServerAckMessage = Readonly<{
   id: LocusActionId;
   ok: true;
   seq: LocusSeq;
-  result?: JsonValue;
+  result?: HsonData;
   requestId?: LocusActionRequestId;
   attemptId?: LocusActionId;
   completionRev?: number;
@@ -365,7 +367,7 @@ export type LocusActionTerminalOutcome =
     state: "succeeded";
     seq: LocusSeq;
     completionRev: number;
-    result?: JsonValue;
+    result?: HsonData;
   }>
   | Readonly<{
     state: "failed";

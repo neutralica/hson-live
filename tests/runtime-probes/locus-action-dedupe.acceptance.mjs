@@ -165,9 +165,11 @@ function fixture(options = {}) {
                 executions += 1;
                 entered.resolve();
                 await gate.promise;
-                await ctx.mutate((draft) => draft.set(['value'], value));
+                const scalar = value.scalar();
+                if (typeof scalar !== 'number') throw new Error('expected numeric action data');
+                await ctx.mutate((draft) => draft.set(['value'], scalar));
                 completed.resolve();
-                return { value };
+                return { value: scalar };
             },
             echo(_ctx, value) {
                 executions += 1;
@@ -179,7 +181,9 @@ function fixture(options = {}) {
             },
             async mutateFail(ctx, value) {
                 executions += 1;
-                await ctx.mutate((draft) => draft.set(['value'], value));
+                const scalar = value.scalar();
+                if (typeof scalar !== 'number') throw new Error('expected numeric action data');
+                await ctx.mutate((draft) => draft.set(['value'], scalar));
                 throw new Error('after mutation');
             },
             noop() {
@@ -194,7 +198,9 @@ function fixture(options = {}) {
                 executions += 1;
                 entered.resolve();
                 await gate.promise;
-                await ctx.mutate((draft) => draft.set(['value'], value));
+                const scalar = value.scalar();
+                if (typeof scalar !== 'number') throw new Error('expected numeric action data');
+                await ctx.mutate((draft) => draft.set(['value'], scalar));
                 return value;
             },
             reentrant(_ctx, value) {
@@ -259,16 +265,15 @@ await check('duplicate pending requests join one execution', async () => {
     assert.equal(f.host.actionRequests.debug().joinedPendingDuplicateCount, 2);
 });
 
-await check('completed duplicate returns cached outcome', async () => {
+await check('completed retry with differently ordered data conflicts', async () => {
     const f = fixture();
     const { client } = connect(f.host, 'cached-client');
     const first = await client.action('echo', { b: 2, a: 1 });
     const request = client.action('echo', { a: 1, b: 2 }).request;
     const same = { ...request, requestId: first.requestId };
     const cached = await client.retryAction(same);
-    assert.equal(cached.delivery, 'cached');
-    assert.equal(cached.completionRev, first.completionRev);
-    assert.deepEqual(cached.result, first.result);
+    assert.equal(cached.delivery, 'rejected');
+    assert.equal(cached.error.code, 'LOCUS_ACTION_REQUEST_ID_CONFLICT');
     assert.equal(f.executions(), 2);
 });
 
@@ -280,7 +285,7 @@ await check('same principal retains lineage across a new session', async () => {
     const aliceB = connect(f.host, 'owned-client', {}, principal('alice')).client;
     const status = await aliceB.actionStatus(first.request.requestId);
     assert.equal(status.state, 'succeeded');
-    assert.deepEqual(status.outcome, {
+    assert.deepEqual({ ...status.outcome, result: status.outcome.result.materialize() }, {
         state: 'succeeded',
         seq: outcome.seq,
         completionRev: outcome.completionRev,
@@ -585,7 +590,7 @@ await check('same identity is isolated by map incarnation', async () => {
 });
 
 await check(
-    'canonical fingerprint ignores object insertion order',
+    'canonical fingerprint preserves nested object insertion order',
     async () => {
         const f = fixture();
         const { client } = connect(f.host, 'canonical-client');
@@ -596,7 +601,8 @@ await check(
             name: 'echo',
             payload: { nested: { y: 3, x: 2 }, a: 1 },
         });
-        assert.equal(cached.delivery, 'cached');
+        assert.equal(cached.delivery, 'rejected');
+        assert.equal(cached.error.code, 'LOCUS_ACTION_REQUEST_ID_CONFLICT');
         assert.equal(f.executions(), 1);
     },
 );
