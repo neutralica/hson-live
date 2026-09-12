@@ -38,6 +38,10 @@ export class FakeElement extends FakeNode {
   replaceWrites = 0;
   failReplace = false;
   beforeReplace: (() => void) | undefined;
+  readonly listeners = new Map<string, Set<Readonly<{
+    listener: EventListenerOrEventListenerObject;
+    options: AddEventListenerOptions;
+  }>>>();
 
   public constructor(public readonly tagName: string, namespace = "http://www.w3.org/1999/xhtml") {
     super();
@@ -87,6 +91,31 @@ export class FakeElement extends FakeNode {
   getAttributeNames(): string[] { return [...this.attrs.keys()]; }
   hasAttribute(name: string): boolean { return this.attrs.has(name); }
   querySelectorAll(): FakeElement[] { return []; }
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | AddEventListenerOptions): void {
+    if (listener === null) return;
+    const records = this.listeners.get(type) ?? new Set();
+    records.add(Object.freeze({ listener, options: typeof options === "boolean" ? { capture: options } : { ...options } }));
+    this.listeners.set(type, records);
+  }
+  removeEventListener(type: string, listener: EventListenerOrEventListenerObject | null, options?: boolean | EventListenerOptions): void {
+    if (listener === null) return;
+    const capture = typeof options === "boolean" ? options : !!options?.capture;
+    const records = this.listeners.get(type);
+    if (records === undefined) return;
+    for (const record of records) if (record.listener === listener && !!record.options.capture === capture) records.delete(record);
+    if (records.size === 0) this.listeners.delete(type);
+  }
+  dispatchEvent(event: Event): boolean {
+    const records = this.listeners.get(event.type);
+    if (records === undefined) return !event.defaultPrevented;
+    for (const record of [...records]) {
+      if (typeof record.listener === "function") record.listener(event);
+      else record.listener.handleEvent(event);
+      if (record.options.once) records.delete(record);
+    }
+    if (records.size === 0) this.listeners.delete(event.type);
+    return !event.defaultPrevented;
+  }
 }
 
 function append_child(parent: FakeElement | FakeFragment, node: FakeNode): void {

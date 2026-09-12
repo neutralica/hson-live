@@ -683,6 +683,8 @@ The maintained current-facing references are:
 - the [LiveMap API](docs/livemap/api-livemap.md) and canonical
   [capture/restore/replay contract](docs/livemap/capture-replay.md);
 - the [LiveTree API](docs/livetree/api-livetree.md);
+- [canonical interactions](docs/canonical-interactions.md), including hidden
+  same-LiveMap storage, exact data dispatch, and listener reconciliation;
 - the [Reflect API](docs/reflect/api-reflect.md);
 - the [Locus API](docs/locus/api-locus.md) and
   [authority overview](docs/locus/overview.md);

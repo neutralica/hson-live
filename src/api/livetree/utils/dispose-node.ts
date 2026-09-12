@@ -14,6 +14,7 @@ import { collect_subtree_nodes } from "./subtree-traversal.js";
 import {
   default_livetree_runtime,
   release_nodes_runtime,
+  notify_livetree_realizations_internal,
   runtime_for_node,
   type LiveTreeRuntime,
 } from "../runtime/livetree-runtime.js";
@@ -68,6 +69,7 @@ export function dispose_node_deep(
 
   mark_livetree_nodes_disposed(nodes, formerQuids);
   release_nodes_runtime(nodes, runtime);
+  notify_livetree_realizations_internal(runtime);
 
   return {
     nodesDisposed: nodes.length,

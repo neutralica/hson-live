@@ -7,9 +7,23 @@ import {
   hsonLiveTree,
   hsonInspect,
   hsonCalc,
+  activate_interactions,
+  add_interaction,
+  enable_interactions,
+  remove_interaction,
+  replace_interaction,
   type AsyncLiveTree as RootAsyncLiveTree,
   type HsonSchema,
   type HsonNumber,
+  type InteractionActionDispatcher,
+  type InteractionActivationOptions,
+  type InteractionDescriptor,
+  type InteractionFailure,
+  type InteractionListener,
+  type InteractionLocalBehavior,
+  type InteractionLocalBehaviors,
+  type LocalInteractionDescriptor,
+  type AuthoritativeInteractionDescriptor,
 } from "hson-live";
 
 declare const genuineHsonData: HsonData;
@@ -169,6 +183,21 @@ import {
   type ProjectedValueAdmissionCode,
   type ProjectedValuePath,
 } from "hson-live/livemap";
+void [
+  activate_interactions, add_interaction, enable_interactions, remove_interaction, replace_interaction,
+];
+declare const interactionListener: InteractionListener;
+declare const interactionDescriptor: InteractionDescriptor;
+declare const localInteractionDescriptor: LocalInteractionDescriptor;
+declare const authoritativeInteractionDescriptor: AuthoritativeInteractionDescriptor;
+declare const localInteractionBehavior: InteractionLocalBehavior;
+declare const localInteractionBehaviors: InteractionLocalBehaviors;
+declare const interactionDispatcher: InteractionActionDispatcher;
+declare const interactionFailure: InteractionFailure;
+declare const interactionActivation: InteractionActivationOptions;
+void [interactionListener, interactionDescriptor, localInteractionDescriptor,
+  authoritativeInteractionDescriptor, localInteractionBehavior, localInteractionBehaviors,
+  interactionDispatcher, interactionFailure, interactionActivation];
 // @ts-expect-error Refinement vocabulary was hard-replaced by constraint vocabulary.
 import type { LiveMapSchemaRefinement } from "hson-live/livemap";
 // @ts-expect-error Named schema definition aliases were hard-removed.

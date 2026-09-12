@@ -26,6 +26,15 @@ import {
 } from "../livemap/livemap.hosted.js";
 import { make_livemap_hosted_mirror_from_snapshot_internal } from "../livemap/livemap.libraries.js";
 import type { PreparedLiveMapAggregateTransition } from "../livemap/livemap.authority.js";
+import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
+import {
+  is_ordered_projected_object,
+  type OrderedProjectedValue,
+} from "../../core/ordered-projected-value.js";
+import {
+  INTERACTION_RESERVED_LIBRARY_KEY,
+  register_interaction_draft_internal,
+} from "../../internal/interaction-storage.js";
 
 /** Internal routing marker. The enclosed commit is exact aggregate evidence. */
 export const LOCUS_HOSTED_AGGREGATE_WIRE_FORMAT = "hson-locus-hosted-aggregate-commit" as const;
@@ -380,7 +389,9 @@ function make_managed_aggregate_draft(
     if (library === undefined || identity === undefined) {
       throw new Error("Hosted aggregate registry identity binding is unavailable.");
     }
-    byName.set(library.name, Object.freeze({ identity, mode: library.mode }));
+    if (library.scope !== "hson-internal") {
+      byName.set(library.name, Object.freeze({ identity, mode: library.mode }));
+    }
   }
   const writes: LiveMapAggregateWrite[] = [];
   let open = true;
@@ -442,8 +453,35 @@ function make_managed_aggregate_draft(
       },
     });
   };
+  const draft = Object.freeze({ lib: selected });
+  const interactionLibrary = aggregate.reservedLibrary(INTERACTION_RESERVED_LIBRARY_KEY);
+  if (interactionLibrary !== undefined) {
+    const interactionRoot = projected_value_from_hson_node(aggregate.root(interactionLibrary));
+    if (!is_ordered_projected_object(interactionRoot)) {
+      throw new Error("Canonical interaction Library root is malformed.");
+    }
+    const initialInteractionValue = interactionRoot.entries.find(([name]) => name === "descriptors")?.[1];
+    if (initialInteractionValue === undefined) {
+      throw new Error("Canonical interaction descriptor collection is missing.");
+    }
+    let interactionValue: OrderedProjectedValue = initialInteractionValue;
+    register_interaction_draft_internal(
+      draft,
+      interactionLibrary,
+      () => interactionValue,
+      (value) => {
+        assert_open();
+        interactionValue = value;
+        writes.push(Object.freeze({
+          target: aggregate.target(interactionLibrary, ["descriptors"]),
+          kind: "replace",
+          value,
+        }));
+      },
+    );
+  }
   return Object.freeze({
-    draft: Object.freeze({ lib: selected }),
+    draft,
     writes: () => Object.freeze([...writes]),
     close: () => { open = false; },
   });

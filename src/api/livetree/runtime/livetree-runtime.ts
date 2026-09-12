@@ -20,6 +20,7 @@ export type LiveTreeRuntime = {
   readonly ownerDisposableKinds: Map<HsonNode, Map<() => void, LifecycleResourceKind>>;
   readonly styleDocuments: Set<Document>;
   readonly styleDocumentListeners: Set<(document: Document) => void>;
+  readonly realizationListeners: Set<() => void>;
   cssManager: unknown;
   disposeCss: (() => void) | undefined;
   disposed: boolean;
@@ -35,6 +36,7 @@ function make_runtime(): LiveTreeRuntime {
     ownerDisposableKinds: new Map(),
     styleDocuments: new Set(),
     styleDocumentListeners: new Set(),
+    realizationListeners: new Set(),
     cssManager: undefined,
     disposeCss: undefined,
     disposed: false,
@@ -99,6 +101,21 @@ export function subject_for_tree(tree: object): HsonNode {
   const subject = SUBJECT_FOR_TREE.get(tree);
   if (subject === undefined) throw new Error("LiveTree handle has no runtime subject.");
   return subject;
+}
+
+/** Observe exact realization creation/release inside one active tree runtime. @internal */
+export function observe_livetree_realizations_internal(
+  tree: object,
+  listener: () => void,
+): () => void {
+  const runtime = runtime_for_tree(tree);
+  runtime.realizationListeners.add(listener);
+  return () => { runtime.realizationListeners.delete(listener); };
+}
+
+/** Publish one completed realization boundary. @internal */
+export function notify_livetree_realizations_internal(runtime: LiveTreeRuntime): void {
+  for (const listener of [...runtime.realizationListeners]) listener();
 }
 
 /** Validate one complete graph before publishing any runtime correspondence. @internal */
@@ -205,6 +222,7 @@ export function dispose_livetree_runtime(runtime: LiveTreeRuntime): void {
   runtime.disposeCss = undefined;
   runtime.cssManager = undefined;
   runtime.styleDocumentListeners.clear();
+  runtime.realizationListeners.clear();
   for (const document of runtime.styleDocuments) {
     if (RUNTIME_FOR_DOCUMENT.get(document) === runtime) {
       RUNTIME_FOR_DOCUMENT.delete(document);

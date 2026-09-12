@@ -6,6 +6,7 @@ import type { LiveMapDocumentIdentityOverlay } from "./livemap.document.identity
 import type { LiveMapProjectedIdentityOverlay } from "./livemap.projected.identity.js";
 import type { OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import type { HostedAggregateCommit } from "./livemap.hosted.js";
+import type { LiveMapProjectedDataOp } from "./livemap.transport.js";
 
 /**
  * Opaque, map-local library authority. It intentionally has no string form:
@@ -24,6 +25,8 @@ export type LiveMapStructuralTarget = Readonly<{
 export type LiveMapAggregateOperation = Readonly<{
   target: LiveMapStructuralTarget;
   operation: LiveMapAnyOp;
+  /** Carrier-native evidence for exact data transport. @internal */
+  projected?: LiveMapProjectedDataOp;
 }>;
 
 /**

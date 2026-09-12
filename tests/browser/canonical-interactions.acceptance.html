@@ -1,0 +1,88 @@
+<!doctype html>
+<!-- Bundle dist/index.js to .canonical-interactions.library.bundle.js before direct execution. -->
+<html>
+<body>
+  <button id="subject" hson:quid="000008398">subject</button>
+  <output id="result">running</output>
+  <script type="module">
+    import {
+      Hson,
+      HsonData,
+      activate_interactions,
+      add_interaction,
+      enable_interactions,
+      hsonLiveMap,
+      hsonLiveTree,
+    } from "./.canonical-interactions.library.bundle.js";
+
+    const QUID = "000008398";
+    const PageSchema = Hson`<type "document" tag "main" content <sequence [<tag "button" content "empty">]>>`;
+    const StateSchema = Hson`<type "data" content <count "number">>`;
+    const map = hsonLiveMap.fromLibraries({
+      state: { data: { count: 0 }, schema: StateSchema },
+      page: { document: `<main <button @${QUID}/>/>`, schema: PageSchema },
+    });
+    enable_interactions(map);
+    const listener = (event, target, overrides = {}) => ({
+      event, target, capture: true, once: false, passive: false, missingTarget: "throw",
+      preventDefault: false, stopPropagation: false, stopImmediatePropagation: false,
+      ...overrides,
+    });
+    const local = (id, key, event, target, overrides = {}) => ({
+      id, subjectQuid: QUID, listener: listener(event, target, overrides),
+      kind: "browser-local", key, args: HsonData.from(-0),
+    });
+    add_interaction(map, local("element", "element", "click", "element", {
+      once: true, preventDefault: true, stopPropagation: true, stopImmediatePropagation: true,
+    }));
+    add_interaction(map, local("document", "document", "hson-document", "document"));
+    add_interaction(map, local("window", "window", "hson-window", "window"));
+    add_interaction(map, local("passive", "passive", "hson-passive", "element", {
+      passive: true, preventDefault: true,
+    }));
+
+    const tree = hsonLiveTree.queryBody().graft();
+    const calls = { element: 0, document: 0, window: 0, passive: 0 };
+    let exactArgs = false;
+    const dispose = activate_interactions({
+      map,
+      tree,
+      local: {
+        element: (_event, subject, args) => {
+          calls.element += 1;
+          exactArgs = subject.node.$_meta?.quid === QUID && Object.is(args.scalar(), -0);
+        },
+        document: () => { calls.document += 1; },
+        window: () => { calls.window += 1; },
+        passive: () => { calls.passive += 1; },
+      },
+    });
+
+    const button = document.querySelector("#subject");
+    let afterImmediateStop = 0;
+    button.addEventListener("click", () => { afterImmediateStop += 1; });
+    const click = new Event("click", { bubbles: true, cancelable: true });
+    button.dispatchEvent(click);
+    button.dispatchEvent(new Event("click", { bubbles: true, cancelable: true }));
+    document.dispatchEvent(new Event("hson-document"));
+    window.dispatchEvent(new Event("hson-window"));
+    const passive = new Event("hson-passive", { cancelable: true });
+    button.dispatchEvent(passive);
+
+    const passed = calls.element === 1
+      && calls.document === 1
+      && calls.window === 1
+      && calls.passive === 1
+      && click.defaultPrevented
+      && !passive.defaultPrevented
+      && afterImmediateStop === 1
+      && exactArgs;
+    dispose();
+    dispose();
+    window.__HSON_CANONICAL_INTERACTIONS_BROWSER__ = Object.freeze({ passed, calls, exactArgs });
+    const result = document.querySelector("#result");
+    result.textContent = passed ? "pass" : `fail ${JSON.stringify(window.__HSON_CANONICAL_INTERACTIONS_BROWSER__)}`;
+    result.dataset.status = passed ? "pass" : "fail";
+  </script>
+</body>
+</html>

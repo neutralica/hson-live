@@ -1073,6 +1073,7 @@ function make_livemap_core_from_owned_root(
   let hostedFence: HostedAuthorityFence | undefined;
   let hostedBindingsByIdentity: ReadonlyMap<LiveMapLibraryIdentity, HostedRegistryBinding> | undefined;
   let hostedBindingsByName: ReadonlyMap<string, HostedRegistryBinding> | undefined;
+  const reservedLibraries = new Map<string, LiveMapLibraryIdentity>();
 
   function require_hosted_state(): Readonly<{
     registry: HostedRegistry;
@@ -1307,7 +1308,11 @@ function make_livemap_core_from_owned_root(
         candidate.value = planned.value;
         candidate.writes.push(localWrite);
         candidate.overlay = reconcile_livemap_projected_identity_overlay(candidate.overlay, planned.transportOps);
-        operations.push(Object.freeze({ target, operation: materialize_livemap_projected_op(write.operation) }));
+        operations.push(Object.freeze({
+          target,
+          operation: materialize_livemap_projected_op(write.operation),
+          projected: write.operation,
+        }));
         continue;
       }
       const localWrites = aggregate_write_ops(write, candidate.value);
@@ -1315,8 +1320,17 @@ function make_livemap_core_from_owned_root(
       candidate.value = planned.value;
       candidate.writes.push(...localWrites);
       candidate.overlay = reconcile_livemap_projected_identity_overlay(candidate.overlay, planned.transportOps);
-      for (const operation of planned.ops) {
-        operations.push(Object.freeze({ target: aggregate_target(library.identity, operation.path), operation }));
+      for (let index = 0; index < planned.ops.length; index += 1) {
+        const operation = planned.ops[index];
+        const projected = planned.transportOps[index];
+        if (operation === undefined || projected === undefined) {
+          throw new Error("Aggregate projected operation evidence is incomplete.");
+        }
+        operations.push(Object.freeze({
+          target: aggregate_target(library.identity, operation.path),
+          operation,
+          projected,
+        }));
       }
     }
 
@@ -1594,14 +1608,21 @@ function make_livemap_core_from_owned_root(
     if (bindingsInput.length !== states.length) {
       throw new Error("LiveMap hosted registry must name every static Library exactly once.");
     }
-    const byIdentity = new Map<LiveMapLibraryIdentity, HostedRegistryBinding>();
-    const byName = new Map<string, HostedRegistryBinding>();
     const bindings = bindingsInput.map((raw, index): HostedRegistryBinding => {
       const state = states[index];
       if (state === undefined || raw.identity !== state.identity || raw.mode !== state.mode
         || raw.schema !== state.hsonSchema) {
         throw new Error("LiveMap hosted registry order, mode, or Schema disagrees with aggregate authority.");
       }
+      return Object.freeze({ ...raw });
+    });
+    return install_hosted_registry(bindings);
+  }
+
+  function install_hosted_registry(bindingsInput: readonly HostedRegistryBinding[]): HostedRegistry {
+    const byIdentity = new Map<LiveMapLibraryIdentity, HostedRegistryBinding>();
+    const byName = new Map<string, HostedRegistryBinding>();
+    const bindings = bindingsInput.map((raw): HostedRegistryBinding => {
       const binding = Object.freeze({ ...raw });
       if (byIdentity.has(binding.identity) || byName.has(binding.name)) {
         throw new Error("LiveMap hosted registry contains a duplicate Library.");
@@ -1612,7 +1633,7 @@ function make_livemap_core_from_owned_root(
     });
     const registry = make_hosted_registry(bindings);
     hostedRegistry = registry;
-    hostedFence = make_hosted_authority_fence();
+    hostedFence ??= make_hosted_authority_fence();
     hostedBindingsByIdentity = byIdentity;
     hostedBindingsByName = byName;
     return registry;
@@ -1835,6 +1856,47 @@ function make_livemap_core_from_owned_root(
       libraryRegistry.add(library);
       return library.identity;
     },
+    addReservedLibrary: (key, transportName, root, hsonSchema) => {
+      transitionController.assertPublicMutationAllowed();
+      const existing = reservedLibraries.get(key);
+      if (existing !== undefined) return existing;
+      if (mapRevision !== 0) {
+        throw new Error("Reserved LiveMap libraries must be enabled before the first transition.");
+      }
+      if (hostedRegistry === undefined || hostedBindingsByIdentity === undefined) {
+        throw new Error("Canonical interactions require a fixed multi-library LiveMap.");
+      }
+      const preparedLibrary = prepare_livemap_root(root);
+      must_hson_schema_root(hsonSchema, preparedLibrary.root);
+      const library = make_livemap_library(preparedLibrary, hsonSchema);
+      if (library.mode === "document") {
+        throw new Error("Reserved canonical interaction storage must be data-mode.");
+      }
+      library.projectedValue = must_projected_root_value(library.root);
+      const beforeActive = aggregate_quid_locations(libraryRegistry.all());
+      const afterActive = aggregate_quid_locations([...libraryRegistry.all(), library]);
+      mapIdentityEpoch.install(stage_livemap_identity_epoch(
+        mapIdentityEpoch.issued(),
+        beforeActive.keys(),
+        afterActive.keys(),
+      ));
+      libraryRegistry.add(library);
+      reservedLibraries.set(key, library.identity);
+      const priorBindings = libraryRegistry.all().slice(0, -1).map((state) => {
+        const binding = hostedBindingsByIdentity?.get(state.identity);
+        if (binding === undefined) throw new Error("Hosted LiveMap binding disappeared during reserved-library enablement.");
+        return binding;
+      });
+      install_hosted_registry([...priorBindings, Object.freeze({
+        name: transportName,
+        scope: "hson-internal",
+        identity: library.identity,
+        mode: library.mode,
+        schema: hsonSchema,
+      })]);
+      return library.identity;
+    },
+    reservedLibrary: (key) => reservedLibraries.get(key),
     configureHostedRegistry: configure_hosted_registry,
     hostedRegistry: () => require_hosted_state().registry,
     captureHosted: capture_hosted_aggregate,

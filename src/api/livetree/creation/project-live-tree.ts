@@ -24,6 +24,7 @@ import { record_livetree_materialization } from "../debug/materialization-profil
 import {
   default_livetree_runtime,
   register_runtime_document,
+  notify_livetree_realizations_internal,
   runtime_for_node,
   type LiveTreeRuntime,
 } from "../runtime/livetree-runtime.js";
@@ -79,13 +80,15 @@ export function project_livetree(
     && subtree_has_document_binding(node)
     ? "linked"
     : "standalone";
-  return project_livetree_with_authority(
+  const projected = project_livetree_with_authority(
     node,
     parentNs,
     runtime,
     ownerDocument,
     identityAuthority,
   );
+  notify_livetree_realizations_internal(runtime);
+  return projected;
 }
 
 function subtree_has_document_binding(node: HsonNode): boolean {
@@ -100,7 +103,9 @@ export function project_linked_livetree(
   runtime: LiveTreeRuntime,
   ownerDocument: Document,
 ): Node {
-  return project_livetree_with_authority(node, parentNs, runtime, ownerDocument, "linked");
+  const projected = project_livetree_with_authority(node, parentNs, runtime, ownerDocument, "linked");
+  notify_livetree_realizations_internal(runtime);
+  return projected;
 }
 
 function project_livetree_with_authority(

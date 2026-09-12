@@ -127,10 +127,10 @@ export function make_livemap_libraries<const TLibraries extends LiveMapLibraries
     changed: commit.changed,
     prevRev: commit.prevRev,
     rev: commit.rev,
-    operations: Object.freeze(commit.operations.map((entry): LiveMapLibraryOperation => {
+    operations: Object.freeze(commit.operations.flatMap((entry): readonly LiveMapLibraryOperation[] => {
       const library = namesByIdentity.get(entry.target.library);
-      if (library === undefined) throw new Error("LiveMap aggregate commit belongs to an unselected Library.");
-      return Object.freeze({ library, operation: entry.operation });
+      if (library === undefined) return [];
+      return [Object.freeze({ library, operation: entry.operation })];
     })),
   });
 
@@ -209,13 +209,26 @@ export function make_livemap_hosted_mirror_from_snapshot_internal(
       throw new Error("Hosted aggregate mirror snapshot Library metadata is malformed.");
     }
     const root = decode_hosted_root(library.root);
+    if (registry.scope === "hson-internal") continue;
     inputs[registry.name] = registry.mode === "document"
       ? { document: root, schema: registry.schema }
       : { data: node_to_json_value(root), schema: registry.schema };
   }
 
   const mirror = make_livemap_libraries(inputs);
-  internal_livemap_aggregate_authority(mirror).restoreHosted(snapshot);
+  const aggregate = internal_livemap_aggregate_authority(mirror);
+  for (let index = 0; index < snapshot.registry.libraries.length; index += 1) {
+    const registry = snapshot.registry.libraries[index];
+    const library = snapshot.libraries[index];
+    if (registry === undefined || library === undefined || registry.scope !== "hson-internal") continue;
+    aggregate.addReservedLibrary(
+      registry.name,
+      registry.name,
+      decode_hosted_root(library.root),
+      registry.schema,
+    );
+  }
+  aggregate.restoreHosted(snapshot);
   return mirror;
 }
 

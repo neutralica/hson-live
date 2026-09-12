@@ -27,6 +27,7 @@ import {
 import {
   decode_livemap_replay_payload,
   encode_livemap_replay_transport,
+  LIVEMAP_STRUCTURAL_JSON_FORMAT,
   materialize_livemap_projected_op,
   type LiveMapProjectedDataOp,
 } from "./livemap.transport.js";
@@ -55,6 +56,8 @@ export type HostedAuthorityFence = Readonly<{
 
 export type HostedRegistryEntry = Readonly<{
   name: string;
+  /** Presence marks an Hson-owned entry; ordinary application entries retain their established shape. */
+  scope?: "hson-internal";
   mode: LiveMapRootMode;
   schema: HsonSchema;
   schemaDigest: string;
@@ -69,6 +72,7 @@ export type HostedRegistry = Readonly<{
 
 export type HostedRegistryBinding = Readonly<{
   name: string;
+  scope?: "hson-internal";
   identity: LiveMapLibraryIdentity;
   mode: LiveMapRootMode;
   schema: HsonSchema;
@@ -133,16 +137,20 @@ export function make_hosted_registry(bindings: readonly HostedRegistryBinding[])
     throw new HostedAggregateRepresentationError("Hosted registry library count is outside its supported bound.");
   }
   const names = new Set<string>();
-  const libraries = bindings.map(({ name, mode, schema }): HostedRegistryEntry => {
+  const libraries = bindings.map(({ name, scope, mode, schema }): HostedRegistryEntry => {
     must_library_name(name);
     if (names.has(name)) throw new HostedAggregateRepresentationError(`Hosted Library name ${JSON.stringify(name)} is duplicated.`);
     names.add(name);
+    if (scope !== undefined && scope !== "hson-internal") {
+      throw new HostedAggregateRepresentationError("Hosted registry Library scope is malformed.");
+    }
     if (mode !== "data-object" && mode !== "data-array" && mode !== "document") {
       throw new HostedAggregateRepresentationError("Hosted registry contains an unsupported root mode.");
     }
     if (typeof schema !== "string") throw new HostedAggregateRepresentationError("Hosted registry Schema source is malformed.");
     return Object.freeze({
       name,
+      ...(scope === undefined ? {} : { scope }),
       mode,
       schema,
       schemaDigest: hosted_sha256(schema),
@@ -172,7 +180,11 @@ export function make_hosted_commit(
     changed: boolean;
     prevRev: number;
     rev: number;
-    operations: readonly Readonly<{ target: Readonly<{ library: LiveMapLibraryIdentity }>; operation: LiveMapAnyOp }>[];
+    operations: readonly Readonly<{
+      target: Readonly<{ library: LiveMapLibraryIdentity }>;
+      operation: LiveMapAnyOp;
+      projected?: LiveMapProjectedDataOp;
+    }>[];
   }>,
 ): HostedAggregateCommit {
   if (input.operations.length > HOSTED_MAX_OPERATIONS) {
@@ -183,7 +195,15 @@ export function make_hosted_commit(
   for (const entry of input.operations) {
     const binding = bindingsByIdentity.get(entry.target.library);
     if (binding === undefined) throw new HostedAggregateRepresentationError("Hosted commit references an unregistered Library identity.");
-    const evidence = encode_hosted_operation(binding.name, binding.mode, entry.operation);
+    const evidence = entry.projected === undefined
+      ? encode_hosted_operation(binding.name, binding.mode, entry.operation)
+      : Object.freeze({
+        library: binding.name,
+        domain: "data" as const,
+        kind: entry.projected.kind,
+        format: LIVEMAP_STRUCTURAL_JSON_FORMAT,
+        payload: encode_livemap_replay_transport([entry.projected]).payload,
+      });
     const operation = evidence.domain === "data"
       ? materialize_livemap_projected_op(require_single_projected_operation(evidence.payload))
       : decode_hosted_graph_operation(evidence.payload, binding.mode);
@@ -248,17 +268,40 @@ export function decode_hosted_commit(
     const binding = bindingsByName.get(semantic.library);
     if (binding === undefined) throw new HostedAggregateRepresentationError("Hosted commit references an unknown Library.", index);
     const operation = semantic.operation as LiveMapAnyOp;
+    if (evidence.domain === "data") {
+      if (binding.mode === "document" || evidence.format !== LIVEMAP_STRUCTURAL_JSON_FORMAT) {
+        throw new HostedAggregateRepresentationError("Hosted data replay evidence is incompatible.", index);
+      }
+      const projected = require_single_projected_operation(String(evidence.payload), index);
+      if (evidence.kind !== projected.kind
+        || !hosted_semantic_equal(operation, materialize_livemap_projected_op(projected))) {
+        throw new HostedAggregateRepresentationError("Hosted semantic operation and exact replay evidence disagree.", index);
+      }
+      return Object.freeze({ library: binding, semantic: operation, projected });
+    }
     const expected = encode_hosted_operation(binding.name, binding.mode, operation);
     if (evidence.domain !== expected.domain || evidence.kind !== expected.kind
       || evidence.format !== expected.format || evidence.payload !== expected.payload) {
       throw new HostedAggregateRepresentationError("Hosted semantic operation and exact replay evidence disagree.", index);
     }
-    if (expected.domain === "data") {
-      const projected = require_single_projected_operation(expected.payload, index);
-      return Object.freeze({ library: binding, semantic: operation, projected });
-    }
     return Object.freeze({ library: binding, semantic: operation, graph: decode_hosted_graph_operation(expected.payload, binding.mode) });
   }));
+}
+
+function hosted_semantic_equal(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (typeof left !== "object" || left === null || typeof right !== "object" || right === null) return false;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
+    return left.every((value, index) => hosted_semantic_equal(value, right[index]));
+  }
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length || leftKeys.some((key, index) => key !== rightKeys[index])) return false;
+  return leftKeys.every((key) => hosted_semantic_equal(
+    (left as Record<string, unknown>)[key],
+    (right as Record<string, unknown>)[key],
+  ));
 }
 
 function require_single_projected_operation(payload: string, operationIndex?: number): LiveMapProjectedDataOp {
@@ -303,7 +346,12 @@ export function assert_hosted_snapshot_shape(snapshot: HostedAggregateSnapshot):
   }
   for (const entry of registry.libraries) {
     const item = exact_record(entry, "Hosted registry entry");
-    exact_keys(item, ["name", "mode", "schema", "schemaDigest", "rootCodec"], "Hosted registry entry");
+    exact_keys(item, entry.scope === undefined
+      ? ["name", "mode", "schema", "schemaDigest", "rootCodec"]
+      : ["name", "scope", "mode", "schema", "schemaDigest", "rootCodec"], "Hosted registry entry");
+    if (entry.scope !== undefined && entry.scope !== "hson-internal") {
+      throw new HostedAggregateRepresentationError("Hosted registry Library scope is malformed.");
+    }
   }
   for (const entry of record.libraries) {
     const item = exact_record(entry, "Hosted snapshot Library");
@@ -498,6 +546,7 @@ function registry_canonical_text(entries: readonly HostedRegistryEntry[]): strin
     format: HOSTED_REGISTRY_FORMAT,
     libraries: entries.map((entry) => ({
       name: entry.name,
+      ...(entry.scope === undefined ? {} : { scope: entry.scope }),
       mode: entry.mode,
       schema: entry.schema,
       schemaDigest: entry.schemaDigest,

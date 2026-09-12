@@ -11,6 +11,7 @@ import type {
   EchoSession,
   EchoSessionOptions,
   LocusActionPayloads,
+  LocusClientMessage,
   LocusSocketLike,
 } from "../../types/locus.types.js";
 import type { EchoMapManagementLease } from "../../internal/echo-map-capability.js";
@@ -207,7 +208,9 @@ export function create_multi_library_echo_socket_client_internal<
 
   function send(message: unknown): void {
     if (status === "closed") throw new Error("Hosted aggregate socket Echo is closed.");
-    const raw = JSON.stringify(message);
+    const raw = is_exact_endpoint_client_message(message)
+      ? encode_locus_client_message(message)
+      : JSON.stringify(message);
     if (utf8_bytes(raw) > DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES) {
       throw new Error("Hosted aggregate Echo message exceeds the live wire byte limit.");
     }
@@ -472,6 +475,16 @@ export function create_multi_library_echo_socket_client_internal<
       pendingLive: 0,
     }),
   });
+}
+
+function is_exact_endpoint_client_message(message: unknown): message is LocusClientMessage {
+  if (typeof message !== "object" || message === null || !("type" in message)) return false;
+  const type = Reflect.get(message, "type");
+  return type === "action"
+    || type === "action-status"
+    || type === "session-create"
+    || type === "session-attach"
+    || type === "session-goodbye";
 }
 
 type DecodedServerMessage =

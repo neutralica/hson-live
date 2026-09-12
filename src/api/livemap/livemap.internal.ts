@@ -43,6 +43,14 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   /** Insertion-ordered opaque identities; this is an in-package test seam, not a selector API. */
   libraries: () => readonly LiveMapLibraryIdentity[];
   addLibrary: (root: HsonNode, options?: Readonly<{ hsonSchema?: HsonSchema }>) => LiveMapLibraryIdentity;
+  /** Attach one structurally hidden Hson-owned Library before the first transition. @internal */
+  addReservedLibrary: (
+    key: string,
+    transportName: string,
+    root: HsonNode,
+    hsonSchema: HsonSchema,
+  ) => LiveMapLibraryIdentity;
+  reservedLibrary: (key: string) => LiveMapLibraryIdentity | undefined;
   /** Fix public names and exact Schema sources before hosted capture/replay. @internal */
   configureHostedRegistry: (bindings: readonly HostedRegistryBinding[]) => HostedRegistry;
   hostedRegistry: () => HostedRegistry;

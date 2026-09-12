@@ -10,6 +10,7 @@ import {
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import {
   is_ordered_projected_object,
+  is_ordered_projected_value,
   type OrderedProjectedObject,
   type OrderedProjectedValue,
 } from "../../core/ordered-projected-value.js";
@@ -40,6 +41,7 @@ export function must_json_value(value: unknown, path: LivePath): JsonValue {
 /** Admit one public JavaScript value into LiveMap's immutable semantic carrier. */
 export function must_ordered_projected_value(value: unknown, path: LivePath): OrderedProjectedValue {
   try {
+    if (is_ordered_projected_value(value)) return value;
     return admit_projected_value(value, path);
   } catch (error) {
     if (error instanceof ProjectedValueAdmissionError) {

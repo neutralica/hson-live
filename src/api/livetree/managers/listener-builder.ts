@@ -23,6 +23,25 @@ function is_event_target(value: unknown): value is EventTarget {
     && typeof candidate.removeEventListener === "function";
 }
 
+/** Resolve the exact targets selected by one normalized listener target. @internal */
+export function resolve_livetree_listener_targets_internal(
+  tree: LiveTree,
+  target: ListenOpts["target"],
+): readonly EventTarget[] {
+  if (target === "window" || target === "document") {
+    try {
+      const mappedElement = tree.dom.el();
+      const ownerDocument = mappedElement?.ownerDocument;
+      const ambient = target === "window"
+        ? ownerDocument?.defaultView ?? (typeof window !== "undefined" ? window : null)
+        : ownerDocument ?? (typeof document !== "undefined" ? document : null);
+      return ambient === null || ambient === undefined ? [] : [ambient];
+    } catch { return []; }
+  }
+  const element = tree.dom.el();
+  return element === null || element === undefined ? [] : [element];
+}
+
 class ListenerSubscription implements ListenerSub {
   public constructor(private readonly release: () => void) {}
 
@@ -157,36 +176,6 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
     return config;
   };
 
-  const resolveAmbientTarget = (target: ListenOpts["target"]): EventTarget | null => {
-    try {
-      const mappedElement = tree.dom.el();
-      const ownerDocument = mappedElement?.ownerDocument;
-      if (target === "window") {
-        if (ownerDocument !== undefined) return ownerDocument.defaultView;
-        return typeof window !== "undefined" ? window : null;
-      }
-
-      if (target === "document") {
-        if (ownerDocument !== undefined) return ownerDocument;
-        return typeof document !== "undefined" ? document : null;
-      }
-
-      return null;
-    } catch {
-      return null;
-    }
-  };
-
-  const collectTargets = (target: ListenOpts["target"]): EventTarget[] => {
-    if (target === "window" || target === "document") {
-      const tgt = resolveAmbientTarget(target);
-      return tgt ? [tgt] : [];
-    }
-
-    const el = tree.dom.el();
-    return el ? [el] : [];
-  };
-
   const on = <K extends keyof ElemMap>(
     type: K,
     handler: (ev: ElemMap[K]) => void
@@ -200,7 +189,7 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
       handler(ev as ElemMap[K]);
     };
 
-    const targets = collectTargets(config.opts.target);
+    const targets = resolve_livetree_listener_targets_internal(tree, config.opts.target);
 
     for (const tgt of targets) {
       if (!is_event_target(tgt)) {

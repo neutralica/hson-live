@@ -2,6 +2,24 @@
 
 export { Hson } from "./hson-authoring.js";
 export { HsonData } from "./api/data/hson-data.js";
+export {
+    enable_interactions,
+    add_interaction,
+    replace_interaction,
+    remove_interaction,
+    activate_interactions,
+} from "./api/interactions/interactions.js";
+export type {
+    InteractionDescriptor,
+    InteractionListener,
+    LocalInteractionDescriptor,
+    AuthoritativeInteractionDescriptor,
+    InteractionLocalBehavior,
+    InteractionLocalBehaviors,
+    InteractionActionDispatcher,
+    InteractionFailure,
+    InteractionActivationOptions,
+} from "./types/interaction.types.js";
 export { hson, hsonCalc, hsonLocus, hsonEcho, hsonTransform, hsonLiveMap, hsonLiveTree, hsonInspect, type HsonFacade } from "./hson.js";
 export type {
     BinaryDecodeOptions,
