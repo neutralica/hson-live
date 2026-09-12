@@ -22,6 +22,12 @@ import {
 import { create_multi_library_echo_socket_client_internal } from "./echo.multi-library.socket.js";
 import { encode_locus_graph_content } from "../locus/locus.graph-content-codec.js";
 import type { EchoEndpointConnection } from "./echo.client.js";
+import type {
+  LocusHostedAggregateCanonicalPublication,
+  LocusHostedAggregateSynchronizationOutput,
+  LocusHostedAggregateSynchronizationRequest,
+} from "../locus/locus.hosted-multi-library.transport.internal.js";
+import { configure_echo_hosted_aggregate_websocket_internal } from "./echo.aggregate-websocket.internal.js";
 
 /** Create one complete exact-topology Echo replica. */
 export function create_multi_library_echo<
@@ -30,10 +36,11 @@ export function create_multi_library_echo<
 >(
   options: EchoOptions<TMap> & Readonly<{ map: TMap; recovery: EchoRecoveryOptions }>,
   composition?: Readonly<{
-    connection: EchoEndpointConnection<TActions>;
+    connection: EchoEndpointConnection<TActions, LocusHostedAggregateSynchronizationRequest, LocusHostedAggregateSynchronizationOutput | LocusHostedAggregateCanonicalPublication>;
     management: EchoMapManagementLease;
   }>,
 ): Echo<TMap, TActions> {
+  if (composition !== undefined) configure_echo_hosted_aggregate_websocket_internal(composition.connection);
   const endpoint = create_multi_library_echo_socket_client_internal<TActions>({
     socket: options.socket,
     map: options.map,

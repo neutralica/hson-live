@@ -13,31 +13,44 @@ export type EchoSynchronizationOutput = Extract<LocusDecodedServerMessage, {
 }>;
 
 /** @internal Ordered downstream synchronization capability. */
-export type EchoSynchronizationCapability = Readonly<{
-  begin: (request: LocusClientRecoverMessage) => void;
-  onOutput: (listener: (output: EchoSynchronizationOutput) => void) => LocusDisposer;
+export type EchoSynchronizationCapability<
+  TRequest = LocusClientRecoverMessage,
+  TOutput = EchoSynchronizationOutput,
+> = Readonly<{
+  /** @internal Semantic attachment identity shared with finite operations. */
+  binding?: object;
+  begin: (request: TRequest) => void;
+  onOutput: (listener: (output: TOutput) => void) => LocusDisposer;
 }>;
 
 /** @internal Mutable transport-adapter side of synchronization delivery. */
-export type EchoSynchronizationAdapter = Readonly<{
-  capability: EchoSynchronizationCapability;
-  deliver: (output: EchoSynchronizationOutput) => void;
+export type EchoSynchronizationAdapter<
+  TRequest = LocusClientRecoverMessage,
+  TOutput = EchoSynchronizationOutput,
+> = Readonly<{
+  capability: EchoSynchronizationCapability<TRequest, TOutput>;
+  deliver: (output: TOutput) => void;
   clear: () => void;
 }>;
 
-export function create_echo_synchronization_adapter_internal(
-  begin: (request: LocusClientRecoverMessage) => void,
-): EchoSynchronizationAdapter {
-  const listeners = new Set<(output: EchoSynchronizationOutput) => void>();
+export function create_echo_synchronization_adapter_internal<
+  TRequest = LocusClientRecoverMessage,
+  TOutput = EchoSynchronizationOutput,
+>(
+  begin: (request: TRequest) => void,
+  binding?: object,
+): EchoSynchronizationAdapter<TRequest, TOutput> {
+  const listeners = new Set<(output: TOutput) => void>();
   return Object.freeze({
     capability: Object.freeze({
+      ...(binding === undefined ? {} : { binding }),
       begin,
-      onOutput(listener: (output: EchoSynchronizationOutput) => void) {
+      onOutput(listener: (output: TOutput) => void) {
         listeners.add(listener);
         return () => listeners.delete(listener);
       },
     }),
-    deliver(output: EchoSynchronizationOutput) {
+    deliver(output: TOutput) {
       for (const listener of [...listeners]) listener(output);
     },
     clear() { listeners.clear(); },

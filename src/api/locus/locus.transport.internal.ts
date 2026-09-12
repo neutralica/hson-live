@@ -20,9 +20,9 @@ export type LocusFiniteOperationRequest<
 }>;
 
 /** @internal Typed finite authority outcomes and session-control outcomes. */
-export type LocusFiniteOperationOutcome = Exclude<LocusServerMessage,
-  | { type: "recovery-plan" | "recovery-commit" | "recovery-snapshot" | "recovery-caught-up" | "recovery-error" | "commit" | "event" }
->;
+export type LocusFiniteOperationOutcome = Extract<LocusServerMessage, {
+  type: "ack" | "error" | "action-status" | "session-created" | "session-attached" | "session-rejected" | "session-fenced" | "session-ended";
+}>;
 
 /** @internal Recovery establishment and recovery-transfer output. */
 export type LocusSynchronizationOutput = Extract<LocusServerMessage, {
@@ -39,10 +39,13 @@ export type LocusTransientEventOutput = Extract<LocusServerMessage, { type: "eve
  * Internal typed downstream sink. Transport adapters frame these semantic
  * outputs; Locus authority never needs to know how their bytes are carried.
  */
-export type LocusDownstreamSink = Readonly<{
+export type LocusDownstreamSink<
+  TSynchronization = LocusSynchronizationOutput,
+  TPublication = LocusCanonicalPublication,
+> = Readonly<{
   finite: (outcome: LocusFiniteOperationOutcome) => void;
-  synchronization: (output: LocusSynchronizationOutput) => void;
-  publication: (publication: LocusCanonicalPublication) => void;
+  synchronization: (output: TSynchronization) => void;
+  publication: (publication: TPublication) => void;
   event: (event: LocusTransientEventOutput) => void;
 }>;
 
@@ -63,13 +66,14 @@ export type LocusAuthoritySessionBinding = Readonly<{
  */
 export type LocusSemanticAttachment<
   TActions extends LocusActionPayloads = LocusActionPayloads,
+  TSynchronizationRequest = LocusClientRecoverMessage,
 > = Readonly<{
   binding: LocusAuthoritySessionBinding;
   operations: Readonly<{
     submit: (request: LocusFiniteOperationRequest<TActions>) => void | Promise<void>;
   }>;
   synchronization: Readonly<{
-    begin: (request: LocusClientRecoverMessage) => void;
+    begin: (request: TSynchronizationRequest) => void;
     cancel: () => void;
   }>;
   emit_event: (event: string, payload: JsonValue) => void;
@@ -130,6 +134,9 @@ export function deliver_locus_downstream_internal(
     || message.type === "recovery-error") {
     sink.synchronization(message);
     return;
+  }
+  if (message.type === "patch") {
+    throw new Error("Legacy patch messages are not finite operation outcomes.");
   }
   sink.finite(message);
 }

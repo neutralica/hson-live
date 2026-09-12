@@ -34,7 +34,7 @@ type ReplicaStrategy<TMap extends EchoMap, TActions extends LocusActionPayloads>
   dispose: LocusDisposer;
 }>;
 type ReplicaComposition<TActions extends LocusActionPayloads> = Readonly<{
-  connection: EchoEndpointConnection<TActions>;
+  connection: EchoEndpointConnection<TActions, any, any>;
   management: EchoMapManagementLease;
 }>;
 type ReplicaInitializer = <TMap extends EchoMap, TActions extends LocusActionPayloads>(
@@ -95,6 +95,7 @@ export function create_lazy_replica_echo_internal<
   options: ReplicaOptions<TMap>,
   management: EchoMapManagementLease,
   loaders: EchoReplicaLoaders = DEFAULT_ECHO_REPLICA_LOADERS,
+  semanticConnection?: EchoEndpointConnection<TActions, any, any>,
 ): Echo<TMap, TActions> {
   const initialCursor = options.recovery.cursor;
   if (management.topology === "solo"
@@ -112,7 +113,7 @@ export function create_lazy_replica_echo_internal<
     sessionRequestId?: (kind: "create" | "reattach" | "goodbye") => string;
   }>;
   const aggregate = management.topology === "aggregate";
-  const connection = create_echo_endpoint_connection_internal<TActions>({
+  const connection = semanticConnection ?? create_echo_endpoint_connection_internal<TActions>({
     socket: options.socket,
     ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
     ...(options.session === undefined ? {} : { session: options.session }),

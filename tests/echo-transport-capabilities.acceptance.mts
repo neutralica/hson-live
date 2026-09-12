@@ -3,7 +3,14 @@ import type { JsonValue } from "../src/core/types.ts";
 import { Hson, HsonData, hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
 import { make_echo_document_authority } from "../src/api/echo/echo.document-authority.ts";
 import { create_echo_endpoint_internal } from "../src/api/echo/echo.endpoint.ts";
+import { create_echo_semantic_connection_internal } from "../src/api/echo/echo.client.ts";
 import { create_echo_finite_operation_adapter_internal } from "../src/api/echo/echo.operation.internal.ts";
+import { create_echo_synchronization_adapter_internal } from "../src/api/echo/echo.synchronization.internal.ts";
+import { create_multi_library_echo_socket_client_internal } from "../src/api/echo/echo.multi-library.socket.ts";
+import type {
+  EchoHostedAggregateSynchronizationOutput,
+} from "../src/api/echo/echo.aggregate-websocket.internal.ts";
+import type { LocusHostedAggregateSynchronizationRequest } from "../src/api/locus/locus.hosted-multi-library.transport.internal.ts";
 import {
   attach_locus_semantic_transport_internal,
   type LocusCanonicalPublication,
@@ -12,8 +19,11 @@ import {
 } from "../src/api/locus/locus.transport.internal.ts";
 import {
   create_locus_hosted_aggregate_socket_internal,
-  type HostedAggregateDownstreamOutput,
 } from "../src/api/locus/locus.hosted-multi-library.socket.ts";
+import type {
+  LocusHostedAggregateCanonicalPublication,
+  LocusHostedAggregateSynchronizationOutput,
+} from "../src/api/locus/locus.hosted-multi-library.transport.internal.ts";
 import type { LocusActionPayloads } from "../src/types/locus.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -214,13 +224,32 @@ await check("semantic session survives attachment replacement and fences the sta
 await check("aggregate authority uses the same operation/synchronization attachment split below socket framing", async () => {
   const schema: HsonSchema = Hson`<type "data" content <value "number">>`;
   const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema } });
-  const server = create_locus_hosted_aggregate_socket_internal({ map });
-  const outputs: HostedAggregateDownstreamOutput[] = [];
-  const attachment = server.attach((output) => outputs.push(output), { principalId: "alice" });
+  const server = create_locus_hosted_aggregate_socket_internal({ map, actions: { echo: (_context, payload) => payload } });
+  const outputs: Array<LocusFiniteOperationOutcome | LocusHostedAggregateSynchronizationOutput | LocusHostedAggregateCanonicalPublication> = [];
+  const attachment = server.attach({
+    finite: (output) => outputs.push(output),
+    synchronization: (output) => outputs.push(output),
+    publication: (output) => outputs.push(output),
+    event: () => {},
+  }, { principalId: "alice" });
   await attachment.operations.submit({ type: "session-create", id: "aggregate-session" });
   const created = outputs.find((output) => output.type === "session-created");
   assert.equal(typeof created?.credential, "string");
   assert.equal(attachment.binding.attached, true);
+  const payload = HsonData.fromHson(Hson`<'10' -0 '2' <__proto__ <polluted true>> __proto__ <safe true> null null>`);
+  await attachment.operations.submit({
+    type: "action",
+    id: "aggregate-attempt",
+    clientId: "aggregate-client",
+    requestId: "aggregate-request",
+    attemptId: "aggregate-attempt",
+    name: "echo",
+    payload,
+  });
+  const acknowledged = finite(outputs.filter((output): output is LocusFiniteOperationOutcome => output.type === "ack" || output.type === "error" || output.type === "action-status" || output.type.startsWith("session-")), "ack");
+  assert.equal(acknowledged.result?.equals(payload), true);
+  assert.equal(Object.hasOwn(acknowledged, "resultData"), false);
+  assert.equal(Object.hasOwn(acknowledged, "format"), false);
   attachment.synchronization.begin({
     type: "recover",
     id: "aggregate-recovery",
@@ -302,6 +331,108 @@ await check("finite settlement and downstream convergence are independently deli
   authority.dispose();
   endpoint.dispose();
   operationAdapter.clear();
+});
+
+await check("internal Echo composition accepts independent capabilities with one semantic binding", async () => {
+  const binding = Object.freeze({ authority: "aggregate-test" });
+  const operations = create_echo_finite_operation_adapter_internal(() => {}, binding);
+  const synchronization = create_echo_synchronization_adapter_internal(() => {}, binding);
+  let detachments = 0;
+  const connection = create_echo_semantic_connection_internal({
+    operations: operations.capability,
+    synchronization: synchronization.capability,
+    lifecycle: { attach: () => () => { detachments += 1; } },
+    clientId: "composed-client",
+  });
+  connection.echo.connect();
+  assert.equal(connection.connected, true);
+  connection.echo.disconnect();
+  assert.equal(connection.connected, false);
+  assert.equal(detachments, 1);
+  connection.echo.dispose();
+
+  const mismatchedSynchronization = create_echo_synchronization_adapter_internal(() => {}, Object.freeze({}));
+  assert.throws(() => create_echo_semantic_connection_internal({
+    operations: operations.capability,
+    synchronization: mismatchedSynchronization.capability,
+    lifecycle: { attach: () => () => {} },
+  }), /one authority\/session binding/u);
+  operations.clear();
+  synchronization.clear();
+  mismatchedSynchronization.clear();
+});
+
+await check("aggregate result and publication ingress remain independently orderable", async () => {
+  const schema: HsonSchema = Hson`<type "data" content <value "number">>`;
+  const authorityMap = hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema } });
+  const server = create_locus_hosted_aggregate_socket_internal({
+    map: authorityMap,
+    actions: {
+      async set(context, payload) {
+        const value = payload?.entries()?.find(([name]) => name === "value")?.[1].scalar();
+        if (typeof value !== "number") throw new Error("Expected numeric value.");
+        await context.mutate((draft) => {
+          const state = draft.lib("state");
+          if (!("at" in state)) throw new Error("Expected data library.");
+          state.at(["value"]).set(value);
+        });
+        return payload;
+      },
+    },
+  });
+  const binding = Object.freeze({ authority: server });
+  let attachment: ReturnType<typeof server.attach> | undefined;
+  const operations = create_echo_finite_operation_adapter_internal((request) => { void attachment?.operations.submit(request); }, binding);
+  const synchronization = create_echo_synchronization_adapter_internal<
+    LocusHostedAggregateSynchronizationRequest,
+    EchoHostedAggregateSynchronizationOutput
+  >((request) => attachment?.synchronization.begin(request), binding);
+  const delayedFinite: LocusFiniteOperationOutcome[] = [];
+  const delayedPublications: Array<Extract<EchoHostedAggregateSynchronizationOutput, { type: "commit" }>> = [];
+  let delayFinite = false;
+  let delayPublication = false;
+  attachment = server.attach({
+    finite(output) { if (delayFinite) delayedFinite.push(output); else operations.deliver(output); },
+    synchronization: synchronization.deliver,
+    publication(output) { if (delayPublication) delayedPublications.push(output); else synchronization.deliver(output); },
+    event: () => {},
+  });
+  const connection = create_echo_semantic_connection_internal({
+    operations: operations.capability,
+    synchronization: synchronization.capability,
+    lifecycle: { attach: () => () => {} },
+    clientId: "aggregate-composed-client",
+  });
+  const unusedSocket = Object.freeze({ send: () => {}, close: () => {}, onMessage: () => () => {}, onClose: () => () => {} });
+  const client = create_multi_library_echo_socket_client_internal({
+    socket: unusedSocket,
+    logicalMapId: server.logicalMapId,
+    connection,
+  });
+  await client.connect();
+  const initialRevision = client.lastAppliedRev;
+
+  delayPublication = true;
+  const resultFirst = await client.action("set", { value: 1 });
+  assert.equal(resultFirst.type, "ack");
+  assert.equal(client.lastAppliedRev, initialRevision);
+  synchronization.deliver(delayedPublications.shift()!);
+  assert.equal(client.lastAppliedRev, (initialRevision ?? 0) + 1);
+  delayPublication = false;
+
+  delayFinite = true;
+  const publicationFirst = client.action("set", { value: 2 });
+  for (let turn = 0; turn < 20 && delayedFinite.length === 0; turn += 1) await Promise.resolve();
+  assert.equal(client.lastAppliedRev, (initialRevision ?? 0) + 2);
+  operations.deliver(delayedFinite.shift()!);
+  assert.equal((await publicationFirst).type, "ack");
+
+  client.dispose();
+  connection.echo.dispose();
+  attachment.close();
+  server.dispose();
+  operations.clear();
+  synchronization.clear();
 });
 
 process.stdout.write(`1..${checks}\n`);

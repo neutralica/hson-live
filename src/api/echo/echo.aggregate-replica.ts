@@ -11,14 +11,11 @@ import type {
   EchoSession,
   EchoSessionOptions,
   LocusActionPayloads,
-  LocusClientMessage,
   LocusSocketLike,
 } from "../../types/locus.types.js";
 import type { EchoMapManagementLease } from "../../internal/echo-map-capability.js";
-import { decode_locus_server_message, encode_locus_client_message } from "../locus/locus.protocol.js";
 import { make_livemap_hosted_mirror_from_snapshot_internal } from "../livemap/livemap.libraries.js";
 import {
-  HOSTED_MAX_SNAPSHOT_BYTES,
   assert_hosted_snapshot_bound,
   assert_hosted_snapshot_shape,
   type HostedAggregateSnapshot,
@@ -29,18 +26,25 @@ import {
   type LocusHostedAggregateWireEnvelope,
 } from "../locus/locus.hosted-multi-library.js";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../locus/locus.hosted-multi-library.protocol.js";
-import { create_echo_endpoint_internal, type EchoEndpointServerMessage } from "./echo.endpoint.js";
-import { create_echo_finite_operation_adapter_internal } from "./echo.operation.internal.js";
-import type { EchoEndpointConnection } from "./echo.client.js";
-import { make_echo_reload_safe_id } from "./echo.request.js";
+import {
+  create_echo_endpoint_connection_internal,
+  type EchoEndpointConnection,
+} from "./echo.client.js";
+import type {
+  LocusHostedAggregateSynchronizationRequest,
+} from "../locus/locus.hosted-multi-library.transport.internal.js";
 import {
   create_echo_aggregate_replica_capability_internal,
   type EchoAggregateReplicaCapability,
 } from "./echo.aggregate-replica.lifecycle.js";
+import {
+  configure_echo_hosted_aggregate_websocket_internal,
+  type EchoHostedAggregateSynchronizationOutput,
+} from "./echo.aggregate-websocket.internal.js";
 
 
 type HostedPlanOutcome = "current" | "replay" | "snapshot" | "reject";
-type HostedSnapshotReason = "no_usable_revision" | "incarnation_mismatch" | "registry_mismatch" | "history_unavailable";
+type AggregateSynchronizationOutput = EchoHostedAggregateSynchronizationOutput;
 
 /** @internal */
 export type MultiLibraryEchoSocketClientOptions<TActions extends LocusActionPayloads = LocusActionPayloads> = Readonly<{
@@ -55,7 +59,7 @@ export type MultiLibraryEchoSocketClientOptions<TActions extends LocusActionPayl
   actionStatusId?: () => string;
   session?: EchoSessionOptions;
   /** @internal Common public Echo shell supplied by deferred replica composition. */
-  connection?: EchoEndpointConnection<TActions>;
+  connection?: EchoEndpointConnection<TActions, LocusHostedAggregateSynchronizationRequest, AggregateSynchronizationOutput>;
   /** @internal Management acquired synchronously by the public Echo shell. */
   management?: EchoMapManagementLease;
 }>;
@@ -98,11 +102,38 @@ export type MultiLibraryEchoSocketClient = Readonly<{
 export function create_multi_library_echo_socket_client_internal<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(options: MultiLibraryEchoSocketClientOptions<TActions>): MultiLibraryEchoSocketClient {
-  let generatedId = 0;
-  const fresh_id = (prefix: string): string => {
-    generatedId += 1;
-    return `${prefix}-${Date.now().toString(36)}-${generatedId.toString(36)}`;
-  };
+  if (options.connection !== undefined) {
+    return create_multi_library_echo_semantic_client_internal(Object.freeze({ ...options, connection: options.connection }), false);
+  }
+  const connection = create_echo_endpoint_connection_internal<TActions>({
+    socket: options.socket,
+    ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
+    ...(options.session === undefined ? {} : { session: options.session }),
+    ids: {
+      ...(options.actionId === undefined ? {} : { actionId: options.actionId }),
+      ...(options.actionAttemptId === undefined ? {} : { actionAttemptId: options.actionAttemptId }),
+      ...(options.actionStatusId === undefined ? {} : { actionStatusId: options.actionStatusId }),
+    },
+    endpointMessageFormat: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
+    actionMessageId: "attempt",
+    operationLossError: (reason) => new Error(reason === "ended"
+      ? "Hosted aggregate Echo session ended before the pending operation completed."
+      : reason === "fenced"
+        ? "Hosted aggregate session attachment was fenced."
+        : "Hosted aggregate socket closed."),
+  }) as EchoEndpointConnection<TActions, LocusHostedAggregateSynchronizationRequest, AggregateSynchronizationOutput>;
+  configure_echo_hosted_aggregate_websocket_internal(connection);
+  return create_multi_library_echo_semantic_client_internal(Object.freeze({ ...options, connection }), true);
+}
+
+function create_multi_library_echo_semantic_client_internal<
+  TActions extends LocusActionPayloads,
+>(
+  options: MultiLibraryEchoSocketClientOptions<TActions> & Readonly<{
+    connection: EchoEndpointConnection<TActions, LocusHostedAggregateSynchronizationRequest, AggregateSynchronizationOutput>;
+  }>,
+  ownsConnection: boolean,
+): MultiLibraryEchoSocketClient {
   let map = options.map;
   const replica = create_echo_aggregate_replica_capability_internal(map, options.management);
   let logicalMapId = options.logicalMapId;
@@ -123,8 +154,6 @@ export function create_multi_library_echo_socket_client_internal<
   const clientLogicalMapId = logicalMapId;
   let status: "idle" | "recovering" | "live" | "failed" | "closed" = "idle";
   let connected = false;
-  let stopMessage: LocusDisposer | undefined;
-  let stopClose: LocusDisposer | undefined;
   const compositionDisposers: LocusDisposer[] = [];
   let nextId = 0;
   let recovery: Readonly<{
@@ -139,50 +168,20 @@ export function create_multi_library_echo_socket_client_internal<
   let liveRecovery: Readonly<{ id: string; sessionId: string; sessionEpoch: number }> | undefined;
   const readyWaiters = new Set<Readonly<{ resolve: () => void; reject: (reason: Error) => void }>>();
 
-  const directOperationAdapter = create_echo_finite_operation_adapter_internal(send);
-  const endpoint = options.connection?.endpoint ?? create_echo_endpoint_internal({
-    operations: directOperationAdapter.capability,
-    clientId: options.clientId ?? make_echo_reload_safe_id("echo-client"),
-    sessionRequired: true,
-    ...(options.session?.credential === undefined ? {} : { credential: options.session.credential }),
-    ids: {
-      actionId: options.actionId ?? (() => make_echo_reload_safe_id("action")),
-      actionAttemptId: options.actionAttemptId ?? (() => fresh_id("attempt")),
-      actionStatusId: options.actionStatusId ?? (() => fresh_id("action-status")),
-      sessionRequestId: (kind) => next(`session-${kind === "reattach" ? "attach" : kind}`),
-    },
-    actionMessageId: "attempt",
-    operationLossError: (reason) => new Error(reason === "ended"
-      ? "Hosted aggregate Echo session ended before the pending operation completed."
-      : reason === "fenced"
-        ? "Hosted aggregate session attachment was fenced."
-        : "Hosted aggregate socket closed."),
-    onAttachmentLost: (_reason, error) => interruptRecovery(error),
-  });
+  const endpoint = options.connection.endpoint;
   const clientId = endpoint.clientId;
 
-  const receiveRaw = (raw: string): void => {
-    let message: DecodedServerMessage;
+  compositionDisposers.push(options.connection.synchronization.onOutput((output) => {
     try {
-      message = decode_server_message(raw);
-    } catch (cause) {
-      failEndpoint(cause instanceof Error ? cause : new Error("Hosted aggregate Echo protocol failed."));
-      return;
-    }
-    if (is_endpoint_server_message(message)) {
-      directOperationAdapter?.deliver(message);
-      return;
-    }
-    try {
-      receiveReplica(message);
+      receiveReplica(output);
     } catch (cause) {
       failReplica(cause instanceof Error ? cause : new Error("Hosted aggregate replica failed."));
     }
-  };
-
-  if (options.connection !== undefined) {
-    compositionDisposers.push(options.connection.onRawMessage(receiveRaw));
-    compositionDisposers.push(options.connection.onConnectionChange((nextConnected) => {
+  }));
+  compositionDisposers.push(options.connection.onAttachmentLost((reason, error) => {
+    if (reason !== "disconnect") interruptRecovery(error);
+  }));
+  compositionDisposers.push(options.connection.onConnectionChange((nextConnected) => {
       if (nextConnected) {
         connected = true;
         return;
@@ -193,30 +192,11 @@ export function create_multi_library_echo_socket_client_internal<
       interruptRecovery(error);
       replica.markFailed(error);
       if (status !== "closed") status = "idle";
-    }));
-    compositionDisposers.push(options.connection.setMessageEncoder((message) => {
-      const raw = encode_locus_client_message(message);
-      if (utf8_bytes(raw) > DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES) {
-        throw new Error("Hosted aggregate Echo message exceeds the live wire byte limit.");
-      }
-      return raw;
-    }));
-  }
+  }));
 
   function next(prefix: string): string {
     nextId += 1;
     return `${prefix}-${nextId}`;
-  }
-
-  function send(message: unknown): void {
-    if (status === "closed") throw new Error("Hosted aggregate socket Echo is closed.");
-    const raw = is_exact_endpoint_client_message(message)
-      ? encode_locus_client_message(message)
-      : JSON.stringify(message);
-    if (utf8_bytes(raw) > DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES) {
-      throw new Error("Hosted aggregate Echo message exceeds the live wire byte limit.");
-    }
-    options.socket.send(raw);
   }
 
   function interruptRecovery(error: Error): void {
@@ -249,31 +229,11 @@ export function create_multi_library_echo_socket_client_internal<
   }
 
   function disconnect(): void {
-    if (options.connection !== undefined) {
-      options.connection.echo.disconnect();
-      return;
-    }
-    if (!connected) return;
-    connected = false;
-    stopMessage?.();
-    stopMessage = undefined;
-    stopClose?.();
-    stopClose = undefined;
-    const error = new Error("Hosted aggregate socket Echo disconnected.");
-    interruptRecovery(error);
-    replica.markFailed(error);
-    endpoint.disconnect();
-    if (status !== "closed") status = "idle";
+    options.connection.echo.disconnect();
   }
 
   function attachTransport(): LocusDisposer {
-    if (options.connection !== undefined) return options.connection.echo.connect();
-    if (status === "closed" || connected) return disconnect;
-    connected = true;
-    stopMessage = options.socket.onMessage(receiveRaw) ?? undefined;
-    stopClose = options.socket.onClose(disconnect) ?? undefined;
-    endpoint.connect();
-    return disconnect;
+    return options.connection.echo.connect();
   }
 
   function recover_wire(): Promise<MultiLibraryEchoSocketRecovery> {
@@ -306,14 +266,15 @@ export function create_multi_library_echo_socket_client_internal<
         reject,
         snapshotReceived: false,
       });
-      send(Object.freeze({
+      const request: LocusHostedAggregateSynchronizationRequest = Object.freeze({
         type: "recover",
         id,
         logicalMapId: clientLogicalMapId,
         ...(incarnationId === undefined || registryDigest === undefined || lastAppliedRev === undefined
           ? {}
-          : { incarnationId, registryDigest, lastAppliedRev }),
-      }));
+          : { cursor: Object.freeze({ incarnationId, registryDigest, lastAppliedRev }) }),
+      });
+      options.connection.synchronization.begin(request);
     });
   }
 
@@ -326,9 +287,9 @@ export function create_multi_library_echo_socket_client_internal<
     return recover_wire();
   }
 
-  function receiveReplica(message: Exclude<DecodedServerMessage, EchoEndpointServerMessage>): void {
-    if (message.type === "error") {
-      const error = new Error(message.message);
+  function receiveReplica(message: AggregateSynchronizationOutput): void {
+    if (message.type === "synchronization-failure") {
+      const error = new Error(message.error.message);
       failEndpoint(error);
       return;
     }
@@ -463,13 +424,10 @@ export function create_multi_library_echo_socket_client_internal<
     dispose: () => {
       if (status === "closed") return;
       status = "closed";
-      if (options.connection === undefined) disconnect();
+      if (ownsConnection) disconnect();
       const error = new Error("Hosted aggregate socket Echo is closed.");
       interruptRecovery(error);
-      if (options.connection === undefined) {
-        endpoint.dispose();
-        directOperationAdapter?.clear();
-      }
+      if (ownsConnection) options.connection.echo.dispose();
       while (compositionDisposers.length > 0) compositionDisposers.pop()?.();
       for (const waiter of readyWaiters) waiter.reject(error);
       readyWaiters.clear();
@@ -480,179 +438,4 @@ export function create_multi_library_echo_socket_client_internal<
       pendingLive: 0,
     }),
   });
-}
-
-function is_exact_endpoint_client_message(message: unknown): message is LocusClientMessage {
-  if (typeof message !== "object" || message === null || !("type" in message)) return false;
-  const type = Reflect.get(message, "type");
-  return type === "action"
-    || type === "action-status"
-    || type === "session-create"
-    || type === "session-attach"
-    || type === "session-goodbye";
-}
-
-type DecodedServerMessage =
-  | Readonly<{ type: "error"; id?: string; message: string }>
-  | LocusClientActionResult
-  | Readonly<{ type: "action-status"; id: string; requestId: string; state: "pending" | "succeeded" | "failed" | "unknown" | "expired"; outcome?: LocusActionTerminalOutcome }>
-  | Readonly<{ type: "session-created"; id: string; sessionId: string; credential: string; epoch: number; logicalMapId: string; incarnationId: string }>
-  | Readonly<{ type: "session-attached"; id: string; sessionId: string; epoch: number; logicalMapId: string; incarnationId: string }>
-  | Readonly<{ type: "session-rejected"; id: string; code: string; message: string }>
-  | Readonly<{ type: "session-fenced"; sessionId: string; epoch: number; code: "LOCUS_SESSION_ATTACHMENT_FENCED" }>
-  | Readonly<{ type: "session-ended"; id: string; sessionId: string; epoch: number }>
-  | Readonly<{ type: "recovery-plan"; id: string; logicalMapId: string; incarnationId: string; registryDigest: string; headRev: number; outcome: Exclude<HostedPlanOutcome, "reject">; reason?: HostedSnapshotReason }>
-  | Readonly<{ type: "recovery-plan"; id: string; logicalMapId: string; incarnationId: string; registryDigest: string; headRev: number; outcome: "reject"; error: Readonly<{ message: string }> }>
-  | Readonly<{ type: "recovery-snapshot"; id: string; snapshot: HostedAggregateSnapshot }>
-  | Readonly<{ type: "recovery-commit"; id: string; commit: LocusHostedAggregateWireEnvelope }>
-  | Readonly<{ type: "commit"; id: string; commit: LocusHostedAggregateWireEnvelope }>
-  | Readonly<{ type: "recovery-caught-up"; id: string; logicalMapId: string; incarnationId: string; registryDigest: string; throughRev: number }>;
-
-function is_endpoint_server_message(message: DecodedServerMessage): message is EchoEndpointServerMessage {
-  return message.type === "ack"
-    || message.type === "action-status"
-    || message.type === "session-created"
-    || message.type === "session-attached"
-    || message.type === "session-rejected"
-    || message.type === "session-fenced"
-    || message.type === "session-ended"
-    || (message.type === "error" && "ok" in message);
-}
-
-function decode_server_message(raw: string): DecodedServerMessage {
-  if (typeof raw !== "string" || utf8_bytes(raw) > HOSTED_MAX_SNAPSHOT_BYTES) throw new Error("Hosted aggregate server message exceeds its byte limit.");
-  const value = exact_record(JSON.parse(raw), "Hosted aggregate server message");
-  if (value.format !== LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT) throw new Error("Hosted aggregate server protocol format is incompatible.");
-  if (value.type === "ack"
-    || value.type === "action-status"
-    || value.type === "session-created"
-    || value.type === "session-attached"
-    || value.type === "session-rejected"
-    || value.type === "session-fenced"
-    || value.type === "session-ended"
-    || (value.type === "error" && Object.hasOwn(value, "error"))) {
-    const standard: Record<string, unknown> = { ...value };
-    delete standard.format;
-    const decoded = decode_locus_server_message(JSON.stringify(standard));
-    if (!decoded.ok) throw new Error(decoded.error.message);
-    const message = decoded.value;
-    if (message.type === "ack"
-      || message.type === "action-status"
-      || message.type === "session-created"
-      || message.type === "session-attached"
-      || message.type === "session-rejected"
-      || message.type === "session-fenced"
-      || message.type === "session-ended"
-      || message.type === "error") return message;
-    throw new Error("Hosted aggregate shared Locus response type is malformed.");
-  }
-  if (value.type === "error") {
-    const hasId = Object.hasOwn(value, "id");
-    exact_keys(value, hasId ? ["type", "format", "id", "code", "message"] : ["type", "format", "code", "message"], "Hosted aggregate error");
-    const message = required_string(value.message);
-    if (message === undefined || typeof value.code !== "string" || (hasId && required_string(value.id) === undefined)) throw new Error("Hosted aggregate error is malformed.");
-    return Object.freeze({ type: "error", ...(hasId ? { id: value.id as string } : {}), message });
-  }
-  if (value.type === "recovery-plan") {
-    const outcome = value.outcome;
-    const isSnapshot = outcome === "snapshot";
-    const isReject = outcome === "reject";
-    exact_keys(value, isSnapshot
-      ? ["type", "format", "id", "logicalMapId", "incarnationId", "registryDigest", "headRev", "outcome", "reason"]
-      : isReject
-        ? ["type", "format", "id", "logicalMapId", "incarnationId", "registryDigest", "headRev", "outcome", "error"]
-        : ["type", "format", "id", "logicalMapId", "incarnationId", "registryDigest", "headRev", "outcome"], "Hosted recovery plan");
-    const id = required_string(value.id);
-    const logicalMapId = required_string(value.logicalMapId);
-    const incarnationId = required_string(value.incarnationId);
-    const registryDigest = required_digest(value.registryDigest);
-    const headRev = required_revision(value.headRev);
-    if (id === undefined || logicalMapId === undefined || incarnationId === undefined || registryDigest === undefined || headRev === undefined) throw new Error("Hosted recovery plan is malformed.");
-    if (isReject) {
-      const error = exact_record(value.error, "Hosted recovery rejection");
-      exact_keys(error, ["code", "message"], "Hosted recovery rejection");
-      const message = required_string(error.message);
-      if (typeof error.code !== "string" || message === undefined) throw new Error("Hosted recovery rejection is malformed.");
-      return Object.freeze({ type: "recovery-plan", id, logicalMapId, incarnationId, registryDigest, headRev, outcome: "reject", error: Object.freeze({ message }) });
-    }
-    if (outcome !== "current" && outcome !== "replay" && outcome !== "snapshot") throw new Error("Hosted recovery plan outcome is invalid.");
-    if (isSnapshot && !is_snapshot_reason(value.reason)) throw new Error("Hosted recovery snapshot reason is invalid.");
-    const acceptedOutcome: Exclude<HostedPlanOutcome, "reject"> = outcome;
-    return Object.freeze({ type: "recovery-plan", id, logicalMapId, incarnationId, registryDigest, headRev, outcome: acceptedOutcome, ...(isSnapshot ? { reason: value.reason as HostedSnapshotReason } : {}) });
-  }
-  if (value.type === "recovery-snapshot") {
-    exact_keys(value, ["type", "format", "id", "snapshot"], "Hosted recovery snapshot");
-    const id = required_string(value.id);
-    if (id === undefined) throw new Error("Hosted recovery snapshot is malformed.");
-    return Object.freeze({ type: "recovery-snapshot", id, snapshot: value.snapshot as HostedAggregateSnapshot });
-  }
-  if (value.type === "recovery-commit") {
-    exact_keys(value, ["type", "format", "id", "phase", "commit"], "Hosted recovery commit");
-    const id = required_string(value.id);
-    if (id === undefined || (value.phase !== "body" && value.phase !== "tail")) throw new Error("Hosted recovery commit is malformed.");
-    return Object.freeze({ type: "recovery-commit", id, commit: value.commit as LocusHostedAggregateWireEnvelope });
-  }
-  if (value.type === "commit") {
-    exact_keys(value, ["type", "format", "id", "commit"], "Hosted live commit");
-    const id = required_string(value.id);
-    if (id === undefined) throw new Error("Hosted live commit is malformed.");
-    return Object.freeze({ type: "commit", id, commit: value.commit as LocusHostedAggregateWireEnvelope });
-  }
-  if (value.type === "recovery-caught-up") {
-    exact_keys(value, ["type", "format", "id", "logicalMapId", "incarnationId", "registryDigest", "throughRev"], "Hosted recovery caught-up");
-    const id = required_string(value.id);
-    const logicalMapId = required_string(value.logicalMapId);
-    const incarnationId = required_string(value.incarnationId);
-    const registryDigest = required_digest(value.registryDigest);
-    const throughRev = required_revision(value.throughRev);
-    if (id === undefined || logicalMapId === undefined || incarnationId === undefined || registryDigest === undefined || throughRev === undefined) throw new Error("Hosted recovery caught-up is malformed.");
-    return Object.freeze({ type: "recovery-caught-up", id, logicalMapId, incarnationId, registryDigest, throughRev });
-  }
-  throw new Error("Hosted aggregate server message type is unknown.");
-}
-
-function bounded(value: number | undefined, fallback: number, label: string, ceiling: number): number {
-  const result = value ?? fallback;
-  if (!Number.isSafeInteger(result) || result <= 0 || result > ceiling) throw new Error(`Hosted aggregate ${label} bound is invalid.`);
-  return result;
-}
-
-function encoded_bytes(value: unknown): number {
-  return utf8_bytes(JSON.stringify(value));
-}
-
-function utf8_bytes(value: string): number {
-  return new TextEncoder().encode(value).byteLength;
-}
-
-function exact_record(value: unknown, label: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)
-    || (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)) {
-    throw new Error(`${label} is malformed.`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function exact_keys(value: Readonly<Record<string, unknown>>, expected: readonly string[], label: string): void {
-  const actual = Object.keys(value);
-  if (actual.length !== expected.length || !expected.every((key) => Object.hasOwn(value, key))) {
-    throw new Error(`${label} contains missing or unexpected fields.`);
-  }
-}
-
-function required_string(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-function required_digest(value: unknown): string | undefined {
-  return typeof value === "string" && /^[0-9a-f]{64}$/u.test(value) ? value : undefined;
-}
-
-function required_revision(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
-}
-
-
-function is_snapshot_reason(value: unknown): value is HostedSnapshotReason {
-  return value === "no_usable_revision" || value === "incarnation_mismatch" || value === "registry_mismatch" || value === "history_unavailable";
 }

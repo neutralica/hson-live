@@ -20,7 +20,7 @@ import {
 } from "./echo.endpoint.js";
 import {
   create_echo_finite_operation_adapter_internal,
-  type EchoFiniteOperationOutcome,
+  type EchoFiniteOperationCapability,
 } from "./echo.operation.internal.js";
 import {
   create_echo_synchronization_adapter_internal,
@@ -197,41 +197,63 @@ export type EchoEndpointConnectionOptions<TActions extends LocusActionPayloads =
 }>;
 
 /** @internal Shared transport/session shell used by endpoint-only and deferred-replica Echo. */
-export type EchoEndpointConnection<TActions extends LocusActionPayloads = LocusActionPayloads> = Readonly<{
+export type EchoEndpointConnection<
+  TActions extends LocusActionPayloads = LocusActionPayloads,
+  TSynchronizationRequest = import("../../types/locus.types.js").LocusClientRecoverMessage,
+  TSynchronizationOutput = EchoSynchronizationOutput,
+> = Readonly<{
   endpoint: EchoEndpoint<TActions>;
   echo: Echo<undefined, TActions>;
   readonly connected: boolean;
-  onRawMessage: (listener: (raw: string) => void) => LocusDisposer;
   onConnectionChange: (listener: (connected: boolean) => void) => LocusDisposer;
   onReadyChange: (listener: () => void) => LocusDisposer;
   onAttachmentLost: (listener: (reason: "disconnect" | "fenced" | "ended", error: Error) => void) => LocusDisposer;
-  /** @internal Independent typed finite-outcome ingress for composed adapters. */
-  deliverOperationOutcome: (outcome: EchoFiniteOperationOutcome) => void;
-  synchronization: EchoSynchronizationCapability;
-  setSynchronizationDecoder: (
-    decoder: (raw: string) => EchoSynchronizationOutput | undefined,
+  synchronization: EchoSynchronizationCapability<TSynchronizationRequest, TSynchronizationOutput>;
+  /** @internal Present only on the current WebSocket adapter. */
+  setSynchronizationDecoder?: (
+    decoder: (raw: string) => TSynchronizationOutput | undefined,
   ) => LocusDisposer;
-  setMessageEncoder: (encoder: (message: LocusClientMessage<TActions>) => string) => LocusDisposer;
+  /** @internal Present only on the current WebSocket adapter. */
+  setMessageEncoder?: (encoder: (message: LocusClientMessage<TActions>) => string) => LocusDisposer;
 }>;
 
-/** @internal Construct the lightweight common endpoint and own its socket listeners. */
-export function create_echo_endpoint_connection_internal<
+/** @internal Transport lifecycle supplied independently of semantic capabilities. */
+export type EchoSemanticAttachmentLifecycle = Readonly<{
+  attach: (onDisconnect: () => void) => LocusDisposer;
+}>;
+
+/** @internal Smallest reusable Echo composition boundary below public transport options. */
+export type EchoSemanticConnectionOptions<
   TActions extends LocusActionPayloads = LocusActionPayloads,
->(options: EchoEndpointConnectionOptions<TActions>): EchoEndpointConnection<TActions> {
-  const rawListeners = new Set<(raw: string) => void>();
+  TSynchronizationRequest = import("../../types/locus.types.js").LocusClientRecoverMessage,
+  TSynchronizationOutput = EchoSynchronizationOutput,
+> = Readonly<{
+  operations: EchoFiniteOperationCapability<TActions>;
+  synchronization: EchoSynchronizationCapability<TSynchronizationRequest, TSynchronizationOutput>;
+  lifecycle: EchoSemanticAttachmentLifecycle;
+  clientId?: string;
+  session?: EchoSessionOptions;
+  ids?: EchoEndpointIdFactories;
+  actionMessageId?: "request" | "attempt";
+  operationLossError?: (reason: "disconnect" | "fenced" | "ended") => Error;
+}>;
+
+/** @internal Compose semantic Echo from independently supplied capabilities. */
+export function create_echo_semantic_connection_internal<
+  TActions extends LocusActionPayloads = LocusActionPayloads,
+  TSynchronizationRequest = import("../../types/locus.types.js").LocusClientRecoverMessage,
+  TSynchronizationOutput = EchoSynchronizationOutput,
+>(options: EchoSemanticConnectionOptions<TActions, TSynchronizationRequest, TSynchronizationOutput>): EchoEndpointConnection<TActions, TSynchronizationRequest, TSynchronizationOutput> {
+  if (options.operations.binding === undefined
+    || options.synchronization.binding === undefined
+    || options.operations.binding !== options.synchronization.binding) {
+    throw new Error("Echo semantic operation and synchronization capabilities require one authority/session binding.");
+  }
   const connectionListeners = new Set<(connected: boolean) => void>();
   const readyListeners = new Set<() => void>();
   const attachmentLostListeners = new Set<(reason: "disconnect" | "fenced" | "ended", error: Error) => void>();
-  let encodeMessage = (message: LocusClientMessage<TActions>): string => encodeEndpointMessage(message);
-  let decodeSynchronization: ((raw: string) => EchoSynchronizationOutput | undefined) | undefined;
-  const operationAdapter = create_echo_finite_operation_adapter_internal<TActions>(
-    (message) => options.socket.send(encodeMessage(message)),
-  );
-  const synchronizationAdapter = create_echo_synchronization_adapter_internal(
-    (message) => options.socket.send(encodeMessage(message)),
-  );
   const endpoint = create_echo_endpoint_internal<TActions>({
-    operations: operationAdapter.capability,
+    operations: options.operations,
     ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
     ...(options.session?.credential === undefined ? {} : { credential: options.session.credential }),
     sessionRequired: true,
@@ -245,12 +267,14 @@ export function create_echo_endpoint_connection_internal<
   });
   let connected = false;
   let disposed = false;
-  const transportDisposers: LocusDisposer[] = [];
+  let detachTransport: LocusDisposer | undefined;
 
   function disconnect(): void {
     if (!connected) return;
     connected = false;
-    while (transportDisposers.length > 0) transportDisposers.pop()?.();
+    const detach = detachTransport;
+    detachTransport = undefined;
+    detach?.();
     endpoint.disconnect();
     for (const listener of [...connectionListeners]) listener(false);
   }
@@ -258,16 +282,7 @@ export function create_echo_endpoint_connection_internal<
   function connect(): LocusDisposer {
     if (disposed || connected) return disconnect;
     connected = true;
-    const stopMessage = options.socket.onMessage((raw) => {
-      const decoded = decodeEndpointMessage(raw, options.endpointMessageFormat);
-      if (decoded !== undefined) operationAdapter.deliver(decoded);
-      const synchronization = decodeSynchronization?.(raw);
-      if (synchronization !== undefined) synchronizationAdapter.deliver(synchronization);
-      for (const listener of [...rawListeners]) listener(raw);
-    });
-    if (stopMessage !== undefined) transportDisposers.push(stopMessage);
-    const stopClose = options.socket.onClose(disconnect);
-    if (stopClose !== undefined) transportDisposers.push(stopClose);
+    detachTransport = options.lifecycle.attach(disconnect);
     endpoint.connect();
     for (const listener of [...connectionListeners]) listener(true);
     return disconnect;
@@ -278,9 +293,6 @@ export function create_echo_endpoint_connection_internal<
     disposed = true;
     disconnect();
     endpoint.dispose();
-    operationAdapter.clear();
-    synchronizationAdapter.clear();
-    rawListeners.clear();
     connectionListeners.clear();
     readyListeners.clear();
     attachmentLostListeners.clear();
@@ -301,28 +313,96 @@ export function create_echo_endpoint_connection_internal<
     endpoint,
     echo,
     get connected() { return connected; },
-    onRawMessage(listener) {
-      if (disposed) return () => {};
-      rawListeners.add(listener);
-      return () => rawListeners.delete(listener);
-    },
-    onConnectionChange(listener) {
+    onConnectionChange(listener: (connected: boolean) => void) {
       if (disposed) return () => {};
       connectionListeners.add(listener);
       listener(connected);
       return () => connectionListeners.delete(listener);
     },
-    onReadyChange(listener) {
+    onReadyChange(listener: () => void) {
       if (disposed) return () => {};
       readyListeners.add(listener);
       return () => readyListeners.delete(listener);
     },
-    onAttachmentLost(listener) {
+    onAttachmentLost(listener: (reason: "disconnect" | "fenced" | "ended", error: Error) => void) {
       if (disposed) return () => {};
       attachmentLostListeners.add(listener);
       return () => attachmentLostListeners.delete(listener);
     },
-    deliverOperationOutcome: operationAdapter.deliver,
+    synchronization: options.synchronization,
+  });
+}
+
+/** @internal Construct the lightweight common endpoint and own its socket listeners. */
+export function create_echo_endpoint_connection_internal<
+  TActions extends LocusActionPayloads = LocusActionPayloads,
+>(options: EchoEndpointConnectionOptions<TActions>): EchoEndpointConnection<TActions> {
+  let encodeMessage = (message: LocusClientMessage<TActions>): string => encodeEndpointMessage(message);
+  let decodeSynchronization: ((raw: string) => EchoSynchronizationOutput | undefined) | undefined;
+  let disposed = false;
+  const binding = Object.freeze({});
+  const operationAdapter = create_echo_finite_operation_adapter_internal<TActions>(
+    (message) => options.socket.send(encodeMessage(message)),
+    binding,
+  );
+  const synchronizationAdapter = create_echo_synchronization_adapter_internal(
+    (message) => options.socket.send(encodeMessage(message)),
+    binding,
+  );
+  const semantic = create_echo_semantic_connection_internal<TActions>({
+    operations: operationAdapter.capability,
+    synchronization: synchronizationAdapter.capability,
+    lifecycle: Object.freeze({
+      attach(onDisconnect) {
+        const disposers: LocusDisposer[] = [];
+        const stopMessage = options.socket.onMessage((raw) => {
+          const decoded = decodeEndpointMessage(raw, options.endpointMessageFormat);
+          if (decoded !== undefined) operationAdapter.deliver(decoded);
+          const synchronization = decodeSynchronization?.(raw);
+          if (synchronization !== undefined) synchronizationAdapter.deliver(synchronization);
+        });
+        if (stopMessage !== undefined) disposers.push(stopMessage);
+        const stopClose = options.socket.onClose(onDisconnect);
+        if (stopClose !== undefined) disposers.push(stopClose);
+        return () => {
+          while (disposers.length > 0) disposers.pop()?.();
+        };
+      },
+    }),
+    ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
+    ...(options.session === undefined ? {} : { session: options.session }),
+    ...(options.ids === undefined ? {} : { ids: options.ids }),
+    ...(options.actionMessageId === undefined ? {} : { actionMessageId: options.actionMessageId }),
+    ...(options.operationLossError === undefined ? {} : { operationLossError: options.operationLossError }),
+  });
+
+  function dispose(): void {
+    if (disposed) return;
+    disposed = true;
+    semantic.echo.dispose();
+    operationAdapter.clear();
+    synchronizationAdapter.clear();
+  }
+
+  const baseEcho = semantic.echo;
+  const echo = Object.freeze({
+    clientId: baseEcho.clientId,
+    session: baseEcho.session,
+    connect: baseEcho.connect,
+    disconnect: baseEcho.disconnect,
+    action: baseEcho.action,
+    retryAction: baseEcho.retryAction,
+    actionStatus: baseEcho.actionStatus,
+    dispose,
+  }) as unknown as Echo<undefined, TActions>;
+
+  return Object.freeze({
+    endpoint: semantic.endpoint,
+    echo,
+    get connected() { return semantic.connected; },
+    onConnectionChange: semantic.onConnectionChange,
+    onReadyChange: semantic.onReadyChange,
+    onAttachmentLost: semantic.onAttachmentLost,
     synchronization: synchronizationAdapter.capability,
     setSynchronizationDecoder(decoder) {
       if (disposed) return () => {};

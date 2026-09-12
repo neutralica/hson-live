@@ -239,7 +239,8 @@ export function create_solo_echo_internal<
     },
   });
   if (composition !== undefined) {
-    disposers.push(composition.connection.setSynchronizationDecoder((raw) => {
+    const setSynchronizationDecoder = composition.connection.setSynchronizationDecoder;
+    if (setSynchronizationDecoder !== undefined) disposers.push(setSynchronizationDecoder((raw) => {
       const decoded = decode_locus_server_message(raw);
       if (!decoded.ok) {
         return Object.freeze({ type: "synchronization-failure" as const, error: decoded.error });
@@ -272,7 +273,8 @@ export function create_solo_echo_internal<
         recoveryLifecycle = Object.freeze({ phase: "disconnected" });
       }
     }));
-    disposers.push(composition.connection.setMessageEncoder(encode_client_message));
+    const setMessageEncoder = composition.connection.setMessageEncoder;
+    if (setMessageEncoder !== undefined) disposers.push(setMessageEncoder(encode_client_message));
   }
   const clientId = endpoint.clientId;
 

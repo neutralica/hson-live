@@ -26,6 +26,8 @@ export type EchoFiniteOperationOutcome = Extract<LocusServerMessage, {
 export type EchoFiniteOperationCapability<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = Readonly<{
+  /** @internal Semantic attachment identity shared with synchronization. */
+  binding?: object;
   submit: (request: EchoFiniteOperationRequest<TActions>) => void;
   onOutcome: (listener: (outcome: EchoFiniteOperationOutcome) => void) => LocusDisposer;
 }>;
@@ -41,10 +43,11 @@ export type EchoFiniteOperationAdapter<
 
 export function create_echo_finite_operation_adapter_internal<
   TActions extends LocusActionPayloads = LocusActionPayloads,
->(submit: (request: EchoFiniteOperationRequest<TActions>) => void): EchoFiniteOperationAdapter<TActions> {
+>(submit: (request: EchoFiniteOperationRequest<TActions>) => void, binding?: object): EchoFiniteOperationAdapter<TActions> {
   const listeners = new Set<(outcome: EchoFiniteOperationOutcome) => void>();
   return Object.freeze({
     capability: Object.freeze({
+      ...(binding === undefined ? {} : { binding }),
       submit,
       onOutcome(listener: (outcome: EchoFiniteOperationOutcome) => void) {
         listeners.add(listener);
