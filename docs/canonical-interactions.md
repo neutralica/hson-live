@@ -73,7 +73,7 @@ The descriptor ID identifies only the descriptor. `subjectQuid` is sparse contin
 
 Local `args` and authoritative `payload` use Schema `"any"` and represent canonical data-mode values. The interaction layer retains exact `HsonData`; it does not materialize through ordinary JavaScript or stringify and reparse during reconciliation or dispatch. Signed zero, object member order, integer-like member order, dangerous valid names such as `__proto__`, and nested combinations therefore retain their semantics.
 
-A local behavior receives the native `Event`, the exact resolved `LiveTree` subject, and exact `HsonData` args. The behavior table is fixed for one activation and application context normally comes from closure.
+A local behavior receives the native `Event`, the exact resolved `LiveTree` subject, and exact `HsonData` args. Activation snapshots only explicitly supplied own string-keyed data properties whose values are behavior functions. Prototype members are not capabilities, and accessor-backed or non-function capability entries are invalid activation configuration. The resulting behavior table is fixed for one activation and application context normally comes from closure.
 
 An authoritative descriptor invokes only the optional generic dispatcher:
 
@@ -97,6 +97,10 @@ The interaction subsystem has no Echo dependency and no action-handler registry.
 
 Activation observes before its initial read, then reconciles full current descriptor state. Every relevant aggregate commit, restore boundary, and exact tree realization transition causes another full-state comparison. Stale or mismatched records are disposed before missing records are installed, while unaffected records remain. Fingerprints use exact canonical data encoding rather than ordinary-object normalization.
 
+Each activation captures one tree/root, one local capability table, one optional authoritative dispatcher, and one optional failure observer. Later mutation of the caller-owned options object or capability table has no effect. There is no rebind operation: moving realization to another tree requires disposing the activation and creating another one.
+
+Multiple activations against the same map and tree are allowed and independent. Each owns its capability snapshot, dispatcher, failure observer, runtime records, native listeners, and disposer. If two activations materialize the same descriptor on the same subject and event, both listeners may run; each activation must be disposed independently.
+
 Each installed listener belongs to the exact current HsonNode realization. The descriptor ID and QUID are lookup evidence, not runtime-resource owners. If a QUID later resolves to a fresh exact realization, the outgoing node's listener is disposed and a new listener is installed on the replacement. Listener materialization never mints a QUID or changes canonical state.
 
 `once` means once per concrete materialization. An unrelated reconciliation does not reinstall a consumed listener on the same descriptor semantics and exact node. Descriptor replacement, remove and re-add, activation disposal and reactivation, or a fresh exact subject realization creates a fresh materialization. Consumption is runtime-only.
@@ -104,6 +108,8 @@ Each installed listener belongs to the exact current HsonNode realization. The d
 ## Failures, recovery, and disposal
 
 Missing subjects, unknown local keys, absent authoritative dispatchers, listener installation failures, and rejected invocation promises are isolated per descriptor. The optional failure observer receives the descriptor, a broad phase, and the underlying cause. Descriptors remain canonical; unrelated descriptors continue to function. No invocation status is added to canonical state.
+
+Activation construction is exception-safe. Input capture and validation happen before observers or listeners are installed. If later initialization cannot complete, every observer, runtime record, and listener created by that activation attempt is rolled back before the error escapes.
 
 Hosted capture and recovery include the hidden Library atomically. Restored current descriptors become reconciliation truth: stale listeners disappear and current descriptors materialize once against the compatible active tree. Runtime records are never replayed and are reconstructable from canonical state, fixed application capabilities, and the active tree.
 

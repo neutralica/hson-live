@@ -165,6 +165,7 @@
     "test:livetree-listener-contract": "node --import=tsx tests/livetree-listener-contract.acceptance.mts",
     "test:canonical-interactions": "node --import=tsx tests/canonical-interactions.acceptance.mts",
     "test:canonical-interactions-worker": "node --import=tsx tests/canonical-interactions-worker.acceptance.mts",
+    "test:canonical-interactions-browser": "npm run build && node scripts/run-canonical-interactions-browser.mjs",
     "test:livetree-realization-resource-ownership": "node --import=tsx tests/livetree-realization-resource-ownership.acceptance.mts",
     "test:livetree-quid-eligibility": "node --import=tsx tests/livetree-quid-eligibility.acceptance.mts",
     "test:livetree-runtime-scope": "node --import=tsx tests/livetree-runtime-scope.acceptance.mts",

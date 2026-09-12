@@ -26,6 +26,7 @@ import type {
   InteractionDescriptor,
   InteractionFailure,
   InteractionListener,
+  InteractionLocalBehavior,
   LocalInteractionDescriptor,
 } from "../../types/interaction.types.js";
 import {
@@ -61,13 +62,29 @@ type RuntimeLocalDescriptor = Omit<LocalInteractionDescriptor, "args"> & Readonl
 type RuntimeAuthoritativeDescriptor = Omit<AuthoritativeInteractionDescriptor, "payload"> & Readonly<{ payload: HsonData }>;
 type RuntimeDescriptor = RuntimeLocalDescriptor | RuntimeAuthoritativeDescriptor;
 
+type ActivationSnapshot = Readonly<{
+  map: LiveMapLibraries;
+  tree: LiveTree;
+  local: ReadonlyMap<string, InteractionLocalBehavior>;
+  dispatch: InteractionActivationOptions["dispatch"];
+  onFailure: InteractionActivationOptions["onFailure"];
+}>;
+
 let activationInitializationHook: (() => void) | undefined;
+let activationInitializationMaterializationHook: (() => void) | undefined;
 
 /** @internal Deterministic acceptance-test seam; never exported by a package entrypoint. */
 export function set_interaction_activation_initialization_hook_for_tests(
   hook: (() => void) | undefined,
 ): void {
   activationInitializationHook = hook;
+}
+
+/** @internal Deterministic post-materialization acceptance-test seam; never exported by a package entrypoint. */
+export function set_interaction_activation_initialization_materialization_hook_for_tests(
+  hook: (() => void) | undefined,
+): void {
+  activationInitializationMaterializationHook = hook;
 }
 
 /** Opt one fixed multi-library LiveMap into its Hson-owned hidden interaction Library. */
@@ -112,16 +129,21 @@ export function remove_interaction(target: object, descriptorId: string): void {
 
 /** Materialize current canonical interaction intent against one fixed active LiveTree. */
 export function activate_interactions(options: InteractionActivationOptions): () => void {
-  const aggregate = internal_livemap_aggregate_authority(options.map);
+  const activation = snapshot_activation(options);
+  const aggregate = internal_livemap_aggregate_authority(activation.map);
   const library = aggregate.reservedLibrary(INTERACTION_RESERVED_LIBRARY_KEY);
   if (library === undefined) throw new Error("Canonical interactions are not enabled for this LiveMap.");
   const records = new Map<string, RuntimeRecord>();
   let disposed = false;
   let reconciling = false;
   let pending = false;
+  let initializing = true;
+  let stopCommit: (() => void) | undefined;
+  let stopRestore: (() => void) | undefined;
+  let stopRealizations: (() => void) | undefined;
 
   const report = (descriptor: InteractionDescriptor, phase: InteractionFailure["phase"], cause: unknown): void => {
-    try { options.onFailure?.(Object.freeze({ descriptor, phase, cause })); } catch { /* observer isolation */ }
+    try { activation.onFailure?.(Object.freeze({ descriptor, phase, cause })); } catch { /* observer isolation */ }
   };
 
   const reconcile = (): void => {
@@ -138,7 +160,7 @@ export function activate_interactions(options: InteractionActivationOptions): ()
         for (const [id, record] of [...records]) {
           const descriptor = desiredById.get(id);
           let subject: LiveTree | undefined;
-          try { subject = descriptor === undefined ? undefined : options.tree.find.byQuid(descriptor.subjectQuid); }
+          try { subject = descriptor === undefined ? undefined : activation.tree.find.byQuid(descriptor.subjectQuid); }
           catch { subject = undefined; }
           const fingerprint = descriptor === undefined ? undefined : descriptor_fingerprint(descriptor);
           if (descriptor === undefined || subject === undefined
@@ -151,7 +173,7 @@ export function activate_interactions(options: InteractionActivationOptions): ()
         for (const descriptor of desired) {
           if (records.has(descriptor.id)) continue;
           let subject: LiveTree | undefined;
-          try { subject = options.tree.find.byQuid(descriptor.subjectQuid); } catch (cause) {
+          try { subject = activation.tree.find.byQuid(descriptor.subjectQuid); } catch (cause) {
             report(descriptor, "subject-resolution", cause);
             continue;
           }
@@ -159,20 +181,21 @@ export function activate_interactions(options: InteractionActivationOptions): ()
             report(descriptor, "subject-resolution", new Error("Canonical interaction subject is not currently realized."));
             continue;
           }
-          if (descriptor.kind === "browser-local" && options.local[descriptor.key] === undefined) {
+          if (descriptor.kind === "browser-local" && !activation.local.has(descriptor.key)) {
             report(descriptor, "local-capability-resolution", new Error(`Unknown local interaction behavior ${JSON.stringify(descriptor.key)}.`));
             continue;
           }
-          if (descriptor.kind === "locus-authoritative" && options.dispatch === undefined) {
+          if (descriptor.kind === "locus-authoritative" && activation.dispatch === undefined) {
             report(descriptor, "authoritative-capability-resolution", new Error("No authoritative interaction dispatcher is configured."));
             continue;
           }
           const state = { consumed: false };
+          let materialized = false;
           try {
             const handler = (event: Event): void => {
               if (descriptor.listener.once) state.consumed = true;
               if (descriptor.kind === "browser-local") {
-                const behavior = options.local[descriptor.key];
+                const behavior = activation.local.get(descriptor.key);
                 if (behavior === undefined) return;
                 try {
                   Promise.resolve(behavior(event, subject, descriptor.args)).catch((cause) => {
@@ -181,7 +204,7 @@ export function activate_interactions(options: InteractionActivationOptions): ()
                 } catch (cause) { report(descriptor, "local-invocation", cause); }
                 return;
               }
-              const dispatch = options.dispatch;
+              const dispatch = activation.dispatch;
               if (dispatch === undefined) return;
               try {
                 Promise.resolve(dispatch(descriptor.key, descriptor.payload)).catch((cause) => {
@@ -201,27 +224,82 @@ export function activate_interactions(options: InteractionActivationOptions): ()
               sub,
               state,
             }));
+            materialized = true;
           } catch (cause) { report(descriptor, "listener-installation", cause); }
+          if (materialized && initializing) activationInitializationMaterializationHook?.();
         }
       } while (pending);
     } finally { reconciling = false; }
   };
 
-  const stopCommit = aggregate.observe(() => reconcile());
-  const stopRestore = aggregate.observeRestore(() => reconcile());
-  const stopRealizations = observe_livetree_realizations_internal(options.tree, reconcile);
-  activationInitializationHook?.();
-  reconcile();
-
-  return (): void => {
+  const dispose = (): void => {
     if (disposed) return;
     disposed = true;
-    stopCommit();
-    stopRestore();
-    stopRealizations();
-    for (const record of records.values()) record.sub.off();
+    pending = false;
+    const failures: unknown[] = [];
+    const release = (operation: (() => void) | undefined): void => {
+      try { operation?.(); } catch (cause) { failures.push(cause); }
+    };
+    release(stopCommit);
+    release(stopRestore);
+    release(stopRealizations);
+    stopCommit = undefined;
+    stopRestore = undefined;
+    stopRealizations = undefined;
+    for (const record of records.values()) release(() => record.sub.off());
     records.clear();
+    if (failures.length > 0) throw failures[0];
   };
+
+  try {
+    stopCommit = aggregate.observe(() => reconcile());
+    stopRestore = aggregate.observeRestore(() => reconcile());
+    stopRealizations = observe_livetree_realizations_internal(activation.tree, reconcile);
+    activationInitializationHook?.();
+    reconcile();
+    initializing = false;
+  } catch (cause) {
+    try { dispose(); } catch { /* Preserve the initialization failure after complete rollback attempts. */ }
+    throw cause;
+  }
+
+  return dispose;
+}
+
+function snapshot_activation(options: InteractionActivationOptions): ActivationSnapshot {
+  const map = options.map;
+  const tree = options.tree;
+  const local = snapshot_local_behaviors(options.local);
+  const dispatch = options.dispatch;
+  const onFailure = options.onFailure;
+  if (dispatch !== undefined && typeof dispatch !== "function") {
+    throw new TypeError("Canonical interaction dispatcher must be a function.");
+  }
+  if (onFailure !== undefined && typeof onFailure !== "function") {
+    throw new TypeError("Canonical interaction failure observer must be a function.");
+  }
+  return Object.freeze({ map, tree, local, dispatch, onFailure });
+}
+
+function snapshot_local_behaviors(
+  input: InteractionActivationOptions["local"],
+): ReadonlyMap<string, InteractionLocalBehavior> {
+  if (typeof input !== "object" || input === null) {
+    throw new TypeError("Canonical interaction local capabilities must be an object.");
+  }
+  const snapshot = new Map<string, InteractionLocalBehavior>();
+  for (const key of Reflect.ownKeys(input)) {
+    if (typeof key !== "string") continue;
+    const property = Object.getOwnPropertyDescriptor(input, key);
+    if (property === undefined || !("value" in property)) {
+      throw new TypeError(`Canonical interaction local capability ${JSON.stringify(key)} must be a data property.`);
+    }
+    if (typeof property.value !== "function") {
+      throw new TypeError(`Canonical interaction local capability ${JSON.stringify(key)} must be a function.`);
+    }
+    snapshot.set(key, property.value);
+  }
+  return snapshot;
 }
 
 function interaction_storage(target: object): Storage {

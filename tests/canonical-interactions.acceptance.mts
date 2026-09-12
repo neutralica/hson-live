@@ -14,13 +14,20 @@ import {
   replace_interaction,
   type HsonSchema,
   type InteractionDescriptor,
+  type InteractionActionDispatcher,
   type InteractionListener,
+  type InteractionLocalBehavior,
 } from "../src/index.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
-import { set_interaction_activation_initialization_hook_for_tests } from "../src/api/interactions/interactions.ts";
+import {
+  set_interaction_activation_initialization_hook_for_tests,
+  set_interaction_activation_initialization_materialization_hook_for_tests,
+} from "../src/api/interactions/interactions.ts";
 import { link_node_to_el } from "../src/api/livetree/utils/node-map-helpers.ts";
 import { project_livetree } from "../src/api/livetree/creation/project-live-tree.ts";
+import { create_livetree_runtime } from "../src/api/livetree/runtime/livetree-runtime.ts";
+import { reflect_document_in_runtime } from "../src/api/reflect/reflect.document.ts";
 import { install_fake_document } from "./helpers/fake-document.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -53,6 +60,7 @@ class Target {
   }
   fire(event = new Event("click")): void {
     for (const entry of [...this.registrations]) {
+      if (entry.type !== event.type) continue;
       entry.listener(event);
       if (entry.options.once) this.removeEventListener(entry.type, entry.listener);
     }
@@ -297,6 +305,228 @@ await check("activation observation precedes its deterministic initialization tr
   set_interaction_activation_initialization_hook_for_tests(undefined);
   assert.equal(target.registrations.length, 1);
   dispose(); reflection.dispose();
+});
+
+await check("activation snapshots every caller-owned runtime option and cannot implicitly rebind", async () => {
+  const map = map_fixture();
+  add_interaction(map, local("fixed-local", "run"));
+  add_interaction(map, local("fixed-removal", "removable", HsonData.from(null), { event: "removal" }));
+  add_interaction(map, local("fixed-absence", "added", HsonData.from(null), { event: "addition" }));
+  add_interaction(map, {
+    ...authoritative("fixed-dispatch", "save", HsonData.from(-0)),
+    listener: Object.freeze({ ...listener, event: "authoritative" }),
+  });
+
+  const reflection = hsonReflect(map.lib("page"));
+  const subject = reflection.tree.find.must.byQuid(currentQ);
+  const firstTarget = new Target(); link_node_to_el(subject.node, firstTarget as unknown as Element);
+
+  const alternatePage = hsonLiveMap.fromHson(`<main <button @${currentQ}/>/>`);
+  if (alternatePage.mode !== "document") throw new Error("Expected alternate document LiveMap.");
+  const alternateReflection = reflect_document_in_runtime(alternatePage, create_livetree_runtime());
+  const alternateSubject = alternateReflection.tree.find.must.byQuid(currentQ);
+  const alternateTarget = new Target(); link_node_to_el(alternateSubject.node, alternateTarget as unknown as Element);
+
+  let localA = 0, localB = 0, removable = 0, added = 0;
+  let dispatchA = 0, dispatchB = 0, failureA = 0, failureB = 0;
+  const localTable: Record<string, InteractionLocalBehavior> = {
+    run: () => { localA += 1; },
+    removable: () => { removable += 1; },
+  };
+  const options = {
+    map,
+    tree: reflection.tree,
+    local: localTable,
+    dispatch: async () => { dispatchA += 1; },
+    onFailure: () => { failureA += 1; },
+  };
+  const dispose = activate_interactions(options);
+  const failuresAfterActivation = failureA;
+
+  localTable.run = () => { localB += 1; };
+  delete localTable.removable;
+  localTable.added = () => { added += 1; };
+  options.tree = alternateReflection.tree;
+  options.local = { run: () => { localB += 1; } };
+  options.dispatch = async () => { dispatchB += 1; };
+  options.onFailure = () => { failureB += 1; };
+
+  map.lib("state").at(["count"]).set(1);
+  firstTarget.fire(new Event("click"));
+  firstTarget.fire(new Event("removal"));
+  firstTarget.fire(new Event("addition"));
+  firstTarget.fire(new Event("authoritative"));
+  alternateTarget.fire(new Event("click"));
+  await Promise.resolve();
+
+  assert.deepEqual([localA, localB, removable, added], [1, 0, 1, 0]);
+  assert.deepEqual([dispatchA, dispatchB], [1, 0]);
+  assert.equal(failureA > failuresAfterActivation, true);
+  assert.equal(failureB, 0);
+  assert.equal(alternateTarget.registrations.length, 0);
+  dispose(); reflection.dispose(); alternateReflection.dispose();
+});
+
+await check("local capability snapshot is own-data-property-only and validates before side effects", () => {
+  const map = map_fixture();
+  add_interaction(map, local("prototype-only", "inherited"));
+  add_interaction(map, local("prototype-to-string", "toString", HsonData.from(null), { event: "to-string" }));
+  add_interaction(map, local("prototype-constructor", "constructor", HsonData.from(null), { event: "constructor" }));
+  const reflection = hsonReflect(map.lib("page"));
+  const subject = reflection.tree.find.must.byQuid(currentQ);
+  const target = new Target(); link_node_to_el(subject.node, target as unknown as Element);
+
+  let inheritedCalls = 0;
+  const inheritedTable = Object.create({ inherited: () => { inheritedCalls += 1; } }) as Record<string, () => void>;
+  const dispose = activate_interactions({ map, tree: reflection.tree, local: inheritedTable });
+  assert.equal(target.registrations.length, 0);
+  target.fire();
+  assert.equal(inheritedCalls, 0);
+  dispose();
+
+  let getterCalls = 0;
+  const getterTable: Record<string, unknown> = { valid: () => undefined };
+  Object.defineProperty(getterTable, "getter", {
+    enumerable: true,
+    get: () => { getterCalls += 1; return () => undefined; },
+  });
+  const beforeGetter = map.rev;
+  assert.throws(
+    () => activate_interactions({ map, tree: reflection.tree, local: getterTable as never }),
+    /data property/,
+  );
+  assert.equal(getterCalls, 0);
+  assert.equal(target.registrations.length, 0);
+  map.lib("state").at(["count"]).set(1);
+  assert.equal(map.rev, beforeGetter + 1);
+
+  assert.throws(
+    () => activate_interactions({ map, tree: reflection.tree, local: { inherited: 1 } as never }),
+    /must be a function/,
+  );
+  assert.equal(target.registrations.length, 0);
+  reflection.dispose();
+});
+
+await check("an activation created without a dispatcher cannot gain one by option mutation", async () => {
+  const map = map_fixture();
+  add_interaction(map, authoritative("fixed-dispatch-absence", "save", HsonData.from(-0)));
+  const reflection = hsonReflect(map.lib("page"));
+  const subject = reflection.tree.find.must.byQuid(currentQ);
+  const target = new Target(); link_node_to_el(subject.node, target as unknown as Element);
+  let dispatched = 0;
+  const options: {
+    map: typeof map;
+    tree: typeof reflection.tree;
+    local: Record<string, InteractionLocalBehavior>;
+    dispatch?: InteractionActionDispatcher;
+  } = { map, tree: reflection.tree, local: {} };
+  const dispose = activate_interactions(options);
+  options.dispatch = async () => { dispatched += 1; };
+  map.lib("state").at(["count"]).set(1);
+  target.fire();
+  await Promise.resolve();
+  assert.equal(dispatched, 0);
+  assert.equal(target.registrations.length, 0);
+  dispose(); reflection.dispose();
+});
+
+await check("failed initialization rolls back installed listeners and every observer", () => {
+  const map = map_fixture();
+  add_interaction(map, local("rollback-a", "run"));
+  add_interaction(map, local("rollback-b", "run"));
+  const reflection = hsonReflect(map.lib("page"));
+  const subject = reflection.tree.find.must.byQuid(currentQ);
+  const target = new Target(); link_node_to_el(subject.node, target as unknown as Element);
+  let imperative = 0;
+  const imperativeSub = subject.listen.onCustom("click", () => { imperative += 1; });
+
+  let materializations = 0;
+  set_interaction_activation_initialization_materialization_hook_for_tests(() => {
+    materializations += 1;
+    throw new Error("forced post-materialization initialization failure");
+  });
+  try {
+    assert.throws(
+      () => activate_interactions({ map, tree: reflection.tree, local: { run: () => undefined } }),
+      /forced post-materialization/,
+    );
+  } finally {
+    set_interaction_activation_initialization_materialization_hook_for_tests(undefined);
+  }
+  assert.equal(materializations, 1);
+  assert.equal(target.registrations.length, 1);
+  target.fire();
+  assert.equal(imperative, 1);
+
+  const beforeCommit = map.rev;
+  assert.doesNotThrow(() => map.lib("state").at(["count"]).set(1));
+  assert.equal(map.rev, beforeCommit + 1);
+  assert.equal(target.registrations.length, 1);
+
+  set_interaction_activation_initialization_hook_for_tests(() => { throw new Error("forced initialization barrier failure"); });
+  try {
+    assert.throws(
+      () => activate_interactions({ map, tree: reflection.tree, local: { run: () => undefined } }),
+      /forced initialization barrier/,
+    );
+  } finally {
+    set_interaction_activation_initialization_hook_for_tests(undefined);
+  }
+  assert.equal(target.registrations.length, 1);
+  assert.doesNotThrow(() => map.lib("state").at(["count"]).set(2));
+  assert.equal(target.registrations.length, 1);
+  imperativeSub.off(); reflection.dispose();
+});
+
+await check("concurrent activations own independent capabilities failures listeners and disposal", async () => {
+  const map = map_fixture();
+  add_interaction(map, local("concurrent", "run"));
+  const reflection = hsonReflect(map.lib("page"));
+  const subject = reflection.tree.find.must.byQuid(currentQ);
+  const target = new Target(); link_node_to_el(subject.node, target as unknown as Element);
+  let imperative = 0, a = 0, aReplacement = 0, b = 0, failureA = 0, failureB = 0;
+  const imperativeSub = subject.listen.onCustom("click", () => { imperative += 1; });
+  const tableA: Record<string, InteractionLocalBehavior> = {
+    run: () => { a += 1; throw new Error("activation A failure"); },
+  };
+  const disposeA = activate_interactions({
+    map, tree: reflection.tree, local: tableA,
+    onFailure: () => { failureA += 1; },
+  });
+  const disposeB = activate_interactions({
+    map, tree: reflection.tree, local: { run: () => { b += 1; } },
+    onFailure: () => { failureB += 1; },
+  });
+  tableA.run = () => { aReplacement += 1; };
+
+  target.fire(); await Promise.resolve(); await Promise.resolve();
+  assert.deepEqual([imperative, a, aReplacement, b, failureA, failureB], [1, 1, 0, 1, 1, 0]);
+  disposeA();
+  target.fire(); await Promise.resolve();
+  assert.deepEqual([imperative, a, aReplacement, b], [2, 1, 0, 2]);
+  disposeB();
+  target.fire();
+  assert.deepEqual([imperative, a, aReplacement, b], [3, 1, 0, 2]);
+  assert.equal(target.registrations.length, 1);
+  imperativeSub.off(); reflection.dispose();
+});
+
+await check("concurrent authoritative activations retain independent dispatchers", async () => {
+  const map = map_fixture();
+  add_interaction(map, authoritative("concurrent-authority", "save", HsonData.from(-0)));
+  const reflection = hsonReflect(map.lib("page"));
+  const subject = reflection.tree.find.must.byQuid(currentQ);
+  const target = new Target(); link_node_to_el(subject.node, target as unknown as Element);
+  let a = 0, b = 0;
+  const disposeA = activate_interactions({ map, tree: reflection.tree, local: {}, dispatch: async () => { a += 1; } });
+  const disposeB = activate_interactions({ map, tree: reflection.tree, local: {}, dispatch: async () => { b += 1; } });
+  target.fire(); await Promise.resolve();
+  assert.deepEqual([a, b], [1, 1]);
+  disposeA(); target.fire(); await Promise.resolve();
+  assert.deepEqual([a, b], [1, 2]);
+  disposeB(); assert.equal(target.registrations.length, 0);
+  reflection.dispose();
 });
 
 await check("an ignored missing listener target remains eligible for later realization", () => {
