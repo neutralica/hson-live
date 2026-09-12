@@ -177,7 +177,10 @@ await check("aggregate capability owns one complete mirror and cannot revive aft
 await check("replica failure does not destroy a healthy endpoint", async () => {
   const sent: LocusClientMessage[] = [];
   const endpoint = create_echo_endpoint_internal({
-    transport: { send: (message) => sent.push(message) },
+    operations: {
+      submit: (message) => sent.push(message),
+      onOutcome: () => () => {},
+    },
     sessionRequired: false,
     ids: { actionId: () => "request", actionAttemptId: () => "attempt" },
   });

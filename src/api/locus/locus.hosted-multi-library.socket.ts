@@ -111,14 +111,13 @@ type HostedRecoveryAttachment = Readonly<{
 }>;
 
 type HostedConnection = {
-  readonly socket: LocusSocketLike;
+  readonly downstream: (message: HostedAggregateDownstreamOutput) => void;
+  readonly onClose?: LocusDisposer;
   recoveryId: string | undefined;
   recovering: boolean;
   live: boolean;
   readonly pendingLive: LocusHostedAggregateWireEnvelope[];
   closed: boolean;
-  stopMessage?: LocusDisposer;
-  stopClose?: LocusDisposer;
   releaseActivity?: LocusDisposer;
   releaseRecoveryActivity?: LocusDisposer;
   readonly context?: LocusConnectionContext;
@@ -127,6 +126,37 @@ type HostedConnection = {
   sessionResumable: boolean;
   fenced: boolean;
 };
+
+/** @internal Typed aggregate output before adapter framing. */
+export type HostedAggregateDownstreamOutput = Readonly<{
+  type: string;
+  format: typeof LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT;
+  readonly [field: string]: unknown;
+}>;
+
+function is_hosted_aggregate_downstream_output(value: unknown): value is HostedAggregateDownstreamOutput {
+  return typeof value === "object"
+    && value !== null
+    && "type" in value
+    && typeof value.type === "string"
+    && "format" in value
+    && value.format === LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT;
+}
+
+/** @internal Aggregate semantic attachment used by transport adapters and proofs. */
+export type LocusHostedAggregateSemanticAttachment = Readonly<{
+  readonly binding: Readonly<{
+    principalId: string | undefined;
+    logicalMapId: string;
+    incarnationId: string;
+    readonly sessionId: string | undefined;
+    readonly attachmentEpoch: number | undefined;
+    readonly attached: boolean;
+  }>;
+  operations: Readonly<{ submit: (request: Exclude<HostedRequest, { type: "recover" }>) => void | Promise<void> }>;
+  synchronization: Readonly<{ begin: (request: Extract<HostedRequest, { type: "recover" }>) => void; cancel: () => void }>;
+  close: () => void;
+}>;
 
 export type LocusHostedAggregateSocketOptions<
   TActions extends LocusActionPayloads = LocusActionPayloads,
@@ -160,6 +190,12 @@ export type LocusHostedAggregateSocketServer = Readonly<{
   readonly registryDigest: string;
   readonly rev: number;
   connect: (socket: LocusSocketLike, context?: LocusConnectionContext) => LocusDisposer;
+  /** @internal Typed operation/synchronization attachment below the socket adapter. */
+  attach: (
+    downstream: (message: HostedAggregateDownstreamOutput) => void,
+    context?: LocusConnectionContext,
+    onClose?: LocusDisposer,
+  ) => LocusHostedAggregateSemanticAttachment;
   mutate: LocusHostedAggregate["mutate"];
   dispatch_action: LocusHostedAggregate["dispatch_action"];
   dispatch_message: (message: import("../../types/locus.types.js").LocusClientActionMessage) => Promise<LocusClientActionResult>;
@@ -282,7 +318,10 @@ export function create_locus_hosted_aggregate_socket_internal<
     if (connection.closed) return;
     const raw = JSON.stringify(message);
     if (utf8_bytes(raw) > limit) throw new Error("Hosted aggregate socket message exceeds its configured byte limit.");
-    connection.socket.send(raw);
+    if (!is_hosted_aggregate_downstream_output(message)) {
+      throw new Error("Hosted aggregate semantic output is malformed.");
+    }
+    connection.downstream(message);
   }
 
   function attachment_current(connection: HostedConnection, sessionId: string, epoch: number): boolean {
@@ -812,11 +851,94 @@ export function create_locus_hosted_aggregate_socket_internal<
     return Object.freeze({ type: "error", id: request.id, ok: false, seq: outcome.seq, completionRev: outcome.completionRev, error: outcome.error });
   }
 
-  function connect(socket: LocusSocketLike, context?: LocusConnectionContext): LocusDisposer {
-    if (disposed) return () => {};
+  function dispatch_request(connection: HostedConnection, request: HostedRequest): void | Promise<void> {
+    if (request.type === "recover") {
+      void recover(connection, request).catch((cause: unknown) => {
+        if (connection.closed || connection.fenced || connection.recoveryId !== request.id) return;
+        stop_recovery(connection);
+        reject(connection, "LOCUS_RECOVERY_FAILED", cause instanceof Error ? cause.message : "Hosted aggregate recovery failed.", request.id);
+      });
+      return;
+    }
+    if (request.type === "session-create") {
+      session_create(connection, request);
+      return;
+    }
+    if (request.type === "session-attach") {
+      session_attach(connection, request);
+      return;
+    }
+    if (request.type === "session-goodbye") {
+      session_goodbye(connection, request);
+      return;
+    }
+    if (request.type === "action-status") {
+      if (!bind_session(connection, false)) return;
+      if (connection.sessionId === undefined || connection.sessionEpoch === undefined) return;
+      const capturedSessionId = connection.sessionId;
+      const capturedEpoch = connection.sessionEpoch;
+      if (!attachment_current(connection, capturedSessionId, capturedEpoch)) return;
+      const status = read_locus_retained_action_status_internal(server, {
+        clientId: request.clientId,
+        requestId: request.requestId,
+        ...(connection.context === undefined ? {} : { connection: connection.context }),
+      });
+      if (!attachment_current(connection, capturedSessionId, capturedEpoch)) return;
+      if (!status.ok) {
+        send(connection, Object.freeze({
+          type: "session-rejected",
+          format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
+          id: request.id,
+          code: status.code,
+          message: status.message,
+        }));
+        return;
+      }
+      const outcome = status.outcome?.state === "succeeded" && status.outcome.result !== undefined
+        ? Object.freeze({
+            state: status.outcome.state,
+            seq: status.outcome.seq,
+            completionRev: status.outcome.completionRev,
+            resultData: encode_hson_data_internal(status.outcome.result),
+          })
+        : status.outcome;
+      send(connection, Object.freeze({
+        type: "action-status",
+        format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
+        id: request.id,
+        requestId: request.requestId,
+        state: status.state,
+        ...(outcome === undefined ? {} : { outcome }),
+      }));
+      return;
+    }
+    return action(connection, request);
+  }
+
+  function attach(
+    downstream: (message: HostedAggregateDownstreamOutput) => void,
+    context?: LocusConnectionContext,
+    onClose?: LocusDisposer,
+  ): LocusHostedAggregateSemanticAttachment {
+    if (disposed) {
+      return Object.freeze({
+        binding: Object.freeze({
+          principalId: context?.principalId,
+          logicalMapId: locus.logicalMapId,
+          incarnationId: locus.incarnationId,
+          get sessionId() { return undefined; },
+          get attachmentEpoch() { return undefined; },
+          get attached() { return false; },
+        }),
+        operations: Object.freeze({ submit: () => {} }),
+        synchronization: Object.freeze({ begin: () => {}, cancel: () => {} }),
+        close: () => {},
+      });
+    }
     const releaseConnectionActivity = options.internal?.acquireConnectionActivity?.();
     const connection: HostedConnection = {
-      socket,
+      downstream,
+      ...(onClose === undefined ? {} : { onClose }),
       recoveryId: undefined,
       recovering: false,
       live: false,
@@ -834,76 +956,76 @@ export function create_locus_hosted_aggregate_socket_internal<
       if (connection.closed) return;
       connection.closed = true;
       stop_recovery(connection);
-      connection.stopMessage?.();
-      connection.stopClose?.();
       connections.delete(connection);
       if (connection.sessionId !== undefined && connection.sessionEpoch !== undefined) {
         sessions.detach(connection.sessionId, connection.sessionEpoch);
       }
       connection.releaseActivity?.();
       connection.releaseActivity = undefined;
+      connection.onClose?.();
     };
-    connection.stopMessage = socket.onMessage((raw) => {
-      let request: HostedRequest;
-      try {
-        request = decode_request(raw, maxWireBytes);
-      } catch (cause) {
-        reject(connection, "LOCUS_PROTOCOL_INVALID", cause instanceof Error ? cause.message : "Malformed hosted protocol message.");
-        return;
-      }
-      if (request.type === "recover") {
-        void recover(connection, request).catch((cause: unknown) => {
-          if (connection.closed || connection.fenced || connection.recoveryId !== request.id) return;
-          stop_recovery(connection);
-          reject(connection, "LOCUS_RECOVERY_FAILED", cause instanceof Error ? cause.message : "Hosted aggregate recovery failed.", request.id);
-        });
-      }
-      else if (request.type === "session-create") session_create(connection, request);
-      else if (request.type === "session-attach") session_attach(connection, request);
-      else if (request.type === "session-goodbye") session_goodbye(connection, request);
-      else if (request.type === "action-status") {
-        if (!bind_session(connection, false)) return;
-        if (connection.sessionId === undefined || connection.sessionEpoch === undefined) return;
-        const capturedSessionId = connection.sessionId;
-        const capturedEpoch = connection.sessionEpoch;
-        if (!attachment_current(connection, capturedSessionId, capturedEpoch)) return;
-        const status = read_locus_retained_action_status_internal(server, {
-          clientId: request.clientId,
-          requestId: request.requestId,
-          ...(connection.context === undefined ? {} : { connection: connection.context }),
-        });
-        if (!attachment_current(connection, capturedSessionId, capturedEpoch)) return;
-        if (!status.ok) {
-          send(connection, Object.freeze({
-            type: "session-rejected",
+    const binding = Object.freeze({
+      principalId: context?.principalId,
+      logicalMapId: locus.logicalMapId,
+      incarnationId: locus.incarnationId,
+      get sessionId() { return connection.sessionId; },
+      get attachmentEpoch() { return connection.sessionEpoch; },
+      get attached() {
+        return connection.sessionId !== undefined
+          && connection.sessionEpoch !== undefined
+          && attachment_current(connection, connection.sessionId, connection.sessionEpoch);
+      },
+    });
+    return Object.freeze({
+      binding,
+      operations: Object.freeze({
+        submit(request: Exclude<HostedRequest, { type: "recover" }>) {
+          return dispatch_request(connection, request);
+        },
+      }),
+      synchronization: Object.freeze({
+        begin(request: Extract<HostedRequest, { type: "recover" }>) { void dispatch_request(connection, request); },
+        cancel: () => stop_recovery(connection),
+      }),
+      close: dispose,
+    });
+  }
+
+  function connect(socket: LocusSocketLike, context?: LocusConnectionContext): LocusDisposer {
+    if (disposed) return () => {};
+    let stopMessage: LocusDisposer | void;
+    let stopClose: LocusDisposer | void;
+    let listenersOpen = true;
+    const stopListeners = (): void => {
+      if (!listenersOpen) return;
+      listenersOpen = false;
+      stopMessage?.();
+      stopClose?.();
+    };
+    const semantic = attach((message) => socket.send(JSON.stringify(message)), context, stopListeners);
+    try {
+      stopMessage = socket.onMessage((raw) => {
+        let request: HostedRequest;
+        try {
+          request = decode_request(raw, maxWireBytes);
+        } catch (cause) {
+          socket.send(JSON.stringify(Object.freeze({
+            type: "error",
             format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
-            id: request.id,
-            code: status.code,
-            message: status.message,
-          }));
+            code: "LOCUS_PROTOCOL_INVALID",
+            message: cause instanceof Error ? cause.message : "Malformed hosted protocol message.",
+          })));
           return;
         }
-        const outcome = status.outcome?.state === "succeeded" && status.outcome.result !== undefined
-          ? Object.freeze({
-              state: status.outcome.state,
-              seq: status.outcome.seq,
-              completionRev: status.outcome.completionRev,
-              resultData: encode_hson_data_internal(status.outcome.result),
-            })
-          : status.outcome;
-        send(connection, Object.freeze({
-          type: "action-status",
-          format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
-          id: request.id,
-          requestId: request.requestId,
-          state: status.state,
-          ...(outcome === undefined ? {} : { outcome }),
-        }));
-      }
-      else void action(connection, request);
-    }) ?? undefined;
-    connection.stopClose = socket.onClose(dispose) ?? undefined;
-    return dispose;
+        if (request.type === "recover") semantic.synchronization.begin(request);
+        else void semantic.operations.submit(request);
+      });
+      stopClose = socket.onClose(semantic.close);
+    } catch (error) {
+      semantic.close();
+      throw error;
+    }
+    return semantic.close;
   }
 
   const server = Object.freeze({
@@ -913,6 +1035,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     registryDigest: registry.digest,
     get rev() { return locus.rev; },
     connect,
+    attach,
     mutate: locus.mutate,
     dispatch_action: locus.dispatch_action,
     dispatch_message,
@@ -934,8 +1057,7 @@ export function create_locus_hosted_aggregate_socket_internal<
       for (const connection of [...connections]) {
         connection.closed = true;
         stop_recovery(connection);
-        connection.stopMessage?.();
-        connection.stopClose?.();
+        connection.onClose?.();
         connection.releaseActivity?.();
         connection.releaseActivity = undefined;
       }

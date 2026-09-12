@@ -124,7 +124,10 @@ await check("the endpoint core operates without a map, registry, or recovery cap
   const statusIds = ["status-a", "status-a", "status-b", "status-c"];
   const sessionIds = ["session-create", "session-create", "session-attach", "session-reattach", "session-mismatch"];
   const endpoint = create_echo_endpoint_internal({
-    transport: { send: (message) => { sent.push(message); } },
+    operations: {
+      submit: (message) => { sent.push(message); },
+      onOutcome: () => () => {},
+    },
     clientId: "client-one",
     sessionRequired: true,
     ids: {

@@ -1,5 +1,9 @@
 # Echo API reference
 
+Echo's internal operation and synchronization architecture is described in
+[Transport capabilities](./transport-capabilities.md). The public hosted
+adapter remains WebSocket.
+
 Echo is semantic hosted-client participation in one Locus authority domain.
 There is one public `Echo` type family with two capability-sensitive
 construction forms:

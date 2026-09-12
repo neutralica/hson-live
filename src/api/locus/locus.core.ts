@@ -9,6 +9,7 @@ import type {
   LocusActionPayloads,
   LocusActions,
   LocusClientActionMessage,
+  LocusClientMessage,
   LocusClientRecoverMessage,
   LocusClientSessionAttachMessage,
   LocusCanonicalCommit,
@@ -76,6 +77,14 @@ import {
   read_locus_retained_action_status_internal,
   register_locus_retained_action_status_internal,
 } from "./locus.action-status.internal.js";
+import {
+  deliver_locus_downstream_internal,
+  inert_locus_semantic_attachment_internal,
+  is_locus_synchronization_request_internal,
+  register_locus_semantic_attachment_internal,
+  type LocusSemanticAttachment,
+  type LocusSemanticAttachmentOptions,
+} from "./locus.transport.internal.js";
 
 let locus_session_inc = 0;
 let locus_trace_inc = 0;
@@ -662,9 +671,18 @@ function create_locus_for_map<
     });
   }
 
-  function connect(socket: LocusSocketLike, connectionContext?: LocusConnectionContext): LocusConnection {
-    if (disposed || exclusiveAuthority.failed) return inert_connection();
+  function attach_semantic_transport(
+    attachmentOptions: LocusSemanticAttachmentOptions,
+  ): LocusSemanticAttachment<TActions> {
+    if (disposed || exclusiveAuthority.failed) {
+      return inert_locus_semantic_attachment_internal(
+        stream.logicalMapId,
+        stream.incarnationId,
+        attachmentOptions.connection?.principalId,
+      );
+    }
     const releaseConnectionActivity = activity.acquire("connection");
+    const connectionContext = attachmentOptions.connection;
     const attachedContext: LocusConnectionContext | undefined = connectionContext === undefined
       ? undefined
       : Object.freeze({
@@ -675,7 +693,6 @@ function create_locus_for_map<
             ? { attachment: connectionContext.attachment }
             : {}),
         });
-    const disposers: LocusDisposer[] = [];
     let transportOpen = true;
     let fenced = false;
     let sessionId: LocusSessionId | undefined;
@@ -685,7 +702,7 @@ function create_locus_for_map<
     let recoveryState: LocusConnectionRecoveryState = Object.freeze({ phase: "awaiting-recovery" });
 
     function raw_send(message: LocusServerMessage): void {
-      if (transportOpen) socket.send(encode_locus_message(message));
+      if (transportOpen) deliver_locus_downstream_internal(attachmentOptions.downstream, message);
     }
 
     function authoritative(): boolean {
@@ -804,7 +821,7 @@ function create_locus_for_map<
       dispose_recovery_channel();
     }
 
-    const attachment = Object.freeze({ fence: fence_attachment });
+    const sessionAttachment = Object.freeze({ fence: fence_attachment });
 
     function bind_new_session(resumable: boolean): boolean {
       if (sessionId !== undefined) return authoritative();
@@ -812,7 +829,7 @@ function create_locus_for_map<
       const created = sessions.create(
         id,
         resumable,
-        attachment,
+        sessionAttachment,
         () => {},
         () => 0,
         attachedContext,
@@ -846,7 +863,7 @@ function create_locus_for_map<
       const created = sessions.create(
         nextSessionId,
         true,
-        attachment,
+        sessionAttachment,
         () => {},
         () => 0,
         attachedContext,
@@ -874,7 +891,7 @@ function create_locus_for_map<
         reject_session(message.id, "LOCUS_SESSION_NOT_ATTACHED", "This transport already owns a Locus session.");
         return;
       }
-      const attached = sessions.reattach(message.credential, attachment, attachedContext);
+      const attached = sessions.reattach(message.credential, sessionAttachment, attachedContext);
       if (!attached.ok) {
         reject_session(
           message.id,
@@ -1175,13 +1192,7 @@ function create_locus_for_map<
       }
     }
 
-    async function handle_message(raw: string): Promise<void> {
-      const decoded = decode_locus_message<TActions>(raw);
-      if (!decoded.ok) {
-        if (!fenced) raw_send({ type: "error", seq, error: decoded.error });
-        return;
-      }
-      const message = decoded.value;
+    async function handle_message(message: LocusClientMessage<TActions>): Promise<void> {
       if (message.type === "session-create") {
         if (!fenced) create_resumable_session(message.id);
         return;
@@ -1245,15 +1256,6 @@ function create_locus_for_map<
       }
     }
 
-    let stopMessage: LocusDisposer | void;
-    try {
-      stopMessage = socket.onMessage((raw) => { void handle_message(raw); });
-    } catch (error) {
-      transportOpen = false;
-      releaseConnectionActivity();
-      throw error;
-    }
-
     function detach_transport(hostShutdown = false): void {
       if (!transportOpen) return;
       transportOpen = false;
@@ -1263,32 +1265,86 @@ function create_locus_for_map<
       if (!hostShutdown && sessionId && connectionEpoch !== undefined && sessions.is_active(sessionId, connectionEpoch)) {
         sessions.detach(sessionId, connectionEpoch);
       }
-      while (disposers.length) disposers.pop()?.();
       connections.delete(shutdown_for_host);
+      attachmentOptions.onClose?.();
     }
-
-    let stopClose: LocusDisposer | void;
-    try {
-      stopClose = socket.onClose(detach_transport);
-    } catch (error) {
-      detach_transport();
-      throw error;
-    }
-    if (stopMessage) disposers.push(stopMessage);
-    if (stopClose) disposers.push(stopClose);
 
     function shutdown_for_host(): void {
       detach_transport(true);
     }
 
-    const disconnect = () => detach_transport();
-    const connection = Object.assign(disconnect, {
-      emit_event(event: string, payload: JsonValue): void {
-        emit_connection_event(event, payload);
-      },
+    const binding = Object.freeze({
+      principalId: attachedContext?.principalId,
+      logicalMapId: stream.logicalMapId,
+      incarnationId: stream.incarnationId,
+      get sessionId() { return sessionId; },
+      get attachmentEpoch() { return connectionEpoch; },
+      get attached() { return authoritative(); },
+    });
+    const semanticAttachment: LocusSemanticAttachment<TActions> = Object.freeze({
+      binding,
+      operations: Object.freeze({
+        submit(message: import("./locus.transport.internal.js").LocusFiniteOperationRequest<TActions>) {
+          return handle_message(message);
+        },
+      }),
+      synchronization: Object.freeze({
+        begin(message: LocusClientRecoverMessage) { void handle_message(message); },
+        cancel: dispose_recovery_channel,
+      }),
+      emit_event(event, payload) { emit_connection_event(event, payload); },
+      close: detach_transport,
     });
     connections.add(shutdown_for_host);
-    return connection;
+    return semanticAttachment;
+  }
+
+  function connect(socket: LocusSocketLike, connectionContext?: LocusConnectionContext): LocusConnection {
+    if (disposed || exclusiveAuthority.failed) return inert_connection();
+    let stopMessage: LocusDisposer | void;
+    let stopClose: LocusDisposer | void;
+    let listenersOpen = true;
+    const stopListeners = (): void => {
+      if (!listenersOpen) return;
+      listenersOpen = false;
+      stopMessage?.();
+      stopClose?.();
+    };
+    const send = (message: LocusServerMessage): void => socket.send(encode_locus_message(message));
+    const attachment = attach_semantic_transport({
+      downstream: Object.freeze({
+        finite: send,
+        synchronization: send,
+        publication: send,
+        event: send,
+      }),
+      ...(connectionContext === undefined ? {} : { connection: connectionContext }),
+      onClose: stopListeners,
+    });
+    try {
+      stopMessage = socket.onMessage((raw) => {
+        const decoded = decode_locus_message<TActions>(raw);
+        if (!decoded.ok) {
+          if (attachment.binding.sessionId === undefined || attachment.binding.attached) {
+            send({ type: "error", seq, error: decoded.error });
+          }
+          return;
+        }
+        if (is_locus_synchronization_request_internal(decoded.value)) {
+          attachment.synchronization.begin(decoded.value);
+        } else {
+          void attachment.operations.submit(decoded.value);
+        }
+      });
+      stopClose = socket.onClose(() => attachment.close());
+    } catch (error) {
+      attachment.close();
+      throw error;
+    }
+    const disconnect = () => attachment.close();
+    return Object.assign(disconnect, {
+      emit_event(event: string, payload: JsonValue): void { attachment.emit_event(event, payload); },
+    });
   }
 
   function dispose(): void {
@@ -1344,6 +1400,7 @@ function create_locus_for_map<
       ingress.connection?.principalId,
     );
   });
+  register_locus_semantic_attachment_internal(locus, attach_semantic_transport);
   exclusiveLocusAuthorities.set(locus, exclusiveAuthority as ReturnType<typeof make_locus_exclusive_authority>);
   return locus;
 }

@@ -30,6 +30,7 @@ import {
 } from "../locus/locus.hosted-multi-library.js";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../locus/locus.hosted-multi-library.protocol.js";
 import { create_echo_endpoint_internal, type EchoEndpointServerMessage } from "./echo.endpoint.js";
+import { create_echo_finite_operation_adapter_internal } from "./echo.operation.internal.js";
 import type { EchoEndpointConnection } from "./echo.client.js";
 import { make_echo_reload_safe_id } from "./echo.request.js";
 import {
@@ -138,8 +139,9 @@ export function create_multi_library_echo_socket_client_internal<
   let liveRecovery: Readonly<{ id: string; sessionId: string; sessionEpoch: number }> | undefined;
   const readyWaiters = new Set<Readonly<{ resolve: () => void; reject: (reason: Error) => void }>>();
 
+  const directOperationAdapter = create_echo_finite_operation_adapter_internal(send);
   const endpoint = options.connection?.endpoint ?? create_echo_endpoint_internal({
-    transport: { send },
+    operations: directOperationAdapter.capability,
     clientId: options.clientId ?? make_echo_reload_safe_id("echo-client"),
     sessionRequired: true,
     ...(options.session?.credential === undefined ? {} : { credential: options.session.credential }),
@@ -168,7 +170,7 @@ export function create_multi_library_echo_socket_client_internal<
       return;
     }
     if (is_endpoint_server_message(message)) {
-      if (options.connection === undefined) endpoint.receive(message);
+      directOperationAdapter?.deliver(message);
       return;
     }
     try {
@@ -464,7 +466,10 @@ export function create_multi_library_echo_socket_client_internal<
       if (options.connection === undefined) disconnect();
       const error = new Error("Hosted aggregate socket Echo is closed.");
       interruptRecovery(error);
-      if (options.connection === undefined) endpoint.dispose();
+      if (options.connection === undefined) {
+        endpoint.dispose();
+        directOperationAdapter?.clear();
+      }
       while (compositionDisposers.length > 0) compositionDisposers.pop()?.();
       for (const waiter of readyWaiters) waiter.reject(error);
       readyWaiters.clear();

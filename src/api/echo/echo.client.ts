@@ -18,6 +18,15 @@ import {
   type EchoEndpointIdFactories,
   type EchoEndpointServerMessage,
 } from "./echo.endpoint.js";
+import {
+  create_echo_finite_operation_adapter_internal,
+  type EchoFiniteOperationOutcome,
+} from "./echo.operation.internal.js";
+import {
+  create_echo_synchronization_adapter_internal,
+  type EchoSynchronizationCapability,
+  type EchoSynchronizationOutput,
+} from "./echo.synchronization.internal.js";
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -196,6 +205,12 @@ export type EchoEndpointConnection<TActions extends LocusActionPayloads = LocusA
   onConnectionChange: (listener: (connected: boolean) => void) => LocusDisposer;
   onReadyChange: (listener: () => void) => LocusDisposer;
   onAttachmentLost: (listener: (reason: "disconnect" | "fenced" | "ended", error: Error) => void) => LocusDisposer;
+  /** @internal Independent typed finite-outcome ingress for composed adapters. */
+  deliverOperationOutcome: (outcome: EchoFiniteOperationOutcome) => void;
+  synchronization: EchoSynchronizationCapability;
+  setSynchronizationDecoder: (
+    decoder: (raw: string) => EchoSynchronizationOutput | undefined,
+  ) => LocusDisposer;
   setMessageEncoder: (encoder: (message: LocusClientMessage<TActions>) => string) => LocusDisposer;
 }>;
 
@@ -208,8 +223,15 @@ export function create_echo_endpoint_connection_internal<
   const readyListeners = new Set<() => void>();
   const attachmentLostListeners = new Set<(reason: "disconnect" | "fenced" | "ended", error: Error) => void>();
   let encodeMessage = (message: LocusClientMessage<TActions>): string => encodeEndpointMessage(message);
+  let decodeSynchronization: ((raw: string) => EchoSynchronizationOutput | undefined) | undefined;
+  const operationAdapter = create_echo_finite_operation_adapter_internal<TActions>(
+    (message) => options.socket.send(encodeMessage(message)),
+  );
+  const synchronizationAdapter = create_echo_synchronization_adapter_internal(
+    (message) => options.socket.send(encodeMessage(message)),
+  );
   const endpoint = create_echo_endpoint_internal<TActions>({
-    transport: { send: (message) => options.socket.send(encodeMessage(message)) },
+    operations: operationAdapter.capability,
     ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
     ...(options.session?.credential === undefined ? {} : { credential: options.session.credential }),
     sessionRequired: true,
@@ -238,7 +260,9 @@ export function create_echo_endpoint_connection_internal<
     connected = true;
     const stopMessage = options.socket.onMessage((raw) => {
       const decoded = decodeEndpointMessage(raw, options.endpointMessageFormat);
-      if (decoded !== undefined) endpoint.receive(decoded);
+      if (decoded !== undefined) operationAdapter.deliver(decoded);
+      const synchronization = decodeSynchronization?.(raw);
+      if (synchronization !== undefined) synchronizationAdapter.deliver(synchronization);
       for (const listener of [...rawListeners]) listener(raw);
     });
     if (stopMessage !== undefined) transportDisposers.push(stopMessage);
@@ -254,6 +278,8 @@ export function create_echo_endpoint_connection_internal<
     disposed = true;
     disconnect();
     endpoint.dispose();
+    operationAdapter.clear();
+    synchronizationAdapter.clear();
     rawListeners.clear();
     connectionListeners.clear();
     readyListeners.clear();
@@ -295,6 +321,16 @@ export function create_echo_endpoint_connection_internal<
       if (disposed) return () => {};
       attachmentLostListeners.add(listener);
       return () => attachmentLostListeners.delete(listener);
+    },
+    deliverOperationOutcome: operationAdapter.deliver,
+    synchronization: synchronizationAdapter.capability,
+    setSynchronizationDecoder(decoder) {
+      if (disposed) return () => {};
+      const previous = decodeSynchronization;
+      decodeSynchronization = decoder;
+      return () => {
+        if (decodeSynchronization === decoder) decodeSynchronization = previous;
+      };
     },
     setMessageEncoder(encoder) {
       if (disposed) return () => {};

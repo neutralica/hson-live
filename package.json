@@ -267,6 +267,7 @@
     "test:action-data-fidelity": "node --import=tsx tests/action-data-fidelity.acceptance.mts",
     "test:locus-endpoint-session-settlement": "node --import=tsx tests/locus-endpoint-session-settlement.acceptance.mts",
     "test:echo-endpoint-core": "node --import=tsx tests/echo-endpoint-core.acceptance.mts",
+    "test:echo-transport-capabilities": "node --import=tsx tests/echo-transport-capabilities.acceptance.mts",
     "test:echo-replica-capability": "node --import=tsx tests/echo-replica-capability.acceptance.mts",
     "test:locus-trace": "node --import=tsx tests/runtime-probes/locus-trace.acceptance.mjs",
     "test:locus-authorization": "node --import=tsx tests/runtime-probes/locus-authorization.acceptance.mjs",

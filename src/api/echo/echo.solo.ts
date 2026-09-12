@@ -29,6 +29,7 @@ import type {
   LocusDocumentActionRequest,
   LocusDocumentRetryActionFn,
   LocusClientMessage,
+  LocusClientRecoverMessage,
   EchoOptions,
   EchoRecoveryDiagnostics,
   EchoRecoveryFailure,
@@ -47,6 +48,8 @@ import type { EchoMapManagementLease } from "../../internal/echo-map-capability.
 import { LocusDisconnectedError } from "../locus/locus.error.js";
 import { EchoRecoveryError } from "./echo.error.js";
 import { create_echo_endpoint_internal, type EchoEndpointIdFactories } from "./echo.endpoint.js";
+import { create_echo_finite_operation_adapter_internal } from "./echo.operation.internal.js";
+import type { EchoSynchronizationOutput } from "./echo.synchronization.internal.js";
 import type { EchoEndpointConnection } from "./echo.client.js";
 import { create_echo_solo_replica_capability_internal } from "./echo.solo-replica.js";
 import {
@@ -215,10 +218,11 @@ export function create_solo_echo_internal<
   let liveCommitsApplied = 0;
   let recoveryFailures = 0;
   let observerFailures = 0;
+  const directOperationAdapter = create_echo_finite_operation_adapter_internal<TActions>(
+    (message) => options.socket.send(encode_client_message(message)),
+  );
   const endpoint = composition?.connection.endpoint ?? create_echo_endpoint_internal<TActions>({
-    transport: {
-      send: (message) => options.socket.send(encode_client_message(message)),
-    },
+    operations: directOperationAdapter.capability,
     ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
     sessionRequired: true,
     ...(options.session?.credential === undefined ? {} : { credential: options.session.credential }),
@@ -235,6 +239,13 @@ export function create_solo_echo_internal<
     },
   });
   if (composition !== undefined) {
+    disposers.push(composition.connection.setSynchronizationDecoder((raw) => {
+      const decoded = decode_locus_server_message(raw);
+      if (!decoded.ok) {
+        return Object.freeze({ type: "synchronization-failure" as const, error: decoded.error });
+      }
+      return is_recovery_message(decoded.value) ? decoded.value : undefined;
+    }));
     disposers.push(composition.connection.onReadyChange(notify_echo_ready));
     disposers.push(composition.connection.onAttachmentLost((reason, error) => {
       if (reason !== "ended" && (recoveryStatus === "recovering" || recoveryStatus === "caught_up")) {
@@ -290,7 +301,11 @@ export function create_solo_echo_internal<
     });
   }
 
-  function send(message: LocusClientMessage<TActions>): void {
+  function begin_synchronization(message: LocusClientRecoverMessage): void {
+    if (composition !== undefined) {
+      composition.connection.synchronization.begin(message);
+      return;
+    }
     options.socket.send(encode_client_message(message));
   }
 
@@ -675,7 +690,9 @@ export function create_solo_echo_internal<
     return true;
   }
 
-  function is_recovery_message(message: LocusDecodedServerMessage): boolean {
+  function is_recovery_message(
+    message: LocusDecodedServerMessage,
+  ): message is Exclude<EchoSynchronizationOutput, { type: "synchronization-failure" }> {
     return message.type === "recovery-plan"
       || message.type === "recovery-commit"
       || message.type === "recovery-snapshot"
@@ -696,10 +713,23 @@ export function create_solo_echo_internal<
 
   function install_recovery_messages(): void {
     if (stopRecoveryMessages || recoveryDisposed) return;
-    const observe = composition === undefined
-      ? options.socket.onMessage.bind(options.socket)
-      : composition.connection.onRawMessage;
-    stopRecoveryMessages = observe((raw) => {
+    if (composition !== undefined) {
+      stopRecoveryMessages = composition.connection.synchronization.onOutput((output) => {
+        if (output.type === "synchronization-failure") {
+          if (recoveryStatus === "recovering" || recoveryStatus === "caught_up") {
+            fail_recovery(
+              output.error.code ?? "LOCUS_RECOVERY_PROTOCOL_DECODE_FAILED",
+              output.error.message,
+              output.error.cause,
+            );
+          }
+          return;
+        }
+        handle_recovery_message(output);
+      });
+      return;
+    }
+    stopRecoveryMessages = options.socket.onMessage((raw) => {
       const decoded = decode_locus_server_message(raw);
       if (!decoded.ok) {
         if (recoveryStatus === "recovering" || recoveryStatus === "caught_up") {
@@ -718,15 +748,15 @@ export function create_solo_echo_internal<
   function handle_server_message(message: LocusDecodedServerMessage): void {
     if (handle_recovery_message(message)) return;
     if (is_session_message(message)) {
-      endpoint.receive(message);
+      directOperationAdapter?.deliver(message);
       return;
     }
     if (message.type === "action-status") {
-      endpoint.receive(message);
+      directOperationAdapter?.deliver(message);
       return;
     }
     if (message.type === "ack" || message.type === "error") {
-      endpoint.receive(message);
+      directOperationAdapter?.deliver(message);
     }
   }
 
@@ -776,7 +806,10 @@ export function create_solo_echo_internal<
     echoDisposed = true;
     if (composition === undefined) disconnect();
     dispose_recovery();
-    if (composition === undefined) endpoint.dispose();
+    if (composition === undefined) {
+      endpoint.dispose();
+      directOperationAdapter?.clear();
+    }
     if (composition !== undefined) while (disposers.length) disposers.pop()?.();
     if (documentAuthority !== undefined) {
       documentAuthority.dispose();
@@ -835,7 +868,7 @@ export function create_solo_echo_internal<
         operationKinds: [],
       };
     });
-    send({
+    begin_synchronization({
       type: "recover",
       id,
       logicalMapId: recoveryOptions.logicalMapId,

@@ -13,9 +13,8 @@ import type {
   LocusActionStatusId,
   LocusClientId,
   LocusClientActionMessage,
-  LocusClientMessage,
   LocusClientActionResult,
-  LocusServerMessage,
+  LocusDisposer,
   LocusSessionCredential,
   LocusSessionRequestId,
 } from "../../types/locus.types.js";
@@ -23,11 +22,13 @@ import { LocusDisconnectedError, LocusDuplicateActionIdError } from "../locus/lo
 import { EchoSessionError } from "./echo.error.js";
 import { admit_echo_action_payload, make_echo_reload_safe_id } from "./echo.request.js";
 import type { HsonData } from "../data/hson-data.js";
+import type {
+  EchoFiniteOperationCapability,
+  EchoFiniteOperationOutcome,
+} from "./echo.operation.internal.js";
 
 /** @internal Decoded server messages owned by the common endpoint. */
-export type EchoEndpointServerMessage = Extract<LocusServerMessage, {
-  type: "ack" | "error" | "action-status" | "session-created" | "session-attached" | "session-rejected" | "session-fenced" | "session-ended";
-}>;
+export type EchoEndpointServerMessage = EchoFiniteOperationOutcome;
 
 type PendingAction = Readonly<{
   requestId: LocusActionRequestId;
@@ -48,11 +49,6 @@ type PendingSession = Readonly<{
   reject: (error: Error) => void;
 }>;
 
-/** @internal Narrow outbound boundary used by the replica-free endpoint state machine. */
-export type EchoEndpointTransport<TActions extends LocusActionPayloads = LocusActionPayloads> = Readonly<{
-  send: (message: LocusClientMessage<TActions>) => void;
-}>;
-
 /** @internal Deterministic identifier seams used by repository proof fixtures. */
 export type EchoEndpointIdFactories = Readonly<{
   actionId?: () => LocusActionId;
@@ -63,7 +59,7 @@ export type EchoEndpointIdFactories = Readonly<{
 
 /** @internal */
 export type EchoEndpointOptions<TActions extends LocusActionPayloads = LocusActionPayloads> = Readonly<{
-  transport: EchoEndpointTransport<TActions>;
+  operations: EchoFiniteOperationCapability<TActions>;
   clientId?: LocusClientId;
   sessionRequired: boolean;
   credential?: LocusSessionCredential;
@@ -143,6 +139,7 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
   let sessionReattachCount = 0;
   let sessionFencingCount = 0;
   let sessionRejectionCount = 0;
+  let stopOperationOutcomes: LocusDisposer | undefined;
 
   function isReady(): boolean {
     return !disposed && connected && (!options.sessionRequired || sessionStatus === "attached");
@@ -187,6 +184,7 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
 
   function connect(): void {
     if (disposed) return;
+    stopOperationOutcomes ??= options.operations.onOutcome(receive);
     connected = true;
     notifyReadyChange();
   }
@@ -194,6 +192,8 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
   function disconnect(): void {
     if (!connected || disposed) return;
     connected = false;
+    stopOperationOutcomes?.();
+    stopOperationOutcomes = undefined;
     const error = options.operationLossError?.("disconnect") ?? new LocusDisconnectedError();
     rejectEndpointOperations(error);
     rejectPendingSession(new EchoSessionError("LOCUS_SESSION_DISCONNECTED", "Locus session transport disconnected."));
@@ -327,7 +327,7 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
       const pending: PendingSession = Object.freeze({ id, kind, resolve, reject });
       pendingSession = pending;
       try {
-        options.transport.send(Object.freeze({
+        options.operations.submit(Object.freeze({
           type: kind === "create" ? "session-create" : kind === "reattach" ? "session-attach" : "session-goodbye",
           id,
           ...(kind === "reattach" && suppliedCredential !== undefined ? { credential: suppliedCredential } : {}),
@@ -393,7 +393,7 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
           ...(request.payload === undefined ? {} : { payload: request.payload }),
           ...(retry ? { retry: true } : {}),
         }) as LocusClientActionMessage<TActions>;
-        options.transport.send(message);
+        options.operations.submit(message);
       } catch (cause) {
         removeAttempt(attemptId, request.requestId);
         reject(cause instanceof Error ? cause : new LocusDisconnectedError());
@@ -433,7 +433,7 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
     usedCorrelationIds.add(id);
     return new Promise((resolve, reject) => {
       pendingStatuses.set(id, Object.freeze({ requestId, resolve, reject }));
-      try { options.transport.send(Object.freeze({ type: "action-status", id, clientId, requestId })); }
+      try { options.operations.submit(Object.freeze({ type: "action-status", id, clientId, requestId })); }
       catch (cause) {
         pendingStatuses.delete(id);
         reject(cause instanceof Error ? cause : new LocusDisconnectedError());
@@ -491,6 +491,8 @@ export function create_echo_endpoint_internal<TActions extends LocusActionPayloa
       if (disposed) return;
       if (connected) disconnect();
       disposed = true;
+      stopOperationOutcomes?.();
+      stopOperationOutcomes = undefined;
       const error = new LocusDisconnectedError();
       rejectEndpointOperations(error);
       rejectPendingSession(new EchoSessionError("LOCUS_SESSION_DISPOSED", "Echo session API was disposed."));
