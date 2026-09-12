@@ -1,4 +1,3 @@
-import "../data/hson-data-hson.js";
 export { hsonTransform, type HsonTransformFacade } from "./transform.facade.js";
 export { HsonData } from "../data/hson-data.js";
 export {

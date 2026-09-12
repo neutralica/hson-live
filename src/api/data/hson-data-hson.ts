@@ -1,25 +1,17 @@
 import type { OrderedProjectedValue } from "../../core/ordered-projected-value.js";
-import {
-  is_projected_value_hson_node,
-  projected_value_from_hson_node,
-  projected_value_to_hson_node,
-} from "../../core/projected-value-graph.js";
-import { parse_hson } from "../transform/parsers/parse-hson.js";
-import { serialize_hson } from "../transform/serializers/serialize-hson.js";
+import { parse_canonical_hson_data, serialize_canonical_hson_data } from "../../core/hson-data-canonical-codec.js";
 import type { HsonCanonical } from "../transform/transform.types.js";
-import { register_hson_data_hson_conversion } from "./hson-data.js";
 
-const authority = Object.freeze({
-  fromHson(input: HsonCanonical): OrderedProjectedValue {
-    const root = parse_hson(input);
-    if (!is_projected_value_hson_node(root)) {
-      throw new TypeError("HsonData.fromHson requires data-mode Hson; document Hson is not data.");
-    }
-    return projected_value_from_hson_node(root);
-  },
-  toHson(value: OrderedProjectedValue): HsonCanonical {
-    return serialize_hson(projected_value_to_hson_node(value));
-  },
-});
+/** Parse canonical authored Hson and require one complete data-mode value. */
+export function hson_data_value_from_hson(input: HsonCanonical): OrderedProjectedValue {
+  try {
+    return parse_canonical_hson_data(input);
+  } catch (cause) {
+    throw new TypeError("HsonData.fromHson requires data-mode Hson; document Hson is not data.", { cause });
+  }
+}
 
-register_hson_data_hson_conversion(authority);
+/** Serialize one canonical data carrier through the existing Hson serializer. */
+export function hson_data_value_to_hson(value: OrderedProjectedValue): HsonCanonical {
+  return serialize_canonical_hson_data(value) as HsonCanonical;
+}

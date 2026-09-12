@@ -8,14 +8,15 @@ import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import type { HsonCanonical } from "../transform/transform.types.js";
 import { emit_ordered_json, parse_ordered_json_text } from "../../core/exact-data-codec.js";
+import { assert_canonical_hson_data_value } from "../../core/projected-value-graph.js";
+import {
+  hson_data_value_from_hson,
+  hson_data_value_to_hson,
+} from "./hson-data-hson.js";
 
 let wrap_hson_data: (value: OrderedProjectedValue) => HsonData;
 const hson_data_values = new WeakMap<object, OrderedProjectedValue>();
 const hson_data_construction_authority = Object.freeze({});
-let hson_conversion: Readonly<{
-  fromHson: (input: HsonCanonical) => OrderedProjectedValue;
-  toHson: (value: OrderedProjectedValue) => HsonCanonical;
-}> | undefined;
 
 function is_hson_data(value: unknown): value is HsonData {
   return typeof value === "object" && value !== null && hson_data_values.has(value);
@@ -28,6 +29,8 @@ function is_hson_data(value: unknown): value is HsonData {
  * member order and signed zero are part of its semantic identity.
  */
 export class HsonData {
+  declare private readonly hsonDataNominal: void;
+
   private constructor(value: OrderedProjectedValue, authority: object) {
     if (authority !== hson_data_construction_authority) {
       throw new TypeError("HsonData construction is controlled by HsonData.from or HsonData.fromHson.");
@@ -44,13 +47,12 @@ export class HsonData {
   static from(input: unknown): HsonData {
     return is_hson_data(input)
       ? input
-      : wrap_hson_data(admit_projected_value(input));
+      : hson_data_from_value(admit_projected_value(input));
   }
 
   /** Parse canonical authored Hson and require its complete semantic value to be data. */
   static fromHson(input: HsonCanonical): HsonData {
-    if (hson_conversion === undefined) throw new Error("HsonData Hson conversion authority is unavailable from this entrypoint.");
-    return wrap_hson_data(hson_conversion.fromHson(input));
+    return hson_data_from_value(hson_data_value_from_hson(input));
   }
 
   /** Exact semantic kind. */
@@ -92,8 +94,7 @@ export class HsonData {
 
   /** Serialize this exact data value through the canonical Hson serializer. */
   toHson(): HsonCanonical {
-    if (hson_conversion === undefined) throw new Error("HsonData Hson conversion authority is unavailable from this entrypoint.");
-    return hson_conversion.toHson(hson_data_value(this));
+    return hson_data_value_to_hson(hson_data_value(this));
   }
 
   /** Exact canonical data equality. */
@@ -105,6 +106,7 @@ export class HsonData {
 
 /** @internal Construct a public data boundary around an already-validated carrier. */
 export function hson_data_from_value(value: OrderedProjectedValue): HsonData {
+  assert_canonical_hson_data_value(value);
   return wrap_hson_data(value);
 }
 
@@ -127,16 +129,4 @@ export function decode_hson_data_internal(source: string): HsonData {
     throw new TypeError("Exact Hson data transport must use its canonical encoding.");
   }
   return hson_data_from_value(value);
-}
-
-/** @internal Install the existing parser/serializer authority from Hson-capable entrypoints. */
-export function register_hson_data_hson_conversion(authority: Readonly<{
-  fromHson: (input: HsonCanonical) => OrderedProjectedValue;
-  toHson: (value: OrderedProjectedValue) => HsonCanonical;
-}>): void {
-  if (hson_conversion === undefined) {
-    hson_conversion = authority;
-    return;
-  }
-  if (hson_conversion !== authority) throw new Error("HsonData Hson conversion authority is already installed.");
 }

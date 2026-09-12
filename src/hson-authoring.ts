@@ -1,4 +1,3 @@
-import "./api/data/hson-data-hson.js";
 import { admit_hson } from "./api/transform/hson-admission.js";
 import { validate_canonical_hson } from "./internal/schema-hson-validation/validate-canonical-hson.js";
 

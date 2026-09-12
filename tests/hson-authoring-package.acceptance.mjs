@@ -22,6 +22,7 @@ const sources = {
   alphabet: 'import { Hson } from "hson-live/hson"; const schema = Hson`<type "data" content <key <string <len 3 alphabet "abc">>>>`; const valid = Hson`<key "cba">`; let rejects = false; try { Hson.certify(schema, Hson`<key "abd">`); } catch { rejects = true; } export const parity = { accepts: Hson.certify(schema, valid) === valid, rejects };',
   any: 'import { Hson } from "hson-live/hson"; const schema = Hson`<type "data" content <args "any" payload "any">>`; const valid = Hson`<args [null, true, -0] payload <z 1 a <nested []>>>`; let rejectsDocument = false; try { Hson.certify(schema, Hson`<main/>`); } catch { rejectsDocument = true; } export const parity = { accepts: Hson.certify(schema, valid) === valid, rejectsDocument, preservesNegativeZero: valid.includes("-0"), preservesOrder: valid.indexOf("z 1") < valid.indexOf("a <nested") };',
   data: 'import { Hson, HsonData } from "hson-live/hson"; const value = HsonData.fromHson(Hson`<\'10\' -0 \'2\' <__proto__ true>>`); export const parity = { order: value.entries().map(([name]) => name), negativeZero: Object.is(value.entries()[0][1].scalar(), -0), safeProto: Object.hasOwn(value.entries()[1][1].materialize(), "__proto__"), roundTrip: HsonData.fromHson(value.toHson()).equals(value) };',
+  action: 'import { Hson, hson } from "hson-live"; const clients=new Set(),servers=new Set(); const client={send(v){for(const f of servers)f(v)},close(){},onMessage(f){clients.add(f);return()=>clients.delete(f)},onClose(){return()=>{}}}; const server={send(v){for(const f of clients)f(v)},close(){},onMessage(f){servers.add(f);return()=>servers.delete(f)},onClose(){return()=>{}}}; let executions=0; const locus=hson.locus.create({state:{},actions:{echo(_c,p){executions++;return p}}}); locus.connect(server); const echo=hson.echo.create({socket:client}); echo.connect(); await echo.session.create(); const map=hson.liveMap.fromHson(Hson`<payload <\'10\' -0 \'2\' <__proto__ true> tail <b 2 a 1>>>`); const value=map.at(["payload"]).data(); const outcome=await echo.action("echo",value); let reservedRejected=false; try{echo.action("echo",{_hson_root:true})}catch{reservedRejected=true} export const parity={ack:outcome.type==="ack",equal:outcome.type==="ack"&&outcome.result.equals(value),order:value.entries().map(([name])=>name),negativeZero:Object.is(value.entries()[0][1].scalar(),-0),safeProto:Object.hasOwn(value.entries()[1][1].materialize(),"__proto__"),reservedRejected,executions}; echo.dispose(); locus.dispose();',
   aggregate: 'import { hson } from "hson-live"; console.log(hson.liveMap);',
   transform: 'import { hsonTransform } from "hson-live/transform"; console.log(hsonTransform);',
   livemap: 'import { hsonLiveMap } from "hson-live/livemap"; console.log(hsonLiveMap);',
@@ -79,6 +80,10 @@ const anyExecution = await import('data:text/javascript;base64,' + Buffer.from(r
 check("browser-targeted authoring executes canonical any semantics", () => assert.deepEqual(anyExecution.parity, { accepts: true, rejectsDocument: true, preservesNegativeZero: true, preservesOrder: true }));
 const dataExecution = await import('data:text/javascript;base64,' + Buffer.from(results.data.code).toString('base64'));
 check("browser-targeted authoring executes exact HsonData semantics", () => assert.deepEqual(dataExecution.parity, { order: ["10", "2"], negativeZero: true, safeProto: true, roundTrip: true }));
+const actionUrl = 'data:text/javascript;base64,' + Buffer.from(results.action.code).toString('base64');
+const actionExecution = await import(actionUrl);
+const actionParity = { ack: true, equal: true, order: ["10", "2", "tail"], negativeZero: true, safeProto: true, reservedRejected: true, executions: 1 };
+check("browser-targeted bundle executes the exact configured-action readiness path", () => assert.deepEqual(actionExecution.parity, actionParity));
 const workerParity = await new Promise((resolve, reject) => {
   const source = `const { parentPort } = require("node:worker_threads"); import(${JSON.stringify(alphabetUrl)}).then(({ parity }) => parentPort.postMessage(parity), (error) => { throw error; });`;
   const worker = new Worker(source, { eval: true });
@@ -87,6 +92,14 @@ const workerParity = await new Promise((resolve, reject) => {
   worker.once("exit", (code) => { if (code !== 0) reject(new Error(`alphabet Worker exited with code ${code}`)); });
 });
 check("actual Worker executes the same alphabet semantics", () => assert.deepEqual(workerParity, { accepts: true, rejects: true }));
+const workerActionParity = await new Promise((resolve, reject) => {
+  const source = `const { parentPort } = require("node:worker_threads"); import(${JSON.stringify(actionUrl)}).then(({ parity }) => parentPort.postMessage(parity), (error) => { throw error; });`;
+  const worker = new Worker(source, { eval: true });
+  worker.once("message", resolve);
+  worker.once("error", reject);
+  worker.once("exit", (code) => { if (code !== 0) reject(new Error(`action Worker exited with code ${code}`)); });
+});
+check("actual Worker executes the exact configured-action readiness path", () => assert.deepEqual(workerActionParity, actionParity));
 for (const [name, { raw, min, gzip, inputs }] of Object.entries(results)) console.log(`# ${name}: ${JSON.stringify({ raw, min, gzip, retainedModules: inputs.length })}`);
 console.log(`# ${checks} Hson authoring package checks passed`);
 testEvents.terminal("pass");

@@ -72,7 +72,12 @@ export function parse_style_string(input: string): Record<string, string> {
       : kebab_to_camel(rawKey.toLowerCase()); // normal props: lower → camel
 
     const val = rawVal.trim();
-    out[key] = val;
+    Object.defineProperty(out, key, {
+      value: val,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
   };
 
   for (let i = 0; i < input.length; i++) {

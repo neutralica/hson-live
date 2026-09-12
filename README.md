@@ -596,7 +596,10 @@ type exported from `/transform`, not a Schema certificate.
 `HsonData` is the separate immutable, data-only semantic value: it retains exact
 object entry order and signed zero, supports strict ordinary-JavaScript admission
 and explicit Hson-authored ingress, and can materialize a detached convenience
-view or serialize back to `HsonCanonical`. It does not represent documents.
+view or serialize back to `HsonCanonical` from every entrypoint and import order.
+Its object names follow canonical Hson validity: the reserved `_hson_` structural
+namespace rejects, while ordinary names such as `__proto__`, `constructor`, and
+`prototype` remain supported. It does not represent documents.
 
 The root package is the umbrella entrypoint:
 

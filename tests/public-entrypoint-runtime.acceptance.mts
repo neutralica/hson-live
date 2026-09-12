@@ -57,6 +57,25 @@ function import_in_fresh_process(specifiers: readonly string[]): void {
   }
 }
 
+function run_in_fresh_process(caseId: string, source: string): void {
+  testEvents.case_begin(caseId, caseId);
+  const child = spawnSync(
+    process.execPath,
+    ["--input-type=module", "--eval", source],
+    { cwd: repositoryRoot, encoding: "utf8" },
+  );
+  try {
+    assert.equal(child.status, 0, `${caseId}\n${child.stderr || child.stdout}`);
+    testEvents.case_end(caseId, "pass");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Check failed.";
+    testEvents.diagnostic(caseId, "assertion", message.slice(0, 1_000));
+    testEvents.case_end(caseId, "fail");
+    testEvents.terminal("fail");
+    throw error;
+  }
+}
+
 function check(name: string, run: () => void): void {
   testEvents.case_begin(name, name);
   try {
@@ -105,6 +124,71 @@ check("HsonData is one nominal public value across intended entrypoints", () => 
   });
   assert.equal(child.status, 0, child.stderr || child.stdout);
 });
+
+const directHsonDataSources = new Map<string, string>([
+  ["root", `
+    import { Hson, HsonData } from "hson-live";
+    const value = HsonData.fromHson(Hson\`<'10' -0 '2' <__proto__ true>>\`);
+    if (!HsonData.fromHson(value.toHson()).equals(value)) throw new Error("root round trip failed");
+  `],
+  ["hson", `
+    import { Hson, HsonData } from "hson-live/hson";
+    const value = HsonData.fromHson(Hson\`<'10' -0 '2' <__proto__ true>>\`);
+    if (!HsonData.fromHson(value.toHson()).equals(value)) throw new Error("Hson round trip failed");
+  `],
+  ["transform", `
+    import { HsonData } from "hson-live/transform";
+    const value = HsonData.from({ value: -0, __proto__: null });
+    if (!HsonData.fromHson(value.toHson()).equals(value)) throw new Error("Transform round trip failed");
+  `],
+  ["livemap", `
+    import { hsonLiveMap } from "hson-live/livemap";
+    const value = hsonLiveMap.fromJson({ value: -0, nested: { constructor: true } }).data();
+    if (value === undefined) throw new Error("LiveMap exact data unavailable");
+    const roundTrip = hsonLiveMap.fromHson(value.toHson()).data();
+    if (roundTrip === undefined || !roundTrip.equals(value)) throw new Error("LiveMap round trip failed");
+  `],
+  ["echo", `
+    import { create_echo } from "hson-live/echo";
+    const socket = { send() {}, close() {}, onMessage() { return () => {}; }, onClose() { return () => {}; } };
+    const echo = create_echo({ socket });
+    echo.connect();
+    const call = echo.action("probe", { value: -0, nested: { constructor: true } });
+    void call.catch(() => {});
+    const value = call.request.payload;
+    if (value === undefined || typeof value.toHson() !== "string") throw new Error("Echo HsonData conversion unavailable");
+    echo.dispose();
+  `],
+  ["locus", `
+    import { decode_locus_message } from "hson-live/locus";
+    const wire = JSON.stringify({ type: "action", id: "a", name: "probe", payloadData: "{\\n  \\\"value\\\": -0,\\n  \\\"__proto__\\\": true\\n}" });
+    const decoded = decode_locus_message(wire);
+    if (!decoded.ok || decoded.value.type !== "action" || decoded.value.payload === undefined) throw new Error("Locus exact data unavailable");
+    const value = decoded.value.payload;
+    if (typeof value.toHson() !== "string") throw new Error("Locus HsonData conversion unavailable");
+  `],
+]);
+
+for (const [entrypoint, source] of directHsonDataSources) {
+  run_in_fresh_process(`HsonData conversion works from fresh ${entrypoint} entrypoint`, source);
+}
+
+for (const order of [
+  ["hson-live/livemap", "hson-live"],
+  ["hson-live", "hson-live/livemap"],
+  ["hson-live/transform", "hson-live/hson", "hson-live"],
+  ["hson-live/hson", "hson-live", "hson-live/transform"],
+] as const) {
+  run_in_fresh_process(`HsonData conversion is stable for ${order.join(" -> ")}`, `
+    const modules = [];
+    ${order.map((specifier) => `modules.push(await import(${JSON.stringify(specifier)}));`).join("\n")}
+    const constructors = modules.map((module) => module.HsonData).filter(Boolean);
+    if (constructors.some((candidate) => candidate !== constructors[0])) throw new Error("constructor identity changed");
+    const { hsonLiveMap } = await import("hson-live/livemap");
+    const value = hsonLiveMap.fromJson({ value: -0 }).data();
+    if (value === undefined || typeof value.toHson() !== "string") throw new Error("conversion changed by import order");
+  `);
+}
 
 check("private ordered projected carriers stay out of root declarations", () => {
   const rootDeclaration = readFileSync(resolve(repositoryRoot, "dist", "index.d.ts"), "utf8");

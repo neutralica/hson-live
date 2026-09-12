@@ -229,7 +229,7 @@ await check("exclusive actions track awaited and unawaited queued mutations", as
   const host = create_locus_internal({
     map,
         actions: {
-      set: (ctx, payload) => { void ctx.mutate((draft) => draft.set(["value"], payload.value)); },
+      set: (ctx, payload) => { void ctx.mutate((draft) => draft.set(["value"], payload.materialize().value)); },
       twice: async (ctx) => {
         await ctx.mutate((draft) => draft.set(["value"], 2));
         await ctx.mutate((draft) => draft.set(["value"], 3));

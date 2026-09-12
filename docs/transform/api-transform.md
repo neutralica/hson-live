@@ -113,6 +113,11 @@ objects. It is data-only: it is not a document, graph node, LiveMap commit,
 transport envelope, or runtime capability. No document-side semantic sibling is
 defined yet.
 
+Data-object names follow canonical Hson name validity. Names in Hson's reserved
+`_hson_` structural namespace are not application data names and reject during
+admission, including when nested. This does not affect valid ordinary names such
+as `__proto__`, `constructor`, and `prototype`.
+
 ```ts
 import { Hson, HsonData } from "hson-live/hson";
 
@@ -125,11 +130,17 @@ authored.materialize(); // fresh ordinary-JavaScript convenience view
 authored.toHson();      // HsonCanonical
 ```
 
+`toHson()` is available on every genuine `HsonData`, including values obtained
+from narrow LiveMap, Echo, or Locus entrypoints; it does not depend on import
+order or prior entrypoint initialization.
+
 `HsonData.from` strictly snapshots ordinary JavaScript data using own property
 descriptors. It rejects undefined, non-finite numbers, bigint, symbols,
 functions, sparse arrays, cycles, accessors, symbol-keyed content, class
 instances, platform objects, and unsupported prototypes. Getters are not
-invoked. Null-prototype objects are accepted, and valid names such as
+invoked. Data-object names follow canonical Hson name validity: the reserved
+`_hson_` structural namespace is not application data and rejects at admission.
+Null-prototype objects are accepted, and valid names such as
 `__proto__`, `constructor`, `prototype`, the empty ordinary name, and
 integer-like names remain data.
 
@@ -140,6 +151,8 @@ existing `HsonData` when an otherwise-valid integer-name order must be retained.
 Likewise, `materialize()` safely defines own properties and returns detached
 containers, but its ordinary object view necessarily follows ECMAScript integer
 enumeration order. It is a convenience view, never canonical identity.
+Every genuine `HsonData` can call `toHson()` immediately and independently of
+which public entrypoint produced it or which entrypoints were imported first.
 
 Data LiveMaps provide `map.data(path?)` and `map.at(path).data()` for exact reads
 that bypass `snap()` and ordinary object reconstruction. Document-mode maps do

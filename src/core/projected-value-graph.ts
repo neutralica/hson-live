@@ -1,13 +1,13 @@
 import {
   ARR_TAG,
   HSON_META_INDEX,
-  HSON_SYS_PREFIX,
   II_TAG,
   OBJ_TAG,
   ROOT_TAG,
   STR_TAG,
   VAL_TAG,
 } from "./constants.js";
+import { assert_valid_hson_data_name } from "./hson-name.js";
 import { CREATE_NODE } from "./factories.js";
 import { admit_hson_number } from "./hson-number.js";
 import { is_Node } from "./node-guards.js";
@@ -22,7 +22,7 @@ import type { HsonNode, Primitive } from "./types.js";
 
 /** Construct one canonical Hson value node from the neutral ordered carrier. */
 export function projected_value_to_hson_node(value: OrderedProjectedValue): HsonNode {
-  assert_ordered_projected_value(value);
+  assert_canonical_hson_data_value(value);
   if (typeof value === "string") return value_node(STR_TAG, [value]);
   if (value === null || typeof value === "number" || typeof value === "boolean") {
     const primitive = typeof value === "number" ? admit_hson_number(value) : value;
@@ -162,9 +162,26 @@ export function projected_value_from_hson_node(node: HsonNode): OrderedProjected
 }
 
 function assert_projected_object_key(key: string): void {
-  if (typeof key !== "string" || key.startsWith(HSON_SYS_PREFIX)) {
-    throw new TypeError(`Reserved Hson prefix ${JSON.stringify(HSON_SYS_PREFIX)} is not allowed in data object key ${JSON.stringify(key)}.`);
-  }
+  assert_valid_hson_data_name(key);
+}
+
+/** Require that an ordered carrier uses only canonical Hson data-object names. */
+export function assert_canonical_hson_data_value(
+  value: OrderedProjectedValue,
+): asserts value is OrderedProjectedValue {
+  assert_ordered_projected_value(value);
+  const visit = (candidate: OrderedProjectedValue): void => {
+    if (Array.isArray(candidate)) {
+      for (const child of candidate) visit(child);
+      return;
+    }
+    if (!is_ordered_projected_object(candidate)) return;
+    for (const [key, child] of candidate.entries) {
+      assert_valid_hson_data_name(key);
+      visit(child);
+    }
+  };
+  visit(value);
 }
 
 function value_node(tag: typeof STR_TAG | typeof VAL_TAG | typeof OBJ_TAG | typeof ARR_TAG, content: HsonNode[] | Primitive[]): HsonNode {

@@ -223,12 +223,19 @@ function decode_style_map(value: unknown): CssMap | undefined {
   if (!is_record(value)) return undefined;
   const decoded: Record<string, Primitive | CssMap | undefined> = {};
   for (const [key, item] of Object.entries(value)) {
-    if (item === undefined || is_finite_primitive(item)) decoded[key] = item;
+    let decodedItem: Primitive | CssMap | undefined;
+    if (item === undefined || is_finite_primitive(item)) decodedItem = item;
     else {
       const nested = decode_style_map(item);
       if (nested === undefined) return undefined;
-      decoded[key] = nested;
+      decodedItem = nested;
     }
+    Object.defineProperty(decoded, key, {
+      value: decodedItem,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
   }
   return Object.freeze(decoded);
 }

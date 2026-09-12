@@ -43,7 +43,10 @@ import {
   ordered_projected_value_replace,
   ordered_projected_value_set,
 } from "../../core/ordered-projected-value-mutation.js";
-import { projected_value_to_hson_root } from "../../core/projected-value-graph.js";
+import {
+  assert_canonical_hson_data_value,
+  projected_value_to_hson_root,
+} from "../../core/projected-value-graph.js";
 import { ROOT_TAG } from "../../core/constants.js";
 import { is_Node } from "../../core/node-guards.js";
 import { is_persisted_quid } from "../../core/hson-node-quid.js";
@@ -2923,6 +2926,7 @@ function prepare_projected_transition(
     writeOps,
     currentOverlay,
   );
+  assert_canonical_hson_data_value(planned.value);
   must_hson_schema_projected_candidate(hsonSchema, planned.value);
   const nextOverlay = reconcile_livemap_projected_identity_overlay(currentOverlay, planned.transportOps);
   const replacesRoot = planned.changed

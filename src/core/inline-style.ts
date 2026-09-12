@@ -59,13 +59,17 @@ export function canonical_inline_style(value: unknown): CssMap | undefined {
     const item = descriptor.value;
     if (item === undefined || !is_css_declaration_value(item)) return undefined;
     const typed = inspect_typed_css_value(item);
-    if (typed !== undefined) {
-      style[key] = Object.freeze(typed.hasUnit
+    const canonical = typed !== undefined
+      ? Object.freeze(typed.hasUnit
         ? { value: typed.value, unit: typed.unit }
-        : { value: typed.value });
-    } else {
-      style[key] = item;
-    }
+        : { value: typed.value })
+      : item;
+    Object.defineProperty(style, key, {
+      value: canonical,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
   }
   return Object.freeze(style);
 }

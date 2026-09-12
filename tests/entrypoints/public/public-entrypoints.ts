@@ -1,5 +1,6 @@
 import {
   Hson,
+  HsonData,
   hson,
   hsonTransform,
   hsonLiveMap,
@@ -10,6 +11,19 @@ import {
   type HsonSchema,
   type HsonNumber,
 } from "hson-live";
+
+declare const genuineHsonData: HsonData;
+const retainedHsonData: HsonData = genuineHsonData;
+void retainedHsonData.kind;
+void retainedHsonData.toHson();
+type StructuralHsonData = Pick<HsonData, keyof HsonData>;
+declare const structuralHsonData: StructuralHsonData;
+// @ts-expect-error HsonData retains private instance-side nominality.
+const forgedHsonData: HsonData = structuralHsonData;
+// @ts-expect-error The private HsonData brand cannot be named by consumers.
+type HsonDataPrivateBrand = HsonData["#hsonDataNominal"];
+void (0 as unknown as typeof forgedHsonData);
+void (0 as unknown as HsonDataPrivateBrand);
 import {
   TransformError,
   hsonTransform as transformSubpath,

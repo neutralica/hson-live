@@ -30,6 +30,7 @@ let handlerValue: HsonData | undefined;
 let transformedAuthorization: HsonData | undefined;
 let transformedHandler: HsonData | undefined;
 let invalidTransformAuthorizations = 0;
+let reservedTransformAuthorizations = 0;
 let authorizationCalls = 0;
 let executions = 0;
 const locus = hson.locus.create({
@@ -47,6 +48,8 @@ const locus = hson.locus.create({
     },
     transformedExact(_context, payload) { return payload; },
     invalidTransform() { return null; },
+    reservedTransform() { return null; },
+    reservedResult() { executions += 1; return { _hson_root: true }; },
     hsonSchema(_context, payload) { return payload; },
   },
   schema: {
@@ -62,6 +65,7 @@ const locus = hson.locus.create({
       transformed: { payload: () => ({ ok: true, value: { b: 2, a: 1 } }) },
       transformedExact: { payload: () => ({ ok: true, value: HsonData.fromHson(Hson`<z -0 y true>`) }) },
       invalidTransform: { payload: () => ({ ok: true, value: new Date() }) },
+      reservedTransform: { payload: () => ({ ok: true, value: { _hson_obj: true } }) },
       hsonSchema: { payload: Hson`<type "data" content <value "number">>` },
     },
   },
@@ -69,6 +73,7 @@ const locus = hson.locus.create({
     authorizationCalls += 1;
     if (context.action === "transformed") transformedAuthorization = context.payload;
     if (context.action === "invalidTransform") invalidTransformAuthorizations += 1;
+    if (context.action === "reservedTransform") reservedTransformAuthorizations += 1;
     authorizationValue = context.payload;
     if (context.action === "echo" && context.payload?.kind === "object") {
       const names = context.payload.entries()?.map(([name]) => name);
@@ -173,6 +178,7 @@ const malformed = decode_locus_message(JSON.stringify({
 }));
 assert.equal(malformed.ok, false);
 const authorizationsBeforeMalformed = authorizationCalls;
+const executionsBeforeMalformed = executions;
 const retainedBeforeMalformed = locus.actionRequests.debug().retainedTerminalCount;
 pair.client.send(JSON.stringify({
   type: "action",
@@ -192,6 +198,20 @@ pair.client.send(JSON.stringify({
 assert.equal(authorizationCalls, authorizationsBeforeMalformed);
 assert.equal(locus.actionRequests.debug().retainedTerminalCount, retainedBeforeMalformed);
 
+assert.throws(() => echo.action("echo", { _hson_root: true }), /Reserved Hson prefix/);
+pair.client.send(JSON.stringify({
+  type: "action",
+  id: "reserved-wire",
+  name: "echo",
+  clientId: echo.clientId,
+  requestId: "reserved-wire-request",
+  attemptId: "reserved-wire-attempt",
+  payloadData: "{\n  \"_hson_root\": true\n}",
+}));
+assert.equal(authorizationCalls, authorizationsBeforeMalformed);
+assert.equal(executions, executionsBeforeMalformed);
+assert.equal(locus.actionRequests.debug().retainedTerminalCount, retainedBeforeMalformed);
+
 const transformed = await echo.action("transformed", { original: true });
 assert.equal(transformed.type, "ack");
 assert.deepEqual(transformedAuthorization?.entries()?.map(([name]) => name), ["b", "a"]);
@@ -206,6 +226,13 @@ const invalidTransform = await echo.action("invalidTransform", 1);
 assert.equal(invalidTransform.type, "error");
 if (invalidTransform.type === "error") assert.equal(invalidTransform.error.code, "LOCUS_SCHEMA_INVALID_PAYLOAD");
 assert.equal(invalidTransformAuthorizations, 0);
+const reservedTransform = await echo.action("reservedTransform", 1);
+assert.equal(reservedTransform.type, "error");
+if (reservedTransform.type === "error") assert.equal(reservedTransform.error.code, "LOCUS_SCHEMA_INVALID_PAYLOAD");
+assert.equal(reservedTransformAuthorizations, 0);
+const reservedResult = await echo.action("reservedResult", 1);
+assert.equal(reservedResult.type, "error");
+if (reservedResult.type === "error") assert.equal(reservedResult.error.code, "LOCUS_ACTION_OUTCOME_NORMALIZATION_FAILED");
 assert.equal((await echo.action("hsonSchema", { value: -0 })).type, "ack");
 const hsonSchemaInvalid = await echo.action("hsonSchema", { value: "no" });
 assert.equal(hsonSchemaInvalid.type, "error");

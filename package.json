@@ -128,6 +128,7 @@
     "test:hson-source-provenance-boundary": "node --import=tsx tests/hson-source-provenance-boundary.acceptance.mts",
     "test:hson-tagged-template": "node --import=tsx tests/hson-tagged-template.acceptance.mts",
     "test:hson-data": "node --import=tsx tests/hson-data.acceptance.mts",
+    "test:prototype-safe-decoders": "node --import=tsx tests/prototype-safe-decoders.acceptance.mts",
     "test:embedded-hson-diagnostic-mapping": "node --import=tsx tests/embedded-hson-diagnostic-mapping.acceptance.mts",
     "test:hson-tagged-template-discovery": "node --import=tsx tests/hson-tagged-template-discovery.acceptance.mts",
     "test:hson-quoted-name-acceptance": "node --import=tsx tests/hson-quoted-name-acceptance.acceptance.mts",

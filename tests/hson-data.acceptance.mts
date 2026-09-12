@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { Hson, HsonData, hson } from "../src/index.ts";
 
+type HsonDataCanonicalInput = Parameters<typeof HsonData.fromHson>[0];
+
 let checks = 0;
 function check(name: string, run: () => void): void {
   run();
@@ -40,6 +42,25 @@ check("strict ordinary admission rejects unsupported runtime behavior", () => {
   assert.throws(() => HsonData.from(Object.assign({}, { [Symbol("semantic")]: 1 })));
 });
 
+check("canonical data names reject only the reserved Hson namespace", () => {
+  for (const key of ["_hson_root", "_hson_obj", "_hson_arr", "_hson_application"]) {
+    assert.throws(() => HsonData.from({ [key]: 1 }), /Reserved Hson prefix/);
+  }
+  assert.throws(() => HsonData.from({ nested: { _hson_root: 1 } }), /Reserved Hson prefix/);
+
+  const valid = Object.create(null) as Record<string, unknown>;
+  for (const [key, value] of [
+    ["ordinary", 1], ["", 2], ["10", 3], ["__proto__", 4],
+    ["constructor", 5], ["prototype", 6], ["_application", 7],
+  ] as const) {
+    Object.defineProperty(valid, key, { value, enumerable: true, writable: true, configurable: true });
+  }
+  assert.deepEqual(
+    HsonData.from(valid).entries()?.map(([name]) => name),
+    ["10", "ordinary", "", "__proto__", "constructor", "prototype", "_application"],
+  );
+});
+
 check("ordinary own names are safe and detached", () => {
   const input = Object.create(null) as Record<string, unknown>;
   Object.defineProperty(input, "__proto__", { value: { nested: true }, enumerable: true, writable: true });
@@ -77,8 +98,22 @@ check("Hson authoring preserves signed zero, exact order, integer names, and dan
   assert.deepEqual(mixed.entries()?.map(([name]) => name), ["10", "normal", "1", ""]);
 });
 
+check("every representative admitted value closes through canonical Hson", () => {
+  const representatives = [
+    HsonData.from("text"), HsonData.from(true), HsonData.from(null),
+    HsonData.from(0), HsonData.from(-0), HsonData.from([]), HsonData.from([[], [1, null]]),
+    HsonData.from({ ordinary: 1, nested: { constructor: true, prototype: null } }),
+    HsonData.fromHson(Hson`<'10' -0 '2' <__proto__ <constructor 1 prototype 2>> '' []>`),
+  ];
+  for (const value of representatives) {
+    assert.equal(HsonData.fromHson(value.toHson()).equals(value), true);
+  }
+});
+
 check("document Hson rejects the data-only boundary", () => {
   assert.throws(() => HsonData.fromHson(Hson`<main "text"/>`), /data-mode Hson/);
+  assert.throws(() => HsonData.fromHson("<@not-data a 1>" as HsonDataCanonicalInput), /data-mode Hson/);
+  assert.throws(() => HsonData.fromHson("<a 1b 2>" as HsonDataCanonicalInput), /data-mode Hson/);
 });
 
 check("LiveMap exact data reads preserve Hson-authored identity", () => {
@@ -92,6 +127,27 @@ check("LiveMap exact data reads preserve Hson-authored identity", () => {
   assert.deepEqual(nested.entries()?.map(([name]) => name), ["10", "2", "tail"]);
   assert.equal(Object.is(nested.entries()?.[0]?.[1].scalar(), -0), true);
   assert.equal(Object.hasOwn(nested.entries()?.[1]?.[1].materialize() as object, "__proto__"), true);
+});
+
+check("LiveMap rejects reserved names before state, revision, or publication", () => {
+  assert.throws(() => hson.liveMap.fromJson({ _hson_root: 1 }));
+  const map = hson.liveMap.fromJson({ nested: { value: 1 } });
+  let publications = 0;
+  const stop = map.feed([], () => { publications += 1; });
+  const before = map.snap();
+
+  assert.throws(() => map.setMany([], { _hson_root: 1 }), /Reserved Hson prefix/);
+  assert.throws(() => map.replace(["nested"], { _hson_obj: 1 }), /Reserved Hson prefix/);
+  assert.throws(() => map.setMany(["nested"], { _hson_arr: 1 }), /Reserved Hson prefix/);
+  assert.throws(() => map.batch((draft) => {
+    draft.setMany(["nested"], { safe: 2, _hson_batch: 3 });
+  }), /Reserved Hson prefix/);
+
+  assert.equal(map.rev, 0);
+  assert.deepEqual(map.snap(), before);
+  assert.equal(publications, 0);
+  assert.equal(map.data()?.toHson(), Hson`<nested <value 1>>`);
+  stop();
 });
 
 process.stdout.write(`1..${checks}\n`);

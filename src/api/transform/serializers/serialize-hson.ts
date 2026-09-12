@@ -23,6 +23,8 @@ import { serialize_hson_tag_name } from "../utils/hson-utils/hson-tag-helpers.js
 import { serialize_primitive_hson } from "../utils/primitive-utils/serialize-primitive.utils.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
 import type { HsonCanonical } from "../transform.types.js";
+import { serialize_canonical_hson_data } from "../../../core/hson-data-canonical-codec.js";
+import { is_projected_value_hson_node, projected_value_from_hson_node } from "../../../core/projected-value-graph.js";
 
 type ParentCluster = typeof OBJ_TAG | typeof ELEM_TAG | typeof ARR_TAG;
 type HsonLayout = "readable" | "compact";
@@ -534,6 +536,19 @@ function serialize_hson_with_ownership(
     );
   }
 
+  if (!ownedDocumentText && is_projected_value_hson_node(root)
+    && !is_detached_scalar_object_carrier(root)
+    && has_no_annotations(root)) {
+    try {
+      return serialize_canonical_hson_data(
+        projected_value_from_hson_node(root),
+        { noBreak: inputOptions.noBreak },
+      ) as HsonCanonical;
+    } catch {
+      // Malformed projected-looking graphs continue through ordinary serializer diagnostics.
+    }
+  }
+
   // Egress is a cold canonical boundary: validate every supplied identity,
   // while deliberately allowing equal valid claims on distinct graph nodes.
   collect_hson_node_quid_claims(root);
@@ -546,6 +561,18 @@ function serialize_hson_with_ownership(
     guard: cycleGuard(),
   };
   return emitNode(root, 0, undefined, ctx).trim() as HsonCanonical;
+}
+
+function is_detached_scalar_object_carrier(node: HsonNode): boolean {
+  if (node.$_tag !== OBJ_TAG || node.$_content.length !== 1) return false;
+  const child = node.$_content[0];
+  return is_Node(child) && (child.$_tag === STR_TAG || child.$_tag === VAL_TAG);
+}
+
+function has_no_annotations(node: HsonNode): boolean {
+  if ((node.$_attrs !== undefined && Object.keys(node.$_attrs).length !== 0)
+    || (node.$_meta !== undefined && Object.keys(node.$_meta).length !== 0)) return false;
+  return node.$_content.every((child) => !is_Node(child) || has_no_annotations(child));
 }
 
 /** Serialize an ordinary detached semantic value; malformed carriers reject. */
