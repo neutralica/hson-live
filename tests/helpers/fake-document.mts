@@ -8,8 +8,10 @@ class FakeNode {
 }
 
 export class FakeText extends FakeNode {
-  readonly nodeType = 3;
+  readonly nodeType: number = 3;
   public constructor(public data: string) { super(); }
+  get nodeValue(): string { return this.data; }
+  set nodeValue(value: string) { this.data = value; }
 }
 
 class FakeChildList extends Array<FakeNode> {
@@ -30,6 +32,7 @@ export class FakeStyle {
 }
 
 export class FakeElement extends FakeNode {
+  readonly nodeType: number = 1;
   readonly childNodes = new FakeChildList();
   readonly attrs = new Map<string, string>();
   readonly style = new FakeStyle();
@@ -47,6 +50,8 @@ export class FakeElement extends FakeNode {
     super();
     this.namespaceURI = namespace;
   }
+
+  get localName(): string { return this.tagName.toLowerCase(); }
 
   appendChild(node: FakeNode): FakeNode {
     if (node instanceof FakeFragment) {

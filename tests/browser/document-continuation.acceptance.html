@@ -1,0 +1,178 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Document continuation acceptance</title>
+<body>
+<script type="module">
+import {
+  DocumentContinuationError,
+  continue_hosted_document,
+  continue_document,
+  create_browser_locus_socket,
+  create_echo,
+  hson,
+  install_locus_bootstrap,
+} from "./bundle.js";
+
+const results = [];
+const check = (name, condition) => {
+  results.push({ name, pass: Boolean(condition) });
+  if (!condition) throw new Error(name);
+};
+const path = (...parts) => ({ kind: "path", path: [0, ...parts] });
+const documentMap = (source) => {
+  const map = hson.liveMap.fromHson(source);
+  if (map.mode !== "document") throw new Error("expected document map");
+  return map;
+};
+const markup = (map) => hson.fromNode(map.root()).toHtml().serialize();
+const mount = (map, owner = document) => {
+  const template = owner.createElement("template");
+  // The general HTML serializer is readable and separates sibling elements;
+  // exact continuation fixtures use the canonical no-separator realization.
+  template.innerHTML = markup(map).replace(/>\n</g, "><");
+  const root = template.content.firstElementChild;
+  if (!root) throw new Error("missing serialized document root");
+  owner.body?.append(root);
+  return root;
+};
+const flush = () => new Promise((resolve) => queueMicrotask(resolve));
+
+try {
+  const map = documentMap(`<main id="app" <p @000000123 class="copy" "hello"/> <input value="server"/>/>`);
+  const root = mount(map);
+  const paragraph = root.firstElementChild;
+  const text = paragraph.firstChild;
+  const input = root.lastElementChild;
+  input.value = "dirty";
+  input.focus();
+  input.setSelectionRange(1, 3);
+  const canonicalBefore = structuredClone(map.root());
+  const revisionBefore = map.rev;
+  const attrsBefore = [...root.querySelectorAll("*")].map((element) => [...element.attributes].map((attr) => [attr.name, attr.value]));
+  const observed = [];
+  const observer = new MutationObserver((records) => observed.push(...records));
+  observer.observe(root, { subtree: true, childList: true, attributes: true, characterData: true });
+
+  const continuation = continue_document({ map, root });
+  await flush();
+  check("continuation performs zero construction writes", observed.length === 0 && observer.takeRecords().length === 0);
+  check("root Element identity is exact", continuation.tree.dom.el() === root);
+  check("descendant Element identity is exact", continuation.tree.find.byTag("p")?.dom.el() === paragraph);
+  check("Text identity is exact", paragraph.firstChild === text);
+  check("canonical state and revision do not move", map.rev === revisionBefore && JSON.stringify(map.root()) === JSON.stringify(canonicalBefore));
+  check("sparse QUID remains sparse", !root.hasAttribute("hson:quid") && input.getAttribute("hson:quid") === null);
+  check("persisted QUID remains exact", paragraph.getAttribute("hson:quid") === "000000123");
+  check("attributes remain exact", JSON.stringify([...root.querySelectorAll("*")].map((element) => [...element.attributes].map((attr) => [attr.name, attr.value]))) === JSON.stringify(attrsBefore));
+  check("dirty form property remains", input.value === "dirty");
+  check("focus and selection remain", document.activeElement === input && input.selectionStart === 1 && input.selectionEnd === 3);
+  check("Reflect is active and current", continuation.reflect.status === "active" && continuation.reflect.sourceRevision === map.rev);
+
+  const commit = map.document.attrs.set(path(0, 0), "data-next", "yes");
+  await flush();
+  check("later canonical mutation reaches same Element", paragraph.getAttribute("data-next") === "yes" && paragraph === root.firstElementChild);
+  check("observer witnesses later Reflect write", observed.some((record) => record.type === "attributes"));
+  check("unrelated canonical mutation preserves dirty form state", input.value === "dirty" && document.activeElement === input);
+  check("Reflect revision advances", continuation.reflect.sourceRevision === commit.rev);
+  map.document.attrs.set(path(0, 1), "value", "authority");
+  check("accepted same-field update uses existing Reflect form semantics", input.value === "authority");
+
+  let duplicateRejected = false;
+  try { continue_document({ map, root }); } catch { duplicateRejected = true; }
+  check("active root reservation rejects duplicate continuation", duplicateRejected);
+  continuation.dispose();
+  continuation.dispose();
+  const revAfterDispose = map.rev;
+  map.document.attrs.set(path(0, 0), "data-next", "disposed");
+  check("disposed Reflect no longer updates DOM", map.rev === revAfterDispose + 1 && paragraph.getAttribute("data-next") === "yes");
+  continuation.tree.find.byTag("p").attrs.set("data-next", "disposed");
+  const rebound = continue_document({ map, root });
+  check("disposed root may rebind its existing admitted tree", rebound.tree === continuation.tree && rebound.reflect.status === "active");
+  rebound.dispose();
+  observer.disconnect();
+
+  const mismatchCases = [
+    ["wrong tag", (candidate) => candidate.replaceWith(Object.assign(document.createElement("article"), { innerHTML: candidate.innerHTML }))],
+    ["missing attr", (candidate) => candidate.removeAttribute("id")],
+    ["extra attr", (candidate) => candidate.setAttribute("data-extra", "x")],
+    ["changed attr", (candidate) => candidate.setAttribute("id", "other")],
+    ["missing text", (candidate) => candidate.querySelector("p").firstChild.remove()],
+    ["changed text", (candidate) => { candidate.querySelector("p").firstChild.data = "changed"; }],
+    ["text boundary", (candidate) => { const p = candidate.querySelector("p"); p.firstChild.splitText(2); }],
+    ["extra child", (candidate) => candidate.append(document.createElement("aside"))],
+    ["reordered child", (candidate) => candidate.prepend(candidate.lastElementChild)],
+    ["QUID mismatch", (candidate) => candidate.querySelector("p").setAttribute("hson:quid", "999999999")],
+    ["unexpected QUID", (candidate) => candidate.setAttribute("hson:quid", "000000125")],
+    ["comment", (candidate) => candidate.append(document.createComment("unrepresented"))],
+  ];
+  for (const [caseIndex, [name, mutate]] of mismatchCases.entries()) {
+    const quid = String(1000 + caseIndex).padStart(9, "0");
+    const mismatchMap = documentMap(`<main id="mismatch" <p @${quid} "hello"/> <input value="server"/>/>`);
+    let candidate = mount(mismatchMap);
+    mutate(candidate);
+    if (!candidate.isConnected) candidate = document.body.lastElementChild;
+    const before = candidate.outerHTML;
+    let failure;
+    try { continue_document({ map: mismatchMap, root: candidate }); } catch (cause) { failure = cause; }
+    check(`${name} rejects in adopt phase`, failure instanceof DocumentContinuationError && failure.phase === "adopt");
+    check(`${name} is never repaired`, candidate.outerHTML === before);
+    candidate.remove();
+    const corrected = mount(mismatchMap);
+    const retry = continue_document({ map: mismatchMap, root: corrected });
+    check(`${name} releases root reservation`, retry.reflect.status === "active");
+    retry.dispose();
+    corrected.remove();
+  }
+
+  const namespaceMap = documentMap(`<svg <circle/>/>`);
+  const wrongNamespace = document.createElement("svg");
+  wrongNamespace.append(document.createElement("circle"));
+  document.body.append(wrongNamespace);
+  const namespaceBefore = wrongNamespace.outerHTML;
+  let namespaceFailure;
+  try { continue_document({ map: namespaceMap, root: wrongNamespace }); } catch (cause) { namespaceFailure = cause; }
+  check("wrong namespace rejects", namespaceFailure instanceof DocumentContinuationError && namespaceFailure.phase === "adopt");
+  check("wrong namespace is untouched", wrongNamespace.outerHTML === namespaceBefore);
+  wrongNamespace.remove();
+
+  const htmlMap = documentMap(`<html <head/> <body <main "whole"/>/>/>`);
+  const otherDocument = document.implementation.createHTMLDocument("");
+  otherDocument.documentElement.innerHTML = `<head></head><body><main>whole</main></body>`;
+  const htmlRoot = otherDocument.documentElement;
+  const htmlContinuation = continue_document({ map: htmlMap, root: htmlRoot });
+  check("documentElement root is supported without replacement", htmlContinuation.tree.dom.el() === htmlRoot);
+  htmlContinuation.dispose();
+  check("documentElement disposal does not remove browser roots", otherDocument.documentElement === htmlRoot && htmlRoot.querySelector("body"));
+
+  const hostedSetup = await fetch("/__hosted").then((response) => response.json());
+  const installed = install_locus_bootstrap(hostedSetup.bootstrap);
+  const hostedMap = installed.map;
+  if (hostedMap.mode !== "document") throw new Error("expected hosted document bootstrap");
+  const hostedRoot = mount(hostedMap);
+  const hostedParagraph = hostedRoot.firstElementChild;
+  const hostedText = hostedParagraph.firstChild;
+  const browserSocket = create_browser_locus_socket(hostedSetup.socketUrl);
+  await browserSocket.ready;
+  const echo = create_echo({ socket: browserSocket.socket, map: hostedMap, session: {}, recovery: installed.recovery });
+  echo.connect();
+  await echo.session.create();
+  const hostedContinuation = await continue_hosted_document({ echo, root: hostedRoot });
+  check("hosted continuation resolves caught up", echo.recovery.status === "caught_up");
+  check("hosted Reflect resolves current", hostedContinuation.reflect.status === "active" && hostedContinuation.reflect.sourceRevision === hostedMap.rev);
+  check("hosted recovery advances existing Element", hostedParagraph === hostedRoot.firstElementChild && hostedParagraph.getAttribute("data-recovered") === "yes");
+  check("hosted recovery preserves Text identity", hostedParagraph.firstChild === hostedText);
+  await hostedContinuation.tree.find.must.byTag("p").async.attrs.set("data-async", "accepted");
+  check("hosted tree.async converges through continued runtime", hostedParagraph.getAttribute("data-async") === "accepted" && hostedContinuation.reflect.sourceRevision === hostedMap.rev);
+  hostedContinuation.dispose();
+  check("hosted disposal borrows Echo", echo.session.status === "attached" && echo.recovery.status === "caught_up");
+  echo.dispose();
+  browserSocket.dispose();
+
+  document.documentElement.dataset.status = "pass";
+  document.documentElement.dataset.detail = `${results.length}/${results.length}`;
+} catch (cause) {
+  document.documentElement.dataset.status = "fail";
+  document.documentElement.dataset.detail = `${cause?.stack ?? String(cause)}\nCAUSE: ${cause?.cause?.stack ?? String(cause?.cause ?? "none")}`;
+}
+</script>
+<div id="result"></div>
+</body>

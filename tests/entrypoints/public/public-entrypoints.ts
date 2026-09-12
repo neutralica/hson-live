@@ -12,6 +12,11 @@ import {
   enable_interactions,
   remove_interaction,
   replace_interaction,
+  continue_document,
+  continue_hosted_document,
+  DocumentContinuationError,
+  type DocumentContinuation,
+  type HostedDocumentContinuation,
   type AsyncLiveTree as RootAsyncLiveTree,
   type HsonSchema,
   type HsonNumber,
@@ -25,6 +30,28 @@ import {
   type LocalInteractionDescriptor,
   type AuthoritativeInteractionDescriptor,
 } from "hson-live";
+
+declare const continuationMap: import("hson-live/livemap").DocumentLiveMap;
+declare const continuationRoot: Element;
+declare const continuationEcho: import("hson-live/echo").Echo<typeof continuationMap>;
+const localContinuation: DocumentContinuation<typeof continuationMap> = continue_document({
+  map: continuationMap,
+  root: continuationRoot,
+});
+const hostedContinuation: Promise<HostedDocumentContinuation<typeof continuationMap>> = continue_hosted_document({
+  echo: continuationEcho,
+  root: continuationRoot,
+});
+void localContinuation.map;
+void localContinuation.tree;
+void localContinuation.reflect;
+localContinuation.dispose();
+void hostedContinuation;
+void DocumentContinuationError;
+// @ts-expect-error Continuation requires an explicit Element, never a selector.
+continue_document({ map: continuationMap, root: "main" });
+// @ts-expect-error Hosted authoritative dispatch is derived from Echo.
+continue_hosted_document({ echo: continuationEcho, root: continuationRoot, interactions: { local: {}, dispatch: async () => {} } });
 
 declare const genuineHsonData: HsonData;
 const retainedHsonData: HsonData = genuineHsonData;

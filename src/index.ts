@@ -2,6 +2,13 @@
 
 export { Hson } from "./hson-authoring.js";
 export { HsonData } from "./api/data/hson-data.js";
+export { continue_document } from "./api/continuation/continue-document.js";
+export { continue_hosted_document } from "./api/continuation/continue-hosted-document.lazy.js";
+export { DocumentContinuationError } from "./api/continuation/continuation.error.js";
+export type {
+    DocumentContinuation,
+    HostedDocumentContinuation,
+} from "./api/continuation/continuation.types.js";
 export {
     enable_interactions,
     add_interaction,

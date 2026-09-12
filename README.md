@@ -686,6 +686,8 @@ The maintained current-facing references are:
 - [canonical interactions](docs/canonical-interactions.md), including hidden
   same-LiveMap storage, exact data dispatch, and listener reconciliation;
 - the [Reflect API](docs/reflect/api-reflect.md);
+- [document continuation](docs/document-continuation.md), for exact no-write
+  admission of an existing browser document into local or hosted state;
 - the [Locus API](docs/locus/api-locus.md) and
   [authority overview](docs/locus/overview.md);
 - the [LiveHost and Node runtime boundary](docs/livehost/overview.md); and

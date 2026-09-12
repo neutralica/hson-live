@@ -25,6 +25,24 @@ type EchoMapCapability = Readonly<{
 
 const capabilities = new WeakMap<object, EchoMapCapability>();
 
+/** @internal Read-only topology evidence for orchestration that must not acquire map management. */
+export function inspect_echo_map_capability_internal(value: unknown): Readonly<{
+  topology: EchoMapTopology;
+  revision: number;
+  documentMaps: readonly object[];
+}> {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("LiveMap value is not a canonical map authority.");
+  }
+  const capability = capabilities.get(value);
+  if (capability === undefined) throw new Error("LiveMap value is not a canonical map authority.");
+  return Object.freeze({
+    topology: capability.topology,
+    revision: capability.revision(),
+    documentMaps: Object.freeze([...(capability.documentMaps?.() ?? [])]),
+  });
+}
+
 /** @internal Register a completed LiveMap facade without adding a public property. */
 export function register_echo_map_capability_internal(map: object, capability: EchoMapCapability): void {
   capabilities.set(map, capability);

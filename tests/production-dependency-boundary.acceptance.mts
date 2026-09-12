@@ -183,6 +183,77 @@ check("public endpoint-only Echo initial browser graph excludes deferred replica
   assert.ok(dynamicImports.length >= 2, "browser proof should retain deferred solo and aggregate chunks");
 });
 
+check("local document continuation tree-shakes hosted Echo and Locus machinery", () => {
+  const build = esbuild.buildSync({
+    absWorkingDir: repositoryRoot,
+    stdin: {
+      contents: `
+        import { continue_document } from "./dist/api/continuation/continue-document.js";
+        globalThis.__continue_document__ = continue_document;
+      `,
+      resolveDir: repositoryRoot,
+      sourcefile: "local-document-continuation-public.mjs",
+    },
+    bundle: true,
+    write: false,
+    format: "esm",
+    platform: "browser",
+    target: "es2022",
+    treeShaking: true,
+    minify: true,
+    legalComments: "none",
+    metafile: true,
+  });
+  const outputs = build.metafile?.outputs;
+  assert.ok(outputs !== undefined, "local continuation proof requires an esbuild metafile");
+  const retainedInputs = Object.values(outputs).flatMap((output) => Object.entries(output.inputs))
+    .filter(([, contribution]) => contribution.bytesInOutput > 0)
+    .map(([input]) => input);
+  const prohibited = retainedInputs.filter((input) => /\/api\/(?:locus|livehost)\//.test(input)
+    || /\/api\/echo\/(?!echo\.document-authority-registry\.js$)/.test(input));
+  assert.deepEqual(
+    prohibited,
+    [],
+    `local continuation retained hosted authority modules:\n${prohibited.join("\n")}`,
+  );
+  const outputText = build.outputFiles?.map((file) => Buffer.from(file.contents).toString("utf8")).join("\n") ?? "";
+  assert.equal(outputText.includes("continue_hosted_document"), false);
+
+  const rootBuild = esbuild.buildSync({
+    absWorkingDir: repositoryRoot,
+    stdin: {
+      contents: `
+        import { continue_document } from "hson-live";
+        globalThis.__continue_document__ = continue_document;
+      `,
+      resolveDir: repositoryRoot,
+      sourcefile: "local-document-continuation-root-public.mjs",
+    },
+    bundle: true,
+    splitting: true,
+    write: false,
+    outdir: "dependency-boundary-continuation-out",
+    format: "esm",
+    platform: "browser",
+    target: "es2022",
+    treeShaking: true,
+    minify: true,
+    legalComments: "none",
+    metafile: true,
+  });
+  const rootOutputs = rootBuild.metafile?.outputs ?? {};
+  const rootEntry = Object.entries(rootOutputs).find(([, output]) => output.entryPoint?.endsWith("local-document-continuation-root-public.mjs"));
+  assert.ok(rootEntry !== undefined, "root continuation proof could not locate its entry output");
+  const rootInputs = Object.entries(rootEntry[1].inputs)
+    .filter(([, contribution]) => contribution.bytesInOutput > 0)
+    .map(([input]) => input);
+  assert.equal(
+    rootInputs.some((input) => input.includes("/api/continuation/continue-hosted-document")),
+    false,
+    "the root umbrella must tree-shake the unused hosted continuation implementation",
+  );
+});
+
 check("removed LiveTree construction engine and graft_body stay absent", () => {
   const productionSource = files.map((path) => readFileSync(path, "utf8")).join("\n");
   assert.equal(
