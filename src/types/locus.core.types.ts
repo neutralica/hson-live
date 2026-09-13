@@ -16,7 +16,6 @@ import type {
   HsonSchemaValue,
   LiveMapLibraries,
   LiveMapLibrariesInput,
-  LiveMapProjectedGraphEnsureQuidOp,
   LiveMapAnyOp,
   LiveMapCommit,
   LiveMapAuthority,
@@ -32,6 +31,7 @@ import type {
   LiveMapOp,
   LiveMapStructuralJsonEnvelope,
 } from "./livemap.types.js";
+import type { LiveMapProjectedGraphEnsureQuidOp } from "../api/livemap/livemap.identity.types.js";
 import type { JsonValue } from "../core/types.js";
 import type { HsonData } from "../api/data/hson-data.js";
 import type {
@@ -332,7 +332,6 @@ type MultiLibraryDataMutationHandle<TValue> = Readonly<{
   set: (value: LiveMapSetValue<TValue>) => void;
   replace: (value: LiveMapWriteValue<TValue>) => void;
   delete: () => void;
-  ensureQuid: (quid: string) => void;
 }>;
 
 type MultiLibraryDataMutationDraft<TValue> = Readonly<{
@@ -351,12 +350,13 @@ type MultiLibraryBroadDataMutationDraft = Readonly<{
     set: (value: JsonValue) => void;
     replace: (value: JsonValue) => void;
     delete: () => void;
-    ensureQuid: (quid: string) => void;
   }>;
 }>;
 
+type MultiLibraryDocumentGraphMutation = Exclude<LiveMapGraphOp, Readonly<{ op: "ensure-quid" }>>;
+
 type MultiLibraryDocumentMutationDraft = Readonly<{
-  graph: (operation: LiveMapGraphOp) => void;
+  graph: (operation: MultiLibraryDocumentGraphMutation) => void;
   attrs: Readonly<{
     set: (target: LiveMapDocumentCommitTarget, name: string, value: LiveMapDocumentAttributeValue) => void;
     drop: (target: LiveMapDocumentCommitTarget, name: string) => void;

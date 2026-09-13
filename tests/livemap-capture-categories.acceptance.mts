@@ -88,7 +88,7 @@ check("identity-free capture does not mutate the source", () => {
 
 check("identity-free capture preserves the exact revision", () => {
   const map = element(`<main @${Q1}/>`);
-  map.document.attrs.set({ kind: "quid", quid: Q1 }, "data-v", 1);
+  map.document.attrs.set({ kind: "path", path: [0] }, "data-v", 1);
   assert.equal(map.capture({ identity: "strip" }).rev, 1);
 });
 

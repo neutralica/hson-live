@@ -6,9 +6,9 @@ import type {
   LiveMapDocumentCommitTarget,
   LiveMapDocumentPath,
   LiveMapGraphCommit,
-  LiveMapGraphEnsureQuidOp,
   LiveMapGraphOp,
 } from "../../types/livemap.types.js";
+import type { LiveMapGraphEnsureQuidOp } from "./livemap.identity.types.js";
 import {
   LiveMapDocumentIdentityRegistrationError,
   LiveMapDocumentMutationError,
@@ -64,7 +64,7 @@ const authorityForOwner = new WeakMap<object, LiveMapDocumentIdentityAuthority>(
 const participantForAuthority = new WeakMap<object, LiveMapDocumentIdentityParticipant>();
 const reservedForAuthority = new WeakMap<object, Set<string>>();
 const reservationForCandidate = new WeakMap<object, LiveMapDocumentIdentityCommitReservation>();
-const reservationForCommit = new WeakMap<LiveMapGraphCommit, LiveMapDocumentIdentityCommitReservation>();
+const reservationForCommit = new WeakMap<LiveMapGraphCommit<LiveMapGraphOp>, LiveMapDocumentIdentityCommitReservation>();
 
 /** Register the internal map authority behind one frozen document façade. */
 export function register_livemap_document_identity_authority(
@@ -217,7 +217,7 @@ function acquire_livemap_document_canonical_identity(
 /** Transfer a candidate's preflight reservation to its exact accepted commit. */
 export function register_livemap_document_identity_candidate_commit(
   candidate: PreparedDocumentMutation,
-  commit: LiveMapGraphCommit,
+  commit: LiveMapGraphCommit<LiveMapGraphOp>,
 ): void {
   const reservation = reservationForCandidate.get(candidate);
   if (reservation !== undefined) reservationForCommit.set(commit, reservation);
@@ -226,7 +226,7 @@ export function register_livemap_document_identity_candidate_commit(
 /** Preflight a replay's complete staged operation sequence before publication. */
 export function preflight_livemap_document_identity_replay(
   authority: object,
-  commit: LiveMapGraphCommit,
+  commit: LiveMapGraphCommit<LiveMapGraphOp>,
 ): LiveMapDocumentIdentityCommitReservation | undefined {
   if (!commit.ops.some((operation) => operation.op === "ensure-quid")) return undefined;
   const participant = participantForAuthority.get(authority);
@@ -238,7 +238,7 @@ export function preflight_livemap_document_identity_replay(
 
 /** Resolve the exact preflight evidence for Reflection's synchronous observer. */
 export function livemap_document_identity_reservation_for(
-  commit: LiveMapGraphCommit,
+  commit: LiveMapGraphCommit<LiveMapGraphOp>,
 ): LiveMapDocumentIdentityCommitReservation | undefined {
   return reservationForCommit.get(commit);
 }

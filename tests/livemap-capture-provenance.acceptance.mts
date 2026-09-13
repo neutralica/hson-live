@@ -86,16 +86,16 @@ function errorCode(code: string): (error: unknown) => boolean {
 check("an exact current-epoch capability installs on its owner", () => {
   const map = element(`<main @${Q1}/>`);
   const capture = map.capture({ identity: "same-epoch" });
-  map.document.attrs.set({ kind: "quid", quid: Q1 }, "data-next", 1);
+  map.document.attrs.set({ kind: "path", path: [0] }, "data-next", 1);
   map.install(capture, { identity: "same-epoch" });
   assert.equal(map.root().$_attrs?.["data-next"], undefined);
 });
 
 check("same-epoch restore preserves the captured revision", () => {
   const map = element(`<main @${Q1}/>`);
-  map.document.attrs.set({ kind: "quid", quid: Q1 }, "data-v", 1);
+  map.document.attrs.set({ kind: "path", path: [0] }, "data-v", 1);
   const capture = map.capture({ identity: "same-epoch" });
-  map.document.attrs.set({ kind: "quid", quid: Q1 }, "data-v", 2);
+  map.document.attrs.set({ kind: "path", path: [0] }, "data-v", 2);
   map.restore(capture, { identity: "same-epoch" });
   assert.equal(map.rev, capture.rev);
 });

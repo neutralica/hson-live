@@ -147,7 +147,6 @@ import type {
   DocumentLiveMapCapture,
   DocumentLiveMapInstallOptions,
   LiveMapDocumentPath,
-  LiveMapDocumentIdentityHandle,
   LiveMapDocumentRequestTarget,
   LiveMapDocumentAttributeValue,
   LiveMapDocumentAttrs,
@@ -357,9 +356,6 @@ import type {
   LocusWireValue,
   SanitizerLike,
 } from "hson-live";
-
-declare const rootIdentityHandle: LiveMapDocumentIdentityHandle;
-void rootIdentityHandle;
 
 void [
   hson,

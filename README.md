@@ -280,11 +280,15 @@ LiveMap provides:
 - runtime schema validation;
 - capture, restore, replay, and recovery primitives;
 - one-way graph links;
-- document operations addressed by path or QUID.
+- path-addressed document operations with sparse runtime QUID continuity.
 
 Changed mutations advance the map by exactly one revision and publish one normalized commit. No-op mutations do not advance revision.
 
 Reads return detached values rather than mutable references into the live graph. Writes are preflighted and applied atomically.
+
+Paths are the primary canonical address. A QUID is sparse runtime continuity
+evidence, not an application ID or a second general-purpose address. Application
+code does not mint, ensure, or use raw QUIDs as document mutation targets.
 
 At a high level, LiveMap occupies the role usually assigned to JSON application state, while retaining access to the canonical Hson structure beneath that projection.
 

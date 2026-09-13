@@ -125,7 +125,7 @@ async function assert_single_hosted_commit({ host, client, action, payload, veri
 const rootPath = { kind: "path", path: [0] };
 const documentRootPath = { kind: "path", path: [] };
 
-await check("document.attrs.set lowers a QUID request before authoritative history and replay", async () => {
+await check("document.attrs.set carries a path target through authoritative history and replay", async () => {
   const initial = `<main @000000001 <p @000000002/>/>`;
   const host = hson.locus.create({ map: element(initial), logicalMapId: "hosted-attr-set" });
   const client = await connected_document_client(host, element(initial));
@@ -133,7 +133,7 @@ await check("document.attrs.set lowers a QUID request before authoritative histo
     host,
     client,
     action: "document.attrs.set",
-    payload: { target: { kind: "quid", quid: "000000002" }, name: "title", value: "kept" },
+    payload: { target: { kind: "path", path: [0, 0, 0] }, name: "title", value: "kept" },
     verify() {
       assert.equal(host.map.document.byQuid("000000002")?.$_attrs?.title, "kept");
     },
@@ -164,7 +164,7 @@ await check("document.attrs.setMany preserves unspecified attrs in one hosted re
     client,
     action: "document.attrs.setMany",
     payload: {
-      target: { kind: "quid", quid: "000000020" },
+      target: rootPath,
       values: { id: "main", hidden: false, count: 0 },
     },
     verify() {
@@ -219,7 +219,7 @@ await check("document.attrs.replace installs one exact hosted final-state bag", 
     client,
     action: "document.attrs.replace",
     payload: {
-      target: { kind: "quid", quid: "000000022" },
+      target: { kind: "path", path: [0, 0, 0] },
       values: { empty: "", hidden: false, count: 0, nullable: null, style: { color: "red" } },
     },
     verify() {
@@ -267,20 +267,20 @@ await check("document.content.insert uses a multiNodeDocument path and publishes
   });
 });
 
-await check("document.content.remove lowers a QUID request to one canonical path removal", async () => {
+await check("document.content.remove carries one canonical path removal", async () => {
   const initial = `<main @00000001d/>`;
   const authority = element(initial);
   const mirror = element(initial);
   const extra = documentElement(element(`<aside "kept"/>`)).$_content[0];
-  authority.document.content.insert({ kind: "quid", quid: "00000001d" }, 0, extra);
-  mirror.document.content.insert({ kind: "quid", quid: "00000001d" }, 0, extra);
+  authority.document.content.insert(rootPath, 0, extra);
+  mirror.document.content.insert(rootPath, 0, extra);
   const host = hson.locus.create({ map: authority, logicalMapId: "hosted-content-remove" });
   const client = await connected_document_client(host, mirror);
   await assert_single_hosted_commit({
     host,
     client,
     action: "document.content.remove",
-    payload: { target: { kind: "quid", quid: "00000001d" }, index: 0 },
+    payload: { target: rootPath, index: 0 },
     verify() {
       assert.equal(documentElement(host.map).$_content.length, 0);
     },
@@ -304,7 +304,7 @@ await check("document.content.move uses final-position semantics in one graph op
   });
 });
 
-await check("each hosted operation accepts its alternate path or persisted-QUID target style", async () => {
+await check("each hosted operation accepts its canonical path target style", async () => {
   const initial = `<main @000000009 id="drop" <p @00000000a "old"/>/>`;
   const host = hson.locus.create({ map: element(initial) });
   const client = await connected_document_client(host, element(initial));
@@ -316,11 +316,11 @@ await check("each hosted operation accepts its alternate path or persisted-QUID 
     value: "path",
   })).type, "ack");
   assert.equal((await client.action("document.attrs.drop", {
-    target: { kind: "quid", quid: "000000009" },
+    target: rootPath,
     name: "id",
   })).type, "ack");
   assert.equal((await client.action("document.content.replace", {
-    target: { kind: "quid", quid: "00000000a" },
+    target: { kind: "path", path: [0, 0, 0] },
     index: 0,
     replacement: textCluster,
   })).type, "ack");
@@ -423,7 +423,7 @@ await check("payload and local document failures leave authority and history unc
     ["document.attrs.set", { target: rootPath, name: "bad name", value: "x" }, "LOCUS_SCHEMA_INVALID_PAYLOAD"],
     ["document.attrs.set", { target: rootPath, name: "id", value: { structured: true } }, "LOCUS_SCHEMA_INVALID_PAYLOAD"],
     ["document.attrs.set", { target: { kind: "path", path: [99] }, name: "id", value: "x" }, "DOCUMENT_PATH_OUT_OF_RANGE"],
-    ["document.attrs.drop", { target: { kind: "quid", quid: "000000006" }, name: "id" }, "DOCUMENT_TARGET_NOT_FOUND"],
+    ["document.attrs.drop", { target: { kind: "quid", quid: "000000006" }, name: "id" }, "LOCUS_SCHEMA_INVALID_PAYLOAD"],
     ["document.attrs.setMany", { target: rootPath }, "LOCUS_SCHEMA_INVALID_PAYLOAD"],
     ["document.attrs.setMany", { target: rootPath, values: [] }, "LOCUS_SCHEMA_INVALID_PAYLOAD"],
     ["document.attrs.setMany", { target: rootPath, values: { good: "x", "bad name": "x" } }, "LOCUS_SCHEMA_INVALID_PAYLOAD"],
@@ -621,7 +621,7 @@ await check("incremental recovery after a hosted action reconstructs an identica
   const initial = `<main @000000007/>`;
   const host = hson.locus.create({ map: element(initial), logicalMapId: "hosted-recovery-replay" });
   const actor = await connected_document_client(host, element(initial));
-  await actor.action("document.attrs.set", { target: { kind: "quid", quid: "000000007" }, name: "class", value: "ready" });
+  await actor.action("document.attrs.set", { target: rootPath, name: "class", value: "ready" });
   actor.disconnect();
   const recovered = await connected_document_client(host, element(initial), {
     incarnationId: host.stream.incarnationId,

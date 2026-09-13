@@ -273,18 +273,18 @@ check("ordinary mutation and replay yield equivalent projection", () => {
   rightBinding.dispose();
 });
 
-check("legacy QUID input is translated before Reflection observes it", () => {
+check("path input remains canonical before Reflection observes it", () => {
   const map = element(`<main @${Q1}/>`);
   const { binding } = reflected(map);
   const observations: LiveMapCommitObservation[] = [];
   map.commits.observe((observation) => observations.push(observation));
-  map.document.attrs.set({ kind: "quid", quid: Q1 }, "legacy", true);
+  map.document.attrs.set({ kind: "path", path: [0] }, "path", true);
   const observation = observations.at(-1);
   if (observation?.kind !== "commit") throw new Error("Expected commit");
   const operation = observation.commit.ops[0];
   assert.ok(operation !== undefined && is_graph_operation(operation) && operation.op !== "replace-root");
   assert.equal(operation.target.kind, "path");
-  assert.equal(raw_node(binding.tree.node, []).$_attrs?.legacy, true);
+  assert.equal(raw_node(binding.tree.node, []).$_attrs?.path, true);
   binding.dispose();
 });
 

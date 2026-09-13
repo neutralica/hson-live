@@ -1,8 +1,8 @@
+import type { LivePath } from "../../src/types/livemap.types.ts";
 import type {
   LiveMapDocumentIdentityHandle,
   LiveMapProjectedIdentityHandle,
-  LivePath,
-} from "../../src/types/livemap.types.ts";
+} from "../../src/api/livemap/livemap.identity.types.ts";
 import {
   acquire_livemap_document_identity,
   type LiveMapDocumentIdentityTargetInternal,

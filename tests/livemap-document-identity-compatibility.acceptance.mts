@@ -21,10 +21,10 @@ import { FakeElement } from "./helpers/fake-document.mts";
 const Q1 = "000002c01";
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livemap.document-identity-compatibility",
-  title: "Raw-QUID compatibility fences and reflected closure",
+  title: "Raw-QUID boundary and reflected continuity closure",
   category: "LiveMap",
   runtime: "node-synthetic-dom",
-  tags: Object.freeze(["document", "quid", "identity-handle", "compatibility", "binding", "externally-discoverable"]),
+  tags: Object.freeze(["document", "quid", "identity-handle", "boundary", "binding", "externally-discoverable"]),
 });
 
 const testEvents = create_test_event_emitter("livemap.document-identity-compatibility");
@@ -59,7 +59,7 @@ Reflect.set(globalThis.document, "documentElement", syntheticHead);
 Reflect.set(globalThis.document, "querySelector", () => undefined);
 Reflect.set(FakeElement.prototype, "querySelector", () => undefined);
 
-check("document.byQuid remains an active-map compatibility lookup", () => {
+check("document.byQuid remains an active-map observational lookup", () => {
   const map = element(`<main @${Q1}/>`);
   assert.equal(map.document.byQuid(Q1)?.$_tag, "main");
   assert.equal(map.document.byQuid("000002c02"), undefined);
@@ -73,7 +73,7 @@ check("document.byQuid still returns detached diagnostic material", () => {
   assert.equal((map.root().$_content[0] as { $_tag?: string } | undefined)?.$_tag, "main");
 });
 
-check("active raw-QUID mutation requests still lower to canonical paths", () => {
+check("raw-QUID mutation requests are rejected", () => {
   const map = element(`<main @${Q1}/>`);
   let targetValue: unknown;
   map.commits.observe((observation) => {
@@ -82,11 +82,14 @@ check("active raw-QUID mutation requests still lower to canonical paths", () => 
       if (operation !== undefined && "domain" in operation && operation.op !== "replace-root") targetValue = operation.target;
     }
   });
-  map.document.attrs.set({ kind: "quid", quid: Q1 }, "title", "active");
-  assert.deepEqual(targetValue, { kind: "path", path: [0], witness: { quid: Q1 } });
+  assert.throws(
+    () => map.document.attrs.set({ kind: "quid", quid: Q1 } as never, "title", "active"),
+    errorCode("INVALID_DOCUMENT_TARGET"),
+  );
+  assert.equal(targetValue, undefined);
 });
 
-check("raw-QUID compatibility does not authorize handle reconstruction", () => {
+check("raw-QUID observation does not authorize handle reconstruction", () => {
   const map = element(`<main @${Q1}/>`);
   assert.throws(
     () => acquire_document_identity(map.document, { kind: "quid", quid: Q1 } as never),

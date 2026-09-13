@@ -84,7 +84,7 @@ function document(draft: LocusHostedAggregateDraft, name: string): LocusHostedAg
   return library;
 }
 
-function insert_item(quid: string): LiveMapGraphOp {
+function insert_item(quid: string): Extract<LiveMapGraphOp, Readonly<{ op: "insert-content" }>> {
   return Object.freeze({
     domain: "graph" as const,
     op: "insert-content" as const,
@@ -97,7 +97,7 @@ function insert_item(quid: string): LiveMapGraphOp {
   });
 }
 
-function remove_item(): LiveMapGraphOp {
+function remove_item(): Extract<LiveMapGraphOp, Readonly<{ op: "remove-content" }>> {
   return Object.freeze({
     domain: "graph" as const,
     op: "remove-content" as const,

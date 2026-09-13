@@ -2,11 +2,11 @@
 
 ## Status
 
-This document defines the executable Unit 0 identity contract, Unit 1 canonical document-path contract, Unit 2 data movement-intent contract, Unit 3 sparse QUID/path overlay contract, Unit 4 operation-derived reconciliation contract, Unit 5 QUID-request lowering boundary, Unit 6 path-first Reflection contract, Unit 7 capture/provenance contract, Unit 10R-A reflected no-mint ownership boundary, Unit 10R-B authority-owned linked acquisition, Unit 10 explicit document identity-handle contract, Unit 11 explicit data-container identity contract, and the implemented LiveMap portion of Unit 12P same-owner-epoch non-reuse. Later units must preserve these rules unless an explicit architectural revision replaces them.
+This document defines the executable Unit 0 identity contract, Unit 1 canonical document-path contract, Unit 2 data movement-intent contract, Unit 3 sparse QUID/path overlay contract, Unit 4 operation-derived reconciliation contract, Unit 5 QUID request hard boundary, Unit 6 path-first Reflection contract, Unit 7 capture/provenance contract, Unit 10R-A reflected no-mint ownership boundary, Unit 10R-B authority-owned linked acquisition, Unit 10 explicit document identity-handle contract, Unit 11 explicit data-container identity contract, and the implemented LiveMap portion of Unit 12P same-owner-epoch non-reuse. Later units must preserve these rules unless an explicit architectural revision replaces them.
 
 ## One QUID concept
 
-Hson Live has one QUID concept. A QUID is an optional opaque identity token used when the live system needs to retain, reconcile, or route an eligible Hson node independently of its current structural path.
+Hson Live has one QUID concept. A QUID is optional, sparse runtime continuity evidence used when the live system must retain or reconcile an eligible Hson node through structural path changes. Paths remain the primary canonical address.
 
 A QUID is not:
 
@@ -117,15 +117,14 @@ QUID
      or optional stale-intent witness
 ```
 
-Active document APIs accept `LiveMapDocumentRequestTarget`, which retains path-or-QUID compatibility. Canonical graph operations store `LiveMapDocumentCommitTarget`, whose discriminator is always `kind: "path"`. A QUID request is synchronously resolved through the current validated document identity overlay and lowered to the exact current path before the new operation is constructed. No newly produced LiveMap graph commit stores a QUID as its sole target.
+Active document APIs accept the path-only `LiveMapDocumentRequestTarget`. Canonical graph operations store `LiveMapDocumentCommitTarget`, whose discriminator is always `kind: "path"`. Neither request construction nor canonical replay accepts a QUID as the operation's sole target.
 
 A commit target may carry `witness: { quid }`. The path always routes. A matching active endpoint QUID validates same-epoch intent; an active different endpoint QUID reports a structured witness conflict; no endpoint QUID leaves identity-free replay available. A witness elsewhere cannot repair or reroute an invalid path, and raw bytes remain insufficient epoch provenance.
 
-Raw-QUID targeting is supported only at request boundaries. The accepting
-transaction resolves the current subject and lowers it immediately to path plus
-an optional witness. Current canonical Locus decoding rejects QUID-only targets,
-and no compatibility reader admits the old canonical shape. New authoritative
-history is produced from path-authoritative LiveMap commits.
+Raw-QUID targeting is not a current request or commit operation. Current
+LiveMap and Locus decoders reject QUID-only targets, and no compatibility
+reader admits the old canonical shape. New authoritative history is produced
+from path-authoritative LiveMap commits.
 
 `LiveMapPathHandle` follows a data location. It may observe a different value after movement, splice, replacement, deletion, or replay. It does not silently become an identity handle.
 
@@ -158,7 +157,7 @@ copied or serialized Hson/HTML/JSON/binary graphs do not.
 
 Each active document LiveMap owns one derived `QUID -> canonical path` and `canonical path -> QUID` overlay. Construction performs one deterministic scan of the owned canonical root, validates QUID syntax, eligibility, and uniqueness, and stores entries only for QUID-bearing ordinary elements. Returned paths are detached and frozen. The overlay stores no graph-node pointers and is empty for a QUID-free graph, so retained identity storage is `O(Q)` rather than `O(N)`.
 
-`document.byQuid` first reads the current overlay path, resolves that path against the current owned root, and returns a detached clone. QUID request lowering uses the same forward lookup. Optional commit witnesses use the reverse path lookup; they never route or repair an invalid path. Repeated reads do not rebuild or rescan the graph.
+`document.byQuid` first reads the current overlay path, resolves that path against the current owned root, and returns a detached clone. It is observational and grants no mutation authority. Optional commit witnesses use the reverse path lookup; they never route or repair an invalid path. Repeated reads do not rebuild or rescan the graph.
 
 The controller owns root, ordinary revision, and overlay as one coherent state. Construction and complete-root admission build an overlay; ordinary mutation and replay derive one through operation reconciliation before state publication. Failed duplicate or malformed candidates publish neither root, revision, overlay, history, nor observations. Exact captures serialize the canonical graph and QUID metadata, not the derived overlay.
 
@@ -170,9 +169,9 @@ Whole-root external admission remains deliberately different: construction, inst
 
 The overlay never mints QUIDs, owns LiveTree claims, retains DOM nodes, or manages LiveTree CSS, event, animation, resource, handle, or lifecycle records. Reflection may read the current path/QUID correspondence through an internal read-only facade, while `LiveTreeRuntime` remains the sole owner of active LiveTree identity.
 
-## Request lowering and canonical closure
+## Request and canonical closure
 
-Path-or-QUID unions are request surfaces only. Document attribute and content APIs, Locus built-in document actions, and custom Locus handlers operating on their staged draft may accept a QUID request. Resolution occurs inside the accepting mutation or replay transaction against that ordinal's current owned graph and sparse overlay. Queue delay therefore cannot freeze an earlier path, and a deduplicated retry joins or reuses one action execution rather than resolving again against a later base.
+Document attribute and content APIs, Locus built-in document actions, and custom Locus handlers operating on their staged draft accept path targets. Paths are interpreted inside the accepting mutation or replay transaction against that ordinal's current owned graph. A queued path request therefore remains path authority rather than silently following a runtime identity after an earlier mutation.
 
 Every newly produced `LiveMapGraphOp`, `LocusEncodedGraphOp`, history entry, recovery body or tail, client-applied canonical commit, and persistence append uses a validated path target. A QUID may remain only as an optional non-routing witness. No current canonical encoder or public current-format decoder accepts a QUID as the operation's sole address.
 
@@ -259,15 +258,15 @@ shared `ensure-quid` operation and shared map-owned collision-aware allocator
 are used by both document and data acquisition, and replay never invokes
 the allocator.
 
-## Raw-QUID compatibility fences
+## Raw-QUID boundary
 
-The following compatibility surfaces remain available within their current
-active owner epoch: `document.byQuid`, path-or-QUID mutation requests,
-`LiveTree.quid`, `LiveTree.find.byQuid`, and diagnostic QUID output. They are
-lookup/routing conveniences and continuity evidence, not application identity,
-authorization, durable handle references, or proof of provenance. A raw string
-cannot recreate a `LiveMapDocumentIdentityHandle`, cross a map or runtime owner,
-or survive owner-epoch replacement merely because the same bytes reappear.
+The following observation surfaces remain available within their current active
+owner epoch: `document.byQuid`, `LiveTree.quid`, `LiveTree.find.byQuid`, and
+diagnostic QUID output. They expose sparse runtime continuity evidence, not
+application identity, authorization, durable handle references, or mutation
+authority. A raw string cannot construct an identity handle, target a document
+mutation, cross a map or runtime owner, or survive owner-epoch replacement
+merely because the same bytes reappear.
 
 There is no `fromQuid`, global registry, user-supplied-QUID setter, DOM-query
 authoring contract, public replacement/retirement operation, or remote
@@ -381,8 +380,8 @@ Automated acceptance coverage must continue to establish:
 15. Incoming content admission visits only the incoming subtree for new QUID claims and rejects collisions with surviving sparse claims before publication.
 16. Derived identity effects cannot be submitted, replayed, persisted, or published independently of the accepted canonical commit.
 17. Replay validates witnesses against the overlay produced by prior staged ordinals and installs only the final coherent root/revision/overlay state.
-18. Path-or-QUID targets remain active request data; canonical LiveMap and Locus operation types admit only paths plus optional witnesses.
-19. QUID requests lower inside the accepting staged transaction and never before authority queue admission.
+18. Active LiveMap and Locus document requests admit only paths; canonical operation types admit only paths plus optional witnesses.
+19. A queued path request remains path authority and does not retarget itself through QUID continuity.
 20. Changed Locus actions publish path targets; no-op and failed actions publish no canonical commit.
 21. New history, recovery tails, client canonical application, and persistence appends contain no QUID-only targets.
 22. Current canonical protocol and persistence decoding reject QUID-only targets.

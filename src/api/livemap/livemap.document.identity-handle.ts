@@ -1,10 +1,7 @@
 import { is_ordinary_element_node } from "../../core/node-guards.js";
 import { read_hson_node_quid } from "../../core/hson-node-quid.js";
-import type {
-  LiveMapDocumentIdentityHandle,
-  LiveMapDocumentPath,
-  LiveMapDocumentPathInput,
-} from "../../types/livemap.types.js";
+import type { LiveMapDocumentPath, LiveMapDocumentPathInput } from "../../types/livemap.types.js";
+import type { LiveMapDocumentIdentityHandle } from "./livemap.identity.types.js";
 import { clone_live_root } from "./livemap.editor.js";
 import type { LiveMapDocumentIdentityEpochController } from "./livemap.document.capture.js";
 import { resolve_document_path, validate_document_path } from "./livemap.document.path.js";

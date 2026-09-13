@@ -46,7 +46,6 @@ function multiNodeDocument(source: string): DocumentLiveMap {
 
 const path = (...segments: number[]): LiveMapDocumentRequestTarget => Object.freeze({ kind: "path", path: Object.freeze(segments) });
 const elementPath = (...segments: number[]): LiveMapDocumentRequestTarget => path(0, ...segments);
-const quid = (value: string): LiveMapDocumentRequestTarget => Object.freeze({ kind: "quid", quid: value });
 
 function nodes(root: HsonNode): HsonNode[] {
   const out: HsonNode[] = [];
@@ -137,11 +136,11 @@ check("document capabilities use attrs and content namespaces only", () => {
   assert.equal("fragment" in multiNodeDocumentMap, false);
 });
 
-check("path and QUID targets resolve the same ordinary elements", () => {
+check("path targets mutate ordinary elements while QUID remains observational", () => {
   const byPath = element(`<main @000000001 <p id="old" @000000002 "x"/>/>`);
   const byIdentity = element(`<main @000000001 <p id="old" @000000002 "x"/>/>`);
   byPath.document.attrs.set(elementPath(0, 0), "id", "new");
-  byIdentity.document.attrs.set(quid("000000002"), "id", "new");
+  byIdentity.document.attrs.set(elementPath(0, 0), "id", "new");
   assert.deepEqual(byPath.root(), byIdentity.root());
   assert.equal(byIdentity.document.byQuid("000000002")?.$_attrs?.id, "new");
 
@@ -149,19 +148,19 @@ check("path and QUID targets resolve the same ordinary elements", () => {
   errorCode(() => byPath.document.attrs.set({ kind: "path", path: [1.5] }, "id", "x"), "INVALID_DOCUMENT_PATH_INDEX");
   errorCode(() => byPath.document.attrs.set({ kind: "path", path: [Number.POSITIVE_INFINITY] }, "id", "x"), "INVALID_DOCUMENT_PATH_INDEX");
   errorCode(() => byPath.document.attrs.set(elementPath(9), "id", "x"), "DOCUMENT_PATH_OUT_OF_RANGE");
-  errorCode(() => byPath.document.attrs.set(quid("00000000d"), "id", "x"), "DOCUMENT_TARGET_NOT_FOUND");
-  errorCode(() => byPath.document.attrs.set({ kind: "quid", quid: "" }, "id", "x"), "INVALID_DOCUMENT_TARGET");
+  errorCode(() => setAttrWithUnknownTarget(byPath, { kind: "quid", quid: "00000000d" }), "INVALID_DOCUMENT_TARGET");
+  errorCode(() => setAttrWithUnknownTarget(byPath, { kind: "quid", quid: "" }), "INVALID_DOCUMENT_TARGET");
   errorCode(() => setAttrWithUnknownTarget(byPath, { kind: "path", path: [], quid: "p" }), "INVALID_DOCUMENT_TARGET");
   errorCode(() => setAttrWithUnknownTarget(byPath, byPath.document.byQuid("000000002")), "INVALID_DOCUMENT_TARGET");
 });
 
-check("attribute endpoints reject primitives, wrappers, unquidded and foreign identity", () => {
+check("attribute endpoints reject primitives, wrappers, and raw identity targets", () => {
   const map = element(`<main "text" <span/>/>`);
   errorCode(() => map.document.attrs.set(elementPath(0, 0), "id", "x"), "DOCUMENT_TARGET_KIND");
-  errorCode(() => map.document.attrs.set(quid("00000000c"), "id", "x"), "DOCUMENT_TARGET_NOT_FOUND");
+  errorCode(() => setAttrWithUnknownTarget(map, { kind: "quid", quid: "00000000c" }), "INVALID_DOCUMENT_TARGET");
   const other = element(`<aside @00000000b/>`);
   assert.equal(other.document.byQuid("00000000b")?.$_tag, "aside");
-  errorCode(() => map.document.attrs.set(quid("00000000b"), "id", "x"), "DOCUMENT_TARGET_NOT_FOUND");
+  errorCode(() => setAttrWithUnknownTarget(map, { kind: "quid", quid: "00000000b" }), "INVALID_DOCUMENT_TARGET");
 
   const frag = multiNodeDocument(`<div/> <span/>`);
   errorCode(() => frag.document.attrs.set(path(), "id", "x"), "DOCUMENT_TARGET_KIND");
@@ -217,7 +216,7 @@ check("structured attribute input and commit payload are detached", () => {
 
 check("attrs.drop removes only existing ordinary attributes", () => {
   const map = element(`<main id="drop" title="keep" @000000001 "x"/>`);
-  const changed = map.document.attrs.drop(quid("000000001"), "id");
+  const changed = map.document.attrs.drop(elementPath(), "id");
   assert.deepEqual(changed, {
     changed: true,
     prevRev: 0,
@@ -225,7 +224,7 @@ check("attrs.drop removes only existing ordinary attributes", () => {
     ops: [{
       domain: "graph",
       op: "remove-attr",
-      target: { kind: "path", path: [0], witness: { quid: "000000001" } },
+      target: { kind: "path", path: [0] },
       name: "id",
     }],
   });
@@ -303,7 +302,7 @@ check("attrs.dropMany validates all names, ignores absence and duplicates, and c
   assert.deepEqual(map.document.attrs.dropMany(elementPath(), ["absent"]), {
     changed: false, prevRev: 0, rev: 0, ops: [],
   });
-  const commit = map.document.attrs.dropMany(quid("000000022"), ["id", "absent", "class", "id"]);
+  const commit = map.document.attrs.dropMany(elementPath(), ["id", "absent", "class", "id"]);
   assert.equal(commit.changed, true);
   assert.equal(commit.rev, 1);
   assert.equal(commit.ops.length, 1);
@@ -352,7 +351,7 @@ check("attrs.replace installs the exact canonical bag on multiNodeDocument and n
     nullable: null,
     style: { color: "red" },
   };
-  const commit = map.document.attrs.replace(quid("000000024"), values);
+  const commit = map.document.attrs.replace(path(0), values);
   assert.equal(commit.ops.length, 1);
   assert.equal(commit.ops[0]?.op, "replace-attrs");
   assert.deepEqual(map.document.byQuid("000000024")?.$_attrs, {
@@ -529,8 +528,8 @@ check("content.remove supports every existing slot, QUID targets and mode-safe o
   assert.deepEqual(multiNodeDocumentOnly.root(), { $_tag: "_hson_root", $_content: [] });
 
   const byQuid = element(`<main @000000017/>`);
-  byQuid.document.content.insert(quid("000000017"), 0, contentCluster(`<aside "x"/>`));
-  assert.equal(byQuid.document.content.remove(quid("000000017"), 0).changed, true);
+  byQuid.document.content.insert(elementPath(), 0, contentCluster(`<aside "x"/>`));
+  assert.equal(byQuid.document.content.remove(elementPath(), 0).changed, true);
   for (const index of [-1, 0.5, 1, 9]) {
     errorCode(() => multiNodeDocument(`"only"`).document.content.remove(path(), index), "INVALID_DOCUMENT_CONTENT_INDEX");
   }
@@ -556,8 +555,8 @@ check("content.move uses final-position semantics and preserves QUID identity", 
   assert.equal(backward.document.byQuid("000000019")?.$_tag, "d");
 
   const byQuid = element(`<main @00000001a/>`);
-  byQuid.document.content.insert(quid("00000001a"), 0, contentCluster(`<aside "x"/>`));
-  assert.equal(byQuid.document.content.move(quid("00000001a"), 0, 0).changed, false);
+  byQuid.document.content.insert(elementPath(), 0, contentCluster(`<aside "x"/>`));
+  assert.equal(byQuid.document.content.move(elementPath(), 0, 0).changed, false);
 });
 
 check("same-position move is a complete no-op and invalid move indexes are atomic", () => {

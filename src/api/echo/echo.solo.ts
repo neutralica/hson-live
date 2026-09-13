@@ -7,8 +7,8 @@ import type {
   LiveMapAuthority,
   LiveMapDocumentContent,
   LiveMapGraphCommit,
-  LiveMapProjectedGraphEnsureQuidOp,
 } from "../../types/livemap.types.js";
+import type { LiveMapProjectedGraphEnsureQuidOp } from "../livemap/livemap.identity.types.js";
 import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
 import { make_canonical_livemap_projected_capture } from "../livemap/livemap.projected.capture.js";

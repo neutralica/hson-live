@@ -144,7 +144,7 @@ check("ordered element graph commits replay atomically without echo", () => {
   const events: LiveMapCommitObservation[] = [];
   target.commits.observe((event) => events.push(event));
   const first = source.document.attrs.set(elementTarget, "class", "ready");
-  const second = source.document.attrs.set({ kind: "quid", quid: "000000003" }, "title", "new");
+  const second = source.document.attrs.set(elementTarget, "title", "new");
   const replayed = target.replay(first);
   assert.deepEqual(replayed, first);
   target.replay(second);
@@ -158,7 +158,7 @@ check("ordered element graph commits replay atomically without echo", () => {
 check("multiNodeDocument graph replay preserves canonical snapshot and identity", () => {
   const source = multiNodeDocument(`<section @000000004 "old"/> "tail"`);
   const target = multiNodeDocument(`<section @000000004 "old"/> "tail"`);
-  const commit = source.document.attrs.set({ kind: "quid", quid: "000000004" }, "title", "kept");
+  const commit = source.document.attrs.set({ kind: "path", path: [0] }, "title", "kept");
   target.replay(commit);
   assert.deepEqual(target.capture(), source.capture());
   assert.equal(target.document.byQuid("000000004")?.$_attrs?.title, "kept");
@@ -225,7 +225,7 @@ check("replace-attrs replays one detached final-state bag on path and QUID targe
   const multiNodeDocumentMap = multiNodeDocument(`<section id="old" @000000021/> "tail"`);
   Reflect.apply(multiNodeDocumentMap.replay, multiNodeDocumentMap, [replaceAttrsCommit(
     0,
-    { kind: "quid", quid: "000000021" },
+    { kind: "path", path: [0] },
     { id: "new" },
   )]);
   assert.deepEqual(multiNodeDocumentMap.document.byQuid("000000021")?.$_attrs, { id: "new" });

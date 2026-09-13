@@ -100,18 +100,18 @@ check("path requests do not acquire an implicit identity witness", () => {
   assert.equal(operation?.op === "set-attr" && operation.target.witness, undefined);
 });
 
-check("QUID requests lower synchronously to path plus witness", () => {
+check("path requests remain path-authoritative on identified nodes", () => {
   const map = element(`<main @${Q1}/>`);
-  const commit = map.document.attrs.set({ kind: "quid", quid: Q1 }, "id", "main");
+  const commit = map.document.attrs.set({ kind: "path", path: [0] }, "id", "main");
   const operation = commit.ops[0];
   assert.deepEqual(operation?.op === "set-attr" && operation.target, {
-    kind: "path", path: [0], witness: { quid: Q1 },
+    kind: "path", path: [0],
   });
 });
 
-check("nested QUID lowering records the exact current canonical path", () => {
+check("nested path requests record the exact current canonical path", () => {
   const map = element(`<main <section @${Q1}/>/>`);
-  const commit = map.document.attrs.set({ kind: "quid", quid: Q1 }, "id", "nested");
+  const commit = map.document.attrs.set({ kind: "path", path: [0, 0, 0] }, "id", "nested");
   const operation = commit.ops[0];
   assert.deepEqual(operation?.op === "set-attr" && operation.target.path, [0, 0, 0]);
 });
@@ -125,13 +125,13 @@ check("request path arrays are detached before the commit is returned", () => {
   assert.deepEqual(operation?.op === "set-attr" && operation.target.path, [0]);
 });
 
-check("canonical target path and witness values are frozen", () => {
+check("canonical target path values are frozen", () => {
   const map = element(`<main @${Q1}/>`);
-  const operation = map.document.attrs.set({ kind: "quid", quid: Q1 }, "id", "main").ops[0];
+  const operation = map.document.attrs.set({ kind: "path", path: [0] }, "id", "main").ops[0];
   if (operation?.op !== "set-attr") throw new Error("Expected set-attr");
   assert.equal(Object.isFrozen(operation.target), true);
   assert.equal(Object.isFrozen(operation.target.path), true);
-  assert.equal(Object.isFrozen(operation.target.witness), true);
+  assert.equal(operation.target.witness, undefined);
 });
 
 check("matching active witness validates but the path performs routing", () => {
@@ -205,34 +205,29 @@ check("canonical operation planning rejects a QUID-only target", () => {
     && error.code === "INVALID_DOCUMENT_COMMIT_TARGET");
 });
 
-check("legacy QUID replay is isolated and normalized to a canonical target", () => {
+check("raw-QUID replay is rejected at the canonical boundary", () => {
   const map = element(`<main @${Q1}/>`);
-  const replayed = rawReplay(map, [{
+  assert.throws(() => rawReplay(map, [{
     domain: "graph", op: "set-attr", target: { kind: "quid", quid: Q1 }, name: "id", value: "legacy",
-  }]);
-  if (typeof replayed !== "object" || replayed === null || !("ops" in replayed)) throw new Error("Expected replay commit");
-  const operations = Reflect.get(replayed, "ops");
-  if (!Array.isArray(operations)) throw new Error("Expected replay operations");
-  const operation: LiveMapGraphOp | undefined = operations[0];
-  assert.deepEqual(operation?.op === "set-attr" && operation.target, {
-    kind: "path", path: [0], witness: { quid: Q1 },
-  });
+  }]), (error: unknown) => error instanceof LiveMapDocumentStagingError
+    && error.reasonCode === "INVALID_DOCUMENT_COMMIT_TARGET");
+  assert.equal(map.rev, 0);
 });
 
-check("missing legacy QUID request fails without path fabrication", () => {
+check("a missing raw-QUID replay target is rejected as an invalid target shape", () => {
   const map = element(`<main/>`);
   assert.throws(() => rawReplay(map, [{
     domain: "graph", op: "set-attr", target: { kind: "quid", quid: Q1 }, name: "id", value: "bad",
   }]), (error: unknown) => error instanceof LiveMapDocumentStagingError
-    && error.reasonCode === "DOCUMENT_TARGET_NOT_FOUND");
+    && error.reasonCode === "INVALID_DOCUMENT_COMMIT_TARGET");
 });
 
 check("canonical operation objects never contain a QUID-only target", () => {
   const map = element(`<main @${Q1} <span/>/>`);
   const operations = [
-    map.document.attrs.set({ kind: "quid", quid: Q1 }, "id", "one").ops[0],
-    map.document.attrs.drop({ kind: "quid", quid: Q1 }, "id").ops[0],
-    map.document.content.remove({ kind: "quid", quid: Q1 }, 0).ops[0],
+    map.document.attrs.set({ kind: "path", path: [0] }, "id", "one").ops[0],
+    map.document.attrs.drop({ kind: "path", path: [0] }, "id").ops[0],
+    map.document.content.remove({ kind: "path", path: [0] }, 0).ops[0],
   ];
   assert.ok(operations.every((operation) => operation !== undefined
     && operation.target.kind === "path"
@@ -245,15 +240,15 @@ check("path-authoritative requests do not mint QUID metadata", () => {
   assert.deepEqual(allQuids(map.root()), []);
 });
 
-check("QUID compatibility requests preserve sparse gaps without minting", () => {
+check("path requests preserve sparse gaps without minting", () => {
   const map = element(`<main <section @${Q1}/> <aside/>/>`);
-  map.document.attrs.set({ kind: "quid", quid: Q1 }, "id", "section");
+  map.document.attrs.set({ kind: "path", path: [0, 0, 0] }, "id", "section");
   assert.deepEqual(allQuids(map.root()), [Q1]);
 });
 
 check("identity-free replay accepts a witnessed commit from a quidded source", () => {
   const source = multiNodeDocument(`<a @${Q1}/> <guard/>`);
-  const commit = source.document.attrs.set({ kind: "quid", quid: Q1 }, "id", "portable");
+  const commit = source.document.attrs.set({ kind: "path", path: [0] }, "id", "portable");
   const target = multiNodeDocument(`<a/> <guard/>`);
   target.replay(commit);
   assert.equal(target.document.attrs.get({ kind: "path", path: [0] }, "id"), "portable");

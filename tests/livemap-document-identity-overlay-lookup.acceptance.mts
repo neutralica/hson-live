@@ -140,16 +140,16 @@ check("an invalid path never reroutes through a matching QUID elsewhere", () => 
     error instanceof LiveMapDocumentStagingError && error.reasonCode === "DOCUMENT_PATH_OUT_OF_RANGE");
 });
 
-check("QUID requests lower from overlay path to path-authoritative commits", () => {
+check("path requests remain path-authoritative beside sparse identity", () => {
   const map = element(`<main <span @${Q1}/>/` + `>`);
-  const commit = map.document.attrs.set({ kind: "quid", quid: Q1 }, "id", "target");
-  assert.deepEqual(commit.ops[0]?.target, { kind: "path", path: [0, 0, 0], witness: { quid: Q1 } });
+  const commit = map.document.attrs.set({ kind: "path", path: [0, 0, 0] }, "id", "target");
+  assert.deepEqual(commit.ops[0]?.target, { kind: "path", path: [0, 0, 0] });
 });
 
-check("unknown QUID requests fail without building an overlay", () => {
+check("raw-QUID requests reject without building an overlay", () => {
   const map = element(`<main @${Q1}/>`);
   const before = livemap_document_identity_overlay_build_count();
-  assert.throws(() => map.document.attrs.set({ kind: "quid", quid: Q2 }, "id", "x"));
+  assert.throws(() => map.document.attrs.set({ kind: "quid", quid: Q2 } as never, "id", "x"));
   assert.equal(livemap_document_identity_overlay_build_count(), before);
 });
 

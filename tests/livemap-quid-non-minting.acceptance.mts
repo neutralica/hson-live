@@ -233,7 +233,7 @@ check("sparse traversal and QUID lookup preserve untouched gaps", () => {
 
 check("sparse targeted attribute mutation preserves only supplied QUIDs", () => {
   const map = sparse();
-  map.document.attrs.set({ kind: "quid", quid: Q2 }, "title", "section");
+  map.document.attrs.set({ kind: "path", path: [0, 0, 1] }, "title", "section");
   assert.equal(map.document.byQuid(Q2)?.$_attrs?.title, "section");
   assertSparse(map);
 });

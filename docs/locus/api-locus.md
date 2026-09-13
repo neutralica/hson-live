@@ -149,9 +149,9 @@ accepts text messages only. `create_node_locus_socket` provides the Node
 adapter from `hson-live/locus/node`; transports frame the protocol but do not
 change authority, revision, or recovery semantics.
 
-Raw-QUID request targeting remains supported for current document actions.
-The authority lowers those requests to path-authoritative canonical commits.
-Legacy QUID-only canonical commits reject.
+Current document actions accept canonical path targets. Raw-QUID request and
+canonical commit targets reject; QUID remains continuity evidence carried only
+where the authority or protocol requires it.
 
 ## Canonical history and recovery
 

@@ -23,7 +23,7 @@ Every Library requires `schema`. Initial material is validated during constructi
 
 Multi-library mutations return `LiveMapMultiLibraryCommit`. It holds one map-wide `prevRev`/`rev` transition and one ordered `operations` array. Every operation is `{ library, operation }`; the library name is public and the engine's opaque library identity is never exposed. A hosted Locus retains that same one global revision and ordered commit stream.
 
-There is no default Library on a multi-map, no public topology lifecycle (`add`, `remove`, `replace`, or `rename`), and no solo-to-multi migration/export API in this release. QUID allocation remains map-wide within the underlying authority: a raw QUID routes to its owning document Library, and identities cannot be transferred between Libraries. `root` and `snap` are selected-Library operations.
+There is no default Library on a multi-map, no public topology lifecycle (`add`, `remove`, `replace`, or `rename`), and no solo-to-multi migration/export API in this release. QUID allocation remains map-wide within the underlying authority, but raw QUIDs do not route mutation requests across Libraries and identities cannot be transferred between Libraries. `root` and `snap` are selected-Library operations.
 
 `map.capture()` synchronously returns one detached `LiveMapLibrariesSnapshot`.
 It contains the complete ordered registry, public and hidden roots, exact Schema

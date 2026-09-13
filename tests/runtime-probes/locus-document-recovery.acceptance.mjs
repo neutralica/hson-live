@@ -288,7 +288,7 @@ await check("existing element authority publishes detached graph history and rep
   const initial = `<main @000000001 <p @000000002 "old"/>/>`;
   const authority = element(initial);
   const host = hson.locus.create({ map: authority, logicalMapId: "document-element-replay" });
-  const sourceCommit = await host.mutate((draft) => draft.document.attrs.set({ kind: "quid", quid: "000000002" }, "title", "kept"));
+  const sourceCommit = await host.mutate((draft) => draft.document.attrs.set({ kind: "path", path: [0, 0, 0] }, "title", "kept"));
   const retained = host.stream.history.replay_after(0, 1);
   assert.equal(host.map, authority);
   assert.equal(host.stream.mode, "document");
@@ -298,7 +298,6 @@ await check("existing element authority publishes detached graph history and rep
   assert.deepEqual(retained?.[0]?.ops[0]?.target, {
     kind: "path",
     path: [0, 0, 0],
-    witness: { quid: "000000002" },
   });
 
   const mirror = element(initial);

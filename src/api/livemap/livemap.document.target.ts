@@ -1,6 +1,5 @@
 import { is_ordinary_element_node } from "../../core/node-guards.js";
 import { is_persisted_quid } from "../../core/persisted-quid.js";
-import { read_hson_node_quid } from "../../core/hson-node-quid.js";
 import type { HsonNode, Primitive } from "../../core/types.js";
 import type {
   DocumentLiveMapMode,
@@ -22,24 +21,16 @@ export function normalize_document_request_target(
   input: unknown,
   operation: LiveMapDocumentOperation,
 ): LiveMapDocumentRequestTarget {
-  if (!is_plain_record(input) || (input.kind !== "path" && input.kind !== "quid")) {
-    throw document_error("INVALID_DOCUMENT_TARGET", operation, "target must discriminate kind as path or quid");
+  if (!is_plain_record(input) || input.kind !== "path") {
+    throw document_error("INVALID_DOCUMENT_TARGET", operation, "target must discriminate kind as path");
   }
-
-  if (input.kind === "path") {
-    if (!has_exact_keys(input, ["kind", "path"])) {
-      throw document_error("INVALID_DOCUMENT_TARGET", operation, "path request must contain only kind and path");
-    }
-    return Object.freeze({ kind: "path", path: validate_path(input.path, operation) });
+  if (!has_exact_keys(input, ["kind", "path"])) {
+    throw document_error("INVALID_DOCUMENT_TARGET", operation, "path request must contain only kind and path");
   }
-
-  if (!has_exact_keys(input, ["kind", "quid"]) || !is_persisted_quid(input.quid)) {
-    throw document_error("INVALID_DOCUMENT_TARGET", operation, "QUID request must contain one canonical persisted QUID");
-  }
-  return Object.freeze({ kind: "quid", quid: input.quid });
+  return Object.freeze({ kind: "path", path: validate_path(input.path, operation) });
 }
 
-/** Compatibility name retained for existing active-request consumers. */
+/** Normalize an untrusted path target at the active request boundary. */
 export const normalize_document_target = normalize_document_request_target;
 
 /** Validate one path-authoritative canonical operation target. */
@@ -67,15 +58,13 @@ export function resolve_document_target(
   target: LiveMapDocumentRequestTarget,
   operation: LiveMapDocumentOperation,
 ): HsonNode | Primitive {
-  if (target.kind === "path") {
-    return resolve_path(root, mode, validate_path(target.path, operation), operation);
-  }
-  return resolve_quid_request(root, mode, overlay, target.quid, operation).endpoint;
+  void overlay;
+  return resolve_path(root, mode, validate_path(target.path, operation), operation);
 }
 
 /**
- * Lower one active request to the path-authoritative target stored in a new
- * commit. This is the only Unit 1 compatibility seam that routes by QUID.
+ * Lower one active path request to the path-authoritative target stored in a
+ * new commit.
  */
 export function canonicalize_document_request_target(
   root: HsonNode,
@@ -88,26 +77,11 @@ export function canonicalize_document_request_target(
   endpoint: HsonNode | Primitive;
 }> {
   const request = normalize_document_request_target(input, operation);
-  if (request.kind === "path") {
-    const path = validate_path(request.path, operation);
-    return Object.freeze({
-      target: Object.freeze({ kind: "path", path }),
-      endpoint: resolve_path(root, mode, path, operation),
-    });
-  }
-
-  const resolved = resolve_quid_request(root, mode, overlay, request.quid, operation);
-  const endpoint = resolved.endpoint;
-  if (!is_ordinary_element_node(endpoint)) {
-    throw document_error("DOCUMENT_TARGET_KIND", operation, "QUID request did not resolve to an ordinary element");
-  }
+  void overlay;
+  const path = validate_path(request.path, operation);
   return Object.freeze({
-    target: Object.freeze({
-      kind: "path",
-      path: resolved.path,
-      witness: Object.freeze({ quid: request.quid }),
-    }),
-    endpoint,
+    target: Object.freeze({ kind: "path", path }),
+    endpoint: resolve_path(root, mode, path, operation),
   });
 }
 
@@ -145,46 +119,6 @@ export function require_document_attr_element(
     throw document_error("DOCUMENT_TARGET_KIND", operation, "target must resolve to an ordinary document element");
   }
   return endpoint;
-}
-
-function resolve_quid_request(
-  root: HsonNode,
-  mode: DocumentLiveMapMode,
-  overlay: LiveMapDocumentIdentityOverlay,
-  quid: string,
-  operation: LiveMapDocumentOperation,
-): Readonly<{ path: ReturnType<typeof validate_document_path>; endpoint: HsonNode | Primitive }> {
-  const path = overlay.pathForQuid(quid);
-  if (path === undefined) {
-    throw document_error("DOCUMENT_TARGET_NOT_FOUND", operation, `no element carries persisted QUID ${JSON.stringify(quid)}`);
-  }
-  const endpoint = resolve_path(root, mode, path, operation);
-  if (!is_ordinary_element_node(endpoint)) {
-    throw document_error(
-      "INVALID_DOCUMENT_IDENTITY",
-      operation,
-      `active QUID ${JSON.stringify(quid)} resolves to an ineligible endpoint`,
-    );
-  }
-  let activeQuid: string | undefined;
-  try {
-    activeQuid = read_hson_node_quid(endpoint);
-  } catch (cause) {
-    throw document_error(
-      "INVALID_DOCUMENT_IDENTITY",
-      operation,
-      `active QUID ${JSON.stringify(quid)} resolves through inconsistent metadata`,
-      cause,
-    );
-  }
-  if (activeQuid !== quid) {
-    throw document_error(
-      "INVALID_DOCUMENT_IDENTITY",
-      operation,
-      `active QUID ${JSON.stringify(quid)} disagrees with its installed overlay path`,
-    );
-  }
-  return Object.freeze({ path, endpoint });
 }
 
 function resolve_path(

@@ -5,10 +5,10 @@ import type {
   LiveMapAnyOp,
   LiveMapCommit,
   LiveMapGraphOp,
-  LiveMapProjectedGraphEnsureQuidOp,
   LiveMapOp,
   LivePath,
 } from "../../types/livemap.types.js";
+import type { LiveMapProjectedGraphEnsureQuidOp } from "../livemap/livemap.identity.types.js";
 import type { JsonValue } from "../../core/types.js";
 import type {
   LocusCanonicalCommit,

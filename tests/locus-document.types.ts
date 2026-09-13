@@ -271,6 +271,12 @@ typedProjectedClient.action("custom", 1);
 declare const typedDocumentClient: Echo<DocumentLiveMap, CustomActions>;
 typedDocumentClient.action("custom", 1);
 typedDocumentClient.action("document.attrs.set", {
+  target: { kind: "path", path: [0] },
+  name: "title",
+  value: "typed",
+});
+// @ts-expect-error raw QUIDs are not public document action targets
+typedDocumentClient.action("document.attrs.set", {
   target: { kind: "quid", quid: "000000001" },
   name: "title",
   value: "typed",

@@ -54,7 +54,6 @@ function multiNodeDocument(source: string): DocumentLiveMap {
 const path = (...segments: number[]): LiveMapDocumentRequestTarget =>
   Object.freeze({ kind: "path", path: Object.freeze(segments) });
 const elementPath = (...segments: number[]): LiveMapDocumentRequestTarget => path(0, ...segments);
-const quid = (value: string): LiveMapDocumentRequestTarget => Object.freeze({ kind: "quid", quid: value });
 
 function ordinaryRoot(map: DocumentLiveMap) {
   const candidate = map.root().$_content[0];
@@ -99,7 +98,7 @@ check("get preserves every canonical value distinction and detaches structured s
     assert.equal(map.document.attrs.get(elementPath(), "zero"), 0);
     assert.equal(map.document.attrs.get(elementPath(), "nullable"), null);
     assert.equal(map.document.attrs.get(elementPath(), "absent"), undefined);
-    assert.equal(map.document.attrs.get(quid("000000101"), "positive"), 7);
+    assert.equal(map.document.attrs.get(elementPath(), "positive"), 7);
 
     const style = map.document.attrs.get(elementPath(), "style");
     const styleAgain = map.document.attrs.get(elementPath(), "style");
@@ -140,7 +139,7 @@ check("keys is lexical, public-only, fresh, and does not create absent storage",
     alpha: 2,
     "data-_quid": "application",
   });
-  const keys = map.document.attrs.keys(quid("000000102"));
+  const keys = map.document.attrs.keys(elementPath());
   const again = map.document.attrs.keys(elementPath());
   assert.deepEqual(keys, ["alpha", "data-_quid", "style", "zeta"]);
   assert.notEqual(keys, again);
@@ -187,7 +186,7 @@ check("all reads share target and name validation", () => {
     () => map.document.attrs.has(elementPath(), "hson:unknown"),
   ]) errorCode(read, "PROTECTED_DOCUMENT_METADATA");
   errorCode(() => map.document.attrs.keys(path(99)), "DOCUMENT_PATH_OUT_OF_RANGE", "list-attrs");
-  errorCode(() => map.document.attrs.get(quid("000000199"), "id"), "DOCUMENT_TARGET_NOT_FOUND", "get-attr");
+  errorCode(() => map.document.attrs.get({ kind: "quid", quid: "000000199" } as never, "id"), "INVALID_DOCUMENT_TARGET", "get-attr");
   errorCode(() => map.document.attrs.get(path(0, 0), "id"), "DOCUMENT_TARGET_KIND", "get-attr");
   errorCode(
     () => Reflect.apply(map.document.attrs.get, map.document.attrs, [{ path: [] }, "id"]),
@@ -196,16 +195,16 @@ check("all reads share target and name validation", () => {
   );
 });
 
-check("multiNodeDocument and element modes support root, nested, path, and QUID targets", () => {
+check("multiNodeDocument and element modes support root and nested path targets", () => {
   const elementMap = element(`<main id="root" <p title="nested" @000000103/>/>`);
   assert.equal(elementMap.document.attrs.get(elementPath(), "id"), "root");
   assert.equal(elementMap.document.attrs.get(elementPath(0, 0), "title"), "nested");
-  assert.equal(elementMap.document.attrs.has(quid("000000103"), "title"), true);
+  assert.equal(elementMap.document.attrs.has(elementPath(0, 0), "title"), true);
 
   const multiNodeDocumentMap = multiNodeDocument(`<section id="first" @000000104/> <aside title="second"/>`);
   assert.equal(multiNodeDocumentMap.document.attrs.get(path(0), "id"), "first");
   assert.deepEqual(multiNodeDocumentMap.document.attrs.keys(path(1)), ["title"]);
-  assert.equal(multiNodeDocumentMap.document.attrs.must.get(quid("000000104"), "id"), "first");
+  assert.equal(multiNodeDocumentMap.document.attrs.must.get(path(0), "id"), "first");
 });
 
 check("reads over absent attrs remain complete no-ops", () => {

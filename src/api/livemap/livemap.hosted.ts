@@ -16,12 +16,15 @@ import type {
   LiveMapDocumentAttrs,
   LiveMapDocumentCommitTarget,
   LiveMapGraphOp,
-  LiveMapProjectedGraphEnsureQuidOp,
   LiveMapRootMode,
   HostedLiveMapLibrariesSnapshot,
   LiveMapLibrariesSnapshot,
   LivePath,
 } from "../../types/livemap.types.js";
+import type {
+  LiveMapProjectedGraphEnsureQuidOp,
+  LiveMapProjectedIdentityCommitTarget,
+} from "./livemap.identity.types.js";
 import {
   decode_exact_hson_value,
   encode_exact_hson_value,
@@ -456,7 +459,7 @@ function decode_hosted_graph_operation(payload: string, mode: LiveMapRootMode): 
     if (typeof record.quid !== "string") throw incompatible_graph();
     return mode === "document"
       ? Object.freeze({ domain: "graph", op: record.op, target: target as LiveMapDocumentCommitTarget, quid: record.quid })
-      : Object.freeze({ domain: "graph", op: record.op, target: target as import("../../types/livemap.types.js").LiveMapProjectedIdentityCommitTarget, quid: record.quid });
+      : Object.freeze({ domain: "graph", op: record.op, target: target as LiveMapProjectedIdentityCommitTarget, quid: record.quid });
   }
   if (record.op === "replace-content" || record.op === "insert-content") {
     const field = record.op === "replace-content" ? "replacement" : "content";
@@ -480,7 +483,7 @@ function decode_hosted_graph_operation(payload: string, mode: LiveMapRootMode): 
   throw incompatible_graph();
 }
 
-function encode_target(target: LiveMapDocumentCommitTarget | import("../../types/livemap.types.js").LiveMapProjectedIdentityCommitTarget): object {
+function encode_target(target: LiveMapDocumentCommitTarget | LiveMapProjectedIdentityCommitTarget): object {
   return {
     kind: "path",
     path: [...must_path(target.path)],
@@ -489,7 +492,7 @@ function encode_target(target: LiveMapDocumentCommitTarget | import("../../types
   };
 }
 
-function decode_target(input: unknown, mode: LiveMapRootMode): LiveMapDocumentCommitTarget | import("../../types/livemap.types.js").LiveMapProjectedIdentityCommitTarget {
+function decode_target(input: unknown, mode: LiveMapRootMode): LiveMapDocumentCommitTarget | LiveMapProjectedIdentityCommitTarget {
   const record = exact_record(input, "Hosted graph target");
   const path = must_path(record.path);
   if (mode !== "document") {

@@ -257,10 +257,10 @@ check("exact content replacement is a complete no-op", () => {
   assertState(map, before);
 });
 
-check("failed QUID request performs no reconciliation", () => {
+check("rejected raw-QUID request performs no reconciliation", () => {
   const map = element(`<main @${Q1}/>`);
   const before = livemap_document_identity_accounting();
-  assert.throws(() => map.document.attrs.set({ kind: "quid", quid: Q2 }, "id", "bad"));
+  assert.throws(() => map.document.attrs.set({ kind: "quid", quid: Q2 } as never, "id", "bad"));
   const after = livemap_document_identity_accounting();
   assert.equal(after.reconciliations, before.reconciliations);
 });

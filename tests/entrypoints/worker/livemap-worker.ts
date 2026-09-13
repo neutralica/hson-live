@@ -11,18 +11,23 @@ import {
   type LiveMap,
   type LiveMapCapture,
   type LiveMapProjectedIdentityErrorCode,
-  type LiveMapProjectedIdentityHandle,
   type LiveMapProjectedMutationErrorCode,
   type LiveMapRenameOp,
 } from "hson-live/livemap";
+// @ts-expect-error Projected identity handles are package-internal continuity machinery.
+import type { LiveMapProjectedIdentityHandle } from "hson-live/livemap";
+// @ts-expect-error Identity registration operations are not application-authored LiveMap types.
+import type { LiveMapProjectedGraphEnsureQuidOp } from "hson-live/livemap";
+// @ts-expect-error Projected identity commit targets are package-internal.
+import type { LiveMapProjectedIdentityCommitTarget } from "hson-live/livemap";
+// @ts-expect-error Internal write intent is not exported from the public LiveMap entrypoint.
+import type { LiveMapWriteOp } from "hson-live/livemap";
 import type { HsonSchema } from "hson-live/hson";
 
 const map = hsonLiveMap.fromJson({ ready: true });
 void map.snap();
-declare const projectedHandle: LiveMapProjectedIdentityHandle;
 const projectedAcquisitionIsPublic: "ensureIdentity" extends keyof typeof map ? true : false = false;
 const projectedCapture: LiveMapCapture = map.capture();
-void projectedHandle.path();
 void projectedAcquisitionIsPublic;
 void projectedCapture.root;
 void hsonLiveMap.fromHson(`<worker <ready true>>`);
@@ -87,7 +92,14 @@ if (documentMap.mode === "document") {
   documentMap.install(capture, { identity: installIdentity });
   const documentAcquisitionIsPublic: "ensureIdentity" extends keyof typeof documentMap.document ? true : false = false;
   void documentAcquisitionIsPublic;
+  // @ts-expect-error Raw QUIDs are observations, not document request targets.
+  documentMap.document.attrs.set({ kind: "quid", quid: "000000v01" }, "title", "worker");
 }
+
+void (0 as unknown as LiveMapProjectedIdentityHandle);
+void (0 as unknown as LiveMapProjectedGraphEnsureQuidOp);
+void (0 as unknown as LiveMapProjectedIdentityCommitTarget);
+void (0 as unknown as LiveMapWriteOp);
 
 // @ts-expect-error projected locations do not expose HTML ID discovery
 map.at([]).id("target");

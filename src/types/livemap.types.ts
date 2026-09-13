@@ -7,6 +7,10 @@ import type {
   DocumentAttrsEvidence,
   DocumentAttrValueEvidence,
 } from "../api/livemap/livemap.document.schema.js";
+import type {
+  LiveMapGraphEnsureQuidOp,
+  LiveMapProjectedGraphEnsureQuidOp,
+} from "../api/livemap/livemap.identity.types.js";
 
 
 /**
@@ -110,27 +114,27 @@ export type LiveMapEditResult = Readonly<{
 export type LiveMapSetManyValues = Readonly<Record<string, JsonValue>>;
 
 /** Write intent collected before editor application. */
-export type LiveMapSetWriteOp = Readonly<{
+type LiveMapSetWriteOp = Readonly<{
   kind: "set";
   path: LivePath;
   value: JsonValue;
 }>;
 
 /** Delete intent collected before editor application. */
-export type LiveMapDeleteWriteOp = Readonly<{
+type LiveMapDeleteWriteOp = Readonly<{
   kind: "delete";
   path: LivePath;
 }>;
 
 /** Endpoint replacement intent collected before editor application. */
-export type LiveMapReplaceWriteOp = Readonly<{
+type LiveMapReplaceWriteOp = Readonly<{
   kind: "replace";
   path: LivePath;
   value: JsonValue;
 }>;
 
 /** Internal mutation intent consumed by the Core commit pipeline. */
-export type LiveMapWriteOp = LiveMapSetWriteOp | LiveMapDeleteWriteOp | LiveMapReplaceWriteOp | LiveMapSpliceWriteOp;
+type LiveMapWriteOp = LiveMapSetWriteOp | LiveMapDeleteWriteOp | LiveMapReplaceWriteOp | LiveMapSpliceWriteOp;
 
 export type LiveMapSortDirection = "asc" | "desc";
 
@@ -443,35 +447,10 @@ export type LiveMapDocumentPath = readonly number[] & Readonly<{
 /** Untrusted caller representation accepted at the live request boundary. */
 export type LiveMapDocumentPathInput = readonly number[];
 
-/** Current live request target; QUID lookup is compatibility-only and epoch-scoped. */
-export type LiveMapDocumentRequestTarget =
-  | Readonly<{ kind: "path"; path: LiveMapDocumentPathInput }>
-  | Readonly<{ kind: "quid"; quid: string }>;
-
-/**
- * Opaque active-epoch capability for one explicitly identified document node.
- *
- * The handle does not expose its canonical QUID. It resolves through the
- * owning map's current sparse overlay and cannot be reconstructed from raw
- * metadata bytes.
- */
-export type LiveMapDocumentIdentityHandle = Readonly<{
-  /** Whether the exact owner epoch still contains this live identity. */
-  readonly active: boolean;
-  /** Resolve the identity's current frozen canonical content path. */
-  path: () => LiveMapDocumentPath | undefined;
-  /** Return a detached clone of the current canonical node. */
-  snap: () => HsonNode | undefined;
-  /** Release this handle without removing canonical QUID metadata. */
-  dispose: () => void;
-}>;
-
-/** Opaque active-epoch capability for one data object or array value. */
-export type LiveMapProjectedIdentityHandle<TValue extends JsonValue = JsonValue> = Readonly<{
-  readonly active: boolean;
-  path: () => LivePath | undefined;
-  snap: () => TValue | undefined;
-  dispose: () => void;
+/** Path-authoritative target accepted at a live document request boundary. */
+export type LiveMapDocumentRequestTarget = Readonly<{
+  kind: "path";
+  path: LiveMapDocumentPathInput;
 }>;
 
 /** Optional same-epoch diagnostic evidence; never a routing address. */
@@ -482,13 +461,6 @@ export type LiveMapDocumentCommitTarget = Readonly<{
   kind: "path";
   path: LiveMapDocumentPath;
   witness?: LiveMapDocumentTargetWitness;
-}>;
-
-/** Projected-path target stored only by canonical identity registration. */
-export type LiveMapProjectedIdentityCommitTarget = Readonly<{
-  kind: "path";
-  path: LivePath;
-  projected: true;
 }>;
 
 /** Existing canonical Hson attribute value model; style remains structured. */
@@ -1787,18 +1759,6 @@ export type LiveMapGraphMoveContentOp = Readonly<{
   to: number;
 }>;
 
-/** Internal-authority registration of one supplied system QUID at a canonical path. */
-export type LiveMapGraphEnsureQuidOp<
-  TTarget extends LiveMapDocumentCommitTarget | LiveMapProjectedIdentityCommitTarget = LiveMapDocumentCommitTarget,
-> = Readonly<{
-  domain: "graph";
-  op: "ensure-quid";
-  target: TTarget;
-  quid: string;
-}>;
-
-export type LiveMapProjectedGraphEnsureQuidOp = LiveMapGraphEnsureQuidOp<LiveMapProjectedIdentityCommitTarget>;
-
 /** Canonical graph-domain operations; distinct from projected JSON writes. */
 export type LiveMapGraphOp =
   | LiveMapGraphReplaceRootOp
@@ -1818,6 +1778,9 @@ export type LiveMapOp<TDomain extends "data" | "graph" = "data"> =
 /** Full shared operation family used by the generic commit envelope. */
 export type LiveMapAnyOp = LiveMapOp<"data" | "graph"> | LiveMapProjectedGraphEnsureQuidOp;
 
+type LiveMapObservedOp = LiveMapAnyOp | LiveMapGraphEnsureQuidOp | LiveMapProjectedGraphEnsureQuidOp;
+type LiveMapObservedGraphOp = LiveMapGraphOp | LiveMapGraphEnsureQuidOp | LiveMapProjectedGraphEnsureQuidOp;
+
 /**
  * Normalized mutation record returned by Core.
  *
@@ -1832,26 +1795,26 @@ export type LiveMapStructuralJsonEnvelope = Readonly<{
   payload: string;
 }>;
 
-type LiveMapCommitFields<TOp extends LiveMapAnyOp> = Readonly<{
+type LiveMapCommitFields<TOp extends LiveMapObservedOp> = Readonly<{
   changed: boolean;
   rev: number;
   prevRev: number;
   ops: readonly TOp[];
 }>;
 
-export type LiveMapCommit<TOp extends LiveMapAnyOp = LiveMapDataOp> = LiveMapCommitFields<TOp> & ([TOp] extends [LiveMapDataOp]
+export type LiveMapCommit<TOp extends LiveMapObservedOp = LiveMapDataOp> = LiveMapCommitFields<TOp> & ([TOp] extends [LiveMapDataOp]
   ? LiveMapStructuralJsonEnvelope
   : Partial<LiveMapStructuralJsonEnvelope>);
 
 /** Existing commit envelope specialized to graph-domain operations. */
-export type LiveMapGraphCommit<TOp extends LiveMapGraphOp | LiveMapProjectedGraphEnsureQuidOp = LiveMapGraphOp> =
+export type LiveMapGraphCommit<TOp extends LiveMapObservedGraphOp = LiveMapObservedGraphOp> =
   LiveMapCommitFields<TOp> & Partial<LiveMapStructuralJsonEnvelope>;
 
 /** Why a canonical commit became visible on one LiveMap instance. */
 export type LiveMapCommitOrigin = "authoritative" | "replay";
 
 /** Shared commit observation event across projected and canonical graph modes. */
-export type LiveMapCommitObservation<TOp extends LiveMapAnyOp = LiveMapAnyOp> =
+export type LiveMapCommitObservation<TOp extends LiveMapObservedOp = LiveMapObservedOp> =
   | Readonly<{
     kind: "commit";
     commit: LiveMapCommit<TOp>;
@@ -1863,11 +1826,11 @@ export type LiveMapCommitObservation<TOp extends LiveMapAnyOp = LiveMapAnyOp> =
     revision: number;
   }>;
 
-export type LiveMapCommitObserver<TOp extends LiveMapAnyOp = LiveMapAnyOp> = (
+export type LiveMapCommitObserver<TOp extends LiveMapObservedOp = LiveMapObservedOp> = (
   observation: LiveMapCommitObservation<TOp>,
 ) => void;
 
-export type LiveMapCommitObserverApi<TOp extends LiveMapAnyOp = LiveMapAnyOp> = Readonly<{
+export type LiveMapCommitObserverApi<TOp extends LiveMapObservedOp = LiveMapObservedOp> = Readonly<{
   observe: (observer: LiveMapCommitObserver<TOp>) => LiveMapDisposer;
 }>;
 
@@ -2088,7 +2051,7 @@ export type HsonSchemaIssueCode =
   | "INVALID_SCHEMA"
   | "TUPLE_INDEX_OUT_OF_RANGE";
 
-export type LiveMapSpliceWriteOp = Readonly<{
+type LiveMapSpliceWriteOp = Readonly<{
   kind: "splice";
   path: LivePath;
   start: number;

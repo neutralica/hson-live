@@ -200,16 +200,16 @@ check("current path requests emit no QUID-only canonical target", () => {
   assert.equal(operation.target.kind, "path");
 });
 
-check("compatibility QUID requests lower before reflection", () => {
+check("path requests remain canonical before reflection", () => {
   const map = element(`<main @${Q1}/>`);
   const binding = hsonReflect(map);
   const events: LiveMapCommitObservation[] = [];
   map.commits.observe((event) => events.push(event));
-  map.document.attrs.set({ kind: "quid", quid: Q1 }, "a", 1);
+  map.document.attrs.set({ kind: "path", path: [0] }, "a", 1);
   const operation = observed_commit(events).ops[0];
   assert.ok(operation !== undefined && operation.op !== "replace-root");
   assert.equal(operation.target.kind, "path");
-  assert.deepEqual(operation.target.witness, { quid: Q1 });
+  assert.equal("witness" in operation.target, false);
   binding.dispose();
 });
 
@@ -260,7 +260,7 @@ check("repeated path-routed attrs do not rescan correspondence", () => {
 check("path-routed QUID evidence is consumed only as correspondence evidence", () => {
   const map = element(`<main @${Q1} <a @${Q2}/>/` + `>`);
   const binding = hsonReflect(map);
-  map.document.attrs.set({ kind: "quid", quid: Q2 }, "evidence", true);
+  map.document.attrs.set({ kind: "path", path: [0, 0, 0] }, "evidence", true);
   assert.equal(binding.diagnostics().identityEffectsConsumed, 1);
   assert.equal(raw_node(binding.tree.node, [0, 0]).$_attrs?.evidence, true);
   binding.dispose();

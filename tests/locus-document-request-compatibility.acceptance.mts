@@ -160,24 +160,20 @@ check("Locus path action publishes a canonical path target", async () => {
   host.dispose();
 });
 
-check("Locus QUID action lowers inside mutation execution", async () => {
+check("Locus rejects a raw-QUID action before mutation execution", () => {
   const map = element(`<main @${Q1}/>`);
-  const host = hson.locus.create({ map, logicalMapId: "quid-action" });
-  const action = readyAction(map, "document.attrs.set", {
+  const resolution = resolve_locus_document_action(map, "document.attrs.set", {
     target: { kind: "quid", quid: Q1 }, name: "id", value: "quid",
-  });
-  await host.mutate((draft) => executeOnDraft(action, draft));
-  assert.deepEqual(operationTarget(host.stream.history.replay_after(0)?.[0]?.ops[0]), {
-    kind: "path", path: [0], witness: { quid: Q1 },
-  });
-  host.dispose();
+  } as never);
+  assert.equal(resolution.kind, "invalid");
+  assert.equal(map.rev, 0);
 });
 
 check("changed Locus history contains no QUID-only target", async () => {
   const map = element(`<main @${Q1}/>`);
   const host = hson.locus.create({ map });
   const action = readyAction(map, "document.attrs.set", {
-    target: { kind: "quid", quid: Q1 }, name: "id", value: "x",
+    target: { kind: "path", path: [0] }, name: "id", value: "x",
   });
   await host.mutate((draft) => executeOnDraft(action, draft));
   const target = operationTarget(host.stream.history.replay_after(0)?.[0]?.ops[0]);
@@ -189,7 +185,7 @@ check("no-op Locus action publishes no canonical commit", async () => {
   const map = element(`<main id="same" @${Q1}/>`);
   const host = hson.locus.create({ map });
   const action = readyAction(map, "document.attrs.set", {
-    target: { kind: "quid", quid: Q1 }, name: "id", value: "same",
+    target: { kind: "path", path: [0] }, name: "id", value: "same",
   });
   const commit = await host.mutate((draft) => executeOnDraft(action, draft));
   assert.equal(commit.changed, false);
@@ -197,52 +193,50 @@ check("no-op Locus action publishes no canonical commit", async () => {
   host.dispose();
 });
 
-check("failed Locus QUID resolution changes no authority state", async () => {
+check("invalid raw-QUID Locus input changes no authority state", () => {
   const map = element(`<main/>`);
-  const host = hson.locus.create({ map });
   const before = map.capture();
-  const action = readyAction(map, "document.attrs.set", {
+  const resolution = resolve_locus_document_action(map, "document.attrs.set", {
     target: { kind: "quid", quid: Q1 }, name: "id", value: "bad",
-  });
-  await assert.rejects(host.mutate((draft) => executeOnDraft(action, draft)));
+  } as never);
+  assert.equal(resolution.kind, "invalid");
   assert.deepEqual(map.capture(), before);
-  host.dispose();
 });
 
-check("failed Locus QUID resolution appends no history", async () => {
+check("invalid raw-QUID Locus input appends no history", () => {
   const map = element(`<main/>`);
   const host = hson.locus.create({ map });
-  const action = readyAction(map, "document.attrs.set", {
+  const resolution = resolve_locus_document_action(map, "document.attrs.set", {
     target: { kind: "quid", quid: Q1 }, name: "id", value: "bad",
-  });
-  await assert.rejects(host.mutate((draft) => executeOnDraft(action, draft)));
+  } as never);
+  assert.equal(resolution.kind, "invalid");
   assert.equal(host.stream.history.debug().retainedCommitCount, 0);
   host.dispose();
 });
 
-check("exclusive FIFO resolves queued QUID request after the preceding move", async () => {
+check("exclusive FIFO keeps queued path authority after a preceding move", async () => {
   const map = element(`<main <a @${Q1}/> <b @${Q2}/>/>`);
   const host = hson.locus.create({ map });
   const move = readyAction(map, "document.content.move", {
     target: { kind: "path", path: [0, 0] }, from: 0, to: 1,
   });
   const set = readyAction(map, "document.attrs.set", {
-    target: { kind: "quid", quid: Q1 }, name: "id", value: "queued",
+    target: { kind: "path", path: [0, 0, 0] }, name: "id", value: "queued",
   });
   const first = host.mutate((draft) => executeOnDraft(move, draft));
   const second = host.mutate((draft) => executeOnDraft(set, draft));
   await first;
   const accepted = await second;
-  assert.deepEqual(targetField(accepted.ops[0], "path"), [0, 0, 1]);
+  assert.deepEqual(targetField(accepted.ops[0], "path"), [0, 0, 0]);
   host.dispose();
 });
 
-check("deduplicated QUID action executes and resolves once", async () => {
+check("deduplicated path action executes once", async () => {
   const map = element(`<main @${Q1}/>`);
   const host = hson.locus.create({ map });
   const dedupe = make_locus_action_dedupe_store(() => map.rev, () => 0);
   const action = readyAction(map, "document.attrs.set", {
-    target: { kind: "quid", quid: Q1 }, name: "id", value: "once",
+    target: { kind: "path", path: [0] }, name: "id", value: "once",
   });
   let release: () => void = () => {};
   const gate = new Promise<void>((resolve) => { release = resolve; });
@@ -252,7 +246,7 @@ check("deduplicated QUID action executes and resolves once", async () => {
     requestId: "same-request",
     ownerPrincipalId: undefined,
     actionName: "document.attrs.set",
-    payload: HsonData.from({ target: { kind: "quid" as const, quid: Q1 }, name: "id", value: "once" }),
+    payload: HsonData.from({ target: { kind: "path" as const, path: [0] }, name: "id", value: "once" }),
     retry: false,
     run: async () => {
       executions += 1;
@@ -277,7 +271,7 @@ check("recovery replay body exposes path-authoritative history", async () => {
   const map = element(`<main @${Q1}/>`);
   const host = hson.locus.create({ map, logicalMapId: "recovery-paths" });
   const action = readyAction(map, "document.attrs.set", {
-    target: { kind: "quid", quid: Q1 }, name: "one", value: "1",
+    target: { kind: "path", path: [0] }, name: "one", value: "1",
   });
   await host.mutate((draft) => executeOnDraft(action, draft));
   const plan = host.recovery.plan({
@@ -295,7 +289,7 @@ check("recovery tail generated after the cut contains path targets", async () =>
   const map = element(`<main @${Q1}/>`);
   const host = hson.locus.create({ map, logicalMapId: "recovery-tail-paths" });
   const first = readyAction(map, "document.attrs.set", {
-    target: { kind: "quid", quid: Q1 }, name: "one", value: "1",
+    target: { kind: "path", path: [0] }, name: "one", value: "1",
   });
   await host.mutate((draft) => executeOnDraft(first, draft));
   const plan = host.recovery.plan({
@@ -305,7 +299,7 @@ check("recovery tail generated after the cut contains path targets", async () =>
   });
   if (plan.outcome === "reject") throw new Error("Unexpected recovery rejection");
   const second = readyAction(map, "document.attrs.set", {
-    target: { kind: "quid", quid: Q1 }, name: "two", value: "2",
+    target: { kind: "path", path: [0] }, name: "two", value: "2",
   });
   await host.mutate((draft) => executeOnDraft(second, draft));
   const completed = plan.complete();
@@ -345,21 +339,21 @@ check("new persistence append stores a path target", async () => {
   const map = element(`<main @${Q1}/>`);
   const host = await create_persistent_locus({ map, persistence: adapter });
   await host.mutate((draft) => draft.document.attrs.set(
-    { kind: "quid", quid: Q1 }, "id", "persisted",
+    { kind: "path", path: [0] }, "id", "persisted",
   ));
   assert.equal(targetField(adapter.appended[0]?.commit.ops[0], "kind"), "path");
   host.dispose();
 });
 
-check("new persistence append retains only an optional witness QUID", async () => {
+check("new persistence append does not synthesize a witness QUID", async () => {
   const adapter = new CapturingPersistenceAdapter();
   const map = element(`<main @${Q1}/>`);
   const host = await create_persistent_locus({ map, persistence: adapter });
   await host.mutate((draft) => draft.document.attrs.set(
-    { kind: "quid", quid: Q1 }, "id", "persisted",
+    { kind: "path", path: [0] }, "id", "persisted",
   ));
   assert.deepEqual(operationTarget(adapter.appended[0]?.commit.ops[0]), {
-    kind: "path", path: [0], witness: { quid: Q1 },
+    kind: "path", path: [0],
   });
   host.dispose();
 });
@@ -368,7 +362,7 @@ check("Unit 5 adds no canonical protocol version field", async () => {
   const map = element(`<main @${Q1}/>`);
   const host = hson.locus.create({ map, logicalMapId: "unchanged-format" });
   const action = readyAction(map, "document.attrs.set", {
-    target: { kind: "quid", quid: Q1 }, name: "id", value: "x",
+    target: { kind: "path", path: [0] }, name: "id", value: "x",
   });
   await host.mutate((draft) => executeOnDraft(action, draft));
   const commit = host.stream.history.replay_after(0)?.[0];

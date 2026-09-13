@@ -117,7 +117,7 @@ Object keys are exact strings. Array path segments must be valid existing indexe
 There is no public raw-node or graph-owner getter. Use `snap(path)` for detached data values, `root()` for a detached canonical graph, and document APIs for document attributes/content. The former `map.debug.node(...)` escape hatch has been removed and has no public raw-node replacement.
 
 Document structural targets use a separate type:
-`{ kind: "path"; path: readonly number[] } | { kind: "quid"; quid: string }`.
+`{ kind: "path"; path: readonly number[] }`.
 Those numbers traverse canonical `$_content`, not data arrays.
 
 ## Reads and revision
@@ -391,17 +391,17 @@ Ordinary element locations also expose `location.attrs` with `get`, `has`, `keys
 
 Element locations also expose `location.flags.has(name)`, `location.flags.set(...names)`, and `location.flags.clear(...names)`. The explicit-target equivalents are `map.document.flags.has(target, name)`, `.set(target, ...names)`, and `.clear(target, ...names)`. A flag exists exactly when the complete canonical attr bag owns the key and its value equals the canonical name. Multi-name writes are atomic, and clear preserves a same-key ordinary value. These operations address by path and do not mint QUIDs.
 
-Document maps expose no public identity-acquisition method. Existing QUIDs may still be inspected through the active-epoch `document.byQuid` compatibility surface, and internal linked continuity facilities may request a canonical path-authoritative claim. Only ordinary elements are eligible for that internal document operation.
+Document maps expose no public identity-acquisition method. Existing QUIDs may still be inspected through the active-epoch `document.byQuid` observation surface, and internal linked continuity facilities may request a canonical path-authoritative claim. Only ordinary elements are eligible for that internal document operation.
 
 Handles follow content moves and insertion shifts and survive attribute changes. Removal or replacement without explicit same-QUID continuity makes them inactive. Changed durable install, durable restore, and replayed root replacement fence the old owner epoch; exact same-epoch capture admission may preserve continuity. Multiple handles may share one QUID. Disposing a handle does not remove metadata or create a commit.
 
-Document identity uses the same owner-epoch issued ledger. Removal or an identity-replacing replacement makes `document.byQuid(q)` absent, and the retired bytes cannot be allocated, replayed, or introduced on another element in that epoch. An explicit replacement that preserves the active QUID retains the repository's established canonical continuity. This prevents stored document raw-QUID request targets from silently retargeting. Raw QUIDs still do not survive owner-epoch replacement as identity claims.
+Document identity uses the same owner-epoch issued ledger. Removal or an identity-replacing replacement makes `document.byQuid(q)` absent, and the retired bytes cannot be allocated, replayed, or introduced on another element in that epoch. An explicit replacement that preserves the active QUID retains the repository's established canonical continuity. Raw QUIDs still do not survive owner-epoch replacement as identity claims.
 
 The linked LiveTree projection also participates in its runtime's lifetime issued ledger. If LiveMap allocation proposes bytes retired by a prior claim in that runtime, Reflection rejects the local reservation and the map-owned allocator retries before canonical publication. This adds no public acquisition or restoration surface.
 
-`document.byQuid`, path-or-QUID active mutation targets, `LiveTree.quid`, `LiveTree.find.byQuid`, and diagnostic QUID output remain active-epoch compatibility surfaces. Raw QUIDs are not application IDs, authorization, durable references, or handle constructors. There is no `fromQuid`, raw setter, public replacement/retirement operation, or user-selected QUID API.
+`document.byQuid`, `LiveTree.quid`, `LiveTree.find.byQuid`, and diagnostic QUID output remain active-epoch observation surfaces. QUIDs are sparse runtime continuity evidence, not application IDs, authorization, durable references, or handle constructors. There is no raw-QUID mutation target, `fromQuid`, raw setter, public replacement/retirement operation, or user-selected QUID API.
 
-`document.attrs` provides `get`, `has`, `keys`, `must.get`, `set`, `drop`, `setMany`, `dropMany`, `clear`, and `replace`. `document.content` is callable for top-level detached content and has `replace`, `insert`, `remove`, and `move`. Mutations accept a path/quid document target and return graph-domain commits. Attrs are one complete canonical bag: `setMany` is an atomic overlay, `replace` is complete replacement, and `clear` removes flag-form members too. Style remains whole canonical attr state manipulated through `attrs`; there is no LiveMap style convenience in this phase.
+`document.attrs` provides `get`, `has`, `keys`, `must.get`, `set`, `drop`, `setMany`, `dropMany`, `clear`, and `replace`. `document.content` is callable for top-level detached content and has `replace`, `insert`, `remove`, and `move`. Mutations accept a canonical path target and return graph-domain commits. Attrs are one complete canonical bag: `setMany` is an atomic overlay, `replace` is complete replacement, and `clear` removes flag-form members too. Style remains whole canonical attr state manipulated through `attrs`; there is no LiveMap style convenience in this phase.
 
 `capture()` remains the durable exact-metadata compatibility form. Explicit capture categories are additive:
 

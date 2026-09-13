@@ -173,7 +173,7 @@ await check("exclusive document mutations preserve typed state and identity", as
     (cause) => cause instanceof LiveMapTransitionError && cause.code === "LIVEMAP_MANAGED_MUTATION_REJECTED",
   );
   const commit = await host.mutate((draft) => draft.document.attrs.setMany(
-    { kind: "quid", quid: "000000001" },
+    { kind: "path", path: [0] },
     { hidden: false, nullable: null, style: { width: { value: 2, unit: "px" } } },
   ));
   assert.equal(commit.rev, 1);

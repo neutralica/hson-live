@@ -1196,16 +1196,11 @@ function document_target_for_library(
   identity: object,
 ): LiveMapDocumentCommitTarget | undefined {
   if (target === undefined) return undefined;
-  if (target.kind === "path") return Object.freeze({
-    kind: "path" as const,
-    path: validate_document_path(target.path),
-  });
-  const location = aggregate.resolveQuid(target.quid);
-  if (location === undefined || location.library !== identity) return undefined;
+  void aggregate;
+  void identity;
   return Object.freeze({
     kind: "path" as const,
-    path: validate_document_path(location.path),
-    witness: Object.freeze({ quid: target.quid }),
+    path: validate_document_path(target.path),
   });
 }
 

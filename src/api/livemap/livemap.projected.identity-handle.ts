@@ -1,10 +1,9 @@
 import type { HsonNode } from "../../core/types.js";
+import type { LiveMapGraphCommit, LivePath } from "../../types/livemap.types.js";
 import type {
-  LiveMapGraphCommit,
   LiveMapProjectedGraphEnsureQuidOp,
   LiveMapProjectedIdentityHandle,
-  LivePath,
-} from "../../types/livemap.types.js";
+} from "./livemap.identity.types.js";
 import type { LiveMapDocumentIdentityEpochController } from "./livemap.document.capture.js";
 import { clone_live_root, resolve_value_node, snap_live_path } from "./livemap.editor.js";
 import { LiveMapProjectedIdentityError } from "./livemap.error.js";

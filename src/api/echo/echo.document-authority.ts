@@ -219,5 +219,9 @@ export function document_action_payload_with_library(
   action: EchoDocumentAction,
   library: string,
 ): JsonValue {
-  return Object.freeze({ library, ...action.payload }) as JsonValue;
+  const target = Object.freeze({
+    kind: "path" as const,
+    path: [...action.payload.target.path],
+  });
+  return Object.freeze({ library, ...action.payload, target }) as JsonValue;
 }

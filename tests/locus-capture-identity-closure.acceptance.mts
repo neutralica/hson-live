@@ -187,7 +187,7 @@ check("bootstrap logical identity is not same-epoch node provenance", () => {
 check("path-authoritative replay survives an identity-free checkpoint", () => {
   const source = element(`<main @${Q1}/>`);
   const checkpoint = source.capture({ identity: "strip" });
-  const commit = source.document.attrs.set({ kind: "quid", quid: Q1 }, "data-tail", "kept");
+  const commit = source.document.attrs.set({ kind: "path", path: [0] }, "data-tail", "kept");
   const mirror = element(`<main/>`);
   mirror.restore(checkpoint, { identity: "strip" });
   mirror.replay(commit);
@@ -197,7 +197,7 @@ check("path-authoritative replay survives an identity-free checkpoint", () => {
 check("path replay does not recreate stripped identity", () => {
   const source = element(`<main @${Q1}/>`);
   const checkpoint = source.capture({ identity: "strip" });
-  const commit = source.document.attrs.set({ kind: "quid", quid: Q1 }, "data-tail", "kept");
+  const commit = source.document.attrs.set({ kind: "path", path: [0] }, "data-tail", "kept");
   const mirror = element(`<main/>`);
   mirror.restore(checkpoint, { identity: "strip" });
   mirror.replay(commit);
@@ -223,7 +223,7 @@ check("valid same-epoch restore retains an exact reflected node", () => {
   const binding = _reflect_document_for_runtime_test(_create_livetree_runtime_test_handle(), map);
   const child = raw_node(binding.tree.node, [0, 0]);
   const capability = map.capture({ identity: "same-epoch" });
-  map.document.attrs.set({ kind: "quid", quid: Q2 }, "data-v", 1);
+  map.document.attrs.set({ kind: "path", path: [0, 0, 0] }, "data-v", 1);
   map.restore(capability, { identity: "same-epoch" });
   assert.equal(raw_node(binding.tree.node, [0, 0]), child);
   binding.dispose();

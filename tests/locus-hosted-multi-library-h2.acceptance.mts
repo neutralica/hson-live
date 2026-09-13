@@ -65,6 +65,19 @@ function document(draft: LocusHostedAggregateDraft, name: string): LocusHostedAg
   return library;
 }
 
+if (false) {
+  const publicDraft = undefined as unknown as LocusHostedAggregateDraft;
+  // @ts-expect-error Application mutation drafts cannot manually demand QUID identity.
+  data(publicDraft, "state").at(["box"]).ensureQuid(QUID);
+  document(publicDraft, "page").graph({
+    domain: "graph",
+    // @ts-expect-error Application document drafts cannot submit identity-registration operations.
+    op: "ensure-quid",
+    target: { kind: "path", path: validate_document_path([0]) },
+    quid: QUID,
+  });
+}
+
 function data_library(libraries: LiveMapLibraries, name: string) {
   const library = libraries.lib(name);
   if (!("snap" in library)) throw new Error(`Expected data Library ${name}`);
@@ -241,17 +254,24 @@ await check("page Reflect receives structural work once while unrelated data onl
   server.dispose();
 });
 
-await check("QUID collisions and oversized live envelopes reject before aggregate acceptance", async () => {
+await check("internally issued QUID collisions and oversized live envelopes reject before aggregate acceptance", async () => {
   const map = make_map();
+  const authority = internal_livemap_aggregate_authority(map);
+  const stateIdentity = authority.libraries()[0];
+  if (stateIdentity === undefined) throw new Error("Expected state Library identity");
+  authority.commit([Object.freeze({
+    target: authority.target(stateIdentity, ["box"]),
+    kind: "ensure-quid" as const,
+    quid: QUID,
+  })]);
   const server = create_locus_hosted_aggregate_internal({ map, maxWireBytes: 512 });
-  const before = internal_livemap_aggregate_authority(map).captureHosted();
+  const before = authority.captureHosted();
   await assert.rejects(() => server.mutate((draft) => {
-    data(draft, "state").at(["box"]).ensureQuid(QUID);
     document(draft, "page").graph(insert_item(QUID));
   }), /collision/i);
-  assert.deepEqual(internal_livemap_aggregate_authority(map).captureHosted(), before);
+  assert.deepEqual(authority.captureHosted(), before);
   await assert.rejects(() => server.mutate((draft) => data(draft, "state").at(["theme"]).set("dark")), /byte limit/i);
-  assert.deepEqual(internal_livemap_aggregate_authority(map).captureHosted(), before);
+  assert.deepEqual(authority.captureHosted(), before);
   server.dispose();
 });
 

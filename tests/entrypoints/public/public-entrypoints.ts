@@ -282,13 +282,16 @@ import {
   make_livemap_core,
   type LiveMap,
   type LiveMapCommit,
-  type LiveMapDocumentIdentityHandle,
   type DocumentLiveMap,
   type LiveMapPathHandle,
   type LivePath,
   type ProjectedValueAdmissionCode,
   type ProjectedValuePath,
 } from "hson-live/livemap";
+// @ts-expect-error Document identity handles are package-internal continuity machinery.
+import type { LiveMapDocumentIdentityHandle } from "hson-live/livemap";
+// @ts-expect-error Identity registration operations are not public root mutation types.
+import type { LiveMapGraphEnsureQuidOp } from "hson-live";
 void [
   activate_interactions, add_interaction, enable_interactions, remove_interaction, replace_interaction,
 ];
@@ -946,9 +949,11 @@ void removedNarrowHsonNumber;
 declare const rootHsonCanonical: RootHsonCanonical;
 void rootHsonCanonical;
 
-type PublicTypes = LiveTreeLifecycleResult | LiveMapCommit | LiveMapPathHandle | LiveMapDocumentIdentityHandle;
+type PublicTypes = LiveTreeLifecycleResult | LiveMapCommit | LiveMapPathHandle;
 declare const publicTypes: PublicTypes;
 void publicTypes;
+void (0 as unknown as LiveMapDocumentIdentityHandle);
+void (0 as unknown as LiveMapGraphEnsureQuidOp);
 
 declare const pathHandle: LiveMapPathHandle;
 // @ts-expect-error LiveMap path handles have no public QUID identity.

@@ -46,10 +46,10 @@ import type {
   LiveMapDocumentRequestTarget,
   LiveMapGraphCommit,
   LiveMapGraphOp,
-  LiveMapProjectedGraphEnsureQuidOp,
   LiveMapRootMode,
   LivePath,
 } from "../../types/livemap.types.js";
+import type { LiveMapProjectedGraphEnsureQuidOp } from "../livemap/livemap.identity.types.js";
 import type {
   LocusDecodedServerCanonicalCommitMessage,
   LocusDecodedServerMessage,
@@ -248,9 +248,6 @@ function decode_document_target(value: unknown): LiveMapDocumentRequestTarget | 
     } catch {
       return undefined;
     }
-  }
-  if (value.kind === "quid" && has_exact_keys(value, ["kind", "quid"]) && is_persisted_quid(value.quid)) {
-    return Object.freeze({ kind: "quid", quid: value.quid });
   }
   return undefined;
 }

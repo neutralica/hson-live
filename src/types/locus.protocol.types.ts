@@ -13,7 +13,6 @@ import type {
   LiveMapDocumentCommitTarget,
   LiveMapDocumentRequestTarget,
   LiveMapGraphOp,
-  LiveMapProjectedGraphEnsureQuidOp,
   LiveMapAnyOp,
   LiveMapCommit,
   LiveMapAuthority,
@@ -27,6 +26,7 @@ import type {
   LiveMapOp,
   LiveMapStructuralJsonEnvelope,
 } from "./livemap.types.js";
+import type { LiveMapProjectedGraphEnsureQuidOp } from "../api/livemap/livemap.identity.types.js";
 import type { JsonValue } from "../core/types.js";
 import type { HsonData } from "../api/data/hson-data.js";
 import type { HsonSchema } from "../api/transform/transform.types.js";

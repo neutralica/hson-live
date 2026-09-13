@@ -29,7 +29,6 @@ import type {
   LiveMapDocumentRequestTarget,
   LiveMapGraphCommit,
   LiveMapGraphInsertContentOp,
-  LiveMapGraphEnsureQuidOp,
   LiveMapGraphMoveContentOp,
   LiveMapGraphOp,
   LiveMapGraphRemoveAttrOp,
@@ -38,6 +37,7 @@ import type {
   LiveMapGraphReplaceContentOp,
   LiveMapGraphSetAttrOp,
 } from "../../types/livemap.types.js";
+import type { LiveMapGraphEnsureQuidOp } from "./livemap.identity.types.js";
 import { LiveMapDocumentMutationError } from "./livemap.error.js";
 import { clone_live_root } from "./livemap.editor.js";
 import {
@@ -710,26 +710,6 @@ export function prepare_document_graph_operation(
   overlay: LiveMapDocumentIdentityOverlay = build_livemap_document_identity_overlay(root, mode),
 ): PreparedDocumentMutation {
   return prepare_graph_operation(root, mode, overlay, input, "commit");
-}
-
-/**
- * Transitional decoder for pre-Unit-1 graph operations whose sole target is a
- * QUID. Successful planning returns the canonical path target plus witness.
- */
-export function prepare_legacy_quid_target_graph_operation(
-  root: HsonNode,
-  mode: DocumentLiveMapMode,
-  input: unknown,
-  overlay: LiveMapDocumentIdentityOverlay = build_livemap_document_identity_overlay(root, mode),
-): PreparedDocumentMutation {
-  if (!is_plain_record(input) || !is_plain_record(input.target) || input.target.kind !== "quid") {
-    throw mutation_error(
-      "INVALID_DOCUMENT_COMMIT_TARGET",
-      "replace-content",
-      "legacy compatibility accepts only an explicit QUID request target",
-    );
-  }
-  return prepare_graph_operation(root, mode, overlay, input, "request");
 }
 
 function prepare_graph_operation(

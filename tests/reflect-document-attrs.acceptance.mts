@@ -124,7 +124,7 @@ check("initial binding owns a detached graph and indexes raw canonical paths", (
   binding.dispose();
 });
 
-check("canonical attrs project by raw path and QUID into graph and mounted DOM", () => {
+check("canonical attrs project by path into graph and mounted DOM", () => {
   const map = element(`<main id="root" @000000303 <section @000000304 <span/>/>/>`);
   const binding = hsonReflect(map);
   const mainTree = document_element_tree(binding);
@@ -135,7 +135,7 @@ check("canonical attrs project by raw path and QUID into graph and mounted DOM",
   const spanDom = mount(spanNode);
 
   map.document.attrs.set(path(), "count", 0);
-  map.document.attrs.set({ kind: "quid", quid: "000000304" }, "hidden", false);
+  map.document.attrs.set(path(0, 0), "hidden", false);
   map.document.attrs.replace(path(0, 0, 0, 0), { empty: "", nullable: null, enabled: true });
   assert.equal(mainTree.attrs.get("count"), 0);
   assert.equal(rootDom.getAttribute("count"), "0");

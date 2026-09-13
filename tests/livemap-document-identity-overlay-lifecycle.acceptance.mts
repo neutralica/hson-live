@@ -197,10 +197,10 @@ check("malformed candidate failure preserves root revision overlay and publicati
   assert.deepEqual(events, []);
 });
 
-check("failed QUID request performs no candidate overlay build", () => {
+check("rejected raw-QUID request performs no candidate overlay build", () => {
   const target = element(`<main @${Q1}/>`);
   const before = livemap_document_identity_overlay_build_count();
-  assert.throws(() => target.document.attrs.set({ kind: "quid", quid: Q2 }, "id", "bad"));
+  assert.throws(() => target.document.attrs.set({ kind: "quid", quid: Q2 } as never, "id", "bad"));
   assert.equal(livemap_document_identity_overlay_build_count(), before);
   assert.equal(target.rev, 0);
 });

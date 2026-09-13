@@ -196,7 +196,7 @@ ordinal i -> graph after ordinals 0..i-1
 
 Paths and content indexes are interpreted at their own ordinal. They are never silently rebased against `prevRev`.
 
-Live calls accept `LiveMapDocumentRequestTarget` (`path` or compatibility `quid`). Stored graph operations use only `LiveMapDocumentCommitTarget` (`path` plus an optional non-routing QUID witness). QUID requests are resolved and lowered synchronously before commit construction. A witness can detect an active different QUID at the routed endpoint but cannot route, repair an invalid path, or prove epoch provenance.
+Live calls accept path-only `LiveMapDocumentRequestTarget` values. Stored graph operations use `LiveMapDocumentCommitTarget` (path plus an optional non-routing QUID witness). A witness can detect an active different QUID at the routed endpoint but cannot route, repair an invalid path, or prove epoch provenance. Raw-QUID request targeting is rejected.
 
 ### Document operation matrix
 
@@ -232,9 +232,9 @@ established graph discriminants, path target, and recorded scalar value without
 changing the envelope version. Replay validates the recorded value and never
 allocates.
 
-Identity acquisition accepts a path-only target even though active ordinary
-document mutations retain path-or-QUID request compatibility. This fence keeps
-raw QUID bytes from becoming handle constructors. Ineligible primitives and
+Identity acquisition is package-internal and accepts a path-only target, as do
+ordinary document mutations. This fence keeps raw QUID bytes from becoming
+mutation addresses or handle constructors. Ineligible primitives and
 structural carriers, malformed paths, and graph/overlay disagreement reject
 before publication. Data eligibility is restricted to the semantic
 `_hson_obj` or `_hson_arr` reached by the supplied user path; property and

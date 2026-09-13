@@ -20,7 +20,6 @@ import {
 } from "./livemap.document.install.js";
 import {
   prepare_document_graph_operation,
-  prepare_legacy_quid_target_graph_operation,
 } from "./livemap.document.mutation.js";
 import {
   livemap_document_identity_quids,
@@ -95,9 +94,7 @@ export function replay_livemap_document_commit(
 
     let prepared;
     try {
-      prepared = is_legacy_quid_target_operation(rawOperation)
-        ? prepare_legacy_quid_target_graph_operation(root, controller.mode, rawOperation, overlay)
-        : prepare_document_graph_operation(root, controller.mode, rawOperation, overlay);
+      prepared = prepare_document_graph_operation(root, controller.mode, rawOperation, overlay);
     } catch (cause) {
       if (cause instanceof LiveMapDocumentMutationError) {
         throw new LiveMapDocumentStagingError(index, cause);
@@ -137,7 +134,7 @@ export function replay_livemap_document_commit(
   if (operations.length === 0) {
     throw new LiveMapReplayInputError("graph commit contains no operations", undefined, "EMPTY_GRAPH_COMMIT");
   }
-  const commit: LiveMapGraphCommit = Object.freeze({
+  const commit: LiveMapGraphCommit<LiveMapGraphOp> = Object.freeze({
     changed: true,
     prevRev: envelope.prevRev,
     rev: envelope.rev,
@@ -155,11 +152,6 @@ export function replay_livemap_document_commit(
   } finally {
     reservation?.release();
   }
-}
-
-function is_legacy_quid_target_operation(input: unknown): boolean {
-  if (!is_plain_record(input) || input.op === "replace-root" || !is_plain_record(input.target)) return false;
-  return input.target.kind === "quid";
 }
 
 function must_graph_commit_envelope(input: unknown): LiveMapGraphCommit {

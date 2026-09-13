@@ -181,9 +181,9 @@ check("named document QUID lookup remains library-local while active QUIDs remai
   const modal = map.lib("modal");
   assert.equal(page.document.byQuid(Q1)?.$_tag, "main");
   assert.equal(modal.document.byQuid(Q1), undefined);
-  const commit = page.document.attrs.set({ kind: "quid", quid: Q1 }, "title", "raw-route");
+  const commit = page.document.attrs.set({ kind: "path", path: [0] }, "title", "path-route");
   assert.deepEqual(commit.operations.map((entry) => entry.library), ["page"]);
-  assert.equal(page.at([]).attrs.get("title"), "raw-route");
+  assert.equal(page.at([]).attrs.get("title"), "path-route");
   assert.equal(modal.at([]).attrs.get("title"), undefined);
   assert.throws(() => hsonLiveMap.fromLibraries({
     page: { document: `<main @${Q1}/>`, schema: PageSchema },

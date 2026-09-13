@@ -60,13 +60,14 @@ export type LocusHostedAggregateDataDraft = Readonly<{
     set: (value: JsonValue) => void;
     replace: (value: JsonValue) => void;
     delete: () => void;
-    ensureQuid: (quid: string) => void;
   }>;
 }>;
 
+type LocusHostedAggregateDocumentGraphMutation = Exclude<LiveMapGraphOp, Readonly<{ op: "ensure-quid" }>>;
+
 export type LocusHostedAggregateDocumentDraft = Readonly<{
   /** The selected library is separate from the document-local graph target. */
-  graph: (operation: LiveMapGraphOp) => void;
+  graph: (operation: LocusHostedAggregateDocumentGraphMutation) => void;
   attrs: Readonly<{
     set: (target: LiveMapDocumentCommitTarget, name: string, value: LiveMapDocumentAttributeValue) => void;
     drop: (target: LiveMapDocumentCommitTarget, name: string) => void;
@@ -444,10 +445,6 @@ function make_managed_aggregate_draft(
           delete() {
             assert_open();
             writes.push(Object.freeze({ target, kind: "delete" }));
-          },
-          ensureQuid(quid) {
-            assert_open();
-            writes.push(Object.freeze({ target, kind: "ensure-quid", quid }));
           },
         });
       },

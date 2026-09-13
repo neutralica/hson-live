@@ -263,9 +263,7 @@ export class LiveMapDocumentAttributeNotFoundError extends LiveMapDocumentMutati
 }
 
 function clone_document_target(target: LiveMapDocumentRequestTarget): LiveMapDocumentRequestTarget {
-  return target.kind === "path"
-    ? Object.freeze({ kind: "path", path: Object.freeze([...target.path]) })
-    : Object.freeze({ kind: "quid", quid: target.quid });
+  return Object.freeze({ kind: "path", path: Object.freeze([...target.path]) });
 }
 
 export class LiveMapReplayError extends Error {
