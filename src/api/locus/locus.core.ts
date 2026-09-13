@@ -279,7 +279,7 @@ function create_locus_for_map<
   const sessions = make_locus_session_manager(options.sessions);
   const retainedSessions = new Set<LocusSessionId>();
   const retainedSessionReleases = new Map<LocusSessionId, LocusDisposer>();
-  const stopSessionActivity = sessions.on_change((event) => {
+  const stopSessionActivity = sessions.onChange((event) => {
     if (event.kind === "attached" && !retainedSessions.has(event.session.sessionId)) {
       retainedSessions.add(event.session.sessionId);
       retainedSessionReleases.set(event.session.sessionId, activity.acquire("session"));
@@ -445,7 +445,7 @@ function create_locus_for_map<
       details: () => {
         const rev = stream.headRev;
         const commits = rev > previousRev
-          ? stream.history.replay_after(previousRev, rev)
+          ? stream.history.replayAfter(previousRev, rev)
           : [];
         const operationKinds = commits?.flatMap((commit) => commit.ops.map((operation) =>
           "domain" in operation ? operation.op : operation.kind));
@@ -562,7 +562,7 @@ function create_locus_for_map<
   async function dispatch_action_scoped_internal(
     message: LocusClientActionMessage<TActions>,
     origin: LocusActionOrigin,
-    emitEvent: LocusActionContext<TMap>["emit_event"],
+    emitEvent: LocusActionContext<TMap>["emitEvent"],
     trace?: LiveTraceContext,
   ): Promise<LocusServerMessage> {
     const causation = action_causation(message, origin, trace);
@@ -642,7 +642,7 @@ function create_locus_for_map<
   async function dispatch_action_scoped(
     message: LocusClientActionMessage<TActions>,
     origin: LocusActionOrigin,
-    emitEvent: LocusActionContext<TMap>["emit_event"],
+    emitEvent: LocusActionContext<TMap>["emitEvent"],
     trace?: LiveTraceContext,
   ): Promise<LocusServerMessage> {
     const release = activity.acquire("action");
@@ -653,7 +653,7 @@ function create_locus_for_map<
     }
   }
 
-  function dispatch_action(message: LocusClientActionMessage<TActions>): Promise<LocusServerMessage> {
+  function dispatchAction(message: LocusClientActionMessage<TActions>): Promise<LocusServerMessage> {
     if (exclusiveAuthority.failed) {
       return Promise.reject(new LocusAuthorityError(
         "LOCUS_AUTHORITY_TERMINAL",
@@ -667,7 +667,7 @@ function create_locus_for_map<
   function inert_connection(): LocusConnection {
     const disconnect = () => { };
     return Object.assign(disconnect, {
-      emit_event(_event: string, _payload: JsonValue): void { },
+      emitEvent(_event: string, _payload: JsonValue): void { },
     });
   }
 
@@ -1130,7 +1130,7 @@ function create_locus_for_map<
           if (item.kind === "snapshot") send_recovery({ type: "recovery-snapshot", id: message.id, snapshot: item.snapshot }, message.id);
           else send_recovery({ type: "recovery-commit", id: message.id, phase: "body", commit: item.commit }, message.id);
         });
-        stopLive = stream.on_commit((commit) => {
+        stopLive = stream.onCommit((commit) => {
           if (!channelActive || !authoritative()) return;
           if (!liveReady) pendingLive.push(commit);
           else send_without_record({ type: "commit", id: message.id, commit });
@@ -1343,7 +1343,7 @@ function create_locus_for_map<
     }
     const disconnect = () => attachment.close();
     return Object.assign(disconnect, {
-      emit_event(event: string, payload: JsonValue): void { attachment.emit_event(event, payload); },
+      emitEvent(event: string, payload: JsonValue): void { attachment.emit_event(event, payload); },
     });
   }
 
@@ -1368,11 +1368,11 @@ function create_locus_for_map<
     stream,
     activity: activity.public,
     recovery,
-    sessions: Object.freeze({ debug: sessions.debug, on_change: sessions.on_change, dispose: sessions.dispose }),
+    sessions: Object.freeze({ debug: sessions.debug, onChange: sessions.onChange, dispose: sessions.dispose }),
     actionRequests: Object.freeze({ debug: actionRequests.debug, dispose: actionRequests.dispose }),
     get seq() { return seq; },
     schema: options.schema,
-    dispatch_action,
+    dispatchAction,
     connect,
     dispose,
     mutate: async (mutation: (draft: LocusMutationDraft<TMap>) => LiveMapCommit<LiveMapAnyOp>) => {

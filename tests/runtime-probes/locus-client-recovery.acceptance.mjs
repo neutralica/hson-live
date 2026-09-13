@@ -574,7 +574,7 @@ await check("valid duplicate is ignored after full decode", async () => {
   await client.recovery.recover();
   const base = client.recovery.lastAppliedRev;
   await host.mutate((draft) => draft.set(["value"], 1));
-  const commit = host.stream.history.replay_after(base, base + 1)[0];
+  const commit = host.stream.history.replayAfter(base, base + 1)[0];
   const recoverRequest = pair.clientSent.map(JSON.parse).find((message) => message.type === "recover");
   pair.push_server({ type: "commit", id: recoverRequest.id, commit });
   assert.equal(client.recovery.lastAppliedRev, base + 1);

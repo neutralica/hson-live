@@ -156,7 +156,7 @@ check("Locus path action publishes a canonical path target", async () => {
     target: { kind: "path", path: [0] }, name: "id", value: "path",
   });
   await host.mutate((draft) => executeOnDraft(action, draft));
-  assert.deepEqual(operationTarget(host.stream.history.replay_after(0)?.[0]?.ops[0]), { kind: "path", path: [0] });
+  assert.deepEqual(operationTarget(host.stream.history.replayAfter(0)?.[0]?.ops[0]), { kind: "path", path: [0] });
   host.dispose();
 });
 
@@ -176,7 +176,7 @@ check("changed Locus history contains no QUID-only target", async () => {
     target: { kind: "path", path: [0] }, name: "id", value: "x",
   });
   await host.mutate((draft) => executeOnDraft(action, draft));
-  const target = operationTarget(host.stream.history.replay_after(0)?.[0]?.ops[0]);
+  const target = operationTarget(host.stream.history.replayAfter(0)?.[0]?.ops[0]);
   assert.equal(field(target, "kind"), "path");
   host.dispose();
 });
@@ -365,7 +365,7 @@ check("Unit 5 adds no canonical protocol version field", async () => {
     target: { kind: "path", path: [0] }, name: "id", value: "x",
   });
   await host.mutate((draft) => executeOnDraft(action, draft));
-  const commit = host.stream.history.replay_after(0)?.[0];
+  const commit = host.stream.history.replayAfter(0)?.[0];
   assert.deepEqual(Object.keys(commit ?? {}).sort(), [
     "incarnationId", "logicalMapId", "mode", "ops", "prevRev", "rev",
   ]);

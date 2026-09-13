@@ -101,9 +101,9 @@ export type LocusRecoveryOptions = Readonly<{
 
 /** Deterministic planning barriers for race-focused tests and diagnostics. */
 export type LocusRecoveryHooks = Readonly<{
-  before_cut?: () => void;
-  during_snapshot_capture?: () => void;
-  after_cut?: (headRev: number) => void;
+  beforeCut?: () => void;
+  duringSnapshotCapture?: () => void;
+  afterCut?: (headRev: number) => void;
 }>;
 
 export type LocusRecoveryRuntimeErrorCode =
@@ -204,7 +204,7 @@ export type LocusActionContext<
   ) => Promise<LiveMapCommit<LiveMapAnyOp>>;
   seq: LocusSeq;
   origin: LocusActionOrigin;
-  emit_event: (event: string, payload: JsonValue) => boolean;
+  emitEvent: (event: string, payload: JsonValue) => boolean;
 }>;
 
 type LocusDataMutationDraft<TMap extends LiveMapAuthority> = Omit<
@@ -540,7 +540,7 @@ export type LocusSessionLifecycleEvent =
 
 export type LocusSessionInspector = Readonly<{
   debug: () => LocusSessionDiagnostics;
-  on_change: (listener: (event: LocusSessionLifecycleEvent) => void) => LocusDisposer;
+  onChange: (listener: (event: LocusSessionLifecycleEvent) => void) => LocusDisposer;
   dispose: LocusDisposer;
 }>;
 
@@ -563,7 +563,7 @@ export type EchoActionPromise<
 export type LocusEventListener = (message: LocusServerEventMessage) => void;
 
 export type LocusConnection = LocusDisposer & Readonly<{
-  emit_event: (event: string, payload: JsonValue) => void;
+  emitEvent: (event: string, payload: JsonValue) => void;
 }>;
 
 export type EchoActionFn<
@@ -745,7 +745,7 @@ export type Locus<
   mutate: (
     mutation: (draft: LocusMutationDraft<TMap>) => LiveMapCommit<LiveMapAnyOp>,
   ) => Promise<LiveMapCommit<LiveMapAnyOp>>;
-  dispatch_action: (message: LocusClientActionMessage<TActions>) => Promise<LocusServerMessage>;
+  dispatchAction: (message: LocusClientActionMessage<TActions>) => Promise<LocusServerMessage>;
   connect: (socket: LocusSocketLike, context?: LocusConnectionContext) => LocusConnection;
   dispose: LocusDisposer;
 }>;
@@ -814,5 +814,5 @@ export type LocusActivitySnapshot = Readonly<{
 
 export type LocusActivity = Readonly<{
   snapshot(): LocusActivitySnapshot;
-  on_change(listener: (snapshot: LocusActivitySnapshot) => void): LocusDisposer;
+  onChange(listener: (snapshot: LocusActivitySnapshot) => void): LocusDisposer;
 }>;

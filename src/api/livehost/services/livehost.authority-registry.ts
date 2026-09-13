@@ -231,7 +231,7 @@ export function create_livehost_locus_registry_internal<
       lastUsedAt: now(),
       stopActivity: () => {},
     };
-    entry.stopActivity = authority.activity.on_change((snapshot) => update_idle(key, entry, snapshot));
+    entry.stopActivity = authority.activity.onChange((snapshot) => update_idle(key, entry, snapshot));
     update_idle(key, entry);
     return entry;
   }
@@ -358,7 +358,7 @@ export function create_livehost_locus_registry_internal<
       } catch (cause) {
         current.state = "ready";
         current.generation += 1;
-        current.stopActivity = current.authority.activity.on_change((snapshot) => update_idle(key, current, snapshot));
+        current.stopActivity = current.authority.activity.onChange((snapshot) => update_idle(key, current, snapshot));
         update_idle(key, current);
         const error = Object.freeze({
           code: "LIVEHOST_LOCUS_EVICTION_FAILED",

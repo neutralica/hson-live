@@ -444,7 +444,7 @@ check("commits after HTTP cut replay exactly once", async () => {
 check("duplicate revision delivery after bootstrap recovery is ignored", async () => {
   const { authority, bootstrap } = fixture();
   await authority.mutate((draft) => draft.set(["value"], 2));
-  const commit = authority.stream.history.replay_after(0)?.[0];
+  const commit = authority.stream.history.replayAfter(0)?.[0];
   assert.ok(commit);
   const pair = socket_pair();
   authority.connect(pair.server);
@@ -473,7 +473,7 @@ check("revision gap after bootstrap recovery fails through the existing client p
   });
   await other.mutate((draft) => draft.set(["value"], 2));
   await other.mutate((draft) => draft.set(["value"], 3));
-  const gap = other.stream.history.replay_after(1)?.[0];
+  const gap = other.stream.history.replayAfter(1)?.[0];
   assert.ok(gap);
   pair.server.send(JSON.stringify({ type: "commit", id: request.id, commit: gap }));
   assert.equal(client.echo.recovery.status, "failed");

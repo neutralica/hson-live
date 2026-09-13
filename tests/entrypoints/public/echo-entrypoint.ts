@@ -125,7 +125,7 @@ echo.retry_action({ requestId: "request", name: "action" });
 // @ts-expect-error Removed snake_case endpoint method has no alias.
 void echo.action_status("request");
 // @ts-expect-error Removed snake_case recovery method has no alias.
-echo.recovery.on_change(() => {});
+echo.recovery.onChange(() => {});
 
 void create_echo;
 void create_locus_bootstrap_echo;

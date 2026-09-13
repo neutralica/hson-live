@@ -104,13 +104,13 @@ run_case("immediately-after-the-fixed-cut-belongs-only-to-the-tail", "immediatel
   const plan = host.recovery.plan(
     { logicalMapId: host.stream.logicalMapId },
     {
-      before_cut: () => {
+      beforeCut: () => {
         host.map.set(["value"], 1);
       },
-      during_snapshot_capture: () => {
+      duringSnapshotCapture: () => {
         host.map.set(["value"], 2);
       },
-      after_cut: () => {
+      afterCut: () => {
         host.map.set(["value"], 3);
       },
     },
@@ -191,7 +191,7 @@ run_case("incomplete-history-falls-back-to-snapshot-patch-1-coverage-remains-exa
   const baseRev = host.stream.headRev;
   host.map.set(["value"], 1);
   host.map.set(["value"], 2);
-  assert.equal(host.stream.history.can_replay(baseRev, host.stream.headRev), false);
+  assert.equal(host.stream.history.canReplay(baseRev, host.stream.headRev), false);
 
   const plan = host.recovery.plan(request_for(host, baseRev));
   assert.equal(plan.outcome, "snapshot");
@@ -236,7 +236,7 @@ run_case("explicit-disposal-releases-the-subscription-and-all-queued-state", "Ex
   const host = recovery_host({ state: { value: 0 } });
   const cut = host.stream.headRev;
   const plan = host.recovery.plan(request_for(host, cut), {
-    after_cut: () => host.map.set(["value"], 1),
+    afterCut: () => host.map.set(["value"], 1),
   });
   assert.equal(plan.outcome, "current");
   assert.equal(plan.debug().queuedTailCommits, 1);
@@ -258,7 +258,7 @@ run_case("the-byte-bound-is-enforced-independently-of-the-commit-count-bound", "
   });
   expect_recovery_error(() => {
     host.recovery.plan(request_for(host), {
-      after_cut: () => host.map.set(["value"], 1),
+      afterCut: () => host.map.set(["value"], 1),
     });
   }, "LOCUS_RECOVERY_TAIL_OVERFLOW");
   assert.equal(host.recovery.debug().activeAttemptCount, 0);
@@ -272,7 +272,7 @@ run_case("later-attempt-or-patch-1-canonical-history", "later attempt or Patch 1
   expect_recovery_error(() => {
     host.recovery.plan(
       { logicalMapId: host.stream.logicalMapId },
-      { during_snapshot_capture: () => { throw new Error("capture barrier failed"); } },
+      { duringSnapshotCapture: () => { throw new Error("capture barrier failed"); } },
     );
   }, "LOCUS_RECOVERY_SNAPSHOT_FAILED");
   assert.equal(host.recovery.debug().activeAttemptCount, 0);
@@ -286,7 +286,7 @@ run_case("later-attempt-or-patch-1-canonical-history", "later attempt or Patch 1
   }, "LOCUS_RECOVERY_OBSERVER_FAILED");
   assert.equal(host.recovery.debug().activeAttemptCount, 0);
 
-  assert.equal(host.stream.history.can_replay(baseRev, host.stream.headRev), true);
+  assert.equal(host.stream.history.canReplay(baseRev, host.stream.headRev), true);
   const later = host.recovery.plan(request_for(host, baseRev));
   assert.equal(later.outcome, "replay");
   later.complete();

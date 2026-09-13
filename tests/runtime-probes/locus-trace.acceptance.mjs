@@ -134,7 +134,7 @@ async function run_success(trace) {
     request: action.request,
     state: f.host.map.snap(),
     rev: f.host.map.rev,
-    history: f.host.stream.history.replay_after(0, f.host.stream.headRev),
+    history: f.host.stream.history.replayAfter(0, f.host.stream.headRev),
   };
 }
 
@@ -254,7 +254,7 @@ await check("unchanged action stays in its action trace without a fake commit", 
 await check("publication failure retains action causation and emits one aggregate failure", async () => {
   const collector = create_live_trace_collector({ capacity: 64 });
   const f = await fixture(collector);
-  f.host.stream.on_commit(() => { throw new Error("observer-secret"); });
+  f.host.stream.onCommit(() => { throw new Error("observer-secret"); });
   const result = await f.client.action("update", { value: 4, secret: "publication-secret" });
   assert.equal(result.type, "ack");
   const publications = collector.events().filter((event) => event.phase === "commit.publication");

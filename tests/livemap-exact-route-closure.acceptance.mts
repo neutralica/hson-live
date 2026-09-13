@@ -161,7 +161,7 @@ check("carrier-native commits remain authoritative and mocks do not define them"
 });
 check("Locus canonical commit payloads decode to the committed carrier", () => {
   const valueMap = map(object([["value", object([])]])); const stream = make_locus_canonical_stream(valueMap, { logicalMapId: "unit-f", incarnationId: "closure" });
-  let payload: string | undefined; stream.on_commit((commit) => { payload = commit.payload; }); capability(valueMap).commit([{ kind: "replace", path: ["value"], value: ordered }]);
+  let payload: string | undefined; stream.onCommit((commit) => { payload = commit.payload; }); capability(valueMap).commit([{ kind: "replace", path: ["value"], value: ordered }]);
   assert.equal(typeof payload, "string");
   const operations = decode_livemap_replay_payload(payload!);
   assert.deepEqual(keys(operations[0]?.next), ["10", "2", "1", "tail"]);

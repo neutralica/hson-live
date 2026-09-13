@@ -341,6 +341,7 @@ import {
   LocusAuthorityError,
   hsonLocus as hostSubpath,
   type Locus,
+  type LocusConnection,
   type LocusClientId,
   type LocusClientMessage,
   type LocusAuthorityErrorCode,
@@ -352,10 +353,22 @@ void (0 as unknown as LocusClientId);
 void (0 as unknown as LocusClientMessage);
 declare const multiLocus: LocusMultiLibrary;
 declare const multiActionContext: LocusMultiLibraryActionContext;
+declare const soloLocus: Locus;
+declare const soloConnection: LocusConnection;
+declare const librariesConnection: LocusConnection;
+void soloLocus.dispatchAction;
 void multiLocus.dispatchAction;
+void soloConnection.emitEvent("event", null);
+void librariesConnection.emitEvent("event", null);
 void multiActionContext.emitEvent("event", null);
+// @ts-expect-error Removed snake_case one-map method has no alias.
+void soloLocus.dispatch_action;
 // @ts-expect-error Removed snake_case multi-library method has no alias.
 void multiLocus.dispatch_action;
+// @ts-expect-error Removed snake_case connection method has no alias.
+void soloConnection.emit_event;
+// @ts-expect-error Removed snake_case connection method has no alias.
+void librariesConnection.emit_event;
 // @ts-expect-error Removed snake_case multi-library context method has no alias.
 void multiActionContext.emit_event;
 // @ts-expect-error Echo construction belongs to hson-live/echo.

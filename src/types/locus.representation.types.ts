@@ -188,8 +188,8 @@ export type LocusCanonicalHistoryDiagnostics = Readonly<{
 }>;
 
 export type LocusCanonicalHistory = Readonly<{
-  can_replay: (fromRev: number, throughRev?: number) => boolean;
-  replay_after: (fromRev: number, throughRev?: number) => readonly LocusCanonicalCommit[] | undefined;
+  canReplay: (fromRev: number, throughRev?: number) => boolean;
+  replayAfter: (fromRev: number, throughRev?: number) => readonly LocusCanonicalCommit[] | undefined;
   debug: () => LocusCanonicalHistoryDiagnostics;
 }>;
 
@@ -201,7 +201,7 @@ export type LocusCanonicalStream<
   incarnationId: LocusIncarnationId;
   readonly headRev: number;
   history: LocusCanonicalHistory;
-  on_commit: (listener: LocusCanonicalCommitListener) => LocusDisposer;
+  onCommit: (listener: LocusCanonicalCommitListener) => LocusDisposer;
 }>;
 
 type LocusSnapshotCommonFields = Readonly<{

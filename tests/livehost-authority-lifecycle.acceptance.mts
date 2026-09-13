@@ -235,7 +235,7 @@ check("an asynchronous action blocks quiescence through its terminal outcome", a
     state: {},
     actions: { slow: async () => { await gate.promise; } },
   });
-  const action = host.dispatch_action({ type: "action", id: "a1", name: "slow" });
+  const action = host.dispatchAction({ type: "action", id: "a1", name: "slow" });
   await Promise.resolve();
   assert.equal(host.activity.snapshot().actionCount, 1);
   gate.resolve();
@@ -334,7 +334,7 @@ check("admitted external work remains an eviction blocker after transport loss",
   assert.equal(busy.status, "busy");
   if (busy.status === "busy") assert.ok(busy.blockers.includes("action"));
   const settled = new Promise<void>((resolve) => {
-    const stop = host.activity.on_change((snapshot) => {
+    const stop = host.activity.onChange((snapshot) => {
       if (snapshot.actionCount !== 0) return;
       stop();
       resolve();
@@ -619,7 +619,7 @@ check("activity observers stop cleanly and Locus-only lifecycle creates no DOM",
   const before = Reflect.get(globalThis, "document");
   const host = create_locus({ state: {} });
   let changes = 0;
-  const stop = host.activity.on_change(() => { changes += 1; });
+  const stop = host.activity.onChange(() => { changes += 1; });
   const socket = socket_fixture();
   const connection = host.connect(socket.socket);
   stop();

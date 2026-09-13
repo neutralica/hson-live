@@ -223,7 +223,7 @@ check("local reads through a hosted authority create no history or publication",
     map: element(`<main id="local" @000000106/>`),
   });
   let publications = 0;
-  host.stream.on_commit(() => { publications += 1; });
+  host.stream.onCommit(() => { publications += 1; });
   const beforeRev = host.map.rev;
   const beforeHistory = host.stream.history.debug().retainedCommitCount;
   assert.equal(host.map.document.attrs.get(elementPath(), "id"), "local");

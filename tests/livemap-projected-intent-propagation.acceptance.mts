@@ -175,7 +175,7 @@ check("exact no-op move suppresses feeds and stores", () => {
 await check_async("Locus history retains rename intent", async () => {
   const host = create_locus({ state: { source: 1 } });
   await host.mutate((draft) => draft.at([]).object.renameKey("source", "destination"));
-  const op = host.stream.history.replay_after(0)?.[0]?.ops[0];
+  const op = host.stream.history.replayAfter(0)?.[0]?.ops[0];
   assert.equal(op !== undefined && "kind" in op ? op.kind : undefined, "rename");
   host.dispose();
 });
@@ -183,7 +183,7 @@ await check_async("Locus history retains rename intent", async () => {
 await check_async("Locus history retains move intent", async () => {
   const host = create_locus({ state: { items: [1, 2] } });
   await host.mutate((draft) => draft.at(["items"]).array.move(0, 1));
-  const op = host.stream.history.replay_after(0)?.[0]?.ops[0];
+  const op = host.stream.history.replayAfter(0)?.[0]?.ops[0];
   assert.equal(op !== undefined && "kind" in op ? op.kind : undefined, "move");
   host.dispose();
 });

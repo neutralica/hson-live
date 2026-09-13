@@ -331,7 +331,7 @@ await check("goodbye releases retained session activity exactly once", () => {
     sessions: { graceMs: 100, now: clock.now, schedule: clock.schedule, credential: () => "aggregate-credential-0002" },
   });
   const snapshots: number[] = [];
-  locus.activity.on_change((snapshot) => snapshots.push(snapshot.retainedSessionCount));
+  locus.activity.onChange((snapshot) => snapshots.push(snapshot.retainedSessionCount));
   const socket = socket_fixture();
   locus.connect(socket.socket);
   create_session(socket);
@@ -351,7 +351,7 @@ await check("authority disposal releases a live retained session before activity
     sessions: { graceMs: 100, now: clock.now, schedule: clock.schedule, credential: () => "aggregate-credential-0005" },
   });
   const snapshots: Readonly<{ state: string; sessions: number }>[] = [];
-  locus.activity.on_change((snapshot) => snapshots.push(Object.freeze({
+  locus.activity.onChange((snapshot) => snapshots.push(Object.freeze({
     state: snapshot.state,
     sessions: snapshot.retainedSessionCount,
   })));

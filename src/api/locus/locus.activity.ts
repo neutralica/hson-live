@@ -69,7 +69,7 @@ export function make_locus_activity_controller(): LocusActivityController {
 
   const publicActivity: LocusActivity = Object.freeze({
     snapshot: () => previous,
-    on_change(listener) {
+    onChange(listener) {
       if (disposed) return () => {};
       listeners.add(listener);
       let listening = true;

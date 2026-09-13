@@ -65,7 +65,7 @@ export type LocusSessionManager = Readonly<{
   release_ephemeral: (sessionId: LocusSessionId, epoch: LocusConnectionEpoch) => boolean;
   is_active: (sessionId: LocusSessionId, epoch: LocusConnectionEpoch) => boolean;
   debug: () => LocusSessionDiagnostics;
-  on_change: (listener: (event: LocusSessionLifecycleEvent) => void) => LocusDisposer;
+  onChange: (listener: (event: LocusSessionLifecycleEvent) => void) => LocusDisposer;
   dispose: LocusDisposer;
 }>;
 
@@ -117,7 +117,7 @@ export function make_locus_session_manager(options: LocusSessionOptions = {}): L
     }
   }
 
-  function on_change(listener: (event: LocusSessionLifecycleEvent) => void): LocusDisposer {
+  function onChange(listener: (event: LocusSessionLifecycleEvent) => void): LocusDisposer {
     if (disposed) return () => {};
     listeners.add(listener);
     let active = true;
@@ -341,5 +341,5 @@ export function make_locus_session_manager(options: LocusSessionOptions = {}): L
     listeners.clear();
   }
 
-  return Object.freeze({ create, reattach, detach, goodbye, release_ephemeral, is_active, debug, on_change, dispose });
+  return Object.freeze({ create, reattach, detach, goodbye, release_ephemeral, is_active, debug, onChange, dispose });
 }

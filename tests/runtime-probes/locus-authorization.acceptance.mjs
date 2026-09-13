@@ -222,7 +222,7 @@ await check("legacy attachment-based denial does not execute or advance authorit
 await check("direct dispatch intentionally bypasses session-origin application authorization", async () => {
   let policyCalls = 0;
   const f = fixture({ authorizeAction() { policyCalls += 1; return false; } });
-  const result = await f.host.dispatch_action({ type: "action", id: "direct-set", name: "set", payload: { value: 17 } });
+  const result = await f.host.dispatchAction({ type: "action", id: "direct-set", name: "set", payload: { value: 17 } });
   assert.equal(result.type, "ack");
   assert.equal(policyCalls, 0);
   assert.deepEqual(f.host.map.snap(), { value: 17 });
@@ -255,7 +255,7 @@ await check("custom application handlers can use external state and emit non-can
       notify(context, payload, message) {
         const materialized = payload.materialize();
         applicationState.deliveries.push({ origin: context.origin.kind, payload: materialized, action: message.name });
-        return { delivered: context.emit_event("application.notice", materialized) };
+        return { delivered: context.emitEvent("application.notice", materialized) };
       },
     },
   });

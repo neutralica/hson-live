@@ -195,7 +195,7 @@ await check("new attachment fences the old transport and rejects late authority"
   first.pair.client.send(JSON.stringify({ type: "action", id: "late", name: "increment" }));
   assert.deepEqual(host.map.snap(), { value: 0 });
   assert.equal(host.sessions.debug().sessions[0].subscriptionCount, initialSubscriptions);
-  first.connection.emit_event("late-event", { ignored: true });
+  first.connection.emitEvent("late-event", { ignored: true });
   assert.equal(first.pair.serverSent.map(JSON.parse).some((message) => message.type === "event"), false);
 });
 

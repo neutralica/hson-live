@@ -251,7 +251,7 @@ await check("replace-attrs canonical history is detached and published exactly o
     incarnationId: "replace-attrs-incarnation",
   });
   const publications = [];
-  stream.on_commit((commit) => publications.push(commit));
+  stream.onCommit((commit) => publications.push(commit));
   const attrs = { style: { color: "red" }, title: "after" };
   observer({
     kind: "commit",
@@ -263,7 +263,7 @@ await check("replace-attrs canonical history is detached and published exactly o
       ops: [{ domain: "graph", op: "replace-attrs", target: root, attrs }],
     },
   });
-  const retained = stream.history.replay_after(0, 1);
+  const retained = stream.history.replayAfter(0, 1);
   assert.equal(retained?.length, 1);
   assert.equal(publications.length, 1);
   assert.equal(stream.headRev, 1);
@@ -289,7 +289,7 @@ await check("existing element authority publishes detached graph history and rep
   const authority = element(initial);
   const host = hson.locus.create({ map: authority, logicalMapId: "document-element-replay" });
   const sourceCommit = await host.mutate((draft) => draft.document.attrs.set({ kind: "path", path: [0, 0, 0] }, "title", "kept"));
-  const retained = host.stream.history.replay_after(0, 1);
+  const retained = host.stream.history.replayAfter(0, 1);
   assert.equal(host.map, authority);
   assert.equal(host.stream.mode, "document");
   assert.equal(retained?.length, 1);
@@ -316,7 +316,7 @@ await check("node-bearing multiNodeDocument history is detached and incremental 
   const host = hson.locus.create({ map: authority, logicalMapId: "document-multiNodeDocument-replay" });
   const replacement = element(`<article @000000004 "new"/>`).at([]).snap();
   const sourceCommit = await host.mutate((draft) => draft.document.content.replace(documentRoot, 0, replacement));
-  const retained = host.stream.history.replay_after(0, 1)?.[0];
+  const retained = host.stream.history.replayAfter(0, 1)?.[0];
   const sourceOp = sourceCommit.ops[0];
   const retainedOp = retained?.ops[0];
   assert.equal(sourceOp?.op, "replace-content");
@@ -344,7 +344,7 @@ await check("insert-content history detaches canonical nodes from source commits
   const host = hson.locus.create({ map: authority, logicalMapId: "document-insert-history" });
   const content = element(`<b @00000001h/>`).at([]).snap();
   const sourceCommit = await host.mutate((draft) => draft.document.content.insert(documentRoot, 1, content));
-  const retained = host.stream.history.replay_after(0, 1)?.[0];
+  const retained = host.stream.history.replayAfter(0, 1)?.[0];
   const sourceOp = sourceCommit.ops[0];
   const retainedOp = retained?.ops[0];
   assert.equal(sourceOp?.op, "insert-content");

@@ -127,7 +127,7 @@ export function create_multi_library_locus_internal<
     }),
   });
   const retainedSessionReleases = new Map<string, () => void>();
-  const stopSessionActivity = authority.sessions.on_change((event) => {
+  const stopSessionActivity = authority.sessions.onChange((event) => {
     if (event.kind === "attached" && event.session.resumable && !retainedSessionReleases.has(event.session.sessionId)) {
       retainedSessionReleases.set(event.session.sessionId, activity.acquire("session"));
       return;
@@ -157,9 +157,9 @@ export function create_multi_library_locus_internal<
   };
 
   const connect: LocusMultiLibrary<TMap, TActions>["connect"] = (socket, _context?: LocusConnectionContext) => {
-    if (disposed) return Object.assign(() => {}, { emit_event: () => {} });
+    if (disposed) return Object.assign(() => {}, { emitEvent: () => {} });
     const stop = authority.connect(socket, _context);
-    return Object.assign(stop, { emit_event: () => {} }) as LocusConnection;
+    return Object.assign(stop, { emitEvent: () => {} }) as LocusConnection;
   };
 
   const locus = Object.freeze({

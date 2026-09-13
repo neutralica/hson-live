@@ -48,7 +48,7 @@ export type LocusSoloExternalActionAttempt<TActions extends LocusActionPayloads,
   message: LocusClientActionMessage<TActions>;
   origin: Extract<LocusActionOrigin, { kind: "session" }>;
   connection?: LocusConnectionContext;
-  emitEvent?: LocusActionContext<TMap>["emit_event"];
+  emitEvent?: LocusActionContext<TMap>["emitEvent"];
   trace?: LiveTraceContext;
   parentSpanId?: string;
   attachmentCurrent: () => boolean;
@@ -225,7 +225,7 @@ export async function execute_locus_action_handler<
   handler: LocusActionHandler<TMap, TActions>;
   payload: HsonData | undefined;
   origin: LocusActionOrigin;
-  emitEvent: LocusActionContext<TMap>["emit_event"];
+  emitEvent: LocusActionContext<TMap>["emitEvent"];
   trace?: LiveTraceContext;
   parentSpanId?: string;
   causation?: LocusCommitCausation;
@@ -256,7 +256,7 @@ export async function execute_locus_action_handler<
     },
     seq: input.authority.currentSeq(),
     origin: input.origin,
-    emit_event: input.emitEvent,
+    emitEvent: input.emitEvent,
   });
   const finish = (): Promise<void> | undefined => {
     open = false;

@@ -278,7 +278,7 @@ check("Locus canonical commits retain exact payloads", () => {
   const valueMap = map(object([["value", object([])]]));
   const stream = make_locus_canonical_stream(valueMap, { logicalMapId: "map", incarnationId: "inc" });
   let canonical: LocusCanonicalCommit | undefined;
-  stream.on_commit((commit) => { canonical = commit; });
+  stream.onCommit((commit) => { canonical = commit; });
   capability(valueMap).commit([{ kind: "replace", path: ["value"], value: ordered }]);
   assert.equal(canonical?.format, "structural-json");
   assert.equal(typeof canonical?.payload, "string");

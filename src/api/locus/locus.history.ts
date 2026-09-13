@@ -550,7 +550,7 @@ export function make_locus_canonical_stream_runtime<TMap extends LiveMapAuthorit
     });
   }
 
-  function replay_after(fromRev: number, throughRev = headRev): readonly LocusCanonicalCommit[] | undefined {
+  function replayAfter(fromRev: number, throughRev = headRev): readonly LocusCanonicalCommit[] | undefined {
     if (!Number.isInteger(fromRev) || fromRev < 0) return undefined;
     if (!Number.isInteger(throughRev) || throughRev < 0 || throughRev > headRev) return undefined;
     if (fromRev === throughRev) return Object.freeze([]);
@@ -592,10 +592,10 @@ export function make_locus_canonical_stream_runtime<TMap extends LiveMapAuthorit
   }
 
   const history: LocusCanonicalHistory = Object.freeze({
-    can_replay(fromRev, throughRev = headRev): boolean {
-      return replay_after(fromRev, throughRev) !== undefined;
+    canReplay(fromRev, throughRev = headRev): boolean {
+      return replayAfter(fromRev, throughRev) !== undefined;
     },
-    replay_after,
+    replayAfter,
     debug,
   });
 
@@ -607,7 +607,7 @@ export function make_locus_canonical_stream_runtime<TMap extends LiveMapAuthorit
       return headRev;
     },
     history,
-    on_commit(listener): () => void {
+    onCommit(listener): () => void {
       listeners.add(listener);
       return () => {
         listeners.delete(listener);

@@ -98,7 +98,7 @@ async function assert_single_hosted_commit({ host, client, action, payload, veri
   host.map.commits.observe((event) => {
     if (event.kind === "commit" && event.origin === "authoritative") authoritative += 1;
   });
-  host.stream.on_commit(() => { published += 1; });
+  host.stream.onCommit(() => { published += 1; });
   client.map.commits.observe((event) => {
     if (event.kind === "commit" && event.origin === "replay") replayed += 1;
   });
@@ -171,7 +171,7 @@ await check("document.attrs.setMany preserves unspecified attrs in one hosted re
       assert.deepEqual(documentElement(host.map).$_attrs, {
         count: 0, hidden: false, id: "main", title: "kept",
       });
-      assert.equal(host.stream.history.replay_after(0, 1)?.[0]?.ops[0]?.op, "replace-attrs");
+      assert.equal(host.stream.history.replayAfter(0, 1)?.[0]?.ops[0]?.op, "replace-attrs");
     },
   });
 });
@@ -187,7 +187,7 @@ await check("document.attrs.dropMany ignores absent and duplicate names in one h
     payload: { target: { kind: "path", path: [0] }, names: ["id", "absent", "class", "id"] },
     verify() {
       assert.deepEqual(host.map.document.content()[0].$_attrs, { title: "keep" });
-      assert.equal(host.stream.history.replay_after(0, 1)?.[0]?.ops[0]?.op, "replace-attrs");
+      assert.equal(host.stream.history.replayAfter(0, 1)?.[0]?.ops[0]?.op, "replace-attrs");
     },
   });
 });
@@ -508,7 +508,7 @@ await check("a duplicate retry returns the cached acknowledgement without a seco
   const host = hson.locus.create({ map: element(initial) });
   const client = await connected_document_client(host, element(initial));
   let commits = 0;
-  host.stream.on_commit(() => { commits += 1; });
+  host.stream.onCommit(() => { commits += 1; });
   const first = client.action("document.attrs.set", { target: rootPath, name: "id", value: "once" });
   const executed = await first;
   const retried = await client.retryAction(first.request);
@@ -525,7 +525,7 @@ await check("a duplicate bulk request is deduped once for the complete request",
   const host = hson.locus.create({ map: element(initial) });
   const client = await connected_document_client(host, element(initial));
   let publications = 0;
-  host.stream.on_commit(() => { publications += 1; });
+  host.stream.onCommit(() => { publications += 1; });
   const first = client.action("document.attrs.replace", {
     target: rootPath,
     values: { id: "new", hidden: false },
@@ -545,7 +545,7 @@ await check("unchanged bulk actions acknowledge without revision, history or pub
   const host = hson.locus.create({ map: element(initial) });
   const client = await connected_document_client(host, element(initial));
   let publications = 0;
-  host.stream.on_commit(() => { publications += 1; });
+  host.stream.onCommit(() => { publications += 1; });
   for (const [name, payload] of [
     ["document.attrs.setMany", { target: rootPath, values: {} }],
     ["document.attrs.dropMany", { target: rootPath, names: [] }],
@@ -571,7 +571,7 @@ await check("same-position hosted move acknowledges without commit, history, rep
   host.map.commits.observe((event) => {
     if (event.kind === "commit" && event.origin === "authoritative") authoritative += 1;
   });
-  host.stream.on_commit(() => { published += 1; });
+  host.stream.onCommit(() => { published += 1; });
   client.map.commits.observe((event) => {
     if (event.kind === "commit" && event.origin === "replay") replayed += 1;
   });
@@ -655,7 +655,7 @@ await check("all four bulk actions survive incremental resume in canonical order
   await actor.action("document.attrs.replace", { target: rootPath, values: { role: "main" } });
   await actor.action("document.attrs.clear", { target: rootPath });
   actor.disconnect();
-  const retained = host.stream.history.replay_after(0, 4);
+  const retained = host.stream.history.replayAfter(0, 4);
   assert.equal(retained?.length, 4);
   assert.ok(retained?.every((commit) => commit.ops.length === 1 && commit.ops[0]?.op === "replace-attrs"));
   const recovered = await connected_document_client(host, element(initial), {

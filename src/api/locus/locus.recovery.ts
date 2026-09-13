@@ -197,7 +197,7 @@ export function make_locus_recovery_planner_internal<TMap extends LiveMapAuthori
     }
 
     try {
-      hooks.before_cut?.();
+      hooks.beforeCut?.();
     } catch (cause) {
       abortedAttemptCount += 1;
       throw runtime_error(
@@ -294,7 +294,7 @@ export function make_locus_recovery_planner_internal<TMap extends LiveMapAuthori
       if (attemptError) throw attemptError;
     }
 
-    stopSubscription = stream.on_commit(enqueue_tail);
+    stopSubscription = stream.onCommit(enqueue_tail);
     activeAttemptCount += 1;
     activity?.(true);
 
@@ -326,7 +326,7 @@ export function make_locus_recovery_planner_internal<TMap extends LiveMapAuthori
         establish_cut(headRev);
       } else if (sameIncarnation && usableRevision !== undefined && usableRevision < headRev) {
         try {
-          const retained = stream.history.replay_after(usableRevision, headRev);
+          const retained = stream.history.replayAfter(usableRevision, headRev);
           if (retained !== undefined && retained.length > 0) {
             replayBody = Object.freeze([...retained]);
             outcome = "replay";
@@ -354,7 +354,7 @@ export function make_locus_recovery_planner_internal<TMap extends LiveMapAuthori
           // This barrier runs inside the capture critical section while tail
           // observation is already active. A mutation here is either reflected
           // by capture.rev/value or retained after the resulting cut.
-          hooks.during_snapshot_capture?.();
+          hooks.duringSnapshotCapture?.();
           const capture = map.capture();
           if (capture.rev !== stream.headRev) {
             throw new Error(
@@ -402,7 +402,7 @@ export function make_locus_recovery_planner_internal<TMap extends LiveMapAuthori
         }
       }
 
-      hooks.after_cut?.(headRev);
+      hooks.afterCut?.(headRev);
       throw_if_aborted();
     } catch (cause) {
       const error = cause instanceof LocusRecoveryError

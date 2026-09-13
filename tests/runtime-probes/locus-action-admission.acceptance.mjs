@@ -39,7 +39,7 @@ function fixture(options = {}) {
       },
       async held(context, payload) { executions += 1; handlerOrigins.push(context.origin); options.entered?.resolve(); await options.gate?.promise; return payload; },
       fail() { executions += 1; throw new Error("application failed"); },
-      event(context) { executions += 1; return { delivered: context.emit_event("notice", { value: 1 }) }; },
+      event(context) { executions += 1; return { delivered: context.emitEvent("notice", { value: 1 }) }; },
     },
   });
   const connection = Object.freeze({ principalId: "alice", attachment: Object.freeze({ role: "editor" }) });

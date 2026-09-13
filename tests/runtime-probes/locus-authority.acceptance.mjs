@@ -94,7 +94,7 @@ await check("exclusive data mutation waits at the gate then ingests once", async
   host.map.at(["value"]).watch(() => events.push("watch"));
   map.feed([], () => events.push("feed"));
   map.commits.observe((event) => events.push(event.kind));
-  host.stream.on_commit((commit) => publications.push(commit.rev));
+  host.stream.onCommit((commit) => publications.push(commit.rev));
   const mutation = host.mutate((draft) => draft.set(["value"], 1));
   await tick();
   assert.equal(gates.calls.length, 1);
@@ -128,7 +128,7 @@ await check("exclusive FIFO prepares the second request only after the first acc
   gates.calls[1].resolve();
   await second;
   assert.equal(map.rev, 2);
-  assert.deepEqual(host.stream.history.replay_after(0)?.map((commit) => commit.rev), [1, 2]);
+  assert.deepEqual(host.stream.history.replayAfter(0)?.map((commit) => commit.rev), [1, 2]);
   host.dispose();
 });
 
@@ -236,7 +236,7 @@ await check("exclusive actions track awaited and unawaited queued mutations", as
       },
     },
   }, { authorityGate: gates.gate });
-  const action = host.dispatch_action({ type: "action", id: "a", name: "set", payload: { value: 1 } });
+  const action = host.dispatchAction({ type: "action", id: "a", name: "set", payload: { value: 1 } });
   await tick();
   assert.equal(map.rev, 0);
   gates.calls[0].resolve();
@@ -244,7 +244,7 @@ await check("exclusive actions track awaited and unawaited queued mutations", as
   assert.equal(response.type, "ack");
   assert.equal(response.completionRev, 1);
 
-  const twice = host.dispatch_action({ type: "action", id: "b", name: "twice" });
+  const twice = host.dispatchAction({ type: "action", id: "b", name: "twice" });
   await tick(); gates.calls[1].resolve(); await tick(); gates.calls[2].resolve();
   const twiceResponse = await twice;
   assert.equal(twiceResponse.type, "ack");
@@ -261,7 +261,7 @@ await check("exclusive action contexts expire after tracked work settles", async
       retain: (context) => { retainedContext = context; },
     },
   });
-  assert.equal((await host.dispatch_action({ type: "action", id: "retain", name: "retain" })).type, "ack");
+  assert.equal((await host.dispatchAction({ type: "action", id: "retain", name: "retain" })).type, "ack");
   await assert.rejects(retainedContext.mutate((draft) => draft.set(["value"], 1)));
   assert.equal(map.rev, 0);
   host.dispose();
@@ -271,7 +271,7 @@ await check("built-in document actions use the exclusive queue", async () => {
   const map = element();
   const gates = deferred_gates();
   const host = create_locus_internal({ map }, { authorityGate: gates.gate });
-  const action = host.dispatch_action({
+  const action = host.dispatchAction({
     type: "action",
     id: "document-action",
     name: "document.attrs.set",
@@ -348,7 +348,7 @@ await check("Host history advances before fallible external publication", async 
   const map = hson.liveMap.fromJson({ value: 0 });
   const host = hson.locus.create({ map });
   let observed;
-  host.stream.on_commit((commit) => {
+  host.stream.onCommit((commit) => {
     observed = [commit.rev, map.rev, host.stream.headRev];
     throw new Error("publication failure");
   });

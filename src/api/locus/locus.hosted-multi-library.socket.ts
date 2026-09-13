@@ -181,7 +181,7 @@ export type LocusHostedAggregateSocketServer<
   mutate: LocusHostedAggregate["mutate"];
   dispatch_action: LocusHostedAggregate["dispatch_action"];
   dispatch_message: (message: import("../../types/locus.types.js").LocusClientActionMessage) => Promise<LocusClientActionResult>;
-  sessions: Readonly<{ debug: ReturnType<typeof make_locus_session_manager>["debug"]; on_change: ReturnType<typeof make_locus_session_manager>["on_change"]; dispose: () => void }>;
+  sessions: Readonly<{ debug: ReturnType<typeof make_locus_session_manager>["debug"]; onChange: ReturnType<typeof make_locus_session_manager>["onChange"]; dispose: () => void }>;
   actionRequests: Readonly<{ debug: ReturnType<typeof make_locus_action_dedupe_store>["debug"]; dispose: () => void }>;
   /** Ordered internal barrier used by persistence checkpointing. */
   run_exclusive: LocusHostedAggregate["run_exclusive"];
@@ -1012,7 +1012,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     mutate: locus.mutate,
     dispatch_action: locus.dispatch_action,
     dispatch_message,
-    sessions: Object.freeze({ debug: sessions.debug, on_change: sessions.on_change, dispose: sessions.dispose }),
+    sessions: Object.freeze({ debug: sessions.debug, onChange: sessions.onChange, dispose: sessions.dispose }),
     actionRequests: Object.freeze({ debug: actionRequests.debug, dispose: actionRequests.dispose }),
     run_exclusive: locus.run_exclusive,
     debug: () => Object.freeze({

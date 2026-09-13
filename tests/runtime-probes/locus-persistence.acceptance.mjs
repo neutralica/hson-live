@@ -182,7 +182,7 @@ await check("append completes before graph revision notifications history and pu
   const observations = [];
   map.commits.observe((event) => observations.push(event.kind));
   const published = [];
-  host.stream.on_commit((commit) => published.push(commit.rev));
+  host.stream.onCommit((commit) => published.push(commit.rev));
   const mutation = host.mutate((draft) => draft.document.attrs.set(root, "count", 1));
   await tick();
   assert.equal(map.rev, 0);
@@ -359,7 +359,7 @@ await check("persistent store unload and checkpoint-plus-tail reload preserve ex
   assert.equal(restored.map.rev, expected.rev);
   assert.equal(canonical_hson_graph_equal(restored.map.capture().root, expected.root), true);
   assert.equal(restored.map.document.byQuid("000001011")?.$_tag, "section");
-  assert.deepEqual(restored.stream.history.replay_after(1)?.map((commit) => commit.rev), [2]);
+  assert.deepEqual(restored.stream.history.replayAfter(1)?.map((commit) => commit.rev), [2]);
   assert.throws(() => restored.map.document.attrs.set(root, "direct", true));
   assert.equal((await restored.mutate((draft) => draft.document.attrs.set(root, "continued", true))).rev, 3);
   assert.equal(restored.stream.incarnationId, incarnation);
