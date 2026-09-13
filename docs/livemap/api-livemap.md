@@ -9,9 +9,9 @@ import type { LiveMap, LiveMapCommit, LivePath } from "hson-live/livemap";
 ```
 
 `hson-live/livemap` is the supported DOM-free subsystem entrypoint for LiveMap
-values, helpers, structured errors, and types. The root remains the browser
-umbrella entrypoint, and `hson-live/types` remains a broad type barrel rather
-than the owner of the LiveMap vocabulary.
+values, helpers, structured errors, and types. The root contains normal
+application and composition concepts; the retired `hson-live/types` barrel no
+longer duplicates LiveMap ownership.
 
 ## Stability boundary
 
@@ -26,11 +26,9 @@ than the owner of the LiveMap vocabulary.
 - **Deferred:** primitive data roots and transparent parity between proxy, data
   paths, document paths, and physical Hson paths.
 
-The subsystem entrypoint is the complete LiveMap barrel. The root re-exports
-the established common helpers but not every narrow path utility. In
-particular, `append_live_path`, `clone_live_path`, `parent_live_path`,
-`relative_live_path`, and `paths_equal` are imported from
-`hson-live/livemap`; do not assume every subsystem export is duplicated at the
+The subsystem entrypoint is the complete LiveMap barrel. Advanced path, store,
+capture, replay, feed, proxy, and commit-observation APIs are imported from
+`hson-live/livemap`; do not assume subsystem exports are duplicated at the
 root.
 
 ## Construction

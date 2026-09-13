@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { hsonTransform } from "../src/api/transform/index.ts";
-import { assertCanonicalClosure } from "../src/_tests/transform-oracle.ts";
+import { assertCanonicalClosure } from "../src/diagnostics/transform-test-oracle.ts";
 import { hsonCalc } from "../src/number.ts";
 import { read_transform_error_details, TransformError } from "../src/core/errors.ts";
 import type { HsonNode } from "../src/core/types.ts";

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import type { JsonValue } from "../../src/types/index.ts";
+import type { JsonValue } from "../../src/core/types.ts";
 import {
   admission_operator,
   atomic_rejection_operator,

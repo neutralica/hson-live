@@ -8,7 +8,7 @@ import {
   assert_canonical_oracle_graph_equal,
   TransformOracleAssertionError,
   type TransformRegressionCase,
-} from "../src/_tests/transform-oracle.ts";
+} from "../src/diagnostics/transform-test-oracle.ts";
 import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
 import {
   serialize_hson,

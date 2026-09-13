@@ -13,7 +13,7 @@ import {
   assert_canonical_oracle_graph_equal,
   format_transform_oracle_witness,
   TransformOracleAssertionError,
-} from "../../src/_tests/transform-oracle.ts";
+} from "../../src/diagnostics/transform-test-oracle.ts";
 import { materializedCorpusCases } from "./corpus-manifest.mts";
 import type {
   AcceptedCorpusCase,

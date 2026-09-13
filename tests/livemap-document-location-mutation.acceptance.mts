@@ -4,7 +4,7 @@ import { hson } from "../src/hson.ts";
 import {
   _create_livetree_runtime_test_handle,
   _reflect_document_for_runtime_test,
-} from "../src/diagnostics/index.ts";
+} from "../src/_tests/diagnostics-internal.ts";
 import { LiveMapDocumentMutationError } from "../src/api/livemap/livemap.error.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import type { HsonNode } from "../src/core/types.ts";

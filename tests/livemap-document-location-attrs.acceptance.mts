@@ -1,7 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
-import { _create_livetree_runtime_test_handle, _reflect_document_for_runtime_test } from "../src/diagnostics/index.ts";
+import { _create_livetree_runtime_test_handle, _reflect_document_for_runtime_test } from "../src/_tests/diagnostics-internal.ts";
 import { LiveMapDocumentAttributeNotFoundError, LiveMapDocumentMutationError } from "../src/api/livemap/livemap.error.ts";
 import type { DocumentLiveMap, LiveMapDocumentRequestTarget } from "../src/types/livemap.types.ts";
 import { element as reflectedElement } from "./helpers/reflect-unit6.mts";

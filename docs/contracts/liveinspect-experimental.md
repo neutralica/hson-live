@@ -1,14 +1,14 @@
 # Live inspector experimental contract
 
-`hson.inspect` is a neutral, read-only projection of supported structured data into a navigable `LiveTree`. It is diagnostic infrastructure, not a component system, schema form generator, or general application renderer.
+`hsonInspect`, imported from `hson-live/diagnostics`, is a neutral, read-only projection of supported structured data into a navigable `LiveTree`. It is diagnostic infrastructure, not a component system, schema form generator, or general application renderer.
 
 > The inspector never mutates its source. Editing and mutation controls are outside Patch 7B and are not implied by this API.
 
 ## Sources and ownership
 
-`hson.inspect.create({ source, host })` accepts a `LiveMap` or `LiveMapPathHandle`. The `host` must be active, dedicated, and empty. The caller owns an externally supplied source; the inspector owns its projection, scoped CSS, delegated interaction, renderer-local resources, and selection/expansion state.
+`hsonInspect.create({ source, host })` accepts a `LiveMap` or `LiveMapPathHandle`. The `host` must be active, dedicated, and empty. The caller owns an externally supplied source; the inspector owns its projection, scoped CSS, delegated interaction, renderer-local resources, and selection/expansion state.
 
-`hson.inspect.fromJson({ value, host })` and `hson.inspect.fromHson({ value, host })` explicitly create an inspector-owned `LiveMap`. Plain values are not silently copied by `create`.
+`hsonInspect.fromJson({ value, host })` and `hsonInspect.fromHson({ value, host })` explicitly create an inspector-owned `LiveMap`. Plain values are not silently copied by `create`.
 
 The inspector is layered on `hson.reflect.collection`. Object properties are keyed by property name. Arrays use an explicit `arrayKey` result only when every item has one; otherwise an entirely unkeyed array uses honest positional identity. Mixed key coverage and duplicate keys fail with classified errors. Positional rows represent positions and do not promise logical continuity when values move.
 
@@ -49,10 +49,12 @@ Semantic renderer hooks and prioritized specializations receive only a mutation-
 ## Examples
 
 ```ts
-const raw = hson.inspect.fromJson({ value: { ok: true }, host });
+import { hsonInspect } from "hson-live/diagnostics";
+
+const raw = hsonInspect.fromJson({ value: { ok: true }, host });
 
 const map = hson.liveMap.fromJson({ users: [{ id: "ada", name: "Ada" }] });
-const direct = hson.inspect.create({
+const direct = hsonInspect.create({
   source: map,
   host,
   arrayKey: (item) => typeof item === "object" && item !== null && !Array.isArray(item)
@@ -60,13 +62,13 @@ const direct = hson.inspect.create({
     : undefined,
 });
 
-const subtree = hson.inspect.create({ source: map.at(["users"]), host });
+const subtree = hsonInspect.create({ source: map.at(["users"]), host });
 
 // A Locus client mirror is still only a LiveMap to the inspector.
-const mirrorView = hson.inspect.create({ source: client.map, host });
+const mirrorView = hsonInspect.create({ source: client.map, host });
 clientRecovery.onSnapshot((replacementMap) => mirrorView.replaceSource(replacementMap));
 
-const canonical = hson.inspect.fromHson({ value: serializedHson, host, hsonMode: "canonical" });
+const canonical = hsonInspect.fromHson({ value: serializedHson, host, hsonMode: "canonical" });
 ```
 
 ## Known limits

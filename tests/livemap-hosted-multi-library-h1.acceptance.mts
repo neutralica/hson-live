@@ -4,10 +4,9 @@ import {
   Hson,
   hson,
   hsonLiveMap,
-  validate_document_path,
   type HsonSchema,
-  type HostedLiveMapLibrariesSnapshot,
 } from "../src/index.ts";
+import { validate_document_path, type HostedLiveMapLibrariesSnapshot } from "../src/api/livemap/index.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import {
   encode_hosted_root,

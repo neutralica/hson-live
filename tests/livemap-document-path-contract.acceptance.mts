@@ -1,9 +1,6 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import {
-  hson,
-  validate_document_path,
-} from "../src/index.ts";
+import { hson } from "../src/index.ts";
 import {
   append_document_path,
   compare_document_paths,
@@ -15,6 +12,7 @@ import {
   parent_document_path,
   resolve_document_path,
   transform_document_path,
+  validate_document_path,
 } from "../src/api/livemap/livemap.document.path.ts";
 import { LiveMapDocumentMutationError } from "../src/api/livemap/livemap.error.ts";
 import type { DocumentLiveMap } from "../src/types/livemap.types.ts";

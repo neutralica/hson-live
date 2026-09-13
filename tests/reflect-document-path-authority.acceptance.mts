@@ -10,7 +10,7 @@ import {
 import {
   _create_livetree_runtime_test_handle,
   _reflect_document_for_runtime_test,
-} from "../src/diagnostics/index.ts";
+} from "../src/_tests/diagnostics-internal.ts";
 import { LiveMapDocumentStagingError } from "../src/api/livemap/livemap.error.ts";
 import type {
   LiveMapCommitObservation,

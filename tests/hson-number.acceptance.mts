@@ -1,13 +1,9 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
-import {
-  HSON_NUMBER_NONFINITE,
-  HSON_NUMBER_TYPE_REQUIRED,
-  hson,
-  hsonCalc,
-} from "../src/index.ts";
+import { hson, hsonCalc } from "../src/index.ts";
 import { hsonCalc as narrowHsonCalc } from "../src/number.ts";
+import { HSON_NUMBER_NONFINITE, HSON_NUMBER_TYPE_REQUIRED } from "../src/number.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { read_transform_error_details } from "../src/core/errors.ts";
 import { coerce } from "../src/api/transform/utils/primitive-utils/coerce-string.utils.ts";

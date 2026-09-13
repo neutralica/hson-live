@@ -15,7 +15,7 @@ import {
   _livetree_runtime_test_claim_count,
   _project_livetree_for_runtime_test,
   _reflect_document_for_runtime_test,
-} from "../src/diagnostics/index.ts";
+} from "../src/_tests/diagnostics-internal.ts";
 import { graft } from "../src/api/livetree/creation/graft.ts";
 import { livemap_document_identity_overlay_for } from "../src/api/livemap/livemap.document.identity.ts";
 import { FakeElement } from "./helpers/fake-document.mts";

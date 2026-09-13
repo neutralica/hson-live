@@ -22,7 +22,7 @@ import {
 import {
   _create_livetree_runtime_test_handle,
   _reflect_document_for_runtime_test,
-} from "../src/diagnostics/index.ts";
+} from "../src/_tests/diagnostics-internal.ts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import type { ClassifiedLiveMap, DocumentLiveMap } from "../src/types/livemap.types.ts";
 import { element, path, projected_element, raw_node } from "./helpers/reflect-unit6.mts";

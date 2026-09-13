@@ -9,7 +9,7 @@ import {
   _livetree_runtime_test_issued_count,
   _lookup_livetree_runtime_test_node,
   _set_livetree_runtime_test_quid_candidate_source,
-} from "../src/diagnostics/index.ts";
+} from "../src/_tests/diagnostics-internal.ts";
 import { assign_hson_node_quid } from "../src/core/hson-node-quid.ts";
 import type { HsonNode } from "../src/core/types.ts";
 

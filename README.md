@@ -647,10 +647,17 @@ import type { LiveTree } from "hson-live/livetree";
 import type { Locus } from "hson-live/locus";
 ```
 
-The root also exports the existing `hsonTransform`, `hsonLiveMap`, `hsonLiveTree`,
-`hsonLocus`, `hsonEcho`, `hsonReflect`, `hsonInspect`, and `hsonCalc` facade objects/functions.
-Use dedicated subsystem subpaths when their package boundary matters. Root
-convenience imports are not a promise of a narrow authoring bundle.
+The root is the normal application and high-level composition surface. It
+exports the established Transform, LiveMap, LiveTree, Locus, Echo, Reflect,
+LiveHost, SSR, continuation, and interaction concepts needed to assemble an
+application. Advanced replay, protocol, persistence, inspection, and detailed
+error-code contracts are owned by their subsystem subpaths.
+
+The historical `hson-live/types` barrel has been removed. Import public types
+from their owner: Hson graph/value types from `hson-live/hson`, and subsystem
+types from `hson-live/transform`, `hson-live/livemap`, `hson-live/livetree`,
+`hson-live/reflect`, `hson-live/echo`, `hson-live/locus`, `hson-live/ssr`, or
+`hson-live/livehost`.
 
 Locus’s environment-neutral network surface is available from:
 
@@ -683,13 +690,20 @@ import { create_livehost_locus_registry } from "hson-live/livehost";
 
 Do not import either Node subpath into browser or Worker bundles.
 
-Public diagnostic launchers are available from:
+Supported tracing, profiling, and experimental inspection APIs are available
+from:
 
 ```ts
 import {
-  // public diagnostic exports
+  begin_livetree_materialization_profile,
+  create_live_trace_collector,
+  hsonInspect,
 } from "hson-live/diagnostics";
 ```
+
+The Transform conformance oracle remains available from
+`hson-live/diagnostics/transform-test-oracle`. Internal reset hooks and the
+former `hson-live/diagnostics/test-exports` CSS test seam are not public APIs.
 
 The package’s built exports are the supported integration boundary. Consumers should not import from `hson-live/src`.
 

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
-import { Hson, hsonLiveMap, hsonReflect, validate_document_path, type HsonSchema } from "../src/index.ts";
+import { Hson, hsonLiveMap, hsonReflect, type HsonSchema } from "../src/index.ts";
+import { validate_document_path } from "../src/api/livemap/index.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import type { LiveMapLibraries } from "../src/types/livemap.types.ts";

@@ -9,7 +9,6 @@ import { hsonLiveTree } from "./api/livetree/livetree.facade.js";
 import { hsonLocus } from "./api/locus/locus.facade.js";
 import { hsonEcho } from "./api/echo/echo.facade.js";
 import { hsonReflect } from "./api/reflect/reflect.facade.js";
-import { hsonInspect } from "./api/inspect/liveinspect.facade.js";
 import type {
   HsonTransformSource,
   BinaryDecodeOptions,
@@ -25,7 +24,6 @@ export {
   hsonReflect,
   hsonTransform,
   hsonCalc,
-  hsonInspect,
 };
 export {
   TransformError,
@@ -62,7 +60,6 @@ export interface HsonFacade {
   readonly locus: typeof hsonLocus;
   readonly echo: typeof hsonEcho;
   readonly reflect: typeof hsonReflect;
-  readonly inspect: typeof hsonInspect;
 }
 
 export const hson: HsonFacade = Object.freeze({
@@ -80,5 +77,4 @@ export const hson: HsonFacade = Object.freeze({
   echo: hsonEcho,
 
   reflect: hsonReflect,
-  inspect: hsonInspect,
 });

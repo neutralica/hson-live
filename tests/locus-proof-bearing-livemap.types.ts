@@ -1,20 +1,22 @@
 import {
   create_locus,
   create_echo,
-  create_persistent_locus,
   hsonLiveMap,
 } from "hson-live";
+import { create_persistent_locus } from "hson-live/locus";
 import type {
   DocumentLiveMap,
   LiveMap,
   Locus,
   Echo,
+} from "hson-live";
+import type {
   LocusMapValue,
   LocusMultiLibraryPersistenceAdapter,
   LocusPersistenceAdapter,
   LocusSchema,
   LocusServerMessage,
-} from "hson-live";
+} from "hson-live/locus";
 import type { JsonValue } from "../src/core/types.ts";
 import { create_livehost_locus_registry } from "hson-live/livehost";
 import { TreeSchema, UserSchema, type UserSchemaType } from "./fixtures/hson-schema-mvp/producer.ts";

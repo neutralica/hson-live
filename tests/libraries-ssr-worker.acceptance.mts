@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { Hson, encode_ssr_bootstrap, hsonLiveMap, install_libraries_snapshot, render_document, type HsonSchema } from "../src/index.ts";
+import { Hson, encode_ssr_bootstrap, hsonLiveMap, render_document, type HsonSchema } from "../src/index.ts";
+import { install_libraries_snapshot } from "../src/api/livemap/index.ts";
 import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
 
 const StateSchema: HsonSchema = Hson`<type "data" content <count "number">>`;

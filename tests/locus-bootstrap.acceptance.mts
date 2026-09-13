@@ -2,7 +2,7 @@ import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { hson } from "hson-live";
-import type { JsonValue } from "hson-live/types";
+import type { JsonValue } from "hson-live/hson";
 import type { LiveHostApplication, LiveHostApplicationContext, LiveHostConnection } from "hson-live/livehost";
 import {
   LOCUS_BOOTSTRAP_FORMAT,

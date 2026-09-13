@@ -10,8 +10,7 @@
     "outDir": "./out",
     "paths": {
       "hson-live": ["../../../dist/index.d.ts"],
-      "hson-live/hson": ["../../../dist/hson-authoring.d.ts"],
-      "hson-live/types": ["../../../dist/types/index.d.ts"]
+      "hson-live/hson": ["../../../dist/hson-authoring.d.ts"]
     }
   },
   "include": ["./*.ts"]

@@ -19,9 +19,10 @@ import type {
 } from "hson-live/reflect";
 ```
 
-The root package exports the same `hsonReflect`, `reflect_document`, and
-`reflect_collection` functions. The browser umbrella exposes `hson.reflect` as
-the same callable object.
+The root package exports the normal `hsonReflect` and `reflect_document`
+composition surface. Direct keyed collection reflection and its detailed
+diagnostics remain owned by `hson-live/reflect`. The browser umbrella exposes
+`hson.reflect` as the same callable object.
 
 ```ts
 const documentBinding = hsonReflect(elementMap);

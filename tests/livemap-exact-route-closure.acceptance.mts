@@ -24,7 +24,8 @@ import {
   type OrderedProjectedValue,
 } from "../src/core/ordered-projected-value.ts";
 import { projected_value_from_hson_node, projected_value_to_hson_root } from "../src/core/projected-value-graph.ts";
-import type { JsonValue, LiveMapCore } from "../src/types/index.ts";
+import type { JsonValue } from "../src/core/types.ts";
+import type { LiveMapCore } from "../src/types/livemap.types.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livemap.exact-route-closure",

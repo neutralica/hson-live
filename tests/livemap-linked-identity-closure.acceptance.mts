@@ -10,7 +10,7 @@ import {
   _livetree_runtime_test_claim_count,
   _lookup_livetree_runtime_test_node,
   _reflect_document_for_runtime_test,
-} from "../src/diagnostics/index.ts";
+} from "../src/_tests/diagnostics-internal.ts";
 import {
   set_livemap_document_quid_candidate_source_for_tests,
 } from "../src/api/livemap/livemap.document.registration.ts";

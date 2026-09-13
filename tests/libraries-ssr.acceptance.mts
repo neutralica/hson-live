@@ -7,13 +7,12 @@ import {
   enable_interactions,
   hsonLiveMap,
   hsonLocus,
-  install_libraries_snapshot,
-  install_locus_libraries_snapshot,
   render_document,
   render_hosted_document,
   type HsonSchema,
-  type LiveMapLibrariesSnapshot,
 } from "../src/index.ts";
+import { install_libraries_snapshot, type LiveMapLibrariesSnapshot } from "../src/api/livemap/index.ts";
+import { install_locus_libraries_snapshot } from "../src/api/locus/index.ts";
 import { set_document_ssr_hook_for_tests } from "../src/api/ssr/ssr.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { INTERACTION_RESERVED_LIBRARY_KEY } from "../src/internal/interaction-storage.ts";

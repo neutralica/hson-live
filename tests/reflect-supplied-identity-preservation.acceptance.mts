@@ -16,7 +16,7 @@ import {
   _livetree_runtime_test_claim_count,
   _lookup_livetree_runtime_test_node,
   _reflect_document_for_runtime_test,
-} from "../src/diagnostics/index.ts";
+} from "../src/_tests/diagnostics-internal.ts";
 import { get_el_for_node } from "../src/api/livetree/utils/node-map-helpers.ts";
 import { FakeElement } from "./helpers/fake-document.mts";
 

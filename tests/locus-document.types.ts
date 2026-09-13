@@ -1,23 +1,29 @@
-import { create_locus, create_echo, create_persistent_locus, hson, validate_document_path } from "../src/index.ts";
+import { create_locus, create_echo, hson } from "../src/index.ts";
+import { validate_document_path } from "../src/api/livemap/index.ts";
+import { create_persistent_locus } from "../src/api/locus/index.ts";
 import type {
   DocumentLiveMap,LocusOptions,
 
   Locus,
   Echo,
-  LocusDocumentActionPayloads,
-  LocusEncodedGraphOp,
-  LiveMapDocumentAttrs,
-  LiveMapDocumentAttributeValue,
-  LiveMapGraphReplaceAttrsOp,
   LiveMap,
   LiveTree,
   DataLocusOptions,
+} from "../src/index.ts";
+import type {
+  LiveMapDocumentAttrs,
+  LiveMapDocumentAttributeValue,
+  LiveMapGraphReplaceAttrsOp,
+} from "../src/types/livemap.types.ts";
+import type {
+  LocusDocumentActionPayloads,
+  LocusEncodedGraphOp,
   LocusPersistenceAdapter,
   LocusPersistedCommit,
   LocusPersistedDocumentCheckpoint,
   LocusPersistedMapState,
-} from "../src/index.ts";
-import type { LocusReadonlyMap } from "../src/types/locus.types.ts";
+  LocusReadonlyMap,
+} from "../src/types/locus.types.ts";
 
 const replacementAttrs: LiveMapDocumentAttrs = {
   count: 0,

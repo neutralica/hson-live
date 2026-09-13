@@ -1,5 +1,5 @@
 import { Hson, type HsonNumber } from "hson-live";
-import type { JsonValue } from "hson-live/types";
+import type { JsonValue } from "hson-live/hson";
 import type { HsonCanonical } from "hson-live/hson";
 import { TreeSchema, UserSchema, type InteractionFieldsSchemaType, type ReuseSchemaType, type TreeSchemaHson, type TreeSchemaType, type UserSchemaHson, type UserSchemaType } from "./producer.js";
 

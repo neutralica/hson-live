@@ -3,6 +3,6 @@
   "declarationIdentity": "producer.ts#InteractionFieldsSchema",
   "sourceDigest": "5545aa737a114e8d8e508e672decbd934c51b23accb8c3d96a59fa78575609f0",
   "semanticGraphDigest": "8b90ad53ff0537f4f089a115f6489f2197bacf81bd4957a6a240b38f877deb61",
-  "generatedDeclarationDigest": "1655380719f8a4c13d456375407873593b8c3c81165705596300c0207cb7e788",
+  "generatedDeclarationDigest": "65ca8115786327e1ee06f26e775f127d6e8d76fccda13d04afa3210fce1e15d4",
   "graphHson": "<format \"hson-canonical-schema\" version 2 capabilities <projectedRoot 0> nodes «<kind \"projected-object\" exact true properties ««\"args\",1»,«\"payload\",2»»>,<kind \"projected-any\">,<kind \"projected-any\">»>"
 }

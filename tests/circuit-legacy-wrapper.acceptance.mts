@@ -1,7 +1,7 @@
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { hsonTransform } from "../src/api/transform/index.ts";
-import { _compare_nodes } from "../src/diagnostics/index.ts";
+import { _compare_nodes } from "../src/_tests/diagnostics-internal.ts";
 import { _circuit_test } from "../src/diagnostics/test-circuit.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import { with_browser_parser } from "./circuit-test-helpers.mts";

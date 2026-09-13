@@ -13,7 +13,8 @@ import {
 import { create_livehost_locus_registry } from "hson-live/livehost";
 import { create_livehost_locus_registry_internal } from "../src/api/livehost/services/livehost.authority-registry.ts";
 import { create_livehost_store } from "../src/api/livehost/services/livehost.store.ts";
-import type { JsonValue, LiveMap } from "hson-live/types";
+import type { JsonValue } from "hson-live/hson";
+import type { LiveMap } from "hson-live/livemap";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livehost.authority-lifecycle",

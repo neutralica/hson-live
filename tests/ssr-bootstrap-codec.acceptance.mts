@@ -5,13 +5,13 @@ import {
   encode_ssr_bootstrap,
   hsonLiveMap,
   hsonLocus,
-  install_libraries_snapshot,
-  install_locus_libraries_snapshot,
   render_document,
   render_hosted_document,
   SsrBootstrapCodecError,
   type HsonSchema,
 } from "../src/index.ts";
+import { install_libraries_snapshot } from "../src/api/livemap/index.ts";
+import { install_locus_libraries_snapshot } from "../src/api/locus/index.ts";
 import { install_locus_snapshot } from "../src/api/locus/locus.bootstrap.ts";
 import { encode_view_state_snapshot } from "../src/api/livemap/livemap.document.view-state-codec.ts";
 

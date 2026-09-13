@@ -1,3 +1,4 @@
+/** Public specialist oracle for external Transform conformance suites. */
 import { hsonTransform } from "../api/transform/index.js";
 import { parse_hson } from "../api/transform/parsers/parse-hson.js";
 import { serialize_hson } from "../api/transform/serializers/serialize-hson.js";

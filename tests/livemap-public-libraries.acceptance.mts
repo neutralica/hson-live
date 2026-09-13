@@ -3,11 +3,10 @@ import {
   Hson,
   hsonReflect,
   hsonLiveMap,
-  validate_document_path,
   hsonLocus,
   type HsonSchema,
-  type LiveMapMultiLibraryCommit,
 } from "../src/index.ts";
+import { validate_document_path, type LiveMapMultiLibraryCommit } from "../src/api/livemap/index.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.identity-epoch.ts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";

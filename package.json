@@ -90,14 +90,9 @@
       "types": "./dist/diagnostics/verify-universal-circuit.d.ts",
       "import": "./dist/diagnostics/verify-universal-circuit.js"
     },
-    "./types": {
-      "types": "./dist/types/index.d.ts",
-      "import": "./dist/types/index.js"
-    },
-    "./diagnostics/test-exports": "./dist/_tests/test-exports.js",
     "./diagnostics/transform-test-oracle": {
-      "types": "./dist/_tests/transform-oracle.d.ts",
-      "import": "./dist/_tests/transform-oracle.js"
+      "types": "./dist/diagnostics/transform-test-oracle.d.ts",
+      "import": "./dist/diagnostics/transform-test-oracle.js"
     }
   },
   "scripts": {
@@ -120,7 +115,7 @@
     "check:vscode-schema-tooling": "node --import=tsx tests/vscode-schema-tooling.acceptance.mts",
     "check:typescript-observability": "node --import=tsx scripts/typescript-observability.mts",
     "check:entrypoints": "tsc -p tests/entrypoints/tsconfig.public.json && tsc -p tests/entrypoints/tsconfig.hson-worker.json && tsc -p tests/entrypoints/tsconfig.transform-worker.json && tsc -p tests/entrypoints/tsconfig.livemap-worker.json && tsc -p tests/entrypoints/tsconfig.locus-worker.json && tsc -p tests/entrypoints/tsconfig.ssr-worker.json && tsc -p tests/entrypoints/tsconfig.livehost-node.json && tsc -p tests/entrypoints/tsconfig.livetree-browser.json",
-    "check": "npm run build && npm run check:tests && npm run check:tooling && npm run check:editor && npm run check:entrypoints && npm run test:public-entrypoint-runtime && npm run test:production-dependency-boundary && npm run test:ssr-bootstrap-codec && npm run test:ssr-bootstrap-codec-memory && npm run test:document-ssr && npm run test:libraries-ssr && npm run test:document-ssr-worker && npm run test:libraries-ssr-worker && npm run test:locus-snapshot-install && npm run check:schema-consumers && npm run check:vscode-schema-tooling && npm run check:typescript-observability && npm run test:typescript-observability && npm run test:schema-editor-proof && npm run test:schema-hson-public && npm run test:livemap-hson-schema-mutation-proof && npm run test:livemap-hson-schema-transition-proof && npm run test:canonical-interactions && npm run test:canonical-interactions-worker && npm run test:locus-hosted-multi-library-h5",
+    "check": "npm run build && npm run check:tests && npm run check:tooling && npm run check:editor && npm run check:entrypoints && npm run test:public-surface && npm run test:public-entrypoint-runtime && npm run test:production-dependency-boundary && npm run test:ssr-bootstrap-codec && npm run test:ssr-bootstrap-codec-memory && npm run test:document-ssr && npm run test:libraries-ssr && npm run test:document-ssr-worker && npm run test:libraries-ssr-worker && npm run test:locus-snapshot-install && npm run check:schema-consumers && npm run check:vscode-schema-tooling && npm run check:typescript-observability && npm run test:typescript-observability && npm run test:schema-editor-proof && npm run test:schema-hson-public && npm run test:livemap-hson-schema-mutation-proof && npm run test:livemap-hson-schema-transition-proof && npm run test:canonical-interactions && npm run test:canonical-interactions-worker && npm run test:locus-hosted-multi-library-h5",
     "test:typescript-observability": "node --import=tsx tests/typescript-observability.acceptance.mts",
     "test:schema-editor-proof": "node --import=tsx tests/schema-editor-proof.acceptance.mts",
     "test:static-hson-js-literal-mapping": "node --import=tsx tests/static-hson-js-literal-mapping.acceptance.mts",
@@ -157,6 +152,7 @@
     "test:locus-graph-content-codec": "node --import=tsx tests/locus-graph-content-codec.acceptance.mts",
     "test:public-boundaries": "node --import=tsx tests/public-boundaries.acceptance.mts",
     "test:public-entrypoint-runtime": "node --import=tsx tests/public-entrypoint-runtime.acceptance.mts",
+    "test:public-surface": "node --import=tsx tests/public-entrypoint-surface.acceptance.mts",
     "test:production-dependency-boundary": "node --import=tsx tests/production-dependency-boundary.acceptance.mts",
     "measure:echo-browser-packaging": "node scripts/measure-echo-browser-packaging.mjs",
     "test:locus-public-contract": "node tests/locus-public-contract.acceptance.mjs",

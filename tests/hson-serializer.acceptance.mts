@@ -6,7 +6,7 @@ import { hsonTransform } from "../src/api/transform/index.ts";
 import {
   assertCanonicalClosure,
   assertCanonicalSerializedClosure,
-} from "../src/_tests/transform-oracle.ts";
+} from "../src/diagnostics/transform-test-oracle.ts";
 import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
 import { parse_json } from "../src/api/transform/parsers/parse-json.ts";
 import { tokenize_hson } from "../src/api/transform/parsers/tokenize-hson.ts";

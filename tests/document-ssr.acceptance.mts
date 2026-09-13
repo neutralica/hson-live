@@ -7,11 +7,13 @@ import {
   render_document,
   render_hosted_document,
   type DocumentLiveMap,
-  type LocusRecoveryPlan,
-  type LocusRecoveryPlanner,
-  type LocusRecoverySnapshotPlan,
-  type LocusSnapshotEnvelope,
 } from "../src/index.ts";
+import type {
+  LocusRecoveryPlan,
+  LocusRecoveryPlanner,
+  LocusRecoverySnapshotPlan,
+  LocusSnapshotEnvelope,
+} from "../src/types/locus.types.ts";
 import type { LocusBootstrapAuthority } from "../src/api/locus/locus.bootstrap.ts";
 import { set_document_ssr_hook_for_tests } from "../src/api/ssr/ssr.ts";
 

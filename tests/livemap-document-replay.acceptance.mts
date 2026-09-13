@@ -8,7 +8,7 @@ import type {
   DocumentLiveMap,
   LiveMapCommitObservation,
   LiveMapGraphCommit,
-} from "../src/index.ts";
+} from "../src/types/livemap.types.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livemap.document-replay",

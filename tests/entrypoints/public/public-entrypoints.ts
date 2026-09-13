@@ -5,7 +5,6 @@ import {
   hsonTransform,
   hsonLiveMap,
   hsonLiveTree,
-  hsonInspect,
   hsonCalc,
   activate_interactions,
   add_interaction,
@@ -21,8 +20,6 @@ import {
   decode_ssr_bootstrap,
   render_document,
   render_hosted_document,
-  install_libraries_snapshot,
-  install_locus_libraries_snapshot,
   type BrowserRealizationHtml,
   type DocumentSsr,
   type HostedDocumentSsr,
@@ -32,8 +29,6 @@ import {
   type EncodedSsrBootstrap,
   type DecodedSsrBootstrap,
   type SsrBootstrapCodecOptions,
-  type LiveMapLibrariesSnapshot,
-  type HostedLiveMapLibrariesSnapshot,
   type DocumentContinuation,
   type HostedDocumentContinuation,
   type AsyncLiveTree as RootAsyncLiveTree,
@@ -69,9 +64,9 @@ transformOutput.sanitizeBEWARE();
 hson.fromNode({ $_tag: "main", $_content: [] }).sanitizeBEWARE();
 // @ts-expect-error The /transform Hson source output also omits the removed compatibility method.
 hsonTransform.fromHson(`<main/>`).sanitizeBEWARE();
-const dataPersistedMapKind: import("hson-live").LocusPersistedMapKind = "data";
+const dataPersistedMapKind: import("hson-live/locus").LocusPersistedMapKind = "data";
 // @ts-expect-error The retired persisted data discriminant is not accepted.
-const removedPersistedMapKind: import("hson-live").LocusPersistedMapKind = "projected-data";
+const removedPersistedMapKind: import("hson-live/locus").LocusPersistedMapKind = "projected-data";
 void dataLocusOptions;
 void transformOutput;
 void dataPersistedMapKind;
@@ -161,12 +156,22 @@ import {
   type TransformBinarySerialize,
 } from "hson-live/transform";
 import {
+  begin_livetree_materialization_profile,
+  create_live_inspector,
+  create_live_trace_collector,
+  hsonInspect,
+  LiveInspectorError,
+  type LiveInspectorOptions,
+  type LiveTreeMaterializationProfile,
+  type LiveTraceCollector,
+} from "hson-live/diagnostics";
+import {
   TransformError as HsonSubpathTransformError,
   Hson as HsonSubpath,
   type HsonCanonical as AuthoringCanonical,
 } from "hson-live/hson";
-import type { HsonNode, HsonSemanticPrimitive, JsonValue, Primitive } from "hson-live/types";
-// @ts-expect-error Deprecated document request-target alias was hard-removed.
+import type { HsonNode, HsonSemanticPrimitive, JsonValue, Primitive } from "hson-live/hson";
+// @ts-expect-error The historical broad /types barrel was hard-removed.
 import type { LiveMapDocumentTarget } from "hson-live/types";
 // D1 tooling is private, including its capability-origin and lifecycle helpers.
 // @ts-expect-error Standalone helper is not a public export.
@@ -273,6 +278,7 @@ liveTree.removeSelf();
 // @ts-expect-error The obsolete construction engine is not a public export.
 import { construct_tree } from "hson-live/livetree";
 import {
+  install_libraries_snapshot,
   LiveMapProjectedTransportError,
   LiveMapProjectedValueError,
   LiveMapReplayError,
@@ -282,6 +288,7 @@ import {
   make_livemap_core,
   type LiveMap,
   type LiveMapCommit,
+  type LiveMapLibrariesSnapshot,
   type DocumentLiveMap,
   type LiveMapPathHandle,
   type LivePath,
@@ -338,6 +345,7 @@ import type { LocusClientUnsubscribeMessage } from "hson-live/locus";
 // @ts-expect-error DocumentBindingSource is intentionally not a public export.
 import type { DocumentBindingSource } from "hson-live/livetree";
 import {
+  install_locus_libraries_snapshot,
   LocusAuthorityError,
   hsonLocus as hostSubpath,
   type Locus,
@@ -348,6 +356,7 @@ import {
   type LocusReadonlyMap,
   type LocusMultiLibrary,
   type LocusMultiLibraryActionContext,
+  type HostedLiveMapLibrariesSnapshot,
 } from "hson-live/locus";
 void (0 as unknown as LocusClientId);
 void (0 as unknown as LocusClientMessage);
@@ -1045,8 +1054,15 @@ const originalTypeIdentity: HsonCanonical = authoredTypeIdentity;
 const sameRootMapType: typeof mapSubpath = hsonLiveMap;
 const sameRootTreeType: typeof treeSubpath = hsonLiveTree;
 const sameRootTransformType: typeof transformSubpath = hsonTransform;
-const sameRootInspectType: typeof hson.inspect = hsonInspect;
-void [originalTypeIdentity, sameRootMapType, sameRootTreeType, sameRootTransformType, sameRootInspectType];
+void [originalTypeIdentity, sameRootMapType, sameRootTreeType, sameRootTransformType];
+// @ts-expect-error Experimental inspection is owned by /diagnostics, not the root namespace.
+hson.inspect;
+declare const inspectorOptions: LiveInspectorOptions;
+declare const materializationProfile: LiveTreeMaterializationProfile;
+const diagnosticCollector: LiveTraceCollector = create_live_trace_collector({ capacity: 8 });
+void [hsonInspect.create, create_live_inspector, LiveInspectorError,
+  begin_livetree_materialization_profile, inspectorOptions, materializationProfile,
+  diagnosticCollector];
 
 // @ts-expect-error HTML parsing is not a LiveMap construction-facade capability.
 hson.liveMap.fromTrustedHtml("<main></main>");

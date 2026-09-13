@@ -1,6 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { hson, validate_document_path } from "../src/index.ts";
+import { hson } from "../src/index.ts";
+import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import { LiveMapDocumentStagingError, LiveMapReplayInputError } from "../src/api/livemap/livemap.error.ts";
 import type {

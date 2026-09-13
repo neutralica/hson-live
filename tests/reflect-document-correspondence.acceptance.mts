@@ -11,7 +11,7 @@ import {
   _create_livetree_for_runtime_test,
   _create_livetree_runtime_test_handle,
   _reflect_document_for_runtime_test,
-} from "../src/diagnostics/index.ts";
+} from "../src/_tests/diagnostics-internal.ts";
 import {
   DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
   DOCUMENT_REFLECT_STRUCTURAL_UPDATE_FAILED_ERROR_CODE,

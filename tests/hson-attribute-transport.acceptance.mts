@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   assertCanonicalSerializedClosure,
   assert_canonical_oracle_graph_equal,
-} from "../src/_tests/transform-oracle.ts";
+} from "../src/diagnostics/transform-test-oracle.ts";
 import { parseDocument } from "htmlparser2";
 import { hsonTransform } from "../src/api/transform/index.ts";
 import { parse_html } from "../src/api/transform/parsers/parse-html.ts";

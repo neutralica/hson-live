@@ -6,10 +6,10 @@ import {
   hsonLocus,
   hsonEcho,
   hsonReflect,
-  create_persistent_locus,
-  validate_document_path,
   type HsonSchema,
 } from "../src/index.ts";
+import { validate_document_path } from "../src/api/livemap/index.ts";
+import { create_persistent_locus } from "../src/api/locus/index.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import { create_livehost_locus_registry } from "../src/api/livehost/index.ts";
 import { install_fake_document } from "./helpers/fake-document.mts";

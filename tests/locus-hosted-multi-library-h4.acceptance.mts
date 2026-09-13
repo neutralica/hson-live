@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { Hson, hson, hsonLiveMap, validate_document_path, type HsonSchema } from "../src/index.ts";
+import { Hson, hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
+import { validate_document_path } from "../src/api/livemap/index.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import type { LiveMapGraphOp } from "../src/types/livemap.types.ts";
 import { LocusPersistenceError } from "../src/api/locus/locus.persistence.error.ts";

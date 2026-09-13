@@ -15,7 +15,7 @@ import {
   _create_livetree_for_runtime_test,
   _create_livetree_runtime_test_handle,
   _reflect_document_for_runtime_test,
-} from "../src/diagnostics/index.ts";
+} from "../src/_tests/diagnostics-internal.ts";
 import { element, path, projected_element, raw_node } from "./helpers/reflect-unit6.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 

@@ -1,7 +1,8 @@
 // livetree.bind.ts
 
 import { is_Node } from "../../../core/node-guards.js";
-import type { DocumentLiveMap, HsonNode, LiveMapPathHandle } from "../../../types/index.js";
+import type { HsonNode } from "../../../core/types.js";
+import type { DocumentLiveMap, LiveMapPathHandle } from "../../../types/livemap.types.js";
 import { is_livemap_document_location } from "../../livemap/livemap.document.location.js";
 import { is_livemap_projected_location } from "../../livemap/livemap.handle.js";
 import type { LiveTree } from "../livetree.js";

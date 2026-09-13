@@ -11,7 +11,7 @@ import {
   _own_livetree_runtime_test_disposable,
   _project_livetree_for_runtime_test,
   _reflect_document_for_runtime_test,
-} from "../src/diagnostics/index.ts";
+} from "../src/_tests/diagnostics-internal.ts";
 import { assign_hson_node_quid, PERSISTED_QUID_ALPHABET, PERSISTED_QUID_LENGTH } from "../src/core/hson-node-quid.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import { set_livemap_document_quid_candidate_source_for_tests } from "../src/api/livemap/livemap.document.registration.ts";

@@ -155,13 +155,9 @@ check("SSR root and subpath exports share runtime identity", () => {
       SsrBootstrapCodecError as RootBootstrapError,
       encode_ssr_bootstrap as rootEncode,
       decode_ssr_bootstrap as rootDecode,
-      install_libraries_snapshot as rootLibrariesInstall,
-      install_locus_libraries_snapshot as rootHostedLibrariesInstall,
-            render_document as rootRender,
-            render_hosted_document as rootHostedRender,
+      render_document as rootRender,
+      render_hosted_document as rootHostedRender,
     } from "hson-live";
-    import { install_libraries_snapshot as livemapLibrariesInstall } from "hson-live/livemap";
-    import { install_locus_libraries_snapshot as locusLibrariesInstall } from "hson-live/locus";
     import {
       DocumentSsrError as SsrError,
       SsrBootstrapCodecError as SsrBootstrapError,
@@ -172,9 +168,7 @@ check("SSR root and subpath exports share runtime identity", () => {
     } from "hson-live/ssr";
     if (RootError !== SsrError || RootBootstrapError !== SsrBootstrapError
       || rootEncode !== ssrEncode || rootDecode !== ssrDecode
-      || rootRender !== ssrRender || rootHostedRender !== ssrHostedRender
-      || rootLibrariesInstall !== livemapLibrariesInstall
-      || rootHostedLibrariesInstall !== locusLibrariesInstall) {
+      || rootRender !== ssrRender || rootHostedRender !== ssrHostedRender) {
       throw new Error("SSR entrypoint identity diverged");
     }
   `;

@@ -11,7 +11,7 @@ import {
   _livetree_runtime_test_claim_count,
   _lookup_livetree_runtime_test_node,
   _reflect_document_for_runtime_test,
-} from "../src/diagnostics/index.ts";
+} from "../src/_tests/diagnostics-internal.ts";
 import {
   livemap_document_identity_overlay_for,
 } from "../src/api/livemap/livemap.document.identity.ts";

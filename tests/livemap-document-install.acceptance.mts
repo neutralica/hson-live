@@ -4,7 +4,7 @@ import { hson } from "../src/hson.ts";
 import type {
   DocumentLiveMapCapture,
   DocumentLiveMap,
-} from "../src/index.ts";
+} from "../src/types/livemap.types.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import { internal_livemap_node } from "../src/api/livemap/livemap.internal.ts";
 

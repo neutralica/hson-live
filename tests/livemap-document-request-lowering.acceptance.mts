@@ -1,6 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { hson, validate_document_path } from "../src/index.ts";
+import { hson } from "../src/index.ts";
+import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 import { decode_locus_canonical_commit } from "../src/api/locus/locus.protocol.ts";
 import { prepare_document_graph_operation } from "../src/api/livemap/livemap.document.mutation.ts";
 import {

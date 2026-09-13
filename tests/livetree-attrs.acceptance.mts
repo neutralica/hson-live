@@ -2,12 +2,14 @@ import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import {
   hson,
+  LiveTreeAttributeError,
+} from "../src/index.ts";
+import {
   LIVETREE_ATTRIBUTE_NOT_FOUND_ERROR_CODE,
   LIVETREE_INVALID_ATTRIBUTE_NAME_ERROR_CODE,
   LIVETREE_INVALID_ATTRIBUTE_VALUE_ERROR_CODE,
   LIVETREE_PROTECTED_ATTRIBUTE_ERROR_CODE,
-  LiveTreeAttributeError,
-} from "../src/index.ts";
+} from "../src/api/livetree/index.ts";
 import type { LiveTree } from "../src/api/livetree/livetree.ts";
 import { link_node_to_el } from "../src/api/livetree/utils/node-map-helpers.ts";
 

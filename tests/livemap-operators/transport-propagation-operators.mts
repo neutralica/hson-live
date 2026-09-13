@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { hson } from "../../src/hson.ts";
 import { link_livemap } from "../../src/api/livemap/livemap.link.ts";
 import { own_record, lifecycle_operator, error_code, store_for, type DeterministicLiveMapOperator, type OperatorResult } from "./operator-catalog.mts";
-import type { JsonValue, LiveMapCore } from "../../src/types/index.ts";
+import type { JsonValue } from "../../src/core/types.ts";
+import type { LiveMapCore } from "../../src/types/livemap.types.ts";
 
 type Map = LiveMapCore<JsonValue | undefined>;
 

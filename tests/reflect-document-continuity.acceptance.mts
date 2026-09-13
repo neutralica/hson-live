@@ -14,7 +14,7 @@ import {
   _lookup_livetree_runtime_test_node,
   _own_livetree_runtime_test_disposable,
   _reflect_document_for_runtime_test,
-} from "../src/diagnostics/index.ts";
+} from "../src/_tests/diagnostics-internal.ts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import { get_el_for_node } from "../src/api/livetree/utils/node-map-helpers.ts";
 import {

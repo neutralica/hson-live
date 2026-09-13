@@ -1,6 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { create_persistent_locus, hson, HsonData } from "../src/index.ts";
+import { hson, HsonData } from "../src/index.ts";
+import { create_persistent_locus } from "../src/api/locus/index.ts";
 import { create_livehost_persistent_store } from "../src/api/livehost/services/livehost.persistent-store.ts";
 import { resolve_locus_document_action } from "../src/api/locus/locus.document-actions.ts";
 import { make_locus_action_dedupe_store } from "../src/api/locus/locus.actions.ts";

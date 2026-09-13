@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { Hson, hson } from "../../src/index.ts";
 import { link_livemap } from "../../src/api/livemap/livemap.link.ts";
 import { make_livemap_store_api } from "../../src/api/livemap/livemap.store.ts";
-import type { JsonValue, LiveMapCore } from "../../src/types/index.ts";
+import type { JsonValue } from "../../src/core/types.ts";
+import type { LiveMapCore } from "../../src/types/livemap.types.ts";
 
 export type OperatorClassification = "accept" | "no-op" | "change" | "conflict" | "rejection";
 export type OperatorGroup = "mutation" | "admission-schema" | "transport-propagation";

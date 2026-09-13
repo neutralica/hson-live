@@ -11,5 +11,15 @@ export const Hson = Object.freeze(Object.assign(admit_hson, {
 
 export { HsonData } from "./api/data/hson-data.js";
 export type { HsonCanonical, HsonSchema } from "./api/transform/transform.types.js";
+export type {
+  BasicValue,
+  HsonAttrs,
+  HsonMeta,
+  HsonNode,
+  HsonSemanticPrimitive,
+  JsonValue,
+  NodeContent,
+  Primitive,
+} from "./core/types.js";
 export { TransformError, is_transform_error, read_transform_error_details } from "./core/errors.js";
 export type { TransformErrorDetails, TransformErrorRelated, TransformErrorSource } from "./core/errors.js";

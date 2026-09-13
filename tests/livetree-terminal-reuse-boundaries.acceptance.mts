@@ -12,7 +12,7 @@ import {
   _lookup_livetree_runtime_test_node,
   _own_livetree_runtime_test_disposable,
   _reflect_document_for_runtime_test,
-} from "../src/diagnostics/index.ts";
+} from "../src/_tests/diagnostics-internal.ts";
 import { assign_hson_node_quid } from "../src/core/hson-node-quid.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import { element } from "./helpers/reflect-unit6.mts";

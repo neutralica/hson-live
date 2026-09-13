@@ -18,7 +18,7 @@ import {
   _own_livetree_runtime_test_disposable,
   _project_livetree_for_runtime_test,
   _register_livetree_runtime_test_document,
-} from "../src/diagnostics/index.ts";
+} from "../src/_tests/diagnostics-internal.ts";
 import { assign_hson_node_quid } from "../src/core/hson-node-quid.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import type { LiveTree } from "../src/api/livetree/livetree.ts";

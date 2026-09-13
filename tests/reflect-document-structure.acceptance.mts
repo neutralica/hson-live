@@ -1,6 +1,7 @@
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
-import { hson, validate_document_path } from "../src/index.ts";
+import { hson } from "../src/index.ts";
+import { validate_document_path } from "../src/api/livemap/index.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
