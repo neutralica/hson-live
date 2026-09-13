@@ -18,6 +18,8 @@ import {
 } from "../lifecycle/document-binding-state.js";
 import { release_node_parent, release_subtree_ownership } from "../lifecycle/graph-ownership.js";
 import { dispose_node_deep } from "../utils/dispose-node.js";
+import { reconcile_browser_realization_children } from "../../../internal/browser-realization/browser-realization-dom.js";
+import { default_livetree_runtime, runtime_for_node } from "../runtime/livetree-runtime.js";
 
 /**
  * Options for form state writers that mirror to the DOM when available.
@@ -358,41 +360,8 @@ export function make_form_api<TTree extends LiveTree>(
     };
 }
 
-// -----------------------------------------------------------------------------
-// //.. DOM helpers: project text leaves as *Text nodes*, never <_hson_str>/< _hson_val >
-// -----------------------------------------------------------------------------
-
 function primitive_to_text(value: Primitive): string {
   return value === null ? "" : String(value);
-}
-
-// was creating document.createElement("_hson_str") which injects <_hson_str> into DOM.
-// Now: always create a Text node.
-function make_dom_text(host: Element, value: Primitive): Text {
-  return host.ownerDocument.createTextNode(primitive_to_text(value));
-}
-
-// remove direct child Text nodes (these represent projected text leaves).
-// We do NOT touch element children, so non-leaf content remains.
-function remove_dom_text_leaves(host: Element): void {
-  const toRemove: ChildNode[] = [];
-
-  for (const n of Array.from(host.childNodes)) {
-    if (n.nodeType === 3) toRemove.push(n);
-  }
-
-  for (const n of toRemove) host.removeChild(n);
-}
-
-function replace_dom_text_leaves(host: Element, value: Primitive): void {
-  const nodes = Array.from(host.childNodes);
-  const firstTextIndex = nodes.findIndex((n) => n.nodeType === 3);
-
-  remove_dom_text_leaves(host);
-
-  const refIndex = firstTextIndex >= 0 ? firstTextIndex : 0;
-  const ref = host.childNodes.item(refIndex) ?? null;
-  host.insertBefore(make_dom_text(host, value), ref);
 }
 
 
@@ -411,7 +380,7 @@ function isLeafTag(tag: unknown): boolean {
  * Replace ONLY the text leaves (_hson_str/_hson_val) under this node.
  * Keeps non-leaf content untouched.
  *
- * DOM: removes only direct Text children under the host element; keeps element children.
+ * DOM: reconciles the shared browser realization, including Hson boundary markers.
  */
 export function set_node_text_content(node: HsonNode, value: Primitive): void {
   if (delegate_document_text_mutation_if_bound(node, { kind: "set", value })) return;
@@ -440,10 +409,8 @@ export function set_node_text_content(node: HsonNode, value: Primitive): void {
   bucket.$_content = next;
 
   // --- DOM projection (CHANGED): Text nodes only ---
-  const host = get_el_for_node(node);
-  if (!host) return;
-
-  replace_dom_text_leaves(host, text);
+  if (get_el_for_node(node) === undefined) return;
+  reconcile_browser_realization_children(node, runtime_for_node(node) ?? default_livetree_runtime());
 }
 
 /**
@@ -463,7 +430,7 @@ export function add_node_text_content(node: HsonNode, value: Primitive): void {
   const host = get_el_for_node(node);
   if (!host) return;
 
-  host.appendChild(make_dom_text(host, text));
+  reconcile_browser_realization_children(node, runtime_for_node(node) ?? default_livetree_runtime());
 }
 
 /**
@@ -488,9 +455,7 @@ export function insert_node_text_leaf(node: HsonNode, index: number, value: Prim
   const host = get_el_for_node(node);
   if (!host) return;
 
-  const domText = make_dom_text(host, text);
-  const ref = host.childNodes.item(ix) ?? null;
-  host.insertBefore(domText, ref);
+  reconcile_browser_realization_children(node, runtime_for_node(node) ?? default_livetree_runtime());
 }
 
 /**
@@ -514,7 +479,7 @@ export function overwrite_node_text_content(node: HsonNode, value: Primitive): v
   const el = get_el_for_node(node);
   if (!el) return;
 
-  (el as HTMLElement).textContent = text;
+  reconcile_browser_realization_children(node, runtime_for_node(node) ?? default_livetree_runtime());
 }
 
 export function make_text_api<TTree extends LiveTree>(

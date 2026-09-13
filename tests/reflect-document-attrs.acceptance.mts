@@ -140,11 +140,11 @@ check("canonical attrs project by raw path and QUID into graph and mounted DOM",
   assert.equal(mainTree.attrs.get("count"), 0);
   assert.equal(rootDom.getAttribute("count"), "0");
   assert.equal(sectionNode.$_attrs?.hidden, false);
-  assert.equal(sectionDom.getAttribute("hidden"), "false");
+  assert.equal(sectionDom.getAttribute("hidden"), null);
   assert.deepEqual(spanNode.$_attrs, { empty: "", enabled: true, nullable: null });
   assert.equal(spanDom.getAttribute("empty"), "");
-  assert.equal(spanDom.getAttribute("enabled"), "true");
-  assert.equal(spanDom.getAttribute("nullable"), "null");
+  assert.equal(spanDom.getAttribute("enabled"), "");
+  assert.equal(spanDom.getAttribute("nullable"), null);
   assert.equal(binding.sourceRevision, map.rev);
   assert.equal(binding.diagnostics().updatesApplied, 3);
   const spanTree = create_livetree(spanNode).adoptRoots(binding.tree.hostRootNode());

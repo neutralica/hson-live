@@ -1,10 +1,21 @@
 #### hson-live / hson.terminalgothic.com
 
 # Hson Spec[3]
-## HTML Representation in Hson
+## HTML transport representation in Hson
 Updated: 2026-07-13
 
 HTML maps into the Hson graph as ordered element content. The mapping preserves the structure required to re-emit useful equivalent markup, but it is canonicalizing rather than source-text-lossless.
+
+Public `.toHtml()` is the Hson transport serializer. Its `_hson_*` carriers are
+canonical/transport structural names and are intentionally retained where the
+transport needs them. This output is not the native-browser SSR realization
+required by exact document continuation. The separate browser-realization
+serializer remains internal in the current release.
+
+In particular, `_hson_*` names are canonical/transport structure,
+`hson-boundary` is derived browser-realization evidence, and `hson:quid` is
+sparse identity evidence. The latter two meanings do not turn an Hson boundary
+marker into canonical state.
 
 ---
 

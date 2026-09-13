@@ -33,7 +33,9 @@ export function resolve_livetree_listener_targets_internal(
       const mappedElement = tree.dom.el();
       const ownerDocument = mappedElement?.ownerDocument;
       const ambient = target === "window"
-        ? ownerDocument?.defaultView ?? (typeof window !== "undefined" ? window : null)
+        ? ownerDocument === undefined
+          ? (typeof window !== "undefined" ? window : null)
+          : ownerDocument.defaultView
         : ownerDocument ?? (typeof document !== "undefined" ? document : null);
       return ambient === null || ambient === undefined ? [] : [ambient];
     } catch { return []; }

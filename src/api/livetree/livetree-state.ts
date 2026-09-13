@@ -7,6 +7,7 @@ type DisposedNodeState = Readonly<{
 }>;
 
 const DISPOSED_NODE_STATE = new WeakMap<HsonNode, DisposedNodeState>();
+const TERMINAL_LISTENERS = new WeakMap<HsonNode, Set<() => void>>();
 
 export function is_livetree_node_disposed(node: HsonNode): boolean {
   return DISPOSED_NODE_STATE.has(node);
@@ -21,7 +22,27 @@ export function mark_livetree_nodes_disposed(
     DISPOSED_NODE_STATE.set(node, {
       formerQuid: formerQuids?.get(node),
     });
+    const listeners = TERMINAL_LISTENERS.get(node);
+    if (listeners !== undefined) {
+      TERMINAL_LISTENERS.delete(node);
+      for (const listener of [...listeners]) listener();
+    }
   }
+}
+
+/** Observe only terminal retirement of one exact canonical node. @internal */
+export function observe_livetree_node_terminal(node: HsonNode, listener: () => void): () => void {
+  if (is_livetree_node_disposed(node)) {
+    listener();
+    return () => {};
+  }
+  const listeners = TERMINAL_LISTENERS.get(node) ?? new Set<() => void>();
+  listeners.add(listener);
+  TERMINAL_LISTENERS.set(node, listeners);
+  return (): void => {
+    listeners.delete(listener);
+    if (listeners.size === 0) TERMINAL_LISTENERS.delete(node);
+  };
 }
 
 export function disposed_nodes_count_for_subtree(root: HsonNode): number {

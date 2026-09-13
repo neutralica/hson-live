@@ -168,6 +168,7 @@
     "test:canonical-interactions-browser": "npm run build && node scripts/run-canonical-interactions-browser.mjs",
     "test:document-continuation-browser": "npm run build && node scripts/run-document-continuation-browser.mjs",
     "test:document-continuation": "node --import=tsx tests/document-continuation.acceptance.mts",
+    "test:browser-realization": "node --import=tsx tests/browser-realization.acceptance.mts",
     "test:hosted-document-continuation": "node --import=tsx tests/hosted-document-continuation.acceptance.mts",
     "test:livetree-realization-resource-ownership": "node --import=tsx tests/livetree-realization-resource-ownership.acceptance.mts",
     "test:livetree-quid-eligibility": "node --import=tsx tests/livetree-quid-eligibility.acceptance.mts",

@@ -329,7 +329,9 @@ All transform source constructors return a common surface:
 
 ### `.toHtml()`
 
-Selects HTML output.
+Selects Hson transport HTML output. It preserves canonical distinctions through
+`_hson_*` carriers where necessary; it is not the internal SSR continuation
+renderer.
 
 - `serialize()` returns an HTML string.
 - No in-memory HTML parse terminal is exposed.

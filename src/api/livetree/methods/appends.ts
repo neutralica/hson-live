@@ -2,6 +2,7 @@
 
 import { HsonNode, NodeContent, Primitive } from "../../../core/types.js";
 import { ELEM_TAG } from "../../../core/constants.js";
+import { is_Node } from "../../../core/node-guards.js";
 import { CREATE_NODE } from "../../../core/factories.js";
 import { unwrap_root_elem } from "../../transform/utils/html-utils/unwrap-root-elem.js";
 import { get_el_for_node, unlinkNode } from "../utils/node-map-helpers.js";
@@ -33,14 +34,15 @@ import {
   runtime_for_tree,
   type LiveTreeRuntime,
 } from "../runtime/livetree-runtime.js";
+import { reconcile_browser_realization_children } from "../../../internal/browser-realization/browser-realization-dom.js";
 
 /**
  * Append one or more Hson nodes into a target node's `_hson_elem` container
  * and mirror the change into the corresponding live DOM subtree.
  *
  * If the first child of `targetNode.$_content` is not an `_hson_elem` container,
- * this function will create one and insert it as the first child. All
- * appended nodes are then placed inside that container.
+ * this function creates the canonical container around the existing element
+ * content before appending. This keeps append order identical in state and DOM.
  *
  * When a bound live DOM element exists for `targetNode`, the same nodes
  * are rendered via `create_live_tree2` and inserted into the DOM at the
@@ -68,9 +70,9 @@ function appendNodes(
   if (firstChild && typeof firstChild === "object" && firstChild.$_tag === ELEM_TAG) {
     containerNode = firstChild;
   } else {
-    containerNode = CREATE_NODE({ $_tag: ELEM_TAG, $_content: [] });
-    targetNode.$_content = [containerNode, ...targetNode.$_content];
-    claim_node_parent(containerNode, targetNode);
+    const priorContent = targetNode.$_content;
+    containerNode = CREATE_NODE({ $_tag: ELEM_TAG, $_content: priorContent });
+    install_element_container(targetNode, containerNode, priorContent);
   }
 
   if (!containerNode.$_content) containerNode.$_content = [];
@@ -89,27 +91,8 @@ function appendNodes(
   // --- DOM SYNC --------------------------------------------------------
   const liveElement = get_el_for_node(targetNode);
   if (!liveElement) return;
-const parentNs: "html" | "svg" =
-  liveElement.namespaceURI === SVG_NS ? "svg" : "html";
-  const domChildren = Array.from(liveElement.childNodes);
-
-  if (typeof index === "number") {
-    let insertIx = normalize_ix(index, domChildren.length);
-
-    for (const newNode of nodesToAppend) {
-      const dom = project_livetree(newNode, parentNs, runtime, liveElement.ownerDocument);
-      const refNode = domChildren[insertIx] ?? null;
-      liveElement.insertBefore(dom, refNode);
-      record_livetree_materialization("domAppendOperations");
-      insertIx += 1;
-    }
-  } else {
-    for (const newNode of nodesToAppend) {
-      const dom = project_livetree(newNode, parentNs, runtime, liveElement.ownerDocument);
-      liveElement.appendChild(dom);
-      record_livetree_materialization("domAppendOperations");
-    }
-  }
+  reconcile_browser_realization_children(targetNode, runtime);
+  record_livetree_materialization("domAppendOperations");
 }
 
 /**
@@ -211,7 +194,7 @@ export function append_branches_atomic<TTree extends AppendTreeLike>(
   const existingContainer = firstChild && typeof firstChild === "object" && firstChild.$_tag === ELEM_TAG
     ? firstChild
     : undefined;
-  const containerNode = existingContainer ?? CREATE_NODE({ $_tag: ELEM_TAG, $_content: [] });
+  const containerNode = existingContainer ?? CREATE_NODE({ $_tag: ELEM_TAG, $_content: priorContent });
   const childContent = containerNode.$_content ??= [];
   const insertIx = typeof index === "number" ? normalize_ix(index, childContent.length) : childContent.length;
   const hostRoot = target.hostRootNode();
@@ -225,20 +208,20 @@ export function append_branches_atomic<TTree extends AppendTreeLike>(
       record_livetree_materialization("domAppendOperations");
     }
     if (existingContainer === undefined) {
-      targetNode.$_content = [containerNode, ...priorContent];
-      claim_node_parent(containerNode, targetNode);
+      install_element_container(targetNode, containerNode, priorContent);
     }
     childContent.splice(insertIx, 0, ...roots);
     for (const root of roots) claim_node_parent(root, containerNode);
     for (const branch of branches) branch.adoptRoots(hostRoot);
     record_livetree_materialization("hsonHostInsertions", roots.length);
+    if (liveElement !== undefined) reconcile_browser_realization_children(targetNode, runtime);
     return target;
   } catch (error) {
     childContent.splice(insertIx, roots.length);
     for (const root of roots) release_node_parent(root, containerNode);
     if (existingContainer === undefined) {
+      release_element_container(targetNode, containerNode, priorContent);
       targetNode.$_content = priorContent;
-      release_node_parent(containerNode, targetNode);
     }
     if (domInserted) for (const node of domRoots) node.parentNode?.removeChild(node);
     rollback_new_projection(incomingNodes, previouslyMapped);
@@ -248,6 +231,33 @@ export function append_branches_atomic<TTree extends AppendTreeLike>(
       error,
     );
   }
+}
+
+function install_element_container(
+  targetNode: HsonNode,
+  containerNode: HsonNode,
+  priorContent: Readonly<NodeContent>,
+): void {
+  targetNode.$_content = [containerNode];
+  claim_node_parent(containerNode, targetNode);
+  for (const child of priorContent) {
+    if (!is_Node(child)) continue;
+    release_node_parent(child, targetNode);
+    claim_node_parent(child, containerNode);
+  }
+}
+
+function release_element_container(
+  targetNode: HsonNode,
+  containerNode: HsonNode,
+  priorContent: Readonly<NodeContent>,
+): void {
+  for (const child of priorContent) {
+    if (!is_Node(child)) continue;
+    release_node_parent(child, containerNode);
+    claim_node_parent(child, targetNode);
+  }
+  release_node_parent(containerNode, targetNode);
 }
 
 export function append_branch<TTree extends AppendTreeLike>(
@@ -302,14 +312,7 @@ export function append_detached_content<TTree extends AppendTreeLike>(
   for (const node of nodes) claim_node_parent(node, targetNode);
 
   if (liveElement) {
-    for (const item of content) {
-      liveElement.appendChild(project_livetree(
-        item as HsonNode | Primitive,
-        parentNs,
-        runtime,
-        liveElement.ownerDocument,
-      ));
-    }
+    reconcile_browser_realization_children(targetNode, runtime);
   }
   return target;
 }

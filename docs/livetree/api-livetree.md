@@ -61,7 +61,17 @@ registry, or remove array `index` metadata. Hson serialization is delayed
 until `serialize()` so options selected after `toHson()` take effect. The former
 `spaced`, `linted`, and `lineLength` options are not part of this surface.
 
-JSON and HTML serialization behavior is unchanged.
+JSON and HTML serialization behavior is unchanged. `.toHtml()` means Hson
+transport HTML, not browser SSR realization HTML.
+
+Normal browser projection is derived from the same internal realization plan
+used by exact continuation and its internal SSR serializer. Derived `<tbody>`
+wrappers and template-content targeting are realization-only. Ordinary adjacent
+text leaves are separated by private `hson-boundary` comments; explicit empty
+leaves are represented by an evidence-only Hson boundary marker. Raw DOM
+`childNodes` can observe these comments. They do not enter canonical data,
+captures, equality, revisions, selector element-sibling semantics, or QUID
+indexes.
 
 ### LiveTree Facade
 

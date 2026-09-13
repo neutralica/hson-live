@@ -19,6 +19,8 @@ export type LiveTreeRuntime = {
   readonly ownerDisposables: Map<HsonNode, Set<() => void>>;
   readonly ownerDisposableKinds: Map<HsonNode, Map<() => void, LifecycleResourceKind>>;
   readonly styleDocuments: Set<Document>;
+  /** Claimed documents not yet visible to runtime managers. */
+  readonly silentStyleDocuments: Set<Document>;
   readonly styleDocumentListeners: Set<(document: Document) => void>;
   readonly realizationListeners: Set<() => void>;
   cssManager: unknown;
@@ -35,6 +37,7 @@ function make_runtime(): LiveTreeRuntime {
     ownerDisposables: new Map(),
     ownerDisposableKinds: new Map(),
     styleDocuments: new Set(),
+    silentStyleDocuments: new Set(),
     styleDocumentListeners: new Set(),
     realizationListeners: new Set(),
     cssManager: undefined,
@@ -162,7 +165,12 @@ export function register_runtime_document(runtime: LiveTreeRuntime, document: Do
     throw new Error("LiveTree runtime scope has been disposed.");
   }
   const current = RUNTIME_FOR_DOCUMENT.get(document);
-  if (current === runtime) return;
+  if (current === runtime) {
+    if (runtime.silentStyleDocuments.has(document)) {
+      activate_runtime_document(runtime, document);
+    }
+    return;
+  }
   if (current !== undefined) {
     throw new Error("DOM Document is already owned by another LiveTree runtime scope.");
   }
@@ -177,6 +185,60 @@ export function register_runtime_document(runtime: LiveTreeRuntime, document: Do
     }
     throw cause;
   }
+}
+
+export type SilentRuntimeDocumentClaim = Readonly<{
+  ownedByAttempt: boolean;
+  activate: () => void;
+  rollback: () => void;
+}>;
+
+/** Claim a document without exposing it to managers until continuation publication. @internal */
+export function claim_runtime_document_silently(
+  runtime: LiveTreeRuntime,
+  document: Document,
+): SilentRuntimeDocumentClaim {
+  assert_runtime_document_available(runtime, document);
+  const current = RUNTIME_FOR_DOCUMENT.get(document);
+  if (current === runtime) {
+    return Object.freeze({ ownedByAttempt: false, activate: () => {}, rollback: () => {} });
+  }
+  RUNTIME_FOR_DOCUMENT.set(document, runtime);
+  runtime.silentStyleDocuments.add(document);
+  let finished = false;
+  return Object.freeze({
+    ownedByAttempt: true,
+    activate(): void {
+      if (finished) return;
+      finished = true;
+      activate_runtime_document(runtime, document);
+    },
+    rollback(): void {
+      if (finished) return;
+      finished = true;
+      runtime.silentStyleDocuments.delete(document);
+      if (RUNTIME_FOR_DOCUMENT.get(document) === runtime) RUNTIME_FOR_DOCUMENT.delete(document);
+    },
+  });
+}
+
+/** Publish a successful silent claim and isolate manager failures from continuation. @internal */
+function activate_runtime_document(runtime: LiveTreeRuntime, document: Document): void {
+  runtime.silentStyleDocuments.delete(document);
+  runtime.styleDocuments.add(document);
+  for (const listener of [...runtime.styleDocumentListeners]) {
+    try {
+      listener(document);
+    } catch (cause) {
+      report_runtime_activation_failure(cause);
+    }
+  }
+}
+
+function report_runtime_activation_failure(cause: unknown): void {
+  const reporter = (globalThis as { reportError?: (error: unknown) => void }).reportError;
+  if (typeof reporter === "function") reporter(cause);
+  else console.error("LiveTree runtime manager activation failed after continuation success.", cause);
 }
 
 /** Validate a document claim without publishing it. @internal */
@@ -201,6 +263,7 @@ export function release_runtime_document_claim(
   if (RUNTIME_FOR_DOCUMENT.get(document) !== runtime) return;
   RUNTIME_FOR_DOCUMENT.delete(document);
   runtime.styleDocuments.delete(document);
+  runtime.silentStyleDocuments.delete(document);
 }
 
 /** Release an inactive internal runtime and its physical Document claims. @internal */
@@ -229,6 +292,7 @@ export function dispose_livetree_runtime(runtime: LiveTreeRuntime): void {
     }
   }
   runtime.styleDocuments.clear();
+  runtime.silentStyleDocuments.clear();
   runtime.issuedQuids.clear();
   runtime.disposed = true;
 }

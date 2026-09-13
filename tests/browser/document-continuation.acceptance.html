@@ -5,12 +5,16 @@
 <script type="module">
 import {
   DocumentContinuationError,
+  CssManager,
   continue_hosted_document,
   continue_document,
   create_browser_locus_socket,
   create_echo,
   hson,
   install_locus_bootstrap,
+  plan_browser_realization,
+  project_livetree,
+  serialize_browser_realization,
 } from "./bundle.js";
 
 const results = [];
@@ -24,18 +28,17 @@ const documentMap = (source) => {
   if (map.mode !== "document") throw new Error("expected document map");
   return map;
 };
-const markup = (map) => hson.fromNode(map.root()).toHtml().serialize();
+const markup = (map) => serialize_browser_realization(plan_browser_realization(map.root()));
 const mount = (map, owner = document) => {
   const template = owner.createElement("template");
-  // The general HTML serializer is readable and separates sibling elements;
-  // exact continuation fixtures use the canonical no-separator realization.
-  template.innerHTML = markup(map).replace(/>\n</g, "><");
+  template.innerHTML = markup(map);
   const root = template.content.firstElementChild;
   if (!root) throw new Error("missing serialized document root");
   owner.body?.append(root);
   return root;
 };
 const flush = () => new Promise((resolve) => queueMicrotask(resolve));
+const stringLeaf = (value) => ({ $_tag: "_hson_str", $_content: [value] });
 
 try {
   const map = documentMap(`<main id="app" <p @000000123 class="copy" "hello"/> <input value="server"/>/>`);
@@ -51,7 +54,7 @@ try {
   const attrsBefore = [...root.querySelectorAll("*")].map((element) => [...element.attributes].map((attr) => [attr.name, attr.value]));
   const observed = [];
   const observer = new MutationObserver((records) => observed.push(...records));
-  observer.observe(root, { subtree: true, childList: true, attributes: true, characterData: true });
+  observer.observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
 
   const continuation = continue_document({ map, root });
   await flush();
@@ -134,9 +137,214 @@ try {
   check("wrong namespace is untouched", wrongNamespace.outerHTML === namespaceBefore);
   wrongNamespace.remove();
 
+  const segmentedMap = documentMap(`<main "a" "" "b" ""/>`);
+  const segmentedRoot = mount(segmentedMap);
+  const segmentedBefore = [...segmentedRoot.childNodes];
+  check("plan SSR preserves adjacent and empty text evidence", segmentedBefore.map((node) => node.nodeType).join(",") === "3,8,8,8,3,8,8");
+  const segmentedContinuation = continue_document({ map: segmentedMap, root: segmentedRoot });
+  check("adjacent native Text identities survive adoption", segmentedRoot.childNodes[0] === segmentedBefore[0] && segmentedRoot.childNodes[4] === segmentedBefore[4]);
+  check("Hson boundary markers are raw-DOM observable but text-inert", segmentedRoot.textContent === "ab" && segmentedRoot.children.length === 0 && segmentedRoot.innerText === "ab");
+  const segmentedRange = document.createRange();
+  segmentedRange.setStart(segmentedBefore[0], 0);
+  segmentedRange.setEnd(segmentedBefore[4], 1);
+  check("selection text crosses Hson boundary markers", segmentedRange.toString() === "ab");
+  segmentedMap.document.content.insert(path(0), 2, { $_tag: "_hson_str", $_content: ["x"] });
+  check("Reflect text insertion retains unaffected Text identities", [...segmentedRoot.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE)[0] === segmentedBefore[0] && [...segmentedRoot.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE).at(-1) === segmentedBefore[4]);
+  check("Reflect replaces stale Hson boundary evidence", [...segmentedRoot.childNodes].filter((node) => node.nodeType === Node.COMMENT_NODE).every((node, index, all) => all.indexOf(node) === index));
+  segmentedMap.document.content.replace(path(0), 0, stringLeaf("ab"));
+  for (let index = 4; index >= 1; index -= 1) segmentedMap.document.content.remove(path(0), index);
+  check("Reflect merges canonical leaves without stale boundaries", segmentedRoot.childNodes.length === 1 && segmentedRoot.firstChild.nodeType === Node.TEXT_NODE && segmentedRoot.textContent === "ab");
+  segmentedMap.document.content.insert(path(0), 0, stringLeaf(""));
+  segmentedMap.document.content.insert(path(0), 2, stringLeaf(""));
+  check("Reflect realizes leading and trailing empty leaves as evidence only", [...segmentedRoot.childNodes].map((node) => node.nodeType).join(",") === "8,8,3,8,8" && segmentedRoot.textContent === "ab");
+  segmentedContinuation.dispose();
+  segmentedRoot.remove();
+
+  for (const ordinaryText of [" ", "&<>", "\r\n"]) {
+    const ordinaryMap = hson.liveMap.fromNode({ $_tag: "_hson_root", $_content: [{ $_tag: "p", $_content: [{ $_tag: "_hson_elem", $_content: [stringLeaf(ordinaryText)] }] }] });
+    const ordinaryRoot = mount(ordinaryMap);
+    check(`ordinary text ${JSON.stringify(ordinaryText)} parses exactly`, ordinaryRoot.textContent === ordinaryText);
+    const ordinaryContinuation = continue_document({ map: ordinaryMap, root: ordinaryRoot });
+    check(`ordinary text ${JSON.stringify(ordinaryText)} continues exactly`, ordinaryContinuation.reflect.status === "active");
+    ordinaryContinuation.dispose();
+    ordinaryRoot.remove();
+  }
+
+  const repeatedEmptyMap = documentMap(`<main "" ""/>`);
+  const repeatedEmptyRoot = mount(repeatedEmptyMap);
+  check("repeated empty leaves remain distinct evidence", repeatedEmptyRoot.childNodes.length === 3 && [...repeatedEmptyRoot.childNodes].every((node) => node.nodeType === Node.COMMENT_NODE) && repeatedEmptyRoot.textContent === "");
+  const repeatedEmptyContinuation = continue_document({ map: repeatedEmptyMap, root: repeatedEmptyRoot });
+  repeatedEmptyContinuation.dispose();
+  repeatedEmptyRoot.remove();
+
+  const mixedTextMap = documentMap(`<main "a" <em/> "b"/>`);
+  const mixedTextRoot = mount(mixedTextMap);
+  check("mixed text Element text retains parser order", [...mixedTextRoot.childNodes].map((node) => node.nodeType).join(",") === "3,1,3" && mixedTextRoot.textContent === "ab");
+  const mixedTextContinuation = continue_document({ map: mixedTextMap, root: mixedTextRoot });
+  mixedTextContinuation.dispose();
+  mixedTextRoot.remove();
+
+  const siblingMap = documentMap(`<main <em/> "" <strong/>/>`);
+  const siblingRoot = mount(siblingMap);
+  check("Hson boundary evidence preserves element sibling selectors", siblingRoot.querySelector("em + strong") === siblingRoot.lastElementChild);
+  const siblingContinuation = continue_document({ map: siblingMap, root: siblingRoot });
+  siblingContinuation.dispose();
+  siblingRoot.remove();
+
+  const forgedMap = documentMap(`<main "a" "b"/>`);
+  const forgedRoot = mount(forgedMap);
+  forgedRoot.childNodes[1].data = forgedRoot.childNodes[1].data.replace(/:[0-9a-f]{16}:/, ":0000000000000000:");
+  let forgedFailure;
+  try { continue_document({ map: forgedMap, root: forgedRoot }); } catch (cause) { forgedFailure = cause; }
+  check("forged Hson boundary marker rejects", forgedFailure instanceof DocumentContinuationError && forgedFailure.phase === "adopt");
+  forgedRoot.remove();
+
+  for (const [name, corrupt] of [
+    ["malformed Hson boundary marker", (candidate) => { candidate.childNodes[1].data = "hson-boundary:malformed"; }],
+    ["duplicate Hson boundary marker", (candidate) => { candidate.insertBefore(candidate.childNodes[1].cloneNode(), candidate.childNodes[1]); }],
+    ["reordered Hson boundary markers", (candidate) => { candidate.insertBefore(candidate.childNodes[3], candidate.childNodes[1]); }],
+  ]) {
+    const collisionMap = documentMap(`<main "a" "b" "c"/>`);
+    const collisionRoot = mount(collisionMap);
+    corrupt(collisionRoot);
+    let collisionFailure;
+    try { continue_document({ map: collisionMap, root: collisionRoot }); } catch (cause) { collisionFailure = cause; }
+    check(`${name} rejects`, collisionFailure instanceof DocumentContinuationError && collisionFailure.phase === "adopt");
+    collisionRoot.remove();
+  }
+
+  const booleanNode = {
+    $_tag: "input",
+    $_attrs: {
+      checked: true,
+      disabled: "disabled",
+      selected: false,
+      multiple: true,
+      required: null,
+      readonly: "custom",
+    },
+    $_content: [],
+  };
+  const booleanMap = hson.liveMap.fromNode({ $_tag: "_hson_root", $_content: [structuredClone(booleanNode)] });
+  const booleanRoot = mount(booleanMap);
+  check("Chrome receives planned boolean attribute values", booleanRoot.getAttribute("checked") === "" && booleanRoot.getAttribute("disabled") === "disabled" && !booleanRoot.hasAttribute("selected") && booleanRoot.getAttribute("multiple") === "" && !booleanRoot.hasAttribute("required") && booleanRoot.getAttribute("readonly") === "custom");
+  const booleanProjection = project_livetree(structuredClone(booleanNode), "html", undefined, document);
+  check("normal projection shares boolean lowering", booleanProjection.getAttribute("checked") === "" && booleanProjection.getAttribute("disabled") === "disabled" && !booleanProjection.hasAttribute("selected") && booleanProjection.getAttribute("multiple") === "" && !booleanProjection.hasAttribute("required") && booleanProjection.getAttribute("readonly") === "custom");
+  const booleanContinuation = continue_document({ map: booleanMap, root: booleanRoot });
+  booleanContinuation.dispose();
+  booleanRoot.remove();
+
+  const tableMap = documentMap(`<table <tr <td "a"/>/> <tr <td "b"/>/>/>`);
+  const tableRoot = mount(tableMap);
+  check("plan SSR emits derived tbody", tableRoot.firstElementChild?.localName === "tbody" && tableRoot.firstElementChild.children.length === 2);
+  const tableContinuation = continue_document({ map: tableMap, root: tableRoot });
+  check("derived tbody has no QUID", !tableRoot.firstElementChild.hasAttribute("hson:quid"));
+  const retainedSecondRow = tableRoot.firstElementChild.children[1];
+  tableMap.document.content.insert(path(0), 2, { $_tag: "tr", $_content: [{ $_tag: "_hson_elem", $_content: [{ $_tag: "td", $_content: [{ $_tag: "_hson_elem", $_content: [stringLeaf("c")] }] }] }] });
+  check("Reflect inserts table rows inside the planned tbody", tableRoot.firstElementChild.localName === "tbody" && tableRoot.firstElementChild.children.length === 3 && tableRoot.firstElementChild.children[1] === retainedSecondRow);
+  tableMap.document.content.remove(path(0), 0);
+  check("Reflect removes table rows without canonical tbody state", tableRoot.firstElementChild.children.length === 2 && tableRoot.firstElementChild.firstElementChild === retainedSecondRow && !JSON.stringify(tableMap.root()).includes("tbody"));
+  tableContinuation.dispose();
+  tableRoot.remove();
+
+  const templateMap = documentMap(`<template <span "inside"/>/>`);
+  const templateRoot = mount(templateMap);
+  check("SSR parser targets template.content", templateRoot.childNodes.length === 0 && templateRoot.content.firstElementChild?.localName === "span");
+  const templateContinuation = continue_document({ map: templateMap, root: templateRoot });
+  check("template adoption maps through content", templateContinuation.tree.find.byTag("span")?.dom.el() === templateRoot.content.firstElementChild);
+  templateMap.document.content.insert(path(0), 1, { $_tag: "b", $_content: [{ $_tag: "_hson_elem", $_content: [stringLeaf("later")] }] });
+  check("template Reflect mutation targets template.content", templateRoot.childNodes.length === 0 && templateRoot.content.children.length === 2 && templateRoot.content.lastElementChild.localName === "b");
+  templateContinuation.dispose();
+  templateRoot.remove();
+
+  const preMap = documentMap(`<pre "\\nX"/>`);
+  const preRoot = mount(preMap);
+  check("pre leading LF is parser-stable through evidence", preRoot.textContent === "\nX" && preRoot.firstChild.nodeType === Node.COMMENT_NODE);
+  const preContinuation = continue_document({ map: preMap, root: preRoot });
+  preMap.document.content.replace(path(0), 0, stringLeaf("X"));
+  check("pre mutation removes obsolete leading-newline evidence", preRoot.childNodes.length === 1 && preRoot.firstChild.nodeType === Node.TEXT_NODE && preRoot.textContent === "X");
+  preMap.document.content.replace(path(0), 0, stringLeaf("\nY"));
+  check("pre mutation restores planned leading-newline evidence", preRoot.firstChild.nodeType === Node.COMMENT_NODE && preRoot.textContent === "\nY");
+  preContinuation.dispose();
+  preRoot.remove();
+
+  const svgMap = documentMap(`<svg viewBox="0 0 1 1" <foreignObject <div <svg <linearGradient/>/>/>/>/>`);
+  const svgRoot = mount(svgMap);
+  check("SVG realization omits serializer-only xmlns", !svgRoot.hasAttribute("xmlns"));
+  check("foreignObject transitions to HTML and nested SVG", svgRoot.firstElementChild.namespaceURI === "http://www.w3.org/2000/svg" && svgRoot.firstElementChild.firstElementChild.namespaceURI === "http://www.w3.org/1999/xhtml" && svgRoot.querySelector("div > svg").namespaceURI === "http://www.w3.org/2000/svg");
+  const svgContinuation = continue_document({ map: svgMap, root: svgRoot });
+  svgMap.document.attrs.set(path(), "viewBox", "0 0 2 2");
+  check("SVG Reflect updates the shared adjusted attribute name", svgRoot.getAttribute("viewBox") === "0 0 2 2");
+  svgMap.document.attrs.replace(path(), {});
+  check("SVG Reflect removes the shared adjusted attribute name", !svgRoot.hasAttribute("viewBox"));
+  svgContinuation.dispose();
+  svgRoot.remove();
+
+  const manager = CssManager.invoke();
+  manager.setForQuid("000000999", "color", "red");
+  const managerDocument = document.implementation.createHTMLDocument("manager-success");
+  const managerMap = documentMap(`<main <p "managed"/>/>`);
+  const managerRoot = mount(managerMap, managerDocument);
+  const managerRecords = [];
+  const managerObserver = new MutationObserver((records) => managerRecords.push(...records));
+  managerObserver.observe(managerDocument, { subtree: true, childList: true, attributes: true, characterData: true });
+  const managerContinuation = continue_document({ map: managerMap, root: managerRoot });
+  check("whole-Document continuation publication is zero-write", managerRecords.length === 0 && managerObserver.takeRecords().length === 0 && !managerDocument.querySelector("hson-_style"));
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  check("runtime manager support DOM begins after success", managerDocument.querySelector("hson-_style#css-manager > style#_hson") !== null);
+  managerContinuation.dispose();
+  managerObserver.disconnect();
+
+  const failedManagerDocument = document.implementation.createHTMLDocument("manager-failure");
+  const failedManagerMap = documentMap(`<main <p @000000123 "conflict"/>/>`);
+  const failedManagerRoot = mount(failedManagerMap, failedManagerDocument);
+  let failedManagerContinuation;
+  try { continue_document({ map: failedManagerMap, root: failedManagerRoot }); } catch (cause) { failedManagerContinuation = cause; }
+  check("post-claim continuation failure is reported", failedManagerContinuation instanceof DocumentContinuationError && failedManagerContinuation.phase === "adopt");
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  check("failed continuation queues no manager support DOM", failedManagerDocument.querySelector("hson-_style") === null);
+  const correctedManagerMap = documentMap(`<main <p "conflict"/>/>`);
+  const correctedManagerRoot = mount(correctedManagerMap, failedManagerDocument);
+  failedManagerRoot.replaceWith(correctedManagerRoot);
+  const correctedManagerContinuation = continue_document({ map: correctedManagerMap, root: correctedManagerRoot });
+  check("corrected continuation succeeds after claim rollback", correctedManagerContinuation.reflect.status === "active");
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  check("corrected success activates manager later", failedManagerDocument.querySelector("hson-_style") !== null);
+  correctedManagerContinuation.dispose();
+
+  const atomicRoot = (tag, text) => ({
+    $_tag: "_hson_root",
+    $_content: [{ $_tag: tag, $_content: text === undefined ? [] : [{ $_tag: "_hson_elem", $_content: [{ $_tag: "_hson_str", $_content: [text] }] }] }],
+  });
+  for (const [tag, text] of [["textarea", "a</TeXtArEa>&<\r\nb"], ["title", "a</TiTlE>&<\r\nb"], ["style", "a&<\nb"], ["script", "void '<&';\nb"]]) {
+    const atomicMap = hson.liveMap.fromNode(atomicRoot(tag, text));
+    const atomicElement = mount(atomicMap);
+    check(`${tag} compatible source parses exact`, atomicElement.textContent === text && atomicElement.childNodes.length === 1 && atomicElement.firstChild.nodeType === Node.TEXT_NODE);
+    const atomicContinuation = continue_document({ map: atomicMap, root: atomicElement });
+    check(`${tag} compatible source continues exactly`, atomicContinuation.reflect.status === "active");
+    atomicContinuation.dispose();
+    atomicElement.remove();
+    const emptyAtomicMap = hson.liveMap.fromNode(atomicRoot(tag));
+    const emptyAtomicElement = mount(emptyAtomicMap);
+    const emptyAtomicContinuation = continue_document({ map: emptyAtomicMap, root: emptyAtomicElement });
+    check(`${tag} zero-leaf host is supported`, emptyAtomicElement.childNodes.length === 0);
+    emptyAtomicContinuation.dispose();
+    emptyAtomicElement.remove();
+  }
+  for (const [name, root] of [
+    ["textarea multiple leaves", { $_tag: "_hson_root", $_content: [{ $_tag: "textarea", $_content: [{ $_tag: "_hson_elem", $_content: [{ $_tag: "_hson_str", $_content: ["a"] }, { $_tag: "_hson_str", $_content: ["b"] }] }] }] }],
+    ["title empty leaf", atomicRoot("title", "")],
+    ["textarea leading LF", atomicRoot("textarea", "\nA")],
+    ["style CR", atomicRoot("style", "a\rb")],
+    ["script closing sentinel", atomicRoot("script", "a</ScRiPt >b")],
+  ]) {
+    let rejected = false;
+    try { plan_browser_realization(root); } catch (cause) { rejected = cause?.code === "HSON_BROWSER_REALIZATION_INCOMPATIBLE"; }
+    check(`${name} rejects before emission`, rejected);
+  }
+
   const htmlMap = documentMap(`<html <head/> <body <main "whole"/>/>/>`);
-  const otherDocument = document.implementation.createHTMLDocument("");
-  otherDocument.documentElement.innerHTML = `<head></head><body><main>whole</main></body>`;
+  const otherDocument = new DOMParser().parseFromString(markup(htmlMap), "text/html");
   const htmlRoot = otherDocument.documentElement;
   const htmlContinuation = continue_document({ map: htmlMap, root: htmlRoot });
   check("documentElement root is supported without replacement", htmlContinuation.tree.dom.el() === htmlRoot);

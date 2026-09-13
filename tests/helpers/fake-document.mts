@@ -1,6 +1,7 @@
 class FakeNode {
   parentNode: FakeElement | FakeFragment | undefined;
   isConnected = false;
+  readonly ownerDocument = fakeDocument;
 
   remove(): void {
     this.parentNode?.removeChild(this);
@@ -14,6 +15,13 @@ export class FakeText extends FakeNode {
   set nodeValue(value: string) { this.data = value; }
 }
 
+export class FakeComment extends FakeNode {
+  readonly nodeType: number = 8;
+  public constructor(public data: string) { super(); }
+  get nodeValue(): string { return this.data; }
+  set nodeValue(value: string) { this.data = value; }
+}
+
 class FakeChildList extends Array<FakeNode> {
   item(index: number): FakeNode | null { return this[index] ?? null; }
 }
@@ -22,6 +30,10 @@ class FakeFragment extends FakeNode {
   readonly childNodes = new FakeChildList();
   appendChild(node: FakeNode): FakeNode { append_child(this, node); return node; }
   removeChild(node: FakeNode): FakeNode { remove_child(this, node); return node; }
+  replaceChildren(...nodes: FakeNode[]): void {
+    for (const child of [...this.childNodes]) remove_child(this, child);
+    for (const node of nodes) this.appendChild(node);
+  }
 }
 
 export class FakeStyle {
@@ -36,8 +48,8 @@ export class FakeElement extends FakeNode {
   readonly childNodes = new FakeChildList();
   readonly attrs = new Map<string, string>();
   readonly style = new FakeStyle();
-  readonly ownerDocument = fakeDocument;
   readonly namespaceURI: string;
+  readonly content: FakeFragment | undefined;
   replaceWrites = 0;
   failReplace = false;
   beforeReplace: (() => void) | undefined;
@@ -49,9 +61,12 @@ export class FakeElement extends FakeNode {
   public constructor(public readonly tagName: string, namespace = "http://www.w3.org/1999/xhtml") {
     super();
     this.namespaceURI = namespace;
+    this.content = tagName.toLowerCase() === "template" ? new FakeFragment() : undefined;
   }
 
-  get localName(): string { return this.tagName.toLowerCase(); }
+  get localName(): string {
+    return this.namespaceURI === "http://www.w3.org/2000/svg" ? this.tagName : this.tagName.toLowerCase();
+  }
 
   appendChild(node: FakeNode): FakeNode {
     if (node instanceof FakeFragment) {
@@ -137,6 +152,7 @@ function remove_child(parent: FakeElement | FakeFragment, node: FakeNode): void 
 
 const fakeDocument = {
   createTextNode: (value: string) => new FakeText(value),
+  createComment: (value: string) => new FakeComment(value),
   createDocumentFragment: () => new FakeFragment(),
   createElement: (tag: string) => new FakeElement(tag),
   createElementNS: (namespace: string, tag: string) => new FakeElement(tag, namespace),

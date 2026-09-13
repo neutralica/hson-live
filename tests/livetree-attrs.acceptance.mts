@@ -160,7 +160,7 @@ check("set stores false, null, zero, and empty string while undefined is rejecte
   assert.equal(value.attrs.set("title", false), value);
   assert.equal(value.attrs.get("title"), false);
   assert.equal(value.attrs.has("title"), true);
-  assert.equal(element.getAttribute("title"), "false");
+  assert.equal(element.getAttribute("title"), null);
   value.attrs.set("nullable", null);
   value.attrs.set("zero", 0);
   value.attrs.set("empty", "");
@@ -168,10 +168,10 @@ check("set stores false, null, zero, and empty string while undefined is rejecte
   assert.equal(value.attrs.get("nullable"), null);
   assert.equal(value.attrs.get("zero"), 0);
   assert.equal(value.attrs.get("empty"), "");
-  assert.equal(element.getAttribute("nullable"), "null");
+  assert.equal(element.getAttribute("nullable"), null);
   assert.equal(element.getAttribute("zero"), "0");
   assert.equal(element.getAttribute("empty"), "");
-  assert.equal(element.getAttribute("enabled"), "true");
+  assert.equal(element.getAttribute("enabled"), "");
 
   const unchangedIdentity = value.node.$_attrs;
   value.attrs.set("zero", 0);
@@ -280,7 +280,7 @@ check("setMany overlays atomically and canonical equality is order-insensitive",
   assert.deepEqual(value.attrs.keys(), ["count", "hidden", "id", "style", "title"]);
   assert.equal(value.attrs.get("title"), "kept");
   assert.equal(value.attrs.get("hidden"), false);
-  assert.equal(element.getAttribute("hidden"), "false");
+  assert.equal(element.getAttribute("hidden"), null);
   assert.equal(element.getAttribute("style"), "color: red");
 
   const attrsIdentity = value.node.$_attrs;
@@ -403,7 +403,7 @@ check("attrs and flags are converged views over one canonical bag", () => {
   value.attrs.set("disabled", true);
   assert.equal(value.attrs.get("disabled"), true);
   assert.equal(value.flags.has("disabled"), false);
-  assert.equal(element.getAttribute("disabled"), "true");
+  assert.equal(element.getAttribute("disabled"), "");
   value.flags.clear("hidden");
   assert.equal(value.attrs.has("hidden"), true);
   assert.equal(value.attrs.get("hidden"), false);

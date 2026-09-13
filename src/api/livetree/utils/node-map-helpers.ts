@@ -21,6 +21,10 @@ const NODE_ELEMENT_MAP = new WeakMap<HsonNode, Element>();
 
 const ELEMENT_NODE_MAP = new WeakMap<Element, HsonNode>();
 
+/** Canonical text/evidence and element realization bridge. @internal */
+const NODE_DOM_MAP = new WeakMap<HsonNode, Node>();
+const DOM_NODE_MAP = new WeakMap<Node, HsonNode>();
+
 
 /**
  * Link one node to one element, cleaning up any stale prior pairings on either side.
@@ -41,6 +45,17 @@ export function link_node_to_el(node: HsonNode, el: Element): void {
   // write both directions
   NODE_ELEMENT_MAP.set(node, el);
   ELEMENT_NODE_MAP.set(el, node);
+  link_node_to_dom(node, el);
+}
+
+/** Link an exact canonical node to its native realization (Text, evidence Comment, or Element). @internal */
+export function link_node_to_dom(node: HsonNode, domNode: Node): void {
+  const priorDom = NODE_DOM_MAP.get(node);
+  if (priorDom !== undefined && priorDom !== domNode) DOM_NODE_MAP.delete(priorDom);
+  const priorNode = DOM_NODE_MAP.get(domNode);
+  if (priorNode !== undefined && priorNode !== node) NODE_DOM_MAP.delete(priorNode);
+  NODE_DOM_MAP.set(node, domNode);
+  DOM_NODE_MAP.set(domNode, node);
 }
 
 
@@ -58,6 +73,9 @@ export function unlinkNode(node: HsonNode): void {
       ELEMENT_NODE_MAP.delete(el);
     }
   }
+  const domNode = NODE_DOM_MAP.get(node);
+  NODE_DOM_MAP.delete(node);
+  if (domNode !== undefined && DOM_NODE_MAP.get(domNode) === node) DOM_NODE_MAP.delete(domNode);
 }
 
 /**
@@ -73,6 +91,8 @@ export function unlinkElement(el: Element): void {
     if (mappedEl === el) {
       NODE_ELEMENT_MAP.delete(node);
     }
+    if (NODE_DOM_MAP.get(node) === el) NODE_DOM_MAP.delete(node);
+    if (DOM_NODE_MAP.get(el) === node) DOM_NODE_MAP.delete(el);
   }
 }
 
@@ -108,6 +128,16 @@ export function get_el_for_node(node: HsonNode): Element | undefined {
 
 export function get_node_for_el(el: Element): HsonNode | undefined {
   return ELEMENT_NODE_MAP.get(el);
+}
+
+/** Resolve a canonical node's exact native realization, including text evidence. @internal */
+export function get_dom_for_node(node: HsonNode): Node | undefined {
+  return NODE_DOM_MAP.get(node);
+}
+
+/** Resolve a native realization to its canonical node, when it is canonical-backed. @internal */
+export function get_node_for_dom(domNode: Node): HsonNode | undefined {
+  return DOM_NODE_MAP.get(domNode);
 }
 
 /**

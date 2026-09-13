@@ -12,6 +12,15 @@ This document covers the current style and stylesheet APIs:
 - Shared `StyleSetter`, style getters, CSS variables, selector blocks,
   at-rule facades, `@property`, keyframes, and animations.
 
+CssManager support elements are runtime-owned infrastructure, not canonical
+Hson and not browser SSR realization. Exact document continuation registers a
+new owner `Document` silently while adoption and Reflect are still fallible.
+Only after the continuation object is returned (or the hosted Promise resolves)
+may CssManager receive the document and create its style host. Those later
+support-node writes are outside the zero-write continuation transaction and are
+explicitly classified; arbitrary extra nodes are never tolerated as if they
+were manager-owned.
+
 ---
 
 ## StyleSetter

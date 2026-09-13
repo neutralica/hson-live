@@ -275,6 +275,15 @@ rejects a second runtime before projection or style-host mutation. Repeated
 registration by the same runtime is idempotent. An inactive internal runtime
 can be disposed to remove its style elements and release its document claims.
 
+Exact document continuation uses a two-phase form of that claim. Preflight and
+adoption claim the `Document` silently, without adding it to manager-visible
+style documents or notifying registration listeners. Failure rolls back only a
+claim owned by that attempt. Success publishes the continuation first and then
+activates managers through an internal microtask boundary. Explicitly
+runtime-owned support nodes are classified as noncanonical infrastructure, so
+later plan verification excludes those exact nodes without ignoring arbitrary
+DOM additions.
+
 The current supported topology is:
 
 ```text

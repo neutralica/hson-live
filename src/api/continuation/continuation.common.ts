@@ -92,3 +92,24 @@ export function validate_interaction_shape(value: unknown): void {
     throw new TypeError("Document continuation interactions must be an object.");
   }
 }
+
+/** Place runtime-manager effects strictly after public continuation publication. @internal */
+export function schedule_continuation_runtime_activation(
+  activate: () => void,
+  publication: "synchronous-return" | "promise-resolution",
+): void {
+  if (publication === "synchronous-return") {
+    queueMicrotask(activate);
+    return;
+  }
+  // A task boundary follows settlement and all reactions to the published
+  // continuation Promise. MessageChannel avoids assigning timing semantics to
+  // an arbitrary timeout duration.
+  const channel = new MessageChannel();
+  channel.port1.onmessage = (): void => {
+    channel.port1.close();
+    channel.port2.close();
+    activate();
+  };
+  channel.port2.postMessage(undefined);
+}

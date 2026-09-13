@@ -1,4 +1,4 @@
-import { ARR_TAG, ELEM_TAG, OBJ_TAG, STR_TAG, VAL_TAG, HSON_META_QUID, ROOT_TAG } from "../../core/constants.js";
+import { ELEM_TAG, STR_TAG, VAL_TAG, HSON_META_QUID, ROOT_TAG } from "../../core/constants.js";
 import { clone_node } from "../../core/clone-node.js";
 import { canonical_hson_graph_difference } from "../../core/canonical-hson-equal.js";
 import { canonical_public_attrs_equal, decode_public_attrs } from "../../core/public-attrs.js";
@@ -37,9 +37,12 @@ import {
 import { LiveTreeQuidReuseError } from "../livetree/livetree.error.js";
 import {
   assert_node_element_link,
+  get_dom_for_node,
   get_el_for_node,
+  get_node_for_dom,
   get_node_for_el,
 } from "../livetree/utils/node-map-helpers.js";
+import { collect_subtree_nodes } from "../livetree/utils/subtree-traversal.js";
 import { dispose_node_deep } from "../livetree/utils/dispose-node.js";
 import {
   claim_node_parent,
@@ -47,7 +50,6 @@ import {
   release_node_parent,
   release_subtree_ownership,
 } from "../livetree/lifecycle/graph-ownership.js";
-import { serialize_style } from "../transform/utils/attrs-utils/serialize-style.js";
 import {
   DOCUMENT_REFLECT_ALREADY_BOUND_ERROR_CODE,
   DOCUMENT_REFLECT_DISPOSED_ERROR_CODE,
@@ -83,6 +85,15 @@ import {
   runtime_owns_document,
   type LiveTreeRuntime,
 } from "../livetree/runtime/livetree-runtime.js";
+import {
+  assert_browser_realization_mappings,
+  browser_parent_namespace_for_target,
+  match_browser_realization_root,
+} from "../../internal/browser-realization/browser-realization-dom.js";
+import {
+  lower_browser_attribute_value,
+  plan_browser_realization,
+} from "../../internal/browser-realization/browser-realization-plan.js";
 import {
   livemap_document_identity_effects_for,
   livemap_document_identity_overlay_for,
@@ -1396,11 +1407,6 @@ function reflect_document_binding_in_runtime(
   return binding;
 }
 
-const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
-const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
-
-type ExpectedDomChild = HsonNode | string;
-
 function validate_borrowed_document_tree(
   canonicalRoot: HsonNode,
   tree: LiveTree,
@@ -1462,7 +1468,48 @@ function validate_borrowed_document_tree(
       "Borrowed document realization is not claimed by the selected runtime.",
     );
   }
-  validate_borrowed_node(borrowedRoot, runtime, rootElement.ownerDocument, namespace_for_element(rootElement));
+  for (const node of collect_subtree_nodes(borrowedRoot, "pre")) {
+    if (runtime_for_node(node) !== runtime) {
+      throw new DocumentReflectError(
+        DOCUMENT_REFLECT_DOM_MAPPING_MISMATCH_ERROR_CODE,
+        "Borrowed graph node is not routed through the selected runtime.",
+      );
+    }
+    if (document_binding_for_node(node) !== undefined) {
+      throw new DocumentReflectError(
+        DOCUMENT_REFLECT_ALREADY_BOUND_ERROR_CODE,
+        "Borrowed LiveTree node already belongs to a document Reflect binding.",
+      );
+    }
+    const quid = is_ordinary_element_node(node) ? node.$_meta?.[HSON_META_QUID] : undefined;
+    if (is_ordinary_element_node(node)
+      && (runtime.nodeToQuid.get(node) !== quid
+        || (quid !== undefined && runtime.quidToNode.get(quid) !== node))) {
+      throw new DocumentReflectError(
+        DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
+        "Borrowed graph and runtime do not agree on persisted QUID identity.",
+      );
+    }
+  }
+  try {
+    const plan = plan_browser_realization(borrowedRoot, {
+      parentNamespace: browser_parent_namespace_for_target(rootElement, borrowedRoot.$_tag),
+    });
+    const match = match_browser_realization_root(plan, rootElement, { allowRuntimeInfrastructure: true });
+    assert_browser_realization_mappings(match);
+    for (const link of match.links) {
+      if (get_dom_for_node(link.canonicalNode) !== link.domNode
+        || get_node_for_dom(link.domNode) !== link.canonicalNode) {
+        throw new Error("Borrowed browser realization mapping is not exact.");
+      }
+    }
+  } catch (cause) {
+    throw new DocumentReflectError(
+      DOCUMENT_REFLECT_DOM_MAPPING_MISMATCH_ERROR_CODE,
+      "Borrowed DOM no longer matches the shared browser realization plan.",
+      cause,
+    );
+  }
   return carrier;
 }
 
@@ -1475,153 +1522,6 @@ function canonical_quids_differ(left: HsonNode, right: HsonNode): boolean {
     if (is_Node(leftChild) && is_Node(rightChild) && canonical_quids_differ(leftChild, rightChild)) return true;
   }
   return false;
-}
-
-function validate_borrowed_node(
-  node: HsonNode,
-  runtime: LiveTreeRuntime,
-  ownerDocument: Document,
-  parentNamespace: "html" | "svg",
-): void {
-  if (runtime_for_node(node) !== runtime) {
-    throw new DocumentReflectError(
-      DOCUMENT_REFLECT_DOM_MAPPING_MISMATCH_ERROR_CODE,
-      "Borrowed graph node is not routed through the selected runtime.",
-    );
-  }
-  if (node.$_tag.startsWith("_hson_")) {
-    for (const child of node.$_content) {
-      if (is_Node(child)) validate_borrowed_node(child, runtime, ownerDocument, parentNamespace);
-    }
-    return;
-  }
-  if (document_binding_for_node(node) !== undefined) {
-    throw new DocumentReflectError(
-      DOCUMENT_REFLECT_ALREADY_BOUND_ERROR_CODE,
-      "Borrowed LiveTree node already belongs to a document Reflect binding.",
-    );
-  }
-  const element = get_el_for_node(node);
-  if (element === undefined
-    || get_node_for_el(element) !== node
-    || element.ownerDocument !== ownerDocument) {
-    throw new DocumentReflectError(
-      DOCUMENT_REFLECT_DOM_MAPPING_MISMATCH_ERROR_CODE,
-      "Borrowed graph-to-DOM provenance is missing, ambiguous, or belongs to another Document.",
-    );
-  }
-  const namespace: "html" | "svg" = node.$_tag === "svg" ? "svg" : parentNamespace;
-  const expectedNamespace = namespace === "svg" ? SVG_NAMESPACE : HTML_NAMESPACE;
-  const tagName = typeof (element as { localName?: unknown }).localName === "string"
-    ? (element as { localName: string }).localName
-    : element.tagName;
-  const tagMatches = namespace === "html"
-    ? tagName.toLowerCase() === node.$_tag.toLowerCase()
-    : tagName === node.$_tag;
-  if (element.namespaceURI !== expectedNamespace || !tagMatches) {
-    throw new DocumentReflectError(
-      DOCUMENT_REFLECT_NODE_KIND_MISMATCH_ERROR_CODE,
-      "Borrowed Element namespace or tag does not match its canonical node.",
-    );
-  }
-  const quid = node.$_meta?.[HSON_META_QUID];
-  if (element.getAttribute(HSON_QUID_MARKUP_NAME) !== (quid ?? null)
-    || runtime.nodeToQuid.get(node) !== quid
-    || (quid !== undefined && runtime.quidToNode.get(quid) !== node)) {
-    throw new DocumentReflectError(
-      DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
-      "Borrowed graph, DOM, and runtime do not agree on persisted QUID identity.",
-    );
-  }
-  validate_dom_element_attrs(node, element);
-  validate_dom_element_children(node, element);
-  for (const child of node.$_content) {
-    if (is_Node(child)) validate_borrowed_node(child, runtime, ownerDocument, namespace);
-  }
-}
-
-function validate_dom_element_attrs(node: HsonNode, element: Element): void {
-  const attrs = read_projected_attrs(node);
-  const expectedNames = new Set<string>();
-  for (const [name, value] of Object.entries(attrs)) {
-    const styleText = name === "style" && typeof value === "object" && value !== null
-      ? serialize_style(value)
-      : undefined;
-    const expected = styleText === "" ? null : styleText ?? String(value);
-    if (expected !== null) expectedNames.add(name);
-    if (element.getAttribute(name) !== expected) {
-      throw new DocumentReflectError(
-        DOCUMENT_REFLECT_DOM_MAPPING_MISMATCH_ERROR_CODE,
-        "Borrowed DOM attributes no longer realize the admitted graph.",
-      );
-    }
-  }
-  for (const name of element.getAttributeNames()) {
-    if (name === HSON_QUID_MARKUP_NAME) continue;
-    if (!expectedNames.has(name)) {
-      throw new DocumentReflectError(
-        DOCUMENT_REFLECT_DOM_MAPPING_MISMATCH_ERROR_CODE,
-        "Borrowed DOM contains an attribute outside its admitted graph.",
-      );
-    }
-  }
-}
-
-function validate_dom_element_children(node: HsonNode, element: Element): void {
-  const expected = node.$_content.flatMap(expected_dom_children);
-  const actual = Array.from(element.childNodes);
-  if (actual.length !== expected.length) {
-    throw new DocumentReflectError(
-      DOCUMENT_REFLECT_DOM_MAPPING_MISMATCH_ERROR_CODE,
-      "Borrowed DOM child realization no longer matches its admitted graph.",
-    );
-  }
-  for (let index = 0; index < expected.length; index += 1) {
-    const wanted = expected[index];
-    const realized = actual[index];
-    if (typeof wanted === "string") {
-      const text = (realized as { nodeValue?: unknown; data?: unknown } | undefined)?.nodeValue
-        ?? (realized as { data?: unknown } | undefined)?.data;
-      if (realized?.nodeType !== 3 || text !== wanted) {
-        throw new DocumentReflectError(
-          DOCUMENT_REFLECT_DOM_MAPPING_MISMATCH_ERROR_CODE,
-          "Borrowed DOM text realization no longer matches its admitted graph.",
-        );
-      }
-    } else if (realized !== get_el_for_node(wanted)) {
-      throw new DocumentReflectError(
-        DOCUMENT_REFLECT_DOM_MAPPING_MISMATCH_ERROR_CODE,
-        "Borrowed DOM Element order no longer matches its admitted graph.",
-      );
-    }
-  }
-}
-
-function expected_dom_children(value: HsonNode | Primitive): ExpectedDomChild[] {
-  if (!is_Node(value)) return [String(value ?? "")];
-  if (value.$_tag === STR_TAG || value.$_tag === VAL_TAG) {
-    return [String(value.$_content[0] ?? "")];
-  }
-  if (value.$_tag === ARR_TAG) {
-    return value.$_content.flatMap((item) => {
-      if (!is_Node(item)) return [];
-      const payload = item.$_content[0];
-      return payload == null ? [] : expected_dom_children(payload);
-    });
-  }
-  if (value.$_tag === ROOT_TAG || value.$_tag === OBJ_TAG || value.$_tag === ELEM_TAG) {
-    return value.$_content.flatMap(expected_dom_children);
-  }
-  return [value];
-}
-
-function namespace_for_element(element: Element): "html" | "svg" {
-  if (element.namespaceURI === SVG_NAMESPACE) return "svg";
-  if (element.namespaceURI === HTML_NAMESPACE) return "html";
-  throw new DocumentReflectError(
-    DOCUMENT_REFLECT_DOM_MAPPING_MISMATCH_ERROR_CODE,
-    "Borrowed document root is outside the supported HTML/SVG namespaces.",
-  );
 }
 
 function assert_borrowed_root_continuity(canonicalRoot: HsonNode, borrowedRoot: HsonNode): void {
@@ -1764,21 +1664,10 @@ function validate_dom_attrs(
   if (element === undefined) return;
   const expectedNames = new Set<string>();
   for (const [name, value] of Object.entries(attrs)) {
-    const booleanChecked = registration.node.$_tag.toLowerCase() === "input"
-      && name === "checked"
-      && typeof value === "boolean";
-    const styleText = name === "style" && typeof value === "object" && value !== null
-      ? serialize_style(value)
-      : undefined;
-    const expected = booleanChecked
-      ? value ? "" : null
-      : styleText === ""
-      ? null
-      : styleText !== undefined
-        ? styleText
-        : String(value);
-    if (expected !== null) expectedNames.add(name);
-    if (element.getAttribute(name) !== expected) {
+    const namespace = element.namespaceURI === "http://www.w3.org/2000/svg" ? "svg" : "html";
+    const lowered = lower_browser_attribute_value(name, value, namespace);
+    if (lowered !== undefined) expectedNames.add(lowered.name);
+    if (element.getAttribute(lowered?.name ?? name) !== (lowered?.value ?? null)) {
       throw new DocumentReflectError(
         DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE,
         "Mounted DOM attributes do not match the canonical projected final state.",

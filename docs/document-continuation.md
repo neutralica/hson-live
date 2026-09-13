@@ -6,6 +6,17 @@ document at revision N and the server-rendered DOM supplied by the caller must
 already describe exactly the same document. Construction does not rebuild,
 normalize, repair, or replace that DOM.
 
+The required DOM is defined by hson-live's internal browser-realization
+contract, not by public `.toHtml()`. The latter remains Hson transport HTML and
+may contain `_hson_*` carriers. The internal SSR realization serializer is not
+public in this phase.
+
+The structural names have distinct authorities: `_hson_*` names belong to
+canonical Hson and its transport representation; `hson-boundary` names derived
+browser-realization evidence; and `hson:quid` is sparse canonical identity
+evidence on eligible Elements. An Hson boundary marker is never a canonical
+node and never acquires QUID semantics.
+
 The package root exports two orchestration functions:
 
 ```ts
@@ -96,19 +107,38 @@ authority success does not imply that every later DOM realization succeeds.
 
 ## Exact admission and ownership
 
-Before publishing any runtime links, continuation verifies the canonical root,
+Before publishing any runtime links, continuation derives one immutable browser
+realization plan and verifies the canonical root,
 document mode, namespace and tag names, exact attributes, QUID
 presence/absence/value, child order, text node count and boundaries, text
-values, virtual-node lowering, owner document, and runtime identity claims.
+values, virtual-node lowering, derived table wrappers, template content,
+Hson boundary markers, owner document, and runtime identity claims.
 The established existing-document `Reflect` admission then verifies the full
 canonical graph, mappings, ownership, and revision fence again.
 
-For corresponding input, admission writes nothing to the DOM. It preserves the
+For corresponding input, admission writes nothing anywhere in the containing
+`Document`. It preserves the
 actual `Element` and `Text` objects, attributes, text boundaries, focus,
 selection, and browser dirty form properties. It neither mints QUIDs nor writes
-`hson:quid`; nodes without canonical QUIDs remain without them. Comments,
-separator whitespace, or any other unrepresented child are mismatches rather
-than tolerated decoration.
+`hson:quid`; nodes without canonical QUIDs remain without them. Arbitrary
+comments, separator whitespace, malformed or wrong-plan Hson boundary markers,
+and any other unplanned child are mismatches rather than tolerated decoration.
+
+In ordinary content, adjacent non-empty canonical leaves retain separate native
+`Text` objects through versioned, plan-bound `hson-boundary` comments. An empty
+canonical leaf is evidence-only: its Hson boundary marker maps the canonical
+leaf without pretending an empty native `Text` exists. These comments are
+inert and layout-free in the supported browser contract, but remain observable
+through raw `childNodes`. They are reproducible realization scaffolding, never
+canonical Hson/LiveMap nodes, never transport `_hson_*` carriers, and never
+QUID-bearing identity.
+
+`textarea`, `title`, `style`, and `script` are parser-atomic in version one.
+They support zero canonical leaves or one compatible non-empty text leaf.
+Explicit empty leaves, multiple leaves, textarea-leading LF, RAWTEXT CR, parser
+closing sentinels, NUL, and lone surrogates reject deterministically before SSR
+emission. Canonical state remains valid Hson; only browser realization is
+incompatible.
 
 Any construction failure releases provisional mappings, identity claims,
 `Reflect`, interaction activation, and the active-root reservation. It leaves
@@ -134,3 +164,10 @@ state inline is deliberately deferred: applications must use their own
 CSP/XSS-safe channel and must not interpolate untrusted state into script text.
 No server-side rendering convenience or bootstrap-from-document wrapper is
 provided in this release.
+
+Runtime-document registration is silent and rollback-capable during exact
+continuation. Runtime managers are notified only after the continuation object
+has been returned or its hosted Promise has resolved. Their owned support DOM,
+including CssManager's style host, is noncanonical infrastructure and may appear
+after that publication boundary; a later manager failure does not retroactively
+reject or roll back the successful continuation.

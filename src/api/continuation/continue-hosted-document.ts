@@ -17,6 +17,7 @@ import {
   resolve_continuation_document,
   validate_continuation_root,
   validate_interaction_shape,
+  schedule_continuation_runtime_activation,
 } from "./continuation.common.js";
 import { DocumentContinuationError } from "./continuation.error.js";
 import type { HostedDocumentContinuation } from "./continuation.types.js";
@@ -169,6 +170,7 @@ export async function continue_hosted_document_internal(options: Readonly<{
         if (failure !== undefined) throw failure;
       },
     });
+    schedule_continuation_runtime_activation(adoption.activateRuntimeManagers, "promise-resolution");
     return result;
   } catch (cause) {
     try { disposeInteractions?.(); } catch { /* Preserve construction failure. */ }

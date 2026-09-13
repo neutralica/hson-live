@@ -1,319 +1,78 @@
-// project-live-tree.ts
-import { Primitive } from "../../../core/types.js";
-import {
-  ensure_quid,
-  HSON_QUID_MARKUP_NAME,
-  register_supplied_livetree_quid,
-} from "../quid/data-quid.js";
-import { set_attrs_safe } from "../../../safety/safe-mount.safe.js";
-import { HsonNode } from "../../../core/types.js";
-import { SVG_NS } from "../../transform/utils/node-utils/node-from-svg.js";
-import { is_Node } from "../../../core/node-guards.js";
-import { get_el_for_node, link_node_to_el } from "../utils/node-map-helpers.js";
-import { serialize_style } from "../../transform/utils/attrs-utils/serialize-style.js";
-import {
-  ARR_TAG,
-  ELEM_TAG,
-  HSON_SYS_PREFIX,
-  OBJ_TAG,
-  ROOT_TAG,
-  STR_TAG,
-  VAL_TAG,
-} from "../../../core/constants.js";
-import { record_livetree_materialization } from "../debug/materialization-profile.js";
+import type { HsonNode, Primitive } from "../../../core/types.js";
+import { is_Node, is_ordinary_element_node } from "../../../core/node-guards.js";
+import { ensure_quid, register_supplied_livetree_quid } from "../quid/data-quid.js";
 import {
   default_livetree_runtime,
-  register_runtime_document,
   notify_livetree_realizations_internal,
+  register_runtime_document,
   runtime_for_node,
   type LiveTreeRuntime,
 } from "../runtime/livetree-runtime.js";
 import { document_binding_for_node } from "../lifecycle/document-binding-state.js";
+import { record_livetree_materialization } from "../debug/materialization-profile.js";
+import {
+  materialize_browser_realization,
+  type BrowserProjectionIdentityAuthority,
+} from "../../../internal/browser-realization/browser-realization-dom.js";
+import { plan_browser_realization, type BrowserNamespace } from "../../../internal/browser-realization/browser-realization-plan.js";
 
-type ProjectionIdentityAuthority = "standalone" | "linked";
-
-
-
-/**
- * Materialize a new DOM subtree from a given Hson node or primitive.
- *
- * Behavior:
- * - When `node` is a primitive (not an `HsonNode`), returns a
- *   `Text` node whose content is `String(node ?? "")`.
- * - When `node` is an `HsonNode`:
- *   - Interprets virtual structural nodes (VSNs) such as `_hson_root`,
- *     `_hson_obj`, `_hson_arr`, `_hson_elem` as *non-rendered* containers:
- *     they never become real DOM elements, but their children are
- *     recursively rendered.
- *   - Creates real DOM `Element` nodes for concrete Hson element tags,
- *     wiring attributes and content according to the Hson structure.
- *   - Recursively renders children, attaching them under the newly
- *     created element or, for VSNs, under the nearest real ancestor.
- *
- * Namespace handling:
- * - Uses the `parentNs` argument (`"html"` or `"svg"`) as the current
- *   namespace context.
- * - When creating elements in SVG context, uses the correct SVG
- *   namespace; HTML context uses regular `document.createElement`.
- * - Namespace context is updated when descending into SVG/HTML roots,
- *   ensuring nested SVG-in-HTML and HTML-in-SVG patterns render
- *   correctly.
- *
- * Identity admission follows the selected authority: standalone projection may
- * mint, while LiveMap-linked projection admits only canonical supplied claims.
- * Both modes establish exact node/element correspondence.
- *
- * @param node - The Hson node or primitive value to project.
- * @param parentNs - The current namespace context (`"html"` or `"svg"`),
- *                   used to choose the appropriate element factory.
- * @returns The root DOM `Node` of the newly created subtree.
- */
+/** Materialize canonical state through the shared browser-realization plan. */
 export function project_livetree(
   node: HsonNode | Primitive,
-  parentNs: "html" | "svg" = "html",
+  parentNs: BrowserNamespace = "html",
   runtime: LiveTreeRuntime = is_Node(node)
     ? runtime_for_node(node) ?? default_livetree_runtime()
     : default_livetree_runtime(),
   ownerDocument: Document = document,
 ): Node {
-  const identityAuthority: ProjectionIdentityAuthority = is_Node(node)
+  const identityAuthority: BrowserProjectionIdentityAuthority = is_Node(node)
     && subtree_has_document_binding(node)
     ? "linked"
     : "standalone";
-  const projected = project_livetree_with_authority(
-    node,
-    parentNs,
-    runtime,
-    ownerDocument,
-    identityAuthority,
-  );
-  notify_livetree_realizations_internal(runtime);
-  return projected;
-}
-
-function subtree_has_document_binding(node: HsonNode): boolean {
-  if (document_binding_for_node(node) !== undefined) return true;
-  return node.$_content.some((child) => is_Node(child) && subtree_has_document_binding(child));
+  return project_with_authority(node, parentNs, runtime, ownerDocument, identityAuthority);
 }
 
 /** Project one Reflection-owned subtree without minting missing QUIDs. @internal */
 export function project_linked_livetree(
   node: HsonNode | Primitive,
-  parentNs: "html" | "svg",
+  parentNs: BrowserNamespace,
   runtime: LiveTreeRuntime,
   ownerDocument: Document,
 ): Node {
-  const projected = project_livetree_with_authority(node, parentNs, runtime, ownerDocument, "linked");
+  return project_with_authority(node, parentNs, runtime, ownerDocument, "linked");
+}
+
+function project_with_authority(
+  node: HsonNode | Primitive,
+  parentNs: BrowserNamespace,
+  runtime: LiveTreeRuntime,
+  ownerDocument: Document,
+  identityAuthority: BrowserProjectionIdentityAuthority,
+): Node {
+  register_runtime_document(runtime, ownerDocument);
+  if (is_Node(node)) admit_projection_identities(node, runtime, identityAuthority);
+  const plan = plan_browser_realization(node, { parentNamespace: parentNs });
+  record_livetree_materialization("domProjectionCalls");
+  const projected = materialize_browser_realization(plan, runtime, ownerDocument, identityAuthority);
   notify_livetree_realizations_internal(runtime);
   return projected;
 }
 
-function project_livetree_with_authority(
-  node: HsonNode | Primitive,
-  parentNs: "html" | "svg",
+function admit_projection_identities(
+  node: HsonNode,
   runtime: LiveTreeRuntime,
-  ownerDocument: Document,
-  identityAuthority: ProjectionIdentityAuthority,
-): Node {
-  register_runtime_document(runtime, ownerDocument);
-  record_livetree_materialization("domProjectionCalls");
-  // Non-node primitives → plain text
-  if (!is_Node(node)) {
-    record_livetree_materialization("domTextNodesCreated");
-    return ownerDocument.createTextNode(String(node ?? ""));
+  authority: BrowserProjectionIdentityAuthority,
+): void {
+  if (is_ordinary_element_node(node)) {
+    if (authority === "standalone") ensure_quid(node, undefined, runtime);
+    else register_supplied_livetree_quid(node, runtime);
   }
-
-  const n = node as HsonNode;
-
-  // Primitive wrappers → text
-  if (n.$_tag === STR_TAG || n.$_tag === VAL_TAG) {
-    record_livetree_materialization("domTextNodesCreated");
-    const v = n.$_content?.[0];
-    return ownerDocument.createTextNode(String(v ?? ""));
+  for (const child of node.$_content) {
+    if (is_Node(child)) admit_projection_identities(child, runtime, authority);
   }
+}
 
-  // VSNs: unwrap into a fragment
-  if (
-    n.$_tag === ROOT_TAG ||
-    n.$_tag === OBJ_TAG ||
-    n.$_tag === ELEM_TAG ||
-    n.$_tag === ARR_TAG
-  ) {
-    const frag = ownerDocument.createDocumentFragment();
-    record_livetree_materialization("domFragmentsCreated");
-
-    if (n.$_tag === ARR_TAG) {
-      // _hson_arr contains <_hson_ii> items; unwrap each item’s single child
-      for (const ii of n.$_content ?? []) {
-        const payload =
-          is_Node(ii) && Array.isArray(ii.$_content) ? ii.$_content[0] : null;
-        if (payload != null) {
-          frag.appendChild(project_livetree_with_authority(
-            payload as HsonNode | Primitive,
-            parentNs,
-            runtime,
-            ownerDocument,
-            identityAuthority,
-          ));
-        }
-      }
-      return frag;
-    }
-
-    // _hson_root/_hson_obj/_hson_elem -> render their children directly
-    for (const child of n.$_content ?? []) {
-      frag.appendChild(project_livetree_with_authority(
-        child as HsonNode | Primitive,
-        parentNs,
-        runtime,
-        ownerDocument,
-        identityAuthority,
-      ));
-    }
-    return frag;
-  }
-
-  // REAL ELEMENT NODE --------------------------------------
-
-  // A reusable detach retains its physical projection, mappings, listeners,
-  // and runtime state. Reinsert that same element instead of rebuilding it.
-  const retainedElement = get_el_for_node(n);
-  if (retainedElement && !retainedElement.isConnected) {
-    if (retainedElement.ownerDocument !== ownerDocument) {
-      throw new Error("A retained LiveTree projection cannot move between documents implicitly.");
-    }
-    return retainedElement;
-  }
-
-  const tag = n.$_tag;
-  const illegalDomTag = (badTag: string) =>
-    new Error(
-      `[create_live_tree2] illegal DOM tag "${badTag}" (node.$_tag=${n.$_tag})`
-    );
-
-  // "_hson_" prefixes are reserved for Hson virtual/internal nodes.
-  // They must never be materialized as real DOM elements.
-  if (tag.startsWith(HSON_SYS_PREFIX)) {
-    throw illegalDomTag(tag);
-  }
-
-  // decide namespace for *this* element + descendants
-  const ns: "html" | "svg" = tag === "svg" ? "svg" : parentNs;
-
-  // create element respecting namespace
-  const el: Element =
-    ns === "svg"
-      ? ownerDocument.createElementNS(SVG_NS, tag)
-      : ownerDocument.createElement(tag);
-  record_livetree_materialization("domElementsCreated");
-
-  // Belt-and-suspenders: guard against any factory emitting Hson DOM tags.
-  if (el.tagName.toLowerCase().startsWith(HSON_SYS_PREFIX)) {
-    throw illegalDomTag(el.tagName);
-  }
-
-  // single source of truth for mapping HsonNode -> Element
-  link_node_to_el(n, el);
-  const quid = identityAuthority === "linked"
-    ? register_supplied_livetree_quid(n, runtime)
-    : ensure_quid(n, undefined, runtime);
-
-  // `hson:quid` represents an actual identity claim, not DOM existence.
-  if (quid !== undefined) {
-    if (ns === "svg") {
-      el.setAttribute(HSON_QUID_MARKUP_NAME, quid);
-    } else {
-      set_attrs_safe(el as HTMLElement, HSON_QUID_MARKUP_NAME, quid);
-    }
-  }
-  // reflect $_attrs
-  const a = n.$_attrs;
-  if (a) {
-    for (const [key, raw] of Object.entries(a)) {
-      if (raw == null) continue;
-
-      // style handling
-      if (key === "style") {
-        const elt = el as HTMLElement | SVGElement;
-
-        if (typeof raw === "string") {
-          elt.style.cssText = raw;
-        } else if (raw && typeof raw === "object") {
-          elt.style.cssText = serialize_style(raw);
-        }
-        continue;
-      }
-
-      // boolean presence attrs
-      if (raw === true) {
-        if (ns === "svg") {
-          el.setAttribute(key, "");
-        } else {
-          set_attrs_safe(el as HTMLElement, key, "");
-        }
-        continue;
-      }
-      if (raw === false) {
-        continue;
-      }
-
-      // everything else → string
-      const str = String(raw);
-      if (ns === "svg") {
-        el.setAttribute(key, str);
-      } else {
-        set_attrs_safe(el as HTMLElement, key, str);
-      }
-    }
-  }
-
-  // children — either a single VSN wrapper or direct content
-  const kids = n.$_content ?? [];
-  if (
-    kids.length === 1 &&
-    is_Node(kids[0]) &&
-    (kids[0].$_tag === OBJ_TAG ||
-      kids[0].$_tag === ELEM_TAG ||
-      kids[0].$_tag === ARR_TAG)
-  ) {
-    const container = kids[0];
-
-    if (container.$_tag === ARR_TAG) {
-      for (const ii of container.$_content ?? []) {
-        const payload =
-          is_Node(ii) && Array.isArray(ii.$_content) ? ii.$_content[0] : null;
-        if (payload != null) {
-          el.appendChild(project_livetree_with_authority(
-            payload as HsonNode | Primitive,
-            ns,
-            runtime,
-            ownerDocument,
-            identityAuthority,
-          ));
-        }
-      }
-    } else {
-      for (const c of container.$_content ?? []) {
-        el.appendChild(project_livetree_with_authority(
-          c as HsonNode | Primitive,
-          ns,
-          runtime,
-          ownerDocument,
-          identityAuthority,
-        ));
-      }
-    }
-  } else {
-    for (const c of kids) {
-      el.appendChild(project_livetree_with_authority(
-        c as HsonNode | Primitive,
-        ns,
-        runtime,
-        ownerDocument,
-        identityAuthority,
-      ));
-    }
-  }
-
-  return el;
+function subtree_has_document_binding(node: HsonNode): boolean {
+  if (document_binding_for_node(node) !== undefined) return true;
+  return node.$_content.some((child) => is_Node(child) && subtree_has_document_binding(child));
 }

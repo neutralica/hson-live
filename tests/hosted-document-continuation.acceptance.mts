@@ -18,6 +18,7 @@ import {
   type LocusSocketLike,
 } from "../src/index.ts";
 import { get_node_for_el } from "../src/api/livetree/utils/node-map-helpers.ts";
+import { default_livetree_runtime } from "../src/api/livetree/runtime/livetree-runtime.ts";
 import { capture_locus_bootstrap, install_locus_bootstrap } from "../src/api/locus/locus.bootstrap.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { make_livemap_hosted_mirror_from_snapshot_internal } from "../src/api/livemap/livemap.libraries.ts";
@@ -108,7 +109,23 @@ function mainFixture(quid: string): Readonly<{ root: FakeElement; child: FakeEle
   const rootBefore = fixture.root;
   const childBefore = fixture.child;
   const textBefore = fixture.text;
+  const runtime = default_livetree_runtime();
+  let managerActivations = 0;
+  const managerListener = (): void => { managerActivations += 1; };
+  runtime.styleDocumentListeners.add(managerListener);
   const continuation = await continue_hosted_document({ echo, root: fixture.root as unknown as Element });
+  assert.equal(managerActivations, 0);
+  await new Promise<void>((resolve) => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = (): void => {
+      channel.port1.close();
+      channel.port2.close();
+      resolve();
+    };
+    channel.port2.postMessage(undefined);
+  });
+  assert.equal(managerActivations, 1);
+  runtime.styleDocumentListeners.delete(managerListener);
   assert.equal(continuation.echo, echo);
   assert.equal(continuation.map, replica);
   assert.equal(continuation.tree.dom.el(), rootBefore as unknown as Element);

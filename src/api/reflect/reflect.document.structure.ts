@@ -13,7 +13,7 @@ import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { canonical_public_attrs_equal, decode_public_attrs } from "../../core/public-attrs.js";
 import type { CanonicalPublicAttrs, HsonNode, Primitive } from "../../core/types.js";
 import type { LiveMapDocumentCommitTarget, LiveMapGraphOp } from "../../types/livemap.types.js";
-import { project_linked_livetree } from "../livetree/creation/project-live-tree.js";
+import { reconcile_browser_realization_children } from "../../internal/browser-realization/browser-realization-dom.js";
 import { index_subtree_ownership, release_subtree_ownership } from "../livetree/lifecycle/graph-ownership.js";
 import { apply_projected_attrs_replacement } from "../livetree/managers/attr-handle.js";
 import {
@@ -28,6 +28,7 @@ import { collect_subtree_nodes } from "../livetree/utils/subtree-traversal.js";
 import {
   bind_graph_runtime,
   default_livetree_runtime,
+  notify_livetree_realizations_internal,
   runtime_for_node,
   type LiveTreeRuntime,
 } from "../livetree/runtime/livetree-runtime.js";
@@ -244,6 +245,7 @@ export function apply_document_structural_transaction(
   beforeDomRealization?.();
 
   for (const owner of plan.affectedOwners) reconcile_owner_dom(owner, plan.runtime);
+  if (plan.affectedOwners.length > 0) notify_livetree_realizations_internal(plan.runtime);
 }
 
 function shadow_existing(
@@ -428,17 +430,8 @@ function copy_replacement_shell(target: HsonNode, source: HsonNode): void {
 }
 
 function reconcile_owner_dom(owner: HsonNode, runtime: LiveTreeRuntime): void {
-  const element = get_el_for_node(owner);
-  if (element === undefined) return;
   try {
-    const namespace: "html" | "svg" = element.namespaceURI === "http://www.w3.org/2000/svg" ? "svg" : "html";
-    const desired = flatten_dom_content(
-      owner.$_content,
-      namespace,
-      runtime,
-      element.ownerDocument,
-    );
-    element.replaceChildren(...desired);
+    reconcile_browser_realization_children(owner, runtime);
   } catch (cause) {
     throw new DocumentReflectError(
       DOCUMENT_REFLECT_STRUCTURAL_UPDATE_FAILED_ERROR_CODE,
@@ -446,47 +439,6 @@ function reconcile_owner_dom(owner: HsonNode, runtime: LiveTreeRuntime): void {
       cause,
     );
   }
-}
-
-function flatten_dom_content(
-  content: readonly (HsonNode | Primitive)[],
-  namespace: "html" | "svg",
-  runtime: LiveTreeRuntime,
-  ownerDocument: Document,
-): Node[] {
-  const result: Node[] = [];
-  for (const item of content) {
-    result.push(...flatten_dom_item(item, namespace, runtime, ownerDocument));
-  }
-  return result;
-}
-
-function flatten_dom_item(
-  item: HsonNode | Primitive,
-  namespace: "html" | "svg",
-  runtime: LiveTreeRuntime,
-  ownerDocument: Document,
-): Node[] {
-  if (!is_Node(item)) return [ownerDocument.createTextNode(String(item ?? ""))];
-  if (item.$_tag === STR_TAG || item.$_tag === VAL_TAG) {
-    return [ownerDocument.createTextNode(String(item.$_content[0] ?? ""))];
-  }
-  if (item.$_tag === ARR_TAG) {
-    const result: Node[] = [];
-    for (const wrapper of item.$_content) {
-      const payload = is_Node(wrapper) ? wrapper.$_content[0] : undefined;
-      if (payload !== undefined && payload !== null) {
-        result.push(...flatten_dom_item(payload, namespace, runtime, ownerDocument));
-      }
-    }
-    return result;
-  }
-  if (item.$_tag === ROOT_TAG || item.$_tag === OBJ_TAG || item.$_tag === ELEM_TAG) {
-    return flatten_dom_content(item.$_content, namespace, runtime, ownerDocument);
-  }
-  const existing = get_el_for_node(item);
-  if (existing !== undefined) return [existing];
-  return [project_linked_livetree(item, namespace, runtime, ownerDocument)];
 }
 
 function validate_shadow_against_canonical(shadow: ShadowNode, canonical: HsonNode): void {

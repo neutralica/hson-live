@@ -17,6 +17,7 @@ import {
   resolve_continuation_document,
   validate_continuation_root,
   validate_interaction_shape,
+  schedule_continuation_runtime_activation,
 } from "./continuation.common.js";
 import { DocumentContinuationError } from "./continuation.error.js";
 import type { DocumentContinuation } from "./continuation.types.js";
@@ -118,6 +119,7 @@ export function continue_document(options: Readonly<{
         if (failure !== undefined) throw failure;
       },
     });
+    schedule_continuation_runtime_activation(adoption.activateRuntimeManagers, "synchronous-return");
     return result;
   } catch (cause) {
     try { disposeInteractions?.(); } catch { /* Preserve construction failure. */ }

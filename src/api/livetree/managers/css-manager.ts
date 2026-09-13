@@ -21,6 +21,7 @@ import {
   register_runtime_document,
   type LiveTreeRuntime,
 } from "../runtime/livetree-runtime.js";
+import { mark_runtime_infrastructure } from "../../../internal/browser-realization/browser-realization-dom.js";
 
 
 const CSS_HOST_TAG = "hson-_style";
@@ -281,6 +282,7 @@ export class CssManager {
       host.id = CSS_HOST_ID;
       mount.appendChild(host);
     }
+    mark_runtime_infrastructure(host);
 
     let styleEl = host.querySelector<HTMLStyleElement>(`style#${CSS_STYLE_ID}`);
     if (!styleEl) {
@@ -288,6 +290,7 @@ export class CssManager {
       styleEl.id = CSS_STYLE_ID;
       host.appendChild(styleEl);
     }
+    mark_runtime_infrastructure(styleEl);
 
     this.styleEls.set(doc, styleEl);
     return styleEl;

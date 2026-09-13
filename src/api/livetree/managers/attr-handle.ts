@@ -25,7 +25,6 @@ import type {
 } from "../../../core/types.js";
 import type { AttrHandle, FlagHandle } from "../../../types/attrs.types.js";
 import type { SvgTag } from "../../../types/livetree.types.js";
-import { serialize_style } from "../../transform/utils/attrs-utils/serialize-style.js";
 import {
   canonical_svg_attr_name,
 } from "../../transform/utils/html-utils/parse_html_attrs.js";
@@ -41,6 +40,7 @@ import { get_el_for_node } from "../utils/node-map-helpers.js";
 import { document_binding_for_node } from "../lifecycle/document-binding-state.js";
 import { get_quid } from "../quid/data-quid.js";
 import { runtime_for_tree } from "../runtime/livetree-runtime.js";
+import { lower_browser_attribute_value } from "../../../internal/browser-realization/browser-realization-plan.js";
 
 const UNASSIGNED_QUID_DIAGNOSTIC = "<unassigned>";
 
@@ -374,30 +374,18 @@ function project_attrs_replacement(
 ): void {
   const element = get_el_for_node(node);
   if (element === undefined) return;
-  for (const name of Object.keys(current)) {
-    if (!Object.prototype.hasOwnProperty.call(next, name)) element.removeAttribute(name);
+  const namespace = element.namespaceURI === "http://www.w3.org/2000/svg" ? "svg" : "html";
+  for (const [name, value] of Object.entries(current)) {
+    if (!Object.prototype.hasOwnProperty.call(next, name)) {
+      element.removeAttribute(lower_browser_attribute_value(name, value, namespace)?.name ?? name);
+    }
   }
   for (const [name, value] of Object.entries(next)) {
-    if (is_boolean_checked_realization(element, name, value)) {
-      if (value) element.setAttribute(name, "");
-      else element.removeAttribute(name);
-      continue;
-    }
-    project_attr_value(element, name, value);
+    const lowered = lower_browser_attribute_value(name, value, namespace);
+    if (lowered === undefined) element.removeAttribute(name);
+    else element.setAttribute(lowered.name, lowered.value);
   }
   realize_changed_form_properties(element, current, next);
-}
-
-function is_boolean_checked_realization(
-  element: Element,
-  name: string,
-  value: CanonicalPublicAttrValue,
-): value is boolean {
-  const tagName = (element as { tagName?: unknown }).tagName;
-  return typeof tagName === "string"
-    && tagName.toLowerCase() === "input"
-    && name === "checked"
-    && typeof value === "boolean";
 }
 
 function realize_changed_form_properties(
@@ -425,16 +413,6 @@ function realize_changed_form_properties(
           ? checked !== 0
           : false;
   }
-}
-
-function project_attr_value(element: Element, name: string, value: CanonicalPublicAttrValue): void {
-  if (name === "style" && typeof value === "object" && value !== null) {
-    const cssText = serialize_style(value);
-    if (cssText === "") element.removeAttribute(name);
-    else element.setAttribute(name, cssText);
-    return;
-  }
-  element.setAttribute(name, String(value));
 }
 
 /** @internal Shared exact document-authoring normalization. */

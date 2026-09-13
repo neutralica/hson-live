@@ -14,7 +14,7 @@ import {
 } from "../src/index.ts";
 import { begin_livetree_materialization_profile } from "../src/api/livetree/debug/materialization-profile.ts";
 import { set_document_adoption_fault_hook_for_tests } from "../src/api/continuation/continuation.adopt.ts";
-import { get_node_for_el } from "../src/api/livetree/utils/node-map-helpers.ts";
+import { get_node_for_el, unlinkElement } from "../src/api/livetree/utils/node-map-helpers.ts";
 import { FakeElement, FakeText, install_fake_document } from "./helpers/fake-document.mts";
 
 install_fake_document();
@@ -194,6 +194,40 @@ for (const point of ["after-first-link", "after-links", "after-runtime", "after-
   continuation.dispose();
   button.dispatchEvent(new Event("click"));
   assert.equal(calls, 1);
+}
+
+{
+  const firstMap = documentMap(source());
+  const fixture = mainFixture();
+  const first = continue_document({ map: firstMap, root: fixture.root as unknown as Element });
+  first.dispose();
+  const activeReuse = continue_document({ map: firstMap, root: fixture.root as unknown as Element });
+  assert.equal(activeReuse.tree, first.tree);
+  activeReuse.dispose();
+  first.tree.remove();
+  assert.equal(first.tree.isDisposed, true);
+  const replacementChild = new FakeElement("p");
+  replacementChild.appendChild(new FakeText("hello"));
+  fixture.root.appendChild(replacementChild);
+  const freshMap = documentMap(source());
+  const profile = begin_livetree_materialization_profile();
+  const fresh = continue_document({ map: freshMap, root: fixture.root as unknown as Element });
+  assert.notEqual(fresh.tree, first.tree);
+  assert.equal(profile.stop().quidEnsureCalls, 0);
+  fresh.dispose();
+}
+
+{
+  const map = documentMap(source());
+  const fixture = mainFixture();
+  const continuation = continue_document({ map, root: fixture.root as unknown as Element });
+  continuation.dispose();
+  unlinkElement(fixture.root as unknown as Element);
+  assert.throws(
+    () => continue_document({ map, root: fixture.root as unknown as Element }),
+    (cause) => cause instanceof DocumentContinuationError && cause.phase === "adopt",
+  );
+  continuation.tree.remove();
 }
 
 process.stdout.write("Document continuation acceptance passed.\n");
