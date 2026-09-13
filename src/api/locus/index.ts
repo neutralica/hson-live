@@ -5,6 +5,7 @@ export {
   decode_locus_bootstrap,
   encode_locus_bootstrap,
   install_locus_bootstrap,
+  install_locus_snapshot,
   DEFAULT_LOCUS_BOOTSTRAP_MAX_BYTES,
   DEFAULT_LOCUS_BOOTSTRAP_MAX_GRAPH_DEPTH,
   DEFAULT_LOCUS_BOOTSTRAP_MAX_GRAPH_NODES,

@@ -1,0 +1,99 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Document SSR acceptance</title></head>
+<body>
+<section id="local-shell"><!--LOCAL_SSR--></section>
+<section id="hosted-shell"><!--HOSTED_SSR--></section>
+<div id="result"></div>
+<script type="module">
+import {
+  continue_document,
+  continue_hosted_document,
+  create_echo,
+  create_browser_locus_socket,
+  hson,
+  install_locus_snapshot,
+  render_document,
+} from "/bundle.js";
+
+const results = [];
+const check = (name, condition) => {
+  results.push({ name, pass: Boolean(condition) });
+  if (!condition) throw new Error(`Failed: ${name}`);
+};
+
+try {
+  const state = await fetch("/__state").then((response) => response.json());
+
+  const localRoot = document.querySelector("#local-ssr");
+  check("application root is delivered in standards mode", document.compatMode === "CSS1Compat");
+  const localParagraph = localRoot.firstElementChild;
+  const localText = localParagraph.firstChild;
+  const localMap = hson.liveMap.fromNode(state.local.bootstrap.root);
+  if (localMap.mode !== "document") throw new Error("local SSR bootstrap must be a document");
+  localMap.restore(state.local.bootstrap, { identity: "preserve-metadata" });
+  const observer = new MutationObserver(() => {});
+  observer.observe(localRoot, { subtree: true, childList: true, attributes: true, characterData: true });
+  const localContinuation = continue_document({ map: localMap, root: localRoot });
+  check("local root identity survives continuation", localContinuation.tree.dom.el() === localRoot);
+  check("local element identity survives continuation", localRoot.firstElementChild === localParagraph);
+  check("local text identity survives continuation", localParagraph.firstChild === localText);
+  check("local continuation writes nothing", observer.takeRecords().length === 0);
+  check("local revision is exact N", localMap.rev === state.local.bootstrap.rev && localMap.rev === 1);
+  check("local canonical capture is exact", JSON.stringify(localMap.capture()) === JSON.stringify(state.local.bootstrap));
+  check("local QUID is exact", localParagraph.getAttribute("hson:quid") === "000005201");
+  check("local root remains QUID-free", localRoot.getAttribute("hson:quid") === null);
+  check("Hson boundary comments were parsed", [...localParagraph.childNodes].filter((node) => node.nodeType === Node.COMMENT_NODE).length >= 2);
+  observer.disconnect();
+  localContinuation.dispose();
+
+  const browserLocal = render_document({ map: localMap });
+  check("Node and browser-compatible local SSR bytes match", browserLocal.html === state.local.html);
+
+  const fullMap = hson.liveMap.fromNode(state.full.bootstrap.root);
+  if (fullMap.mode !== "document") throw new Error("full SSR bootstrap must be a document");
+  fullMap.restore(state.full.bootstrap, { identity: "preserve-metadata" });
+  const parsedFull = new DOMParser().parseFromString(state.full.html, "text/html");
+  check("full document parses in standards mode", parsedFull.compatMode === "CSS1Compat");
+  const fullRoot = parsedFull.documentElement;
+  const fullContinuation = continue_document({ map: fullMap, root: fullRoot });
+  check("full documentElement identity survives", fullContinuation.tree.dom.el() === fullRoot);
+  fullContinuation.dispose();
+
+  const hostedRoot = document.querySelector("#hosted-ssr");
+  const hostedParagraph = hostedRoot.firstElementChild;
+  const hostedText = hostedParagraph.firstChild;
+  const installed = install_locus_snapshot(state.hosted.bootstrap);
+  check("hosted snapshot starts at N", installed.map.rev === state.hosted.bootstrap.rev && installed.map.rev === 0);
+  const browserSocket = create_browser_locus_socket(state.socketUrl);
+  await browserSocket.ready;
+  const echo = create_echo({
+    socket: browserSocket.socket,
+    map: installed.map,
+    recovery: installed.recovery,
+    session: {},
+  });
+  echo.connect();
+  await echo.session.create();
+  const hostedContinuation = await continue_hosted_document({ echo, root: hostedRoot });
+  check("hosted continuation reuses the installed client map", hostedContinuation.map === installed.map);
+  check("hosted recovery catches N up to N+1", echo.recovery.status === "caught_up" && installed.map.rev === 1);
+  check("hosted root identity survives recovery", hostedContinuation.tree.dom.el() === hostedRoot);
+  check("hosted element identity survives recovery", hostedRoot.firstElementChild === hostedParagraph);
+  check("hosted text identity survives recovery", hostedParagraph.firstChild === hostedText);
+  check("hosted N+1 mutation is reflected", hostedParagraph.getAttribute("data-recovered") === "yes");
+  await hostedContinuation.tree.find.must.byQuid("000005202").async.attrs.set("data-async", "accepted");
+  check("AsyncLiveTree mutates after SSR continuation", hostedParagraph.getAttribute("data-async") === "accepted" && installed.map.rev === 2);
+  hostedContinuation.dispose();
+  echo.dispose();
+  browserSocket.dispose();
+
+  document.documentElement.dataset.status = "pass";
+  document.documentElement.dataset.detail = `${results.length}/${results.length}`;
+} catch (cause) {
+  document.documentElement.dataset.status = "fail";
+  document.documentElement.dataset.detail = `${cause?.stack ?? String(cause)}\nCAUSE: ${cause?.cause?.stack ?? String(cause?.cause ?? "none")}`;
+}
+</script>
+</body>
+</html>

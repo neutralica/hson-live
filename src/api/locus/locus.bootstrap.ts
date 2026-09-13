@@ -213,8 +213,9 @@ function snapshot_from_bootstrap(bootstrap: LocusBootstrap): LocusBootstrapSnaps
  * This deliberately knows nothing about selector routing or continuation
  * delivery. The recovery planner remains the sole source of canonical map
  * identity, revision, mode, and Hson state.
+ * @internal
  */
-function with_locus_bootstrap_snapshot<T>(
+export function with_locus_bootstrap_snapshot<T>(
   authority: LocusBootstrapAuthority,
   useSnapshot: (snapshot: LocusBootstrapSnapshotEnvelope) => T,
 ): T {
@@ -314,6 +315,45 @@ function map_from_snapshot(
     );
   }
   return map;
+}
+
+function validate_snapshot(
+  value: LocusBootstrapSnapshotEnvelope,
+): LocusBootstrapSnapshotEnvelope {
+  const record = exact_record(value);
+  require_keys(record, ["logicalMapId", "incarnationId", "rev", "mode", "hson"]);
+  if (!bounded_string(record.logicalMapId, 512) || !bounded_string(record.incarnationId, 512)) {
+    throw new LocusBootstrapError(
+      "LOCUS_BOOTSTRAP_IDENTITY_INVALID",
+      "Locus snapshot canonical identity is invalid.",
+    );
+  }
+  if (!is_revision(record.rev)) {
+    throw new LocusBootstrapError(
+      "LOCUS_BOOTSTRAP_REVISION_INVALID",
+      "Locus snapshot revision is invalid.",
+    );
+  }
+  if (!is_mode(record.mode)) {
+    throw new LocusBootstrapError(
+      "LOCUS_BOOTSTRAP_MODE_INVALID",
+      "Locus snapshot map mode is invalid.",
+    );
+  }
+  if (typeof record.hson !== "string") {
+    throw new LocusBootstrapError(
+      "LOCUS_BOOTSTRAP_STATE_INVALID",
+      "Locus snapshot Hson state is invalid.",
+    );
+  }
+  const snapshot: LocusBootstrapSnapshotEnvelope = Object.freeze({
+    logicalMapId: record.logicalMapId,
+    incarnationId: record.incarnationId,
+    rev: record.rev,
+    mode: record.mode,
+    hson: record.hson,
+  });
+  return snapshot;
 }
 
 function validate_package(
@@ -498,10 +538,40 @@ export function install_locus_bootstrap(
   options: LocusBootstrapCodecOptions = {},
 ): LocusBootstrapInstall {
   const validated = validate_package(bootstrap, options);
-  const map = map_from_snapshot(snapshot_from_bootstrap(validated), options);
+  const installed = install_locus_snapshot_internal(snapshot_from_bootstrap(validated), options);
   return Object.freeze({
     bootstrap: validated,
-    map,
+    map: installed.map,
+    recovery: installed.recovery,
+  });
+}
+
+function install_locus_snapshot_internal(
+  snapshot: LocusBootstrapSnapshotEnvelope,
+  options: LocusBootstrapCodecOptions,
+): Readonly<{
+  map: ClassifiedLiveMap;
+  recovery: Readonly<{
+    logicalMapId: string;
+    cursor: Readonly<{ incarnationId: string; lastAppliedRev: number }>;
+  }>;
+}> {
+  const validated = validate_snapshot(snapshot);
+  return install_validated_locus_snapshot(validated, options);
+}
+
+function install_validated_locus_snapshot(
+  validated: LocusBootstrapSnapshotEnvelope,
+  options: LocusBootstrapCodecOptions,
+): Readonly<{
+  map: ClassifiedLiveMap;
+  recovery: Readonly<{
+    logicalMapId: string;
+    cursor: Readonly<{ incarnationId: string; lastAppliedRev: number }>;
+  }>;
+}> {
+  return Object.freeze({
+    map: map_from_snapshot(validated, options),
     recovery: Object.freeze({
       logicalMapId: validated.logicalMapId,
       cursor: Object.freeze({
@@ -509,5 +579,36 @@ export function install_locus_bootstrap(
         lastAppliedRev: validated.rev,
       }),
     }),
+  });
+}
+
+/** Install a detached semantic document snapshot without transport or session metadata. */
+export function install_locus_snapshot(
+  snapshot: Extract<LocusSnapshotEnvelope, { hson: string }> & Readonly<{ mode: "document" }>,
+  options: LocusBootstrapCodecOptions = {},
+): Readonly<{
+  map: DocumentLiveMap;
+  recovery: Readonly<{
+    logicalMapId: string;
+    cursor: Readonly<{ incarnationId: string; lastAppliedRev: number }>;
+  }>;
+}> {
+  const validated = validate_snapshot(snapshot);
+  if (validated.mode !== "document") {
+    throw new LocusBootstrapError(
+      "LOCUS_BOOTSTRAP_MODE_INVALID",
+      "Locus semantic snapshot must contain a document map.",
+    );
+  }
+  const installed = install_validated_locus_snapshot(validated, options);
+  if (!is_document_map(installed.map)) {
+    throw new LocusBootstrapError(
+      "LOCUS_BOOTSTRAP_STATE_INVALID",
+      "Locus semantic snapshot did not install a document map.",
+    );
+  }
+  return Object.freeze({
+    map: installed.map,
+    recovery: installed.recovery,
   });
 }

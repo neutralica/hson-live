@@ -56,6 +56,7 @@ const locusRuntimeExports = [
   "encode_locus_message",
   "hsonLocus",
   "install_locus_bootstrap",
+  "install_locus_snapshot",
   "is_locus_encoded_graph_content",
   "make_locus_canonical_stream",
   "make_locus_recovery_planner",

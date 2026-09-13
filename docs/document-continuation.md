@@ -6,10 +6,10 @@ document at revision N and the server-rendered DOM supplied by the caller must
 already describe exactly the same document. Construction does not rebuild,
 normalize, repair, or replace that DOM.
 
-The required DOM is defined by hson-live's internal browser-realization
-contract, not by public `.toHtml()`. The latter remains Hson transport HTML and
-may contain `_hson_*` carriers. The internal SSR realization serializer is not
-public in this phase.
+The required DOM is defined by hson-live's browser-realization contract, not by
+public `.toHtml()`. The latter remains Hson transport HTML and may contain
+`_hson_*` carriers. The plan and serializer remain private; `hson-live/ssr`
+exposes only the semantic `{ html, bootstrap }` composition boundary.
 
 The structural names have distinct authorities: `_hson_*` names belong to
 canonical Hson and its transport representation; `hson-boundary` names derived
@@ -172,8 +172,8 @@ Server-rendered HTML remains useful without JavaScript; continuation adds a live
 runtime only when called. A production helper for safely embedding bootstrap
 state inline is deliberately deferred: applications must use their own
 CSP/XSS-safe channel and must not interpolate untrusted state into script text.
-No server-side rendering convenience or bootstrap-from-document wrapper is
-provided in this release.
+Server-side composition is provided separately by `hson-live/ssr`; this
+continuation API still performs no rendering or bootstrap capture itself.
 
 Runtime-document registration is silent and rollback-capable during exact
 continuation. Runtime managers are notified only after the continuation object

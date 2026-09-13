@@ -210,6 +210,13 @@ single bootstrap artifact.
 `LocusBootstrapEcho` whose live endpoint property is `echo` and whose single
 continuation operation is `connectAndRecover()`.
 
+One-map document SSR uses the transport-independent semantic snapshot before
+outer bootstrap assembly. `install_locus_snapshot(snapshot)` installs that
+document-mode Hson snapshot and returns only `{ map, recovery }`, preserving
+logical map identity, incarnation, and the last-applied revision. It creates no
+socket, session, selector, or endpoint. Existing outer-bootstrap capture,
+encoding, decoding, transport metadata, and installation remain unchanged.
+
 ## Persistence
 
 `create_persistent_locus` supports document maps and fixed multi-library maps. It uses a

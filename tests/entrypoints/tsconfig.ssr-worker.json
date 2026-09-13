@@ -1,0 +1,4 @@
+{
+  "extends": "./worker/tsconfig.json",
+  "files": ["worker/ssr-worker.ts"]
+}

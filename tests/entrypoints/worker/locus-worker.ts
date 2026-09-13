@@ -2,6 +2,7 @@ import {
   create_browser_locus_socket,
   decode_locus_bootstrap,
   install_locus_bootstrap,
+  install_locus_snapshot,
   decode_locus_server_message,
   hsonLocus,
   type LocusSocketLike,
@@ -17,3 +18,5 @@ void hsonLocus;
 void decode_locus_server_message("{}");
 declare const bootstrapHson: string;
 void install_locus_bootstrap(decode_locus_bootstrap(bootstrapHson));
+declare const semanticSnapshot: Parameters<typeof install_locus_snapshot>[0];
+void install_locus_snapshot(semanticSnapshot);

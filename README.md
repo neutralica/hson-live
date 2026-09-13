@@ -488,7 +488,10 @@ ordered live commits
 
 State may change between the HTTP response and the WebSocket connection. This does not create a separate synchronization problem: the existing recovery system replays the missing commits or installs a newer snapshot when history is no longer available.
 
-The bootstrap path establishes server-to-browser state continuity. It does not yet constitute LiveTree HTML adoption or a complete SSR product.
+The semantic bootstrap path also underlies the narrow one-map
+[`hson-live/ssr`](docs/ssr-composition.md) composition boundary. HTTP response
+construction, safe bootstrap embedding, routing, and framework integration
+remain application-layer work.
 
 ---
 
@@ -688,6 +691,8 @@ The maintained current-facing references are:
 - the [Reflect API](docs/reflect/api-reflect.md);
 - [document continuation](docs/document-continuation.md), for exact no-write
   admission of an existing browser document into local or hosted state;
+- [same-cut SSR composition](docs/ssr-composition.md), for synchronous one-map
+  browser-realization HTML and exact paired bootstrap state;
 - the [Locus API](docs/locus/api-locus.md) and
   [authority overview](docs/locus/overview.md);
 - the [LiveHost and Node runtime boundary](docs/livehost/overview.md); and

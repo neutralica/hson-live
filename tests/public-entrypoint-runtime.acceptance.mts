@@ -125,6 +125,48 @@ check("HsonData is one nominal public value across intended entrypoints", () => 
   assert.equal(child.status, 0, child.stderr || child.stdout);
 });
 
+check("SSR root and subpath exports share runtime identity", () => {
+  const source = `
+    import {
+      DocumentSsrError as RootError,
+      render_document as rootRender,
+      render_hosted_document as rootHostedRender,
+    } from "hson-live";
+    import {
+      DocumentSsrError as SsrError,
+      render_document as ssrRender,
+      render_hosted_document as ssrHostedRender,
+    } from "hson-live/ssr";
+    if (RootError !== SsrError || rootRender !== ssrRender || rootHostedRender !== ssrHostedRender) {
+      throw new Error("SSR entrypoint identity diverged");
+    }
+  `;
+  const child = spawnSync(process.execPath, ["--input-type=module", "--eval", source], {
+    cwd: repositoryRoot,
+    encoding: "utf8",
+  });
+  assert.equal(child.status, 0, child.stderr || child.stdout);
+});
+
+check("SSR declarations expose only the approved semantic surface", () => {
+  const declaration = readFileSync(resolve(repositoryRoot, "dist", "api", "ssr", "index.d.ts"), "utf8");
+  for (const approved of [
+    "render_document",
+    "render_hosted_document",
+    "BrowserRealizationHtml",
+    "DocumentSsr",
+    "HostedDocumentSsr",
+    "DocumentSsrError",
+  ]) assert.equal(declaration.includes(approved), true, `${approved} must be exported`);
+  for (const privateName of [
+    "BrowserRealizationPlan",
+    "BrowserRealizationIncompatibilityError",
+    "plan_browser_realization",
+    "serialize_browser_realization",
+    "set_document_ssr_hook_for_tests",
+  ]) assert.equal(declaration.includes(privateName), false, `${privateName} must remain private`);
+});
+
 const directHsonDataSources = new Map<string, string>([
   ["root", `
     import { Hson, HsonData } from "hson-live";

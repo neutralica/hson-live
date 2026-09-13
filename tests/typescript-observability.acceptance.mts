@@ -67,14 +67,15 @@ const repairedPrimaryProjects = new Map<string, string>([
   ["tests/entrypoints/worker/hson-worker.ts", "tests/entrypoints/worker/tsconfig.json"],
   ["tests/entrypoints/worker/livemap-worker.ts", "tests/entrypoints/worker/tsconfig.json"],
   ["tests/entrypoints/worker/locus-worker.ts", "tests/entrypoints/worker/tsconfig.json"],
+  ["tests/entrypoints/worker/ssr-worker.ts", "tests/entrypoints/worker/tsconfig.json"],
   ["tests/entrypoints/worker/transform-worker.ts", "tests/entrypoints/worker/tsconfig.json"],
   ["tests/entrypoints/node/livehost-node.ts", "tests/entrypoints/node/tsconfig.json"],
   ["tests/entrypoints/browser/livetree-browser.ts", "tests/entrypoints/browser/tsconfig.json"],
 ]);
 const repairedAudit = audit_editor_parity(repositoryRoot, [...repairedPrimaryProjects.keys()], manifest.projects, inventory);
 assert.deepEqual(repairedAudit.errors, []);
-assert.equal(repairedAudit.configuredOrdinary, 11);
-assert.equal(repairedAudit.parityOrdinary, 11);
+assert.equal(repairedAudit.configuredOrdinary, 12);
+assert.equal(repairedAudit.parityOrdinary, 12);
 assert.deepEqual(repairedAudit.primaryProjects, repairedPrimaryProjects);
 
 const pluginConfigPath = join(repositoryRoot, "editors/vscode-hson/src/tsserver-plugin/tsconfig.json");

@@ -254,6 +254,43 @@ check("local document continuation tree-shakes hosted Echo and Locus machinery",
   );
 });
 
+check("SSR subpath excludes DOM realization, LiveHost, Echo, and Node adapters", () => {
+  const build = esbuild.buildSync({
+    absWorkingDir: repositoryRoot,
+    stdin: {
+      contents: `
+        import { render_document, render_hosted_document } from "hson-live/ssr";
+        globalThis.__document_ssr__ = { render_document, render_hosted_document };
+      `,
+      resolveDir: repositoryRoot,
+      sourcefile: "document-ssr-public.mjs",
+    },
+    bundle: true,
+    write: false,
+    format: "esm",
+    platform: "neutral",
+    target: "es2022",
+    treeShaking: true,
+    minify: true,
+    legalComments: "none",
+    metafile: true,
+  });
+  const outputs = build.metafile?.outputs;
+  assert.ok(outputs !== undefined, "SSR dependency proof requires an esbuild metafile");
+  const retainedInputs = Object.values(outputs).flatMap((output) => Object.entries(output.inputs))
+    .filter(([, contribution]) => contribution.bytesInOutput > 0)
+    .map(([input]) => input);
+  const prohibited = retainedInputs.filter((input) =>
+    /browser-realization-dom|\/api\/(?:livehost|echo|livetree|reflect)\//i.test(input)
+    || /locus\.node|node:http|node:https|node:fs|node:crypto/i.test(input)
+  );
+  assert.deepEqual(
+    prohibited,
+    [],
+    `SSR public graph retained forbidden implementation modules:\n${prohibited.join("\n")}`,
+  );
+});
+
 check("removed LiveTree construction engine and graft_body stay absent", () => {
   const productionSource = files.map((path) => readFileSync(path, "utf8")).join("\n");
   assert.equal(

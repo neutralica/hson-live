@@ -13,6 +13,7 @@
     "./hson-worker.ts",
     "./livemap-worker.ts",
     "./locus-worker.ts",
+    "./ssr-worker.ts",
     "./transform-worker.ts"
   ]
 }

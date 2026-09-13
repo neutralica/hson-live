@@ -15,6 +15,12 @@ import {
   continue_document,
   continue_hosted_document,
   DocumentContinuationError,
+  DocumentSsrError,
+  render_document,
+  render_hosted_document,
+  type BrowserRealizationHtml,
+  type DocumentSsr,
+  type HostedDocumentSsr,
   type DocumentContinuation,
   type HostedDocumentContinuation,
   type AsyncLiveTree as RootAsyncLiveTree,
@@ -48,6 +54,16 @@ void localContinuation.reflect;
 localContinuation.dispose();
 void hostedContinuation;
 void DocumentContinuationError;
+const localSsr: DocumentSsr = render_document({ map: continuationMap });
+declare const ssrAuthority: import("hson-live/locus").LocusBootstrapAuthority;
+const hostedSsr: HostedDocumentSsr = render_hosted_document({ authority: ssrAuthority });
+const browserHtml: BrowserRealizationHtml = localSsr.html;
+// @ts-expect-error Arbitrary strings are not browser-realization HTML.
+const forgedBrowserHtml: BrowserRealizationHtml = "<main></main>";
+void browserHtml;
+void forgedBrowserHtml;
+void hostedSsr.bootstrap;
+void DocumentSsrError;
 // @ts-expect-error Continuation requires an explicit Element, never a selector.
 continue_document({ map: continuationMap, root: "main" });
 // @ts-expect-error Hosted authoritative dispatch is derived from Echo.
