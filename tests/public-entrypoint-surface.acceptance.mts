@@ -154,6 +154,35 @@ await check("package exports match the reviewed allowlist", () => {
   assert.deepEqual(Object.keys(manifest.exports).sort(), PACKAGE_EXPORTS);
 });
 
+await check("LiveTree declarations expose styling capabilities without runtime machinery", () => {
+  const cssManager = readFileSync(resolve(repositoryRoot, "dist/api/livetree/managers/css-manager.d.ts"), "utf8");
+  const cssHandles = readFileSync(resolve(repositoryRoot, "dist/types/css.types.d.ts"), "utf8");
+  const keyframes = readFileSync(resolve(repositoryRoot, "dist/types/keyframes.types.d.ts"), "utf8");
+  const properties = readFileSync(resolve(repositoryRoot, "dist/types/at-property.types.d.ts"), "utf8");
+  const content = readFileSync(resolve(repositoryRoot, "dist/api/livetree/managers/content-manager.d.ts"), "utf8");
+  const livetree = readFileSync(resolve(repositoryRoot, "dist/api/livetree/index.d.ts"), "utf8");
+
+  for (const retained of ["class CssManager", "static api(): CssManagerApi", "atProperty", "keyframes"]) {
+    assert.equal(cssManager.includes(retained), true, `${retained} must remain reachable`);
+  }
+  for (const hidden of [
+    "CssRuntimeManager", "invoke()", "forRuntime", "selectorForQuid", "getForQuid",
+    "setForQuid", "releaseOwnedCssForQuid", "syncNow", "snapshot", "debug_hardReset",
+  ]) assert.equal(cssManager.includes(hidden), false, `${hidden} leaked through CssManager`);
+  assert.equal(cssHandles.includes("devSnapshot"), false, "tree CSS diagnostics leaked through CssTreeHandle");
+  for (const hidden of ["setOwned", "releaseOwner", "listOwned", "renderOne", "renderAll", "KeyframesOwner", "KeyframesSource"]) {
+    assert.equal(keyframes.includes(hidden), false, `${hidden} leaked through keyframes declarations`);
+  }
+  for (const hidden of ["renderOne", "renderAll", "PropertyRegistry"]) {
+    assert.equal(properties.includes(hidden), false, `${hidden} leaked through property declarations`);
+  }
+  assert.equal(content.includes("export interface ContentManager"), true);
+  assert.equal(content.includes("constructor("), false, "tree.content exposes an independent constructor");
+  assert.equal(livetree.includes("export { ContentManager"), false, "ContentManager leaked as a runtime value");
+  assert.equal(livetree.includes("export type { ContentManager"), true, "tree.content capability type is missing");
+  assert.equal(livetree.includes("CssRuntimeManager"), false, "runtime CSS implementation leaked from owning subpath");
+});
+
 const ownerProofs = Object.freeze({
   "dist/hson-authoring.d.ts": ["HsonNode", "HsonAttrs", "HsonMeta", "NodeContent", "JsonValue", "Primitive"],
   "dist/api/livetree/index.d.ts": ["CssManager", "make_tree_selector", "LiveTreeAttributeErrorCode", "LIVETREE_DISPOSED_ERROR_CODE"],

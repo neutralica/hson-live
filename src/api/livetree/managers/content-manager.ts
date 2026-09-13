@@ -14,7 +14,7 @@ import { TreeSelector } from "../creation/tree-selector.js";
 type ContentItem = HsonNode | Primitive;
 
 /**
- * Graph-backed markup snapshot for a `ContentManager` owner node.
+ * Graph-backed markup snapshot for a tree-owned content capability.
  *
  * These strings are serialized from the Hson node graph, not read from a
  * mounted DOM element. They are therefore available for detached branches.
@@ -25,6 +25,17 @@ export type ContentMarkupApi = Readonly<{
   /** Serialized owner-node markup, including the owner tag itself. */
   readonly outerHTML: string;
 }>;
+
+/** Supported structured content operations owned by `LiveTree.content`. */
+export interface ContentManager {
+  readonly markup: ContentMarkupApi;
+  count(): number;
+  at(ix: number): LiveTree | undefined;
+  first(): LiveTree | undefined;
+  all(): TreeSelector;
+  deep(): TreeSelector;
+  mustOnly(opts?: { warn?: boolean }): LiveTree;
+}
 
 const VSN_SET: ReadonlySet<string> = new Set(EVERY_VSN);
 const LEAF_SET: ReadonlySet<string> = new Set(LEAF_NODES);
@@ -53,7 +64,8 @@ const serialize_node_inner_markup = (node: HsonNode): string => {
  * leaves are ignored. The `markup` accessor is graph-backed and serializes the
  * owner node without requiring a mounted DOM element.
  */
-export class ContentManager {
+/** Concrete tree-owned implementation. @internal */
+export class LiveTreeContentManager implements ContentManager {
   private readonly owner: LiveTree;
 
   public constructor(owner: LiveTree) {

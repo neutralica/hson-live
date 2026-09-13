@@ -1,7 +1,7 @@
 // keyframes-manager.ts
 
 import { canon_to_css_prop } from "../../transform/utils/attrs-utils/normalize-css.js";
-import { KeyframesInput, KeyframesInputTuple, KeyframeSelector, CssDeclMap, KeyframeStep, KeyframesDef, KeyframesName, KeyframesManager, KeyframesOwner } from "../../../types/keyframes.types.js";
+import { KeyframesInput, KeyframesInputTuple, KeyframeSelector, CssDeclMap, KeyframeStep, KeyframesDef, KeyframesName, KeyframesRegistry } from "../../../types/keyframes.types.js";
 
 /**
  * Narrow a `KeyframesInput` union to the tuple-shaped variant.
@@ -222,7 +222,7 @@ function normalizeKeyframesInput(input: KeyframesInput): KeyframesDef {
   const sorted = sortSteps(Array.from(byAt.values()));
 
   // canonical form.
-  return { name, steps: sorted, source: input.source };
+  return { name, steps: sorted };
 }
 
 /**
@@ -327,13 +327,13 @@ export function manage_keyframes(args: {
   onChange: () => void;
   /** Internal runtime-local emitted-name prefix. */
   namePrefix?: string;
-}): KeyframesManager {
+}): KeyframesRegistry {
   // storage by name.
   const byName: Map<KeyframesName, KeyframesDef> = new Map();
 
   // changed: ownership index for generated/node-owned keyframes.
-  const namesByOwner: Map<KeyframesOwner, Set<KeyframesName>> = new Map();
-  const ownerByName: Map<KeyframesName, KeyframesOwner> = new Map();
+  const namesByOwner: Map<string, Set<KeyframesName>> = new Map();
+  const ownerByName: Map<KeyframesName, string> = new Map();
 
   const releaseNameOwnership = (name: KeyframesName): void => {
     const priorOwner = ownerByName.get(name);
@@ -348,7 +348,7 @@ export function manage_keyframes(args: {
     if (owned.size === 0) namesByOwner.delete(priorOwner);
   };
 
-  const claimNameForOwner = (owner: KeyframesOwner, name: KeyframesName): void => {
+  const claimNameForOwner = (owner: string, name: KeyframesName): void => {
     const o = owner.trim();
     if (!o) return;
 
@@ -389,14 +389,11 @@ export function manage_keyframes(args: {
      * `owner`. Calling `releaseOwner(owner)` removes all keyframes registered
      * through this path for that owner.
      */
-    setOwned(owner: KeyframesOwner, input: KeyframesInput): void {
+    setOwned(owner: string, input: KeyframesInput): void {
       const o = owner.trim();
       if (!o) return;
 
-      const next: KeyframesDef = {
-        ...normalizeKeyframesInput(input),
-        source: `quid:${o}`,
-      };
+      const next = normalizeKeyframesInput(input);
 
       const prev = byName.get(next.name);
       const priorOwner = ownerByName.get(next.name);
@@ -431,7 +428,7 @@ export function manage_keyframes(args: {
       args.onChange();
     },
 
-    releaseOwner(owner: KeyframesOwner): void {
+    releaseOwner(owner: string): void {
       const o = owner.trim();
       if (!o) return;
 
@@ -448,24 +445,12 @@ export function manage_keyframes(args: {
       args.onChange();
     },
 
-    listOwned(owner: KeyframesOwner): readonly KeyframesName[] {
-      const o = owner.trim();
-      if (!o) return [];
-
-      return Array.from(namesByOwner.get(o) ?? []).sort();
-    },
-
     has(name: KeyframesName): boolean {
       return byName.has(name.trim());
     },
 
     get(name: KeyframesName): KeyframesDef | undefined {
       return byName.get(name.trim());
-    },
-
-    renderOne(name: KeyframesName): string {
-      const def = byName.get(name.trim());
-      return def ? renderKeyframes(def, `${args.namePrefix ?? ""}${def.name}`) : "";
     },
 
     renderAll(): string {

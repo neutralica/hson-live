@@ -1,7 +1,7 @@
 // global-css.ts
 
 import { canon_to_css_prop, normalize_css_value } from "../../transform/utils/attrs-utils/normalize-css.js";
-import { CssMapBase, CssPseudoKey, CssValue, GlobalRule, GlobalRuleHandle, GlobalVarFacade, MediaQueryInput, SupportsQueryInput } from "../../../types/css.types.js";
+import { CssGlobalsApi, CssMapBase, CssPseudoKey, CssRuleFacade, CssValue, GlobalRule, GlobalRuleHandle, GlobalVarFacade, MediaQueryInput, SupportsQueryInput } from "../../../types/css.types.js";
 import { camel_to_kebab } from "../../transform/utils/attrs-utils/camel_to_kebab.js";
 import { pseudo_to_suffix } from "./css-manager.js";
 import { make_style_setter } from "./style-setter.js";
@@ -181,6 +181,15 @@ function convertSupportsToAt(input: SupportsQueryInput): string {
  * `GlobalCss` stores selector-based rules that are not scoped to LiveTree QUIDs.
  * `CssManager` includes the rendered output in its managed stylesheet.
  */
+/** Runtime operations kept behind the LiveTree package boundary. @internal */
+export type GlobalCssRuntimeApi = CssGlobalsApi & Readonly<{
+  dispose: () => void;
+  dropByPrefix: (prefix: string) => void;
+  dropBySelectorFragment: (fragment: string) => void;
+  renderAll: () => string;
+}>;
+
+/** @internal */
 export class GlobalCss {
   /**
     * Return the shared GlobalCss singleton.
@@ -217,12 +226,12 @@ export class GlobalCss {
  * @param onChange Callback invoked after rendered global CSS changes.
  * @returns A stable rule-management API.
  */
-  public static api(onChange: () => void) {
+  public static api(onChange: () => void): GlobalCssRuntimeApi {
     return GlobalCss.invoke().api(onChange);
   }
 
   /** Runtime-local facade factory. @internal */
-  public api(onChange: () => void) {
+  public api(onChange: () => void): GlobalCssRuntimeApi {
     this.listeners.add(onChange);
 
     const g = () => this;
@@ -249,7 +258,7 @@ export class GlobalCss {
  * @param scopes At-rule wrappers applied to rules created by this facade.
  * @returns A facade for creating rules and nested scoped facades.
  */
-  private facade(scopes: readonly string[] = []) {
+  private facade(scopes: readonly string[] = []): CssRuleFacade {
     const g = () => this;
 
     return {

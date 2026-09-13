@@ -1,7 +1,7 @@
 #### hson-live / hson.terminalgothic.com
 
 # LiveTree CSS APIs
-Updated: 2026-07-13
+Updated: 2026-09-13
 
 This document covers the current style and stylesheet APIs:
 
@@ -61,10 +61,8 @@ Rules for an individual setter call:
 `undefined` are skipped, not removed. Use `remove(prop)` for an explicit bulk
 update deletion.
 
-The low-level exported `render_css_value()` treats `{ unit: "_" }` as unitless,
-but the shared public `StyleSetter` renderer currently emits the underscore
-literally. Do not use `_` as a public unit shorthand until those paths are
-unified; omit `unit` for a unitless value.
+For portable unitless values across inline and stylesheet-backed setters, omit
+`unit`.
 
 ### Key Normalization
 
@@ -175,7 +173,6 @@ tree.css.layer(layerName)
 tree.css.atProperty
 tree.css.keyframes
 tree.css.anim
-tree.css.devSnapshot()
 ```
 
 For multi-QUID handles, reads are consensus reads. If any selected QUID is
@@ -298,23 +295,15 @@ tree.css.supports({ display: "grid" });
 
 ## CssManager
 
-`CssManager` is the singleton stylesheet engine behind QUID CSS, global rules,
-`@property`, and keyframes.
-
-Preferred public global entry:
+`CssManager` owns the supported global stylesheet entrypoint:
 
 ```ts
 const css = CssManager.api();
 ```
 
-Lower-level engine entry:
-
-```ts
-const manager = CssManager.invoke();
-```
-
-`invoke()` is mainly for internal plumbing, diagnostics, direct QUID methods,
-and tests.
+QUID rule storage, runtime selection and ownership, forced synchronization,
+snapshots, and reset hooks are implementation details. Element-scoped styling
+does not require those operations; use `tree.css` for the owning element.
 
 The manager renders into one managed style host when a DOM is available:
 
@@ -324,37 +313,13 @@ The manager renders into one managed style host when a DOM is available:
 </hson-_style>
 ```
 
-Scheduling:
+Runtime scheduling remains automatic:
 
 - In browser-like runtimes with `requestAnimationFrame`, writes are batched.
 - Without a DOM render loop, writes flush immediately for deterministic tests.
-- `syncNow()` forces an immediate flush if state is dirty.
-- `snapshot()` / `renderCss()` provide QUID rules plus `@property` and
-  keyframes text for inspection. They do not include global rules, even though
-  the managed DOM stylesheet does.
-- `debug_hardReset()` clears QUID rules, `@property`, keyframes, scheduling
-  state, and the managed style element. The current implementation does not
-  clear the separate `GlobalCss` singleton, so global rules can survive this
-  reset.
-
-Lower-level QUID methods include:
-
-```ts
-manager.setForQuid(quid, propCanon, value)
-manager.setManyForQuid(quid, decls)
-manager.unsetForQuid(quid, propCanon)
-manager.clearQuid(quid)
-manager.clearAll()
-manager.getForQuid(quid, propCanon)
-manager.getAllForQuid(quid)
-manager.hasAnyRules(quid)
-manager.animForQuids(quids)
-manager.releaseOwnedCssForQuid(quid)
-manager.setOwnedKeyframesForQuid(quid, input)
-```
-
-`manager.clearAll()` clears only QUID-scoped rules. It does not clear global
-rules, `@property`, or keyframes.
+- Tree and runtime disposal release only the owning runtime's resources.
+- Application code does not need an explicit flush; CSS realization follows the
+  runtime's normal scheduling and continuation publication rules.
 
 ---
 
@@ -379,7 +344,6 @@ Global facade surface:
 css.rule(ruleKey, selector)
 css.sel(selector)
 css.drop(ruleKey)
-css.dropByPrefix(prefix)
 css.clearAll()
 css.scope(scopeName, atRule)
 css.media(query)
@@ -389,8 +353,6 @@ css.var
 css.has(ruleKey)
 css.list()
 css.get(ruleKey)
-css.renderAll()
-css.dispose()
 ```
 
 `scope(scopeName, atRule)` currently uses only `atRule`; `scopeName` is accepted
@@ -451,8 +413,6 @@ registerMany(inputs)
 unregister(name)
 has(name)
 get(name)
-renderOne(name)
-renderAll()
 ```
 
 Input fields use the compact current names:
@@ -497,25 +457,15 @@ Surface:
 
 ```ts
 set(input)
-setOwned(owner, input)
 setMany(inputs)
 delete(name)
-releaseOwner(owner)
-listOwned(owner)
 has(name)
 get(name)
-renderOne(name)
-renderAll()
 ```
 
-Keyframes render globally as `@keyframes`. Owned keyframes are associated with
-an owner id, usually a QUID, so teardown can release generated CSS for a node or
-subtree.
-
-A keyframe name has at most one effective owner. Claiming the same name for a
-new owner transfers ownership; calling durable `set()` or `setMany()` for that
-name removes generated ownership. Releasing an owner deletes the names still
-owned by it.
+Keyframes registered through this application surface are durable global
+definitions. LiveTree may also create owner-scoped keyframes internally so node
+teardown can release them without exposing manual identity management.
 
 ---
 

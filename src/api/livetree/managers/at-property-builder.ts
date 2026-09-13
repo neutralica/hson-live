@@ -1,6 +1,6 @@
 // at-property-builder.ts
 
-import { CssCustomPropName, PropertyInput, PropertyInputTuple, PropertyManager, PropertyRegistration, PropertySyntax } from "../../../types/at-property.types.js";
+import { CssCustomPropName, PropertyInput, PropertyInputTuple, PropertyRegistration, PropertyRegistry, PropertySyntax } from "../../../types/at-property.types.js";
 
 /**
  * Type guard for `PropertyInput` tuple form.
@@ -100,7 +100,7 @@ function coerce_atprop_input(input: PropertyInput): PropertyRegistration {
 export function manage_property(args: {
     // Called whenever registrations change.
     onChange: () => void;
-}): PropertyManager {
+}): PropertyRegistry {
     //  internal storage is canonical normalized registrations by name.
     const regByName: Map<CssCustomPropName, PropertyRegistration> = new Map();
 
@@ -200,12 +200,6 @@ export function manage_property(args: {
         get(name: CssCustomPropName): PropertyRegistration | undefined {
             //  return canonical registration (already readonly).
             return regByName.get(name);
-        },
-
-        renderOne(name: CssCustomPropName): string {
-            //  render one or empty string if missing.
-            const reg: PropertyRegistration | undefined = regByName.get(name);
-            return reg ? renderReg(reg) : "";
         },
 
         renderAll(): string {

@@ -5,7 +5,6 @@
 <script type="module">
 import {
   DocumentContinuationError,
-  CssManager,
   continue_hosted_document,
   continue_document,
   create_browser_locus_socket,
@@ -280,8 +279,8 @@ try {
   svgContinuation.dispose();
   svgRoot.remove();
 
-  const manager = CssManager.invoke();
-  manager.setForQuid("000000999", "color", "red");
+  const managerOwner = hson.liveTree.fromNode({ $_tag: "aside", $_content: [] });
+  managerOwner.css.set.color("red");
   const managerDocument = document.implementation.createHTMLDocument("manager-success");
   const managerMap = documentMap(`<main <p "managed"/>/>`);
   const managerRoot = mount(managerMap, managerDocument);
@@ -291,7 +290,9 @@ try {
   const managerContinuation = continue_document({ map: managerMap, root: managerRoot });
   check("whole-Document continuation publication is zero-write", managerRecords.length === 0 && managerObserver.takeRecords().length === 0 && !managerDocument.querySelector("hson-_style"));
   await new Promise((resolve) => requestAnimationFrame(resolve));
-  check("runtime manager support DOM begins after success", managerDocument.querySelector("hson-_style#css-manager > style#_hson") !== null);
+  const managerStyle = managerDocument.querySelector("hson-_style#css-manager > style#_hson");
+  check("runtime manager support DOM begins after success", managerStyle !== null);
+  check("supported tree CSS realizes after continuation publication", managerStyle?.textContent.includes(managerOwner.quid) === true);
   managerContinuation.dispose();
   managerObserver.disconnect();
 
@@ -311,6 +312,7 @@ try {
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   check("corrected success activates manager later", failedManagerDocument.querySelector("hson-_style") !== null);
   correctedManagerContinuation.dispose();
+  managerOwner.remove();
 
   const atomicRoot = (tag, text) => ({
     $_tag: "_hson_root",

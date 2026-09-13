@@ -3,7 +3,7 @@
 import { _listeners_off_for_target } from "../managers/listener-builder.js";
 import { HsonNode } from "../../../core/types.js";
 import { get_el_for_node, unlinkNode } from "./node-map-helpers.js";
-import { CssManager } from "../managers/css-manager.js";
+import { CssRuntimeManager } from "../managers/css-manager.js";
 import { disposables_off_for_subject } from "../managers/lifecycle-registry.js";
 import { get_quid } from "../quid/data-quid.js";
 import { collect_subtree_nodes } from "./subtree-traversal.js";
@@ -69,7 +69,7 @@ function detach_node_runtime(node: HsonNode, runtime: LiveTreeRuntime): void {
   disposables_off_for_subject(node, runtime);
   const quid = get_quid(node, runtime);
   if (typeof quid === "string" && quid.length) {
-    CssManager.forRuntime(runtime).releaseOwnedCssForQuid(quid);
+    CssRuntimeManager.forRuntime(runtime).releaseOwnedCssForQuid(quid);
   }
   // 3) finally drop the map entry
   unlinkNode(node);

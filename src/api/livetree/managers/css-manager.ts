@@ -3,8 +3,9 @@
 import { normalize_css_key } from "../../transform/utils/attrs-utils/normalize-css.js";
 import { CssPseudoKey, CssValue, CssProp } from "../../../core/style.types.js";
 import { AnimAdapters, CssAnimScope, CssAnimHandle } from "../../../types/animate.types.js";
-import { PropertyManager } from "../../../types/at-property.types.js";
-import { KeyframesManager, KeyframesInput } from "../../../types/keyframes.types.js";
+import { PropertyManager, PropertyRegistry } from "../../../types/at-property.types.js";
+import { KeyframesManager, KeyframesInput, KeyframesRegistry } from "../../../types/keyframes.types.js";
+import { CssGlobalsApi } from "../../../types/css.types.js";
 import { camel_to_kebab } from "../../transform/utils/attrs-utils/camel_to_kebab.js";
 import { LiveTree } from "../livetree.js";
 import { apply_animation, bind_anim_api } from "../methods/anim.js";
@@ -13,7 +14,7 @@ import {
 } from "../quid/data-quid.js";
 import { is_persisted_quid } from "../../../core/hson-node-quid.js";
 import { manage_property } from "./at-property-builder.js";
-import { GlobalCss, render_rule } from "./global-css.js";
+import { GlobalCss, GlobalCssRuntimeApi } from "./global-css.js";
 import { manage_keyframes } from "./keyframes-manager.js";
 import { css_supports_decl } from "./style-setter.js";
 import {
@@ -29,9 +30,7 @@ const CSS_HOST_ID = "css-manager";
 const CSS_STYLE_ID = "_hson";
 
 
-type GlobalCssApi = ReturnType<typeof GlobalCss.api>;
-
-export type CssManagerApi = GlobalCssApi & Readonly<{
+export type CssManagerApi = CssGlobalsApi & Readonly<{
   /** Public access to the shared CSS `@property` registration manager. */
   atProperty: PropertyManager;
 
@@ -45,6 +44,7 @@ export type CssManagerApi = GlobalCssApi & Readonly<{
  * This is the single mapping table used by both QUID-scoped and global
  * CSS rule generation.
  */
+/** @internal */
 export const pseudo_to_suffix = (p: CssPseudoKey): string => {
   switch (p) {
     case "_hover": return ":hover";
@@ -63,6 +63,7 @@ export const pseudo_to_suffix = (p: CssPseudoKey): string => {
 /**
  * Runtime type guard for `LiveTree` instances.
  */
+/** @internal */
 export function isLiveTree(x: unknown): x is LiveTree {
   return x instanceof LiveTree;
 }
@@ -78,6 +79,7 @@ export function isLiveTree(x: unknown): x is LiveTree {
  * @param v A `CssValue` to render.
  * @returns A CSS-ready literal string (no surrounding property name).
  */
+/** @internal */
 export function render_css_value(v: CssValue): string {
   // string → already a valid CSS literal
   if (typeof v === "string") {
@@ -107,6 +109,7 @@ export function render_css_value(v: CssValue): string {
  * @param quid QUID to target.
  * @returns A selector string of the form `[hson\:quid="..."]`.
  */
+/** @internal */
 export function selector_for_quid(quid: string): string {
   if (!is_persisted_quid(quid)) {
     throw new Error(`Cannot construct a QUID selector for "${quid}".`);
@@ -182,15 +185,18 @@ function canon_to_css_prop(propCanon: string): string {
  * - Write APIs may throw on programmer errors such as blank QUIDs or invalid
  *   property identifiers, to fail fast during development.
  */
-export class CssManager {
+/** Runtime stylesheet implementation. @internal */
+export class CssRuntimeManager {
   // QUID → (property → rendered value)
   private readonly rulesByQuid: Map<string, Map<string, string>> = new Map();
   private readonly styleEls = new Map<Document, HTMLStyleElement>();
-  private atPropManager: PropertyManager;
-  private keyframeManager: KeyframesManager;
+  private atPropManager: PropertyRegistry;
+  private keyframeManager: KeyframesRegistry;
+  private atPropertyApi: PropertyManager | undefined;
+  private keyframesApi: KeyframesManager | undefined;
   private changed: boolean = false;
   private readonly globalCss = new GlobalCss();
-  private globalsApi: GlobalCssApi | undefined;
+  private globalsApi: GlobalCssRuntimeApi | undefined;
   private readonly documentListener = (): void => {
     this.changed = true;
     this.scheduleSync();
@@ -452,8 +458,8 @@ export class CssManager {
    * Note: this does **not** force creation of a `<style>` element. It only
    * registers the current `document` on first rendering use if one exists.
    */
-  public static invoke(): CssManager {
-    return CssManager.forRuntime(
+  public static invoke(): CssRuntimeManager {
+    return CssRuntimeManager.forRuntime(
       default_livetree_runtime(),
       { claimAmbientDocument: true },
     );
@@ -463,7 +469,7 @@ export class CssManager {
   public static forRuntime(
     runtime: LiveTreeRuntime,
     opts?: { claimAmbientDocument?: boolean },
-  ): CssManager {
+  ): CssRuntimeManager {
     if (opts?.claimAmbientDocument) {
       const ambient = (globalThis as { document?: Document }).document;
       if (
@@ -476,8 +482,8 @@ export class CssManager {
         register_runtime_document(runtime, ambient);
       }
     }
-    if (runtime.cssManager instanceof CssManager) return runtime.cssManager;
-    const manager = new CssManager(runtime);
+    if (runtime.cssManager instanceof CssRuntimeManager) return runtime.cssManager;
+    const manager = new CssRuntimeManager(runtime);
     runtime.cssManager = manager;
     return manager;
   }
@@ -537,7 +543,16 @@ export class CssManager {
    * @returns The live `PropertyManager` instance owned by this runtime.
    */
   public get atProperty(): PropertyManager {
-    return this.atPropManager;
+    if (!this.atPropertyApi) {
+      this.atPropertyApi = {
+        register: (input: Parameters<PropertyManager["register"]>[0]) => this.atPropManager.register(input),
+        registerMany: (inputs: Parameters<PropertyManager["registerMany"]>[0]) => this.atPropManager.registerMany(inputs),
+        unregister: (name: Parameters<PropertyManager["unregister"]>[0]) => this.atPropManager.unregister(name),
+        has: (name: Parameters<PropertyManager["has"]>[0]) => this.atPropManager.has(name),
+        get: (name: Parameters<PropertyManager["get"]>[0]) => this.atPropManager.get(name),
+      };
+    }
+    return this.atPropertyApi;
   }
 
   /**
@@ -546,7 +561,16 @@ export class CssManager {
    * @returns The live `KeyframesManager` instance owned by this runtime.
    */
   public get keyframes(): KeyframesManager {
-    return this.keyframeManager;
+    if (!this.keyframesApi) {
+      this.keyframesApi = {
+        set: (input: Parameters<KeyframesManager["set"]>[0]) => this.keyframeManager.set(input),
+        setMany: (inputs: Parameters<KeyframesManager["setMany"]>[0]) => this.keyframeManager.setMany(inputs),
+        delete: (name: Parameters<KeyframesManager["delete"]>[0]) => this.keyframeManager.delete(name),
+        has: (name: Parameters<KeyframesManager["has"]>[0]) => this.keyframeManager.has(name),
+        get: (name: Parameters<KeyframesManager["get"]>[0]) => this.keyframeManager.get(name),
+      };
+    }
+    return this.keyframesApi;
 
   }
 
@@ -577,6 +601,11 @@ export class CssManager {
     this.clearQuid(q);
     this.keyframeManager.releaseOwner(q);
     this.globals_invoke().dropBySelectorFragment(this.selectorForQuid(q));
+  }
+
+  /** Drop selector-backed rules owned by one internal LiveTree CSS handle. */
+  public dropGlobalRulesByPrefix(prefix: string): void {
+    this.globals_invoke().dropByPrefix(prefix);
   }
 
   // --- WRITE API (QUID-based) -------------------------------------------
@@ -802,10 +831,6 @@ export class CssManager {
     this.markChanged();
   }
 
-  private renderRule(selector: string, decls: Record<string, string>): string {
-    return render_rule(selector, decls);
-  }
-
   /** 
    * Immediately writes the current in-memory CSS to the DOM.
    * This is the "force it now" path used by devFlush and (optionally) tests.
@@ -825,7 +850,7 @@ export class CssManager {
     this.syncToDom();
   }
 
-  private globals_invoke(): GlobalCssApi {
+  private globals_invoke(): GlobalCssRuntimeApi {
     if (!this.globalsApi) {
       this.globalsApi = this.globalCss.api(() => this.notify_global_css_changed());
     }
@@ -839,27 +864,52 @@ export class CssManager {
    * selector rules, media/supports/layer rules, global variables, `@property`
    * registrations, keyframes, and related stylesheet helpers.
    *
-   * `CssManager.invoke()` remains the lower-level engine entrypoint for QUID
-   * rules, DOM sync, snapshots, dev resets, and other internal plumbing.
+   * Runtime-local variants and stylesheet plumbing remain internal.
    */
   public static api(): CssManagerApi {
-    return CssManager.apiForRuntime(default_livetree_runtime());
+    return CssRuntimeManager.apiForRuntime(default_livetree_runtime());
   }
 
   /** Runtime-local CSS facade for LiveTree handles. @internal */
   public static apiForRuntime(runtime: LiveTreeRuntime): CssManagerApi {
-    const mgr = CssManager.forRuntime(runtime, { claimAmbientDocument: true });
+    const mgr = CssRuntimeManager.forRuntime(runtime, { claimAmbientDocument: true });
     const globalApi = mgr.globals_invoke();
 
     return {
-      ...globalApi,
+      rule: globalApi.rule,
+      sel: globalApi.sel,
+      var: globalApi.var,
+      drop: globalApi.drop,
+      clearAll: globalApi.clearAll,
+      scope: globalApi.scope,
+      media: globalApi.media,
+      supports: globalApi.supports,
+      layer: globalApi.layer,
+      has: globalApi.has,
+      list: globalApi.list,
+      get: globalApi.get,
       atProperty: mgr.atProperty,
       keyframes: mgr.keyframes,
-    } as const;
+    };
   }
 
   public snapshot(): string {
     return this.renderCss()
   }
 
+}
+
+/**
+ * Application-owned global stylesheet entrypoint.
+ *
+ * Runtime selection, QUID rule storage, synchronization, ownership cleanup,
+ * and diagnostics remain package-internal. Element-scoped styling is available
+ * from `LiveTree.style` and `LiveTree.css`.
+ */
+export class CssManager {
+  private constructor() {}
+
+  public static api(): CssManagerApi {
+    return CssRuntimeManager.api();
+  }
 }

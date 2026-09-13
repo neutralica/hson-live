@@ -84,8 +84,9 @@ export interface PropertyManager {
   // Query helpers.
   has(name: CssCustomPropName): boolean;
   get(name: CssCustomPropName): PropertyRegistration | undefined;
+}
 
-  // Render one or all registrations to CSS text.
-  renderOne(name: CssCustomPropName): string;
+/** Rendering access used only by the runtime stylesheet owner. @internal */
+export interface PropertyRegistry extends PropertyManager {
   renderAll(): string;
 }

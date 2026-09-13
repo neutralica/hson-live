@@ -645,7 +645,6 @@ tree.css.selector(pattern)
 tree.css.media(query)
 tree.css.supports(cond)
 tree.css.layer(layerName)
-tree.css.devSnapshot()
 ```
 
 CSS sub-managers:
@@ -656,19 +655,12 @@ tree.css.atProperty.registerMany(inputs)
 tree.css.atProperty.unregister(name)
 tree.css.atProperty.has(name)
 tree.css.atProperty.get(name)
-tree.css.atProperty.renderOne(name)
-tree.css.atProperty.renderAll()
 
 tree.css.keyframes.set(input)
-tree.css.keyframes.setOwned(owner, input)
 tree.css.keyframes.setMany(inputs)
 tree.css.keyframes.delete(name)
-tree.css.keyframes.releaseOwner(owner)
-tree.css.keyframes.listOwned(owner)
 tree.css.keyframes.has(name)
 tree.css.keyframes.get(name)
-tree.css.keyframes.renderOne(name)
-tree.css.keyframes.renderAll()
 
 tree.css.anim.begin(spec)
 tree.css.anim.restart(spec)

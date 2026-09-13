@@ -9,7 +9,7 @@ import {
   reflect_document_in_runtime,
   type DocumentReflect,
 } from "../api/reflect/reflect.document.js";
-import { CssManager } from "../api/livetree/managers/css-manager.js";
+import { CssRuntimeManager } from "../api/livetree/managers/css-manager.js";
 import {
   lifecycle_resource_counts_for_owner,
   own_disposable_for_owner,
@@ -110,8 +110,8 @@ export function own_livetree_runtime_test_disposable(
 
 export function livetree_runtime_test_css_manager(
   handle: LiveTreeRuntimeTestHandle,
-): CssManager {
-  return CssManager.forRuntime(runtime_for_handle(handle));
+): CssRuntimeManager {
+  return CssRuntimeManager.forRuntime(runtime_for_handle(handle));
 }
 
 export function register_livetree_runtime_test_document(

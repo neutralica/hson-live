@@ -6,7 +6,6 @@ import { KeyframesManager } from "./keyframes.types.js";
 import { StyleSetter } from "../api/livetree/managers/style-setter.js";
 import { PropertyManager } from "./at-property.types.js";
 import { StyleGetMany, StyleGetter } from "../api/livetree/managers/style-getter.js";
-import { CssManager } from "../api/livetree/managers/css-manager.js";
 import type {
   AllowedStyleKey,
   CssKey,
@@ -113,7 +112,7 @@ export type CssGlobalSupportsQueryInput =
   | Record<string, string | number | boolean>;
 
 /**
- * Global stylesheet API used by `CssManager.globals.invoke()`.
+ * Supported global stylesheet operations returned by `CssManager.api()`.
  *
  * This surface is rule-based: callers obtain a `CssGlobalRuleHandle` and
  * then use the regular `StyleSetter` API to mutate that rule.
@@ -122,20 +121,19 @@ export type CssGlobalSupportsQueryInput =
  * created from those facades render inside the corresponding at-rule wrapper.
  */
 export type CssGlobalsApi = Readonly<{
-  dispose: () => void;
   rule: (ruleKey: string, selector: string) => CssGlobalRuleHandle;
   sel: (selector: string) => CssGlobalRuleHandle;
+  var: GlobalVarFacade;
   drop: (ruleKey: string) => void;
   clearAll: () => void;
-  scope: (scopeName: string, atRule: string) => CssGlobalsApi;
-  media: (query: CssGlobalMediaQueryInput) => CssGlobalsApi;
-  supports: (cond: CssGlobalSupportsQueryInput) => CssGlobalsApi;
-  layer: (layerName: string) => CssGlobalsApi;
+  scope: (scopeName: string, atRule: string) => CssRuleFacade;
+  media: (query: CssGlobalMediaQueryInput) => CssRuleFacade;
+  supports: (cond: CssGlobalSupportsQueryInput) => CssRuleFacade;
+  layer: (layerName: string) => CssRuleFacade;
 
   has: (ruleKey: string) => boolean;
   list: () => readonly string[];
   get: (ruleKey: string) => string | undefined;
-  renderAll: () => string;
 }>;
 
 export type StyleHandle<TOwner> = Readonly<
@@ -154,7 +152,6 @@ export type CssHandleBase<TReturn> = Readonly<
     atProperty: PropertyManager;
     keyframes: KeyframesManager;
     anim: CssAnimHandle;
-    devSnapshot: () => string;
 
     selector: (pattern: string) => StyleHandle<TReturn>;
 
@@ -299,7 +296,10 @@ export type GlobalVarFacade = Readonly<{
 }>;
 
 export type CssRuleFacade = Readonly<{
-  rule: ReturnType<typeof CssManager.api>["rule"];
+  rule: (ruleKey: string, selector: string) => CssGlobalRuleHandle;
+  sel: (selector: string) => CssGlobalRuleHandle;
+  var: GlobalVarFacade;
+  scope: (scopeName: string, atRule: string) => CssRuleFacade;
   media: (query: MediaQueryInput) => CssRuleFacade;
   supports: (cond: SupportsQueryInput) => CssRuleFacade;
   layer: (layerName: string) => CssRuleFacade;

@@ -236,7 +236,8 @@ import type { HSON_NUMBER_BRAND } from "hson-live/transform";
 // @ts-expect-error HsonCanonical is intentionally not exported from the package root.
 import type { HsonCanonical as RootHsonCanonical } from "hson-live";
 import {
-  ContentManager,
+  CssManager,
+  type ContentManager,
   type AsyncLiveTree,
   LIVETREE_LINKED_IDENTITY_REQUIRED_ERROR_CODE,
   LIVETREE_QUID_REUSE_ERROR_CODE,
@@ -258,10 +259,60 @@ import {
   type LiveTreeBindApi,
   type LiveTreeLifecycleResult,
   type PropertyManager,
+  type KeyframesManager,
   type PropertyRegistration,
   type TreeEvents,
 } from "hson-live/livetree";
+import { ContentManager as ContentManagerValue } from "hson-live/livetree";
+// @ts-expect-error The runtime stylesheet implementation is not an owning-subpath export.
+import { CssRuntimeManager } from "hson-live/livetree";
+// @ts-expect-error Global styling is owned by the LiveTree subpath, not the package root.
+import { CssManager as RootCssManager } from "hson-live";
 declare const liveTree: LiveTree;
+const contentManager: ContentManager = liveTree.content;
+void contentManager.count();
+// @ts-expect-error Tree-owned content has no independently constructible public manager value.
+new ContentManagerValue(liveTree);
+const globalCss = CssManager.api();
+globalCss.sel("body").set.margin("0");
+globalCss.rule("entrypoint-shell", ".shell").set.display("grid");
+globalCss.var.set("entrypoint-accent", "rebeccapurple");
+globalCss.atProperty.register(["--entrypoint-phase", "<number>", "0"]);
+globalCss.keyframes.set({
+  name: "entrypoint-fade",
+  steps: { from: { opacity: "0" }, to: { opacity: "1" } },
+});
+liveTree.style.set.opacity({ value: 0.5 });
+liveTree.style.var.set("inline-accent", "blue");
+liveTree.css.set.backgroundColor("black");
+liveTree.css.selector("& > .label").set.color("white");
+liveTree.css.media({ maxWidth: 700 }).set.display("none");
+liveTree.css.supports({ display: "grid" }).set.display("grid");
+liveTree.css.layer("components").set.zIndex(1);
+// @ts-expect-error Runtime manager selection is package-internal.
+CssManager.invoke();
+// @ts-expect-error Runtime manager selection is package-internal.
+CssManager.forRuntime({});
+// @ts-expect-error Runtime synchronization is not an application operation.
+globalCss.syncNow();
+// @ts-expect-error Runtime snapshots are not part of the application facade.
+globalCss.renderAll();
+// @ts-expect-error Internal selector-owner cleanup is not part of the application facade.
+globalCss.dropByPrefix("entrypoint");
+// @ts-expect-error Runtime listener disposal is owned by the stylesheet runtime.
+globalCss.dispose();
+// @ts-expect-error Tree CSS snapshots are diagnostic machinery.
+liveTree.css.devSnapshot();
+// @ts-expect-error QUID ownership registration is runtime machinery.
+liveTree.css.keyframes.setOwned("000000001", { name: "owned", steps: { from: { opacity: "0" } } });
+// @ts-expect-error QUID ownership release is runtime machinery.
+liveTree.css.keyframes.releaseOwner("000000001");
+// @ts-expect-error QUID ownership inspection is runtime machinery.
+liveTree.css.keyframes.listOwned("000000001");
+// @ts-expect-error Keyframe serialization is an internal stylesheet operation.
+liveTree.css.keyframes.renderAll();
+// @ts-expect-error Property serialization is an internal stylesheet operation.
+liveTree.css.atProperty.renderAll();
 const asyncLiveTree: AsyncLiveTree = liveTree.async;
 const rootAsyncLiveTree: RootAsyncLiveTree = asyncLiveTree;
 const asyncOwner: Promise<AsyncLiveTree> = asyncLiveTree.attrs.set("id", "entrypoint");
@@ -436,7 +487,8 @@ void hostSubpath;
 void reflectSubpath;
 void LiveTree;
 void TreeSelector;
-void ContentManager;
+void CssRuntimeManager;
+void RootCssManager;
 void TransformError;
 void HsonSubpathTransformError;
 void is_transform_error;
@@ -750,6 +802,7 @@ type PublicLiveTreeClosure =
   | CanvasApi<LiveTree>
   | ClassApi<LiveTree>
   | ContentMarkupApi
+  | ContentManager
   | DataApi<LiveTree>
   | FindMany
   | FlagHandle<LiveTree>
@@ -758,6 +811,7 @@ type PublicLiveTreeClosure =
   | ListenerBuilder
   | LiveTreeBindApi<LiveTree>
   | PropertyManager
+  | KeyframesManager
   | PropertyRegistration
   | TreeEvents;
 type PublicLiveMapClosure =

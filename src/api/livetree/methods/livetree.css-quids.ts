@@ -4,23 +4,23 @@
 import { normalize_css_key } from "../../transform/utils/attrs-utils/normalize-css.js";
 import { CssHandleVoid, CssTreeHandle, CssHandleBase, CssPseudoKey, CssMapBase, StyleHandle, CssKey, MediaQueryInput, SupportsQueryInput, CssRuleFacade } from "../../../types/css.types.js";
 import { LiveTree } from "../livetree.js";
-import { CssManager, isLiveTree, pseudo_to_suffix } from "../managers/css-manager.js";
+import { CssManager, CssRuntimeManager, isLiveTree, pseudo_to_suffix } from "../managers/css-manager.js";
 import { make_style_get_many, make_style_getter, StyleGetMany, StyleGetter, StyleGetterAdapters } from "../managers/style-getter.js";
 import { make_css_var_facade, make_style_setter, StyleSetter, StyleSetterAdapters } from "../managers/style-setter.js";
 import { runtime_for_tree } from "../runtime/livetree-runtime.js";
 
-function manager_for_host(host: LiveTree | void): CssManager {
+function manager_for_host(host: LiveTree | void): CssRuntimeManager {
   return host
-    ? CssManager.forRuntime(
+    ? CssRuntimeManager.forRuntime(
       runtime_for_tree(host),
       { claimAmbientDocument: true },
     )
-    : CssManager.invoke();
+    : CssRuntimeManager.invoke();
 }
 
 function api_for_host(host: LiveTree | void): CssRuleFacade & ReturnType<typeof CssManager.api> {
   return host
-    ? CssManager.apiForRuntime(runtime_for_tree(host))
+    ? CssRuntimeManager.apiForRuntime(runtime_for_tree(host))
     : CssManager.api();
 }
 
@@ -42,7 +42,7 @@ function cache_surface_value<TValue>(
 // This is the “make it impossible to forget applyPseudo” piece.
 const mkCssQuidAdapter = (
   hostOrVoid: LiveTree | void,
-  mgr: CssManager,
+  mgr: CssRuntimeManager,
   ids: string[],
 ): StyleSetterAdapters & {
   applyPseudo: (pseudo: CssPseudoKey, pseudoDecls: CssMapBase) => void;
@@ -64,7 +64,7 @@ const mkCssQuidAdapter = (
       // CHANGED: pseudos and nested selector blocks are now selector-backed
       // rules. Clearing a css handle should clear selector rules owned by this
       // same handle, but not selector rules owned by child nodes.
-      api_for_host(hostOrVoid).dropByPrefix(selectorRuleOwnerKey(hostOrVoid, ids));
+      mgr.dropGlobalRulesByPrefix(selectorRuleOwnerKey(hostOrVoid, ids));
     },
     applySelector: (pattern, decls) => {
       // CHANGED: setMany selector blocks must opt in with `&`. The public
@@ -97,7 +97,7 @@ const mkCssQuidAdapter = (
   };
 };
 
-function quidSelector(quid: string, manager: CssManager): string {
+function quidSelector(quid: string, manager: CssRuntimeManager): string {
   const q = quid.trim();
   if (!q) throw new Error("quid_selector: empty quid");
   return manager.selectorForQuid(q);
@@ -106,7 +106,7 @@ function quidSelector(quid: string, manager: CssManager): string {
 function resolveSelector(
   ids: readonly string[],
   patternRaw: string,
-  manager: CssManager = CssManager.invoke(),
+  manager: CssRuntimeManager = CssRuntimeManager.invoke(),
 ): string {
   const pattern = patternRaw.trim();
   if (!pattern) throw new Error("css.selector: empty selector pattern");
@@ -413,7 +413,7 @@ function mkScopedQuidStyleHandle<TReturn extends LiveTree | void>(
 
     clear: () => {
       handle.clear();
-      gcss.dropByPrefix(selectorRuleOwnerKey(ret, ids, scopeKey));
+      manager.dropGlobalRulesByPrefix(selectorRuleOwnerKey(ret, ids, scopeKey));
     },
 
     applySelector: (pattern, decls) => {
@@ -459,7 +459,6 @@ function mkScopedQuidStyleHandle<TReturn extends LiveTree | void>(
     get anim() {
       return cache_surface_value(this, "anim", manager.animForQuids(ids));
     },
-    devSnapshot: () => manager.snapshot(),
     selector: (pattern: string) => mkSelectorStyleHandle(ret, ids, pattern, scopeKey, ruleApi),
     media: (query: MediaQueryInput) => mkScopedQuidStyleHandle(ret, ids, joinScopeKey(scopeKey, scopeKeyFor("media", query)), ruleApi.media(query)),
     supports: (cond: SupportsQueryInput) => mkScopedQuidStyleHandle(ret, ids, joinScopeKey(scopeKey, scopeKeyFor("supports", cond)), ruleApi.supports(cond)),
@@ -467,7 +466,7 @@ function mkScopedQuidStyleHandle<TReturn extends LiveTree | void>(
   };
 }
 
-function get_many_for_ids(mgr: CssManager, ids: readonly string[]): StyleGetMany {
+function get_many_for_ids(mgr: CssRuntimeManager, ids: readonly string[]): StyleGetMany {
   const out: Record<string, string> = {};
   const allKeys = new Set<string>();
 
@@ -486,7 +485,7 @@ function get_many_for_ids(mgr: CssManager, ids: readonly string[]): StyleGetMany
 }
 
 function read_consensus_for_ids(
-  mgr: CssManager,
+  mgr: CssRuntimeManager,
   ids: readonly string[],
   propCanon: string,
 ): string | undefined {
@@ -505,7 +504,7 @@ function read_consensus_for_ids(
   return seen;
 }
 
-function make_getter_for_ids(mgr: CssManager, ids: readonly string[]): StyleGetter {
+function make_getter_for_ids(mgr: CssRuntimeManager, ids: readonly string[]): StyleGetter {
   return make_style_getter({
     read: (propCanon) => read_consensus_for_ids(mgr, ids, propCanon),
     readMany: () => get_many_for_ids(mgr, ids),
@@ -555,7 +554,7 @@ export function css_for_quids(
 ): CssHandleBase<any> {
   const mgr = isLiveTree(a)
     ? manager_for_host(a)
-    : CssManager.invoke();
+    : CssRuntimeManager.invoke();
 
   if (isLiveTree(a)) {
     const host: LiveTree = a;
@@ -584,7 +583,6 @@ export function css_for_quids(
       get anim() {
         return cache_surface_value(this, "anim", mgr.animForQuids(ids));
       },
-      devSnapshot: () => mgr.snapshot(),
       selector: (pattern: string) => mkSelectorStyleHandle<LiveTree>(host, ids, pattern),
       ...scopedMethods(host, ids),
 
@@ -612,7 +610,6 @@ export function css_for_quids(
         (name) => read_consensus_for_ids(mgr, ids, name),
       ));
     },
-    devSnapshot: () => mgr.snapshot(),
     atProperty: mgr.atProperty,
     keyframes: mgr.keyframes,
     get anim() {

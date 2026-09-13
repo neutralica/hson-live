@@ -26,7 +26,7 @@ import { make_dom_api } from "./managers/dom-api.js";
 import { TreeEvents } from "../../types/events.types.js";
 import { make_tree_events } from "./managers/make-events.js";
 import { clone_branch_method } from "./methods/clone.js";
-import { ContentManager } from "./managers/content-manager.js";
+import { type ContentManager, LiveTreeContentManager } from "./managers/content-manager.js";
 import { css_for_quids } from "./methods/livetree.css-quids.js";
 import { AttrHandle, FlagHandle } from "../../types/attrs.types.js";
 import { attr_handle, flag_handle } from "./managers/attr-handle.js";
@@ -411,7 +411,7 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
   public get content(): ContentManager {
     this.assertActive("access content");
     return (this.contentManager ??= guard_api_surface(
-      new ContentManager(this),
+      new LiveTreeContentManager(this),
       () => this.assertActive("access content"),
       this,
     ));

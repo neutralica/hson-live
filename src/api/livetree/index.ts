@@ -27,8 +27,7 @@ export {
 } from "./livetree.error.js";
 export { make_tree_selector } from "./creation/make-tree-selector.js";
 export { TreeSelector } from "./creation/tree-selector.js";
-export { ContentManager } from "./managers/content-manager.js";
-export type { ContentMarkupApi } from "./managers/content-manager.js";
+export type { ContentManager, ContentMarkupApi } from "./managers/content-manager.js";
 export { CssManager } from "./managers/css-manager.js";
 
 export type { LiveTreeAttributeErrorCode } from "./livetree.error.js";
