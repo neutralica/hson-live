@@ -44,6 +44,10 @@ const expectCode = (value: string, code: SsrBootstrapEncodingError["code"]): voi
   assert.throws(() => decode_ssr_bootstrap(value), (cause) => cause instanceof SsrBootstrapEncodingError
     && cause.phase === "decode" && cause.code === code && !cause.message.includes(value));
 };
+const expectReject = (value: string): void => {
+  assert.throws(() => decode_ssr_bootstrap(value), (cause) => cause instanceof SsrBootstrapEncodingError
+    && cause.phase === "decode" && !cause.message.includes(value));
+};
 
 const style = Object.create(null) as Record<string, unknown>;
 for (const [name, value] of [
@@ -109,6 +113,25 @@ if (decodedHosted.kind !== "hosted-document") throw new Error("Wrong hosted kind
 assert.deepEqual(decodedHosted.bootstrap, hostedBootstrap);
 assert.deepEqual(install_locus_snapshot(decodedHosted.bootstrap).map.capture().root, hostedMap.capture().root);
 
+const hostedWirePrefix = '{"format":"hson-ssr-bootstrap","version":1,"kind":"hosted-document","payload":{"logicalMapId":"wire-map","incarnationId":"wire-incarnation","revision":0,"mode":"document","hson":"';
+const hostedWireSuffix = '"}}';
+for (const length of [0, 1, 2, 24_393, 24_394, 24_395]) {
+  const hson = "x".repeat(length);
+  const bootstrap = { logicalMapId: "wire-map", incarnationId: "wire-incarnation", rev: 0, mode: "document" as const, hson };
+  assert.equal(encode_ssr_bootstrap(bootstrap), encodeText(`${hostedWirePrefix}${hson}${hostedWireSuffix}`));
+}
+const quotedHson = `quote" slash\\ controls:\b\t\n\f\r nul:\0 bmp:雪 pair:😀 high:\ud800 low:\udfff separators:\u2028\u2029`;
+const quotedWireHson = `quote\\" slash\\\\ controls:\\b\\t\\n\\f\\r nul:\\u0000 bmp:雪 pair:😀 high:\\ud800 low:\\udfff separators:\u2028\u2029`;
+const quotedBootstrap = { logicalMapId: "wire-map", incarnationId: "wire-incarnation", rev: 0, mode: "document" as const, hson: quotedHson };
+assert.equal(encode_ssr_bootstrap(quotedBootstrap), encodeText(`${hostedWirePrefix}${quotedWireHson}${hostedWireSuffix}`));
+assert.equal((decode_ssr_bootstrap(encode_ssr_bootstrap(quotedBootstrap)).bootstrap as typeof quotedBootstrap).hson, quotedHson);
+const padBootstrap = { logicalMapId: "wire-map", incarnationId: "wire-incarnation", rev: 0, mode: "document" as const, hson: "pad" };
+const padEncoded = encode_ssr_bootstrap(padBootstrap);
+assert(padEncoded.length % 4 === 2 || padEncoded.length % 4 === 3);
+const padLast = alphabet.indexOf(padEncoded.at(-1)!);
+const alternatePadLast = padEncoded.length % 4 === 2 ? (padLast & 0x30) | 1 : (padLast & 0x3c) | 1;
+expectCode(`${padEncoded.slice(0, -1)}${alphabet[alternatePadLast]}`, "SSR_BOOTSTRAP_NON_CANONICAL");
+
 const DataSchema: HsonSchema = Hson`<type "data" content <value "number">>`;
 const DocumentSchema: HsonSchema = Hson`<type "document" tag "main" content "empty">`;
 const inputs = Object.create(null) as Record<string, { data: { value: number }; schema: HsonSchema } | { document: string; schema: HsonSchema }>;
@@ -162,6 +185,11 @@ expectCode(encodeText(JSON.stringify({ ...parsed, extra: true })), "SSR_BOOTSTRA
 expectCode(encodeText(JSON.stringify({ ...parsed, payload: [] })), "SSR_BOOTSTRAP_PAYLOAD_INVALID");
 expectCode(encodeText(canonicalJson.replace('"viewStateFormat"', '"__proto__":{"polluted":true},"viewStateFormat"')), "SSR_BOOTSTRAP_PAYLOAD_INVALID");
 expectCode(encodedLocal.slice(0, -4), "SSR_BOOTSTRAP_MALFORMED");
+for (const index of [0, 7, Math.floor(encodedLocal.length / 2), encodedLocal.length - 1]) {
+  expectReject(`${encodedLocal.slice(0, index)}!${encodedLocal.slice(index + 1)}`);
+}
+assert.equal(({} as Record<string, unknown>).polluted, undefined);
+assert.equal(Object.prototype.hasOwnProperty.call(Object.prototype, "polluted"), false);
 assert.throws(() => decode_ssr_bootstrap(encodedLocal, { maxEncodedBytes: encodedLocal.length - 1 }),
   (cause) => cause instanceof SsrBootstrapEncodingError && cause.code === "SSR_BOOTSTRAP_TOO_LARGE");
 assert.throws(() => encode_ssr_bootstrap(localBootstrap, { maxEncodedBytes: encodedLocal.length - 1 }),

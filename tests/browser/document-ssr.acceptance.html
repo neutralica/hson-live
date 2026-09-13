@@ -32,6 +32,9 @@ try {
   const state = await fetch("/__state").then((response) => response.json());
   const decodedLocalBootstrap = decode_ssr_bootstrap(state.encoded.local);
   check("browser local encoding matches Node byte-for-byte", encode_ssr_bootstrap(decodedLocalBootstrap.bootstrap) === state.encoded.local);
+  const decodedLargeBootstrap = decode_ssr_bootstrap(state.encoded.largeHosted);
+  check("browser larger encoding matches Node byte-for-byte", encode_ssr_bootstrap(state.largeHostedBootstrap) === state.encoded.largeHosted);
+  check("browser larger canonical decode is exact", decodedLargeBootstrap.kind === "hosted-document" && decodedLargeBootstrap.bootstrap.hson === state.largeHostedBootstrap.hson);
 
   const localRoot = document.querySelector("#local-ssr");
   check("application root is delivered in standards mode", document.compatMode === "CSS1Compat");

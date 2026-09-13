@@ -56,6 +56,13 @@ try {
   const fullMap = hson.liveMap.fromHson(`<html <head <title "SSR"/>/> <body <main "whole"/>/>/>`);
   if (fullMap.mode !== "document") throw new Error("Full SSR fixture requires a document map.");
   const full = render_document({ map: fullMap });
+  const largeHostedBootstrap = Object.freeze({
+    logicalMapId: "browser-large-map",
+    incarnationId: "browser-large-incarnation",
+    rev: 0,
+    mode: "document",
+    hson: "browser-large:" + "x".repeat(2 * 1_024 * 1_024),
+  });
 
   const LocalLibrariesStateSchema = Hson`<type "data" content <count "number">>`;
   const LocalLibrariesPageSchema = Hson`<type "document" tag "main" attrs <props <id "string">> content <sequence [<tag "button" content "empty">]>>`;
@@ -121,6 +128,7 @@ try {
     local: encode_ssr_bootstrap(local.bootstrap),
     localLibraries: encode_ssr_bootstrap(localLibraries.bootstrap),
     full: encode_ssr_bootstrap(full.bootstrap),
+    largeHosted: encode_ssr_bootstrap(largeHostedBootstrap),
     hosted: encode_ssr_bootstrap(hosted.bootstrap),
     libraries: encode_ssr_bootstrap(libraries.bootstrap),
   });
@@ -170,7 +178,7 @@ try {
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
     if (url.pathname === "/__state") {
       response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ local, localLibraries, full, hosted, socketUrl, libraries, librariesSocketUrl, encoded }));
+      response.end(JSON.stringify({ local, localLibraries, full, largeHostedBootstrap, hosted, socketUrl, libraries, librariesSocketUrl, encoded }));
       return;
     }
     if (url.pathname === "/__result") {

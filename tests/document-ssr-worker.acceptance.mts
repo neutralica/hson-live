@@ -6,11 +6,20 @@ import { repository_typescript_worker } from "./helpers/repository-typescript-wo
 const map = hsonLiveMap.fromHson(`<main <p @000005301 "a" "" "worker"/>/>`);
 if (map.mode !== "document") throw new Error("Node SSR fixture requires a document map.");
 const node = render_document({ map });
+const largeBootstrap = Object.freeze({
+  logicalMapId: "worker-large-map",
+  incarnationId: "worker-large-incarnation",
+  rev: 0,
+  mode: "document" as const,
+  hson: "worker-large:" + "x".repeat(2 * 1_024 * 1_024),
+});
 const worker = await new Promise<Readonly<{
   html: string;
   bootstrap: unknown;
   encoded: string;
   decoded: unknown;
+  largeEncoded: string;
+  largeDecoded: unknown;
   hasDocument: boolean;
 }>>((resolve, reject) => {
   const instance = repository_typescript_worker(new URL("./fixtures/document-ssr.worker.mts", import.meta.url));
@@ -26,4 +35,6 @@ assert.equal(worker.html, node.html);
 assert.deepEqual(worker.bootstrap, node.bootstrap);
 assert.equal(worker.encoded, encode_ssr_bootstrap(node.bootstrap));
 assert.deepEqual(worker.decoded, { kind: "document", bootstrap: node.bootstrap });
+assert.equal(worker.largeEncoded, encode_ssr_bootstrap(largeBootstrap));
+assert.deepEqual(worker.largeDecoded, { kind: "hosted-document", bootstrap: largeBootstrap });
 process.stdout.write("Document SSR Worker parity acceptance passed.\n");

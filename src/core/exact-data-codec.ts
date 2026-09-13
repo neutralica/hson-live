@@ -1,5 +1,6 @@
 import { TransformError, type TransformErrorSource } from "./errors.js";
 import { admit_hson_number } from "./hson-number.js";
+import { BoundedStringWriter } from "./bounded-string-writer.js";
 import {
   is_ordered_projected_object,
   ordered_projected_array,
@@ -11,6 +12,7 @@ import {
 /** Parse structural JSON without materializing object order through ECMAScript objects. */
 export function parse_ordered_json_text(source: string): OrderedProjectedValue {
   let index = 0;
+  const numberPattern = /-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/y;
   const sourcePosition = (offset: number): TransformErrorSource => {
     let line = 1, column = 1;
     for (let cursor = 0; cursor < offset; cursor += 1) {
@@ -25,32 +27,54 @@ export function parse_ordered_json_text(source: string): OrderedProjectedValue {
   const skipWhitespace = (): void => { while (index < source.length && /[ \t\n\r]/.test(source[index]!)) index += 1; };
   const parseStringToken = (): { value: string; start: number } => {
     if (source[index] !== `"`) fail("expected JSON string");
-    const start = index; index += 1; let value = "";
+    const start = index; index += 1;
+    const contentStart = index;
+    let spanStart = index;
+    let writer: BoundedStringWriter | undefined;
     while (index < source.length) {
       const unit = source[index]!;
       if (unit.charCodeAt(0) < 0x20) fail("unescaped control character in JSON string");
-      if (unit === `"`) { index += 1; return { value, start }; }
-      if (unit !== "\\") { value += unit; index += 1; continue; }
+      if (unit === `"`) {
+        let value: string;
+        if (writer === undefined) value = source.slice(contentStart, index);
+        else {
+          writer.write(source.slice(spanStart, index));
+          value = writer.finish();
+        }
+        index += 1;
+        return { value, start };
+      }
+      if (unit !== "\\") { index += 1; continue; }
+      writer ??= new BoundedStringWriter();
+      writer.write(source.slice(spanStart, index));
       index += 1;
       if (index >= source.length) fail("unterminated JSON string escape");
       const escape = source[index]!; index += 1;
       switch (escape) {
-        case `"`: value += `"`; break;
-        case "\\": value += "\\"; break;
-        case "/": value += "/"; break;
-        case "b": value += "\b"; break;
-        case "f": value += "\f"; break;
-        case "n": value += "\n"; break;
-        case "r": value += "\r"; break;
-        case "t": value += "\t"; break;
-        case "u": { const hex = source.slice(index, index + 4); if (hex.length !== 4 || !/^[0-9a-fA-F]{4}$/.test(hex)) fail("invalid JSON Unicode escape"); value += String.fromCharCode(Number.parseInt(hex, 16)); index += 4; break; }
+        case `"`: writer.write(`"`); break;
+        case "\\": writer.write("\\"); break;
+        case "/": writer.write("/"); break;
+        case "b": writer.write("\b"); break;
+        case "f": writer.write("\f"); break;
+        case "n": writer.write("\n"); break;
+        case "r": writer.write("\r"); break;
+        case "t": writer.write("\t"); break;
+        case "u": {
+          const hex = source.slice(index, index + 4);
+          if (hex.length !== 4 || !/^[0-9a-fA-F]{4}$/.test(hex)) fail("invalid JSON Unicode escape");
+          writer.write(String.fromCharCode(Number.parseInt(hex, 16)));
+          index += 4;
+          break;
+        }
         default: fail("invalid JSON string escape");
       }
+      spanStart = index;
     }
     return fail("unterminated JSON string");
   };
   const parseNumber = (): number => {
-    const match = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/.exec(source.slice(index));
+    numberPattern.lastIndex = index;
+    const match = numberPattern.exec(source);
     if (match === null) return fail("invalid JSON number");
     index += match[0].length; return admit_hson_number(Number(match[0]));
   };

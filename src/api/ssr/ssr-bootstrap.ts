@@ -6,6 +6,7 @@ import type {
 } from "../../types/livemap.types.js";
 import type { LocusSnapshotEnvelope } from "../../types/locus.representation.types.js";
 import type { HsonSchema } from "../transform/transform.types.js";
+import { BoundedStringWriter } from "../../core/bounded-string-writer.js";
 import { parse_ordered_json_text } from "../../core/exact-data-codec.js";
 import {
   decode_view_state_snapshot,
@@ -28,7 +29,9 @@ const FORMAT = "hson-ssr-bootstrap" as const;
 const VERSION = 1 as const;
 const DEFAULT_MAX_ENCODED_BYTES = 96 * 1_024 * 1_024;
 const BASE64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+const BASE64URL_INPUT_CHUNK_BYTES = 24 * 1_024;
 const encoder = new TextEncoder();
+const asciiDecoder = new TextDecoder();
 
 type HostedDocumentBootstrap = Extract<LocusSnapshotEnvelope, { hson: string }> & Readonly<{ mode: "document" }>;
 type WireRegistryEntry = Readonly<{
@@ -88,8 +91,9 @@ export function encode_ssr_bootstrap(
       kind: normalized.kind,
       payload: normalized.payload,
     });
-    const encoded = encode_base64url(encoder.encode(json));
-    if (encoded.length > maximum) throw error("encode", "SSR_BOOTSTRAP_TOO_LARGE", "SSR bootstrap exceeds the encoded-size limit.");
+    const bytes = encoder.encode(json);
+    if (base64url_length(bytes.length) > maximum) throw error("encode", "SSR_BOOTSTRAP_TOO_LARGE", "SSR bootstrap exceeds the encoded-size limit.");
+    const encoded = encode_base64url(bytes);
     return encoded as EncodedSsrBootstrap;
   } catch (cause) {
     if (cause instanceof SsrBootstrapEncodingError) throw cause;
@@ -124,7 +128,7 @@ export function decode_ssr_bootstrap(
   } catch (cause) {
     throw error("decode", "SSR_BOOTSTRAP_MALFORMED", "Encoded SSR bootstrap bytes are malformed.", cause);
   }
-  if (encode_base64url(bytes) !== encoded) {
+  if (!base64url_equals(bytes, encoded)) {
     throw error("decode", "SSR_BOOTSTRAP_NON_CANONICAL", "SSR bootstrap encoding is not canonical.");
   }
 
@@ -154,18 +158,20 @@ export function decode_ssr_bootstrap(
     if (cause instanceof SsrBootstrapEncodingError) throw cause;
     throw error("decode", "SSR_BOOTSTRAP_PAYLOAD_INVALID", "SSR bootstrap payload is invalid.", cause);
   }
-  let canonical: string;
+  let canonical: boolean;
   try {
-    canonical = decoded.kind === "document"
-      ? encode_ssr_bootstrap(decoded.bootstrap, { maxEncodedBytes: maximum })
-      : decoded.kind === "hosted-document"
-        ? encode_ssr_bootstrap(decoded.bootstrap, { maxEncodedBytes: maximum })
-        : decoded.kind === "libraries"
-          ? encode_ssr_bootstrap(decoded.bootstrap, { maxEncodedBytes: maximum })
-          : encode_ssr_bootstrap(decoded.bootstrap, { maxEncodedBytes: maximum });
+    const normalized = normalize_bootstrap(decoded.bootstrap);
+    const comparison = compare_canonical_json({
+      format: FORMAT,
+      version: VERSION,
+      kind: normalized.kind,
+      payload: normalized.payload,
+    }, bytes);
+    if (base64url_length(comparison.utf8Bytes) > maximum) throw new TypeError("Canonical SSR bootstrap exceeds the encoded-size limit.");
+    canonical = comparison.equal;
   }
   catch (cause) { throw error("decode", "SSR_BOOTSTRAP_PAYLOAD_INVALID", "SSR bootstrap payload is invalid.", cause); }
-  if (canonical !== encoded) throw error("decode", "SSR_BOOTSTRAP_NON_CANONICAL", "SSR bootstrap encoding is not canonical.");
+  if (!canonical) throw error("decode", "SSR_BOOTSTRAP_NON_CANONICAL", "SSR bootstrap encoding is not canonical.");
   return decoded;
 }
 
@@ -308,48 +314,142 @@ function decode_library_entry(input: unknown): LiveMapLibrariesSnapshot["librari
 }
 
 function canonical_json(value: unknown): string {
-  if (value === null) return "null";
-  if (typeof value === "string") return quote(value);
-  if (typeof value === "boolean") return value ? "true" : "false";
-  if (typeof value === "number") {
-    if (!Number.isFinite(value)) throw new TypeError("Wire number must be finite.");
-    return Object.is(value, -0) ? "-0" : String(value);
-  }
-  if (Array.isArray(value)) return `[${value.map(canonical_json).join(",")}]`;
-  if (!is_record(value)) throw new TypeError("Wire value is unsupported.");
-  return `{${Object.keys(value).map((key) => `${quote(key)}:${canonical_json(value[key])}`).join(",")}}`;
+  const writer = new BoundedStringWriter();
+  emit_canonical_json(value, (fragment) => writer.write(fragment));
+  return writer.finish();
 }
 
-function quote(value: string): string {
-  let output = `"`;
+function emit_canonical_json(value: unknown, write: (fragment: string) => void): void {
+  if (value === null) { write("null"); return; }
+  if (typeof value === "string") { emit_quoted_string(value, write); return; }
+  if (typeof value === "boolean") { write(value ? "true" : "false"); return; }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new TypeError("Wire number must be finite.");
+    write(Object.is(value, -0) ? "-0" : String(value));
+    return;
+  }
+  if (Array.isArray(value)) {
+    write("[");
+    for (let index = 0; index < value.length; index += 1) {
+      if (index !== 0) write(",");
+      emit_canonical_json(value[index], write);
+    }
+    write("]");
+    return;
+  }
+  if (!is_record(value)) throw new TypeError("Wire value is unsupported.");
+  write("{");
+  const keys = Object.keys(value);
+  for (let index = 0; index < keys.length; index += 1) {
+    if (index !== 0) write(",");
+    const key = keys[index]!;
+    emit_quoted_string(key, write);
+    write(":");
+    emit_canonical_json(value[key], write);
+  }
+  write("}");
+}
+
+function emit_quoted_string(value: string, write: (fragment: string) => void): void {
+  write(`"`);
+  let spanStart = 0;
   for (let index = 0; index < value.length; index += 1) {
     const code = value.charCodeAt(index);
-    if (code === 0x22) output += `\\"`;
-    else if (code === 0x5c) output += `\\\\`;
-    else if (code === 0x08) output += `\\b`;
-    else if (code === 0x09) output += `\\t`;
-    else if (code === 0x0a) output += `\\n`;
-    else if (code === 0x0c) output += `\\f`;
-    else if (code === 0x0d) output += `\\r`;
-    else if (code < 0x20 || (code >= 0xd800 && code <= 0xdfff && !(code <= 0xdbff && index + 1 < value.length && value.charCodeAt(index + 1) >= 0xdc00 && value.charCodeAt(index + 1) <= 0xdfff))) {
-      output += `\\u${code.toString(16).padStart(4, "0")}`;
-    } else {
-      output += value[index];
-      if (code >= 0xd800 && code <= 0xdbff) { index += 1; output += value[index]; }
+    let escape: string | undefined;
+    if (code === 0x22) escape = `\\"`;
+    else if (code === 0x5c) escape = `\\\\`;
+    else if (code === 0x08) escape = `\\b`;
+    else if (code === 0x09) escape = `\\t`;
+    else if (code === 0x0a) escape = `\\n`;
+    else if (code === 0x0c) escape = `\\f`;
+    else if (code === 0x0d) escape = `\\r`;
+    else if (code < 0x20 || (code >= 0xd800 && code <= 0xdfff
+      && !(code <= 0xdbff && index + 1 < value.length && value.charCodeAt(index + 1) >= 0xdc00 && value.charCodeAt(index + 1) <= 0xdfff))) {
+      escape = `\\u${code.toString(16).padStart(4, "0")}`;
+    } else if (code >= 0xd800 && code <= 0xdbff) {
+      index += 1;
+    }
+    if (escape !== undefined) {
+      write(value.slice(spanStart, index));
+      write(escape);
+      spanStart = index + 1;
     }
   }
-  return `${output}"`;
+  write(value.slice(spanStart));
+  write(`"`);
 }
 
 function encode_base64url(bytes: Uint8Array): string {
-  const parts: string[] = [];
-  for (let index = 0; index < bytes.length; index += 3) {
-    const a = bytes[index]!; const b = bytes[index + 1]; const c = bytes[index + 2];
-    parts.push(BASE64URL[a >>> 2]!, BASE64URL[((a & 3) << 4) | ((b ?? 0) >>> 4)]!);
-    if (b !== undefined) parts.push(BASE64URL[((b & 15) << 2) | ((c ?? 0) >>> 6)]!);
-    if (c !== undefined) parts.push(BASE64URL[c & 63]!);
+  const chunks: string[] = [];
+  for (let start = 0; start < bytes.length; start += BASE64URL_INPUT_CHUNK_BYTES) {
+    const end = Math.min(start + BASE64URL_INPUT_CHUNK_BYTES, bytes.length);
+    const output = new Uint8Array(base64url_length(end - start));
+    let offset = 0;
+    for (let index = start; index < end; index += 3) {
+      const a = bytes[index]!;
+      const b = index + 1 < end ? bytes[index + 1]! : 0;
+      const c = index + 2 < end ? bytes[index + 2]! : 0;
+      output[offset++] = BASE64URL.charCodeAt(a >>> 2);
+      output[offset++] = BASE64URL.charCodeAt(((a & 3) << 4) | (b >>> 4));
+      if (index + 1 < end) output[offset++] = BASE64URL.charCodeAt(((b & 15) << 2) | (c >>> 6));
+      if (index + 2 < end) output[offset++] = BASE64URL.charCodeAt(c & 63);
+    }
+    // This input quantum is divisible by three, so only the final chunk can
+    // carry a remainder. Conversion is bounded and never spreads an array.
+    chunks.push(asciiDecoder.decode(output));
   }
-  return parts.join("");
+  return chunks.join("");
+}
+
+function base64url_equals(bytes: Uint8Array, expected: string): boolean {
+  if (expected.length !== base64url_length(bytes.length)) return false;
+  let offset = 0;
+  for (let index = 0; index < bytes.length; index += 3) {
+    const a = bytes[index]!;
+    const b = index + 1 < bytes.length ? bytes[index + 1]! : 0;
+    const c = index + 2 < bytes.length ? bytes[index + 2]! : 0;
+    if (expected.charCodeAt(offset++) !== BASE64URL.charCodeAt(a >>> 2)
+      || expected.charCodeAt(offset++) !== BASE64URL.charCodeAt(((a & 3) << 4) | (b >>> 4))) return false;
+    if (index + 1 < bytes.length && expected.charCodeAt(offset++) !== BASE64URL.charCodeAt(((b & 15) << 2) | (c >>> 6))) return false;
+    if (index + 2 < bytes.length && expected.charCodeAt(offset++) !== BASE64URL.charCodeAt(c & 63)) return false;
+  }
+  return true;
+}
+
+function base64url_length(byteLength: number): number {
+  return Math.ceil(byteLength * 4 / 3);
+}
+
+function compare_canonical_json(value: unknown, expected: Uint8Array): Readonly<{ equal: boolean; utf8Bytes: number }> {
+  let equal = true;
+  let offset = 0;
+  const writeByte = (byte: number): void => {
+    if (equal && expected[offset] !== byte) equal = false;
+    offset += 1;
+  };
+  emit_canonical_json(value, (fragment) => {
+    for (let index = 0; index < fragment.length; index += 1) {
+      const code = fragment.charCodeAt(index);
+      if (code <= 0x7f) writeByte(code);
+      else if (code <= 0x7ff) {
+        writeByte(0xc0 | (code >>> 6));
+        writeByte(0x80 | (code & 0x3f));
+      } else if (code >= 0xd800 && code <= 0xdbff && index + 1 < fragment.length
+        && fragment.charCodeAt(index + 1) >= 0xdc00 && fragment.charCodeAt(index + 1) <= 0xdfff) {
+        const point = 0x10000 + ((code - 0xd800) << 10) + (fragment.charCodeAt(index + 1) - 0xdc00);
+        writeByte(0xf0 | (point >>> 18));
+        writeByte(0x80 | ((point >>> 12) & 0x3f));
+        writeByte(0x80 | ((point >>> 6) & 0x3f));
+        writeByte(0x80 | (point & 0x3f));
+        index += 1;
+      } else {
+        writeByte(0xe0 | (code >>> 12));
+        writeByte(0x80 | ((code >>> 6) & 0x3f));
+        writeByte(0x80 | (code & 0x3f));
+      }
+    }
+  });
+  return { equal: equal && offset === expected.length, utf8Bytes: offset };
 }
 
 function decode_base64url(value: string): Uint8Array {
