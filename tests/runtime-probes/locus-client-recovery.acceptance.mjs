@@ -1,7 +1,8 @@
 import { create_test_event_emitter } from "../test-events.mjs";
 import assert from "node:assert/strict";
 import { WebSocket, WebSocketServer } from "ws";
-import { decode_locus_server_message, Hson, EchoRecoveryError, hson } from "../../src/index.ts";
+import { Hson, EchoRecoveryError, hson } from "../../src/index.ts";
+import { decode_locus_server_message } from "../../src/api/locus/index.ts";
 import { acquire_projected_identity } from "../helpers/livemap-identity-internal.mts";
 import { create_locus_internal } from "../../src/api/locus/locus.core.ts";
 import { make_locus_canonical_commit } from "../../src/api/locus/locus.history.ts";

@@ -40,6 +40,7 @@ export { make_locus_recovery_planner } from "./locus.recovery.js";
 export {
   decode_locus_message,
   decode_locus_server_message,
+  encode_locus_client_message,
   encode_locus_message,
 } from "./locus.protocol.js";
 export {

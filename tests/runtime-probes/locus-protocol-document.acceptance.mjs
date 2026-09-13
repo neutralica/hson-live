@@ -1,7 +1,12 @@
 import { create_test_event_emitter } from "../test-events.mjs";
 import assert from "node:assert/strict";
-import { decode_locus_message, decode_locus_server_message, encode_locus_message, hson } from "../../src/index.ts";
-import { encode_locus_graph_content } from "../../src/api/locus/locus.graph-content-codec.ts";
+import { hson } from "../../src/index.ts";
+import {
+  decode_locus_message,
+  decode_locus_server_message,
+  encode_locus_graph_content,
+  encode_locus_message,
+} from "../../src/api/locus/index.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "locus.protocol-document",

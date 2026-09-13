@@ -189,7 +189,7 @@ const ownerProofs = Object.freeze({
   "dist/api/livemap/index.d.ts": ["make_livemap_core", "make_livemap_store_api", "LiveMapCapture", "LiveMapReplay", "LiveMapCommitObserver", "snap_live_path"],
   "dist/api/reflect/index.d.ts": ["reflect_collection", "CollectionReflect", "CollectionReflectErrorCode", "DOCUMENT_REFLECT_DISPOSED_ERROR_CODE"],
   "dist/api/echo/index.d.ts": ["EchoRecovery", "EchoRecoveryCursor", "EchoRecoveryOptions", "EchoRecoveryStrategy"],
-  "dist/api/locus/index.d.ts": ["decode_locus_message", "encode_locus_message", "make_locus_recovery_planner", "LocusClientMessage", "LocusRecoveryPlan", "LocusPersistenceAdapter"],
+  "dist/api/locus/index.d.ts": ["decode_locus_message", "encode_locus_client_message", "encode_locus_message", "make_locus_recovery_planner", "LocusClientMessage", "LocusRecoveryPlan", "LocusPersistenceAdapter"],
   "dist/api/locus/node/index.d.ts": ["create_node_locus_socket", "NodeLocusSocketOptions"],
   "dist/api/ssr/index.d.ts": ["render_document", "DocumentSsr"],
   "dist/api/livehost/index.d.ts": ["create_livehost_locus_registry", "LiveHost"],

@@ -125,10 +125,19 @@ bootstrap, restore, recovery, and accepted canonical replay are its state-changi
 protocol codec functions are:
 
 ```ts
-encode_locus_message(message);
+encode_locus_client_message(message); // client semantic message -> text wire
 decode_locus_message(text);
+encode_locus_message(message);        // server semantic message -> text wire
 decode_locus_server_message(text);
 ```
+
+`LocusSocketLike` carries encoded text frames. Ordinary Echo users do not call
+these codecs: Echo constructs and encodes client messages internally. A
+low-level custom protocol client may use `encode_locus_client_message` to
+produce the exact Locus wire form. Action payloads become canonical
+`payloadData`; `HsonData.toHson()` is authored Hson and is not that wire
+encoding. Encoding describes representation only and does not bypass Locus
+session, admission, authorization, identity, or ordering checks.
 
 Message discriminators such as `action`, `recover`, `commit`, and
 `session-create` remain semantic message kinds. Retired `hello`, `subscribe`,

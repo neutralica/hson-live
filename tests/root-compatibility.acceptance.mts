@@ -45,6 +45,7 @@ try {
     "make_livemap_core",
     "reflect_collection",
     "decode_locus_message",
+    "encode_locus_client_message",
     "make_locus_recovery_planner",
     "hsonInspect",
     "create_live_inspector",

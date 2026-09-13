@@ -52,10 +52,12 @@ const locusRuntimeExports = [
   "decode_locus_message",
   "decode_locus_server_message",
   "encode_locus_bootstrap",
+  "encode_locus_client_message",
   "encode_locus_graph_content",
   "encode_locus_message",
   "hsonLocus",
   "install_locus_bootstrap",
+  "install_locus_libraries_snapshot",
   "install_locus_snapshot",
   "is_locus_encoded_graph_content",
   "make_locus_canonical_stream",
@@ -163,7 +165,7 @@ await check("the generic LiveHost package root exposes only the approved runtime
   assert.deepEqual(Object.keys(module).sort(), ["create_livehost_locus_registry"]);
 });
 
-await check("the root exposes Locus and no historical one-map aliases", async () => {
+await check("the root keeps specialist Locus protocol codecs on their owner subpath", async () => {
   const module = await import("hson-live");
   for (const name of [
     "hsonLocus",
@@ -171,12 +173,13 @@ await check("the root exposes Locus and no historical one-map aliases", async ()
     "create_locus",
     "create_echo",
     "create_locus_bootstrap_echo",
+  ]) assert.equal(name in module, true, `missing root export ${name}`);
+  for (const name of [
     "create_persistent_locus",
     "decode_locus_message",
     "decode_locus_server_message",
+    "encode_locus_client_message",
     "encode_locus_message",
-  ]) assert.equal(name in module, true, `missing root export ${name}`);
-  for (const name of [
     "hsonLiveHost",
     "liveHost",
     "create_livehost",

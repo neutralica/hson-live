@@ -142,6 +142,11 @@ is the type for state-created data authorities, and persisted data kind is
 `"data"`; neither claim adds durable persistence by itself. *Compile-only;
 runtime coverage:* Locus document/recovery and Echo acceptance tests.
 
+`LocusSocketLike` carries encoded text frames, while ordinary Echo owns client
+message encoding. Specialist protocol peers import the four directional
+codecs, including `encode_locus_client_message`, from `hson-live/locus`; exact
+action `payloadData` is not produced by `HsonData.toHson()`.
+
 ### 6. Hosted Libraries — one aggregate, named targets
 
 ```ts
