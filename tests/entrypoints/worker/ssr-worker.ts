@@ -1,6 +1,8 @@
 import {
   render_document,
   render_hosted_document,
+  encode_ssr_bootstrap,
+  decode_ssr_bootstrap,
   DocumentSsrError,
   type BrowserRealizationHtml,
   type DocumentSsr,
@@ -15,6 +17,8 @@ declare const map: DocumentLiveMap;
 declare const authority: LocusBootstrapAuthority;
 const local: DocumentSsr = render_document({ map });
 const hosted: HostedDocumentSsr = render_hosted_document({ authority });
+const localEncoded = encode_ssr_bootstrap(local.bootstrap);
+void decode_ssr_bootstrap(localEncoded).bootstrap;
 const html: BrowserRealizationHtml = local.html;
 void html;
 void hosted.bootstrap;

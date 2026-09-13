@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { Hson, hsonLiveMap, install_libraries_snapshot, render_document, type HsonSchema } from "../src/index.ts";
+import { Hson, encode_ssr_bootstrap, hsonLiveMap, install_libraries_snapshot, render_document, type HsonSchema } from "../src/index.ts";
 import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
 
 const StateSchema: HsonSchema = Hson`<type "data" content <count "number">>`;
@@ -23,6 +23,8 @@ assert.equal(worker.hasDocument, false);
 assert.equal(worker.html, node.html);
 assert.equal(worker.document, node.document);
 assert.deepEqual(worker.bootstrap, node.bootstrap);
+assert.equal(worker.encoded, encode_ssr_bootstrap(node.bootstrap));
+assert.deepEqual(worker.decoded, { kind: "libraries", bootstrap: node.bootstrap });
 assert.equal(worker.revision, installed.rev);
 assert.deepEqual(worker.state, state.snap());
 assert.deepEqual(worker.page, installed.lib("page").root());

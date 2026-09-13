@@ -495,7 +495,10 @@ aggregate cut:
 
 ```ts
 const ssr = render_document({ map: libraries, document: "page" });
-const installed = install_libraries_snapshot(ssr.bootstrap);
+const encoded = encode_ssr_bootstrap(ssr.bootstrap);
+const decoded = decode_ssr_bootstrap(encoded);
+if (decoded.kind !== "libraries") throw new Error("unexpected SSR bootstrap kind");
+const installed = install_libraries_snapshot(decoded.bootstrap);
 continue_document({
   map: installed.map,
   document: installed.map.lib(ssr.document),
@@ -503,9 +506,11 @@ continue_document({
 });
 ```
 
-With exactly one public document Library, `document` may be omitted. HTTP response
-construction, safe bootstrap embedding, routing, and framework integration
-remain application-layer work.
+With exactly one public document Library, `document` may be omitted. The
+deterministic encoding supports local and hosted one-map and Libraries
+bootstraps. HTTP response construction, carrier placement, routing,
+authentication, compression, and framework integration remain application-layer
+work.
 
 ---
 
@@ -705,8 +710,9 @@ The maintained current-facing references are:
 - the [Reflect API](docs/reflect/api-reflect.md);
 - [document continuation](docs/document-continuation.md), for exact no-write
   admission of an existing browser document into local or hosted state;
-- [same-cut SSR composition](docs/ssr-composition.md), for synchronous one-map
-  or multi-library browser-realization HTML and exact paired bootstrap state;
+- [same-cut SSR composition and bootstrap encoding](docs/ssr-composition.md),
+  for synchronous one-map or multi-library browser-realization HTML, exact
+  paired bootstrap state, and strict canonical base64url transport;
 - the [Locus API](docs/locus/api-locus.md) and
   [authority overview](docs/locus/overview.md);
 - the [LiveHost and Node runtime boundary](docs/livehost/overview.md); and

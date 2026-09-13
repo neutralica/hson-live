@@ -4,7 +4,7 @@
 <body>
 <section id="local-shell"><!--LOCAL_SSR--></section>
 <section id="local-libraries-shell"><!--LOCAL_LIBRARIES_SSR--></section>
-<section id="hosted-shell"><!--HOSTED_SSR--></section>
+<section id="hosted-shell"><!--HOSTED_SSR--><!--HOSTED_CARRIER--></section>
 <section id="libraries-shell"><!--LIBRARIES_SSR--></section>
 <div id="result"></div>
 <script type="module">
@@ -13,6 +13,8 @@ import {
   continue_hosted_document,
   create_echo,
   create_browser_locus_socket,
+  decode_ssr_bootstrap,
+  encode_ssr_bootstrap,
   hson,
   install_libraries_snapshot,
   install_locus_snapshot,
@@ -28,14 +30,16 @@ const check = (name, condition) => {
 
 try {
   const state = await fetch("/__state").then((response) => response.json());
+  const decodedLocalBootstrap = decode_ssr_bootstrap(state.encoded.local);
+  check("browser local encoding matches Node byte-for-byte", encode_ssr_bootstrap(decodedLocalBootstrap.bootstrap) === state.encoded.local);
 
   const localRoot = document.querySelector("#local-ssr");
   check("application root is delivered in standards mode", document.compatMode === "CSS1Compat");
   const localParagraph = localRoot.firstElementChild;
   const localText = localParagraph.firstChild;
-  const localMap = hson.liveMap.fromNode(state.local.bootstrap.root);
+  const localMap = hson.liveMap.fromNode(decodedLocalBootstrap.bootstrap.root);
   if (localMap.mode !== "document") throw new Error("local SSR bootstrap must be a document");
-  localMap.restore(state.local.bootstrap, { identity: "preserve-metadata" });
+  localMap.restore(decodedLocalBootstrap.bootstrap, { identity: "preserve-metadata" });
   const observer = new MutationObserver(() => {});
   observer.observe(localRoot, { subtree: true, childList: true, attributes: true, characterData: true });
   const localContinuation = continue_document({ map: localMap, root: localRoot });
@@ -56,7 +60,9 @@ try {
 
   const localLibrariesRoot = document.querySelector("#local-libraries-ssr");
   const localLibrariesButton = localLibrariesRoot.firstElementChild;
-  const localLibrariesInstalled = install_libraries_snapshot(state.localLibraries.bootstrap);
+  const decodedLocalLibraries = decode_ssr_bootstrap(state.encoded.localLibraries);
+  check("browser Libraries encoding matches Node byte-for-byte", encode_ssr_bootstrap(decodedLocalLibraries.bootstrap) === state.encoded.localLibraries);
+  const localLibrariesInstalled = install_libraries_snapshot(decodedLocalLibraries.bootstrap);
   const localLibrariesSelected = localLibrariesInstalled.map.lib(state.localLibraries.document);
   const localLibrariesObserver = new MutationObserver(() => {});
   localLibrariesObserver.observe(localLibrariesRoot, { subtree: true, childList: true, attributes: true, characterData: true });
@@ -73,20 +79,32 @@ try {
   localLibrariesObserver.disconnect();
   localLibrariesContinuation.dispose();
 
-  const fullMap = hson.liveMap.fromNode(state.full.bootstrap.root);
+  const decodedFull = decode_ssr_bootstrap(state.encoded.full);
+  const fullMap = hson.liveMap.fromNode(decodedFull.bootstrap.root);
   if (fullMap.mode !== "document") throw new Error("full SSR bootstrap must be a document");
-  fullMap.restore(state.full.bootstrap, { identity: "preserve-metadata" });
+  fullMap.restore(decodedFull.bootstrap, { identity: "preserve-metadata" });
   const parsedFull = new DOMParser().parseFromString(state.full.html, "text/html");
   check("full document parses in standards mode", parsedFull.compatMode === "CSS1Compat");
   const fullRoot = parsedFull.documentElement;
+  check("full-document bootstrap remains out-of-band", parsedFull.querySelector('script[type="application/vnd.hson-live.ssr-bootstrap"]') === null);
+  const fullObserver = new MutationObserver(() => {});
+  fullObserver.observe(fullRoot, { subtree: true, childList: true, attributes: true, characterData: true });
   const fullContinuation = continue_document({ map: fullMap, root: fullRoot });
   check("full documentElement identity survives", fullContinuation.tree.dom.el() === fullRoot);
+  check("full document out-of-band continuation writes nothing", fullObserver.takeRecords().length === 0);
+  fullObserver.disconnect();
   fullContinuation.dispose();
 
   const hostedRoot = document.querySelector("#hosted-ssr");
+  const carriers = document.querySelectorAll('#hosted-shell > script[type="application/vnd.hson-live.ssr-bootstrap"]');
+  check("application-root shell has exactly one inert carrier sibling", carriers.length === 1 && carriers[0].previousElementSibling === hostedRoot);
+  check("carrier text is exact encoded bootstrap", carriers[0].textContent === state.encoded.hosted);
+  check("encoded carrier cannot contain parser-adversarial semantic text", !carriers[0].textContent.includes("<") && !carriers[0].textContent.includes(">") && !carriers[0].textContent.includes("&"));
+  const decodedHosted = decode_ssr_bootstrap(carriers[0].textContent);
+  check("browser hosted encoding matches Node byte-for-byte", encode_ssr_bootstrap(decodedHosted.bootstrap) === state.encoded.hosted);
   const hostedParagraph = hostedRoot.firstElementChild;
   const hostedText = hostedParagraph.firstChild;
-  const installed = install_locus_snapshot(state.hosted.bootstrap);
+  const installed = install_locus_snapshot(decodedHosted.bootstrap);
   check("hosted snapshot starts at N", installed.map.rev === state.hosted.bootstrap.rev && installed.map.rev === 0);
   const browserSocket = create_browser_locus_socket(state.socketUrl);
   await browserSocket.ready;
@@ -113,7 +131,9 @@ try {
 
   const librariesRoot = document.querySelector("#libraries-ssr");
   const librariesButton = librariesRoot.firstElementChild;
-  const librariesInstalled = install_locus_libraries_snapshot(state.libraries.bootstrap);
+  const decodedHostedLibraries = decode_ssr_bootstrap(state.encoded.libraries);
+  check("browser hosted Libraries encoding matches Node byte-for-byte", encode_ssr_bootstrap(decodedHostedLibraries.bootstrap) === state.encoded.libraries);
+  const librariesInstalled = install_locus_libraries_snapshot(decodedHostedLibraries.bootstrap);
   check("aggregate install restores exact global revision N", librariesInstalled.map.rev === state.libraries.bootstrap.revision);
   check("aggregate install restores every public Library", librariesInstalled.map.lib("admin").mode === "document" && librariesInstalled.map.lib("state").mode !== "document");
   let hiddenUnavailable = false;

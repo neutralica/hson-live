@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { hsonLiveMap } from "../src/api/livemap/index.ts";
-import { render_document } from "../src/api/ssr/index.ts";
+import { encode_ssr_bootstrap, render_document } from "../src/api/ssr/index.ts";
 import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
 
 const map = hsonLiveMap.fromHson(`<main <p @000005301 "a" "" "worker"/>/>`);
@@ -9,6 +9,8 @@ const node = render_document({ map });
 const worker = await new Promise<Readonly<{
   html: string;
   bootstrap: unknown;
+  encoded: string;
+  decoded: unknown;
   hasDocument: boolean;
 }>>((resolve, reject) => {
   const instance = repository_typescript_worker(new URL("./fixtures/document-ssr.worker.mts", import.meta.url));
@@ -22,4 +24,6 @@ const worker = await new Promise<Readonly<{
 assert.equal(worker.hasDocument, false);
 assert.equal(worker.html, node.html);
 assert.deepEqual(worker.bootstrap, node.bootstrap);
+assert.equal(worker.encoded, encode_ssr_bootstrap(node.bootstrap));
+assert.deepEqual(worker.decoded, { kind: "document", bootstrap: node.bootstrap });
 process.stdout.write("Document SSR Worker parity acceptance passed.\n");

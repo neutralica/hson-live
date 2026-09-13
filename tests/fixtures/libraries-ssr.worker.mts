@@ -1,5 +1,5 @@
 import { parentPort } from "node:worker_threads";
-import { Hson, hsonLiveMap, install_libraries_snapshot, render_document, type HsonSchema } from "../../src/index.ts";
+import { Hson, decode_ssr_bootstrap, encode_ssr_bootstrap, hsonLiveMap, install_libraries_snapshot, render_document, type HsonSchema } from "../../src/index.ts";
 
 const StateSchema: HsonSchema = Hson`<type "data" content <count "number">>`;
 const PageSchema: HsonSchema = Hson`<type "document" tag "main" content <sequence [<tag "p" content "string">]>>`;
@@ -8,6 +8,7 @@ const map = hsonLiveMap.fromLibraries({
   page: { document: '<main <p @000009711 "worker"/>/>', schema: PageSchema },
 });
 const result = render_document({ map });
+const encoded = encode_ssr_bootstrap(result.bootstrap);
 const installed = install_libraries_snapshot(result.bootstrap).map;
 const state = installed.lib("state");
 if (state.mode === "document") throw new Error("Expected installed data Library.");
@@ -15,6 +16,8 @@ parentPort?.postMessage(Object.freeze({
   html: result.html,
   document: result.document,
   bootstrap: result.bootstrap,
+  encoded,
+  decoded: decode_ssr_bootstrap(encoded),
   revision: installed.rev,
   state: state.snap(),
   page: installed.lib("page").root(),

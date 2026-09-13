@@ -16,6 +16,9 @@ import {
   continue_hosted_document,
   DocumentContinuationError,
   DocumentSsrError,
+  SsrBootstrapEncodingError,
+  encode_ssr_bootstrap,
+  decode_ssr_bootstrap,
   render_document,
   render_hosted_document,
   install_libraries_snapshot,
@@ -25,6 +28,10 @@ import {
   type HostedDocumentSsr,
   type LibrariesDocumentSsr,
   type HostedLibrariesDocumentSsr,
+  type SsrBootstrapKind,
+  type EncodedSsrBootstrap,
+  type DecodedSsrBootstrap,
+  type SsrBootstrapCodecOptions,
   type LiveMapLibrariesSnapshot,
   type HostedLiveMapLibrariesSnapshot,
   type DocumentContinuation,
@@ -61,6 +68,13 @@ localContinuation.dispose();
 void hostedContinuation;
 void DocumentContinuationError;
 const localSsr: DocumentSsr = render_document({ map: continuationMap });
+const encodedSsr: EncodedSsrBootstrap<"document"> = encode_ssr_bootstrap(localSsr.bootstrap);
+const decodedSsr: Extract<DecodedSsrBootstrap, { kind: "document" }> = decode_ssr_bootstrap(encodedSsr);
+const ssrKind: SsrBootstrapKind = decodedSsr.kind;
+const ssrOptions: SsrBootstrapCodecOptions = { maxEncodedBytes: 1024 };
+void ssrKind;
+void ssrOptions;
+void SsrBootstrapEncodingError;
 declare const ssrAuthority: import("hson-live/locus").LocusBootstrapAuthority;
 const hostedSsr: HostedDocumentSsr = render_hosted_document({ authority: ssrAuthority });
 const browserHtml: BrowserRealizationHtml = localSsr.html;
@@ -77,6 +91,8 @@ const librariesSsr: LibrariesDocumentSsr = render_document({ map: libraries });
 declare const librariesAuthority: import("hson-live/locus").LocusMultiLibrary;
 declare const hostedLibrariesSnapshot: HostedLiveMapLibrariesSnapshot;
 const installedHostedLibraries = install_locus_libraries_snapshot(hostedLibrariesSnapshot);
+const encodedHostedLibraries: EncodedSsrBootstrap<"hosted-libraries"> = encode_ssr_bootstrap(hostedLibrariesSnapshot);
+void encodedHostedLibraries;
 const hostedLibrariesSsr: HostedLibrariesDocumentSsr = render_hosted_document({ authority: librariesAuthority });
 void installedLibraries.map;
 void installedHostedLibraries.recovery;

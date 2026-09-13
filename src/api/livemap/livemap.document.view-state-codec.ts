@@ -13,6 +13,7 @@ import { serialize_hson } from "../transform/serializers/serialize-hson.js";
 import { detach_hson_root_value } from "../transform/utils/node-utils/detach-hson-root-value.js";
 import type { DocumentLiveMapCapture, DocumentLiveMapMode } from "../../types/livemap.types.js";
 import { classify_live_root_mode } from "./livemap.document.js";
+import { is_typed_css_value } from "../../core/inline-style.js";
 import {
   build_livemap_document_identity_overlay,
   LiveMapDocumentIdentityError,
@@ -59,6 +60,7 @@ type CodecBag =
   | Readonly<{ presence: "present"; entries: readonly CodecEntry[] }>;
 
 type CodecValue =
+  | Readonly<{ type: "undefined" }>
   | Readonly<{ type: "node"; tag: string; attrs: CodecBag; meta: CodecBag; content: readonly CodecValue[] }>
   | Readonly<{ type: "string"; value: string }>
   | Readonly<{ type: "number"; value: number }>
@@ -291,8 +293,10 @@ function encode_value(
   budget: Budget,
   limits: CodecLimits,
   preserveEmptyMetadata = false,
+  allowUndefined = false,
 ): CodecValue {
   assert_depth(depth, limits);
+  if (value === undefined && allowUndefined) return { type: "undefined" };
   if (is_Node(value)) {
     budget.nodes += 1;
     if (budget.nodes > limits.maxNodes) {
@@ -363,9 +367,10 @@ function encode_entries(
   limits: CodecLimits,
 ): readonly CodecEntry[] {
   assert_depth(depth, limits);
+  const typedCssValue = is_typed_css_value(value);
   return Object.keys(value).sort().map((key) => ({
     key,
-    value: encode_value(value[key], depth + 1, budget, limits),
+    value: encode_value(value[key], depth + 1, budget, limits, false, typedCssValue && key === "unit"),
   }));
 }
 
@@ -382,7 +387,7 @@ function decode_payload(value: JsonValue, limits: CodecLimits): Readonly<{
     );
   }
   const mode = decode_mode(record.mode);
-  if (!Number.isInteger(record.revision) || typeof record.revision !== "number" || record.revision < 0) {
+  if (typeof record.revision !== "number" || !Number.isSafeInteger(record.revision) || record.revision < 0) {
     throw codec_error(
       "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",
       "View-state snapshot payload has an invalid revision.",
@@ -408,6 +413,10 @@ function decode_value(
   assert_depth(depth, limits);
   const tagged = require_record(input);
   const type = tagged.type;
+  if (type === "undefined") {
+    require_exact_keys(tagged, ["type"]);
+    return undefined;
+  }
   if (type === "null") {
     require_exact_keys(tagged, ["type"]);
     return null;
@@ -554,7 +563,7 @@ function validate_capture_header(capture: DocumentLiveMapCapture): void {
     );
   }
   decode_mode(capture.mode);
-  if (!Number.isInteger(capture.rev) || capture.rev < 0) {
+  if (!Number.isSafeInteger(capture.rev) || capture.rev < 0) {
     throw codec_error(
       "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",
       "View-state snapshot capture has an invalid revision.",
@@ -688,6 +697,7 @@ function is_primitive(value: unknown): value is Primitive {
 
 function is_style_record(value: unknown, ancestors: WeakSet<object>): value is HsonAttrs["style"] {
   if (!is_plain_record(value) || ancestors.has(value)) return false;
+  if (is_typed_css_value(value)) return true;
   ancestors.add(value);
   for (const item of Object.values(value)) {
     if (is_primitive(item)) continue;

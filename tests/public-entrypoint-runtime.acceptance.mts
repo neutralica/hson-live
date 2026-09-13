@@ -129,6 +129,9 @@ check("SSR root and subpath exports share runtime identity", () => {
   const source = `
     import {
       DocumentSsrError as RootError,
+      SsrBootstrapEncodingError as RootBootstrapError,
+      encode_ssr_bootstrap as rootEncode,
+      decode_ssr_bootstrap as rootDecode,
       install_libraries_snapshot as rootLibrariesInstall,
       install_locus_libraries_snapshot as rootHostedLibrariesInstall,
             render_document as rootRender,
@@ -138,10 +141,15 @@ check("SSR root and subpath exports share runtime identity", () => {
     import { install_locus_libraries_snapshot as locusLibrariesInstall } from "hson-live/locus";
     import {
       DocumentSsrError as SsrError,
+      SsrBootstrapEncodingError as SsrBootstrapError,
+      encode_ssr_bootstrap as ssrEncode,
+      decode_ssr_bootstrap as ssrDecode,
       render_document as ssrRender,
       render_hosted_document as ssrHostedRender,
     } from "hson-live/ssr";
-    if (RootError !== SsrError || rootRender !== ssrRender || rootHostedRender !== ssrHostedRender
+    if (RootError !== SsrError || RootBootstrapError !== SsrBootstrapError
+      || rootEncode !== ssrEncode || rootDecode !== ssrDecode
+      || rootRender !== ssrRender || rootHostedRender !== ssrHostedRender
       || rootLibrariesInstall !== livemapLibrariesInstall
       || rootHostedLibrariesInstall !== locusLibrariesInstall) {
       throw new Error("SSR entrypoint identity diverged");
@@ -165,6 +173,13 @@ check("SSR declarations expose only the approved semantic surface", () => {
     "LibrariesDocumentSsr",
     "HostedLibrariesDocumentSsr",
     "DocumentSsrError",
+    "SsrBootstrapKind",
+    "EncodedSsrBootstrap",
+    "DecodedSsrBootstrap",
+    "SsrBootstrapCodecOptions",
+    "SsrBootstrapEncodingError",
+    "encode_ssr_bootstrap",
+    "decode_ssr_bootstrap",
   ]) assert.equal(declaration.includes(approved), true, `${approved} must be exported`);
   for (const privateName of [
     "BrowserRealizationPlan",

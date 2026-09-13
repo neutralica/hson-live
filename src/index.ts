@@ -5,13 +5,24 @@ export { HsonData } from "./api/data/hson-data.js";
 export { continue_document } from "./api/continuation/continue-document.js";
 export { continue_hosted_document } from "./api/continuation/continue-hosted-document.lazy.js";
 export { DocumentContinuationError } from "./api/continuation/continuation.error.js";
-export { render_document, render_hosted_document, DocumentSsrError } from "./api/ssr/index.js";
+export {
+    render_document,
+    render_hosted_document,
+    encode_ssr_bootstrap,
+    decode_ssr_bootstrap,
+    DocumentSsrError,
+    SsrBootstrapEncodingError,
+} from "./api/ssr/index.js";
 export type {
     BrowserRealizationHtml,
     DocumentSsr,
     HostedDocumentSsr,
     LibrariesDocumentSsr,
     HostedLibrariesDocumentSsr,
+    SsrBootstrapKind,
+    EncodedSsrBootstrap,
+    DecodedSsrBootstrap,
+    SsrBootstrapCodecOptions,
 } from "./api/ssr/index.js";
 export type {
     DocumentContinuation,

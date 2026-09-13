@@ -5,7 +5,7 @@ import { copyFile, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { WebSocketServer } from "ws";
-import { Hson, HsonData, add_interaction, enable_interactions, hson, hsonLocus, render_document, render_hosted_document } from "../dist/index.js";
+import { Hson, HsonData, add_interaction, enable_interactions, encode_ssr_bootstrap, hson, hsonLocus, render_document, render_hosted_document } from "../dist/index.js";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
 const temporaryRoot = join(repositoryRoot, "tmp");
@@ -65,7 +65,13 @@ try {
   });
   const localLibraries = render_document({ map: localLibrariesMap });
 
-  const hostedMap = hson.liveMap.fromHson(`<main id="hosted-ssr" <p @000005202 "hosted"/>/>`);
+  const hostedMap = hson.liveMap.fromNode({ $_tag: "_hson_root", $_content: [{
+    $_tag: "main", $_attrs: { id: "hosted-ssr" }, $_content: [{ $_tag: "_hson_elem", $_content: [{
+      $_tag: "p", $_meta: { quid: "000005202" }, $_content: [{ $_tag: "_hson_elem", $_content: [{
+        $_tag: "_hson_str", $_content: [`hosted </script> <script> <!-- --> < > & " ' \u2028 \u2029`],
+      }] }],
+    }] }],
+  }] });
   if (hostedMap.mode !== "document") throw new Error("Hosted SSR fixture requires a document map.");
   locus = hsonLocus.create({ map: hostedMap, logicalMapId: "browser-document-ssr", sessions: {} });
   const sessionsBefore = locus.sessions.debug().sessions.length;
@@ -111,6 +117,13 @@ try {
     },
   });
   const libraries = render_hosted_document({ authority: librariesLocus, document: "page" });
+  const encoded = Object.freeze({
+    local: encode_ssr_bootstrap(local.bootstrap),
+    localLibraries: encode_ssr_bootstrap(localLibraries.bootstrap),
+    full: encode_ssr_bootstrap(full.bootstrap),
+    hosted: encode_ssr_bootstrap(hosted.bootstrap),
+    libraries: encode_ssr_bootstrap(libraries.bootstrap),
+  });
   await librariesLocus.mutate((draft) => {
     draft.lib("state").at(["count"]).set(1);
     draft.lib("page").attrs.set({ kind: "path", path: [0] }, "data-recovered", "page");
@@ -157,7 +170,7 @@ try {
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
     if (url.pathname === "/__state") {
       response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ local, localLibraries, full, hosted, socketUrl, libraries, librariesSocketUrl }));
+      response.end(JSON.stringify({ local, localLibraries, full, hosted, socketUrl, libraries, librariesSocketUrl, encoded }));
       return;
     }
     if (url.pathname === "/__result") {
@@ -183,6 +196,7 @@ try {
         .replace("<!--LOCAL_SSR-->", local.html)
         .replace("<!--LOCAL_LIBRARIES_SSR-->", localLibraries.html)
         .replace("<!--HOSTED_SSR-->", hosted.html)
+        .replace("<!--HOSTED_CARRIER-->", `<script type="application/vnd.hson-live.ssr-bootstrap">${encoded.hosted}</script>`)
         .replace("<!--LIBRARIES_SSR-->", libraries.html)
         .replace("</body>", `<script>
           (() => {

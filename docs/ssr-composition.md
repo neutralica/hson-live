@@ -71,6 +71,86 @@ application-root result such as `<main>...</main>` must be delivered inside a
 standards-mode document shell for the supported continuation contract. Doctype
 is derived realization output, not canonical bootstrap state.
 
+## Deterministic bootstrap encoding
+
+The semantic result can be converted to one strict, environment-neutral wire
+value without changing the render result:
+
+```ts
+import { decode_ssr_bootstrap, encode_ssr_bootstrap } from "hson-live/ssr";
+
+const encoded = encode_ssr_bootstrap(result.bootstrap);
+const decoded = decode_ssr_bootstrap(encoded);
+```
+
+The four wire kinds are `document`, `hosted-document`, `libraries`, and
+`hosted-libraries`. The decoder returns `{ kind, bootstrap }`; it never adds a
+kind field to the semantic bootstrap itself. Pass that bootstrap to the
+existing matching installer or restore path. Decoding reconstructs detached
+semantic state and does not install a map or recreate private same-epoch
+capabilities.
+
+`EncodedSsrBootstrap<TKind>` is a branded string. Its brand means only that
+hson-live's encoder produced the deterministic representation for that family.
+It does not mean trusted, authentic, authorized, encrypted, sanitized, fresh,
+same-origin, or server-proven. Applications that require authenticity may sign
+or store the encoded value through an external mechanism.
+
+Version one is a compact canonical JSON envelope, UTF-8 encoded and then
+converted to unpadded base64url. Its alphabet is only ASCII letters, digits,
+`-`, and `_`. The decoder rejects malformed UTF-8, duplicate or unknown JSON
+fields, unknown format or kind, unsupported versions, malformed payloads, and
+any alternate representation that does not reproduce the input byte-for-byte
+when canonically re-encoded. Arbitrary Library names and graph names remain
+string values or ordered entry-array contents, including names such as
+`__proto__` and `constructor`; they are not promoted to envelope object keys.
+
+`SsrBootstrapCodecOptions` has one option, `maxEncodedBytes`. It must be a
+positive safe integer. The default is 96 MiB and is checked before base64
+decoding; the existing snapshot codecs, schemas, registries, roots, identity
+ledgers, and installers retain their deeper semantic bounds and validation.
+`SsrBootstrapEncodingError` reports `encode` or `decode` plus a compact code
+without copying attacker-controlled payload text into its message.
+
+The codec preserves the exact admitted semantic state: revisions, `-0`, array
+and graph order, optional presence, lone UTF-16 surrogates, exact root payloads,
+Schemas and digests, registry order, identity epoch, issued and retired QUIDs,
+hidden Libraries, and the hosted logical-map/incarnation fence. It adds no
+session, route, endpoint, selector, socket, HTTP, or transport metadata.
+
+For an application-root document, an application shell may place the encoded
+text in an inert sibling data block outside the root that will be continued:
+
+```html
+<main>...</main>
+<script type="application/vnd.hson-live.ssr-bootstrap">
+BASE64URL
+</script>
+```
+
+The application owns element selection: no fixed global ID is required. Read
+the selected element's `.textContent`, call `decode_ssr_bootstrap`, then use the
+existing installer. The MIME type is a recommended shell-owned inert data-block
+type; the decoder does not inspect it and no carrier element is part of
+canonical realization.
+
+Precisely: `EncodedSsrBootstrap` contains only ASCII letters, digits, `-`, and
+`_`. When inserted verbatim as text content of a non-JavaScript `<script>` data
+block, its own characters cannot contain an HTML script end tag or escape that
+script-data payload. This is not a claim that the value is XSS-safe, trusted
+HTML, CSP-safe, or sanitized. Placement and shell construction remain the
+application's responsibility. The inert block does not execute bootstrap data;
+executable loader code and external fetching remain governed by application
+policy. The codec needs no HTML sink or Trusted Types API, and intentionally
+provides no embedding helper.
+
+For exact `documentElement` continuation, do not put a carrier inside the
+canonical `<head>` or `<body>`. Deliver the encoded value through an external
+immutable resource, a module-provided value, or another out-of-band application
+channel. This keeps the canonical full document unchanged. HTTP gzip/brotli is
+a separate delivery-layer choice; the codec performs no compression and
+exposes no digest or authentication field.
+
 ## Hosted browser installation
 
 The semantic hosted result intentionally excludes delivery metadata:
@@ -137,10 +217,10 @@ be valid and direct-DOM-projectable yet still fail SSR; for example, canonical
 Hson transport HTML. `DocumentSsrError` attributes failures to `select`,
 `capture`, `bootstrap`, or `realize` and preserves the lower-level `cause`.
 
-The API does not choose inline versus separate delivery. It deliberately does
-not encode bootstrap JSON, emit script tags, escape `</script>`, manage CSP or
-Trusted Types, choose response charsets, create HTTP responses, or depend on
-LiveHost. Those are separate safe-embedding and delivery-layer concerns.
+The rendering API still does not choose inline versus separate delivery. The
+encoding API emits only the context-independent base64url string: it does not
+emit script tags, manage CSP or Trusted Types, choose response charsets, create
+HTTP responses, or depend on LiveHost.
 
 The `/ssr` module has no DOM, Node HTTP, filesystem, `Buffer`, `process`, or
 Node-crypto dependency and is suitable for Node and Worker environments.
