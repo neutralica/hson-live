@@ -24,6 +24,8 @@ export type { LiveMapRenameOp, LiveMapMoveOp } from "./livemap.types.js";
 export type {
   HsonSchemaValue,
   LiveMapLibraries,
+  LiveMapLibrariesSnapshot,
+  HostedLiveMapLibrariesSnapshot,
   LiveMapLibrariesInput,
   LiveMapLibraryInput,
   LiveMapDataLibraryInput,

@@ -1,17 +1,21 @@
 # Same-cut SSR composition
 
 `hson-live/ssr` provides the synchronous, environment-neutral composition
-boundary for one document map:
+boundary for one document selected from either a solo map or fixed Libraries map:
 
 ```ts
 import { render_document, render_hosted_document } from "hson-live/ssr";
 
 const local = render_document({ map });
 const hosted = render_hosted_document({ authority });
+const libraries = render_document({ map: librariesMap, document: "page" });
+const hostedLibraries = render_hosted_document({ authority: librariesLocus, document: "page" });
 ```
 
-Each call returns exactly `{ html, bootstrap }`. These two fields are one
-semantic pair: store, cache, and deliver them together. A delivery system that
+Solo calls return exactly `{ html, bootstrap }`. Libraries calls return exactly
+`{ html, bootstrap, document }`. The Libraries result is one atomic triple:
+`HTML(D,N)`, the complete aggregate bootstrap at `N`, and selected public name
+`D`. Store, cache, and deliver those values together. A delivery system that
 serves the bootstrap separately must serve the bootstrap from the returned
 pair; it must not recapture a newer map or authority state. Applications remain
 responsible for principal-specific content and cache policy.
@@ -31,6 +35,22 @@ socket, endpoint, selector, or connection.
 
 Both functions are synchronous. A result represents the state captured by that
 call, not a promise that it is permanently the newest authority state.
+
+For Libraries, `map.capture()` captures one `LiveMapLibrariesSnapshot`
+synchronously. Selection is resolved only against that captured ordered
+registry, and the selected exact root is decoded from that snapshot. The source
+map, selected facade, registry, hidden state, and ledger are never reread after
+capture. Hosted composition captures the corresponding
+`HostedLiveMapLibrariesSnapshot` once and verifies its logical-map/incarnation
+fence. The hosted type adds only that semantic authority fence; neither snapshot
+contains a session, socket, endpoint, route, selector, attachment epoch, or
+transport metadata.
+
+If exactly one public `mode: "document"` Library exists, `document` may be
+omitted and its name is returned. Multiple public documents require an explicit
+name. Zero documents, unknown names, data Libraries, and `scope:
+"hson-internal"` Libraries fail with `DocumentSsrError.phase === "select"`.
+Only the selected document is checked for browser-parser compatibility.
 
 ## Output meanings
 
@@ -77,12 +97,37 @@ incompatibility behavior. SSR adds no history pinning or recovery policy.
 `LocusBootstrap`, `capture_locus_bootstrap`, and `install_locus_bootstrap`
 remain the transport-bearing bootstrap API for existing callers.
 
+The aggregate local and hosted flows use the sibling installers:
+
+```ts
+const localInstalled = install_libraries_snapshot(libraries.bootstrap);
+const localDocument = localInstalled.map.lib(libraries.document);
+continue_document({ map: localInstalled.map, document: localDocument, root });
+
+const hostedInstalled = install_locus_libraries_snapshot(hostedLibraries.bootstrap);
+const echo = create_echo({ socket, map: hostedInstalled.map, recovery: hostedInstalled.recovery });
+echo.connect();
+await echo.session.create();
+await continue_hosted_document({
+  echo,
+  document: echo.map.lib(hostedLibraries.document),
+  root,
+});
+```
+
+Installation restores every public and hidden Library, exact Schema sources and
+digests, ordered registry and digest, one global revision, numeric identity
+epoch, and the full issued-QUID ledger including retired identities. Hidden
+canonical interaction storage remains hidden and has no side payload. Local
+installation creates fresh runtime capability objects without fabricating a
+hosted identity. Hosted installation retains the logical/incarnation fence and
+returns the ordinary aggregate Echo recovery cursor.
+
 ## Domain and delivery limits
 
-The first composition API accepts one `DocumentLiveMap` or one one-map
-`LocusBootstrapAuthority`. Aggregate/multi-library state, document selectors,
-hidden interactions, and aggregate fences are not accepted. Aggregate snapshot
-and installation exposure is a later phase. The selected canonical document
+The composition API accepts one `DocumentLiveMap`, one fixed
+`LiveMapLibraries`, one one-map `LocusBootstrapAuthority`, or the current public
+multi-library Locus authority. The selected canonical document
 must contain exactly one ordinary Element root: either an application root or
 the sole full-document `<html>` root.
 

@@ -1,7 +1,6 @@
-import type { LiveMapLibraries } from "../../types/livemap.types.js";
+import type { HostedLiveMapLibrariesSnapshot, LiveMapLibraries } from "../../types/livemap.types.js";
 import type {
   HostedAggregateCommit,
-  HostedAggregateSnapshot,
 } from "../livemap/livemap.hosted.js";
 import {
   internal_livemap_aggregate_authority,
@@ -23,7 +22,7 @@ export type LocusHostedAggregatePersistedCheckpoint = Readonly<{
   mapKind: "hosted-aggregate";
   registryDigest: string;
   rev: number;
-  snapshot: HostedAggregateSnapshot;
+  snapshot: HostedLiveMapLibrariesSnapshot;
 }>;
 
 /** Internal storage wrapper around one exact aggregate commit. */
@@ -109,7 +108,7 @@ function persistence_failure(
   return new LocusPersistenceError(code, message, { cause });
 }
 
-function hosted_checkpoint(snapshot: HostedAggregateSnapshot): LocusHostedAggregatePersistedCheckpoint {
+function hosted_checkpoint(snapshot: HostedLiveMapLibrariesSnapshot): LocusHostedAggregatePersistedCheckpoint {
   return Object.freeze({
     logicalMapId: snapshot.authority.logicalMapId,
     incarnationId: snapshot.authority.incarnationId,
@@ -152,7 +151,7 @@ function assert_checkpoint_fence(
 
 function assert_snapshot_fence(
   checkpoint: LocusHostedAggregatePersistedCheckpoint,
-): HostedAggregateSnapshot {
+): HostedLiveMapLibrariesSnapshot {
   const snapshot = checkpoint.snapshot;
   const authority = record(snapshot.authority);
   const registry = record(snapshot.registry);

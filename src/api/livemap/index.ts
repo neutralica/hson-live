@@ -1,6 +1,7 @@
 export { hsonLiveMap } from "./livemap.facade.js";
 export { make_classified_livemap, make_livemap_core } from "./livemap.core.js";
 export { make_livemap_store_api } from "./livemap.store.js";
+export { install_libraries_snapshot } from "./livemap.libraries.js";
 export {
   LiveMapDocumentAttributeNotFoundError,
   LiveMapDocumentInstallError,

@@ -32,6 +32,38 @@ export type LiveMapRootMode = DataLiveMapMode | DocumentLiveMapMode;
 export type DataLiveMapMode = "data-object" | "data-array";
 export type DocumentLiveMapMode = "document";
 
+/** One detached semantic cut of a complete fixed LiveMap Libraries registry. */
+export type LiveMapLibrariesSnapshot = Readonly<{
+  format: "hson-livemap-libraries-snapshot";
+  revision: number;
+  registry: Readonly<{
+    format: "hson-hosted-registry";
+    libraries: readonly Readonly<{
+      name: string;
+      scope?: "hson-internal";
+      mode: LiveMapRootMode;
+      schema: HsonSchema;
+      schemaDigest: string;
+      rootCodec: "hson-exact-value";
+    }>[];
+    digest: string;
+  }>;
+  registryDigest: string;
+  libraries: readonly Readonly<{
+    name: string;
+    mode: LiveMapRootMode;
+    schema: HsonSchema;
+    schemaDigest: string;
+    root: Readonly<{ format: "hson-exact-value"; payload: string }>;
+  }>[];
+  identity: Readonly<{ epoch: number; issuedQuids: readonly string[] }>;
+}>;
+
+/** One complete Libraries semantic cut plus its durable hosted authority fence. */
+export type HostedLiveMapLibrariesSnapshot = LiveMapLibrariesSnapshot & Readonly<{
+  authority: Readonly<{ logicalMapId: string; incarnationId: string }>;
+}>;
+
 /**
  * Runtime Proxy surface for ergonomic projected-path access.
  *
@@ -1616,6 +1648,8 @@ export type LiveMapLibraries<TLibraries extends LiveMapLibrariesInput = LiveMapL
   lib: <TLibrary extends Extract<keyof TLibraries, string>>(
     name: TLibrary,
   ) => LiveMapLibraryFacadeForInput<TLibraries[TLibrary], TLibrary>;
+  /** Capture one detached semantic cut of the complete public and hidden registry. */
+  capture: () => LiveMapLibrariesSnapshot;
   commits: LiveMapMultiLibraryCommitObserverApi<Extract<keyof TLibraries, string>>;
 }>;
 

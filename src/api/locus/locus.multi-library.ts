@@ -20,6 +20,7 @@ import {
   create_locus_hosted_aggregate_socket_internal,
 } from "./locus.hosted-multi-library.socket.js";
 import type { LocusHostedAggregateGateInput } from "./locus.hosted-multi-library.js";
+import { register_locus_libraries_snapshot_authority_internal } from "./locus.libraries-snapshot.js";
 
 function establish_authority_identity(
   map: LiveMapLibraries,
@@ -184,5 +185,16 @@ export function create_multi_library_locus_internal<
   });
   alias_locus_remote_action_admission_internal(locus, authority);
   alias_locus_retained_action_status_internal(locus, authority);
+  register_locus_libraries_snapshot_authority_internal(locus, Object.freeze({
+    capture: () => {
+      const snapshot = internal_livemap_aggregate_authority(options.map).captureHosted();
+      if (snapshot.authority.logicalMapId !== locus.logicalMapId
+        || snapshot.authority.incarnationId !== locus.incarnationId
+        || snapshot.revision !== locus.rev) {
+        throw new Error("Hosted Libraries snapshot disagrees with its Locus authority fence.");
+      }
+      return snapshot;
+    },
+  }));
   return Object.freeze({ locus, run_exclusive: authority.run_exclusive });
 }

@@ -1,4 +1,8 @@
-import type { DocumentLiveMapCapture } from "../../types/livemap.types.js";
+import type {
+  DocumentLiveMapCapture,
+  HostedLiveMapLibrariesSnapshot,
+  LiveMapLibrariesSnapshot,
+} from "../../types/livemap.types.js";
 import type { LocusSnapshotEnvelope } from "../../types/locus.representation.types.js";
 
 declare const BROWSER_REALIZATION_HTML: unique symbol;
@@ -23,4 +27,18 @@ export type DocumentSsr = Readonly<{
 export type HostedDocumentSsr = Readonly<{
   html: BrowserRealizationHtml;
   bootstrap: Extract<LocusSnapshotEnvelope, { hson: string }> & Readonly<{ mode: "document" }>;
+}>;
+
+/** One selected document realization paired with its complete local Libraries cut. */
+export type LibrariesDocumentSsr = Readonly<{
+  html: BrowserRealizationHtml;
+  bootstrap: LiveMapLibrariesSnapshot;
+  document: string;
+}>;
+
+/** One selected document realization paired with its complete hosted Libraries cut. */
+export type HostedLibrariesDocumentSsr = Readonly<{
+  html: BrowserRealizationHtml;
+  bootstrap: HostedLiveMapLibrariesSnapshot;
+  document: string;
 }>;

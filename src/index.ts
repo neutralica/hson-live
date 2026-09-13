@@ -6,7 +6,13 @@ export { continue_document } from "./api/continuation/continue-document.js";
 export { continue_hosted_document } from "./api/continuation/continue-hosted-document.lazy.js";
 export { DocumentContinuationError } from "./api/continuation/continuation.error.js";
 export { render_document, render_hosted_document, DocumentSsrError } from "./api/ssr/index.js";
-export type { BrowserRealizationHtml, DocumentSsr, HostedDocumentSsr } from "./api/ssr/index.js";
+export type {
+    BrowserRealizationHtml,
+    DocumentSsr,
+    HostedDocumentSsr,
+    LibrariesDocumentSsr,
+    HostedLibrariesDocumentSsr,
+} from "./api/ssr/index.js";
 export type {
     DocumentContinuation,
     HostedDocumentContinuation,
@@ -135,6 +141,7 @@ export {
 } from "./api/reflect/reflect.collection.error.js";
 export type { CollectionReflectErrorCode } from "./api/reflect/reflect.collection.error.js";
 export { make_livemap_store_api } from "./api/livemap/livemap.store.js";
+export { install_libraries_snapshot } from "./api/livemap/livemap.libraries.js";
 export {
     LiveMapDocumentAttributeNotFoundError,
     LiveMapDocumentInstallError,
@@ -196,6 +203,7 @@ export { make_locus_canonical_stream } from "./api/locus/locus.history.js";
 export { make_locus_recovery_planner } from "./api/locus/locus.recovery.js";
 export { decode_locus_message, decode_locus_server_message, encode_locus_message } from "./api/locus/locus.protocol.js";
 export { create_locus } from "./api/locus/locus.core.js";
+export { install_locus_libraries_snapshot } from "./api/locus/locus.libraries-snapshot.js";
 export {
     LocusAuthorityError,
     type LocusAuthorityErrorCode,
@@ -234,6 +242,8 @@ export type {
     LiveMapCore,
     LiveMap,
     LiveMapLibraries,
+    LiveMapLibrariesSnapshot,
+    HostedLiveMapLibrariesSnapshot,
     LiveMapLibrariesInput,
     LiveMapLibraryInput,
     LiveMapDataLibraryInput,

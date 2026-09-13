@@ -1,6 +1,6 @@
 import type { HsonNode, JsonValue } from "../../core/types.js";
 import type { HsonSchema } from "../transform/transform.types.js";
-import type { LiveMapGraphCommit, LiveMapGraphOp, LivePath } from "../../types/livemap.types.js";
+import type { HostedLiveMapLibrariesSnapshot, LiveMapGraphCommit, LiveMapGraphOp, LiveMapLibrariesSnapshot, LivePath } from "../../types/livemap.types.js";
 import { resolveLiveMapNode } from "./livemap.node.js";
 import type { LiveMapIdentityEpochController } from "./livemap.identity-epoch.js";
 import type { LiveMapDocumentIdentityOverlay } from "./livemap.document.identity.js";
@@ -18,7 +18,6 @@ import type {
 import type { PreparedDocumentMutation } from "./livemap.document.mutation.js";
 import type {
   HostedAggregateCommit,
-  HostedAggregateSnapshot,
   HostedRegistry,
   HostedRegistryBinding,
 } from "./livemap.hosted.js";
@@ -54,10 +53,12 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   /** Fix public names and exact Schema sources before hosted capture/replay. @internal */
   configureHostedRegistry: (bindings: readonly HostedRegistryBinding[]) => HostedRegistry;
   hostedRegistry: () => HostedRegistry;
-  captureHosted: () => HostedAggregateSnapshot;
-  restoreHosted: (snapshot: HostedAggregateSnapshot) => void;
+  captureLibraries: () => LiveMapLibrariesSnapshot;
+  captureHosted: () => HostedLiveMapLibrariesSnapshot;
+  restoreLibraries: (snapshot: LiveMapLibrariesSnapshot) => void;
+  restoreHosted: (snapshot: HostedLiveMapLibrariesSnapshot) => void;
   /** Apply a transport snapshot while this aggregate is client-managed. @internal */
-  restoreHostedManaged: (owner: object, snapshot: HostedAggregateSnapshot) => void;
+  restoreHostedManaged: (owner: object, snapshot: HostedLiveMapLibrariesSnapshot) => void;
   replayHosted: (commit: HostedAggregateCommit) => LiveMapAggregateCommit;
   /** Apply a transport commit while this aggregate is client-managed. @internal */
   replayHostedManaged: (owner: object, commit: HostedAggregateCommit) => LiveMapAggregateCommit;

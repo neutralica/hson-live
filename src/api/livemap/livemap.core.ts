@@ -4,7 +4,7 @@ import type { HsonNode, JsonValue } from "../../core/types.js";
 import { register_echo_map_capability_internal } from "../../internal/echo-map-capability.js";
 import type { HsonSchema } from "../transform/transform.types.js";
 import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
-import type { ClassifiedLiveMap, LiveMap, LiveMapAnyOp, LiveMapCommit, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapDataOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapCaptureOptions, LiveMapApply, LiveMapGraphCommit, LiveMapProjectedGraphEnsureQuidOp, LiveMapGraphOp, LiveMapGraphReplaceRootOp, LiveMapRootMode } from "../../types/livemap.types.js";
+import type { ClassifiedLiveMap, HostedLiveMapLibrariesSnapshot, LiveMap, LiveMapAnyOp, LiveMapCommit, LiveMapLibrariesSnapshot, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapDataOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapCaptureOptions, LiveMapApply, LiveMapGraphCommit, LiveMapProjectedGraphEnsureQuidOp, LiveMapGraphOp, LiveMapGraphReplaceRootOp, LiveMapRootMode } from "../../types/livemap.types.js";
 import {
   clone_live_root,
   delete_live_path,
@@ -143,9 +143,10 @@ import {
 } from "./livemap.identity-epoch.js";
 import {
   HOSTED_MAX_ISSUED_QUIDS,
-  HOSTED_SNAPSHOT_FORMAT,
-  assert_hosted_snapshot_bound,
-  assert_hosted_snapshot_shape,
+  LIVEMAP_LIBRARIES_SNAPSHOT_FORMAT,
+  assert_libraries_snapshot_bound,
+  assert_libraries_snapshot_shape,
+  assert_hosted_libraries_snapshot_shape,
   decode_hosted_commit,
   decode_hosted_root,
   encode_hosted_root,
@@ -154,7 +155,6 @@ import {
   make_hosted_commit,
   make_hosted_registry,
   type HostedAggregateCommit,
-  type HostedAggregateSnapshot,
   type HostedAuthorityFence,
   type HostedRegistry,
   type HostedRegistryBinding,
@@ -1639,7 +1639,7 @@ function make_livemap_core_from_owned_root(
     return registry;
   }
 
-  function capture_hosted_aggregate(): HostedAggregateSnapshot {
+  function capture_libraries_aggregate(): LiveMapLibrariesSnapshot {
     const hosted = require_hosted_state();
     const libraries = hosted.registry.libraries.map((entry) => {
       const binding = hosted.byName.get(entry.name);
@@ -1657,9 +1657,8 @@ function make_livemap_core_from_owned_root(
     if (issuedQuids.length > HOSTED_MAX_ISSUED_QUIDS) {
       throw new Error("Hosted aggregate issued-QUID ledger exceeds its supported bound.");
     }
-    const snapshot: HostedAggregateSnapshot = Object.freeze({
-      format: HOSTED_SNAPSHOT_FORMAT,
-      authority: hosted.fence,
+    const snapshot: LiveMapLibrariesSnapshot = Object.freeze({
+      format: LIVEMAP_LIBRARIES_SNAPSHOT_FORMAT,
       revision: mapRevision,
       registry: hosted.registry,
       registryDigest: hosted.registry.digest,
@@ -1669,16 +1668,26 @@ function make_livemap_core_from_owned_root(
         issuedQuids,
       }),
     });
-    assert_hosted_snapshot_bound(snapshot);
+    assert_libraries_snapshot_bound(snapshot);
     return snapshot;
   }
 
-  function restore_hosted_aggregate(snapshot: HostedAggregateSnapshot): void {
+  function capture_hosted_aggregate(): HostedLiveMapLibrariesSnapshot {
+    const hosted = require_hosted_state();
+    const snapshot = Object.freeze({ ...capture_libraries_aggregate(), authority: hosted.fence });
+    assert_libraries_snapshot_bound(snapshot);
+    return snapshot;
+  }
+
+  function restore_libraries_aggregate(
+    snapshot: LiveMapLibrariesSnapshot,
+    authority?: HostedAuthorityFence,
+  ): void {
     transitionController.assertPublicMutationAllowed();
     const hosted = require_hosted_state();
-    assert_hosted_snapshot_shape(snapshot);
-    assert_hosted_snapshot_bound(snapshot);
-    if (snapshot.format !== HOSTED_SNAPSHOT_FORMAT
+    assert_libraries_snapshot_shape(snapshot);
+    assert_libraries_snapshot_bound(snapshot);
+    if (snapshot.format !== LIVEMAP_LIBRARIES_SNAPSHOT_FORMAT
       || snapshot.registryDigest !== hosted.registry.digest
       || snapshot.registry.digest !== hosted.registry.digest
       || JSON.stringify(snapshot.registry) !== JSON.stringify(hosted.registry)) {
@@ -1688,10 +1697,6 @@ function make_livemap_core_from_owned_root(
       || !Number.isSafeInteger(snapshot.identity?.epoch) || snapshot.identity.epoch < 0
       || !Array.isArray(snapshot.identity?.issuedQuids)
       || snapshot.identity.issuedQuids.length > HOSTED_MAX_ISSUED_QUIDS
-      || typeof snapshot.authority?.logicalMapId !== "string"
-      || snapshot.authority.logicalMapId.length === 0
-      || typeof snapshot.authority?.incarnationId !== "string"
-      || snapshot.authority.incarnationId.length === 0
       || !Array.isArray(snapshot.libraries)
       || snapshot.libraries.length !== hosted.registry.libraries.length) {
       throw new Error("Hosted aggregate snapshot envelope is malformed.");
@@ -1753,8 +1758,9 @@ function make_livemap_core_from_owned_root(
     // All fallible decoding, compilation, Schema, mode, identity, and bound checks
     // are complete before this single installation section begins.
     const previousRevision = mapRevision;
-    const continuity = hosted.fence.logicalMapId === snapshot.authority.logicalMapId
-      && hosted.fence.incarnationId === snapshot.authority.incarnationId
+    const continuity = authority !== undefined
+      && hosted.fence.logicalMapId === authority.logicalMapId
+      && hosted.fence.incarnationId === authority.incarnationId
       && mapIdentityEpoch.current() === snapshot.identity.epoch
       && enumerate_livemap_issued_quids(mapIdentityEpoch.issued()).every((quid) => issuedLedger.has(quid))
       ? "same-epoch" as const
@@ -1772,10 +1778,7 @@ function make_livemap_core_from_owned_root(
     }
     mapIdentityEpoch.hydrate(snapshot.identity.epoch, issuedLedger);
     mapRevision = snapshot.revision;
-    hostedFence = Object.freeze({
-      logicalMapId: snapshot.authority.logicalMapId,
-      incarnationId: snapshot.authority.incarnationId,
-    });
+    if (authority !== undefined) hostedFence = Object.freeze({ ...authority });
     transitionController.invalidate();
     // A hosted recovery snapshot is an atomic replacement boundary, not a
     // fabricated operation commit.  Selected document libraries use this to
@@ -1793,6 +1796,25 @@ function make_livemap_core_from_owned_root(
     enqueuePublication(() => {
       for (const observer of [...aggregateRestoreObservers]) observer(event);
     });
+  }
+
+  function restore_hosted_aggregate(snapshot: HostedLiveMapLibrariesSnapshot): void {
+    assert_hosted_libraries_snapshot_shape(snapshot);
+    if (typeof snapshot.authority.logicalMapId !== "string"
+      || snapshot.authority.logicalMapId.length === 0
+      || typeof snapshot.authority.incarnationId !== "string"
+      || snapshot.authority.incarnationId.length === 0) {
+      throw new Error("Hosted aggregate snapshot authority is malformed.");
+    }
+    const semantic: LiveMapLibrariesSnapshot = Object.freeze({
+      format: snapshot.format,
+      revision: snapshot.revision,
+      registry: snapshot.registry,
+      registryDigest: snapshot.registryDigest,
+      libraries: snapshot.libraries,
+      identity: snapshot.identity,
+    });
+    restore_libraries_aggregate(semantic, snapshot.authority);
   }
 
   function replay_hosted_aggregate(input: HostedAggregateCommit): LiveMapAggregateCommit {
@@ -1899,7 +1921,9 @@ function make_livemap_core_from_owned_root(
     reservedLibrary: (key) => reservedLibraries.get(key),
     configureHostedRegistry: configure_hosted_registry,
     hostedRegistry: () => require_hosted_state().registry,
+    captureLibraries: capture_libraries_aggregate,
     captureHosted: capture_hosted_aggregate,
+    restoreLibraries: (snapshot) => restore_libraries_aggregate(snapshot),
     restoreHosted: restore_hosted_aggregate,
     restoreHostedManaged: (owner, snapshot) => transitionController.runManaged(
       owner,

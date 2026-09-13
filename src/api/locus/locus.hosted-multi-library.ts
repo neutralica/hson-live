@@ -7,6 +7,7 @@ import type {
   LiveMapDocumentContent,
   LiveMapGraphOp,
   LiveMapLibraries,
+  HostedLiveMapLibrariesSnapshot,
   LivePath,
 } from "../../types/livemap.types.js";
 import type { LocusActionOrigin, LocusClientActionMessage } from "../../types/locus.types.js";
@@ -22,7 +23,6 @@ import type {
 import {
   HOSTED_MAX_COMMIT_BYTES,
   type HostedAggregateCommit,
-  type HostedAggregateSnapshot,
 } from "../livemap/livemap.hosted.js";
 import { make_livemap_hosted_mirror_from_snapshot_internal } from "../livemap/livemap.libraries.js";
 import type { PreparedLiveMapAggregateTransition } from "../livemap/livemap.authority.js";
@@ -263,7 +263,7 @@ export function create_locus_hosted_aggregate_internal(
  * commit replay.
  */
 export function create_locus_hosted_aggregate_client_internal(
-  snapshot: HostedAggregateSnapshot,
+  snapshot: HostedLiveMapLibrariesSnapshot,
   options: Readonly<{ maxWireBytes?: number }> = {},
 ): LocusHostedAggregateClient {
   const map = make_livemap_hosted_mirror_from_snapshot_internal(snapshot);

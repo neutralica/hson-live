@@ -18,9 +18,15 @@ import {
   DocumentSsrError,
   render_document,
   render_hosted_document,
+  install_libraries_snapshot,
+  install_locus_libraries_snapshot,
   type BrowserRealizationHtml,
   type DocumentSsr,
   type HostedDocumentSsr,
+  type LibrariesDocumentSsr,
+  type HostedLibrariesDocumentSsr,
+  type LiveMapLibrariesSnapshot,
+  type HostedLiveMapLibrariesSnapshot,
   type DocumentContinuation,
   type HostedDocumentContinuation,
   type AsyncLiveTree as RootAsyncLiveTree,
@@ -64,6 +70,18 @@ void browserHtml;
 void forgedBrowserHtml;
 void hostedSsr.bootstrap;
 void DocumentSsrError;
+declare const libraries: import("hson-live/livemap").LiveMapLibraries;
+declare const librariesSnapshot: LiveMapLibrariesSnapshot;
+const installedLibraries = install_libraries_snapshot(librariesSnapshot);
+const librariesSsr: LibrariesDocumentSsr = render_document({ map: libraries });
+declare const librariesAuthority: import("hson-live/locus").LocusMultiLibrary;
+declare const hostedLibrariesSnapshot: HostedLiveMapLibrariesSnapshot;
+const installedHostedLibraries = install_locus_libraries_snapshot(hostedLibrariesSnapshot);
+const hostedLibrariesSsr: HostedLibrariesDocumentSsr = render_hosted_document({ authority: librariesAuthority });
+void installedLibraries.map;
+void installedHostedLibraries.recovery;
+void librariesSsr.document;
+void hostedLibrariesSsr.document;
 // @ts-expect-error Continuation requires an explicit Element, never a selector.
 continue_document({ map: continuationMap, root: "main" });
 // @ts-expect-error Hosted authoritative dispatch is derived from Echo.

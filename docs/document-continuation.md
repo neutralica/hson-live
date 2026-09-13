@@ -48,6 +48,15 @@ interaction storage is not a selectable document library. The returned `map`
 is always the selected document-facing map/library to which `tree` and
 `reflect` correspond, not the aggregate.
 
+After aggregate SSR installation, resolve the stable public name returned with
+the atomic SSR triple before continuation:
+
+```ts
+const installed = install_libraries_snapshot(ssr.bootstrap);
+const selected = installed.map.lib(ssr.document);
+continue_document({ map: installed.map, document: selected, root });
+```
+
 Canonical interactions are opt-in and assume their topology was enabled before
 ordinary application transitions:
 
@@ -67,6 +76,12 @@ Continuation calls `activate_interactions`; it does not call
 `enable_interactions`.
 
 ## Hosted continuation
+
+For hosted Libraries, install with `install_locus_libraries_snapshot`, pass the
+returned complete map and recovery cursor to the existing `create_echo`, then
+resolve `echo.map.lib(ssr.document)` as the continuation's `document`. Recovery
+converges the whole aggregate even though continuation realizes only that one
+selected document.
 
 ```ts
 const continuation = await continue_hosted_document({

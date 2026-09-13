@@ -1,5 +1,5 @@
 import type { LocusActionPayloads } from "../../types/locus.types.js";
-import type { HostedAggregateSnapshot } from "../livemap/livemap.hosted.js";
+import type { HostedLiveMapLibrariesSnapshot } from "../../types/livemap.types.js";
 import type { LocusHostedAggregateWireEnvelope } from "./locus.hosted-multi-library.js";
 import type {
   LocusDownstreamSink,
@@ -27,7 +27,7 @@ type SnapshotReason = "no_usable_revision" | "incarnation_mismatch" | "registry_
 export type LocusHostedAggregateSynchronizationOutput =
   | Readonly<{ type: "recovery-plan"; id: string; logicalMapId: string; incarnationId: string; registryDigest: string; headRev: number; outcome: Exclude<PlanOutcome, "reject">; reason?: SnapshotReason }>
   | Readonly<{ type: "recovery-plan"; id: string; logicalMapId: string; incarnationId: string; registryDigest: string; headRev: number; outcome: "reject"; error: Readonly<{ code?: string; message: string }> }>
-  | Readonly<{ type: "recovery-snapshot"; id: string; snapshot: HostedAggregateSnapshot }>
+  | Readonly<{ type: "recovery-snapshot"; id: string; snapshot: HostedLiveMapLibrariesSnapshot }>
   | Readonly<{ type: "recovery-commit"; id: string; phase: "body" | "tail"; commit: LocusHostedAggregateWireEnvelope }>
   | Readonly<{ type: "recovery-caught-up"; id: string; logicalMapId: string; incarnationId: string; registryDigest: string; throughRev: number }>
   | Readonly<{ type: "synchronization-failure"; error: Readonly<{ code?: string; message: string; cause?: unknown }> }>;

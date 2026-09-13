@@ -129,15 +129,21 @@ check("SSR root and subpath exports share runtime identity", () => {
   const source = `
     import {
       DocumentSsrError as RootError,
-      render_document as rootRender,
-      render_hosted_document as rootHostedRender,
+      install_libraries_snapshot as rootLibrariesInstall,
+      install_locus_libraries_snapshot as rootHostedLibrariesInstall,
+            render_document as rootRender,
+            render_hosted_document as rootHostedRender,
     } from "hson-live";
+    import { install_libraries_snapshot as livemapLibrariesInstall } from "hson-live/livemap";
+    import { install_locus_libraries_snapshot as locusLibrariesInstall } from "hson-live/locus";
     import {
       DocumentSsrError as SsrError,
       render_document as ssrRender,
       render_hosted_document as ssrHostedRender,
     } from "hson-live/ssr";
-    if (RootError !== SsrError || rootRender !== ssrRender || rootHostedRender !== ssrHostedRender) {
+    if (RootError !== SsrError || rootRender !== ssrRender || rootHostedRender !== ssrHostedRender
+      || rootLibrariesInstall !== livemapLibrariesInstall
+      || rootHostedLibrariesInstall !== locusLibrariesInstall) {
       throw new Error("SSR entrypoint identity diverged");
     }
   `;
@@ -156,6 +162,8 @@ check("SSR declarations expose only the approved semantic surface", () => {
     "BrowserRealizationHtml",
     "DocumentSsr",
     "HostedDocumentSsr",
+    "LibrariesDocumentSsr",
+    "HostedLibrariesDocumentSsr",
     "DocumentSsrError",
   ]) assert.equal(declaration.includes(approved), true, `${approved} must be exported`);
   for (const privateName of [

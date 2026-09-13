@@ -488,8 +488,22 @@ ordered live commits
 
 State may change between the HTTP response and the WebSocket connection. This does not create a separate synchronization problem: the existing recovery system replays the missing commits or installs a newer snapshot when history is no longer available.
 
-The semantic bootstrap path also underlies the narrow one-map
-[`hson-live/ssr`](docs/ssr-composition.md) composition boundary. HTTP response
+The semantic bootstrap path also underlies the same-cut
+[`hson-live/ssr`](docs/ssr-composition.md) composition boundary. A fixed
+Libraries map renders one selected public document while returning the complete
+aggregate cut:
+
+```ts
+const ssr = render_document({ map: libraries, document: "page" });
+const installed = install_libraries_snapshot(ssr.bootstrap);
+continue_document({
+  map: installed.map,
+  document: installed.map.lib(ssr.document),
+  root,
+});
+```
+
+With exactly one public document Library, `document` may be omitted. HTTP response
 construction, safe bootstrap embedding, routing, and framework integration
 remain application-layer work.
 
@@ -692,7 +706,7 @@ The maintained current-facing references are:
 - [document continuation](docs/document-continuation.md), for exact no-write
   admission of an existing browser document into local or hosted state;
 - [same-cut SSR composition](docs/ssr-composition.md), for synchronous one-map
-  browser-realization HTML and exact paired bootstrap state;
+  or multi-library browser-realization HTML and exact paired bootstrap state;
 - the [Locus API](docs/locus/api-locus.md) and
   [authority overview](docs/locus/overview.md);
 - the [LiveHost and Node runtime boundary](docs/livehost/overview.md); and

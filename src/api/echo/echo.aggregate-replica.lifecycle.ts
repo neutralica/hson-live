@@ -2,14 +2,15 @@ import type { LiveMapLibraries } from "../../types/livemap.types.js";
 import type { LocusDisposer } from "../../types/locus.types.js";
 import type { EchoMapManagementLease } from "../../internal/echo-map-capability.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
-import type { HostedAggregateCommit, HostedAggregateSnapshot } from "../livemap/livemap.hosted.js";
+import type { HostedLiveMapLibrariesSnapshot } from "../../types/livemap.types.js";
+import type { HostedAggregateCommit } from "../livemap/livemap.hosted.js";
 import type { EchoReplicaCapability } from "./echo.replica.js";
 
 /** @internal Aggregate exact-replica management and terminal lifetime. */
 export type EchoAggregateReplicaCapability = EchoReplicaCapability<LiveMapLibraries | undefined> & Readonly<{
   attachMap: (map: LiveMapLibraries) => void;
-  captureHosted: () => HostedAggregateSnapshot;
-  restoreHosted: (snapshot: HostedAggregateSnapshot) => void;
+  captureHosted: () => HostedLiveMapLibrariesSnapshot;
+  restoreHosted: (snapshot: HostedLiveMapLibrariesSnapshot) => void;
   replayHosted: (commit: HostedAggregateCommit) => number;
 }>;
 
@@ -45,7 +46,7 @@ export function create_echo_aggregate_replica_capability_internal(
       internal_livemap_aggregate_authority(next).claimManagement(owner);
       map = next;
     },
-    captureHosted(): HostedAggregateSnapshot {
+    captureHosted(): HostedLiveMapLibrariesSnapshot {
       if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");
       return internal_livemap_aggregate_authority(map).captureHosted();
     },

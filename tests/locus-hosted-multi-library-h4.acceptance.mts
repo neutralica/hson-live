@@ -177,12 +177,12 @@ await check("initial H4 checkpoint is one exact aggregate H1 snapshot and one at
   const initial = adapter.state("h4-global-cut")!;
   assert.equal(initial.checkpoint.mapKind, "hosted-aggregate");
   if (initial.checkpoint.mapKind !== "hosted-aggregate") throw new Error("Expected aggregate checkpoint.");
-  assert.equal(initial.checkpoint.snapshot.format, "hson-hosted-snapshot");
+  assert.equal(initial.checkpoint.snapshot.format, "hson-livemap-libraries-snapshot");
   assert.equal(initial.checkpoint.snapshot.registry.format, "hson-hosted-registry");
   assert.equal(initial.checkpoint.snapshot.authority.logicalMapId.startsWith("h1-"), false);
   assert.equal(initial.checkpoint.snapshot.authority.incarnationId.startsWith("h1-"), false);
   const oldSnapshot = structuredClone(initial.checkpoint.snapshot) as any;
-  oldSnapshot.format = "hson-hosted-snapshot-h1";
+  oldSnapshot.format = "hson-livemap-libraries-snapshot-h1";
   assert.throws(() => internal_livemap_aggregate_authority(make_map()).restoreHosted(oldSnapshot), /format|snapshot/i);
   const oldRegistry = structuredClone(initial.checkpoint.snapshot) as any;
   oldRegistry.registry.format = "hson-hosted-registry-h1";

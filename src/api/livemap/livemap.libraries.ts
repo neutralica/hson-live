@@ -7,6 +7,8 @@ import type {
   LiveMapDataLibrary,
   LiveMapDocumentLibrary,
   LiveMapLibraries,
+  HostedLiveMapLibrariesSnapshot,
+  LiveMapLibrariesSnapshot,
   LiveMapLibrariesInput,
   LiveMapLibraryInput,
   LiveMapLibraryOperation,
@@ -52,10 +54,10 @@ import { register_livemap_document_identity_overlay } from "./livemap.document.i
 import { register_livemap_document_identity_authority } from "./livemap.document.registration.js";
 import { register_livemap_identity_epoch_owner } from "./livemap.identity-epoch.js";
 import {
-  assert_hosted_snapshot_bound,
-  assert_hosted_snapshot_shape,
+  assert_libraries_snapshot_bound,
+  assert_libraries_snapshot_shape,
+  assert_hosted_libraries_snapshot_shape,
   decode_hosted_root,
-  type HostedAggregateSnapshot,
 } from "./livemap.hosted.js";
 import { node_to_json_value } from "./livemap.editor.js";
 
@@ -149,6 +151,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapLibraries
   const libraries = Object.freeze({
     get rev() { return aggregate.inspect().revision; },
     lib: (name: string) => selected(name),
+    capture: () => aggregate.captureLibraries(),
     commits: Object.freeze({
       observe: (listener: (commit: LiveMapMultiLibraryCommit) => void) =>
         aggregate.observe((commit) => listener(public_commit(commit))),
@@ -188,16 +191,34 @@ export function make_livemap_libraries<const TLibraries extends LiveMapLibraries
  * snapshot. The Locus client owns recovery/bootstrap protocol exposure.
  */
 export function make_livemap_hosted_mirror_from_snapshot_internal(
-  snapshot: HostedAggregateSnapshot,
+  snapshot: HostedLiveMapLibrariesSnapshot,
 ): LiveMapLibraries {
-  assert_hosted_snapshot_shape(snapshot);
-  assert_hosted_snapshot_bound(snapshot);
+  assert_hosted_libraries_snapshot_shape(snapshot);
+  assert_libraries_snapshot_bound(snapshot);
+  const semantic = semantic_snapshot(snapshot);
+  return make_livemap_mirror_from_snapshot_internal(semantic, snapshot);
+}
+
+/** Install one detached complete aggregate semantic cut into a fresh runtime domain. */
+export function install_libraries_snapshot(
+  snapshot: LiveMapLibrariesSnapshot,
+): Readonly<{ map: LiveMapLibraries }> {
+  return Object.freeze({ map: make_livemap_mirror_from_snapshot_internal(snapshot) });
+}
+
+/** @internal Shared exact aggregate decoder/installer used by local and hosted installation. */
+export function make_livemap_mirror_from_snapshot_internal(
+  snapshot: LiveMapLibrariesSnapshot,
+  hosted?: HostedLiveMapLibrariesSnapshot,
+): LiveMapLibraries {
+  assert_libraries_snapshot_shape(snapshot);
+  assert_libraries_snapshot_bound(snapshot);
   if (snapshot.registryDigest !== snapshot.registry.digest
     || snapshot.libraries.length !== snapshot.registry.libraries.length) {
-    throw new Error("Hosted aggregate mirror snapshot registry is malformed.");
+    throw new Error("LiveMap Libraries snapshot registry is malformed.");
   }
 
-  const inputs: Record<string, LiveMapLibraryInput> = {};
+  const inputs: Record<string, LiveMapLibraryInput> = Object.create(null);
   for (let index = 0; index < snapshot.registry.libraries.length; index += 1) {
     const registry = snapshot.registry.libraries[index];
     const library = snapshot.libraries[index];
@@ -206,7 +227,7 @@ export function make_livemap_hosted_mirror_from_snapshot_internal(
       || registry.mode !== library.mode
       || registry.schema !== library.schema
       || registry.schemaDigest !== library.schemaDigest) {
-      throw new Error("Hosted aggregate mirror snapshot Library metadata is malformed.");
+      throw new Error("LiveMap Libraries snapshot Library metadata is malformed.");
     }
     const root = decode_hosted_root(library.root);
     if (registry.scope === "hson-internal") continue;
@@ -228,8 +249,20 @@ export function make_livemap_hosted_mirror_from_snapshot_internal(
       registry.schema,
     );
   }
-  aggregate.restoreHosted(snapshot);
+  if (hosted === undefined) aggregate.restoreLibraries(snapshot);
+  else aggregate.restoreHosted(hosted);
   return mirror;
+}
+
+function semantic_snapshot(snapshot: HostedLiveMapLibrariesSnapshot): LiveMapLibrariesSnapshot {
+  return Object.freeze({
+    format: snapshot.format,
+    revision: snapshot.revision,
+    registry: snapshot.registry,
+    registryDigest: snapshot.registryDigest,
+    libraries: snapshot.libraries,
+    identity: snapshot.identity,
+  });
 }
 
 function make_data_library(

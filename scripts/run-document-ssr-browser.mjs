@@ -5,7 +5,7 @@ import { copyFile, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { WebSocketServer } from "ws";
-import { hson, hsonLocus, render_document, render_hosted_document } from "../dist/index.js";
+import { Hson, HsonData, add_interaction, enable_interactions, hson, hsonLocus, render_document, render_hosted_document } from "../dist/index.js";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
 const temporaryRoot = join(repositoryRoot, "tmp");
@@ -29,7 +29,9 @@ function chromeExecutable() {
 
 let server;
 let socketServer;
+let librariesSocketServer;
 let locus;
+let librariesLocus;
 let chrome;
 let timeoutId;
 let moduleSource = "";
@@ -55,6 +57,14 @@ try {
   if (fullMap.mode !== "document") throw new Error("Full SSR fixture requires a document map.");
   const full = render_document({ map: fullMap });
 
+  const LocalLibrariesStateSchema = Hson`<type "data" content <count "number">>`;
+  const LocalLibrariesPageSchema = Hson`<type "document" tag "main" attrs <props <id "string">> content <sequence [<tag "button" content "empty">]>>`;
+  const localLibrariesMap = hson.liveMap.fromLibraries({
+    state: { data: { count: 7 }, schema: LocalLibrariesStateSchema },
+    page: { document: '<main id="local-libraries-ssr" <button @000005204/>/>', schema: LocalLibrariesPageSchema },
+  });
+  const localLibraries = render_document({ map: localLibrariesMap });
+
   const hostedMap = hson.liveMap.fromHson(`<main id="hosted-ssr" <p @000005202 "hosted"/>/>`);
   if (hostedMap.mode !== "document") throw new Error("Hosted SSR fixture requires a document map.");
   locus = hsonLocus.create({ map: hostedMap, logicalMapId: "browser-document-ssr", sessions: {} });
@@ -66,6 +76,46 @@ try {
     "data-recovered",
     "yes",
   ));
+
+  const StateSchema = Hson`<type "data" content <count "number">>`;
+  const PageSchema = Hson`<type "document" tag "main" attrs <props <id "string" data-recovered <optional "string">>> content <sequence [<tag "button" attrs <props <data-async <optional "string">>> content "empty">]>>`;
+  const AdminSchema = Hson`<type "document" tag "aside" attrs <props <data-recovered <optional "string">>> content "empty">`;
+  const librariesMap = hson.liveMap.fromLibraries({
+    state: { data: { count: 0 }, schema: StateSchema },
+    page: { document: '<main id="libraries-ssr" <button @000005203/>/>', schema: PageSchema },
+    admin: { document: "<aside/>", schema: AdminSchema },
+  });
+  enable_interactions(librariesMap);
+  add_interaction(librariesMap, Object.freeze({
+    id: "ssr-click",
+    subjectQuid: "000005203",
+    listener: Object.freeze({ event: "click", target: "element", capture: false, once: false, passive: false, missingTarget: "throw", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false }),
+    kind: "browser-local",
+    key: "clicker",
+    args: HsonData.from(null),
+  }));
+  add_interaction(librariesMap, Object.freeze({
+    id: "ssr-authoritative",
+    subjectQuid: "000005203",
+    listener: Object.freeze({ event: "click", target: "element", capture: false, once: false, passive: false, missingTarget: "throw", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false }),
+    kind: "locus-authoritative",
+    key: "state.interaction",
+    payload: HsonData.from(null),
+  }));
+  librariesLocus = hsonLocus.create({
+    map: librariesMap,
+    sessions: {},
+    actions: {
+      "state.increment": (context) => context.mutate((draft) => draft.lib("state").at(["count"]).set(2)),
+      "state.interaction": (context) => context.mutate((draft) => draft.lib("state").at(["count"]).set(5)),
+    },
+  });
+  const libraries = render_hosted_document({ authority: librariesLocus, document: "page" });
+  await librariesLocus.mutate((draft) => {
+    draft.lib("state").at(["count"]).set(1);
+    draft.lib("page").attrs.set({ kind: "path", path: [0] }, "data-recovered", "page");
+    draft.lib("admin").attrs.set({ kind: "path", path: [0] }, "data-recovered", "admin");
+  });
 
   socketServer = new WebSocketServer({ host: "127.0.0.1", port: 0 });
   await new Promise((resolveListen, rejectListen) => {
@@ -86,13 +136,28 @@ try {
   if (socketAddress === null || typeof socketAddress === "string") throw new Error("Browser socket server has no TCP address.");
   const socketUrl = `ws://127.0.0.1:${socketAddress.port}`;
 
+  librariesSocketServer = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  await new Promise((resolveListen, rejectListen) => {
+    librariesSocketServer.once("listening", resolveListen);
+    librariesSocketServer.once("error", rejectListen);
+  });
+  librariesSocketServer.on("connection", (socket) => librariesLocus.connect({
+    send(raw) { socket.send(raw); },
+    close(code, reason) { socket.close(code, reason); },
+    onMessage(listener) { const handler = (data) => listener(data.toString()); socket.on("message", handler); return () => socket.off("message", handler); },
+    onClose(listener) { socket.on("close", listener); return () => socket.off("close", listener); },
+  }));
+  const librariesSocketAddress = librariesSocketServer.address();
+  if (librariesSocketAddress === null || typeof librariesSocketAddress === "string") throw new Error("Libraries browser socket server has no TCP address.");
+  const librariesSocketUrl = `ws://127.0.0.1:${librariesSocketAddress.port}`;
+
   let reportResult;
   const browserResult = new Promise((resolveResult) => { reportResult = resolveResult; });
   server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
     if (url.pathname === "/__state") {
       response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ local, full, hosted, socketUrl }));
+      response.end(JSON.stringify({ local, localLibraries, full, hosted, socketUrl, libraries, librariesSocketUrl }));
       return;
     }
     if (url.pathname === "/__result") {
@@ -116,7 +181,9 @@ try {
       content = content
         .replace(moduleMatch[0], `<script type="module" src="/test.js"></script>`)
         .replace("<!--LOCAL_SSR-->", local.html)
+        .replace("<!--LOCAL_LIBRARIES_SSR-->", localLibraries.html)
         .replace("<!--HOSTED_SSR-->", hosted.html)
+        .replace("<!--LIBRARIES_SSR-->", libraries.html)
         .replace("</body>", `<script>
           (() => {
             const report = () => {
@@ -164,7 +231,9 @@ try {
     await closed;
   }
   await new Promise((resolveClose) => socketServer?.close(resolveClose) ?? resolveClose());
+  await new Promise((resolveClose) => librariesSocketServer?.close(resolveClose) ?? resolveClose());
   await new Promise((resolveClose) => server?.close(resolveClose) ?? resolveClose());
   locus?.dispose();
+  librariesLocus?.dispose();
   await rm(fixtureRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }

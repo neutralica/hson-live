@@ -3,7 +3,9 @@
 <head><meta charset="utf-8"><title>Document SSR acceptance</title></head>
 <body>
 <section id="local-shell"><!--LOCAL_SSR--></section>
+<section id="local-libraries-shell"><!--LOCAL_LIBRARIES_SSR--></section>
 <section id="hosted-shell"><!--HOSTED_SSR--></section>
+<section id="libraries-shell"><!--LIBRARIES_SSR--></section>
 <div id="result"></div>
 <script type="module">
 import {
@@ -12,7 +14,9 @@ import {
   create_echo,
   create_browser_locus_socket,
   hson,
+  install_libraries_snapshot,
   install_locus_snapshot,
+  install_locus_libraries_snapshot,
   render_document,
 } from "/bundle.js";
 
@@ -49,6 +53,25 @@ try {
 
   const browserLocal = render_document({ map: localMap });
   check("Node and browser-compatible local SSR bytes match", browserLocal.html === state.local.html);
+
+  const localLibrariesRoot = document.querySelector("#local-libraries-ssr");
+  const localLibrariesButton = localLibrariesRoot.firstElementChild;
+  const localLibrariesInstalled = install_libraries_snapshot(state.localLibraries.bootstrap);
+  const localLibrariesSelected = localLibrariesInstalled.map.lib(state.localLibraries.document);
+  const localLibrariesObserver = new MutationObserver(() => {});
+  localLibrariesObserver.observe(localLibrariesRoot, { subtree: true, childList: true, attributes: true, characterData: true });
+  const localLibrariesContinuation = continue_document({
+    map: localLibrariesInstalled.map,
+    document: localLibrariesSelected,
+    root: localLibrariesRoot,
+  });
+  check("local aggregate continuation resolves the selected document name", state.localLibraries.document === "page");
+  check("local aggregate continuation preserves root identity", localLibrariesContinuation.tree.dom.el() === localLibrariesRoot);
+  check("local aggregate continuation preserves descendant identity", localLibrariesRoot.firstElementChild === localLibrariesButton);
+  check("local aggregate continuation writes nothing", localLibrariesObserver.takeRecords().length === 0);
+  check("local aggregate install restores the complete cut", localLibrariesInstalled.map.lib("state").snap(["count"]) === 7 && localLibrariesInstalled.map.rev === state.localLibraries.bootstrap.revision);
+  localLibrariesObserver.disconnect();
+  localLibrariesContinuation.dispose();
 
   const fullMap = hson.liveMap.fromNode(state.full.bootstrap.root);
   if (fullMap.mode !== "document") throw new Error("full SSR bootstrap must be a document");
@@ -87,6 +110,50 @@ try {
   hostedContinuation.dispose();
   echo.dispose();
   browserSocket.dispose();
+
+  const librariesRoot = document.querySelector("#libraries-ssr");
+  const librariesButton = librariesRoot.firstElementChild;
+  const librariesInstalled = install_locus_libraries_snapshot(state.libraries.bootstrap);
+  check("aggregate install restores exact global revision N", librariesInstalled.map.rev === state.libraries.bootstrap.revision);
+  check("aggregate install restores every public Library", librariesInstalled.map.lib("admin").mode === "document" && librariesInstalled.map.lib("state").mode !== "document");
+  let hiddenUnavailable = false;
+  try { librariesInstalled.map.lib("@hson/canonical-interactions/v1"); } catch { hiddenUnavailable = true; }
+  check("hidden interaction Library remains unavailable", hiddenUnavailable);
+  const librariesSocket = create_browser_locus_socket(state.librariesSocketUrl);
+  await librariesSocket.ready;
+  const librariesEcho = create_echo({
+    socket: librariesSocket.socket,
+    map: librariesInstalled.map,
+    recovery: librariesInstalled.recovery,
+    session: {},
+  });
+  librariesEcho.connect();
+  await librariesEcho.session.create();
+  const selected = librariesEcho.map.lib(state.libraries.document);
+  let interactionCalls = 0;
+  const librariesContinuation = await continue_hosted_document({
+    echo: librariesEcho,
+    document: selected,
+    root: librariesRoot,
+    interactions: { local: { clicker: () => { interactionCalls += 1; } } },
+  });
+  check("aggregate recovery catches complete N up to N+1", librariesEcho.recovery.status === "caught_up" && librariesInstalled.map.rev === state.libraries.bootstrap.revision + 1);
+  check("selected aggregate DOM converges", librariesRoot.getAttribute("data-recovered") === "page");
+  check("other public document converges", librariesEcho.map.lib("admin").at([]).attrs.get("data-recovered") === "admin");
+  check("data Library converges", librariesEcho.map.lib("state").snap(["count"]) === 1);
+  librariesButton.click();
+  for (let attempt = 0; attempt < 50 && librariesEcho.map.lib("state").snap(["count"]) !== 5; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  check("canonical hidden interactions activate after aggregate continuation", interactionCalls === 1);
+  check("canonical authoritative interaction dispatches through Echo", librariesEcho.map.lib("state").snap(["count"]) === 5 && librariesInstalled.map.rev === state.libraries.bootstrap.revision + 2);
+  await librariesContinuation.tree.find.must.byQuid("000005203").async.attrs.set("data-async", "accepted");
+  check("aggregate AsyncLiveTree uses the global revision", librariesButton.getAttribute("data-async") === "accepted" && librariesInstalled.map.rev === state.libraries.bootstrap.revision + 3);
+  const action = await librariesEcho.action("state.increment");
+  check("configured aggregate action remains operational", action.type === "ack" && librariesEcho.map.lib("state").snap(["count"]) === 2 && librariesInstalled.map.rev === state.libraries.bootstrap.revision + 4);
+  librariesContinuation.dispose();
+  librariesEcho.dispose();
+  librariesSocket.dispose();
 
   document.documentElement.dataset.status = "pass";
   document.documentElement.dataset.detail = `${results.length}/${results.length}`;

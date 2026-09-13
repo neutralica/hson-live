@@ -217,6 +217,15 @@ logical map identity, incarnation, and the last-applied revision. It creates no
 socket, session, selector, or endpoint. Existing outer-bootstrap capture,
 encoding, decoding, transport metadata, and installation remain unchanged.
 
+Fixed Libraries authorities expose the parallel semantic
+`HostedLiveMapLibrariesSnapshot` through same-cut SSR. It is the complete
+`LiveMapLibrariesSnapshot` plus only `logicalMapId` and `incarnationId`.
+`install_locus_libraries_snapshot(snapshot)` restores the full aggregate mirror
+and returns `{ map, recovery }` for the existing `create_echo` aggregate path.
+The recovery cursor starts at the snapshot's one global revision. The snapshot
+contains no session, socket, endpoint, selector, route, attachment epoch, or
+other transport state.
+
 ## Persistence
 
 `create_persistent_locus` supports document maps and fixed multi-library maps. It uses a

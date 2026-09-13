@@ -18,6 +18,8 @@ import type {
   LiveMapGraphOp,
   LiveMapProjectedGraphEnsureQuidOp,
   LiveMapRootMode,
+  HostedLiveMapLibrariesSnapshot,
+  LiveMapLibrariesSnapshot,
   LivePath,
 } from "../../types/livemap.types.js";
 import {
@@ -36,7 +38,7 @@ import { validate_document_path } from "./livemap.document.path.js";
 
 export const HOSTED_REGISTRY_FORMAT = "hson-hosted-registry" as const;
 export const HOSTED_COMMIT_FORMAT = "hson-hosted-commit" as const;
-export const HOSTED_SNAPSHOT_FORMAT = "hson-hosted-snapshot" as const;
+export const LIVEMAP_LIBRARIES_SNAPSHOT_FORMAT = "hson-livemap-libraries-snapshot" as const;
 export const HOSTED_GRAPH_OP_FORMAT = "hson-hosted-graph-op" as const;
 export const HOSTED_ROOT_FORMAT = "hson-exact-value" as const;
 
@@ -100,22 +102,6 @@ export type HostedAggregateCommit = Readonly<{
   rev: number;
   operations: readonly HostedSemanticOperation[];
   replay: Readonly<{ operations: readonly HostedReplayOperation[] }>;
-}>;
-
-export type HostedAggregateSnapshot = Readonly<{
-  format: typeof HOSTED_SNAPSHOT_FORMAT;
-  authority: HostedAuthorityFence;
-  revision: number;
-  registry: HostedRegistry;
-  registryDigest: string;
-  libraries: readonly Readonly<{
-    name: string;
-    mode: LiveMapRootMode;
-    schema: HsonSchema;
-    schemaDigest: string;
-    root: Readonly<{ format: typeof HOSTED_ROOT_FORMAT; payload: string }>;
-  }>[];
-  identity: Readonly<{ epoch: number; issuedQuids: readonly string[] }>;
 }>;
 
 export type DecodedHostedOperation = Readonly<{
@@ -328,15 +314,13 @@ export function decode_hosted_root(input: unknown): HsonNode {
   return root;
 }
 
-export function assert_hosted_snapshot_bound(snapshot: HostedAggregateSnapshot): void {
+export function assert_libraries_snapshot_bound(snapshot: LiveMapLibrariesSnapshot): void {
   assert_encoded_bound(snapshot, HOSTED_MAX_SNAPSHOT_BYTES, "Hosted aggregate snapshot");
 }
 
-export function assert_hosted_snapshot_shape(snapshot: HostedAggregateSnapshot): void {
+export function assert_libraries_snapshot_shape(snapshot: LiveMapLibrariesSnapshot): void {
   const record = exact_record(snapshot, "Hosted aggregate snapshot");
-  exact_keys(record, ["format", "authority", "revision", "registry", "registryDigest", "libraries", "identity"], "Hosted aggregate snapshot");
-  const authority = exact_record(record.authority, "Hosted snapshot authority");
-  exact_keys(authority, ["logicalMapId", "incarnationId"], "Hosted snapshot authority");
+  exact_keys(record, ["format", "revision", "registry", "registryDigest", "libraries", "identity"], "Hosted aggregate snapshot");
   const identity = exact_record(record.identity, "Hosted snapshot identity");
   exact_keys(identity, ["epoch", "issuedQuids"], "Hosted snapshot identity");
   const registry = exact_record(record.registry, "Hosted snapshot registry");
@@ -357,6 +341,22 @@ export function assert_hosted_snapshot_shape(snapshot: HostedAggregateSnapshot):
     const item = exact_record(entry, "Hosted snapshot Library");
     exact_keys(item, ["name", "mode", "schema", "schemaDigest", "root"], "Hosted snapshot Library");
   }
+}
+
+export function assert_hosted_libraries_snapshot_shape(snapshot: HostedLiveMapLibrariesSnapshot): void {
+  const record = exact_record(snapshot, "Hosted aggregate snapshot");
+  exact_keys(record, ["format", "revision", "registry", "registryDigest", "libraries", "identity", "authority"], "Hosted aggregate snapshot");
+  const authority = exact_record(record.authority, "Hosted snapshot authority");
+  exact_keys(authority, ["logicalMapId", "incarnationId"], "Hosted snapshot authority");
+  const semantic = Object.freeze({
+    format: snapshot.format,
+    revision: snapshot.revision,
+    registry: snapshot.registry,
+    registryDigest: snapshot.registryDigest,
+    libraries: snapshot.libraries,
+    identity: snapshot.identity,
+  });
+  assert_libraries_snapshot_shape(semantic);
 }
 
 function encode_hosted_operation(name: string, mode: LiveMapRootMode, operation: LiveMapAnyOp): HostedReplayOperation {

@@ -1,4 +1,4 @@
-import type { LiveMapLibraries } from "../../types/livemap.types.js";
+import type { HostedLiveMapLibrariesSnapshot, LiveMapLibraries } from "../../types/livemap.types.js";
 import type {
   LocusActionPayloads,
   LocusMultiLibraryOptions,
@@ -7,7 +7,7 @@ import type {
   PersistentLocusMultiLibraryOptions,
 } from "../../types/locus.types.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
-import type { HostedAggregateCommit, HostedAggregateSnapshot } from "../livemap/livemap.hosted.js";
+import type { HostedAggregateCommit } from "../livemap/livemap.hosted.js";
 import { LocusPersistenceError } from "./locus.persistence.error.js";
 import {
   load_persistent_locus_hosted_aggregate_internal,
@@ -16,8 +16,9 @@ import {
 import { create_multi_library_locus_internal } from "./locus.multi-library.js";
 import { alias_locus_remote_action_admission_internal } from "./locus.remote-action.internal.js";
 import { alias_locus_retained_action_status_internal } from "./locus.action-status.internal.js";
+import { alias_locus_libraries_snapshot_authority_internal } from "./locus.libraries-snapshot.js";
 
-function checkpoint_record(snapshot: HostedAggregateSnapshot): object {
+function checkpoint_record(snapshot: HostedLiveMapLibrariesSnapshot): object {
   return Object.freeze({
     logicalMapId: snapshot.authority.logicalMapId,
     incarnationId: snapshot.authority.incarnationId,
@@ -127,6 +128,7 @@ async function persistent_view<
   })) as PersistentLocusMultiLibrary<TMap, TActions>;
   alias_locus_remote_action_admission_internal(locus, runtime.locus);
   alias_locus_retained_action_status_internal(locus, runtime.locus);
+  alias_locus_libraries_snapshot_authority_internal(locus, runtime.locus);
   return locus;
 }
 

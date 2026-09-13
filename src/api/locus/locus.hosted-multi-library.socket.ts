@@ -5,6 +5,7 @@ import type {
   LiveMapDocumentRequestTarget,
   LiveMapGraphCommit,
   LiveMapLibraries,
+  HostedLiveMapLibrariesSnapshot,
 } from "../../types/livemap.types.js";
 import type {
   LocusActionAuthorizer,
@@ -39,9 +40,6 @@ import {
 } from "./locus.document-actions.js";
 import {
   HOSTED_MAX_SNAPSHOT_BYTES,
-  assert_hosted_snapshot_bound,
-  assert_hosted_snapshot_shape,
-  type HostedAggregateSnapshot,
 } from "../livemap/livemap.hosted.js";
 import {
   DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES,
@@ -404,7 +402,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     connection.releaseRecoveryActivity = options.internal?.acquireRecoveryActivity?.();
     let outcome: Exclude<HostedPlanOutcome, "reject">;
     let reason: HostedSnapshotReason | undefined;
-    let snapshot: HostedAggregateSnapshot | undefined;
+    let snapshot: HostedLiveMapLibrariesSnapshot | undefined;
     let replay: readonly HostedHistoryEntry[] = Object.freeze([]);
     const head = locus.rev;
     if (cursor === undefined) {
