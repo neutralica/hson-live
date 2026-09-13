@@ -9,7 +9,7 @@ import {
   install_locus_libraries_snapshot,
   render_document,
   render_hosted_document,
-  SsrBootstrapEncodingError,
+  SsrBootstrapCodecError,
   type HsonSchema,
 } from "../src/index.ts";
 import { install_locus_snapshot } from "../src/api/locus/locus.bootstrap.ts";
@@ -40,12 +40,12 @@ const decodeText = (value: string): string => {
   }
   return new TextDecoder().decode(new Uint8Array(bytes));
 };
-const expectCode = (value: string, code: SsrBootstrapEncodingError["code"]): void => {
-  assert.throws(() => decode_ssr_bootstrap(value), (cause) => cause instanceof SsrBootstrapEncodingError
+const expectCode = (value: string, code: SsrBootstrapCodecError["code"]): void => {
+  assert.throws(() => decode_ssr_bootstrap(value), (cause) => cause instanceof SsrBootstrapCodecError
     && cause.phase === "decode" && cause.code === code && !cause.message.includes(value));
 };
 const expectReject = (value: string): void => {
-  assert.throws(() => decode_ssr_bootstrap(value), (cause) => cause instanceof SsrBootstrapEncodingError
+  assert.throws(() => decode_ssr_bootstrap(value), (cause) => cause instanceof SsrBootstrapCodecError
     && cause.phase === "decode" && !cause.message.includes(value));
 };
 
@@ -191,11 +191,11 @@ for (const index of [0, 7, Math.floor(encodedLocal.length / 2), encodedLocal.len
 assert.equal(({} as Record<string, unknown>).polluted, undefined);
 assert.equal(Object.prototype.hasOwnProperty.call(Object.prototype, "polluted"), false);
 assert.throws(() => decode_ssr_bootstrap(encodedLocal, { maxEncodedBytes: encodedLocal.length - 1 }),
-  (cause) => cause instanceof SsrBootstrapEncodingError && cause.code === "SSR_BOOTSTRAP_TOO_LARGE");
+  (cause) => cause instanceof SsrBootstrapCodecError && cause.code === "SSR_BOOTSTRAP_TOO_LARGE");
 assert.throws(() => encode_ssr_bootstrap(localBootstrap, { maxEncodedBytes: encodedLocal.length - 1 }),
-  (cause) => cause instanceof SsrBootstrapEncodingError && cause.phase === "encode" && cause.code === "SSR_BOOTSTRAP_TOO_LARGE");
+  (cause) => cause instanceof SsrBootstrapCodecError && cause.phase === "encode" && cause.code === "SSR_BOOTSTRAP_TOO_LARGE");
 assert.throws(() => encode_ssr_bootstrap(localBootstrap, { maxEncodedBytes: 0 }),
-  (cause) => cause instanceof SsrBootstrapEncodingError && cause.phase === "encode" && cause.code === "SSR_BOOTSTRAP_INPUT_INVALID");
+  (cause) => cause instanceof SsrBootstrapCodecError && cause.phase === "encode" && cause.code === "SSR_BOOTSTRAP_INPUT_INVALID");
 
 const malformedExact = structuredClone(parsed) as { payload: { viewStatePayload: string } };
 malformedExact.payload.viewStatePayload = "<malformed>";

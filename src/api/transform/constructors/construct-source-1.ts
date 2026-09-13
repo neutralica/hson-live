@@ -1,7 +1,7 @@
 // construct-source-1.ts
 
 import { HsonNode } from "../../../core/types.js";
-import { HsonSourceConstructor_2, OutputConstructor_2 } from "../../../types/constructor.types.js";
+import { HsonSourceConstructor_2 } from "../../../types/constructor.types.js";
 import { JsonValue } from "../../../core/types.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
 import { parse_external_html } from "../parsers/parse-external-html.transform.js";
@@ -10,7 +10,7 @@ import { parse_html } from "../parsers/parse-html.js";
 import { parse_json } from "../parsers/parse-json.js";
 import { construct_output_2 } from "./construct-output-2.js";
 import { SourceConstructor_1 } from "../../../types/constructor.types.js";
-import type { TransformFrame } from "../transform.types.js";
+import type { TransformFrame, TransformOutput } from "../transform.types.js";
 
 import {
   is_svg_markup,
@@ -74,7 +74,7 @@ export function construct_source_1(
     fromHtml(
       input: string | Element,
       options: HtmlSourceOptions = { sanitize: true }
-    ): OutputConstructor_2 {
+    ): TransformOutput {
       // An Element is the source root. `outerHTML` is needed only when the
       // untrusted browser sanitizer must cross its string-based security
       // boundary; trusted HTML and direct SVG Elements retain the DOM object.
@@ -138,7 +138,7 @@ export function construct_source_1(
      * - If your JSON encodes an HTML-like AST and you want HTML-style
      *   sanitization, you must opt into that later (Node → HTML → DOMPurify → Node).
      */
-    fromJson(input: string | JsonValue): OutputConstructor_2 {
+    fromJson(input: string | JsonValue): TransformOutput {
       const node: HsonNode = parse_json(input);
       const raw: string =
         typeof input === "string" ? input : JSON.stringify(input);
@@ -188,7 +188,7 @@ export function construct_source_1(
         return frame;
       };
 
-      const getOutput = (): OutputConstructor_2 => construct_output_2(getFrame());
+      const getOutput = (): TransformOutput => construct_output_2(getFrame());
 
       return {
         toNode(): HsonNode {
@@ -206,7 +206,7 @@ export function construct_source_1(
         toHtml() {
           return getOutput().toHtml();
         },
-        sanitizeBEWARE(): OutputConstructor_2 {
+        sanitizeBEWARE(): TransformOutput {
           return getOutput().sanitizeBEWARE();
         },
       };
@@ -225,7 +225,7 @@ export function construct_source_1(
      * canonical Node form. If it originated from untrusted HTML, that choice
      * should already be reflected in how it was constructed.
      */
-    fromNode(input: HsonNode): OutputConstructor_2 {
+    fromNode(input: HsonNode): TransformOutput {
       const node = normalize_detached_hson_semantic_value(input, "fromNode");
       scan_ingested_hson_node_quids(node, "fromNode");
       assert_invariants(node, "fromNode");
@@ -259,7 +259,7 @@ export function construct_source_1(
      *
      * A missing selector throws a structured transform error.
      */
-    queryDOM(selector: string): OutputConstructor_2 {
+    queryDOM(selector: string): TransformOutput {
       const element = document.querySelector<HTMLElement>(selector);
 
       if (!element) {
@@ -288,7 +288,7 @@ export function construct_source_1(
      * distinct from `hson.liveTree.queryBody().graft()`, which treats the body
      * Element itself as the managed root.
      */
-    queryBody(): OutputConstructor_2 {
+    queryBody(): TransformOutput {
       const body = document.body as HTMLElement | null;
 
       if (!body) {

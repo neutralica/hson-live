@@ -309,7 +309,7 @@ type LocusSharedOptions<
   trace?: LiveTraceSink;
 }>;
 
-export type ProjectedLocusOptions<
+export type DataLocusOptions<
   TState extends JsonValue | undefined = JsonValue | undefined,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = LocusSharedOptions<LiveMap<TState>, TActions> & Readonly<{

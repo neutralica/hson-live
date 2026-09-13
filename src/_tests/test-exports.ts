@@ -7,7 +7,7 @@ import {
   create_live_trace_console_sink,
 } from "../diagnostics/index.js";
 import type {
-  ProjectedLocusOptions,
+  DataLocusOptions,
   LocusActionAuthorizationContext,
   LocusActionAuthorizer,
   LiveTraceCollector,
@@ -80,7 +80,7 @@ type DataLiveMapOmitsInstall = Expect<
 >;
 type TraceSinkHasOneMethod = Expect<Equal<keyof LiveTraceSink, "emit">>;
 type TraceConfigurationIsOptional = Expect<
-  Equal<undefined extends ProjectedLocusOptions["trace"] ? true : false, true>
+  Equal<undefined extends DataLocusOptions["trace"] ? true : false, true>
 >;
 type TraceEventIsReadonly = Expect<
   Equal<Readonly<LiveTraceEvent>, LiveTraceEvent>
@@ -184,7 +184,7 @@ function assert_document_surface(documentMap: DocumentLiveMapSurface): void {
 function assert_trace_diagnostics_exports(): LiveTraceCollector {
   const collector = create_live_trace_collector({ capacity: 8 });
   const sink: LiveTraceSink = create_live_trace_console_sink({ write: () => undefined });
-  const options: ProjectedLocusOptions = { trace: sink };
+  const options: DataLocusOptions = { trace: sink };
   void options;
   return collector;
 }
@@ -199,11 +199,11 @@ function assert_locus_authorization_types(): void {
     return context.session.resumable;
   };
   const asyncPolicy: LocusActionAuthorizer<Actions> = async () => true;
-  const options: ProjectedLocusOptions<Readonly<{ value: number }>, Actions> = {
+  const options: DataLocusOptions<Readonly<{ value: number }>, Actions> = {
     state: { value: 0 },
     authorizeAction: sync,
   };
-  const asyncOptions: ProjectedLocusOptions<Readonly<{ value: number }>, Actions> = {
+  const asyncOptions: DataLocusOptions<Readonly<{ value: number }>, Actions> = {
     state: { value: 0 },
     authorizeAction: asyncPolicy,
   };

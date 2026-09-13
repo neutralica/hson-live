@@ -149,7 +149,7 @@ check("SSR root and subpath exports share runtime identity", () => {
   const source = `
     import {
       DocumentSsrError as RootError,
-      SsrBootstrapEncodingError as RootBootstrapError,
+      SsrBootstrapCodecError as RootBootstrapError,
       encode_ssr_bootstrap as rootEncode,
       decode_ssr_bootstrap as rootDecode,
       install_libraries_snapshot as rootLibrariesInstall,
@@ -161,7 +161,7 @@ check("SSR root and subpath exports share runtime identity", () => {
     import { install_locus_libraries_snapshot as locusLibrariesInstall } from "hson-live/locus";
     import {
       DocumentSsrError as SsrError,
-      SsrBootstrapEncodingError as SsrBootstrapError,
+      SsrBootstrapCodecError as SsrBootstrapError,
       encode_ssr_bootstrap as ssrEncode,
       decode_ssr_bootstrap as ssrDecode,
       render_document as ssrRender,
@@ -197,17 +197,42 @@ check("SSR declarations expose only the approved semantic surface", () => {
     "EncodedSsrBootstrap",
     "DecodedSsrBootstrap",
     "SsrBootstrapCodecOptions",
-    "SsrBootstrapEncodingError",
+    "SsrBootstrapCodecError",
     "encode_ssr_bootstrap",
     "decode_ssr_bootstrap",
   ]) assert.equal(declaration.includes(approved), true, `${approved} must be exported`);
   for (const privateName of [
+    "SsrBootstrapEncodingError",
     "BrowserRealizationPlan",
     "BrowserRealizationIncompatibilityError",
     "plan_browser_realization",
     "serialize_browser_realization",
     "set_document_ssr_hook_for_tests",
   ]) assert.equal(declaration.includes(privateName), false, `${privateName} must remain private`);
+});
+
+check("stale public terminology is absent from maintained declarations", () => {
+  const declarations = [
+    "index.d.ts",
+    "api/locus/index.d.ts",
+    "api/ssr/index.d.ts",
+    "api/transform/index.d.ts",
+    "types/constructor.types.d.ts",
+    "types/locus.core.types.d.ts",
+    "types/locus.persistence.types.d.ts",
+  ].map((path) => readFileSync(resolve(repositoryRoot, "dist", path), "utf8")).join("\n");
+  for (const stale of [
+    "ProjectedLocusOptions",
+    '"projected-data"',
+    "OutputConstructor_2",
+    "SsrBootstrapEncodingError",
+  ]) assert.equal(declarations.includes(stale), false, `${stale} must be absent`);
+  for (const retained of [
+    "DataLocusOptions",
+    '"data"',
+    "TransformOutput",
+    "SsrBootstrapCodecError",
+  ]) assert.equal(declarations.includes(retained), true, `${retained} must be present`);
 });
 
 const directHsonDataSources = new Map<string, string>([

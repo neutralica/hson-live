@@ -91,7 +91,7 @@ export type {
   LocusActionHandler,
   LocusActions,
   LocusMapValue,
-  ProjectedLocusOptions,
+  DataLocusOptions,
   LocusOptions,
   LocusMultiLibraryActionContext,
   LocusMultiLibraryActionHandler,

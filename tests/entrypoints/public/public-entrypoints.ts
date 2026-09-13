@@ -16,7 +16,7 @@ import {
   continue_hosted_document,
   DocumentContinuationError,
   DocumentSsrError,
-  SsrBootstrapEncodingError,
+  SsrBootstrapCodecError,
   encode_ssr_bootstrap,
   decode_ssr_bootstrap,
   render_document,
@@ -50,6 +50,29 @@ import {
   type AuthoritativeInteractionDescriptor,
 } from "hson-live";
 
+import type { DataLocusOptions } from "hson-live/locus";
+import type { TransformOutput } from "hson-live/transform";
+// @ts-expect-error The retired projected-data options name was hard-removed.
+import type { ProjectedLocusOptions } from "hson-live/locus";
+// @ts-expect-error The implementation-history Transform output name was hard-removed.
+import type { OutputConstructor_2 } from "hson-live/transform";
+// @ts-expect-error The encoding-only SSR error name was hard-removed.
+import { SsrBootstrapEncodingError as RemovedRootBootstrapError } from "hson-live";
+// @ts-expect-error The encoding-only SSR error name was hard-removed from the SSR subpath.
+import { SsrBootstrapEncodingError as RemovedSsrBootstrapError } from "hson-live/ssr";
+
+declare const dataLocusOptions: DataLocusOptions<{ count: number }>;
+declare const transformOutput: TransformOutput;
+const dataPersistedMapKind: import("hson-live").LocusPersistedMapKind = "data";
+// @ts-expect-error The retired persisted data discriminant is not accepted.
+const removedPersistedMapKind: import("hson-live").LocusPersistedMapKind = "projected-data";
+void dataLocusOptions;
+void transformOutput;
+void dataPersistedMapKind;
+void removedPersistedMapKind;
+void RemovedRootBootstrapError;
+void RemovedSsrBootstrapError;
+
 declare const continuationMap: import("hson-live/livemap").DocumentLiveMap;
 declare const continuationRoot: Element;
 declare const continuationEcho: import("hson-live/echo").Echo<typeof continuationMap>;
@@ -74,7 +97,7 @@ const ssrKind: SsrBootstrapKind = decodedSsr.kind;
 const ssrOptions: SsrBootstrapCodecOptions = { maxEncodedBytes: 1024 };
 void ssrKind;
 void ssrOptions;
-void SsrBootstrapEncodingError;
+void SsrBootstrapCodecError;
 declare const ssrAuthority: import("hson-live/locus").LocusBootstrapAuthority;
 const hostedSsr: HostedDocumentSsr = render_hosted_document({ authority: ssrAuthority });
 const browserHtml: BrowserRealizationHtml = localSsr.html;

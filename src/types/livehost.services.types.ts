@@ -1,7 +1,7 @@
 // Multi-authority store, persistence residency, and lifecycle registry contracts.
 
 import type { DocumentLiveMap, LiveMap } from "./livemap.types.js";
-import type { Locus, ProjectedLocusOptions } from "./locus.core.types.js";
+import type { DataLocusOptions, Locus } from "./locus.core.types.js";
 import type { LocusActionPayloads, LocusConnectionContext, LocusSocketLike } from "./locus.protocol.types.js";
 import type {
   LocusDisposer,
@@ -37,7 +37,7 @@ export type LiveHostStoreEntry<TState extends import("../core/types.js").JsonVal
   host: Locus<LiveMap<TState>, TActions>;
 }>;
 
-export type LiveHostStoreCreateOptions<TState extends import("../core/types.js").JsonValue | undefined = import("../core/types.js").JsonValue | undefined, TActions extends LocusActionPayloads = LocusActionPayloads> = ProjectedLocusOptions<TState, TActions>;
+export type LiveHostStoreCreateOptions<TState extends import("../core/types.js").JsonValue | undefined = import("../core/types.js").JsonValue | undefined, TActions extends LocusActionPayloads = LocusActionPayloads> = DataLocusOptions<TState, TActions>;
 
 export type LiveHostStore = Readonly<{
   has: (id: LiveHostStoreId) => boolean;

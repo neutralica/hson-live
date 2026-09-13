@@ -5,7 +5,7 @@ import { $HSON_FRAME, $RENDER, } from "../core/constants.js";
 import { HsonNode } from "../core/types.js";
 import { JsonValue } from "../core/types.js";
 import { LiveTree } from "../api/livetree/livetree.js";
-import type { HsonCanonical, TransformBinarySerialize } from "../api/transform/transform.types.js";
+import type { HsonCanonical, TransformOutput } from "../api/transform/transform.types.js";
 
 /**
  * Controls per-call HTML sanitization for `fromHtml(...)`.
@@ -110,7 +110,7 @@ export type OutputRenderFormats =
  * SourceConstructor_1
  *
  * Lowest-level “step 1” builder. Most inputs produce a normalized frame and
- * move to `OutputConstructor_2`. Every normalized source also exposes the
+ * move to `TransformOutput`. Every normalized source also exposes the
  * direct `.toNode()` terminal.
  *
  *  - fromHson(input)
@@ -161,7 +161,7 @@ export interface SourceConstructor_1 {
    * normalized node frame for later `toNode()`, output selection, `value()`,
    * or `serialize()` calls.
    */
-  fromJson(input: string | JsonValue): OutputConstructor_2;
+  fromJson(input: string | JsonValue): TransformOutput;
      /**
      * HTML → normalized Hson frame.
      *
@@ -186,7 +186,7 @@ export interface SourceConstructor_1 {
      * normalized node frame for later `toNode()`, output selection, `value()`,
      * or `serialize()` calls.
      */
-  fromHtml(input: string | Element, options?: HtmlSourceOptions): OutputConstructor_2;
+  fromHtml(input: string | Element, options?: HtmlSourceOptions): TransformOutput;
   /**
    * Existing `HsonNode` → normalized Hson frame.
    *
@@ -200,7 +200,7 @@ export interface SourceConstructor_1 {
    * normalized node frame for later `toNode()`, output selection, `value()`,
    * or `serialize()` calls.
    */
-  fromNode(input: HsonNode): OutputConstructor_2;
+  fromNode(input: HsonNode): TransformOutput;
   
   /**
    * Existing DOM subtree → normalized Hson frame.
@@ -216,7 +216,7 @@ export interface SourceConstructor_1 {
    * This method snapshots DOM content into the transform pipeline. It does
    * not graft or construct `LiveTree` directly.
    */
-  queryDOM(selector: string): OutputConstructor_2;
+  queryDOM(selector: string): TransformOutput;
   
   /**
    * `document.body` subtree → normalized Hson frame.
@@ -230,81 +230,7 @@ export interface SourceConstructor_1 {
    * This method snapshots the current body content into the transform
    * pipeline. It does not graft or construct `LiveTree` directly.
    */
-  queryBody(): OutputConstructor_2;
-}
-
-/******************************************************************************
- * Output Selection – Step 2
- ******************************************************************************/
-
-/***************
- * OutputConstructor_2
- *
- * “Step 2” of the pipeline: choose the *output* representation for
- * the current frame. Each `toX()`:
- *
- *   1) selects a render format (JSON / Hson / HTML),
- *   2) ensures that representation is materialized in the frame,
- *   3) returns a merged type that exposes:
- *        - step 3: OptionsConstructor_3<K>
- *        - step 4: RenderConstructor_4<K>
- *
- * Methods:
- *
- *  - toJson()
- *      Choose JSON output. value() yields the in-memory JsonValue.
- *
- *  - toHson()
- *      Choose Hson text output. Its finalizer serializes only; use the
- *      source-level toNode() terminal for the canonical graph.
- *
- *  - toHtml()
- *      Choose serialization-only HTML output.
- *
- *  - sanitizeBEWARE()
- *      Special case: take the current frame.node:
- *
- *        1. serialize it to HTML (unsafe/raw),
- *        2. run that HTML through the *untrusted* HTML sanitizer
- *           (DOMPurify via parse_external_html / sanitize_html),
- *        3. parse the sanitized HTML back into nodes,
- *        4. return a *new* OutputConstructor_2 rooted at those nodes.
- *
- *      This only makes sense when the frame encodes HTML semantics.
- *      If used on non-HTML-shaped trees, the sanitizer will happily
- *      delete underscored tags and may return nothing.
- ***************/
-export interface OutputConstructor_2 {
-  /** Return the canonical normalized graph without serializing and reparsing. */
-  toNode(): HsonNode;
-  toBinary(): TransformBinarySerialize;
-  toJson(): OptionsConstructor_3<(typeof $RENDER)["JSON"]> & JsonValueConstructor_4;
-  toHson(): HsonOptionsConstructor_3 & HsonSerializeConstructor_4;
-  toHtml(): OptionsConstructor_3<(typeof $RENDER)["HTML"]> & SerializeConstructor_4;
-  /**
-   * 🔥 HTML-style sanitization applied *after* source selection.
-   *
-   * This:
-   *   1) takes the current Node (frame.node),
-   *   2) serializes it to HTML,
-   *   3) runs that HTML through the *untrusted* HTML pipeline
-   *      (DOMPurify via `parse_external_html` / 'sanitize_html'),
-   *   4) parses the sanitized HTML back into Nodes,
-   *   5) returns a NEW builder rooted at that sanitized Nodes.
-   *
-   * Use cases:
-   * - unknown/untrusted JSON/Hson/Nodes that semantically encode HTML
-   *   may need to be run through the HTML sanitizer before touching the DOM.
-   *
-   * Dangers:
-   * - If your data is *not* HTML-shaped (e.g. is JSON, or nodes encoding same),
-   *   this will return an empty string; the DOMPuriufy sees underscored tags
-   *   as invalid markup and strips aggressively.
-   *
-   *  *** ONLY call this on HsonNodes that encode HTML ***
-   *
-   */
-  sanitizeBEWARE(): OutputConstructor_2;
+  queryBody(): TransformOutput;
 }
 
 /**
@@ -313,7 +239,7 @@ export interface OutputConstructor_2 {
  * Parsing terminates directly with `toNode()`. All ordinary output projections
  * are retained; the Hson serializer finalizer intentionally has no `parse()`.
  */
-export interface HsonSourceConstructor_2 extends OutputConstructor_2 {}
+export interface HsonSourceConstructor_2 extends TransformOutput {}
 
 /**
  * Bundles:

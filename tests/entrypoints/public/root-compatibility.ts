@@ -233,7 +233,7 @@ import type {
   LocusDocumentTargetPayload,
   LocusActions,
   LocusOptions,
-  ProjectedLocusOptions,
+  DataLocusOptions,
   Echo,
   EchoActionFn,
   LocusClientActionResult,

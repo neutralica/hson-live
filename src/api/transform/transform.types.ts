@@ -133,7 +133,4 @@ export interface TransformOutput {
   sanitizeBEWARE(): TransformOutput;
 }
 
-/** DOM-free transform output constructor retained under the established name. */
-export type OutputConstructor_2 = TransformOutput;
-
 export interface HsonTransformSource extends TransformOutput {}

@@ -488,7 +488,7 @@ export function create_solo_echo_internal<
         if (!("hson" in snapshot)) {
           throw new LocusDocumentSnapshotDecodeError(
             "LOCUS_RECOVERY_SNAPSHOT_MODE_MISMATCH",
-            "Canonical document snapshot cannot restore a projected-data mirror.",
+            "Canonical document snapshot cannot restore a data mirror.",
           );
         }
         const staged = make_classified_livemap(parse_hson(snapshot.hson));

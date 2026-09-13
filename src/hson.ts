@@ -16,7 +16,6 @@ import type {
   TransformOutput,
 } from "./api/transform/transform.types.js";
 import type { HsonNode, JsonValue } from "./core/types.js";
-import type { OutputConstructor_2 } from "./types/constructor.types.js";
 
 export {
   hsonLocus,
@@ -56,8 +55,8 @@ export interface HsonFacade {
   readonly fromBinary: (input: Uint8Array, options?: BinaryDecodeOptions) => TransformOutput;
   readonly fromJson: (input: string | JsonValue) => TransformOutput;
   readonly fromNode: (node: HsonNode) => TransformOutput;
-  readonly fromTrustedHtml: (input: string | Element) => OutputConstructor_2;
-  readonly fromUntrustedHtml: (input: string | Element) => OutputConstructor_2;
+  readonly fromTrustedHtml: (input: string | Element) => TransformOutput;
+  readonly fromUntrustedHtml: (input: string | Element) => TransformOutput;
   readonly liveMap: typeof hsonLiveMap;
   readonly liveTree: typeof hsonLiveTree;
   readonly locus: typeof hsonLocus;

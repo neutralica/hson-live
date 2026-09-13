@@ -10,7 +10,6 @@ import {
 import type {
   BinaryDecodeOptions,
   HsonTransformSource,
-  OutputConstructor_2,
   TransformOutput,
 } from "./transform.types.js";
 import { hsonCalc, type HsonNumber } from "./hson-calc.js";
@@ -21,8 +20,8 @@ export interface HsonTransformFacade {
   fromBinary(input: Uint8Array, options?: BinaryDecodeOptions): TransformOutput;
   fromJson(input: string | JsonValue): TransformOutput;
   fromNode(node: HsonNode): TransformOutput;
-  fromTrustedHtml(input: string): OutputConstructor_2;
-  fromUntrustedHtml(input: string): OutputConstructor_2;
+  fromTrustedHtml(input: string): TransformOutput;
+  fromUntrustedHtml(input: string): TransformOutput;
 }
 
 /**

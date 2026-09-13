@@ -11,7 +11,7 @@ import type {
   LiveMapGraphReplaceAttrsOp,
   LiveMap,
   LiveTree,
-  ProjectedLocusOptions,
+  DataLocusOptions,
   LocusPersistenceAdapter,
   LocusPersistedCommit,
   LocusPersistedDocumentCheckpoint,
@@ -185,7 +185,7 @@ persistentElementHost.then((host) => {
 });
 // @ts-expect-error persistence is available only through the async persistent constructor
 create_locus({ map: elementCandidate, persistence: persistenceAdapter });
-// @ts-expect-error projected-data persistence is deliberately unsupported in version one
+// @ts-expect-error data persistence is deliberately unsupported in version one
 create_persistent_locus({ map: existingProjectedMap, persistence: persistenceAdapter });
 const elementHostAlias: Locus<DocumentLiveMap> = elementHost;
 const documentTarget = { kind: "path", path: [] } as const;
@@ -249,7 +249,7 @@ const multiNodeDocumentClient = create_echo({
 multiNodeDocumentClient.subscribe([]);
 
 type BothForms = Readonly<{ state: { count: number }; map: DocumentLiveMap }>;
-type ConstructorOptions = ProjectedLocusOptions<{ count: number }> | LocusOptions<DocumentLiveMap>;
+type ConstructorOptions = DataLocusOptions<{ count: number }> | LocusOptions<DocumentLiveMap>;
 type StateAndMapAreRejected = Assert<Equal<BothForms extends ConstructorOptions ? true : false, false>>;
 
 void elementHostAlias;

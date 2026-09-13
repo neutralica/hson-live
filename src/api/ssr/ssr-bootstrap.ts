@@ -17,7 +17,7 @@ import {
   assert_libraries_snapshot_bound,
   assert_libraries_snapshot_shape,
 } from "../livemap/livemap.hosted.js";
-import { SsrBootstrapEncodingError } from "./ssr-bootstrap.error.js";
+import { SsrBootstrapCodecError } from "./ssr-bootstrap.error.js";
 import type {
   DecodedSsrBootstrap,
   EncodedSsrBootstrap,
@@ -96,7 +96,7 @@ export function encode_ssr_bootstrap(
     const encoded = encode_base64url(bytes);
     return encoded as EncodedSsrBootstrap;
   } catch (cause) {
-    if (cause instanceof SsrBootstrapEncodingError) throw cause;
+    if (cause instanceof SsrBootstrapCodecError) throw cause;
     throw error("encode", "SSR_BOOTSTRAP_INPUT_INVALID", "SSR bootstrap input is invalid.", cause);
   }
 }
@@ -155,7 +155,7 @@ export function decode_ssr_bootstrap(
   let decoded: DecodedSsrBootstrap;
   try { decoded = decode_payload(envelope.kind, envelope.payload); }
   catch (cause) {
-    if (cause instanceof SsrBootstrapEncodingError) throw cause;
+    if (cause instanceof SsrBootstrapCodecError) throw cause;
     throw error("decode", "SSR_BOOTSTRAP_PAYLOAD_INVALID", "SSR bootstrap payload is invalid.", cause);
   }
   let canonical: boolean;
@@ -498,6 +498,6 @@ function require_string(value: unknown): string { if (typeof value !== "string")
 function require_root_format(value: unknown): "hson-exact-value" { if (value !== "hson-exact-value") throw new TypeError("Root codec is malformed."); return value; }
 function decoded_schema(value: string): HsonSchema { return value as HsonSchema; }
 function is_kind(value: unknown): value is SsrBootstrapKind { return value === "document" || value === "hosted-document" || value === "libraries" || value === "hosted-libraries"; }
-function error(phase: "encode" | "decode", code: ConstructorParameters<typeof SsrBootstrapEncodingError>[1], message: string, cause?: unknown): SsrBootstrapEncodingError {
-  return new SsrBootstrapEncodingError(phase, code, message, cause);
+function error(phase: "encode" | "decode", code: ConstructorParameters<typeof SsrBootstrapCodecError>[1], message: string, cause?: unknown): SsrBootstrapCodecError {
+  return new SsrBootstrapCodecError(phase, code, message, cause);
 }

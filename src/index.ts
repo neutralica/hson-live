@@ -11,7 +11,7 @@ export {
     encode_ssr_bootstrap,
     decode_ssr_bootstrap,
     DocumentSsrError,
-    SsrBootstrapEncodingError,
+    SsrBootstrapCodecError,
 } from "./api/ssr/index.js";
 export type {
     BrowserRealizationHtml,

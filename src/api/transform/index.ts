@@ -14,7 +14,6 @@ export type {
   HsonSchema,
   HsonSchemaMutationCandidate,
   HsonTransformSource,
-  OutputConstructor_2,
   TransformFrameOptions,
   TransformBinarySerialize,
   TransformHsonOptions,

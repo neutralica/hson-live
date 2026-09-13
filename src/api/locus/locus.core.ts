@@ -17,7 +17,7 @@ import type {
   LocusConnectionContext,
   LocusDisposer,
   LocusOptions,
-  ProjectedLocusOptions,
+  DataLocusOptions,
   LocusMultiLibrary,
   LocusMultiLibraryOptions,
   LocusMutationDraft,
@@ -187,7 +187,7 @@ export function create_locus<
 export function create_locus<
   TState extends JsonValue | undefined = JsonValue | undefined,
   TActions extends LocusActionPayloads = LocusActionPayloads,
->(options?: ProjectedLocusOptions<TState, TActions>): Locus<LiveMap<TState>, TActions>;
+>(options?: DataLocusOptions<TState, TActions>): Locus<LiveMap<TState>, TActions>;
 export function create_locus<
   TMap extends LiveMapAuthority,
   TActions extends LocusActionPayloads = LocusActionPayloads,
@@ -201,7 +201,7 @@ export function create_locus(
       "Locus persistence requires the asynchronous persistent-Locus constructor.",
     );
   }
-  const options = input as ProjectedLocusOptions | LocusOptions<LiveMapAuthority>;
+  const options = input as DataLocusOptions | LocusOptions<LiveMapAuthority>;
   if ("map" in options && options.map !== undefined) {
     if (is_public_multi_library_livemap(options.map)) {
       return create_multi_library_locus(options as never);

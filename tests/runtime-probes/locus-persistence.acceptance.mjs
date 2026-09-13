@@ -457,7 +457,7 @@ await check("restored authority serves Hson, view-state, and replay recovery", a
   await store.unload("recovery-after-load");
 });
 
-await check("exclusive actions persist through the gate and projected persistence is deferred", async () => {
+await check("exclusive actions persist through the gate and data persistence is deferred", async () => {
   const actionAdapter = new MemoryPersistenceAdapter();
   const actionMap = element();
   const actionHost = await create_persistent_locus({
@@ -541,7 +541,7 @@ await check("corrupt persisted envelopes and tails reject without partial regist
   const corruptions = [
     (state) => { state.checkpoint.logicalMapId = "wrong"; },
     (state) => { state.checkpoint.incarnationId = ""; },
-    (state) => { state.checkpoint.mapKind = "projected-data"; },
+    (state) => { state.checkpoint.mapKind = "data"; },
     (state) => { state.checkpoint.snapshot.format = "unknown"; },
     (state) => { state.checkpoint.snapshot.formatVersion = 1; },
     (state) => { state.checkpoint.snapshot.payload = "not valid view state"; },

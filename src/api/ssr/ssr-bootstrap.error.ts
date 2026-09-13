@@ -1,5 +1,5 @@
 /** Failure phase for deterministic SSR bootstrap encoding or decoding. */
-export class SsrBootstrapEncodingError extends Error {
+export class SsrBootstrapCodecError extends Error {
   public constructor(
     public readonly phase: "encode" | "decode",
     public readonly code:
@@ -15,6 +15,6 @@ export class SsrBootstrapEncodingError extends Error {
     public override readonly cause?: unknown,
   ) {
     super(message, cause === undefined ? undefined : { cause });
-    this.name = "SsrBootstrapEncodingError";
+    this.name = "SsrBootstrapCodecError";
   }
 }

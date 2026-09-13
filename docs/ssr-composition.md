@@ -111,7 +111,7 @@ string values or ordered entry-array contents, including names such as
 positive safe integer. The default is 96 MiB and is checked before base64
 decoding; the existing snapshot codecs, schemas, registries, roots, identity
 ledgers, and installers retain their deeper semantic bounds and validation.
-`SsrBootstrapEncodingError` reports `encode` or `decode` plus a compact code
+`SsrBootstrapCodecError` reports `encode` or `decode` plus a compact code
 without copying attacker-controlled payload text into its message.
 
 The codec preserves the exact admitted semantic state: revisions, `-0`, array
