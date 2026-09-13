@@ -87,7 +87,7 @@ export function reconcile_browser_realization_children(
   const element = get_el_for_node(owner);
   if (element === undefined) return;
   const parentNamespace = namespace_for_element(element);
-  const plan = plan_browser_realization(owner, { parentNamespace });
+  const plan = plan_browser_realization(owner, { parentNamespace, capability: "dom" });
   const root = plan.roots[0];
   if (root?.kind !== "element") throw new Error("Mounted owner did not produce one Element plan.");
   const target = child_target(element, root);

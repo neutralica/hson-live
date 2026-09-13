@@ -1,12 +1,13 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
-import { copyFile, mkdtemp, readFile, rm } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
-const fixtureRoot = await mkdtemp(join(tmpdir(), "hson-canonical-interactions-browser-"));
+const temporaryRoot = join(repositoryRoot, "tmp");
+await mkdir(temporaryRoot, { recursive: true });
+const fixtureRoot = await mkdtemp(join(temporaryRoot, "canonical-interactions-browser-"));
 const htmlName = "index.html";
 const bundleName = ".canonical-interactions.library.bundle.js";
 

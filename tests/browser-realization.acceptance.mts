@@ -5,6 +5,8 @@ import { plan_browser_realization, BrowserRealizationIncompatibilityError } from
 import { serialize_browser_realization } from "../src/internal/browser-realization/browser-realization-serialize.ts";
 import { materialize_browser_realization, match_browser_realization_root } from "../src/internal/browser-realization/browser-realization-dom.ts";
 import { create_livetree_runtime } from "../src/api/livetree/runtime/livetree-runtime.ts";
+import { project_livetree } from "../src/api/livetree/creation/project-live-tree.ts";
+import { hsonLiveMap } from "../src/api/livemap/index.ts";
 import { get_dom_for_node } from "../src/api/livetree/utils/node-map-helpers.ts";
 import { FakeElement, install_fake_document } from "./helpers/fake-document.mts";
 
@@ -21,6 +23,26 @@ const element = (tag: string, content: Array<HsonNode | Primitive> = [], attrs?:
   ...(attrs === undefined ? {} : { $_attrs: attrs }),
   $_content: content.length === 0 ? [] : [{ $_tag: "_hson_elem", $_content: content }],
 });
+const rejectsSsr = (node: HsonNode, reason: RegExp): BrowserRealizationIncompatibilityError => {
+  let emitted = false;
+  assert.throws(
+    () => {
+      const plan = plan_browser_realization(node);
+      emitted = true;
+      serialize_browser_realization(plan);
+    },
+    (cause) => cause instanceof BrowserRealizationIncompatibilityError
+      && reason.test(cause.reason)
+      && cause.canonicalPath.length !== 0,
+  );
+  assert.equal(emitted, false, "SSR incompatibility must originate before serialization");
+  try {
+    plan_browser_realization(node);
+  } catch (cause) {
+    if (cause instanceof BrowserRealizationIncompatibilityError) return cause;
+  }
+  throw new Error("expected browser realization incompatibility");
+};
 
 {
   const first = leaf("a");
@@ -118,5 +140,63 @@ assert.throws(() => plan_browser_realization(element("table", [element("div")]))
 assert.throws(() => plan_browser_realization(element("svg", [], { viewBox: "0", viewbox: "1" })), /duplicate browser name/);
 assert.throws(() => plan_browser_realization(element("html", [element("body"), element("head")])), /ordered canonical/);
 assert.throws(() => plan_browser_realization(element("html", [element("head", [element("div")]), element("body")])), /relocated/);
+
+for (const tag of ["area", "base", "basefont", "bgsound", "br", "col", "command", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"]) {
+  const candidate = tag === "col"
+    ? element("table", [element("colgroup", [element("col", [leaf("child")])])])
+    : element(tag, [leaf("child")]);
+  rejectsSsr(candidate, /void element/);
+}
+
+for (const [name, node, reason] of [
+  ["p disruptive child", element("p", [element("div", [leaf("x")])]), /implicitly close.*<p>/],
+  ["nested p", element("p", [element("p", [leaf("x")])]), /implicitly close.*<p>/],
+  ["nested li", element("li", [element("li")]), /nested <li>/],
+  ["dt to dd", element("dt", [element("dd")]), /<dt> or <dd>/],
+  ["nested form", element("form", [element("form")]), /nested <form>/],
+  ["nested button", element("button", [element("button")]), /nested <button>/],
+  ["nested anchor", element("a", [element("a")]), /nested <a>/],
+  ["nested nobr", element("nobr", [element("nobr")]), /nested <nobr>/],
+  ["invalid select child", element("select", [element("div")]), /invalid in select/],
+  ["option element child", element("select", [element("option", [element("span")])]), /option parser context/],
+  ["row outside table", element("main", [element("tr", [element("td", [leaf("x")])])]), /parser-valid parent/],
+  ["cell outside row", element("main", [element("td")]), /parser-valid parent/],
+  ["table text", element("table", [leaf("x")]), /foster-parented|relocate/],
+  ["section text", element("table", [element("tbody", [leaf("x")])]), /table-section insertion mode/],
+  ["row text", element("table", [element("tbody", [element("tr", [leaf("x")])])]), /table-row insertion mode/],
+  ["invalid head", element("html", [element("head", [element("main")]), element("body")]), /relocated/],
+] as const) {
+  const failure = rejectsSsr(node, reason);
+  assert.match(failure.message, /Browser realization is incompatible at /, name);
+}
+
+for (const supported of [
+  element("div", [element("span", [leaf("x")])]),
+  element("form", [element("label", [leaf("name")]), element("input")]),
+  element("ul", [element("li", [element("ul", [element("li", [leaf("nested")])])])]),
+  element("p", [element("span", [leaf("phrasing")])]),
+  element("table", [element("tr", [element("td", [leaf("x")])])]),
+  element("select", [element("optgroup", [element("option", [leaf("x")])])]),
+  element("template", [element("span", [leaf("x")])]),
+  element("svg", [element("foreignobject", [element("div", [element("svg", [element("circle")])])])]),
+  element("html", [element("head", [element("title", [leaf("x")])]), element("body", [element("main")])]),
+]) {
+  assert.doesNotThrow(() => serialize_browser_realization(plan_browser_realization(supported)));
+}
+
+{
+  const parserUnstable = element("p", [element("div", [leaf("direct")])]);
+  const canonical = { $_tag: "_hson_root", $_content: [structuredClone(parserUnstable)] };
+  const map = hsonLiveMap.fromNode(canonical);
+  assert.equal(map.mode, "document");
+  assert.deepEqual(map.root(), canonical);
+  rejectsSsr(map.root(), /implicitly close.*<p>/);
+  const projected = project_livetree(structuredClone(parserUnstable), "html", create_livetree_runtime(), globalThis.document) as unknown as FakeElement;
+  assert.equal(projected.localName, "p");
+  assert.equal((projected.childNodes[0] as FakeElement | undefined)?.localName, "div");
+  const domPlan = plan_browser_realization(structuredClone(parserUnstable), { capability: "dom" });
+  assert.equal(domPlan.parserClosure, "not-required");
+  assert.throws(() => serialize_browser_realization(domPlan), /requires a parser-closed/);
+}
 
 process.stdout.write("Browser realization plan acceptance passed.\n");

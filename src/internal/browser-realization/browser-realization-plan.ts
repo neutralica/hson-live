@@ -66,6 +66,7 @@ export type BrowserRealizationPlan = Readonly<{
   version: 1;
   fingerprint: string;
   parentNamespace: BrowserNamespace;
+  parserClosure: "not-required" | "verified";
   roots: readonly BrowserRealizationNode[];
 }>;
 
@@ -136,6 +137,43 @@ const ATOMIC_CONTEXT = new Map<string, BrowserParserContext>([
   ["script", "rawtext"],
 ]);
 
+const HTML_VOID_ELEMENTS = new Set([
+  "area", "base", "basefont", "bgsound", "br", "col", "command", "embed", "hr", "img", "input", "link",
+  "meta", "param", "source", "track", "wbr",
+]);
+
+const P_IMPLIED_END_STARTS = new Set([
+  "address", "article", "aside", "blockquote", "center", "details", "dialog", "dir", "div", "dl", "fieldset", "figcaption", "figure",
+  "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6", "header", "hgroup", "hr", "main", "menu",
+  "nav", "ol", "p", "pre", "search", "section", "summary", "table", "ul", "li", "dt", "dd", "listing", "plaintext",
+]);
+
+const TABLE_FAMILY = new Set([
+  "caption", "colgroup", "col", "tbody", "thead", "tfoot", "tr", "td", "th",
+]);
+
+const TABLE_CHILDREN = new Set([
+  "caption", "colgroup", "thead", "tbody", "tfoot", "script", "style", "template",
+]);
+
+const TABLE_SECTION_CHILDREN = new Set(["tr", "script", "style", "template"]);
+const TABLE_ROW_CHILDREN = new Set(["td", "th", "script", "style", "template"]);
+const COLGROUP_CHILDREN = new Set(["col", "template"]);
+const SELECT_CHILDREN = new Set(["option", "optgroup", "hr", "script", "template"]);
+const OPTGROUP_CHILDREN = new Set(["option", "script", "template"]);
+
+const SVG_HTML_BREAKOUT_STARTS = new Set([
+  "address", "article", "aside", "b", "big", "blockquote", "body", "br", "center", "code", "dd", "div", "dl",
+  "dt", "em", "embed", "font", "h1", "h2", "h3", "h4", "h5", "h6", "head", "hr", "html", "i", "img",
+  "li", "listing", "main", "menu", "meta", "nobr", "ol", "p", "pre", "ruby", "s", "small", "span", "strong",
+  "strike", "sub", "sup", "table", "tt", "u", "ul", "var",
+]);
+
+const SCOPE_BOUNDARIES = new Set(["applet", "caption", "html", "marquee", "object", "table", "td", "th", "template"]);
+const BUTTON_SCOPE_BOUNDARIES = new Set([...SCOPE_BOUNDARIES, "button"]);
+const LIST_ITEM_SCOPE_BOUNDARIES = new Set([...SCOPE_BOUNDARIES, "ol", "ul"]);
+const RAWTEXT_HOSTS_OUTSIDE_VERSION_ONE = new Set(["iframe", "noembed", "noframes", "xmp"]);
+
 const TABLE_DIRECT_ALLOWED = new Set([
   "caption", "colgroup", "thead", "tbody", "tfoot", "tr", "script", "style", "template",
 ]);
@@ -147,17 +185,29 @@ const HEAD_ALLOWED = new Set([
 /** Build the immutable, DOM-free browser realization authority for canonical state. @internal */
 export function plan_browser_realization(
   value: HsonNode | Primitive,
-  options: Readonly<{ parentNamespace?: BrowserNamespace }> = {},
+  options: Readonly<{
+    parentNamespace?: BrowserNamespace;
+    capability?: "dom" | "ssr";
+  }> = {},
 ): BrowserRealizationPlan {
   const parentNamespace = options.parentNamespace ?? "html";
+  const capability = options.capability ?? "ssr";
   const fingerprint = browser_realization_fingerprint(value, parentNamespace);
   const roots = plan_atoms(flatten_value(value, "0"), parentNamespace, "ordinary", fingerprint);
-  return Object.freeze({
+  const plan: BrowserRealizationPlan = Object.freeze({
     version: 1,
     fingerprint,
     parentNamespace,
+    parserClosure: capability === "ssr" ? "verified" : "not-required",
     roots: Object.freeze(roots),
   });
+  if (capability === "ssr") assert_browser_realization_parser_closed(plan);
+  return plan;
+}
+
+/** Standards-defined HTML voidness shared by planning and serialization. @internal */
+export function is_html_void_element(localName: string): boolean {
+  return HTML_VOID_ELEMENTS.has(localName);
 }
 
 /** Shared canonical-value to native DOM attribute lowering. @internal */
@@ -390,6 +440,210 @@ function validate_document_structure(
       }
     }
   }
+}
+
+type ParserElement = BrowserRealizationElement | BrowserRealizationWrapper;
+
+/** Verify the deliberately conservative version-one HTML-parser-stable domain. @internal */
+export function assert_browser_realization_parser_closed(plan: BrowserRealizationPlan): void {
+  for (const root of plan.roots) {
+    if (root.kind !== "element" && root.kind !== "wrapper") continue;
+    if (root.namespace === "html" && (root.localName === "head" || root.localName === "body" || TABLE_FAMILY.has(root.localName))) {
+      throw incompatible(`<${root.localName}> requires a parser-valid owning context`, root.path);
+    }
+  }
+  const htmlRoots = plan.roots.filter(
+    (root): root is ParserElement => (root.kind === "element" || root.kind === "wrapper")
+      && root.namespace === "html" && root.localName === "html",
+  );
+  if (htmlRoots.length !== 0 && (htmlRoots.length !== 1 || plan.roots.length !== 1)) {
+    throw incompatible("a full <html> document must be the plan's only root", htmlRoots[0]?.path ?? "0");
+  }
+  validate_parser_children(plan.roots, undefined, []);
+}
+
+function validate_parser_children(
+  children: readonly BrowserRealizationNode[],
+  parent: ParserElement | undefined,
+  ancestors: readonly ParserElement[],
+): void {
+  if (parent !== undefined) validate_parent_parser_content(parent, children);
+  for (const child of children) {
+    if (child.kind !== "element" && child.kind !== "wrapper") continue;
+    const parserAncestors = parent?.namespace === "html" && parent.localName === "template" ? [] : ancestors;
+    validate_parser_element(child, parent, parserAncestors);
+    const nextAncestors = [...parserAncestors, child];
+    validate_parser_children(child.children, child, nextAncestors);
+  }
+}
+
+function validate_parser_element(
+  element: ParserElement,
+  parent: ParserElement | undefined,
+  ancestors: readonly ParserElement[],
+): void {
+  if (element.namespace === "svg") {
+    if (parent?.namespace === "svg" && SVG_HTML_BREAKOUT_STARTS.has(element.localName.toLowerCase())) {
+      throw incompatible(`HTML parsing would leave SVG foreign content at <${element.localName}>`, element.path);
+    }
+    return;
+  }
+
+  const name = element.localName;
+  const parentName = parent?.namespace === "html" ? parent.localName : undefined;
+  if (name === "html" && parent !== undefined) {
+    throw incompatible("a nested <html> start tag is handled by document insertion mode", element.path);
+  }
+  if (name === "head" && parentName !== "html") {
+    throw incompatible("<head> requires the planned document <html> as its parent", element.path);
+  }
+  if (name === "body" && parentName !== "html") {
+    throw incompatible("<body> requires the planned document <html> as its parent", element.path);
+  }
+  validate_table_family_parent(name, parentName, element.path);
+
+  if (name === "image" || name === "math" || name === "frameset" || name === "frame" || name === "isindex" || name === "keygen") {
+    throw incompatible(`<${name}> has parser-special namespace or token handling outside version one`, element.path);
+  }
+  if (name === "plaintext") {
+    throw incompatible("<plaintext> cannot be closed by HTML source", element.path);
+  }
+  if (name === "noscript") {
+    throw incompatible("<noscript> parsing depends on the native scripting flag", element.path);
+  }
+  if (RAWTEXT_HOSTS_OUTSIDE_VERSION_ONE.has(name) && element.children.length !== 0) {
+    throw incompatible(`<${name}> parser-atomic content is outside version-one shared-run support`, element.path);
+  }
+
+  if (P_IMPLIED_END_STARTS.has(name) && has_scoped_ancestor(ancestors, "p", BUTTON_SCOPE_BOUNDARIES)) {
+    throw incompatible(`<${name}> would implicitly close an ancestor <p>`, element.path);
+  }
+  if (name === "li" && has_scoped_ancestor(ancestors, "li", LIST_ITEM_SCOPE_BOUNDARIES)) {
+    throw incompatible("a nested <li> start tag would implicitly close its ancestor <li>", element.path);
+  }
+  if ((name === "dt" || name === "dd")
+    && (has_scoped_ancestor(ancestors, "dt", SCOPE_BOUNDARIES)
+      || has_scoped_ancestor(ancestors, "dd", SCOPE_BOUNDARIES))) {
+    throw incompatible(`<${name}> would implicitly close an ancestor <dt> or <dd>`, element.path);
+  }
+  if ((name === "rb" || name === "rtc" || name === "rt" || name === "rp") && parentName !== "ruby") {
+    throw incompatible(`<${name}> requires a direct parser-stable <ruby> parent`, element.path);
+  }
+  if (name === "option" && has_html_ancestor(ancestors, "option")) {
+    throw incompatible("a nested <option> start tag would implicitly close its ancestor <option>", element.path);
+  }
+  if (name === "optgroup" && (has_html_ancestor(ancestors, "option") || has_html_ancestor(ancestors, "optgroup"))) {
+    throw incompatible("a nested <optgroup> start tag would implicitly close select content", element.path);
+  }
+  if (name === "a" && has_html_ancestor(ancestors, "a")) {
+    throw incompatible("a nested <a> start tag triggers active-formatting reconstruction", element.path);
+  }
+  if (name === "nobr" && has_html_ancestor(ancestors, "nobr")) {
+    throw incompatible("a nested <nobr> start tag triggers active-formatting reconstruction", element.path);
+  }
+  if (name === "button" && has_scoped_ancestor(ancestors, "button", SCOPE_BOUNDARIES)) {
+    throw incompatible("a nested <button> start tag would implicitly close its ancestor <button>", element.path);
+  }
+  if (name === "form" && has_html_ancestor(ancestors, "form")) {
+    throw incompatible("a nested <form> start tag would be ignored by the HTML parser", element.path);
+  }
+  if (name === "select" && has_html_ancestor(ancestors, "select")) {
+    throw incompatible("a nested <select> start tag would close its ancestor <select>", element.path);
+  }
+  if (/^h[1-6]$/.test(name) && parentName !== undefined && /^h[1-6]$/.test(parentName)) {
+    throw incompatible(`<${name}> would implicitly close its heading parent`, element.path);
+  }
+}
+
+function validate_parent_parser_content(
+  parent: ParserElement,
+  children: readonly BrowserRealizationNode[],
+): void {
+  if (parent.namespace === "svg") {
+    if (parent.localName === "title" || parent.localName === "desc") {
+      const element = children.find((child) => child.kind === "element" || child.kind === "wrapper");
+      if (element !== undefined) {
+        throw incompatible(`SVG <${parent.localName}> is an HTML integration point with unstable element children`, element.path);
+      }
+    }
+    return;
+  }
+  if (is_html_void_element(parent.localName) && children.length !== 0) {
+    throw incompatible(`void element <${parent.localName}> cannot realize children through HTML parsing`, children[0]?.path ?? parent.path);
+  }
+  if (parent.localName === "html") {
+    const names = children.filter(is_parser_element).map((child) => child.localName);
+    if (children.length !== 2 || names.length !== 2 || names[0] !== "head" || names[1] !== "body") {
+      throw incompatible("document insertion mode requires exactly planned <head> then <body>", parent.path);
+    }
+  }
+  if (parent.localName === "table") validate_restricted_children(parent, children, TABLE_CHILDREN, "table insertion mode would relocate child");
+  if (parent.localName === "tbody" || parent.localName === "thead" || parent.localName === "tfoot") {
+    validate_restricted_children(parent, children, TABLE_SECTION_CHILDREN, "table-section insertion mode would relocate child");
+  }
+  if (parent.localName === "tr") validate_restricted_children(parent, children, TABLE_ROW_CHILDREN, "table-row insertion mode would relocate child");
+  if (parent.localName === "colgroup") validate_restricted_children(parent, children, COLGROUP_CHILDREN, "column-group insertion mode would close before child");
+  if (parent.localName === "select") validate_restricted_children(parent, children, SELECT_CHILDREN, "child is invalid in select parser context", true);
+  if (parent.localName === "optgroup") validate_restricted_children(parent, children, OPTGROUP_CHILDREN, "child is invalid in optgroup parser context", true);
+  if (parent.localName === "option") {
+    const element = children.find(is_parser_element);
+    if (element !== undefined) throw incompatible("option parser context cannot preserve element children", element.path);
+  }
+}
+
+function validate_restricted_children(
+  parent: ParserElement,
+  children: readonly BrowserRealizationNode[],
+  allowedElements: ReadonlySet<string>,
+  reason: string,
+  allowText = false,
+): void {
+  for (const child of children) {
+    if (child.kind === "marker") continue;
+    if (child.kind === "text") {
+      if (allowText || !/[^\t\n\f\r ]/.test(child.value)) continue;
+      throw incompatible(reason, child.path);
+    }
+    if (child.namespace === "html" && allowedElements.has(child.localName)) continue;
+    throw incompatible(`${reason}: <${child.localName}> under <${parent.localName}>`, child.path);
+  }
+}
+
+function validate_table_family_parent(name: string, parentName: string | undefined, path: string): void {
+  let allowed: readonly string[] | undefined;
+  if (name === "caption" || name === "colgroup" || name === "thead" || name === "tbody" || name === "tfoot") allowed = ["table"];
+  else if (name === "col") allowed = ["colgroup"];
+  else if (name === "tr") allowed = ["tbody", "thead", "tfoot"];
+  else if (name === "td" || name === "th") allowed = ["tr"];
+  if (allowed !== undefined && (parentName === undefined || !allowed.includes(parentName))) {
+    throw incompatible(`<${name}> requires parser-valid parent ${allowed.map((item) => `<${item}>`).join(" or ")}`, path);
+  }
+}
+
+function has_html_ancestor(ancestors: readonly ParserElement[], name: string): boolean {
+  for (let index = ancestors.length - 1; index >= 0; index -= 1) {
+    const ancestor = ancestors[index]!;
+    if (ancestor.namespace === "html" && ancestor.localName === name) return true;
+  }
+  return false;
+}
+
+function has_scoped_ancestor(
+  ancestors: readonly ParserElement[],
+  name: string,
+  boundaries: ReadonlySet<string>,
+): boolean {
+  for (let index = ancestors.length - 1; index >= 0; index -= 1) {
+    const ancestor = ancestors[index]!;
+    if (ancestor.namespace !== "html") continue;
+    if (ancestor.localName === name) return true;
+    if (boundaries.has(ancestor.localName)) return false;
+  }
+  return false;
+}
+
+function is_parser_element(node: BrowserRealizationNode): node is ParserElement {
+  return node.kind === "element" || node.kind === "wrapper";
 }
 
 function flatten_value(value: HsonNode | Primitive, path: string): Atom[] {

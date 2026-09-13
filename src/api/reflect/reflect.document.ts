@@ -1494,6 +1494,7 @@ function validate_borrowed_document_tree(
   try {
     const plan = plan_browser_realization(borrowedRoot, {
       parentNamespace: browser_parent_namespace_for_target(rootElement, borrowedRoot.$_tag),
+      capability: "dom",
     });
     const match = match_browser_realization_root(plan, rootElement, { allowRuntimeInfrastructure: true });
     assert_browser_realization_mappings(match);

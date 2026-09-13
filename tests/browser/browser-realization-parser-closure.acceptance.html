@@ -1,0 +1,167 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Browser realization parser closure acceptance</title>
+<body>
+<script type="module">
+import {
+  HTML_TAGS,
+  SVG_TAGS,
+  BrowserRealizationIncompatibilityError,
+  match_browser_realization_root,
+  plan_browser_realization,
+  serialize_browser_realization,
+} from "./bundle.js";
+
+const leaf = (value) => ({ $_tag: "_hson_str", $_content: [value] });
+const element = (tag, content = [], attrs) => ({
+  $_tag: tag,
+  ...(attrs === undefined ? {} : { $_attrs: attrs }),
+  $_content: content.length === 0 ? [] : [{ $_tag: "_hson_elem", $_content: content }],
+});
+let accepted = 0;
+let rejected = 0;
+let targeted = 0;
+
+function parseAndMatch(canonical, label) {
+  const plan = plan_browser_realization(canonical);
+  const html = serialize_browser_realization(plan);
+  const plannedRoot = plan.roots[0];
+  if (plan.roots.length !== 1 || plannedRoot?.kind !== "element") throw new Error(`${label}: expected one Element root`);
+  let target;
+  if (plannedRoot.namespace === "html" && plannedRoot.localName === "html") {
+    const parsed = new DOMParser().parseFromString(html, "text/html");
+    target = parsed.documentElement;
+  } else {
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    if (template.content.childNodes.length !== 1 || template.content.firstElementChild === null) {
+      throw new Error(`${label}: parser emitted ${template.content.childNodes.length} fragment roots for ${html}`);
+    }
+    target = template.content.firstElementChild;
+  }
+  try {
+    match_browser_realization_root(plan, target);
+  } catch (cause) {
+    throw new Error(`${label}: accepted plan was not parser-closed for ${html}`, { cause });
+  }
+}
+
+function expectRejected(canonical, label) {
+  let emitted = false;
+  try {
+    const plan = plan_browser_realization(canonical);
+    emitted = true;
+    serialize_browser_realization(plan);
+  } catch (cause) {
+    if (cause instanceof BrowserRealizationIncompatibilityError && !emitted) {
+      targeted += 1;
+      return;
+    }
+    throw new Error(`${label}: wrong rejection`, { cause });
+  }
+  throw new Error(`${label}: unexpectedly emitted SSR HTML`);
+}
+
+try {
+  for (const parent of HTML_TAGS) {
+    for (const child of HTML_TAGS) {
+      const canonical = element(parent, [element(child)]);
+      try {
+        parseAndMatch(canonical, `HTML pair <${parent}> > <${child}>`);
+        accepted += 1;
+      } catch (cause) {
+        if (cause instanceof BrowserRealizationIncompatibilityError) rejected += 1;
+        else throw cause;
+      }
+    }
+  }
+
+  for (const parent of HTML_TAGS) {
+    const canonical = element(parent, [leaf("x")]);
+    try {
+      parseAndMatch(canonical, `HTML text <${parent}>`);
+      accepted += 1;
+    } catch (cause) {
+      if (cause instanceof BrowserRealizationIncompatibilityError) rejected += 1;
+      else throw cause;
+    }
+  }
+
+  for (const parent of SVG_TAGS) {
+    for (const child of SVG_TAGS) {
+      const canonical = element("svg", [element(parent, [element(child)])]);
+      try {
+        parseAndMatch(canonical, `SVG pair <${parent}> > <${child}>`);
+        accepted += 1;
+      } catch (cause) {
+        if (cause instanceof BrowserRealizationIncompatibilityError) rejected += 1;
+        else throw cause;
+      }
+    }
+  }
+
+  for (const [label, canonical] of [
+    ["ordinary structure", element("main", [element("div", [element("span", [leaf("x")])])])],
+    ["valid list nesting", element("ul", [element("li", [leaf("a"), element("ul", [element("li", [leaf("b")])])])])],
+    ["valid phrasing paragraph", element("p", [element("span", [element("em", [leaf("x")])])])],
+    ["derived table body", element("table", [element("tr", [element("td", [leaf("x")]), element("th", [leaf("y")])])])],
+    ["explicit table section", element("table", [element("thead", [element("tr", [element("th", [leaf("x")])])]), element("tbody", [element("tr", [element("td", [leaf("y")])])])])],
+    ["table whitespace boundaries", element("table", [leaf(" "), leaf(""), element("tr", [element("td")])])],
+    ["table section whitespace boundaries", element("table", [element("tbody", [leaf(" "), leaf(""), element("tr", [element("td")])])])],
+    ["select group option", element("select", [leaf("lead"), element("optgroup", [element("option", [leaf("x")])]), element("option", [leaf("y")])])],
+    ["select optgroup text boundaries", element("select", [element("optgroup", [leaf("a"), leaf(""), element("option", [leaf("b")])])])],
+    ["select text boundaries", element("select", [leaf("a"), leaf(""), leaf("b")])],
+    ["select template reset", element("select", [element("template", [element("div", [leaf("x")])]), element("option", [leaf("y")])])],
+    ["foreign object transition", element("svg", [element("foreignObject", [element("div", [element("svg", [element("circle")])])])])],
+    ["template content", element("template", [element("div", [leaf("x")])])],
+    ["template parser reset", element("p", [element("template", [element("div", [leaf("x")])])])],
+    ["table template reset", element("table", [element("template", [element("div", [leaf("x")])]), element("tr", [element("td")])])],
+    ["table-section template reset", element("table", [element("tbody", [element("template", [element("div", [leaf("x")])]), element("tr", [element("td")])])])],
+    ["table-row template reset", element("table", [element("tbody", [element("tr", [element("template", [element("div", [leaf("x")])]), element("td")])])])],
+    ["form template reset", element("form", [element("template", [element("form", [leaf("x")])])])],
+    ["anchor template reset", element("a", [element("template", [element("a", [leaf("x")])])])],
+    ["button template reset", element("button", [element("template", [element("button", [leaf("x")])])])],
+    ["pre marker", element("pre", [leaf("\nX")])],
+    ["adjacent empty text markers", element("main", [leaf("a"), leaf(""), leaf("b"), leaf("")])],
+    ["valid form", element("form", [element("label", [leaf("x")]), element("input")])],
+    ["whole document", element("html", [element("head", [leaf(""), element("title", [leaf("x")])]), element("body", [element("main", [leaf("y")])])])],
+    ["formatting around block", element("b", [element("div", [leaf("x")])])],
+    ["empty legacy rawtext host", element("iframe")],
+    ["legacy parser voids in head", element("html", [element("head", [element("basefont"), element("bgsound")]), element("body")])],
+  ]) {
+    parseAndMatch(canonical, label);
+    targeted += 1;
+  }
+
+  for (const [label, canonical] of [
+    ["void img child", element("img", [element("span")])],
+    ["void input child", element("input", [leaf("x")])],
+    ["p disruptive child", element("p", [element("div", [leaf("x")])])],
+    ["nested p", element("p", [element("p", [leaf("x")])])],
+    ["nested li", element("li", [element("li")])],
+    ["dt dd transition", element("dl", [element("dt", [element("dd")])])],
+    ["nested form", element("form", [element("div", [element("form")])])],
+    ["nested button", element("button", [element("span", [element("button")])])],
+    ["nested anchor", element("a", [element("span", [element("a")])])],
+    ["nested nobr", element("nobr", [element("span", [element("nobr")])])],
+    ["legacy void child", element("basefont", [leaf("x")])],
+    ["invalid select child", element("select", [element("div")])],
+    ["nested select", element("select", [element("option"), element("select")])],
+    ["row outside table", element("main", [element("tr", [element("td", [leaf("x")])])])],
+    ["cell outside table", element("main", [element("td", [leaf("x")])])],
+    ["table text relocation", element("table", [leaf("x"), element("tr", [element("td")])])],
+    ["table section text relocation", element("table", [element("tbody", [leaf("x"), element("tr", [element("td")])])])],
+    ["table row text relocation", element("table", [element("tbody", [element("tr", [leaf("x"), element("td")])])])],
+    ["invalid head child", element("html", [element("head", [element("div")]), element("body")])],
+    ["ruby implied close", element("ruby", [element("span", [element("rt", [leaf("x")])])])],
+    ["adoption-sensitive p formatting", element("p", [element("b", [element("div", [leaf("x")])])])],
+  ]) expectRejected(canonical, label);
+
+  document.documentElement.dataset.status = "pass";
+  document.documentElement.dataset.detail = `${accepted} accepted pairs/text cases, ${rejected} planning rejections, ${targeted} targeted cases`;
+} catch (cause) {
+  document.documentElement.dataset.status = "fail";
+  document.documentElement.dataset.detail = `${cause?.stack ?? String(cause)}\nCAUSE: ${cause?.cause?.stack ?? String(cause?.cause ?? "none")}`;
+}
+</script>
+</body>

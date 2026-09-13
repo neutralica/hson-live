@@ -1,5 +1,6 @@
 # node dependencies
 node_modules/
+tmp/
 
 # vite caches
 **/.vite/

@@ -5,13 +5,13 @@ import type {
   BrowserRealizationText,
   BrowserRealizationWrapper,
 } from "./browser-realization-plan.js";
-
-const HTML_VOID = new Set([
-  "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr",
-]);
+import { is_html_void_element } from "./browser-realization-plan.js";
 
 /** Serialize only derived browser realization data; this module has no DOM dependency. @internal */
 export function serialize_browser_realization(plan: BrowserRealizationPlan): string {
+  if (plan.parserClosure !== "verified") {
+    throw new Error("Internal invariant: SSR serialization requires a parser-closed browser realization plan.");
+  }
   const body = plan.roots.map(serialize_node).join("");
   const root = plan.roots.length === 1 ? plan.roots[0] : undefined;
   return root?.kind === "element" && root.namespace === "html" && root.localName === "html"
@@ -28,7 +28,12 @@ function serialize_node(node: BrowserRealizationNode): string {
 function serialize_element(node: BrowserRealizationElement | BrowserRealizationWrapper): string {
   const attrs = node.attrs.map((attr) => ` ${attr.name}="${escape_attr(attr.value)}"`).join("");
   const open = `<${node.localName}${attrs}>`;
-  if (node.namespace === "html" && HTML_VOID.has(node.localName)) return open;
+  if (node.namespace === "html" && is_html_void_element(node.localName)) {
+    if (node.children.length !== 0) {
+      throw new Error(`Internal invariant: parser-closed void <${node.localName}> retained planned children.`);
+    }
+    return open;
+  }
   return `${open}${node.children.map(serialize_node).join("")}</${node.localName}>`;
 }
 

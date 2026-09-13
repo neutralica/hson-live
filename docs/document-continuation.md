@@ -140,6 +140,16 @@ closing sentinels, NUL, and lone surrogates reject deterministically before SSR
 emission. Canonical state remains valid Hson; only browser realization is
 incompatible.
 
+SSR planning is closed under native HTML parsing: a plan may reach the internal
+serializer only when parsing its emitted HTML preserves the same Elements,
+namespaces, attributes, children, text boundaries, derived wrappers, template
+content, and Hson boundary evidence. Void children, implied-end-tag nesting,
+unstable table/select/document insertion contexts, nested parser-special
+elements, and HTML tokens that escape SVG foreign content reject during
+planning. This capability check does not narrow ordinary direct DOM projection;
+a canonical document can remain valid and directly realizable even when no
+lossless HTML-source realization exists.
+
 Any construction failure releases provisional mappings, identity claims,
 `Reflect`, interaction activation, and the active-root reservation. It leaves
 the DOM and canonical map untouched. A root can have only one active high-level

@@ -1,15 +1,16 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
-import { copyFile, mkdtemp, readFile, rm } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { WebSocketServer } from "ws";
 import { hson, hsonLocus } from "../dist/index.js";
 import { capture_locus_bootstrap } from "../dist/api/locus/index.js";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
-const fixtureRoot = await mkdtemp(join(tmpdir(), "hson-document-continuation-browser-"));
+const temporaryRoot = join(repositoryRoot, "tmp");
+await mkdir(temporaryRoot, { recursive: true });
+const fixtureRoot = await mkdtemp(join(temporaryRoot, "document-continuation-browser-"));
 
 function chromeExecutable() {
   const candidates = [

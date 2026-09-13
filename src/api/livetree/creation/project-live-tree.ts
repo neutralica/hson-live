@@ -51,7 +51,7 @@ function project_with_authority(
 ): Node {
   register_runtime_document(runtime, ownerDocument);
   if (is_Node(node)) admit_projection_identities(node, runtime, identityAuthority);
-  const plan = plan_browser_realization(node, { parentNamespace: parentNs });
+  const plan = plan_browser_realization(node, { parentNamespace: parentNs, capability: "dom" });
   record_livetree_materialization("domProjectionCalls");
   const projected = materialize_browser_realization(plan, runtime, ownerDocument, identityAuthority);
   notify_livetree_realizations_internal(runtime);
