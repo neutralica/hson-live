@@ -14,7 +14,8 @@ The process-global registry is implemented by
 `src/api/livetree/quid/data-quid.ts`.
 
 - `LiveTree` construction calls `admit_livetree_quid_graph()` and
-  `ensure_quid()`.
+  `ensure_quid()`. This is runtime-private machinery, not an
+  application-visible `ensureQuid` API.
 - `create_livetree()`, `wrap_in_tree()`, content selection, `find()` /
   `findAll()`, DOM reverse lookup, creation helpers, detached creation, clone,
   and graft all reach the constructor and therefore admission.

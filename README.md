@@ -8,12 +8,17 @@
 
 Hson—Hypertext Structured Object Notation—is the underlying notation. It models the tree structure shared by JSON and markup without reducing either one to the other.
 
-`hson-live` builds four connected systems on that model:
+`hson-live` provides connected, independently usable capabilities on that model:
 
 - **hson.transform** converts between Hson, JSON, HTML, XML, SVG, and canonical Hson nodes.
 - **LiveMap** operates on Hson as local application state.
 - **LiveTree** projects Hson into live browser documents.
-- **Locus** maintains authoritative Hson state across clients and server runtimes.
+- **Locus** maintains optional authoritative Hson state across clients and server runtimes.
+
+These are not a mandatory construction sequence. See the [refined public API
+map](docs/public-api.md) for normal imports, ownership boundaries, nine usage
+paths, SSR/continuation delivery, and the distinction between local listeners
+and canonical interactions.
 
 The library is experimental. It is working architectural research, not a finished general-purpose web framework.
 
@@ -82,9 +87,9 @@ retains its separate element-mode contract.
 
 ---
 
-## One graph, four systems
+## One graph, connected capabilities
 
-The four hson-live subsystems are separate interfaces over the same structural model.
+The hson-live capabilities are separate interfaces over the same structural model.
 
 They are not intended as unrelated miniature libraries. Together they describe a path from serialized source, through local state and browser projection, to authoritative hosted state.
 

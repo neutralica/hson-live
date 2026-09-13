@@ -91,8 +91,7 @@ neutral and is not a WebSocket-specific data model.
 
 `LocusOptions<TMap, TActions>` accepts an existing authoritative map. The
 public type named `DataLocusOptions<TState, TActions>` creates a data map
-from state; “projected” here is the established identifier, not the prose name
-for the data side. A Locus owns one canonical stream identified by
+from state. A Locus owns one canonical stream identified by
 `logicalMapId` and `incarnationId`; neither is its route selector or a client
 identity.
 
