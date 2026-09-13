@@ -256,7 +256,7 @@ function plan_atoms(
       previousWasText = false;
       continue;
     }
-    assert_transportable_text(atom.value, atom.path);
+    assert_parser_transportable_string(atom.value, atom.path, "text");
     if (previousWasText) {
       result.push(marker_node("boundary", fingerprint, atom.path, boundaryOrdinal));
       boundaryOrdinal += 1;
@@ -354,7 +354,7 @@ function plan_atomic(
   if (text.value === "") {
     throw incompatible("an explicit empty parser-atomic text leaf requires deferred shared-run evidence", text.path);
   }
-  assert_transportable_text(text.value, text.path);
+  assert_parser_transportable_string(text.value, text.path, "text");
   if (parserContext === "rcdata") {
     if (text.value.startsWith("\n") && host === "textarea") {
       throw incompatible("a leading LF in textarea is suppressed by the HTML parser", text.path);
@@ -482,6 +482,13 @@ function validate_parser_element(
   parent: ParserElement | undefined,
   ancestors: readonly ParserElement[],
 ): void {
+  for (const attr of element.attrs) {
+    assert_parser_transportable_string(
+      attr.value,
+      `${element.path}.a[${JSON.stringify(attr.name)}]`,
+      "attribute value",
+    );
+  }
   if (element.namespace === "svg") {
     if (parent?.namespace === "svg" && SVG_HTML_BREAKOUT_STARTS.has(element.localName.toLowerCase())) {
       throw incompatible(`HTML parsing would leave SVG foreign content at <${element.localName}>`, element.path);
@@ -693,16 +700,33 @@ function marker_node(
   });
 }
 
-function assert_transportable_text(value: string, path: string): void {
-  if (value.includes("\0")) throw incompatible("NUL cannot be preserved by text/html parsing", path);
+function assert_parser_transportable_string(
+  value: string,
+  path: string,
+  subject: "text" | "attribute value",
+): void {
+  if (value.includes("\0")) {
+    const reason = subject === "text"
+      ? "NUL cannot be preserved by text/html parsing"
+      : "attribute value containing NUL cannot be preserved by text/html parsing";
+    throw incompatible(reason, path);
+  }
   for (let index = 0; index < value.length; index += 1) {
     const unit = value.charCodeAt(index);
     if (unit >= 0xd800 && unit <= 0xdbff) {
       const next = value.charCodeAt(index + 1);
-      if (next < 0xdc00 || next > 0xdfff) throw incompatible("a lone surrogate cannot be preserved by UTF-8 HTML transport", path);
+      if (next < 0xdc00 || next > 0xdfff) {
+        const reason = subject === "text"
+          ? "a lone surrogate cannot be preserved by UTF-8 HTML transport"
+          : "attribute value containing a lone surrogate cannot be preserved by UTF-8 HTML transport";
+        throw incompatible(reason, path);
+      }
       index += 1;
     } else if (unit >= 0xdc00 && unit <= 0xdfff) {
-      throw incompatible("a lone surrogate cannot be preserved by UTF-8 HTML transport", path);
+      const reason = subject === "text"
+        ? "a lone surrogate cannot be preserved by UTF-8 HTML transport"
+        : "attribute value containing a lone surrogate cannot be preserved by UTF-8 HTML transport";
+      throw incompatible(reason, path);
     }
   }
 }

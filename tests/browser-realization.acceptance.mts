@@ -73,14 +73,66 @@ const rejectsSsr = (node: HsonNode, reason: RegExp): BrowserRealizationIncompati
 }
 
 {
-  const attrs = { checked: true, disabled: "disabled", selected: false, multiple: true, required: null, readonly: "custom" };
+  const attrs = {
+    checked: true,
+    disabled: "disabled",
+    selected: false,
+    multiple: true,
+    required: null,
+    readonly: "custom",
+    tabindex: 0,
+  };
   const plan = plan_browser_realization(element("input", [], attrs));
   const root = plan.roots[0];
   assert.equal(root?.kind, "element");
   if (root?.kind !== "element") throw new Error("expected element");
   assert.deepEqual(Object.fromEntries(root.attrs.map((attr) => [attr.name, attr.value])), {
-    checked: "", disabled: "disabled", multiple: "", readonly: "custom",
+    checked: "", disabled: "disabled", multiple: "", readonly: "custom", tabindex: "0",
   });
+}
+
+for (const [label, value, reason] of [
+  ["NUL", "a\0b", /attribute value containing NUL/],
+  ["lone high surrogate", "a\ud800b", /attribute value containing a lone surrogate/],
+  ["lone low surrogate", "a\udc00b", /attribute value containing a lone surrogate/],
+] as const) {
+  for (const tag of ["main", "svg"] as const) {
+    const canonical: HsonNode = { $_tag: "_hson_root", $_content: [element(tag, [], { "data-value": value })] };
+    const map = hsonLiveMap.fromNode(canonical);
+    assert.equal(map.mode, "document", `${label} ${tag} canonical admission`);
+    const admitted = map.root();
+    const domPlan = plan_browser_realization(admitted, { capability: "dom" });
+    assert.equal(domPlan.parserClosure, "not-required", `${label} ${tag} direct-DOM capability`);
+    const projected = materialize_browser_realization(
+      domPlan,
+      create_livetree_runtime(),
+      globalThis.document,
+      "linked",
+    ) as unknown as FakeElement;
+    assert.equal(projected.getAttribute("data-value"), value, `${label} ${tag} direct-DOM value`);
+    const failure = rejectsSsr(admitted, reason);
+    assert.match(failure.canonicalPath, /\.a\["data-value"\]$/, `${label} ${tag} attribute path`);
+  }
+}
+
+for (const value of [
+  "",
+  "ASCII",
+  "<",
+  ">",
+  "&",
+  "\"'",
+  "\r",
+  "\n",
+  "\u2028\u2029",
+  "caf\u00e9",
+  "\ud83d\ude80",
+]) {
+  for (const tag of ["main", "svg"] as const) {
+    const plan = plan_browser_realization(element(tag, [], { "data-value": value }));
+    assert.equal(plan.parserClosure, "verified");
+    assert.doesNotThrow(() => serialize_browser_realization(plan));
+  }
 }
 
 {

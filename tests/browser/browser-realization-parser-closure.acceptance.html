@@ -7,6 +7,8 @@ import {
   HTML_TAGS,
   SVG_TAGS,
   BrowserRealizationIncompatibilityError,
+  create_livetree_runtime,
+  materialize_browser_realization,
   match_browser_realization_root,
   plan_browser_realization,
   serialize_browser_realization,
@@ -60,6 +62,34 @@ function expectRejected(canonical, label) {
     throw new Error(`${label}: wrong rejection`, { cause });
   }
   throw new Error(`${label}: unexpectedly emitted SSR HTML`);
+}
+
+function directDomAttribute(value, tag = "main") {
+  const canonical = element(tag, [], { "data-value": value });
+  const plan = plan_browser_realization(canonical, { capability: "dom" });
+  if (plan.parserClosure !== "not-required") throw new Error(`${tag}: direct DOM plan required parser closure`);
+  const target = materialize_browser_realization(plan, create_livetree_runtime(), document, "linked");
+  const actual = target.getAttribute("data-value");
+  if (actual !== value) throw new Error(`${tag}: direct DOM changed ${JSON.stringify(value)} to ${JSON.stringify(actual)}`);
+}
+
+async function parseNaiveUtf8Attribute(value) {
+  const source = `<!doctype html><main data-value="${value}"></main>`;
+  const url = URL.createObjectURL(new Blob([source], { type: "text/html;charset=utf-8" }));
+  const frame = document.createElement("iframe");
+  try {
+    const loaded = new Promise((resolve, reject) => {
+      frame.addEventListener("load", resolve, { once: true });
+      frame.addEventListener("error", () => reject(new Error("naive UTF-8 parser frame failed")), { once: true });
+    });
+    frame.src = url;
+    document.body.append(frame);
+    await loaded;
+    return frame.contentDocument?.querySelector("main")?.getAttribute("data-value");
+  } finally {
+    frame.remove();
+    URL.revokeObjectURL(url);
+  }
 }
 
 try {
@@ -131,6 +161,43 @@ try {
   ]) {
     parseAndMatch(canonical, label);
     targeted += 1;
+  }
+
+  for (const [label, value] of [
+    ["NUL attribute", "a\0b"],
+    ["lone high surrogate attribute", "a\ud800b"],
+    ["lone low surrogate attribute", "a\udc00b"],
+  ]) {
+    directDomAttribute(value, "main");
+    directDomAttribute(value, "svg");
+    const naive = await parseNaiveUtf8Attribute(value);
+    if (naive !== "a\ufffdb") {
+      throw new Error(`${label}: naive UTF-8 realization produced ${JSON.stringify(naive)} instead of U+FFFD replacement`);
+    }
+    expectRejected(element("main", [], { "data-value": value }), `${label} HTML planning`);
+    expectRejected(element("svg", [], { "data-value": value }), `${label} SVG planning`);
+  }
+
+  for (const [label, value] of [
+    ["empty attribute", ""],
+    ["ASCII attribute", "ASCII"],
+    ["less-than attribute", "<"],
+    ["greater-than attribute", ">"],
+    ["ampersand attribute", "&"],
+    ["quotes attribute", "\"'"],
+    ["CR attribute", "\r"],
+    ["LF attribute", "\n"],
+    ["line separators attribute", "\u2028\u2029"],
+    ["BMP Unicode attribute", "caf\u00e9"],
+    ["astral Unicode attribute", "\ud83d\ude80"],
+  ]) {
+    parseAndMatch(element("main", [], { "data-value": value }), `${label} HTML`);
+    parseAndMatch(element("svg", [], { "data-value": value }), `${label} SVG`);
+    targeted += 2;
+  }
+  const astral = "\ud83d\ude80";
+  if (await parseNaiveUtf8Attribute(astral) !== astral) {
+    throw new Error("valid surrogate-pair attribute did not survive naive UTF-8 realization");
   }
 
   for (const [label, canonical] of [
