@@ -17,8 +17,10 @@ Solo calls return exactly `{ html, bootstrap }`. Libraries calls return exactly
 `HTML(D,N)`, the complete aggregate bootstrap at `N`, and selected public name
 `D`. Store, cache, and deliver those values together. A delivery system that
 serves the bootstrap separately must serve the bootstrap from the returned
-pair; it must not recapture a newer map or authority state. Applications remain
-responsible for principal-specific content and cache policy.
+result; it must not recapture a newer map or authority state. For aggregate
+SSR, preserve the returned selected public document name too: it selects the
+document from the installed aggregate snapshot. Applications remain responsible
+for principal-specific content and cache policy.
 
 ## The same-cut guarantee
 
@@ -118,21 +120,40 @@ Schemas and digests, registry order, identity epoch, issued and retired QUIDs,
 hidden Libraries, and the hosted logical-map/incarnation fence. It adds no
 session, route, endpoint, selector, socket, HTTP, or transport metadata.
 
-For an application-root document, an application shell may place the encoded
-text in an inert sibling data block outside the root that will be continued:
+## Application-owned delivery
 
-```html
-<main>...</main>
-<script type="application/vnd.hson-live.ssr-bootstrap">
-BASE64URL
-</script>
+The standard Web `Response` is the delivery API. Applications may directly
+return SSR HTML with their own shell, routing, storage, and header policy:
+
+```ts
+return new Response(ssr.html, {
+  headers: {
+    "content-type": "text/html; charset=utf-8",
+  },
+});
 ```
 
-The application owns element selection: no fixed global ID is required. Read
-the selected element's `.textContent`, call `decode_ssr_bootstrap`, then use the
-existing installer. The MIME type is a recommended shell-owned inert data-block
-type; the decoder does not inspect it and no carrier element is part of
-canonical realization.
+`hson-live` does not provide or require an SSR `Response` wrapper.
+
+For an application-root continuation such as `<main>`, an application shell
+may place the encoded text in an inert sibling data block outside the canonical
+root that will be continued:
+
+```html
+<main>...</main><script type="application/vnd.hson-live.ssr-bootstrap">ENCODED_BOOTSTRAP</script>
+```
+
+The carrier remains delivery infrastructure, not canonical Hson realization.
+Application code selects its carrier—no fixed ID or global selector is
+required—reads its exact `.textContent`, and passes that exact string to
+`decode_ssr_bootstrap`. The encoded payload must have no leading or trailing
+formatting whitespace; the one-line example intentionally keeps it adjacent to
+the script tags.
+
+`application/vnd.hson-live.ssr-bootstrap` is the recommended project-specific
+media type for either an encoded bootstrap resource or an inert carrier. It is
+not claimed to be IANA-registered. The representation is base64url ASCII, so
+no charset parameter is necessary.
 
 Precisely: `EncodedSsrBootstrap` contains only ASCII letters, digits, `-`, and
 `_`. When inserted verbatim as text content of a non-JavaScript `<script>` data
@@ -147,9 +168,22 @@ provides no embedding helper.
 For exact `documentElement` continuation, do not put a carrier inside the
 canonical `<head>` or `<body>`. Deliver the encoded value through an external
 immutable resource, a module-provided value, or another out-of-band application
-channel. This keeps the canonical full document unchanged. HTTP gzip/brotli is
-a separate delivery-layer choice; the codec performs no compression and
-exposes no digest or authentication field.
+channel. This keeps the canonical full document unchanged. An external resource
+must return the exact bootstrap captured with that HTML, rather than recapturing
+current authority state on GET. HTTP gzip/brotli is a separate delivery-layer
+choice; the codec performs no compression and exposes no digest or
+authentication field.
+
+Caching is application-owned. This contract recommends no universal `public`,
+`private`, `no-store`, or `immutable` header. An external encoded bootstrap may
+be cached immutably only when its URL or key permanently identifies those exact
+bytes and application authorization and privacy policy permits it.
+
+`EncodedSsrBootstrap` is exact deterministic encoding, not authentication.
+`BrowserRealizationHtml` is realization provenance, not trusted or sanitized
+HTML. CSP, executable client-module policy, fetch-origin policy, and generic
+security headers remain application concerns. Rendering and delivery create no
+session in `hson-live`.
 
 ## Hosted browser installation
 
@@ -220,7 +254,10 @@ Hson transport HTML. `DocumentSsrError` attributes failures to `select`,
 The rendering API still does not choose inline versus separate delivery. The
 encoding API emits only the context-independent base64url string: it does not
 emit script tags, manage CSP or Trusted Types, choose response charsets, create
-HTTP responses, or depend on LiveHost.
+HTTP responses, or depend on LiveHost. SSR/bootstrap delivery also remains
+independent of whether a later Echo connection uses WebSocket or another
+semantic transport arrangement; connection endpoint metadata does not belong
+in the semantic bootstrap.
 
 The `/ssr` module has no DOM, Node HTTP, filesystem, `Buffer`, `process`, or
 Node-crypto dependency and is suitable for Node and Worker environments.

@@ -84,6 +84,25 @@ The Node runtime converts Node ingress to a Web `Request` and streams the Web
 repeated `Set-Cookie`, and owns physical body errors, disconnects, and
 backpressure. Those Node mechanics are not generic LiveHost API.
 
+## SSR delivery relationship
+
+SSR composition remains application-owned and uses the existing generic route
+and `Response` machinery:
+
+```text
+application / LiveHost route
+  -> render_document / render_hosted_document
+  -> encode_ssr_bootstrap
+  -> standard Response
+```
+
+LiveHost consumes these artifacts through ordinary application routes; it has
+no special SSR API. The application owns shell construction, carrier selection,
+out-of-band bootstrap delivery, same-cut association, caching, and security
+policy. The later Echo connection may use WebSocket or another semantic
+transport arrangement; SSR/bootstrap delivery neither selects that transport
+nor carries connection endpoint metadata.
+
 ## Long-lived connections
 
 `LiveHostConnection` is a deliberately small generic transport. It sends and

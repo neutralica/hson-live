@@ -508,9 +508,20 @@ continue_document({
 
 With exactly one public document Library, `document` may be omitted. The
 deterministic encoding supports local and hosted one-map and Libraries
-bootstraps. HTTP response construction, carrier placement, routing,
-authentication, compression, and framework integration remain application-layer
-work.
+bootstraps. Applications deliver SSR with an ordinary Web `Response`; there is
+no hson-live SSR Response wrapper:
+
+```ts
+return new Response(ssr.html, {
+  headers: { "content-type": "text/html; charset=utf-8" },
+});
+```
+
+HTML and its encoded bootstrap must remain paired at the same cut; aggregate
+delivery also preserves the returned selected public document name. Carrier
+placement, routing, caching, authentication, compression, and framework
+integration remain application-layer work. See the SSR guide for application
+root carriers and full-document out-of-band delivery.
 
 ---
 
