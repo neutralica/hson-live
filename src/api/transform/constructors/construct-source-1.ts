@@ -206,9 +206,6 @@ export function construct_source_1(
         toHtml() {
           return getOutput().toHtml();
         },
-        sanitizeBEWARE(): TransformOutput {
-          return getOutput().sanitizeBEWARE();
-        },
       };
     },
 

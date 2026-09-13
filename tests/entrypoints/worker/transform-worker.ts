@@ -29,6 +29,8 @@ void hsonTransform.fromNode({
 }).toJson().value();
 void hsonTransform.fromTrustedHtml(`<worker ready></worker>`).toNode();
 void hsonTransform.fromUntrustedHtml(`<worker ready onclick="bad()"></worker>`).toNode();
+// @ts-expect-error Worker Transform outputs do not carry browser sanitizer compatibility behavior.
+hsonTransform.fromJson({ ready: true }).sanitizeBEWARE();
 const workerNumber: HsonNumber = hsonCalc(-0);
 const workerCalculation: HsonNumber = hsonCalc(() => workerNumber);
 void workerCalculation;

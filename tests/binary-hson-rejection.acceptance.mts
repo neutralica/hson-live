@@ -4,7 +4,6 @@ import { createHash } from "node:crypto";
 
 import { hson } from "../src/hson.ts";
 import { hsonTransform } from "../src/api/transform/index.ts";
-import { set_transform_html_sanitizer } from "../src/api/transform/constructors/construct-output-2.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import type { HsonAttrs, HsonNode, Primitive } from "../src/core/types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -112,16 +111,6 @@ await check("Binary snapshots admitted input and refuses to repair a noncanonica
   const repairedForEstablishedTerminals = hsonTransform.fromNode(node("main", [], {}));
   assert.equal(repairedForEstablishedTerminals.toNode().$_attrs, undefined);
   assert.throws(() => repairedForEstablishedTerminals.toBinary().serialize());
-});
-
-await check("sanitizeBEWARE Binary output follows the sanitized replacement graph", () => {
-  const replacement = hsonTransform.fromHson(`<safe "replacement"/>`).toNode();
-  set_transform_html_sanitizer(() => replacement);
-  const sanitized = hson.fromNode(elem(node("main", [str("original")], { onclick: "bad()" }))).sanitizeBEWARE();
-  const sanitizedNode = sanitized.toNode();
-  assert.equal(canonical_hson_graph_equal(sanitizedNode, replacement), true);
-  const decoded = hson.fromBinary(sanitized.toBinary().serialize()).toNode();
-  assert.equal(canonical_hson_graph_equal(decoded, replacement), true);
 });
 
 await check("wrong and truncated representation markers reject", () => {

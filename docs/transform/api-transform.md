@@ -324,8 +324,11 @@ All transform source constructors return a common surface:
 .toHson()           // returns an Hson string
 .toBinary()         // returns canonical Binary Hson bytes
 .toNode()           // returns the underlying HsonNode graph (in JSON)
-.sanitizeBEWARE()   // destructive sanitizer for external non-HTML input
 ```
+
+HTML trust is selected when HTML enters Transform. Use `fromTrustedHtml` only
+for trusted input and `fromUntrustedHtml` for external or user-authored input;
+there is no universal post-output sanitizer operation.
 
 ### `.toHtml()`
 
@@ -388,24 +391,6 @@ It is assignable to `string`, but an arbitrary `string` is not assignable to `Hs
 Transport and persistence boundaries such as HTTP, WebSocket, JSON, storage, environment variables, process boundaries, and third-party APIs typed as plain strings normally erase the brand. Receivers accept transported Hson text as an ordinary `string` and parse it normally. Parsing arbitrary text produces canonical `HsonNode` graph state after success; it does not brand the input text.
 
 Readable, compact (`noBreak`), and `noQuid` Hson serialization all return `HsonCanonical`. The type does not imply that those options produce identical bytes, preserve source spelling, whitespace, quoting, comments, or formatting, or preserve JavaScript object identity for shared references. Graph carriers outside the serializable Hson-text domain, including every empty or populated `_hson_root`, remain rejected and therefore do not produce an `HsonCanonical`.
-
-### `.sanitizeBEWARE()`
-
-Applies HTML-style sanitization after source selection and before output selection:
-
-```ts
-const safeHtml = hson
-  .fromNode(node)
-  .sanitizeBEWARE()
-  .toHtml()
-  .serialize();
-```
-
-The current implementation serializes the current node graph to HTML, runs that HTML through the untrusted HTML parser/sanitizer, then continues from the sanitized node graph.
-
-This should only be used for Hson nodes that semantically encode HTML. It is lossy for generic JSON/Hson data because DOMPurify will strip markup it does not recognize.
-
----
 
 ## Hson Serialization Options
 
@@ -536,9 +521,10 @@ but they are not exported by `hson-live`, `hson-live/transform`, or the public
 | `fromJson` | no | structured data |
 | `fromHson` | no | Hson text |
 | `fromNode` | no | existing internal graph |
-| `sanitizeBEWARE` | yes, after source selection | explicit lossy HTML sanitation |
 
-Sanitization is automatic only for `fromUntrustedHtml`. Other formats are treated as data unless the caller explicitly opts into the HTML sanitation escape hatch.
+Other formats are treated as data. If an existing graph is intentionally
+re-admitted as untrusted HTML, serialize it to HTML and pass that string to
+`fromUntrustedHtml` so the trust decision remains explicit at ingress.
 
 ---
 

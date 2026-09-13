@@ -61,6 +61,14 @@ check("the transform facade exposes calc and six synchronous constructors", () =
   ]);
 });
 
+check("Transform outputs omit browser-dependent post-output sanitation", () => {
+  for (const output of [
+    hsonTransform.fromHson(`<worker/>`),
+    hsonTransform.fromJson({ ready: true }),
+    hsonTransform.fromNode({ $_tag: "worker", $_content: [] }),
+  ]) assert.equal("sanitizeBEWARE" in output, false);
+});
+
 check("the numeric leaf entrypoint is Worker-safe and preserves negative zero", () => {
   assert.equal(Object.is(hsonCalc(-0), -0), true);
   assert.equal(Object.is(hsonCalc(() => -0), -0), true);
@@ -141,6 +149,19 @@ check("untrusted HTML is sanitized without browser globals", () => {
     assert.equal(current.$_attrs?.onclick, undefined);
     if (current.$_tag === "a") assert.equal(current.$_attrs?.href, undefined);
   });
+});
+
+check("existing HTML graphs are sanitized by explicit untrusted re-ingress", () => {
+  const trusted = hsonTransform.fromTrustedHtml(
+    `<section onclick="run()"><script>alert(1)</script><b>ready</b></section>`,
+  );
+  const html = hsonTransform.fromNode(trusted.toNode()).toHtml().serialize();
+  const sanitized = hsonTransform.fromUntrustedHtml(html).toNode();
+  walk(sanitized, (current) => {
+    assert.notEqual(current.$_tag, "script");
+    assert.equal(current.$_attrs?.onclick, undefined);
+  });
+  assert.equal(hsonTransform.fromNode(sanitized).toHtml().serialize().includes("ready"), true);
 });
 
 check("untrusted Worker parsing preserves valid Hson identity while removing unsafe behavior", () => {

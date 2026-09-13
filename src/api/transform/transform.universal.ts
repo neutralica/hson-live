@@ -61,7 +61,6 @@ export function transform_from_hson(
     toHson: () => getOutput().toHson(),
     toJson: () => getOutput().toJson(),
     toHtml: () => getOutput().toHtml(),
-    sanitizeBEWARE: () => getOutput().sanitizeBEWARE(),
   };
 }
 

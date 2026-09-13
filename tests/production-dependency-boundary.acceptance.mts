@@ -291,6 +291,44 @@ check("SSR subpath excludes DOM realization, LiveHost, Echo, and Node adapters",
   );
 });
 
+check("Transform subpath excludes browser sanitation and adjacent runtime families", () => {
+  const build = esbuild.buildSync({
+    absWorkingDir: repositoryRoot,
+    stdin: {
+      contents: `
+        import { hsonTransform } from "hson-live/transform";
+        globalThis.__transform_boundary__ = hsonTransform.fromJson({ ready: true }).toHson().serialize();
+      `,
+      resolveDir: repositoryRoot,
+      sourcefile: "transform-worker-public.mjs",
+    },
+    bundle: true,
+    write: false,
+    format: "esm",
+    platform: "neutral",
+    target: "es2022",
+    treeShaking: true,
+    minify: true,
+    legalComments: "none",
+    metafile: true,
+  });
+  const outputs = build.metafile?.outputs;
+  assert.ok(outputs !== undefined, "Transform dependency proof requires an esbuild metafile");
+  const retainedInputs = Object.values(outputs).flatMap((output) => Object.entries(output.inputs))
+    .filter(([, contribution]) => contribution.bytesInOutput > 0)
+    .map(([input]) => input);
+  const prohibited = retainedInputs.filter((input) =>
+    /dompurify|parse-external-html|transform\.browser|browser-realization/i.test(input)
+    || /\/api\/(?:livetree|reflect|livehost|echo)\//i.test(input)
+    || /node:http|node:https|node:fs/i.test(input)
+  );
+  assert.deepEqual(
+    prohibited,
+    [],
+    `Transform public graph retained forbidden environment modules:\n${prohibited.join("\n")}`,
+  );
+});
+
 check("removed LiveTree construction engine and graft_body stay absent", () => {
   const productionSource = files.map((path) => readFileSync(path, "utf8")).join("\n");
   assert.equal(

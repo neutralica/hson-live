@@ -31,11 +31,13 @@ Every transform constructor returns a normalized-source surface with:
 
 ```ts
 .toNode()
-.sanitizeBEWARE()
 .toHtml()
 .toJson()
 .toHson()
 ```
+
+HTML trust is selected at ingress with `fromTrustedHtml` or
+`fromUntrustedHtml`; transform outputs do not expose a generic sanitizer.
 
 Hson text parses directly to the canonical graph:
 

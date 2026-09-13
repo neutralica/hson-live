@@ -60,9 +60,7 @@ export function construct_hson_render_4(
 ): TransformHsonSerialize {
   const serialize = () => {
     const origin = context.frame.meta?.origin;
-    const parserOwnsRoot = origin === "json"
-      || origin === "html"
-      || origin === "html-sanitized-from-node";
+    const parserOwnsRoot = origin === "json" || origin === "html";
     const node = parserOwnsRoot && context.frame.node.$_tag === ROOT_TAG
       ? detach_hson_root_value(context.frame.node)
       : context.frame.node;

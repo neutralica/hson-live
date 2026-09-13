@@ -127,7 +127,7 @@ check("HsonData is one nominal public value across intended entrypoints", () => 
 
 check("construction facades preserve root and subpath identity and immutability", () => {
   const source = `
-    import { hson, hsonLiveMap as rootMap, hsonLiveTree as rootTree } from "hson-live";
+    import { hson, hsonTransform, hsonLiveMap as rootMap, hsonLiveTree as rootTree } from "hson-live";
     import { hsonLiveMap as subpathMap } from "hson-live/livemap";
     import { hsonLiveTree as subpathTree } from "hson-live/livetree";
     if (hson.liveMap !== rootMap || rootMap !== subpathMap) throw new Error("LiveMap facade identity diverged");
@@ -135,6 +135,9 @@ check("construction facades preserve root and subpath identity and immutability"
     if (!Object.isFrozen(rootMap) || !Object.isFrozen(hson.liveMap)) throw new Error("LiveMap facade is mutable");
     if (!Object.isFrozen(rootTree) || !Object.isFrozen(hson.liveTree)) throw new Error("LiveTree facade is mutable");
     if ("fromTrustedHtml" in hson.liveMap || "fromUntrustedHtml" in hson.liveMap) throw new Error("browser compatibility shape remains");
+    for (const output of [hson.fromHson("<root/>"), hson.fromJson({ ready: true }), hsonTransform.fromNode({ $_tag: "main", $_content: [] })]) {
+      if ("sanitizeBEWARE" in output) throw new Error("Transform sanitizer compatibility shape remains");
+    }
     if (Reflect.set(rootMap, "replacement", null)) throw new Error("LiveMap facade accepted an addition");
     if (Reflect.deleteProperty(rootTree, "fromJson")) throw new Error("LiveTree facade accepted a deletion");
   `;
@@ -226,6 +229,7 @@ check("stale public terminology is absent from maintained declarations", () => {
     '"projected-data"',
     "OutputConstructor_2",
     "SsrBootstrapEncodingError",
+    "sanitizeBEWARE",
   ]) assert.equal(declarations.includes(stale), false, `${stale} must be absent`);
   for (const retained of [
     "DataLocusOptions",

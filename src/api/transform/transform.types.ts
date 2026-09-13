@@ -117,20 +117,13 @@ export interface TransformHsonOptions {
 export type TransformRender<K extends TransformOutputRenderFormat> =
   K extends (typeof $RENDER)["JSON"] ? TransformJsonValue : TransformSerialize;
 
-/**
- * Universal transform pipeline. Its declarations contain no browser globals.
- *
- * `sanitizeBEWARE()` remains available for compatibility. The browser umbrella
- * facade installs its HTML sanitizer; a narrow subsystem-only consumer should
- * use the structural Hson/JSON/node transforms without invoking that method.
- */
+/** Universal transform pipeline. Its declarations contain no browser globals. */
 export interface TransformOutput {
   toNode(): HsonNode;
   toBinary(): TransformBinarySerialize;
   toJson(): TransformOutputOptions<(typeof $RENDER)["JSON"]> & TransformJsonValue;
   toHson(): TransformHsonOptions & TransformHsonSerialize;
   toHtml(): TransformOutputOptions<(typeof $RENDER)["HTML"]> & TransformSerialize;
-  sanitizeBEWARE(): TransformOutput;
 }
 
 export interface HsonTransformSource extends TransformOutput {}

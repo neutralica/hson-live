@@ -63,6 +63,12 @@ import { SsrBootstrapEncodingError as RemovedSsrBootstrapError } from "hson-live
 
 declare const dataLocusOptions: DataLocusOptions<{ count: number }>;
 declare const transformOutput: TransformOutput;
+// @ts-expect-error HTML trust is selected at ingress; Transform outputs have no universal sanitizer.
+transformOutput.sanitizeBEWARE();
+// @ts-expect-error Root non-HTML outputs do not expose the removed sanitizer compatibility method.
+hson.fromNode({ $_tag: "main", $_content: [] }).sanitizeBEWARE();
+// @ts-expect-error The /transform Hson source output also omits the removed compatibility method.
+hsonTransform.fromHson(`<main/>`).sanitizeBEWARE();
 const dataPersistedMapKind: import("hson-live").LocusPersistedMapKind = "data";
 // @ts-expect-error The retired persisted data discriminant is not accepted.
 const removedPersistedMapKind: import("hson-live").LocusPersistedMapKind = "projected-data";

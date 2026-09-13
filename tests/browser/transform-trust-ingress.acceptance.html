@@ -1,0 +1,43 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Transform trust ingress acceptance</title>
+<body>
+<script type="module">
+import { hson } from "./bundle.js";
+
+try {
+  const source = `<section id="kept" aria-label="safe" onclick="run()" style="color:red">`
+    + `<script>alert(1)</scr` + `ipt><a href="javascript:bad()" title="kept">ready</a></section>`;
+  const trusted = hson.fromTrustedHtml(source);
+  const trustedHtml = trusted.toHtml().serialize();
+  if (!trustedHtml.includes("onclick=\"run()\"") || !trustedHtml.includes("<script>")) {
+    throw new Error("trusted ingress changed trusted HTML semantics");
+  }
+  if ("sanitizeBEWARE" in trusted) throw new Error("trusted output retains sanitizer compatibility method");
+
+  const untrusted = hson.fromUntrustedHtml(source);
+  const safeHtml = untrusted.toHtml().serialize();
+  if (safeHtml.includes("<script") || safeHtml.includes("onclick=") || safeHtml.includes("style=") || safeHtml.includes("javascript:")) {
+    throw new Error(`untrusted ingress retained unsafe HTML: ${safeHtml}`);
+  }
+  if (!safeHtml.includes("id=\"kept\"") || !safeHtml.includes("aria-label=\"safe\"") || !safeHtml.includes("title=\"kept\"") || !safeHtml.includes("ready")) {
+    throw new Error(`untrusted ingress lost supported content: ${safeHtml}`);
+  }
+  if ("sanitizeBEWARE" in untrusted) throw new Error("untrusted output retains sanitizer compatibility method");
+
+  const canonical = untrusted.toHson().noBreak().serialize();
+  const reparsed = hson.fromTrustedHtml(safeHtml).toHson().noBreak().serialize();
+  if (canonical !== reparsed) throw new Error("sanitized browser output is not canonically stable");
+
+  const existingGraphHtml = hson.fromNode(trusted.toNode()).toHtml().serialize();
+  const readmitted = hson.fromUntrustedHtml(existingGraphHtml).toHson().noBreak().serialize();
+  if (readmitted !== canonical) throw new Error("existing HTML graph did not sanitize through explicit untrusted re-ingress");
+
+  document.documentElement.dataset.status = "pass";
+  document.documentElement.dataset.detail = "trusted/raw and untrusted/DOMPurify ingress paths passed";
+} catch (cause) {
+  document.documentElement.dataset.status = "fail";
+  document.documentElement.dataset.detail = cause instanceof Error ? cause.stack ?? cause.message : String(cause);
+}
+</script>
+</body>
