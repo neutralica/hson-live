@@ -1,6 +1,6 @@
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
-import { hson } from "../src/hson.ts";
+import { hson, hsonLiveMap, hsonTransform } from "../src/hson.ts";
 import type { HsonNode, NodeContent, Primitive } from "../src/core/types.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -94,12 +94,22 @@ function mutate_content(content: readonly NodeContent[number][]): void {
   mutable.push({ $_tag: "changed-content", $_content: [] });
 }
 
-check("flat document constructors are present without constructor namespaces", () => {
-  assert.equal(typeof hson.liveMap.fromTrustedHtml, "function");
-  assert.equal(typeof hson.liveMap.fromUntrustedHtml, "function");
+check("document construction stays canonical and DOM-free", () => {
+  assert.equal("fromTrustedHtml" in hson.liveMap, false);
+  assert.equal("fromUntrustedHtml" in hson.liveMap, false);
   assert.equal(typeof hson.liveMap.fromNode, "function");
   assert.equal("element" in hson.liveMap, false);
   assert.equal("fragment" in hson.liveMap, false);
+
+  const trusted = hsonLiveMap.fromNode(
+    hsonTransform.fromTrustedHtml("<main></main>").toNode(),
+  );
+  const untrusted = hsonLiveMap.fromNode(
+    hsonTransform.fromUntrustedHtml("<main onclick='unsafe()'></main>").toNode(),
+  );
+  assert.equal(trusted.mode, "document");
+  assert.equal(untrusted.mode, "document");
+  assert.equal(find_nodes(untrusted.root(), "main")[0]?.$_attrs?.onclick, undefined);
 });
 
 check("canonical roots classify as data-object, data-array, element, and multiNodeDocument", () => {

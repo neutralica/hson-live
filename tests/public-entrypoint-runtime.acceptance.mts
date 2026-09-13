@@ -125,6 +125,26 @@ check("HsonData is one nominal public value across intended entrypoints", () => 
   assert.equal(child.status, 0, child.stderr || child.stdout);
 });
 
+check("construction facades preserve root and subpath identity and immutability", () => {
+  const source = `
+    import { hson, hsonLiveMap as rootMap, hsonLiveTree as rootTree } from "hson-live";
+    import { hsonLiveMap as subpathMap } from "hson-live/livemap";
+    import { hsonLiveTree as subpathTree } from "hson-live/livetree";
+    if (hson.liveMap !== rootMap || rootMap !== subpathMap) throw new Error("LiveMap facade identity diverged");
+    if (hson.liveTree !== rootTree || rootTree !== subpathTree) throw new Error("LiveTree facade identity diverged");
+    if (!Object.isFrozen(rootMap) || !Object.isFrozen(hson.liveMap)) throw new Error("LiveMap facade is mutable");
+    if (!Object.isFrozen(rootTree) || !Object.isFrozen(hson.liveTree)) throw new Error("LiveTree facade is mutable");
+    if ("fromTrustedHtml" in hson.liveMap || "fromUntrustedHtml" in hson.liveMap) throw new Error("browser compatibility shape remains");
+    if (Reflect.set(rootMap, "replacement", null)) throw new Error("LiveMap facade accepted an addition");
+    if (Reflect.deleteProperty(rootTree, "fromJson")) throw new Error("LiveTree facade accepted a deletion");
+  `;
+  const child = spawnSync(process.execPath, ["--input-type=module", "--eval", source], {
+    cwd: repositoryRoot,
+    encoding: "utf8",
+  });
+  assert.equal(child.status, 0, child.stderr || child.stdout);
+});
+
 check("SSR root and subpath exports share runtime identity", () => {
   const source = `
     import {

@@ -9,7 +9,7 @@ import { LiveTree } from "./livetree.js";
 import { parse_hson } from "../transform/parsers/parse-hson.js";
 
 /** Canonical browser-oriented LiveTree construction facade. */
-export const hsonLiveTree = {
+export const hsonLiveTree = Object.freeze({
   fromUntrustedHtml(input: string | Element): LiveTree {
     return make_branch_from_node(
       SAFE_TRANSFORM_SOURCE.fromHtml(input, { sanitize: true }).toNode(),
@@ -59,4 +59,4 @@ export const hsonLiveTree = {
     };
   },
   create: make_detached_livetree_create(),
-};
+});

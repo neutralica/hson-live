@@ -79,22 +79,26 @@ Canonical object-property order is explicit in the graph and private carrier. Ob
 
 ### Documents and HTML import boundaries
 
-The narrow `hsonLiveMap` facade has exactly `fromJson`, `fromHson`, `fromNode`,
-and `schema`; it has no HTML factories. The browser umbrella adds HTML
-construction only at `hson.liveMap`:
+`hsonLiveMap` and `hson.liveMap` are the same frozen, DOM-free facade. It has
+exactly `fromJson`, `fromHson`, `fromNode`, and `fromLibraries`; it has no HTML
+factories. Parse HTML through the browser Transform owner, then pass its
+canonical node to the LiveMap facade:
 
 ```ts
-import { hson } from "hson-live";
+import { hsonLiveMap } from "hson-live/livemap";
+import { hsonTransform } from "hson-live/transform";
 
-const trusted = hson.liveMap.fromTrustedHtml("<main></main>");
-const safe = hson.liveMap.fromUntrustedHtml(userHtml);
+const trusted = hsonLiveMap.fromNode(
+  hsonTransform.fromTrustedHtml("<main></main>").toNode(),
+);
+const safe = hsonLiveMap.fromNode(
+  hsonTransform.fromUntrustedHtml(userHtml).toNode(),
+);
 ```
 
-Both accept strings and return a `document` LiveMap. Trusted
-input is unsanitized; untrusted input is sanitized. These browser factories do
-not accept an `Element`, unlike the root Transform and LiveTree HTML factories.
-Use `hsonLiveMap.fromHson(...)` or `.fromNode(...)` when a DOM-free document
-construction path is required.
+The Transform step accepts a string; trusted input is unsanitized and untrusted
+input is sanitized. Use `hsonLiveMap.fromHson(...)` or `.fromNode(...)`
+directly when the source is already canonical Hson.
 
 ### Schema and proxy
 

@@ -45,6 +45,8 @@ check("canonical facade runtime identities remain stable", () => {
   assert.equal(hson.echo, hsonEcho);
   assert.equal("client" in hsonLocus, false);
   assert.equal(hson.liveTree, hsonLiveTree);
+  assert.equal(Object.isFrozen(hsonLiveTree), true);
+  assert.equal(Object.isFrozen(hson.liveTree), true);
   assert.equal(hson.reflect, hsonReflect);
   assert.equal(typeof hsonReflect, "function");
   assert.equal(hsonReflect.collection, hson.reflect.collection);
@@ -55,12 +57,28 @@ check("canonical facade runtime identities remain stable", () => {
   assert.equal(hson.fromJson, hsonTransform.fromJson);
   assert.equal(hson.fromNode, hsonTransform.fromNode);
 
-  assert.notEqual(hson.liveMap, hsonLiveMap);
-  assert.equal(hson.liveMap.fromHson, hsonLiveMap.fromHson);
-  assert.equal(hson.liveMap.fromJson, hsonLiveMap.fromJson);
-  assert.equal(hson.liveMap.fromNode, hsonLiveMap.fromNode);
+  assert.equal(hson.liveMap, hsonLiveMap);
+  assert.equal(Object.isFrozen(hsonLiveMap), true);
+  assert.equal(Object.isFrozen(hson.liveMap), true);
+  assert.equal("fromTrustedHtml" in hson.liveMap, false);
+  assert.equal("fromUntrustedHtml" in hson.liveMap, false);
   assert.equal("schema" in hson.liveMap, false);
   assert.equal("schema" in hsonLiveMap, false);
+});
+
+check("public construction facade capability tables reject mutation", () => {
+  const mapKeys = Object.keys(hsonLiveMap);
+  const treeKeys = Object.keys(hsonLiveTree);
+
+  assert.equal(Reflect.set(hsonLiveMap, "replacement", null), false);
+  assert.equal(Reflect.deleteProperty(hsonLiveMap, "fromJson"), false);
+  assert.equal(Reflect.defineProperty(hsonLiveMap, "fromJson", { value: null }), false);
+  assert.deepEqual(Object.keys(hsonLiveMap), mapKeys);
+
+  assert.equal(Reflect.set(hsonLiveTree, "replacement", null), false);
+  assert.equal(Reflect.deleteProperty(hsonLiveTree, "fromJson"), false);
+  assert.equal(Reflect.defineProperty(hsonLiveTree, "fromJson", { value: null }), false);
+  assert.deepEqual(Object.keys(hsonLiveTree), treeKeys);
 });
 
 function is_node(value: HsonNode | Primitive): value is HsonNode {

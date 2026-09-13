@@ -5,7 +5,6 @@ import {
 import { hsonTransform } from "./api/transform/transform.facade.js";
 import { hsonCalc } from "./api/transform/hson-calc.js";
 import { hsonLiveMap } from "./api/livemap/livemap.facade.js";
-import { hsonLiveMapBrowser } from "./api/livemap/livemap.compat.js";
 import { hsonLiveTree } from "./api/livetree/livetree.facade.js";
 import { hsonLocus } from "./api/locus/locus.facade.js";
 import { hsonEcho } from "./api/echo/echo.facade.js";
@@ -59,7 +58,7 @@ export interface HsonFacade {
   readonly fromNode: (node: HsonNode) => TransformOutput;
   readonly fromTrustedHtml: (input: string | Element) => OutputConstructor_2;
   readonly fromUntrustedHtml: (input: string | Element) => OutputConstructor_2;
-  readonly liveMap: typeof hsonLiveMapBrowser;
+  readonly liveMap: typeof hsonLiveMap;
   readonly liveTree: typeof hsonLiveTree;
   readonly locus: typeof hsonLocus;
   readonly echo: typeof hsonEcho;
@@ -76,9 +75,7 @@ export const hson: HsonFacade = Object.freeze({
   fromTrustedHtml: transform_from_trusted_html,
   fromUntrustedHtml: transform_from_untrusted_html,
 
-  // Browser compatibility superset: the canonical DOM-free object is
-  // available as `hsonLiveMap`.
-  liveMap: hsonLiveMapBrowser,
+  liveMap: hsonLiveMap,
   liveTree: hsonLiveTree,
   locus: hsonLocus,
   echo: hsonEcho,

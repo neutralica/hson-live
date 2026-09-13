@@ -50,7 +50,10 @@ type JsonFinalizer = ReturnType<NodeSourceSurface["toJson"]>;
 type HtmlFinalizer = ReturnType<NodeSourceSurface["toHtml"]>;
 type LiveMapSurface = ReturnType<typeof hson.liveMap.fromJson>;
 type ClassifiedLiveMapSurface = ReturnType<typeof hson.liveMap.fromNode>;
-type DocumentLiveMapSurface = ReturnType<typeof hson.liveMap.fromTrustedHtml>;
+type DocumentLiveMapSurface = Extract<
+  ReturnType<typeof hson.liveMap.fromHson>,
+  { readonly mode: "document" }
+>;
 type JsonValueTerminalReturnsJsonValue = Expect<
   Equal<ReturnType<JsonFinalizer["value"]>, JsonValue>
 >;
@@ -172,6 +175,10 @@ function assert_document_surface(documentMap: DocumentLiveMapSurface): void {
   hson.liveMap.element.fromTrustedHtml("<button>Save</button>");
   // @ts-expect-error No shape-specific fragment constructor namespace exists.
   hson.liveMap.fragment.fromTrustedHtml("text");
+  // @ts-expect-error HTML parsing belongs to Transform; compose its node output with fromNode.
+  hson.liveMap.fromTrustedHtml("<button>Save</button>");
+  // @ts-expect-error Sanitized HTML parsing belongs to Transform, not the DOM-free LiveMap facade.
+  hson.liveMap.fromUntrustedHtml("<button>Save</button>");
 }
 
 function assert_trace_diagnostics_exports(): LiveTraceCollector {

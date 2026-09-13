@@ -1000,3 +1000,8 @@ const sameRootTreeType: typeof treeSubpath = hsonLiveTree;
 const sameRootTransformType: typeof transformSubpath = hsonTransform;
 const sameRootInspectType: typeof hson.inspect = hsonInspect;
 void [originalTypeIdentity, sameRootMapType, sameRootTreeType, sameRootTransformType, sameRootInspectType];
+
+// @ts-expect-error HTML parsing is not a LiveMap construction-facade capability.
+hson.liveMap.fromTrustedHtml("<main></main>");
+// @ts-expect-error Sanitized HTML parsing is owned by Transform, not LiveMap.
+hson.liveMap.fromUntrustedHtml("<main></main>");
