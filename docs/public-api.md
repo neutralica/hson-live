@@ -27,6 +27,9 @@ specialist capability from its owning public subpath.
 - **HsonData** is immutable, exact semantic data for data values and action
   payloads. Use `entries()` for exact ordered inspection and `materialize()`
   only when a detached ordinary JavaScript view is wanted.
+- **HsonDocument** is the immutable exact document-context value. It owns a
+  frozen canonical graph and round-trips zero, one, or many top-level items;
+  it carries no LiveMap authority or browser realization behavior.
 - **Hson Schema** validates canonical authored data/graphs. Generated Schema
   consumers import `JsonValue` from `hson-live/hson`, not a former types barrel.
 - **LiveMap and Libraries** own local canonical state. A Libraries map is one

@@ -8,6 +8,7 @@ import {
   continue_document,
   continue_hosted_document,
   HsonData,
+  HsonDocument,
 } from "hson-live";
 import { create_echo, type Echo } from "hson-live/echo";
 import { Hson } from "hson-live/hson";
@@ -33,7 +34,8 @@ const transformOutput: TransformOutput = hsonTransform.fromUntrustedHtml(userHtm
 const canonical = transformOutput.toHson().serialize();
 const html: string = hsonTransform.fromHson(canonical).toHtml().serialize();
 const authored = Hson`<main/>`;
-void [html, authored];
+const exactDocument = HsonDocument.fromHson(authored);
+void [html, authored, exactDocument.toNode()];
 
 const dataMap = hsonLiveMap.fromJson({ count: 0 });
 dataMap.set(["count"], 1);

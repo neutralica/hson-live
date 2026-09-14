@@ -10,6 +10,7 @@ export const Hson = Object.freeze(Object.assign(admit_hson, {
 }));
 
 export { HsonData } from "./api/data/hson-data.js";
+export { HsonDocument } from "./api/document/hson-document.js";
 export type { HsonCanonical, HsonSchema } from "./api/transform/transform.types.js";
 export type {
   BasicValue,

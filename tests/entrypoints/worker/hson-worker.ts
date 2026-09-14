@@ -1,4 +1,4 @@
-import { Hson, HsonData, type HsonCanonical, type HsonSchema } from "hson-live/hson";
+import { Hson, HsonData, HsonDocument, type HsonCanonical, type HsonSchema } from "hson-live/hson";
 import type { HsonCanonical as TransformCanonical } from "hson-live/transform";
 
 declare const schema: HsonSchema;
@@ -6,6 +6,9 @@ const authored: HsonCanonical = Hson`<age 37>`;
 const sameBrand: TransformCanonical = authored;
 const checked: HsonCanonical = Hson.certify(schema, sameBrand);
 const exact: HsonData = HsonData.fromHson(authored);
+const document: HsonDocument = HsonDocument.fromHson(Hson`<main/>`);
+// @ts-expect-error Runtime text must first cross an explicit HsonCanonical boundary.
+HsonDocument.fromHson("<main/>");
 const materialized = exact.materialize();
 // @ts-expect-error Canonical authoring does not expose aggregate subsystems.
 Hson.liveTree;
@@ -13,3 +16,4 @@ Hson.liveTree;
 Hson.certify(schema, "<age 37>");
 void checked;
 void materialized;
+void document.toNode();

@@ -27,7 +27,7 @@ DocumentReflect DocumentReflectError DocumentReflectStatus DocumentSsr DocumentS
 EchoActionPromise EchoActionRequest EchoActionStatusResult EchoOptions EchoRecoveryError EchoRetryActionFn
 EchoSession EchoSessionError EchoSessionFailure EchoSessionOptions EchoSessionResult EchoSessionStatus
 enable_interactions encode_ssr_bootstrap EncodedSsrBootstrap HostedDocumentContinuation HostedDocumentSsr
-HostedLibrariesDocumentSsr hson Hson hsonCalc HsonData hsonEcho HsonFacade hsonLiveMap hsonLiveTree
+HostedLibrariesDocumentSsr hson Hson hsonCalc HsonData HsonDocument hsonEcho HsonFacade hsonLiveMap hsonLiveTree
 hsonLocus HsonNumber hsonReflect HsonSchema HsonSchemaMutationCandidate HsonSchemaValue hsonTransform
 InteractionActionDispatcher InteractionActivationOptions InteractionDescriptor InteractionFailure
 InteractionListener InteractionLocalBehavior InteractionLocalBehaviors is_transform_error LibrariesDocumentSsr
@@ -184,7 +184,7 @@ await check("LiveTree declarations expose styling capabilities without runtime m
 });
 
 const ownerProofs = Object.freeze({
-  "dist/hson-authoring.d.ts": ["HsonNode", "HsonAttrs", "HsonMeta", "NodeContent", "JsonValue", "Primitive"],
+  "dist/hson-authoring.d.ts": ["HsonDocument", "HsonNode", "HsonAttrs", "HsonMeta", "NodeContent", "JsonValue", "Primitive"],
   "dist/api/livetree/index.d.ts": ["CssManager", "make_tree_selector", "LiveTreeAttributeErrorCode", "LIVETREE_DISPOSED_ERROR_CODE"],
   "dist/api/livemap/index.d.ts": ["make_livemap_core", "make_livemap_store_api", "LiveMapCapture", "LiveMapReplay", "LiveMapCommitObserver", "snap_live_path"],
   "dist/api/reflect/index.d.ts": ["reflect_collection", "CollectionReflect", "CollectionReflectErrorCode", "DOCUMENT_REFLECT_DISPOSED_ERROR_CODE"],
@@ -203,7 +203,7 @@ await check("specialist contracts remain available from owning entrypoints", () 
     const actual = new Set(declaration_exports(file));
     for (const name of expected) {
       assert.equal(actual.has(name), true, `${name} must remain exported by ${file}`);
-      if (!["render_document", "DocumentSsr", "create_livehost_locus_registry", "LiveHost"].includes(name)) {
+      if (!["HsonDocument", "render_document", "DocumentSsr", "create_livehost_locus_registry", "LiveHost"].includes(name)) {
         assert.equal(root.has(name), false, `${name} must not leak back into the root`);
       }
     }
@@ -287,7 +287,7 @@ await check("all retained overlapping runtime values preserve strict identity", 
     livehost: await import("hson-live/livehost"),
   } as const;
   const overlap = {
-    hson: ["Hson", "HsonData", "TransformError", "is_transform_error", "read_transform_error_details"],
+    hson: ["Hson", "HsonData", "HsonDocument", "TransformError", "is_transform_error", "read_transform_error_details"],
     transform: ["HsonData", "hsonTransform", "TransformError", "is_transform_error", "read_transform_error_details"],
     number: ["hsonCalc"],
     livetree: ["hsonLiveTree", "LiveTree", "TreeSelector", "LiveTreeAlreadyAttachedError", "LiveTreeAttributeError", "LiveTreeBatchError", "LiveTreeDisposedError", "LiveTreeProtectedRootError", "LiveTreeQuidReuseError", "LiveTreeLinkedIdentityRequiredError"],

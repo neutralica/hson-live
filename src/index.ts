@@ -7,6 +7,7 @@
 
 export { Hson } from "./hson-authoring.js";
 export { HsonData } from "./api/data/hson-data.js";
+export { HsonDocument } from "./api/document/hson-document.js";
 export {
   hson,
   hsonCalc,

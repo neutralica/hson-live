@@ -110,8 +110,8 @@ The return is an `HsonCanonical`, a TypeScript-branded primitive string. It does
 `HsonCanonical`. It represents exactly strings, finite numbers (with `0` and
 `-0` distinct), booleans, null, dense arrays, and ordered unique-name data
 objects. It is data-only: it is not a document, graph node, LiveMap commit,
-transport envelope, or runtime capability. No document-side semantic sibling is
-defined yet.
+transport envelope, or runtime capability. `HsonDocument` is its separate
+document-context counterpart.
 
 Data-object names follow canonical Hson name validity. Names in Hson's reserved
 `_hson_` structural namespace are not application data names and reject during
@@ -157,6 +157,44 @@ which public entrypoint produced it or which entrypoints were imported first.
 Data LiveMaps provide `map.data(path?)` and `map.at(path).data()` for exact reads
 that bypass `snap()` and ordinary object reconstruction. Document-mode maps do
 not expose this data-only route.
+
+## HsonDocument
+
+`HsonDocument` is an immutable, runtime-nominal, exact canonical Hson value in
+document context. Zero, one, and many ordered top-level items are all the same
+document semantic kind. Its private graph is always an `_hson_root`; that root
+is structural machinery and is never authored literally. `HsonFragment` does
+not exist.
+
+```ts
+import { Hson, HsonDocument } from "hson-live/hson";
+
+const document = HsonDocument.fromHson(Hson`<main/><aside/>`);
+const source = document.toHson(); // HsonCanonical
+const detachedRoot = document.toNode(); // fresh mutable _hson_root clone
+document.equals(HsonDocument.fromHson(source)); // true
+```
+
+At this document-aware boundary, exact zero-length source is the empty document.
+The quoted source `""` is instead one empty top-level text item. Whitespace-only
+and comment-only inputs remain invalid; input is not trimmed.
+
+`fromNode()` safely snapshots only canonical document graphs that serialize and
+reparse to exact graph equality. Canonical attributes, metadata, text
+segmentation, and active QUID strings are retained, but no identity is minted
+and no revision, commit, epoch, ledger, or authority state exists. Every valid
+`HsonDocument` therefore has a total `toHson()` operation. Each `toNode()` call
+returns an independent mutable clone and never exposes the private frozen root.
+
+This value is intentionally narrower than document-mode LiveMap runtime state:
+non-string ordinary attributes and typed or otherwise lossy runtime style values
+remain valid LiveMap state but are not exact `HsonDocument` values. There is no
+LiveMap extraction API in this version. Canonical validity also remains separate
+from conformance to any `HsonSchema`; construction takes no Schema.
+
+`HsonDocument` has no HTML or DOM API and does not mean a browser HTML
+`Document`. HTML trust and HTML ingress remain Transform-owned, while browser
+realization and continuation remain separate runtime concerns.
 
 Runtime text containing arbitrary authored Hson is a separate operation:
 

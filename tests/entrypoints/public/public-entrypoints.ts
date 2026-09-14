@@ -1,6 +1,7 @@
 import {
   Hson,
   HsonData,
+  HsonDocument,
   hson,
   hsonTransform,
   hsonLiveMap,
@@ -139,6 +140,19 @@ const forgedHsonData: HsonData = structuralHsonData;
 type HsonDataPrivateBrand = HsonData["#hsonDataNominal"];
 void (0 as unknown as typeof forgedHsonData);
 void (0 as unknown as HsonDataPrivateBrand);
+
+declare const genuineHsonDocument: HsonDocument;
+const retainedHsonDocument: HsonDocument = genuineHsonDocument;
+void retainedHsonDocument.toHson();
+void retainedHsonDocument.toNode();
+type StructuralHsonDocument = Pick<HsonDocument, keyof HsonDocument>;
+declare const structuralHsonDocument: StructuralHsonDocument;
+// @ts-expect-error HsonDocument retains private instance-side nominality.
+const forgedHsonDocument: HsonDocument = structuralHsonDocument;
+// @ts-expect-error The private HsonDocument brand cannot be named by consumers.
+type HsonDocumentPrivateBrand = HsonDocument["#hsonDocumentNominal"];
+void (0 as unknown as typeof forgedHsonDocument);
+void (0 as unknown as HsonDocumentPrivateBrand);
 import {
   TransformError,
   hsonTransform as transformSubpath,

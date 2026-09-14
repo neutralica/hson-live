@@ -1,6 +1,7 @@
 import {
   Hson,
   HsonData,
+  HsonDocument,
   activate_interactions,
   add_interaction,
   continue_document,
@@ -77,9 +78,10 @@ declare const echo: Echo<DocumentLiveMap>;
 declare const schema: HsonSchema;
 const canonical = Hson.certify(schema, Hson`<main/>`);
 const data = HsonData.fromHson(Hson`<value 1>`);
+const document = HsonDocument.fromHson(Hson`<main/>`);
 const continuation: DocumentContinuation = continue_document({ map, root: element });
 void continue_hosted_document({ echo, root: element });
-void [canonical, data, continuation, render_document({ map }), render_hosted_document,
+void [canonical, data, document, continuation, render_document({ map }), render_hosted_document,
   encode_ssr_bootstrap, decode_ssr_bootstrap];
 
 const facade: HsonFacade = hson;

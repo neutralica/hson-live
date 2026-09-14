@@ -125,6 +125,24 @@ check("HsonData is one nominal public value across intended entrypoints", () => 
   assert.equal(child.status, 0, child.stderr || child.stdout);
 });
 
+check("HsonDocument is one nominal public value across root and Hson entrypoints", () => {
+  const source = `
+    import { HsonDocument as RootDocument } from "hson-live";
+    import { HsonDocument as AuthoredDocument } from "hson-live/hson";
+    if (RootDocument !== AuthoredDocument) throw new Error("HsonDocument identity diverged");
+    const empty = AuthoredDocument.fromHson("");
+    const quotedEmpty = AuthoredDocument.fromHson('\"\"');
+    if (empty.equals(quotedEmpty) || empty.toHson() !== "") throw new Error("empty document semantics diverged");
+    const value = AuthoredDocument.fromHson('<main @000000001 id="root"/>');
+    if (!RootDocument.fromHson(value.toHson()).equals(value)) throw new Error("document round trip failed");
+  `;
+  const child = spawnSync(process.execPath, ["--input-type=module", "--eval", source], {
+    cwd: repositoryRoot,
+    encoding: "utf8",
+  });
+  assert.equal(child.status, 0, child.stderr || child.stdout);
+});
+
 check("construction facades preserve root and subpath identity and immutability", () => {
   const source = `
     import { hson, hsonTransform, hsonLiveMap as rootMap, hsonLiveTree as rootTree } from "hson-live";
@@ -302,6 +320,20 @@ for (const order of [
     const { hsonLiveMap } = await import("hson-live/livemap");
     const value = hsonLiveMap.fromJson({ value: -0 }).data();
     if (value === undefined || typeof value.toHson() !== "string") throw new Error("conversion changed by import order");
+  `);
+}
+
+for (const order of [
+  ["hson-live/hson", "hson-live"],
+  ["hson-live", "hson-live/hson"],
+] as const) {
+  run_in_fresh_process(`HsonDocument identity is stable for ${order.join(" -> ")}`, `
+    const modules = [];
+    ${order.map((specifier) => `modules.push(await import(${JSON.stringify(specifier)}));`).join("\n")}
+    const constructors = modules.map((module) => module.HsonDocument);
+    if (constructors.some((candidate) => candidate !== constructors[0])) throw new Error("constructor identity changed");
+    const value = constructors[0].fromHson('<main/>');
+    if (!constructors[1].fromHson(value.toHson()).equals(value)) throw new Error("round trip changed by import order");
   `);
 }
 

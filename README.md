@@ -642,6 +642,16 @@ view or serialize back to `HsonCanonical` from every entrypoint and import order
 Its object names follow canonical Hson validity: the reserved `_hson_` structural
 namespace rejects, while ordinary names such as `__proto__`, `constructor`, and
 `prototype` remain supported. It does not represent documents.
+`HsonDocument` is the immutable exact document-context counterpart. Its private
+canonical graph uses `_hson_root` only as structural machinery, and zero, one,
+or many top-level items remain one document kind. Exact zero-length source is
+the empty document, while quoted `""` is one empty text item. Canonical attrs,
+metadata, and active QUID strings are retained without revisions, commits,
+identity authority, or runtime ownership. It is narrower than document-mode
+LiveMap state because values such as non-string ordinary attrs or lossy typed
+style leaves cannot round-trip exactly through Hson notation. `HsonFragment`
+does not exist. HTML trust stays with Transform, and `HsonDocument` has no DOM,
+browser-realization, or Schema-construction semantics.
 
 The root package is the umbrella entrypoint:
 

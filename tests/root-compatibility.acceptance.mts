@@ -26,7 +26,7 @@ testEvents.case_begin(caseId, caseId);
 
 try {
   const overlaps = [
-    [hson, ["Hson", "HsonData", "TransformError"]],
+    [hson, ["Hson", "HsonData", "HsonDocument", "TransformError"]],
     [transform, ["HsonData", "hsonTransform", "TransformError"]],
     [livetree, ["hsonLiveTree", "LiveTree", "TreeSelector", "LiveTreeDisposedError"]],
     [livemap, ["hsonLiveMap", "link_livemap", "LiveMapDocumentInstallError"]],

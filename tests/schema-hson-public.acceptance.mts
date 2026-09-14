@@ -85,7 +85,7 @@ check("lowercase aggregate remains frozen and noncallable", () => {
 });
 
 check("narrow authoring exports no aggregate or subsystem facade", () => {
-  assert.deepEqual(Object.keys(narrow).sort(), ["Hson", "HsonData", "TransformError", "is_transform_error", "read_transform_error_details"]);
+  assert.deepEqual(Object.keys(narrow).sort(), ["Hson", "HsonData", "HsonDocument", "TransformError", "is_transform_error", "read_transform_error_details"]);
 });
 
 check("root facade exports preserve subsystem identities", () => {
