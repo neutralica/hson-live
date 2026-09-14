@@ -619,14 +619,18 @@ check("Reflection consumes first carrier materialization through existing commit
   const binding = hsonReflect(map);
   const rootDom = project_livetree(binding.tree.node) as unknown as FakeElement;
   const beforeProjection = structuredClone(binding.tree.node);
+  const observations: unknown[] = [];
+  map.commits.observe((observation) => observations.push(observation));
 
   logicalContent(map);
   assert.deepEqual(binding.tree.node, beforeProjection);
+  assert.equal(rootDom.tagName, "main");
   assert.equal(binding.sourceRevision, 0);
-  assert.equal(rootDom.childNodes.length, 1);
+  assert.equal(rootDom.childNodes.length, 0);
 
   const commit = insertLogical(map, 0, ordinary(`<span/>`));
   assert.equal(commit.ops[0]?.op, "insert-content");
+  assert.equal(map.rev, 1);
   assert.equal(binding.status, "active", binding.failure?.message);
   assert.equal(binding.sourceRevision, 1);
 
@@ -639,11 +643,11 @@ check("Reflection consumes first carrier materialization through existing commit
 
   assert.equal(
     rootDom.childNodes[0] instanceof FakeElement
-      && rootDom.childNodes[0].childNodes[0] instanceof FakeElement
-      ? rootDom.childNodes[0].childNodes[0].tagName
+      ? rootDom.childNodes[0].tagName
       : undefined,
     "span",
   );
+  assert.equal(observations.length, 1);
 
   binding.dispose();
 });
