@@ -31,6 +31,8 @@ const projectedCapture: LiveMapCapture = map.capture();
 void projectedAcquisitionIsPublic;
 void projectedCapture.root;
 void hsonLiveMap.fromHson(`<worker <ready true>>`);
+const emptyDocumentMap = hsonLiveMap.fromHson("");
+if (emptyDocumentMap.mode === "document") void emptyDocumentMap.root();
 void hsonLiveMap.fromNode(map.root());
 declare const workerSchema: HsonSchema;
 void map.schema.use(workerSchema);

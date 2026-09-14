@@ -45,4 +45,29 @@ assert.equal("selector" in semantic, false);
 assert.equal("endpoint" in semantic, false);
 
 locus.dispose();
+
+const emptyAuthority = document_map("");
+const emptyLocus = hsonLocus.create({
+  map: emptyAuthority,
+  logicalMapId: "snapshot-install-empty",
+  sessions: {},
+});
+const emptyBootstrap = capture_locus_bootstrap(
+  emptyLocus,
+  "snapshot:install:empty",
+  "/empty-socket",
+);
+assert.equal(emptyBootstrap.state.payload, "");
+const installedEmpty = install_locus_bootstrap(emptyBootstrap);
+assert.equal(installedEmpty.map.mode, "document");
+assert.equal(installedEmpty.map.rev, emptyAuthority.rev);
+assert.deepEqual(installedEmpty.map.root(), { $_tag: "_hson_root", $_content: [] });
+assert.deepEqual(installedEmpty.recovery, {
+  logicalMapId: "snapshot-install-empty",
+  cursor: {
+    incarnationId: emptyBootstrap.incarnationId,
+    lastAppliedRev: emptyAuthority.rev,
+  },
+});
+emptyLocus.dispose();
 process.stdout.write("Locus semantic snapshot installation acceptance passed.\n");

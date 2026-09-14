@@ -17,6 +17,7 @@ const StateSchema: HsonSchema = Hson`<type "data" content <count "number" nested
 const ColorsSchema: HsonSchema = Hson`<type "data" content <primary "string">>`;
 const PageSchema: HsonSchema = Hson`<type "document" tag "main" attrs <props <title <optional "string">>> content "empty">`;
 const ItemDocumentSchema: HsonSchema = Hson`<type "document" tag "main" content <repeat <tag "item" content "empty">>>`;
+const EmptyDocumentSchema: HsonSchema = Hson`<type "document" content <repeat <tag "item" content "empty">>>`;
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livemap.public-libraries",
   title: "LiveMap public libraries",
@@ -70,6 +71,14 @@ check("fromLibraries establishes fixed named data and document Libraries", () =>
   assert.equal("add" in map.lib, false);
   assert.equal("create" in map.lib, false);
   assert.equal("library" in map, false);
+});
+
+check("document Libraries admit exact zero-length document source", () => {
+  const map = hsonLiveMap.fromLibraries({
+    empty: { document: "", schema: EmptyDocumentSchema },
+  });
+  assert.equal(map.lib("empty").mode, "document");
+  assert.deepEqual(map.lib("empty").root(), { $_tag: "_hson_root", $_content: [] });
 });
 
 check("named document Library mutations retain their selected authority and global commit envelope", () => {

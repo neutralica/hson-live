@@ -210,9 +210,12 @@ Current invariant validation enforces, among other rules:
 - `_hson_str`/ordinary-element-only children under `_hson_elem`.
 
 For successful nonempty Hson source, the internal root has exactly one child.
-Empty, whitespace-only, and comment-only Hson source rejects rather than
-creating an empty object. Bare strings detach as `_hson_str`; bare finite
-numbers, booleans, and `null` detach as `_hson_val`.
+Generic and data parsing reject empty, whitespace-only, and comment-only Hson
+source rather than creating an empty object. Existing document-aware parsing
+additionally admits exact zero-length source as an empty internal `_hson_root`;
+it does not admit whitespace or comments by trimming. Bare strings detach as
+`_hson_str`; in document context, authored `""` remains one empty text item.
+Bare finite numbers, booleans, and `null` detach as `_hson_val`.
 
 The useful round-trip promise is semantic equivalence within the target
 format: values, relevant structure, and content order survive where the target

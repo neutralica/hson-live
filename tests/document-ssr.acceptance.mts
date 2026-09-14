@@ -125,7 +125,7 @@ for (const source of [
   assert.equal(map.rev, 0);
 }
 
-const emptyDocument = hsonLiveMap.fromNode({ $_tag: "_hson_root", $_content: [] });
+const emptyDocument = hsonLiveMap.fromHson("");
 if (emptyDocument.mode !== "document") throw new Error("Expected an empty document map.");
 for (const map of [emptyDocument, document_map(`<main/> <aside/>`)]) {
   assert.throws(

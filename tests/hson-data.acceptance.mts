@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { Hson, HsonData, hson } from "../src/index.ts";
+import { serialize_hson_owned_document_content } from "../src/api/transform/serializers/serialize-hson.ts";
 
 type HsonDataCanonicalInput = Parameters<typeof HsonData.fromHson>[0];
 
@@ -111,6 +112,8 @@ check("every representative admitted value closes through canonical Hson", () =>
 });
 
 check("document Hson rejects the data-only boundary", () => {
+  const emptyDocumentHson = serialize_hson_owned_document_content({ $_tag: "_hson_root", $_content: [] });
+  assert.throws(() => HsonData.fromHson(emptyDocumentHson), /data-mode Hson/);
   assert.throws(() => HsonData.fromHson(Hson`<main "text"/>`), /data-mode Hson/);
   assert.throws(() => HsonData.fromHson("<@not-data a 1>" as HsonDataCanonicalInput), /data-mode Hson/);
   assert.throws(() => HsonData.fromHson("<a 1b 2>" as HsonDataCanonicalInput), /data-mode Hson/);

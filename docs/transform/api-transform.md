@@ -390,7 +390,7 @@ It is assignable to `string`, but an arbitrary `string` is not assignable to `Hs
 
 Transport and persistence boundaries such as HTTP, WebSocket, JSON, storage, environment variables, process boundaries, and third-party APIs typed as plain strings normally erase the brand. Receivers accept transported Hson text as an ordinary `string` and parse it normally. Parsing arbitrary text produces canonical `HsonNode` graph state after success; it does not brand the input text.
 
-Readable, compact (`noBreak`), and `noQuid` Hson serialization all return `HsonCanonical`. The type does not imply that those options produce identical bytes, preserve source spelling, whitespace, quoting, comments, or formatting, or preserve JavaScript object identity for shared references. Graph carriers outside the serializable Hson-text domain, including every empty or populated `_hson_root`, remain rejected and therefore do not produce an `HsonCanonical`.
+Readable, compact (`noBreak`), and `noQuid` Hson serialization all return `HsonCanonical`. The type does not imply that those options produce identical bytes, preserve source spelling, whitespace, quoting, comments, or formatting, or preserve JavaScript object identity for shared references. Direct/general serialization still rejects every empty or populated `_hson_root`. The existing owned-document serializer is a separate internal boundary: it melts the root and produces the exact zero-length `HsonCanonical` for an empty document, which only document-aware parsing admits again.
 
 ## Hson Serialization Options
 

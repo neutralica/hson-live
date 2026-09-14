@@ -12,19 +12,27 @@ const COMPILED_HSON_SCHEMAS = new Map<string, ReturnType<typeof compile_hson_sch
 export function validate_canonical_hson(schema: HsonSchema, canonical: HsonCanonical): HsonCanonical;
 export function validate_canonical_hson(schema: HsonSchema, canonical: HsonCanonical): HsonCanonical {
   if (typeof canonical !== "string") throw new TypeError("validate requires an HsonCanonical string.");
-  const graph = detach_hson_root_value(parse_hson(canonical));
+  const compiled = compiled_hson_schema(schema);
+  const graph = compiled.value.semantic.kind === "document"
+    ? parse_hson(canonical, { allowTopLevelDocumentText: true })
+    : detach_hson_root_value(parse_hson(canonical));
   validate_hson_schema_graph(schema, graph);
   return canonical;
 }
 
-/** @internal Validate an already-owned canonical graph without string round-tripping. */
-export function validate_hson_schema_graph(schema: HsonSchema, graph: import("../../core/types.js").HsonNode): void {
+function compiled_hson_schema(schema: HsonSchema): Extract<ReturnType<typeof compile_hson_schema>, { ok: true }> {
   let compiled = COMPILED_HSON_SCHEMAS.get(schema);
   if (compiled === undefined) {
     compiled = compile_hson_schema(schema);
     COMPILED_HSON_SCHEMAS.set(schema, compiled);
   }
   if (!compiled.ok) throw new HsonSchemaError("Hson Schema is unavailable or invalid.", [], compiled.issues.map((issue) => Object.freeze({ code: "INVALID_SCHEMA" as const, path: [], message: issue.message })));
+  return compiled;
+}
+
+/** @internal Validate an already-owned canonical graph without string round-tripping. */
+export function validate_hson_schema_graph(schema: HsonSchema, graph: import("../../core/types.js").HsonNode): void {
+  const compiled = compiled_hson_schema(schema);
   let result;
   if (compiled.value.semantic.kind === "document") {
     result = evaluate_canonical_document_schema(compiled.value.graph, graph);

@@ -123,6 +123,16 @@ check("canonical roots classify as data-object, data-array, element, and multiNo
   assert.equal(hson.liveMap.fromNode({ $_tag: "_hson_root", $_content: [] }).mode, "document");
 });
 
+check("zero-length source constructs the empty document without conflating quoted empty text", () => {
+  const empty = hsonLiveMap.fromHson("");
+  const quotedEmpty = hsonLiveMap.fromHson(`""`);
+  assert.equal(empty.mode, "document");
+  assert.deepEqual(empty.root(), { $_tag: "_hson_root", $_content: [] });
+  assert.equal(quotedEmpty.mode, "document");
+  assert.equal(quotedEmpty.root().$_content.length, 1);
+  assert.notDeepEqual(quotedEmpty.root(), empty.root());
+});
+
 check("malformed and unsupported canonical roots are rejected with causes", () => {
   assert.throws(
     () => hson.liveMap.fromNode({ $_tag: "_hson_root", $_content: [1] }),

@@ -135,6 +135,13 @@ check("construction facades preserve root and subpath identity and immutability"
     if (!Object.isFrozen(rootMap) || !Object.isFrozen(hson.liveMap)) throw new Error("LiveMap facade is mutable");
     if (!Object.isFrozen(rootTree) || !Object.isFrozen(hson.liveTree)) throw new Error("LiveTree facade is mutable");
     if ("fromTrustedHtml" in hson.liveMap || "fromUntrustedHtml" in hson.liveMap) throw new Error("browser compatibility shape remains");
+    const emptyDocument = rootMap.fromHson("");
+    if (emptyDocument.mode !== "document" || emptyDocument.root().$_content.length !== 0) throw new Error("empty document source did not close");
+    const quotedEmptyDocument = subpathMap.fromHson('""');
+    if (quotedEmptyDocument.mode !== "document" || quotedEmptyDocument.root().$_content.length !== 1) throw new Error("quoted empty text was conflated with an empty document");
+    let genericEmptyRejected = false;
+    try { hson.fromHson("").toNode(); } catch { genericEmptyRejected = true; }
+    if (!genericEmptyRejected) throw new Error("generic Transform admitted empty source");
     for (const output of [hson.fromHson("<root/>"), hson.fromJson({ ready: true }), hsonTransform.fromNode({ $_tag: "main", $_content: [] })]) {
       if ("sanitizeBEWARE" in output) throw new Error("Transform sanitizer compatibility shape remains");
     }

@@ -262,7 +262,7 @@ Canonical readable Hson is the default and uses two-space indentation. `noBreak(
 
 `noQuid()` removes only the defined `quid` field from eligible element nodes and never mutates the graph or identity registry. It does not legalize object metadata. Structural VSN metadata is restricted to the operational `index` on `_hson_ii`; it is omitted because array order carries the same information and parsing regenerates it. `_hson_root`, `_hson_elem`, `_hson_obj`, `_hson_arr`, `_hson_str`, and `_hson_val` accept no metadata. Every other `$_meta` key is undefined and rejected on every node kind; it is never silently stripped. Adding metadata requires an explicit future field/node-kind contract in the registry.
 
-An empty `_hson_root` remains a documented runtime-only exception for internal systems, but it has no Hson text form. Like every populated root, it rejects at Hson egress and is never substituted with `<>`, `{}`, or another value.
+An empty `_hson_root` remains an internal structural mechanism. Like every populated root, it rejects direct/general Hson egress and is never substituted with `<>`, `{}`, or another value. The existing owned-document serializer instead melts that root to its document content, producing zero source characters for zero items.
 
 ---
 
@@ -270,7 +270,7 @@ An empty `_hson_root` remains a documented runtime-only exception for internal s
 
 Hson has its own tokenizer and parser; it is not parsed as HTML or XML. The HTML transform path is separately XML-backed and has different repair, attribute, entity, and sanitization behavior.
 
-Empty, whitespace-only, and comment-only Hson source has no semantic value and rejects. Explicit empty values use `""`, `<>`, or `«»` (`[]` is accepted and canonicalizes to `«»`).
+At generic and data boundaries, empty, whitespace-only, and comment-only Hson source has no semantic value and rejects. At an already-document-aware boundary only, the exact zero-length source is the canonical zero-item document and becomes an empty internal `_hson_root`. This admission is based on the original source length: whitespace-only and comment-only document source still rejects without trimming. The authored source `""` contains two quote characters and remains one empty text item, not a zero-item document. Explicit empty data values use `""`, `<>`, or `«»` (`[]` is accepted and canonicalizes to `«»`).
 
 Authored-source failures use portable `TransformError` details. Stable identity is read from `operation`, `code`, optional `stage`, and exact zero-based index / one-based line and column in `source`; graph-only failures retain graph `path` instead of fabricated source coordinates. Duplicate object members and element attributes identify the duplicate as primary `source` and the first declaration as structured `related` evidence. Diagnostic prose is informative but is not the machine-readable identity.
 

@@ -20,6 +20,8 @@ const worker = await new Promise<Readonly<{
   decoded: unknown;
   largeEncoded: string;
   largeDecoded: unknown;
+  emptyRoot: unknown;
+  emptySsrRejected: boolean;
   hasDocument: boolean;
 }>>((resolve, reject) => {
   const instance = repository_typescript_worker(new URL("./fixtures/document-ssr.worker.mts", import.meta.url));
@@ -37,4 +39,6 @@ assert.equal(worker.encoded, encode_ssr_bootstrap(node.bootstrap));
 assert.deepEqual(worker.decoded, { kind: "document", bootstrap: node.bootstrap });
 assert.equal(worker.largeEncoded, encode_ssr_bootstrap(largeBootstrap));
 assert.deepEqual(worker.largeDecoded, { kind: "hosted-document", bootstrap: largeBootstrap });
+assert.deepEqual(worker.emptyRoot, { $_tag: "_hson_root", $_content: [] });
+assert.equal(worker.emptySsrRejected, true);
 process.stdout.write("Document SSR Worker parity acceptance passed.\n");

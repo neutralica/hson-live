@@ -8,6 +8,7 @@ import { serialize_hson } from "../src/api/transform/serializers/serialize-hson.
 import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { TransformError } from "../src/core/errors.ts";
+import { is_Node } from "../src/core/node-guards.ts";
 import type { HsonNode, Primitive } from "../src/core/types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -107,6 +108,58 @@ function expectTransformError(source: string, code: string): TransformError {
 
 check("bare empty string attaches as one _hson_str semantic value", () => {
   assertBare(`""`, "_hson_str", "", `""`);
+});
+
+check("exact zero-length source is an empty root only in document context", () => {
+  assert.deepEqual(
+    parse_hson("", { allowTopLevelDocumentText: true }),
+    { $_tag: "_hson_root", $_content: [] },
+  );
+  assert.throws(
+    () => parse_hson(""),
+    (cause) => cause instanceof TransformError && cause.code === "HSON_SOURCE_EMPTY",
+  );
+});
+
+check("document parsing preserves one, many, text, and quoted-empty item shaping", () => {
+  const one = parse_hson(`<main/>`, { allowTopLevelDocumentText: true });
+  const many = parse_hson(`<main/><aside/>`, { allowTopLevelDocumentText: true });
+  const text = parse_hson(`"text"`, { allowTopLevelDocumentText: true });
+  const quotedEmpty = parse_hson(`""`, { allowTopLevelDocumentText: true });
+  const oneContent = one.$_content[0];
+  const manyContent = many.$_content[0];
+  const textContent = text.$_content[0];
+  const quotedEmptyContent = quotedEmpty.$_content[0];
+  assert.equal(is_Node(oneContent) && oneContent.$_tag, "_hson_elem");
+  assert.equal(is_Node(manyContent) && manyContent.$_content.length, 2);
+  assert.deepEqual(
+    is_Node(manyContent)
+      ? manyContent.$_content.map((item) => is_Node(item) ? item.$_tag : undefined)
+      : [],
+    ["main", "aside"],
+  );
+  const textLeaf = is_Node(textContent) ? textContent.$_content[0] : undefined;
+  const quotedEmptyLeaf = is_Node(quotedEmptyContent) ? quotedEmptyContent.$_content[0] : undefined;
+  assert.equal(is_Node(textLeaf) && textLeaf.$_content[0], "text");
+  assert.equal(is_Node(quotedEmptyLeaf) && quotedEmptyLeaf.$_tag, "_hson_str");
+  assert.equal(is_Node(quotedEmptyLeaf) && quotedEmptyLeaf.$_content[0], "");
+  assert.notDeepEqual(quotedEmpty, parse_hson("", { allowTopLevelDocumentText: true }));
+});
+
+check("document context does not admit whitespace or comment-only source", () => {
+  for (const source of [" ", "\t", "\n", "\r", " \t\r\n ", "// comment", " \t// comment\r\n "]) {
+    assert.throws(
+      () => parse_hson(source, { allowTopLevelDocumentText: true }),
+      (cause) => cause instanceof TransformError
+        && cause.code === "HSON_SOURCE_EMPTY"
+        && cause.source?.index === 0
+        && cause.source.line === 1
+        && cause.source.column === 1,
+      JSON.stringify(source),
+    );
+  }
+  assert.throws(() => parse_hson("<main", { allowTopLevelDocumentText: true }));
+  assert.throws(() => parse_hson("<_hson_root/>", { allowTopLevelDocumentText: true }), /reserved for internal structural nodes/);
 });
 
 check("bare nonempty string attaches as one _hson_str semantic value", () => {
@@ -284,6 +337,10 @@ check("LF-only Hson source rejects", () => {
 
 check("CRLF-only Hson source rejects", () => {
   assert.throws(() => publicNode(`\r\n\r\n`), /has no semantic value/);
+});
+
+check("CR-only Hson source rejects", () => {
+  assert.throws(() => publicNode(`\r`), /has no semantic value/);
 });
 
 check("comment-only Hson source rejects", () => {

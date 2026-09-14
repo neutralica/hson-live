@@ -69,6 +69,14 @@ check("Transform outputs omit browser-dependent post-output sanitation", () => {
   ]) assert.equal("sanitizeBEWARE" in output, false);
 });
 
+check("Worker-safe generic Transform keeps zero-length source invalid", () => {
+  assert.throws(
+    () => hsonTransform.fromHson("").toNode(),
+    (cause) => cause instanceof TransformError && cause.code === "HSON_SOURCE_EMPTY",
+  );
+  assert.equal(hsonTransform.fromHson(`""`).toNode().$_tag, "_hson_str");
+});
+
 check("the numeric leaf entrypoint is Worker-safe and preserves negative zero", () => {
   assert.equal(Object.is(hsonCalc(-0), -0), true);
   assert.equal(Object.is(hsonCalc(() => -0), -0), true);

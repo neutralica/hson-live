@@ -2,6 +2,8 @@
 
 
 import { assert_invariants } from "../../../core/assert-invariants.js";
+import { ROOT_TAG } from "../../../core/constants.js";
+import { CREATE_NODE } from "../../../core/factories.js";
 import { HsonNode } from "../../../core/types.js";
 import { parse_tokens, type ParseTokensOptions } from "./parse-tokens.js";
 import { tokenize_hson } from "./tokenize-hson.js";
@@ -38,6 +40,12 @@ export function parse_hson_attached(
     options: ParseTokensOptions = {},
     provenance?: HsonSourceProvenanceBuilder,
 ): HsonNode {
+    if (str.length === 0 && options.allowTopLevelDocumentText) {
+        const emptyRoot = CREATE_NODE({ $_tag: ROOT_TAG, $_content: [] });
+        scan_ingested_hson_node_quids(emptyRoot, "parse_hson");
+        assert_invariants(emptyRoot, "parse hson");
+        return emptyRoot;
+    }
     const newTokens = tokenize_hson(str, 0, provenance);
     if (newTokens.length === 0) {
         _throw_transform_err(

@@ -1838,6 +1838,18 @@ check("owned scalar relationship, element text, and document-content carriers re
   assert.equal(canonical_hson_graph_equal(rebuilt, ownedDocumentContent), true);
 });
 
+check("owned empty document serializes and reparses with exact canonical equality", () => {
+  const ownedEmptyRoot: HsonNode = { $_tag: "_hson_root", $_content: [] };
+  const readableWire = serialize_hson_owned_document_content(ownedEmptyRoot);
+  const compactWire = serialize_hson_owned_document_content(ownedEmptyRoot, { noBreak: true });
+  assert.equal(readableWire, "");
+  assert.equal(compactWire, "");
+  const reparsed = parse_hson(readableWire, { allowTopLevelDocumentText: true });
+  assert.equal(canonical_hson_graph_equal(reparsed, ownedEmptyRoot), true);
+  assert.throws(() => parse_hson(readableWire), /has no semantic value/);
+  assert.throws(() => serialize_hson(ownedEmptyRoot), /internal attachment carrier/);
+});
+
 check("direct, universal Worker-safe, and browser facade Hson paths serialize identically", () => {
   for (const node of [
     parse(`<record <name "Ada" active true> items «1,2»>`),

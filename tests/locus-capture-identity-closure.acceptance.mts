@@ -161,6 +161,24 @@ check("Hson Locus snapshots retain exact metadata", () => {
   assert.equal(JSON.stringify(decoded.root).includes(Q1), true);
 });
 
+check("Hson Locus snapshots close over the exact empty document state", () => {
+  const source = mustElement(hson.liveMap.fromHson(""));
+  const snapshot = encode_locus_document_snapshot(
+    { logicalMapId: "unit7-empty", incarnationId: "inc-empty" },
+    source.capture(),
+    { format: "hson" },
+  );
+  assert.equal(snapshot.logicalMapId, "unit7-empty");
+  assert.equal(snapshot.incarnationId, "inc-empty");
+  assert.equal(snapshot.rev, source.rev);
+  assert.equal("hson" in snapshot && snapshot.hson, "");
+  const decoded = decode_locus_document_snapshot(snapshot);
+  assert.equal(decoded.mode, "document");
+  assert.equal(decoded.rev, source.rev);
+  assert.equal(canonical_hson_graph_equal(decoded.root, source.root()), true);
+  assert.deepEqual(decoded.root, { $_tag: "_hson_root", $_content: [] });
+});
+
 check("Locus bootstrap installs metadata into a new mirror epoch", () => {
   const source = element(`<main @${Q1}/>`);
   const host = hson.locus.create({ map: source, logicalMapId: "unit7-bootstrap" });
