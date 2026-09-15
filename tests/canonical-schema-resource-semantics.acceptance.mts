@@ -81,4 +81,38 @@ check("document content traversal has an independent budget", () => {
   assert.equal(exhausted(evaluate_canonical_document_schema(graph, parse_hson('"a" "b"', { allowTopLevelDocumentText: true }), { maxContentItems: 1 })), true);
 });
 
+check("configured unique charges every inspected selector member", () => {
+  const graph = projected([
+    { kind: "projected-refinement", base: 1, rule: { kind: "array-unique-by-cases", by: "selector", cases: [["hit", []]] } },
+    { kind: "projected-array", item: 2 },
+    { kind: "projected-any" },
+  ]);
+  const laterMembers = Object.fromEntries(Array.from({ length: 64 }, (_, index) => [`later-${index}`, index]));
+  const selectorFirst = admit_projected_value([{ selector: "hit", ...laterMembers }]);
+  const selectorLast = admit_projected_value([{ ...laterMembers, selector: "hit" }]);
+  const selectorMissing = admit_projected_value([{ ...laterMembers }]);
+
+  assert.equal(evaluate_canonical_projected_schema(graph, selectorFirst, { maxSteps: 6 }).ok, true);
+  assert.equal(exhausted(evaluate_canonical_projected_schema(graph, selectorLast, { maxSteps: 69 })), true);
+  assert.equal(evaluate_canonical_projected_schema(graph, selectorLast, { maxSteps: 70 }).ok, true);
+  assert.equal(exhausted(evaluate_canonical_projected_schema(graph, selectorMissing, { maxSteps: 68 })), true);
+  const missing = evaluate_canonical_projected_schema(graph, selectorMissing, { maxSteps: 69 });
+  assert.equal(missing.ok, false);
+  if (!missing.ok) {
+    assert.equal(missing.issues[0]?.code, "MISSING_REQUIRED");
+    assert.equal(exhausted(missing), false);
+  }
+});
+
+check("configured unique relation rows, keys, and contributed keys remain metered", () => {
+  const graph = projected([
+    { kind: "projected-refinement", base: 1, rule: { kind: "array-unique-by-cases", by: "selector", cases: [["hit", ["key"]]] } },
+    { kind: "projected-array", item: 2 },
+    { kind: "projected-any" },
+  ]);
+  const candidate = admit_projected_value([{ selector: "hit" }]);
+  assert.equal(exhausted(evaluate_canonical_projected_schema(graph, candidate, { maxSteps: 7 })), true);
+  assert.equal(evaluate_canonical_projected_schema(graph, candidate, { maxSteps: 8 }).ok, true);
+});
+
 testEvents.terminal("pass");

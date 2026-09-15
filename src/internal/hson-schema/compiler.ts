@@ -5,6 +5,7 @@ import { parse_hson_with_provenance } from "../hson-source-provenance/parse-hson
 import type { HsonSourceProvenance, HsonSourceRange } from "../hson-source-provenance/hson-source-provenance.js";
 import {
   CANONICAL_SCHEMA_FORMAT,
+  CANONICAL_SCHEMA_FORMAT_LIMITS,
   CANONICAL_SCHEMA_VERSION,
   type CanonicalSchemaGraph,
   type CanonicalSchemaNode,
@@ -15,10 +16,12 @@ import { verify_canonical_schema_graph } from "../canonical-schema/verify.js";
 import { evaluate_canonical_projected_schema } from "../canonical-schema/evaluate.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { is_public_attr_name } from "../../core/public-attrs.js";
+import { is_valid_hson_data_name } from "../../core/hson-name.js";
+import type { HsonSemanticPrimitive } from "../../core/types.js";
 import { resolve_projected_hson_location } from "../../api/livemap/livemap.editor.js";
 import { ordered_projected_value_equal } from "../../core/ordered-projected-value.js";
 
-export const HSON_SCHEMA_MVP_COMPATIBILITY_VERSION = "hson-schema-mvp-9" as const;
+export const HSON_SCHEMA_MVP_COMPATIBILITY_VERSION = "hson-schema-mvp-10" as const;
 
 export type HsonSchemaIssueCode =
   | "INVALID_ROOT"
@@ -392,8 +395,11 @@ function decode_refinements(domain: "number" | "string" | "array" | "tuple", inp
       else if (has_duplicate_string_units(value)) issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, member], "`alphabet` must not contain duplicate string-iteration units.");
       else refinements.push(Object.freeze({ member, rule: Object.freeze({ kind: "string-repertoire", repertoire: value }) }));
     } else if (member === "unique") {
-      if (value !== true) issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, member], "`unique` must be exactly true.");
-      else refinements.push(Object.freeze({ member, rule: Object.freeze({ kind: "array-unique" }) }));
+      if (value === true) refinements.push(Object.freeze({ member, rule: Object.freeze({ kind: "array-unique" }) }));
+      else {
+        const configured = decode_configured_unique(value, [...path, member], issues);
+        if (configured !== undefined) refinements.push(Object.freeze({ member, rule: configured }));
+      }
     } else {
       if (!Number.isSafeInteger(value) || (value as number) < 0) issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, member], `\`${member}\` requires one nonnegative safe integer.`);
       else if (member === "len") exactLength = value as number;
@@ -422,6 +428,50 @@ function decode_refinements(domain: "number" | "string" | "array" | "tuple", inp
     }
   }
   return issues.length > issueCount ? undefined : Object.freeze(refinements);
+}
+
+function decode_configured_unique(value: unknown, path: readonly (string | number)[], issues: HsonSchemaIssue[]): Extract<CanonicalRefinementRule, { kind: "array-unique-by-cases" }> | undefined {
+  const issueCount = issues.length;
+  if (!is_object(value)) {
+    issue(issues, "INVALID_SCHEMA_EXPRESSION", path, "`unique` must be exactly true or one configured object with `by` and `cases`.");
+    return undefined;
+  }
+  for (const key of Object.keys(value)) if (key !== "by" && key !== "cases") issue(issues, "UNKNOWN_SCHEMA_MEMBER", [...path, key], `Unknown configured unique member ${JSON.stringify(key)}.`);
+  if (!is_valid_hson_data_name(value.by)) issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, "by"], "Configured `unique.by` requires one ordinary direct Hson data member name.");
+  if (!Array.isArray(value.cases)) {
+    issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, "cases"], "Configured `unique.cases` requires an array of [selector, keys] rows.");
+    return undefined;
+  }
+  if (value.cases.length > CANONICAL_SCHEMA_FORMAT_LIMITS.maxUniqueCases) issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, "cases"], `Configured unique cases exceed the limit of ${CANONICAL_SCHEMA_FORMAT_LIMITS.maxUniqueCases}.`);
+  const cases: Array<readonly [HsonSemanticPrimitive, readonly HsonSemanticPrimitive[]]> = [];
+  const selectors: HsonSemanticPrimitive[] = [];
+  let totalKeys = 0;
+  value.cases.forEach((row, rowIndex) => {
+    const rowPath = [...path, "cases", rowIndex];
+    if (!Array.isArray(row) || row.length !== 2) { issue(issues, "INVALID_SCHEMA_EXPRESSION", rowPath, "Configured unique case must be exactly [selector, keys]."); return; }
+    const selector = row[0];
+    if (!is_exact_primitive(selector)) issue(issues, "INVALID_SCHEMA_EXPRESSION", [...rowPath, 0], "Configured unique selector must be an exact Hson primitive.");
+    else if (selectors.some((prior) => ordered_projected_value_equal(prior, selector))) issue(issues, "INVALID_SCHEMA_EXPRESSION", [...rowPath, 0], "Configured unique selectors must not repeat under exact Hson equality.");
+    else selectors.push(selector);
+    if (!Array.isArray(row[1])) { issue(issues, "INVALID_SCHEMA_EXPRESSION", [...rowPath, 1], "Configured unique derived keys must be an array."); return; }
+    const rawKeys = row[1];
+    if (rawKeys.length > CANONICAL_SCHEMA_FORMAT_LIMITS.maxUniqueKeysPerCase) issue(issues, "INVALID_SCHEMA_EXPRESSION", [...rowPath, 1], `Configured unique case exceeds the per-case key limit of ${CANONICAL_SCHEMA_FORMAT_LIMITS.maxUniqueKeysPerCase}.`);
+    totalKeys += rawKeys.length;
+    const keys: HsonSemanticPrimitive[] = [];
+    rawKeys.forEach((key, keyIndex) => {
+      if (!is_exact_primitive(key)) issue(issues, "INVALID_SCHEMA_EXPRESSION", [...rowPath, 1, keyIndex], "Configured unique derived key must be an exact Hson primitive.");
+      else if (keys.some((prior) => ordered_projected_value_equal(prior, key))) issue(issues, "INVALID_SCHEMA_EXPRESSION", [...rowPath, 1, keyIndex], "Configured unique derived keys must not repeat within one case.");
+      else keys.push(key);
+    });
+    if (is_exact_primitive(selector) && Array.isArray(row[1])) cases.push(Object.freeze([selector, Object.freeze(keys)] as const));
+  });
+  if (totalKeys > CANONICAL_SCHEMA_FORMAT_LIMITS.maxUniqueRelationKeys) issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, "cases"], `Configured unique relation exceeds the total key limit of ${CANONICAL_SCHEMA_FORMAT_LIMITS.maxUniqueRelationKeys}.`);
+  if (issues.length > issueCount || !is_valid_hson_data_name(value.by)) return undefined;
+  return Object.freeze({ kind: "array-unique-by-cases", by: value.by, cases: Object.freeze(cases) });
+}
+
+function is_exact_primitive(value: unknown): value is HsonSemanticPrimitive {
+  return value === null || typeof value === "string" || typeof value === "boolean" || (typeof value === "number" && Number.isFinite(value));
 }
 
 function has_duplicate_string_units(value: string): boolean {
@@ -969,7 +1019,23 @@ function build_bootstrap(): VerifiedCanonicalSchemaGraph {
   const refinedArray = reserve();
   const arrayRules = reserve();
   const refinedArrayContent = refExpression();
-  nodes[arrayRules] = { kind: "projected-object", exact: true, properties: [["content", refinedArrayContent], ["len", optionalLength], ["minlen", optionalLength], ["maxlen", optionalLength], ["unique", optionalTrue]] };
+  const optionalUnique = reserve();
+  const uniqueChoice = reserve();
+  const configuredUnique = reserve();
+  const byMember = reserve();
+  const uniqueCases = reserve();
+  const uniqueCase = reserve();
+  const exactPrimitive = reserve();
+  const uniqueKeys = reserve();
+  nodes[optionalUnique] = { kind: "projected-optional", base: uniqueChoice };
+  nodes[uniqueChoice] = { kind: "projected-union", choices: [booleanTrue, configuredUnique] };
+  nodes[configuredUnique] = { kind: "projected-object", exact: true, properties: [["by", byMember], ["cases", uniqueCases]] };
+  nodes[byMember] = { kind: "projected-string" };
+  nodes[uniqueCases] = { kind: "projected-array", item: uniqueCase };
+  nodes[uniqueCase] = { kind: "projected-tuple", items: [exactPrimitive, uniqueKeys] };
+  nodes[exactPrimitive] = { kind: "projected-union", choices: [exactString, exactNumber, exactBoolean, exactNull] };
+  nodes[uniqueKeys] = { kind: "projected-array", item: exactPrimitive };
+  nodes[arrayRules] = { kind: "projected-object", exact: true, properties: [["content", refinedArrayContent], ["len", optionalLength], ["minlen", optionalLength], ["maxlen", optionalLength], ["unique", optionalUnique]] };
   nodes[refinedArray] = { kind: "projected-object", exact: true, properties: [["array", arrayRules]] };
   const refinedTuple = reserve();
   const tupleRules = reserve();

@@ -220,7 +220,7 @@ export class TrustedSchemaDiagnosticRuntime {
         ? resolve_projected_schema_issue_source(parsed.value, parsed.provenance, issue)
         : resolve_document_schema_issue_source(parsed.value, rootMode, parsed.provenance, issue);
       const range = resolution.kind === "unresolved" ? { precision: "unresolved" as const } : { precision: resolution.kind, start: resolution.range.start, end: resolution.range.end };
-      return Object.freeze({ ...read_schema_issue_presentation(issue), code: issue.code, path: Object.freeze([...issue.path]), expected: issue.expected, received: issue.received, attributeName: issue.attributeName, range: Object.freeze(range),
+      return Object.freeze({ ...read_schema_issue_presentation(issue), code: issue.code, path: Object.freeze([...issue.path]), expected: issue.expected, received: issue.received, attributeName: issue.attributeName, relatedPath: issue.relatedPath, conflictingKey: issue.conflictingKey, range: Object.freeze(range),
         hostOrigin: capture === undefined ? undefined : map_interpolation_range(capture.site, capture.segments, range) });
     });
     return Object.freeze({ ...this.reply(request, "result"), result: Object.freeze({ status: issues.length === 0 ? "VALID" : "INVALID", diagnostics: Object.freeze(diagnostics), timings: Object.freeze({ parseMs, validateMs, lowerMs: performance.now() - lowerStart }) }) });

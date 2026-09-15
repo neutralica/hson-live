@@ -50,9 +50,22 @@ export const InteractionFieldsSchema: HsonSchema<InteractionFieldsSchemaType, "d
   <type "data" content <args "any" payload "any">>
 `;
 
+export const RelationalUniqueSchema: HsonSchema<RelationalUniqueSchemaType, "data"> = Hson`
+  <type "data" content <cells <array <
+    content <content <position "string" body "string">>
+    unique <by "position" cases [
+      ["top-left", ["TL"]],
+      ["top-right", ["TR"]],
+      ["top-half", ["TL", "TR"]]
+    ]>
+  >>>>
+`;
+
 // @hson-schema generated type exports
 import type { InteractionFieldsSchemaType, InteractionFieldsSchemaHson } from "./producer.InteractionFieldsSchema.hson-schema.generated.js";
 export type { InteractionFieldsSchemaType, InteractionFieldsSchemaHson };
+import type { RelationalUniqueSchemaType, RelationalUniqueSchemaHson } from "./producer.RelationalUniqueSchema.hson-schema.generated.js";
+export type { RelationalUniqueSchemaType, RelationalUniqueSchemaHson };
 import type { ReuseSchemaType, ReuseSchemaHson } from "./producer.ReuseSchema.hson-schema.generated.js";
 export type { ReuseSchemaType, ReuseSchemaHson };
 import type { TreeSchemaType, TreeSchemaHson } from "./producer.TreeSchema.hson-schema.generated.js";

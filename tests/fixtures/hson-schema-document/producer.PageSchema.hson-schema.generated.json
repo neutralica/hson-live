@@ -1,8 +1,8 @@
 {
-  "compatibilityVersion": "hson-schema-mvp-9",
+  "compatibilityVersion": "hson-schema-mvp-10",
   "declarationIdentity": "producer.ts#PageSchema",
   "sourceDigest": "fd2f7bce74ff21d82ff62613e9b7580a04af9a94d481da8e764e7ed63749da7d",
-  "semanticGraphDigest": "234e1bb4c1286ff6bbe23ae18e9a2ae10c5100239881b81ad7293a5b60d6042a",
-  "generatedDeclarationDigest": "d62c383570414b3473f294ee9edb12ae346e1a7613c53d86e23f8087b139d172",
-  "graphHson": "<format \"hson-canonical-schema\" version 2 capabilities <documentRoot 0> nodes «<kind \"document-root\" content 1>,<kind \"document-sequence\" items «2»>,<kind \"document-element\" tag \"main\" attrs 3 content 5>,<kind \"document-attrs\" exact false properties «<name \"id\" optional false flag false value 4>,<name \"hidden\" optional true flag true>»>,<kind \"projected-string\">,<kind \"document-sequence\" items «6»>,<kind \"document-element\" tag \"section\" content 7>,<kind \"document-sequence\" items «8»>,<kind \"document-text\">»>"
+  "semanticGraphDigest": "8047614c22feac7f484b9f0a604e321dae92b1413693d1a80206d360955d8b3c",
+  "generatedDeclarationDigest": "0f62f6443f633bc428b702790f7728d95db08d7103a1962cd70e82504d1acef9",
+  "graphHson": "<format \"hson-canonical-schema\" version 3 capabilities <documentRoot 0> nodes «<kind \"document-root\" content 1>,<kind \"document-sequence\" items «2»>,<kind \"document-element\" tag \"main\" attrs 3 content 5>,<kind \"document-attrs\" exact false properties «<name \"id\" optional false flag false value 4>,<name \"hidden\" optional true flag true>»>,<kind \"projected-string\">,<kind \"document-sequence\" items «6»>,<kind \"document-element\" tag \"section\" content 7>,<kind \"document-sequence\" items «8»>,<kind \"document-text\">»>"
 }

@@ -5,6 +5,7 @@ import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { is_ordered_projected_object, ordered_projected_value_equal, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import type { HsonNode } from "../../core/types.js";
+import type { HsonSemanticPrimitive } from "../../core/types.js";
 import type { HsonSchemaIssueCode, LivePath } from "../../types/livemap.types.js";
 import type {
   CanonicalDocumentAttrProperty,
@@ -94,6 +95,9 @@ function projected(graph: VerifiedCanonicalSchemaGraph, ref: number, value: Proj
   if (node.kind === "projected-refinement") {
     const base = projected(graph, node.base, value, path, state, depth + 1);
     if (!base.ok) return base;
+    if (node.rule.kind === "array-unique-by-cases") {
+      return configured_unique(graph, ref, node.rule, value, path, state);
+    }
     const repertoireFailure = node.rule.kind === "string-repertoire" && typeof value === "string"
       ? first_repertoire_failure(node.rule.repertoire, value)
       : undefined;
@@ -143,6 +147,78 @@ function projected(graph: VerifiedCanonicalSchemaGraph, ref: number, value: Proj
     return typeof value === expectedType ? valid() : mismatch(graph, ref, path, projected_type(value));
   }
   return invalid([make_issue("INVALID_SCHEMA", path, ref, "projected node", node.kind, { kind: "invalid-graph" })]);
+}
+
+function configured_unique(
+  graph: VerifiedCanonicalSchemaGraph,
+  ref: number,
+  rule: Extract<CanonicalRefinementRule, { kind: "array-unique-by-cases" }>,
+  value: OrderedProjectedValue,
+  path: LivePath,
+  state: EvaluationState,
+): CanonicalGraphEvaluation {
+  if (!Array.isArray(value)) return mismatch(graph, ref, path, projected_type(value));
+  const cases = new Map<string, readonly HsonSemanticPrimitive[]>();
+  for (const [selector, keys] of rule.cases) {
+    if (!step(state)) return resource(ref, path);
+    cases.set(primitive_token(selector), keys);
+    for (const _key of keys) if (!step(state)) return resource(ref, path);
+  }
+  const owners = new Map<string, LivePath>();
+  for (let index = 0; index < value.length; index += 1) {
+    if (!step(state)) return resource(ref, path);
+    const item = value[index];
+    const itemPath = Object.freeze([...path, index]);
+    if (item === undefined) {
+      return invalid([make_issue("INVALID_SCHEMA", itemPath, ref, "dense canonical array", "missing item", { kind: "invalid-graph" })]);
+    }
+    if (!is_ordered_projected_object(item)) {
+      return invalid([make_issue("TYPE_MISMATCH", itemPath, ref, "data object required by configured unique", projected_type(item), { kind: "unique-selector-nonprimitive", detail: rule.by })]);
+    }
+    const selectedPath = Object.freeze([...itemPath, rule.by]);
+    let selectedEntry: (typeof item.entries)[number] | undefined;
+    for (const entry of item.entries) {
+      if (!step(state)) return resource(ref, selectedPath);
+      if (entry[0] === rule.by) { selectedEntry = entry; break; }
+    }
+    if (selectedEntry === undefined) {
+      return invalid([make_issue("MISSING_REQUIRED", selectedPath, ref, `direct member ${JSON.stringify(rule.by)}`, "missing", { kind: "unique-selector-missing", detail: rule.by })]);
+    }
+    const selected = selectedEntry[1];
+    if (!is_exact_primitive(selected)) {
+      return invalid([make_issue("TYPE_MISMATCH", selectedPath, ref, "exact Hson primitive", projected_type(selected), { kind: "unique-selector-nonprimitive", detail: rule.by })]);
+    }
+    const keys = cases.get(primitive_token(selected));
+    if (keys === undefined) {
+      return invalid([make_issue("INVALID_CONSTRAINT", selectedPath, ref, "mapped configured unique selector", emit_ordered_json(selected), { kind: "unique-selector-unmapped", detail: rule.by })]);
+    }
+    for (const key of keys) {
+      if (!step(state)) return resource(ref, selectedPath);
+      const token = primitive_token(key);
+      const owner = owners.get(token);
+      if (owner !== undefined) {
+        return invalid([make_issue("INVALID_CONSTRAINT", selectedPath, ref, "unique derived key", emit_ordered_json(key), {
+          kind: "unique-key-conflict",
+          detail: rule.by,
+          relatedPath: owner,
+          conflictingKey: key,
+        })]);
+      }
+      owners.set(token, selectedPath);
+    }
+  }
+  return valid();
+}
+
+function is_exact_primitive(value: OrderedProjectedValue): value is HsonSemanticPrimitive {
+  return value === null || typeof value === "string" || typeof value === "boolean" || typeof value === "number";
+}
+
+function primitive_token(value: HsonSemanticPrimitive): string {
+  if (value === null) return "null";
+  if (typeof value === "string") return `string:${value}`;
+  if (typeof value === "boolean") return value ? "boolean:true" : "boolean:false";
+  return Object.is(value, -0) ? "number:-0" : `number:${String(value)}`;
 }
 
 function document_item(graph: VerifiedCanonicalSchemaGraph, ref: number, value: HsonNode, path: readonly number[], state: EvaluationState, depth = 0): CanonicalGraphEvaluation {

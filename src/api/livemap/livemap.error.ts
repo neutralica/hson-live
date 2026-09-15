@@ -92,6 +92,8 @@ export type HsonSchemaIssue = Readonly<{
   expected?: string;
   received?: string;
   attributeName?: string;
+  relatedPath?: LivePath;
+  conflictingKey?: string | number | boolean | null;
 }>;
 
 export class HsonSchemaError extends Error {

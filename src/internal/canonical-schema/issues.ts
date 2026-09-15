@@ -1,4 +1,5 @@
 import type { HsonSchemaIssueCode, LivePath } from "../../types/livemap.types.js";
+import type { HsonSemanticPrimitive } from "../../core/types.js";
 import type { CanonicalRefinementRule, CanonicalSchemaNodeRef } from "./graph.js";
 
 export type CanonicalGraphIssueEvidence = Readonly<{
@@ -14,6 +15,10 @@ export type CanonicalGraphIssueEvidence = Readonly<{
     | "attr-invalid"
     | "flag-mismatch"
     | "refinement-failure"
+    | "unique-selector-missing"
+    | "unique-selector-nonprimitive"
+    | "unique-selector-unmapped"
+    | "unique-key-conflict"
     | "invalid-graph"
     | "resource-limit";
   branches?: readonly CanonicalSchemaNodeRef[];
@@ -22,6 +27,8 @@ export type CanonicalGraphIssueEvidence = Readonly<{
   actualLength?: number;
   offendingUnit?: string;
   offendingUnitIndex?: number;
+  relatedPath?: LivePath;
+  conflictingKey?: HsonSemanticPrimitive;
 }>;
 
 export type CanonicalGraphIssue = Readonly<{

@@ -1,8 +1,8 @@
 {
-  "compatibilityVersion": "hson-schema-mvp-9",
+  "compatibilityVersion": "hson-schema-mvp-10",
   "declarationIdentity": "producer.ts#ReuseSchema",
   "sourceDigest": "ee7fc403329b42d1942ce338841c7efc2eb5f78af4ac1120aebd04a72f1764ee",
-  "semanticGraphDigest": "97042fe97450473ef1408e43d91fbfcd7f8339d4bfb046e83cad46df9b5cfdbc",
-  "generatedDeclarationDigest": "f5185fa1e489f657d57936fdb34bd0d6ef0c171f047a2974a07d9b24c3b10b51",
-  "graphHson": "<format \"hson-canonical-schema\" version 2 capabilities <projectedRoot 0> nodes «<kind \"projected-object\" exact true properties ««\"left\",1»,«\"right\",4»,«\"again\",7»»>,<kind \"projected-ref\" target 2>,<kind \"projected-object\" exact true properties ««\"value\",3»»>,<kind \"projected-string\">,<kind \"projected-ref\" target 5>,<kind \"projected-object\" exact true properties ««\"value\",6»»>,<kind \"projected-string\">,<kind \"projected-ref\" target 2>»>"
+  "semanticGraphDigest": "b1db252faa91ab0aec103920c91091682388712c8f5e4ca87d9235558aa6f36b",
+  "generatedDeclarationDigest": "a6620f029b638853d7e2e902cec69b00c075c1895ab7a514bd4ded8ee78ddb12",
+  "graphHson": "<format \"hson-canonical-schema\" version 3 capabilities <projectedRoot 0> nodes «<kind \"projected-object\" exact true properties ««\"left\",1»,«\"right\",4»,«\"again\",7»»>,<kind \"projected-ref\" target 2>,<kind \"projected-object\" exact true properties ««\"value\",3»»>,<kind \"projected-string\">,<kind \"projected-ref\" target 5>,<kind \"projected-object\" exact true properties ««\"value\",6»»>,<kind \"projected-string\">,<kind \"projected-ref\" target 2>»>"
 }

@@ -67,6 +67,31 @@ check("document child recursion is productive", () => accepted(graph(
   [{ kind: "document-root", content: 1 }, { kind: "document-sequence", items: [2] }, { kind: "document-element", content: 1 }],
 )));
 check("malformed refinement bound rejects", () => rejected(graph({ projectedRoot: 0 }, [{ kind: "projected-refinement", base: 1, rule: { kind: "number-lower-bound", value: Infinity, inclusive: true } }, { kind: "projected-number" }]), /finite/));
+check("configured unique accepts direct and legitimately refined or referenced array bases", () => {
+  const rule = { kind: "array-unique-by-cases", by: "position", cases: [["left", ["L"]]] };
+  accepted(graph({ projectedRoot: 0 }, [{ kind: "projected-refinement", base: 1, rule }, { kind: "projected-array" }]));
+  accepted(graph({ projectedRoot: 0 }, [
+    { kind: "projected-refinement", base: 1, rule },
+    { kind: "projected-refinement", base: 2, rule: { kind: "collection-length", minimum: 1 } },
+    { kind: "projected-array" },
+  ]));
+  accepted(graph({ projectedRoot: 0 }, [
+    { kind: "projected-refinement", base: 1, rule },
+    { kind: "projected-ref", target: 2 },
+    { kind: "projected-array" },
+  ]));
+});
+check("configured unique rejects canonical non-array bases", () => {
+  const rule = { kind: "array-unique-by-cases", by: "position", cases: [] };
+  for (const base of [
+    { kind: "projected-string" },
+    { kind: "projected-number" },
+    { kind: "projected-boolean" },
+    { kind: "projected-null" },
+    { kind: "projected-object", exact: true, properties: [] },
+    { kind: "projected-tuple", items: [] },
+  ]) rejected(graph({ projectedRoot: 0 }, [{ kind: "projected-refinement", base: 1, rule }, base]), /projected array Schema/);
+});
 check("closed deterministic pattern refinement verifies", () => accepted(graph({ projectedRoot: 0 }, [{ kind: "projected-refinement", base: 1, rule: { kind: "string-pattern", dialect: "literal-string-v1", mode: "prefix", pattern: "id_" } }, { kind: "projected-string" }])));
 check("closed string repertoire refinement verifies, including an empty repertoire", () => {
   accepted(graph({ projectedRoot: 0 }, [{ kind: "projected-refinement", base: 1, rule: { kind: "string-repertoire", repertoire: "a😀e\u0301\n" } }, { kind: "projected-string" }]));

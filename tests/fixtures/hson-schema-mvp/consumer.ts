@@ -1,6 +1,6 @@
 import { Hson, hsonCalc, hsonLiveMap, hsonLocus, hsonTransform, type HsonNumber } from "hson-live";
 import type { HsonCanonical } from "hson-live/hson";
-import { InteractionFieldsSchema, TreeSchema, UserSchema, type InteractionFieldsSchemaHson, type TreeSchemaHson, type UserSchemaHson } from "./producer.js";
+import { InteractionFieldsSchema, TreeSchema, UserSchema, type InteractionFieldsSchemaHson, type RelationalUniqueSchemaHson, type TreeSchemaHson, type UserSchemaHson } from "./producer.js";
 
 const authored: UserSchemaHson = Hson`
   <name "Ada" score 37 age 37 percent 80 code "ID-7" key "abc" status "ready" phase "lobby" turn "player1" zero 0 negativeZero -0 signedZeroChoice -0 flags [true, false] pair ["x", 2] account <kind "user" handle "ada">>
@@ -15,6 +15,7 @@ const recursiveCertified: TreeSchemaHson = Hson.certify(TreeSchema, recursiveDyn
 const interactionFields: InteractionFieldsSchemaHson = Hson`<args <target "browser" options [null, true, -0, <nested []>]> payload <action "rename" values ["Ada", "Grace"]>>`;
 const dynamicInteractionFields: HsonCanonical = hsonTransform.fromJson({ args: [], payload: { arbitrary: { nested: [1, false, null] } } }).toHson().serialize();
 const certifiedInteractionFields: InteractionFieldsSchemaHson = Hson.certify(InteractionFieldsSchema, dynamicInteractionFields);
+const relationalUnique: RelationalUniqueSchemaHson = Hson`<cells [<position "top-right" body "a">, <position "top-left" body "b">]>`;
 
 const libraries = hsonLiveMap.fromLibraries({
   user: {
@@ -54,6 +55,7 @@ void recursiveAuthored;
 void recursiveCertified;
 void interactionFields;
 void certifiedInteractionFields;
+void relationalUnique;
 void libraryName;
 void librarySchema;
 void hostedLibraryName;

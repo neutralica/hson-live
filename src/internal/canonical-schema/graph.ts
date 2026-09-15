@@ -1,11 +1,15 @@
 import type { OrderedProjectedValue } from "../../core/ordered-projected-value.js";
+import type { HsonSemanticPrimitive } from "../../core/types.js";
 
 export const CANONICAL_SCHEMA_FORMAT = "hson-canonical-schema" as const;
-export const CANONICAL_SCHEMA_VERSION = 2 as const;
+export const CANONICAL_SCHEMA_VERSION = 3 as const;
 
 /** Canonical graph limits. Format and evaluator limits are intentionally separate. */
 export const CANONICAL_SCHEMA_FORMAT_LIMITS = Object.freeze({
   maxGraphNodes: 100_000,
+  maxUniqueCases: 4_096,
+  maxUniqueKeysPerCase: 1_024,
+  maxUniqueRelationKeys: 16_384,
 });
 
 export const CANONICAL_SCHEMA_EVALUATOR_LIMITS = Object.freeze({
@@ -57,7 +61,12 @@ export type CanonicalRefinementRule =
    */
   | Readonly<{ kind: "string-repertoire"; repertoire: string }>
   | Readonly<{ kind: "collection-length"; minimum?: number; maximum?: number }>
-  | Readonly<{ kind: "array-unique" }>;
+  | Readonly<{ kind: "array-unique" }>
+  | Readonly<{
+    kind: "array-unique-by-cases";
+    by: string;
+    cases: readonly (readonly [HsonSemanticPrimitive, readonly HsonSemanticPrimitive[]])[];
+  }>;
 
 type ProjectedPrimitiveNode = Readonly<{
   kind: "projected-any" | "projected-string" | "projected-number" | "projected-boolean" | "projected-null";

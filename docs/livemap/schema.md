@@ -52,10 +52,10 @@ type, never TypeScript `any`. Canonical Hson equality continues to distinguish
 `0` from `-0`, and data-object member order remains semantic; Schema does not
 sort or normalize either form.
 
-The expression lowers directly to the existing canonical
-`projected-any` node. Canonical Schema graph version 2 is therefore unchanged.
-The authored-language and generated-evidence compatibility token is
-`hson-schema-mvp-9`; evidence generated under earlier tokens is stale.
+The expression lowers directly to the existing canonical `projected-any` node.
+The current Canonical Schema graph version is 3. The authored-language and
+generated-evidence compatibility token is `hson-schema-mvp-10`; evidence
+generated under earlier tokens is stale.
 
 This local canonical-data support does not resolve generic Echo/Locus action
 payload fidelity. Negative zero, object-member-order/dedupe equivalence, and
@@ -96,9 +96,85 @@ unit and its zero-based iteration-unit index; the index does not become a
 `LivePath` segment and user-facing expected text does not expose the complete
 repertoire.
 
-This addition is canonical Schema graph format version 2 and Hson Schema
-compatibility token `hson-schema-mvp-9`. Generated declarations and freshness
-evidence from older tokens must be regenerated.
+The current Canonical Schema graph format is version 3 and the Hson Schema
+compatibility token is `hson-schema-mvp-10`. Generated declarations and
+freshness evidence from older tokens must be regenerated.
+
+## Array uniqueness
+
+The `unique` array refinement has two authored forms. `unique true` preserves
+its original meaning: complete array elements must be pairwise distinct under
+exact canonical Hson equality.
+
+These forms are alternatives for the array descriptor's single `unique`
+member. One Schema may use them independently at different array locations,
+but the authored language does not apply both forms to the same array.
+
+The configured form derives finite, Schema-owned uniqueness keys from one
+required direct member of each item:
+
+```hson
+<array <
+  content <content <kind "string" note "string">>
+  unique <
+    by "kind"
+    cases [
+      ["morning-hour", ["09:00", "09:30"]],
+      ["single-0930", ["09:30"]],
+      ["single-1000", ["10:00"]]
+    ]
+  >
+>>
+```
+
+Here `morning-hour` plus `single-0930` rejects because both contribute
+`"09:30"`; `morning-hour` plus `single-1000` accepts. The relation is
+validation metadata only. It does not add keys to, reorder, or otherwise
+transform candidate data.
+
+V1 `by` is exactly one ordinary direct data-object member name. Every item must
+be a data object, must own that member, and the selected value must be an exact
+Hson primitive: string, finite number, boolean, or null. The selected value
+must match one case row; an unmapped value fails candidate validation. Case
+selectors and derived keys use exact Hson equality, including `0` distinct
+from `-0`. Arrays, objects, document nodes, undefined, and runtime-only values
+are not valid selectors or keys.
+
+Each case maps its selector to zero or more primitive keys. An empty key list
+is valid and consumes no uniqueness key. Duplicate selector rows and duplicate
+keys within a row make the Schema invalid. Case order and key order remain part
+of canonical Schema identity, but array item order and case-row order do not
+change candidate acceptance. The first item contributing a key remains its
+owner; a later conflict reports the later selected-member path, the earlier
+related path, and the exact conflicting key.
+
+A Decks-style relation can remain entirely in Schema:
+
+```hson
+unique <
+  by "position"
+  cases [
+    ["top-left", ["TL"]],
+    ["top-right", ["TR"]],
+    ["top-half", ["TL", "TR"]],
+    ["full", ["TL", "TR", "BL", "BR"]]
+  ]
+>
+```
+
+Configured `unique` is not an arbitrary mapper, data transformation, geometry
+facility, callback validator, path language, or general dependent-validation
+system. It is one closed finite relation inside the existing uniqueness
+constraint family. Generated TypeScript retains the ordinary collection/item
+structure and adds nominal refinement evidence at the array boundary; it does
+not enumerate valid collection permutations or infer member literal unions.
+
+The authoritative format limits are 4,096 case rows, 1,024 keys in one case,
+and 16,384 total derived keys in one relation. Relation setup is linear in rows
+and total relation keys. Candidate work is linear in the object members
+inspected to resolve selectors plus contributed keys. All of that work
+participates in the normal canonical evaluator step, depth, content, and issue
+budgets.
 
 ## Trusted editor diagnostics for natural map ownership
 

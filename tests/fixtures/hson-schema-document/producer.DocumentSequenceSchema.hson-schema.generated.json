@@ -1,8 +1,8 @@
 {
-  "compatibilityVersion": "hson-schema-mvp-9",
+  "compatibilityVersion": "hson-schema-mvp-10",
   "declarationIdentity": "producer.ts#DocumentSequenceSchema",
   "sourceDigest": "37c9d763e9406e3194f09f0453ba98181686370710fd605dbfdc0544d779a99c",
-  "semanticGraphDigest": "1c45d3e5f8ada76da70a246cef223ab47297f9793c64561b4a28b0becc3faf16",
-  "generatedDeclarationDigest": "b77eb2d6483e249c77b686f2f91ff89c9688e538adfef5bdd5129209096235c8",
-  "graphHson": "<format \"hson-canonical-schema\" version 2 capabilities <documentRoot 0> nodes «<kind \"document-root\" content 1>,<kind \"document-repeat\" item 2 count 2>,<kind \"document-element\" tag \"item\" content 3>,<kind \"document-sequence\" items «»>»>"
+  "semanticGraphDigest": "ecb7c45782fe8cc4214e52f195394fb014caf32aca6049fc74bc237d4ce2d36e",
+  "generatedDeclarationDigest": "4063d887c6af520921ad870ea812a54658a98874d80e2ef5e43ac7a750027a1b",
+  "graphHson": "<format \"hson-canonical-schema\" version 3 capabilities <documentRoot 0> nodes «<kind \"document-root\" content 1>,<kind \"document-repeat\" item 2 count 2>,<kind \"document-element\" tag \"item\" content 3>,<kind \"document-sequence\" items «»>»>"
 }

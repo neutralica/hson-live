@@ -80,6 +80,8 @@ export type TrustedSchemaDiagnostic = Readonly<{
   expected?: string;
   received?: string;
   attributeName?: string;
+  relatedPath?: readonly (string | number)[];
+  conflictingKey?: string | number | boolean | null;
   range: TrustedSchemaRange;
 }>;
 

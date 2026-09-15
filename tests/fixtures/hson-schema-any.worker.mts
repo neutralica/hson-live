@@ -7,6 +7,11 @@ const certified = Hson.certify(schema, canonical);
 const exact = HsonData.fromHson(Hson`<'10' -0 '2' <__proto__ true>>`);
 const map = hsonLiveMap.fromJson({ args: -0, payload: { z: 1, a: [] } }).schema.use(schema);
 map.replace(["payload"], { second: [], first: { nested: true } });
+const relational: HsonSchema = Hson`<type "data" content <items <array <content <content <kind "string">> unique <by "kind" cases [["wide", ["A", "B"]], ["single-b", ["B"]], ["single-c", ["C"]]]>>>>>`;
+const relationalAccepted = Hson.certify(relational, Hson`<items [<kind "wide">, <kind "single-c">]>`);
+let relationalRejected = false;
+try { Hson.certify(relational, Hson`<items [<kind "wide">, <kind "single-b">]>`); }
+catch { relationalRejected = true; }
 
 parentPort?.postMessage({
   certified: certified === canonical,
@@ -15,4 +20,6 @@ parentPort?.postMessage({
   exactOrder: exact.entries()?.map(([name]) => name),
   exactNegativeZero: Object.is(exact.entries()?.[0]?.[1].scalar(), -0),
   safeProto: Object.hasOwn(exact.entries()?.[1]?.[1].materialize() as object, "__proto__"),
+  relationalAccepted: typeof relationalAccepted === "string",
+  relationalRejected,
 });

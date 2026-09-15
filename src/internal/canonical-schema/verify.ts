@@ -1,5 +1,7 @@
-import { assert_ordered_projected_value, is_ordered_projected_object } from "../../core/ordered-projected-value.js";
+import { assert_ordered_projected_value, is_ordered_projected_object, ordered_projected_value_equal } from "../../core/ordered-projected-value.js";
 import { is_public_attr_name } from "../../core/public-attrs.js";
+import { is_valid_hson_data_name } from "../../core/hson-name.js";
+import type { HsonSemanticPrimitive } from "../../core/types.js";
 import {
   CANONICAL_CAPABILITY_KEYS,
   CANONICAL_SCHEMA_FORMAT,
@@ -124,6 +126,10 @@ function verify_node(
     case "projected-refinement":
       exact_fields(node, ["kind", "base", "rule", "label"], path, fail);
       ref(node.base, "base"); verify_refinement(node.rule, [...path, "rule"], fail);
+      if (is_record(node.rule) && node.rule.kind === "array-unique-by-cases"
+        && !resolves_to_projected_array(node.base, nodes)) {
+        fail([...path, "base"], "Configured unique base must resolve to a projected array Schema.");
+      }
       if (node.label !== undefined && typeof node.label !== "string") fail([...path, "label"], "Refinement label must be a string.");
       break;
     case "document-element":
@@ -148,6 +154,18 @@ function verify_node(
     default:
       fail([...path, "kind"], `Unknown node kind ${JSON.stringify(node.kind)}.`);
   }
+}
+
+function resolves_to_projected_array(value: unknown, nodes: readonly unknown[], seen = new Set<number>()): boolean {
+  if (!Number.isSafeInteger(value) || (value as number) < 0 || (value as number) >= nodes.length || seen.has(value as number)) return false;
+  const ref = value as number;
+  seen.add(ref);
+  const node = nodes[ref];
+  if (!is_record(node)) return false;
+  if (node.kind === "projected-array") return true;
+  if (node.kind === "projected-refinement") return resolves_to_projected_array(node.base, nodes, seen);
+  if (node.kind === "projected-ref") return resolves_to_projected_array(node.target, nodes, seen);
+  return false;
 }
 
 function verify_pairs(value: unknown, path: readonly (string | number)[], size: number, fail: (path: readonly (string | number)[], message: string) => void): void {
@@ -185,6 +203,10 @@ function verify_refinement(value: unknown, path: readonly (string | number)[], f
     if (typeof rule.inclusive !== "boolean") fail([...path, "inclusive"], "Bound inclusion must be boolean.");
   } else if (rule.kind === "integer" || rule.kind === "array-unique") {
     exact_fields(rule, ["kind"], path, fail);
+  } else if (rule.kind === "array-unique-by-cases") {
+    exact_fields(rule, ["kind", "by", "cases"], path, fail);
+    if (!is_valid_hson_data_name(rule.by)) fail([...path, "by"], "Configured unique `by` must be one ordinary Hson data member name.");
+    verify_unique_cases(rule.cases, [...path, "cases"], fail);
   } else if (rule.kind === "string-length" || rule.kind === "collection-length") {
     exact_fields(rule, ["kind", "minimum", "maximum"], path, fail);
     verify_length_bounds(rule, path, fail);
@@ -198,6 +220,51 @@ function verify_refinement(value: unknown, path: readonly (string | number)[], f
     if (typeof rule.repertoire !== "string") fail([...path, "repertoire"], "String repertoire must be a string.");
     else if (has_duplicate_string_units(rule.repertoire)) fail([...path, "repertoire"], "String repertoire must not contain duplicate iteration units.");
   } else fail([...path, "kind"], `Unknown refinement rule ${JSON.stringify(rule.kind)}.`);
+}
+
+function verify_unique_cases(
+  value: unknown,
+  path: readonly (string | number)[],
+  fail: (path: readonly (string | number)[], message: string) => void,
+): void {
+  if (!Array.isArray(value)) { fail(path, "Configured unique cases must be an array."); return; }
+  if (value.length > CANONICAL_SCHEMA_FORMAT_LIMITS.maxUniqueCases) {
+    fail(path, `Configured unique cases exceed the format limit of ${CANONICAL_SCHEMA_FORMAT_LIMITS.maxUniqueCases}.`);
+    return;
+  }
+  const selectors: HsonSemanticPrimitive[] = [];
+  let totalKeys = 0;
+  value.forEach((row, rowIndex) => {
+    const rowPath = [...path, rowIndex];
+    if (!Array.isArray(row) || row.length !== 2) { fail(rowPath, "Configured unique case must be a [selector, keys] pair."); return; }
+    const selector = row[0];
+    if (!is_exact_primitive(selector)) fail([...rowPath, 0], "Configured unique selector must be an exact Hson primitive.");
+    else {
+      if (selectors.some((prior) => primitive_equal(prior, selector))) fail([...rowPath, 0], "Configured unique selectors must not repeat.");
+      selectors.push(selector);
+    }
+    const keys = row[1];
+    if (!Array.isArray(keys)) { fail([...rowPath, 1], "Configured unique derived keys must be an array."); return; }
+    if (keys.length > CANONICAL_SCHEMA_FORMAT_LIMITS.maxUniqueKeysPerCase) fail([...rowPath, 1], `Configured unique case exceeds the per-case key limit of ${CANONICAL_SCHEMA_FORMAT_LIMITS.maxUniqueKeysPerCase}.`);
+    totalKeys += keys.length;
+    const seen: HsonSemanticPrimitive[] = [];
+    keys.forEach((key, keyIndex) => {
+      if (!is_exact_primitive(key)) fail([...rowPath, 1, keyIndex], "Configured unique derived key must be an exact Hson primitive.");
+      else {
+        if (seen.some((prior) => primitive_equal(prior, key))) fail([...rowPath, 1, keyIndex], "Configured unique derived keys must not repeat within one case.");
+        seen.push(key);
+      }
+    });
+  });
+  if (totalKeys > CANONICAL_SCHEMA_FORMAT_LIMITS.maxUniqueRelationKeys) fail(path, `Configured unique relation exceeds the total key limit of ${CANONICAL_SCHEMA_FORMAT_LIMITS.maxUniqueRelationKeys}.`);
+}
+
+function is_exact_primitive(value: unknown): value is HsonSemanticPrimitive {
+  return value === null || typeof value === "string" || typeof value === "boolean" || (typeof value === "number" && Number.isFinite(value));
+}
+
+function primitive_equal(left: HsonSemanticPrimitive, right: HsonSemanticPrimitive): boolean {
+  return ordered_projected_value_equal(left, right);
 }
 
 function has_duplicate_string_units(value: string): boolean {
