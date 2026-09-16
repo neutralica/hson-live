@@ -146,7 +146,11 @@
         },
         {
           "name": "punctuation.definition.tag.end.hson",
-          "match": "/>|>"
+          "match": "(/)?(>)",
+          "captures": {
+            "1": { "name": "punctuation.definition.tag.self-closing.hson" },
+            "2": { "name": "punctuation.definition.tag.end.hson" }
+          }
         },
         {
           "name": "punctuation.section.array.begin.hson",

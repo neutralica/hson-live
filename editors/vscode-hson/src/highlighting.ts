@@ -5,24 +5,9 @@ import { Registry, INITIAL, parseRawGrammar, type IGrammar } from "vscode-textma
 import { loadWASM, OnigScanner, OnigString } from "vscode-oniguruma";
 import { discover_hson_tagged_templates } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 import type { HostSourceRange } from "../../../src/internal/embedded-hson/embedded-hson-source.js";
+import { hsonTokenScopes } from "./appearance.js";
 
-// Scope-to-theme transport only. The existing TextMate grammar remains the
-// coloring authority; TypeScript binding discovery alone selects the islands.
-export const hsonTokenScopes = {
-  hsonType: ["entity.name.type.hson"],
-  hsonProperty: ["entity.other.attribute-name.hson"],
-  hsonString: ["string.quoted.double.hson", "string.unquoted.attribute-value.hson"],
-  hsonNumber: ["constant.numeric.hson"],
-  hsonKeyword: ["constant.language.boolean.hson", "constant.language.null.hson"],
-  hsonQuid: ["constant.other.quid.hson"],
-  hsonComment: ["comment.line.double-slash.hson"],
-  hsonDelimiter: ["punctuation.definition.tag.begin.hson", "punctuation.definition.tag.end.hson",
-    "punctuation.section.array.begin.hson", "punctuation.section.array.end.hson", "punctuation.separator.sequence.hson",
-    "punctuation.definition.comment.hson", "punctuation.definition.string.begin.hson", "punctuation.definition.string.end.hson"],
-  hsonOperator: ["keyword.operator.assignment.hson"],
-  hsonEscape: ["constant.character.escape.hson"],
-  hsonInvalid: ["invalid.illegal.hson"],
-} as const;
+export { hsonTokenScopes } from "./appearance.js";
 export type HsonHighlight = Readonly<{ range: HostSourceRange; type: keyof typeof hsonTokenScopes; scopes: readonly string[] }>;
 
 let wasm: Promise<void> | undefined;

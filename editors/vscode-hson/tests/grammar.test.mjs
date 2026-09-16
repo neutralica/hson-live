@@ -98,8 +98,18 @@ assert.ok(has(standalone, "foo//bar", "string.unquoted.attribute-value.hson"));
 assert.ok(!has(standalone, "//bar", "comment.line.double-slash.hson"));
 assert.ok(hasScope(standalone, "invalid.illegal.escape.hson"));
 assert.ok(has(standalone, "<", "punctuation.definition.tag.begin.hson"));
+assert.ok(has(standalone, "/", "punctuation.definition.tag.self-closing.hson"));
+assert.ok(has(standalone, ">", "punctuation.definition.tag.end.hson"));
+assert.ok(has(standalone, "]", "punctuation.section.array.end.hson"));
+assert.ok(has(standalone, ",", "punctuation.separator.sequence.hson"));
+assert.ok(has(standalone, "=", "keyword.operator.assignment.hson"));
 
-const representative = '<bareName class="hero" enabled true count -12.5>';
+const authoredQuote = standalone.find(token => token.text === "'" && token.scopes.includes("entity.name.type.quoted.hson"));
+const valueQuote = standalone.find(token => token.text === "\"" && token.scopes.includes("string.quoted.double.hson"));
+assert.ok(authoredQuote?.scopes.some(scope => scope.startsWith("punctuation.definition.string.")));
+assert.ok(valueQuote?.scopes.some(scope => scope.startsWith("punctuation.definition.string.")));
+
+const representative = '<bareName class="hero" enabled true count -12.5/>';
 const markdownSource = [
   "Before Hson prose.",
   "```hson",
@@ -136,7 +146,7 @@ assert.ok(markdown.some(token => token.line === 13 && token.scopes.includes("met
 assert.ok(!markdown.some(token => (token.line === 0 || token.line === 13) && token.scopes.includes("meta.embedded.block.hson")));
 
 const standaloneRepresentative = await tokenize("source.hson", representative);
-for (const text of ["<", "bareName", "class", "true", "-12.5", ">"]) {
+for (const text of ["<", "bareName", "class", "=", "\"", "hero", "true", "-12.5", "/", ">"]) {
   const standaloneToken = standaloneRepresentative.find(token => token.text === text);
   const embeddedToken = markdown.find(token => token.line === 3 && token.text === text);
   assert.ok(standaloneToken, `standalone representative token ${text} is missing`);

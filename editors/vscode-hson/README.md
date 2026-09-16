@@ -157,6 +157,17 @@ Ordinary strings and templates inside `fromHson(...)` intentionally retain ordin
 
 Use **Developer: Inspect Editor Tokens and Scopes** in the Command Palette to inspect the emitted Hson semantic tokens and their TextMate scope fallbacks.
 
+### Appearance authority
+
+`src/appearance.ts` is the single developer map for Hson presentation. Its
+`owned` section contains the branded marker colors, strengths, color IDs, and
+lowercase separator. Its `themeDerived` section is the scope menu for ordinary
+syntax; those entries deliberately have no Hson color and inherit the active
+VS Code theme. Its `native` section declares the bracket pairs eligible for VS
+Code's built-in nesting colors. The manifest retains literal defaults because
+VS Code reads JSON contributions before activation; focused tests keep those
+copies equal to the authority.
+
 ### Zero-Schema regression verification
 
 `npm run test:baseline` runs 24 focused recognition, grammar, admission, mapping and stale-publication checks. `npm run test:baseline:integration` runs the unsaved edit journey in trusted and genuinely restricted workspaces. Set `HSON_VSCODE_EXECUTABLE` to select a VS Code binary (the runner defaults to the ordinary macOS installation). `npm run test:baseline:installed` builds the actual VSIX and runs the same journey from a clean installed-extension directory, using an empty test-driver extension rather than a development override for Hson.

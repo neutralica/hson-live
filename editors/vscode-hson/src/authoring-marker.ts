@@ -2,19 +2,12 @@ import {
   discover_hson_binding_references,
 } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 import type { HostSourceRange } from "../../../src/internal/embedded-hson/embedded-hson-source.js";
+import {
+  HSON_LIBRARY_SEPARATOR_COLOR_ID,
+  hsonIdentityMarkers,
+} from "./appearance.js";
 
-export const hsonIdentityMarkers = [
-  { publicName: "hson", letter: "h", colorId: "hson.libraryMarker.h", strength: "strong" },
-  { publicName: "hson", letter: "s", colorId: "hson.libraryMarker.s", strength: "strong" },
-  { publicName: "hson", letter: "o", colorId: "hson.libraryMarker.o", strength: "strong" },
-  { publicName: "hson", letter: "n", colorId: "hson.libraryMarker.n", strength: "strong" },
-  { publicName: "Hson", letter: "H", colorId: "hson.authoringMarker.h", strength: "soft" },
-  { publicName: "Hson", letter: "s", colorId: "hson.authoringMarker.s", strength: "soft" },
-  { publicName: "Hson", letter: "o", colorId: "hson.authoringMarker.o", strength: "soft" },
-  { publicName: "Hson", letter: "n", colorId: "hson.authoringMarker.n", strength: "soft" },
-] as const;
-
-export const HSON_LIBRARY_SEPARATOR_COLOR_ID = "hson.libraryMarker.separator";
+export { HSON_LIBRARY_SEPARATOR_COLOR_ID, hsonIdentityMarkers } from "./appearance.js";
 
 export type HsonIdentityMarkerPart = Readonly<{
   kind: "marker";

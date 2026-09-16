@@ -33,6 +33,7 @@ import {
 } from "./authoring-marker.js";
 import { markdown_hson_fence_marker_parts } from "./markdown-fence-marker.js";
 import { HSON_SETTINGS_QUERY, appearance_color, marker_strength, marker_color_key } from "./settings.js";
+import { HSON_APPEARANCE } from "./appearance.js";
 
 function adaptDocument(document: vscode.TextDocument): DiagnosticDocument {
   return Object.freeze({
@@ -307,9 +308,9 @@ export function activate(context: vscode.ExtensionContext): void {
   const replaceMarkerDecorations = (): void => {
     for (const decoration of markerDecorations.values()) decoration.dispose();
     const appearance = vscode.workspace.getConfiguration("hson.appearance");
-    const libraryStrength = marker_strength(appearance.get<number>("libraryMarkerStrength"), 1);
-    const authoringStrength = marker_strength(appearance.get<number>("authoringMarkerStrength"), 0.7);
-    colorLibraryMarker = appearance.get<boolean>("colorLibraryMarker", true);
+    const libraryStrength = marker_strength(appearance.get<number>("libraryMarkerStrength"), HSON_APPEARANCE.owned.strength.strong);
+    const authoringStrength = marker_strength(appearance.get<number>("authoringMarkerStrength"), HSON_APPEARANCE.owned.strength.soft);
+    colorLibraryMarker = appearance.get<boolean>("colorLibraryMarker", HSON_APPEARANCE.owned.colorLibraryMarker);
     markerDecorations = new Map(hsonIdentityMarkers.map((marker): [string, vscode.TextEditorDecorationType] => {
       const colorKey = marker_color_key(marker.letter);
       const explicitColor = colorKey === undefined ? undefined : explicitAppearanceColor(appearance, colorKey);

@@ -182,18 +182,46 @@ LiveTree does not require a virtual DOM synchronization pass. Mutating the graph
 If bound, LiveTree nodes are tracked via a QUID attribute, ensuring stable identity even when relocated. QUIDs support lookup and graph continuity, and enable locally scoped CSS without Shadow DOM or a class name system.
 
 LiveTree's CSS remains recognizably CSS. Dynamic property values can be created within application code based on state changes, and ownership and lifetime become explicit. LiveTree supports and manages rules, keyframes, properties, listeners, and other node-owned resources, releasing them when their owning branch is terminally removed. 
+## hson.liveMap / hsonLiveMap
+Yes, your instinct is justified. This has crossed from **README overview** into **LiveMap reference documentation**.
 
+There is nothing inherently wrong with a long README, especially for a library, but the question is proportionality. If LiveMap is one of five or six major subsystems, this section is spending far too much of the reader's attention budget on secondary mechanics.
 
+The giveaway is that it explains things like:
+
+- `watch` versus `feed`;
+- restore notification semantics;
+- `id()` subtree lookup;
+- proxy coordinate equivalence;
+- internal VSN hiding;
+- exact meanings of `insert`, `move`, `replace`, and `delete`;
+- attrs not extending `location.path()`;
+- QUID targeting policy.
+
+Those are all worthwhile facts. They're just not what somebody needs in order to answer:
+
+> What is LiveMap, and how do I basically use it?
+
+For the README, I think LiveMap needs to establish about five ideas:
+
+1. **What it is:** mutable, revisioned canonical Hson application state.
+2. **The two modes:** data and document.
+3. **The basic addressing model:** `map.at(path)`.
+4. **The basic mutation model:** reads are detached; mutations commit atomically and advance revision when changed.
+5. **Why it matters in the wider system:** it is the canonical state layer used by Reflect/Locus/etc.
+
+Then perhaps one short data example and one short document example.
+
+Something around this density feels much more README-shaped:
+
+```md
 ## hson.liveMap / hsonLiveMap
 
+LiveMap provides mutable, revisioned application state over canonical Hson
+graphs. It supports both data and document maps, using `map.at(...)` as the
+common path interface.
 
-LiveMap operates on an Hson graph as application state.
-
-`map.at(...)` is the common path operation for both data and
-document (HTML) maps. Data paths traverse logical JSON object members and array
-indexes.
-
-For data (JSON) maps, state is presented through explicit paths:
+Data paths traverse object members and array indexes:
 
 ```ts
 const map = hson.liveMap.fromJson({
@@ -210,109 +238,28 @@ map.at(["items"]).array.push("three");
 console.log(map.snap());
 ```
 
- Document paths contain numeric indexes into ordered authored content:
+Document paths traverse ordered authored content:
 
 ```ts
-const document = hson.liveMap.fromHson(`<main <section <p "hello"/>/>/>`);
+const document = hson.liveMap.fromHson(
+  `<main <section <p "hello"/>/>/>`,
+);
 
 if (document.mode === "document") {
   const paragraph = document.at([0, 0]);
+
   console.log(paragraph.snap());
+
+  paragraph.replace(replacement);
 }
 ```
 
-Document paths are fixed logical coordinates that re-resolve against the current map revision. They are passive, return detached reads, and ignore internal structural carrier nodes (VSNs). Document paths can also discover exact canonical `id` matches in their subtree:
+Paths are fixed logical coordinates and reads return detached values rather
+than mutable references into the graph. Changed mutations are applied
+atomically, advance the map by one revision, and publish one canonical commit.
 
-```ts
-if (document.mode === "document") {
-  const button = document.at([]).id("submit");
-  console.log(button?.snap());
-}
-```
+LiveMap also provides batching, subscriptions, Schema governance and validation, capture and restore, replay/recovery primitives, document attrs/content operations, and sparse QUID continuity where identity evidence is required.
 
-These operations search canonical Hson rather than the DOM. 
+See the LiveMap documentation for detailed path, mutation, subscription,
+document, proxy, capture, and recovery APIs.
 
-Data and document passive locations can watch their current detached value without changing their fixed-coordinate behavior:
-
-```ts
-const dispose = document.at([0, 0]).watch(next => {
-  console.log(next);
-});
-
-dispose();
-```
-
-`watch` has no initial callback. Ordinary equal results are suppressed, while a
-successful `restore(...)` invokes every active watcher once even when the value
-is equal or missing. `feed` remains the lower-level stream of overlapping
-accepted operation evidence and does not report restore.
-
-Document locations expose mutations for the content they own, item mutations
-for the coordinate they represent, and ordinary attrs for element endpoints:
-
-```ts
-if (document.mode === "document") {
-  const root = document.at([]);
-  root.insert(0, child);
-  root.move(0, 1);
-
-  const button = root.id("submit");
-  button?.attrs.set("disabled", true);
-  button?.attrs.setMany({ class: "primary", title: "Submit" });
-
-  document.at([0]).replace(replacementContent);
-  document.at([1]).delete();
-
-  document.proxy().$_.insert(0, child);
-  document.proxy().$_.attrs.set("title", "Document root");
-  document.proxy()[0].$_.replace(replacementContent);
-  document.proxy()[1].$_.delete();
-}
-```
-
-`insert(index, value)` and `move(from, to)` act on the ordered authored content
-owned by the current document location. Item replacement and removal
-remain `location.at([index]).replace(value)` and `.delete()`. All locations stay
-fixed logical coordinates: after deletion or movement they do not follow the
-previous subject. The document root location `at([])` cannot itself be replaced
-or deleted. `attrs` is an operation capability for the current element, not a
-structural path segment, so attrs operations never extend `location.path()`.
-
-The existing proxy surface follows the same document coordinates:
-
-```ts
-if (document.mode === "document") {
-  const paragraph = document.proxy()[0][0].$_;
-  const submit = document.proxy().$_.id("submit");
-  console.log(paragraph.snap());
-  console.log(submit?.snap());
-}
-```
-
-Numeric proxy properties traverse logical document content, and `$_` exits to
-the identical passive location and its capabilities at that coordinate.
-Internal carriers remain hidden; attrs are not structural proxy traversal.
-
-LiveMap provides:
-
-• object and array state;
-• canonical document maps;
-• data path handles and passive logical document locations;
-• atomic `set`, `replace`, `delete`, and `splice` operations;
-• synchronous batches;
-• revisioned commits;
-• subscriptions and path feeds;
-• runtime schema validation;
-• capture, restore, replay, and recovery primitives;
-• one-way graph links;
-• path-addressed document operations with sparse runtime QUID continuity.
-
-Changed mutations advance the map by exactly one revision and publish one normalized commit. No-op mutations do not advance revision.
-
-Reads return detached values rather than mutable references into the live graph. Writes are preflighted and applied atomically.
-
-Paths are the primary canonical address. A QUID is sparse runtime continuity
-evidence, not an application ID or a second general-purpose address. Application
-code does not mint, ensure, or use raw QUIDs as document mutation targets.
-
-At a high level, LiveMap occupies the role usually assigned to JSON application state, while retaining access to the canonical Hson structure beneath that projection.

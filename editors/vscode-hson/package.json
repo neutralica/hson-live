@@ -239,14 +239,14 @@
       { "id": "hsonInvalid", "description": "Hson grammar invalid token" }
     ],
     "semanticTokenScopes": [{ "scopes": {
-      "hsonType": ["entity.name.type.hson"],
+      "hsonType": ["entity.name.type.hson", "entity.name.type.quoted.hson"],
       "hsonProperty": ["entity.other.attribute-name.hson"],
       "hsonString": ["string.quoted.double.hson", "string.unquoted.attribute-value.hson"],
       "hsonNumber": ["constant.numeric.hson"],
       "hsonKeyword": ["constant.language.boolean.hson", "constant.language.null.hson"],
       "hsonQuid": ["constant.other.quid.hson"],
       "hsonComment": ["comment.line.double-slash.hson"],
-      "hsonDelimiter": ["punctuation.definition.tag.begin.hson", "punctuation.definition.tag.end.hson", "punctuation.section.array.begin.hson", "punctuation.section.array.end.hson", "punctuation.separator.sequence.hson", "punctuation.definition.comment.hson", "punctuation.definition.string.begin.hson", "punctuation.definition.string.end.hson"],
+      "hsonDelimiter": ["punctuation.definition.tag.begin.hson", "punctuation.definition.tag.end.hson", "punctuation.definition.tag.self-closing.hson", "punctuation.section.array.begin.hson", "punctuation.section.array.end.hson", "punctuation.separator.sequence.hson", "punctuation.definition.comment.hson", "punctuation.definition.string.begin.hson", "punctuation.definition.string.end.hson"],
       "hsonOperator": ["keyword.operator.assignment.hson"],
       "hsonEscape": ["constant.character.escape.hson"],
       "hsonInvalid": ["invalid.illegal.hson"]
