@@ -317,6 +317,13 @@ check("unsupported document kinds and mismatched TS paths fail closed", () => {
   assert.deepEqual(diagnose(source, "typescriptreact", "/workspace/a.ts"), []);
 });
 
+check("Markdown Hson fences remain presentation-only across diagnostic producers", () => {
+  const markdown = "```hson\n+1\n```";
+  assert.deepEqual(diagnose(markdown, "markdown", "/workspace/readme.md"), []);
+  assert.deepEqual(local_hson_schema_diagnostics("/workspace/readme.md", markdown), []);
+  assert.deepEqual(local_hson_schema_declarations(markdown, "/workspace/readme.md"), []);
+});
+
 check("diagnostic production does not mutate host text", () => {
   const text = `${officialImport}\nconst page = Hson\`+1\`;`;
   const before = text;

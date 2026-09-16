@@ -219,13 +219,14 @@ await check("VSIX validation rejects incomplete payloads", async () => {
   } finally { await rm(fixture.parent, { recursive: true, force: true }); }
 });
 
-await check("VSIX validation rejects wrong identity, version, and configuration", async () => {
+await check("VSIX validation rejects wrong identity, version, configuration, and grammar wiring", async () => {
   const fixture = await makeFixture();
   try {
     for (const [name, mutate, pattern] of [
       ["identity", m => { m.publisher = "wrong"; }, /expected terminal-gothic/],
       ["version", m => { m.version = "9.9.9"; }, /expected version/],
       ["configuration", m => { m.contributes.configuration = []; }, /configuration contributions differ/],
+      ["grammars", m => { m.contributes.grammars = []; }, /grammar contributions differ/],
     ]) {
       const manifest = fixtureManifest(); mutate(manifest);
       const path = join(fixture.parent, `${name}.vsix`); await makeVsix(path, fixtureManifest(), { manifest });

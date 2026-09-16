@@ -7,6 +7,8 @@ const readJson = async (path) => JSON.parse(await readFile(new URL(path, import.
 const manifest = await readJson("../package.json");
 const languageConfiguration = await readJson("../language-configuration.json");
 const coreGrammar = await readJson("../syntaxes/hson.tmLanguage.json");
+const markdownGrammar = await readJson("../syntaxes/markdown-hson-codeblock.tmLanguage.json");
+const extensionBundle = await readFile(new URL("../dist/extension.js", import.meta.url), "utf8");
 
 assert.equal(manifest.main, "./dist/extension.js");
 assert.equal(manifest.icon, "images/hson-icon.png");
@@ -25,7 +27,23 @@ assert.deepEqual(manifest.activationEvents, [
 ]);
 assert.deepEqual(manifest.contributes.languages[0].extensions, [".hson"]);
 assert.equal(coreGrammar.scopeName, "source.hson");
-assert.equal(manifest.contributes.grammars.length, 1, "spelling-only injection must not bypass binding discovery");
+assert.deepEqual(manifest.contributes.grammars, [
+  {
+    language: "hson",
+    scopeName: "source.hson",
+    path: "./syntaxes/hson.tmLanguage.json",
+  },
+  {
+    scopeName: "markdown.hson.codeblock",
+    path: "./syntaxes/markdown-hson-codeblock.tmLanguage.json",
+    injectTo: ["text.html.markdown"],
+    embeddedLanguages: { "meta.embedded.block.hson": "hson" },
+  },
+]);
+assert.equal(markdownGrammar.scopeName, "markdown.hson.codeblock");
+assert.equal(markdownGrammar.injectionSelector, "L:markup.fenced_code.block.markdown");
+assert.deepEqual(markdownGrammar.repository["hson-code-block"].patterns[0].patterns, [{ include: "source.hson" }]);
+assert.match(extensionBundle, /markdown_hson_fence_marker_parts/);
 assert.ok(manifest.contributes.semanticTokenTypes.some(type => type.id === "hsonType"));
 assert.deepEqual(manifest.contributes.colors.map(color => color.id), [
   "hson.libraryMarker.h", "hson.libraryMarker.s", "hson.libraryMarker.o", "hson.libraryMarker.n",

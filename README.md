@@ -87,7 +87,7 @@ retains its separate element-mode contract.
 
 ---
 
-## One graph, connected capabilities
+## One graph, separate projections
 
 The hson-live capabilities are separate interfaces over the same structural model.
 

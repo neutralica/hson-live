@@ -140,6 +140,9 @@ export async function validateVsix(vsixPath, expectedManifest) {
   if (!sameJson(manifest.contributes?.configuration, expectedManifest.contributes?.configuration)) {
     throw new StageError("artifact validation failure", "packaged configuration contributions differ from the current manifest");
   }
+  if (!sameJson(manifest.contributes?.grammars, expectedManifest.contributes?.grammars)) {
+    throw new StageError("artifact validation failure", "packaged grammar contributions differ from the current manifest");
+  }
 
   for (const path of manifestStaticPaths(expectedManifest)) {
     const entry = archive.file(`extension/${path}`);
@@ -195,7 +198,11 @@ export async function sourceInputAuthority(extensionRoot, sourceMapText) {
     }
   }
 
-  for (const name of [
+  const manifest = JSON.parse(await readFile(resolve(extensionRoot, "package.json"), "utf8"));
+  const grammarPaths = (manifest.contributes?.grammars ?? [])
+    .map(grammar => String(grammar.path ?? "").replace(/^\.\//, ""))
+    .filter(Boolean);
+  for (const name of new Set([
     "package.json",
     "package-lock.json",
     ".vscodeignore",
@@ -203,11 +210,11 @@ export async function sourceInputAuthority(extensionRoot, sourceMapText) {
     "scripts/vscode-local-lib.mjs",
     "scripts/vscode-local.mjs",
     "language-configuration.json",
-    "syntaxes/hson.tmLanguage.json",
+    ...grammarPaths,
     "README.md",
     "LICENSE",
     "node_modules/vscode-oniguruma/release/onig.wasm",
-  ]) {
+  ])) {
     inputs.push([`file:${name}`, sha256(await readFile(resolve(extensionRoot, name)))]);
   }
   inputs.sort(([left], [right]) => left.localeCompare(right));

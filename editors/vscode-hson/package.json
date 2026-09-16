@@ -125,7 +125,7 @@
             "scope": "window",
             "order": 70,
             "title": "Color Library hson",
-            "markdownDescription": "Applies four-color branding to official lowercase `hson` usage and its first member-access period. Uppercase `Hson`, Hson bodies, diagnostics, and imports are unaffected."
+            "markdownDescription": "Applies four-color branding to official lowercase `hson` usage, its first member-access period, and canonical Markdown `hson` fence markers. Uppercase `Hson`, Hson bodies, diagnostics, and imports are unaffected."
           },
           "hson.appearance.librarySeparatorColor": {
             "type": "string",
@@ -166,6 +166,16 @@
         "language": "hson",
         "scopeName": "source.hson",
         "path": "./syntaxes/hson.tmLanguage.json"
+      },
+      {
+        "scopeName": "markdown.hson.codeblock",
+        "path": "./syntaxes/markdown-hson-codeblock.tmLanguage.json",
+        "injectTo": [
+          "text.html.markdown"
+        ],
+        "embeddedLanguages": {
+          "meta.embedded.block.hson": "hson"
+        }
       }
     ],
     "colors": [

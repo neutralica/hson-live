@@ -1,0 +1,25 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Hson fenced code blocks in Markdown",
+  "scopeName": "markdown.hson.codeblock",
+  "injectionSelector": "L:markup.fenced_code.block.markdown",
+  "patterns": [
+    { "include": "#hson-code-block" }
+  ],
+  "repository": {
+    "hson-code-block": {
+      "begin": "(?<=[`~])hson(\\s+[^`~]*)?$",
+      "end": "(^|\\G)(?=\\s*[`~]{3,}\\s*$)",
+      "patterns": [
+        {
+          "begin": "(^|\\G)(\\s*)(.*)",
+          "while": "(^|\\G)(?!\\s*([`~]{3,})\\s*$)",
+          "contentName": "meta.embedded.block.hson",
+          "patterns": [
+            { "include": "source.hson" }
+          ]
+        }
+      ]
+    }
+  }
+}

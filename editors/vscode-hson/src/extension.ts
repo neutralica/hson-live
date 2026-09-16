@@ -31,6 +31,7 @@ import {
   hson_identity_presentation,
   hsonIdentityMarkers,
 } from "./authoring-marker.js";
+import { markdown_hson_fence_marker_parts } from "./markdown-fence-marker.js";
 import { HSON_SETTINGS_QUERY, appearance_color, marker_strength, marker_color_key } from "./settings.js";
 
 function adaptDocument(document: vscode.TextDocument): DiagnosticDocument {
@@ -299,7 +300,8 @@ export function activate(context: vscode.ExtensionContext): void {
       },
     }, legend));
   // Exact h/s/o/n and H/S/O/N identity colors are presentation-only. Binding
-  // discovery is the authority; decoration never participates in admission.
+  // discovery and canonical Markdown fence structure are the authorities;
+  // decoration never participates in admission.
   let markerDecorations = new Map<string, vscode.TextEditorDecorationType>();
   let colorLibraryMarker = true;
   const replaceMarkerDecorations = (): void => {
@@ -330,7 +332,9 @@ export function activate(context: vscode.ExtensionContext): void {
     const document = editor.document;
     const presentation = document.languageId === "typescript" || document.languageId === "typescriptreact"
       ? hson_identity_presentation(document.fileName, document.getText(), colorLibraryMarker)
-      : { markers: [], separators: [] };
+      : document.languageId === "markdown"
+        ? { markers: markdown_hson_fence_marker_parts(document.getText(), colorLibraryMarker), separators: [] }
+        : { markers: [], separators: [] };
     for (const marker of hsonIdentityMarkers) {
       const decoration = markerDecorations.get(marker.colorId);
       if (decoration === undefined) continue;

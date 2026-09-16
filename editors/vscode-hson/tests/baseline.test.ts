@@ -12,6 +12,7 @@ import {
   hson_library_separator_parts,
   hsonIdentityMarkers,
 } from "../src/authoring-marker.js";
+import { markdown_hson_fence_marker_parts } from "../src/markdown-fence-marker.js";
 
 async function run(): Promise<void> {
   const grammar = await load_hson_grammar(resolve(__dirname, ".."));
@@ -121,6 +122,73 @@ async function run(): Promise<void> {
     assert.equal(disabled.markers.length, 4); assert.equal(disabled.separators.length, 0);
     assert.ok(disabled.markers.every(part => part.publicName === "Hson"));
   });
+  check("canonical Markdown hson fences receive the existing four strong library markers", () => {
+    const text = [
+      "Before hson prose and `hson` inline code.",
+      "```hson",
+      "<first/>",
+      "```",
+      "~~~hson title",
+      "<second/>",
+      "~~~~",
+    ].join("\n");
+    const parts = markdown_hson_fence_marker_parts(text);
+    const starts = [text.indexOf("hson", text.indexOf("```")), text.indexOf("hson", text.indexOf("~~~"))];
+    assert.equal(parts.length, 8);
+    for (const start of starts) {
+      const marker = parts.filter(part => part.range.start >= start && part.range.end <= start + 4);
+      assert.deepEqual(marker.map(part => ({
+        text: text.slice(part.range.start, part.range.end), colorId: part.colorId, strength: part.strength,
+      })), expectedMarker("hson"));
+    }
+  });
+  check("Markdown fence markers preserve indentation and fence-width structure", () => {
+    const text = [
+      "   ````hson",
+      "```hson",
+      "````",
+      "~~~json",
+      "```hson",
+      "~~~",
+      "~~~hson",
+      "<after/>",
+      "~~~",
+    ].join("\n");
+    const parts = markdown_hson_fence_marker_parts(text);
+    const first = text.indexOf("hson");
+    const last = text.lastIndexOf("hson");
+    assert.deepEqual([...new Set(parts.map(part => part.range.start - "hson".indexOf(part.letter)))], [first, last]);
+  });
+  check("Markdown near-matches, other fences, prose, inline code, and disabled coloring stay untouched", () => {
+    const text = [
+      "hson `hson`",
+      "```json",
+      "hson",
+      "```",
+      "```Hson",
+      "```",
+      "```HSON",
+      "```",
+      "```hson-extra",
+      "```",
+      "``` hson",
+      "```",
+    ].join("\n");
+    assert.deepEqual(markdown_hson_fence_marker_parts(text), []);
+    assert.deepEqual(markdown_hson_fence_marker_parts("```hson\n<x/>\n```", false), []);
+  });
+  check("editing a Markdown fence away from and into canonical hson updates marker evidence", () => {
+    const canonical = "```hson\n<thing/>\n```";
+    const other = "```json\n<thing/>\n```";
+    assert.equal(markdown_hson_fence_marker_parts(canonical).length, 4);
+    assert.equal(markdown_hson_fence_marker_parts(canonical.replace("hson", "json")).length, 0);
+    assert.equal(markdown_hson_fence_marker_parts(canonical.replace("hson", "Hson")).length, 0);
+    assert.equal(markdown_hson_fence_marker_parts(other.replace("json", "hson")).length, 4);
+  });
+  check("Markdown remains outside every Hson diagnostic producer", () => {
+    const text = "```hson\n+1\n```";
+    assert.deepEqual(produce_document_diagnostics({ fileName: "/workspace/readme.md", languageId: "markdown", text }), []);
+  });
   check("aliases stay ordinary while alias-tag body semantics remain recognized", () => {
     const upper = source('<thing 1>', 'Hson as authored', 'authored');
     const lower = 'import { hson as library } from "hson-live"; library.liveMap;';
@@ -174,7 +242,12 @@ async function run(): Promise<void> {
     const manifest = JSON.parse(readFileSync(resolve(__dirname, '../package.json'), 'utf8'));
     assert.equal(manifest.capabilities.untrustedWorkspaces.supported, 'limited');
     assert.deepEqual(manifest.contributes.semanticTokenScopes[0].scopes, hsonTokenScopes);
-    assert.equal(manifest.contributes.grammars.length, 1, 'no spelling-only injection');
+    assert.deepEqual(
+      manifest.contributes.grammars.filter((grammar: { injectTo?: string[] }) => grammar.injectTo !== undefined)
+        .map((grammar: { injectTo: string[] }) => grammar.injectTo),
+      [["text.html.markdown"]],
+      'the only host injection is the explicitly declared Markdown fence',
+    );
     assert.deepEqual(manifest.contributes.colors.map((color: { id: string }) => color.id), [
       ...hsonIdentityMarkers.map(marker => marker.colorId), HSON_LIBRARY_SEPARATOR_COLOR_ID,
     ]);
