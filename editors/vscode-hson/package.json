@@ -24,7 +24,8 @@
   "activationEvents": [
     "onStartupFinished",
     "onLanguage:typescript",
-    "onLanguage:typescriptreact"
+    "onLanguage:typescriptreact",
+    "onLanguage:markdown"
   ],
   "scripts": {
     "build": "node ./scripts/build.mjs",
@@ -33,7 +34,7 @@
     "check": "npm run check:source && npm run build && npm run validate:artifact",
     "test": "npm run test:grammar && npm run test:unit && npm run test:settings",
     "test:grammar": "node ./tests/grammar.test.mjs && npm run test:baseline",
-    "test:unit": "node ./scripts/build-tests.mjs && node ./.test-dist/unit.cjs && node ./.test-dist/workspace.cjs && node ./.test-dist/local-host.cjs",
+    "test:unit": "node ./scripts/build-tests.mjs && node ./.test-dist/unit.cjs && node ./.test-dist/workspace.cjs && node ./.test-dist/local-host.cjs && node ./.test-dist/structural.cjs",
     "test:local-host-process": "npm run build && node ./scripts/build-tests.mjs && node ./.test-dist/local-host-process.cjs",
     "test:settings": "node ./scripts/build-tests.mjs && node ./.test-dist/settings.cjs",
     "test:integration": "npm run build && node ./scripts/build-tests.mjs && node ./tests/integration/run.mjs",
@@ -184,6 +185,8 @@
     ],
     "commands": [
       { "command": "hson.openSettings", "title": "Open Settings", "category": "Hson" },
+      { "command": "hson.formatDocument", "title": "Format Document", "category": "Hson", "enablement": "editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown" },
+      { "command": "hson.formatSelection", "title": "Format Selection", "category": "Hson", "enablement": "editorHasSelection && (editorLangId == typescript || editorLangId == typescriptreact || editorLangId == markdown)" },
       { "command": "hson.generateSchemaTypes", "title": "Generate Schema Types", "category": "Hson" },
       { "command": "hson.startSchemaWatch", "title": "Start Schema Watch", "category": "Hson" },
       { "command": "hson.stopSchemaWatch", "title": "Stop Schema Watch", "category": "Hson" },
@@ -194,6 +197,18 @@
       { "command": "hson.restartLocalHost", "title": "Restart Local App", "category": "Hson", "enablement": "hson.localHost.canRestart" },
       { "command": "hson.openLocalApp", "title": "Open Local App", "category": "Hson", "enablement": "hson.localHost.canOpen" },
       { "command": "hson.showLocalHostOutput", "title": "Show Local App Output", "category": "Hson" }
+    ],
+    "keybindings": [
+      {
+        "command": "hson.insertLineBreak",
+        "key": "enter",
+        "when": "editorTextFocus && hson.structuralEnter && !suggestWidgetVisible && !renameInputVisible && !inSnippetMode"
+      },
+      {
+        "command": "hson.deleteLeft",
+        "key": "backspace",
+        "when": "editorTextFocus && hson.structuralPairDeletion && !suggestWidgetVisible && !renameInputVisible"
+      }
     ],
     "languages": [
       {

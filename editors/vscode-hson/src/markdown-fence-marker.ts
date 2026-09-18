@@ -8,6 +8,11 @@ type OpenFence = Readonly<{
   width: number;
 }>;
 
+export type MarkdownHsonFenceRegion = Readonly<{
+  bodyRange: Readonly<{ start: number; end: number }>;
+  indentation: string;
+}>;
+
 const FENCE_OPENING = /^( {0,3})(`{3,}|~{3,})(.*)$/;
 const FENCE_CLOSING = /^( {0,3})(`+|~+)[ \t]*$/;
 const CANONICAL_HSON_INFO = /^hson(?:[ \t]+[^`~]*)?$/;
@@ -88,4 +93,41 @@ export function markdown_hson_fence_marker_parts(
   }
 
   return Object.freeze(markers);
+}
+
+/** Canonical fenced Hson bodies, shared by presentation and structural editing. */
+export function markdown_hson_fence_regions(text: string): readonly MarkdownHsonFenceRegion[] {
+  const regions: MarkdownHsonFenceRegion[] = [];
+  let open: Readonly<OpenFence & { bodyStart: number; indentation: string; hson: boolean }> | undefined;
+  let lineStart = 0;
+
+  while (lineStart <= text.length) {
+    const newline = text.indexOf("\n", lineStart);
+    const rawEnd = newline === -1 ? text.length : newline;
+    const lineEnd = rawEnd > lineStart && text.charCodeAt(rawEnd - 1) === 13 ? rawEnd - 1 : rawEnd;
+    const line = text.slice(lineStart, lineEnd);
+    if (open !== undefined) {
+      if (closes_fence(line, open)) {
+        if (open.hson) regions.push(Object.freeze({
+          bodyRange: Object.freeze({ start: open.bodyStart, end: lineStart }),
+          indentation: open.indentation,
+        }));
+        open = undefined;
+      }
+    } else {
+      const opening = opening_fence(line);
+      if (opening !== undefined) {
+        const indentation = FENCE_OPENING.exec(line)?.[1] ?? "";
+        open = Object.freeze({
+          ...opening.fence,
+          bodyStart: newline === -1 ? text.length : newline + 1,
+          indentation,
+          hson: opening.markerStart !== undefined,
+        });
+      }
+    }
+    if (newline === -1) break;
+    lineStart = newline + 1;
+  }
+  return Object.freeze(regions);
 }

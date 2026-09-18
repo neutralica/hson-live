@@ -434,6 +434,25 @@ check("compact and layout-separated empty objects retain canonical tokens", () =
   assert.throws(() => tokenize_hson(`<<a 1>>`), /legacy doubled object syntax/);
 });
 
+check("legacy doubled syntax is reserved for the adjacent retired spelling", () => {
+  const legacy = expect_transform_error(`<<a 1>>`, "legacy-doubled-object-syntax", {
+    index: 1, line: 1, column: 2,
+  });
+  assert.match(legacy.message, /legacy doubled object syntax/);
+
+  const malformed = expect_transform_error(`<data 1\n  <data2 2>\n>`, "HSON_NAME_INVALID_START", {
+    index: 10, line: 2, column: 3,
+  });
+  assert.match(malformed.message, /malformed object member name: expected a bare name or single-quoted name/);
+  assert.doesNotMatch(malformed.message, /legacy/i);
+
+  const separated = expect_transform_error(`<\n  <a 1>\n>`, "HSON_NAME_INVALID_START", {
+    index: 4, line: 2, column: 3,
+  });
+  assert.doesNotMatch(separated.message, /legacy/i);
+  expect_transform_error(`<a 1 2>`, "HSON_OBJECT_EXTRA_VALUE");
+});
+
 const equivalent_layouts = [
   [
     `<

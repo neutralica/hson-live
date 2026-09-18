@@ -173,6 +173,103 @@ export async function run(): Promise<void> {
     return;
   }
 
+  const structuralUri = vscode.Uri.file(join(workspace, "hson-structural-editing.ts"));
+  const markdownStructuralUri = vscode.Uri.file(join(workspace, "hson-structural-editing.md"));
+  try {
+    await vscode.workspace.fs.writeFile(structuralUri, Buffer.from('import { Hson } from "hson-live/hson";\nconst host =  1;\nconst inline=Hson`<solo/>`;\nconst page=Hson`\n <main\n<section\n/>\n />\n`;\n'));
+    const structural = await vscode.workspace.openTextDocument(structuralUri);
+    const structuralEditor = await vscode.window.showTextDocument(structural);
+    await vscode.commands.executeCommand("typescript.restartTsServer");
+    const replaceMarked = async (marked: string): Promise<Readonly<{ clean: string; offset: number; indentation: string }>> => {
+      const offset = marked.indexOf("|");
+      assert.ok(offset >= 0, `missing cursor marker: ${marked}`);
+      const clean = marked.slice(0, offset) + marked.slice(offset + 1);
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(structural.uri, new vscode.Range(structural.positionAt(0), structural.positionAt(structural.getText().length)), clean);
+      assert.equal(await vscode.workspace.applyEdit(edit), true);
+      structuralEditor.selection = new vscode.Selection(structural.positionAt(offset), structural.positionAt(offset));
+      const currentLineStart = clean.lastIndexOf("\n", Math.max(0, offset - 1)) + 1;
+      const currentLineEnd = clean.indexOf("\n", offset);
+      const line = clean.slice(currentLineStart, currentLineEnd === -1 ? clean.length : currentLineEnd);
+      return { clean, offset, indentation: /^[ \t]*/.exec(line)?.[0] ?? "" };
+    };
+    const ordinaryEnter = async (label: string, marked: string): Promise<void> => {
+      const before = await replaceMarked(marked);
+      await vscode.commands.executeCommand("hson.insertLineBreak");
+      const expected = before.clean.slice(0, before.offset) + "\n" + before.indentation + before.clean.slice(before.offset);
+      assert.equal(structural.getText(), expected, `${label} retained ordinary Enter editing`);
+    };
+    const typeOffset = structural.getText().indexOf("/>", structural.getText().indexOf("<section"));
+    structuralEditor.selection = new vscode.Selection(structural.positionAt(typeOffset), structural.positionAt(typeOffset));
+    await vscode.commands.executeCommand("type", { text: "<" });
+    assert.ok(structural.getText().includes("<section\n</>"), "real typing inserted a nested document pair");
+    await vscode.commands.executeCommand("hson.deleteLeft");
+    assert.equal(structural.getText().includes("<section\n</>"), false, "backspace removed the generated structural pair");
+    const inlineClose = structural.getText().indexOf("/>", structural.getText().indexOf("<solo"));
+    structuralEditor.selection = new vscode.Selection(structural.positionAt(inlineClose), structural.positionAt(inlineClose));
+    await vscode.commands.executeCommand("hson.insertLineBreak");
+    assert.ok(structural.getText().includes("\n    \n/>"), `real Enter honored the editor indentation and dedented the closer: ${JSON.stringify(structural.getText())}`);
+    await vscode.commands.executeCommand("undo");
+
+    const hostPrefix = 'import { Hson } from "hson-live/hson";\n';
+    await ordinaryEnter("incomplete Hson", hostPrefix + 'const x=Hson`<data 1|`;');
+    await ordinaryEnter("parser-invalid Hson", hostPrefix + 'const x=Hson`<data 1\n  <data2 2|>\n>`;');
+    await ordinaryEnter("tokenizer-invalid Hson", hostPrefix + 'const x=Hson`<a "bad\\q"|>`;');
+    await ordinaryEnter("delimiter-deleted Hson", hostPrefix + 'const x=Hson`<main <child/>|`;');
+    await ordinaryEnter("Hson string", hostPrefix + 'const x=Hson`<a "te|xt">`;');
+    await ordinaryEnter("Hson comment", hostPrefix + 'const x=Hson`<a 1 // no|te\nb 2>`;');
+    await ordinaryEnter("Hson interpolation", hostPrefix + 'const value=1; const x=Hson`<a ${val|ue}>`;');
+    await ordinaryEnter("ordinary TypeScript", 'const ordinary = 1;|');
+
+    await replaceMarked(hostPrefix + 'const x=Hson`<main|/>`;');
+    await vscode.commands.executeCommand("hson.insertLineBreak");
+    assert.ok(structural.getText().includes("<main\n    \n/>"), "valid Hson receives smart Enter");
+    await ordinaryEnter("invalid phase of valid-invalid-valid recovery", hostPrefix + 'const x=Hson`<data 1\n  <data2 2|>\n>`;');
+    await replaceMarked(hostPrefix + 'const x=Hson`<main|/>`;');
+    await vscode.commands.executeCommand("hson.insertLineBreak");
+    assert.ok(structural.getText().includes("<main\n    \n/>"), "smart Enter resumes after Hson repair");
+
+    await replaceMarked('const ordinary = 12|;');
+    await vscode.commands.executeCommand("hson.deleteLeft");
+    assert.equal(structural.getText(), "const ordinary = 1;", "non-pair Backspace fallback remains usable outside Hson");
+
+    await replaceMarked(hostPrefix + 'const x=Hson`<data 1|>`;');
+    await vscode.commands.executeCommand("hson.insertLineBreak");
+    await vscode.commands.executeCommand("type", { text: "data2 2" });
+    await vscode.commands.executeCommand("hson.insertLineBreak");
+    await vscode.commands.executeCommand("type", { text: "data3 " });
+    await vscode.commands.executeCommand("type", { text: "<" });
+    await vscode.commands.executeCommand("hson.insertLineBreak");
+    await vscode.commands.executeCommand("type", { text: "data4 4" });
+    await vscode.commands.executeCommand("hson.insertLineBreak");
+    await vscode.commands.executeCommand("type", { text: "data5 5" });
+    const authoredLines = structural.getText().split("\n");
+    const authoredDump = JSON.stringify(structural.getText());
+    assert.match(authoredLines.find(line => line.includes("data2")) ?? "", /^ {4}data2 2/, authoredDump);
+    assert.match(authoredLines.find(line => line.includes("data3")) ?? "", /^ {4}data3 </, authoredDump);
+    assert.match(authoredLines.find(line => line.includes("data4")) ?? "", /^ {8}data4 4/, authoredDump);
+    assert.match(authoredLines.find(line => line.includes("data5")) ?? "", /^ {8}data5 5/, authoredDump);
+
+    await replaceMarked('import { Hson } from "hson-live/hson";\nconst host =  1;\nconst inline=Hson`<solo/>`;\nconst page=Hson`\n <main\n<section\n/>\n />\n`;\n|');
+    await vscode.commands.executeCommand("hson.deleteLeft");
+    await vscode.commands.executeCommand("hson.formatDocument");
+    assert.ok(structural.getText().includes("const host = 1;"), "Hson Format Document retained normal TypeScript formatting");
+    assert.ok(structural.getText().includes("\n<main\n    <section\n    />\n/>"), `Hson Format Document composed Hson indentation edits: ${JSON.stringify(structural.getText())}`);
+
+    await vscode.workspace.fs.writeFile(markdownStructuralUri, Buffer.from("Before\n```hson\n <main\n<section\n/>\n />\n```\nAfter\n"));
+    const markdownStructural = await vscode.workspace.openTextDocument(markdownStructuralUri);
+    const markdownEdits = await vscode.commands.executeCommand<vscode.TextEdit[]>("vscode.executeFormatDocumentProvider", markdownStructural.uri, { insertSpaces: true, tabSize: 2 });
+    const markdownEdit = new vscode.WorkspaceEdit();
+    for (const edit of markdownEdits ?? []) markdownEdit.replace(markdownStructural.uri, edit.range, edit.newText);
+    assert.equal(await vscode.workspace.applyEdit(markdownEdit), true);
+    assert.ok(markdownStructural.getText().includes("```hson\n<main\n  <section\n  />\n/>\n```"), "Markdown format document used the shared Hson formatter");
+    process.stdout.write("ok - real VS Code structural editing: valid/incomplete/parser-invalid/tokenizer-invalid/delimiter/string/comment/interpolation/outside Enter fallback; valid-invalid-valid recovery; pair and ordinary Backspace; formatting\n");
+  } finally {
+    await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+    await vscode.workspace.fs.delete(structuralUri).then(undefined, () => undefined);
+    await vscode.workspace.fs.delete(markdownStructuralUri).then(undefined, () => undefined);
+  }
+
   await vscode.commands.executeCommand("hson.startLocalHost", folder.uri);
   assert.deepEqual(await lifecycle(), ["start"]);
   await vscode.commands.executeCommand("hson.startLocalHost", folder.uri);

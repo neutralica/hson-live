@@ -3,12 +3,21 @@
 Hson Language adds Hson authoring, Schema tooling, and local Hson application support to VS Code.
 
 - syntax highlighting, definitions, completion, and contextual diagnostics for `.hson` files and `Hson`` tagged templates;
+- context-sensitive angle auto-close, newline indentation, and whitespace-only formatting for recognized `Hson`` templates and Markdown `hson` fences;
 - Schema-aware editing, including semantic references and path-backed completion;
 - generated TypeScript types from Hson Schema declarations;
 - Schema check/watch workflows for editor and CI use;
 - a local application runner using the workspace's own Node and `hson-live`.
 
 Highlighting and diagnostics use TypeScript binding identity for official `hson-live` imports, including renamed imports. Hson authored through `Hson`` and supported literal `fromHson(...)` inputs receives the same grammar-aware presentation.
+
+## Structural editing
+
+Inside binding-recognized `Hson`` templates, typing `<` inserts `>` or `/>` only when the Hson parser proves one structural mode. An initially ambiguous template is left unchanged. Enter follows Hson nesting and the editor's tabs/spaces settings. Canonical Markdown fences such as ```` ```hson ```` use the same structural behavior.
+
+Use **Hson: Format Document** to run the normal host formatter and then indent recognized Hson regions, or **Hson: Format Selection** for selected regions. Markdown Format Document/Selection also formats canonical `hson` fences directly. Formatting changes line-leading whitespace only; it does not serialize, reorder, or normalize authored Hson.
+
+`fromHson(...)` literals remain highlighting and diagnostic surfaces only. Structural editing and formatting do not activate there.
 
 ## Schema authoring
 

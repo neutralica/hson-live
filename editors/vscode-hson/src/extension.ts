@@ -35,6 +35,13 @@ import { markdown_hson_fence_marker_parts } from "./markdown-fence-marker.js";
 import { HSON_SETTINGS_QUERY, appearance_color, marker_strength, marker_color_key } from "./settings.js";
 import { HSON_APPEARANCE } from "./appearance.js";
 import { LocalHostExtensionManager } from "./local-host-extension.js";
+import {
+  structural_closer_for_less_than,
+  structural_formatting_edits,
+  structural_newline_plan,
+  structural_region_at,
+  type StructuralHostLanguage,
+} from "./structural-editing.js";
 
 let localHostManager: LocalHostExtensionManager | undefined;
 
@@ -84,6 +91,192 @@ function explicitAppearanceColor(
 
 export function activate(context: vscode.ExtensionContext): void {
   localHostManager = new LocalHostExtensionManager(context);
+  const structuralLanguage = (document: vscode.TextDocument): StructuralHostLanguage | undefined =>
+    document.languageId === "typescript" || document.languageId === "typescriptreact" || document.languageId === "markdown"
+      ? document.languageId : undefined;
+  const editorIndentation = (editor: vscode.TextEditor) => Object.freeze({
+    insertSpaces: editor.options.insertSpaces !== false,
+    tabSize: typeof editor.options.tabSize === "number" ? editor.options.tabSize : 2,
+  });
+  const insertOrdinaryLineBreak = async (editor: vscode.TextEditor): Promise<void> => {
+    const newline = editor.document.eol === vscode.EndOfLine.CRLF ? "\r\n" : "\n";
+    await editor.edit(edit => {
+      for (const selection of editor.selections) {
+        const line = editor.document.lineAt(selection.active.line).text;
+        const indentation = /^[ \t]*/.exec(line)?.[0] ?? "";
+        edit.replace(selection, newline + indentation);
+      }
+    }, { undoStopBefore: false, undoStopAfter: false });
+  };
+  const deleteOrdinaryLeft = async (editor: vscode.TextEditor): Promise<void> => {
+    await editor.edit(edit => {
+      for (const selection of editor.selections) {
+        if (!selection.isEmpty) {
+          edit.delete(selection);
+          continue;
+        }
+        const position = selection.active;
+        if (position.character > 0) {
+          edit.delete(new vscode.Range(position.translate(0, -1), position));
+        } else if (position.line > 0) {
+          const previous = editor.document.lineAt(position.line - 1).range.end;
+          edit.delete(new vscode.Range(previous, position));
+        }
+      }
+    }, { undoStopBefore: false, undoStopAfter: false });
+  };
+  const updateStructuralContext = (): void => {
+    const editor = vscode.window.activeTextEditor;
+    const language = editor === undefined ? undefined : structuralLanguage(editor.document);
+    const eligible = editor !== undefined && language !== undefined && editor.selections.length === 1 && editor.selection.isEmpty;
+    const text = eligible ? editor.document.getText() : "";
+    const offset = eligible ? editor.document.offsetAt(editor.selection.active) : 0;
+    const smartEnter = eligible && structural_newline_plan(
+      editor.document.fileName,
+      language,
+      text,
+      offset,
+      editorIndentation(editor),
+      editor.document.eol === vscode.EndOfLine.CRLF ? "\r\n" : "\n",
+    ) !== undefined;
+    const pairDeletion = eligible && text[offset - 1] === "<"
+      && (text.startsWith("/>", offset) || text[offset] === ">")
+      && structural_region_at(editor.document.fileName, language, text, offset) !== undefined;
+    void vscode.commands.executeCommand("setContext", "hson.structuralEnter", smartEnter);
+    void vscode.commands.executeCommand("setContext", "hson.structuralPairDeletion", pairDeletion);
+  };
+  context.subscriptions.push(
+    vscode.commands.registerCommand("type", async (args: Readonly<{ text?: string }> | undefined) => {
+      const editor = vscode.window.activeTextEditor;
+      const typed = args?.text;
+      const language = editor === undefined ? undefined : structuralLanguage(editor.document);
+      if (typed !== "<" || editor === undefined || language === undefined
+        || editor.selections.length !== 1 || !editor.selection.isEmpty) {
+        await vscode.commands.executeCommand("default:type", args);
+        return;
+      }
+      const document = editor.document;
+      const offset = document.offsetAt(editor.selection.active);
+      const text = document.getText();
+      const prospective = text.slice(0, offset) + "<" + text.slice(offset);
+      const closer = structural_closer_for_less_than(document.fileName, language, prospective, offset + 1);
+      if (closer === undefined) {
+        await vscode.commands.executeCommand("default:type", args);
+        return;
+      }
+      await editor.insertSnippet(new vscode.SnippetString("<$0" + closer), editor.selection, {
+        undoStopBefore: false,
+        undoStopAfter: false,
+      });
+    }),
+    vscode.commands.registerCommand("hson.insertLineBreak", async () => {
+      const editor = vscode.window.activeTextEditor;
+      const language = editor === undefined ? undefined : structuralLanguage(editor.document);
+      if (editor === undefined || language === undefined || editor.selections.length !== 1 || !editor.selection.isEmpty) {
+        if (editor !== undefined) await insertOrdinaryLineBreak(editor);
+        return;
+      }
+      const document = editor.document;
+      const plan = structural_newline_plan(
+        document.fileName,
+        language,
+        document.getText(),
+        document.offsetAt(editor.selection.active),
+        editorIndentation(editor),
+        document.eol === vscode.EndOfLine.CRLF ? "\r\n" : "\n",
+      );
+      if (plan === undefined) {
+        await insertOrdinaryLineBreak(editor);
+        return;
+      }
+      const insertionOffset = document.offsetAt(editor.selection.start);
+      const inserted = await editor.edit(edit => {
+        edit.replace(editor.selection, plan.beforeCursor + plan.afterCursor);
+      }, { undoStopBefore: false, undoStopAfter: false });
+      if (inserted) {
+        const cursor = document.positionAt(insertionOffset + plan.beforeCursor.length);
+        editor.selection = new vscode.Selection(cursor, cursor);
+      }
+    }),
+    vscode.commands.registerCommand("hson.deleteLeft", async () => {
+      const editor = vscode.window.activeTextEditor;
+      const language = editor === undefined ? undefined : structuralLanguage(editor.document);
+      if (editor === undefined || language === undefined || editor.selections.length !== 1 || !editor.selection.isEmpty) {
+        if (editor !== undefined) await deleteOrdinaryLeft(editor);
+        return;
+      }
+      const document = editor.document;
+      const offset = document.offsetAt(editor.selection.active);
+      const text = document.getText();
+      const closerLength = text.startsWith("/>", offset) ? 2 : text[offset] === ">" ? 1 : 0;
+      if (closerLength === 0 || text[offset - 1] !== "<"
+        || structural_region_at(document.fileName, language, text, offset) === undefined) {
+        await deleteOrdinaryLeft(editor);
+        return;
+      }
+      const edit = new vscode.WorkspaceEdit();
+      edit.delete(document.uri, new vscode.Range(document.positionAt(offset - 1), document.positionAt(offset + closerLength)));
+      await vscode.workspace.applyEdit(edit);
+    }),
+    vscode.window.onDidChangeActiveTextEditor(updateStructuralContext),
+    vscode.window.onDidChangeTextEditorSelection(updateStructuralContext),
+    vscode.workspace.onDidChangeTextDocument(event => {
+      if (event.document === vscode.window.activeTextEditor?.document) updateStructuralContext();
+    }),
+  );
+  updateStructuralContext();
+
+  const markdownSelector: vscode.DocumentSelector = [{ language: "markdown", scheme: "file" }, { language: "markdown", scheme: "untitled" }];
+  const markdownFormattingEdits = (
+    document: vscode.TextDocument,
+    options: vscode.FormattingOptions,
+    range?: vscode.Range,
+  ): vscode.TextEdit[] => structural_formatting_edits(
+    document.fileName,
+    "markdown",
+    document.getText(),
+    options,
+    range === undefined ? undefined : { start: document.offsetAt(range.start), end: document.offsetAt(range.end) },
+  ).map(edit => vscode.TextEdit.replace(
+    new vscode.Range(document.positionAt(edit.start), document.positionAt(edit.end)), edit.text,
+  ));
+  context.subscriptions.push(
+    vscode.languages.registerDocumentFormattingEditProvider(markdownSelector, {
+      provideDocumentFormattingEdits: (document, options) => markdownFormattingEdits(document, options),
+    }),
+    vscode.languages.registerDocumentRangeFormattingEditProvider(markdownSelector, {
+      provideDocumentRangeFormattingEdits: (document, range, options) => markdownFormattingEdits(document, options, range),
+    }),
+  );
+  const formatStructuralRegions = async (scope: "document" | "selection"): Promise<void> => {
+    await vscode.commands.executeCommand(scope === "document" ? "editor.action.formatDocument" : "editor.action.formatSelection");
+    const editor = vscode.window.activeTextEditor;
+    const language = editor === undefined ? undefined : structuralLanguage(editor.document);
+    if (editor === undefined || language === undefined) return;
+    const document = editor.document;
+    const requestedRange = scope === "selection" && !editor.selection.isEmpty
+      ? { start: document.offsetAt(editor.selection.start), end: document.offsetAt(editor.selection.end) }
+      : undefined;
+    const edits = structural_formatting_edits(
+      document.fileName,
+      language,
+      document.getText(),
+      editorIndentation(editor),
+      requestedRange,
+    );
+    if (edits.length === 0) return;
+    const workspaceEdit = new vscode.WorkspaceEdit();
+    for (const edit of edits) workspaceEdit.replace(
+      document.uri,
+      new vscode.Range(document.positionAt(edit.start), document.positionAt(edit.end)),
+      edit.text,
+    );
+    await vscode.workspace.applyEdit(workspaceEdit);
+  };
+  context.subscriptions.push(
+    vscode.commands.registerCommand("hson.formatDocument", () => formatStructuralRegions("document")),
+    vscode.commands.registerCommand("hson.formatSelection", () => formatStructuralRegions("selection")),
+  );
   const collection = vscode.languages.createDiagnosticCollection("hson");
   const diagnosticsOutput = vscode.window.createOutputChannel("Hson Diagnostics");
   context.subscriptions.push(collection, diagnosticsOutput);

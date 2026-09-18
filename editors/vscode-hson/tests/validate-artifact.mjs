@@ -27,6 +27,7 @@ assert.deepEqual(manifest.activationEvents, [
   "onStartupFinished",
   "onLanguage:typescript",
   "onLanguage:typescriptreact",
+  "onLanguage:markdown",
 ]);
 assert.deepEqual(manifest.contributes.languages[0].extensions, [".hson"]);
 assert.equal(coreGrammar.scopeName, "source.hson");
@@ -65,6 +66,7 @@ assert.deepEqual(languageConfiguration.colorizedBracketPairs, [["[", "]"], ["«"
 assert.equal(coreGrammar.repository["structural-punctuation"].patterns[1].captures[1].name, "punctuation.definition.tag.self-closing.hson");
 assert.deepEqual(manifest.contributes.commands.map(command => command.command), [
   "hson.openSettings",
+  "hson.formatDocument", "hson.formatSelection",
   "hson.generateSchemaTypes", "hson.startSchemaWatch", "hson.stopSchemaWatch", "hson.checkSchemas", "hson.showSchemaOutput",
   "hson.startLocalHost", "hson.stopLocalHost", "hson.restartLocalHost", "hson.openLocalApp", "hson.showLocalHostOutput",
 ]);

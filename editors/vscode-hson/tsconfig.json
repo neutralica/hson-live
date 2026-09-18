@@ -14,6 +14,7 @@
     "tests/runtime.test.ts",
     "tests/workspace-diagnostics.test.ts",
     "tests/settings.test.ts",
+    "tests/structural-editing.test.ts",
     "tests/local-host.test.ts",
     "tests/local-host-process.test.ts",
     "tests/benchmark.ts",

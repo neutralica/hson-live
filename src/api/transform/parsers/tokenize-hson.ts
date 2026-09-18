@@ -251,7 +251,7 @@ class HsonScanner {
           "HSON_OBJECT_QUID_FORBIDDEN",
         );
       }
-      if (this.peek() === "<") {
+      if (this.peek() === "<" && namePos.index === openPos.index + 1) {
         this.fail(
           `legacy doubled object syntax is not supported; expected an object member name`,
           namePos,
