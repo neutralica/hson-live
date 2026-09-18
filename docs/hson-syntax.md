@@ -274,4 +274,4 @@ At generic and data boundaries, empty, whitespace-only, and comment-only Hson so
 
 Authored-source failures use portable `TransformError` details. Stable identity is read from `operation`, `code`, optional `stage`, and exact zero-based index / one-based line and column in `source`; graph-only failures retain graph `path` instead of fabricated source coordinates. Duplicate object members and element attributes identify the duplicate as primary `source` and the first declaration as structured `related` evidence. Diagnostic prose is informative but is not the machine-readable identity.
 
-© 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0
+© 2026 terminal_gothic. All rights reserved except as granted under the PolyForm Strict License 1.0.0

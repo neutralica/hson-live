@@ -231,4 +231,4 @@ The node model does not enforce application schemas, business rules, CSS/HTML
 safety, or source-text fidelity. Sanitization and runtime behavior are separate
 layers.
 
-© 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0
+© 2026 terminal_gothic. All rights reserved except as granted under the PolyForm Strict License 1.0.0

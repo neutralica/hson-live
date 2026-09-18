@@ -116,4 +116,4 @@ The serialized JSON string is deterministic. Numeric emission preserves the vali
 
 This mapping does not validate schemas, infer application types, attach meaning to property order, or interpret ordinary JSON strings as markup.
 
-© 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0
+© 2026 terminal_gothic. All rights reserved except as granted under the PolyForm Strict License 1.0.0

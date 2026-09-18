@@ -542,4 +542,4 @@ Use `tree.style` for inline attributes that should serialize with the node. Use
 `tree.css` for stylesheet rules, pseudo states, selectors, media/supports/layer
 rules, keyframes, and animations.
 
-© 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0
+© 2026 terminal_gothic. All rights reserved except as granted under the PolyForm Strict License 1.0.0

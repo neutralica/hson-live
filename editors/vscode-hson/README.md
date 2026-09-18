@@ -1,86 +1,90 @@
 # Hson Language for VS Code
 
-Hson Language v0.1
+Hson Language adds Hson authoring, Schema tooling, and local Hson application support to VS Code.
 
-• syntax highlighting, definitions, and contextual diagnostics for `.hson` files
-• schema-aware editing for `Hson`\`\` tagged templates including path-backed auto-completion
-• auto-generated TypeScript types from HsonSchema declarations for a reliable coupling of schema and type to a single source
-• `check` and `watch` modes to generate types one time or debounced on Schema revision
+- syntax highlighting, definitions, completion, and contextual diagnostics for `.hson` files and `Hson`` tagged templates;
+- Schema-aware editing, including semantic references and path-backed completion;
+- generated TypeScript types from Hson Schema declarations;
+- Schema check/watch workflows for editor and CI use;
+- a local application runner using the workspace's own Node and `hson-live`.
 
-Highlighting and diagnostics use TypeScript binding-aware discovery of official
-`hson-live` imports, including renamed imports. `Hson` tagged templates and
-literal source arguments written directly in official `fromHson(...)` calls
-receive the existing Hson grammar presentation.
- 
+Highlighting and diagnostics use TypeScript binding identity for official `hson-live` imports, including renamed imports. Hson authored through `Hson`` and supported literal `fromHson(...)` inputs receives the same grammar-aware presentation.
 
-## HsonSchema authoring and diagnostics
+## Schema authoring
 
-Declare the Schema as canonical Hson and use `Hson.certify` for dynamic
-certification or `map.schema.use` for LiveMap governance:
+Schemas are authored directly in canonical Hson:
 
 ```ts
 import { Hson, type HsonSchema } from "hson-live/hson";
-import { hsonLiveMap } from "hson-live/livemap";
 
 export const UserSchema: HsonSchema = Hson`
-  <type "data" 
-   content 
-    <user 
-     <content 
-      <age 
-       "number"
-      >
-     >
-    >
-  >
+  <type "data" content <
+    user <content <
+      age "number"
+    >>
+  >>
 `;
-
-const user = Hson`<user <age 37>>`;
-Hson.certify(UserSchema, user);
-hsonLiveMap.fromHson(user).schema.use(UserSchema);
 ```
 
-The extension discovers static `HsonSchema` declarations and generated evidence. It provides Schema-aware diagnostics and completion without executing callback validators.
+The extension discovers static `HsonSchema` declarations and generated evidence to provide diagnostics, completion, hover, definitions, references, and rename support.
 
-Local Schema definitions are editor symbols and also offer semantic auto-complete. Inside `<ref "…">` tags, for example, completion always offers the current declaration's `defs`; **Go to Definition**, **Find References**, **Rename Symbol**, and hover follow only those semantic local references. Use Schema Watch or Check afterward to reconcile generated evidence.
+For example, `<ref "…">` completion is scoped to the current Schema declaration's `defs`, and navigation follows those semantic references rather than matching text alone.
 
-For headless development and CI, the package remains authoritative:
+Schema types can be generated and checked from VS Code or the package CLI:
 
 ```sh
 hson-schema generate --project tsconfig.json
 hson-schema watch --project tsconfig.json
+hson-schema check --project tsconfig.json
 ```
 
-**Hson: Generate Schema Types**, **Hson: Start Schema Watch**, **Hson: Stop Schema Watch**, and **Hson: Check Schemas** do not execute automatically on startup. Schema-generated type declarations are ordinary TypeScript files.
+Available editor commands include:
 
-Interpolations remain ordinary TypeScript expressions; runtime values can be
-certified explicitly with `Hson.certify`.
+- **Hson: Generate Schema Types**
+- **Hson: Start Schema Watch**
+- **Hson: Stop Schema Watch**
+- **Hson: Check Schemas**
 
-## Development
+Runtime values can be certified explicitly with `Hson.certify(...)`, while LiveMap state can be governed through `map.schema.use(...)`.
 
-### Install the current local extension
+## Local applications
 
-From the `hson-live` repository root, use the local install authority:
+The extension can run a real Hson application locally using the workspace's own Node runtime and installed `hson-live`.
+
+Application code runs in a separate workspace child process under LiveHost Node; it does not execute inside the VS Code extension host.
+
+Configure a built application entry in workspace settings:
+
+```json
+{
+  "hson.localHost.entry": "dist/local-app.js",
+  "hson.localHost.applicationExport": "application",
+  "hson.localHost.nodeExecutable": "node",
+  "hson.localHost.port": 0
+}
+```
+
+The exported value may be a `LiveHostApplication`, an array of applications, or a zero-argument factory returning either.
+
+Use:
+
+- **Hson: Run Local App**
+- **Hson: Open Local App**
+- **Hson: Restart Local App**
+- **Hson: Stop Local App**
+- **Hson: Show Local App Output**
+
+The runner uses loopback networking, supports automatically assigned ports, and manages clean application restart and shutdown. Local application execution requires Workspace Trust and is currently limited to local desktop workspaces.
+
+Build/watch remains project-owned. The extension does not provide its own TypeScript executor, bundler, or alternate Hson runtime.
+
+## Install the local development build
+
+From the `hson-live` repository:
 
 ```sh
 npm run vscode:install
 ```
-
-The install command discovers the normal Stable VS Code CLI, checks and builds
-the extension, packages current source into a new temporary VSIX, validates that
-archive, atomically promotes it to `editors/vscode-hson/hson-language.vsix`, and
-force-installs that exact artifact. It then verifies the installed extension ID,
-version, and payload when the current VS Code CLI can locate it.
-
-After `npm run toolkit:update`, run **Developer: Reload Window** in VS Code. The
-tooling does not reload or restart VS Code automatically.
-
-`toolkit:update` is the one-command local update path. The extension build
-bundles its required compiler/runtime source directly from this repository, so
-a separate root `npm run build` is not a VSIX prerequisite. The install step
-itself checks extension source, builds, validates, packages once, installs that
-exact VSIX, and verifies the installed payload. Workspace Schema commands still
-run each consumer project's own installed `hson-live` executable.
 
 Package without installing:
 
@@ -88,101 +92,14 @@ Package without installing:
 npm run vscode:package
 ```
 
-Inspect source/package/installed-build authority:
+Inspect source/package/installed-build status:
 
 ```sh
 npm run vscode:status
 ```
 
-To select a different compatible VS Code CLI explicitly:
+After updating the installed extension, run **Developer: Reload Window** when required.
 
-```sh
-HSON_VSCODE_CLI=/absolute/path/to/code npm run vscode:install
-```
+## Development
 
-An invalid explicit override fails immediately. The normal command does not
-select Insiders, create a profile, or use the isolated integration-test
-directories.
-
-Local source updates deliberately use `--force`, so replacing one `0.1.1`
-development build with another does not require an extension version bump.
-Changing Hson Appearance settings does not require a reinstall; use the normal
-VS Code settings lifecycle. Reinstall only after extension source or build inputs
-change.
-
-The multi-step build/development-host sequence below remains useful for extension
-debugging, but it is not the ordinary local installation workflow.
-
-1. Run `npm install` in this directory.
-2. Run `npm run build` and `npm test`.
-3. Start an Extension Development Host:
-
-   ```sh
-   code --extensionDevelopmentPath=/absolute/path/to/editors/vscode-hson
-   ```
-
-4. In that window, open a `.hson` file containing:
-
-   ```hson
-   <main
-     <broken
-   ```
-
-5. Open a `.ts` file containing the malformed direct and aliased forms:
-
-   ```ts
-   import { Hson, Hson as markup } from "hson-live/hson";
-
-   const direct = Hson`
-     <main
-       <broken
-   `;
-
-   const alias = markup`
-     <main
-       <broken
-   `;
-   ```
-
-6. Replace either body with valid Hson and confirm its squiggle clears:
-
-   ```ts
-   const page = Hson`
-     <main
-       <h1 "Hello">
-     >
-   `;
-   ```
-
-Direct and renamed official imports receive the same grammar-backed highlighting and admission diagnostics because both use the same TypeScript binding identity.
-
-Quoted strings and template literals written directly inside current official
-Transform, LiveMap, and LiveTree `fromHson(...)` calls receive Hson syntax
-highlighting. Interpolated template expressions remain TypeScript while directly
-corresponding literal segments resume Hson highlighting; interpolated templates
-whose segments require JavaScript escape cooking remain conservatively ordinary.
-Binding identity, not the method spelling or string contents, selects these
-regions; unrelated
-`fromHson` methods and ordinary strings remain untouched. This is presentation
-only: existing diagnostics and Schema/proof behavior are unchanged.
-
-`Hson\`...\`` remains the preferred certified authoring form with Schema-aware
-editing. Direct `fromHson(...)` literals are runtime ingress, not a new proof or
-Schema-completion surface.
-
-Use **Developer: Inspect Editor Tokens and Scopes** in the Command Palette to inspect the emitted Hson semantic tokens and their TextMate scope fallbacks.
-
-### Appearance authority
-
-`src/appearance.ts` is the single developer map for Hson presentation. Its
-`owned` section contains the branded marker colors, strengths, color IDs, and
-lowercase separator. Its `themeDerived` section is the scope menu for ordinary
-syntax; those entries deliberately have no Hson color and inherit the active
-VS Code theme. Its `native` section declares the bracket pairs eligible for VS
-Code's built-in nesting colors. The manifest retains literal defaults because
-VS Code reads JSON contributions before activation; focused tests keep those
-copies equal to the authority.
-
-### Zero-Schema regression verification
-
-`npm run test:baseline` runs 24 focused recognition, grammar, admission, mapping and stale-publication checks. `npm run test:baseline:integration` runs the unsaved edit journey in trusted and genuinely restricted workspaces. Set `HSON_VSCODE_EXECUTABLE` to select a VS Code binary (the runner defaults to the ordinary macOS installation). `npm run test:baseline:installed` builds the actual VSIX and runs the same journey from a clean installed-extension directory, using an empty test-driver extension rather than a development override for Hson.
+Extension implementation, packaging, integration-test, appearance-authority, and regression-suite documentation is maintained with the extension source.

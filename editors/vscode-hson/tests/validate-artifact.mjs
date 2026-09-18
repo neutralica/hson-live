@@ -9,6 +9,8 @@ const languageConfiguration = await readJson("../language-configuration.json");
 const coreGrammar = await readJson("../syntaxes/hson.tmLanguage.json");
 const markdownGrammar = await readJson("../syntaxes/markdown-hson-codeblock.tmLanguage.json");
 const extensionBundle = await readFile(new URL("../dist/extension.js", import.meta.url), "utf8");
+const localHostRunner = await readFile(new URL("../dist/local-host-runner.cjs", import.meta.url), "utf8");
+const localHostRunnerMap = await readFile(new URL("../dist/local-host-runner.cjs.map", import.meta.url), "utf8");
 
 assert.equal(manifest.main, "./dist/extension.js");
 assert.equal(manifest.icon, "images/hson-icon.png");
@@ -46,6 +48,10 @@ assert.deepEqual(markdownGrammar.repository["hson-code-block"].patterns[0].patte
 assert.match(extensionBundle, /markdown_hson_fence_marker_parts/);
 assert.match(extensionBundle, /function discover_static_from_hson_sources/);
 assert.match(extensionBundle, /function map_static_hson_range/);
+assert.match(extensionBundle, /LocalHostController = class/);
+assert.match(localHostRunner, /LOCAL_HOST_PROTOCOL_VERSION/);
+assert.doesNotMatch(localHostRunner, /start_node_application_host\(options\)/);
+assert.ok(JSON.parse(localHostRunnerMap).sources.some(source => source.endsWith("/local-host-runner.ts")));
 assert.ok(manifest.contributes.semanticTokenTypes.some(type => type.id === "hsonType"));
 assert.deepEqual(manifest.contributes.colors.map(color => color.id), [
   "hson.libraryMarker.h", "hson.libraryMarker.s", "hson.libraryMarker.o", "hson.libraryMarker.n",
@@ -59,6 +65,7 @@ assert.equal(coreGrammar.repository["structural-punctuation"].patterns[1].captur
 assert.deepEqual(manifest.contributes.commands.map(command => command.command), [
   "hson.openSettings",
   "hson.generateSchemaTypes", "hson.startSchemaWatch", "hson.stopSchemaWatch", "hson.checkSchemas", "hson.showSchemaOutput",
+  "hson.startLocalHost", "hson.stopLocalHost", "hson.restartLocalHost", "hson.openLocalApp", "hson.showLocalHostOutput",
 ]);
 const configuration = Object.assign({}, ...manifest.contributes.configuration.map(group => group.properties));
 assert.equal(Object.keys(configuration).some(key => key.startsWith("hson.trustedSchemaDiagnostics.")), false);
@@ -66,6 +73,12 @@ assert.equal(configuration["hson.appearance.libraryMarkerStrength"].default, 1);
 assert.equal(configuration["hson.appearance.authoringMarkerStrength"].default, 0.7);
 assert.equal(configuration["hson.appearance.libraryMarkerStrength"].multipleOf, undefined);
 assert.equal(configuration["hson.appearance.authoringMarkerStrength"].multipleOf, undefined);
+assert.deepEqual({
+  entry: configuration["hson.localHost.entry"].default,
+  applicationExport: configuration["hson.localHost.applicationExport"].default,
+  nodeExecutable: configuration["hson.localHost.nodeExecutable"].default,
+  port: configuration["hson.localHost.port"].default,
+}, { entry: "", applicationExport: "application", nodeExecutable: "node", port: 0 });
 const appearanceDefaults = { blue: "#00adf6", yellow: "#c9d100", pink: "#ff4a8c", green: "#39a500" };
 assert.deepEqual(Object.keys(appearanceDefaults).map(key => ({
   key: `hson.appearance.${key}`,

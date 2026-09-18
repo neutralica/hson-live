@@ -128,6 +128,22 @@ export async function run(): Promise<void> {
   const workspace = process.env.HSON_TEST_WORKSPACE;
 
   assert.ok(workspace);
+  const commands = await vscode.commands.getCommands(true);
+  for (const command of ["hson.startLocalHost", "hson.stopLocalHost", "hson.restartLocalHost", "hson.openLocalApp", "hson.showLocalHostOutput"]) {
+    assert.ok(commands.includes(command), `${command} is registered`);
+  }
+  const folder = vscode.workspace.workspaceFolders?.[0];
+  assert.ok(folder);
+  const localHostConfiguration = vscode.workspace.getConfiguration("hson.localHost", folder.uri);
+  await localHostConfiguration.update("entry", "dist/local-app.mjs", vscode.ConfigurationTarget.WorkspaceFolder);
+  await localHostConfiguration.update("applicationExport", "application", vscode.ConfigurationTarget.WorkspaceFolder);
+  await localHostConfiguration.update("nodeExecutable", process.env.HSON_TEST_NODE_EXECUTABLE ?? "node", vscode.ConfigurationTarget.WorkspaceFolder);
+  await localHostConfiguration.update("port", 0, vscode.ConfigurationTarget.WorkspaceFolder);
+  const lifecycleUri = vscode.Uri.file(join(workspace, "local-host-lifecycle.txt"));
+  const lifecycle = async (): Promise<string[]> => {
+    try { return Buffer.from(await vscode.workspace.fs.readFile(lifecycleUri)).toString().trim().split("\n").filter(Boolean); }
+    catch { return []; }
+  };
   if (process.env.HSON_SCHEMA_CONSUMER_TEST === "1") {
     await runSchemaConsumer(workspace);
     return;
@@ -144,6 +160,11 @@ export async function run(): Promise<void> {
 
   if (process.env.HSON_RESTRICTED_TEST === "1") {
     assert.equal(vscode.workspace.isTrusted, false, "restricted integration workspace must remain untrusted");
+    const before = await lifecycle();
+    await vscode.commands.executeCommand("hson.startLocalHost", folder.uri);
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.deepEqual(await lifecycle(), before, "Restricted Mode did not execute the configured local application");
+    process.stdout.write("ok - real VS Code local-host command is gated by Workspace Trust\n");
     const source = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace, "static-syntax.ts")));
     await vscode.window.showTextDocument(source);
     const diagnostics = await diagnosticsFor(source.uri, 1);
@@ -151,6 +172,17 @@ export async function run(): Promise<void> {
     process.stdout.write("ok - real VS Code Restricted Mode: secure static fromHson syntax diagnostics remain active without trust\n");
     return;
   }
+
+  await vscode.commands.executeCommand("hson.startLocalHost", folder.uri);
+  assert.deepEqual(await lifecycle(), ["start"]);
+  await vscode.commands.executeCommand("hson.startLocalHost", folder.uri);
+  assert.deepEqual(await lifecycle(), ["start"], "duplicate start did not create another child");
+  await vscode.commands.executeCommand("hson.restartLocalHost", folder.uri);
+  assert.deepEqual(await lifecycle(), ["start", "stop", "start"]);
+  await vscode.commands.executeCommand("hson.stopLocalHost", folder.uri);
+  await vscode.commands.executeCommand("hson.stopLocalHost", folder.uri);
+  assert.deepEqual(await lifecycle(), ["start", "stop", "start", "stop"]);
+  process.stdout.write("ok - real VS Code local-host commands start, deduplicate, restart fresh, and stop idempotently\n");
 
   const standalone = await vscode.workspace.openTextDocument({ language: "hson", content: "+1" });
   await vscode.window.showTextDocument(standalone);
@@ -269,5 +301,9 @@ export async function run(): Promise<void> {
   await vscode.commands.executeCommand("typescript.restartTsServer");
   await waitAssociationDiagnostics(0);
   process.stdout.write("ok - real VS Code declarative HsonSchema: fresh generated association diagnoses invalid Hson and clears after unsaved correction\n");
+
+  await vscode.commands.executeCommand("hson.startLocalHost", folder.uri);
+  await waitFor(async () => (await lifecycle()).at(-1) === "start", "local host did not start for extension deactivation coverage");
+  process.stdout.write("ok - real VS Code local host left running for extension deactivation cleanup\n");
 
 }

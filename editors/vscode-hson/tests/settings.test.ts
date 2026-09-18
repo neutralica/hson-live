@@ -24,7 +24,10 @@ function check(name: string, body: () => void): void {
   process.stdout.write(`ok ${++checks} - ${name}\n`);
 }
 
-check("settings expose only supported appearance controls", () => assert.deepEqual(groups.map(group => group.title), ["Hson › Appearance"]));
+const appearanceGroup = groups.find(group => group.title === "Hson › Appearance");
+const localHostGroup = groups.find(group => group.title === "Hson › Local Host");
+assert.ok(appearanceGroup); assert.ok(localHostGroup);
+check("settings expose the appearance and bounded local-host groups", () => assert.deepEqual(groups.map(group => group.title), ["Hson › Appearance", "Hson › Local Host"]));
 check("the appearance authority distinguishes owned values from theme-derived scopes", () => {
   assert.deepEqual(Object.keys(HSON_APPEARANCE), ["owned", "themeDerived", "native"]);
   assert.ok(Object.values(HSON_APPEARANCE.themeDerived).every(value => value.endsWith(".hson")));
@@ -46,7 +49,7 @@ check("native bracket-pair declarations mirror the appearance authority", () => 
   assert.deepEqual(languageConfiguration.colorizedBracketPairs, HSON_APPEARANCE.native.colorizedBracketPairs);
 });
 check("appearance surface contains only the finalized eight controls", () => assert.deepEqual(
-  Object.keys(groups[0]!.properties),
+  Object.keys(appearanceGroup.properties),
   [
     "hson.appearance.libraryMarkerStrength",
     "hson.appearance.authoringMarkerStrength",
@@ -104,6 +107,18 @@ check("runtime color parsing accepts hex and falls back for unset or invalid val
   assert.equal(appearance_color(""), undefined); assert.equal(appearance_color("blue"), undefined);
 });
 check("retired trusted Schema settings are absent", () => assert.equal(Object.keys(properties).some(key => key.startsWith("hson.trustedSchemaDiagnostics.")), false));
+check("local-host settings describe one built entry and narrow runtime controls", () => {
+  assert.deepEqual(Object.keys(localHostGroup.properties), [
+    "hson.localHost.entry", "hson.localHost.applicationExport", "hson.localHost.nodeExecutable", "hson.localHost.port",
+  ]);
+  assert.equal(properties["hson.localHost.entry"].default, "");
+  assert.equal(properties["hson.localHost.entry"].scope, "resource");
+  assert.equal(properties["hson.localHost.applicationExport"].default, "application");
+  assert.equal(properties["hson.localHost.nodeExecutable"].default, "node");
+  assert.equal(properties["hson.localHost.port"].default, 0);
+  assert.equal(properties["hson.localHost.port"].minimum, 0);
+  assert.equal(properties["hson.localHost.port"].maximum, 65_535);
+});
 check("no retired execution settings are advertised as restricted", () => assert.equal(manifest.capabilities.untrustedWorkspaces.restrictedConfigurations, undefined));
 check("settings search targets this extension", () => assert.equal(HSON_SETTINGS_QUERY, "@ext:terminal-gothic.hson-language"));
 check("marker strength clamps invalid low and high values", () => {
@@ -125,7 +140,10 @@ check("production TypeScript contains no second hard-coded branded palette", () 
 });
 check("the compact command set complements settings and status", () => assert.deepEqual(
   manifest.contributes.commands.map((command: { command: string }) => command.command),
-  ["hson.openSettings", "hson.generateSchemaTypes", "hson.startSchemaWatch", "hson.stopSchemaWatch", "hson.checkSchemas", "hson.showSchemaOutput"],
+  [
+    "hson.openSettings", "hson.generateSchemaTypes", "hson.startSchemaWatch", "hson.stopSchemaWatch", "hson.checkSchemas", "hson.showSchemaOutput",
+    "hson.startLocalHost", "hson.stopLocalHost", "hson.restartLocalHost", "hson.openLocalApp", "hson.showLocalHostOutput",
+  ],
 ));
 
 process.stdout.write(`ok - ${checks} focused settings and consent checks passed\n`);

@@ -613,4 +613,4 @@ on Transform fields.
 
 A separate `hson-transform.md` overview is not currently necessary. The pipeline is small, while `hson-syntax.md`, `hson-nodes.md`, `hson-json.md`, and `hson-html.md` already document the parsers' shared model and format-specific behavior. This file is the appropriate home for the callable transform chain.
 
-© 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0
+© 2026 terminal_gothic. All rights reserved except as granted under the PolyForm Strict License 1.0.0

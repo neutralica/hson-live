@@ -84,6 +84,8 @@ function manifestStaticPaths(manifest) {
   const paths = new Set([
     String(manifest.main ?? "").replace(/^\.\//, ""),
     "dist/extension.js.map",
+    "dist/local-host-runner.cjs",
+    "dist/local-host-runner.cjs.map",
     "dist/onig.wasm",
   ]);
   for (const language of manifest.contributes?.languages ?? []) {
@@ -173,28 +175,29 @@ function sourcePathFromMap(extensionRoot, mapSource) {
   return resolve(extensionRoot, "dist", mapSource);
 }
 
-export async function sourceInputAuthority(extensionRoot, sourceMapText) {
-  let sourceMap;
-  try {
-    sourceMap = JSON.parse(sourceMapText);
-  } catch (error) {
-    throw new StageError("build authority failure", "packaged extension source map is invalid", error);
-  }
-  if (!Array.isArray(sourceMap.sources) || !Array.isArray(sourceMap.sourcesContent)) {
-    throw new StageError("build authority failure", "packaged source map lacks sourcesContent");
-  }
-
+export async function sourceInputAuthority(extensionRoot, sourceMaps) {
   const inputs = [];
-  for (let index = 0; index < sourceMap.sources.length; index += 1) {
-    const source = sourceMap.sources[index];
-    const localPath = sourcePathFromMap(extensionRoot, source);
-    if (localPath && await pathExists(localPath)) {
-      inputs.push([`local:${source}`, sha256(await readFile(localPath))]);
-    } else {
-      const content = sourceMap.sourcesContent[index];
-      inputs.push(typeof content === "string"
-        ? [`embedded:${source}`, sha256(content)]
-        : [`unavailable:${source}`, sha256("source content unavailable")]);
+  for (const sourceMapInput of sourceMaps) {
+    let sourceMap;
+    try {
+      sourceMap = JSON.parse(sourceMapInput.text);
+    } catch (error) {
+      throw new StageError("build authority failure", `packaged ${sourceMapInput.name} source map is invalid`, error);
+    }
+    if (!Array.isArray(sourceMap.sources) || !Array.isArray(sourceMap.sourcesContent)) {
+      throw new StageError("build authority failure", `packaged ${sourceMapInput.name} source map lacks sourcesContent`);
+    }
+    for (let index = 0; index < sourceMap.sources.length; index += 1) {
+      const source = sourceMap.sources[index];
+      const localPath = sourcePathFromMap(extensionRoot, source);
+      if (localPath && await pathExists(localPath)) {
+        inputs.push([`${sourceMapInput.name}:local:${source}`, sha256(await readFile(localPath))]);
+      } else {
+        const content = sourceMap.sourcesContent[index];
+        inputs.push(typeof content === "string"
+          ? [`${sourceMapInput.name}:embedded:${source}`, sha256(content)]
+          : [`${sourceMapInput.name}:unavailable:${source}`, sha256("source content unavailable")]);
+      }
     }
   }
 
@@ -233,11 +236,15 @@ async function gitIdentity(repositoryRoot, processRunner = runProcess) {
   };
 }
 
-async function sourceMapFromVsix(vsixPath) {
+async function sourceMapsFromVsix(vsixPath) {
   const archive = await JSZip.loadAsync(await readFile(vsixPath));
-  const entry = archive.file("extension/dist/extension.js.map");
-  if (!entry) throw new StageError("build authority failure", "VSIX is missing its extension source map");
-  return entry.async("string");
+  const maps = [];
+  for (const name of ["extension", "local-host-runner"]) {
+    const entry = archive.file(`extension/dist/${name}.${name === "extension" ? "js" : "cjs"}.map`);
+    if (!entry) throw new StageError("build authority failure", `VSIX is missing its ${name} source map`);
+    maps.push({ name, text: await entry.async("string") });
+  }
+  return maps;
 }
 
 export async function packageCurrentSource(options) {
@@ -275,7 +282,7 @@ export async function packageCurrentSource(options) {
       throw new StageError("packaging failure", "packager did not create the requested temporary VSIX");
     }
     const artifact = await validateVsix(temporaryVsix, expectedManifest);
-    const source = await sourceInputAuthority(extensionRoot, await sourceMapFromVsix(temporaryVsix));
+    const source = await sourceInputAuthority(extensionRoot, await sourceMapsFromVsix(temporaryVsix));
     const git = await gitIdentity(repositoryRoot, runner);
     const authority = {
       schemaVersion: 1,
@@ -434,7 +441,7 @@ export async function inspectPackageAuthority(extensionRoot) {
   }
   let currentSource;
   try {
-    currentSource = await sourceInputAuthority(root, await sourceMapFromVsix(vsixPath));
+    currentSource = await sourceInputAuthority(root, await sourceMapsFromVsix(vsixPath));
   } catch (error) {
     return { state: "stale", manifest, vsixPath, artifact, authority, reason: error.message };
   }

@@ -12,7 +12,7 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "Syntax, local HsonSchema authoring, symbols, and generated-evidence diagnostics work in Restricted Mode. Schema generation and watch commands run only when explicitly invoked in a trusted workspace."
+      "description": "Syntax, local HsonSchema authoring, symbols, and generated-evidence diagnostics work in Restricted Mode. Schema execution and local hosting run only when explicitly invoked in a trusted workspace."
     }
   },
   "engines": {
@@ -33,7 +33,8 @@
     "check": "npm run check:source && npm run build && npm run validate:artifact",
     "test": "npm run test:grammar && npm run test:unit && npm run test:settings",
     "test:grammar": "node ./tests/grammar.test.mjs && npm run test:baseline",
-    "test:unit": "node ./scripts/build-tests.mjs && node ./.test-dist/unit.cjs && node ./.test-dist/workspace.cjs",
+    "test:unit": "node ./scripts/build-tests.mjs && node ./.test-dist/unit.cjs && node ./.test-dist/workspace.cjs && node ./.test-dist/local-host.cjs",
+    "test:local-host-process": "npm run build && node ./scripts/build-tests.mjs && node ./.test-dist/local-host-process.cjs",
     "test:settings": "node ./scripts/build-tests.mjs && node ./.test-dist/settings.cjs",
     "test:integration": "npm run build && node ./scripts/build-tests.mjs && node ./tests/integration/run.mjs",
     "test:integration:consumer": "npm run build && node ./scripts/build-tests.mjs && node ./tests/integration/run-consumer.mjs",
@@ -138,6 +139,47 @@
             "markdownDescription": "Colors only the first member-access period after an official lowercase `hson` root. Clear an explicit override to use the contributed theme color and `workbench.colorCustomizations` ID."
           }
         }
+      },
+      {
+        "title": "Hson › Local Host",
+        "order": 20,
+        "properties": {
+          "hson.localHost.entry": {
+            "type": "string",
+            "default": "",
+            "scope": "resource",
+            "order": 10,
+            "title": "Application Entry",
+            "markdownDescription": "Workspace-relative path to a built JavaScript module exporting the project-owned LiveHost application. TypeScript execution and building remain project-owned."
+          },
+          "hson.localHost.applicationExport": {
+            "type": "string",
+            "default": "application",
+            "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*$",
+            "scope": "resource",
+            "order": 20,
+            "title": "Application Export",
+            "markdownDescription": "Named export containing a LiveHost application, an application array, or a zero-argument factory returning either."
+          },
+          "hson.localHost.nodeExecutable": {
+            "type": "string",
+            "default": "node",
+            "scope": "resource",
+            "order": 30,
+            "title": "Node Executable",
+            "markdownDescription": "Node executable used for the workspace child. Bare names resolve through PATH; relative paths resolve from the workspace folder. It must satisfy the workspace hson-live Node engine range."
+          },
+          "hson.localHost.port": {
+            "type": "integer",
+            "default": 0,
+            "minimum": 0,
+            "maximum": 65535,
+            "scope": "resource",
+            "order": 40,
+            "title": "Port",
+            "markdownDescription": "Loopback port for LiveHost Node. Keep 0 to request a fresh automatic port; the child-reported URL remains authoritative."
+          }
+        }
       }
     ],
     "commands": [
@@ -146,7 +188,12 @@
       { "command": "hson.startSchemaWatch", "title": "Start Schema Watch", "category": "Hson" },
       { "command": "hson.stopSchemaWatch", "title": "Stop Schema Watch", "category": "Hson" },
       { "command": "hson.checkSchemas", "title": "Check Schemas", "category": "Hson" },
-      { "command": "hson.showSchemaOutput", "title": "Show Schema Output", "category": "Hson" }
+      { "command": "hson.showSchemaOutput", "title": "Show Schema Output", "category": "Hson" },
+      { "command": "hson.startLocalHost", "title": "Start Local Host", "category": "Hson", "enablement": "hson.localHost.canStart" },
+      { "command": "hson.stopLocalHost", "title": "Stop Local Host", "category": "Hson", "enablement": "hson.localHost.canStop" },
+      { "command": "hson.restartLocalHost", "title": "Restart Local Host", "category": "Hson", "enablement": "hson.localHost.canRestart" },
+      { "command": "hson.openLocalApp", "title": "Open Local App", "category": "Hson", "enablement": "hson.localHost.canOpen" },
+      { "command": "hson.showLocalHostOutput", "title": "Show Local Host Output", "category": "Hson" }
     ],
     "languages": [
       {

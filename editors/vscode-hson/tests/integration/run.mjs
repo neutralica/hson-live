@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,11 +13,24 @@ const extensionsDir = join(testRoot, "extensions");
 const restrictedUserDataDir = join(testRoot, "restricted-user");
 const restrictedExtensionsDir = join(testRoot, "restricted-extensions");
 const workspaceDir = join(testRoot, "workspace");
+const vscodeCacheDir = join(testRoot, "vscode");
 await mkdir(userDataDir);
 await mkdir(extensionsDir);
 await mkdir(restrictedUserDataDir);
 await mkdir(restrictedExtensionsDir);
 await mkdir(workspaceDir);
+await mkdir(join(workspaceDir, "dist"));
+await mkdir(join(workspaceDir, "node_modules"));
+await symlink(resolve(here, "../../../.."), join(workspaceDir, "node_modules", "hson-live"), "dir");
+const localHostLifecycle = join(workspaceDir, "local-host-lifecycle.txt");
+await writeFile(join(workspaceDir, "dist", "local-app.mjs"), `
+import { appendFileSync } from "node:fs";
+const lifecycle = ${JSON.stringify(localHostLifecycle)};
+export function application() {
+  appendFileSync(lifecycle, "start\\n");
+  return { name: "vscode-integration", dispose() { appendFileSync(lifecycle, "stop\\n"); } };
+}
+`);
 await mkdir(join(workspaceDir, "static-project"));
 await writeFile(join(workspaceDir, "static-project", "tsconfig.json"), JSON.stringify({ compilerOptions: { target: "ES2022", module: "ESNext" }, include: ["**/*.ts"] }));
 await writeFile(join(workspaceDir, "static-project", "unopened-invalid.ts"), 'import { Hson } from "hson-live";\nexport const unopened = Hson`+1`;\n');
@@ -54,6 +67,7 @@ try {
   await runTests({
     extensionDevelopmentPath: resolve(here, "../.."),
     extensionTestsPath: resolve(here, "../../.test-dist/integration.cjs"),
+    cachePath: vscodeCacheDir,
     ...(process.env.HSON_VSCODE_EXECUTABLE === undefined
       ? { version: "1.95.3" }
       : { vscodeExecutablePath: process.env.HSON_VSCODE_EXECUTABLE }),
@@ -64,9 +78,14 @@ try {
       `--user-data-dir=${userDataDir}`,
       `--extensions-dir=${extensionsDir}`,
     ],
-    extensionTestsEnv: { HSON_TEST_WORKSPACE: workspaceDir },
+    extensionTestsEnv: { HSON_TEST_WORKSPACE: workspaceDir, HSON_TEST_NODE_EXECUTABLE: process.execPath },
   });
-  const executable = process.env.HSON_VSCODE_EXECUTABLE ?? await downloadAndUnzipVSCode("1.95.3");
+  const lifecycleAfterDeactivation = (await readFile(localHostLifecycle, "utf8")).trim().split("\n").filter(Boolean);
+  if (lifecycleAfterDeactivation.at(-2) !== "start" || lifecycleAfterDeactivation.at(-1) !== "stop") {
+    throw new Error(`VS Code extension deactivation did not dispose its live local host: ${JSON.stringify(lifecycleAfterDeactivation)}`);
+  }
+  process.stdout.write("ok - real VS Code extension deactivation disposed its live local host\n");
+  const executable = process.env.HSON_VSCODE_EXECUTABLE ?? await downloadAndUnzipVSCode({ version: "1.95.3", cachePath: vscodeCacheDir });
   const restrictedArgs = [
     "--no-sandbox", "--disable-gpu-sandbox", "--disable-updates", "--skip-welcome", "--skip-release-notes",
     `--extensionDevelopmentPath=${resolve(here, "../..")}`,
@@ -76,7 +95,7 @@ try {
     `--extensions-dir=${restrictedExtensionsDir}`,
   ];
   await new Promise((resolveRun, rejectRun) => {
-    const child = spawn(executable, restrictedArgs, { env: { ...process.env, HSON_TEST_WORKSPACE: workspaceDir, HSON_RESTRICTED_TEST: "1" } });
+    const child = spawn(executable, restrictedArgs, { env: { ...process.env, HSON_TEST_WORKSPACE: workspaceDir, HSON_TEST_NODE_EXECUTABLE: process.execPath, HSON_RESTRICTED_TEST: "1" } });
     child.stdout.on("data", data => process.stdout.write(data));
     child.stderr.on("data", data => process.stderr.write(data));
     child.once("error", rejectRun);

@@ -202,4 +202,4 @@ Sanitization is not a general validator for arbitrary Hson graphs. Use the untru
 
 LiveTree methods and getters, including `append`, `empty`, `find`, and `findAll`, live on the `LiveTree` prototype. Instances retain only their node/runtime state; constructing another tree does not create another set of method functions.
 
-© 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0
+© 2026 terminal_gothic. All rights reserved except as granted under the PolyForm Strict License 1.0.0

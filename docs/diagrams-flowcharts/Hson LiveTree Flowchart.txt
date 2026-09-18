@@ -1,0 +1,42 @@
+flowchart TB
+    App["Application / user code"]
+    Reflect["Reflect"]
+    Graph["Hson semantic graph"]
+
+    subgraph LT["LiveTree"]
+        Handles["Semantic tree / handles"]
+        Runtime["LiveTree runtime"]
+        Planner["Browser realization plan"]
+
+        CSS["Runtime stylesheet subsystem"]
+        Events["Listener / event runtime"]
+        Lifecycle["Lifecycle / resource ownership"]
+        Correspondence["Node ↔ DOM correspondence"]
+    end
+
+    DOM["Browser DOM"]
+    SSR["SSR serialization"]
+
+    App -->|"semantic operations"| Handles
+
+    Reflect -->|"accepted state convergence"| Graph
+    Handles -->|"bound semantic intent"| Reflect
+
+    Handles -->|"standalone semantic mutation"| Graph
+    Graph -->|"accepted graph state"| Planner
+
+    Planner -->|"DOM realization"| DOM
+    Planner -->|"shared realization"| SSR
+
+    Runtime --> Correspondence
+    Runtime --> CSS
+    Runtime --> Events
+    Runtime --> Lifecycle
+
+    Correspondence -->|"maintains mapping"| DOM
+    CSS -->|"stylesheet realization"| DOM
+    Events -->|"listener registration"| DOM
+    DOM -->|"browser events"| Events
+    Events -->|"callbacks"| App
+
+    Lifecycle -->|"attach / detach / dispose"| DOM

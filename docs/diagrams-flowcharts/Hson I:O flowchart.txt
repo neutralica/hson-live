@@ -1,0 +1,24 @@
+flowchart TB
+
+hsonText["Authored Hson text"]
+    -->|"parse / normalize" | canonical["Canonical Hson graph"]
+
+jsonInput["JSON text or structured JSON"]
+    -->|"parse / normalize" | canonical
+
+trustedHtml["Trusted HTML / SVG"]
+    -->|"parse / normalize" | canonical
+
+untrustedHtml["Untrusted HTML"]
+    -->|"sanitize / normalize" | canonical
+
+existingNode["Existing HsonNode graph"]
+    -->|"admit / normalize" | canonical
+
+binaryInput["Binary Hson"]
+    -->|"decode / normalize" | canonical
+
+canonical -->|"serialize"| hsonOutput["Hson text"]
+canonical -->|"data / serialize"| jsonOutput["JSON"]
+canonical -->|"serialize"| htmlOutput["HTML / SVG transport markup"]
+canonical -->|"encode"| binaryOutput["Binary Hson"]

@@ -12,6 +12,7 @@ import {
   StageError,
   compareInstalledPayload,
   discoverVsCodeCli,
+  inspectPackageAuthority,
   inspectStatus,
   installCurrentSource,
   normalizeManifest,
@@ -62,6 +63,7 @@ async function makeFixture(label = "authority fixture with spaces") {
   await writeFile(join(extensionRoot, "LICENSE"), "fixture license\n");
   await writeFile(join(extensionRoot, "node_modules", "vscode-oniguruma", "release", "onig.wasm"), "wasm");
   await writeFile(join(extensionRoot, "src", "extension.ts"), "export const fixture = 1;\n");
+  await writeFile(join(extensionRoot, "src", "local-host-runner.ts"), "export const runnerFixture = 1;\n");
   return { parent, extensionRoot, repositoryRoot: fixtureRepository };
 }
 
@@ -74,10 +76,19 @@ async function makeVsix(path, manifest, overrides = {}) {
     sourcesContent: [sourceText],
     mappings: "",
   });
+  const runnerSourceText = overrides.runnerSourceText ?? "export const runnerFixture = 1;\n";
+  const runnerSourceMap = JSON.stringify({
+    version: 3,
+    sources: ["../src/local-host-runner.ts"],
+    sourcesContent: [runnerSourceText],
+    mappings: "",
+  });
   const payload = {
     "package.json": JSON.stringify(overrides.manifest ?? manifest),
     "dist/extension.js": overrides.bundle ?? "module.exports = 1;\n",
     "dist/extension.js.map": sourceMap,
+    "dist/local-host-runner.cjs": overrides.runnerBundle ?? "module.exports = 2;\n",
+    "dist/local-host-runner.cjs.map": runnerSourceMap,
     "dist/onig.wasm": "wasm",
     "language-configuration.json": "{}\n",
     "syntaxes/hson.tmLanguage.json": "{}\n",
@@ -199,6 +210,7 @@ await check("VSIX validation accepts the current identity and derived configurat
     const result = await validateVsix(path, fixtureManifest());
     assert.equal(`${result.manifest.publisher}.${result.manifest.name}`, EXTENSION_ID);
     assert.ok(result.payloadHashes["dist/extension.js"]);
+    assert.ok(result.payloadHashes["dist/local-host-runner.cjs"]);
   } finally { await rm(fixture.parent, { recursive: true, force: true }); }
 });
 
@@ -216,6 +228,17 @@ await check("VSIX validation rejects incomplete payloads", async () => {
     const path = join(fixture.parent, "incomplete.vsix");
     await makeVsix(path, fixtureManifest(), { payload: { "dist/onig.wasm": null } });
     await assert.rejects(validateVsix(path, fixtureManifest()), /missing extension\/dist\/onig\.wasm/);
+  } finally { await rm(fixture.parent, { recursive: true, force: true }); }
+});
+
+await check("VSIX validation requires the local-host runner and source map", async () => {
+  const fixture = await makeFixture();
+  try {
+    for (const missing of ["dist/local-host-runner.cjs", "dist/local-host-runner.cjs.map"]) {
+      const path = join(fixture.parent, `missing-${missing.endsWith(".map") ? "map" : "runner"}.vsix`);
+      await makeVsix(path, fixtureManifest(), { payload: { [missing]: null } });
+      await assert.rejects(validateVsix(path, fixtureManifest()), new RegExp(`missing extension/${missing.replaceAll(".", "\\.")}`));
+    }
   } finally { await rm(fixture.parent, { recursive: true, force: true }); }
 });
 
@@ -387,6 +410,17 @@ await check("status is stale for changed source authority or installed payload",
   } finally { await rm(fixture.parent, { recursive: true, force: true }); }
 });
 
+await check("runner-only source changes invalidate package authority", async () => {
+  const fixture = await makeFixture();
+  try {
+    await packageCurrentSource(await fixturePackageOptions(fixture));
+    await writeFile(join(fixture.extensionRoot, "src", "local-host-runner.ts"), "export const runnerFixture = 2;\n");
+    const result = await inspectPackageAuthority(fixture.extensionRoot);
+    assert.equal(result.state, "stale");
+    assert.match(result.reason, /source\/build inputs changed/);
+  } finally { await rm(fixture.parent, { recursive: true, force: true }); }
+});
+
 await check("status is absent when the exact extension ID is not listed", async () => {
   const fixture = await makeFixture();
   try {
@@ -426,7 +460,7 @@ await check("existing integration launchers retain isolated user-data and extens
     assert.match(source, /--user-data-dir/); assert.match(source, /--extensions-dir/);
     assert.doesNotMatch(source, /vscode:install/);
   }
-  assert.match(full, /downloadAndUnzipVSCode\("1\.95\.3"\)/);
+  assert.match(full, /downloadAndUnzipVSCode\(\{ version: "1\.95\.3", cachePath: vscodeCacheDir \}\)/);
 });
 
 process.stdout.write(`ok - ${checks} focused local VS Code authority checks passed\n`);

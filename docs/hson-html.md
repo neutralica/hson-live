@@ -170,4 +170,4 @@ Serializer-owned node -> HTML -> node transport is total over valid canonical se
 
 HTML and JSON use different cluster semantics. `_hson_elem` preserves ordered markup and duplicate tags; `_hson_obj` preserves unique JSON properties; and `_hson_arr` preserves arrays. Cross-format serialization may expose literal VSN scaffolding where the target format otherwise could not express the source structure.
 
-© 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0
+© 2026 terminal_gothic. All rights reserved except as granted under the PolyForm Strict License 1.0.0

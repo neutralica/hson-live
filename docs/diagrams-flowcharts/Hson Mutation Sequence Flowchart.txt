@@ -1,0 +1,33 @@
+sequenceDiagram
+    actor User
+    participant DOM as Browser DOM
+    participant App as Application
+    participant LT as LiveTree
+    participant R as Reflect
+    participant E as Echo
+    participant L as Locus
+    participant A as Authoritative LiveMap
+    participant EL as Echo LiveMap
+
+    User->>DOM: UI intent
+    DOM->>App: event
+    App->>LT: await tree.async.attrs.set(...)
+
+    LT->>R: semantic attribute edit
+    R->>E: document.attrs.set action
+    E->>L: stable action request
+
+    Note over L: validate, authorize, order, prepare
+
+    L->>A: governed mutation
+    A-->>L: accepted canonical commit
+
+    L-->>E: canonical commit
+    E->>EL: replay accepted commit
+    EL-->>R: commit observation
+    R->>LT: project canonical attributes
+    LT->>DOM: update linked element
+
+    L-->>E: acknowledgement + completionRev
+    Note over E,EL: settle after replica reaches completionRev
+    E-->>LT: async operation settles

@@ -1,30 +1,25 @@
-// readme.md / 29JUL2026
+// readme-v2.md 16SEP2026
 
-# hson-live
-
-### Hson — a unified notation for HTML and JSON
-
-`hson-live` is a TypeScript system for representing data, documents, browser interfaces, and hosted application state through one canonical node graph.
-
-Hson—Hypertext Structured Object Notation—is the underlying notation. It models the tree structure shared by JSON and markup without reducing either one to the other.
-
-`hson-live` provides connected, independently usable capabilities on that model:
-
-- **hson.transform** converts between Hson, JSON, HTML, XML, SVG, and canonical Hson nodes.
-- **LiveMap** operates on Hson as local application state.
-- **LiveTree** projects Hson into live browser documents.
-- **Locus** maintains optional authoritative Hson state across clients and server runtimes.
-
-These are not a mandatory construction sequence. See the [refined public API
-map](docs/public-api.md) for normal imports, ownership boundaries, nine usage
-paths, SSR/continuation delivery, and the distinction between local listeners
-and canonical interactions.
-
-The library is experimental. It is working architectural research, not a finished general-purpose web framework.
+# Hson / hson-live v3.4 
 
 ---
 
-## Hson
+## H.S.O.N. - Hypertext Structured Object Notation
+
+`Hson` is a "glue format": a notation capable of modelling both JSON and HTML fluently by modeling the tree graph structure shared by both.
+
+By parsing to `Hson` as an intermediary step, JSON can be rendered as HTML and vice-versa. This suggests new ways of building the web, and is the core insight that powers hson-live.
+
+## hson-live
+
+`hson-live` is a TypeScript library for authoring "live" interactive web content. It is a full-stack reactive framework built on the `Hson` notation and its capabilities. 
+
+**This project is experimental. It is working architectural research, not a finished product.**
+
+---
+
+
+## Hson - syntax
 
 JSON and HTML occupy different domains, but both describe hierarchical structure.
 
@@ -72,54 +67,37 @@ This allows data and markup to pass through one explicit intermediate representa
 
 Hson can represent:
 
-- JSON objects and arrays;
-- strings, numbers, booleans, and null;
-- HTML, XML, and SVG elements;
-- element attributes and eligible element metadata;
-- ordered and mixed markup content;
-- documents with zero, one, or many top-level nodes;
-- namespaces and structural wrapper nodes;
-- stable identity for eligible live document nodes.
+• JSON objects and arrays
+• strings, numbers, booleans, and null
+• HTML, XML, and SVG elements
+• element attributes and eligible element metadata
+• ordered and mixed markup content
+• documents with zero, one, or many top-level nodes
+• namespaces and structural wrapper nodes
+• stable markup identity for live document nodes
 
-Round trips are deterministic within each supported transformation contract.
-Authored Hson object members do not carry metadata; eligible element metadata
-retains its separate element-mode contract.
+Round trips are deterministic within each transformation contract.
 
 ---
 
-## One graph, separate projections
 
-The hson-live capabilities are separate interfaces over the same structural model.
+## hson-live - subsystems
 
-They are not intended as unrelated miniature libraries. Together they describe a path from serialized source, through local state and browser projection, to authoritative hosted state.
+`hson-live`'s connected subsystems create and operate on `Hson` graphs as both data and markup, uniting two formerly non-interchangeable notations in one ecosystem. 
 
-```text
-Hson / JSON / HTML / SVG / XML
-                ↓
-         canonical Hson graph
-                ↓
-      LiveMap state and history
-                ↓
-       LiveTree DOM projection
+• `hson.transform` - creates `Hson` graphs from JSON, HTML, XML, and SVG. Its transformer circuit is stable: normalized user data performs repeated round trips across formats without drift or distortion.
+• `hson.liveTree` - `Hson` -> DOM rendering pipeline. LiveTree maintains or tracks a canonical node graph containing `Hson` markup, then projects the document as HTML to the DOM. Mutation to the canonical `Hson` graph updates in realtime. 
+• `hson.liveMap` - a versatile application state machine that maintains the canonical `Hson` graph and controls mutation. LiveMap manages node graph mutation validated against TypeScript-compatible schema and tracks revision history, pushing changes to subscribers via commits.
+ • `hson.liveHost` - the application/runtime boundary. LiveHost registers applications, dispatches exact request and connection routes, and provides the hosting contract. LiveHost Node is the implementation of the generic LiveHost, responsible for HTTP/WebSocket ingress, security/resource policy, transport adaptation, and process lifecycle.
+• `Locus` - a server-side canonical LiveMap authority. Locus governs one authoritative LiveMap/state domain and synchronizes replicas across client sessions. Locus decides and sequences graph mutation, coordinates persistence and authorization, retains accepted cacnonical history, and synchronizes client replicas (-> Echo).
+• `Echo` - a subjugated client endpoint; Echo is an unopinionated coordinator of commits from Locus to a client-side LiveMap replica. It tracks authoritative server-side state, sends client mutation intent to Locus, receives state changes back in the form of commits, and keeps its subordinate replica synchronized.
 
-or:
-
-         Locus LiveMap
-                ⇅
-              Locus
-                ⇅
-               Echo ───────── endpoint-only participation
-                ⇅
-     replica-bearing Echo LiveMap
-                ⇅
-             Reflect
-                ⇅
-       LiveTree / DOM projection
-```
+`hson-live` is flexible by design; its subsystems can be fully deployed, or composed modularly to fit various use cases. It fully supports no-js modes as a progressive default. 
 
 ---
 
-## hson.transform
+
+## hson.transform / hsonTransform
 
 The transformation layer parses supported source formats into canonical Hson nodes and serializes those nodes into other supported representations.
 
@@ -150,183 +128,15 @@ The transformation system handles cases that are commonly awkward at format boun
 - canonical metadata;
 - persisted node identity.
 
-Hson is not only an interchange format. The same graph produced by the transformation layer is used by LiveMap, LiveTree, and Locus.
+The graph produced by the transformation layer is used by LiveMap, LiveTree, and Locus.
 
 ---
 
-## LiveMap
 
-LiveMap operates on an Hson graph as application state.
 
-For data maps, it presents ordinary JSON-shaped state through explicit paths:
+## hson.liveTree / hsonLiveTree
 
-```ts
-const map = hson.liveMap.fromJson({
-  count: 0,
-  items: ["one", "two"],
-});
-
-map.at(["count"]).update(
-  value => Number(value) + 1,
-);
-
-map.at(["items"]).array.push("three");
-
-console.log(map.snap());
-```
-
-`map.at(...)` is the common passive-location operation for both data and
-document maps. Data paths traverse logical JSON object members and array
-indexes. Document paths contain numeric indexes into ordered authored content:
-
-```ts
-const document = hson.liveMap.fromHson(`<main <section <p "hello"/>/>/>`);
-
-if (document.mode === "document") {
-  const paragraph = document.at([0, 0]);
-  console.log(paragraph.snap());
-}
-```
-
-Document locations are fixed logical coordinates that re-resolve against the
-current map revision. They are passive, return detached reads, and do not count
-the internal `_hson_elem` carrier. Specialized attribute and content mutations
-remain under `map.document.attrs` and `map.document.content`. Physical document
-paths remain the low-level coordinates used by those canonical operations.
-
-Document locations can discover the first exact canonical `id` match in their
-current logical subtree:
-
-```ts
-if (document.mode === "document") {
-  const button = document.at([]).id("submit");
-  console.log(button?.snap());
-}
-```
-
-This searches canonical Hson rather than the DOM. The scoped element itself may
-match; otherwise descendants are visited in canonical preorder, with the first
-match winning. The result is an ordinary passive, fixed-coordinate location.
-If the matched element later moves, call `id(...)` again to discover its current
-location—the previously returned location continues to represent its old
-logical coordinate.
-
-Data and document passive locations can watch their current detached
-value without changing their fixed-coordinate behavior:
-
-```ts
-const dispose = document.at([0, 0]).watch(next => {
-  console.log(next);
-});
-
-dispose();
-```
-
-`watch` has no initial callback. Ordinary equal results are suppressed, while a
-successful `restore(...)` invokes every active watcher once even when the value
-is equal or missing. `feed` remains the lower-level stream of overlapping
-accepted operation evidence and does not report restore.
-
-Document locations expose mutations for the content they own, item mutations
-for the coordinate they represent, and ordinary attrs for element endpoints:
-
-```ts
-if (document.mode === "document") {
-  const root = document.at([]);
-  root.insert(0, child);
-  root.move(0, 1);
-
-  const button = root.id("submit");
-  button?.attrs.set("disabled", true);
-  button?.attrs.setMany({ class: "primary", title: "Submit" });
-
-  document.at([0]).replace(replacementContent);
-  document.at([1]).delete();
-
-  document.proxy().$_.insert(0, child);
-  document.proxy().$_.attrs.set("title", "Document root");
-  document.proxy()[0].$_.replace(replacementContent);
-  document.proxy()[1].$_.delete();
-}
-```
-
-`insert(index, value)` and `move(from, to)` act on the ordered authored content
-owned by the current document location. Item replacement and removal
-remain `location.at([index]).replace(value)` and `.delete()`. All locations stay
-fixed logical coordinates: after deletion or movement they do not follow the
-previous subject. The document root location `at([])` cannot itself be replaced
-or deleted. `attrs` is an operation capability for the current element, not a
-structural path segment, so attrs operations never extend `location.path()`.
-
-The existing proxy surface follows the same document coordinates:
-
-```ts
-if (document.mode === "document") {
-  const paragraph = document.proxy()[0][0].$_;
-  const submit = document.proxy().$_.id("submit");
-  console.log(paragraph.snap());
-  console.log(submit?.snap());
-}
-```
-
-Numeric proxy properties traverse logical document content, and `$_` exits to
-the identical passive location and its capabilities at that coordinate.
-Internal carriers remain hidden; attrs are not structural proxy traversal.
-
-LiveMap provides:
-
-- object and array state;
-- canonical document maps;
-- data path handles and passive logical document locations;
-- atomic `set`, `replace`, `delete`, and `splice` operations;
-- synchronous batches;
-- revisioned commits;
-- subscriptions and path feeds;
-- runtime schema validation;
-- capture, restore, replay, and recovery primitives;
-- one-way graph links;
-- path-addressed document operations with sparse runtime QUID continuity.
-
-Changed mutations advance the map by exactly one revision and publish one normalized commit. No-op mutations do not advance revision.
-
-Reads return detached values rather than mutable references into the live graph. Writes are preflighted and applied atomically.
-
-Paths are the primary canonical address. A QUID is sparse runtime continuity
-evidence, not an application ID or a second general-purpose address. Application
-code does not mint, ensure, or use raw QUIDs as document mutation targets.
-
-At a high level, LiveMap occupies the role usually assigned to JSON application state, while retaining access to the canonical Hson structure beneath that projection.
-
----
-
-## LiveTree
-
-LiveTree turns Hson into live browser documents.
-
-The Hson graph is the mutable source of truth. The DOM is its projection.
-Ordinary `LiveTree` authoring is always synchronous. On an Echo authority-bound
-document, exact canonical writes use the explicit `tree.async` context:
-
-```ts
-const asyncTree = tree.async;
-await asyncTree.attrs.set("aria-label", "Saved");
-await asyncTree.classlist.add("ready");
-const projectedTree = asyncTree.sync;
-```
-
-`AsyncLiveTree` is intentionally narrower than `LiveTree`: it contains only
-settled exact document writes. Projected reads, DOM access, listeners, bindings,
-runtime CSS, SVG/canvas runtime APIs, and other browser capabilities remain on
-the ordinary tree through `.sync`. Application/domain actions remain Locus/Echo
-actions rather than AsyncLiveTree document operations.
-
-Standalone and local-Reflect async writes resolve after their local canonical
-operation completes. Hosted resolution means Locus accepted the exact request
-and the matching logical-map/incarnation Echo reached its `completionRev`. It
-does not mean Reflect or the DOM realized that revision; Reflect health remains
-separately observable. An ordinary synchronous canonical write on a hosted
-projection throws before publishing authority work instead of being silently
-queued.
+LiveTree turns Hson into browser DOM, rendering Hson markup as live documents. It queries document.body and parses it, then replaces its contents with an identical projection from the Hson graph that follows mutations in synchronously.
 
 ```ts
 const body = hson.liveTree.queryBody().graft();
@@ -352,7 +162,7 @@ message.listen.onClick(() => {
 });
 ```
 
-LiveTree provides graph-backed interfaces for:
+As a standalone subsystem, LiveTree provides synchronous graph-backed interfaces for:
 
 - element creation and structural editing;
 - text and attributes;
@@ -369,15 +179,67 @@ LiveTree provides graph-backed interfaces for:
 
 LiveTree does not require a virtual DOM synchronization pass. Mutating the graph updates its DOM projection directly.
 
-Eligible live nodes receive stable QUID identity. QUIDs support lookup, graph continuity, and locally scoped CSS without requiring Shadow DOM or generated class names.
+If bound, LiveTree nodes are tracked via a QUID attribute, ensuring stable identity even when relocated. QUIDs support lookup and graph continuity, and enable locally scoped CSS without Shadow DOM or a class name system.
 
-CSS remains CSS, but its ownership and lifetime become explicit. Rules, keyframes, properties, listeners, and other node-owned resources are released when their owning branch is terminally removed.
-
-Detached branches retain their identity and runtime state so they can be transferred and reattached without rebuilding an equivalent element.
+LiveTree's CSS remains recognizably CSS. Dynamic property values can be created within application code based on state changes, and ownership and lifetime become explicit. LiveTree supports and manages rules, keyframes, properties, listeners, and other node-owned resources, releasing them when their owning branch is terminally removed. 
 
 ---
 
-## LiveMap and LiveTree
+
+## hson.liveMap / hsonLiveMap
+
+LiveMap provides mutable, revisioned application state over canonical Hson graphs. It supports both data and document state, including multiple named data/document libraries coordinated under one LiveMap controlling atomic mutation, observation, Schema governance, capture/recovery, and canonical commit history.
+
+For data maps, ordinary state can be created from JSON and addressed directly:
+
+```ts
+const map = hson.liveMap.fromJson({
+  count: 0,
+  items: ["one", "two"],
+});
+
+map.at(["count"]).update(
+  value => Number(value) + 1,
+);
+
+map.at(["items"]).array.push("three");
+
+console.log(map.snap());
+```
+
+For document maps, paths traverse ordered authored content and expose document-specific content and attribute operations:
+
+```ts
+const document = hson.liveMap.fromHson(
+  `<main <section <p "hello"/>/>/>`,
+);
+
+if (document.mode === "document") {
+  const paragraph = document.at([0, 0]);
+
+  console.log(paragraph.snap());
+
+  paragraph.attrs.set("class", "intro");
+  paragraph.text.set("Hello");
+}
+```
+
+Path handles are fixed logical coordinates that re-resolve against the current map revision. They support detached snapshots, observation, feeds, subscriptions, and mutation without exposing mutable references into the graph itself. Data locations additionally expose object and array capabilities; document locations expose authored content, attributes, text, and item operations.
+
+LiveMap validates changes against TypeScript-compatible HsonSchema. Candidate mutations are validated before commit; generated Schema proof types allow certified state to retain corresponding TypeScript evidence at application boundaries.
+
+Validated changes are applied atomically. Individual or batched mutations advance the map by one revision and publish one canonical commit.
+
+State can be captured, restored, replayed, and recovered through revision-aware primitives used by both local and hosted compositions.
+
+LiveMap coordinates logical path addressing with QUID registration to preserve identity continuity across structural graph changes.
+
+An optional proxy surface provides the same underlying capabilities through structural property/index traversal; `map.at(...)` remains the explicit path-oriented form.
+
+---
+
+
+## LiveMap - LiveTree Integration
 
 LiveTree bindings connect document presentation to LiveMap state.
 
@@ -404,412 +266,235 @@ button.listen.onClick(() => {
 });
 ```
 
-`map.at(path)` is the source endpoint. A binding reads the location's current
-value synchronously with `snap()`, then uses the location's snapshot-aware
-`watch(...)` subscription for later changes. `watch` itself has no initial
-callback; the binding owns that initial synchronization. Data bindings
-therefore converge after `restore()`, and even an equal-value restore reapplies
-the destination once.
-
-The state graph and document graph retain distinct responsibilities, but their relationship is explicit. LiveMap remains authoritative, and the reflector updates the view from observed commits.
-
-For broader graph reflection, `hson.reflect` provides an optional binding that
-borrows LiveMap authority and coordinates a LiveTree runtime. See the
-[Reflect API reference](docs/reflect/api-reflect.md) for its supported mutation,
-failure, and lifecycle boundaries.
+For broader graph coordination, `hson.reflect` synchronizes a LiveTree runtime with a LiveMap document authority, turning canonical Hson document state into live, interactive, continuously synchronized web content.
 
 ---
 
-## Locus
-
-Locus makes exactly one LiveMap authoritative.
-
-A Locus authority owns one LiveMap and its ordered commit history. Echo is the
-semantic hosted client: it may be endpoint-only, or it may govern an explicit
-exact-replica LiveMap that follows the accepted commit stream. Connection,
-session establishment, and replica recovery are separate operations.
-
-Locus provides:
-
-- typed and validated actions;
-- action authorization;
-- canonical commit ordering;
-- bounded history;
-- resumable sessions;
-- path subscriptions;
-- transient connection events;
-- duplicate action-request handling;
-- snapshots and replay;
-- revision-gap detection;
-- recovery after disconnect;
-- document-state persistence contracts;
-- browser and Node WebSocket adapters;
-- one-map bootstrap contribution; and
-- activity and quiescence observation.
-
-The core authority remains transport-independent. It accepts a small socket-like interface and does not depend on Node, browsers, or Cloudflare APIs.
-
-Platform adapters connect real sockets to that boundary.
-
-Applications own domain meaning, custom actions and side effects,
-authorization-policy meaning, event semantics, topology, acquisition keys,
-retention, and cross-Locus workflows.
 
 ## LiveHost
 
-LiveHost is the generic hosting boundary for Hson applications. It registers
-applications, dispatches HTTP requests and long-lived connections to exact
-routes, carries principal/admission context, exposes readiness and lifecycle
-control, and can host applications with or without Locus authority.
+LiveHost is the generic hosting boundary for Hson applications. It can carry an application from server-side routing and authority through to synchronized browser state and live document updates, without requiring another server framework.
+
+It registers applications, dispatches HTTP requests and long-lived connections to exact routes, carries principal/admission context, exposes readiness and lifecycle control, and can host applications with or without Locus authority.
 
 ```text
 ordinary application:  request -> LiveHost -> application -> Response
 hosted authority:      request/connection -> LiveHost -> application -> Locus
 ```
 
-Applications remain responsible for their own routes, domain topology,
-authority selection, actions, authorization policy, persistence, SSR, and
-response content. LiveHost supplies the common runtime machinery around those
-choices rather than defining application semantics itself.
+Applications remain responsible for their own routes, domain topology, authority selection, actions, authorization policy, persistence, SSR, and response content. LiveHost supplies the common runtime machinery around those choices rather than defining application semantics itself.
 
-The current **LiveHost Node runtime** provides HTTP and WebSocket ingress, Web
-`Request`/`Response` adaptation, origin and proxy policy, resource limits,
-heartbeat and backpressure handling, health reporting, graceful shutdown, and
-optional bounded Locus residency through `create_livehost_locus_registry()`.
+The current **LiveHost Node runtime** provides HTTP and WebSocket ingress, Web `Request`/`Response` adaptation, origin and proxy policy, resource limits, heartbeat and backpressure handling, health reporting, graceful shutdown, and optional bounded Locus residency through `create_livehost_locus_registry()`.
 
-LiveHost is hosting/runtime infrastructure rather than a required part of
-LiveMap, LiveTree, Reflect, or Locus composition. The same application logic can
-therefore be hosted locally under LiveHost Node or adapted to other runtimes
-without making the host itself the owner of canonical state.
+Combined with Hson SSR, Echo, Reflect, and LiveTree, a LiveHost application may render useful HTML on the server and continue it in the browser as synchronized, reactive content. Progressive enhancement follows from the same composition rather than requiring a separate client application model.
 
-See [the current architecture and runtime boundary](docs/livehost/overview.md).
+---
 
-### HTTP bootstrap and WebSocket continuation
 
-Locus can contribute an exact canonical authority state at revision `R` to an
-unversioned Hson bootstrap response. Application/runtime code contributes the
-routing and delivery continuation, and one assembler emits one artifact.
+## Connecting the Live Stack
 
-The browser installs that state and enters the ordinary WebSocket recovery path from the same authority identity and revision:
+Hson's live subsystems are connected and mediated by three focused components: `Mirror`, `Locus`, and `Echo`.
+
+Mirror keeps LiveMap document state and LiveTree realization in sync. Locus governs an authoritative server-side LiveMap. Echo connects remote clients to that authority and maintains an exact replica LiveMap on the client.
+
+Together they connect local runtime state, hosted authority, and browser realization without introducing a second application-state model.
+
+---
+
+
+## Locus
+
+A server-side Locus authority governs one LiveMap for a hosted application, ordering accepted changes into a single canonical commit history.
+
+Locus provides:
+
+• typed and validated actions;
+• action authorization;
+• canonical commit ordering;
+• bounded history;
+• resumable sessions;
+• path subscriptions;
+• transient connection events;
+• duplicate action-request handling;
+• snapshots and replay;
+• revision-gap detection;
+• recovery after disconnect;
+• document-state persistence contracts;
+• one-map bootstrap contribution; and
+• activity and quiescence observation.
+
+The authority itself remains transport-independent. Locus communicates through a small transport-agnostic interface, and does not depend directly on Node, browser, or Cloudflare networking APIs.
+
+Platform-specific adapters connect Locus to real transports, including browser WebSockets and Node infrastructure; other runtimes can supply the same boundary without changing authority semantics.
+
+Applications retain domain ownership: they define actions and side effects, authorization policy, event meaning, authority topology and acquisition keys, retention policy, and cross-Locus workflows. Locus supplies the common authority, ordering, session, history, and recovery machinery within those application-defined boundaries.
+
+Remote clients with JavaScript enabled may participate through Echo, the corresponding browser endpoint.
+
+---
+
+
+## Echo
+
+Echo is the hosted client counterpart to Locus.
+
+It connects a remote endpoint to a Locus authority, manages sessions and recovery, and can optionally govern an exact client-side LiveMap replica that follows the accepted canonical commit stream.
+
+An endpoint-only Echo can issue actions and participate in hosted sessions without maintaining local canonical state. A replica-bearing Echo additionally installs and recovers a subordinate LiveMap, allowing streamed authoritative commits to converge into local application state.
 
 ```text
-HTTP bootstrap at revision R
-        ↓
-browser installs exact state R
-        ↓
-WebSocket connects to the authority
-        ↓
-current | replay | replacement snapshot
-        ↓
-ordered live commits
+Locus
+  ↓
+authoritative LiveMap
+  ↓
+ordered accepted commits
+  ↓
+Echo
+  ↓
+replica LiveMap
 ```
 
-State may change between the HTTP response and the WebSocket connection. This does not create a separate synchronization problem: the existing recovery system replays the missing commits or installs a newer snapshot when history is no longer available.
+Echo does not create competing authority or reconcile peer state. The Locus commit history remains canonical; Echo tracks and recovers toward that history.
 
-The semantic bootstrap path also underlies the same-cut
-[`hson-live/ssr`](docs/ssr-composition.md) composition boundary. A fixed
-Libraries map renders one selected public document while returning the complete
-aggregate cut:
-
-```ts
-const ssr = render_document({ map: libraries, document: "page" });
-const encoded = encode_ssr_bootstrap(ssr.bootstrap);
-const decoded = decode_ssr_bootstrap(encoded);
-if (decoded.kind !== "libraries") throw new Error("unexpected SSR bootstrap kind");
-const installed = install_libraries_snapshot(decoded.bootstrap);
-continue_document({
-  map: installed.map,
-  document: installed.map.lib(ssr.document),
-  root,
-});
-```
-
-With exactly one public document Library, `document` may be omitted. The
-deterministic encoding supports local and hosted one-map and Libraries
-bootstraps. Applications deliver SSR with an ordinary Web `Response`; there is
-no hson-live SSR Response wrapper:
-
-```ts
-return new Response(ssr.html, {
-  headers: { "content-type": "text/html; charset=utf-8" },
-});
-```
-
-HTML and its encoded bootstrap must remain paired at the same cut; aggregate
-delivery also preserves the returned selected public document name. Carrier
-placement, routing, caching, authentication, compression, and framework
-integration remain application-layer work. See the SSR guide for application
-root carriers and full-document out-of-band delivery.
+Browser transports are supplied separately, allowing Echo to remain focused on hosted participation rather than network implementation.
 
 ---
 
-## What hson-live is exploring
+A hosted application can deliver an exact snapshot of authoritative state with its initial response, then continue that same state live through Echo. If the authority changes while the client is connecting or disconnected, Locus and Echo recover the missing history or replace the replica from a newer snapshot.
 
-The library is built around several concrete propositions:
-
-### Data and markup can share one explicit structural model
-
-JSON and HTML need not become the same language. They can nevertheless be represented by one graph without treating either as an opaque payload belonging to the other.
-
-### Serialization can remain central after state becomes live
-
-A live graph does not have to become an unserializable runtime object. Hson remains inspectable and transferable across parsing, state mutation, browser projection, hosting, snapshots, and recovery.
-
-### State and view can share a source without being the same object
-
-LiveMap and LiveTree retain different responsibilities. When connected deliberately, the reflector observes canonical LiveMap commits and synchronizes the LiveTree view without granting it equal authority.
-
-### A hosted application can be a revisioned graph rather than a collection of client-side simulations
-
-Locus accepts actions, mutates one authority, and publishes one ordered
-history. Echo recovers from canonical identity and revision rather than
-relying on timing or best-effort event replay.
-
-### Infrastructure should be inspectable
-
-The public LiveDemo environment exposes demos, diagnostics, test inventories, and real transport checks. Claims made by the library are intended to be exercised rather than presented only as examples.
+Together, Locus and Echo allow one server-side LiveMap to remain the canonical source of truth while remote clients maintain synchronized local replicas and live browser realizations.
 
 ---
 
+
+## Mirror
+
+Mirror connects a document LiveMap with a LiveTree runtime, keeping canonical document state and its live realization in sync.
+
+Accepted LiveMap changes are reflected into LiveTree, while semantic LiveTree edits flow back through the same state model.
+
+```text
+LiveMap
+   ↕
+Mirror
+   ↕
+LiveTree
+```
+
+In the browser, this allows canonical Hson document state to remain live as DOM content changes, without introducing a second application-state model.
+
+---
+
+
+## VS Code extension
+
+The Hson VS Code extension provides syntax highlighting, diagnostics, and Schema-aware authoring support for Hson in the editor. It understands standalone `.hson` files, supported TypeScript authoring forms, and fenced `hson` blocks in Markdown.
+
+Highlighting follows normal VS Code theme behavior, with a small amount of Hson-specific flair. 
+
+The Hson extension can validate against HsonSchema as Hson is being written, and surface mistakes such as invalid structure, literals, or document content before runtime. The same Schema information also supports generated TypeScript declarations, keeping editor feedback aligned with the project’s normal build and check tooling.
+
+The Hson extension provides commands for single-use Schema validation and type generation, as well as a constantly running `watch` mode. 
+
+
+---
+
+ 
 ## Status
 
-hson-live 3.x is experimental and pre-stable.
+hson-live is experimental and pre-stable. Core systems including Transform, Schema, LiveMap, LiveTree, Mirror, Locus, Echo, SSR/continuation, and LiveHost have substantial automated coverage, but public APIs may still change as the architecture is exercised through real applications.
 
-The transformation system, LiveMap, LiveTree, and Locus all have substantial automated coverage, but public and experimental APIs may still change as the architecture is tested under broader use.
-
-Current limitations include:
-
-- in-memory Node authorities use a single-process ownership model;
-- distributed authority coordination is not implemented;
-- data persistence is not currently provided;
-- document persistence remains experimental;
-- Locus is not a CRDT and does not provide offline merge;
-- HTTP Hson bootstrap is implemented, but LiveTree HTML adoption is not;
-- framework-specific SSR integrations are not provided;
-- the library has not been presented as a security-certified runtime.
+The project currently favors single-authority hosted state rather than CRDT/offline merge, and distributed multi-process authority coordination remains outside the current model.
 
 Use `fromUntrustedHtml` for untrusted HTML input. `fromTrustedHtml` deliberately bypasses sanitization and must only receive trusted source.
 
-The LiveHost Node runtime includes explicit production policy surfaces for origins, authentication, authorization, proxy trust, connection limits, heartbeat, and backpressure. Applications remain responsible for their actual identity and access policies.
+LiveHost Node provides explicit production policy surfaces for origins, identity/admission, authorization, proxy trust, connection limits, heartbeat, and backpressure. Applications remain responsible for their own security policy and deployment environment.
 
-Evaluate the current limitations and API stability before using hson-live for security-critical or public production systems.
+Evaluate API stability and operational requirements before using hson-live for security-critical or public production systems.
 
 ---
 
-## Installation
 
-```bash
+## Installation and imports
+
+Install `hson-live` and use the root package for ordinary application composition:
+
+```sh
 npm install hson-live
 ```
 
-The LiveHost Node entrypoint currently targets:
-
-```text
-Node >=22.12.0 <25
+```ts
+import { Hson, hson } from "hson-live";
 ```
 
-Browser and Worker-facing parts of the package do not import LiveHost Node.
+Major subsystems are also available from focused entrypoints:
 
----
+```ts
+import { Hson, HsonData, HsonDocument } from "hson-live/hson";
+import { hsonTransform } from "hson-live/transform";
+import { hsonLiveMap } from "hson-live/livemap";
+import { hsonLiveTree } from "hson-live/livetree";
+import { hsonMirror } from "hson-live/mirror";
+import { create_locus } from "hson-live/locus";
+import { create_echo } from "hson-live/echo";
+import { render_document } from "hson-live/ssr";
+import { start_node_application_host } from "hson-live/livehost/node";
+```
 
-## Imports and environment boundaries
-
-Author canonical Hson through the narrow authoring entrypoint:
+Schema authoring uses the Hson entrypoint and the `hson-schema` CLI for generated TypeScript proof types and static validation:
 
 ```ts
 import { Hson, type HsonSchema } from "hson-live/hson";
-import { hsonLiveMap } from "hson-live/livemap";
-
-const UserSchema: HsonSchema = Hson`<type "data" content <age "number">>`;
-const source: UserSchemaHson = Hson`<age 37>`;
-const map = hsonLiveMap.fromHson(source);
-map.schema.use(UserSchema);
 ```
-
-The Hson Schema check generates the real `UserSchemaType` and `UserSchemaHson`
-workspace symbols and validates the static assignment without a runtime call.
-Use the package CLI in headless development and CI:
 
 ```sh
 hson-schema generate --project tsconfig.json
 hson-schema watch --project tsconfig.json
+hson-schema check --project tsconfig.json
 ```
 
-Then use `hson-schema check --project tsconfig.json` for
-Schema discovery, freshness, static Hson validation, and TypeScript checking.
-For genuinely dynamic values, `Hson.certify(UserSchema, source)` returns the
-same canonical string or throws the structured Schema error.
+Use subsystem entrypoints when working directly with lower-level APIs. Node-specific entrypoints such as `hson-live/livehost/node` and `hson-live/locus/node` belong in Node runtimes, not browser or Worker bundles.
 
-`Hson` is the notation/authoring facility. Lowercase `hson` is a noncallable
-aggregate; the retired lowercase tag has no compatibility alias. `/hson` exports
-authoring, not the aggregate or subsystem facades. `HsonCanonical` is the same
-type exported from `/transform`, not a Schema certificate.
-`HsonData` is the separate immutable, data-only semantic value: it retains exact
-object entry order and signed zero, supports strict ordinary-JavaScript admission
-and explicit Hson-authored ingress, and can materialize a detached convenience
-view or serialize back to `HsonCanonical` from every entrypoint and import order.
-Its object names follow canonical Hson validity: the reserved `_hson_` structural
-namespace rejects, while ordinary names such as `__proto__`, `constructor`, and
-`prototype` remain supported. It does not represent documents.
-`HsonDocument` is the immutable exact document-context counterpart. Its private
-canonical graph uses `_hson_root` only as structural machinery, and zero, one,
-or many top-level items remain one document kind. Exact zero-length source is
-the empty document, while quoted `""` is one empty text item. Canonical attrs,
-metadata, and active QUID strings are retained without revisions, commits,
-identity authority, or runtime ownership. It is narrower than document-mode
-LiveMap state because values such as non-string ordinary attrs or lossy typed
-style leaves cannot round-trip exactly through Hson notation. `HsonFragment`
-does not exist. HTML trust stays with Transform, and `HsonDocument` has no DOM,
-browser-realization, or Schema-construction semantics.
+The built package exports are the supported integration boundary; consumers should not import from `hson-live/src`.
 
-The root package is the umbrella entrypoint:
+For development of `hson-live` itself:
 
-```ts
-import { Hson, hson } from "hson-live";
-import type { LiveMap } from "hson-live/livemap";
-import type { LiveTree } from "hson-live/livetree";
-import type { Locus } from "hson-live/locus";
-```
-
-The root is the normal application and high-level composition surface. It
-exports the established Transform, LiveMap, LiveTree, Locus, Echo, Reflect,
-LiveHost, SSR, continuation, and interaction concepts needed to assemble an
-application. Advanced replay, protocol, persistence, inspection, and detailed
-error-code contracts are owned by their subsystem subpaths.
-
-The historical `hson-live/types` barrel has been removed. Import public types
-from their owner: Hson graph/value types from `hson-live/hson`, and subsystem
-types from `hson-live/transform`, `hson-live/livemap`, `hson-live/livetree`,
-`hson-live/mirror`, `hson-live/echo`, `hson-live/locus`, `hson-live/ssr`, or
-`hson-live/livehost`.
-
-Locus’s environment-neutral network surface is available from:
-
-```ts
-import {
-  create_locus,
-} from "hson-live/locus";
-
-import { create_echo } from "hson-live/echo";
-```
-
-The one-map Node socket adapter is available from:
-
-```ts
-import { create_node_locus_socket } from "hson-live/locus/node";
-```
-
-The genuine Node application-host runtime remains available from:
-
-```ts
-import { start_node_application_host } from "hson-live/livehost/node";
-```
-
-The platform-neutral application/runtime contracts and bounded registry are
-available from:
-
-```ts
-import { create_livehost_locus_registry } from "hson-live/livehost";
-```
-
-Do not import either Node subpath into browser or Worker bundles.
-
-Supported tracing, profiling, and experimental inspection APIs are available
-from:
-
-```ts
-import {
-  begin_livetree_materialization_profile,
-  create_live_trace_collector,
-  hsonInspect,
-} from "hson-live/diagnostics";
-```
-
-The Transform conformance oracle remains available from
-`hson-live/diagnostics/transform-test-oracle`. Internal reset hooks and the
-former `hson-live/diagnostics/test-exports` CSS test seam are not public APIs.
-
-The package’s built exports are the supported integration boundary. Consumers should not import from `hson-live/src`.
-
----
-
-## Development
-
-hson-live is written in strict TypeScript.
-
-```bash
+```sh
 npm install
 npm run check
 npm run build
 npm run check:entrypoints
 ```
 
-The exact repository scripts are the source of truth for compilation, entrypoint checks, diagnostics, and package validation.
-
 ---
+
 
 ## Documentation
 
-The maintained current-facing references are:
+Current documentation includes:
 
-- [Hson syntax](docs/hson-syntax.md) and the
-  [Transform API](docs/transform/api-transform.md), including binary transport
-  and representation digests;
-- the [LiveMap API](docs/livemap/api-livemap.md) and canonical
-  [capture/restore/replay contract](docs/livemap/capture-replay.md);
+- [Hson syntax](docs/hson-syntax.md) and the [Transform API](docs/transform/api-transform.md);
+- the [LiveMap API](docs/livemap/api-livemap.md);
 - the [LiveTree API](docs/livetree/api-livetree.md);
-- [canonical interactions](docs/canonical-interactions.md), including hidden
-  same-LiveMap storage, exact data dispatch, and listener reconciliation;
-- the [Reflect API](docs/reflect/api-reflect.md);
-- [document continuation](docs/document-continuation.md), for exact no-write
-  admission of an existing browser document into local or hosted state;
-- [same-cut SSR composition and bootstrap encoding](docs/ssr-composition.md),
-  for synchronous one-map or multi-library browser-realization HTML, exact
-  paired bootstrap state, and strict canonical base64url transport;
-- the [Locus API](docs/locus/api-locus.md) and
-  [authority overview](docs/locus/overview.md);
-- the [LiveHost and LiveHost Node runtime boundary](docs/livehost/overview.md); and
-- supporting contracts, CSS/animation references, diagnostics, and historical
-  release/design material under their labeled directories.
+- Mirror and document continuation;
+- the [Locus API](docs/locus/api-locus.md) and [authority overview](docs/locus/overview.md);
+- [SSR composition](docs/ssr-composition.md); and
+- the [LiveHost / LiveHost Node runtime overview](docs/livehost/overview.md).
 
-Repository:
+More specialized contracts, diagnostics, release notes, and design material live under `docs/`.
 
-[github.com/neutralica/hson-live](https://github.com/neutralica/hson-live)
+Repository: [github.com/neutralica/hson-live](https://github.com/neutralica/hson-live)
 
 ---
 
-## LiveDemo
-
-[terminalgothic.com/hson](https://terminalgothic.com/hson)
-
-LiveDemo is the public test and development environment for hson-live and the first application built entirely with it.
-
-It contains:
-
-- interactive subsystem demos;
-- transformation tools;
-- architecture experiments;
-- browser and Node integration checks;
-- regression suites;
-- externally executed package diagnostics;
-- working examples of LiveMap, LiveTree, and Locus.
-
-The test inventory is generated from the current repositories rather than fixed in this README.
-
-LiveDemo’s visual design is intentionally brutalist.
-
----
 
 ## License
 
-hson-live is licensed under the Public Parity License 7.0.
+hson-live is licensed under the PolyForm Strict License 1.0.0. Noncommercial use is permitted under its terms; redistribution, modification, derivative works, and commercial use are not licensed.
 
-See `LICENSE` for details.
+See `LICENSE` for the full terms.
 
-© 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0.
-# Development boundary
+---
 
-`npm run build` is a library-only TypeScript build. `npm run check` validates
-the library, its tooling, and its executable acceptance suites without running
-the LiveDemo application or performing deployment work. Application testing,
-report assembly, packaging, and deployment remain downstream concerns.
+
+© 2026 terminal_gothic. All rights reserved except as granted under the PolyForm Strict License 1.0.0.

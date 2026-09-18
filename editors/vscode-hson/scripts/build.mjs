@@ -24,6 +24,19 @@ await build({
 });
 await build({
   absWorkingDir: extensionRoot,
+  entryPoints: ["src/local-host-runner.ts"],
+  outfile: "dist/local-host-runner.cjs",
+  bundle: true,
+  format: "cjs",
+  platform: "node",
+  target: "node22",
+  sourcemap: true,
+  sourcesContent: true,
+  legalComments: "none",
+  logLevel: "info",
+});
+await build({
+  absWorkingDir: extensionRoot,
   entryPoints: ["src/tsserver-plugin/tsserver-plugin.ts"],
   outfile: "typescript-plugin/dist/index.cjs",
   bundle: true,

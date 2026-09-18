@@ -34,6 +34,9 @@ import {
 import { markdown_hson_fence_marker_parts } from "./markdown-fence-marker.js";
 import { HSON_SETTINGS_QUERY, appearance_color, marker_strength, marker_color_key } from "./settings.js";
 import { HSON_APPEARANCE } from "./appearance.js";
+import { LocalHostExtensionManager } from "./local-host-extension.js";
+
+let localHostManager: LocalHostExtensionManager | undefined;
 
 function adaptDocument(document: vscode.TextDocument): DiagnosticDocument {
   return Object.freeze({
@@ -80,6 +83,7 @@ function explicitAppearanceColor(
 }
 
 export function activate(context: vscode.ExtensionContext): void {
+  localHostManager = new LocalHostExtensionManager(context);
   const collection = vscode.languages.createDiagnosticCollection("hson");
   const diagnosticsOutput = vscode.window.createOutputChannel("Hson Diagnostics");
   context.subscriptions.push(collection, diagnosticsOutput);
@@ -550,6 +554,12 @@ export function activate(context: vscode.ExtensionContext): void {
       for (const watch of schemaWatches.values()) terminate_schema_process(watch.child);
       schemaWatches.clear();
     } });
+}
+
+export async function deactivate(): Promise<void> {
+  const manager = localHostManager;
+  localHostManager = undefined;
+  await manager?.disposeAsync();
 }
 
 function terminate_schema_process(child: ChildProcess): void {

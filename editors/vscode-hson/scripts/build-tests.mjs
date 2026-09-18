@@ -11,6 +11,8 @@ await build({
     unit: "tests/runtime.test.ts",
     workspace: "tests/workspace-diagnostics.test.ts",
     settings: "tests/settings.test.ts",
+    "local-host": "tests/local-host.test.ts",
+    "local-host-process": "tests/local-host-process.test.ts",
     integration: "tests/integration/suite.ts",
     "baseline-integration": "tests/integration/baseline.ts",
     baseline: "tests/baseline.test.ts",
