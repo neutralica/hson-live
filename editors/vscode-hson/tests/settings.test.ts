@@ -25,9 +25,9 @@ function check(name: string, body: () => void): void {
 }
 
 const appearanceGroup = groups.find(group => group.title === "Hson › Appearance");
-const localHostGroup = groups.find(group => group.title === "Hson › Local Host");
+const localHostGroup = groups.find(group => group.title === "Hson › Local App");
 assert.ok(appearanceGroup); assert.ok(localHostGroup);
-check("settings expose the appearance and bounded local-host groups", () => assert.deepEqual(groups.map(group => group.title), ["Hson › Appearance", "Hson › Local Host"]));
+check("settings expose the appearance and bounded local-app groups", () => assert.deepEqual(groups.map(group => group.title), ["Hson › Appearance", "Hson › Local App"]));
 check("the appearance authority distinguishes owned values from theme-derived scopes", () => {
   assert.deepEqual(Object.keys(HSON_APPEARANCE), ["owned", "themeDerived", "native"]);
   assert.ok(Object.values(HSON_APPEARANCE.themeDerived).every(value => value.endsWith(".hson")));

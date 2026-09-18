@@ -8,6 +8,7 @@ const manifest = await readJson("../package.json");
 const languageConfiguration = await readJson("../language-configuration.json");
 const coreGrammar = await readJson("../syntaxes/hson.tmLanguage.json");
 const markdownGrammar = await readJson("../syntaxes/markdown-hson-codeblock.tmLanguage.json");
+const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
 const extensionBundle = await readFile(new URL("../dist/extension.js", import.meta.url), "utf8");
 const localHostRunner = await readFile(new URL("../dist/local-host-runner.cjs", import.meta.url), "utf8");
 const localHostRunnerMap = await readFile(new URL("../dist/local-host-runner.cjs.map", import.meta.url), "utf8");
@@ -67,6 +68,16 @@ assert.deepEqual(manifest.contributes.commands.map(command => command.command), 
   "hson.generateSchemaTypes", "hson.startSchemaWatch", "hson.stopSchemaWatch", "hson.checkSchemas", "hson.showSchemaOutput",
   "hson.startLocalHost", "hson.stopLocalHost", "hson.restartLocalHost", "hson.openLocalApp", "hson.showLocalHostOutput",
 ]);
+assert.deepEqual(manifest.contributes.commands.slice(-5).map(({ command, title }) => ({ command, title })), [
+  { command: "hson.startLocalHost", title: "Run Local App" },
+  { command: "hson.stopLocalHost", title: "Stop Local App" },
+  { command: "hson.restartLocalHost", title: "Restart Local App" },
+  { command: "hson.openLocalApp", title: "Open Local App" },
+  { command: "hson.showLocalHostOutput", title: "Show Local App Output" },
+]);
+assert.match(readme, /development infrastructure, not an authentication boundary/);
+assert.match(readme, /responsible for its own authentication, authorization, and security policy/);
+assert.match(readme, /additional processes created by application code remain application-owned and are not generically supervised/);
 const configuration = Object.assign({}, ...manifest.contributes.configuration.map(group => group.properties));
 assert.equal(Object.keys(configuration).some(key => key.startsWith("hson.trustedSchemaDiagnostics.")), false);
 assert.equal(configuration["hson.appearance.libraryMarkerStrength"].default, 1);

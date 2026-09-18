@@ -7,7 +7,7 @@ import { PassThrough } from "node:stream";
 import type { ChildProcess } from "node:child_process";
 
 import { LocalHostController } from "../src/local-host-controller.js";
-import { local_host_command_availability, local_host_project_description, type LocalHostProjectPresentation } from "../src/local-host-presentation.js";
+import { local_app_quick_pick_actions, local_app_status_presentation, local_host_command_availability, local_host_project_description, type LocalHostProjectPresentation } from "../src/local-host-presentation.js";
 import { is_supported_livehost_node_runtime, local_host_start_blocker, resolve_local_host_project, type ResolvedLocalHostProject } from "../src/local-host-project.js";
 import { is_loopback_local_host_url, LOCAL_HOST_PROTOCOL_VERSION, local_host_stop_request, parse_local_host_child_message, parse_local_host_stop_request } from "../src/local-host-protocol.js";
 
@@ -254,6 +254,54 @@ await check("multi-root availability and same-name identity remain unambiguous",
   ];
   assert.deepEqual(local_host_command_availability(presentations), { canStart: true, canStop: true, canRestart: true, canOpen: true });
   assert.notEqual(local_host_project_description(presentations[0]!), local_host_project_description(presentations[1]!));
+  assert.deepEqual(local_app_quick_pick_actions(presentations).map(action => action.label), [
+    "Open Local App", "Run Local App", "Restart Local App", "Stop Local App", "Show Local App Output",
+  ]);
+});
+
+await check("local-app Quick Pick exposes only actions applicable to each lifecycle state", () => {
+  const labels = (state: LocalHostProjectPresentation["snapshot"]["state"]): readonly string[] => {
+    const snapshot = state === "running"
+      ? { projectId: "file:///decks", state, httpUrl: "http://127.0.0.1:45100" } as const
+      : { projectId: "file:///decks", state } as const;
+    return local_app_quick_pick_actions([{ projectId: "file:///decks", name: "decks", detail: "/workspace/decks", configured: true, snapshot }]).map(action => action.label);
+  };
+  assert.deepEqual(labels("stopped"), ["Run Local App", "Show Local App Output"]);
+  assert.deepEqual(labels("starting"), ["Stop Local App", "Show Local App Output"]);
+  assert.deepEqual(labels("running"), ["Open Local App", "Restart Local App", "Stop Local App", "Show Local App Output"]);
+  assert.deepEqual(labels("stopping"), ["Show Local App Output"]);
+  assert.deepEqual(labels("failed"), ["Run Local App", "Show Local App Output"]);
+});
+
+await check("local-app Quick Pick actions route through the existing command IDs", () => {
+  const projects: LocalHostProjectPresentation[] = [
+    { projectId: "file:///running", name: "running", detail: "/workspace/running", configured: true, snapshot: { projectId: "file:///running", state: "running", httpUrl: "http://127.0.0.1:45101" } },
+    { projectId: "file:///stopped", name: "stopped", detail: "/workspace/stopped", configured: true, snapshot: { projectId: "file:///stopped", state: "stopped" } },
+  ];
+  assert.deepEqual(local_app_quick_pick_actions(projects).map(action => action.command), [
+    "hson.openLocalApp", "hson.startLocalHost", "hson.restartLocalHost", "hson.stopLocalHost", "hson.showLocalHostOutput",
+  ]);
+});
+
+await check("local-app status presentation uses application wording and project detail", () => {
+  const projectPresentation: LocalHostProjectPresentation = {
+    projectId: "file:///workspace/decks", name: "decks", detail: "/workspace/decks", configured: true,
+    snapshot: { projectId: "file:///workspace/decks", state: "running", httpUrl: "http://127.0.0.1:45102" },
+  };
+  assert.deepEqual(local_app_status_presentation({ projectId: projectPresentation.projectId, state: "stopped" }, projectPresentation), {
+    text: "$(debug-stop) Hson: App Stopped",
+    tooltip: "decks — /workspace/decks\nHson local app is stopped.",
+  });
+  assert.equal(local_app_status_presentation({ projectId: projectPresentation.projectId, state: "starting" }, projectPresentation).text, "$(loading~spin) Hson: App Starting · decks");
+  assert.deepEqual(local_app_status_presentation(projectPresentation.snapshot, projectPresentation), {
+    text: "$(radio-tower) Hson: App Running · decks",
+    tooltip: "decks — /workspace/decks\nHson local app: http://127.0.0.1:45102",
+  });
+  assert.equal(local_app_status_presentation({ projectId: projectPresentation.projectId, state: "stopping" }, projectPresentation).text, "$(loading~spin) Hson: App Stopping · decks");
+  assert.deepEqual(local_app_status_presentation({ projectId: projectPresentation.projectId, state: "failed", failure: "broken" }, projectPresentation), {
+    text: "$(error) Hson: App Failed · decks",
+    tooltip: "decks — /workspace/decks\nHson local app failed: broken",
+  });
 });
 
 process.stdout.write(`ok - ${checks} local-host protocol, configuration, lifecycle, crash, multi-project, and trust checks passed\n`);

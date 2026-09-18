@@ -76,6 +76,8 @@ Use:
 
 The runner uses loopback networking, supports automatically assigned ports, and manages clean application restart and shutdown. Local application execution requires Workspace Trust and is currently limited to local desktop workspaces.
 
+Local application hosting is development infrastructure, not an authentication boundary. The extension binds LiveHost Node to loopback and requires Workspace Trust, while the application remains responsible for its own authentication, authorization, and security policy. The extension supervises its local runner and LiveHost resources; additional processes created by application code remain application-owned and are not generically supervised by the extension.
+
 Build/watch remains project-owned. The extension does not provide its own TypeScript executor, bundler, or alternate Hson runtime.
 
 ## Install the local development build

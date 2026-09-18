@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 
-import { LocalHostController, type LocalHostSnapshot, type LocalHostState } from "./local-host-controller.js";
-import { local_host_command_availability, local_host_project_description, type LocalHostProjectPresentation } from "./local-host-presentation.js";
+import { LocalHostController, type LocalHostSnapshot } from "./local-host-controller.js";
+import { local_app_quick_pick_actions, local_app_status_presentation, local_host_command_availability, type LocalHostProjectPresentation } from "./local-host-presentation.js";
 import { local_host_start_blocker, resolve_local_host_project, type LocalHostProjectSettings } from "./local-host-project.js";
 
 type ManagedProject = Readonly<{
@@ -18,7 +18,7 @@ export class LocalHostExtensionManager implements vscode.Disposable {
 
   constructor(context: vscode.ExtensionContext) {
     this.#context = context;
-    this.#output = vscode.window.createOutputChannel("Hson Local Host");
+    this.#output = vscode.window.createOutputChannel("Hson Local App");
     this.#status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 10);
     this.#status.command = "hson.localHostActions";
     context.subscriptions.push(
@@ -50,7 +50,7 @@ export class LocalHostExtensionManager implements vscode.Disposable {
       const project = await resolve_local_host_project(folder.uri.fsPath, folder.uri.toString(), this.#settings(folder));
       const managed = this.#managed(folder);
       await managed.controller.start(project);
-      void vscode.window.showInformationMessage(`Hson local host is running at ${managed.controller.snapshot.httpUrl}.`);
+      void vscode.window.showInformationMessage(`Hson local app is running at ${managed.controller.snapshot.httpUrl}.`);
     } catch (error) {
       this.#reportError(error);
     }
@@ -61,7 +61,7 @@ export class LocalHostExtensionManager implements vscode.Disposable {
     if (folder === undefined) return;
     const managed = this.#projects.get(folder.uri.toString());
     if (managed === undefined || managed.controller.snapshot.state === "stopped") {
-      void vscode.window.showInformationMessage(`No extension-managed Hson local host is running for ${folder.name}.`);
+      void vscode.window.showInformationMessage(`No extension-managed Hson local app is running for ${folder.name}.`);
       return;
     }
     await managed.controller.stop();
@@ -83,7 +83,7 @@ export class LocalHostExtensionManager implements vscode.Disposable {
     if (folder === undefined) return;
     const snapshot = this.#projects.get(folder.uri.toString())?.controller.snapshot;
     if (snapshot?.state !== "running" || snapshot.httpUrl === undefined) {
-      void vscode.window.showWarningMessage(`The Hson local host for ${folder.name} is not running. Run Hson: Start Local Host first.`);
+      void vscode.window.showWarningMessage(`The Hson local app for ${folder.name} is not running. Run Hson: Run Local App first.`);
       return;
     }
     await vscode.env.openExternal(vscode.Uri.parse(snapshot.httpUrl, true));
@@ -136,17 +136,17 @@ export class LocalHostExtensionManager implements vscode.Disposable {
     if (candidates.length === 1) return candidates[0];
     if (candidates.length === 0) {
       const message = operation === "open" ? "No Hson local app is currently running."
-        : operation === "stop" ? "No extension-managed Hson local host is currently active."
+        : operation === "stop" ? "No extension-managed Hson local app is currently active."
         : "No local workspace folder has hson.localHost.entry configured.";
       void vscode.window.showWarningMessage(message);
       return undefined;
     }
     const choice = await vscode.window.showQuickPick(candidates.map(folder => ({
       label: folder.name,
-      description: this.#settings(folder).entry || "managed local host",
+      description: this.#settings(folder).entry || "managed local app",
       detail: folder.uri.fsPath,
       folder,
-    })), { placeHolder: "Choose the workspace project for Hson local hosting" });
+    })), { placeHolder: "Choose the workspace project for the Hson local app" });
     return choice?.folder;
   }
 
@@ -224,18 +224,10 @@ export class LocalHostExtensionManager implements vscode.Disposable {
 
   #updatePresentation(): void {
     const snapshot = this.#currentSnapshot();
-    const state: LocalHostState = snapshot?.state ?? "stopped";
     const project = snapshot === undefined ? undefined : this.#presentations().find(candidate => candidate.projectId === snapshot.projectId);
-    const suffix = project === undefined ? "" : ` · ${project.name}`;
-    this.#status.text = state === "running" ? `$(radio-tower) Hson: Running${suffix}`
-      : state === "starting" ? `$(loading~spin) Hson: Starting${suffix}`
-      : state === "stopping" ? `$(loading~spin) Hson: Stopping${suffix}`
-      : state === "failed" ? `$(error) Hson: Host Failed${suffix}`
-      : "$(debug-stop) Hson: Host Stopped";
-    const identity = project === undefined ? "" : `${local_host_project_description(project)}\n`;
-    this.#status.tooltip = state === "running" ? `${identity}Hson local app: ${snapshot?.httpUrl}`
-      : state === "failed" ? `${identity}Hson local host failed: ${snapshot?.failure ?? "See output."}`
-      : `Hson local host is ${state}.`;
+    const presentation = local_app_status_presentation(snapshot, project);
+    this.#status.text = presentation.text;
+    this.#status.tooltip = presentation.tooltip;
     this.#status.show();
     const availability = local_host_command_availability(this.#presentations());
     void vscode.commands.executeCommand("setContext", "hson.localHost.canStart", availability.canStart);
@@ -245,13 +237,10 @@ export class LocalHostExtensionManager implements vscode.Disposable {
   }
 
   async #showActions(): Promise<void> {
-    const action = await vscode.window.showQuickPick([
-      { label: "Start Local Host", command: "hson.startLocalHost" },
-      { label: "Stop Local Host", command: "hson.stopLocalHost" },
-      { label: "Restart Local Host", command: "hson.restartLocalHost" },
-      { label: "Open Local App", command: "hson.openLocalApp" },
-      { label: "Show Local Host Output", command: "hson.showLocalHostOutput" },
-    ], { placeHolder: "Hson local hosting" });
+    const action = await vscode.window.showQuickPick(
+      local_app_quick_pick_actions(this.#presentations()),
+      { placeHolder: "Hson local application" },
+    );
     if (action !== undefined) await vscode.commands.executeCommand(action.command);
   }
 
@@ -267,8 +256,8 @@ export class LocalHostExtensionManager implements vscode.Disposable {
     const message = error instanceof Error ? error.message : String(error);
     this.#output.appendLine(`[host] ${message}`);
     this.#output.show(true);
-    void vscode.window.showErrorMessage(message, "Show Hson Local Host Output").then(action => {
-      if (action === "Show Hson Local Host Output") this.#output.show(true);
+    void vscode.window.showErrorMessage(message, "Show Hson Local App Output").then(action => {
+      if (action === "Show Hson Local App Output") this.#output.show(true);
     });
   }
 }

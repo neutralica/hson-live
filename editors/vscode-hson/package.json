@@ -12,7 +12,7 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "Syntax, local HsonSchema authoring, symbols, and generated-evidence diagnostics work in Restricted Mode. Schema execution and local hosting run only when explicitly invoked in a trusted workspace."
+      "description": "Syntax, local HsonSchema authoring, symbols, and generated-evidence diagnostics work in Restricted Mode. Schema execution and local applications run only when explicitly invoked in a trusted workspace."
     }
   },
   "engines": {
@@ -141,7 +141,7 @@
         }
       },
       {
-        "title": "Hson › Local Host",
+        "title": "Hson › Local App",
         "order": 20,
         "properties": {
           "hson.localHost.entry": {
@@ -189,11 +189,11 @@
       { "command": "hson.stopSchemaWatch", "title": "Stop Schema Watch", "category": "Hson" },
       { "command": "hson.checkSchemas", "title": "Check Schemas", "category": "Hson" },
       { "command": "hson.showSchemaOutput", "title": "Show Schema Output", "category": "Hson" },
-      { "command": "hson.startLocalHost", "title": "Start Local Host", "category": "Hson", "enablement": "hson.localHost.canStart" },
-      { "command": "hson.stopLocalHost", "title": "Stop Local Host", "category": "Hson", "enablement": "hson.localHost.canStop" },
-      { "command": "hson.restartLocalHost", "title": "Restart Local Host", "category": "Hson", "enablement": "hson.localHost.canRestart" },
+      { "command": "hson.startLocalHost", "title": "Run Local App", "category": "Hson", "enablement": "hson.localHost.canStart" },
+      { "command": "hson.stopLocalHost", "title": "Stop Local App", "category": "Hson", "enablement": "hson.localHost.canStop" },
+      { "command": "hson.restartLocalHost", "title": "Restart Local App", "category": "Hson", "enablement": "hson.localHost.canRestart" },
       { "command": "hson.openLocalApp", "title": "Open Local App", "category": "Hson", "enablement": "hson.localHost.canOpen" },
-      { "command": "hson.showLocalHostOutput", "title": "Show Local Host Output", "category": "Hson" }
+      { "command": "hson.showLocalHostOutput", "title": "Show Local App Output", "category": "Hson" }
     ],
     "languages": [
       {
