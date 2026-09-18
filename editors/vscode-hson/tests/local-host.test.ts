@@ -126,8 +126,8 @@ await check("runtime compatibility and workspace security gates are explicit", (
   assert.equal(is_supported_livehost_node_runtime("24.9.1"), true);
   assert.equal(is_supported_livehost_node_runtime("22.11.0"), false);
   assert.equal(is_supported_livehost_node_runtime("25.0.0"), false);
-  assert.match(local_host_start_blocker(false, undefined) ?? "", /Restricted Mode/);
-  assert.match(local_host_start_blocker(true, "ssh-remote") ?? "", /disabled in remote workspaces/);
+  assert.match(local_host_start_blocker(false, undefined) ?? "", /local apps cannot run in Restricted Mode/);
+  assert.match(local_host_start_blocker(true, "ssh-remote") ?? "", /local app execution is disabled in remote workspaces/);
   assert.equal(local_host_start_blocker(true, undefined), undefined);
 });
 
@@ -142,6 +142,8 @@ await check("project resolution requires built workspace code and workspace hson
     const resolved = await resolve_local_host_project(root, "fixture", { entry: "dist/app.mjs", applicationExport: "application", nodeExecutable: process.execPath, port: 0 });
     assert.equal(resolved.entry, join(root, "dist", "app.mjs"));
     assert.equal(resolved.hsonLiveVersion, "3.5.0");
+    await assert.rejects(resolve_local_host_project(root, "fixture", { entry: "", applicationExport: "application", nodeExecutable: process.execPath, port: 0 }), /before running the local app/);
+    await assert.rejects(resolve_local_host_project(root, "fixture", { entry: "dist/missing.mjs", applicationExport: "application", nodeExecutable: process.execPath, port: 0 }), /local application entry does not exist/);
     await assert.rejects(resolve_local_host_project(root, "fixture", { entry: "src/app.ts", applicationExport: "application", nodeExecutable: process.execPath, port: 0 }), /does not exist|built JavaScript/);
     await assert.rejects(resolve_local_host_project(root, "fixture", { entry: "../outside.mjs", applicationExport: "application", nodeExecutable: process.execPath, port: 0 }), /within its workspace/);
   } finally {

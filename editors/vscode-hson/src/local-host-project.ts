@@ -32,8 +32,8 @@ const exec_file = promisify(execFile);
 const NODE_PROBE_MARKER = "HSON_LOCAL_HOST_NODE_PROBE:";
 
 export function local_host_start_blocker(isTrusted: boolean, remoteName: string | undefined): string | undefined {
-  if (!isTrusted) return "Hson local hosting cannot run in Restricted Mode. Trust this workspace, then run the command again.";
-  if (remoteName !== undefined) return `Hson local hosting v1 is disabled in remote workspaces (${remoteName}) because its loopback URL belongs to the remote environment. Run it from a local desktop workspace.`;
+  if (!isTrusted) return "Hson local apps cannot run in Restricted Mode. Trust this workspace, then run the command again.";
+  if (remoteName !== undefined) return `Hson local app execution is disabled in remote workspaces (${remoteName}) because its loopback URL belongs to the remote environment. Run it from a local desktop workspace.`;
   return undefined;
 }
 
@@ -43,10 +43,10 @@ export async function resolve_local_host_project(
   settings: LocalHostProjectSettings,
 ): Promise<ResolvedLocalHostProject> {
   const root = resolve(workspaceFolder);
-  if (settings.entry.trim() === "") throw new Error("Configure hson.localHost.entry with a built workspace JavaScript module before starting the local host.");
+  if (settings.entry.trim() === "") throw new Error("Configure hson.localHost.entry with a built workspace JavaScript module before running the local app.");
   const entry = resolve(root, settings.entry);
   if (!within(root, entry)) throw new Error("hson.localHost.entry must stay within its workspace folder.");
-  if (!existsSync(entry) || !statSync(entry).isFile()) throw new Error(`The configured Hson local-host entry does not exist: ${entry}. Build the project, then try again.`);
+  if (!existsSync(entry) || !statSync(entry).isFile()) throw new Error(`The configured Hson local application entry does not exist: ${entry}. Build the project, then try again.`);
   if (!/\.(?:c|m)?js$/i.test(entry)) throw new Error("hson.localHost.entry must name built JavaScript (.js, .mjs, or .cjs). The extension does not embed a TypeScript executor or bundler.");
   if (!/^[A-Za-z_$][\w$]*$/.test(settings.applicationExport)) throw new Error("hson.localHost.applicationExport must be a JavaScript export name.");
   if (!Number.isInteger(settings.port) || settings.port < 0 || settings.port > 65_535) throw new Error("hson.localHost.port must be an integer from 0 through 65535.");
