@@ -2,6 +2,7 @@ import ts from "typescript";
 
 import {
   create_hson_source_program,
+  read_template_substitution_ranges,
   read_supported_hson_import_symbols,
 } from "./discover-hson-tagged-templates.js";
 import {
@@ -25,12 +26,35 @@ function domain(node: ts.Node): ts.SourceFile | ts.Block | undefined {
 
 export type StaticFromHsonDiscovery = Readonly<{
   sources: readonly StaticHsonSource[];
+  interpolated: readonly InterpolatedFromHsonSource[];
   dynamicCallRanges: readonly Readonly<{ start: number; end: number }>[];
 }>;
 
-/** Discover exact static strings admitted by current official facade identities. */
+export type InterpolatedFromHsonSource = Readonly<{
+  kind: "javascript-template";
+  fileName: string;
+  hostText: string;
+  boundary: StaticHsonBoundary;
+  callRange: Readonly<{ start: number; end: number }>;
+  calleeRange: Readonly<{ start: number; end: number }>;
+  literalRange: Readonly<{ start: number; end: number }>;
+  bodyRange: Readonly<{ start: number; end: number }>;
+  substitutionRanges: readonly Readonly<{ start: number; end: number }>[];
+  expressionRanges: readonly Readonly<{ start: number; end: number }>[];
+}>;
+
+function has_direct_template_segment_correspondence(template: ts.TemplateExpression): boolean {
+  return [template.head, ...template.templateSpans.map(span => span.literal)]
+    .every(literal => (literal.rawText ?? literal.text) === literal.text);
+}
+
+/** Discover exact static strings and safe interpolation ranges at current official facade identities. */
 export function discover_static_from_hson_sources(fileName: string, hostText: string): StaticFromHsonDiscovery {
-  const empty = (): StaticFromHsonDiscovery => Object.freeze({ sources: Object.freeze([]), dynamicCallRanges: Object.freeze([]) });
+  const empty = (): StaticFromHsonDiscovery => Object.freeze({
+    sources: Object.freeze([]),
+    interpolated: Object.freeze([]),
+    dynamicCallRanges: Object.freeze([]),
+  });
   if (!/\.tsx?$/.test(fileName)) return empty();
   const program = create_hson_source_program(fileName, hostText);
   const file = program.getSourceFile(fileName);
@@ -86,6 +110,7 @@ export function discover_static_from_hson_sources(fileName: string, hostText: st
   const overlapsDiagnostic = (node: ts.Node): boolean => diagnostics.some(diagnostic => diagnostic.start === undefined
     || (diagnostic.start < node.end && diagnostic.start + (diagnostic.length ?? 0) >= node.getStart(file)));
   const sources: StaticHsonSource[] = [];
+  const interpolated: InterpolatedFromHsonSource[] = [];
   const dynamicCallRanges: Readonly<{ start: number; end: number }>[] = [];
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node) && node.arguments.length === 1 && node.questionDotToken === undefined && node.typeArguments === undefined) {
@@ -93,12 +118,39 @@ export function discover_static_from_hson_sources(fileName: string, hostText: st
       if (kind !== undefined && !overlapsDiagnostic(node)) {
         const occurrence = literal(node.arguments[0], node);
         const source = occurrence === undefined ? undefined : create_static_hson_source(fileName, hostText, file, node, occurrence, kind);
-        if (source === undefined) dynamicCallRanges.push(Object.freeze({ start: node.getStart(file), end: node.end }));
-        else sources.push(source);
+        if (source === undefined) {
+          dynamicCallRanges.push(Object.freeze({ start: node.getStart(file), end: node.end }));
+          const argument = strip(node.arguments[0]);
+          if (ts.isTemplateExpression(argument) && has_direct_template_segment_correspondence(argument)) {
+            const substitutionRanges = read_template_substitution_ranges(argument, hostText, file);
+            if (substitutionRanges !== undefined) {
+              const literalRange = Object.freeze({ start: argument.getStart(file), end: argument.end });
+              interpolated.push(Object.freeze({
+                kind: "javascript-template",
+                fileName,
+                hostText,
+                boundary: kind,
+                callRange: Object.freeze({ start: node.getStart(file), end: node.end }),
+                calleeRange: Object.freeze({ start: node.expression.getStart(file), end: node.expression.end }),
+                literalRange,
+                bodyRange: Object.freeze({ start: literalRange.start + 1, end: literalRange.end - 1 }),
+                substitutionRanges,
+                expressionRanges: Object.freeze(argument.templateSpans.map(span => Object.freeze({
+                  start: span.expression.getStart(file),
+                  end: span.expression.end,
+                }))),
+              }));
+            }
+          }
+        } else sources.push(source);
       }
     }
     ts.forEachChild(node, visit);
   };
   visit(file);
-  return Object.freeze({ sources: Object.freeze(sources), dynamicCallRanges: Object.freeze(dynamicCallRanges) });
+  return Object.freeze({
+    sources: Object.freeze(sources),
+    interpolated: Object.freeze(interpolated),
+    dynamicCallRanges: Object.freeze(dynamicCallRanges),
+  });
 }

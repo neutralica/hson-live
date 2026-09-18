@@ -15,7 +15,7 @@ export {
   hsonLiveMap,
   hsonLiveTree,
   hsonLocus,
-  hsonReflect,
+  hsonMirror,
   hsonTransform,
   type HsonFacade,
 } from "./hson.js";
@@ -138,10 +138,10 @@ export type {
 export type { Reflect } from "./api/reflect/reflect.facade.js";
 export {
   reflect_document,
-  type DocumentReflect,
-  type DocumentReflectStatus,
+  type DocumentMirror,
+  type DocumentMirrorStatus,
 } from "./api/reflect/reflect.document.js";
-export { DocumentReflectError } from "./api/reflect/reflect.document.error.js";
+export { DocumentMirrorError } from "./api/reflect/reflect.document.error.js";
 
 export { create_echo } from "./api/echo/echo.js";
 export { EchoRecoveryError, EchoSessionError } from "./api/echo/echo.error.js";

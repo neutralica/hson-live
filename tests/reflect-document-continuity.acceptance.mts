@@ -20,7 +20,7 @@ import { get_el_for_node } from "../src/api/livetree/utils/node-map-helpers.ts";
 import {
   DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
   DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
-  DocumentReflectError,
+  DocumentMirrorError,
 } from "../src/api/reflect/reflect.document.error.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -262,7 +262,7 @@ check("bound direct structural mutation is rejected before drift", () => {
   const before = structuredClone(binding.tree.node);
   assert.throws(
     () => rootTree.detachContents(),
-    (cause) => cause instanceof DocumentReflectError
+    (cause) => cause instanceof DocumentMirrorError
       && cause.code === DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
   );
   assert.deepEqual(binding.tree.node, before);

@@ -19,7 +19,7 @@ import {
   hsonLiveMap,
   hsonLiveTree,
   hsonLocus,
-  hsonReflect,
+  hsonMirror,
   hsonTransform,
   link_livemap,
   LiveMapDocumentInstallError,
@@ -53,7 +53,7 @@ import {
   type LiveMapCommitObserver,
   type LiveMapReplay,
 } from "hson-live/livemap";
-import { reflect_collection, type CollectionReflect } from "hson-live/reflect";
+import { reflect_collection, type CollectionReflect } from "hson-live/mirror";
 import {
   decode_locus_message,
   encode_locus_message,
@@ -87,7 +87,7 @@ void [canonical, data, document, continuation, render_document({ map }), render_
 const facade: HsonFacade = hson;
 const normalTypes = null as unknown as LiveMap | LiveMapLibraries | Locus | LocusMultiLibrary | LiveHost;
 void [facade, normalTypes, hsonCalc, hsonEcho, hsonLiveMap, hsonLiveTree, hsonLocus,
-  hsonReflect, hsonTransform, LiveTree, TreeSelector, TransformError,
+  hsonMirror, hsonTransform, LiveTree, TreeSelector, TransformError,
   LiveTreeDisposedError, LiveMapDocumentInstallError, reflect_document, link_livemap,
   create_echo, create_locus, create_locus_bootstrap_echo, create_livehost_locus_registry,
   activate_interactions, add_interaction, enable_interactions, remove_interaction, replace_interaction];
@@ -116,8 +116,10 @@ import { CssManager as RemovedRootCssManager } from "hson-live";
 import type { LiveMapReplay as RemovedRootReplay } from "hson-live";
 // @ts-expect-error Protocol frames are owned by /locus.
 import type { LocusClientMessage as RemovedRootProtocol } from "hson-live";
-// @ts-expect-error Collection reflection is owned by /reflect.
+// @ts-expect-error Collection reflection is owned by /mirror.
 import { reflect_collection as RemovedRootCollectionReflect } from "hson-live";
+// @ts-expect-error The former /reflect package subpath was renamed to /mirror.
+import type { DocumentMirror as RemovedReflectSubpath } from "hson-live/reflect";
 // @ts-expect-error Inspection is owned by /diagnostics.
 import { hsonInspect as RemovedRootInspector } from "hson-live";
 // @ts-expect-error Node hosting is owned by /livehost/node.
@@ -131,4 +133,4 @@ import { render_rule as RemovedTestExport } from "hson-live/diagnostics/test-exp
 
 void [RemovedRootCssManager, RemovedRootCollectionReflect, RemovedRootInspector,
   RemovedRootNodeHost, RemovedRootErrorCode, RemovedTestExport];
-void (0 as unknown as RemovedRootReplay | RemovedRootProtocol | RemovedTypesBarrel);
+void (0 as unknown as RemovedRootReplay | RemovedRootProtocol | RemovedReflectSubpath | RemovedTypesBarrel);

@@ -98,8 +98,8 @@ for (const specifier of publicSpecifiers) {
   import_in_fresh_process([specifier]);
 }
 
-import_in_fresh_process(["hson-live/livetree", "hson-live/reflect"]);
-import_in_fresh_process(["hson-live/reflect", "hson-live/livetree"]);
+import_in_fresh_process(["hson-live/livetree", "hson-live/mirror"]);
+import_in_fresh_process(["hson-live/mirror", "hson-live/livetree"]);
 
 check("diagnostics entrypoints exist in the package and built output", () => {
   assert.notEqual(manifest.exports["./diagnostics"], undefined);
@@ -236,6 +236,8 @@ check("SSR declarations expose only the approved semantic surface", () => {
 check("stale public terminology is absent from maintained declarations", () => {
   const declarations = [
     "index.d.ts",
+    "api/reflect/reflect.document.d.ts",
+    "api/reflect/reflect.document.error.d.ts",
     "api/locus/index.d.ts",
     "api/ssr/index.d.ts",
     "api/transform/index.d.ts",
@@ -248,6 +250,8 @@ check("stale public terminology is absent from maintained declarations", () => {
     '"projected-data"',
     "OutputConstructor_2",
     "SsrBootstrapEncodingError",
+    "DocumentReflectError",
+    "DocumentReflectStatus",
     "sanitizeBEWARE",
   ]) assert.equal(declarations.includes(stale), false, `${stale} must be absent`);
   for (const retained of [
@@ -378,8 +382,8 @@ console.log(JSON.stringify({
   freshProcesses: publicSpecifiers.length + 2,
   entrypoints: publicSpecifiers,
   importOrders: [
-    ["hson-live/livetree", "hson-live/reflect"],
-    ["hson-live/reflect", "hson-live/livetree"],
+    ["hson-live/livetree", "hson-live/mirror"],
+    ["hson-live/mirror", "hson-live/livetree"],
   ],
 }));
 testEvents.terminal("pass");

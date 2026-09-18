@@ -4,7 +4,7 @@ import { hson } from "../src/index.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
 import { is_Node } from "../src/core/node-guards.ts";
-import { hsonReflect } from "../src/api/reflect/reflect.facade.ts";
+import { hsonMirror } from "../src/api/reflect/reflect.facade.ts";
 import {
   DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
 } from "../src/api/reflect/reflect.document.error.ts";
@@ -73,7 +73,7 @@ function mount(root: HsonNode): FakeElement {
 
 check("durable install constructs a fresh tree, DOM, and descendant identity epoch", () => {
   const map = element(`<main @000000501 class="old" <p @000000502 "old"/> <i/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const tree = binding.tree;
   const root = raw_node(tree.node, []);
   const rootDom = mount(root);
@@ -112,7 +112,7 @@ check("durable install constructs a fresh tree, DOM, and descendant identity epo
 
 check("QUID-less durable install is fresh while preserving canonical identity absence", () => {
   const map = element(`<main class="old"/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const root = raw_node(binding.tree.node, []);
   assert.equal(root.$_meta?.["quid"], undefined);
   const replacement = element(`<main class="next" "text"/>`);
@@ -129,7 +129,7 @@ check("QUID-less durable install is fresh while preserving canonical identity ab
 check("replayed replace-root constructs one fresh projection transaction", () => {
   const source = element(`<main @000000503/>`);
   const target = element(`<main @000000503/>`);
-  const binding = hsonReflect(target);
+  const binding = hsonMirror(target);
   const root = raw_node(binding.tree.node, []);
   const replacement = element(`<main @000000503 title="replayed" <b/>/>`);
   const commit = source.install(replacement.capture());
@@ -145,7 +145,7 @@ check("replayed replace-root constructs one fresh projection transaction", () =>
 
 check("canonical-equivalent install performs no convergence", () => {
   const map = element(`<main @000000504 class="same"/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const root = binding.tree.node;
   const commit = map.install(map.capture());
   assert.equal(commit.changed, false);
@@ -157,7 +157,7 @@ check("canonical-equivalent install performs no convergence", () => {
 
 check("new epochs admit fresh tag and persisted root-QUID transitions", () => {
   const tagMap = element(`<main @000000505/>`);
-  const tagBinding = hsonReflect(tagMap);
+  const tagBinding = hsonMirror(tagMap);
   const tagRoot = tagBinding.tree.node;
   tagMap.install(element(`<article @000000505/>`).capture());
   assert.equal(tagBinding.status, "active");
@@ -166,7 +166,7 @@ check("new epochs admit fresh tag and persisted root-QUID transitions", () => {
   tagBinding.dispose();
 
   const quidMap = element(`<main @000000506/>`);
-  const quidBinding = hsonReflect(quidMap);
+  const quidBinding = hsonMirror(quidMap);
   const quidRoot = quidBinding.tree.node;
   quidMap.install(element(`<main @000000507/>`).capture());
   assert.equal(quidBinding.status, "active");
@@ -180,7 +180,7 @@ check("descendant QUID collision fails before projected mutation", () => {
   if (!is_Node(collisionRoot)) throw new Error("Expected collision element");
   create_livetree(collisionRoot);
   const map = element(`<main @000000509 <a/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const before = structuredClone(binding.tree.node);
   map.install(element(`<main @000000509 <aside @000000508/>/>`).capture());
   assert.equal(binding.status, "failed");
@@ -192,7 +192,7 @@ check("descendant QUID collision fails before projected mutation", () => {
 
 check("new-epoch mounted install does not reuse the old DOM convergence path", () => {
   const map = element(`<main @000000510 <a/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const oldTree = binding.tree;
   const rootDom = mount(oldTree.node);
   rootDom.failReplace = true;
@@ -209,7 +209,7 @@ check("new-epoch mounted install does not reuse the old DOM convergence path", (
 
 check("new-epoch reconstruction never invokes stale DOM convergence hooks", () => {
   const map = element(`<main @000000511 <a/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const rootDom = mount(binding.tree.node);
   let invoked = 0;
   rootDom.beforeReplace = () => {

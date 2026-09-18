@@ -9,7 +9,7 @@ import {
   hsonEcho,
   hsonLiveMap,
   hsonLocus,
-  hsonReflect,
+  hsonMirror,
   remove_interaction,
   replace_interaction,
   type HsonSchema,
@@ -208,7 +208,7 @@ await check("Locus staging authors hidden descriptors while direct managed write
 await check("local to local to authoritative reconciliation owns one exact subject", async () => {
   const map = map_fixture();
   add_interaction(map, local("progress", "a", HsonData.from(-0)));
-  const reflection = hsonReflect(map.lib("page"));
+  const reflection = hsonMirror(map.lib("page"));
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target();
   link_node_to_el(subject.node, target as unknown as Element);
@@ -253,7 +253,7 @@ await check("local to local to authoritative reconciliation owns one exact subje
 await check("once is retained per materialization and reset by replacement/reactivation", () => {
   const map = map_fixture();
   add_interaction(map, local("once", "a", HsonData.from(null), { once: true }));
-  const reflection = hsonReflect(map.lib("page"));
+  const reflection = hsonMirror(map.lib("page"));
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target(); link_node_to_el(subject.node, target as unknown as Element);
   let calls = 0;
@@ -280,7 +280,7 @@ await check("once is retained per materialization and reset by replacement/react
 await check("authoritative to local replacement uses no cross-capability fallback", async () => {
   const map = map_fixture();
   add_interaction(map, authoritative("reverse", "save", HsonData.from(1)));
-  const reflection = hsonReflect(map.lib("page"));
+  const reflection = hsonMirror(map.lib("page"));
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target(); link_node_to_el(subject.node, target as unknown as Element);
   let dispatched = 0, localCalls = 0;
@@ -297,7 +297,7 @@ await check("authoritative to local replacement uses no cross-capability fallbac
 
 await check("activation observation precedes its deterministic initialization transition", () => {
   const map = map_fixture();
-  const reflection = hsonReflect(map.lib("page"));
+  const reflection = hsonMirror(map.lib("page"));
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target(); link_node_to_el(subject.node, target as unknown as Element);
   set_interaction_activation_initialization_hook_for_tests(() => add_interaction(map, local("race", "run")));
@@ -317,7 +317,7 @@ await check("activation snapshots every caller-owned runtime option and cannot i
     listener: Object.freeze({ ...listener, event: "authoritative" }),
   });
 
-  const reflection = hsonReflect(map.lib("page"));
+  const reflection = hsonMirror(map.lib("page"));
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const firstTarget = new Target(); link_node_to_el(subject.node, firstTarget as unknown as Element);
 
@@ -372,7 +372,7 @@ await check("local capability snapshot is own-data-property-only and validates b
   add_interaction(map, local("prototype-only", "inherited"));
   add_interaction(map, local("prototype-to-string", "toString", HsonData.from(null), { event: "to-string" }));
   add_interaction(map, local("prototype-constructor", "constructor", HsonData.from(null), { event: "constructor" }));
-  const reflection = hsonReflect(map.lib("page"));
+  const reflection = hsonMirror(map.lib("page"));
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target(); link_node_to_el(subject.node, target as unknown as Element);
 
@@ -411,7 +411,7 @@ await check("local capability snapshot is own-data-property-only and validates b
 await check("an activation created without a dispatcher cannot gain one by option mutation", async () => {
   const map = map_fixture();
   add_interaction(map, authoritative("fixed-dispatch-absence", "save", HsonData.from(-0)));
-  const reflection = hsonReflect(map.lib("page"));
+  const reflection = hsonMirror(map.lib("page"));
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target(); link_node_to_el(subject.node, target as unknown as Element);
   let dispatched = 0;
@@ -435,7 +435,7 @@ await check("failed initialization rolls back installed listeners and every obse
   const map = map_fixture();
   add_interaction(map, local("rollback-a", "run"));
   add_interaction(map, local("rollback-b", "run"));
-  const reflection = hsonReflect(map.lib("page"));
+  const reflection = hsonMirror(map.lib("page"));
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target(); link_node_to_el(subject.node, target as unknown as Element);
   let imperative = 0;
@@ -482,7 +482,7 @@ await check("failed initialization rolls back installed listeners and every obse
 await check("concurrent activations own independent capabilities failures listeners and disposal", async () => {
   const map = map_fixture();
   add_interaction(map, local("concurrent", "run"));
-  const reflection = hsonReflect(map.lib("page"));
+  const reflection = hsonMirror(map.lib("page"));
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target(); link_node_to_el(subject.node, target as unknown as Element);
   let imperative = 0, a = 0, aReplacement = 0, b = 0, failureA = 0, failureB = 0;
@@ -515,7 +515,7 @@ await check("concurrent activations own independent capabilities failures listen
 await check("concurrent authoritative activations retain independent dispatchers", async () => {
   const map = map_fixture();
   add_interaction(map, authoritative("concurrent-authority", "save", HsonData.from(-0)));
-  const reflection = hsonReflect(map.lib("page"));
+  const reflection = hsonMirror(map.lib("page"));
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target(); link_node_to_el(subject.node, target as unknown as Element);
   let a = 0, b = 0;
@@ -532,7 +532,7 @@ await check("concurrent authoritative activations retain independent dispatchers
 await check("an ignored missing listener target remains eligible for later realization", () => {
   const map = map_fixture();
   add_interaction(map, local("late-target", "run", HsonData.from(null), { missingTarget: "ignore" }));
-  const reflection = hsonReflect(map.lib("page"));
+  const reflection = hsonMirror(map.lib("page"));
   let calls = 0;
   const dispose = activate_interactions({ map, tree: reflection.tree, local: { run: () => { calls += 1; } } });
   const subject = reflection.tree.find.must.byQuid(currentQ);
@@ -549,7 +549,7 @@ await check("exact subject replacement disposes A and materializes once on B", (
   add_interaction(map, local("replace-subject", "run"));
   const page = hsonLiveMap.fromHson(`<main <button @${currentQ}/>/>`);
   if (page.mode !== "document") throw new Error("Expected document LiveMap.");
-  const reflection = hsonReflect(page);
+  const reflection = hsonMirror(page);
   project_livetree(reflection.tree.node);
   const first = reflection.tree.find.must.byQuid(currentQ);
   const firstNode = first.node;
@@ -579,7 +579,7 @@ await check("snapshot restore makes current hidden descriptors reconciliation tr
   const aggregate = internal_livemap_aggregate_authority(map);
   const snapshot = aggregate.captureHosted();
   replace_interaction(map, local("recover", "b"));
-  const reflection = hsonReflect(map.lib("page"));
+  const reflection = hsonMirror(map.lib("page"));
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target(); link_node_to_el(subject.node, target as unknown as Element);
   let a = 0, b = 0;
@@ -599,7 +599,7 @@ await check("runtime failures are isolated and canonical descriptors remain", as
   add_interaction(map, authoritative("no-dispatch", "save", HsonData.from(1)));
   add_interaction(map, local("missing-target", "ok", HsonData.from(null), { target: "window" }));
   add_interaction(map, local("working", "ok"));
-  const reflection = hsonReflect(map.lib("page"));
+  const reflection = hsonMirror(map.lib("page"));
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target(); link_node_to_el(subject.node, target as unknown as Element);
   const phases: string[] = [];
@@ -621,7 +621,7 @@ await check("runtime failures are isolated and canonical descriptors remain", as
 await check("invocation rejection is isolated and disposal leaves imperative listeners intact", async () => {
   const map = map_fixture();
   add_interaction(map, authoritative("reject", "save", HsonData.from(1)));
-  const reflection = hsonReflect(map.lib("page"));
+  const reflection = hsonMirror(map.lib("page"));
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target(); link_node_to_el(subject.node, target as unknown as Element);
   let imperative = 0;
@@ -663,7 +663,7 @@ await check("public Echo dispatcher preserves exact payload through configured L
   const echo = hsonEcho.create({ socket: pair.client, map: echoMap, recovery: { logicalMapId: locus.logicalMapId } });
   await activate_echo(echo);
   assert.throws(() => add_interaction(echoMap, local("replica-write", "save")), /exclusive Locus authority/i);
-  const reflection = hsonReflect(echoMap.lib("page"));
+  const reflection = hsonMirror(echoMap.lib("page"));
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const target = new Target(); link_node_to_el(subject.node, target as unknown as Element);
   let localCalls = 0;

@@ -51,6 +51,24 @@ check("shadowed aggregate rejected", root + 'function f(hson: any) { hson.fromHs
 check("mutable let source rejected", root + 'let source = `<a/>`; hson.fromHson(source);', 0);
 check("mutable var source rejected", root + 'var source = `<a/>`; hson.fromHson(source);', 0);
 check("interpolated ordinary template deferred", root + 'hson.fromHson(`<a ${value}>`);', 0);
+{
+  const text = root + 'hson.liveMap.fromHson(`<p "${value}"/>`);';
+  const found = discover_static_from_hson_sources("/project/source.ts", text);
+  assert.equal(found.sources.length, 0);
+  assert.equal(found.interpolated.length, 1);
+  assert.equal(found.interpolated[0]?.boundary, "livemap");
+  assert.equal(text.slice(found.interpolated[0]!.bodyRange.start, found.interpolated[0]!.bodyRange.end), '<p "${value}"/>');
+  assert.deepEqual(found.interpolated[0]?.substitutionRanges.map(range => text.slice(range.start, range.end)), ["${value}"]);
+  console.log(`ok ${++checks} - interpolated ordinary template retains highlighting-only ranges`);
+}
+{
+  const text = root + 'hson.liveMap.fromHson(`<p "\\n${value}"/>`);';
+  const found = discover_static_from_hson_sources("/project/source.ts", text);
+  assert.equal(found.sources.length, 0);
+  assert.equal(found.interpolated.length, 0);
+  assert.equal(found.dynamicCallRanges.length, 1);
+  console.log(`ok ${++checks} - cooked interpolated template remains conservatively unhighlighted`);
+}
 check("concatenation deferred", root + 'hson.fromHson("<a" + "/>");', 0);
 check("helper return deferred", root + 'hson.fromHson(makeSource());', 0);
 check("imported source deferred", root + 'import { source } from "./data.js"; hson.fromHson(source);', 0);

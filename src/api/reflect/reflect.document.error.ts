@@ -24,7 +24,7 @@ export const DOCUMENT_REFLECT_ROOT_REPLACEMENT_FAILED_ERROR_CODE = "DOCUMENT_REF
 export const DOCUMENT_REFLECT_SNAPSHOT_REVISION_MISMATCH_ERROR_CODE = "DOCUMENT_REFLECT_SNAPSHOT_REVISION_MISMATCH" as const;
 export const DOCUMENT_REFLECT_SNAPSHOT_CAPTURE_FAILED_ERROR_CODE = "DOCUMENT_REFLECT_SNAPSHOT_CAPTURE_FAILED" as const;
 
-export type DocumentReflectErrorCode =
+export type DocumentMirrorErrorCode =
   | typeof DOCUMENT_REFLECT_REVISION_GAP_ERROR_CODE
   | typeof DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE
   | typeof DOCUMENT_REFLECT_TARGET_MISSING_ERROR_CODE
@@ -52,13 +52,13 @@ export type DocumentReflectErrorCode =
   | typeof DOCUMENT_REFLECT_SNAPSHOT_CAPTURE_FAILED_ERROR_CODE;
 
 /** Internal classified failure for the experimental document projection proof. */
-export class DocumentReflectError extends Error {
+export class DocumentMirrorError extends Error {
   public constructor(
-    public readonly code: DocumentReflectErrorCode,
+    public readonly code: DocumentMirrorErrorCode,
     message: string,
     public override readonly cause?: unknown,
   ) {
     super(message, cause === undefined ? undefined : { cause });
-    this.name = "DocumentReflectError";
+    this.name = "DocumentMirrorError";
   }
 }

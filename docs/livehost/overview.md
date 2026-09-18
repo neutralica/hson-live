@@ -1,7 +1,7 @@
 # LiveHost architecture and runtime boundary
 
 This is the current architectural reference for LiveMap, Locus, applications,
-LiveHost, and the Node runtime.
+LiveHost, and the LiveHost Node runtime.
 
 ## Ownership and cardinality
 
@@ -13,11 +13,11 @@ LiveHost, and the Node runtime.
 | Reflect | LiveTree ↔ LiveMap bridge; delegates supported hosted authoring through Echo without owning transport policy | One binding |
 | Application | Domain meaning, custom actions and side effects, authorization policy, event semantics, topology, acquisition-key meaning, retention policy, and cross-Locus workflows | Zero or more Loci |
 | LiveHost | Application registration and dispatch, generic application context, principal evidence, readiness/disposal, runtime adaptation boundaries, and the optional bounded Locus registry | Zero or more applications |
-| Node LiveHost | HTTP and WebSocket ingress, Web Request/Response adaptation, origin and proxy policy, limits, heartbeat/backpressure, `/healthz`, and network/process shutdown | One concrete runtime implementation |
+| LiveHost Node | HTTP and WebSocket ingress, Web Request/Response adaptation, origin and proxy policy, limits, heartbeat/backpressure, `/healthz`, and network/process shutdown | One concrete runtime implementation |
 
 LiveMap is state. Locus is authority over one state domain. An application owns
-meaning and topology. LiveHost hosts applications. Node supplies the physical
-runtime adapter.
+meaning and topology. LiveHost hosts applications. LiveHost Node is the current
+concrete Node runtime for LiveHost.
 
 For hosted documents, the client path is
 `LiveTree → Reflect → Echo → Locus → authoritative LiveMap`, followed by
@@ -79,10 +79,10 @@ the original Web `Request`, including its query, plus a
 `LiveHostApplicationContext`, and returns a Web `Response`. Response bodies may
 stream.
 
-The Node runtime converts Node ingress to a Web `Request` and streams the Web
-`Response` incrementally. It preserves response-header semantics, including
-repeated `Set-Cookie`, and owns physical body errors, disconnects, and
-backpressure. Those Node mechanics are not generic LiveHost API.
+The LiveHost Node runtime converts Node ingress to a Web `Request` and streams
+the Web `Response` incrementally. It preserves response-header semantics,
+including repeated `Set-Cookie`, and owns physical body errors, disconnects,
+and backpressure. Those Node mechanics are not generic LiveHost API.
 
 ## SSR delivery relationship
 
@@ -110,15 +110,15 @@ receives only `string | Uint8Array`, reports closure, and can close the
 connection. It is not a Node WebSocket object, a Locus protocol, binary Hson,
 or a general socket framework.
 
-Node adapts physical WebSocket transport to this interface. Applications own
-connection meaning and may choose to connect one to a Locus.
+LiveHost Node adapts physical WebSocket transport to this interface.
+Applications own connection meaning and may choose to connect one to a Locus.
 
 ## Authentication and authorization
 
 The layering is:
 
 ```text
-Node/runtime ingress -> establishes authentication and security evidence
+LiveHost Node ingress -> establishes authentication and security evidence
 LiveHost             -> transports LiveHostPrincipal in generic context
 application          -> defines domain authorization policy
 Locus                -> enforces application-supplied policy for Locus-origin actions

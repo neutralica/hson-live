@@ -457,22 +457,31 @@ retention, and cross-Locus workflows.
 
 ## LiveHost
 
-LiveHost is the application/runtime boundary. It registers applications,
-dispatches exact request and connection routes, carries generic principal
-evidence, exposes readiness and disposal, and optionally furnishes a bounded
-Locus registry. An application may use zero or more Loci.
+LiveHost is the generic hosting boundary for Hson applications. It registers
+applications, dispatches HTTP requests and long-lived connections to exact
+routes, carries principal/admission context, exposes readiness and lifecycle
+control, and can host applications with or without Locus authority.
 
 ```text
-zero-Locus:     request -> LiveHost -> application -> Response
-optional state: request/connection -> LiveHost -> application -> selected Locus
+ordinary application:  request -> LiveHost -> application -> Response
+hosted authority:      request/connection -> LiveHost -> application -> Locus
 ```
 
-Applications interpret domain selectors and own Locus topology. LiveHost does
-not treat `?locus=` as a universal topology system.
+Applications remain responsible for their own routes, domain topology,
+authority selection, actions, authorization policy, persistence, SSR, and
+response content. LiveHost supplies the common runtime machinery around those
+choices rather than defining application semantics itself.
 
-Node LiveHost is the current concrete runtime. It owns HTTP ingress, WebSocket
-transport, Web Request/Response adaptation, origin and proxy policy, resource
-limits, heartbeat/backpressure, `/healthz`, and network/process shutdown.
+The current **LiveHost Node runtime** provides HTTP and WebSocket ingress, Web
+`Request`/`Response` adaptation, origin and proxy policy, resource limits,
+heartbeat and backpressure handling, health reporting, graceful shutdown, and
+optional bounded Locus residency through `create_livehost_locus_registry()`.
+
+LiveHost is hosting/runtime infrastructure rather than a required part of
+LiveMap, LiveTree, Reflect, or Locus composition. The same application logic can
+therefore be hosted locally under LiveHost Node or adapted to other runtimes
+without making the host itself the owner of canonical state.
+
 See [the current architecture and runtime boundary](docs/livehost/overview.md).
 
 ### HTTP bootstrap and WebSocket continuation
@@ -581,7 +590,7 @@ Current limitations include:
 
 Use `fromUntrustedHtml` for untrusted HTML input. `fromTrustedHtml` deliberately bypasses sanitization and must only receive trusted source.
 
-The official Node host includes explicit production policy surfaces for origins, authentication, authorization, proxy trust, connection limits, heartbeat, and backpressure. Applications remain responsible for their actual identity and access policies.
+The LiveHost Node runtime includes explicit production policy surfaces for origins, authentication, authorization, proxy trust, connection limits, heartbeat, and backpressure. Applications remain responsible for their actual identity and access policies.
 
 Evaluate the current limitations and API stability before using hson-live for security-critical or public production systems.
 
@@ -593,13 +602,13 @@ Evaluate the current limitations and API stability before using hson-live for se
 npm install hson-live
 ```
 
-The official Node hosting entrypoint currently targets:
+The LiveHost Node entrypoint currently targets:
 
 ```text
 Node >=22.12.0 <25
 ```
 
-Browser and Worker-facing parts of the package do not import the Node host.
+Browser and Worker-facing parts of the package do not import LiveHost Node.
 
 ---
 
@@ -671,7 +680,7 @@ error-code contracts are owned by their subsystem subpaths.
 The historical `hson-live/types` barrel has been removed. Import public types
 from their owner: Hson graph/value types from `hson-live/hson`, and subsystem
 types from `hson-live/transform`, `hson-live/livemap`, `hson-live/livetree`,
-`hson-live/reflect`, `hson-live/echo`, `hson-live/locus`, `hson-live/ssr`, or
+`hson-live/mirror`, `hson-live/echo`, `hson-live/locus`, `hson-live/ssr`, or
 `hson-live/livehost`.
 
 Locus’s environment-neutral network surface is available from:
@@ -759,7 +768,7 @@ The maintained current-facing references are:
   paired bootstrap state, and strict canonical base64url transport;
 - the [Locus API](docs/locus/api-locus.md) and
   [authority overview](docs/locus/overview.md);
-- the [LiveHost and Node runtime boundary](docs/livehost/overview.md); and
+- the [LiveHost and LiveHost Node runtime boundary](docs/livehost/overview.md); and
 - supporting contracts, CSS/animation references, diagnostics, and historical
   release/design material under their labeled directories.
 

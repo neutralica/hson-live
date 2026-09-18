@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import * as publicApi from "../src/index.ts";
-import { hsonReflect } from "../src/api/reflect/reflect.facade.ts";
+import { hsonMirror } from "../src/api/reflect/reflect.facade.ts";
 import { project_livetree } from "../src/api/livetree/creation/project-live-tree.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import {
@@ -616,7 +616,7 @@ check("public entrypoints expose no internal insertion-boundary representation",
 check("Reflection consumes first carrier materialization through existing commit handling", () => {
   install_fake_document();
   const map = element(`<main/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const rootDom = project_livetree(binding.tree.node) as unknown as FakeElement;
   const beforeProjection = structuredClone(binding.tree.node);
   const observations: unknown[] = [];

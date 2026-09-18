@@ -5,13 +5,13 @@ import { validate_document_path } from "../src/api/livemap/index.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
-import { hsonReflect } from "../src/api/reflect/reflect.facade.ts";
+import { hsonMirror } from "../src/api/reflect/reflect.facade.ts";
 import {
   DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
   DOCUMENT_REFLECT_DELEGATION_UNSUPPORTED_ERROR_CODE,
   DOCUMENT_REFLECT_STRUCTURAL_UPDATE_FAILED_ERROR_CODE,
   DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
-  DocumentReflectError,
+  DocumentMirrorError,
 } from "../src/api/reflect/reflect.document.error.ts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import { project_livetree } from "../src/api/livetree/creation/project-live-tree.ts";
@@ -85,7 +85,7 @@ function mount(root: HsonNode): FakeElement {
 
 check("nested raw insertion projects elements, QUID-less nodes, wrappers, and text", () => {
   const map = element(`<main @000000401 <a @000000402/> <b/> "tail"/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const rootDom = mount(binding.tree.node);
   map.document.content.insert(path(0), 1, projected_element(`<c @000000403 "inside"/>`));
   map.document.content.insert(path(0), 2, projected_element(`<d/>`));
@@ -106,7 +106,7 @@ check("nested raw insertion projects elements, QUID-less nodes, wrappers, and te
 
 check("remove unregisters deleted content and reindexes shifted QUID-less paths", () => {
   const map = element(`<main @000000404 <a/> <b/> <c/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   mount(binding.tree.node);
   const removed = raw_node(binding.tree.node, [0, 1]);
   const shifted = raw_node(binding.tree.node, [0, 2]);
@@ -121,7 +121,7 @@ check("remove unregisters deleted content and reindexes shifted QUID-less paths"
 
 check("forward and backward moves preserve projected node, DOM, and local identity", () => {
   const map = element(`<main @000000405 <a/> <b @000000406/> <c/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   mount(binding.tree.node);
   const moved = raw_node(binding.tree.node, [0, 1]);
   const movedDom = get_el_for_node(moved) as unknown as FakeElement;
@@ -141,7 +141,7 @@ check("forward and backward moves preserve projected node, DOM, and local identi
 
 check("replace preserves compatible same-QUID roots and replaces incompatible roots", () => {
   const map = element(`<main @000000407 <b @000000408 "old"/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   mount(binding.tree.node);
   const original = raw_node(binding.tree.node, [0, 0]);
   const originalDom = get_el_for_node(original);
@@ -160,7 +160,7 @@ check("replace preserves compatible same-QUID roots and replaces incompatible ro
 
 check("replace projects text-wrapper/node transitions and primitive leaves at exact raw slots", () => {
   const map = element(`<main @000000413 "old"/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const rootDom = mount(binding.tree.node);
   map.document.content.replace(path(0), 0, projected_element(`<span/>`));
   assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "span");
@@ -177,7 +177,7 @@ check("replace projects text-wrapper/node transitions and primitive leaves at ex
 check("foreign global QUID ownership rejects insertion before projected mutation", () => {
   create_livetree(projected_element(`<aside @000000414/>`));
   const map = element(`<main @000000415 <a/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const before = structuredClone(binding.tree.node);
   map.document.content.insert(path(0), 1, projected_element(`<aside @000000414/>`));
   assert.equal(binding.status, "failed");
@@ -189,7 +189,7 @@ check("foreign global QUID ownership rejects insertion before projected mutation
 
 check("mixed sequential replay projects structural and attrs operations once", () => {
   const map = element(`<main @000000409 <a/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   mount(binding.tree.node);
   const observations: unknown[] = [];
   map.commits.observe((event) => observations.push(event));
@@ -214,7 +214,7 @@ check("mixed sequential replay projects structural and attrs operations once", (
 
 check("bound public structural and text APIs reject until disposal", () => {
   const map = element(`<main @000000410 <a/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const bound = create_livetree(raw_node(binding.tree.node, [])).adoptRoots(binding.tree.hostRootNode());
   const branch = create_livetree(projected_element(`<b/>`));
   const before = structuredClone(binding.tree.node);
@@ -224,7 +224,7 @@ check("bound public structural and text APIs reject until disposal", () => {
     () => bound.detachContents(),
     () => bound.text.overwrite("blocked"),
   ]) {
-    assert.throws(mutation, (cause) => cause instanceof DocumentReflectError
+    assert.throws(mutation, (cause) => cause instanceof DocumentMirrorError
       && (cause.code === DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE
         || cause.code === DOCUMENT_REFLECT_DELEGATION_UNSUPPORTED_ERROR_CODE));
   }
@@ -236,7 +236,7 @@ check("bound public structural and text APIs reject until disposal", () => {
 
 check("structural DOM failure preserves canonical commit and fails observer-side", () => {
   const map = element(`<main @000000411 <a/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const rootDom = mount(binding.tree.node);
   rootDom.failReplace = true;
   const commit = map.document.content.insert(path(0), 1, projected_element(`<b/>`));
@@ -247,17 +247,17 @@ check("structural DOM failure preserves canonical commit and fails observer-side
   assert.equal(binding.sourceRevision, 0);
   const reachableIncoming = raw_node(binding.tree.node, [0, 1]);
   const incomingTree = create_livetree(reachableIncoming).adoptRoots(binding.tree.hostRootNode());
-  assert.throws(() => incomingTree.attrs.set("bypass", "blocked"), DocumentReflectError);
+  assert.throws(() => incomingTree.attrs.set("bypass", "blocked"), DocumentMirrorError);
   assert.equal(reachableIncoming.$_attrs?.bypass, undefined);
   assert.equal(map.document.attrs.get(path(0, 1), "bypass"), undefined);
   const rootElementTree = create_livetree(raw_node(binding.tree.node, [])).adoptRoots(binding.tree.hostRootNode());
-  assert.throws(() => rootElementTree.empty(), DocumentReflectError);
+  assert.throws(() => rootElementTree.empty(), DocumentMirrorError);
   binding.dispose();
 });
 
 check("failed structural replacement disposes the disconnected old owned subtree", () => {
   const map = element(`<main @000000418 <a @000000419/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const rootDom = mount(binding.tree.node);
   const displaced = raw_node(binding.tree.node, [0, 0]);
   const displacedTree = create_livetree(displaced).adoptRoots(binding.tree.hostRootNode());
@@ -291,7 +291,7 @@ check("initial and later structured style realization use one serializer", () =>
 
 check("new-epoch snapshot restore reconstructs an incompatible exact root", () => {
   const map = element(`<main @000000416/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const replacement = element(`<article @000000417/>`);
   map.restore(replacement.capture());
   assert.equal(projected_element_from_map(map).$_tag, "article");
@@ -303,7 +303,7 @@ check("new-epoch snapshot restore reconstructs an incompatible exact root", () =
 
 check("multi-node documents move top-level identity under one reflected root", () => {
   const map = element(`<header @000000421/> <main @000000422/> <footer/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const moved = binding.tree.node.$_content[0];
   if (!is_Node(moved)) throw new Error("Expected top-level reflected element");
 
@@ -328,7 +328,7 @@ check("multi-node documents move top-level identity under one reflected root", (
 
 check("disposal stops projection and restores unbound structural behavior", () => {
   const map = element(`<main @000000412 <a/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const retained = binding.tree.node;
   binding.dispose();
   map.document.content.insert(path(0), 1, projected_element(`<b/>`));

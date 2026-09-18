@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
-import { Hson, hsonLiveMap, hsonReflect, type HsonSchema } from "../src/index.ts";
+import { Hson, hsonLiveMap, hsonMirror, type HsonSchema } from "../src/index.ts";
 import { validate_document_path } from "../src/api/livemap/index.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
@@ -256,7 +256,7 @@ await check("aggregate snapshot recovery restores a retained mirror in place and
   const stale = make_livemap_hosted_mirror_from_snapshot_internal(seed);
   const stateHandle = data_library(stale, "state").at(["theme"]);
   const pageHandle = page_library(stale).at([]);
-  const reflected = hsonReflect(page_library(stale));
+  const reflected = hsonMirror(page_library(stale));
   await server.mutate((draft) => {
     data(draft, "state").at(["theme"]).set("dark");
     document(draft, "page").graph(insert_item());
@@ -279,7 +279,7 @@ await check("a state-only aggregate replacement advances selected page Reflect w
   const seed = internal_livemap_aggregate_authority(map).captureHosted();
   const server = create_locus_hosted_aggregate_socket_internal({ map, maxHistoryBytes: 1 });
   const stale = make_livemap_hosted_mirror_from_snapshot_internal(seed);
-  const reflected = hsonReflect(page_library(stale));
+  const reflected = hsonMirror(page_library(stale));
   await server.mutate((draft) => data(draft, "state").at(["theme"]).set("dark"));
   const attached = await attach(server, { map: stale });
   assert.equal(attached.recovery.outcome, "snapshot");

@@ -3,9 +3,9 @@
 Reflect exposes one deliberately narrow collection surface:
 
 ```ts
-import { hsonReflect } from "hson-live/reflect";
+import { hsonMirror } from "hson-live/mirror";
 
-hsonReflect.collection(options);
+hsonMirror.collection(options);
 ```
 
 It maintains a dedicated LiveTree host from an array-valued LiveMap path

@@ -6,7 +6,7 @@ import * as map from "hson-live/livemap";
 import * as transform from "hson-live/transform";
 import { hsonLiveTree } from "hson-live/livetree";
 import { hsonLocus } from "hson-live/locus";
-import { hsonReflect } from "hson-live/reflect";
+import { hsonMirror } from "hson-live/mirror";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -95,8 +95,8 @@ check("root facade exports preserve subsystem identities", () => {
   assert.equal(root.hsonLiveTree, hsonLiveTree);
   assert.equal(root.hsonLocus, root.hson.locus);
   assert.equal(root.hsonLocus, hsonLocus);
-  assert.equal(root.hsonReflect, root.hson.reflect);
-  assert.equal(root.hsonReflect, hsonReflect);
+  assert.equal(root.hsonMirror, root.hson.reflect);
+  assert.equal(root.hsonMirror, hsonMirror);
 });
 
 testEvents.terminal("pass");

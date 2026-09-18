@@ -14,7 +14,7 @@ import { create_echo, type Echo } from "hson-live/echo";
 import { Hson } from "hson-live/hson";
 import { hsonLiveMap, type DocumentLiveMap, type LiveMapLibraries } from "hson-live/livemap";
 import { create_locus, type DataLocusOptions, type LocusSocketLike } from "hson-live/locus";
-import { reflect_document } from "hson-live/reflect";
+import { reflect_document } from "hson-live/mirror";
 import { decode_ssr_bootstrap, encode_ssr_bootstrap, render_document, render_hosted_document } from "hson-live/ssr";
 import { hsonTransform, type TransformOutput } from "hson-live/transform";
 import { hsonLiveTree, type ContentManager } from "hson-live/livetree";

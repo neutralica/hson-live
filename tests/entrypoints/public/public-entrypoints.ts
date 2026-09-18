@@ -475,11 +475,18 @@ import type {
   LiveHostRequestRoute,
 } from "hson-live/livehost";
 import {
-  hsonReflect as reflectSubpath,
+  DocumentMirrorError,
+  hsonMirror as mirrorSubpath,
   type CollectionReflect,
-  type DocumentReflect,
+  type DocumentMirror,
+  type DocumentMirrorErrorCode,
+  type DocumentMirrorStatus,
   type Reflect as ReflectFacade,
-} from "hson-live/reflect";
+} from "hson-live/mirror";
+// @ts-expect-error Pre-epoch Mirror rename removed the old error class.
+import { DocumentReflectError as RemovedDocumentReflectError } from "hson-live/mirror";
+// @ts-expect-error Pre-epoch Mirror rename removed the old status type.
+import type { DocumentReflectStatus as RemovedDocumentReflectStatus } from "hson-live/mirror";
 // @ts-expect-error LiveMap path-handle pseudo-QUID helpers were removed.
 import { get_livemap_quid } from "hson-live";
 // @ts-expect-error LiveMap path-handle pseudo-QUID helpers were removed.
@@ -498,7 +505,8 @@ void transformSubpath;
 void mapSubpath;
 void treeSubpath;
 void hostSubpath;
-void reflectSubpath;
+void mirrorSubpath;
+void DocumentMirrorError;
 void LiveTree;
 void TreeSelector;
 void CssRuntimeManager;
@@ -588,14 +596,20 @@ if (publicElementCandidate.mode === "document") {
   void sameSchema;
 }
 
-const reflectFacade: ReflectFacade = reflectSubpath;
+const reflectFacade: ReflectFacade = mirrorSubpath;
 const umbrellaReflect: ReflectFacade = hson.reflect;
-declare const documentReflect: DocumentReflect;
+declare const documentReflect: DocumentMirror;
+declare const documentMirrorStatus: DocumentMirrorStatus;
+declare const documentMirrorErrorCode: DocumentMirrorErrorCode;
 declare const collectionReflect: CollectionReflect;
 void reflectFacade;
 void umbrellaReflect;
 void documentReflect;
+void documentMirrorStatus;
+void documentMirrorErrorCode;
 void collectionReflect;
+void RemovedDocumentReflectError;
+void (0 as unknown as RemovedDocumentReflectStatus);
 
 type Equal<Left, Right> =
   (<Value>() => Value extends Left ? 1 : 2) extends

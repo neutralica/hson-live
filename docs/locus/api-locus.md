@@ -105,7 +105,7 @@ There is still one revision cursor and one ordered commit stream, not a stream
 per Library. The normal `hsonEcho.create({ map, socket, recovery })` route
 has one complete same-topology mirror. Connection, session establishment, and
 recovery are explicit separate operations. Named document Libraries work with
-`hsonReflect` across live updates and in-place replacement recovery.
+`hsonMirror` across live updates and in-place replacement recovery.
 
 Fixed multi-library construction reuses the ordinary action authority options:
 `schema.actions`, `authorizeAction`, `sessionId`, `sessions`, and

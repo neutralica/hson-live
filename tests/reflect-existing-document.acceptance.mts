@@ -19,7 +19,7 @@ import {
   DOCUMENT_REFLECT_REVISION_GAP_ERROR_CODE,
   DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
   DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE,
-  DocumentReflectError,
+  DocumentMirrorError,
 } from "../src/api/reflect/reflect.document.error.ts";
 import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
 import type { LiveTree } from "../src/api/livetree/livetree.ts";
@@ -68,7 +68,7 @@ function admitted(sourceText: string): { map: DocumentLiveMap; tree: LiveTree; r
 }
 
 function expect_code(code: string, run: () => unknown): void {
-  assert.throws(run, (error: unknown) => error instanceof DocumentReflectError && error.code === code);
+  assert.throws(run, (error: unknown) => error instanceof DocumentMirrorError && error.code === code);
 }
 
 check("exact carrier and QUID state binds without initial DOM or graph writes", () => {

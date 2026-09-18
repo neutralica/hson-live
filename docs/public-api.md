@@ -109,7 +109,7 @@ tests.
 
 ```ts
 import { hsonLiveMap } from "hson-live/livemap";
-import { reflect_document } from "hson-live/reflect";
+import { reflect_document } from "hson-live/mirror";
 import { hsonTransform } from "hson-live/transform";
 
 const map = hsonLiveMap.fromNode(hsonTransform.fromTrustedHtml("<main/>").toNode());

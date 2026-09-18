@@ -32,6 +32,76 @@ async function run(): Promise<void> {
 
   check("official narrow /hson binding is a grammar-backed island", () => assert.ok(nameToken(source('<thing 1>'))));
   check("official root binding is a grammar-backed island", () => assert.ok(nameToken(source('<thing 1>', "Hson", "Hson", "hson-live"))));
+  check("canonical LiveMap fromHson literals are grammar-backed islands", () => {
+    const prefix = 'import { hson, hsonLiveMap } from "hson-live";\n';
+    for (const expression of [
+      'hson.liveMap.fromHson(`<main <section <p "hello"/>/>/>`)',
+      'hson.liveMap.fromHson("<main/>")',
+      'hson.liveMap.fromHson("<main <p \\"hello\\"/>/>")',
+      "hson.liveMap.fromHson('<main/>')",
+      'hsonLiveMap.fromHson(`<main/>`)',
+      'hsonLiveMap.fromHson("<main/>")',
+    ]) {
+      const text = prefix + expression;
+      assert.ok(tokens(text).some(token => text.slice(token.range.start, token.range.end) === "main"
+        && token.scopes.includes("entity.name.type.hson")), expression);
+      if (expression.includes("hello")) {
+        assert.ok(tokens(text).some(token => text.slice(token.range.start, token.range.end) === "hello"
+          && token.scopes.includes("string.quoted.double.hson")), expression);
+      }
+    }
+  });
+  check("all current direct string fromHson facades reuse the Hson grammar", () => {
+    const text = 'import { hson, hsonTransform, hsonLiveMap, hsonLiveTree } from "hson-live";\n'
+      + 'hson.fromHson("<rootShortcut/>"); hson.transform.fromHson("<rootTransform/>"); '
+      + 'hsonTransform.fromHson("<transform/>"); hsonLiveMap.fromHson("<map/>"); hsonLiveTree.fromHson("<tree/>");';
+    for (const name of ["rootShortcut", "rootTransform", "transform", "map", "tree"]) {
+      assert.ok(tokens(text).some(token => text.slice(token.range.start, token.range.end) === name
+        && token.scopes.includes("entity.name.type.hson")), name);
+    }
+  });
+  check("renamed official fromHson imports retain binding-aware highlighting", () => {
+    const text = 'import { hsonLiveMap as maps } from "hson-live/livemap"; maps.fromHson("<renamed/>");';
+    assert.ok(tokens(text).some(token => text.slice(token.range.start, token.range.end) === "renamed"
+      && token.scopes.includes("entity.name.type.hson")));
+  });
+  check("fromHson interpolation alternates Hson literals with an untouched TypeScript hole", () => {
+    const text = 'import { hson } from "hson-live"; hson.liveMap.fromHson(`<p "${value}"/>`);';
+    const start = text.indexOf("${"), end = text.indexOf("}", start) + 1;
+    const emitted = tokens(text);
+    assert.ok(emitted.some(token => text.slice(token.range.start, token.range.end) === "p"
+      && token.scopes.includes("entity.name.type.hson")));
+    assert.ok(emitted.some(token => token.range.start >= end && text.slice(token.range.start, token.range.end).includes('"')));
+    assert.ok(emitted.every(token => token.range.end <= start || token.range.start >= end));
+  });
+  check("cooked fromHson interpolation is conservatively left to TypeScript", () => {
+    const text = 'import { hson } from "hson-live"; hson.liveMap.fromHson(`<p "\\n${value}"/>`);';
+    assert.deepEqual(tokens(text), []);
+  });
+  check("unrelated and similarly named fromHson bindings remain ordinary host strings", () => {
+    const cases = [
+      'const someUnrelatedObject={fromHson(value:string){return value;}}; someUnrelatedObject.fromHson("<fake/>");',
+      'const hsonLiveMap={fromHson(value:string){return value;}}; hsonLiveMap.fromHson("<local/>");',
+      'import { hsonLiveMap } from "other"; hsonLiveMap.fromHson("<wrongPackage/>");',
+      'import { hson } from "hson-live"; function f(hson:any){ hson.liveMap.fromHson("<shadowed/>"); }',
+      'const ordinary="<ordinary/>";',
+    ];
+    for (const text of cases) assert.deepEqual(tokens(text), [], text);
+  });
+  check("fromHson highlighting follows the existing ts/tsx-only host policy", () => {
+    const text = 'import { hson } from "hson-live"; hson.liveMap.fromHson("<thing/>");';
+    assert.ok(nameToken('import { Hson } from "hson-live"; Hson`<thing/>`;'));
+    assert.ok(tokens(text, "/workspace/a.tsx").length > 0);
+    for (const extension of ["mts", "cts", "js", "jsx", "mjs", "cjs"]) {
+      assert.deepEqual(tokens(text, `/workspace/a.${extension}`), []);
+    }
+  });
+  check("fromHson highlighting leaves current diagnostic behavior unchanged", () => {
+    const prefix = 'import { hson } from "hson-live"; ';
+    assert.deepEqual(diagnose(prefix + 'hson.liveMap.fromHson("<valid/>");'), []);
+    assert.equal(diagnose(prefix + 'hson.liveMap.fromHson("+1");').length, 1);
+    assert.deepEqual(diagnose('const fake={fromHson(x:string){return x;}}; fake.fromHson("+1");'), []);
+  });
   check("renamed official import highlights and diagnoses", () => {
     assert.ok(nameToken(source('<thing 1>', "Hson as author", "author")));
     assert.equal(diagnose(source('+1', "Hson as author", "author")).length, 1);
@@ -256,7 +326,7 @@ async function run(): Promise<void> {
         .map(color => ({ dark: color, light: color, highContrast: color, highContrastLight: color })),
     ]);
   });
-  check("interpolation preserves literal highlighting and excludes expressions", () => {
+  check("Hson tag interpolation preserves literal highlighting and excludes expressions", () => {
     const text = source('<thing ${dangerous()} other 1>'), start = text.indexOf('${'), end = text.indexOf('}', start)+1;
     assert.ok(nameToken(text));
     assert.ok(tokens(text).every(token => token.range.end <= start || token.range.start >= end));

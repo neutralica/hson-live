@@ -8,7 +8,7 @@ import {
   hsonEcho,
   hsonLiveMap,
   hsonLocus,
-  hsonReflect,
+  hsonMirror,
   type HsonSchema,
   type InteractionDescriptor,
   type InteractionListener,
@@ -72,7 +72,7 @@ echo.connect();
 await echo.session.create();
 await echo.recovery.recover();
 
-const reflection = hsonReflect(replicaMap.lib("page"));
+const reflection = hsonMirror(replicaMap.lib("page"));
 const subject = reflection.tree.find.must.byQuid(QUID);
 const target = new EventTarget();
 link_node_to_el(subject.node, target as unknown as Element);

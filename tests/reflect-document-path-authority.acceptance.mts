@@ -30,7 +30,7 @@ export const HSON_LIVE_TEST_METADATA = Object.freeze({
 
 const testEvents = create_test_event_emitter("reflect.document-path-authority");
 let checks = 0;
-const hsonReflect = (map: ReturnType<typeof element>) =>
+const hsonMirror = (map: ReturnType<typeof element>) =>
   _reflect_document_for_runtime_test(_create_livetree_runtime_test_handle(), map);
 
 function check(name: string, run: () => void): void {
@@ -81,7 +81,7 @@ const Q3 = "000000703";
 
 check("attribute operations route to the projected path", () => {
   const map = element(`<main <a/> <b/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   map.document.attrs.set(path(0, 1), "route", "path");
   assert.equal(raw_node(binding.tree.node, [0, 1]).$_attrs?.route, "path");
   binding.dispose();
@@ -89,7 +89,7 @@ check("attribute operations route to the projected path", () => {
 
 check("content insertion routes to the projected parent path", () => {
   const map = element(`<main <a/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   map.document.content.insert(path(0), 0, projected_element(`<b/>`));
   assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "b");
   binding.dispose();
@@ -97,7 +97,7 @@ check("content insertion routes to the projected parent path", () => {
 
 check("content replacement routes to the projected slot path", () => {
   const map = element(`<main <a/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   map.document.content.replace(path(0), 0, projected_element(`<b/>`));
   assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "b");
   binding.dispose();
@@ -105,7 +105,7 @@ check("content replacement routes to the projected slot path", () => {
 
 check("content removal routes to the projected slot path", () => {
   const map = element(`<main <a/> <b/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   map.document.content.remove(path(0), 0);
   assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "b");
   binding.dispose();
@@ -113,7 +113,7 @@ check("content removal routes to the projected slot path", () => {
 
 check("forward movement routes by canonical parent path", () => {
   const map = element(`<main <a/> <b/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const a = raw_node(binding.tree.node, [0, 0]);
   map.document.content.move(path(0), 0, 1);
   assert.equal(raw_node(binding.tree.node, [0, 1]), a);
@@ -122,7 +122,7 @@ check("forward movement routes by canonical parent path", () => {
 
 check("backward movement routes by canonical parent path", () => {
   const map = element(`<main <a/> <b/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const b = raw_node(binding.tree.node, [0, 1]);
   map.document.content.move(path(0), 1, 0);
   assert.equal(raw_node(binding.tree.node, [0, 0]), b);
@@ -131,7 +131,7 @@ check("backward movement routes by canonical parent path", () => {
 
 check("carrier paths address multiNodeDocument-style content below the element root", () => {
   const map = element(`<main "tail"/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   map.document.content.insert(path(0), 0, projected_element(`<span/>`));
   assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "span");
   binding.dispose();
@@ -139,7 +139,7 @@ check("carrier paths address multiNodeDocument-style content below the element r
 
 check("QUID-free attribute reflection remains path-routed", () => {
   const map = element(`<main <a/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   map.document.attrs.set(path(0, 0), "free", true);
   assert.equal(raw_node(binding.tree.node, [0, 0]).$_attrs?.free, true);
   binding.dispose();
@@ -147,7 +147,7 @@ check("QUID-free attribute reflection remains path-routed", () => {
 
 check("QUID-free structural reflection remains path-routed", () => {
   const map = element(`<main <a/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   map.document.content.insert(path(0), 1, projected_element(`<b/>`));
   assert.equal(raw_node(binding.tree.node, [0, 1]).$_tag, "b");
   binding.dispose();
@@ -155,7 +155,7 @@ check("QUID-free structural reflection remains path-routed", () => {
 
 check("a matching witness validates after path resolution", () => {
   const map = element(`<main <a @${Q1}/>/` + `>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   replay(map, [{ domain: "graph", op: "set-attr", target: witnessed_path(Q1, 0, 0), name: "ok", value: 1 }]);
   assert.equal(raw_node(binding.tree.node, [0, 0]).$_attrs?.ok, 1);
   binding.dispose();
@@ -163,7 +163,7 @@ check("a matching witness validates after path resolution", () => {
 
 check("an absent witness leaves path routing unchanged", () => {
   const map = element(`<main <a @${Q1}/>/` + `>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   replay(map, [{ domain: "graph", op: "set-attr", target: path(0, 0), name: "ok", value: 2 }]);
   assert.equal(raw_node(binding.tree.node, [0, 0]).$_attrs?.ok, 2);
   binding.dispose();
@@ -171,7 +171,7 @@ check("an absent witness leaves path routing unchanged", () => {
 
 check("a conflicting witness is rejected before reflection publication", () => {
   const map = element(`<main <a @${Q1}/> <b @${Q2}/>/` + `>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   assert.throws(() => replay(map, [
     { domain: "graph", op: "set-attr", target: witnessed_path(Q2, 0, 0), name: "bad", value: 1 },
   ]), LiveMapDocumentStagingError);
@@ -182,7 +182,7 @@ check("a conflicting witness is rejected before reflection publication", () => {
 
 check("a matching QUID elsewhere cannot reroute an invalid path", () => {
   const map = element(`<main <a @${Q1}/> <b @${Q2}/>/` + `>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   assert.throws(() => replay(map, [
     { domain: "graph", op: "set-attr", target: witnessed_path(Q1, 0, 1), name: "bad", value: 1 },
   ]), LiveMapDocumentStagingError);
@@ -202,7 +202,7 @@ check("current path requests emit no QUID-only canonical target", () => {
 
 check("path requests remain canonical before reflection", () => {
   const map = element(`<main @${Q1}/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const events: LiveMapCommitObservation[] = [];
   map.commits.observe((event) => events.push(event));
   map.document.attrs.set({ kind: "path", path: [0] }, "a", 1);
@@ -226,7 +226,7 @@ check("multi-operation replay exposes only canonical path targets", () => {
 
 check("attribute operations do not rebuild correspondence", () => {
   const map = element(`<main @${Q1} <a @${Q2}/>/` + `>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const before = binding.diagnostics();
   map.document.attrs.set(path(0, 0), "x", 1);
   const after = binding.diagnostics();
@@ -237,7 +237,7 @@ check("attribute operations do not rebuild correspondence", () => {
 
 check("local structural operations use incremental correspondence", () => {
   const map = element(`<main @${Q1} <a @${Q2}/>/` + `>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const before = binding.diagnostics();
   map.document.content.insert(path(0), 0, projected_element(`<b @${Q3}/>`));
   const after = binding.diagnostics();
@@ -248,7 +248,7 @@ check("local structural operations use incremental correspondence", () => {
 
 check("repeated path-routed attrs do not rescan correspondence", () => {
   const map = element(`<main <a/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const before = binding.diagnostics();
   for (let index = 0; index < 5; index += 1) map.document.attrs.set(path(0, 0), "n", index);
   const after = binding.diagnostics();
@@ -259,7 +259,7 @@ check("repeated path-routed attrs do not rescan correspondence", () => {
 
 check("path-routed QUID evidence is consumed only as correspondence evidence", () => {
   const map = element(`<main @${Q1} <a @${Q2}/>/` + `>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   map.document.attrs.set({ kind: "path", path: [0, 0, 0] }, "evidence", true);
   assert.equal(binding.diagnostics().identityEffectsConsumed, 1);
   assert.equal(raw_node(binding.tree.node, [0, 0]).$_attrs?.evidence, true);
@@ -268,7 +268,7 @@ check("path-routed QUID evidence is consumed only as correspondence evidence", (
 
 check("replacement targets remain path-authoritative when QUIDs differ", () => {
   const map = element(`<main <a @${Q1}/>/` + `>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   replay(map, [{
     domain: "graph",
     op: "replace-content",

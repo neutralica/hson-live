@@ -23,12 +23,12 @@ AuthoritativeInteractionDescriptor BinaryDecodeOptions BrowserRealizationHtml Cl
 continue_document continue_hosted_document create_echo create_livehost_locus_registry create_locus
 create_locus_bootstrap_echo DataLiveMapMode DataLocusOptions decode_ssr_bootstrap DecodedSsrBootstrap
 DetachedLiveContent DocumentContinuation DocumentContinuationError DocumentLiveMap DocumentLiveMapMode
-DocumentReflect DocumentReflectError DocumentReflectStatus DocumentSsr DocumentSsrError Echo EchoActionFn
+DocumentMirror DocumentMirrorError DocumentMirrorStatus DocumentSsr DocumentSsrError Echo EchoActionFn
 EchoActionPromise EchoActionRequest EchoActionStatusResult EchoOptions EchoRecoveryError EchoRetryActionFn
 EchoSession EchoSessionError EchoSessionFailure EchoSessionOptions EchoSessionResult EchoSessionStatus
 enable_interactions encode_ssr_bootstrap EncodedSsrBootstrap HostedDocumentContinuation HostedDocumentSsr
 HostedLibrariesDocumentSsr hson Hson hsonCalc HsonData HsonDocument hsonEcho HsonFacade hsonLiveMap hsonLiveTree
-hsonLocus HsonNumber hsonReflect HsonSchema HsonSchemaMutationCandidate HsonSchemaValue hsonTransform
+hsonLocus HsonNumber hsonMirror HsonSchema HsonSchemaMutationCandidate HsonSchemaValue hsonTransform
 InteractionActionDispatcher InteractionActivationOptions InteractionDescriptor InteractionFailure
 InteractionListener InteractionLocalBehavior InteractionLocalBehaviors is_transform_error LibrariesDocumentSsr
 link_livemap LiveHost LiveHostApplication LiveHostApplicationContext LiveHostConnection
@@ -86,7 +86,7 @@ const PACKAGE_EXPORTS = `
 ./locus
 ./locus/node
 ./number
-./reflect
+./mirror
 ./ssr
 ./transform
 `.trim().split(/\s+/).sort();
@@ -187,7 +187,7 @@ const ownerProofs = Object.freeze({
   "dist/hson-authoring.d.ts": ["HsonDocument", "HsonNode", "HsonAttrs", "HsonMeta", "NodeContent", "JsonValue", "Primitive"],
   "dist/api/livetree/index.d.ts": ["CssManager", "make_tree_selector", "LiveTreeAttributeErrorCode", "LIVETREE_DISPOSED_ERROR_CODE"],
   "dist/api/livemap/index.d.ts": ["make_livemap_core", "make_livemap_store_api", "LiveMapCapture", "LiveMapReplay", "LiveMapCommitObserver", "snap_live_path"],
-  "dist/api/reflect/index.d.ts": ["reflect_collection", "CollectionReflect", "CollectionReflectErrorCode", "DOCUMENT_REFLECT_DISPOSED_ERROR_CODE"],
+  "dist/api/reflect/index.d.ts": ["reflect_collection", "CollectionReflect", "CollectionReflectErrorCode", "DocumentMirrorErrorCode", "DOCUMENT_REFLECT_DISPOSED_ERROR_CODE"],
   "dist/api/echo/index.d.ts": ["EchoRecovery", "EchoRecoveryCursor", "EchoRecoveryOptions", "EchoRecoveryStrategy"],
   "dist/api/locus/index.d.ts": ["decode_locus_message", "encode_locus_client_message", "encode_locus_message", "make_locus_recovery_planner", "LocusClientMessage", "LocusRecoveryPlan", "LocusPersistenceAdapter"],
   "dist/api/locus/node/index.d.ts": ["create_node_locus_socket", "NodeLocusSocketOptions"],
@@ -211,7 +211,7 @@ await check("specialist contracts remain available from owning entrypoints", () 
 });
 
 await check("retired entrypoints fail package resolution", () => {
-  for (const specifier of ["hson-live/types", "hson-live/diagnostics/test-exports"]) {
+  for (const specifier of ["hson-live/reflect", "hson-live/types", "hson-live/diagnostics/test-exports"]) {
     const child = spawnSync(process.execPath, ["--input-type=module", "--eval", `await import(${JSON.stringify(specifier)})`], {
       cwd: repositoryRoot,
       encoding: "utf8",
@@ -259,7 +259,7 @@ await check("packed consumer resolves only curated package entrypoints", () => {
     `], { cwd: consumerRoot, encoding: "utf8" });
     assert.equal(accepted.status, 0, accepted.stderr);
 
-    for (const specifier of ["hson-live/types", "hson-live/diagnostics/test-exports"]) {
+    for (const specifier of ["hson-live/reflect", "hson-live/types", "hson-live/diagnostics/test-exports"]) {
       const rejected = spawnSync(process.execPath, ["--input-type=module", "--eval", `await import(${JSON.stringify(specifier)})`], {
         cwd: consumerRoot,
         encoding: "utf8",
@@ -280,7 +280,7 @@ await check("all retained overlapping runtime values preserve strict identity", 
     number: await import("hson-live/number"),
     livetree: await import("hson-live/livetree"),
     livemap: await import("hson-live/livemap"),
-    reflect: await import("hson-live/reflect"),
+    mirror: await import("hson-live/mirror"),
     echo: await import("hson-live/echo"),
     locus: await import("hson-live/locus"),
     ssr: await import("hson-live/ssr"),
@@ -292,7 +292,7 @@ await check("all retained overlapping runtime values preserve strict identity", 
     number: ["hsonCalc"],
     livetree: ["hsonLiveTree", "LiveTree", "TreeSelector", "LiveTreeAlreadyAttachedError", "LiveTreeAttributeError", "LiveTreeBatchError", "LiveTreeDisposedError", "LiveTreeProtectedRootError", "LiveTreeQuidReuseError", "LiveTreeLinkedIdentityRequiredError"],
     livemap: ["hsonLiveMap", "link_livemap", "LiveMapDocumentAttributeNotFoundError", "LiveMapDocumentIdentityProvenanceError", "LiveMapDocumentIdentityRegistrationError", "LiveMapDocumentInstallError", "LiveMapDocumentMutationError", "LiveMapDocumentStagingError"],
-    reflect: ["hsonReflect", "reflect_document", "DocumentReflectError"],
+    mirror: ["hsonMirror", "reflect_document", "DocumentMirrorError"],
     echo: ["hsonEcho", "create_echo", "create_locus_bootstrap_echo", "EchoRecoveryError", "EchoSessionError"],
     locus: ["hsonLocus", "create_locus", "LocusDisconnectedError", "LocusDuplicateActionIdError", "LocusRecoveryError", "LocusAuthorityError"],
     ssr: ["decode_ssr_bootstrap", "DocumentSsrError", "encode_ssr_bootstrap", "render_document", "render_hosted_document", "SsrBootstrapCodecError"],

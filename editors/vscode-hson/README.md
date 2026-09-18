@@ -7,7 +7,10 @@ Hson Language v0.1
 • auto-generated TypeScript types from HsonSchema declarations for a reliable coupling of schema and type to a single source
 • `check` and `watch` modes to generate types one time or debounced on Schema revision
 
-Highlighting and diagnostics share TypeScript binding-aware discovery of named `Hson` imports from `hson-live` and `hson-live/hson`, including renamed imports. 
+Highlighting and diagnostics use TypeScript binding-aware discovery of official
+`hson-live` imports, including renamed imports. `Hson` tagged templates and
+literal source arguments written directly in official `fromHson(...)` calls
+receive the existing Hson grammar presentation.
  
 
 ## HsonSchema authoring and diagnostics
@@ -153,7 +156,19 @@ debugging, but it is not the ordinary local installation workflow.
 
 Direct and renamed official imports receive the same grammar-backed highlighting and admission diagnostics because both use the same TypeScript binding identity.
 
-Ordinary strings and templates inside `fromHson(...)` intentionally retain ordinary TypeScript coloring. Schema tooling adds semantic diagnostics, not spelling-based TextMate injection. `Hson\`...\`` remains the preferred embedded authoring form with first-class Hson presentation.
+Quoted strings and template literals written directly inside current official
+Transform, LiveMap, and LiveTree `fromHson(...)` calls receive Hson syntax
+highlighting. Interpolated template expressions remain TypeScript while directly
+corresponding literal segments resume Hson highlighting; interpolated templates
+whose segments require JavaScript escape cooking remain conservatively ordinary.
+Binding identity, not the method spelling or string contents, selects these
+regions; unrelated
+`fromHson` methods and ordinary strings remain untouched. This is presentation
+only: existing diagnostics and Schema/proof behavior are unchanged.
+
+`Hson\`...\`` remains the preferred certified authoring form with Schema-aware
+editing. Direct `fromHson(...)` literals are runtime ingress, not a new proof or
+Schema-completion surface.
 
 Use **Developer: Inspect Editor Tokens and Scopes** in the Command Palette to inspect the emitted Hson semantic tokens and their TextMate scope fallbacks.
 

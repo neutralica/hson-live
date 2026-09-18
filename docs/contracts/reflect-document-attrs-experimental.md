@@ -2,16 +2,16 @@
 
 ```ts
 import {
-  hsonReflect,
-  type DocumentReflect,
+  hsonMirror,
+  type DocumentMirror,
   type Reflect,
-} from "hson-live/reflect";
+} from "hson-live/mirror";
 
-const reflect: Reflect = hsonReflect;
-const documentReflect: DocumentReflect = reflect(documentMap);
+const reflect: Reflect = hsonMirror;
+const documentReflect: DocumentMirror = reflect(documentMap);
 ```
 
-`DocumentReflect` binds one `DocumentLiveMap` to one separately owned, detached
+`DocumentMirror` binds one `DocumentLiveMap` to one separately owned, detached
 `LiveTree`. The Document LiveMap remains the only canonical document
 authority. Canonical attribute and raw structural-content commits update
 synchronously into the LiveTree graph and its mounted DOM; public attribute
@@ -77,6 +77,6 @@ commits do fail the binding, stop commit consumption, and leave canonical state 
 Disposal removes the subscription and node registrations while leaving the
 projected tree and DOM intact; ordinary unbound mutation behavior then resumes.
 
-`DocumentReflect` is an experimental public API. It does not support
+`DocumentMirror` is an experimental public API. It does not support
 fragments, incompatible physical root replacement, DOM adoption, SSR, server adoption,
 or synchronization of external DOM mutations.

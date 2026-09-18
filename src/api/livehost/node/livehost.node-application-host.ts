@@ -173,9 +173,9 @@ function positive_integer(value: number, name: string): number {
 function resolve_limits(deployment: NodeHostDeployment): NodeHostTransportLimits {
   const defaults = deployment.mode === "production" ? PRODUCTION_LIMITS : DEVELOPMENT_LIMITS;
   const values = deployment.mode === "production" ? { ...defaults, ...deployment.limits } : defaults;
-  for (const [name, value] of Object.entries(values)) positive_integer(value, `Node host ${name}`);
+  for (const [name, value] of Object.entries(values)) positive_integer(value, `LiveHost Node ${name}`);
   if (values.heartbeatDeadlineMs >= values.heartbeatIntervalMs) {
-    throw new Error("Node host heartbeatDeadlineMs must be less than heartbeatIntervalMs.");
+    throw new Error("LiveHost Node heartbeatDeadlineMs must be less than heartbeatIntervalMs.");
   }
   return Object.freeze(values);
 }
@@ -383,7 +383,7 @@ async function write_web_response(
 ): Promise<void> {
   if (headRequest || source.body === null) {
     if (source.body !== null) {
-      await source.body.cancel("HEAD response body omitted by Node LiveHost.").catch(() => undefined);
+      await source.body.cancel("HEAD response body omitted by LiveHost Node.").catch(() => undefined);
     }
     apply_web_response_headers(target, source.headers);
     target.writeHead(source.status);

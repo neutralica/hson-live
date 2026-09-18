@@ -8,27 +8,27 @@ observe arbitrary DOM mutation.
 
 ```ts
 import {
-  hsonReflect,
+  hsonMirror,
   reflect_document,
   reflect_collection,
-} from "hson-live/reflect";
+} from "hson-live/mirror";
 import type {
-  DocumentReflect,
+  DocumentMirror,
   CollectionReflect,
   CollectionReflectOptions,
-} from "hson-live/reflect";
+} from "hson-live/mirror";
 ```
 
-The root package exports the normal `hsonReflect` and `reflect_document`
+The root package exports the normal `hsonMirror` and `reflect_document`
 composition surface. Direct keyed collection reflection and its detailed
-diagnostics remain owned by `hson-live/reflect`. The browser umbrella exposes
+diagnostics remain owned by `hson-live/mirror`. The browser umbrella exposes
 `hson.reflect` as the same callable object.
 
 ```ts
-const documentBinding = hsonReflect(elementMap);
+const documentBinding = hsonMirror(elementMap);
 const sameDocumentBinding = reflect_document(elementMap);
 
-const collectionBinding = hsonReflect.collection(options);
+const collectionBinding = hsonMirror.collection(options);
 const sameCollectionBinding = reflect_collection(options);
 ```
 
@@ -61,18 +61,18 @@ may own a given exact map object.
 The returned object has live getters:
 
 ```ts
-type DocumentReflectStatus =
+type DocumentMirrorStatus =
   | "initializing"
   | "active"
   | "replacing"
   | "failed"
   | "disposed";
 
-type DocumentReflect = Readonly<{
+type DocumentMirror = Readonly<{
   readonly tree: LiveTree;
-  readonly status: DocumentReflectStatus;
+  readonly status: DocumentMirrorStatus;
   readonly sourceRevision: number;
-  readonly failure: DocumentReflectError | undefined;
+  readonly failure: DocumentMirrorError | undefined;
   diagnostics(): Readonly<{
     updatesApplied: number;
     registeredElements: number;
@@ -162,7 +162,7 @@ not become LiveMap data.
 
 ### Failure and disposal
 
-Initialization failures throw a classified `DocumentReflectError` and unwind
+Initialization failures throw a classified `DocumentMirrorError` and unwind
 the partial binding. An error while consuming an already accepted map
 observation moves the binding to `failed`, records the first failure, and
 unsubscribes both commit observation and identity participation. The
@@ -180,7 +180,7 @@ Collection Reflect maintains one dedicated empty LiveTree host from an
 array-valued LiveMap path handle:
 
 ```ts
-const reflected = hsonReflect.collection({
+const reflected = hsonMirror.collection({
   source: state.at(["items"]),
   host,
   key: (item) => item.id,

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {
   Hson,
-  hsonReflect,
+  hsonMirror,
   hsonLiveMap,
   hsonLocus,
   type HsonSchema,
@@ -112,7 +112,7 @@ check("named document locations keep relative content operations in their select
 check("Reflect binds one selected document Library and advances through unrelated global revisions", () => {
   const map = create_map();
   const page = map.lib("page");
-  const binding = hsonReflect(page);
+  const binding = hsonMirror(page);
   map.lib("state").at(["count"]).set(2);
   assert.equal(binding.status, "active");
   assert.equal(binding.sourceRevision, 1);
@@ -129,7 +129,7 @@ check("Reflect binds one selected document Library and advances through unrelate
 check("one aggregate page plus data commit advances Reflect once and applies only page structure", () => {
   const map = create_map();
   const page = map.lib("page");
-  const binding = hsonReflect(page);
+  const binding = hsonMirror(page);
   const aggregate = internal_livemap_aggregate_authority(map);
   const [state,, pageLibrary] = aggregate.libraries();
   if (state === undefined || pageLibrary === undefined) throw new Error("Expected named library registry");
@@ -158,7 +158,7 @@ check("one aggregate page plus data commit advances Reflect once and applies onl
 check("tree-originated selected-document mutation crosses the same Schema boundary", () => {
   const map = create_map();
   const page = map.lib("page");
-  const binding = hsonReflect(page);
+  const binding = hsonMirror(page);
   const projected = binding.tree.node.$_content[0];
   if (!is_Node(projected)) throw new Error("Expected projected page root");
   const tree = create_livetree(projected).adoptRoots(binding.tree.hostRootNode());
@@ -206,9 +206,9 @@ check("one selected document binding is exclusive while separate named documents
   });
   const page = map.lib("page");
   const modal = map.lib("modal");
-  const pageBinding = hsonReflect(page);
-  assert.throws(() => hsonReflect(map.lib("page")), /already has an active/i);
-  const modalBinding = hsonReflect(modal);
+  const pageBinding = hsonMirror(page);
+  assert.throws(() => hsonMirror(map.lib("page")), /already has an active/i);
+  const modalBinding = hsonMirror(modal);
   page.at([]).attrs.set("title", "page-only");
   assert.equal(node(pageBinding.tree.node.$_content[0]).$_attrs?.title, "page-only");
   assert.equal(node(modalBinding.tree.node.$_content[0]).$_attrs?.title, undefined);

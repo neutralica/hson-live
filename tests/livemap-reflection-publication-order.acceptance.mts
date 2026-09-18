@@ -13,7 +13,7 @@ import {
   _lookup_livetree_runtime_test_node,
   _reflect_document_for_runtime_test,
 } from "../src/_tests/diagnostics-internal.ts";
-import { hsonReflect } from "../src/api/reflect/reflect.facade.ts";
+import { hsonMirror } from "../src/api/reflect/reflect.facade.ts";
 import {
   DOCUMENT_REFLECT_STRUCTURAL_UPDATE_FAILED_ERROR_CODE,
 } from "../src/api/reflect/reflect.document.error.ts";
@@ -53,12 +53,12 @@ const tag = (value: unknown): string | undefined =>
     ? String(value.$_tag)
     : undefined;
 
-const authoredTree = (binding: ReturnType<typeof hsonReflect>) =>
+const authoredTree = (binding: ReturnType<typeof hsonMirror>) =>
   create_livetree(raw_node(binding.tree.node, [])).adoptRoots(binding.tree.hostRootNode());
 
 check("document watch sees canonical revision n+1 before Reflection revision advances", () => {
   const map = element(`<main <a/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   let seen: unknown;
   map.at([0]).watch(() => {
     seen = {
@@ -82,7 +82,7 @@ check("document watch sees canonical revision n+1 before Reflection revision adv
 
 check("mounted DOM remains at n inside the pre-Reflection watch and converges afterward", () => {
   const map = element(`<main <a/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const rootDom = mount(binding.tree.node);
   let insideTag: string | undefined;
   map.at([0]).watch(() => {
@@ -124,7 +124,7 @@ check("canonical QUID paths advance before runtime QUID correspondence", () => {
 
 check("an ordinary observer registered before Reflection sees the same seam", () => {
   const map = element(`<main <a/>/>`);
-  let binding: ReturnType<typeof hsonReflect>;
+  let binding: ReturnType<typeof hsonMirror>;
   let seen: unknown;
   map.commits.observe(() => {
     seen = {
@@ -134,7 +134,7 @@ check("an ordinary observer registered before Reflection sees the same seam", ()
       projectedTag: raw_node(binding.tree.node, [0, 0]).$_tag,
     };
   });
-  binding = hsonReflect(map);
+  binding = hsonMirror(map);
   map.document.content.replace(path(0), 0, projected_element(`<b/>`));
   assert.deepEqual(seen, {
     mapRevision: 1,
@@ -147,7 +147,7 @@ check("an ordinary observer registered before Reflection sees the same seam", ()
 
 check("an ordinary observer registered after Reflection sees converged projection", () => {
   const map = element(`<main <a/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   let seen: unknown;
   map.commits.observe(() => {
     seen = {
@@ -163,7 +163,7 @@ check("an ordinary observer registered after Reflection sees converged projectio
 
 check("document watches precede Reflection even when registered after the binding", () => {
   const map = element(`<main/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   let reflectionRevision = -1;
   map.at([]).watch(() => { reflectionRevision = binding.sourceRevision; });
   map.document.attrs.set(path(), "title", "next");
@@ -175,9 +175,9 @@ check("document watches precede Reflection even when registered after the bindin
 check("callback ordering is watch then earlier observer then Reflection then later observer", () => {
   const map = element(`<main/>`);
   const order: string[] = [];
-  let binding: ReturnType<typeof hsonReflect>;
+  let binding: ReturnType<typeof hsonMirror>;
   map.commits.observe(() => order.push(`before:${binding.sourceRevision}`));
-  binding = hsonReflect(map);
+  binding = hsonMirror(map);
   map.commits.observe(() => order.push(`after:${binding.sourceRevision}`));
   map.at([]).watch(() => order.push(`watch:${binding.sourceRevision}`));
   map.document.attrs.set(path(), "title", "next");
@@ -187,7 +187,7 @@ check("callback ordering is watch then earlier observer then Reflection then lat
 
 check("a linked LiveTree read in the seam is stale-only and the exact handle later converges", () => {
   const map = element(`<main <a title="old"/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const childNode = raw_node(binding.tree.node, [0, 0]);
   const linked = create_livetree(childNode).adoptRoots(binding.tree.hostRootNode());
   let inside: unknown;
@@ -203,7 +203,7 @@ check("a linked LiveTree read in the seam is stale-only and the exact handle lat
 
 check("binding disposal from a watch prevents the pending Reflection delivery", () => {
   const map = element(`<main <a/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const retained = binding.tree.node;
   map.at([0]).watch(() => binding.dispose());
   map.document.content.replace(path(0), 0, projected_element(`<b/>`));
@@ -249,7 +249,7 @@ check("an observer added during observer dispatch starts with the next commit", 
 
 check("nested mutation from a pre-Reflection watch accepts immediately but publishes FIFO", () => {
   const map = element(`<main/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const order: string[] = [];
   let nested = false;
   map.at([]).watch(() => {
@@ -287,7 +287,7 @@ check("queued structural observations consume each exact accepted post-state", (
     nested = true;
     map.document.content.replace(path(0), 0, projected_element(`<c/>`));
   });
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   map.commits.observe((observation) => {
     if (observation.kind === "commit") {
       order.push(`${observation.commit.rev}:${String(raw_node(binding.tree.node, [0, 0]).$_tag)}`);
@@ -312,7 +312,7 @@ check("nested mutation from an observer before Reflection preserves FIFO revisio
       map.document.attrs.set(path(), "nested", true);
     }
   });
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   map.commits.observe((observation) => {
     if (observation.kind === "commit") {
       order.push(`after:${observation.commit.rev}:${binding.sourceRevision}`);
@@ -329,7 +329,7 @@ check("nested mutation from an observer before Reflection preserves FIFO revisio
 
 check("nested mutation from an observer after Reflection preserves ordered convergence", () => {
   const map = element(`<main/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   let nested = false;
   map.commits.observe(() => {
     if (nested) return;
@@ -347,7 +347,7 @@ check("nested mutation from an observer after Reflection preserves ordered conve
 
 check("a throwing document watch does not prevent Reflection or later observers", () => {
   const map = element(`<main/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   let later = 0;
   map.at([]).watch(() => { throw new Error("watch failure"); });
   map.commits.observe(() => { later += 1; });
@@ -362,7 +362,7 @@ check("a throwing document watch does not prevent Reflection or later observers"
 check("an observer throwing before Reflection is isolated from Reflection and later observers", () => {
   const map = element(`<main/>`);
   const off = map.commits.observe(() => { throw new Error("early observer failure"); });
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   let later = 0;
   map.commits.observe(() => { later += 1; });
   assert.throws(() => map.document.attrs.set(path(), "one", true), /early observer failure/);
@@ -382,7 +382,7 @@ check("an observer throwing before Reflection is isolated from Reflection and la
 
 check("an observer throwing after Reflection leaves Reflection current", () => {
   const map = element(`<main/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   map.commits.observe(() => { throw new Error("late observer failure"); });
   assert.throws(() => map.document.attrs.set(path(), "title", "next"), /late observer failure/);
   assert.equal(map.rev, 1);
@@ -394,7 +394,7 @@ check("an observer throwing after Reflection leaves Reflection current", () => {
 
 check("Reflection application failure is isolated and later observers still execute", () => {
   const map = element(`<main <a/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const rootDom = mount(binding.tree.node);
   rootDom.failReplace = true;
   let later = 0;
@@ -411,7 +411,7 @@ check("Reflection application failure is isolated and later observers still exec
 
 check("a failed Reflection binding remains failed while future canonical commits continue", () => {
   const map = element(`<main <a/>/>`);
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   const rootDom = mount(binding.tree.node);
   rootDom.failReplace = true;
   map.document.content.insert(path(0), 1, projected_element(`<b/>`));
@@ -426,14 +426,14 @@ check("a failed Reflection binding remains failed while future canonical commits
 
 check("a fresh binding reconstructs current canonical state after failed binding disposal", () => {
   const map = element(`<main <a/>/>`);
-  const failed = hsonReflect(map);
+  const failed = hsonMirror(map);
   const rootDom = mount(failed.tree.node);
   rootDom.failReplace = true;
   map.document.content.insert(path(0), 1, projected_element(`<b/>`));
   map.document.attrs.set(path(), "later", true);
-  assert.throws(() => hsonReflect(map), /already has an active/);
+  assert.throws(() => hsonMirror(map), /already has an active/);
   failed.dispose();
-  const fresh = hsonReflect(map);
+  const fresh = hsonMirror(map);
   assert.equal(fresh.sourceRevision, 2);
   assert.equal(authoredTree(fresh).attrs.get("later"), true);
   assert.equal(raw_node(fresh.tree.node, [0]).$_content.length, 2);
@@ -473,7 +473,7 @@ check("a retained outer observer error escapes only after queued publication dra
       throw new Error("outer observer failure");
     }
   });
-  const binding = hsonReflect(map);
+  const binding = hsonMirror(map);
   map.commits.observe((observation) => {
     if (observation.kind === "commit") order.push(`after:${observation.commit.rev}`);
   });
@@ -499,9 +499,9 @@ check("replay uses the same watch-before-observer-before-Reflection publication 
   const commit = source.document.attrs.set(path(), "replayed", true);
   const target = element(`<main/>`);
   const order: string[] = [];
-  let binding: ReturnType<typeof hsonReflect>;
+  let binding: ReturnType<typeof hsonMirror>;
   target.commits.observe(() => order.push(`before:${binding.sourceRevision}`));
-  binding = hsonReflect(target);
+  binding = hsonMirror(target);
   target.commits.observe(() => order.push(`after:${binding.sourceRevision}`));
   target.at([]).watch(() => order.push(`watch:${binding.sourceRevision}`));
   target.replay(commit);

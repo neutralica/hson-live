@@ -44,6 +44,8 @@ assert.equal(markdownGrammar.scopeName, "markdown.hson.codeblock");
 assert.equal(markdownGrammar.injectionSelector, "L:markup.fenced_code.block.markdown");
 assert.deepEqual(markdownGrammar.repository["hson-code-block"].patterns[0].patterns, [{ include: "source.hson" }]);
 assert.match(extensionBundle, /markdown_hson_fence_marker_parts/);
+assert.match(extensionBundle, /function discover_static_from_hson_sources/);
+assert.match(extensionBundle, /function map_static_hson_range/);
 assert.ok(manifest.contributes.semanticTokenTypes.some(type => type.id === "hsonType"));
 assert.deepEqual(manifest.contributes.colors.map(color => color.id), [
   "hson.libraryMarker.h", "hson.libraryMarker.s", "hson.libraryMarker.o", "hson.libraryMarker.n",

@@ -5,6 +5,8 @@ import { Registry, INITIAL, parseRawGrammar, type IGrammar } from "vscode-textma
 import { loadWASM, OnigScanner, OnigString } from "vscode-oniguruma";
 import { discover_hson_tagged_templates } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 import type { HostSourceRange } from "../../../src/internal/embedded-hson/embedded-hson-source.js";
+import { discover_static_from_hson_sources } from "../../../src/internal/embedded-hson/discover-static-from-hson-sources.js";
+import { map_static_hson_range } from "../../../src/internal/embedded-hson/static-hson-source.js";
 import { hsonTokenScopes } from "./appearance.js";
 
 export { hsonTokenScopes } from "./appearance.js";
@@ -42,11 +44,13 @@ function tokenType(scopes: readonly string[]): HsonHighlight["type"] | undefined
 }
 
 export function hson_highlights(grammar: IGrammar, fileName: string, text: string): readonly HsonHighlight[] {
-  const discovery = discover_hson_tagged_templates(fileName, text);
+  const tags = discover_hson_tagged_templates(fileName, text);
+  const calls = discover_static_from_hson_sources(fileName, text);
   const result: HsonHighlight[] = [];
   const noHoles: readonly HostSourceRange[] = [];
-  const islands = [...discovery.sources.map(source => ({ source, holes: noHoles })),
-    ...discovery.interpolated.map(source => ({ source, holes: source.substitutionRanges }))];
+  const islands = [...tags.sources.map(source => ({ source, holes: noHoles })),
+    ...tags.interpolated.map(source => ({ source, holes: source.substitutionRanges })),
+    ...calls.interpolated.map(source => ({ source, holes: source.substitutionRanges }))];
   for (const { source, holes } of islands) {
     // Omit expressions from grammar input and output, retaining offsets and
     // physical newlines. This is coloring only, never a parse/admission candidate.
@@ -75,6 +79,29 @@ export function hson_highlights(grammar: IGrammar, fileName: string, text: strin
       }
       stack = tokens.ruleStack;
       offset += line.length + 1;
+    }
+  }
+  for (const source of calls.sources) {
+    // Highlight only literals written directly inside the recognized call.
+    // Static diagnostic discovery may trace a same-scope const to its earlier
+    // declaration, but that declaration is not itself an explicit host region.
+    if (source.literalRange.start < source.callRange.start || source.literalRange.end > source.callRange.end) continue;
+    let runtimeOffset = 0;
+    let stack = INITIAL;
+    for (const line of source.runtimeText.split("\n")) {
+      const tokens = grammar.tokenizeLine(line, stack);
+      for (const token of tokens.tokens) {
+        const type = tokenType(token.scopes);
+        if (!type) continue;
+        const runtimeRange = {
+          start: runtimeOffset + token.startIndex,
+          end: runtimeOffset + Math.min(token.endIndex, line.replace(/\r$/, "").length),
+        };
+        const range = map_static_hson_range(source, runtimeRange);
+        if (range !== undefined && range.start < range.end) result.push({ range, type, scopes: token.scopes });
+      }
+      stack = tokens.ruleStack;
+      runtimeOffset += line.length + 1;
     }
   }
   return result.sort((a, b) => a.range.start - b.range.start);

@@ -8,7 +8,7 @@ import * as livehost from "hson-live/livehost";
 import * as livemap from "hson-live/livemap";
 import * as livetree from "hson-live/livetree";
 import * as locus from "hson-live/locus";
-import * as reflect from "hson-live/reflect";
+import * as reflect from "hson-live/mirror";
 import * as ssr from "hson-live/ssr";
 import * as transform from "hson-live/transform";
 
@@ -30,7 +30,7 @@ try {
     [transform, ["HsonData", "hsonTransform", "TransformError"]],
     [livetree, ["hsonLiveTree", "LiveTree", "TreeSelector", "LiveTreeDisposedError"]],
     [livemap, ["hsonLiveMap", "link_livemap", "LiveMapDocumentInstallError"]],
-    [reflect, ["hsonReflect", "reflect_document", "DocumentReflectError"]],
+    [reflect, ["hsonMirror", "reflect_document", "DocumentMirrorError"]],
     [echo, ["hsonEcho", "create_echo", "EchoSessionError"]],
     [locus, ["hsonLocus", "create_locus", "LocusAuthorityError"]],
     [ssr, ["render_document", "render_hosted_document", "DocumentSsrError"]],

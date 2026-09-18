@@ -567,8 +567,8 @@ Continue with:
   snapshot, replay, cursor, and incarnation behavior;
 * [LiveMap capture contract](../livemap/capture-replay.md) — the exact local
   capture/install/restore boundary under Locus persistence; and
-* [LiveHost overview](../livehost/overview.md) — application and Node runtime
-  ownership outside Locus.
+* [LiveHost overview](../livehost/overview.md) — application and LiveHost Node
+  runtime ownership outside Locus.
 
 This overview is the canonical high-level account of Locus’s implemented
 architecture; the API reference determines what can be called today.

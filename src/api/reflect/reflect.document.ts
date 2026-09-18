@@ -65,7 +65,7 @@ import {
   DOCUMENT_REFLECT_SNAPSHOT_REVISION_MISMATCH_ERROR_CODE,
   DOCUMENT_REFLECT_TARGET_MISSING_ERROR_CODE,
   DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
-  DocumentReflectError,
+  DocumentMirrorError,
 } from "./reflect.document.error.js";
 import {
   apply_document_structural_transaction,
@@ -122,13 +122,13 @@ import {
   type EchoDocumentAction,
 } from "../echo/echo.document-authority.js";
 
-export type DocumentReflectStatus = "initializing" | "active" | "replacing" | "failed" | "disposed";
+export type DocumentMirrorStatus = "initializing" | "active" | "replacing" | "failed" | "disposed";
 
-export type DocumentReflect = Readonly<{
+export type DocumentMirror = Readonly<{
   readonly tree: LiveTree;
-  readonly status: DocumentReflectStatus;
+  readonly status: DocumentMirrorStatus;
   readonly sourceRevision: number;
-  readonly failure: DocumentReflectError | undefined;
+  readonly failure: DocumentMirrorError | undefined;
   diagnostics: () => Readonly<{
     updatesApplied: number;
     registeredElements: number;
@@ -153,7 +153,7 @@ const ACTIVE_DOCUMENT_BINDINGS = new WeakSet<object>();
 /** Internal attribute-only proof that projects one DocumentLiveMap into one LiveTree. */
 export function reflect_document(
   map: ReflectableDocumentMap,
-): DocumentReflect {
+): DocumentMirror {
   return reflect_document_in_runtime(map, default_livetree_runtime());
 }
 
@@ -161,7 +161,7 @@ export function reflect_document(
 export function reflect_document_in_runtime(
   map: ReflectableDocumentMap,
   runtime: LiveTreeRuntime,
-): DocumentReflect {
+): DocumentMirror {
   return reflect_document_binding_in_runtime(map, runtime, undefined);
 }
 
@@ -170,7 +170,7 @@ export function reflect_existing_document_in_runtime(
   map: ReflectableDocumentMap,
   existingTree: LiveTree,
   runtime: LiveTreeRuntime,
-): DocumentReflect {
+): DocumentMirror {
   return reflect_document_binding_in_runtime(map, runtime, existingTree);
 }
 
@@ -178,9 +178,9 @@ function reflect_document_binding_in_runtime(
   map: ReflectableDocumentMap,
   runtime: LiveTreeRuntime,
   borrowedTree: LiveTree | undefined,
-): DocumentReflect {
+): DocumentMirror {
   if (ACTIVE_DOCUMENT_BINDINGS.has(map)) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_ALREADY_BOUND_ERROR_CODE,
       "DocumentLiveMap already has an active document projection binding.",
     );
@@ -224,9 +224,9 @@ function reflect_document_binding_in_runtime(
   const byQuid = new Map<string, ProjectedRegistration>();
   const runtimeEpochQuids = new Set<string>();
   const mountedElements = new WeakMap<HsonNode, Element>();
-  let currentStatus: DocumentReflectStatus = "initializing";
+  let currentStatus: DocumentMirrorStatus = "initializing";
   let currentRevision = capturedRevision;
-  let currentFailure: DocumentReflectError | undefined;
+  let currentFailure: DocumentMirrorError | undefined;
   let updatesApplied = 0;
   let wholeCorrespondenceBuilds = 0;
   let incrementalCorrespondenceUpdates = 0;
@@ -246,7 +246,7 @@ function reflect_document_binding_in_runtime(
 
   // Publish the fail-closed state before releasing callbacks so any cleanup
   // reentry observes a terminal binding and cannot delegate another mutation.
-  const fail = (failure: DocumentReflectError): void => {
+  const fail = (failure: DocumentMirrorError): void => {
     if (currentStatus === "failed" || currentStatus === "disposed") return;
     currentFailure = failure;
     currentStatus = "failed";
@@ -260,7 +260,7 @@ function reflect_document_binding_in_runtime(
   const assert_delegation_ready = (registration: ProjectedRegistration): void => {
     if (currentStatus === "failed") throw currentFailure;
     if (currentStatus !== "active") {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE,
         "Document binding is not active for canonical attribute delegation.",
       );
@@ -269,7 +269,7 @@ function reflect_document_binding_in_runtime(
     const canonical = read_map_attrs(map, registration.canonicalTarget);
     const projected = read_projected_attrs(registration.node);
     if (!canonical_public_attrs_equal(canonical, projected)) {
-      const failure = new DocumentReflectError(
+      const failure = new DocumentMirrorError(
         DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE,
         "Projected attributes diverged from the canonical document before delegation.",
       );
@@ -285,7 +285,7 @@ function reflect_document_binding_in_runtime(
     assert_delegation_ready(registration);
     const authority = echo_document_authority_for(map);
     if (authority !== undefined) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
         "Synchronous LiveTree document authoring requires tree.async while authority-bound.",
       );
@@ -351,13 +351,13 @@ function reflect_document_binding_in_runtime(
       registration.canonicalPath,
     );
     if (canonical === undefined || !is_ordinary_element_node(canonical)) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_DELEGATION_TARGET_INVALID_ERROR_CODE,
         "Bound mutation target no longer resolves to a canonical ordinary element.",
       );
     }
     if (canonical.$_tag !== registration.node.$_tag) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_DELEGATION_TARGET_INVALID_ERROR_CODE,
         "Bound mutation target kind differs from its canonical element.",
       );
@@ -372,7 +372,7 @@ function reflect_document_binding_in_runtime(
     assert_delegation_ready(registration);
     const authority = echo_document_authority_for(map);
     if (authority !== undefined) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
         "Synchronous LiveTree document authoring requires tree.async while authority-bound.",
       );
@@ -444,7 +444,7 @@ function reflect_document_binding_in_runtime(
     assert_delegation_ready(registration);
     const authority = echo_document_authority_for(map);
     if (authority !== undefined) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
         "Synchronous LiveTree document authoring requires tree.async while authority-bound.",
       );
@@ -495,7 +495,7 @@ function reflect_document_binding_in_runtime(
   const delegate_remove = (registration: ProjectedRegistration): boolean => {
     canonical_node_for(registration);
     if (borrowed && registration.node === tree.node) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
         "Borrowed document root removal is unavailable while document-bound.",
       );
@@ -510,7 +510,7 @@ function reflect_document_binding_in_runtime(
     const lower = (): EchoDocumentAction => lower_remove_action(registration);
     const authority = echo_document_authority_for(map);
     if (authority !== undefined) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
         "Synchronous LiveTree document authoring requires tree.async while authority-bound.",
       );
@@ -537,13 +537,13 @@ function reflect_document_binding_in_runtime(
   const delegate_remove_async = async (registration: ProjectedRegistration): Promise<void> => {
     canonical_node_for(registration);
     if (borrowed && registration.node === tree.node) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
         "Borrowed document root removal is unavailable while document-bound.",
       );
     }
     if (registration.canonicalPath.length === 0) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
         "Root removal is not part of AsyncLiveTree document authoring.",
       );
@@ -559,7 +559,7 @@ function reflect_document_binding_in_runtime(
 
   const reject_structural_mutation = (operation: string): never => {
     if (currentStatus === "failed") throw currentFailure;
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
       `Public LiveTree structural mutation ${operation} is unavailable while document-bound.`,
     );
@@ -601,7 +601,7 @@ function reflect_document_binding_in_runtime(
     const persistedQuid = livemap_document_identity_overlay_for(map.document)
       .quidAtPath(path);
     if (node.$_meta?.[HSON_META_QUID] !== persistedQuid) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
         "Projected element did not preserve its canonical persisted QUID.",
       );
@@ -631,13 +631,13 @@ function reflect_document_binding_in_runtime(
       rejectStructuralMutation: reject_structural_mutation,
     });
     if (byPath.has(pathKey)) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_TARGET_MISSING_ERROR_CODE,
         "Document projection produced duplicate canonical-path correspondence.",
       );
     }
     if (persistedQuid !== undefined && byQuid.has(persistedQuid)) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
         "Document projection produced duplicate persisted-QUID correspondence.",
       );
@@ -680,7 +680,7 @@ function reflect_document_binding_in_runtime(
   const refresh_registration_at_path = (path: LiveMapDocumentPath): void => {
     const prior = byPath.get(path_key(path));
     if (prior === undefined) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_TARGET_MISSING_ERROR_CODE,
         "Canonical identity registration has no exact projected correspondence.",
       );
@@ -714,7 +714,7 @@ function reflect_document_binding_in_runtime(
         if (operation.op === "ensure-quid") {
           const pendingTarget = pending.find((entry) => document_path_equal(entry.path, operation.target.path));
           if (pendingTarget === undefined) {
-            throw new DocumentReflectError(
+            throw new DocumentMirrorError(
               DOCUMENT_REFLECT_TARGET_MISSING_ERROR_CODE,
               "Canonical identity registration target has no exact projected correspondence.",
             );
@@ -742,7 +742,7 @@ function reflect_document_binding_in_runtime(
                 { cause },
               );
             }
-            throw new DocumentReflectError(
+            throw new DocumentMirrorError(
               DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
               "Projected node cannot accept the supplied canonical QUID.",
               cause,
@@ -761,7 +761,7 @@ function reflect_document_binding_in_runtime(
         const effect = document_path_effect_for_graph_operation(operation);
         if (effect === undefined) continue;
         if (effect.kind === "replace-root") {
-          throw new DocumentReflectError(
+          throw new DocumentMirrorError(
             DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
             "Identity registration cannot compose with root replacement.",
           );
@@ -771,14 +771,14 @@ function reflect_document_binding_in_runtime(
           return transformed.kind === "retired"
             ? []
             : transformed.kind === "invalid"
-              ? (() => { throw new DocumentReflectError(DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE, transformed.reason); })()
+              ? (() => { throw new DocumentMirrorError(DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE, transformed.reason); })()
               : [{ registration: entry.registration, path: transformed.path }];
         });
         for (const claim of claims) {
           if (claim.path === undefined) continue;
           const transformed = transform_document_path(claim.path, effect);
           if (transformed.kind === "invalid") {
-            throw new DocumentReflectError(DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE, transformed.reason);
+            throw new DocumentMirrorError(DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE, transformed.reason);
           }
           claim.path = transformed.kind === "retired" ? undefined : transformed.path;
         }
@@ -799,7 +799,7 @@ function reflect_document_binding_in_runtime(
           for (const claim of claims) {
             if (claim.path === undefined) continue;
             if (resolve_raw_node(projectedRoot, claim.path) !== claim.node) {
-              throw new DocumentReflectError(
+              throw new DocumentMirrorError(
                 DOCUMENT_REFLECT_TARGET_MISSING_ERROR_CODE,
                 "Preflighted identity target no longer resolves to the same exact projected node.",
               );
@@ -831,7 +831,7 @@ function reflect_document_binding_in_runtime(
   const verify_existing_identity = (path: LiveMapDocumentPath, quid: string): void => {
     const registration = byPath.get(path_key(path));
     if (registration === undefined || registration.persistedQuid !== quid) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
         "Canonical identity is not registered to the expected projected correspondence.",
       );
@@ -839,7 +839,7 @@ function reflect_document_binding_in_runtime(
     validate_bound_registration(registration);
     if (runtime.quidToNode.get(quid) !== registration.node
       || runtime.nodeToQuid.get(registration.node) !== quid) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
         "Canonical identity disagrees with the selected LiveTree runtime registry.",
       );
@@ -851,7 +851,7 @@ function reflect_document_binding_in_runtime(
   ): readonly LiveMapDocumentIdentityEffect[] => {
     const effects = livemap_document_identity_effects_for(commit);
     if (effects === undefined) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
         "Changed document commit is missing its derived identity-effect evidence.",
       );
@@ -871,7 +871,7 @@ function reflect_document_binding_in_runtime(
     ): void => {
       const current = current_path(quid);
       if (current === undefined || !document_path_equal(current, path)) {
-        throw new DocumentReflectError(
+        throw new DocumentMirrorError(
           DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
           `Derived ${kind} identity effect disagrees with projected correspondence for QUID ${JSON.stringify(quid)}.`,
         );
@@ -896,7 +896,7 @@ function reflect_document_binding_in_runtime(
         continue;
       }
       if (current_path(effect.quid) !== undefined) {
-        throw new DocumentReflectError(
+        throw new DocumentMirrorError(
           DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
           `Derived introduced identity effect duplicates active QUID ${JSON.stringify(effect.quid)}.`,
         );
@@ -907,7 +907,7 @@ function reflect_document_binding_in_runtime(
 
     const overlay = livemap_document_identity_overlay_for(map.document);
     if (overlay.size !== expectedSize) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
         "Derived identity effects do not account for the canonical final sparse overlay.",
       );
@@ -920,7 +920,7 @@ function reflect_document_binding_in_runtime(
           || !document_path_equal(finalPath, path)
           || overlay.quidAtPath(path) !== quid;
       if (mismatch) {
-        throw new DocumentReflectError(
+        throw new DocumentMirrorError(
           DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
           `Derived identity effects disagree with the canonical final path for QUID ${JSON.stringify(quid)}.`,
         );
@@ -952,7 +952,7 @@ function reflect_document_binding_in_runtime(
       const effect = document_path_effect_for_graph_operation(operation);
       if (effect === undefined) continue;
       if (effect.kind === "replace-root") {
-        throw new DocumentReflectError(
+        throw new DocumentMirrorError(
           DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
           "Root replacement cannot use incremental document correspondence.",
         );
@@ -962,7 +962,7 @@ function reflect_document_binding_in_runtime(
       for (const entry of pending) {
         const transformed = transform_document_path(entry.path, effect);
         if (transformed.kind === "invalid") {
-          throw new DocumentReflectError(
+          throw new DocumentMirrorError(
             DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE,
             `Projected correspondence path transform failed: ${transformed.reason}.`,
           );
@@ -983,7 +983,7 @@ function reflect_document_binding_in_runtime(
       for (const path of introducedPaths) {
         const transformed = transform_document_path(path, effect);
         if (transformed.kind === "invalid") {
-          throw new DocumentReflectError(
+          throw new DocumentMirrorError(
             DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE,
             `Introduced projected path transform failed: ${transformed.reason}.`,
           );
@@ -1031,7 +1031,7 @@ function reflect_document_binding_in_runtime(
   const resolve_registration = (target: LiveMapDocumentCommitTarget): ProjectedRegistration => {
     const registration = byPath.get(path_key(target.path));
     if (registration === undefined) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_TARGET_MISSING_ERROR_CODE,
         "Canonical attribute target has no projected element correspondence.",
       );
@@ -1039,7 +1039,7 @@ function reflect_document_binding_in_runtime(
     if (target.witness !== undefined
       && registration.persistedQuid !== undefined
       && registration.persistedQuid !== target.witness.quid) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
         "Canonical attribute path does not match its persisted-QUID witness.",
       );
@@ -1049,7 +1049,7 @@ function reflect_document_binding_in_runtime(
 
   const validate_bound_registration = (registration: ProjectedRegistration): void => {
     if (resolve_raw_node(projectedRoot, registration.canonicalPath) !== registration.node) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_TARGET_MISSING_ERROR_CODE,
         "Projected element is no longer present at its canonical raw document path.",
       );
@@ -1063,7 +1063,7 @@ function reflect_document_binding_in_runtime(
     targetRevision: number,
   ): void => {
     if (borrowed) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
         "A borrowed document tree cannot cross a root identity epoch.",
       );
@@ -1079,7 +1079,7 @@ function reflect_document_binding_in_runtime(
         runtime,
       );
     } catch (cause) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
         "Fresh owner-epoch projection identity collides in the selected LiveTree runtime.",
         cause,
@@ -1155,7 +1155,7 @@ function reflect_document_binding_in_runtime(
       });
     } catch (cause) {
       prune_removed_registrations(convergence.structural.finalNodes);
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_ROOT_REPLACEMENT_FAILED_ERROR_CODE,
         "Compatible projected root convergence failed during graph or DOM application.",
         cause,
@@ -1165,7 +1165,7 @@ function reflect_document_binding_in_runtime(
       if (currentStatus === "failed") {
         prune_removed_registrations(convergence.structural.finalNodes);
       }
-      throw currentFailure ?? new DocumentReflectError(
+      throw currentFailure ?? new DocumentMirrorError(
         DOCUMENT_REFLECT_ROOT_REPLACEMENT_FAILED_ERROR_CODE,
         "Compatible root convergence was interrupted before correspondence publication.",
       );
@@ -1179,14 +1179,14 @@ function reflect_document_binding_in_runtime(
   const apply_observation = (observation: LiveMapCommitObservation<LiveMapGraphOp>): void => {
     const evidence = livemap_document_observation_evidence(observation);
     if (evidence === undefined || evidence.mode !== "document") {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE,
         "DocumentLiveMap observation reached Reflection without exact accepted-state evidence.",
       );
     }
     if (observation.kind === "snapshot") {
       if (evidence.revision !== observation.revision) {
-        throw new DocumentReflectError(
+        throw new DocumentMirrorError(
           DOCUMENT_REFLECT_SNAPSHOT_REVISION_MISMATCH_ERROR_CODE,
           `Snapshot observation revision ${observation.revision} does not match accepted evidence revision ${evidence.revision}.`,
         );
@@ -1205,13 +1205,13 @@ function reflect_document_binding_in_runtime(
     }
     const { commit } = observation;
     if (evidence.revision !== commit.rev) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_REVISION_GAP_ERROR_CODE,
         `Commit revision ${commit.rev} does not match accepted evidence revision ${evidence.revision}.`,
       );
     }
     if (commit.prevRev !== currentRevision) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_REVISION_GAP_ERROR_CODE,
         `Document binding expected revision ${currentRevision}, but commit began at ${commit.prevRev}.`,
       );
@@ -1228,7 +1228,7 @@ function reflect_document_binding_in_runtime(
     const hasIdentityRegistration = commit.ops.some((operation) => operation.op === "ensure-quid");
     const identityReservation = livemap_document_identity_reservation_for(commit);
     if (hasIdentityRegistration && identityReservation === undefined) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
         "Canonical identity registration reached Reflection without local preflight evidence.",
       );
@@ -1253,7 +1253,7 @@ function reflect_document_binding_in_runtime(
         && operation.op !== "move-content"
         && operation.op !== "replace-content"
         && operation.op !== "ensure-quid"))) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
         "Changed graph operation is unsupported by this document binding proof.",
       );
@@ -1315,7 +1315,7 @@ function reflect_document_binding_in_runtime(
       validate_bound_registration(registration);
       const projected = read_projected_attrs(registration.node);
       if (!canonical_public_attrs_equal(projected, attrs)) {
-        throw new DocumentReflectError(
+        throw new DocumentMirrorError(
           DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE,
           "Projected attributes do not match the canonical final state.",
         );
@@ -1328,7 +1328,7 @@ function reflect_document_binding_in_runtime(
 
   const on_observation = (observation: LiveMapCommitObservation): void => {
     if (currentStatus === "replacing") {
-      fail(new DocumentReflectError(
+      fail(new DocumentMirrorError(
         DOCUMENT_REFLECT_ROOT_REPLACEMENT_FAILED_ERROR_CODE,
         "A reentrant document observation interrupted compatible root convergence.",
       ));
@@ -1354,7 +1354,7 @@ function reflect_document_binding_in_runtime(
     }));
     off = map.commits.observe(on_observation);
     if (map.rev !== capturedRevision) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_REVISION_GAP_ERROR_CODE,
         "DocumentLiveMap revision changed during document binding initialization.",
       );
@@ -1381,14 +1381,14 @@ function reflect_document_binding_in_runtime(
     throw as_binding_error(cause, DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE, "Document binding initialization failed.");
   }
 
-  const binding: DocumentReflect = Object.freeze({
+  const binding: DocumentMirror = Object.freeze({
     get tree() { return tree; },
     get status() { return currentStatus; },
     get sourceRevision() { return currentRevision; },
     get failure() { return currentFailure; },
     diagnostics: () => {
       if (currentStatus === "disposed") {
-        throw new DocumentReflectError(
+        throw new DocumentMirrorError(
           DOCUMENT_REFLECT_DISPOSED_ERROR_CODE,
           "Document binding has been disposed.",
         );
@@ -1417,25 +1417,25 @@ function validate_borrowed_document_tree(
     || canonicalRoot.$_tag !== ROOT_TAG
     || canonicalRoot.$_content.length !== 1
     || !is_ordinary_element_node(canonicalRoot.$_content[0])) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_NODE_KIND_MISMATCH_ERROR_CODE,
       "Borrowed document binding requires one ordinary selected root beneath the canonical document carrier.",
     );
   }
   if (runtime_for_tree(tree) !== runtime || runtime.disposed) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_DOM_MAPPING_MISMATCH_ERROR_CODE,
       "Borrowed LiveTree does not belong to the selected active runtime.",
     );
   }
   if (document_binding_for_node(borrowedRoot) !== undefined) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_ALREADY_BOUND_ERROR_CODE,
       "Borrowed LiveTree root already belongs to a document Reflect binding.",
     );
   }
   if (parent_for_node(borrowedRoot) !== undefined) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_DOM_MAPPING_MISMATCH_ERROR_CODE,
       "Borrowed document root is not a standalone admitted graph root.",
     );
@@ -1447,7 +1447,7 @@ function validate_borrowed_document_tree(
     const identityDifference = difference.kind === "quid-difference"
       || difference.path.endsWith(`.${HSON_META_QUID}`)
       || canonical_quids_differ(carrier, canonicalRoot);
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       identityDifference
         ? DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE
         : DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE,
@@ -1457,26 +1457,26 @@ function validate_borrowed_document_tree(
 
   const rootElement = get_el_for_node(borrowedRoot);
   if (rootElement === undefined || get_node_for_el(rootElement) !== borrowedRoot) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_DOM_MAPPING_MISMATCH_ERROR_CODE,
       "Borrowed document root has no exact admitted DOM correspondence.",
     );
   }
   if (!runtime_owns_document(runtime, rootElement.ownerDocument)) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_DOM_MAPPING_MISMATCH_ERROR_CODE,
       "Borrowed document realization is not claimed by the selected runtime.",
     );
   }
   for (const node of collect_subtree_nodes(borrowedRoot, "pre")) {
     if (runtime_for_node(node) !== runtime) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_DOM_MAPPING_MISMATCH_ERROR_CODE,
         "Borrowed graph node is not routed through the selected runtime.",
       );
     }
     if (document_binding_for_node(node) !== undefined) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_ALREADY_BOUND_ERROR_CODE,
         "Borrowed LiveTree node already belongs to a document Reflect binding.",
       );
@@ -1485,7 +1485,7 @@ function validate_borrowed_document_tree(
     if (is_ordinary_element_node(node)
       && (runtime.nodeToQuid.get(node) !== quid
         || (quid !== undefined && runtime.quidToNode.get(quid) !== node))) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
         "Borrowed graph and runtime do not agree on persisted QUID identity.",
       );
@@ -1505,7 +1505,7 @@ function validate_borrowed_document_tree(
       }
     }
   } catch (cause) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_DOM_MAPPING_MISMATCH_ERROR_CODE,
       "Borrowed DOM no longer matches the shared browser realization plan.",
       cause,
@@ -1532,7 +1532,7 @@ function assert_borrowed_root_continuity(canonicalRoot: HsonNode, borrowedRoot: 
   if (!is_ordinary_element_node(nextRoot)
     || nextRoot.$_tag !== borrowedRoot.$_tag
     || nextRoot.$_meta?.[HSON_META_QUID] !== borrowedRoot.$_meta?.[HSON_META_QUID]) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
       "Canonical root replacement cannot retire or replace a borrowed document root.",
     );
@@ -1553,7 +1553,7 @@ function read_map_attrs(map: ReflectableDocumentMap, target: LiveMapDocumentComm
   for (const name of map.document.attrs.keys(target)) values[name] = map.document.attrs.must.get(target, name);
   const attrs = decode_public_attrs(values);
   if (attrs === undefined) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE,
       "Canonical document attribute read did not produce a valid final-state bag.",
     );
@@ -1567,7 +1567,7 @@ function read_document_root_attrs(
 ): CanonicalPublicAttrs {
   const node = resolve_raw_node(document_root_from_root(root), target.path);
   if (node === undefined || !is_ordinary_element_node(node)) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_TARGET_MISSING_ERROR_CODE,
       "Accepted document evidence has no ordinary element at the observed attribute target.",
     );
@@ -1578,7 +1578,7 @@ function read_document_root_attrs(
 function read_projected_attrs(node: HsonNode): CanonicalPublicAttrs {
   const attrs = decode_public_attrs(node.$_attrs ?? {});
   if (attrs === undefined) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE,
       "Projected node contains invalid ordinary attributes.",
     );
@@ -1591,19 +1591,19 @@ function validate_registration(
   mountedElements: WeakMap<HsonNode, Element>,
 ): void {
   if (!is_ordinary_element_node(registration.node)) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_NODE_KIND_MISMATCH_ERROR_CODE,
       "Projected attribute target is not an ordinary document element.",
     );
   }
   if (document_binding_for_node(registration.node)?.owner !== registration.owner) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_TARGET_MISSING_ERROR_CODE,
       "Projected element registration is missing or belongs to another binding.",
     );
   }
   if (registration.node.$_meta?.[HSON_META_QUID] !== registration.persistedQuid) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
       "Projected element no longer carries its expected persisted QUID.",
     );
@@ -1612,7 +1612,7 @@ function validate_registration(
   const priorElement = mountedElements.get(registration.node);
   if (element === undefined) {
     if (priorElement !== undefined) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_DOM_MAPPING_MISMATCH_ERROR_CODE,
         "Previously mounted projected element lost its node mapping.",
       );
@@ -1620,7 +1620,7 @@ function validate_registration(
     return;
   }
   if (priorElement !== undefined && priorElement !== element) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_DOM_MAPPING_MISMATCH_ERROR_CODE,
       "Projected element mapping changed during an attribute-only binding.",
     );
@@ -1629,28 +1629,28 @@ function validate_registration(
   try {
     assert_node_element_link(registration.node);
   } catch (cause) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_DOM_MAPPING_MISMATCH_ERROR_CODE,
       "Projected node and DOM element mapping does not round-trip.",
       cause,
     );
   }
   if (get_node_for_el(element) !== registration.node) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_DOM_MAPPING_MISMATCH_ERROR_CODE,
       "Mounted projected element resolves to a different Hson node.",
     );
   }
   const projectedDomQuid = element.getAttribute(HSON_QUID_MARKUP_NAME) ?? undefined;
   if (projectedDomQuid !== registration.persistedQuid) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
       "Mounted projected element does not carry its expected persisted QUID.",
     );
   }
   const tagName = (element as { tagName?: unknown }).tagName;
   if (typeof tagName === "string" && tagName.toLowerCase() !== registration.node.$_tag.toLowerCase()) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_NODE_KIND_MISMATCH_ERROR_CODE,
       "Mounted projected element tag does not match its Hson node kind.",
     );
@@ -1669,7 +1669,7 @@ function validate_dom_attrs(
     const lowered = lower_browser_attribute_value(name, value, namespace);
     if (lowered !== undefined) expectedNames.add(lowered.name);
     if (element.getAttribute(lowered?.name ?? name) !== (lowered?.value ?? null)) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE,
         "Mounted DOM attributes do not match the canonical projected final state.",
       );
@@ -1678,7 +1678,7 @@ function validate_dom_attrs(
   for (const name of element.getAttributeNames()) {
     if (name === HSON_QUID_MARKUP_NAME) continue;
     if (!expectedNames.has(name)) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE,
         "Mounted DOM contains an attribute outside the canonical projected final state.",
       );
@@ -1702,16 +1702,16 @@ function resolve_raw_node(root: HsonNode, path: readonly number[]): HsonNode | u
 
 function as_binding_error(
   cause: unknown,
-  code: ConstructorParameters<typeof DocumentReflectError>[0],
+  code: ConstructorParameters<typeof DocumentMirrorError>[0],
   message: string,
-): DocumentReflectError {
-  return cause instanceof DocumentReflectError
+): DocumentMirrorError {
+  return cause instanceof DocumentMirrorError
     ? cause
-    : new DocumentReflectError(code, message, cause);
+    : new DocumentMirrorError(code, message, cause);
 }
 
-function delegation_unsupported(reason: string): DocumentReflectError {
-  return new DocumentReflectError(
+function delegation_unsupported(reason: string): DocumentMirrorError {
+  return new DocumentMirrorError(
     DOCUMENT_REFLECT_DELEGATION_UNSUPPORTED_ERROR_CODE,
     `Bound LiveTree mutation is deliberately unsupported: ${reason}.`,
   );

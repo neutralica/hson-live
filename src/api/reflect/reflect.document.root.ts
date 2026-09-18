@@ -11,7 +11,7 @@ import {
   DOCUMENT_REFLECT_ROOT_MATERIAL_MISSING_ERROR_CODE,
   DOCUMENT_REFLECT_ROOT_QUID_CONFLICT_ERROR_CODE,
   DOCUMENT_REFLECT_ROOT_VALIDATION_FAILED_ERROR_CODE,
-  DocumentReflectError,
+  DocumentMirrorError,
 } from "./reflect.document.error.js";
 import {
   plan_document_root_structural_transaction,
@@ -39,7 +39,7 @@ export function plan_document_root_convergence(
   persistedQuidForExisting: PersistedQuidLookup,
 ): DocumentRootConvergencePlan {
   if (observedMaterial.mode !== "document" || !canonical_graph_equal(observedMaterial.root, canonicalDocumentRoot)) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_ROOT_MATERIAL_MISSING_ERROR_CODE,
       "Observed whole-root material does not match the current canonical document root.",
     );
@@ -50,14 +50,14 @@ export function plan_document_root_convergence(
     && is_ordinary_element_node(canonicalRoot)
     && projectedRoot.$_tag === canonicalRoot.$_tag;
   if (!rootsAreContainers && !rootsAreCompatibleElements) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_ROOT_KIND_MISMATCH_ERROR_CODE,
       "Compatible root convergence requires matching document-facing roots.",
     );
   }
   const nextCanonicalRootQuid = canonicalRoot.$_meta?.[HSON_META_QUID];
   if (priorCanonicalRootQuid !== nextCanonicalRootQuid) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_ROOT_QUID_CONFLICT_ERROR_CODE,
       "Compatible root convergence cannot introduce, remove, or change root subject identity.",
     );
@@ -71,8 +71,8 @@ export function plan_document_root_convergence(
     );
     return Object.freeze({ canonicalRoot, structural });
   } catch (cause) {
-    if (cause instanceof DocumentReflectError) throw cause;
-    throw new DocumentReflectError(
+    if (cause instanceof DocumentMirrorError) throw cause;
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_ROOT_VALIDATION_FAILED_ERROR_CODE,
       "Compatible root convergence planning failed.",
       cause,
@@ -83,7 +83,7 @@ export function plan_document_root_convergence(
 /** Require the internal rooted-document carrier used by Reflection. @internal */
 export function document_root_from_root(root: HsonNode): HsonNode {
   if (root.$_tag !== ROOT_TAG) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_ROOT_MATERIAL_MISSING_ERROR_CODE,
       "Replace-root material does not contain an internal document root.",
     );
@@ -97,7 +97,7 @@ function validate_mounted_root_namespace(root: HsonNode): void {
   if (element === undefined) return;
   const expectedNamespace = root.$_tag === "svg" ? SVG_NS : "http://www.w3.org/1999/xhtml";
   if (element.namespaceURI !== expectedNamespace) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_DOM_MAPPING_MISMATCH_ERROR_CODE,
       "Mounted projected root namespace does not match its Hson element kind.",
     );

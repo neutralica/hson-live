@@ -211,7 +211,7 @@ function validateTemplateDescriptor(
   return validation.status === "valid" ? validation.source : undefined;
 }
 
-function readSubstitutionRanges(
+export function read_template_substitution_ranges(
   template: ts.TemplateExpression,
   hostText: string,
   sourceFile: ts.SourceFile,
@@ -284,7 +284,7 @@ export function discover_hson_tagged_templates(
           if (ts.isNoSubstitutionTemplateLiteral(node.template)) {
             sources.push(validated);
           } else {
-            const substitutionRanges = readSubstitutionRanges(node.template, hostText, sourceFile);
+            const substitutionRanges = read_template_substitution_ranges(node.template, hostText, sourceFile);
             if (substitutionRanges !== undefined) {
               interpolated.push(Object.freeze({
                 fileName,

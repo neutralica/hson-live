@@ -40,7 +40,7 @@ import {
   DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
   DOCUMENT_REFLECT_REUSE_INCOMPATIBLE_ERROR_CODE,
   DOCUMENT_REFLECT_STRUCTURAL_UPDATE_FAILED_ERROR_CODE,
-  DocumentReflectError,
+  DocumentMirrorError,
 } from "./reflect.document.error.js";
 
 type ShadowContent = ShadowNode | Primitive;
@@ -95,7 +95,7 @@ export function plan_document_structural_transaction(
 
   for (const operation of operations) {
     if (operation.op === "replace-root") {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_CONTENT_PATH_INVALID_ERROR_CODE,
         "Root replacement is outside the structural-content binding proof.",
       );
@@ -118,7 +118,7 @@ export function plan_document_structural_transaction(
         break;
       case "ensure-quid":
         if (target.persistedQuid !== undefined && target.persistedQuid !== operation.quid) {
-          throw new DocumentReflectError(
+          throw new DocumentMirrorError(
             DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
             "Projected structural target already carries a different canonical QUID.",
           );
@@ -400,7 +400,7 @@ function resolve_shadow_target(root: ShadowNode, target: LiveMapDocumentCommitTa
   if (target.witness !== undefined
     && current.persistedQuid !== undefined
     && current.persistedQuid !== target.witness.quid) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
       `Canonical path target for ${operation} does not match its persisted-QUID witness.`,
     );
@@ -419,7 +419,7 @@ function apply_shadow_node(shadow: ShadowNode): HsonNode {
 
 function copy_replacement_shell(target: HsonNode, source: HsonNode): void {
   if (target.$_tag !== source.$_tag) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_REUSE_INCOMPATIBLE_ERROR_CODE,
       "A same-QUID replacement changed element kind during structural application.",
     );
@@ -433,7 +433,7 @@ function reconcile_owner_dom(owner: HsonNode, runtime: LiveTreeRuntime): void {
   try {
     reconcile_browser_realization_children(owner, runtime);
   } catch (cause) {
-    throw new DocumentReflectError(
+    throw new DocumentMirrorError(
       DOCUMENT_REFLECT_STRUCTURAL_UPDATE_FAILED_ERROR_CODE,
       "Mounted DOM structural projection failed.",
       cause,
@@ -467,7 +467,7 @@ function validate_final_quids(
     if (quid === undefined) return;
     const duplicate = byQuid.get(quid);
     if (duplicate !== undefined && duplicate !== shadow.node) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
         "Projected structural result contains duplicate persisted QUIDs.",
       );
@@ -476,7 +476,7 @@ function validate_final_quids(
     const registered = get_node_by_quid(quid, runtime);
     if (registered !== undefined && registered !== shadow.node
       && (!oldNodes.has(registered) || finalNodes.has(registered))) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
         "Inserted persisted QUID is owned by another active LiveTree node.",
       );
@@ -499,7 +499,7 @@ function validate_incoming_quids(
       const registered = get_node_by_quid(quid, runtime);
       if (registered !== undefined && registered !== shadow.node
         && (!oldNodes.has(registered) || finalNodes.has(registered))) {
-        throw new DocumentReflectError(
+        throw new DocumentMirrorError(
           DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
           "Inserted persisted QUID is owned by another active LiveTree node.",
         );
@@ -517,7 +517,7 @@ function index_shadow_quids(root: ShadowNode): ReadonlyMap<string, ShadowNode> {
     if (quid === undefined) return;
     const prior = byQuid.get(quid);
     if (prior !== undefined && prior.node !== shadow.node) {
-      throw new DocumentReflectError(
+      throw new DocumentMirrorError(
         DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
         "Projected structural input contains duplicate active persisted QUIDs.",
       );
@@ -599,7 +599,7 @@ function is_shadow_node(input: ShadowContent | undefined): input is ShadowNode {
 function must_attrs(input: unknown): CanonicalPublicAttrs {
   const attrs = decode_public_attrs(input);
   if (attrs !== undefined) return attrs;
-  throw new DocumentReflectError(
+  throw new DocumentMirrorError(
     DOCUMENT_REFLECT_CONTENT_MISMATCH_ERROR_CODE,
     "Structural transaction contains invalid ordinary attributes.",
   );
@@ -615,22 +615,22 @@ function assert_existing_index(target: ShadowNode, index: number, operation: str
   throw content_index_error(operation, index);
 }
 
-function content_path_error(operation: string): DocumentReflectError {
-  return new DocumentReflectError(
+function content_path_error(operation: string): DocumentMirrorError {
+  return new DocumentMirrorError(
     DOCUMENT_REFLECT_CONTENT_PATH_INVALID_ERROR_CODE,
     `Structural operation ${operation} does not resolve to a projected raw content target.`,
   );
 }
 
-function content_index_error(operation: string, index: number): DocumentReflectError {
-  return new DocumentReflectError(
+function content_index_error(operation: string, index: number): DocumentMirrorError {
+  return new DocumentMirrorError(
     DOCUMENT_REFLECT_CONTENT_INDEX_INVALID_ERROR_CODE,
     `Structural operation ${operation} has invalid raw content index ${index}.`,
   );
 }
 
-function content_mismatch(): DocumentReflectError {
-  return new DocumentReflectError(
+function content_mismatch(): DocumentMirrorError {
+  return new DocumentMirrorError(
     DOCUMENT_REFLECT_CONTENT_MISMATCH_ERROR_CODE,
     "Planned projected structure does not match the canonical final graph.",
   );

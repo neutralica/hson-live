@@ -5,7 +5,7 @@ import {
   hsonLiveMap,
   hsonLocus,
   hsonEcho,
-  hsonReflect,
+  hsonMirror,
   type HsonSchema,
 } from "../src/index.ts";
 import { validate_document_path } from "../src/api/livemap/index.ts";
@@ -107,7 +107,7 @@ function make_map() {
   });
 }
 
-function reflected_document_element(reflection: ReturnType<typeof hsonReflect>) {
+function reflected_document_element(reflection: ReturnType<typeof hsonMirror>) {
   const node = reflection.tree.node.$_content[0];
   if (node === null || typeof node !== "object") throw new Error("Expected reflected document element.");
   return create_livetree(node).adoptRoots(reflection.tree.hostRootNode());
@@ -241,7 +241,7 @@ await check("the public Locus and Echo paths bootstrap one typed aggregate mirro
   if (wrongLibrary.type === "error") assert.match(wrongLibrary.error.message, /document/i);
   assert.deepEqual([serverMap.rev, clientMap.rev], [0, 0]);
   const page = client.map.lib("page");
-  const reflection = hsonReflect(page);
+  const reflection = hsonMirror(page);
   const stateValues: unknown[] = [];
   const colorsValues: unknown[] = [];
   const stopState = client.map.commits.observe((commit) => stateValues.push([client.map.lib("state").snap(["theme"]), commit.rev]));
@@ -305,7 +305,7 @@ await check("named document Echo authoring honors aggregate authorization and co
   echo.connect();
   await echo.session.create();
   await echo.recovery.recover();
-  const reflection = hsonReflect(clientMap.lib("page"));
+  const reflection = hsonMirror(clientMap.lib("page"));
   const main = reflected_document_element(reflection);
   const denied = main.async.attrs.set("title", "denied");
   const accepted = main.async.attrs.set("id", "accepted");
@@ -342,7 +342,7 @@ await check("public recovery replays retained history and replaces one complete 
     operation: insert_item(RECOVERY_QUID),
   }]);
   const stateHandle = staleMap.lib("state").at(["theme"]);
-  const reflection = hsonReflect(staleMap.lib("page"));
+  const reflection = hsonMirror(staleMap.lib("page"));
   const staleMain = reflected_document_element(reflection);
   const staleItem = staleMain.content.mustOnly({ warn: false });
   const staleMainNode = staleMain.node;
@@ -481,7 +481,7 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   client.connect();
   await client.session.create();
   await client.recovery.recover();
-  const reflection = hsonReflect(clientMap.lib("page"));
+  const reflection = hsonMirror(clientMap.lib("page"));
   const retainedAction = client.action("state.page");
   await retainedAction;
   const retainedStatus = read_locus_retained_action_status_internal(host, {

@@ -19,7 +19,7 @@ Each entry has exactly one ingress field:
 
 Every Library requires `schema`. Initial material is validated during construction. The Hson Schema generator augments the schema declaration with its generated `SchemaType`, so a generated `ColorsSchema` automatically supplies the selected data and Handle types; callers do not pass a duplicate type parameter.
 
-`map.lib(name)` accepts only the literal names in the static registry. A selected data Library has `root()`, `snap()`, `at(path)`, and `schema.get()`. Its Handle paths are relative to that Library, so nested Handle operations never repeat the library name. A selected document Library retains its normal document, capture, and schema APIs. `hsonReflect(map.lib("page"))` binds one named document Library and stays attached across unrelated global revisions and recovery replacement.
+`map.lib(name)` accepts only the literal names in the static registry. A selected data Library has `root()`, `snap()`, `at(path)`, and `schema.get()`. Its Handle paths are relative to that Library, so nested Handle operations never repeat the library name. A selected document Library retains its normal document, capture, and schema APIs. `hsonMirror(map.lib("page"))` binds one named document Library and stays attached across unrelated global revisions and recovery replacement.
 
 Multi-library mutations return `LiveMapMultiLibraryCommit`. It holds one map-wide `prevRev`/`rev` transition and one ordered `operations` array. Every operation is `{ library, operation }`; the library name is public and the engine's opaque library identity is never exposed. A hosted Locus retains that same one global revision and ordered commit stream.
 

@@ -1,7 +1,7 @@
 {
   "name": "hson-language",
   "displayName": "Hson Language",
-  "description": "Syntax highlighting and authoritative diagnostics for Hson files and supported `Hson` tagged templates.",
+  "description": "Syntax highlighting and authoritative diagnostics for Hson files and supported embedded Hson regions.",
   "version": "0.1.1",
   "publisher": "terminal-gothic",
   "repository": { "type": "git", "url": "https://github.com/neutralica/hson-live.git", "directory": "editors/vscode-hson" },

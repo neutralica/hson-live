@@ -9,21 +9,21 @@ import {
 } from "./reflect.collection.js";
 import {
   reflect_document,
-  type DocumentReflect,
+  type DocumentMirror,
 } from "./reflect.document.js";
 
 /** Canonical LiveMap-authoritative reflector facade. */
 export interface Reflect {
-  (map: DocumentLiveMap | LiveMapDocumentLibrary): DocumentReflect;
+  (map: DocumentLiveMap | LiveMapDocumentLibrary): DocumentMirror;
   collection: <TItem extends JsonValue>(
     options: CollectionReflectOptions<TItem>,
   ) => CollectionReflect<TItem>;
 }
 
-const reflectDocument = (map: DocumentLiveMap | LiveMapDocumentLibrary): DocumentReflect =>
+const reflectDocument = (map: DocumentLiveMap | LiveMapDocumentLibrary): DocumentMirror =>
   reflect_document(map);
 
-export const hsonReflect: Reflect = Object.freeze(Object.assign(
+export const hsonMirror: Reflect = Object.freeze(Object.assign(
   reflectDocument,
   { collection: reflect_collection },
 ));

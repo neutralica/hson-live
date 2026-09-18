@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
-import { Hson, hsonLiveMap, hsonReflect, type HsonSchema } from "../src/index.ts";
+import { Hson, hsonLiveMap, hsonMirror, type HsonSchema } from "../src/index.ts";
 import { validate_document_path } from "../src/api/livemap/index.ts";
 import type { LiveMapLibraries } from "../src/types/livemap.types.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
@@ -238,7 +238,7 @@ await check("page Reflect receives structural work once while unrelated data onl
   const wires: string[] = [];
   const server = create_locus_hosted_aggregate_internal({ map, send: (wire) => wires.push(wire) });
   const client = create_locus_hosted_aggregate_client_internal(seed);
-  const binding = hsonReflect(document_library(client.map, "page"));
+  const binding = hsonMirror(document_library(client.map, "page"));
   await server.mutate((draft) => {
     data(draft, "state").at(["theme"]).set("dark");
     document(draft, "page").graph(insert_item());

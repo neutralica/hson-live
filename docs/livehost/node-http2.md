@@ -1,4 +1,4 @@
-# Secure HTTP/2 Node LiveHost
+# Secure HTTP/2 with LiveHost Node
 
 `start_node_application_host` accepts optional caller-supplied PEM TLS material:
 

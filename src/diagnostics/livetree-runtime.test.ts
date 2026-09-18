@@ -7,7 +7,7 @@ import {
 import { project_livetree } from "../api/livetree/creation/project-live-tree.js";
 import {
   reflect_document_in_runtime,
-  type DocumentReflect,
+  type DocumentMirror,
 } from "../api/reflect/reflect.document.js";
 import { CssRuntimeManager } from "../api/livetree/managers/css-manager.js";
 import {
@@ -149,7 +149,7 @@ export function livetree_runtime_test_owns_document(
 export function reflect_document_for_runtime_test(
   handle: LiveTreeRuntimeTestHandle,
   map: DocumentLiveMap,
-): DocumentReflect {
+): DocumentMirror {
   return reflect_document_in_runtime(map, runtime_for_handle(handle));
 }
 

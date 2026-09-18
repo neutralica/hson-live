@@ -139,13 +139,24 @@ export async function run(): Promise<void> {
         if (hole >= 0) assert.ok(tokens.every(token => token.end <= hole || token.start >= end));
       }
     }
+    for (const text of [
+      'import { hson } from "hson-live"; hson.liveMap.fromHson("<thing/>");',
+      'import { hsonLiveMap } from "hson-live/livemap"; hsonLiveMap.fromHson(`<thing/>`);',
+      'import { hson } from "hson-live"; hson.liveMap.fromHson(`<thing "${value}"/>`);',
+    ]) {
+      await replace(text);
+      const tokens = await hsonTokens();
+      assert.ok(tokens.some(token => token.text === "thing"), `real fromHson token: ${text}`);
+      const hole = doc.getText().indexOf("${"), end = doc.getText().indexOf("}", hole) + 1;
+      if (hole >= 0) assert.ok(tokens.every(token => token.end <= hole || token.start >= end));
+    }
     for (const text of ['const Hson=String.raw; Hson`<thing !!!`;',
       'import { Hson } from "other"; Hson`<thing !!!`;',
       'import { Hson } from "hson-live/hson"; function f(Hson:any){ Hson`<thing !!!`; }']) {
       await replace(text); assert.deepEqual(await hsonTokens(), [], 'unsupported binding must not keep stale Hson tokens');
       assert.equal(await waitFor(0),0);
     }
-    console.log('ok - real baseline tokens: narrow/root/alias; valid/invalid/interpolated; expressions/local/wrong-package/shadow excluded; unsaved token refresh');
+    console.log('ok - real baseline tokens: Hson tags and fromHson literals; binding aliases; interpolation holes; local/wrong-package/shadow exclusions; unsaved token refresh');
   }
   assert.equal(vscode.languages.getDiagnostics(doc.uri).filter(d => d.source === "Hson Schema").length, 0);
   await assert.rejects(Promise.resolve(vscode.workspace.fs.stat(vscode.Uri.file(join(workspace, "provider-executed")))));
