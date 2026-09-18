@@ -51,6 +51,9 @@ assert.match(extensionBundle, /markdown_hson_fence_marker_parts/);
 assert.match(extensionBundle, /function discover_static_from_hson_sources/);
 assert.match(extensionBundle, /function map_static_hson_range/);
 assert.match(extensionBundle, /LocalHostController = class/);
+assert.equal((extensionBundle.match(/createStatusBarItem\(/g) ?? []).length, 1);
+assert.match(extensionBundle, /Hson Extension\s+Schema:/);
+assert.doesNotMatch(extensionBundle, /hson\.schemaToolActions|hson\.localHostActions/);
 assert.match(localHostRunner, /LOCAL_HOST_PROTOCOL_VERSION/);
 assert.doesNotMatch(localHostRunner, /start_node_application_host\(options\)/);
 assert.ok(JSON.parse(localHostRunnerMap).sources.some(source => source.endsWith("/local-host-runner.ts")));
@@ -92,6 +95,14 @@ assert.deepEqual({
   nodeExecutable: configuration["hson.localHost.nodeExecutable"].default,
   port: configuration["hson.localHost.port"].default,
 }, { entry: "", applicationExport: "application", nodeExecutable: "node", port: 0 });
+assert.deepEqual(configuration["hson.formatting.formatOnSave"], {
+  type: "boolean",
+  default: true,
+  scope: "resource",
+  order: 10,
+  title: "Format Hson on Save",
+  markdownDescription: "Format recognized Hson authoring regions when a file is saved.",
+});
 const appearanceDefaults = { blue: "#00adf6", yellow: "#c9d100", pink: "#ff4a8c", green: "#39a500" };
 assert.deepEqual(Object.keys(appearanceDefaults).map(key => ({
   key: `hson.appearance.${key}`,

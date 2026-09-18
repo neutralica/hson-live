@@ -96,6 +96,7 @@
     }
   },
   "scripts": {
+    "b/t": "npm run build && npm run toolkit:update",
     "toolkit:update": "npm run vscode:install",
     "vscode:package": "npm --prefix editors/vscode-hson run package:vsix",
     "vscode:install": "npm --prefix editors/vscode-hson run vscode:install",

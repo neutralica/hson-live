@@ -129,7 +129,7 @@ export async function run(): Promise<void> {
 
   assert.ok(workspace);
   const commands = await vscode.commands.getCommands(true);
-  for (const command of ["hson.startLocalHost", "hson.stopLocalHost", "hson.restartLocalHost", "hson.openLocalApp", "hson.showLocalHostOutput"]) {
+  for (const command of ["hson.actions", "hson.formatDocument", "hson.formatSelection", "hson.startLocalHost", "hson.stopLocalHost", "hson.restartLocalHost", "hson.openLocalApp", "hson.showLocalHostOutput"]) {
     assert.ok(commands.includes(command), `${command} is registered`);
   }
   const folder = vscode.workspace.workspaceFolders?.[0];
@@ -175,7 +175,77 @@ export async function run(): Promise<void> {
 
   const structuralUri = vscode.Uri.file(join(workspace, "hson-structural-editing.ts"));
   const markdownStructuralUri = vscode.Uri.file(join(workspace, "hson-structural-editing.md"));
+  const saveTypeScriptUri = vscode.Uri.file(join(workspace, "hson-format-on-save.ts"));
+  const saveMarkdownUri = vscode.Uri.file(join(workspace, "hson-format-on-save.md"));
+  const invalidSaveUri = vscode.Uri.file(join(workspace, "hson-format-on-save-invalid.ts"));
   try {
+    const replaceDocument = async (document: vscode.TextDocument, text: string): Promise<void> => {
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(document.uri, new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length)), text);
+      assert.equal(await vscode.workspace.applyEdit(edit), true);
+      assert.equal(document.isDirty, true);
+    };
+    const formattingConfiguration = vscode.workspace.getConfiguration("hson.formatting", folder.uri);
+    assert.equal(formattingConfiguration.get<boolean>("formatOnSave"), true, "Hson format-on-save defaults on in real VS Code");
+
+    const typeScriptInput = [
+      'import { Hson } from "hson-live/hson";',
+      "const host =  1;",
+      "const unrelated = `  untouched`;",
+      "const runtime = fromHson(`",
+      " <runtime",
+      "<child/>",
+      "/>",
+      "`);",
+      "const x = Hson`",
+      " <data 1",
+      "data2 2",
+      ">",
+      "`;",
+      "",
+    ].join("\n");
+    const typeScriptExpected = typeScriptInput.replace("\n <data 1\ndata2 2\n>", "\n<data 1\n  data2 2\n>");
+    await vscode.workspace.fs.writeFile(saveTypeScriptUri, Buffer.from("// format-on-save fixture\n"));
+    const saveTypeScript = await vscode.workspace.openTextDocument(saveTypeScriptUri);
+    const saveTypeScriptEditor = await vscode.window.showTextDocument(saveTypeScript);
+    saveTypeScriptEditor.options = { ...saveTypeScriptEditor.options, insertSpaces: true, tabSize: 2 };
+    await replaceDocument(saveTypeScript, typeScriptInput);
+    assert.equal(await saveTypeScript.save(), true);
+    assert.equal(saveTypeScript.getText(), typeScriptExpected, `save formats only the binding-recognized Hson template: ${JSON.stringify(saveTypeScript.getText())}`);
+    assert.ok(saveTypeScript.getText().includes("const host =  1;"), "save leaves ordinary TypeScript byte-stable");
+    assert.ok(saveTypeScript.getText().includes("const unrelated = `  untouched`;"), "save leaves unrelated templates byte-stable");
+    assert.ok(saveTypeScript.getText().includes("fromHson(`\n <runtime\n<child/>\n/>\n`)"), "save leaves fromHson runtime strings byte-stable");
+    const onceFormatted = saveTypeScript.getText();
+    await replaceDocument(saveTypeScript, typeScriptInput);
+    assert.equal(await saveTypeScript.save(), true);
+    assert.equal(saveTypeScript.getText(), onceFormatted, "save formatting remains idempotent");
+
+    const markdownInput = "Prose  stays\n```hson\n <main\n<section\n/>\n />\n```\n```json\n  untouched\n```\n```Hson\n <also-untouched/>\n```\n";
+    const markdownExpected = markdownInput.replace("```hson\n <main\n<section\n/>\n />\n```", "```hson\n<main\n  <section\n  />\n/>\n```");
+    await vscode.workspace.fs.writeFile(saveMarkdownUri, Buffer.from("# format-on-save fixture\n"));
+    const saveMarkdown = await vscode.workspace.openTextDocument(saveMarkdownUri);
+    const saveMarkdownEditor = await vscode.window.showTextDocument(saveMarkdown);
+    saveMarkdownEditor.options = { ...saveMarkdownEditor.options, insertSpaces: true, tabSize: 2 };
+    await replaceDocument(saveMarkdown, markdownInput);
+    assert.equal(await saveMarkdown.save(), true);
+    assert.equal(saveMarkdown.getText(), markdownExpected, "save formats canonical Markdown hson fences without changing prose or unrelated fences");
+
+    const invalidInput = 'import { Hson } from "hson-live/hson";\nconst invalid = Hson`\n <data 1\n<data2 2>\n>\n`;\n';
+    await vscode.workspace.fs.writeFile(invalidSaveUri, Buffer.from("// invalid format-on-save fixture\n"));
+    const invalidSave = await vscode.workspace.openTextDocument(invalidSaveUri);
+    await vscode.window.showTextDocument(invalidSave);
+    await replaceDocument(invalidSave, invalidInput);
+    assert.equal(await invalidSave.save(), true, "invalid Hson does not block a real save");
+    assert.equal(invalidSave.getText(), invalidInput, "invalid Hson is skipped without rewriting");
+
+    await formattingConfiguration.update("formatOnSave", false, vscode.ConfigurationTarget.WorkspaceFolder);
+    await vscode.window.showTextDocument(saveTypeScript);
+    await replaceDocument(saveTypeScript, typeScriptInput);
+    assert.equal(await saveTypeScript.save(), true);
+    assert.equal(saveTypeScript.getText(), typeScriptInput, "disabled Hson format-on-save leaves recognized regions unchanged");
+    await formattingConfiguration.update("formatOnSave", true, vscode.ConfigurationTarget.WorkspaceFolder);
+    process.stdout.write("ok - real VS Code save formats recognized TypeScript and Markdown Hson only; invalid input skips; disabled setting bypasses\n");
+
     await vscode.workspace.fs.writeFile(structuralUri, Buffer.from('import { Hson } from "hson-live/hson";\nconst host =  1;\nconst inline=Hson`<solo/>`;\nconst page=Hson`\n <main\n<section\n/>\n />\n`;\n'));
     const structural = await vscode.workspace.openTextDocument(structuralUri);
     const structuralEditor = await vscode.window.showTextDocument(structural);
@@ -265,9 +335,14 @@ export async function run(): Promise<void> {
     assert.ok(markdownStructural.getText().includes("```hson\n<main\n  <section\n  />\n/>\n```"), "Markdown format document used the shared Hson formatter");
     process.stdout.write("ok - real VS Code structural editing: valid/incomplete/parser-invalid/tokenizer-invalid/delimiter/string/comment/interpolation/outside Enter fallback; valid-invalid-valid recovery; pair and ordinary Backspace; formatting\n");
   } finally {
+    await vscode.workspace.getConfiguration("hson.formatting", folder.uri)
+      .update("formatOnSave", true, vscode.ConfigurationTarget.WorkspaceFolder).then(undefined, () => undefined);
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
     await vscode.workspace.fs.delete(structuralUri).then(undefined, () => undefined);
     await vscode.workspace.fs.delete(markdownStructuralUri).then(undefined, () => undefined);
+    await vscode.workspace.fs.delete(saveTypeScriptUri).then(undefined, () => undefined);
+    await vscode.workspace.fs.delete(saveMarkdownUri).then(undefined, () => undefined);
+    await vscode.workspace.fs.delete(invalidSaveUri).then(undefined, () => undefined);
   }
 
   await vscode.commands.executeCommand("hson.startLocalHost", folder.uri);

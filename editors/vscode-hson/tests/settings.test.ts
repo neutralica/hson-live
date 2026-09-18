@@ -26,8 +26,9 @@ function check(name: string, body: () => void): void {
 
 const appearanceGroup = groups.find(group => group.title === "Hson › Appearance");
 const localHostGroup = groups.find(group => group.title === "Hson › Local App");
-assert.ok(appearanceGroup); assert.ok(localHostGroup);
-check("settings expose the appearance and bounded local-app groups", () => assert.deepEqual(groups.map(group => group.title), ["Hson › Appearance", "Hson › Local App"]));
+const formattingGroup = groups.find(group => group.title === "Hson › Formatting");
+assert.ok(appearanceGroup); assert.ok(localHostGroup); assert.ok(formattingGroup);
+check("settings expose the appearance, bounded local-app, and formatting groups", () => assert.deepEqual(groups.map(group => group.title), ["Hson › Appearance", "Hson › Local App", "Hson › Formatting"]));
 check("the appearance authority distinguishes owned values from theme-derived scopes", () => {
   assert.deepEqual(Object.keys(HSON_APPEARANCE), ["owned", "themeDerived", "native"]);
   assert.ok(Object.values(HSON_APPEARANCE.themeDerived).every(value => value.endsWith(".hson")));
@@ -118,6 +119,13 @@ check("local-host settings describe one built entry and narrow runtime controls"
   assert.equal(properties["hson.localHost.port"].default, 0);
   assert.equal(properties["hson.localHost.port"].minimum, 0);
   assert.equal(properties["hson.localHost.port"].maximum, 65_535);
+});
+check("Hson format-on-save is one resource setting enabled by default", () => {
+  assert.deepEqual(Object.keys(formattingGroup.properties), ["hson.formatting.formatOnSave"]);
+  const setting = properties["hson.formatting.formatOnSave"];
+  assert.equal(setting.default, true);
+  assert.equal(setting.scope, "resource");
+  assert.equal(setting.markdownDescription, "Format recognized Hson authoring regions when a file is saved.");
 });
 check("no retired execution settings are advertised as restricted", () => assert.equal(manifest.capabilities.untrustedWorkspaces.restrictedConfigurations, undefined));
 check("settings search targets this extension", () => assert.equal(HSON_SETTINGS_QUERY, "@ext:terminal-gothic.hson-language"));

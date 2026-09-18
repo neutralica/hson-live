@@ -92,6 +92,12 @@ check("multiple templates format while unrelated host and template text stay unt
   assert.ok(output.includes("\n<a\n  <b/>\n/>"));
   assert.ok(output.includes("\n<\n  x true\n>"));
 });
+check("invalid Hson regions are skipped without preventing safe sibling formatting", () => {
+  const input = 'import { Hson } from "hson-live";\nconst invalid=Hson`\n <data 1\n<data2 2>\n>\n`;\nconst valid=Hson`\n <data 1\ndata2 2\n>\n`;';
+  const output = format(input);
+  assert.ok(output.includes('invalid=Hson`\n <data 1\n<data2 2>\n>\n`'));
+  assert.ok(output.includes('valid=Hson`\n<data 1\n  data2 2\n>\n`'));
+});
 check("range formatting changes only intersecting Hson regions", () => {
   const input = 'import { Hson } from "hson-live";\nconst a=Hson`\n <a\n<b/>\n/>\n`;\nconst b=Hson`\n <b\n<c/>\n/>\n`;';
   const firstStart = input.indexOf("<a");

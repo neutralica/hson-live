@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 
-import { LocalHostController, type LocalHostSnapshot } from "./local-host-controller.js";
-import { local_app_quick_pick_actions, local_app_status_presentation, local_host_command_availability, type LocalHostProjectPresentation } from "./local-host-presentation.js";
+import { LocalHostController, type LocalHostSnapshot, type LocalHostState } from "./local-host-controller.js";
+import { local_app_quick_pick_actions, local_host_command_availability, type LocalAppAction, type LocalHostProjectPresentation } from "./local-host-presentation.js";
 import { local_host_start_blocker, resolve_local_host_project, type LocalHostProjectSettings } from "./local-host-project.js";
 
 type ManagedProject = Readonly<{
@@ -12,24 +12,21 @@ type ManagedProject = Readonly<{
 export class LocalHostExtensionManager implements vscode.Disposable {
   readonly #context: vscode.ExtensionContext;
   readonly #output: vscode.OutputChannel;
-  readonly #status: vscode.StatusBarItem;
+  readonly #onState: (state: LocalHostState) => void;
   readonly #projects = new Map<string, ManagedProject>();
   #disposePromise: Promise<void> | undefined;
 
-  constructor(context: vscode.ExtensionContext) {
+  constructor(context: vscode.ExtensionContext, onState: (state: LocalHostState) => void) {
     this.#context = context;
+    this.#onState = onState;
     this.#output = vscode.window.createOutputChannel("Hson Local App");
-    this.#status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 10);
-    this.#status.command = "hson.localHostActions";
     context.subscriptions.push(
       this.#output,
-      this.#status,
       vscode.commands.registerCommand("hson.startLocalHost", (uri?: vscode.Uri) => this.start(uri)),
       vscode.commands.registerCommand("hson.stopLocalHost", (uri?: vscode.Uri) => this.stop(uri)),
       vscode.commands.registerCommand("hson.restartLocalHost", (uri?: vscode.Uri) => this.restart(uri)),
       vscode.commands.registerCommand("hson.openLocalApp", (uri?: vscode.Uri) => this.open(uri)),
       vscode.commands.registerCommand("hson.showLocalHostOutput", () => this.#output.show(true)),
-      vscode.commands.registerCommand("hson.localHostActions", () => this.#showActions()),
       vscode.window.onDidChangeActiveTextEditor(() => this.#updatePresentation()),
       vscode.workspace.onDidChangeConfiguration(event => {
         if (event.affectsConfiguration("hson.localHost")) this.#updatePresentation();
@@ -87,6 +84,14 @@ export class LocalHostExtensionManager implements vscode.Disposable {
       return;
     }
     await vscode.env.openExternal(vscode.Uri.parse(snapshot.httpUrl, true));
+  }
+
+  #statusState(): LocalHostState {
+    return this.#currentSnapshot()?.state ?? "stopped";
+  }
+
+  quickPickActions(): readonly LocalAppAction[] {
+    return local_app_quick_pick_actions(this.#presentations());
   }
 
   dispose(): void {
@@ -223,25 +228,12 @@ export class LocalHostExtensionManager implements vscode.Disposable {
   }
 
   #updatePresentation(): void {
-    const snapshot = this.#currentSnapshot();
-    const project = snapshot === undefined ? undefined : this.#presentations().find(candidate => candidate.projectId === snapshot.projectId);
-    const presentation = local_app_status_presentation(snapshot, project);
-    this.#status.text = presentation.text;
-    this.#status.tooltip = presentation.tooltip;
-    this.#status.show();
     const availability = local_host_command_availability(this.#presentations());
     void vscode.commands.executeCommand("setContext", "hson.localHost.canStart", availability.canStart);
     void vscode.commands.executeCommand("setContext", "hson.localHost.canStop", availability.canStop);
     void vscode.commands.executeCommand("setContext", "hson.localHost.canRestart", availability.canRestart);
     void vscode.commands.executeCommand("setContext", "hson.localHost.canOpen", availability.canOpen);
-  }
-
-  async #showActions(): Promise<void> {
-    const action = await vscode.window.showQuickPick(
-      local_app_quick_pick_actions(this.#presentations()),
-      { placeHolder: "Hson local application" },
-    );
-    if (action !== undefined) await vscode.commands.executeCommand(action.command);
+    this.#onState(this.#statusState());
   }
 
   async #removeFolder(folder: vscode.WorkspaceFolder): Promise<void> {

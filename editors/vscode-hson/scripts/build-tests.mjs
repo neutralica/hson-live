@@ -11,6 +11,7 @@ await build({
     unit: "tests/runtime.test.ts",
     workspace: "tests/workspace-diagnostics.test.ts",
     settings: "tests/settings.test.ts",
+    "status-ui": "tests/status-ui.test.ts",
     structural: "tests/structural-editing.test.ts",
     "local-host": "tests/local-host.test.ts",
     "local-host-process": "tests/local-host-process.test.ts",

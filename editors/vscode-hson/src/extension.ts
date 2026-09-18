@@ -35,6 +35,8 @@ import { markdown_hson_fence_marker_parts } from "./markdown-fence-marker.js";
 import { HSON_SETTINGS_QUERY, appearance_color, marker_strength, marker_color_key } from "./settings.js";
 import { HSON_APPEARANCE } from "./appearance.js";
 import { LocalHostExtensionManager } from "./local-host-extension.js";
+import type { LocalHostState } from "./local-host-controller.js";
+import { hson_quick_pick_actions, hson_status_presentation, type SchemaToolState } from "./hson-status.js";
 import {
   structural_closer_for_less_than,
   structural_formatting_edits,
@@ -90,10 +92,21 @@ function explicitAppearanceColor(
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-  localHostManager = new LocalHostExtensionManager(context);
   const structuralLanguage = (document: vscode.TextDocument): StructuralHostLanguage | undefined =>
     document.languageId === "typescript" || document.languageId === "typescriptreact" || document.languageId === "markdown"
       ? document.languageId : undefined;
+  const documentIndentation = (document: vscode.TextDocument) => {
+    const visibleEditor = vscode.window.visibleTextEditors.find(editor => editor.document === document);
+    if (visibleEditor !== undefined) return Object.freeze({
+      insertSpaces: visibleEditor.options.insertSpaces !== false,
+      tabSize: typeof visibleEditor.options.tabSize === "number" ? visibleEditor.options.tabSize : 2,
+    });
+    const editor = vscode.workspace.getConfiguration("editor", document);
+    return Object.freeze({
+      insertSpaces: editor.get<boolean>("insertSpaces", true),
+      tabSize: editor.get<number>("tabSize", 2),
+    });
+  };
   const editorIndentation = (editor: vscode.TextEditor) => Object.freeze({
     insertSpaces: editor.options.insertSpaces !== false,
     tabSize: typeof editor.options.tabSize === "number" ? editor.options.tabSize : 2,
@@ -226,26 +239,30 @@ export function activate(context: vscode.ExtensionContext): void {
   );
   updateStructuralContext();
 
-  const markdownSelector: vscode.DocumentSelector = [{ language: "markdown", scheme: "file" }, { language: "markdown", scheme: "untitled" }];
-  const markdownFormattingEdits = (
+  const structuralFormattingEdits = (
     document: vscode.TextDocument,
     options: vscode.FormattingOptions,
     range?: vscode.Range,
-  ): vscode.TextEdit[] => structural_formatting_edits(
-    document.fileName,
-    "markdown",
-    document.getText(),
-    options,
-    range === undefined ? undefined : { start: document.offsetAt(range.start), end: document.offsetAt(range.end) },
-  ).map(edit => vscode.TextEdit.replace(
-    new vscode.Range(document.positionAt(edit.start), document.positionAt(edit.end)), edit.text,
-  ));
+  ): vscode.TextEdit[] => {
+    const language = structuralLanguage(document);
+    if (language === undefined) return [];
+    return structural_formatting_edits(
+      document.fileName,
+      language,
+      document.getText(),
+      options,
+      range === undefined ? undefined : { start: document.offsetAt(range.start), end: document.offsetAt(range.end) },
+    ).map(edit => vscode.TextEdit.replace(
+      new vscode.Range(document.positionAt(edit.start), document.positionAt(edit.end)), edit.text,
+    ));
+  };
+  const markdownSelector: vscode.DocumentSelector = [{ language: "markdown", scheme: "file" }, { language: "markdown", scheme: "untitled" }];
   context.subscriptions.push(
     vscode.languages.registerDocumentFormattingEditProvider(markdownSelector, {
-      provideDocumentFormattingEdits: (document, options) => markdownFormattingEdits(document, options),
+      provideDocumentFormattingEdits: (document, options) => structuralFormattingEdits(document, options),
     }),
     vscode.languages.registerDocumentRangeFormattingEditProvider(markdownSelector, {
-      provideDocumentRangeFormattingEdits: (document, range, options) => markdownFormattingEdits(document, options, range),
+      provideDocumentRangeFormattingEdits: (document, range, options) => structuralFormattingEdits(document, options, range),
     }),
   );
   const formatStructuralRegions = async (scope: "document" | "selection"): Promise<void> => {
@@ -257,25 +274,27 @@ export function activate(context: vscode.ExtensionContext): void {
     const requestedRange = scope === "selection" && !editor.selection.isEmpty
       ? { start: document.offsetAt(editor.selection.start), end: document.offsetAt(editor.selection.end) }
       : undefined;
-    const edits = structural_formatting_edits(
-      document.fileName,
-      language,
-      document.getText(),
+    const edits = structuralFormattingEdits(
+      document,
       editorIndentation(editor),
-      requestedRange,
+      requestedRange === undefined ? undefined : new vscode.Range(document.positionAt(requestedRange.start), document.positionAt(requestedRange.end)),
     );
     if (edits.length === 0) return;
     const workspaceEdit = new vscode.WorkspaceEdit();
-    for (const edit of edits) workspaceEdit.replace(
-      document.uri,
-      new vscode.Range(document.positionAt(edit.start), document.positionAt(edit.end)),
-      edit.text,
-    );
+    for (const edit of edits) workspaceEdit.replace(document.uri, edit.range, edit.newText);
     await vscode.workspace.applyEdit(workspaceEdit);
   };
   context.subscriptions.push(
     vscode.commands.registerCommand("hson.formatDocument", () => formatStructuralRegions("document")),
     vscode.commands.registerCommand("hson.formatSelection", () => formatStructuralRegions("selection")),
+    vscode.workspace.onWillSaveTextDocument(event => {
+      if (structuralLanguage(event.document) === undefined
+        || !vscode.workspace.getConfiguration("hson.formatting", event.document).get<boolean>("formatOnSave", true)) return;
+      let edits: readonly vscode.TextEdit[] = [];
+      try { edits = structuralFormattingEdits(event.document, documentIndentation(event.document)); }
+      catch { edits = []; }
+      event.waitUntil(Promise.resolve(edits));
+    }),
   );
   const collection = vscode.languages.createDiagnosticCollection("hson");
   const diagnosticsOutput = vscode.window.createOutputChannel("Hson Diagnostics");
@@ -563,9 +582,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }));
   type ManagedSchemaWatch = Readonly<{ folder: vscode.WorkspaceFolder; project: string; child: ChildProcess }>;
   const schemaToolOutput = vscode.window.createOutputChannel("Hson Schema");
-  const schemaToolStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 11);
   const schemaWatches = new Map<string, ManagedSchemaWatch>();
-  type SchemaToolState = "stopped" | "starting" | "watching" | "stale" | "error";
   const schemaToolStates = new Map<string, SchemaToolState>();
   const schemaWatchKey = (folder: vscode.WorkspaceFolder, project: string): string => `${folder.uri.toString()}::${project}`;
   const schemaToolFolder = async (requested?: vscode.Uri): Promise<vscode.WorkspaceFolder | undefined> => {
@@ -583,19 +600,28 @@ export function activate(context: vscode.ExtensionContext): void {
     const choice = await vscode.window.showQuickPick(candidates.map(folder => ({ label: folder.name, description: discover_schema_project(folder.uri.fsPath), folder })), { placeHolder: "Choose the workspace project for Hson Schema tooling" });
     return choice?.folder;
   };
-  const updateSchemaToolStatus = (): void => {
+  const currentSchemaToolState = (): SchemaToolState => {
     const folder = vscode.window.activeTextEditor === undefined ? undefined : vscode.workspace.getWorkspaceFolder(vscode.window.activeTextEditor.document.uri);
     const entries = [...schemaToolStates.entries()].filter(([key]) => folder === undefined || key.startsWith(`${folder.uri.toString()}::`));
     const states = entries.map(([, state]) => state);
-    const state: SchemaToolState = states.includes("error") ? "error" : states.includes("stale") ? "stale" : states.includes("starting") ? "starting" : states.includes("watching") ? "watching" : "stopped";
-    schemaToolStatus.text = state === "watching" ? "Hson Schema: Current" : state === "starting" ? "Hson Schema: Checking" : state === "stale" ? "Hson Schema: Stale" : state === "error" ? "Hson Schema: Error" : "Hson Schema: Stopped";
-    schemaToolStatus.tooltip = state === "watching" ? "The extension-managed Schema watcher is running and generated evidence is current."
-      : state === "starting" ? "The extension-managed Hson Schema command is starting or checking changes."
-      : state === "stale" ? "An edited Schema has not yet been reconciled with generated evidence."
-      : state === "error" ? "The extension-managed Hson Schema command reported an error. Select to generate, watch, stop, or show output."
-      : "No extension-managed Hson Schema watch process is running. An external terminal watcher may still exist.";
-    schemaToolStatus.show();
+    return states.includes("error") ? "error" : states.includes("stale") ? "stale" : states.includes("starting") ? "starting" : states.includes("watching") ? "watching" : "stopped";
   };
+  const hsonStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 11);
+  hsonStatus.name = "Hson Extension";
+  hsonStatus.command = "hson.actions";
+  let localHostState: LocalHostState = "stopped";
+  const updateHsonStatus = (): void => {
+    const presentation = hson_status_presentation(currentSchemaToolState(), localHostState);
+    hsonStatus.text = presentation.text;
+    hsonStatus.tooltip = presentation.tooltip;
+    hsonStatus.backgroundColor = presentation.error ? new vscode.ThemeColor("statusBarItem.errorBackground") : undefined;
+    hsonStatus.show();
+  };
+  const updateSchemaToolStatus = updateHsonStatus;
+  localHostManager = new LocalHostExtensionManager(context, state => {
+    localHostState = state;
+    updateHsonStatus();
+  });
   const appendProcessOutput = (child: ChildProcess, onLine?: (line: string) => void): void => {
     const attach = (stream: NodeJS.ReadableStream | null): void => {
       let pending = "";
@@ -691,7 +717,6 @@ export function activate(context: vscode.ExtensionContext): void {
       updateSchemaToolStatus(); refreshSchemaEvidence();
     });
   };
-  schemaToolStatus.command = "hson.schemaToolActions";
   updateSchemaToolStatus();
   context.subscriptions.push(
     vscode.commands.registerCommand("hson.openSettings", () => vscode.commands.executeCommand("workbench.action.openSettings", HSON_SETTINGS_QUERY)),
@@ -700,15 +725,25 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("hson.startSchemaWatch", (uri?: vscode.Uri) => startSchemaWatch(uri)),
     vscode.commands.registerCommand("hson.stopSchemaWatch", (uri?: vscode.Uri) => stopSchemaWatch(uri)),
     vscode.commands.registerCommand("hson.showSchemaOutput", () => schemaToolOutput.show(true)),
-    vscode.commands.registerCommand("hson.schemaToolActions", async () => {
-      const action = await vscode.window.showQuickPick([
-        { label: "Generate Schema Types", command: "hson.generateSchemaTypes" },
-        { label: "Start Schema Watch", command: "hson.startSchemaWatch" },
-        { label: "Stop Schema Watch", command: "hson.stopSchemaWatch" },
-        { label: "Check Schemas", command: "hson.checkSchemas" },
-        { label: "Show Hson Output", command: "hson.showSchemaOutput" },
-      ], { placeHolder: "Hson Schema tooling" });
-      if (action !== undefined) await vscode.commands.executeCommand(action.command);
+    vscode.commands.registerCommand("hson.actions", async () => {
+      const editor = vscode.window.activeTextEditor;
+      const canFormatDocument = editor !== undefined && structuralLanguage(editor.document) !== undefined;
+      const actions = hson_quick_pick_actions(
+        { document: canFormatDocument, selection: canFormatDocument && !editor.selection.isEmpty },
+        localHostManager?.quickPickActions() ?? [],
+      );
+      type PickerItem = vscode.QuickPickItem & { command?: string };
+      const items: PickerItem[] = [];
+      let section: string | undefined;
+      for (const action of actions) {
+        if (action.section !== section) {
+          section = action.section;
+          items.push({ label: section, kind: vscode.QuickPickItemKind.Separator });
+        }
+        items.push({ label: action.label, command: action.command });
+      }
+      const action = await vscode.window.showQuickPick(items, { placeHolder: "Hson actions" });
+      if (action?.command !== undefined) await vscode.commands.executeCommand(action.command);
     }),
   );
   context.subscriptions.push(vscode.languages.registerCodeActionsProvider(["typescript", "typescriptreact"], {
@@ -726,7 +761,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const changed = (uri: vscode.Uri): void => {
     if (uri.fsPath.includes(".hson-schema.generated.")) refreshSchemaEvidence();
   };
-  context.subscriptions.push(schemaToolOutput, schemaToolStatus, watcher,
+  context.subscriptions.push(schemaToolOutput, hsonStatus, watcher,
     watcher.onDidChange(changed), watcher.onDidCreate(changed), watcher.onDidDelete(changed),
     vscode.workspace.onDidChangeWorkspaceFolders(event => {
       for (const folder of event.removed) {
