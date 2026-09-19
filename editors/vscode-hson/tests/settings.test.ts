@@ -46,6 +46,11 @@ check("manifest color defaults mirror the owned appearance palette", () => {
   const separator = HSON_APPEARANCE.owned.librarySeparator;
   assert.deepEqual(defaultsById[separator.colorId], { dark: separator.color, light: separator.color, highContrast: separator.color, highContrastLight: separator.color });
 });
+check("document self-closing slash reuses the owned violet at soft strength", () => {
+  assert.equal(HSON_APPEARANCE.owned.documentSelfClosingSlash.color, HSON_APPEARANCE.owned.librarySeparator.color);
+  assert.equal(HSON_APPEARANCE.owned.documentSelfClosingSlash.strength, "soft");
+  assert.equal(HSON_APPEARANCE.themeDerived.selfClosingSlash, "punctuation.definition.tag.self-closing.hson");
+});
 check("native bracket-pair declarations mirror the appearance authority", () => {
   assert.deepEqual(languageConfiguration.colorizedBracketPairs, HSON_APPEARANCE.native.colorizedBracketPairs);
 });

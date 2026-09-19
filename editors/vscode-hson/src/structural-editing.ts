@@ -219,6 +219,12 @@ function lineOf(source: string, offset: number): number {
   return line;
 }
 
+function newlineNear(source: string, offset: number): "\n" | "\r\n" {
+  const next = source.indexOf("\n", offset);
+  const newline = next === -1 ? source.lastIndexOf("\n", offset) : next;
+  return newline > 0 && source[newline - 1] === "\r" ? "\r\n" : "\n";
+}
+
 function structuralPairs(tokens: readonly Tokens[]): readonly StructuralPair[] {
   const stack: StructuralStackEntry[] = [];
   const pairs: StructuralPair[] = [];
@@ -388,27 +394,38 @@ export function structural_formatting_edits(
     const lexical = lexicalRanges(body);
     const comments = lexical.comments;
     for (const pair of pairs) {
-      if (pair.kind !== "object" || pair.firstMember === undefined || pair.openLine === pair.closeLine) continue;
-      if (lineOf(body, pair.firstMember) !== pair.openLine) continue;
-      const openingLineEnd = body.indexOf("\n", pair.open);
-      const commentOnOpeningLine = comments.some(comment =>
-        comment.start > pair.open && (openingLineEnd === -1 || comment.start < openingLineEnd));
-      if (commentOnOpeningLine) continue;
-      const start = pair.open + 1;
-      const end = pair.firstMember;
+      if (pair.kind !== "object" || pair.openLine === pair.closeLine) continue;
       if (requestedRange !== undefined) {
         const hostOpen = region.bodyRange.start + pair.open;
         const hostClose = region.bodyRange.start + pair.close + 1;
         if (hostOpen < requestedRange.start || hostClose > requestedRange.end) continue;
       }
       const depth = pairs.filter(container => container.open <= pair.open && container.close > pair.open).length;
-      const newline = openingLineEnd > 0 && body[openingLineEnd - 1] === "\r" ? "\r\n" : "\n";
-      const replacement = newline + region.baseIndentation + unit.repeat(depth);
-      edits.push(Object.freeze({
-        start: region.bodyRange.start + start,
-        end: region.bodyRange.start + end,
-        text: replacement,
-      }));
+      if (pair.firstMember !== undefined && lineOf(body, pair.firstMember) === pair.openLine) {
+        const openingLineEnd = body.indexOf("\n", pair.open);
+        const commentOnOpeningLine = comments.some(comment =>
+          comment.start > pair.open && (openingLineEnd === -1 || comment.start < openingLineEnd));
+        if (!commentOnOpeningLine) {
+          const newline = newlineNear(body, pair.open);
+          edits.push(Object.freeze({
+            start: region.bodyRange.start + pair.open + 1,
+            end: region.bodyRange.start + pair.firstMember,
+            text: newline + region.baseIndentation + unit.repeat(depth),
+          }));
+        }
+      }
+      const closerLineStart = lineStart(body, pair.close);
+      const beforeCloser = body.slice(closerLineStart, pair.close);
+      if (!/^[ \t]*$/.test(beforeCloser)) {
+        const newline = newlineNear(body, pair.close);
+        let closerStart = pair.close;
+        while (closerStart > closerLineStart && (body[closerStart - 1] === " " || body[closerStart - 1] === "\t")) closerStart -= 1;
+        edits.push(Object.freeze({
+          start: region.bodyRange.start + closerStart,
+          end: region.bodyRange.start + pair.close,
+          text: newline + region.baseIndentation + unit.repeat(Math.max(0, depth - 1)),
+        }));
+      }
     }
     let localStart = 0;
     let line = 0;
@@ -421,7 +438,11 @@ export function structural_formatting_edits(
       const content = rawLine.slice(leading.length);
       const editableFirstLine = line > 0 || region.bodyStartsAtLineStart;
       if (editableFirstLine && content !== "") {
-        const depth = pairs.filter(pair => pair.openLine < line && pair.closeLine > line).length;
+        // Indentation belongs to the structural state at the first content on
+        // the line. A closer later on this line cannot retroactively dedent
+        // that content, while a closer at this exact offset still dedents.
+        const contentOffset = localStart + leading.length;
+        const depth = pairs.filter(pair => pair.open < contentOffset && pair.close > contentOffset).length;
         const replacement = region.baseIndentation + unit.repeat(depth);
         const start = region.bodyRange.start + localStart;
         const end = start + leading.length;

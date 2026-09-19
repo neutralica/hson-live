@@ -35,6 +35,10 @@ export const HSON_APPEARANCE = {
       color: "#7247d4",
       strength: "strong",
     },
+    documentSelfClosingSlash: {
+      color: "#7247d4",
+      strength: "soft",
+    },
   },
   themeDerived: {
     structuralName: "entity.name.type.hson",
@@ -70,6 +74,7 @@ export type AppearanceColorKey = keyof typeof HSON_APPEARANCE.owned.colors;
 
 export const hsonIdentityMarkers = HSON_APPEARANCE.owned.identityMarkers;
 export const HSON_LIBRARY_SEPARATOR_COLOR_ID = HSON_APPEARANCE.owned.librarySeparator.colorId;
+export const HSON_DOCUMENT_SELF_CLOSING_SLASH = HSON_APPEARANCE.owned.documentSelfClosingSlash;
 
 const scope = HSON_APPEARANCE.themeDerived;
 

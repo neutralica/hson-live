@@ -196,13 +196,15 @@ export async function run(): Promise<void> {
       ' <runtime       "runtime  spaces"    />',
       "`);",
       "const x = Hson`",
-      " <data      1",
-      "data2 2",
+      " <",
+      "a <",
+      "b      <c   1>>",
+      "d 2",
       ">",
       "`;",
       "",
     ].join("\n");
-    const typeScriptExpected = typeScriptInput.replace("\n <data      1\ndata2 2\n>", "\n<\n  data 1\n  data2 2\n>");
+    const typeScriptExpected = typeScriptInput.replace("\n <\na <\nb      <c   1>>\nd 2\n>", "\n<\n  a <\n    b <c 1>\n  >\n  d 2\n>");
     await vscode.workspace.fs.writeFile(saveTypeScriptUri, Buffer.from("// format-on-save fixture\n"));
     const saveTypeScript = await vscode.workspace.openTextDocument(saveTypeScriptUri);
     const saveTypeScriptEditor = await vscode.window.showTextDocument(saveTypeScript);
@@ -218,10 +220,10 @@ export async function run(): Promise<void> {
     assert.equal(await saveTypeScript.save(), true);
     assert.equal(saveTypeScript.getText(), onceFormatted, "save formatting remains idempotent");
 
-    const markdownInput = "Prose  stays\n```hson\n <main\n<section\n/>\n />\n```\n```hson\n <data      1\ndata2 2\n>\n```\n```json\n  untouched\n```\n```Hson\n <also-untouched/>\n```\n";
+    const markdownInput = "Prose  stays\n```hson\n <main\n<section\n/>\n />\n```\n```hson\n <\na <\nb      <c   1>>\nd 2\n>\n```\n```json\n  untouched\n```\n```Hson\n <also-untouched/>\n```\n";
     const markdownExpected = markdownInput
       .replace("```hson\n <main\n<section\n/>\n />\n```", "```hson\n<main\n  <section\n  />\n/>\n```")
-      .replace("```hson\n <data      1\ndata2 2\n>\n```", "```hson\n<\n  data 1\n  data2 2\n>\n```");
+      .replace("```hson\n <\na <\nb      <c   1>>\nd 2\n>\n```", "```hson\n<\n  a <\n    b <c 1>\n  >\n  d 2\n>\n```");
     await vscode.workspace.fs.writeFile(saveMarkdownUri, Buffer.from("# format-on-save fixture\n"));
     const saveMarkdown = await vscode.workspace.openTextDocument(saveMarkdownUri);
     const saveMarkdownEditor = await vscode.window.showTextDocument(saveMarkdown);
@@ -320,23 +322,25 @@ export async function run(): Promise<void> {
     assert.match(authoredLines.find(line => line.includes("data4")) ?? "", /^ {8}data4 4/, authoredDump);
     assert.match(authoredLines.find(line => line.includes("data5")) ?? "", /^ {8}data5 5/, authoredDump);
 
-    await replaceMarked('import { Hson } from "hson-live/hson";\nconst host =  1;\nconst inline=Hson`<solo      />`;\nconst page=Hson`\n <main\n<section\n/>\n />\n`;\nconst data=Hson`\n <data      1\ndata2 2\n>\n`;\n|');
+    await replaceMarked('import { Hson } from "hson-live/hson";\nconst host =  1;\nconst inline=Hson`<solo      />`;\nconst page=Hson`\n <main\n<section\n/>\n />\n`;\nconst data=Hson`\n <data      1\ndata2 2\n>\n`;\nconst balanced=Hson`\n <\na <\nb      <c   1>>\nd 2\n>\n`;\nconst trailing=Hson`\n<\na <\nb <\nc <\nvalue 1>>>\nd 2\n>\n`;\n|');
     await vscode.commands.executeCommand("hson.deleteLeft");
     await vscode.commands.executeCommand("hson.formatDocument");
     assert.ok(structural.getText().includes("const host = 1;"), "Hson Format Document retained normal TypeScript formatting");
     assert.ok(structural.getText().includes("Hson`<solo/>`"), "Hson Format Document normalized same-line Hson trivia");
     assert.ok(structural.getText().includes("\n<main\n    <section\n    />\n/>"), `Hson Format Document composed Hson indentation edits: ${JSON.stringify(structural.getText())}`);
     assert.ok(structural.getText().includes("\n<\n    data 1\n    data2 2\n>"), `Hson Format Document applied multiline object layout: ${JSON.stringify(structural.getText())}`);
+    assert.ok(structural.getText().includes("balanced = Hson`\n<\n    a <\n        b <c 1>\n    >\n    d 2\n>"), `Hson Format Document detached the multiline owner's closer while preserving its inline child: ${JSON.stringify(structural.getText())}`);
+    assert.ok(structural.getText().includes("trailing = Hson`\n<\n    a <\n        b <\n            c <\n                value 1\n            >\n        >\n    >\n    d 2\n>"), `Hson Format Document separated parser-owned trailing closers: ${JSON.stringify(structural.getText())}`);
 
     const selectionInput = hostPrefix
-      + "const first=Hson`\n <a      1\nb 2\n>\n`;\n"
+      + "const first=Hson`\n <\na <\nb      <c   1>>\nd 2\n>\n`;\n"
       + "const second=Hson`\n <c 3\nd 4\n>\n`;\n";
     await replaceDocument(structural, selectionInput);
-    const selectedStart = selectionInput.indexOf("<a      1");
-    const selectedEnd = selectionInput.indexOf(">", selectedStart) + 1;
+    const selectedStart = selectionInput.indexOf("\n <\n") + 1;
+    const selectedEnd = selectionInput.indexOf("`;", selectedStart);
     structuralEditor.selection = new vscode.Selection(structural.positionAt(selectedStart), structural.positionAt(selectedEnd));
     await vscode.commands.executeCommand("hson.formatSelection");
-    assert.ok(structural.getText().includes("first=Hson`\n<\n    a 1\n    b 2\n>"), `Hson Format Selection applied multiline object layout: ${JSON.stringify(structural.getText())}`);
+    assert.ok(structural.getText().includes("first=Hson`\n<\n    a <\n        b <c 1>\n    >\n    d 2\n>"), `Hson Format Selection detached the selected multiline object's closer: ${JSON.stringify(structural.getText())}`);
     assert.ok(structural.getText().includes("second=Hson`\n <c 3\nd 4\n>"), "Hson Format Selection left the unselected object unchanged");
 
     await vscode.workspace.fs.writeFile(markdownStructuralUri, Buffer.from("Before\n```hson\n <data 1\ndata2 2\n>\n```\nAfter\n"));

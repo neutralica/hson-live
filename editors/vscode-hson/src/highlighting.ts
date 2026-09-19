@@ -7,7 +7,8 @@ import { discover_hson_tagged_templates } from "../../../src/internal/embedded-h
 import type { HostSourceRange } from "../../../src/internal/embedded-hson/embedded-hson-source.js";
 import { discover_static_from_hson_sources } from "../../../src/internal/embedded-hson/discover-static-from-hson-sources.js";
 import { map_static_hson_range } from "../../../src/internal/embedded-hson/static-hson-source.js";
-import { hsonTokenScopes } from "./appearance.js";
+import { markdown_hson_fence_regions } from "./markdown-fence-marker.js";
+import { HSON_APPEARANCE, hsonTokenScopes } from "./appearance.js";
 
 export { hsonTokenScopes } from "./appearance.js";
 export type HsonHighlight = Readonly<{ range: HostSourceRange; type: keyof typeof hsonTokenScopes; scopes: readonly string[] }>;
@@ -105,4 +106,40 @@ export function hson_highlights(grammar: IGrammar, fileName: string, text: strin
     }
   }
   return result.sort((a, b) => a.range.start - b.range.start);
+}
+
+function selfClosingSlashRanges(
+  grammar: IGrammar,
+  text: string,
+  baseOffset: number,
+): readonly HostSourceRange[] {
+  const ranges: HostSourceRange[] = [];
+  let offset = baseOffset;
+  let stack = INITIAL;
+  for (const line of text.split("\n")) {
+    const tokens = grammar.tokenizeLine(line, stack);
+    for (const token of tokens.tokens) {
+      if (!token.scopes.includes(HSON_APPEARANCE.themeDerived.selfClosingSlash)) continue;
+      const end = Math.min(token.endIndex, line.replace(/\r$/, "").length);
+      if (token.startIndex < end) ranges.push(Object.freeze({ start: offset + token.startIndex, end: offset + end }));
+    }
+    stack = tokens.ruleStack;
+    offset += line.length + 1;
+  }
+  return Object.freeze(ranges);
+}
+
+/** Grammar-owned `/` ranges for the explicit Hson document delimiter accent. */
+export function hson_document_self_closing_slash_ranges(
+  grammar: IGrammar,
+  fileName: string,
+  languageId: "hson" | "typescript" | "typescriptreact" | "markdown",
+  text: string,
+): readonly HostSourceRange[] {
+  if (languageId === "hson") return selfClosingSlashRanges(grammar, text, 0);
+  if (languageId === "markdown") return Object.freeze(markdown_hson_fence_regions(text).flatMap(region =>
+    selfClosingSlashRanges(grammar, text.slice(region.bodyRange.start, region.bodyRange.end), region.bodyRange.start)));
+  return Object.freeze(hson_highlights(grammar, fileName, text)
+    .filter(token => token.scopes.includes(HSON_APPEARANCE.themeDerived.selfClosingSlash))
+    .map(token => token.range));
 }

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { readFileSync } from "node:fs";
-import { hson_highlights, load_hson_grammar, hsonTokenScopes } from "../src/highlighting.js";
+import { hson_document_self_closing_slash_ranges, hson_highlights, load_hson_grammar, hsonTokenScopes } from "../src/highlighting.js";
 import { produce_document_diagnostics } from "../src/document-diagnostics.js";
 import { start_diagnostics, type DiagnosticDocument, type DiagnosticHost } from "../src/diagnostics.js";
 import { Hson } from "../../../src/hson-authoring.js";
@@ -32,6 +32,20 @@ async function run(): Promise<void> {
 
   check("official narrow /hson binding is a grammar-backed island", () => assert.ok(nameToken(source('<thing 1>'))));
   check("official root binding is a grammar-backed island", () => assert.ok(nameToken(source('<thing 1>', "Hson", "Hson", "hson-live"))));
+  check("document self-closing slash evidence is exact across standalone, Markdown, and tagged Hson", () => {
+    const standalone = '<article <p "a/b"/>/> <data "/">';
+    assert.deepEqual(hson_document_self_closing_slash_ranges(grammar, "/workspace/a.hson", "hson", standalone)
+      .map(range => standalone.slice(range.start, range.end)), ["/", "/"]);
+
+    const markdown = 'before\n```hson\n<p "a/b"/>\n```\nafter';
+    assert.deepEqual(hson_document_self_closing_slash_ranges(grammar, "/workspace/a.md", "markdown", markdown)
+      .map(range => markdown.slice(range.start, range.end)), ["/"]);
+
+    const tagged = source('<p "a/b"/>');
+    const ranges = hson_document_self_closing_slash_ranges(grammar, "/workspace/a.ts", "typescript", tagged);
+    assert.deepEqual(ranges.map(range => tagged.slice(range.start, range.end)), ["/"]);
+    assert.ok(ranges.every(range => tagged[range.end] === ">"));
+  });
   check("canonical LiveMap fromHson literals are grammar-backed islands", () => {
     const prefix = 'import { hson, hsonLiveMap } from "hson-live";\n';
     for (const expression of [

@@ -110,6 +110,42 @@ check("nested inline objects stay inline while multiline nested siblings normali
   const expected = template("\n<\n  left <\n    a 1\n    b 2\n  >\n  right <\n    c 3\n    d 4\n  >\n>\n");
   assert.equal(format(siblings), expected);
 });
+check("balanced inline objects use the enclosing depth active at the line's first content", () => {
+  const input = template("\n <\n a <\nb    <c   1>>\nd 2\n>\n");
+  const expected = template("\n<\n  a <\n    b <c 1>\n  >\n  d 2\n>\n");
+  const output = format(input);
+  assert.equal(output, expected);
+  assert.equal(format(output), output);
+  assert.deepEqual(parse_hson(output.slice(prefix.length, -2)), parse_hson(input.slice(prefix.length, -2)));
+});
+check("later inline closers do not dedent earlier content and nested siblings stay aligned", () => {
+  const input = template("\n<\na <\nb <c 1 d 2>\ne 3\n>\nf 4\n>\n");
+  const expected = template("\n<\n  a <\n    b <c 1 d 2>\n    e 3\n  >\n  f 4\n>\n");
+  assert.equal(format(input), expected);
+});
+check("multiple trailing closers update the depth only for following lines", () => {
+  const input = template("\n<\na <\nb <c <d 1>>>\nf 4\n>\n");
+  const expected = template("\n<\n  a <\n    b <c <d 1>>\n  >\n  f 4\n>\n");
+  assert.equal(format(input), expected);
+});
+check("each parser-owned multiline object closer receives its own structural line", () => {
+  const input = template("\n<\n  a <\n    b <\n      c <\n        value 1>>>\n  d 2\n>\n");
+  const expected = template("\n<\n  a <\n    b <\n      c <\n        value 1\n      >\n    >\n  >\n  d 2\n>\n");
+  const output = format(input);
+  assert.equal(output, expected);
+  assert.equal(format(output), output);
+  assert.deepEqual(parse_hson(output.slice(prefix.length, -2)), parse_hson(input.slice(prefix.length, -2)));
+});
+check("single-line nested objects stay compact while multiline owners detach only their closers", () => {
+  const input = template('\n<\n  data <no "way" jose "!">\n  nested <\n    no "way" jose "!">>\n');
+  const expected = template('\n<\n  data <no "way" jose "!">\n  nested <\n    no "way" jose "!"\n  >\n>\n');
+  assert.equal(format(input), expected);
+});
+check("a leading closer still dedents at its own token position", () => {
+  const input = template("\n<\na <\nb 1\n>\nc 2\n>\n");
+  const expected = template("\n<\n  a <\n    b 1\n  >\n  c 2\n>\n");
+  assert.equal(format(input), expected);
+});
 check("safe comments are preserved and an opening-line comment conservatively skips layout", () => {
   const safe = template("\n<a 1\n// retained between members\nb 2\n>\n");
   assert.equal(format(safe), template("\n<\n  a 1\n  // retained between members\n  b 2\n>\n"));

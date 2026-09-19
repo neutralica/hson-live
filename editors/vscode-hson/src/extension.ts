@@ -25,7 +25,7 @@ import {
   type WorkspaceDiagnosticSource,
   type WorkspaceSourceChange,
 } from "./workspace-diagnostics.js";
-import { hson_highlights, hsonTokenScopes, load_hson_grammar } from "./highlighting.js";
+import { hson_document_self_closing_slash_ranges, hson_highlights, hsonTokenScopes, load_hson_grammar } from "./highlighting.js";
 import {
   HSON_LIBRARY_SEPARATOR_COLOR_ID,
   hson_identity_presentation,
@@ -33,7 +33,7 @@ import {
 } from "./authoring-marker.js";
 import { markdown_hson_fence_marker_parts } from "./markdown-fence-marker.js";
 import { HSON_SETTINGS_QUERY, appearance_color, marker_strength, marker_color_key } from "./settings.js";
-import { HSON_APPEARANCE } from "./appearance.js";
+import { HSON_APPEARANCE, HSON_DOCUMENT_SELF_CLOSING_SLASH } from "./appearance.js";
 import { formatting_target_is_current } from "./formatting-target.js";
 import { LocalHostExtensionManager } from "./local-host-extension.js";
 import type { LocalHostState } from "./local-host-controller.js";
@@ -567,11 +567,18 @@ export function activate(context: vscode.ExtensionContext): void {
           ?? new vscode.ThemeColor(HSON_LIBRARY_SEPARATOR_COLOR_ID),
         opacity: String(libraryStrength),
       }),
+    ], [
+      "hson.documentSelfClosingSlash",
+      vscode.window.createTextEditorDecorationType({
+        color: HSON_DOCUMENT_SELF_CLOSING_SLASH.color,
+        opacity: String(HSON_APPEARANCE.owned.strength[HSON_DOCUMENT_SELF_CLOSING_SLASH.strength]),
+      }),
     ]]));
   };
   replaceMarkerDecorations();
-  const presentMarkers = (editor: vscode.TextEditor): void => {
+  const presentMarkers = async (editor: vscode.TextEditor): Promise<void> => {
     const document = editor.document;
+    const version = document.version;
     const presentation = document.languageId === "typescript" || document.languageId === "typescriptreact"
       ? hson_identity_presentation(document.fileName, document.getText(), colorLibraryMarker)
       : document.languageId === "markdown"
@@ -588,16 +595,33 @@ export function activate(context: vscode.ExtensionContext): void {
       editor.setDecorations(separatorDecoration, presentation.separators.map(part =>
         new vscode.Range(document.positionAt(part.range.start), document.positionAt(part.range.end))));
     }
+    const slashDecoration = markerDecorations.get("hson.documentSelfClosingSlash");
+    if (slashDecoration === undefined) return;
+    const language = document.languageId === "hson" || document.languageId === "typescript"
+      || document.languageId === "typescriptreact" || document.languageId === "markdown"
+      ? document.languageId : undefined;
+    if (language === undefined) {
+      editor.setDecorations(slashDecoration, []);
+      return;
+    }
+    const loaded = await grammar;
+    if (document.isClosed || document.version !== version) return;
+    editor.setDecorations(slashDecoration, hson_document_self_closing_slash_ranges(
+      loaded,
+      document.fileName,
+      language,
+      document.getText(),
+    ).map(range => new vscode.Range(document.positionAt(range.start), document.positionAt(range.end))));
   };
   const presentVisibleMarkers = (): void => {
-    for (const editor of vscode.window.visibleTextEditors) presentMarkers(editor);
+    for (const editor of vscode.window.visibleTextEditors) void presentMarkers(editor);
   };
   presentVisibleMarkers();
   context.subscriptions.push({ dispose(): void { for (const decoration of markerDecorations.values()) decoration.dispose(); } },
     vscode.window.onDidChangeVisibleTextEditors(presentVisibleMarkers),
     vscode.workspace.onDidChangeTextDocument(event => {
       for (const editor of vscode.window.visibleTextEditors) {
-        if (editor.document === event.document) presentMarkers(editor);
+        if (editor.document === event.document) void presentMarkers(editor);
       }
     }),
     vscode.workspace.onDidChangeConfiguration(event => {
