@@ -15,7 +15,7 @@ Highlighting and diagnostics use TypeScript binding identity for official `hson-
 
 Inside binding-recognized `Hson`` templates, typing `<` inserts `>` or `/>` only when the Hson parser proves one structural mode. An initially ambiguous template is left unchanged. Enter follows Hson nesting and the editor's tabs/spaces settings. Canonical Markdown fences such as ```` ```hson ```` use the same structural behavior.
 
-Use **Hson: Format Document** to run the normal host formatter and then indent recognized Hson regions, or **Hson: Format Selection** for selected regions. Markdown Format Document/Selection also formats canonical `hson` fences directly. Formatting changes line-leading whitespace only; it does not serialize, reorder, or normalize authored Hson.
+Use **Hson: Format Document** to run the normal host formatter and then format recognized Hson regions, or **Hson: Format Selection** for selected regions. Markdown Format Document/Selection also formats canonical `hson` fences directly. Formatting adjusts indentation, normalizes horizontal trivia between Hson tokens, and places the first member of an already-multiline data object below its opening `<`. It preserves token contents and authored blank lines; it does not serialize, reorder, or generally reflow authored Hson.
 
 `fromHson(...)` literals remain highlighting and diagnostic surfaces only. Structural editing and formatting do not activate there.
 

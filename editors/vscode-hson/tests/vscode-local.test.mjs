@@ -35,7 +35,9 @@ function fixtureManifest(version = "0.1.1") {
     publisher: "terminal-gothic",
     version,
     main: "./dist/extension.js",
+    icon: "images/hson-icon.png",
     contributes: {
+      typescriptServerPlugins: [{ name: "../typescript-plugin", enableForWorkspaceTypeScriptVersions: true }],
       configuration: [{ title: "Hson", properties: { "hson.example": { type: "boolean", default: true } } }],
       languages: [{ id: "hson", configuration: "./language-configuration.json" }],
       grammars: [{ language: "hson", scopeName: "source.hson", path: "./syntaxes/hson.tmLanguage.json" }],
@@ -49,6 +51,8 @@ async function makeFixture(label = "authority fixture with spaces") {
   const fixtureRepository = resolve(extensionRoot, "../..");
   await mkdir(join(extensionRoot, "scripts"), { recursive: true });
   await mkdir(join(extensionRoot, "syntaxes"), { recursive: true });
+  await mkdir(join(extensionRoot, "images"), { recursive: true });
+  await mkdir(join(extensionRoot, "typescript-plugin", "dist"), { recursive: true });
   await mkdir(join(extensionRoot, "src"), { recursive: true });
   await mkdir(join(extensionRoot, "node_modules", "vscode-oniguruma", "release"), { recursive: true });
   await writeFile(join(extensionRoot, "package.json"), `${JSON.stringify(fixtureManifest(), null, 2)}\n`);
@@ -59,6 +63,9 @@ async function makeFixture(label = "authority fixture with spaces") {
   await writeFile(join(extensionRoot, "scripts", "vscode-local.mjs"), "// fixture authority command\n");
   await writeFile(join(extensionRoot, "language-configuration.json"), "{}\n");
   await writeFile(join(extensionRoot, "syntaxes", "hson.tmLanguage.json"), "{}\n");
+  await writeFile(join(extensionRoot, "images", "hson-icon.png"), "fixture png");
+  await writeFile(join(extensionRoot, "typescript-plugin", "package.json"), '{"main":"./dist/index.cjs"}\n');
+  await writeFile(join(extensionRoot, "typescript-plugin", "dist", "index.cjs"), "module.exports = function fixture() {};\n");
   await writeFile(join(extensionRoot, "README.md"), "fixture readme\n");
   await writeFile(join(extensionRoot, "LICENSE"), "fixture license\n");
   await writeFile(join(extensionRoot, "node_modules", "vscode-oniguruma", "release", "onig.wasm"), "wasm");
@@ -92,6 +99,9 @@ async function makeVsix(path, manifest, overrides = {}) {
     "dist/onig.wasm": "wasm",
     "language-configuration.json": "{}\n",
     "syntaxes/hson.tmLanguage.json": "{}\n",
+    "images/hson-icon.png": "fixture png",
+    "typescript-plugin/package.json": '{"main":"./dist/index.cjs"}\n',
+    "typescript-plugin/dist/index.cjs": "module.exports = function fixture() {};\n",
     "readme.md": "fixture\n",
     ...overrides.payload,
   };
@@ -228,6 +238,21 @@ await check("VSIX validation rejects incomplete payloads", async () => {
     const path = join(fixture.parent, "incomplete.vsix");
     await makeVsix(path, fixtureManifest(), { payload: { "dist/onig.wasm": null } });
     await assert.rejects(validateVsix(path, fixtureManifest()), /missing extension\/dist\/onig\.wasm/);
+  } finally { await rm(fixture.parent, { recursive: true, force: true }); }
+});
+
+await check("VSIX validation requires the manifest icon and TypeScript server plugin", async () => {
+  const fixture = await makeFixture();
+  try {
+    for (const [label, missing, pattern] of [
+      ["icon", "images/hson-icon.png", /missing extension\/images\/hson-icon\.png/],
+      ["plugin-package", "typescript-plugin/package.json", /missing extension\/typescript-plugin\/package\.json/],
+      ["plugin-main", "typescript-plugin/dist/index.cjs", /missing extension\/typescript-plugin\/dist\/index\.cjs/],
+    ]) {
+      const path = join(fixture.parent, `missing-${label}.vsix`);
+      await makeVsix(path, fixtureManifest(), { payload: { [missing]: null } });
+      await assert.rejects(validateVsix(path, fixtureManifest()), pattern);
+    }
   } finally { await rm(fixture.parent, { recursive: true, force: true }); }
 });
 
@@ -418,6 +443,20 @@ await check("runner-only source changes invalidate package authority", async () 
     const result = await inspectPackageAuthority(fixture.extensionRoot);
     assert.equal(result.state, "stale");
     assert.match(result.reason, /source\/build inputs changed/);
+  } finally { await rm(fixture.parent, { recursive: true, force: true }); }
+});
+
+await check("manifest icon and TypeScript plugin changes invalidate package authority", async () => {
+  const fixture = await makeFixture();
+  try {
+    await packageCurrentSource(await fixturePackageOptions(fixture));
+    await writeFile(join(fixture.extensionRoot, "images", "hson-icon.png"), "changed icon");
+    let result = await inspectPackageAuthority(fixture.extensionRoot);
+    assert.equal(result.state, "stale");
+    await writeFile(join(fixture.extensionRoot, "images", "hson-icon.png"), "fixture png");
+    await writeFile(join(fixture.extensionRoot, "typescript-plugin", "dist", "index.cjs"), "module.exports = 2;\n");
+    result = await inspectPackageAuthority(fixture.extensionRoot);
+    assert.equal(result.state, "stale");
   } finally { await rm(fixture.parent, { recursive: true, force: true }); }
 });
 

@@ -46,7 +46,12 @@ assert.deepEqual(manifest.contributes.grammars, [
 ]);
 assert.equal(markdownGrammar.scopeName, "markdown.hson.codeblock");
 assert.equal(markdownGrammar.injectionSelector, "L:markup.fenced_code.block.markdown");
-assert.deepEqual(markdownGrammar.repository["hson-code-block"].patterns[0].patterns, [{ include: "source.hson" }]);
+assert.deepEqual(markdownGrammar.patterns, [
+  { include: "#hson-backtick-code-block" },
+  { include: "#hson-tilde-code-block" },
+]);
+assert.deepEqual(markdownGrammar.repository["hson-backtick-code-block"].patterns, [{ include: "source.hson" }]);
+assert.deepEqual(markdownGrammar.repository["hson-tilde-code-block"].patterns, [{ include: "source.hson" }]);
 assert.match(extensionBundle, /markdown_hson_fence_marker_parts/);
 assert.match(extensionBundle, /function discover_static_from_hson_sources/);
 assert.match(extensionBundle, /function map_static_hson_range/);

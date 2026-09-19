@@ -37,8 +37,6 @@ export const HSON_APPEARANCE = {
     },
   },
   themeDerived: {
-    // `<name ...>` is shared by document tags and data/object names: syntax
-    // alone does not identify the runtime mode, so the grammar does not guess.
     structuralName: "entity.name.type.hson",
     authoredName: "entity.name.type.quoted.hson",
     attributeName: "entity.other.attribute-name.hson",

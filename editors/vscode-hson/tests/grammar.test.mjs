@@ -21,13 +21,23 @@ const markdownHostGrammar = {
   patterns: [
     {
       name: "markup.fenced_code.block.markdown",
-      begin: "(^|\\G)(\\s*)(`{3,}|~{3,})\\s*(?=([^`]*)?$)",
+      begin: "(^|\\G)( {0,3})(`{3,})[ \\t]*(?=([^`]*)?$)",
       beginCaptures: {
         3: { name: "punctuation.definition.markdown" },
         4: { name: "fenced_code.block.language" },
       },
-      end: "(^|\\G)(\\2|\\s{0,3})(\\3)\\s*$",
-      endCaptures: { 3: { name: "punctuation.definition.markdown" } },
+      end: "(^|\\G)(?:\\2| {0,3})(\\3`*)[ \\t]*$",
+      endCaptures: { 2: { name: "punctuation.definition.markdown" } },
+    },
+    {
+      name: "markup.fenced_code.block.markdown",
+      begin: "(^|\\G)( {0,3})(~{3,})[ \\t]*(?=(.*)$)",
+      beginCaptures: {
+        3: { name: "punctuation.definition.markdown" },
+        4: { name: "fenced_code.block.language" },
+      },
+      end: "(^|\\G)(?:\\2| {0,3})(\\3~*)[ \\t]*$",
+      endCaptures: { 2: { name: "punctuation.definition.markdown" } },
     },
     { name: "meta.paragraph.markdown", match: ".+" },
   ],
@@ -144,6 +154,38 @@ assert.ok(!markdown.some(token => token.line === 8 && token.scopes.some(scope =>
 assert.ok(markdown.some(token => token.line === 0 && token.scopes.includes("meta.paragraph.markdown")));
 assert.ok(markdown.some(token => token.line === 13 && token.scopes.includes("meta.paragraph.markdown")));
 assert.ok(!markdown.some(token => (token.line === 0 || token.line === 13) && token.scopes.includes("meta.embedded.block.hson")));
+
+const fenceLifetimeSource = [
+  "```hson",
+  "<triple/>",
+  "```",
+  "triple prose",
+  "````hson",
+  "```",
+  "<afterShortBackticks/>",
+  "`````",
+  "longer-close prose",
+  "~~~~hson",
+  "```",
+  "<afterOppositeBackticks/>",
+  "~~~~",
+  "tilde prose",
+  "```hson",
+  "~~~~",
+  "<afterOppositeTildes/>",
+  "````",
+  "final prose",
+].join("\n");
+const fenceLifetime = await tokenize("text.html.markdown", fenceLifetimeSource);
+for (const [line, name] of [[1, "triple"], [6, "afterShortBackticks"], [11, "afterOppositeBackticks"], [16, "afterOppositeTildes"]]) {
+  assert.ok(fenceLifetime.some(token => token.line === line && token.text === name && token.scopes.includes("entity.name.type.hson")),
+    `${name} must remain in Hson until the matching delimiter kind and sufficient width closes`);
+}
+for (const line of [3, 8, 13, 18]) {
+  assert.ok(fenceLifetime.some(token => token.line === line && token.scopes.includes("meta.paragraph.markdown")),
+    `line ${line} must return to ordinary Markdown after its valid close`);
+  assert.ok(!fenceLifetime.some(token => token.line === line && token.scopes.includes("meta.embedded.block.hson")));
+}
 
 const standaloneRepresentative = await tokenize("source.hson", representative);
 for (const text of ["<", "bareName", "class", "=", "\"", "hero", "true", "-12.5", "/", ">"]) {

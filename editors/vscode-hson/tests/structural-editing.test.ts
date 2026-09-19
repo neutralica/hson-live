@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
 
+import { parse_hson } from "../../../src/api/transform/parsers/parse-hson.js";
+import { formatting_target_is_current } from "../src/formatting-target.js";
 import {
+  StructuralDocumentEvidenceCache,
   structural_closer_for_less_than,
+  structural_document_evidence,
   structural_formatting_edits,
   structural_newline_plan,
+  structural_newline_plan_from_evidence,
   structural_regions,
 } from "../src/structural-editing.js";
 
@@ -31,6 +36,15 @@ const format = (text: string, insertSpaces = true, tabSize = 2): string => apply
   structural_formatting_edits("/workspace/source.ts", "typescript", text, { insertSpaces, tabSize }));
 
 check("binding-recognized document context selects the element closer", () => assert.equal(closer("<main |/>"), "/>"));
+check("an awaited host formatter cannot redirect the Hson phase to a newly focused editor", () => {
+  const originalDocument = { isClosed: false };
+  const originalEditor = { document: originalDocument };
+  const otherEditor = { document: { isClosed: false } };
+  assert.equal(formatting_target_is_current(originalEditor, originalDocument, originalEditor), true);
+  assert.equal(formatting_target_is_current(originalEditor, originalDocument, otherEditor), false);
+  originalDocument.isClosed = true;
+  assert.equal(formatting_target_is_current(originalEditor, originalDocument, originalEditor), false);
+});
 check("binding-recognized data context selects the object closer", () => assert.equal(closer("<a true b |>"), ">"));
 check("an empty template has no guessed structural mode", () => assert.equal(closer("|"), undefined));
 check("nested document context retains document mode", () => assert.equal(closer("<main <section |/>/>"), "/>"));
@@ -69,8 +83,48 @@ check("data formatting follows object and array structure", () => {
 });
 check("object sibling indentation follows containers rather than member sequence", () => {
   const input = template('\n<data 1\n       data2 2\n data3 <\n           data4 4\n  data5 5\n >\n>\n');
-  const expected = template('\n<data 1\n  data2 2\n  data3 <\n    data4 4\n    data5 5\n  >\n>\n');
+  const expected = template('\n<\n  data 1\n  data2 2\n  data3 <\n    data4 4\n    data5 5\n  >\n>\n');
   assert.equal(format(input), expected);
+});
+check("multiline data objects move the first member below the opener and are idempotent", () => {
+  const input = template("\n<data 1\n  data2 2\n  data3 3\n>\n");
+  const expected = template("\n<\n  data 1\n  data2 2\n  data3 3\n>\n");
+  assert.equal(format(input), expected);
+  assert.equal(format(expected), expected);
+});
+check("single-line data objects and document element heads remain inline", () => {
+  assert.equal(format(template("<data 1>")), template("<data 1>"));
+  assert.equal(format(template("[\n1,\n2\n]")), template("[\n  1,\n  2\n]"));
+  const document = template('\n<article class="note"\n  <h1 "Hello"/>\n  <p "Text"/>\n/>\n');
+  assert.equal(format(document), document);
+});
+check("nested multiline objects move only their own first member", () => {
+  const input = template("\n<data 1\n  nested <a 1\n    b 2\n  >\n>\n");
+  const expected = template("\n<\n  data 1\n  nested <\n    a 1\n    b 2\n  >\n>\n");
+  assert.equal(format(input), expected);
+});
+check("nested inline objects stay inline while multiline nested siblings normalize independently", () => {
+  const inline = template("\n<data 1\n  nested <a 1>\n>\n");
+  assert.equal(format(inline), template("\n<\n  data 1\n  nested <a 1>\n>\n"));
+  const siblings = template("\n<left <  a 1\n b 2\n>\nright < c 3\n d 4\n>\n>\n");
+  const expected = template("\n<\n  left <\n    a 1\n    b 2\n  >\n  right <\n    c 3\n    d 4\n  >\n>\n");
+  assert.equal(format(siblings), expected);
+});
+check("safe comments are preserved and an opening-line comment conservatively skips layout", () => {
+  const safe = template("\n<a 1\n// retained between members\nb 2\n>\n");
+  assert.equal(format(safe), template("\n<\n  a 1\n  // retained between members\n  b 2\n>\n"));
+  const ambiguous = template("\n<a 1 // remains attached on the opening line\nb 2\n>\n");
+  assert.equal(format(ambiguous), template("\n<a 1 // remains attached on the opening line\n  b 2\n>\n"));
+});
+check("layout preserves the parser's canonical Hson value", () => {
+  const source = "<data 1\n  nested <  a \"kept\"\n    b [1, 2]\n  >\n  tail false\n>";
+  const formattedHost = format(template(source));
+  const formatted = formattedHost.slice(prefix.length, -2);
+  assert.deepEqual(parse_hson(formatted), parse_hson(source));
+});
+check("layout preserves the authored line-ending convention", () => {
+  const input = template("\r\n<data 1\r\ndata2 2\r\n>\r\n");
+  assert.equal(format(input), template("\r\n<\r\n  data 1\r\n  data2 2\r\n>\r\n"));
 });
 check("tabs and tab size are honored", () => {
   const input = template('\n<main\n<section\n<p/>\n/>\n/>\n');
@@ -96,7 +150,36 @@ check("invalid Hson regions are skipped without preventing safe sibling formatti
   const input = 'import { Hson } from "hson-live";\nconst invalid=Hson`\n <data 1\n<data2 2>\n>\n`;\nconst valid=Hson`\n <data 1\ndata2 2\n>\n`;';
   const output = format(input);
   assert.ok(output.includes('invalid=Hson`\n <data 1\n<data2 2>\n>\n`'));
-  assert.ok(output.includes('valid=Hson`\n<data 1\n  data2 2\n>\n`'));
+  assert.ok(output.includes('valid=Hson`\n<\n  data 1\n  data2 2\n>\n`'));
+});
+check("fromHson literals remain untouched by formatting", () => {
+  const input = 'import { hson } from "hson-live";\nhson.fromHson(`\n <data 1\ndata2 2\n>\n`);';
+  assert.equal(format(input), input);
+});
+check("horizontal token trivia follows canonical Hson adjacency without touching lexical content", () => {
+  const input = template('<p       class  =  "x  y" enabled\t\t"a  b"\t\t""   ""   />');
+  const expected = template('<p class="x  y" enabled "a  b" "" ""/>');
+  assert.equal(format(input), expected);
+  assert.equal(format(expected), expected);
+
+  const namesAndArrays = template("<   'quoted name\\'s'    [  1  ,\t2   ,  \"three  spaces\"  ]   >");
+  const normalized = template("<'quoted name\\'s' [1,2,\"three  spaces\"]>");
+  assert.equal(format(namesAndArrays), normalized);
+  assert.deepEqual(parse_hson(normalized.slice(prefix.length, -2)), parse_hson(namesAndArrays.slice(prefix.length, -2)));
+});
+check("horizontal normalization preserves comments and vertical trivia", () => {
+  const input = template('\n<main\n  <h1    "Deck"\n\n\n  />\n\n  <p   "Deck is running."   />\n  // comment   content remains exact\n/>\n');
+  const expected = template('\n<main\n  <h1 "Deck"\n\n\n  />\n\n  <p "Deck is running."/>\n  // comment   content remains exact\n/>\n');
+  assert.equal(format(input), expected);
+  assert.ok(format(input).includes('comment   content remains exact'));
+});
+check("range formatting applies object layout only when the selection includes the object", () => {
+  const input = template("\n<data 1\ndata2 2\n>\n");
+  const objectStart = input.indexOf("<data");
+  const objectEnd = input.indexOf(">", objectStart) + 1;
+  const output = applyEdits(input, structural_formatting_edits("/workspace/source.ts", "typescript", input,
+    { insertSpaces: true, tabSize: 2 }, { start: objectStart, end: objectEnd }));
+  assert.equal(output, template("\n<\n  data 1\n  data2 2\n>\n"));
 });
 check("range formatting changes only intersecting Hson regions", () => {
   const input = 'import { Hson } from "hson-live";\nconst a=Hson`\n <a\n<b/>\n/>\n`;\nconst b=Hson`\n <b\n<c/>\n/>\n`;';
@@ -148,8 +231,52 @@ check("canonical Markdown fences use the same formatter and auto-close authority
   const prospective = clean.slice(0, cursor) + "<" + clean.slice(cursor);
   assert.equal(structural_closer_for_less_than("/workspace/readme.md", "markdown", prospective, cursor + 1), "/>");
 });
+check("canonical Markdown hson fences use the multiline object layout", () => {
+  const input = "```hson\n<data 1\ndata2 2\n>\n```";
+  const output = applyEdits(input, structural_formatting_edits("/workspace/readme.md", "markdown", input, { insertSpaces: true, tabSize: 2 }));
+  assert.equal(output, "```hson\n<\n  data 1\n  data2 2\n>\n```");
+});
+check("Markdown structural regions share delimiter kind and width lifetime with highlighting", () => {
+  const cases = [
+    ["````hson\n```\n<x/>\n`````\nAfter", "<x/>", "After"],
+    ["~~~~hson\n```\n<x/>\n~~~~\nAfter", "<x/>", "After"],
+    ["```hson\n~~~~\n<x/>\n````\nAfter", "<x/>", "After"],
+  ] as const;
+  for (const [text, bodyToken, afterToken] of cases) {
+    const region = structural_regions("/workspace/readme.md", "markdown", text)[0]!;
+    assert.ok(text.indexOf(bodyToken) >= region.bodyRange.start && text.indexOf(bodyToken) < region.bodyRange.end);
+    assert.ok(text.indexOf(afterToken) >= region.bodyRange.end);
+  }
+});
 check("non-Hson Markdown fences remain visual-only and untouched", () => {
   const text = "```Hson\n <x/>\n```\n```hson-extra\n <y/>\n```";
   assert.deepEqual(structural_regions("/workspace/readme.md", "markdown", text), []);
   assert.deepEqual(structural_formatting_edits("/workspace/readme.md", "markdown", text, { insertSpaces: true, tabSize: 2 }), []);
+});
+
+check("unchanged large-document position queries reuse bounded binding evidence and edits invalidate it", () => {
+  let analyses = 0;
+  const cache = new StructuralDocumentEvidenceCache(2, (fileName, languageId, text) => {
+    analyses += 1;
+    return structural_document_evidence(fileName, languageId, text);
+  });
+  const filler = Array.from({ length: 10_000 }, (_, index) => `const filler${index} = ${index};`).join("\n");
+  const text = `import { Hson } from "hson-live";\n${filler}\nconst value = Hson\`<main/>\`;`;
+  const offset = text.indexOf("/>", text.indexOf("Hson`"));
+  const evidence = cache.get("file:///large.ts", 1, "/workspace/large.ts", "typescript", text);
+  for (let index = 0; index < 100; index += 1) {
+    const reused = cache.get("file:///large.ts", 1, "/workspace/large.ts", "typescript", text);
+    assert.equal(reused, evidence);
+    structural_newline_plan_from_evidence(reused, offset, { insertSpaces: true, tabSize: 2 }, "\n");
+  }
+  assert.equal(analyses, 1);
+  const edited = text.replace("<main/>", "<main><child/></>");
+  cache.get("file:///large.ts", 2, "/workspace/large.ts", "typescript", edited);
+  assert.equal(analyses, 2);
+  cache.invalidate("file:///large.ts");
+  cache.get("file:///large.ts", 2, "/workspace/large.ts", "typescript", edited);
+  assert.equal(analyses, 3);
+  cache.clear();
+  cache.get("file:///large.ts", 2, "/workspace/large.ts", "typescript", edited);
+  assert.equal(analyses, 4);
 });

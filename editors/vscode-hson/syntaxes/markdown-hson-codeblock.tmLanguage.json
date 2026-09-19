@@ -4,21 +4,24 @@
   "scopeName": "markdown.hson.codeblock",
   "injectionSelector": "L:markup.fenced_code.block.markdown",
   "patterns": [
-    { "include": "#hson-code-block" }
+    { "include": "#hson-backtick-code-block" },
+    { "include": "#hson-tilde-code-block" }
   ],
   "repository": {
-    "hson-code-block": {
-      "begin": "(?<=[`~])hson(\\s+[^`~]*)?$",
-      "end": "(^|\\G)(?=\\s*[`~]{3,}\\s*$)",
+    "hson-backtick-code-block": {
+      "begin": "(?<=^ {0,3}(`{3,}))hson(\\s+[^`~]*)?$",
+      "end": "(^|\\G)(?= {0,3}\\1`*[ \\t]*$)",
+      "contentName": "meta.embedded.block.hson",
       "patterns": [
-        {
-          "begin": "(^|\\G)(\\s*)(.*)",
-          "while": "(^|\\G)(?!\\s*([`~]{3,})\\s*$)",
-          "contentName": "meta.embedded.block.hson",
-          "patterns": [
-            { "include": "source.hson" }
-          ]
-        }
+        { "include": "source.hson" }
+      ]
+    },
+    "hson-tilde-code-block": {
+      "begin": "(?<=^ {0,3}(~{3,}))hson(\\s+[^`~]*)?$",
+      "end": "(^|\\G)(?= {0,3}\\1~*[ \\t]*$)",
+      "contentName": "meta.embedded.block.hson",
+      "patterns": [
+        { "include": "source.hson" }
       ]
     }
   }

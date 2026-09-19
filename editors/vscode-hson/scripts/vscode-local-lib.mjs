@@ -10,7 +10,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { delimiter, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { delimiter, dirname, isAbsolute, join, posix, relative, resolve } from "node:path";
 
 import JSZip from "jszip";
 
@@ -80,9 +80,16 @@ async function requireSuccessful(stage, command, args, options = {}) {
   return result;
 }
 
+function typescriptPluginRoots(manifest) {
+  return (manifest.contributes?.typescriptServerPlugins ?? [])
+    .map(plugin => posix.normalize(posix.join("node_modules", String(plugin.name ?? ""))))
+    .filter(root => root !== "." && !root.startsWith("../") && !posix.isAbsolute(root));
+}
+
 function manifestStaticPaths(manifest) {
   const paths = new Set([
     String(manifest.main ?? "").replace(/^\.\//, ""),
+    String(manifest.icon ?? "").replace(/^\.\//, ""),
     "dist/extension.js.map",
     "dist/local-host-runner.cjs",
     "dist/local-host-runner.cjs.map",
@@ -94,6 +101,7 @@ function manifestStaticPaths(manifest) {
   for (const grammar of manifest.contributes?.grammars ?? []) {
     if (grammar.path) paths.add(String(grammar.path).replace(/^\.\//, ""));
   }
+  for (const root of typescriptPluginRoots(manifest)) paths.add(`${root}/package.json`);
   paths.delete("");
   return [...paths];
 }
@@ -145,12 +153,33 @@ export async function validateVsix(vsixPath, expectedManifest) {
   if (!sameJson(manifest.contributes?.grammars, expectedManifest.contributes?.grammars)) {
     throw new StageError("artifact validation failure", "packaged grammar contributions differ from the current manifest");
   }
+  if (!sameJson(manifest.contributes?.typescriptServerPlugins, expectedManifest.contributes?.typescriptServerPlugins)) {
+    throw new StageError("artifact validation failure", "packaged TypeScript server plugin contributions differ from the current manifest");
+  }
 
   for (const path of manifestStaticPaths(expectedManifest)) {
     const entry = archive.file(`extension/${path}`);
     if (!entry) throw new StageError("artifact validation failure", `VSIX is missing extension/${path}`);
     if ((await entry.async("uint8array")).byteLength === 0) {
       throw new StageError("artifact validation failure", `VSIX contains an empty extension/${path}`);
+    }
+  }
+
+  for (const root of typescriptPluginRoots(expectedManifest)) {
+    const packageEntry = archive.file(`extension/${root}/package.json`);
+    if (!packageEntry) continue;
+    let pluginManifest;
+    try { pluginManifest = JSON.parse(await packageEntry.async("string")); }
+    catch (error) {
+      throw new StageError("artifact validation failure", `VSIX extension/${root}/package.json is invalid JSON`, error);
+    }
+    const main = String(pluginManifest.main ?? "").replace(/^\.\//, "");
+    if (main === "") throw new StageError("artifact validation failure", `VSIX extension/${root}/package.json has no main entry`);
+    const mainPath = posix.normalize(posix.join(root, main));
+    const mainEntry = archive.file(`extension/${mainPath}`);
+    if (!mainEntry) throw new StageError("artifact validation failure", `VSIX is missing extension/${mainPath}`);
+    if ((await mainEntry.async("uint8array")).byteLength === 0) {
+      throw new StageError("artifact validation failure", `VSIX contains an empty extension/${mainPath}`);
     }
   }
 
@@ -202,9 +231,12 @@ export async function sourceInputAuthority(extensionRoot, sourceMaps) {
   }
 
   const manifest = JSON.parse(await readFile(resolve(extensionRoot, "package.json"), "utf8"));
-  const grammarPaths = (manifest.contributes?.grammars ?? [])
-    .map(grammar => String(grammar.path ?? "").replace(/^\.\//, ""))
-    .filter(Boolean);
+  const pluginMainPaths = [];
+  for (const root of typescriptPluginRoots(manifest)) {
+    const pluginManifest = JSON.parse(await readFile(resolve(extensionRoot, root, "package.json"), "utf8"));
+    const main = String(pluginManifest.main ?? "").replace(/^\.\//, "");
+    if (main !== "") pluginMainPaths.push(posix.normalize(posix.join(root, main)));
+  }
   for (const name of new Set([
     "package.json",
     "package-lock.json",
@@ -212,8 +244,8 @@ export async function sourceInputAuthority(extensionRoot, sourceMaps) {
     "scripts/build.mjs",
     "scripts/vscode-local-lib.mjs",
     "scripts/vscode-local.mjs",
-    "language-configuration.json",
-    ...grammarPaths,
+    ...manifestStaticPaths(manifest).filter(name => !name.startsWith("dist/")),
+    ...pluginMainPaths,
     "README.md",
     "LICENSE",
     "node_modules/vscode-oniguruma/release/onig.wasm",

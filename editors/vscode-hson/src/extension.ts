@@ -34,14 +34,16 @@ import {
 import { markdown_hson_fence_marker_parts } from "./markdown-fence-marker.js";
 import { HSON_SETTINGS_QUERY, appearance_color, marker_strength, marker_color_key } from "./settings.js";
 import { HSON_APPEARANCE } from "./appearance.js";
+import { formatting_target_is_current } from "./formatting-target.js";
 import { LocalHostExtensionManager } from "./local-host-extension.js";
 import type { LocalHostState } from "./local-host-controller.js";
 import { hson_quick_pick_actions, hson_status_presentation, type SchemaToolState } from "./hson-status.js";
 import {
+  StructuralDocumentEvidenceCache,
   structural_closer_for_less_than,
   structural_formatting_edits,
-  structural_newline_plan,
-  structural_region_at,
+  structural_newline_plan_from_evidence,
+  structural_region_at_evidence,
   type StructuralHostLanguage,
 } from "./structural-editing.js";
 
@@ -92,6 +94,15 @@ function explicitAppearanceColor(
 }
 
 export function activate(context: vscode.ExtensionContext): void {
+  const structuralEvidence = new StructuralDocumentEvidenceCache(8);
+  const evidenceFor = (document: vscode.TextDocument, language: StructuralHostLanguage) => structuralEvidence.get(
+    document.uri.toString(),
+    document.version,
+    document.fileName,
+    language,
+    document.getText(),
+  );
+  context.subscriptions.push({ dispose: () => structuralEvidence.clear() });
   const structuralLanguage = (document: vscode.TextDocument): StructuralHostLanguage | undefined =>
     document.languageId === "typescript" || document.languageId === "typescriptreact" || document.languageId === "markdown"
       ? document.languageId : undefined;
@@ -142,19 +153,23 @@ export function activate(context: vscode.ExtensionContext): void {
     const editor = vscode.window.activeTextEditor;
     const language = editor === undefined ? undefined : structuralLanguage(editor.document);
     const eligible = editor !== undefined && language !== undefined && editor.selections.length === 1 && editor.selection.isEmpty;
-    const text = eligible ? editor.document.getText() : "";
-    const offset = eligible ? editor.document.offsetAt(editor.selection.active) : 0;
-    const smartEnter = eligible && structural_newline_plan(
-      editor.document.fileName,
-      language,
-      text,
+    if (!eligible || editor === undefined || language === undefined) {
+      void vscode.commands.executeCommand("setContext", "hson.structuralEnter", false);
+      void vscode.commands.executeCommand("setContext", "hson.structuralPairDeletion", false);
+      return;
+    }
+    const text = editor.document.getText();
+    const offset = editor.document.offsetAt(editor.selection.active);
+    const evidence = evidenceFor(editor.document, language);
+    const smartEnter = structural_newline_plan_from_evidence(
+      evidence,
       offset,
       editorIndentation(editor),
       editor.document.eol === vscode.EndOfLine.CRLF ? "\r\n" : "\n",
     ) !== undefined;
     const pairDeletion = eligible && text[offset - 1] === "<"
       && (text.startsWith("/>", offset) || text[offset] === ">")
-      && structural_region_at(editor.document.fileName, language, text, offset) !== undefined;
+      && structural_region_at_evidence(evidence, offset) !== undefined;
     void vscode.commands.executeCommand("setContext", "hson.structuralEnter", smartEnter);
     void vscode.commands.executeCommand("setContext", "hson.structuralPairDeletion", pairDeletion);
   };
@@ -190,10 +205,8 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
       const document = editor.document;
-      const plan = structural_newline_plan(
-        document.fileName,
-        language,
-        document.getText(),
+      const plan = structural_newline_plan_from_evidence(
+        evidenceFor(document, language),
         document.offsetAt(editor.selection.active),
         editorIndentation(editor),
         document.eol === vscode.EndOfLine.CRLF ? "\r\n" : "\n",
@@ -223,7 +236,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const text = document.getText();
       const closerLength = text.startsWith("/>", offset) ? 2 : text[offset] === ">" ? 1 : 0;
       if (closerLength === 0 || text[offset - 1] !== "<"
-        || structural_region_at(document.fileName, language, text, offset) === undefined) {
+        || structural_region_at_evidence(evidenceFor(document, language), offset) === undefined) {
         await deleteOrdinaryLeft(editor);
         return;
       }
@@ -234,7 +247,14 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.onDidChangeActiveTextEditor(updateStructuralContext),
     vscode.window.onDidChangeTextEditorSelection(updateStructuralContext),
     vscode.workspace.onDidChangeTextDocument(event => {
+      structuralEvidence.invalidate(event.document.uri.toString());
       if (event.document === vscode.window.activeTextEditor?.document) updateStructuralContext();
+    }),
+    vscode.workspace.onDidCloseTextDocument(document => structuralEvidence.invalidate(document.uri.toString())),
+    vscode.workspace.onDidChangeConfiguration(event => {
+      if (!event.affectsConfiguration("hson")) return;
+      structuralEvidence.clear();
+      updateStructuralContext();
     }),
   );
   updateStructuralContext();
@@ -266,11 +286,16 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
   const formatStructuralRegions = async (scope: "document" | "selection"): Promise<void> => {
+    const initiatingEditor = vscode.window.activeTextEditor;
+    if (initiatingEditor === undefined) return;
+    const initiatingDocument = initiatingEditor.document;
     await vscode.commands.executeCommand(scope === "document" ? "editor.action.formatDocument" : "editor.action.formatSelection");
     const editor = vscode.window.activeTextEditor;
-    const language = editor === undefined ? undefined : structuralLanguage(editor.document);
-    if (editor === undefined || language === undefined) return;
-    const document = editor.document;
+    if (editor === undefined) return;
+    if (!formatting_target_is_current(initiatingEditor, initiatingDocument, editor)) return;
+    const language = structuralLanguage(initiatingDocument);
+    if (language === undefined) return;
+    const document = initiatingDocument;
     const requestedRange = scope === "selection" && !editor.selection.isEmpty
       ? { start: document.offsetAt(editor.selection.start), end: document.offsetAt(editor.selection.end) }
       : undefined;
