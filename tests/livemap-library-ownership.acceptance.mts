@@ -4,7 +4,7 @@ import { create_test_event_emitter } from "./test-events.mjs";
 import { internal_livemap_library_ownership } from "../src/api/livemap/livemap.internal.ts";
 import { acquire_projected_identity } from "./helpers/livemap-identity-internal.mts";
 
-const DataSchema = Hson`<type "data" content <name "string" age "number">>`;
+const DataSchema = Hson.schema`<type "data" content <name "string" age "number">>`;
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livemap.library-ownership",
   title: "LiveMap library ownership",

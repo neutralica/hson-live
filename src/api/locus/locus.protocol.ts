@@ -65,7 +65,8 @@ import { validate_document_path } from "../livemap/livemap.document.path.js";
 import {
   decode_hson_data_internal,
   encode_hson_data_internal,
-  HsonData,
+  admit_hson_data_input,
+  hson_data_text,
 } from "../data/hson-data.js";
 export type LocusDecodedDocumentCommit = Omit<LiveMapGraphCommit, "ops"> & Readonly<{
   ops: readonly LiveMapGraphOp[];
@@ -557,7 +558,7 @@ function decode_action_message<TActions extends LocusActionPayloads>(value: Read
   if (payloadPresent) {
     if (typeof value.payloadData !== "string") return fail("Locus action exact data must be a string.");
     try {
-      payload = decode_hson_data_internal(value.payloadData);
+      payload = hson_data_text(decode_hson_data_internal(value.payloadData));
     } catch (cause) {
       return fail("Locus action exact data is malformed or noncanonical.", { cause });
     }
@@ -608,7 +609,7 @@ export function encode_locus_client_message(message: LocusClientMessage): string
   const { payload, ...rest } = message;
   return JSON.stringify({
     ...rest,
-    ...(payload === undefined ? {} : { payloadData: encode_hson_data_internal(HsonData.from(payload)) }),
+    ...(payload === undefined ? {} : { payloadData: encode_hson_data_internal(admit_hson_data_input(payload)) }),
   });
 }
 
@@ -909,7 +910,7 @@ function decode_action_status_server_message(value: Readonly<Record<string, unkn
     if (!has_exact_keys(outcome, allowed)) return fail("Malformed Locus succeeded action outcome.");
     try {
       const result = resultPresent
-        ? decode_hson_data_internal(outcome.resultData as string)
+        ? hson_data_text(decode_hson_data_internal(outcome.resultData as string))
         : undefined;
       return ok({ type: "action-status", id, requestId, state, outcome: { state, seq, completionRev, ...(result === undefined ? {} : { result }) } });
     } catch (cause) {
@@ -937,7 +938,7 @@ function decode_action_ack_server_message(value: Readonly<Record<string, unknown
   const keys = ["type", "id", "ok", "seq", ...(resultPresent ? ["resultData"] : []), ...(requestId === undefined ? [] : ["requestId"]), ...(attemptId === undefined ? [] : ["attemptId"]), ...(completionRev === undefined ? [] : ["completionRev"]), ...(delivery === undefined ? [] : ["delivery"])];
   if (!has_exact_keys(value, keys)) return fail("Malformed Locus action acknowledgement fields.");
   try {
-    const result = resultPresent ? decode_hson_data_internal(value.resultData as string) : undefined;
+    const result = resultPresent ? hson_data_text(decode_hson_data_internal(value.resultData as string)) : undefined;
     return ok({ type: "ack", id, ok: true, seq, ...(result === undefined ? {} : { result }), ...(requestId === undefined ? {} : { requestId }), ...(attemptId === undefined ? {} : { attemptId }), ...(completionRev === undefined ? {} : { completionRev }), ...(delivery === undefined ? {} : { delivery }) });
   } catch (cause) {
     return fail("Malformed Locus action acknowledgement result data.", { cause });

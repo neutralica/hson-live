@@ -1,5 +1,5 @@
 import { Hson } from "../../hson-authoring.js";
-import type { HsonCanonical, HsonSchema } from "../transform/transform.types.js";
+import type { HsonData, HsonSchema } from "../transform/transform.types.js";
 import { hsonTransform } from "../transform/transform.facade.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
@@ -14,7 +14,7 @@ import {
   encode_hson_data_internal,
   hson_data_from_value,
   hson_data_value,
-  HsonData,
+  ExactDataCarrier,
 } from "../data/hson-data.js";
 import type { LiveMapLibraries } from "../../types/livemap.types.js";
 import type { LiveTree } from "../livetree/livetree.js";
@@ -38,12 +38,10 @@ import {
   observe_livetree_realizations_internal,
 } from "../livetree/runtime/livetree-runtime.js";
 
-function designate_builtin_schema(source: HsonCanonical): HsonSchema { return source; }
-
-const INTERACTION_SCHEMA = designate_builtin_schema(Hson`<type "data" content <descriptors <array <union [
+const INTERACTION_SCHEMA: HsonSchema = Hson.schema`<type "data" content <descriptors <array <union [
   <content <id "string" subjectQuid <string <len 9 alphabet "0123456789abcdefghjkmnpqrstvwxyz">> listener <content <event "string" target <union [<exact "element">, <union [<exact "document">, <exact "window">]>]> capture "boolean" once "boolean" passive "boolean" missingTarget <union [<exact "ignore">, <union [<exact "warn">, <exact "throw">]>]> preventDefault "boolean" stopPropagation "boolean" stopImmediatePropagation "boolean">> kind <exact "browser-local"> key "string" args "any">>,
   <content <id "string" subjectQuid <string <len 9 alphabet "0123456789abcdefghjkmnpqrstvwxyz">> listener <content <event "string" target <union [<exact "element">, <union [<exact "document">, <exact "window">]>]> capture "boolean" once "boolean" passive "boolean" missingTarget <union [<exact "ignore">, <union [<exact "warn">, <exact "throw">]>]> preventDefault "boolean" stopPropagation "boolean" stopImmediatePropagation "boolean">> kind <exact "locus-authoritative"> key "string" payload "any">>
-]>>>>`);
+]>>>>`;
 
 type Storage = Readonly<{
   read: () => OrderedProjectedValue;
@@ -375,7 +373,9 @@ function scalar(value: unknown): OrderedProjectedValue {
 }
 
 function interaction_data_value(value: unknown): OrderedProjectedValue {
-  return hson_data_value(HsonData.from(value));
+  return hson_data_value(typeof value === "string"
+    ? ExactDataCarrier.fromHson(value as import("../transform/transform.types.js").HsonCanonical)
+    : ExactDataCarrier.from(value));
 }
 
 function descriptor_array(value: OrderedProjectedValue): readonly OrderedProjectedObject[] {
@@ -403,12 +403,12 @@ function read_descriptors(value: OrderedProjectedValue): readonly RuntimeDescrip
     if (kind === "browser-local") return Object.freeze({
       ...base,
       kind,
-      args: hson_data_from_value(require_member(entry, "args")),
+      args: hson_data_from_value(require_member(entry, "args")).toHson() as HsonData,
     }) satisfies LocalInteractionDescriptor;
     if (kind === "locus-authoritative") return Object.freeze({
       ...base,
       kind,
-      payload: hson_data_from_value(require_member(entry, "payload")),
+      payload: hson_data_from_value(require_member(entry, "payload")).toHson() as HsonData,
     }) satisfies AuthoritativeInteractionDescriptor;
     throw new Error("Canonical interaction descriptor discriminant is malformed.");
   }));

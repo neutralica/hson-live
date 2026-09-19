@@ -27,7 +27,8 @@ import type {
   LiveMapMultiLibraryCommit,
   LivePath,
 } from "../../types/livemap.types.js";
-import { hson_data_from_value } from "../data/hson-data.js";
+import { hson_data_text_from_value } from "../data/hson-data.js";
+import { HsonSchema as HsonSchemaHandle } from "../schema/hson-schema.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
 import { ordered_projected_value_at } from "../../core/ordered-projected-value-mutation.js";
 import { hsonTransform } from "../transform/transform.facade.js";
@@ -232,8 +233,8 @@ export function make_livemap_mirror_from_snapshot_internal(
     const root = decode_hosted_root(library.root);
     if (registry.scope === "hson-internal") continue;
     inputs[registry.name] = registry.mode === "document"
-      ? { document: root, schema: registry.schema }
-      : { data: node_to_json_value(root), schema: registry.schema };
+      ? { document: root, schema: HsonSchemaHandle.fromHson(registry.schema) }
+      : { data: node_to_json_value(root), schema: HsonSchemaHandle.fromHson(registry.schema) };
   }
 
   const mirror = make_livemap_libraries(inputs);
@@ -246,7 +247,7 @@ export function make_livemap_mirror_from_snapshot_internal(
       registry.name,
       registry.name,
       decode_hosted_root(library.root),
-      registry.schema,
+      HsonSchemaHandle.fromHson(registry.schema),
     );
   }
   if (hosted === undefined) aggregate.restoreLibraries(snapshot);
@@ -288,7 +289,7 @@ function make_data_library(
           projected_value_from_hson_node(aggregate.root(library.identity)),
           stablePath,
         );
-        return value === undefined ? undefined : hson_data_from_value(value);
+        return value === undefined ? undefined : hson_data_text_from_value(value);
       },
       at: ((child: LivePath) => handle([...stablePath, ...must_live_path(child)])) as unknown as LiveMapLibraryPathHandle<TValue>["at"],
       set: (value) => public_data_commit(aggregate.commit([{
@@ -594,7 +595,7 @@ function must_library_input(name: string, value: unknown): LiveMapLibraryInput {
   if (!is_record(value)) {
     throw new TypeError(`LiveMap Library ${JSON.stringify(name)} must be an input object.`);
   }
-  if (typeof value.schema !== "string") {
+  if (!(value.schema instanceof HsonSchemaHandle)) {
     throw new TypeError(`LiveMap Library ${JSON.stringify(name)} requires an HsonSchema.`);
   }
   const hasData = Object.hasOwn(value, "data");

@@ -1,5 +1,9 @@
 import type { HsonNode, JsonValue } from "../../core/types.js";
-import type { ClassifiedLiveMap, LiveMap } from "../../types/livemap.types.js";
+import type { ClassifiedLiveMap, DocumentLiveMap, LiveMap } from "../../types/livemap.types.js";
+import type { HsonData, HsonDocument } from "../transform/transform.types.js";
+import { ExactDataCarrier, hson_data_value } from "../data/hson-data.js";
+import { ExactDocumentCarrier, hson_document_root } from "../document/hson-document.js";
+import { projected_value_to_hson_root } from "../../core/projected-value-graph.js";
 import { hsonTransform } from "../transform/transform.facade.js";
 import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { make_classified_livemap } from "./livemap.core.js";
@@ -9,6 +13,8 @@ import type { LiveMapLibraries, LiveMapLibrariesInput } from "../../types/livema
 export interface HsonLiveMapFacade {
   readonly fromJson: typeof fromJson;
   readonly fromHson: typeof fromHson;
+  readonly fromData: typeof fromData;
+  readonly fromDocument: typeof fromDocument;
   readonly fromNode: typeof fromNode;
   readonly fromLibraries: typeof fromLibraries;
 }
@@ -31,6 +37,22 @@ function fromHson(input: string): ClassifiedLiveMap {
   return make_classified_livemap(parse_hson(input, { allowTopLevelDocumentText: true }));
 }
 
+function fromData(input: HsonData): LiveMap {
+  if (typeof input !== "string") throw new TypeError("LiveMap.fromData requires Hson data text.");
+  const value = hson_data_value(ExactDataCarrier.fromHson(input));
+  return must_data_livemap(make_classified_livemap(projected_value_to_hson_root(value)));
+}
+
+function fromDocument(input: HsonDocument): DocumentLiveMap {
+  if (typeof input !== "string") throw new TypeError("LiveMap.fromDocument requires Hson document text.");
+  const document = ExactDocumentCarrier.fromHson(input);
+  if (document.toHson() !== input) throw new TypeError("LiveMap.fromDocument requires canonical Hson document text.");
+  const root = hson_document_root(document);
+  const map = make_classified_livemap(root);
+  if (map.mode !== "document") throw new TypeError("LiveMap.fromDocument requires document content.");
+  return map;
+}
+
 function fromNode(node: HsonNode): ClassifiedLiveMap {
   return make_classified_livemap(node);
 }
@@ -46,6 +68,8 @@ function fromLibraries<const TLibraries extends LiveMapLibrariesInput>(
 export const hsonLiveMap: HsonLiveMapFacade = Object.freeze({
   fromJson,
   fromHson,
+  fromData,
+  fromDocument,
   fromNode,
   fromLibraries,
 });

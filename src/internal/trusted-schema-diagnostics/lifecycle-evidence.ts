@@ -43,7 +43,7 @@ export function capture_trusted_schema_template(strings: TemplateStringsArray, .
   if (existing !== undefined) return existing;
   const template = Object.freeze({
     kind: "tagged", templateId: `template:${++nextTemplate}`, templateRevision: 1,
-    source: strings.raw[0], canonical: Hson(strings),
+    source: strings.raw[0], canonical: Hson.canonical(strings),
   });
   TEMPLATES.set(strings, template);
   CAPTURED_TEMPLATES.add(template);

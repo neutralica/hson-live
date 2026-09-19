@@ -8,7 +8,7 @@ import {
 } from "../../core/ordered-projected-value.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import type { HsonNode, JsonValue, Primitive } from "../../core/types.js";
-import type { HsonSchema } from "../transform/transform.types.js";
+import type { HsonSchema, HsonSchemaData } from "../transform/transform.types.js";
 import type {
   LiveMapAnyOp,
   LiveMapDataOp,
@@ -64,7 +64,7 @@ export type HostedRegistryEntry = Readonly<{
   /** Presence marks an Hson-owned entry; ordinary application entries retain their established shape. */
   scope?: "hson-internal";
   mode: LiveMapRootMode;
-  schema: HsonSchema;
+  schema: HsonSchemaData;
   schemaDigest: string;
   rootCodec: typeof HOSTED_ROOT_FORMAT;
 }>;
@@ -136,13 +136,14 @@ export function make_hosted_registry(bindings: readonly HostedRegistryBinding[])
     if (mode !== "data-object" && mode !== "data-array" && mode !== "document") {
       throw new HostedAggregateRepresentationError("Hosted registry contains an unsupported root mode.");
     }
-    if (typeof schema !== "string") throw new HostedAggregateRepresentationError("Hosted registry Schema source is malformed.");
+    if (typeof schema !== "object" || schema === null) throw new HostedAggregateRepresentationError("Hosted registry Schema source is malformed.");
+    const source = schema.toHson();
     return Object.freeze({
       name,
       ...(scope === undefined ? {} : { scope }),
       mode,
-      schema,
-      schemaDigest: hosted_sha256(schema),
+      schema: source,
+      schemaDigest: hosted_sha256(source),
       rootCodec: HOSTED_ROOT_FORMAT,
     });
   });

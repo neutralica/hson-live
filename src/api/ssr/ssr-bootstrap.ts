@@ -5,7 +5,8 @@ import type {
   LiveMapRootMode,
 } from "../../types/livemap.types.js";
 import type { LocusSnapshotEnvelope } from "../../types/locus.representation.types.js";
-import type { HsonSchema } from "../transform/transform.types.js";
+import type { HsonSchemaData } from "../transform/transform.types.js";
+import { HsonSchema as HsonSchemaHandle } from "../schema/hson-schema.js";
 import { BoundedStringWriter } from "../../core/bounded-string-writer.js";
 import { parse_ordered_json_text } from "../../core/exact-data-codec.js";
 import {
@@ -496,7 +497,7 @@ function is_mode(value: unknown): value is LiveMapRootMode { return value === "d
 function require_mode(value: unknown): LiveMapRootMode { if (!is_mode(value)) throw new TypeError("Root mode is malformed."); return value; }
 function require_string(value: unknown): string { if (typeof value !== "string") throw new TypeError("String field is malformed."); return value; }
 function require_root_format(value: unknown): "hson-exact-value" { if (value !== "hson-exact-value") throw new TypeError("Root codec is malformed."); return value; }
-function decoded_schema(value: string): HsonSchema { return value as HsonSchema; }
+function decoded_schema(value: string): HsonSchemaData { return HsonSchemaHandle.fromHson(value).toHson(); }
 function is_kind(value: unknown): value is SsrBootstrapKind { return value === "document" || value === "hosted-document" || value === "libraries" || value === "hosted-libraries"; }
 function error(phase: "encode" | "decode", code: ConstructorParameters<typeof SsrBootstrapCodecError>[1], message: string, cause?: unknown): SsrBootstrapCodecError {
   return new SsrBootstrapCodecError(phase, code, message, cause);

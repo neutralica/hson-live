@@ -13,7 +13,6 @@ import type {
   LiveMapDocumentRequestTarget,
   LiveMapDataLibraryInput,
   LiveMapGraphOp,
-  HsonSchemaValue,
   LiveMapLibraries,
   LiveMapLibrariesInput,
   LiveMapAnyOp,
@@ -33,7 +32,7 @@ import type {
 } from "./livemap.types.js";
 import type { LiveMapProjectedGraphEnsureQuidOp } from "../api/livemap/livemap.identity.types.js";
 import type { JsonValue } from "../core/types.js";
-import type { HsonData } from "../api/data/hson-data.js";
+import type { HsonData, SchemaType } from "../api/transform/transform.types.js";
 import type {
   LocusCanonicalCommit,
   LocusCanonicalHistoryOptions,
@@ -342,7 +341,7 @@ type MultiLibraryDataMutationDraft<TValue> = Readonly<{
 
 type MultiLibraryDataMutationDraftForInput<TInput> =
   TInput extends LiveMapDataLibraryInput<infer TSchema>
-    ? MultiLibraryDataMutationDraft<HsonSchemaValue<TSchema>>
+    ? MultiLibraryDataMutationDraft<SchemaType<TSchema>>
     : never;
 
 type MultiLibraryBroadDataMutationDraft = Readonly<{

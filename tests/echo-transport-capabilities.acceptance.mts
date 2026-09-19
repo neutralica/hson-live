@@ -69,7 +69,7 @@ await check("finite operations use typed capability delivery without a socket", 
     state: { value: 0 },
     logicalMapId: "semantic-operation-map",
     incarnationId: "semantic-operation-incarnation",
-    schema: { actions: { echo: { payload: (value) => value instanceof HsonData } } },
+    schema: { actions: { echo: { payload: (value: unknown): value is HsonData | undefined => value === undefined || typeof value === "string" } } },
     authorizeAction(context) {
       authorizationPrincipals.push(context.connection?.principalId);
       return true;
@@ -93,7 +93,7 @@ await check("finite operations use typed capability delivery without a socket", 
   assert.equal(attachment.binding.attachmentEpoch, created.epoch);
   assert.equal(attachment.binding.attached, true);
 
-  const payload = HsonData.fromHson(Hson`<'10' -0 '2' <__proto__ <polluted true>> __proto__ <safe true> tail [0,-0]>`);
+  const payload = Hson.data.fromHson(Hson.canonical`<'10' -0 '2' <__proto__ <polluted true>> __proto__ <safe true> tail [0,-0]>`);
   await attachment.operations.submit({
     type: "action",
     id: "attempt-1",
@@ -108,8 +108,8 @@ await check("finite operations use typed capability delivery without a socket", 
   assert.equal(first.attemptId, "attempt-1");
   assert.equal(first.delivery, "executed");
   assert.equal(first.completionRev, 0);
-  assert.equal(first.result?.equals(payload), true);
-  assert.equal(Object.is(first.result?.entries()?.[0]?.[1].scalar(), -0), true);
+  assert.equal(first.result, payload);
+  assert.equal(Object.is(first.result === undefined ? undefined : Hson.data.materialize(Hson.data.entries(first.result)?.[0]?.[1]!), -0), true);
 
   await attachment.operations.submit({
     type: "action",
@@ -135,7 +135,7 @@ await check("finite operations use typed capability delivery without a socket", 
   const status = finite(outcomes, "action-status");
   assert.equal(status.state, "succeeded");
   assert.equal(status.outcome?.completionRev, 0);
-  assert.equal(status.outcome?.state === "succeeded" && status.outcome.result?.equals(payload), true);
+  assert.equal(status.outcome?.state === "succeeded" && status.outcome.result === payload, true);
   assert.deepEqual(authorizationPrincipals, ["alice", "alice"]);
   attachment.close();
   host.dispose();
@@ -222,7 +222,7 @@ await check("semantic session survives attachment replacement and fences the sta
 });
 
 await check("aggregate authority uses the same operation/synchronization attachment split below socket framing", async () => {
-  const schema: HsonSchema = Hson`<type "data" content <value "number">>`;
+  const schema: HsonSchema = Hson.schema`<type "data" content <value "number">>`;
   const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema } });
   const server = create_locus_hosted_aggregate_socket_internal({ map, actions: { echo: (_context, payload) => payload } });
   const outputs: Array<LocusFiniteOperationOutcome | LocusHostedAggregateSynchronizationOutput | LocusHostedAggregateCanonicalPublication> = [];
@@ -236,7 +236,7 @@ await check("aggregate authority uses the same operation/synchronization attachm
   const created = outputs.find((output) => output.type === "session-created");
   assert.equal(typeof created?.credential, "string");
   assert.equal(attachment.binding.attached, true);
-  const payload = HsonData.fromHson(Hson`<'10' -0 '2' <__proto__ <polluted true>> __proto__ <safe true> null null>`);
+  const payload = Hson.data.fromHson(Hson.canonical`<'10' -0 '2' <__proto__ <polluted true>> __proto__ <safe true> null null>`);
   await attachment.operations.submit({
     type: "action",
     id: "aggregate-attempt",
@@ -247,7 +247,7 @@ await check("aggregate authority uses the same operation/synchronization attachm
     payload,
   });
   const acknowledged = finite(outputs.filter((output): output is LocusFiniteOperationOutcome => output.type === "ack" || output.type === "error" || output.type === "action-status" || output.type.startsWith("session-")), "ack");
-  assert.equal(acknowledged.result?.equals(payload), true);
+  assert.equal(acknowledged.result, payload);
   assert.equal(Object.hasOwn(acknowledged, "resultData"), false);
   assert.equal(Object.hasOwn(acknowledged, "format"), false);
   attachment.synchronization.begin({
@@ -287,7 +287,7 @@ await check("finite settlement and downstream convergence are independently deli
   const observers = new Set<() => void>();
   const authority = make_echo_document_authority(
     async (action) => {
-      const result = await endpoint.action(action.name, HsonData.from(action.payload));
+      const result = await endpoint.action(action.name, Hson.data.from(action.payload));
       return result.type === "ack"
         ? Object.freeze({ accepted: true, completionRev: result.completionRev })
         : Object.freeze({ accepted: false, error: result.error });
@@ -363,7 +363,7 @@ await check("internal Echo composition accepts independent capabilities with one
 });
 
 await check("aggregate result and publication ingress remain independently orderable", async () => {
-  const schema: HsonSchema = Hson`<type "data" content <value "number">>`;
+  const schema: HsonSchema = Hson.schema`<type "data" content <value "number">>`;
   const authorityMap = hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema } });
   const server = create_locus_hosted_aggregate_socket_internal({
     map: authorityMap,

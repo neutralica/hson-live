@@ -3,6 +3,6 @@
   "declarationIdentity": "producer.ts#DocumentSequenceSchema",
   "sourceDigest": "37c9d763e9406e3194f09f0453ba98181686370710fd605dbfdc0544d779a99c",
   "semanticGraphDigest": "ecb7c45782fe8cc4214e52f195394fb014caf32aca6049fc74bc237d4ce2d36e",
-  "generatedDeclarationDigest": "4063d887c6af520921ad870ea812a54658a98874d80e2ef5e43ac7a750027a1b",
+  "generatedDeclarationDigest": "bc4e8be4d5bb987191661d410b3ad572616b7eee9ec745a283e69a07bff8340c",
   "graphHson": "<format \"hson-canonical-schema\" version 3 capabilities <documentRoot 0> nodes «<kind \"document-root\" content 1>,<kind \"document-repeat\" item 2 count 2>,<kind \"document-element\" tag \"item\" content 3>,<kind \"document-sequence\" items «»>»>"
 }

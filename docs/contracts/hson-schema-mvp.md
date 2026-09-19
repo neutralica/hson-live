@@ -1,99 +1,34 @@
-# Hson Schema MVP
+# Hson Schema authoring and proof
 
-The proof-safe MVP authors Schema as ordinary Hson:
+A Schema is authored as Hson data and compiled into a frozen, nominal runtime object:
 
 ```ts
-import { Hson, type HsonSchema } from "hson-live";
+import { Hson, type HsonData, type SchemaType } from "hson-live";
 
-export const UserSchema: HsonSchema = Hson`
+export const UserSchema = Hson.schema`
   <type "data" content <
     name "string"
     nickname <optional "string">
     score "number"
   >>
 `;
+
+export type User = SchemaType<typeof UserSchema>;
+const authored: HsonData<typeof UserSchema> = Hson.data`<name "Ada" score 37>`;
 ```
 
-The declaration must be one exported module-scope `const`, with one declarator,
-a direct official `HsonSchema` annotation, and a direct substitution-free
-official `Hson` tagged template. Schema declarations cannot be reexported or
-composed across files.
+The packaged `hson-schema` tool discovers direct, substitution-free official `Hson.schema` declarations, checks Schema semantics, and generates neighboring private evidence for value, mode, and Schema identity. The application imports the Schema symbol and uses `SchemaType<typeof UserSchema>` and `HsonData<typeof UserSchema>`; it does not import generated suffix names.
 
-The implemented expression vocabulary is deliberately small: `"string"`,
-`"number"`, `"boolean"`, `"null"`, `exact`, closed `content`, direct-member
-`optional`, homogeneous `array`, fixed `tuple`, distinguishable finite-domain
-`union`, local definitions/references, and approved number, string, and
-collection refinements. Objects are closed and members are required unless
-directly wrapped in `optional`.
+Run `hson-schema generate --project tsconfig.json` after authoring or changing Schemas, and `hson-schema check --project tsconfig.json` in the authoritative build. `verify` checks artifact freshness without repairing it. Static authored assignments are proven only when the analyzer validates the direct `Hson.data` source against current generated evidence. Plain TypeScript sees the tag's unproved `HsonData` return and cannot grant proof on its own. The editor uses the same Schema rules for feedback and filters TypeScript's assignment diagnostic only after verifying the source and evidence.
 
-String refinements include exact/minimum/maximum iteration-unit length, literal
-prefix/suffix/contains, and `alphabet`. For example,
-`<string <len 9 alphabet "0123456789abcdefghjkmnpqrstvwxyz">>` requires nine
-ECMAScript string-iteration units, each present in the declared string
-repertoire. Alphabet comparison is case-sensitive and performs no normalization.
-Duplicate repertoire units make the Schema invalid; order is preserved in the
-canonical graph; and an empty repertoire accepts only an empty candidate. The
-constraint uses `INVALID_CONSTRAINT` when candidate evaluation fails.
-
-Generation adds `<DeclarationName>Type` and `<DeclarationName>Hson` type exports
-to the authored module. Generated application structures are deeply readonly and
-carry inaccessible nominal evidence at every object, array, and tuple boundary.
-Their proof is lost by spread, reconstruction, and array transforms. Generated
-Schema-Hson types carry a distinct inaccessible proof.
-
-Run:
-
-```text
-npm run hson-schema:generate
-npm run hson-schema:verify
-npm run hson-schema:check
-npm run hson-schema:build
-npm run hson-schema:watch
-```
-
-Generation is explicit. Verification is fail-closed and never repairs evidence.
-It binds the normalized declaration identity, exact Schema body, verified
-semantic graph, generated declaration bytes, and analyzer compatibility version.
-The analyzer uses a resolved TypeScript Program, executes no workspace module,
-and is the authority for static Schema-bound Hson. The VS Code extension is not
-required. Raw `tsc` is not the complete certification build.
-
-Supported consumers must enable all of:
-
-```json
-{
-  "compilerOptions": {
-    "strict": true,
-    "exactOptionalPropertyTypes": true,
-    "noUncheckedIndexedAccess": true
-  }
-}
-```
-
-Static certification uses the generated type directly:
+Dynamic values are certified through the Schema object:
 
 ```ts
-import { Hson } from "hson-live";
-import type { UserSchemaHson } from "./user-schema.js";
-
-const user: UserSchemaHson = Hson`<name "Ada" score 37>`;
+const certified: HsonData<typeof UserSchema> = UserSchema.certify(dynamicCanonicalHson);
+const portableDefinition = UserSchema.toHson(); // HsonSchemaData primitive string
+const reconstructed = Hson.schema.fromHson(portableDefinition);
 ```
 
-Dynamic canonical Hson is certified through the runtime proof boundary:
+`certify` validates the candidate in the Schema's data mode and returns the canonical primitive string. `fromHson` validates the portable Schema definition again; reconstructed object identity need not equal the original. LiveMap governance is separate: `map.schema.use(UserSchema)` validates current and future map states.
 
-```ts
-const user: UserSchemaHson = Hson.certify(UserSchema, dynamicCanonicalHson);
-```
-
-Certification returns the identical immutable canonical string and fails with the
-existing structured Schema error behavior. Legacy LiveMap Schema validation is
-unchanged.
-
-There is intentionally no public Schema-value materializer. Existing
-`.toJson().value()` and LiveMap projections return ordinary mutable values and do
-not mint Schema proof. In this MVP, exact Schema-bound Hson is the public runtime
-certificate; `UserSchemaType` proves generated declaration and nominal-carrier
-fidelity without claiming a public producer.
-
-Interpolation, mutable certified values, cross-file Schema composition, custom
-validators, pattern engines, and materialization APIs are outside this MVP.
+Generated value projections are deeply readonly and carry inaccessible proof at refined objects, arrays, tuples, numbers, and strings. Ordinary materialization, object spread, array transforms, and arithmetic do not preserve those proofs. Static authored tags with substitutions do not receive Schema-specific proof.

@@ -3,6 +3,10 @@ import { completion_context } from "../src/internal/schema-completion/context.ts
 import { completion_source } from "../editors/vscode-hson/src/completion-source.ts";
 import { discover_schema_validation_sources } from "../src/internal/trusted-schema-diagnostics/discover-validation-sources.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
+import { resolve } from "node:path";
+import { Hson } from "../src/hson-authoring.ts";
+import { create_trusted_schema_source_lifecycle } from "../src/internal/trusted-schema-diagnostics/source-lifecycle.ts";
+import { instrument_trusted_schema_map_sources } from "../src/internal/trusted-schema-diagnostics/instrument-map-sources.ts";
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "hson-completion-context",
   title: "D6 authoritative cursor context",
@@ -56,12 +60,29 @@ check("duplicate attrs fail probe parsing", () => assert.equal(context('<div x="
 check("unclosed surrounding syntax is unavailable", () => assert.equal(context("<a < |"), undefined));
 check("missing array comma does not guess append", () => assert.equal(context("[true |]"), undefined));
 check("crossed structure is unavailable", () => assert.equal(context("<a <div |/>>"), undefined));
-const host = 'import { Hson } from "hson-live/hson"; import { S } from "./s.js"; const x=1; const a=Hson`<a ${x} b >`; Hson.certify(S,a);';
+const host = 'import { Hson } from "hson-live/hson"; const S=Hson.schema`<type "data" content <a "number" b "number">>`; const x=1; const a=Hson.canonical`<a ${x} b >`; S.certify(a);';
 const association = discover_schema_validation_sources('/tmp/context.ts', host)[0]!;
 check("interpolation literal mapped without runtime values", () => { const candidate = completion_source(association, host.indexOf('b >') + 2)!; const result = completion_context(candidate.source, candidate.cursor, candidate.unknownRanges); assert.deepEqual(result?.path, ["b"]); assert.deepEqual(result?.unknownPaths, [["a"]]); });
 check("interpolation expression excluded", () => assert.equal(completion_source(association, host.indexOf('${x}') + 2), undefined));
-const tagHost = 'import { Hson } from "hson-live/hson"; import { S } from "./s.js"; const x="button"; const a=Hson`< /><span role=${x}/>`; Hson.certify(S,a);';
+const tagHost = 'import { Hson } from "hson-live/hson"; const S=Hson.schema`<type "document" content "empty">`; const x="button"; const a=Hson.canonical`< /><span role=${x}/>`; S.certify(a);';
 const tagAssociation = discover_schema_validation_sources('/tmp/tag-context.ts', tagHost)[0]!;
 check("editor source mapping retains tag context and exact host range", () => { const candidate = completion_source(tagAssociation, tagHost.indexOf('< />') + 2)!; const result = completion_context(candidate.source, candidate.cursor, candidate.unknownRanges); assert.equal(result?.kind, "tag"); assert.deepEqual(result?.path, [0]); assert.deepEqual(result?.range, { start: 2, end: 2 }); assert.deepEqual(candidate.map(result!.range), { start: tagHost.indexOf('< />') + 2, end: tagHost.indexOf('< />') + 2 }); });
+check("Schema-owned certification follows local and imported Schema bindings", () => {
+  const local = 'import { Hson } from "hson-live"; const S=Hson.schema`<type "data" content "number">`; const Alias=S; const value=Hson.canonical`1`; Alias.certify(value);';
+  assert.equal(discover_schema_validation_sources('/tmp/local-certify.ts', local).length, 1);
+  const fileName = resolve(import.meta.dirname, 'fixtures/hson-schema-mvp/consumer.ts');
+  const imported = 'import { Hson } from "hson-live"; import { UserSchema as S } from "./producer.js"; const value=Hson.canonical`<name "Ada">`; S.certify(value);';
+  assert.equal(discover_schema_validation_sources(fileName, imported).length, 1);
+  const fake = 'import { Hson } from "hson-live"; const someObject={certify(_value: unknown){}}; const value=Hson.canonical`1`; someObject.certify(value);';
+  assert.equal(discover_schema_validation_sources('/tmp/fake-certify.ts', fake).length, 0);
+});
+check("canonical lifecycle instrumentation uses exact tag identity", () => {
+  const lifecycle = create_trusted_schema_source_lifecycle([]);
+  assert.equal(lifecycle.tag('candidate', Hson.canonical)`<a 1>`, Hson.canonical`<a 1>`);
+  assert.throws(() => lifecycle.tag('candidate', Hson.data), /Unsupported authored tag runtime identity/);
+  assert.throws(() => lifecycle.tag('candidate', String.raw), /Unsupported authored tag runtime identity/);
+  const source = 'import { Hson } from "hson-live/hson"; import { hsonLiveMap } from "hson-live/livemap"; const S=Hson.schema`<type "data" content <a "number">>`; const value=Hson.canonical`<a 1>`; const map=hsonLiveMap.fromHson(value); map.schema.use(S);';
+  assert.match(instrument_trusted_schema_map_sources('/tmp/lifecycle.ts', source, 'file:///tmp/lifecycle-helper.ts'), /\.tag\(/);
+});
 check("analysis never edits source", () => { const source = '<a >'; completion_context(source, 3); assert.equal(source, '<a >'); });
 testEvents.terminal("pass");

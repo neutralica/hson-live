@@ -1,4 +1,4 @@
-import { Hson } from "hson-live";
-import type { UserSchemaHson } from "./schema.js";
+import { Hson, type HsonData } from "hson-live";
+import { UserSchema } from "./schema.js";
 
-export const user: UserSchemaHson = Hson`<user <age "37">>`;
+export const user: HsonData<typeof UserSchema> = Hson.data`<user <age "37">>`;

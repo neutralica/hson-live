@@ -33,14 +33,14 @@ declare const descriptor: Parameters<typeof add_interaction>[1];
 const transformOutput: TransformOutput = hsonTransform.fromUntrustedHtml(userHtml);
 const canonical = transformOutput.toHson().serialize();
 const html: string = hsonTransform.fromHson(canonical).toHtml().serialize();
-const authored = Hson`<main/>`;
-const exactDocument = HsonDocument.fromHson(authored);
-void [html, authored, exactDocument.toNode()];
+const authored = Hson.canonical`<main/>`;
+const exactDocument = Hson.document.fromHson(authored);
+void [html, authored, Hson.document.toNode(exactDocument)];
 
 const dataMap = hsonLiveMap.fromJson({ count: 0 });
 dataMap.set(["count"], 1);
 const exactData: HsonData | undefined = dataMap.data();
-void exactData?.entries();
+void (exactData === undefined ? undefined : Hson.data.entries(exactData));
 
 const standalone = hsonLiveTree.fromNode(hsonTransform.fromTrustedHtml("<main/>").toNode());
 standalone.attrs.set("data-ready", "yes");
@@ -71,7 +71,7 @@ const disposeInteractions = activate_interactions({
   tree,
   local: {
     reveal(event, subject, args) {
-      void [event, subject, args.materialize()];
+      void [event, subject, Hson.data.materialize(args)];
     },
   },
   dispatch: async (key, payload) => {

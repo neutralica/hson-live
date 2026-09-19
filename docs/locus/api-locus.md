@@ -64,11 +64,11 @@ const locus = create_locus({
 });
 ```
 
-Configured action data is admitted as immutable `HsonData`. Callers retain the
+Configured action data is admitted as canonical `HsonData` primitive string. Callers retain the
 familiar `Echo.action(name, payload)` shape and may pass ordinary admissible
 JavaScript data; Echo snapshots it once through strict canonical admission.
 Schemas, authorization, and handlers then observe the same exact data value.
-Handlers explicitly call `payload.materialize()` when an ordinary detached JS
+Handlers explicitly call `Hson.data.materialize(payload)` when an ordinary detached JS
 view is sufficient. Successful handler returns are admitted the same way and
 Echo exposes a present result as `HsonData`; absence remains distinct from
 present `null`.
@@ -135,7 +135,7 @@ decode_locus_server_message(text);
 these codecs: Echo constructs and encodes client messages internally. A
 low-level custom protocol client may use `encode_locus_client_message` to
 produce the exact Locus wire form. Action payloads become canonical
-`payloadData`; `HsonData.toHson()` is authored Hson and is not that wire
+`payloadData`; `HsonData` itself is authored Hson and is not that wire
 encoding. Encoding describes representation only and does not bypass Locus
 session, admission, authorization, identity, or ordering checks.
 

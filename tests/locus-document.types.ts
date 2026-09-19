@@ -1,4 +1,4 @@
-import { create_locus, create_echo, hson } from "../src/index.ts";
+import { Hson, create_locus, create_echo, hson } from "../src/index.ts";
 import { validate_document_path } from "../src/api/livemap/index.ts";
 import { create_persistent_locus } from "../src/api/locus/index.ts";
 import type {
@@ -102,7 +102,7 @@ const authoritativeProjectedHost = create_locus<{ count: number }, { increment: 
   state: { count: 0 },
     actions: {
     async increment(context, amount) {
-      const admittedAmount = amount?.scalar();
+      const admittedAmount = amount === undefined ? undefined : Hson.data.materialize(amount);
       if (typeof admittedAmount !== "number") throw new Error("Expected numeric action data.");
       context.map.snap(["count"]);
       context.map.at(["count"]).watch((next) => {

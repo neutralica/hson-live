@@ -76,9 +76,9 @@ declare const map: DocumentLiveMap;
 declare const element: Element;
 declare const echo: Echo<DocumentLiveMap>;
 declare const schema: HsonSchema;
-const canonical = Hson.certify(schema, Hson`<main/>`);
-const data = HsonData.fromHson(Hson`<value 1>`);
-const document = HsonDocument.fromHson(Hson`<main/>`);
+const canonical = schema.certify(Hson.canonical`<main/>`);
+const data = Hson.data.fromHson(Hson.canonical`<value 1>`);
+const document = Hson.document.fromHson(Hson.canonical`<main/>`);
 const continuation: DocumentContinuation = continue_document({ map, root: element });
 void continue_hosted_document({ echo, root: element });
 void [canonical, data, document, continuation, render_document({ map }), render_hosted_document,

@@ -1,4 +1,4 @@
-import type { HsonData } from "../data/hson-data.js";
+import type { ExactDataCarrier } from "../data/hson-data.js";
 import type {
   LocusActionAuthorizer,
   LocusActionDelivery,
@@ -15,7 +15,7 @@ import type { LocusActionDedupeStore } from "./locus.actions.js";
 import { make_locus_action_response } from "./locus.action-admission.js";
 
 export type LocusAggregateValidatedAction =
-  | Readonly<{ ok: true; payload: HsonData | undefined }>
+  | Readonly<{ ok: true; payload: ExactDataCarrier | undefined }>
   | Readonly<{ ok: false; code: string; message: string }>;
 
 /** Internal authority capture installed only by the owning aggregate Locus runtime. */
@@ -29,7 +29,7 @@ export type LocusAggregateActionAuthorityInternals<TActions extends LocusActionP
   validateAction: (message: LocusClientActionMessage<TActions>) => LocusAggregateValidatedAction;
   executeAction: (
     message: LocusClientActionMessage<TActions>,
-    payload: HsonData | undefined,
+    payload: ExactDataCarrier | undefined,
     origin: LocusActionOrigin,
   ) => Promise<LocusActionTerminalOutcome>;
   acquireActionActivity: () => LocusDisposer;

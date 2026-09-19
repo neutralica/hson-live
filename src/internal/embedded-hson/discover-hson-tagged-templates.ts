@@ -1,4 +1,6 @@
 import ts from "typescript";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, relative, resolve, sep } from "node:path";
 
 import {
   validate_embedded_hson_source,
@@ -10,6 +12,50 @@ const supportedPackageSpecifiers: ReadonlySet<string> = new Set([
   "hson-live",
   "hson-live/hson",
 ]);
+
+/** Require the lexical import binding, rather than a matching symbol name or filename. */
+export function is_official_hson_package_binding(
+  identifier: ts.Identifier,
+  expected: "Hson" | "HsonData" | "HsonDocument",
+  checker: ts.TypeChecker,
+  requireResolvedOrigin = false,
+): boolean {
+  const symbol = checker.getSymbolAtLocation(identifier);
+  if (symbol === undefined || symbol.declarations?.length !== 1) return false;
+  const declaration = symbol.declarations[0];
+  if (declaration === undefined || !ts.isImportSpecifier(declaration)) return false;
+  const clause = declaration.parent.parent;
+  const imported = clause.parent;
+  const officialImport = ts.isImportDeclaration(imported)
+    && ts.isStringLiteral(imported.moduleSpecifier)
+    && supportedPackageSpecifiers.has(imported.moduleSpecifier.text)
+    && (declaration.propertyName?.text ?? declaration.name.text) === expected
+    && (expected !== "Hson" || !declaration.isTypeOnly && !clause.isTypeOnly);
+  if (!officialImport || !requireResolvedOrigin) return officialImport;
+  const target = checker.getAliasedSymbol(symbol);
+  return target.declarations?.some(item => official_declaration_origin(item.getSourceFile().fileName, expected)) === true;
+}
+
+function official_declaration_origin(fileName: string, expected: "Hson" | "HsonData" | "HsonDocument"): boolean {
+  let directory = dirname(resolve(fileName));
+  while (true) {
+    const manifestPath = resolve(directory, "package.json");
+    if (existsSync(manifestPath)) {
+      try {
+        const manifest: unknown = JSON.parse(readFileSync(manifestPath, "utf8"));
+        if (typeof manifest !== "object" || manifest === null || !("name" in manifest) || manifest.name !== "hson-live") return false;
+      } catch { return false; }
+      const path = relative(directory, resolve(fileName)).split(sep).join("/");
+      return expected === "Hson"
+        ? ["src/index.ts", "src/hson-authoring.ts", "dist/index.d.ts", "dist/hson-authoring.d.ts"].includes(path)
+        : ["src/index.ts", "src/hson-authoring.ts", "src/api/transform/transform.types.ts",
+          "dist/index.d.ts", "dist/hson-authoring.d.ts", "dist/api/transform/transform.types.d.ts"].includes(path);
+    }
+    const parent = dirname(directory);
+    if (parent === directory) return false;
+    directory = parent;
+  }
+}
 
 export type InterpolatedEmbeddedHsonTemplate = Readonly<{
   fileName: string;
@@ -231,7 +277,7 @@ export function read_template_substitution_ranges(
   return Object.freeze(ranges);
 }
 
-/** Discover direct official Hson tags in one original in-memory TS/TSX source. */
+/** Discover semantic member tags rooted in an official Hson import. */
 export function discover_hson_tagged_templates(
   fileName: string,
   hostText: string,
@@ -259,10 +305,12 @@ export function discover_hson_tagged_templates(
   const interpolated: InterpolatedEmbeddedHsonTemplate[] = [];
   const visit = (node: ts.Node): void => {
     if (ts.isTaggedTemplateExpression(node)
-      && ts.isIdentifier(node.tag)
+      && ts.isPropertyAccessExpression(node.tag)
+      && ts.isIdentifier(node.tag.expression)
+      && ["canonical", "data", "document", "schema"].includes(node.tag.name.text)
       && (node.flags & ts.NodeFlags.OptionalChain) === 0
       && node.typeArguments === undefined) {
-      const symbol = checker.getSymbolAtLocation(node.tag);
+      const symbol = checker.getSymbolAtLocation(node.tag.expression);
       const relevantRange = nodeRange(node, sourceFile);
       if (symbol !== undefined
         && importSymbols.has(symbol)

@@ -22,9 +22,9 @@ export function create_trusted_schema_source_lifecycle(sites: readonly Site[]) {
   const untracked = new WeakMap<object, ClassifiedLiveMap>();
   return Object.freeze({
     interpolation(site: InterpolationSite, aliases: readonly string[], tag: unknown) {
-      if (tag !== Hson) throw new Error("Unsupported authored tag runtime identity.");
+      if (tag !== Hson.canonical) throw new Error("Unsupported authored tag runtime identity.");
       return (strings: TemplateStringsArray, ...values: readonly (string | number | boolean | null)[]): HsonCanonical => {
-        const result = capture_interpolation(site, Hson, strings, values);
+        const result = capture_interpolation(site, Hson.canonical, strings, values);
         const template = result.capture === undefined ? undefined : captured_interpolation_template(result.capture);
         for (const id of aliases) {
           interpolationIds.add(id);
@@ -35,7 +35,7 @@ export function create_trusted_schema_source_lifecycle(sites: readonly Site[]) {
       };
     },
     tag(templateId: string, tag: unknown) {
-      if (tag !== Hson) throw new Error("Unsupported authored tag runtime identity.");
+      if (tag !== Hson.canonical) throw new Error("Unsupported authored tag runtime identity.");
       return (strings: TemplateStringsArray): HsonCanonical => {
         const template = capture_trusted_schema_template(strings);
         templates.set(templateId, template);

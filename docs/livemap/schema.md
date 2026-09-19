@@ -1,24 +1,20 @@
 # Standalone canonical Hson validation
 
 ```ts
-import { Hson, type HsonSchema } from "hson-live/hson";
+import { Hson, type HsonData, type SchemaType } from "hson-live/hson";
 import { hsonLiveMap } from "hson-live/livemap";
 
-const UserSchema: HsonSchema = Hson`<type "data" content <user <content <age "number">>>>`;
-const user = Hson`<user <age 37>>`;
-const same = Hson.certify(UserSchema, user);
-// same === user; return type is HsonCanonical, not a Schema certificate.
+const UserSchema = Hson.schema`<type "data" content <user <content <age "number">>>>`;
+const user = Hson.data`<user <age 37>>`;
+const same = UserSchema.certify(user);
+// same === user; return type is HsonData<typeof UserSchema>.
 ```
 
-`Hson.certify` is the sole generic dynamic certification operation. LiveMap's
-distinct operation is owner governance: `map.schema.use(UserSchema)`.
-
-`Hson.certify(schema: HsonSchema, canonical: HsonCanonical): HsonCanonical`
-validates an existing admitted canonical string without allocating a LiveMap or
-reserializing it. Complete data, document, and combined capabilities
-use the canonical HsonSchema evaluator. Root interpretation comes from Hson,
-not from the supplied Schema: ordinary `"text"` is a data string, while a
-document Schema constrains ordered content beneath the internal document root.
+The Schema object's `certify` method validates one canonical candidate in its
+own mode and returns a Schema-proven primitive string. LiveMap's distinct
+operation is owner governance: `map.schema.use(UserSchema)`. A context-neutral
+`Hson.canonical` string such as `"text"` can be admitted according to the
+Schema's mode; a known wrong-mode candidate rejects.
 
 Mismatches throw the internal `HsonSchemaError` with structured issues; incomplete or
 unrecognized Schemas fail with `INVALID_SCHEMA`, incompatible roots with
@@ -36,7 +32,7 @@ objects are included. For example, broad interaction-shaped fields can be
 expressed without a custom predicate:
 
 ```ts
-const InteractionFieldsSchema: HsonSchema = Hson`
+const InteractionFieldsSchema = Hson.schema`
   <type "data" content <args "any" payload "any">>
 `;
 ```
@@ -68,7 +64,7 @@ The `alphabet` member restricts a string to a finite declared repertoire and
 composes conjunctively with the existing string refinements:
 
 ```ts
-const PersistedIdSchema: HsonSchema = Hson`
+const PersistedIdSchema = Hson.schema`
   <type "data" content <
     id <string <len 9 alphabet "0123456789abcdefghjkmnpqrstvwxyz">>
   >>
@@ -181,7 +177,7 @@ budgets.
 The preferred authored layout can keep Hson separate from map construction:
 
 ```ts
-const source = Hson`
+const source = Hson.canonical`
   <user <age "37">>
 `;
 const map = hsonLiveMap.fromHson(source);
@@ -196,7 +192,8 @@ mutate-then-revert, prevents attribution; rejected initial attachment remains
 diagnosable. Two maps can independently govern one template. The dedicated
 `hsonLiveMap.fromHson` public facade is equally supported.
 
-Static authored source uses generated `<Name>Hson` annotations and the headless
-Schema analyzer; it does not call `Hson.certify`. Dynamic ingress uses
-`Hson.certify`. Map-owned state uses `map.schema.use` and is revalidated before
+Static authored source uses `HsonData<typeof Schema>` or
+`HsonDocument<typeof Schema>` annotations and the headless Schema analyzer;
+it does not call `schema.certify`. Dynamic ingress uses
+`schema.certify`. Map-owned state uses `map.schema.use` and is revalidated before
 mutation commits.

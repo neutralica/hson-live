@@ -84,7 +84,7 @@ check("standalone malformed point evidence receives a visible range", () => {
 check("leading diagnostic-ignore-file pragma suppresses only ordinary extension diagnostics", () => {
   assert.equal(diagnose("// @hson-diagnostics-ignore-file\n+1").length, 0);
   assert.equal(diagnose("  // fixture context\r\n// @hson-diagnostics-ignore-file\r\n+1").length, 0);
-  assert.equal(diagnose('/* license */\n// @hson-diagnostics-ignore-file\nimport { Hson } from "hson-live";\nHson`+1`;', "typescript", "/workspace/fixture.ts").length, 0);
+  assert.equal(diagnose('/* license */\n// @hson-diagnostics-ignore-file\nimport { Hson } from "hson-live";\nHson.canonical`+1`;', "typescript", "/workspace/fixture.ts").length, 0);
   assert.equal(diagnose('"// @hson-diagnostics-ignore-file"\n+1').length, 1);
   assert.equal(diagnose('<valid/>\n// @hson-diagnostics-ignore-file\n+1').length, 1);
 });
@@ -154,7 +154,7 @@ check("standalone astral point spans the complete surrogate pair", () => {
 const officialImport = 'import { Hson, hson } from "hson-live";';
 
 check("local Hson Schema diagnostics reuse the proof compiler without workspace execution", () => {
-  const valid = 'import { Hson, type HsonSchema } from "hson-live"; export const S: HsonSchema = Hson`<type "data" content <name <string <alphabet "abc">>>>`; throw new Error("not executed");';
+  const valid = 'import { Hson } from "hson-live"; export const S = Hson.schema`<type "data" content <name <string <alphabet "abc">>>>`; throw new Error("not executed");';
   assert.deepEqual(local_hson_schema_diagnostics("/workspace/schema.ts", valid), []);
   assert.equal(local_hson_schema_diagnostics("/workspace/schema.ts", valid.replace('name <string <alphabet "abc">>', 'name <literal "x">'))[0]?.code, "UNKNOWN_SCHEMA_MEMBER");
   assert.equal(local_hson_schema_diagnostics("/workspace/schema.ts", valid.replace('alphabet "abc"', "alphabet 1"))[0]?.code, "INVALID_SCHEMA_EXPRESSION");
@@ -168,20 +168,18 @@ check("local Hson Schema diagnostics reuse the proof compiler without workspace 
 });
 
 check("Schema evidence discovery stays binding-aware and does not generate", () => {
-  const source = 'import { Hson, type HsonSchema } from "hson-live"; export const UserSchema: HsonSchema = Hson`<type "data" content "string">`;';
+  const source = 'import { Hson } from "hson-live"; export const UserSchema = Hson.schema`<type "data" content "string">`;';
   assert.deepEqual(local_hson_schema_declarations(source).map(declaration => declaration.name), ["UserSchema"]);
-  assert.deepEqual(local_hson_schema_declarations(source.replace(": HsonSchema", ': HsonSchema<UserSchemaType, "data">')).map(declaration => declaration.name), ["UserSchema"]);
-  assert.deepEqual(local_hson_schema_declarations(source.replace(": HsonSchema", ': HsonSchema<PageSchemaType, "document">')).map(declaration => declaration.name), ["UserSchema"]);
-  assert.deepEqual(local_hson_schema_declarations(source.replace("type HsonSchema", "type HsonSchema as Schema").replace(": HsonSchema", ': Schema<UserSchemaType, "data">')).map(declaration => declaration.name), ["UserSchema"]);
+  assert.deepEqual(local_hson_schema_declarations(source.replace('Hson.schema', 'markup.schema').replace('Hson }', 'Hson as markup }')).map(declaration => declaration.name), ["UserSchema"]);
   assert.deepEqual(local_hson_schema_declarations(source.replace('from "hson-live"', 'from "other"')), []);
-  assert.deepEqual(local_hson_schema_declarations(source.replace(": HsonSchema", ': HsonSchema<UserSchemaType, "wrong">')), []);
-  assert.deepEqual(local_hson_schema_declarations(`type HsonSchema<T, M> = unknown; declare const Hson: unknown; const Wrong: HsonSchema<string, "data"> = Hson\`x\`;`), []);
+  assert.deepEqual(local_hson_schema_declarations(source.replace('Hson.schema', 'Hson.data')), []);
+  assert.deepEqual(local_hson_schema_declarations(`declare const Hson: unknown; const Wrong = Hson.schema\`x\`;`), []);
 });
 
 check("local defs/ref symbols are compiler-resolved, scoped, and source-exact", () => {
   const text = `import { Hson, type HsonSchema } from "hson-live";
-const FooSchema: HsonSchema = Hson\`<type "data" defs <Age <number <int true min 0>> User <content <age <ref "Age">>>> content <ref "User">>\`;
-const BarSchema: HsonSchema = Hson\`<type "data" defs <Age "string"> content <ref "Age">>\`;
+const FooSchema: HsonSchema = Hson.schema\`<type "data" defs <Age <number <int true min 0>> User <content <age <ref "Age">>>> content <ref "User">>\`;
+const BarSchema: HsonSchema = Hson.schema\`<type "data" defs <Age "string"> content <ref "Age">>\`;
 const ordinary = "Age";`;
   const symbols = local_hson_schema_symbols("/workspace/schema.ts", text);
   assert.equal(symbols.definitions.length, 3);
@@ -198,7 +196,7 @@ const ordinary = "Age";`;
 
 check("local ref completion and rename use compiler facts without executing workspace code", () => {
   const text = `import { Hson, type HsonSchema } from "hson-live";
-const TreeSchema: HsonSchema = Hson\`<type "data" defs <Tree <content <children <array <ref "Tree">>>> 'display name' "string"> content <ref "Tree">>\`;
+const TreeSchema: HsonSchema = Hson.schema\`<type "data" defs <Tree <content <children <array <ref "Tree">>>> 'display name' "string"> content <ref "Tree">>\`;
 const ordinary = "Tree";`;
   const cursor = text.indexOf('"Tree"') + 2;
   assert.deepEqual(local_hson_schema_completion("/workspace/tree.ts", text, cursor).map(symbol => symbol.name), ["Tree", "display name"]);
@@ -217,7 +215,7 @@ const ordinary = "Tree";`;
 
 check("half-written ref completion recovers delimiters only before compiling", () => {
   const text = `import { Hson, type HsonSchema } from "hson-live";
-const S: HsonSchema = Hson\`<type "data" defs <Age "number" Address "string"> content <ref "Ag\`;`;
+const S: HsonSchema = Hson.schema\`<type "data" defs <Age "number" Address "string"> content <ref "Ag\`;`;
   const cursor = text.lastIndexOf("Ag") + 2;
   assert.deepEqual(local_hson_schema_completion("/workspace/incomplete.ts", text, cursor).map(symbol => symbol.name), ["Age", "Address"]);
 });
@@ -225,7 +223,7 @@ const S: HsonSchema = Hson\`<type "data" defs <Age "number" Address "string"> co
 check("local defs/ref symbol queries remain interactive for a moderate namespace", () => {
   const definitions = Array.from({ length: 100 }, (_, index) => `D${index} "string"`).join(" ");
   const text = `import { Hson, type HsonSchema } from "hson-live";
-const Large: HsonSchema = Hson\`<type "data" defs <${definitions}> content <ref "D0">>\`;`;
+const Large: HsonSchema = Hson.schema\`<type "data" defs <${definitions}> content <ref "D0">>\`;`;
   const offset = text.indexOf('"D0"') + 2;
   const started = performance.now();
   const symbols = local_hson_schema_symbols("/workspace/large.ts", text);
@@ -240,42 +238,42 @@ const Large: HsonSchema = Hson\`<type "data" defs <${definitions}> content <ref 
 });
 
 check("valid direct official template has no diagnostics", () => {
-  const text = `${officialImport}\nconst page = Hson\`<main\n  <h1 "Hello">\n>\`;`;
+  const text = `${officialImport}\nconst page = Hson.canonical\`<main\n  <h1 "Hello">\n>\`;`;
   assert.deepEqual(diagnose(text, "typescript", "/workspace/page.ts"), []);
 });
 
 check("malformed direct template maps to the exact host range", () => {
-  const text = `${officialImport}\nconst page = Hson\`+1\`;`;
+  const text = `${officialImport}\nconst page = Hson.canonical\`+1\`;`;
   const diagnostic = diagnose(text, "typescript", "/workspace/page.ts")[0];
   assert.ok(diagnostic);
   assert.equal(text.slice(diagnostic.range.start, diagnostic.range.end), "+");
 });
 
 check("official import aliases are diagnosed semantically", () => {
-  const text = 'import { Hson as markup } from "hson-live";\nconst page = markup\`01\`;';
+  const text = 'import { Hson as markup } from "hson-live";\nconst page = markup.canonical\`01\`;';
   const diagnostic = diagnose(text, "typescript", "/workspace/page.ts")[0];
   assert.ok(diagnostic);
   assert.equal(text.slice(diagnostic.range.start, diagnostic.range.end), "1");
 });
 
 check("shadowed, wrong-package, and local same-name tags are excluded", () => {
-  const shadowed = `${officialImport}\nfunction f(Hson: typeof String.raw) { Hson\`+1\`; }`;
-  const wrong = 'import { Hson } from "other";\nHson\`+1\`;';
-  const local = "const Hson = String.raw; Hson`+1`;";
+  const shadowed = `${officialImport}\nfunction f(Hson: typeof String.raw) { Hson.canonical\`+1\`; }`;
+  const wrong = 'import { Hson } from "other";\nHson.canonical\`+1\`;';
+  const local = "const Hson = String.raw; Hson.canonical`+1`;";
   assert.deepEqual(diagnose(shadowed, "typescript", "/workspace/a.ts"), []);
   assert.deepEqual(diagnose(wrong, "typescript", "/workspace/b.ts"), []);
   assert.deepEqual(diagnose(local, "typescript", "/workspace/c.ts"), []);
 });
 
 check("multiple templates produce independent diagnostics", () => {
-  const text = `${officialImport}\nconst a = Hson\`+1\`;\nconst b = Hson\`<main\n  <h1 "Hello">\n>\`;\nconst c = Hson\`01\`;`;
+  const text = `${officialImport}\nconst a = Hson.canonical\`+1\`;\nconst b = Hson.canonical\`<main\n  <h1 "Hello">\n>\`;\nconst c = Hson.canonical\`01\`;`;
   const diagnostics = diagnose(text, "typescript", "/workspace/page.ts");
   assert.equal(diagnostics.length, 2);
   assert.deepEqual(diagnostics.map((item) => text.slice(item.range.start, item.range.end)), ["+", "1"]);
 });
 
 check("embedded CRLF and related evidence map to original host offsets", () => {
-  const text = `${officialImport}\r\nconst page = Hson\`\r\n<a 1 a 2>\r\n\`;`;
+  const text = `${officialImport}\r\nconst page = Hson.canonical\`\r\n<a 1 a 2>\r\n\`;`;
   const diagnostic = diagnose(text, "typescript", "/workspace/page.ts")[0];
   assert.ok(diagnostic);
   assert.equal(text.slice(diagnostic.range.start, diagnostic.range.end), "a");
@@ -287,8 +285,8 @@ check("embedded CRLF and related evidence map to original host offsets", () => {
 });
 
 check("TSX templates near JSX validate without affecting JSX", () => {
-  const valid = `${officialImport}\nconst view = <section>{Hson\`<main\n  <h1 "Hello">\n>\`}</section>;`;
-  const invalid = `${officialImport}\nconst view = <section>{Hson\`+1\`}</section>;`;
+  const valid = `${officialImport}\nconst view = <section>{Hson.canonical\`<main\n  <h1 "Hello">\n>\`}</section>;`;
+  const invalid = `${officialImport}\nconst view = <section>{Hson.canonical\`+1\`}</section>;`;
   assert.deepEqual(diagnose(valid, "typescriptreact", "/workspace/view.tsx"), []);
   const diagnostic = diagnose(invalid, "typescriptreact", "/workspace/view.tsx")[0];
   assert.ok(diagnostic);
@@ -296,7 +294,7 @@ check("TSX templates near JSX validate without affecting JSX", () => {
 });
 
 check("interpolated templates are discovered without speculative diagnostics", () => {
-  const text = `${officialImport}\nconst page = Hson\`not hson \${first} still not \${second}\`;`;
+  const text = `${officialImport}\nconst page = Hson.canonical\`not hson \${first} still not \${second}\`;`;
   const diagnostics = diagnose(text, "typescript", "/workspace/page.ts");
   assert.deepEqual(diagnostics, []);
 });
@@ -325,7 +323,7 @@ check("Markdown Hson fences remain presentation-only across diagnostic producers
 });
 
 check("diagnostic production does not mutate host text", () => {
-  const text = `${officialImport}\nconst page = Hson\`+1\`;`;
+  const text = `${officialImport}\nconst page = Hson.canonical\`+1\`;`;
   const before = text;
   diagnose(text, "typescript", "/workspace/page.ts");
   assert.equal(text, before);

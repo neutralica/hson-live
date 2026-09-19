@@ -159,7 +159,7 @@ await check("solo capability owns management across failure and releases it once
 });
 
 await check("aggregate capability owns one complete mirror and cannot revive after disposal", async () => {
-  const StateSchema = Hson`<type "data" content <value "number">>`;
+  const StateSchema = Hson.schema`<type "data" content <value "number">>`;
   const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema: StateSchema } });
   const replica = create_echo_aggregate_replica_capability_internal(map);
   assert.throws(() => map.lib("state").at(["value"]).set(1), /managed|reserved|controlled/i);
@@ -246,7 +246,7 @@ await check("terminal replica disposal cancels document revision observers and d
 });
 
 await check("replacement snapshot publication cannot settle an old-incarnation waiter", async () => {
-  const StateSchema = Hson`<type "data" content <value "number">>`;
+  const StateSchema = Hson.schema`<type "data" content <value "number">>`;
   const scenarios = [
     Object.freeze({
       name: "solo",
@@ -441,7 +441,7 @@ await check("replica management is immediate and pre-recovery disposal does not 
 await check("aggregate management and recovery capability are immediate without loading", () => {
   const pair = socketPair();
   const calls = { count: 0 };
-  const StateSchema = Hson`<type "data" content <value "number">>`;
+  const StateSchema = Hson.schema`<type "data" content <value "number">>`;
   const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema: StateSchema } });
   const echo = create_echo_with_replica_loaders_internal(
     { socket: pair.client, map, recovery: { logicalMapId: "lazy-aggregate" } },

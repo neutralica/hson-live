@@ -70,7 +70,9 @@ JavaScript data or an existing `HsonData`; absence remains distinct from present
 null. Echo admits the payload once and retains that immutable exact snapshot, so
 caller mutation cannot affect retries. Handlers and authorizers receive
 `HsonData` as the authoritative payload and may explicitly call
-`materialize()` when an ordinary view is sufficient. Successful results are
+`Hson.data.materialize(payload)` when an ordinary view is sufficient. A top-level
+string action argument is interpreted as canonical Hson data text; wrap an
+ordinary JavaScript string with `Hson.data.from(text)` first. Successful results are
 also `HsonData`, including retained status and cached retries; handlers may
 return ordinary admissible data or `HsonData`, while void remains no result.
 

@@ -1,16 +1,16 @@
 import { Hson, hson } from "hson-live";
 
-const valid = Hson`
+const valid = Hson.canonical`
   <main
     <h1 "Hello">
   >
 `;
 
-const broken = Hson`
+const broken = Hson.canonical`
   <<<<<<<<<<<<<<<<<<
 `;
 
-const substitution = Hson`
+const substitution = Hson.canonical`
   <main ${"hello"}>
 `;
 

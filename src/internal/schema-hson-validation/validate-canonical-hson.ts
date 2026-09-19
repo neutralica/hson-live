@@ -2,45 +2,33 @@ import type { HsonCanonical, HsonSchema } from "../../api/transform/transform.ty
 import { HsonSchemaError } from "../../api/livemap/livemap.error.js";
 import { parse_hson } from "../../api/transform/parsers/parse-hson.js";
 import { detach_hson_root_value } from "../../api/transform/utils/node-utils/detach-hson-root-value.js";
-import { compile_hson_schema } from "../hson-schema/compiler.js";
+import { compiled_hson_schema_of } from "../../api/schema/hson-schema.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
 import { evaluate_canonical_document_schema, evaluate_canonical_projected_schema } from "../canonical-schema/evaluate.js";
-
-const COMPILED_HSON_SCHEMAS = new Map<string, ReturnType<typeof compile_hson_schema>>();
 
 /** Shared synchronous canonical boundary. No map construction or certification. */
 export function validate_canonical_hson(schema: HsonSchema, canonical: HsonCanonical): HsonCanonical;
 export function validate_canonical_hson(schema: HsonSchema, canonical: HsonCanonical): HsonCanonical {
   if (typeof canonical !== "string") throw new TypeError("validate requires an HsonCanonical string.");
-  const compiled = compiled_hson_schema(schema);
-  const graph = compiled.value.semantic.kind === "document"
+  const compiled = compiled_hson_schema_of(schema);
+  const graph = compiled.semantic.kind === "document" || compiled.semantic.kind === "document-element"
     ? parse_hson(canonical, { allowTopLevelDocumentText: true })
     : detach_hson_root_value(parse_hson(canonical));
   validate_hson_schema_graph(schema, graph);
   return canonical;
 }
 
-function compiled_hson_schema(schema: HsonSchema): Extract<ReturnType<typeof compile_hson_schema>, { ok: true }> {
-  let compiled = COMPILED_HSON_SCHEMAS.get(schema);
-  if (compiled === undefined) {
-    compiled = compile_hson_schema(schema);
-    COMPILED_HSON_SCHEMAS.set(schema, compiled);
-  }
-  if (!compiled.ok) throw new HsonSchemaError("Hson Schema is unavailable or invalid.", [], compiled.issues.map((issue) => Object.freeze({ code: "INVALID_SCHEMA" as const, path: [], message: issue.message })));
-  return compiled;
-}
-
 /** @internal Validate an already-owned canonical graph without string round-tripping. */
 export function validate_hson_schema_graph(schema: HsonSchema, graph: import("../../core/types.js").HsonNode): void {
-  const compiled = compiled_hson_schema(schema);
+  const compiled = compiled_hson_schema_of(schema);
   let result;
-  if (compiled.value.semantic.kind === "document") {
-    result = evaluate_canonical_document_schema(compiled.value.graph, graph);
+  if (compiled.semantic.kind === "document" || compiled.semantic.kind === "document-element") {
+    result = evaluate_canonical_document_schema(compiled.graph, graph);
   } else {
     let projected;
     try { projected = projected_value_from_hson_node(graph); }
     catch { throw new HsonSchemaError("Hson Schema validation failed.", [], [Object.freeze({ code: "TYPE_MISMATCH" as const, path: [], message: "Expected data Hson; received document Hson." })]); }
-    result = evaluate_canonical_projected_schema(compiled.value.graph, projected);
+    result = evaluate_canonical_projected_schema(compiled.graph, projected);
   }
   if (!result.ok) throw new HsonSchemaError("Hson Schema validation failed.", result.issues[0]?.path ?? [], result.issues.map((issue) => Object.freeze({ code: issue.code, path: issue.path, message: `Schema validation failed at ${issue.path.join(".") || "root"}.`, ...(issue.expected === undefined ? {} : { expected: issue.expected }), ...(issue.received === undefined ? {} : { received: issue.received }), ...(issue.evidence.relatedPath === undefined ? {} : { relatedPath: issue.evidence.relatedPath }), ...(issue.evidence.conflictingKey === undefined ? {} : { conflictingKey: issue.evidence.conflictingKey }) })));
 }

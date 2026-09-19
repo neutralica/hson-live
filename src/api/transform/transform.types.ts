@@ -8,6 +8,10 @@ export interface BinaryDecodeOptions {
 }
 
 declare const HSON_CANONICAL_BRAND: unique symbol;
+declare const HSON_DATA_BRAND: unique symbol;
+declare const HSON_DOCUMENT_BRAND: unique symbol;
+declare const HSON_SCHEMA_DATA_BRAND: unique symbol;
+declare const HSON_SCHEMA_PROOF: unique symbol;
 
 /**
  * A JavaScript string whose contents are valid canonical serialized Hson.
@@ -22,12 +26,35 @@ export type HsonCanonical = string & {
   readonly [HSON_CANONICAL_BRAND]: true;
 };
 
-declare const HSON_SCHEMA_SOURCE_DESIGNATION: unique symbol;
-declare const HSON_SCHEMA_VALUE_ASSOCIATION: unique symbol;
 declare const HSON_SCHEMA_MUTATION_CANDIDATE: unique symbol;
 
 /** Static root domain established by the generated Hson Schema analyzer. */
 export type HsonSchemaMode = "data" | "document";
+
+export type HsonData<
+  TSchema extends HsonSchema<unknown, "data"> = HsonSchema<unknown, "data">,
+> = HsonCanonical & {
+  readonly [HSON_DATA_BRAND]: true;
+  readonly [HSON_SCHEMA_PROOF]: TSchema;
+};
+
+export type HsonDocument<
+  TSchema extends HsonSchema<unknown, "document"> = HsonSchema<unknown, "document">,
+> = HsonCanonical & {
+  readonly [HSON_DOCUMENT_BRAND]: true;
+  readonly [HSON_SCHEMA_PROOF]: TSchema;
+};
+
+/** Portable canonical data that itself defines a valid Hson Schema. */
+export type HsonSchemaData = HsonData & {
+  readonly [HSON_SCHEMA_DATA_BRAND]: true;
+};
+
+export type { HsonSchema } from "../schema/hson-schema.js";
+import type { HsonSchema } from "../schema/hson-schema.js";
+
+/** Materialized value projection carried by one generated Schema handle. */
+export type SchemaType<TSchema extends HsonSchema> = TSchema extends HsonSchema<infer TValue, HsonSchemaMode> ? TValue : never;
 
 /**
  * Declaration-only candidate association emitted beside generated Schema proof
@@ -39,26 +66,6 @@ export type HsonSchemaMode = "data" | "document";
 export type HsonSchemaMutationCandidate<TValue> = Readonly<{
   readonly [HSON_SCHEMA_MUTATION_CANDIDATE]: TValue;
 }>;
-
-/**
- * Canonical Hson source designated for authoritative Hson Schema checking.
- * The optional marker deliberately does not certify the source at runtime;
- * certification is established by the supported Schema analyzer/build.
- */
-export type HsonSchema<
-  TValue = unknown,
-  TMode extends HsonSchemaMode = HsonSchemaMode,
-> = HsonCanonical & {
-  readonly [HSON_SCHEMA_SOURCE_DESIGNATION]?: never;
-  /**
-   * Declaration-only association installed by the Hson Schema generator.
-   * It has no runtime representation and never certifies untrusted input.
-   */
-  readonly [HSON_SCHEMA_VALUE_ASSOCIATION]?: Readonly<{
-    value: TValue;
-    mode: TMode;
-  }>;
-};
 
 export type TransformRenderFormat = (typeof $RENDER)[keyof typeof $RENDER];
 export type TransformOutputRenderFormat =

@@ -194,11 +194,11 @@ authority. Static source equality is never used to locate an occurrence.
 ## Uppercase authoring migration
 
 Authoring discovery recognizes `Hson` from the root or `/hson`, including renamed
-imports. Standalone associations recognize `Hson.certify` and both existing
+imports. Standalone associations recognize Schema-owned `schema.certify(value)` and both existing
 LiveMap Schema validation entrances. The narrow authoring entrypoint no longer
 exports the lowercase aggregate or subsystem facades. Aggregate construction
 uses root `hson`; dedicated construction uses root or `/livemap` `hsonLiveMap`.
-D3 captures the exact `Hson` object. D1 runtime origin registration still uses
+D3 captures the exact `Hson.canonical` tag function. D1 runtime origin registration still uses
 the existing noncallable aggregate `hson` from the configured `hson.js` module;
 this private runtime requirement does not enter the public authoring graph.
 

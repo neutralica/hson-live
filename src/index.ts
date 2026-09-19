@@ -6,8 +6,7 @@
  */
 
 export { Hson } from "./hson-authoring.js";
-export { HsonData } from "./api/data/hson-data.js";
-export { HsonDocument } from "./api/document/hson-document.js";
+export type { HsonCanonical, HsonData, HsonDocument, HsonSchemaData, SchemaType } from "./api/transform/transform.types.js";
 export {
   hson,
   hsonCalc,
@@ -124,7 +123,6 @@ export type {
   DataLiveMapMode,
   DocumentLiveMap,
   DocumentLiveMapMode,
-  HsonSchemaValue,
   LiveMap,
   LiveMapDataLibrary,
   LiveMapDataLibraryInput,

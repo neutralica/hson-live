@@ -1,5 +1,5 @@
-import type { JsonValue } from "../core/types.js";
-import type { HsonData } from "../api/data/hson-data.js";
+import type { JsonObj, JsonValue } from "../core/types.js";
+import type { HsonData } from "../api/transform/transform.types.js";
 import type { LiveMapLibraries } from "./livemap.types.js";
 import type { LiveTree } from "../api/livetree/livetree.js";
 import type { MissingPolicy } from "./listen.types.js";
@@ -17,7 +17,7 @@ export type InteractionListener = Readonly<{
   stopImmediatePropagation: boolean;
 }>;
 
-type InteractionDataInput = HsonData | JsonValue;
+type InteractionDataInput = HsonData | number | boolean | null | JsonObj | JsonValue[];
 
 export type LocalInteractionDescriptor = Readonly<{
   id: string;

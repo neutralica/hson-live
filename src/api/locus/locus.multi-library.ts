@@ -1,5 +1,5 @@
 import type { JsonValue } from "../../core/types.js";
-import type { HsonData } from "../data/hson-data.js";
+import { hson_data_text, type ExactDataCarrier } from "../data/hson-data.js";
 import type {
   LiveMapLibraries,
 } from "../../types/livemap.types.js";
@@ -74,7 +74,7 @@ export function create_multi_library_locus_internal<
   let disposed = false;
   const actions: Record<string, (
     context: unknown,
-    payload: HsonData | undefined,
+    payload: ExactDataCarrier | undefined,
     message?: LocusClientActionMessage,
   ) => unknown | void | Promise<unknown | void>> = {};
 
@@ -100,11 +100,11 @@ export function create_multi_library_locus_internal<
         type: "action",
         id: `locus-action-${actionSequence}`,
         name,
-        ...(payload === undefined ? {} : { payload }),
+        ...(payload === undefined ? {} : { payload: hson_data_text(payload) }),
       })) as LocusClientActionMessage<TActions>;
       return handler(
         publicContext,
-        payload,
+        payload === undefined ? undefined : hson_data_text(payload),
         message,
       );
     };

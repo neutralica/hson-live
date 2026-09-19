@@ -17,7 +17,7 @@ const check = (name: string, run: () => void): void => {
   run();
   console.log(`ok ${++checks} - ${name}`);
 };
-const prefix = 'import { Hson } from "hson-live/hson";\nconst value = Hson`';
+const prefix = 'import { Hson } from "hson-live/hson";\nconst value = Hson.canonical`';
 const template = (body: string): string => prefix + body + "`;";
 const closer = (markedBody: string): ">" | "/>" | undefined => {
   const cursor = markedBody.indexOf("|");
@@ -36,6 +36,17 @@ const format = (text: string, insertSpaces = true, tabSize = 2): string => apply
   structural_formatting_edits("/workspace/source.ts", "typescript", text, { insertSpaces, tabSize }));
 
 check("binding-recognized document context selects the element closer", () => assert.equal(closer("<main |/>"), "/>"));
+check("all four semantic member tags share structural regions and formatting", () => {
+  const text = 'import { Hson } from "hson-live";\n'
+    + 'const a=Hson.canonical`<a  1>`;\n'
+    + 'const b=Hson.data`<b  2>`;\n'
+    + 'const c=Hson.document`<main/>`;\n'
+    + 'const d=Hson.schema`<type "data" content <count "number">>`;\n';
+  assert.equal(structural_regions("/workspace/source.ts", "typescript", text).length, 4);
+  const formatted = format(text);
+  assert.ok(formatted.includes('Hson.canonical`<a 1>`'));
+  assert.ok(formatted.includes('Hson.data`<b 2>`'));
+});
 check("an awaited host formatter cannot redirect the Hson phase to a newly focused editor", () => {
   const originalDocument = { isClosed: false };
   const originalEditor = { document: originalDocument };
@@ -58,11 +69,11 @@ check("context is recomputed after surrounding edits", () => {
   assert.equal(closer("<a true b |>"), ">");
 });
 check("local Hson spellings and fromHson strings are outside structural regions", () => {
-  assert.deepEqual(structural_regions("/workspace/a.ts", "typescript", 'const Hson=String.raw; Hson`<x/>`;'), []);
+  assert.deepEqual(structural_regions("/workspace/a.ts", "typescript", 'const Hson=String.raw; Hson.canonical`<x/>`;'), []);
   assert.deepEqual(structural_regions("/workspace/a.ts", "typescript", 'import { hson } from "hson-live"; hson.liveMap.fromHson(`<x/>`);'), []);
 });
 check("interpolation expressions are protected", () => {
-  const text = 'import { Hson } from "hson-live"; const x=1; const value=Hson`<a ${x}>`;';
+  const text = 'import { Hson } from "hson-live"; const x=1; const value=Hson.canonical`<a ${x}>`;';
   const region = structural_regions("/workspace/a.ts", "typescript", text)[0]!;
   assert.equal(region.protectedRanges.length, 1);
   const offset = text.indexOf("x}>" as string);
@@ -175,7 +186,7 @@ check("comments, strings, escapes, and member order remain byte-stable", () => {
   assert.ok(output.indexOf("second") < output.indexOf("first"));
 });
 check("multiple templates format while unrelated host and template text stay untouched", () => {
-  const input = 'import { Hson } from "hson-live";\nconst ordinary=`  untouched`;\nconst a=Hson`\n <a\n<b/>\n/>\n`;\nconst host =  1;\nconst b=Hson`\n <\nx true\n>\n`;';
+  const input = 'import { Hson } from "hson-live";\nconst ordinary=`  untouched`;\nconst a=Hson.canonical`\n <a\n<b/>\n/>\n`;\nconst host =  1;\nconst b=Hson.canonical`\n <\nx true\n>\n`;';
   const output = format(input);
   assert.ok(output.includes("ordinary=`  untouched`"));
   assert.ok(output.includes("const host =  1;"));
@@ -183,10 +194,10 @@ check("multiple templates format while unrelated host and template text stay unt
   assert.ok(output.includes("\n<\n  x true\n>"));
 });
 check("invalid Hson regions are skipped without preventing safe sibling formatting", () => {
-  const input = 'import { Hson } from "hson-live";\nconst invalid=Hson`\n <data 1\n<data2 2>\n>\n`;\nconst valid=Hson`\n <data 1\ndata2 2\n>\n`;';
+  const input = 'import { Hson } from "hson-live";\nconst invalid=Hson.canonical`\n <data 1\n<data2 2>\n>\n`;\nconst valid=Hson.canonical`\n <data 1\ndata2 2\n>\n`;';
   const output = format(input);
-  assert.ok(output.includes('invalid=Hson`\n <data 1\n<data2 2>\n>\n`'));
-  assert.ok(output.includes('valid=Hson`\n<\n  data 1\n  data2 2\n>\n`'));
+  assert.ok(output.includes('invalid=Hson.canonical`\n <data 1\n<data2 2>\n>\n`'));
+  assert.ok(output.includes('valid=Hson.canonical`\n<\n  data 1\n  data2 2\n>\n`'));
 });
 check("fromHson literals remain untouched by formatting", () => {
   const input = 'import { hson } from "hson-live";\nhson.fromHson(`\n <data 1\ndata2 2\n>\n`);';
@@ -218,7 +229,7 @@ check("range formatting applies object layout only when the selection includes t
   assert.equal(output, template("\n<\n  data 1\n  data2 2\n>\n"));
 });
 check("range formatting changes only intersecting Hson regions", () => {
-  const input = 'import { Hson } from "hson-live";\nconst a=Hson`\n <a\n<b/>\n/>\n`;\nconst b=Hson`\n <b\n<c/>\n/>\n`;';
+  const input = 'import { Hson } from "hson-live";\nconst a=Hson.canonical`\n <a\n<b/>\n/>\n`;\nconst b=Hson.canonical`\n <b\n<c/>\n/>\n`;';
   const firstStart = input.indexOf("<a");
   const firstEnd = input.indexOf("`;", firstStart);
   const output = applyEdits(input, structural_formatting_edits("/workspace/source.ts", "typescript", input,
@@ -251,7 +262,7 @@ check("smart newline fails closed for invalid and non-structural cursor contexts
   assert.equal(plan('<a "bad\\q"|>', "|"), undefined);
   assert.equal(plan('<a "te|xt">', "te|"), undefined);
   assert.equal(plan("<a 1 // no|te\nb 2>", "no|"), undefined);
-  const interpolated = 'import { Hson } from "hson-live"; const value=1; const x=Hson`<a ${val|ue}>`;';
+  const interpolated = 'import { Hson } from "hson-live"; const value=1; const x=Hson.canonical`<a ${val|ue}>`;';
   const interpolationOffset = interpolated.indexOf("|");
   assert.equal(structural_newline_plan("/workspace/a.ts", "typescript", interpolated.replace("|", ""), interpolationOffset,
     { insertSpaces: true, tabSize: 2 }, "\n"), undefined);
@@ -298,7 +309,7 @@ check("unchanged large-document position queries reuse bounded binding evidence 
   });
   const filler = Array.from({ length: 10_000 }, (_, index) => `const filler${index} = ${index};`).join("\n");
   const text = `import { Hson } from "hson-live";\n${filler}\nconst value = Hson\`<main/>\`;`;
-  const offset = text.indexOf("/>", text.indexOf("Hson`"));
+  const offset = text.indexOf("/>", text.indexOf("Hson.canonical`"));
   const evidence = cache.get("file:///large.ts", 1, "/workspace/large.ts", "typescript", text);
   for (let index = 0; index < 100; index += 1) {
     const reused = cache.get("file:///large.ts", 1, "/workspace/large.ts", "typescript", text);

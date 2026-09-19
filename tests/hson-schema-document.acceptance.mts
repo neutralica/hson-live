@@ -185,23 +185,23 @@ check("lowering is deterministic and canonically verified", () => {
   }
 });
 check("runtime document certification preserves canonical string identity", () => {
-  const pageSchema: HsonSchema = Hson`<type "document" tag "main" attrs <props <id "string">> content <sequence [<tag "section" content "string">]>>`;
-  const candidate = Hson`<main id=hero data-extra=yes <section "body"/>/>`;
-  assert.equal(Hson.certify(pageSchema, candidate), candidate);
-  assert.throws(() => Hson.certify(pageSchema, Hson`<main id=hero <aside "body"/>/>`));
+  const pageSchema: HsonSchema = Hson.schema`<type "document" tag "main" attrs <props <id "string">> content <sequence [<tag "section" content "string">]>>`;
+  const candidate = Hson.canonical`<main id=hero data-extra=yes <section "body"/>/>`;
+  assert.equal(pageSchema.certify(candidate), candidate);
+  assert.throws(() => pageSchema.certify(Hson.canonical`<main id=hero <aside "body"/>/>`));
 });
 check("runtime certification uses canonical repeat and exact-count authority", () => {
-  const repeatSchema: HsonSchema = Hson`<type "document" defs <Item <tag "item" content "empty">> tag "main" content <repeat <ref "Item"> count 2>>`;
-  const candidate = Hson`<main <item/> <item/>/>`;
-  assert.equal(Hson.certify(repeatSchema, candidate), candidate);
-  assert.throws(() => Hson.certify(repeatSchema, Hson`<main <item/>/>`));
-  assert.throws(() => Hson.certify(repeatSchema, Hson`<main <item/> <wrong/>/>`));
+  const repeatSchema: HsonSchema = Hson.schema`<type "document" defs <Item <tag "item" content "empty">> tag "main" content <repeat <ref "Item"> count 2>>`;
+  const candidate = Hson.canonical`<main <item/> <item/>/>`;
+  assert.equal(repeatSchema.certify(candidate), candidate);
+  assert.throws(() => repeatSchema.certify(Hson.canonical`<main <item/>/>`));
+  assert.throws(() => repeatSchema.certify(Hson.canonical`<main <item/> <wrong/>/>`));
 });
 check("runtime multiNodeDocument certification preserves the identical canonical string", () => {
-  const multiNodeDocumentSchema: HsonSchema = Hson`<type "document" defs <Item <tag "item" content "empty">> content <repeat <ref "Item"> count 2>>`;
-  const candidate = Hson`<item/><item/>`;
-  assert.equal(Hson.certify(multiNodeDocumentSchema, candidate), candidate);
-  assert.throws(() => Hson.certify(multiNodeDocumentSchema, Hson`<item/>`));
+  const multiNodeDocumentSchema: HsonSchema = Hson.schema`<type "document" defs <Item <tag "item" content "empty">> content <repeat <ref "Item"> count 2>>`;
+  const candidate = Hson.canonical`<item/><item/>`;
+  assert.equal(multiNodeDocumentSchema.certify(candidate), candidate);
+  assert.throws(() => multiNodeDocumentSchema.certify(Hson.canonical`<item/>`));
 });
 
 check("runtime certification selects document context before empty-source detachment", () => {
@@ -209,14 +209,14 @@ check("runtime certification selects document context before empty-source detach
     $_tag: "_hson_root",
     $_content: [],
   });
-  const emptyPermitting: HsonSchema = Hson`<type "document" content <repeat <tag "item" content "empty">>>`;
-  const nonemptyRequiring: HsonSchema = Hson`<type "document" content <repeat <tag "item" content "empty"> count 1>>`;
-  const dataSchema: HsonSchema = Hson`<type "data" content <value "string">>`;
+  const emptyPermitting: HsonSchema = Hson.schema`<type "document" content <repeat <tag "item" content "empty">>>`;
+  const nonemptyRequiring: HsonSchema = Hson.schema`<type "document" content <repeat <tag "item" content "empty"> count 1>>`;
+  const dataSchema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
   assert.equal(emptyCanonical, "");
-  assert.equal(Hson.certify(emptyPermitting, emptyCanonical), emptyCanonical);
-  assert.throws(() => Hson.certify(nonemptyRequiring, emptyCanonical));
+  assert.equal(emptyPermitting.certify(emptyCanonical), emptyCanonical);
+  assert.throws(() => nonemptyRequiring.certify(emptyCanonical));
   assert.throws(
-    () => Hson.certify(dataSchema, emptyCanonical),
+    () => dataSchema.certify(emptyCanonical),
     (cause) => cause instanceof TransformError && cause.code === "HSON_SOURCE_EMPTY",
   );
 });

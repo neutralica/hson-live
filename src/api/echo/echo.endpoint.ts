@@ -21,7 +21,7 @@ import type {
 import { LocusDisconnectedError, LocusDuplicateActionIdError } from "../locus/locus.error.js";
 import { EchoSessionError } from "./echo.error.js";
 import { admit_echo_action_payload, make_echo_reload_safe_id } from "./echo.request.js";
-import type { HsonData } from "../data/hson-data.js";
+import type { HsonData } from "../transform/transform.types.js";
 import type {
   EchoFiniteOperationCapability,
   EchoFiniteOperationOutcome,

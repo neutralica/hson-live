@@ -1,3 +1,4 @@
+import type { SchemaType } from "hson-live";
 import {
   create_locus,
   create_echo,
@@ -19,7 +20,7 @@ import type {
 } from "hson-live/locus";
 import type { JsonValue } from "../src/core/types.ts";
 import { create_livehost_locus_registry } from "hson-live/livehost";
-import { TreeSchema, UserSchema, type UserSchemaType } from "./fixtures/hson-schema-mvp/producer.ts";
+import { TreeSchema, UserSchema } from "./fixtures/hson-schema-mvp/producer.ts";
 
 type Equal<TLeft, TRight> =
   (<T>() => T extends TLeft ? 1 : 2) extends (<T>() => T extends TRight ? 1 : 2)
@@ -29,7 +30,7 @@ type Equal<TLeft, TRight> =
     : false;
 type Assert<TValue extends true> = TValue;
 
-type GeneratedStateIsNotJsonValue = Assert<Equal<UserSchemaType extends JsonValue ? true : false, false>>;
+type GeneratedStateIsNotJsonValue = Assert<Equal<SchemaType<typeof UserSchema> extends JsonValue ? true : false, false>>;
 
 const initialUser = {
   name: "Ada",
@@ -51,23 +52,23 @@ const initialUser = {
 };
 
 const governedMap = hsonLiveMap.fromJson(initialUser).schema.use(UserSchema);
-type SchemaUseReturnsExactMap = Assert<Equal<typeof governedMap, LiveMap<UserSchemaType>>>;
-type LocusValueRetainsProof = Assert<Equal<LocusMapValue<typeof governedMap>, UserSchemaType>>;
+type SchemaUseReturnsExactMap = Assert<Equal<typeof governedMap, LiveMap<SchemaType<typeof UserSchema>>>>;
+type LocusValueRetainsProof = Assert<Equal<LocusMapValue<typeof governedMap>, SchemaType<typeof UserSchema>>>;
 
-declare const stateAdmission: LocusSchema<UserSchemaType>;
+declare const stateAdmission: LocusSchema<SchemaType<typeof UserSchema>>;
 void stateAdmission;
 
 // @ts-expect-error Wire messages remain JSON-constrained and do not acquire nominal state proof.
-type ProofBearingWireMessage = LocusServerMessage<UserSchemaType>;
+type ProofBearingWireMessage = LocusServerMessage<SchemaType<typeof UserSchema>>;
 
 const authority = create_locus({
   map: governedMap,
   actions: {
     async update(context) {
-      const state: UserSchemaType = context.map.snap();
-      const age: UserSchemaType["age"] = context.map.at(["age"]).snap();
+      const state: SchemaType<typeof UserSchema> = context.map.snap();
+      const age: SchemaType<typeof UserSchema>["age"] = context.map.at(["age"]).snap();
       context.map.sub((next) => {
-        const exact: UserSchemaType = next;
+        const exact: SchemaType<typeof UserSchema> = next;
         void exact;
       });
       await context.mutate((draft) => draft.replace({
@@ -98,21 +99,21 @@ const authority = create_locus({
   },
 });
 
-const authorityState: UserSchemaType = authority.map.snap();
-const authorityAge: UserSchemaType["age"] = authority.map.at(["age"]).snap();
+const authorityState: SchemaType<typeof UserSchema> = authority.map.snap();
+const authorityAge: SchemaType<typeof UserSchema>["age"] = authority.map.at(["age"]).snap();
 authority.map.sub((next) => {
-  const exact: UserSchemaType = next;
+  const exact: SchemaType<typeof UserSchema> = next;
   void exact;
 });
 authority.map.sub.diff((next, prev) => {
-  const exactNext: UserSchemaType = next;
-  const exactPrev: UserSchemaType = prev;
+  const exactNext: SchemaType<typeof UserSchema> = next;
+  const exactPrev: SchemaType<typeof UserSchema> = prev;
   void exactNext;
   void exactPrev;
 });
 authority.map.sub.path(["age"], (next, prev) => {
-  const exactNext: UserSchemaType["age"] = next;
-  const exactPrev: UserSchemaType["age"] = prev;
+  const exactNext: SchemaType<typeof UserSchema>["age"] = next;
+  const exactPrev: SchemaType<typeof UserSchema>["age"] = prev;
   void exactNext;
   void exactPrev;
 });
@@ -133,20 +134,20 @@ const inferredClient = create_echo({ socket, map: governedMap, recovery: { logic
 const explicitClient = create_echo<typeof governedMap>({ socket, map: governedMap, recovery: { logicalMapId: "governed-map" } });
 type InferredClientMapIsExact = Assert<Equal<typeof inferredClient.map, typeof governedMap>>;
 type ExplicitClientMapIsExact = Assert<Equal<typeof explicitClient.map, typeof governedMap>>;
-const clientState: UserSchemaType = inferredClient.map.snap();
-const clientAge: UserSchemaType["age"] = inferredClient.map.at(["age"]).snap();
+const clientState: SchemaType<typeof UserSchema> = inferredClient.map.snap();
+const clientAge: SchemaType<typeof UserSchema>["age"] = inferredClient.map.at(["age"]).snap();
 inferredClient.map.sub((next) => {
-  const exact: UserSchemaType = next;
+  const exact: SchemaType<typeof UserSchema> = next;
   void exact;
 });
 inferredClient.map.sub.diff((next, prev) => {
-  const exactNext: UserSchemaType = next;
-  const exactPrev: UserSchemaType = prev;
+  const exactNext: SchemaType<typeof UserSchema> = next;
+  const exactPrev: SchemaType<typeof UserSchema> = prev;
   void exactNext;
   void exactPrev;
 });
 inferredClient.map.sub.path(["age"], (next) => {
-  const exact: UserSchemaType["age"] = next;
+  const exact: SchemaType<typeof UserSchema>["age"] = next;
   void exact;
 });
 if (false) {
@@ -198,7 +199,7 @@ const liveHostRegistry = create_livehost_locus_registry({
 });
 liveHostRegistry.acquire("proof-bearing").then((result) => {
   if (!result.ok) return;
-  const state: UserSchemaType = result.value.locus.map.snap();
+  const state: SchemaType<typeof UserSchema> = result.value.locus.map.snap();
   result.value.release();
   void state;
 });

@@ -7,7 +7,6 @@
   <script type="module">
     import {
       Hson,
-      HsonData,
       activate_interactions,
       add_interaction,
       enable_interactions,
@@ -16,8 +15,8 @@
     } from "./.canonical-interactions.library.bundle.js";
 
     const QUID = "000008398";
-    const PageSchema = Hson`<type "document" tag "main" content <sequence [<tag "button" content "empty">]>>`;
-    const StateSchema = Hson`<type "data" content <count "number">>`;
+    const PageSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "button" content "empty">]>>`;
+    const StateSchema = Hson.schema`<type "data" content <count "number">>`;
     const map = hsonLiveMap.fromLibraries({
       state: { data: { count: 0 }, schema: StateSchema },
       page: { document: `<main <button @${QUID}/>/>`, schema: PageSchema },
@@ -30,7 +29,7 @@
     });
     const local = (id, key, event, target, overrides = {}) => ({
       id, subjectQuid: QUID, listener: listener(event, target, overrides),
-      kind: "browser-local", key, args: HsonData.from(-0),
+      kind: "browser-local", key, args: Hson.data.from(-0),
     });
     add_interaction(map, local("element", "element", "click", "element", {
       once: true, preventDefault: true, stopPropagation: true, stopImmediatePropagation: true,
@@ -50,7 +49,7 @@
       local: {
         element: (_event, subject, args) => {
           calls.element += 1;
-          exactArgs = subject.node.$_meta?.quid === QUID && Object.is(args.scalar(), -0);
+          exactArgs = subject.node.$_meta?.quid === QUID && Object.is(Hson.data.materialize(args), -0);
         },
         document: () => { calls.document += 1; },
         window: () => { calls.window += 1; },

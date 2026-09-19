@@ -87,7 +87,7 @@ export async function run(): Promise<void> {
   const semanticHighlighted = !!semantic?.data.length && !!legend?.tokenTypes.some(type => type.startsWith("hson"));
   const diagnostics = () => vscode.languages.getDiagnostics(doc.uri).filter(d => d.source === "Hson");
   const edit = async (body: string) => {
-    const text = doc.getText(), start = text.indexOf("Hson`") + 5, end = text.indexOf("`", start);
+    const text = doc.getText(), start = text.indexOf("Hson.canonical`") + 5, end = text.indexOf("`", start);
     const change = new vscode.WorkspaceEdit();
     change.replace(doc.uri, new vscode.Range(doc.positionAt(start), doc.positionAt(end)), body);
     assert.equal(await vscode.workspace.applyEdit(change), true);
@@ -150,9 +150,9 @@ export async function run(): Promise<void> {
       const hole = doc.getText().indexOf("${"), end = doc.getText().indexOf("}", hole) + 1;
       if (hole >= 0) assert.ok(tokens.every(token => token.end <= hole || token.start >= end));
     }
-    for (const text of ['const Hson=String.raw; Hson`<thing !!!`;',
-      'import { Hson } from "other"; Hson`<thing !!!`;',
-      'import { Hson } from "hson-live/hson"; function f(Hson:any){ Hson`<thing !!!`; }']) {
+    for (const text of ['const Hson=String.raw; Hson.canonical`<thing !!!`;',
+      'import { Hson } from "other"; Hson.canonical`<thing !!!`;',
+      'import { Hson } from "hson-live/hson"; function f(Hson:any){ Hson.canonical`<thing !!!`; }']) {
       await replace(text); assert.deepEqual(await hsonTokens(), [], 'unsupported binding must not keep stale Hson tokens');
       assert.equal(await waitFor(0),0);
     }

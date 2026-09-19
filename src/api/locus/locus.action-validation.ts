@@ -3,9 +3,10 @@ import type {
   LocusSchemaResult,
   LocusValidator,
 } from "../../types/locus.types.js";
-import { HsonData } from "../data/hson-data.js";
+import { ExactDataCarrier, admit_hson_data_input, hson_data_text } from "../data/hson-data.js";
 import { hson_data_value } from "../data/hson-data.js";
 import type { HsonSchema } from "../transform/transform.types.js";
+import { HsonSchema as HsonSchemaHandle, compiled_hson_schema_of } from "../schema/hson-schema.js";
 import { compile_hson_schema } from "../../internal/hson-schema/compiler.js";
 import { evaluate_canonical_projected_schema } from "../../internal/canonical-schema/evaluate.js";
 
@@ -30,28 +31,28 @@ export function decode_locus_schema_value<TValue>(
 
 export function decode_locus_action_payload<TValue>(
   schema: HsonSchema | LocusValidator<TValue> | LocusSchemaDecoder<TValue> | undefined,
-  value: HsonData | undefined,
-): LocusSchemaResult<HsonData | undefined> {
+  value: ExactDataCarrier | undefined,
+): LocusSchemaResult<ExactDataCarrier | undefined> {
   if (!schema) return { ok: true, value };
-  if (typeof schema === "string") {
+  if (schema instanceof HsonSchemaHandle) {
     if (value === undefined) return { ok: false, issues: ["Hson Schema requires present action data."] };
-    const compiled = compile_hson_schema(schema);
-    if (!compiled.ok || compiled.value.graph.capabilities.projectedRoot === undefined) {
+    const compiled = compiled_hson_schema_of(schema);
+    if (compiled.graph.capabilities.projectedRoot === undefined) {
       return { ok: false, issues: ["Configured action Hson Schema must compile in data mode."] };
     }
-    const evaluated = evaluate_canonical_projected_schema(compiled.value.graph, hson_data_value(value));
+    const evaluated = evaluate_canonical_projected_schema(compiled.graph, hson_data_value(value));
     return evaluated.ok
       ? { ok: true, value }
       : { ok: false, issues: evaluated.issues.map((issue) => (
           `${issue.code} at ${JSON.stringify(issue.path)}`
         )) };
   }
-  const result = schema(value);
+  const result = schema(value === undefined ? undefined : hson_data_text(value));
   if (is_schema_result<TValue>(result)) {
     if (!result.ok) return result;
     if (result.value === undefined) return { ok: true, value: undefined };
     try {
-      return { ok: true, value: HsonData.from(result.value) };
+      return { ok: true, value: admit_hson_data_input(result.value) };
     } catch {
       return { ok: false, issues: ["Schema decoder output is not canonical Hson data."] };
     }

@@ -1,8 +1,8 @@
 // livemap.types.ts
 
 import type { CanonicalPublicAttrs, CanonicalPublicAttrValue, HsonNode, JsonValue, NodeContent, Primitive } from "../core/types.js";
-import type { HsonSchema, HsonSchemaMode, HsonSchemaMutationCandidate } from "../api/transform/transform.types.js";
-import type { HsonData } from "../api/data/hson-data.js";
+import type { HsonSchema, HsonSchemaMode, HsonSchemaMutationCandidate, SchemaType } from "../api/transform/transform.types.js";
+import type { HsonData } from "../api/transform/transform.types.js";
 import type {
   DocumentAttrsEvidence,
   DocumentAttrValueEvidence,
@@ -46,7 +46,7 @@ export type LiveMapLibrariesSnapshot = Readonly<{
       name: string;
       scope?: "hson-internal";
       mode: LiveMapRootMode;
-      schema: HsonSchema;
+      schema: import("../api/transform/transform.types.js").HsonSchemaData;
       schemaDigest: string;
       rootCodec: "hson-exact-value";
     }>[];
@@ -56,7 +56,7 @@ export type LiveMapLibrariesSnapshot = Readonly<{
   libraries: readonly Readonly<{
     name: string;
     mode: LiveMapRootMode;
-    schema: HsonSchema;
+    schema: import("../api/transform/transform.types.js").HsonSchemaData;
     schemaDigest: string;
     root: Readonly<{ format: "hson-exact-value"; payload: string }>;
   }>[];
@@ -332,7 +332,7 @@ export type LiveMapBatchTx<TValue = JsonValue | undefined> = Readonly<{
  */
 export type LiveMapCoreSchemaApi<TValue = JsonValue | undefined> = Readonly<{
   get: () => HsonSchema | undefined;
-  use: <TSchema extends HsonSchema>(schema: TSchema) => LiveMap<HsonSchemaValue<TSchema>>;
+  use: <const TSchema extends HsonSchema>(schema: TSchema, ...wrongMode: [NoInfer<TSchema>] extends [HsonSchema<unknown, "document">] ? [never] : []) => LiveMap<SchemaType<NoInfer<TSchema>>>;
 }>;
 
 export type LiveMapCore<
@@ -592,7 +592,7 @@ type DocumentLiveMapGovernanceApi<
   TMode extends DocumentLiveMapMode,
 > = Readonly<{
   get: () => HsonSchema | undefined;
-  use: (schema: HsonSchema) => DocumentLiveMapForEvidence<TMode, unknown>;
+  use: <const TSchema extends HsonSchema>(schema: TSchema, ...wrongMode: [NoInfer<TSchema>] extends [HsonSchema<unknown, "data">] ? [never] : []) => DocumentLiveMapForEvidence<TMode, SchemaType<NoInfer<TSchema>>>;
 }>;
 
 declare const LIVEMAP_DOCUMENT_INVALID_STATIC_PATH: unique symbol;
@@ -1375,12 +1375,6 @@ export type LiveMapLibraryInput =
 /** The complete static registry accepted by `hsonLiveMap.fromLibraries(...)`. */
 export type LiveMapLibrariesInput = Readonly<Record<string, LiveMapLibraryInput>>;
 
-/** Recover the generated value type mechanically associated with a Schema. */
-export type HsonSchemaValue<TSchema extends HsonSchema> =
-  TSchema extends HsonSchema<infer TValue, HsonSchemaMode>
-    ? TValue
-    : unknown;
-
 /** One publicly named operation in the map-wide ordered commit stream. */
 export type LiveMapLibraryOperation<
   TLibrary extends string = string,
@@ -1596,9 +1590,9 @@ export type LiveMapDocumentLibrary<
 
 type LiveMapLibraryFacadeForInput<TInput, TLibrary extends string> =
   TInput extends LiveMapDataLibraryInput<infer TSchema>
-    ? LiveMapDataLibrary<HsonSchemaValue<TSchema>, TLibrary, TSchema>
+    ? LiveMapDataLibrary<SchemaType<TSchema>, TLibrary, TSchema>
     : TInput extends LiveMapDocumentLibraryInput<infer TSchema>
-      ? LiveMapDocumentLibrary<HsonSchemaValue<TSchema>, TLibrary, TSchema>
+      ? LiveMapDocumentLibrary<SchemaType<TSchema>, TLibrary, TSchema>
       : never;
 
 /** The single global observer surface for a local multi-library LiveMap. */

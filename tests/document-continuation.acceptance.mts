@@ -19,8 +19,8 @@ import { FakeElement, FakeText, install_fake_document } from "./helpers/fake-doc
 
 install_fake_document();
 
-const EmptyPageSchema: HsonSchema = Hson`<type "document" tag "main" content "empty">`;
-const ButtonPageSchema: HsonSchema = Hson`<type "document" tag "main" content <sequence [<tag "button" content "empty">]>>`;
+const EmptyPageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content "empty">`;
+const ButtonPageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "button" content "empty">]>>`;
 const path = (...parts: number[]) => Object.freeze({ kind: "path" as const, path: Object.freeze([0, ...parts]) });
 
 function documentMap(source: string): DocumentLiveMap {
@@ -172,7 +172,7 @@ for (const point of ["after-first-link", "after-links", "after-runtime", "after-
     subjectQuid: quid,
     kind: "browser-local",
     key: "click",
-    args: HsonData.from({ exact: true }),
+    args: Hson.data.from({ exact: true }),
     listener: Object.freeze({
       event: "click", target: "element", capture: false, once: false, passive: false,
       missingTarget: "throw", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false,

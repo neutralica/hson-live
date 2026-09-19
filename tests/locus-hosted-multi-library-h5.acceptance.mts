@@ -18,9 +18,9 @@ import { create_test_event_emitter } from "./test-events.mjs";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { read_locus_retained_action_status_internal } from "../src/api/locus/locus.action-status.internal.ts";
 
-const StateSchema: HsonSchema = Hson`<type "data" content <theme "string" count <number <int true min 0>>>>`;
-const ColorsSchema: HsonSchema = Hson`<type "data" content <theme "string" accent "string">>`;
-const PageSchema: HsonSchema = Hson`<type "document" tag "main" content <repeat <tag "item" content "empty">>>`;
+const StateSchema: HsonSchema = Hson.schema`<type "data" content <theme "string" count <number <int true min 0>>>>`;
+const ColorsSchema: HsonSchema = Hson.schema`<type "data" content <theme "string" accent "string">>`;
+const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "item" content "empty">>>`;
 const QUID = "000008205";
 const RECOVERY_QUID = "000008207";
 const RECOVERY_NEXT_QUID = "000008208";
@@ -186,7 +186,7 @@ await check("the public Locus and Echo paths bootstrap one typed aggregate mirro
           draft.lib("colors").at(["theme"]).set("blue");
           draft.lib("page").graph(insert_item());
         });
-        return "ok";
+        return Hson.data.from("ok");
       },
       "state.only": async (context) => {
         assert.equal(typeof context.emitEvent, "function");
@@ -249,7 +249,7 @@ await check("the public Locus and Echo paths bootstrap one typed aggregate mirro
   const aggregateStarted = performance.now();
   const themeAll = await client.action("theme.all");
   assert.equal(themeAll.type, "ack");
-  if (themeAll.type === "ack") assert.equal(themeAll.result?.materialize(), "ok");
+  if (themeAll.type === "ack") assert.equal(themeAll.result === undefined ? undefined : Hson.data.materialize(themeAll.result), "ok");
   const stateColorsPageMs = performance.now() - aggregateStarted;
   assert.deepEqual([serverMap.rev, clientMap.rev], [1, 1]);
   assert.equal(clientMap.lib("state").snap(["theme"]), "dark");

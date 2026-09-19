@@ -1,0 +1,8 @@
+{
+  "compatibilityVersion": "hson-schema-mvp-10",
+  "declarationIdentity": "producer.ts#SameShapeTwoSchema",
+  "sourceDigest": "919978a1de487c63733b4259364b4ab36ae6d771d290aaa5a5ea6f09792b3044",
+  "semanticGraphDigest": "0c1627d47eecaa27108bb116e290e4d7c9a0b38873eb02eac9f98cbc4b3fd27d",
+  "generatedDeclarationDigest": "bff7001ab3b3fbee190735b4924a285db0791f3520c3e0a76832ffb1d5cd2562",
+  "graphHson": "<format \"hson-canonical-schema\" version 3 capabilities <projectedRoot 0> nodes «<kind \"projected-object\" exact true properties ««\"name\",1»»>,<kind \"projected-string\">»>"
+}

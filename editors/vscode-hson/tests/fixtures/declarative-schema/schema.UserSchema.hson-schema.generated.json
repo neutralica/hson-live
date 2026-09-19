@@ -3,6 +3,6 @@
   "declarationIdentity": "schema.ts#UserSchema",
   "sourceDigest": "f4c718487ab55d55cc4d7320a09da18430bc2ff14a58a2b18152def1d7e1f776",
   "semanticGraphDigest": "3f0520b361456ff032f68799ea62086aaed411e7067ba057c993ef026885628d",
-  "generatedDeclarationDigest": "17b6d348e27b73380191a60727ac521b275f3a524fff72812076fff1b7661b22",
+  "generatedDeclarationDigest": "a744e8cc60c7cdc819c8d4f29f3bc3a786e5476f134a766731c88bf00a81f042",
   "graphHson": "<format \"hson-canonical-schema\" version 3 capabilities <projectedRoot 0> nodes «<kind \"projected-object\" exact true properties ««\"user\",1»»>,<kind \"projected-ref\" target 2>,<kind \"projected-object\" exact true properties ««\"age\",3»»>,<kind \"projected-ref\" target 4>,<kind \"projected-number\">»>"
 }

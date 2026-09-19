@@ -22,9 +22,9 @@ import type {
 } from "../src/api/locus/locus.hosted-multi-library.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
-const StateSchema: HsonSchema = Hson`<type "data" content <theme "string" count <number <int true min 0>>>>`;
-const ColorsSchema: HsonSchema = Hson`<type "data" content <accent "string">>`;
-const PageSchema: HsonSchema = Hson`<type "document" tag "main" content <repeat <tag "item" content "empty">>>`;
+const StateSchema: HsonSchema = Hson.schema`<type "data" content <theme "string" count <number <int true min 0>>>>`;
+const ColorsSchema: HsonSchema = Hson.schema`<type "data" content <accent "string">>`;
+const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "item" content "empty">>>`;
 const RETIRED_QUID = "000008301";
 const ACTIVE_QUID = "000008302";
 

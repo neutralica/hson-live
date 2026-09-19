@@ -5,7 +5,7 @@ import { copyFile, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { WebSocketServer } from "ws";
-import { Hson, HsonData, add_interaction, enable_interactions, encode_ssr_bootstrap, hson, hsonLocus, render_document, render_hosted_document } from "../dist/index.js";
+import { Hson, add_interaction, enable_interactions, encode_ssr_bootstrap, hson, hsonLocus, render_document, render_hosted_document } from "../dist/index.js";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
 const temporaryRoot = join(repositoryRoot, "tmp");
@@ -64,8 +64,8 @@ try {
     hson: "browser-large:" + "x".repeat(2 * 1_024 * 1_024),
   });
 
-  const LocalLibrariesStateSchema = Hson`<type "data" content <count "number">>`;
-  const LocalLibrariesPageSchema = Hson`<type "document" tag "main" attrs <props <id "string">> content <sequence [<tag "button" content "empty">]>>`;
+  const LocalLibrariesStateSchema = Hson.schema`<type "data" content <count "number">>`;
+  const LocalLibrariesPageSchema = Hson.schema`<type "document" tag "main" attrs <props <id "string">> content <sequence [<tag "button" content "empty">]>>`;
   const localLibrariesMap = hson.liveMap.fromLibraries({
     state: { data: { count: 7 }, schema: LocalLibrariesStateSchema },
     page: { document: '<main id="local-libraries-ssr" <button @000005204/>/>', schema: LocalLibrariesPageSchema },
@@ -90,9 +90,9 @@ try {
     "yes",
   ));
 
-  const StateSchema = Hson`<type "data" content <count "number">>`;
-  const PageSchema = Hson`<type "document" tag "main" attrs <props <id "string" data-recovered <optional "string">>> content <sequence [<tag "button" attrs <props <data-async <optional "string">>> content "empty">]>>`;
-  const AdminSchema = Hson`<type "document" tag "aside" attrs <props <data-recovered <optional "string">>> content "empty">`;
+  const StateSchema = Hson.schema`<type "data" content <count "number">>`;
+  const PageSchema = Hson.schema`<type "document" tag "main" attrs <props <id "string" data-recovered <optional "string">>> content <sequence [<tag "button" attrs <props <data-async <optional "string">>> content "empty">]>>`;
+  const AdminSchema = Hson.schema`<type "document" tag "aside" attrs <props <data-recovered <optional "string">>> content "empty">`;
   const librariesMap = hson.liveMap.fromLibraries({
     state: { data: { count: 0 }, schema: StateSchema },
     page: { document: '<main id="libraries-ssr" <button @000005203/>/>', schema: PageSchema },
@@ -105,7 +105,7 @@ try {
     listener: Object.freeze({ event: "click", target: "element", capture: false, once: false, passive: false, missingTarget: "throw", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false }),
     kind: "browser-local",
     key: "clicker",
-    args: HsonData.from(null),
+    args: Hson.data.from(null),
   }));
   add_interaction(librariesMap, Object.freeze({
     id: "ssr-authoritative",
@@ -113,7 +113,7 @@ try {
     listener: Object.freeze({ event: "click", target: "element", capture: false, once: false, passive: false, missingTarget: "throw", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false }),
     kind: "locus-authoritative",
     key: "state.interaction",
-    payload: HsonData.from(null),
+    payload: Hson.data.from(null),
   }));
   librariesLocus = hsonLocus.create({
     map: librariesMap,
@@ -208,6 +208,12 @@ try {
         .replace("<!--LIBRARIES_SSR-->", libraries.html)
         .replace("</body>", `<script>
           (() => {
+            const fail = (event) => {
+              document.documentElement.dataset.detail = String(event.message ?? event.reason ?? "Browser module failed");
+              document.documentElement.dataset.status = "fail";
+            };
+            window.addEventListener("error", fail);
+            window.addEventListener("unhandledrejection", fail);
             const report = () => {
               const status = document.documentElement.dataset.status;
               if (status !== "pass" && status !== "fail") return;

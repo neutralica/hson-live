@@ -28,7 +28,7 @@ export function read_interpolation_captures(): readonly InterpolationCapture[] {
  * coercion, clone or second Hson parse is performed by capture. Unsupported
  * values are neither retained nor inspected. The original exception is rethrown.
  */
-export function capture_interpolation(site: InterpolationSite, tag: typeof Hson,
+export function capture_interpolation(site: InterpolationSite, tag: typeof Hson.canonical,
   strings: TemplateStringsArray, values: readonly (string | number | boolean | null)[]): Readonly<{ canonical: HsonCanonical; capture?: InterpolationCapture }> {
   const evaluationId = `evaluation:${++nextEvaluation}`;
   let canonical: HsonCanonical | undefined;

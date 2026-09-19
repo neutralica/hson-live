@@ -3,6 +3,6 @@
   "declarationIdentity": "producer.ts#ListSchema",
   "sourceDigest": "dbfcb8c77259a8c5b8b97da872d559515cf1fac2a2ec6dfe380c2c2b83dddba0",
   "semanticGraphDigest": "17313d3ddc6fbccd33c2dd2cd9a8802f15f626795b16607bc317cc801fced1eb",
-  "generatedDeclarationDigest": "37e51fde251491e07795523f353635e4622833d842180195ca0c3d255dfbbad1",
+  "generatedDeclarationDigest": "87ec1926955593a5ed538e17df524c62cd0fb096410b3d8b6a59cc056826f6a2",
   "graphHson": "<format \"hson-canonical-schema\" version 3 capabilities <documentRoot 0> nodes «<kind \"document-root\" content 1>,<kind \"document-sequence\" items «2»>,<kind \"document-element\" tag \"list\" content 3>,<kind \"document-repeat\" item 4 count 2>,<kind \"document-element\" tag \"item\" attrs 5 content 9>,<kind \"document-attrs\" exact false properties «<name \"code\" optional false flag false value 6>»>,<kind \"projected-ref\" target 7>,<kind \"projected-refinement\" base 8 rule <kind \"string-pattern\" dialect \"literal-string-v1\" mode \"prefix\" pattern \"ok-\"> label \"prefix\">,<kind \"projected-string\">,<kind \"document-sequence\" items «»>»>"
 }

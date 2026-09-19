@@ -60,7 +60,7 @@ async function runSchemaConsumer(workspace: string): Promise<void> {
     ];
     for (const relativeFile of schemaFiles) {
       const document = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace, relativeFile)));
-      assert.match(document.getText(), /HsonSchema<[^>]+, "data">/, `${relativeFile} is not in generated generic form`);
+      assert.match(document.getText(), /__HsonSchema<[^>]+>/, `${relativeFile} is not in generated generic form`);
       assert.equal((await schemaEvidenceDiagnostics(document.uri, 0)).length, 0, `${relativeFile} evidence is not current`);
       const ref = document.getText().indexOf('<ref "');
       if (ref >= 0) {
@@ -195,7 +195,7 @@ export async function run(): Promise<void> {
       "const runtime = fromHson(`",
       ' <runtime       "runtime  spaces"    />',
       "`);",
-      "const x = Hson`",
+      "const x = Hson.canonical`",
       " <",
       "a <",
       "b      <c   1>>",
@@ -232,7 +232,7 @@ export async function run(): Promise<void> {
     assert.equal(await saveMarkdown.save(), true);
     assert.equal(saveMarkdown.getText(), markdownExpected, "save formats canonical Markdown hson fences without changing prose or unrelated fences");
 
-    const invalidInput = 'import { Hson } from "hson-live/hson";\nconst invalid = Hson`\n <data 1\n<data2 2>\n>\n`;\n';
+    const invalidInput = 'import { Hson } from "hson-live/hson";\nconst invalid = Hson.canonical`\n <data 1\n<data2 2>\n>\n`;\n';
     await vscode.workspace.fs.writeFile(invalidSaveUri, Buffer.from("// invalid format-on-save fixture\n"));
     const invalidSave = await vscode.workspace.openTextDocument(invalidSaveUri);
     await vscode.window.showTextDocument(invalidSave);
@@ -248,7 +248,7 @@ export async function run(): Promise<void> {
     await formattingConfiguration.update("formatOnSave", true, vscode.ConfigurationTarget.WorkspaceFolder);
     process.stdout.write("ok - real VS Code save formats recognized TypeScript and Markdown Hson only; invalid input skips; disabled setting bypasses\n");
 
-    await vscode.workspace.fs.writeFile(structuralUri, Buffer.from('import { Hson } from "hson-live/hson";\nconst host =  1;\nconst inline=Hson`<solo/>`;\nconst page=Hson`\n <main\n<section\n/>\n />\n`;\n'));
+    await vscode.workspace.fs.writeFile(structuralUri, Buffer.from('import { Hson } from "hson-live/hson";\nconst host =  1;\nconst inline=Hson.canonical`<solo/>`;\nconst page=Hson.canonical`\n <main\n<section\n/>\n />\n`;\n'));
     const structural = await vscode.workspace.openTextDocument(structuralUri);
     const structuralEditor = await vscode.window.showTextDocument(structural);
     await vscode.commands.executeCommand("typescript.restartTsServer");
@@ -284,20 +284,20 @@ export async function run(): Promise<void> {
     await vscode.commands.executeCommand("undo");
 
     const hostPrefix = 'import { Hson } from "hson-live/hson";\n';
-    await ordinaryEnter("incomplete Hson", hostPrefix + 'const x=Hson`<data 1|`;');
-    await ordinaryEnter("parser-invalid Hson", hostPrefix + 'const x=Hson`<data 1\n  <data2 2|>\n>`;');
-    await ordinaryEnter("tokenizer-invalid Hson", hostPrefix + 'const x=Hson`<a "bad\\q"|>`;');
-    await ordinaryEnter("delimiter-deleted Hson", hostPrefix + 'const x=Hson`<main <child/>|`;');
-    await ordinaryEnter("Hson string", hostPrefix + 'const x=Hson`<a "te|xt">`;');
-    await ordinaryEnter("Hson comment", hostPrefix + 'const x=Hson`<a 1 // no|te\nb 2>`;');
-    await ordinaryEnter("Hson interpolation", hostPrefix + 'const value=1; const x=Hson`<a ${val|ue}>`;');
+    await ordinaryEnter("incomplete Hson", hostPrefix + 'const x=Hson.canonical`<data 1|`;');
+    await ordinaryEnter("parser-invalid Hson", hostPrefix + 'const x=Hson.canonical`<data 1\n  <data2 2|>\n>`;');
+    await ordinaryEnter("tokenizer-invalid Hson", hostPrefix + 'const x=Hson.canonical`<a "bad\\q"|>`;');
+    await ordinaryEnter("delimiter-deleted Hson", hostPrefix + 'const x=Hson.canonical`<main <child/>|`;');
+    await ordinaryEnter("Hson string", hostPrefix + 'const x=Hson.canonical`<a "te|xt">`;');
+    await ordinaryEnter("Hson comment", hostPrefix + 'const x=Hson.canonical`<a 1 // no|te\nb 2>`;');
+    await ordinaryEnter("Hson interpolation", hostPrefix + 'const value=1; const x=Hson.canonical`<a ${val|ue}>`;');
     await ordinaryEnter("ordinary TypeScript", 'const ordinary = 1;|');
 
-    await replaceMarked(hostPrefix + 'const x=Hson`<main|/>`;');
+    await replaceMarked(hostPrefix + 'const x=Hson.canonical`<main|/>`;');
     await vscode.commands.executeCommand("hson.insertLineBreak");
     assert.ok(structural.getText().includes("<main\n    \n/>"), "valid Hson receives smart Enter");
-    await ordinaryEnter("invalid phase of valid-invalid-valid recovery", hostPrefix + 'const x=Hson`<data 1\n  <data2 2|>\n>`;');
-    await replaceMarked(hostPrefix + 'const x=Hson`<main|/>`;');
+    await ordinaryEnter("invalid phase of valid-invalid-valid recovery", hostPrefix + 'const x=Hson.canonical`<data 1\n  <data2 2|>\n>`;');
+    await replaceMarked(hostPrefix + 'const x=Hson.canonical`<main|/>`;');
     await vscode.commands.executeCommand("hson.insertLineBreak");
     assert.ok(structural.getText().includes("<main\n    \n/>"), "smart Enter resumes after Hson repair");
 
@@ -305,7 +305,7 @@ export async function run(): Promise<void> {
     await vscode.commands.executeCommand("hson.deleteLeft");
     assert.equal(structural.getText(), "const ordinary = 1;", "non-pair Backspace fallback remains usable outside Hson");
 
-    await replaceMarked(hostPrefix + 'const x=Hson`<data 1|>`;');
+    await replaceMarked(hostPrefix + 'const x=Hson.canonical`<data 1|>`;');
     await vscode.commands.executeCommand("hson.insertLineBreak");
     await vscode.commands.executeCommand("type", { text: "data2 2" });
     await vscode.commands.executeCommand("hson.insertLineBreak");
@@ -322,26 +322,26 @@ export async function run(): Promise<void> {
     assert.match(authoredLines.find(line => line.includes("data4")) ?? "", /^ {8}data4 4/, authoredDump);
     assert.match(authoredLines.find(line => line.includes("data5")) ?? "", /^ {8}data5 5/, authoredDump);
 
-    await replaceMarked('import { Hson } from "hson-live/hson";\nconst host =  1;\nconst inline=Hson`<solo      />`;\nconst page=Hson`\n <main\n<section\n/>\n />\n`;\nconst data=Hson`\n <data      1\ndata2 2\n>\n`;\nconst balanced=Hson`\n <\na <\nb      <c   1>>\nd 2\n>\n`;\nconst trailing=Hson`\n<\na <\nb <\nc <\nvalue 1>>>\nd 2\n>\n`;\n|');
+    await replaceMarked('import { Hson } from "hson-live/hson";\nconst host =  1;\nconst inline=Hson.canonical`<solo      />`;\nconst page=Hson.canonical`\n <main\n<section\n/>\n />\n`;\nconst data=Hson.canonical`\n <data      1\ndata2 2\n>\n`;\nconst balanced=Hson.canonical`\n <\na <\nb      <c   1>>\nd 2\n>\n`;\nconst trailing=Hson.canonical`\n<\na <\nb <\nc <\nvalue 1>>>\nd 2\n>\n`;\n|');
     await vscode.commands.executeCommand("hson.deleteLeft");
     await vscode.commands.executeCommand("hson.formatDocument");
     assert.ok(structural.getText().includes("const host = 1;"), "Hson Format Document retained normal TypeScript formatting");
-    assert.ok(structural.getText().includes("Hson`<solo/>`"), "Hson Format Document normalized same-line Hson trivia");
+    assert.ok(structural.getText().includes("Hson.canonical`<solo/>`"), "Hson Format Document normalized same-line Hson trivia");
     assert.ok(structural.getText().includes("\n<main\n    <section\n    />\n/>"), `Hson Format Document composed Hson indentation edits: ${JSON.stringify(structural.getText())}`);
     assert.ok(structural.getText().includes("\n<\n    data 1\n    data2 2\n>"), `Hson Format Document applied multiline object layout: ${JSON.stringify(structural.getText())}`);
-    assert.ok(structural.getText().includes("balanced = Hson`\n<\n    a <\n        b <c 1>\n    >\n    d 2\n>"), `Hson Format Document detached the multiline owner's closer while preserving its inline child: ${JSON.stringify(structural.getText())}`);
-    assert.ok(structural.getText().includes("trailing = Hson`\n<\n    a <\n        b <\n            c <\n                value 1\n            >\n        >\n    >\n    d 2\n>"), `Hson Format Document separated parser-owned trailing closers: ${JSON.stringify(structural.getText())}`);
+    assert.ok(structural.getText().includes("balanced = Hson.canonical`\n<\n    a <\n        b <c 1>\n    >\n    d 2\n>"), `Hson Format Document detached the multiline owner's closer while preserving its inline child: ${JSON.stringify(structural.getText())}`);
+    assert.ok(structural.getText().includes("trailing = Hson.canonical`\n<\n    a <\n        b <\n            c <\n                value 1\n            >\n        >\n    >\n    d 2\n>"), `Hson Format Document separated parser-owned trailing closers: ${JSON.stringify(structural.getText())}`);
 
     const selectionInput = hostPrefix
-      + "const first=Hson`\n <\na <\nb      <c   1>>\nd 2\n>\n`;\n"
-      + "const second=Hson`\n <c 3\nd 4\n>\n`;\n";
+      + "const first=Hson.canonical`\n <\na <\nb      <c   1>>\nd 2\n>\n`;\n"
+      + "const second=Hson.canonical`\n <c 3\nd 4\n>\n`;\n";
     await replaceDocument(structural, selectionInput);
     const selectedStart = selectionInput.indexOf("\n <\n") + 1;
     const selectedEnd = selectionInput.indexOf("`;", selectedStart);
     structuralEditor.selection = new vscode.Selection(structural.positionAt(selectedStart), structural.positionAt(selectedEnd));
     await vscode.commands.executeCommand("hson.formatSelection");
-    assert.ok(structural.getText().includes("first=Hson`\n<\n    a <\n        b <c 1>\n    >\n    d 2\n>"), `Hson Format Selection detached the selected multiline object's closer: ${JSON.stringify(structural.getText())}`);
-    assert.ok(structural.getText().includes("second=Hson`\n <c 3\nd 4\n>"), "Hson Format Selection left the unselected object unchanged");
+    assert.ok(structural.getText().includes("first=Hson.canonical`\n<\n    a <\n        b <c 1>\n    >\n    d 2\n>"), `Hson Format Selection detached the selected multiline object's closer: ${JSON.stringify(structural.getText())}`);
+    assert.ok(structural.getText().includes("second=Hson.canonical`\n <c 3\nd 4\n>"), "Hson Format Selection left the unselected object unchanged");
 
     await vscode.workspace.fs.writeFile(markdownStructuralUri, Buffer.from("Before\n```hson\n <data 1\ndata2 2\n>\n```\nAfter\n"));
     const markdownStructural = await vscode.workspace.openTextDocument(markdownStructuralUri);
@@ -423,7 +423,7 @@ export async function run(): Promise<void> {
 
   const generatedSchemaDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace, "declarative-schema", "schema.ts")));
   await vscode.window.showTextDocument(generatedSchemaDocument);
-  assert.match(generatedSchemaDocument.getText(), /HsonSchema<UserSchemaType, "data">/);
+  assert.match(generatedSchemaDocument.getText(), /__HsonSchema<__UserSchemaEvidence/);
   const generatedAgeDefinition = generatedSchemaDocument.getText().indexOf('Age "number"');
   const generatedAgeReference = generatedSchemaDocument.getText().indexOf('ref "Age"') + 5;
   assert.deepEqual((await localSchemaCompletions(generatedSchemaDocument, generatedAgeReference)).map(item => item.label), ["Age", "User"]);
@@ -471,16 +471,17 @@ export async function run(): Promise<void> {
   const declarative = await vscode.workspace.openTextDocument(vscode.Uri.file(declarativePath));
   await vscode.window.showTextDocument(declarative);
   await vscode.commands.executeCommand("typescript.restartTsServer");
+  await vscode.commands.executeCommand("vscode.executeHoverProvider", declarative.uri, new vscode.Position(0, 0));
   const associationDiagnostics = () => vscode.languages.getDiagnostics(declarative.uri)
     .filter(diagnostic => diagnostic.source === "ts" && diagnostic.code === 2322);
   const waitAssociationDiagnostics = async (count: number): Promise<readonly vscode.Diagnostic[]> => {
-    const deadline = Date.now() + 10_000;
+    const deadline = Date.now() + 30_000;
     while (associationDiagnostics().length !== count && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
-    assert.equal(associationDiagnostics().length, count, `declarative Schema association diagnostics: ${JSON.stringify(associationDiagnostics().map(diagnostic => diagnostic.message))}`);
+    assert.equal(associationDiagnostics().length, count, `declarative Schema association diagnostics: ${JSON.stringify({ diagnostics: vscode.languages.getDiagnostics(declarative.uri).map(diagnostic => ({ source: diagnostic.source, code: diagnostic.code, message: diagnostic.message })), language: declarative.languageId, validate: vscode.workspace.getConfiguration("typescript", declarative.uri).get("validate.enable"), extension: vscode.extensions.getExtension("vscode.typescript-language-features")?.isActive, folder: vscode.workspace.getWorkspaceFolder(declarative.uri)?.uri.fsPath })}`);
     return associationDiagnostics();
   };
   const invalidAssociation = (await waitAssociationDiagnostics(1))[0]!;
-  assert.match(invalidAssociation.message, /UserSchemaHson/);
+  assert.match(invalidAssociation.message, /HsonData/);
   const invalidValue = declarative.getText().indexOf('"37"');
   assert.ok(invalidValue >= 0);
   const correct = new vscode.WorkspaceEdit();

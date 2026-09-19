@@ -16,8 +16,8 @@ import {
 import type { LocusSocketLike } from "../../src/types/locus.types.ts";
 import { link_node_to_el } from "../../src/api/livetree/utils/node-map-helpers.ts";
 
-const PageSchema: HsonSchema = Hson`<type "document" tag "main" content <sequence [<tag "button" content "empty">]>>`;
-const StateSchema: HsonSchema = Hson`<type "data" content <count "number">>`;
+const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "button" content "empty">]>>`;
+const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number">>`;
 const QUID = "000008399";
 const listener: InteractionListener = Object.freeze({
   event: "click", target: "element", capture: false, once: false, passive: false,
@@ -51,7 +51,7 @@ function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketL
   });
 }
 
-const exact = HsonData.fromHson(Hson`<'10' -0 '2' 2 __proto__ <polluted true>>`);
+const exact = Hson.data.fromHson(Hson.canonical`<'10' -0 '2' 2 __proto__ <polluted true>>`);
 const authorityMap = make_map();
 enable_interactions(authorityMap);
 const descriptor: InteractionDescriptor = Object.freeze({
@@ -89,9 +89,9 @@ target.dispatchEvent(new Event("click"));
 for (let attempt = 0; attempt < 30 && handled === undefined; attempt += 1) await Promise.resolve();
 
 parentPort?.postMessage(Object.freeze({
-  equal: handled?.equals(exact) ?? false,
-  order: handled?.entries()?.map(([name]) => name) ?? [],
-  negativeZero: Object.is(handled?.entries()?.[0]?.[1].scalar(), -0),
+  equal: handled === exact,
+  order: handled === undefined ? [] : Hson.data.entries(handled)?.map(([name]) => name) ?? [],
+  negativeZero: Object.is(handled === undefined ? undefined : Hson.data.materialize(Hson.data.entries(handled)?.[0]?.[1]!), -0),
 }));
 dispose();
 reflection.dispose();

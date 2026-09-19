@@ -1,4 +1,4 @@
-import type { HsonData } from "../data/hson-data.js";
+import type { ExactDataCarrier } from "../data/hson-data.js";
 import { encode_hson_data_internal } from "../data/hson-data.js";
 import type {
   LocusActionDedupeDiagnostics,
@@ -60,7 +60,7 @@ export type LocusActionExecuteRequest = Readonly<{
   requestId: LocusActionRequestId;
   ownerPrincipalId: string | undefined;
   actionName: string;
-  payload: HsonData | undefined;
+  payload: ExactDataCarrier | undefined;
   retry: boolean;
   sourceTraceId?: string;
   acquireExecutionActivity?: () => LocusDisposer;
@@ -137,7 +137,7 @@ function clone_outcome(outcome: LocusActionTerminalOutcome): LocusActionTerminal
   });
 }
 
-function fingerprint(namespace: string, actionName: string, payload: HsonData | undefined): string {
+function fingerprint(namespace: string, actionName: string, payload: ExactDataCarrier | undefined): string {
   return `${JSON.stringify(namespace)}|${JSON.stringify(actionName)}|${payload === undefined ? "absent" : `present:${encode_hson_data_internal(payload)}`}`;
 }
 

@@ -7,8 +7,8 @@ import {
 } from "../src/api/livemap/livemap.internal.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
-const NumberSchema = Hson`<type "data" content <value "number">>`;
-const StringSchema = Hson`<type "data" content <value "string">>`;
+const NumberSchema = Hson.schema`<type "data" content <value "number">>`;
+const StringSchema = Hson.schema`<type "data" content <value "string">>`;
 const Q1 = "000000001";
 const Q2 = "000000002";
 const Q3 = "000000003";

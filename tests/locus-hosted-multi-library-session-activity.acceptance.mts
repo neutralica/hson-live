@@ -6,7 +6,7 @@ import { make_locus_activity_controller } from "../src/api/locus/locus.activity.
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
-const StateSchema: HsonSchema = Hson`<type "data" content <value <number <int true min 0>>>>`;
+const StateSchema: HsonSchema = Hson.schema`<type "data" content <value <number <int true min 0>>>>`;
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "locus.hosted-multi-library-session-activity",

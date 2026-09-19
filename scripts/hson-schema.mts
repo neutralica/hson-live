@@ -3,12 +3,14 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { performance } from "node:perf_hooks";
+import { fileURLToPath } from "node:url";
 import * as ts from "typescript";
 import type { CompiledHsonSchema } from "../src/internal/hson-schema/compiler.ts";
 
 const packagedRuntime = existsSync(new URL("../dist/internal/hson-schema/compiler.js", import.meta.url))
   && existsSync(new URL("../dist/internal/hson-schema/generated-evidence.js", import.meta.url));
 const runtimeBase = packagedRuntime ? "../dist" : "../src";
+const { is_official_hson_package_binding } = await import(`${runtimeBase}/internal/embedded-hson/discover-hson-tagged-templates.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/embedded-hson/discover-hson-tagged-templates.ts");
 const { compile_hson_schema, HSON_SCHEMA_MVP_COMPATIBILITY_VERSION } = await import(`${runtimeBase}/internal/hson-schema/compiler.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/compiler.ts");
 const { generate_hson_schema_evidence } = await import(`${runtimeBase}/internal/hson-schema/generated-evidence.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/generated-evidence.ts");
 const { projected_value_from_hson_node } = await import(`${runtimeBase}/core/projected-value-graph.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/core/projected-value-graph.ts");
@@ -18,7 +20,7 @@ const { resolve_projected_schema_issue_source } = await import(`${runtimeBase}/i
 const { resolve_document_schema_issue_source } = await import(`${runtimeBase}/internal/document-schema-source-lowering/document-schema-source-lowering.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/document-schema-source-lowering/document-schema-source-lowering.ts");
 
 type Mode = "generate" | "verify" | "check" | "build" | "watch";
-type SchemaDeclaration = Readonly<{ sourceFile: ts.SourceFile; statement: ts.VariableStatement; declaration: ts.VariableDeclaration; name: string; source: string; compiled: CompiledHsonSchema }>;
+type SchemaDeclaration = Readonly<{ sourceFile: ts.SourceFile; statement: ts.VariableStatement; declaration: ts.VariableDeclaration; tagged: ts.TaggedTemplateExpression; name: string; source: string; compiled: CompiledHsonSchema }>;
 type Artifact = Readonly<{ path: string; content: string; metadataPath: string; metadata: string; reexport: string; schemaAssociation: string; generatedBytes: number; proofNodeCount: number }>;
 type Diagnostic = Readonly<{ file?: string; start?: number; message: string }>;
 type Overlay = Readonly<{ file: string; start: number; end: number; text: string }>;
@@ -32,6 +34,7 @@ const args = process.argv.slice(2);
 const mode = (args[0] ?? "verify") as Mode;
 const projectArg = value_after("--project") ?? "tsconfig.json";
 const projectPath = resolve(projectArg);
+const librarySourceRoot = resolve(fileURLToPath(new URL("../src/", import.meta.url)));
 if (!["generate", "verify", "check", "build", "watch"].includes(mode)) fail(`Unknown Hson Schema mode ${JSON.stringify(mode)}.`);
 
 if (mode === "watch") run_watch();
@@ -112,7 +115,13 @@ function run_cycle(selected: Exclude<Mode, "watch">): CycleSummary {
   let tsIncrementalMs = 0;
   if (selected === "check" || selected === "build") {
     const tsStarted = performance.now();
-    const command = check_with_overlays(config, staticAnalysis.overlays, selected === "build");
+    const schemaOverlays = schemaDeclarations.map((schema): Overlay => ({
+      file: schema.sourceFile.fileName,
+      start: schema.declaration.initializer!.getStart(schema.sourceFile),
+      end: schema.declaration.initializer!.getEnd(),
+      text: `(${schema.declaration.initializer!.getText(schema.sourceFile)} as unknown as ${schema.declaration.type!.getText(schema.sourceFile)})`,
+    }));
+    const command = check_with_overlays(config, [...staticAnalysis.overlays, ...schemaOverlays], selected === "build");
     tsMs = performance.now() - tsStarted;
     if (!command.ok) fail(command.message);
     if (selected === "check") {
@@ -142,19 +151,18 @@ function run_cycle(selected: Exclude<Mode, "watch">): CycleSummary {
 function discover_schemas(program: ts.Program, checker: ts.TypeChecker): SchemaDeclaration[] {
   const output: SchemaDeclaration[] = [];
   for (const sourceFile of program.getSourceFiles()) {
-    if (sourceFile.isDeclarationFile || sourceFile.fileName.includes(`${sep}node_modules${sep}`) || sourceFile.fileName.includes(".hson-schema.generated.")) continue;
+    if (sourceFile.isDeclarationFile || sourceFile.fileName.startsWith(`${librarySourceRoot}${sep}`) || sourceFile.fileName.includes(`${sep}node_modules${sep}`) || sourceFile.fileName.includes(".hson-schema.generated.")) continue;
     for (const statement of sourceFile.statements) {
       if (!ts.isVariableStatement(statement) || (statement.declarationList.flags & ts.NodeFlags.Const) === 0 || statement.declarationList.declarations.length !== 1) continue;
       const declaration = statement.declarationList.declarations[0];
-      if (declaration === undefined || !ts.isIdentifier(declaration.name) || declaration.type === undefined || !ts.isTypeReferenceNode(declaration.type) || !ts.isIdentifier(declaration.type.typeName)) continue;
-      if (!official_binding(declaration.type.typeName, "HsonSchema", checker)) continue;
-      if (declaration.initializer === undefined || !ts.isTaggedTemplateExpression(declaration.initializer) || !ts.isIdentifier(declaration.initializer.tag) || !official_binding(declaration.initializer.tag, "Hson", checker) || !ts.isNoSubstitutionTemplateLiteral(declaration.initializer.template)) {
-        throw new Error(`${sourceFile.fileName}: ${declaration.name.text} must use a direct substitution-free official Hson tagged template.`);
-      }
-      const source = raw_template(declaration.initializer.template, sourceFile);
+      if (declaration === undefined || !ts.isIdentifier(declaration.name) || declaration.initializer === undefined) continue;
+      const tagged = unwrap_tagged_schema(declaration.initializer);
+      if (tagged === undefined || !is_official_hson_member_tag(tagged, "schema", checker)) continue;
+      if (!ts.isNoSubstitutionTemplateLiteral(tagged.template)) throw new Error(`${sourceFile.fileName}: ${declaration.name.text} must use a substitution-free official Hson.schema tagged template.`);
+      const source = raw_template(tagged.template, sourceFile);
       const compiled = compile_hson_schema(source);
       if (!compiled.ok) throw new Error(`${sourceFile.fileName}: ${declaration.name.text}: ${compiled.issues.map((issue) => issue.message).join(" ")}`);
-      output.push(Object.freeze({ sourceFile, statement, declaration, name: declaration.name.text, source, compiled: compiled.value }));
+      output.push(Object.freeze({ sourceFile, statement, declaration, tagged, name: declaration.name.text, source, compiled: compiled.value }));
     }
   }
   return output;
@@ -181,13 +189,9 @@ function make_artifact(schema: SchemaDeclaration): Artifact {
   const content = evidence.declaration, metadata = evidence.metadata;
   const runtimeExtension = extension === ".mts" ? ".mjs" : extension === ".cts" ? ".cjs" : ".js";
   const generatedSpecifier = `./${stem.slice(stem.lastIndexOf(sep) + 1)}.${schema.name}.hson-schema.generated${runtimeExtension}`;
-  const generatedNames = `${schema.name}Type, ${schema.name}Hson`;
-  const localBinding = `import type { ${generatedNames} } from ${JSON.stringify(generatedSpecifier)};`;
-  const reexport = has_export(schema.statement)
-    ? `${localBinding}\nexport type { ${generatedNames} };`
-    : localBinding;
-  const annotation = schema_annotation(schema);
-  const schemaAssociation = `${annotation.typeName.getText(schema.sourceFile)}<${schema.name}Type, ${JSON.stringify(schema_mode(schema))}>`;
+  const evidenceName = `__${schema.name}Evidence`;
+  const reexport = `import type { Evidence as ${evidenceName} } from ${JSON.stringify(generatedSpecifier)};`;
+  const schemaAssociation = `__HsonSchema<${evidenceName}["value"], ${evidenceName}["mode"], ${evidenceName}["identity"]>`;
   return Object.freeze({ path: artifactPath, content, metadataPath: `${stem}.${schema.name}.hson-schema.generated.json`, metadata, reexport, schemaAssociation, generatedBytes: evidence.generatedBytes, proofNodeCount: evidence.proofNodeCount });
 }
 
@@ -195,12 +199,6 @@ function schema_mode(schema: SchemaDeclaration): "data" | "document" {
   return schema.compiled.semantic.kind === "document" || schema.compiled.semantic.kind === "document-element"
     ? "document"
     : "data";
-}
-
-function schema_annotation(schema: SchemaDeclaration): ts.TypeReferenceNode {
-  const annotation = schema.declaration.type;
-  if (annotation !== undefined && ts.isTypeReferenceNode(annotation)) return annotation;
-  throw new Error(`${schema.sourceFile.fileName}: ${schema.name} lost its HsonSchema annotation.`);
 }
 
 function artifact_source_path(schema: SchemaDeclaration): string {
@@ -213,7 +211,7 @@ function analyze_static_hson(program: ts.Program, checker: ts.TypeChecker, schem
   let count = 0;
   let documentCount = 0;
   const overlays: Overlay[] = [];
-  const byArtifact = new Map(schemas.map((schema) => [resolve(artifact_source_path(schema)), schema]));
+  const byDeclaration = new Map<ts.Declaration, SchemaDeclaration>(schemas.map((schema) => [schema.declaration, schema]));
   for (const sourceFile of program.getSourceFiles()) {
     if (sourceFile.isDeclarationFile || sourceFile.fileName.includes(`${sep}node_modules${sep}`) || sourceFile.fileName.includes(".hson-schema.generated.")) continue;
     for (const statement of sourceFile.statements) {
@@ -221,42 +219,32 @@ function analyze_static_hson(program: ts.Program, checker: ts.TypeChecker, schem
       const declaration = statement.declarationList.declarations[0];
       if (declaration === undefined || declaration.type === undefined || !ts.isTypeReferenceNode(declaration.type) || !ts.isIdentifier(declaration.type.typeName)) continue;
       const typeName = declaration.type.typeName.text;
-      const associations = resolve_generated_associations(declaration.type.typeName, checker, byArtifact);
-      if (associations.length === 0 || declaration.initializer === undefined) continue;
-      if (associations.length !== 1) { diagnostics.push({ file: sourceFile.fileName, start: declaration.type.getStart(), message: `Ambiguous Schema-bound type association for ${typeName}.` }); continue; }
-      const schema = associations[0] as SchemaDeclaration;
+      if ((typeName !== "HsonData" && typeName !== "HsonDocument") || !official_binding(declaration.type.typeName, typeName, checker) || declaration.type.typeArguments?.length !== 1 || declaration.initializer === undefined) continue;
+      const schemaReference = declaration.type.typeArguments[0];
+      if (schemaReference === undefined || !ts.isTypeQueryNode(schemaReference) || !ts.isIdentifier(schemaReference.exprName)) continue;
+      let schemaSymbol = checker.getSymbolAtLocation(schemaReference.exprName);
+      if (schemaSymbol !== undefined && (schemaSymbol.flags & ts.SymbolFlags.Alias) !== 0) schemaSymbol = checker.getAliasedSymbol(schemaSymbol);
+      const schema = schemaSymbol?.declarations?.map(item => byDeclaration.get(item)).find((item): item is SchemaDeclaration => item !== undefined);
+      if (schema === undefined) continue;
+      if (schema_mode(schema) !== (typeName === "HsonData" ? "data" : "document")) {
+        diagnostics.push({ file: sourceFile.fileName, start: declaration.type.getStart(), message: `Schema mode does not match ${typeName}.` });
+        continue;
+      }
       if (ts.isTaggedTemplateExpression(declaration.initializer)) {
-        if (!ts.isIdentifier(declaration.initializer.tag) || !official_binding(declaration.initializer.tag, "Hson", checker) || !ts.isNoSubstitutionTemplateLiteral(declaration.initializer.template)) {
-          diagnostics.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(), message: "Schema-bound Hson requires a direct substitution-free official Hson tagged template." });
+        if (!is_official_hson_member_tag(declaration.initializer, typeName === "HsonData" ? "data" : "document", checker) || !ts.isNoSubstitutionTemplateLiteral(declaration.initializer.template)) {
+          diagnostics.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(), message: `Schema-bound ${typeName} requires a direct substitution-free official semantic Hson tag.` });
           continue;
         }
+        const before = diagnostics.length;
         validate_candidate(schema, raw_template(declaration.initializer.template, sourceFile), sourceFile, declaration.initializer, diagnostics);
+        if (diagnostics.length !== before) continue;
         overlays.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(sourceFile), end: declaration.initializer.getEnd(), text: `(${declaration.initializer.getText(sourceFile)} as unknown as ${declaration.type.getText(sourceFile)})` });
-        count += 1;
-        if (schema.compiled.semantic.kind === "document") documentCount += 1;
-      } else if (ts.isCallExpression(declaration.initializer) && is_certify_call(declaration.initializer, checker)) {
-        if (declaration.initializer.typeArguments !== undefined) diagnostics.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(), message: "Explicit Hson.certify type arguments are unsupported." });
-        const schemaArgument = declaration.initializer.arguments[0];
-        if (schemaArgument === undefined || !ts.isIdentifier(schemaArgument) || !identifier_resolves_to(schemaArgument, checker, schema.declaration)) diagnostics.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(), message: `Hson.certify association must use ${schema.name} for ${typeName}.` });
-        else overlays.push({ file: sourceFile.fileName, start: declaration.initializer.getStart(sourceFile), end: declaration.initializer.getEnd(), text: `(${declaration.initializer.getText(sourceFile)} as unknown as ${declaration.type.getText(sourceFile)})` });
         count += 1;
         if (schema.compiled.semantic.kind === "document") documentCount += 1;
       }
     }
   }
   return Object.freeze({ count, documentCount, overlays: Object.freeze(overlays) });
-}
-
-function resolve_generated_associations(identifier: ts.Identifier, checker: ts.TypeChecker, byArtifact: ReadonlyMap<string, SchemaDeclaration>): readonly SchemaDeclaration[] {
-  let symbol = checker.getSymbolAtLocation(identifier);
-  if (symbol !== undefined && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
-  const output = new Set<SchemaDeclaration>();
-  for (const declaration of symbol?.declarations ?? []) {
-    if (!ts.isTypeAliasDeclaration(declaration) || !declaration.name.text.endsWith("Hson")) continue;
-    const schema = byArtifact.get(resolve(declaration.getSourceFile().fileName));
-    if (schema !== undefined && declaration.name.text === `${schema.name}Hson`) output.add(schema);
-  }
-  return Object.freeze([...output]);
 }
 
 function identifier_resolves_to(identifier: ts.Identifier, checker: ts.TypeChecker, expected: ts.Declaration): boolean {
@@ -383,18 +371,28 @@ function apply_generated_schema_associations(
 ): string {
   let output = source;
   for (const association of [...associations].sort((left, right) => (
-    (right.declaration.type?.getStart() ?? -1) - (left.declaration.type?.getStart() ?? -1)
- ))) {
+    (right.declaration.type?.getStart() ?? right.declaration.name.getEnd()) - (left.declaration.type?.getStart() ?? left.declaration.name.getEnd())
+  ))) {
+    const initializer = association.declaration.initializer;
+    const tagged = initializer === undefined ? undefined : unwrap_tagged_schema(initializer);
+    if (initializer !== undefined && tagged !== undefined) {
+      const replacement = `(${tagged.getText()} as unknown as ${association.text})`;
+      output = output.slice(0, initializer.getStart()) + replacement + output.slice(initializer.getEnd());
+    }
     const annotation = association.declaration.type;
-    if (annotation === undefined) continue;
-    output = output.slice(0, annotation.getStart()) + association.text + output.slice(annotation.getEnd());
+    if (annotation === undefined) {
+      const position = association.declaration.name.getEnd();
+      output = output.slice(0, position) + `: ${association.text}` + output.slice(position);
+    } else {
+      output = output.slice(0, annotation.getStart()) + association.text + output.slice(annotation.getEnd());
+    }
   }
   return output;
 }
 
 function generated_exports_block(exports: readonly string[]): string {
   if (exports.length === 0) return "";
-  return `${GENERATED_EXPORTS_START}\n${[...exports].sort().join("\n")}\n${GENERATED_EXPORTS_END}\n`;
+  return `${GENERATED_EXPORTS_START}\nimport type { HsonSchema as __HsonSchema } from "hson-live";\n${[...exports].sort().join("\n")}\n${GENERATED_EXPORTS_END}\n`;
 }
 
 function generated_exports_block_from_source(source: string): string {
@@ -446,25 +444,21 @@ function authoritative_metadata(path: string): boolean {
   } catch { return false; }
 }
 
-function official_binding(identifier: ts.Identifier, expected: string, checker: ts.TypeChecker): boolean {
-  const symbol = checker.getSymbolAtLocation(identifier);
-  if (symbol !== undefined) {
-    const target = (symbol.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(symbol) : symbol;
-    if ((target.getName() === expected || expected === "Hson" && target.getName() === "admit_hson") && target.declarations?.some((declaration) => /(?:^|[/\\])(?:hson-authoring|index|hson-admission|transform\.types)\.(?:d\.)?[cm]?ts$/.test(declaration.getSourceFile().fileName)) === true) return true;
-  }
-  if (!identifier.parent || !ts.isImportSpecifier(identifier.parent)) return false;
-  const importDeclaration = identifier.parent.parent.parent.parent;
-  const importedName = identifier.parent.propertyName?.text ?? identifier.parent.name.text;
-  return ts.isImportDeclaration(importDeclaration)
-    && ts.isStringLiteral(importDeclaration.moduleSpecifier)
-    && ["hson-live", "hson-live/hson"].includes(importDeclaration.moduleSpecifier.text)
-    && importedName === expected;
+function official_binding(identifier: ts.Identifier, expected: "Hson" | "HsonData" | "HsonDocument", checker: ts.TypeChecker): boolean {
+  return is_official_hson_package_binding(identifier, expected, checker, true);
 }
 
-function is_certify_call(call: ts.CallExpression, checker: ts.TypeChecker): boolean {
-  return ts.isPropertyAccessExpression(call.expression) && call.expression.name.text === "certify" && ts.isIdentifier(call.expression.expression) && official_binding(call.expression.expression, "Hson", checker);
+function is_official_hson_member_tag(node: ts.TaggedTemplateExpression, member: string, checker: ts.TypeChecker): boolean {
+  return ts.isPropertyAccessExpression(node.tag)
+    && node.tag.name.text === member
+    && ts.isIdentifier(node.tag.expression)
+    && official_binding(node.tag.expression, "Hson", checker);
 }
-function has_export(statement: ts.VariableStatement): boolean { return statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) === true; }
+function unwrap_tagged_schema(node: ts.Expression): ts.TaggedTemplateExpression | undefined {
+  if (ts.isTaggedTemplateExpression(node)) return node;
+  if (ts.isParenthesizedExpression(node) || ts.isAsExpression(node)) return unwrap_tagged_schema(node.expression);
+  return undefined;
+}
 function raw_template(node: ts.NoSubstitutionTemplateLiteral, sourceFile: ts.SourceFile): string { const text = node.getText(sourceFile); return text.slice(1, -1); }
 function digest(value: string): string { return createHash("sha256").update(value).digest("hex"); }
 function write_if_changed(path: string, content: string): boolean { if (existsSync(path) && readFileSync(path, "utf8") === content) return false; writeFileSync(path, content); return true; }

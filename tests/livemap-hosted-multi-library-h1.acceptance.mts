@@ -19,9 +19,9 @@ import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.id
 import { is_Node } from "../src/core/node-guards.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
-const DataSchema: HsonSchema = Hson`<type "data" content <negativeZero "number" ordered <content <a "number" b "number">> items <array "number"> count <number <int true min 0>>>>`;
-const FlagSchema: HsonSchema = Hson`<type "data" content <enabled "boolean">>`;
-const DocumentSchema: HsonSchema = Hson`<type "document" tag "main" content <repeat <tag "item" content "empty">>>`;
+const DataSchema: HsonSchema = Hson.schema`<type "data" content <negativeZero "number" ordered <content <a "number" b "number">> items <array "number"> count <number <int true min 0>>>>`;
+const FlagSchema: HsonSchema = Hson.schema`<type "data" content <enabled "boolean">>`;
+const DocumentSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "item" content "empty">>>`;
 const Q_RETIRED = "000008001";
 const Q_ACTIVE = "000008002";
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -166,7 +166,7 @@ check("invalid later-Library replay rejects every staged Library and publishes n
   const identities = authority.libraries();
   const bindings = new Map(identities.map((identity, index) => {
     const entry = snapshot.registry.libraries[index]!;
-    return [identity, Object.freeze({ name: entry.name, identity, mode: entry.mode, schema: entry.schema })] as const;
+    return [identity, Object.freeze({ name: entry.name, identity, mode: entry.mode, schema: Hson.schema.fromHson(entry.schema) })] as const;
   }));
   const [alpha, beta] = identities;
   if (alpha === undefined || beta === undefined) throw new Error("Expected data Libraries");

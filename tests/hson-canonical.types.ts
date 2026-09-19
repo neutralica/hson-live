@@ -21,11 +21,11 @@ declare const dynamicSerializer: TransformSerialize;
 
 const direct: HsonCanonical = serialize_hson(node);
 const normalized: HsonCanonical = hsonTransform.fromHson(arbitrary).toHson().serialize();
-const directlyTagged: HsonCanonical = Hson`<main/>`;
-const taggedNumber: HsonCanonical = Hson`${42}`;
-const taggedString: HsonCanonical = Hson`${"42"}`;
-const taggedBoolean: HsonCanonical = Hson`${true}`;
-const taggedNull: HsonCanonical = Hson`${null}`;
+const directlyTagged: HsonCanonical = Hson.canonical`<main/>`;
+const taggedNumber: HsonCanonical = Hson.canonical`${42}`;
+const taggedString: HsonCanonical = Hson.canonical`${"42"}`;
+const taggedBoolean: HsonCanonical = Hson.canonical`${true}`;
+const taggedNull: HsonCanonical = Hson.canonical`${null}`;
 const branded: HsonCanonical = normalized;
 const repeated: HsonCanonical = hsonTransform.fromHson(branded).toHson().serialize();
 const fluent: HsonCanonical = hsonTransform.fromNode(node).toHson().serialize();
@@ -60,17 +60,17 @@ Hson(null);
 // @ts-expect-error Ordinary calls are unsupported.
 Hson({});
 // @ts-expect-error Tagged substitutions exclude undefined.
-Hson`${undefined}`;
+Hson.canonical`${undefined}`;
 // @ts-expect-error Tagged substitutions exclude bigint.
-Hson`${1n}`;
+Hson.canonical`${1n}`;
 // @ts-expect-error Tagged substitutions exclude symbols.
-Hson`${Symbol()}`;
+Hson.canonical`${Symbol()}`;
 // @ts-expect-error Tagged substitutions exclude objects.
-Hson`${{}}`;
+Hson.canonical`${{}}`;
 // @ts-expect-error Tagged substitutions exclude arrays.
-Hson`${[]}`;
+Hson.canonical`${[]}`;
 // @ts-expect-error Tagged substitutions exclude functions.
-Hson`${() => {}}`;
+Hson.canonical`${() => {}}`;
 // @ts-expect-error The Transform source-admission .string surface is removed.
 hson.transform.string;
 // @ts-expect-error The named Transform source-admission .string surface is removed.
@@ -96,11 +96,11 @@ hsonTransform.fromHson(arbitrary).toNode();
 type HsonCanonicalProducerReturnsExactlyHsonCanonical = Expect<
   Equal<typeof normalized, HsonCanonical>
 >;
-type CallableHsonReturnsExactlyHsonCanonical = Expect<
-  Equal<ReturnType<typeof Hson>, HsonCanonical>
+type CanonicalTagReturnsExactlyHsonCanonical = Expect<
+  Equal<ReturnType<typeof Hson.canonical>, HsonCanonical>
 >;
-type CallableHsonTaggedValuesArePrimitive = Expect<
-  Equal<Parameters<typeof Hson>[1], string | number | boolean | null>
+type CanonicalTagValuesArePrimitive = Expect<
+  Equal<Parameters<typeof Hson.canonical>[1], string | number | boolean | null>
 >;
 type NoUnsafeHsonCast = Expect<
   Equal<"asHsonCanonical" extends keyof typeof hson ? true : false, false>

@@ -16,7 +16,7 @@ import {
   ordered_projected_value_equal,
   type OrderedProjectedValue,
 } from "../../core/ordered-projected-value.js";
-import { hson_data_from_value } from "../data/hson-data.js";
+import { hson_data_text_from_value } from "../data/hson-data.js";
 
 
 type LiveMapPathHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "at" | "set" | "replace" | "setMany" | "delete" | "feed" | "batch" | "splice" | "rev">;
@@ -75,7 +75,7 @@ export function make_livemap_path_handle<TValue = JsonValue | undefined>(
     snap: () => core.snap(handlePath) as TValue,
     data: () => {
       const value = livemap_projected_propagation(core)?.read(handlePath);
-      return value === undefined ? undefined : hson_data_from_value(value);
+      return value === undefined ? undefined : hson_data_text_from_value(value);
     },
     at: ((path: LivePath) => core.at([...handlePath, ...must_live_path(path)])) as unknown as LiveMapPathHandle<TValue>["at"],
     set: (value) => core.set(handlePath, must_json_value(value, handlePath)),

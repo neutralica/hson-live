@@ -192,10 +192,9 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
     : root.kind === "document-element"
       ? `Readonly<{ readonly $_tag: "_hson_root"; readonly $_content: readonly [${emitDocumentElement(root, "RootItem")}]; }> & ${proof("RootDocument")}`
     : emitData(root, "Root");
-  const hsonProof = proof("Hson");
   return Object.freeze({
     proofNodeCount,
-    declarations: `${proofDeclarations.join("\n")}\n${definitionCandidateDeclarations.join("\n")}${definitionCandidateDeclarations.length === 0 ? "" : "\n"}${definitionDeclarations.join("\n")}${definitionDeclarations.length === 0 ? "" : "\n"}export type ${name}Type = ${type};\nexport type ${name}Hson = HsonCanonical & ${hsonProof};`,
+    declarations: `${proofDeclarations.join("\n")}\n${definitionCandidateDeclarations.join("\n")}${definitionCandidateDeclarations.length === 0 ? "" : "\n"}${definitionDeclarations.join("\n")}${definitionDeclarations.length === 0 ? "" : "\n"}type __Value = ${type};\ndeclare const __Identity: unique symbol;\nexport type Evidence = Readonly<{ value: __Value; mode: ${JSON.stringify(root.kind === "document" || root.kind === "document-element" ? "document" : "data")}; identity: typeof __Identity }>;`,
   });
 }
 

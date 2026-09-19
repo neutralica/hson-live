@@ -6,7 +6,7 @@ import type {
   LiveMapDocumentLibrary,
   LiveMapLibraries,
 } from "../../types/livemap.types.js";
-import { HsonData } from "../data/hson-data.js";
+import type { HsonData } from "../transform/transform.types.js";
 import { echo_document_authority_for } from "../echo/echo.document-authority.js";
 import { activate_interactions } from "../interactions/interactions.js";
 import { runtime_for_tree } from "../livetree/runtime/livetree-runtime.js";

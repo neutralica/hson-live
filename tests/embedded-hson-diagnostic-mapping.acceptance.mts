@@ -106,11 +106,11 @@ function expectFallback(
   return mapping;
 }
 
-const simpleHost = "const value = Hson`01`;";
+const simpleHost = "const value = Hson.canonical`01`;";
 const simple = descriptorFor(simpleHost, "01");
 
 check("a zero-width body range is valid and exactly reproducible", () => {
-  const hostText = "const value = Hson``;";
+  const hostText = "const value = Hson.canonical``;";
   const source = descriptorFor(hostText, "");
   assert.equal(read_embedded_hson_body(source), "");
   assert.equal(source.bodyRange.start, source.bodyRange.end);
@@ -128,7 +128,7 @@ check("a nonempty range beginning at offset zero is valid", () => {
 });
 
 check("a range may end exactly at host EOF", () => {
-  const hostText = "Hson`x`";
+  const hostText = "Hson.canonical`x`";
   const validation = validate_embedded_hson_source({
     fileName: "fixture.ts",
     hostText,
@@ -207,7 +207,7 @@ check("invalid host offsets do not map", () => {
 });
 
 check("a real Hson point maps at the body start", () => {
-  const hostText = "const value = Hson`+1`;";
+  const hostText = "const value = Hson.canonical`+1`;";
   const source = descriptorFor(hostText, "+1");
   const error = captureTransformError(() => validate("+1"));
   const mapped = expectMapped(map_transform_error_to_embedded_source(error, source));
@@ -242,7 +242,7 @@ check("EOF receives an explicit zero-width range", () => {
 });
 
 check("a real empty-source error maps to empty-body EOF", () => {
-  const hostText = "const value = Hson``;";
+  const hostText = "const value = Hson.canonical``;";
   const source = descriptorFor(hostText, "");
   const error = captureTransformError(() => validate(""));
   const mapped = expectMapped(map_transform_error_to_embedded_source(error, source));
@@ -251,7 +251,7 @@ check("a real empty-source error maps to empty-body EOF", () => {
 });
 
 check("an astral code point before the error counts as two offsets", () => {
-  const hostText = "const value = Hson`😀x`;";
+  const hostText = "const value = Hson.canonical`😀x`;";
   const source = descriptorFor(hostText, "😀x");
   const error = syntheticError({
     operation: "synthetic",
@@ -264,7 +264,7 @@ check("an astral code point before the error counts as two offsets", () => {
 });
 
 check("a point directly on an astral character spans its surrogate pair", () => {
-  const hostText = "const value = Hson`😀x`;";
+  const hostText = "const value = Hson.canonical`😀x`;";
   const source = descriptorFor(hostText, "😀x");
   const error = syntheticError({
     operation: "synthetic",
@@ -276,7 +276,7 @@ check("a point directly on an astral character spans its surrogate pair", () => 
 });
 
 check("a point on the low surrogate expands backward across its complete pair", () => {
-  const hostText = "const value = Hson`😀x`;";
+  const hostText = "const value = Hson.canonical`😀x`;";
   const source = descriptorFor(hostText, "😀x");
   const error = syntheticError({
     operation: "synthetic",
@@ -310,7 +310,7 @@ check("an indented multiline host maps body offsets to host coordinates", () => 
 });
 
 check("multiple descriptors independently reference one host file", () => {
-  const hostText = "const a = Hson`+1`;\nconst b = Hson`01`;";
+  const hostText = "const a = Hson.canonical`+1`;\nconst b = Hson.canonical`01`;";
   const first = descriptorFor(hostText, "+1");
   const second = descriptorFor(hostText, "01", first.templateRange.end);
   const firstError = captureTransformError(() => validate("+1"));
@@ -346,9 +346,9 @@ check("duplicate declaration diagnostics map primary and related evidence", () =
 
 check("a real source-less Transform error uses an explicit body fallback", () => {
   const value = {};
-  const error = captureTransformError(() => (Hson as any)`<a ${value}/>`);
+  const error = captureTransformError(() => (Hson.canonical as any)`<a ${value}/>`);
   const body = "<a ${value}/>";
-  const hostText = `const value = Hson\`${body}\`;`;
+  const hostText = `const value = Hson.canonical\`${body}\`;`;
   const source = descriptorFor(hostText, body);
   const mapped = expectFallback(map_transform_error_to_embedded_source(error, source));
   assert.equal(mapped.reason, "source-missing");

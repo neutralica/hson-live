@@ -17,7 +17,7 @@ Each entry has exactly one ingress field:
 - `data` accepts the existing `fromJson` material: a JSON value or JSON source text.
 - `document` accepts existing `fromHson`/`fromNode` material: Hson source text or a canonical Hson node.
 
-Every Library requires `schema`. Initial material is validated during construction. The Hson Schema generator augments the schema declaration with its generated `SchemaType`, so a generated `ColorsSchema` automatically supplies the selected data and Handle types; callers do not pass a duplicate type parameter.
+Every Library requires `schema`. Initial material is validated during construction. The Hson Schema generator augments each Schema declaration with private evidence, so `SchemaType<typeof ColorsSchema>` supplies the selected data and handle types; callers do not pass a duplicate type parameter.
 
 `map.lib(name)` accepts only the literal names in the static registry. A selected data Library has `root()`, `snap()`, `at(path)`, and `schema.get()`. Its Handle paths are relative to that Library, so nested Handle operations never repeat the library name. A selected document Library retains its normal document, capture, and schema APIs. `hsonMirror(map.lib("page"))` binds one named document Library and stays attached across unrelated global revisions and recovery replacement.
 

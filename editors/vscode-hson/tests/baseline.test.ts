@@ -18,7 +18,7 @@ async function run(): Promise<void> {
   const grammar = await load_hson_grammar(resolve(__dirname, ".."));
   let checks = 0;
   const check = (name: string, body: () => void) => { body(); console.log(`ok ${++checks} - ${name}`); };
-  const source = (body: string, imported = "Hson", tag = "Hson", pkg = "hson-live/hson") => `import { ${imported} } from "${pkg}";\nconst source = ${tag}\`${body}\`;`;
+  const source = (body: string, imported = "Hson", tag = "Hson", pkg = "hson-live/hson") => `import { ${imported} } from "${pkg}";\nconst source = ${tag}.canonical\`${body}\`;`;
   const tokens = (text: string, fileName = "/workspace/baseline.ts") => hson_highlights(grammar, fileName, text);
   const diagnose = (text: string) => produce_document_diagnostics({ fileName: "/workspace/baseline.ts", languageId: "typescript", text });
   const nameToken = (text: string) => tokens(text).some(token => text.slice(token.range.start, token.range.end) === "thing" && token.scopes.includes("entity.name.type.hson"));
@@ -104,7 +104,7 @@ async function run(): Promise<void> {
   });
   check("fromHson highlighting follows the existing ts/tsx-only host policy", () => {
     const text = 'import { hson } from "hson-live"; hson.liveMap.fromHson("<thing/>");';
-    assert.ok(nameToken('import { Hson } from "hson-live"; Hson`<thing/>`;'));
+    assert.ok(nameToken('import { Hson } from "hson-live"; Hson.canonical`<thing/>`;'));
     assert.ok(tokens(text, "/workspace/a.tsx").length > 0);
     for (const extension of ["mts", "cts", "js", "jsx", "mjs", "cjs"]) {
       assert.deepEqual(tokens(text, `/workspace/a.${extension}`), []);
@@ -134,8 +134,8 @@ async function run(): Promise<void> {
     assert.equal(markers(source('<thing 1>', "Hson", "Hson", "hson-live")).length, 4);
   });
   check("Schema authoring keeps soft Hson colors while lowercase hson alone owns the violet period", () => {
-    const text = 'import { Hson, hson, type HsonSchema } from "hson-live"; const S: HsonSchema = Hson`<type "data" content <name "string">>`; Hson.certify(S, Hson`<name "Ada">`); hson.liveMap;';
-    const authoringStarts = [text.indexOf("Hson`"), text.indexOf("Hson.certify"), text.lastIndexOf("Hson`")];
+    const text = 'import { Hson, hson } from "hson-live"; const S = Hson.schema`<type "data" content <name "string">>`; Hson.schema.fromHson(S, Hson.canonical`<name "Ada">`); hson.liveMap;';
+    const authoringStarts = [text.indexOf("Hson.canonical`"), text.indexOf("Hson.schema.fromHson"), text.lastIndexOf("Hson.canonical`")];
     for (const start of authoringStarts) {
       const parts = referenceParts(text, "Hson", start);
       assert.deepEqual(parts.map(part => text.slice(part.range.start, part.range.end)), ["H", "s", "o", "n"]);
@@ -150,11 +150,11 @@ async function run(): Promise<void> {
     assert.deepEqual(markers(source('<thing 1>', "Hson as author", "author")), []);
   });
   check("unrelated local Hson is excluded", () => {
-    const text = 'const Hson=String.raw; Hson`<thing !!!`;';
+    const text = 'const Hson=String.raw; Hson.canonical`<thing !!!`;';
     assert.deepEqual(tokens(text), []); assert.deepEqual(markers(text), []); assert.deepEqual(diagnose(text), []);
   });
   check("shadowed official binding is excluded", () => {
-    const text = 'import { Hson } from "hson-live/hson"; function f(Hson: any){ Hson`<thing !!!`; }';
+    const text = 'import { Hson } from "hson-live/hson"; function f(Hson: any){ Hson.canonical`<thing !!!`; }';
     assert.deepEqual(tokens(text), []); assert.deepEqual(markers(text), []); assert.deepEqual(diagnose(text), []);
   });
   check("wrong package is excluded", () => { const text = source('<thing !!!', "Hson", "Hson", "other"); assert.deepEqual(tokens(text), []); assert.deepEqual(markers(text), []); assert.deepEqual(diagnose(text), []); });
@@ -168,7 +168,7 @@ async function run(): Promise<void> {
     assert.deepEqual(markers('import { Hson } from "hson-live"; export default Hson;'), []);
   });
   check("official bare and member-root references receive family markers", () => {
-    const text = 'import { Hson, hson } from "hson-live"; void Hson; void hson; Hson.certify(x,y); hson.fromBinary(x); hson.liveMap;';
+    const text = 'import { Hson, hson } from "hson-live"; void Hson; void hson; Hson.schema.fromHson(x,y); hson.fromBinary(x); hson.liveMap;';
     assert.equal(markers(text).length, 20);
     assert.deepEqual(referenceParts(text, 'Hson', text.indexOf('Hson', text.indexOf(';') + 1)).map(part => part.strength), ['soft', 'soft', 'soft', 'soft']);
     const hsonStart = text.indexOf('hson', text.indexOf(';') + 1);
@@ -194,12 +194,12 @@ async function run(): Promise<void> {
       'const obj={hson:{}}; obj.hson.liveMap;',
       'import { hson } from "other"; hson.liveMap;',
       'import { hson } from "hson-live";',
-      'import { Hson } from "hson-live"; Hson.certify(x,y);',
+      'import { Hson } from "hson-live"; Hson.schema.fromHson(x,y);',
     ];
     for (const text of cases) assert.deepEqual(separators(text), []);
   });
   check("lowercase color toggle removes lowercase markers and separator without affecting uppercase Hson", () => {
-    const text = 'import { hson, Hson } from "hson-live"; hson.liveMap; Hson.certify(x,y);';
+    const text = 'import { hson, Hson } from "hson-live"; hson.liveMap; Hson.schema.fromHson(x,y);';
     const enabled = hson_identity_presentation("/workspace/baseline.ts", text, true);
     const disabled = hson_identity_presentation("/workspace/baseline.ts", text, false);
     assert.equal(enabled.markers.length, 8); assert.equal(enabled.separators.length, 1);
@@ -281,10 +281,10 @@ async function run(): Promise<void> {
   check("fake, wrong-package, shadowed, and property-name lookalikes stay ordinary", () => {
     const cases = [
       'const hson={}; hson.fromBinary;',
-      'const Hson=String.raw; Hson`x`;',
+      'const Hson=String.raw; Hson.canonical`x`;',
       'import { hson } from "other"; hson.liveMap;',
-      'import { Hson } from "other"; Hson.certify(x,y);',
-      'import { hson, Hson } from "hson-live"; function f(hson:any,Hson:any){ hson.liveMap; Hson.certify(x,y); }',
+      'import { Hson } from "other"; Hson.schema.fromHson(x,y);',
+      'import { hson, Hson } from "hson-live"; function f(hson:any,Hson:any){ hson.liveMap; Hson.schema.fromHson(x,y); }',
       'const obj={Hson:1,hson:2}; obj.Hson; obj.hson;',
       'const text="Hson hson"; // Hson hson',
     ];
@@ -313,7 +313,7 @@ async function run(): Promise<void> {
     assert.ok(has('<', 'hsonDelimiter'));
   });
   check("valid readable noncanonical source is admitted by the real tag", () => {
-    assert.equal(Hson` <thing 1 > `, '<thing 1>');
+    assert.equal(Hson.canonical` <thing 1 > `, '<thing 1>');
     assert.deepEqual(diagnose(source(' <thing 1 > ')), []);
   });
   check("malformed zero-Schema Hson is diagnosed", () => assert.equal(diagnose(source('<thing !!!')).length, 1));
@@ -355,7 +355,7 @@ async function run(): Promise<void> {
   check("incomplete prefix is not guessed invalid", () => assert.deepEqual(diagnose(source('<thing ${value}>')), []));
   check("raw escape spelling is not cooked into Hson", () => {
     const text = source('<thing "\\n">'); assert.deepEqual(diagnose(text), []);
-    assert.equal(Hson`<thing "\n">`, '<thing "\\n">');
+    assert.equal(Hson.canonical`<thing "\n">`, '<thing "\\n">');
   });
   check("undefined cooked segment rejects even in an Hson comment", () => {
     const text = source('// \\unicode\n<thing 1>');
@@ -371,9 +371,9 @@ async function run(): Promise<void> {
     assert.equal(text.slice(d.range.start,d.range.end), '😀');
   });
   check("TSX near JSX receives only binding-selected grammar tokens", () => {
-    const text = 'import { Hson } from "hson-live/hson"; const view=<main>{Hson`<thing 1>`}</main>;';
+    const text = 'import { Hson } from "hson-live/hson"; const view=<main>{Hson.canonical`<thing 1>`}</main>;';
     assert.ok(tokens(text, '/workspace/a.tsx').some(token => text.slice(token.range.start, token.range.end)==='thing'));
-    assert.ok(tokens(text, '/workspace/a.tsx').every(token => token.range.start > text.indexOf('Hson`')));
+    assert.ok(tokens(text, '/workspace/a.tsx').every(token => token.range.start > text.indexOf('Hson.canonical`')));
   });
   check("stale document results do not publish", () => {
     let doc: DiagnosticDocument = { uri:'file:///a.ts', version:1, languageId:'typescript', fileName:'/a.ts', text:source('+1') };

@@ -10,7 +10,8 @@ import type {
 import {
   decode_hson_data_internal,
   encode_hson_data_internal,
-  HsonData,
+  admit_hson_data_input,
+  hson_data_text,
 } from "../data/hson-data.js";
 import {
   create_echo_endpoint_internal,
@@ -51,7 +52,7 @@ function encodeEndpointMessage(message: LocusClientMessage): string {
   const { payload, ...rest } = message;
   return JSON.stringify({
     ...rest,
-    ...(payload === undefined ? {} : { payloadData: encode_hson_data_internal(HsonData.from(payload)) }),
+    ...(payload === undefined ? {} : { payloadData: encode_hson_data_internal(admit_hson_data_input(payload)) }),
   });
 }
 
@@ -86,7 +87,7 @@ function decodeEndpointMessage(raw: string, format?: string): EchoEndpointServer
       || (deliveryPresent && value.delivery !== "executed" && value.delivery !== "joined" && value.delivery !== "cached" && value.delivery !== "rejected")
       || (resultPresent && typeof value.resultData !== "string")) return undefined;
     try {
-      const result = resultPresent ? decode_hson_data_internal(value.resultData as string) : undefined;
+      const result = resultPresent ? hson_data_text(decode_hson_data_internal(value.resultData as string)) : undefined;
       return Object.freeze({
         type: "ack",
         id: value.id,
@@ -117,7 +118,7 @@ function decodeEndpointMessage(raw: string, format?: string): EchoEndpointServer
       if (!hasExactKeys(value.outcome, ["state", "seq", "completionRev", ...(resultPresent ? ["resultData"] : [])])
         || (resultPresent && typeof value.outcome.resultData !== "string")) return undefined;
       try {
-        const result = resultPresent ? decode_hson_data_internal(value.outcome.resultData as string) : undefined;
+        const result = resultPresent ? hson_data_text(decode_hson_data_internal(value.outcome.resultData as string)) : undefined;
         return Object.freeze({
           type: "action-status",
           id: value.id,

@@ -58,7 +58,7 @@ import {
   replay_locus_document_commit,
   is_locus_json_value,
 } from "../locus/locus.protocol.js";
-import { HsonData } from "../data/hson-data.js";
+import { ExactDataCarrier, admit_hson_data_input, hson_data_text } from "../data/hson-data.js";
 import {
   encode_locus_graph_content,
 } from "../locus/locus.graph-content-codec.js";
@@ -94,7 +94,7 @@ function encode_client_message<TActions extends LocusActionPayloads>(message: Lo
   if (message.name !== "document.content.insert" && message.name !== "document.content.replace") {
     return encode_locus_client_message(message);
   }
-  const payload = HsonData.from(message.payload).materialize();
+  const payload = admit_hson_data_input(message.payload).materialize();
   if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
     return encode_locus_client_message(message);
   }
@@ -110,10 +110,10 @@ function encode_client_message<TActions extends LocusActionPayloads>(message: Lo
   }
   return encode_locus_client_message({
     ...message,
-    payload: HsonData.from({
+    payload: hson_data_text(ExactDataCarrier.from({
       ...payload,
       [field]: encodedContent,
-    }),
+    })),
   });
 }
 

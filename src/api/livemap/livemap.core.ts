@@ -27,7 +27,7 @@ import { must_feed_listener, must_live_path, must_ordered_projected_object, must
 import { append_live_path, clone_live_path, format_live_path, live_path_key, paths_overlap } from "./livemap.path.js";
 import { LiveMapDocumentMutationError, LiveMapProjectedIdentityError, LiveMapProjectedMutationError, LiveMapProjectedTransportError, LiveMapReplayError, LiveMapRevError, } from "./livemap.error.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
-import { hson_data_from_value } from "../data/hson-data.js";
+import { hson_data_text_from_value } from "../data/hson-data.js";
 import {
   is_ordered_projected_object,
   optional_ordered_projected_value_equal,
@@ -786,7 +786,7 @@ function make_livemap_core_from_owned_root(
     /** Read exact canonical data without crossing an ordinary object. */
     data: (path: LivePath = []) => {
       const value = project_live_path(owned.root, must_live_path(path));
-      return value === undefined ? undefined : hson_data_from_value(value);
+      return value === undefined ? undefined : hson_data_text_from_value(value);
     },
 
     /** Read and manage the schema currently attached to this Core, if present. */
@@ -1612,7 +1612,7 @@ function make_livemap_core_from_owned_root(
     const bindings = bindingsInput.map((raw, index): HostedRegistryBinding => {
       const state = states[index];
       if (state === undefined || raw.identity !== state.identity || raw.mode !== state.mode
-        || raw.schema !== state.hsonSchema) {
+        || raw.schema.toHson() !== state.hsonSchema?.toHson()) {
         throw new Error("LiveMap hosted registry order, mode, or Schema disagrees with aggregate authority.");
       }
       return Object.freeze({ ...raw });
@@ -1729,7 +1729,7 @@ function make_livemap_core_from_owned_root(
       const root = decode_hosted_root(encoded.root);
       const prepared = prepare_livemap_root(root);
       if (prepared.mode !== entry.mode) throw new Error("Hosted aggregate snapshot root mode disagrees with its registry.");
-      must_hson_schema_root(entry.schema, prepared.root);
+      must_hson_schema_root(binding.schema, prepared.root);
       candidates.push(Object.freeze({
         library: require_library(binding.identity),
         root: prepared.root,

@@ -132,8 +132,8 @@ const padLast = alphabet.indexOf(padEncoded.at(-1)!);
 const alternatePadLast = padEncoded.length % 4 === 2 ? (padLast & 0x30) | 1 : (padLast & 0x3c) | 1;
 expectCode(`${padEncoded.slice(0, -1)}${alphabet[alternatePadLast]}`, "SSR_BOOTSTRAP_NON_CANONICAL");
 
-const DataSchema: HsonSchema = Hson`<type "data" content <value "number">>`;
-const DocumentSchema: HsonSchema = Hson`<type "document" tag "main" content "empty">`;
+const DataSchema: HsonSchema = Hson.schema`<type "data" content <value "number">>`;
+const DocumentSchema: HsonSchema = Hson.schema`<type "document" tag "main" content "empty">`;
 const inputs = Object.create(null) as Record<string, { data: { value: number }; schema: HsonSchema } | { document: string; schema: HsonSchema }>;
 for (const name of ["__proto__", "constructor", "prototype", "10", "2"]) {
   Object.defineProperty(inputs, name, { value: name === "prototype" ? { document: "<main/>", schema: DocumentSchema } : { data: { value: name === "10" ? -0 : 2 }, schema: DataSchema }, enumerable: true });

@@ -3,6 +3,6 @@
   "declarationIdentity": "producer.ts#TreeSchema",
   "sourceDigest": "b2f6a31c70211d0316d30bd98222301685930925a697c699caecdbf1b7260352",
   "semanticGraphDigest": "7c921380843793426835a5d1f03b16b8cbb3d8b7ef8729ef8a1c7b16b407105a",
-  "generatedDeclarationDigest": "1b576bb6d1b43e9a71d1200ebb1d5b6b30e65b6688692ed996516531907ba28a",
+  "generatedDeclarationDigest": "506a3fe6761fd3ef0a728380016bcd43f19fefb67bae6db2ae13ae0d3d1dffb7",
   "graphHson": "<format \"hson-canonical-schema\" version 3 capabilities <projectedRoot 0> nodes «<kind \"projected-ref\" target 1>,<kind \"projected-object\" exact true properties ««\"value\",2»,«\"age\",3»,«\"children\",7»»>,<kind \"projected-string\">,<kind \"projected-ref\" target 4>,<kind \"projected-refinement\" base 5 rule <kind \"integer\"> label \"int\">,<kind \"projected-refinement\" base 6 rule <kind \"number-lower-bound\" value 0 inclusive true> label \"min\">,<kind \"projected-number\">,<kind \"projected-array\" item 8>,<kind \"projected-ref\" target 1>»>"
 }

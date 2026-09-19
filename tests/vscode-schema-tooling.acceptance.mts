@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import { discover_schema_project, resolve_workspace_hson_schema_tool } from "../editors/vscode-hson/src/schema-tooling.ts";
@@ -10,12 +9,13 @@ let checks = 0;
 function check(name: string, body: () => void): void { body(); console.log(`ok ${++checks} - ${name}`); }
 
 const root = resolve(".");
-const packed = mkdtempSync(join(tmpdir(), "hson-schema-vsix-pack-"));
+mkdirSync(join(root, "tmp"), { recursive: true });
+const packed = mkdtempSync(join(root, "tmp", "hson-schema-vsix-pack-"));
 const packedResult = spawnSync("npm", ["pack", "--json", "--pack-destination", packed, "--cache", join(packed, "npm-cache")], { cwd: root, encoding: "utf8" });
 assert.equal(packedResult.status, 0, packedResult.stderr);
 const archiveName: unknown = JSON.parse(packedResult.stdout)[0]?.filename;
 if (typeof archiveName !== "string") throw new Error("npm pack did not report its artifact filename.");
-const project = mkdtempSync(join(tmpdir(), "hson-schema-vscode-consumer-"));
+const project = mkdtempSync(join(root, "tmp", "hson-schema-vscode-consumer-"));
 mkdirSync(join(project, "node_modules"), { recursive: true });
 const unpacked = spawnSync("tar", ["-xzf", join(packed, archiveName), "-C", join(project, "node_modules")], { encoding: "utf8" });
 assert.equal(unpacked.status, 0, unpacked.stderr);
@@ -33,8 +33,8 @@ const config = join(project, "tsconfig.json");
 const baseConfig = join(project, "tsconfig.base.json");
 writeFileSync(baseConfig, JSON.stringify({ compilerOptions: { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext", forceConsistentCasingInFileNames: false } }, null, 2));
 writeFileSync(config, JSON.stringify({ extends: "./tsconfig.base.json", include: ["./*.ts"] }, null, 2));
-writeFileSync(source, 'import { Hson, type HsonSchema } from "hson-live";\nexport const UserSchema: HsonSchema = Hson`<type "data" content <name "string">>`;\n');
-writeFileSync(candidate, 'import { Hson } from "hson-live"; import type { UserSchemaHson } from "./schema.js";\nconst candidate: UserSchemaHson = Hson`<name "Ada">`; void candidate;\n');
+writeFileSync(source, 'import { Hson } from "hson-live";\nexport const UserSchema = Hson.schema`<type "data" content <name "string">>`;\n');
+writeFileSync(candidate, 'import { Hson, type HsonData } from "hson-live"; import { UserSchema } from "./schema.js";\nconst candidate: HsonData<typeof UserSchema> = Hson.data`<name "Ada">`; void candidate;\n');
 
 const tool = resolve_workspace_hson_schema_tool(project);
 check("packed consumer resolves its installed public hson-schema executable", () => {
@@ -44,11 +44,11 @@ check("packed consumer resolves its installed public hson-schema executable", ()
 });
 
 const run = (mode: "generate" | "check") => spawnSync(process.execPath, [tool.executable, mode, "--project", config], { cwd: project, encoding: "utf8" });
-check("packed consumer Generate creates real Type and Hson exports", () => {
+check("packed consumer Generate creates Schema evidence linked to the public symbol", () => {
   const generated = run("generate");
   assert.equal(generated.status, 0, generated.stdout + generated.stderr + generated.error?.message);
   const text = readFileSync(source, "utf8");
-  assert.match(text, /UserSchemaType/); assert.match(text, /UserSchemaHson/);
+  assert.match(text, /__UserSchemaEvidence/); assert.doesNotMatch(text, /UserSchemaType|UserSchemaHson/);
   const checked = run("check");
   assert.equal(checked.status, 0, checked.stdout + checked.stderr + checked.error?.message);
 });
@@ -92,3 +92,5 @@ const stopped = new Promise<number | null>(resolveStopped => watcher.once("close
 watcher.kill("SIGTERM");
 assert.equal(await stopped, 0, watchOutput);
 check("packed consumer watch reports project/current/error/recovery, reconciles changes, and stops cleanly", () => assert.equal(run("check").status, 0));
+rmSync(project, { recursive: true, force: true });
+rmSync(packed, { recursive: true, force: true });

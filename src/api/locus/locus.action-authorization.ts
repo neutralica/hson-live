@@ -1,4 +1,4 @@
-import type { HsonData } from "../data/hson-data.js";
+import { hson_data_text, type ExactDataCarrier } from "../data/hson-data.js";
 import type {
   LocusActionAuthorizer,
   LocusActionAuthorizationContext,
@@ -8,7 +8,7 @@ import type {
 } from "../../types/locus.types.js";
 
 export type LocusActionAuthorizationResult =
-  | Readonly<{ ok: true; payload: HsonData | undefined }>
+  | Readonly<{ ok: true; payload: ExactDataCarrier | undefined }>
   | Readonly<{
     ok: false;
     code: "LOCUS_ACTION_FORBIDDEN" | "LOCUS_ACTION_AUTHORIZATION_FAILED";
@@ -22,7 +22,7 @@ export function authorize_locus_action<
 >(input: Readonly<{
   authorizer: LocusActionAuthorizer<TActions> | undefined;
   action: string;
-  payload: HsonData | undefined;
+  payload: ExactDataCarrier | undefined;
   origin: Extract<LocusActionOrigin, { kind: "session" }>;
   logicalMapId: string;
   incarnationId: string;
@@ -36,7 +36,7 @@ export function authorize_locus_action<
       epoch: input.origin.epoch,
       resumable: input.origin.resumable,
     }),
-    payload: input.payload,
+    payload: input.payload === undefined ? undefined : hson_data_text(input.payload),
     logicalMapId: input.logicalMapId,
     incarnationId: input.incarnationId,
     ...(input.connection === undefined ? {} : { connection: input.connection }),

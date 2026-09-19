@@ -3,6 +3,6 @@
   "declarationIdentity": "producer.ts#RelationalUniqueSchema",
   "sourceDigest": "0d22427e05c3840cd559c6dcd5345cd83711c3698f14c1bc4dda4f324b3f1806",
   "semanticGraphDigest": "e34bc0b24942743d59b43765439f8336c5fa5ca7a01bb16812ac2ce4bc04da19",
-  "generatedDeclarationDigest": "d09e1e0b5b7817ffdb1a13c154e2c96e68f8bb52da918d2910789dc95e3882d2",
+  "generatedDeclarationDigest": "f49c80eab580a5a093e7ed16e895adcc7d552cd17cbae29c3d5b96679f0ad2ae",
   "graphHson": "<format \"hson-canonical-schema\" version 3 capabilities <projectedRoot 0> nodes «<kind \"projected-object\" exact true properties ««\"cells\",1»»>,<kind \"projected-refinement\" base 2 rule <kind \"array-unique-by-cases\" by \"position\" cases ««\"top-left\",«\"TL\"»»,«\"top-right\",«\"TR\"»»,«\"top-half\",«\"TL\",\"TR\"»»»> label \"unique\">,<kind \"projected-array\" item 3>,<kind \"projected-object\" exact true properties ««\"position\",4»,«\"body\",5»»>,<kind \"projected-string\">,<kind \"projected-string\">»>"
 }

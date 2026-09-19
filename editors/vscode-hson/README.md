@@ -2,18 +2,18 @@
 
 Hson Language adds Hson authoring, Schema tooling, and local Hson application support to VS Code.
 
-- syntax highlighting, definitions, completion, and contextual diagnostics for `.hson` files and `Hson`` tagged templates;
-- context-sensitive angle auto-close, newline indentation, and whitespace-only formatting for recognized `Hson`` templates and Markdown `hson` fences;
+- syntax highlighting, definitions, completion, and contextual diagnostics for `.hson` files and semantic `Hson.canonical`, `Hson.data`, `Hson.document`, and `Hson.schema` tags;
+- context-sensitive angle auto-close, newline indentation, and whitespace-only formatting for recognized semantic Hson templates and Markdown `hson` fences;
 - Schema-aware editing, including semantic references and path-backed completion;
 - generated TypeScript types from Hson Schema declarations;
 - Schema check/watch workflows for editor and CI use;
 - a local application runner using the workspace's own Node and `hson-live`.
 
-Highlighting and diagnostics use TypeScript binding identity for official `hson-live` imports, including renamed imports. Hson authored through `Hson`` and supported literal `fromHson(...)` inputs receives the same grammar-aware presentation.
+Highlighting and diagnostics use TypeScript binding identity for official `hson-live` imports, including renamed imports. Hson authored through semantic Hson tags and supported literal `fromHson(...)` inputs receives the same grammar-aware presentation.
 
 ## Structural editing
 
-Inside binding-recognized `Hson`` templates, typing `<` inserts `>` or `/>` only when the Hson parser proves one structural mode. An initially ambiguous template is left unchanged. Enter follows Hson nesting and the editor's tabs/spaces settings. Canonical Markdown fences such as ```` ```hson ```` use the same structural behavior.
+Inside binding-recognized semantic Hson templates, typing `<` inserts `>` or `/>` only when the Hson parser proves one structural mode. An initially ambiguous template is left unchanged. Enter follows Hson nesting and the editor's tabs/spaces settings. Canonical Markdown fences such as ```` ```hson ```` use the same structural behavior.
 
 Use **Hson: Format Document** to run the normal host formatter and then format recognized Hson regions, or **Hson: Format Selection** for selected regions. Markdown Format Document/Selection also formats canonical `hson` fences directly. Formatting adjusts indentation, normalizes horizontal trivia between Hson tokens, and places the first member of an already-multiline data object below its opening `<`. It preserves token contents and authored blank lines; it does not serialize, reorder, or generally reflow authored Hson.
 
@@ -24,9 +24,9 @@ Use **Hson: Format Document** to run the normal host formatter and then format r
 Schemas are authored directly in canonical Hson:
 
 ```ts
-import { Hson, type HsonSchema } from "hson-live/hson";
+import { Hson, type HsonData, type SchemaType } from "hson-live/hson";
 
-export const UserSchema: HsonSchema = Hson`
+export const UserSchema = Hson.schema`
   <type "data" content <
     user <content <
       age "number"
@@ -35,7 +35,7 @@ export const UserSchema: HsonSchema = Hson`
 `;
 ```
 
-The extension discovers static `HsonSchema` declarations and generated evidence to provide diagnostics, completion, hover, definitions, references, and rename support.
+The extension discovers direct `Hson.schema` declarations and generator-managed evidence to provide diagnostics, completion, hover, definitions, references, and rename support.
 
 For example, `<ref "…">` completion is scoped to the current Schema declaration's `defs`, and navigation follows those semantic references rather than matching text alone.
 
@@ -54,7 +54,7 @@ Available editor commands include:
 - **Hson: Stop Schema Watch**
 - **Hson: Check Schemas**
 
-Runtime values can be certified explicitly with `Hson.certify(...)`, while LiveMap state can be governed through `map.schema.use(...)`.
+Direct `Hson.data` and `Hson.document` assignments to `HsonData<typeof Schema>` or `HsonDocument<typeof Schema>` gain proof after Schema-aware validation. Dynamic values can be certified with `schema.certify(...)`, while LiveMap state can be governed through `map.schema.use(...)`.
 
 ## Local applications
 

@@ -809,9 +809,9 @@ Reentrant mutation is supported only through the map’s defined notification sc
 LiveMap governance accepts authored HsonSchema only:
 
 ```ts
-import { Hson, type HsonSchema } from "hson-live";
+import { Hson, type HsonData, type SchemaType } from "hson-live";
 
-const UserSchema: HsonSchema = Hson`
+const UserSchema = Hson.schema`
   <type "data" content <user <content <
     name "string"
     age <optional "number">
@@ -824,7 +824,7 @@ map.schema.use(UserSchema);
 
 The owner retains the identical HsonSchema through `map.schema.get()`.
 Attachment validates the current canonical root, and governed mutation, restore,
-and replay validate before publication. `Hson.certify` is the separate generic
+and replay validate before publication. `schema.certify` is the separate generic
 dynamic certification entrance. Callback authoring and schema-path resolver
 helpers are not part of the LiveMap API.
 ## Proxies

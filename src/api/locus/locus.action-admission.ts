@@ -1,5 +1,5 @@
 import type { JsonValue } from "../../core/types.js";
-import { HsonData } from "../data/hson-data.js";
+import { ExactDataCarrier, admit_hson_data_input, hson_data_text } from "../data/hson-data.js";
 import type { LiveMapAnyOp, LiveMapAuthority, LiveMapCommit } from "../../types/livemap.types.js";
 import type {
   LocusActionAuthorizer, LocusActionContext, LocusActionDelivery, LocusActionOrigin, LocusActionPayloads,
@@ -19,7 +19,7 @@ type LocusActionHandler<TMap extends LiveMapAuthority, TActions extends LocusAct
   NonNullable<Partial<LocusActions<TActions, TMap>>[keyof TActions & string]>;
 
 export type LocusValidatedAction<TMap extends LiveMapAuthority, TActions extends LocusActionPayloads> =
-  | Readonly<{ ok: true; handler: LocusActionHandler<TMap, TActions>; payload: HsonData | undefined }>
+  | Readonly<{ ok: true; handler: LocusActionHandler<TMap, TActions>; payload: ExactDataCarrier | undefined }>
   | Readonly<{ ok: false; code: "LOCUS_ACTION_UNKNOWN" | "LOCUS_ACTION_UNAVAILABLE" | "LOCUS_ACTION_INVALID"; message: string }>;
 
 /** Internal authority capture installed only by the owning solo Locus runtime. */
@@ -96,7 +96,7 @@ export function resolve_locus_action_for_execution<TMap extends LiveMapAuthority
   trace?: LiveTraceContext,
   parentSpanId?: string,
 ): LocusValidatedAction<TMap, TActions> {
-  const admittedPayload = message.payload === undefined ? undefined : HsonData.from(message.payload);
+  const admittedPayload = message.payload === undefined ? undefined : admit_hson_data_input(message.payload);
   const lookupSpan = trace?.beginSpan("locus", "action.lookup", parentSpanId, () => ({ action: message.name }));
   const documentAction = resolve_locus_document_action(
     authority.map,
@@ -130,7 +130,7 @@ export function resolve_locus_action_for_execution<TMap extends LiveMapAuthority
       });
     };
     validationSpan?.success(() => ({ action: message.name, schemaConfigured: true }));
-    return { ok: true, handler, payload: HsonData.from(documentAction.payload) };
+    return { ok: true, handler, payload: ExactDataCarrier.from(documentAction.payload) };
   }
   if (!configuredHandler) throw new Error("Locus action resolution lost its configured handler.");
   const actionSchema = authority.schema?.actions?.[message.name];
@@ -152,7 +152,7 @@ export function resolve_locus_action_for_execution<TMap extends LiveMapAuthority
 function authorizeAction<TMap extends LiveMapAuthority, TActions extends LocusActionPayloads>(
   authority: LocusSoloActionAuthorityInternals<TMap, TActions>,
   message: LocusClientActionMessage<TActions>,
-  payload: HsonData | undefined,
+  payload: ExactDataCarrier | undefined,
   origin: Extract<LocusActionOrigin, { kind: "session" }>,
   trace?: LiveTraceContext,
   parentSpanId?: string,
@@ -223,7 +223,7 @@ export async function execute_locus_action_handler<
     "readonlyMap" | "mutations" | "currentSeq" | "nextSeq" | "headRev" | "traceStateBoundary">;
   message: LocusClientActionMessage<TActions>;
   handler: LocusActionHandler<TMap, TActions>;
-  payload: HsonData | undefined;
+  payload: ExactDataCarrier | undefined;
   origin: LocusActionOrigin;
   emitEvent: LocusActionContext<TMap>["emitEvent"];
   trace?: LiveTraceContext;
@@ -268,13 +268,13 @@ export async function execute_locus_action_handler<
   };
 
   try {
-    const result = await input.handler(context, input.payload as never, input.message);
+    const result = await input.handler(context, input.payload === undefined ? undefined as never : hson_data_text(input.payload) as never, input.message);
     const tracked = finish();
     if (tracked !== undefined) await tracked;
-    let admittedResult: HsonData | undefined;
+    let admittedResult: ExactDataCarrier | undefined;
     if (result !== undefined) {
       try {
-        admittedResult = HsonData.from(result);
+        admittedResult = admit_hson_data_input(result);
       } catch {
         handlerSpan?.failure(() => ({ action: input.message.name, errorCode: "LOCUS_ACTION_OUTCOME_NORMALIZATION_FAILED" }));
         input.authority.traceStateBoundary(input.trace, input.parentSpanId, previousRev);
@@ -291,7 +291,7 @@ export async function execute_locus_action_handler<
     input.authority.traceStateBoundary(input.trace, input.parentSpanId, previousRev);
     return Object.freeze({
       state: "succeeded", seq: input.authority.nextSeq(), completionRev: input.authority.headRev(),
-      ...(admittedResult !== undefined ? { result: admittedResult } : {}),
+      ...(admittedResult !== undefined ? { result: hson_data_text(admittedResult) } : {}),
     });
   } catch (caught) {
     let cause = caught;

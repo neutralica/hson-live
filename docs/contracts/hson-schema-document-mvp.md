@@ -1,51 +1,20 @@
-# Hson Schema document MVP
+# Document Schema authoring and proof
 
-The first document-domain slice uses the same ordinary-Hson Schema declaration,
-compiler, canonical graph, analyzer, generated evidence, and runtime validation
-boundary as the data MVP.
+Document Schemas use the same Hson authoring, generator, and proof path as data Schemas, with document mode fixed in the generated evidence.
 
 ```ts
-export const PageSchema: HsonSchema = Hson`
-  <
-    type "document"
-    tag "main"
-    attrs <
-      props <
-        id "string"
-        hidden <optional "flag">
-      >
-      closed true
-    >
-    content <sequence [
-      <tag "section" content "string">
-    ]>
-  >
+import { Hson, type HsonDocument, type SchemaType } from "hson-live";
+
+export const PageSchema = Hson.schema`
+  <type "document" tag "main"
+    attrs <props <id "string" hidden <optional "flag">> closed true>
+    content <sequence [<tag "section" content "string">]>>
 `;
+
+export type Page = SchemaType<typeof PageSchema>;
+const page: HsonDocument<typeof PageSchema> = Hson.document`<main id=hero <section "body"/>/>`;
 ```
 
-The root is one exact-tag element. `content "empty"` means exact empty
-content, `content "string"` means one textual item, and
-`content <sequence [...]>` means an exact ordered sequence of nested element
-descriptors. Sequences may be empty, but mixed element/text sequences are not
-accepted because the current Hson document grammar cannot author that physical
-shape without a structural-mode crossing.
+`HsonDocument<typeof PageSchema>` is a canonical primitive string with a Schema-specific proof. The authoritative Schema analyzer checks direct authored assignments and grants proof only for valid, substitution-free source. Dynamic certification uses `PageSchema.certify(candidate)` and validates in document context. Data candidates reject statically where their mode is known, and wrong-mode input always rejects at runtime.
 
-`attrs.props` separates candidate attribute names from attrs descriptor
-controls. Declared attrs are required unless wrapped in the same general
-`optional` descriptor used by data members. `flag` validates the canonical Hson
-flag spelling. Attrs are open by default; `attrs.closed true` closes them. This
-slice accepts `string` and exact-string valued attrs. The canonical Hson parser
-stores authored attrs as strings, so number/boolean/null attr Schemas are not
-claimed until canonical attr decoding can be extended without changing legacy
-Schema meaning.
-
-Generated `<Name>Type` is a deeply readonly Hson-side element-node type with
-exact `$_tag`, attrs and physical content structure, plus inaccessible proof at
-every semantic node. `<Name>Hson` remains the declaration-specific certified
-canonical Hson string. Static certification remains analyzer/build-authoritative;
-dynamic certification remains `Hson.certify(schema, canonical)` and returns
-the identical canonical string.
-
-This slice does not add a builder, materializer, DOM certification, fragment,
-repeat, arbitrary tag, content union, recursion, defs/ref, or document-specific
-validation API.
+The generated `SchemaType<typeof PageSchema>` projects exact readonly tag, attribute, and ordered content structure with inaccessible refinement proof. The document vocabulary supports exact tag, optional and required attributes, closed or open attrs, empty/string content, sequences, repeated children, local definitions and references, and the implemented refinements. `Hson.document` separately admits notation-closed documents, including empty and multi-root content. Document admission alone does not claim Schema conformance.

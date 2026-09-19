@@ -10,7 +10,7 @@ import { serialize_hson_owned_document_content } from "../transform/serializers/
 import type { HsonCanonical } from "../transform/transform.types.js";
 import { scan_ingested_hson_node_quids } from "../transform/utils/hson-utils/quid-ingress.js";
 
-let wrap_hson_document: (root: HsonNode) => HsonDocument;
+let wrap_hson_document: (root: HsonNode) => ExactDocumentCarrier;
 const hson_document_roots = new WeakMap<object, HsonNode>();
 const hson_document_construction_authority = Object.freeze({});
 
@@ -20,7 +20,7 @@ type AdmissionState = Readonly<{
 
 function fail_admission(path: string, message: string, cause?: unknown): never {
   throw new TypeError(
-    `HsonDocument node admission failed at ${path}: ${message}`,
+    `ExactDocumentCarrier node admission failed at ${path}: ${message}`,
     cause === undefined ? undefined : { cause },
   );
 }
@@ -157,7 +157,7 @@ function assert_exact_node_fields(node: HsonNode, path: string, seen: WeakSet<ob
 function normalize_owned_document_boundary(node: HsonNode): HsonNode {
   // Validate before discarding a structural wrapper so attrs/meta can never be
   // hidden by boundary normalization.
-  assert_invariants(node, "HsonDocument document boundary");
+  assert_invariants(node, "ExactDocumentCarrier document boundary");
 
   if (node.$_tag === ROOT_TAG) {
     if (node.$_content.length !== 1) return node;
@@ -181,7 +181,7 @@ function normalize_owned_document_boundary(node: HsonNode): HsonNode {
 }
 
 function qualify_exact_document_root(root: HsonNode): void {
-  scan_ingested_hson_node_quids(root, "HsonDocument");
+  scan_ingested_hson_node_quids(root, "ExactDocumentCarrier");
   if (root.$_tag !== ROOT_TAG) return fail_admission("$", "private document graph must use _hson_root");
   for (let index = 0; index < root.$_content.length; index += 1) {
     const item = root.$_content[index];
@@ -199,8 +199,8 @@ function qualify_exact_document_root(root: HsonNode): void {
   }));
   if (!canonical_hson_graph_equal(root, reparsed)) {
     _throw_transform_err(
-      "HsonDocument input is canonical document structure but is not exactly closed under Hson notation",
-      "HsonDocument.fromNode",
+      "ExactDocumentCarrier input is canonical document structure but is not exactly closed under Hson notation",
+      "ExactDocumentCarrier.fromNode",
       undefined,
       undefined,
       {
@@ -225,20 +225,20 @@ function deep_freeze(value: unknown, seen = new WeakSet<object>()): void {
 function assert_deeply_frozen(value: unknown, seen = new WeakSet<object>()): void {
   if (typeof value !== "object" || value === null || seen.has(value)) return;
   seen.add(value);
-  if (!Object.isFrozen(value)) throw new TypeError("Owned HsonDocument roots must be deeply frozen.");
+  if (!Object.isFrozen(value)) throw new TypeError("Owned ExactDocumentCarrier roots must be deeply frozen.");
   for (const key of Reflect.ownKeys(value)) {
     const descriptor = Reflect.getOwnPropertyDescriptor(value, key);
     if (descriptor !== undefined && "value" in descriptor) assert_deeply_frozen(descriptor.value, seen);
   }
 }
 
-function admit_owned_document_root(root: HsonNode): HsonDocument {
+function admit_owned_document_root(root: HsonNode): ExactDocumentCarrier {
   qualify_exact_document_root(root);
   deep_freeze(root);
   return wrap_hson_document(root);
 }
 
-function is_hson_document(value: unknown): value is HsonDocument {
+function is_hson_document(value: unknown): value is ExactDocumentCarrier {
   return typeof value === "object" && value !== null && hson_document_roots.has(value);
 }
 
@@ -248,35 +248,35 @@ function is_hson_document(value: unknown): value is HsonDocument {
  * Zero, one, and many top-level items are the same document semantic kind;
  * `_hson_root` is private structural machinery rather than authored content.
  */
-export class HsonDocument {
+export class ExactDocumentCarrier {
   declare private readonly hsonDocumentNominal: void;
 
   private constructor(root: HsonNode, authority: object) {
     if (authority !== hson_document_construction_authority) {
-      throw new TypeError("HsonDocument construction is controlled by HsonDocument.fromHson or HsonDocument.fromNode.");
+      throw new TypeError("ExactDocumentCarrier construction is controlled by ExactDocumentCarrier.fromHson or ExactDocumentCarrier.fromNode.");
     }
     hson_document_roots.set(this, root);
     Object.freeze(this);
   }
 
   static {
-    wrap_hson_document = (root) => new HsonDocument(root, hson_document_construction_authority);
+    wrap_hson_document = (root) => new ExactDocumentCarrier(root, hson_document_construction_authority);
   }
 
   /** Parse exact document-context Hson, including zero-length empty documents. */
-  static fromHson(source: HsonCanonical): HsonDocument {
-    if (typeof source !== "string") throw new TypeError("HsonDocument.fromHson requires canonical Hson source text.");
+  static fromHson(source: HsonCanonical): ExactDocumentCarrier {
+    if (typeof source !== "string") throw new TypeError("ExactDocumentCarrier.fromHson requires canonical Hson source text.");
     const parsed = parse_hson(source, { allowTopLevelDocumentText: true });
     return admit_owned_document_root(normalize_owned_document_boundary(parsed));
   }
 
   /** Safely copy and admit exact notation-closed document-context Hson. */
-  static fromNode(node: HsonNode): HsonDocument {
+  static fromNode(node: HsonNode): ExactDocumentCarrier {
     return admit_owned_document_root(normalize_owned_document_boundary(copy_node_input(node)));
   }
 
   /** Exact canonical graph equality with no serialization or normalization. */
-  equals(other: HsonDocument): boolean {
+  equals(other: ExactDocumentCarrier): boolean {
     return is_hson_document(other)
       && canonical_hson_graph_equal(hson_document_root(this), hson_document_root(other));
   }
@@ -293,9 +293,9 @@ export class HsonDocument {
 }
 
 /** @internal Read the deeply frozen private root after runtime nominal validation. */
-export function hson_document_root(value: HsonDocument): HsonNode {
+export function hson_document_root(value: ExactDocumentCarrier): HsonNode {
   const root = hson_document_roots.get(value);
-  if (root === undefined) throw new TypeError("Expected a genuine HsonDocument value.");
+  if (root === undefined) throw new TypeError("Expected a genuine ExactDocumentCarrier value.");
   return root;
 }
 
@@ -303,7 +303,7 @@ export function hson_document_root(value: HsonDocument): HsonNode {
  * @internal Wrap a newly allocated, already validated, deeply frozen document
  * root supplied by trusted hson-live internals without cloning it.
  */
-export function hson_document_from_owned_root(root: HsonNode): HsonDocument {
+export function hson_document_from_owned_root(root: HsonNode): ExactDocumentCarrier {
   assert_deeply_frozen(root);
   assert_invariants(root, "hson_document_from_owned_root");
   qualify_exact_document_root(root);

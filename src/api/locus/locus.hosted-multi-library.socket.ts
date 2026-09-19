@@ -1,5 +1,5 @@
 import type { JsonValue } from "../../core/types.js";
-import { HsonData, encode_hson_data_internal } from "../data/hson-data.js";
+import { ExactDataCarrier, admit_hson_data_input, hson_data_text, encode_hson_data_internal } from "../data/hson-data.js";
 import type {
   LiveMapDocumentCommitTarget,
   LiveMapDocumentRequestTarget,
@@ -92,7 +92,7 @@ type HostedRequest =
     type: "action";
     id: string;
     name: string;
-    payload?: HsonData | JsonValue;
+    payload?: ExactDataCarrier | JsonValue;
     requestId?: string;
     attemptId?: string;
     clientId?: string;
@@ -629,26 +629,29 @@ export function create_locus_hosted_aggregate_socket_internal<
 
   async function execute_action(
     request: Extract<HostedRequest, { type: "action" }>,
-    payload: HsonData | undefined,
+    payload: ExactDataCarrier | undefined,
     origin: LocusActionOrigin = Object.freeze({ kind: "direct" }),
   ): Promise<LocusActionTerminalOutcome> {
     try {
       let result: unknown | void;
       if (is_document_action(request.name)) {
-        const validated = validate_action_request(Object.freeze({ ...request, ...(payload === undefined ? {} : { payload }) }));
+        const { payload: _wirePayload, ...requestWithoutPayload } = request;
+        const validated = validate_action_request(Object.freeze({ ...requestWithoutPayload, ...(payload === undefined ? {} : { payload: hson_data_text(payload) }) }));
         if (!validated.ok || validated.executeDocument === undefined) throw new Error(validated.ok ? "Hosted document action resolution was lost." : validated.message);
         await locus.mutate(validated.executeDocument);
         result = undefined;
       } else {
-        result = await locus.dispatch_action(request.name, payload, request, origin);
+        const { payload: _wirePayload, ...requestWithoutPayload } = request;
+        const publicRequest = Object.freeze({ ...requestWithoutPayload, ...(payload === undefined ? {} : { payload: hson_data_text(payload) }) });
+        result = await locus.dispatch_action(request.name, payload, publicRequest, origin);
       }
       seq += 1;
-      const admittedResult = result === undefined ? undefined : HsonData.from(result);
+      const admittedResult = result === undefined ? undefined : admit_hson_data_input(result);
       return Object.freeze({
         state: "succeeded",
         seq,
         completionRev: locus.rev,
-        ...(admittedResult === undefined ? {} : { result: admittedResult }),
+        ...(admittedResult === undefined ? {} : { result: hson_data_text(admittedResult) }),
       });
     } catch (cause) {
       return Object.freeze({
@@ -755,9 +758,9 @@ export function create_locus_hosted_aggregate_socket_internal<
 
   function validate_action_request(
     request: Extract<HostedRequest, { type: "action" }>,
-  ): Readonly<{ ok: true; payload: HsonData | undefined; executeDocument?: (draft: LocusHostedAggregateDraft) => void }> | Readonly<{ ok: false; code: string; message: string }> {
+  ): Readonly<{ ok: true; payload: ExactDataCarrier | undefined; executeDocument?: (draft: LocusHostedAggregateDraft) => void }> | Readonly<{ ok: false; code: string; message: string }> {
     try {
-      const admittedPayload = request.payload === undefined ? undefined : HsonData.from(request.payload);
+      const admittedPayload = request.payload === undefined ? undefined : admit_hson_data_input(request.payload);
       if (is_document_action(request.name)) {
         const record = exact_record(admittedPayload?.materialize(), `Hosted document action ${request.name}`);
         const libraryName = required_string(record.library);
@@ -777,7 +780,7 @@ export function create_locus_hosted_aggregate_socket_internal<
         const normalized: JsonValue = normalizedCandidate;
         return Object.freeze({
           ok: true,
-          payload: HsonData.from(normalized),
+          payload: ExactDataCarrier.from(normalized),
           executeDocument: (draft: LocusHostedAggregateDraft) => {
             const target = draft.lib(libraryName);
             if (!("graph" in target)) throw new Error("Hosted document action library is not a document Library.");
@@ -798,7 +801,7 @@ export function create_locus_hosted_aggregate_socket_internal<
         message: cause instanceof Error ? cause.message : "Locus action payload is invalid.",
       });
     }
-    return Object.freeze({ ok: true, payload: request.payload === undefined ? undefined : HsonData.from(request.payload) });
+    return Object.freeze({ ok: true, payload: request.payload === undefined ? undefined : admit_hson_data_input(request.payload) });
   }
 
   async function dispatch_message(message: import("../../types/locus.types.js").LocusClientActionMessage): Promise<LocusClientActionResult> {
@@ -1072,7 +1075,7 @@ function encode_downstream_message(message: unknown, limit: number): string {
     framed = Object.freeze({
       ...rest,
       format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
-      ...(result === undefined ? {} : { resultData: encode_hson_data_internal(result as HsonData) }),
+      ...(result === undefined ? {} : { resultData: encode_hson_data_internal(result as ExactDataCarrier) }),
     });
   } else if (semantic.type === "action-status" && is_record(semantic.outcome)
     && semantic.outcome.state === "succeeded" && Object.hasOwn(semantic.outcome, "result")) {
@@ -1082,7 +1085,7 @@ function encode_downstream_message(message: unknown, limit: number): string {
       format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
       outcome: Object.freeze({
         ...outcome,
-        ...(result === undefined ? {} : { resultData: encode_hson_data_internal(result as HsonData) }),
+        ...(result === undefined ? {} : { resultData: encode_hson_data_internal(result as ExactDataCarrier) }),
       }),
     });
   } else {

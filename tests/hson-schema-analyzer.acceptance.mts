@@ -40,39 +40,22 @@ const hsonLiveTypes = join(project, "index.d.ts");
 const hsonAuthoringTypes = join(project, "hson-authoring.d.ts");
 const config = join(project, "tsconfig.json");
 
-writeFileSync(producer, `import { Hson, type HsonSchema } from "hson-live";\nexport const UserSchema: HsonSchema = Hson\`<type "data" content <name "string" age <number <int true min 0 under 130>> code <string <len 4 prefix "ID" suffix "7" contains "-">> key <string <len 3 alphabet "abc">> values <array <content "number" unique true minlen 1 maxlen 2>>>>\`;\nexport const FiniteSchema: HsonSchema = Hson\`<type "data" content <phase <union [<exact "lobby">, <union [<exact "ready">, <union [<exact "playing">, <exact "finished">]>]>]> turn <union [<exact "player1">, <union [<exact "player2">, "null"]>]> signedZero <union [<exact 0>, <exact -0>]>>>\`;\nexport const TreeSchema: HsonSchema = Hson\`<type "data" defs <Age <number <int true min 0>> Leaf <content <value "string" age <ref "Age"> children <tuple []>>> Tree <content <value "string" age <ref "Age"> children <array <ref "Tree">>>>> content <ref "Tree">>\`;\nthrow new Error("the analyzer must never execute this module");\n`);
-writeFileSync(consumer, `import { Hson } from "hson-live"; import { type FiniteSchemaHson, type FiniteSchemaType, type TreeSchemaHson, type TreeSchemaType, type UserSchemaHson, type UserSchemaType } from "./producer.js";\nconst user: UserSchemaHson = Hson\`<name "Ada" age 37 code "ID-7" key "abc" values [0, -0]>\`; void user;\nconst finite: FiniteSchemaHson = Hson\`<phase "playing" turn null signedZero -0>\`; void finite;\ndeclare const finiteValue: FiniteSchemaType; const phase: "lobby" | "ready" | "playing" | "finished" = finiteValue.phase; const turn: "player1" | "player2" | null = finiteValue.turn; void phase; void turn;\nconst tree: TreeSchemaHson = Hson\`<value "root" age 2 children [<value "leaf" age 0 children []>]>\`; void tree;\ndeclare const recursive: TreeSchemaType; const child: TreeSchemaType | undefined = recursive.children[0]; const recursiveAge: TreeSchemaType["age"] = recursive.age; void child; void recursiveAge;\ndeclare const value: UserSchemaType; const age: UserSchemaType["age"] = value.age; const code: UserSchemaType["code"] = value.code; const key: UserSchemaType["key"] = value.key; const values: UserSchemaType["values"] = value.values; void age; void code; void key; void values;\n// @ts-expect-error arithmetic erases integer proof\nconst changedAge: UserSchemaType["age"] = value.age + 1;\n// @ts-expect-error string transforms erase constraint proof\nconst changedCode: UserSchemaType["code"] = value.code.slice(0);\n// @ts-expect-error alphabet proof rejects plain strings\nconst changedKey: UserSchemaType["key"] = "abc";\n// @ts-expect-error spread erases uniqueness proof\nconst changedValues: UserSchemaType["values"] = [...value.values];\n// @ts-expect-error referenced refinement proof rejects plain numbers\nconst plainRecursiveAge: TreeSchemaType["age"] = value.age;\nvoid changedAge; void changedCode; void changedKey; void changedValues; void plainRecursiveAge;\n`);
-writeFileSync(aliasSchema, `import { Hson as Author, type HsonSchema as Schema } from "hson-live";\nexport const AliasSchema: Schema = Author\`<type "data" content <ok "boolean">>\`;\n`);
-writeFileSync(documentSchema, `import { Hson, type HsonSchema } from "hson-live";\nexport const PageSchema: HsonSchema = Hson\`<type "document" tag "main" attrs <props <id "string" hidden <optional "flag">> closed true> content <sequence [<tag "header" content "empty">, <tag "section" content "string">]>>\`;\nexport const RepeatSchema: HsonSchema = Hson\`<type "document" defs <Code <string <prefix "ok-">> Item <tag "item" attrs <props <code <ref "Code">>> content "empty">> tag "list" content <repeat <ref "Item"> count 2>>\`;\nexport const DocumentSequenceSchema: HsonSchema = Hson\`<type "document" defs <Item <tag "item" content "empty">> content <repeat <ref "Item"> count 2>>\`;\n`);
-writeFileSync(documentConsumer, `import { Hson } from "hson-live"; import type { DocumentSequenceSchemaHson, PageSchemaHson, PageSchemaType, RepeatSchemaHson, RepeatSchemaType } from "./document-schema.js";\nconst page: PageSchemaHson = Hson\`<main id=hero <header/> <section "body"/>/>\`; void page;\nconst repeated: RepeatSchemaHson = Hson\`<list <item code=ok-one/> <item code=ok-two/>/>\`; void repeated;\nconst documentSequence: DocumentSequenceSchemaHson = Hson\`<item/><item/>\`; void documentSequence;\ndeclare const value: PageSchemaType; const rootTag: "_hson_root" = value.$_tag; const main = value.$_content[0]; const mainTag: "main" = main.$_tag; const child = main.$_content[0].$_content[1]; const childTag: "section" = child.$_tag; void rootTag; void mainTag; void childTag;\ndeclare const repeatValue: RepeatSchemaType; const list = repeatValue.$_content[0]; const repeatedChild = list.$_content[0].$_content[0]; const repeatedTag: "item" = repeatedChild.$_tag; void repeatedTag;\n// @ts-expect-error a plain array cannot impersonate certified repeated content\nconst plainRepeated: RepeatSchemaType["$_content"][0]["$_content"][0]["$_content"] = [repeatedChild, repeatedChild]; void plainRepeated;\n// @ts-expect-error private semantic proof prevents structural fabrication\nconst fake: PageSchemaType = { $_tag: "_hson_root", $_content: [] }; void fake;\n// @ts-expect-error object spread does not preserve private semantic proof\nconst rebuilt: PageSchemaType = { ...value }; void rebuilt;\n`);
-writeFileSync(localStatic, `import { Hson, type HsonSchema } from "hson-live";\nconst SchemaTest: HsonSchema = Hson\`<type "data" content <name "string" score "number">>\`;\nconst testData: SchemaTestHson = Hson\`<name "Ada" score 37>\`;\ndeclare const typed: SchemaTestType; const score: number = typed.score; void SchemaTest; void testData; void score;\n`);
-// Keep this mutable-project fixture independent of concurrent repository builds that replace dist.
-writeFileSync(hsonLiveTypes, `declare const HSON_CANONICAL_BRAND: unique symbol;
-declare const HSON_SCHEMA_SOURCE_DESIGNATION: unique symbol;
-declare const HSON_SCHEMA_MUTATION_CANDIDATE: unique symbol;
-declare const HSON_NUMBER_BRAND: unique symbol;
-export type HsonCanonical = string & { readonly [HSON_CANONICAL_BRAND]: true };
-export type HsonSchemaMode = "data" | "document";
-export type HsonSchema<TValue = unknown, TMode extends HsonSchemaMode = HsonSchemaMode> = HsonCanonical & {
-  readonly [HSON_SCHEMA_SOURCE_DESIGNATION]?: Readonly<{ value: TValue; mode: TMode }>;
-};
-export type HsonSchemaMutationCandidate<TValue> = Readonly<{ readonly [HSON_SCHEMA_MUTATION_CANDIDATE]: TValue }>;
-export type HsonNumber = number & { readonly [HSON_NUMBER_BRAND]: true };
-type HsonTemplatePrimitive = string | number | boolean | null;
-declare function admit_hson(strings: TemplateStringsArray, ...substitutions: readonly HsonTemplatePrimitive[]): HsonCanonical;
-export declare const Hson: typeof admit_hson & {
-  certify(schema: HsonSchema, canonical: HsonCanonical): HsonCanonical;
-};
-`);
-writeFileSync(hsonAuthoringTypes, readFileSync(hsonLiveTypes, "utf8"));
-writeFileSync(config, JSON.stringify({ compilerOptions: { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext", declaration: true, outDir: "./out", baseUrl: ".", paths: { "hson-live": [hsonLiveTypes], "hson-live/hson": [hsonAuthoringTypes] } }, include: ["./*.ts"] }, null, 2));
+writeFileSync(producer, `import { Hson } from "hson-live";\nexport const UserSchema = Hson.schema\`<type "data" content <name "string" age <number <int true min 0 under 130>> code <string <len 4 prefix "ID" suffix "7" contains "-">> key <string <len 3 alphabet "abc">> values <array <content "number" unique true minlen 1 maxlen 2>>>>\`;\nexport const FiniteSchema = Hson.schema\`<type "data" content <phase <union [<exact "lobby">, <union [<exact "ready">, <union [<exact "playing">, <exact "finished">]>]>]> turn <union [<exact "player1">, <union [<exact "player2">, "null"]>]> signedZero <union [<exact 0>, <exact -0>]>>>\`;\nexport const TreeSchema = Hson.schema\`<type "data" defs <Age <number <int true min 0>> Leaf <content <value "string" age <ref "Age"> children <tuple []>>> Tree <content <value "string" age <ref "Age"> children <array <ref "Tree">>>>> content <ref "Tree">>\`;\nthrow new Error("the analyzer must never execute this module");\n`);
+writeFileSync(consumer, `import { Hson, type HsonData, type SchemaType } from "hson-live"; import { FiniteSchema, TreeSchema, UserSchema } from "./producer.js";\nconst user: HsonData<typeof UserSchema> = Hson.data\`<name "Ada" age 37 code "ID-7" key "abc" values [0, -0]>\`; void user;\nconst finite: HsonData<typeof FiniteSchema> = Hson.data\`<phase "playing" turn null signedZero -0>\`; void finite;\ndeclare const finiteValue: SchemaType<typeof FiniteSchema>; const phase: "lobby" | "ready" | "playing" | "finished" = finiteValue.phase; const turn: "player1" | "player2" | null = finiteValue.turn; void phase; void turn;\nconst tree: HsonData<typeof TreeSchema> = Hson.data\`<value "root" age 2 children [<value "leaf" age 0 children []>]>\`; void tree;\ndeclare const recursive: SchemaType<typeof TreeSchema>; const child: SchemaType<typeof TreeSchema> | undefined = recursive.children[0]; const recursiveAge: SchemaType<typeof TreeSchema>["age"] = recursive.age; void child; void recursiveAge;\ndeclare const value: SchemaType<typeof UserSchema>; const age: SchemaType<typeof UserSchema>["age"] = value.age; const code: SchemaType<typeof UserSchema>["code"] = value.code; const key: SchemaType<typeof UserSchema>["key"] = value.key; const values: SchemaType<typeof UserSchema>["values"] = value.values; void age; void code; void key; void values;\n// @ts-expect-error arithmetic erases integer proof\nconst changedAge: SchemaType<typeof UserSchema>["age"] = value.age + 1;\n// @ts-expect-error string transforms erase constraint proof\nconst changedCode: SchemaType<typeof UserSchema>["code"] = value.code.slice(0);\n// @ts-expect-error alphabet proof rejects plain strings\nconst changedKey: SchemaType<typeof UserSchema>["key"] = "abc";\n// @ts-expect-error spread erases uniqueness proof\nconst changedValues: SchemaType<typeof UserSchema>["values"] = [...value.values];\n// @ts-expect-error referenced refinement proof rejects plain numbers\nconst plainRecursiveAge: SchemaType<typeof TreeSchema>["age"] = value.age;\nvoid changedAge; void changedCode; void changedKey; void changedValues; void plainRecursiveAge;\n`);
+writeFileSync(aliasSchema, `import { Hson as Author } from "hson-live";\nexport const AliasSchema = Author.schema\`<type "data" content <ok "boolean">>\`;\n`);
+writeFileSync(documentSchema, `import { Hson } from "hson-live";\nexport const PageSchema = Hson.schema\`<type "document" tag "main" attrs <props <id "string" hidden <optional "flag">> closed true> content <sequence [<tag "header" content "empty">, <tag "section" content "string">]>>\`;\nexport const RepeatSchema = Hson.schema\`<type "document" defs <Code <string <prefix "ok-">> Item <tag "item" attrs <props <code <ref "Code">>> content "empty">> tag "list" content <repeat <ref "Item"> count 2>>\`;\nexport const DocumentSequenceSchema = Hson.schema\`<type "document" defs <Item <tag "item" content "empty">> content <repeat <ref "Item"> count 2>>\`;\n`);
+writeFileSync(documentConsumer, `import { Hson, type HsonDocument, type SchemaType } from "hson-live"; import { DocumentSequenceSchema, PageSchema, RepeatSchema } from "./document-schema.js";\nconst page: HsonDocument<typeof PageSchema> = Hson.document\`<main id=hero <header/> <section "body"/>/>\`; void page;\nconst repeated: HsonDocument<typeof RepeatSchema> = Hson.document\`<list <item code=ok-one/> <item code=ok-two/>/>\`; void repeated;\nconst documentSequence: HsonDocument<typeof DocumentSequenceSchema> = Hson.document\`<item/><item/>\`; void documentSequence;\ndeclare const value: SchemaType<typeof PageSchema>; const rootTag: "_hson_root" = value.$_tag; const main = value.$_content[0]; const mainTag: "main" = main.$_tag; const child = main.$_content[0].$_content[1]; const childTag: "section" = child.$_tag; void rootTag; void mainTag; void childTag;\ndeclare const repeatValue: SchemaType<typeof RepeatSchema>; const list = repeatValue.$_content[0]; const repeatedChild = list.$_content[0].$_content[0]; const repeatedTag: "item" = repeatedChild.$_tag; void repeatedTag;\n// @ts-expect-error a plain array cannot impersonate certified repeated content\nconst plainRepeated: SchemaType<typeof RepeatSchema>["$_content"][0]["$_content"][0]["$_content"] = [repeatedChild, repeatedChild]; void plainRepeated;\n// @ts-expect-error private semantic proof prevents structural fabrication\nconst fake: SchemaType<typeof PageSchema> = { $_tag: "_hson_root", $_content: [] }; void fake;\n// @ts-expect-error object spread does not preserve private semantic proof\nconst rebuilt: SchemaType<typeof PageSchema> = { ...value }; void rebuilt;\n`);
+writeFileSync(localStatic, `import { Hson, type HsonData, type SchemaType } from "hson-live";\nconst SchemaTest = Hson.schema\`<type "data" content <name "string" score "number">>\`;\nconst testData: HsonData<typeof SchemaTest> = Hson.data\`<name "Ada" score 37>\`;\ndeclare const typed: SchemaType<typeof SchemaTest>; const score: number = typed.score; void SchemaTest; void testData; void score;\n`);
+// Resolve the package's actual declarations while keeping the fixture under repo-local tmp.
+writeFileSync(config, JSON.stringify({ compilerOptions: { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, target: "ESNext", module: "NodeNext", moduleResolution: "NodeNext", declaration: true, outDir: "./out", baseUrl: ".", paths: { "hson-live": [resolve(root, "dist/index.d.ts")], "hson-live/hson": [resolve(root, "dist/hson-authoring.d.ts")] } }, include: ["./*.ts"] }, null, 2));
 
 const run = (mode: "generate" | "verify" | "check" | "build") => spawnSync(process.execPath, ["--import=tsx", "scripts/hson-schema.mts", mode, "--project", config], { cwd: root, encoding: "utf8" });
 
 check("generation and extension-independent authoritative check pass", () => { assert.equal(run("generate").status, 0); const result = run("check"); assert.equal(result.status, 0, result.stdout + result.stderr); });
 check("plain local static form gains real Type and Hson symbols without certification", () => {
   const source = readFileSync(localStatic, "utf8");
-  assert.match(source, /import type \{ SchemaTestType, SchemaTestHson \} from/);
+  assert.match(source, /import type \{ Evidence as __SchemaTestEvidence \} from/);
+  assert.match(source, /HsonData<typeof SchemaTest>/);
   assert.doesNotMatch(source, /Hson\.certify|\.validate/);
   assert.equal(run("check").status, 0);
 });
@@ -89,13 +72,26 @@ check("downstream parsing and HsonSchema semantic diagnostics remain distinct", 
   writeFileSync(localStatic, original);
   assert.equal(run("generate").status, 0);
 });
-check("official symbol resolution accepts renamed direct imports", () => assert.match(readFileSync(aliasSchema, "utf8"), /AliasSchemaType/));
+check("official symbol resolution accepts renamed direct imports", () => assert.match(readFileSync(aliasSchema, "utf8"), /Evidence as __AliasSchemaEvidence/));
+check("local files with official-looking basenames cannot generate Schema proof", () => {
+  const fakeIndex = join(project, "index.ts");
+  const fakeAuthoring = join(project, "hson-authoring.ts");
+  const fakeConsumer = join(project, "lookalike.ts");
+  writeFileSync(fakeIndex, "export const Hson = { schema: String.raw, data: String.raw };\n");
+  writeFileSync(fakeAuthoring, "export const Hson = { schema: String.raw, data: String.raw };\n");
+  writeFileSync(fakeConsumer, 'import { Hson as A } from "./index.js"; import { Hson as B } from "./hson-authoring.js"; export const FakeA = A.schema`<type "data" content "number">`; export const FakeB = B.schema`<type "data" content "number">`;\n');
+  const result = run("verify");
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.equal(existsSync(join(project, "lookalike.FakeA.hson-schema.generated.ts")), false);
+  assert.equal(existsSync(join(project, "lookalike.FakeB.hson-schema.generated.ts")), false);
+  unlinkSync(fakeConsumer); unlinkSync(fakeAuthoring); unlinkSync(fakeIndex);
+});
 check("declaration emit preserves module reexport and private proof carrier", () => {
   const result = run("build");
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.match(readFileSync(join(project, "out/producer.d.ts"), "utf8"), /export type \{ UserSchemaType, UserSchemaHson \}/);
+  assert.match(readFileSync(join(project, "out/producer.d.ts"), "utf8"), /__UserSchemaEvidence\["identity"\]/);
   const generated = readFileSync(join(project, "out/producer.UserSchema.hson-schema.generated.d.ts"), "utf8");
-  assert.match(generated, /private readonly __hsonSchemaProof/); assert.match(generated, /export type UserSchemaType/); assert.match(generated, /export type UserSchemaHson/); assert.doesNotMatch(generated, /UserSchemaValue/);
+  assert.match(generated, /private readonly __hsonSchemaProof/); assert.match(generated, /export type Evidence/); assert.match(generated, /declare const __Identity: unique symbol/); assert.doesNotMatch(generated, /UserSchemaType|UserSchemaHson/);
   assert.match(generated, /M3AlphabetR0Proof/);
   assert.match(readFileSync(join(project, "producer.UserSchema.hson-schema.generated.json"), "utf8"), /string-repertoire/);
   const recursiveGenerated = readFileSync(join(project, "out/producer.TreeSchema.hson-schema.generated.d.ts"), "utf8");
@@ -113,7 +109,7 @@ check("declaration emit preserves module reexport and private proof carrier", ()
 });
 check("retired generated Value evidence fails freshness", () => {
   const artifact = join(project, "producer.UserSchema.hson-schema.generated.ts"), original = readFileSync(artifact, "utf8");
-  writeFileSync(artifact, original.replace("UserSchemaType", "UserSchemaValue"));
+  writeFileSync(artifact, original.replace("export type Evidence", "export type StaleEvidence"));
   assert.notEqual(run("verify").status, 0);
   writeFileSync(artifact, original);
 });
@@ -181,8 +177,9 @@ check("definition bodies, ref targets, recursion topology, and root refs all par
   for (const changed of [
     original.replace('Age <number <int true min 0>>', 'Age <number <int true min 1>>'),
     original.replace('children <array <ref "Tree">>', 'children <array <ref "Leaf">>'),
-    original.replace('content <ref "Tree">>\`;', 'content <ref "Leaf">>\`;'),
+    original.replace('content <ref "Tree">', 'content <ref "Leaf">'),
   ]) {
+    assert.notEqual(changed, original);
     writeFileSync(producer, changed);
     const result = run("verify"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /Stale or edited/);
   }
@@ -281,13 +278,13 @@ check("retired attrs exact closure spelling fails closed", () => {
   writeFileSync(documentSchema, original);
 });
 check("static interpolation fails closed", () => {
-  const original = readFileSync(consumer, "utf8"); writeFileSync(consumer, original.replace('Hson`<name "Ada" age 37 code "ID-7" key "abc" values [0, -0]>`', 'Hson`<name "Ada" age ${37} code "ID-7" key "abc" values [0, -0]>`'));
+  const original = readFileSync(consumer, "utf8"); writeFileSync(consumer, original.replace('Hson.data`<name "Ada" age 37 code "ID-7" key "abc" values [0, -0]>`', 'Hson.data`<name "Ada" age ${37} code "ID-7" key "abc" values [0, -0]>`'));
   const result = run("verify"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /substitution-free/); writeFileSync(consumer, original);
 });
 check("wrong Schema-bound validation association fails closed", () => {
   const original = readFileSync(consumer, "utf8");
-  writeFileSync(consumer, `${original}\nimport { UserSchema } from "./producer.js"; import type { AliasSchemaHson } from "./alias-schema.js";\nconst wrong: AliasSchemaHson = Hson.certify(UserSchema, Hson\`<name "Ada" age 37 code "ID-7" values [1]>\`); void wrong;\n`);
-  const result = run("verify"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /association must use AliasSchema/); writeFileSync(consumer, original);
+  writeFileSync(consumer, `${original}\nimport { AliasSchema } from "./alias-schema.js";\nconst wrong: HsonData<typeof AliasSchema> = UserSchema.certify(Hson.data\`<name "Ada" age 37 code "ID-7" key "abc" values [1]>\`); void wrong;\n`);
+  const result = run("check"); assert.notEqual(result.status, 0); assert.match(result.stdout + result.stderr, /not assignable/); writeFileSync(consumer, original);
 });
 check("deletion and rename remove stale artifacts and managed bindings", () => {
   const original = readFileSync(localStatic, "utf8");
@@ -306,7 +303,7 @@ check("deletion and rename remove stale artifacts and managed bindings", () => {
 });
 check("physical producer deletion, file rename, exclusion, and restoration reconcile only owned evidence", () => {
   const lifecycle = join(project, "lifecycle.ts"), renamedLifecycle = join(project, "lifecycle-renamed.ts");
-  const authored = 'import { Hson, type HsonSchema } from "hson-live";\nexport const LifecycleSchema: HsonSchema = Hson`<type "data" content <ok "boolean">>`;\n';
+  const authored = 'import { Hson, type HsonSchema } from "hson-live";\nexport const LifecycleSchema: HsonSchema = Hson.schema`<type "data" content <ok "boolean">>`;\n';
   const artifact = join(project, "lifecycle.LifecycleSchema.hson-schema.generated.ts");
   const metadata = join(project, "lifecycle.LifecycleSchema.hson-schema.generated.json");
   writeFileSync(lifecycle, authored); assert.equal(run("generate").status, 0); assert.ok(existsSync(artifact) && existsSync(metadata));

@@ -18,9 +18,9 @@ import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap
 import { INTERACTION_RESERVED_LIBRARY_KEY } from "../src/internal/interaction-storage.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
-const StateSchema: HsonSchema = Hson`<type "data" content <count "number">>`;
-const PageSchema: HsonSchema = Hson`<type "document" tag "main" attrs <props <title <optional "string">>> content <repeat <tag "item" content "empty">>>`;
-const AdminSchema: HsonSchema = Hson`<type "document" tag "aside" content "empty">`;
+const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number">>`;
+const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" attrs <props <title <optional "string">>> content <repeat <tag "item" content "empty">>>`;
+const AdminSchema: HsonSchema = Hson.schema`<type "document" tag "aside" content "empty">`;
 const QUID = "000009701";
 
 const testEvents = create_test_event_emitter("libraries.ssr");
@@ -177,7 +177,7 @@ check("same-cut rendering never rereads source Libraries after aggregate capture
       }),
       kind: "browser-local",
       key: "noop",
-      args: HsonData.from(null),
+      args: Hson.data.from(null),
     }));
   });
   const ssr = render_document({ map });
@@ -206,8 +206,8 @@ check("hosted rendering preserves its fence and produces the existing aggregate 
 
 check("only the selected document must satisfy parser realization", () => {
   const map = hsonLiveMap.fromLibraries({
-    page: { document: "<main/>", schema: Hson`<type "document" tag "main" content "empty">` },
-    broken: { document: '<p <div "direct DOM only"/>/>', schema: Hson`<type "document" tag "p" content <sequence [<tag "div" content "string">]>>` },
+    page: { document: "<main/>", schema: Hson.schema`<type "document" tag "main" content "empty">` },
+    broken: { document: '<p <div "direct DOM only"/>/>', schema: Hson.schema`<type "document" tag "p" content <sequence [<tag "div" content "string">]>>` },
   });
   assert.equal(render_document({ map, document: "page" }).document, "page");
   expect_phase("realize", () => render_document({ map, document: "broken" }));

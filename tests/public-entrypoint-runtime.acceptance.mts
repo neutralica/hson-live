@@ -108,15 +108,16 @@ check("diagnostics entrypoints exist in the package and built output", () => {
   assert.equal(existsSync(resolve(repositoryRoot, "dist", "diagnostics", "verify-universal-circuit.js")), true);
 });
 
-check("HsonData is one nominal public value across intended entrypoints", () => {
+check("HsonData is a primitive semantic string across intended entrypoints", () => {
   const source = `
-    import { HsonData as RootData } from "hson-live";
-    import { Hson, HsonData as AuthoredData } from "hson-live/hson";
-    import { HsonData as TransformData } from "hson-live/transform";
-    if (RootData !== AuthoredData || RootData !== TransformData) throw new Error("HsonData identity diverged");
-    const exact = AuthoredData.fromHson(Hson\`<'10' -0 '2' <__proto__ true>>\`);
-    if (!Object.is(exact.entries()[0][1].scalar(), -0)) throw new Error("signed zero was lost");
-    if (exact.entries().map(([name]) => name).join(",") !== "10,2") throw new Error("object order was lost");
+    import { Hson as RootHson } from "hson-live";
+    import { Hson as NarrowHson } from "hson-live/hson";
+    if (RootHson !== NarrowHson) throw new Error("Hson identity diverged");
+    const exact = NarrowHson.data\`<'10' -0 '2' <__proto__ true>>\`;
+    if (typeof exact !== "string") throw new Error("HsonData is not a string");
+    const entries = NarrowHson.data.entries(exact);
+    if (!Object.is(NarrowHson.data.materialize(entries[0][1]), -0)) throw new Error("signed zero was lost");
+    if (entries.map(([name]) => name).join(",") !== "10,2") throw new Error("object order was lost");
   `;
   const child = spawnSync(process.execPath, ["--input-type=module", "--eval", source], {
     cwd: repositoryRoot,
@@ -125,16 +126,16 @@ check("HsonData is one nominal public value across intended entrypoints", () => 
   assert.equal(child.status, 0, child.stderr || child.stdout);
 });
 
-check("HsonDocument is one nominal public value across root and Hson entrypoints", () => {
+check("HsonDocument is a primitive semantic string across root and Hson entrypoints", () => {
   const source = `
-    import { HsonDocument as RootDocument } from "hson-live";
-    import { HsonDocument as AuthoredDocument } from "hson-live/hson";
-    if (RootDocument !== AuthoredDocument) throw new Error("HsonDocument identity diverged");
-    const empty = AuthoredDocument.fromHson("");
-    const quotedEmpty = AuthoredDocument.fromHson('\"\"');
-    if (empty.equals(quotedEmpty) || empty.toHson() !== "") throw new Error("empty document semantics diverged");
-    const value = AuthoredDocument.fromHson('<main @000000001 id="root"/>');
-    if (!RootDocument.fromHson(value.toHson()).equals(value)) throw new Error("document round trip failed");
+    import { Hson as RootHson } from "hson-live";
+    import { Hson as NarrowHson } from "hson-live/hson";
+    if (RootHson !== NarrowHson) throw new Error("Hson identity diverged");
+    const empty = NarrowHson.document.fromHson("");
+    const quotedEmpty = NarrowHson.document.fromHson('\"\"');
+    if (typeof empty !== "string" || empty === quotedEmpty || empty !== "") throw new Error("empty document semantics diverged");
+    const value = NarrowHson.document.fromHson('<main @000000001 id="root"/>');
+    if (RootHson.document.fromHson(value) !== value) throw new Error("document round trip failed");
   `;
   const child = spawnSync(process.execPath, ["--input-type=module", "--eval", source], {
     cwd: repositoryRoot,
@@ -264,26 +265,26 @@ check("stale public terminology is absent from maintained declarations", () => {
 
 const directHsonDataSources = new Map<string, string>([
   ["root", `
-    import { Hson, HsonData } from "hson-live";
-    const value = HsonData.fromHson(Hson\`<'10' -0 '2' <__proto__ true>>\`);
-    if (!HsonData.fromHson(value.toHson()).equals(value)) throw new Error("root round trip failed");
+    import { Hson } from "hson-live";
+    const value = Hson.data\`<'10' -0 '2' <__proto__ true>>\`;
+    if (Hson.data.fromHson(value) !== value) throw new Error("root round trip failed");
   `],
   ["hson", `
-    import { Hson, HsonData } from "hson-live/hson";
-    const value = HsonData.fromHson(Hson\`<'10' -0 '2' <__proto__ true>>\`);
-    if (!HsonData.fromHson(value.toHson()).equals(value)) throw new Error("Hson round trip failed");
+    import { Hson } from "hson-live/hson";
+    const value = Hson.data\`<'10' -0 '2' <__proto__ true>>\`;
+    if (Hson.data.fromHson(value) !== value) throw new Error("Hson round trip failed");
   `],
   ["transform", `
-    import { HsonData } from "hson-live/transform";
-    const value = HsonData.from({ value: -0, __proto__: null });
-    if (!HsonData.fromHson(value.toHson()).equals(value)) throw new Error("Transform round trip failed");
+    import { Hson } from "hson-live/hson";
+    const value = Hson.data.from({ value: -0, nested: { constructor: true } });
+    if (Hson.data.fromHson(value) !== value) throw new Error("Transform round trip failed");
   `],
   ["livemap", `
     import { hsonLiveMap } from "hson-live/livemap";
     const value = hsonLiveMap.fromJson({ value: -0, nested: { constructor: true } }).data();
     if (value === undefined) throw new Error("LiveMap exact data unavailable");
-    const roundTrip = hsonLiveMap.fromHson(value.toHson()).data();
-    if (roundTrip === undefined || !roundTrip.equals(value)) throw new Error("LiveMap round trip failed");
+    const roundTrip = hsonLiveMap.fromData(value).data();
+    if (roundTrip !== value) throw new Error("LiveMap round trip failed");
   `],
   ["echo", `
     import { create_echo } from "hson-live/echo";
@@ -293,7 +294,7 @@ const directHsonDataSources = new Map<string, string>([
     const call = echo.action("probe", { value: -0, nested: { constructor: true } });
     void call.catch(() => {});
     const value = call.request.payload;
-    if (value === undefined || typeof value.toHson() !== "string") throw new Error("Echo HsonData conversion unavailable");
+    if (typeof value !== "string") throw new Error("Echo HsonData conversion unavailable");
     echo.dispose();
   `],
   ["locus", `
@@ -302,7 +303,7 @@ const directHsonDataSources = new Map<string, string>([
     const decoded = decode_locus_message(wire);
     if (!decoded.ok || decoded.value.type !== "action" || decoded.value.payload === undefined) throw new Error("Locus exact data unavailable");
     const value = decoded.value.payload;
-    if (typeof value.toHson() !== "string") throw new Error("Locus HsonData conversion unavailable");
+    if (typeof value !== "string") throw new Error("Locus HsonData conversion unavailable");
   `],
 ]);
 
@@ -319,11 +320,10 @@ for (const order of [
   run_in_fresh_process(`HsonData conversion is stable for ${order.join(" -> ")}`, `
     const modules = [];
     ${order.map((specifier) => `modules.push(await import(${JSON.stringify(specifier)}));`).join("\n")}
-    const constructors = modules.map((module) => module.HsonData).filter(Boolean);
-    if (constructors.some((candidate) => candidate !== constructors[0])) throw new Error("constructor identity changed");
+    if (modules.some((module) => Object.hasOwn(module, "HsonData"))) throw new Error("retired public constructor returned");
     const { hsonLiveMap } = await import("hson-live/livemap");
     const value = hsonLiveMap.fromJson({ value: -0 }).data();
-    if (value === undefined || typeof value.toHson() !== "string") throw new Error("conversion changed by import order");
+    if (typeof value !== "string") throw new Error("conversion changed by import order");
   `);
 }
 
@@ -334,10 +334,9 @@ for (const order of [
   run_in_fresh_process(`HsonDocument identity is stable for ${order.join(" -> ")}`, `
     const modules = [];
     ${order.map((specifier) => `modules.push(await import(${JSON.stringify(specifier)}));`).join("\n")}
-    const constructors = modules.map((module) => module.HsonDocument);
-    if (constructors.some((candidate) => candidate !== constructors[0])) throw new Error("constructor identity changed");
-    const value = constructors[0].fromHson('<main/>');
-    if (!constructors[1].fromHson(value.toHson()).equals(value)) throw new Error("round trip changed by import order");
+    if (modules.some((module) => Object.hasOwn(module, "HsonDocument"))) throw new Error("retired public constructor returned");
+    const value = modules[0].Hson.document.fromHson('<main/>');
+    if (modules[1].Hson.document.fromHson(value) !== value) throw new Error("round trip changed by import order");
   `);
 }
 

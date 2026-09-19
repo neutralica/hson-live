@@ -49,10 +49,16 @@ function isTemplateStringsArray(value: unknown): value is TemplateStringsArray {
     && raw.every((segment) => typeof segment === "string");
 }
 
-function reconstructTaggedSource(
+export function reconstruct_hson_template_source(
   strings: TemplateStringsArray,
   substitutions: readonly HsonTemplatePrimitive[],
 ): string {
+  if (!isTemplateStringsArray(strings)) {
+    _throw_transform_err(
+      "Hson authoring requires a tagged template.", "Hson", undefined, undefined,
+      { code: HSON_TAGGED_TEMPLATE_REQUIRED, stage: "template-admission" },
+    );
+  }
   if (strings.raw.length !== substitutions.length + 1) {
     _throw_transform_err(
       "invalid Hson tagged-template segment/substitution arity",
@@ -91,12 +97,12 @@ export function admit_hson(
 ): HsonCanonical {
   if (!isTemplateStringsArray(source)) {
     _throw_transform_err(
-      "Hson must be used as a tagged template: Hson`...`",
+      "Hson admission requires a semantic member tag",
       "Hson",
       undefined,
       undefined,
       { code: HSON_TAGGED_TEMPLATE_REQUIRED, stage: "template-admission" },
     );
   }
-  return admitHsonSource(reconstructTaggedSource(source, substitutions));
+  return admitHsonSource(reconstruct_hson_template_source(source, substitutions));
 }

@@ -430,7 +430,7 @@ import { Hson, hson } from "hson-live";
 Major subsystems are also available from focused entrypoints:
 
 ```ts
-import { Hson, HsonData, HsonDocument } from "hson-live/hson";
+import { Hson, type HsonData, type HsonDocument, type SchemaType } from "hson-live/hson";
 import { hsonTransform } from "hson-live/transform";
 import { hsonLiveMap } from "hson-live/livemap";
 import { hsonLiveTree } from "hson-live/livetree";
@@ -441,11 +441,20 @@ import { render_document } from "hson-live/ssr";
 import { start_node_application_host } from "hson-live/livehost/node";
 ```
 
-Schema authoring uses the Hson entrypoint and the `hson-schema` CLI for generated TypeScript proof types and static validation:
+Hson values are canonical primitive strings classified by their authoring tag. A Schema is an immutable compiled object:
 
 ```ts
-import { Hson, type HsonSchema } from "hson-live/hson";
+const canonical = Hson.canonical`<main/>`;
+const data: HsonData = Hson.data`<count 1>`;
+const document: HsonDocument = Hson.document`<main/><aside/>`;
+export const CounterSchema = Hson.schema`<type "data" content <count "number">>`;
+export type Counter = SchemaType<typeof CounterSchema>;
+const proved: HsonData<typeof CounterSchema> = Hson.data`<count 1>`;
+const dynamic = CounterSchema.certify(data);
+const portableDefinition = CounterSchema.toHson(); // HsonSchemaData string
 ```
+
+The `hson-schema` CLI generates Schema-specific evidence and validates direct authored assignments such as `proved`. Ordinary TypeScript alone keeps a tag's result unproved. Use `Hson.document.fromNode` and `Hson.document.toNode` to cross the exact document graph boundary. Use `hsonLiveMap.fromData` or `fromDocument` when the mode is known.
 
 ```sh
 hson-schema generate --project tsconfig.json

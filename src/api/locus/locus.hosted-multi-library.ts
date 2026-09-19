@@ -1,5 +1,5 @@
 import type { JsonValue } from "../../core/types.js";
-import { HsonData } from "../data/hson-data.js";
+import { ExactDataCarrier } from "../data/hson-data.js";
 import type {
   LiveMapDocumentAttributeValue,
   LiveMapDocumentAttrs,
@@ -97,7 +97,7 @@ export type LocusHostedAggregateActionContext = Readonly<{
 
 export type LocusHostedAggregateAction = (
   context: LocusHostedAggregateActionContext,
-  payload: HsonData | undefined,
+  payload: ExactDataCarrier | undefined,
   message?: LocusClientActionMessage,
 ) => unknown | void | Promise<unknown | void>;
 
@@ -125,7 +125,7 @@ export type LocusHostedAggregate = Readonly<{
   readonly registryDigest: string;
   readonly rev: number;
   mutate: (mutation: (draft: LocusHostedAggregateDraft) => void | Promise<void>) => Promise<HostedAggregateCommit | undefined>;
-  dispatch_action: (name: string, payload?: HsonData | JsonValue, message?: LocusClientActionMessage, origin?: LocusActionOrigin) => Promise<unknown | void>;
+  dispatch_action: (name: string, payload?: ExactDataCarrier | JsonValue, message?: LocusClientActionMessage, origin?: LocusActionOrigin) => Promise<unknown | void>;
   /** @internal Ordered non-mutation barrier shared with aggregate mutations. */
   run_exclusive: <TResult>(operation: () => TResult | Promise<TResult>) => Promise<TResult>;
   on_wire: (listener: (wire: string) => void) => () => void;
@@ -228,7 +228,7 @@ export function create_locus_hosted_aggregate_internal(
     async dispatch_action(name, payload, message, origin = directOrigin) {
       const action = options.actions?.[name];
       if (action === undefined) throw new Error(`Unknown hosted aggregate Locus action: ${name}`);
-      const admittedPayload = payload === undefined ? undefined : HsonData.from(payload);
+      const admittedPayload = payload === undefined ? undefined : ExactDataCarrier.from(payload);
       return (await enqueue(async (draft) => {
         const context: LocusHostedAggregateActionContext = Object.freeze({
           map: options.map,

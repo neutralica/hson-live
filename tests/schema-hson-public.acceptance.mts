@@ -47,31 +47,44 @@ check("published LiveMap facade has no builder or duplicate validation namespace
   assert.doesNotMatch(declaration, /LiveMapSchema/);
 });
 
-check("published map.schema governance accepts HsonSchema", () => {
+check("published map.schema governance constrains mode and preserves Schema evidence", () => {
   const declaration = readFileSync(new URL("../dist/types/livemap.types.d.ts", import.meta.url), "utf8");
-  assert.match(declaration, /use: <TSchema extends HsonSchema>\(schema: TSchema\) => LiveMap<HsonSchemaValue<TSchema>>;/);
+  assert.match(declaration, /use: <const TSchema extends HsonSchema>\(schema: TSchema, \.\.\.wrongMode: \[NoInfer<TSchema>\] extends \[HsonSchema<unknown, "document">\] \? \[never\] : \[\]\) => LiveMap<SchemaType<NoInfer<TSchema>>>;/);
+  assert.match(declaration, /use: <const TSchema extends HsonSchema>\(schema: TSchema, \.\.\.wrongMode: \[NoInfer<TSchema>\] extends \[HsonSchema<unknown, "data">\] \? \[never\] : \[\]\) => DocumentLiveMapForEvidence<TMode, SchemaType<NoInfer<TSchema>>>;/);
   assert.match(declaration, /get: \(\) => HsonSchema \| undefined/);
 });
 
-check("Hson certify is the sole generic certification operation", () => {
-  const schema: root.HsonSchema = root.Hson`<type "data" content <age "number">>`;
-  const canonical = root.Hson`<age 37>`;
-  assert.equal(root.Hson.certify(schema, canonical), canonical);
-  assert.throws(() => root.Hson.certify(schema, root.Hson`<age "37">`));
+check("Schema object owns certification and portable Schema data", () => {
+  const schema: root.HsonSchema = root.Hson.schema`<type "data" content <age "number">>`;
+  const canonical = root.Hson.canonical`<age 37>`;
+  assert.equal(schema.certify(canonical), canonical);
+  assert.throws(() => schema.certify(root.Hson.canonical`<age "37">`));
+  assert.equal(typeof schema, "object");
+  assert.equal(Object.isFrozen(schema), true);
+  assert.equal(typeof schema.toHson(), "string");
+  const restored = root.Hson.schema.fromHson(schema.toHson());
+  assert.notEqual(restored, schema);
+  assert.equal(restored.toHson(), schema.toHson());
+  assert.equal(restored.certify(canonical), canonical);
+  assert.throws(() => root.Hson.schema.fromHson(` ${schema.toHson()}` as root.HsonSchemaData), /canonical/);
+  assert.throws(() => schema.certify(` <age 37>` as root.HsonCanonical), /canonical/);
   for (const module of [root, narrow, map, transform]) assert.equal(Object.hasOwn(module, "validate"), false);
 });
 
-check("tag result stays primitive while callable owns certify", () => {
+check("semantic values stay primitive while Hson is a noncallable namespace", () => {
   const declaration = readFileSync(new URL("../dist/hson-authoring.d.ts", import.meta.url), "utf8");
-  assert.match(declaration, /const Hson: typeof admit_hson &/);
-  assert.equal(typeof root.Hson`37`, "string");
+  assert.match(declaration, /export declare const Hson: Readonly/);
+  assert.equal(typeof root.Hson.canonical`37`, "string");
+  assert.equal(typeof root.Hson.data`37`, "string");
+  assert.equal(typeof root.Hson.document`<main/>`, "string");
+  assert.throws(() => (root.Hson as unknown as Function)(), TypeError);
   assert.equal(Object.hasOwn(String.prototype, "certify"), false);
 });
 
-check("root and narrow authoring expose the identical frozen certify object", () => {
+check("root and narrow authoring expose the identical frozen namespace", () => {
   assert.equal(root.Hson, narrow.Hson);
   assert.equal(Object.isFrozen(narrow.Hson), true);
-  assert.deepEqual(Object.keys(narrow.Hson), ["certify"]);
+  assert.deepEqual(Object.keys(narrow.Hson), ["canonical", "data", "document", "schema"]);
   assert.equal(Object.hasOwn(narrow.Hson, "validate"), false);
 });
 
@@ -85,7 +98,7 @@ check("lowercase aggregate remains frozen and noncallable", () => {
 });
 
 check("narrow authoring exports no aggregate or subsystem facade", () => {
-  assert.deepEqual(Object.keys(narrow).sort(), ["Hson", "HsonData", "HsonDocument", "TransformError", "is_transform_error", "read_transform_error_details"]);
+  assert.deepEqual(Object.keys(narrow).sort(), ["Hson", "TransformError", "is_transform_error", "read_transform_error_details"]);
 });
 
 check("root facade exports preserve subsystem identities", () => {

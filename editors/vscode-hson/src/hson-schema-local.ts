@@ -46,35 +46,28 @@ function discover_schema_syntax(fileName: string, text: string): readonly Schema
   const sourceFile = program.getSourceFile(fileName);
   if (sourceFile === undefined) return Object.freeze([]);
   const checker = program.getTypeChecker();
-  const schemaBindings = supported_import_symbols(sourceFile, checker, "HsonSchema", true);
   const hsonBindings = supported_import_symbols(sourceFile, checker, "Hson", false);
   const output: SchemaSyntax[] = [];
   for (const statement of sourceFile.statements) {
     if (!ts.isVariableStatement(statement) || (statement.declarationList.flags & ts.NodeFlags.Const) === 0 || statement.declarationList.declarations.length !== 1) continue;
     const declaration = statement.declarationList.declarations[0];
-    if (declaration === undefined || !ts.isIdentifier(declaration.name) || !supported_schema_annotation(declaration.type, checker, schemaBindings)) continue;
-    const initializer = declaration.initializer;
-    if (initializer === undefined || !ts.isTaggedTemplateExpression(initializer) || !ts.isIdentifier(initializer.tag) || !ts.isNoSubstitutionTemplateLiteral(initializer.template)) continue;
-    const tagSymbol = checker.getSymbolAtLocation(initializer.tag);
+    if (declaration === undefined || !ts.isIdentifier(declaration.name) || declaration.initializer === undefined) continue;
+    const initializer = unwrap_tagged_schema(declaration.initializer);
+    if (initializer === undefined || !ts.isPropertyAccessExpression(initializer.tag) || initializer.tag.name.text !== "schema" || !ts.isIdentifier(initializer.tag.expression) || !ts.isNoSubstitutionTemplateLiteral(initializer.template)) continue;
+    const tagSymbol = checker.getSymbolAtLocation(initializer.tag.expression);
     if (tagSymbol === undefined || !hsonBindings.has(tagSymbol)) continue;
     output.push(Object.freeze({ declaration, template: initializer.template, sourceFile }));
   }
   return Object.freeze(output);
 }
 
-function supported_schema_annotation(node: ts.TypeNode | undefined, checker: ts.TypeChecker, bindings: ReadonlySet<ts.Symbol>): boolean {
-  if (node === undefined || !ts.isTypeReferenceNode(node) || !ts.isIdentifier(node.typeName)) return false;
-  const symbol = checker.getSymbolAtLocation(node.typeName);
-  if (symbol === undefined || !bindings.has(symbol)) return false;
-  const argumentsList = node.typeArguments ?? [];
-  if (argumentsList.length === 0) return true;
-  if (argumentsList.length !== 2) return false;
-  const mode = argumentsList[1];
-  return mode !== undefined && ts.isLiteralTypeNode(mode) && ts.isStringLiteral(mode.literal)
-    && (mode.literal.text === "data" || mode.literal.text === "document");
+function unwrap_tagged_schema(node: ts.Expression): ts.TaggedTemplateExpression | undefined {
+  if (ts.isTaggedTemplateExpression(node)) return node;
+  if (ts.isAsExpression(node) || ts.isParenthesizedExpression(node)) return unwrap_tagged_schema(node.expression);
+  return undefined;
 }
 
-function supported_import_symbols(sourceFile: ts.SourceFile, checker: ts.TypeChecker, importedName: "Hson" | "HsonSchema", allowTypeOnly: boolean): ReadonlySet<ts.Symbol> {
+function supported_import_symbols(sourceFile: ts.SourceFile, checker: ts.TypeChecker, importedName: "Hson", allowTypeOnly: boolean): ReadonlySet<ts.Symbol> {
   const output = new Set<ts.Symbol>();
   for (const statement of sourceFile.statements) {
     if (!ts.isImportDeclaration(statement) || statement.importClause === undefined || !ts.isStringLiteral(statement.moduleSpecifier)

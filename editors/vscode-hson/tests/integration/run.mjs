@@ -33,11 +33,11 @@ export function application() {
 `);
 await mkdir(join(workspaceDir, "static-project"));
 await writeFile(join(workspaceDir, "static-project", "tsconfig.json"), JSON.stringify({ compilerOptions: { target: "ES2022", module: "ESNext" }, include: ["**/*.ts"] }));
-await writeFile(join(workspaceDir, "static-project", "unopened-invalid.ts"), 'import { Hson } from "hson-live";\nexport const unopened = Hson`+1`;\n');
+await writeFile(join(workspaceDir, "static-project", "unopened-invalid.ts"), 'import { Hson } from "hson-live";\nexport const unopened = Hson.canonical`+1`;\n');
 await writeFile(join(workspaceDir, "unopened-invalid.hson"), "+1\n");
 await writeFile(join(workspaceDir, "pragma-invalid.hson"), "// @hson-diagnostics-ignore-file\n+1\n");
 await writeFile(join(workspaceDir, "static-syntax.ts"), 'import { hsonTransform } from "hson-live/transform";\nhsonTransform.fromHson("\\x2b1").toNode();\n');
-await writeFile(join(workspaceDir, "schema-symbols.ts"), 'import { Hson, type HsonSchema } from "hson-live";\nexport const SymbolSchema: HsonSchema = Hson`<type "data" defs <Age <number <int true min 0>> User <content <age <ref "Age">>>> content <ref "User">>`;\nconst ordinary = "Age";\n');
+await writeFile(join(workspaceDir, "schema-symbols.ts"), 'import { Hson } from "hson-live";\nexport const SymbolSchema = Hson.schema`<type "data" defs <Age <number <int true min 0>> User <content <age <ref "Age">>>> content <ref "User">>`;\nconst ordinary = "Age";\n');
 await writeFile(join(workspaceDir, "schema-symbols.SymbolSchema.hson-schema.generated.ts"), "export {};\n");
 await writeFile(join(workspaceDir, "schema-symbols.SymbolSchema.hson-schema.generated.json"), "{}\n");
 const declarativeFixture = resolve(here, "../fixtures/declarative-schema");
@@ -57,8 +57,8 @@ await writeFile(join(declarativeWorkspace, "tsconfig.json"), JSON.stringify({
     noEmit: true,
     baseUrl: ".",
     paths: {
-      "hson-live": [resolve(here, "../../../../src/index.ts")],
-      "hson-live/hson": [resolve(here, "../../../../src/hson-authoring.ts")],
+      "hson-live": [resolve(here, "../../../../dist/index.d.ts")],
+      "hson-live/hson": [resolve(here, "../../../../dist/hson-authoring.d.ts")],
     },
   },
   include: ["./*.ts"],
@@ -74,7 +74,6 @@ try {
     launchArgs: [
       workspaceDir,
       "--disable-workspace-trust",
-      "--disable-extensions",
       `--user-data-dir=${userDataDir}`,
       `--extensions-dir=${extensionsDir}`,
     ],
@@ -90,7 +89,7 @@ try {
     "--no-sandbox", "--disable-gpu-sandbox", "--disable-updates", "--skip-welcome", "--skip-release-notes",
     `--extensionDevelopmentPath=${resolve(here, "../..")}`,
     `--extensionTestsPath=${resolve(here, "../../.test-dist/integration.cjs")}`,
-    workspaceDir, "--disable-extensions",
+    workspaceDir,
     `--user-data-dir=${restrictedUserDataDir}`,
     `--extensions-dir=${restrictedExtensionsDir}`,
   ];

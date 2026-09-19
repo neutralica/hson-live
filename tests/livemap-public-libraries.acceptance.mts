@@ -13,11 +13,11 @@ import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts
 import { is_Node } from "../src/core/node-guards.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
-const StateSchema: HsonSchema = Hson`<type "data" content <count "number" nested <content <value "number">>>>`;
-const ColorsSchema: HsonSchema = Hson`<type "data" content <primary "string">>`;
-const PageSchema: HsonSchema = Hson`<type "document" tag "main" attrs <props <title <optional "string">>> content "empty">`;
-const ItemDocumentSchema: HsonSchema = Hson`<type "document" tag "main" content <repeat <tag "item" content "empty">>>`;
-const EmptyDocumentSchema: HsonSchema = Hson`<type "document" content <repeat <tag "item" content "empty">>>`;
+const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number" nested <content <value "number">>>>`;
+const ColorsSchema: HsonSchema = Hson.schema`<type "data" content <primary "string">>`;
+const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" attrs <props <title <optional "string">>> content "empty">`;
+const ItemDocumentSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "item" content "empty">>>`;
+const EmptyDocumentSchema: HsonSchema = Hson.schema`<type "document" content <repeat <tag "item" content "empty">>>`;
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livemap.public-libraries",
   title: "LiveMap public libraries",

@@ -27,8 +27,8 @@ DocumentMirror DocumentMirrorError DocumentMirrorStatus DocumentSsr DocumentSsrE
 EchoActionPromise EchoActionRequest EchoActionStatusResult EchoOptions EchoRecoveryError EchoRetryActionFn
 EchoSession EchoSessionError EchoSessionFailure EchoSessionOptions EchoSessionResult EchoSessionStatus
 enable_interactions encode_ssr_bootstrap EncodedSsrBootstrap HostedDocumentContinuation HostedDocumentSsr
-HostedLibrariesDocumentSsr hson Hson hsonCalc HsonData HsonDocument hsonEcho HsonFacade hsonLiveMap hsonLiveTree
-hsonLocus HsonNumber hsonMirror HsonSchema HsonSchemaMutationCandidate HsonSchemaValue hsonTransform
+HostedLibrariesDocumentSsr hson Hson hsonCalc HsonCanonical HsonData HsonDocument hsonEcho HsonFacade hsonLiveMap hsonLiveTree
+hsonLocus HsonNumber hsonMirror HsonSchema HsonSchemaData HsonSchemaMutationCandidate hsonTransform SchemaType
 InteractionActionDispatcher InteractionActivationOptions InteractionDescriptor InteractionFailure
 InteractionListener InteractionLocalBehavior InteractionLocalBehaviors is_transform_error LibrariesDocumentSsr
 link_livemap LiveHost LiveHostApplication LiveHostApplicationContext LiveHostConnection
@@ -287,8 +287,8 @@ await check("all retained overlapping runtime values preserve strict identity", 
     livehost: await import("hson-live/livehost"),
   } as const;
   const overlap = {
-    hson: ["Hson", "HsonData", "HsonDocument", "TransformError", "is_transform_error", "read_transform_error_details"],
-    transform: ["HsonData", "hsonTransform", "TransformError", "is_transform_error", "read_transform_error_details"],
+    hson: ["Hson", "TransformError", "is_transform_error", "read_transform_error_details"],
+    transform: ["hsonTransform", "TransformError", "is_transform_error", "read_transform_error_details"],
     number: ["hsonCalc"],
     livetree: ["hsonLiveTree", "LiveTree", "TreeSelector", "LiveTreeAlreadyAttachedError", "LiveTreeAttributeError", "LiveTreeBatchError", "LiveTreeDisposedError", "LiveTreeProtectedRootError", "LiveTreeQuidReuseError", "LiveTreeLinkedIdentityRequiredError"],
     livemap: ["hsonLiveMap", "link_livemap", "LiveMapDocumentAttributeNotFoundError", "LiveMapDocumentIdentityProvenanceError", "LiveMapDocumentIdentityRegistrationError", "LiveMapDocumentInstallError", "LiveMapDocumentMutationError", "LiveMapDocumentStagingError"],
@@ -302,6 +302,10 @@ await check("all retained overlapping runtime values preserve strict identity", 
     for (const name of names) {
       assert.equal(Reflect.get(root, name), Reflect.get(owners[owner as keyof typeof owners], name), `${name} identity diverged`);
     }
+  }
+  for (const module of [root, owners.hson, owners.transform]) {
+    assert.equal(Object.hasOwn(module, "HsonData"), false);
+    assert.equal(Object.hasOwn(module, "HsonDocument"), false);
   }
 });
 

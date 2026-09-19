@@ -1,6 +1,8 @@
 import ts from "typescript";
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { create_hson_source_program, read_supported_hson_import_symbols, discover_hson_tagged_templates } from "../embedded-hson/discover-hson-tagged-templates.js";
 import type { HostSourceRange } from "../embedded-hson/embedded-hson-source.js";
 import { discover_static_from_hson_sources } from "../embedded-hson/discover-static-from-hson-sources.js";
@@ -26,7 +28,7 @@ export type DiscoveredSchemaValidation = Readonly<{
 }>;
 
 function strip(node: ts.Expression): ts.Expression {
-  while (ts.isParenthesizedExpression(node)) node = node.expression;
+  while (ts.isParenthesizedExpression(node) || ts.isAsExpression(node) || ts.isSatisfiesExpression(node)) node = node.expression;
   return node;
 }
 function domain(node: ts.Node): ts.SourceFile | ts.Block | undefined {
@@ -71,11 +73,6 @@ export function discover_schema_validation_sources(fileName: string, text: strin
     return symbol !== undefined && roots.has(symbol);
   };
   const facade = (expression: ts.Expression): boolean => {
-    const author = property(expression, "certify");
-    if (author !== undefined && ts.isIdentifier(author)) {
-      const symbol = checker.getSymbolAtLocation(author);
-      if (symbol !== undefined && authors.has(symbol)) return true;
-    }
     const validation = property(expression, "validate");
     const map = validation === undefined ? undefined : property(validation, "schema");
     return map !== undefined && mapFacade(map);
@@ -126,6 +123,52 @@ export function discover_schema_validation_sources(fileName: string, text: strin
     if (ts.isVariableStatement(statement) && statement.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword)) return { moduleUrl, exportName: decl.name.text };
     return { moduleUrl, localName: decl.name.text, declarationStart: decl.getStart(file) };
   };
+  const isSchemaTag = (tag: ts.Expression, sourceFile: ts.SourceFile, symbols: ReadonlySet<ts.Symbol>, typeChecker: ts.TypeChecker): boolean => {
+    const unwrapped = strip(tag);
+    if (!ts.isPropertyAccessExpression(unwrapped) || unwrapped.name.text !== "schema" || !ts.isIdentifier(unwrapped.expression)) return false;
+    const symbol = typeChecker.getSymbolAtLocation(unwrapped.expression);
+    return symbol !== undefined && symbols.has(symbol);
+  };
+  const importedSchema = (specifier: string, exportedName: string): boolean => {
+    if (!specifier.startsWith("./") && !specifier.startsWith("../")) return false;
+    const target = resolve(dirname(fileName), specifier);
+    const candidates = /\.mjs$/.test(target) ? [target.replace(/\.mjs$/, ".mts")] : /\.cjs$/.test(target)
+      ? [target.replace(/\.cjs$/, ".cts")] : /\.js$/.test(target)
+        ? [target.replace(/\.js$/, ".ts"), target.replace(/\.js$/, ".tsx")] : [target];
+    const path = candidates.find(existsSync);
+    if (path === undefined) return false;
+    let text: string;
+    try { text = readFileSync(path, "utf8"); } catch { return false; }
+    const producer = create_hson_source_program(path, text);
+    const source = producer.getSourceFile(path);
+    if (source === undefined) return false;
+    const producerChecker = producer.getTypeChecker();
+    const producerAuthors = read_supported_hson_import_symbols(source, producerChecker, producer.getSyntacticDiagnostics(source));
+    return source.statements.some(statement => ts.isVariableStatement(statement)
+      && statement.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword) === true
+      && statement.declarationList.declarations.some(item => {
+        if (!ts.isIdentifier(item.name) || item.name.text !== exportedName || item.initializer === undefined) return false;
+        const initializer = strip(item.initializer);
+        return ts.isTaggedTemplateExpression(initializer)
+          && isSchemaTag(initializer.tag, source, producerAuthors, producerChecker);
+      }));
+  };
+  const schemaReceiver = (expression: ts.Expression, use: ts.Node, seen = new Set<ts.Symbol>(), depth = 0): boolean => {
+    if (depth > 32) return false;
+    const node = strip(expression);
+    if (!ts.isIdentifier(node)) return false;
+    const decl = declaration(node, use, seen);
+    if (decl === undefined) return false;
+    if (ts.isImportSpecifier(decl)) {
+      const imported = decl.parent.parent.parent;
+      return ts.isImportDeclaration(imported) && ts.isStringLiteral(imported.moduleSpecifier)
+        && importedSchema(imported.moduleSpecifier.text, decl.propertyName?.text ?? decl.name.text);
+    }
+    if (!ts.isVariableDeclaration(decl) || decl.initializer === undefined) return false;
+    const initializer = strip(decl.initializer);
+    if (ts.isTaggedTemplateExpression(initializer)) return isSchemaTag(initializer.tag, file, authors, checker);
+    return schemaReceiver(initializer, decl, seen, depth + 1);
+  };
   const construction = (expression: ts.Expression, use: ts.Node, seen = new Set<ts.Symbol>(), depth = 0): ts.CallExpression | undefined => {
     if (depth > 32) return undefined;
     const node = strip(expression);
@@ -145,12 +188,25 @@ export function discover_schema_validation_sources(fileName: string, text: strin
 
   const results: DiscoveredSchemaValidation[] = [];
   const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && node.arguments.length === 1 && node.questionDotToken === undefined && node.typeArguments === undefined
+      && !diagnostics.some(d => d.start === undefined || (d.start < node.end && d.start + (d.length ?? 0) >= node.getStart(file)))) {
+      const receiver = property(node.expression, "certify");
+      if (receiver !== undefined && schemaReceiver(receiver, node)) {
+        const source = canonical(node.arguments[0], node);
+        const binding = schema(receiver, node);
+        if (source !== undefined && binding !== undefined) {
+          results.push({ operation: "certify", templateId: `${moduleUrl}#template:${authored_hson_occurrence_range(source).start}`,
+            callId: `${moduleUrl}#certify:${node.getStart(file)}`, source, binding, callRange: range(node),
+            schemaRange: range(receiver), schemaLabel: receiver.getText(file) });
+        }
+      }
+    }
     if (ts.isCallExpression(node) && node.arguments.length === 2 && node.questionDotToken === undefined && node.typeArguments === undefined && facade(node.expression)
       && !diagnostics.some(d => d.start === undefined || (d.start < node.end && d.start + (d.length ?? 0) >= node.getStart(file)))) {
       const source = canonical(node.arguments[1], node);
       const binding = schema(node.arguments[0], node);
       if (source !== undefined && binding !== undefined) {
-        const operation = property(node.expression, "certify") === undefined ? "validate" : "certify";
+        const operation = "validate";
         results.push({
           operation,
           templateId: `${moduleUrl}#template:${authored_hson_occurrence_range(source).start}`,

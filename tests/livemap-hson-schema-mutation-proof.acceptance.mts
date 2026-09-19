@@ -1,6 +1,7 @@
+import type { SchemaType } from "hson-live";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap } from "hson-live";
-import { TreeSchema, UserSchema, type TreeSchemaType, type UserSchemaType } from "./fixtures/hson-schema-mvp/producer.ts";
+import { TreeSchema, UserSchema } from "./fixtures/hson-schema-mvp/producer.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -62,11 +63,11 @@ check("schema association supplies certified reads and ordinary typed mutation c
   const signedZeroChoice = map.at(["signedZeroChoice"]);
   const key = map.at(["key"]);
 
-  const governed: UserSchemaType = map.snap();
-  const governedAge: UserSchemaType["age"] = age.snap();
-  const governedFlags: UserSchemaType["flags"] = flags.snap();
-  const governedPair: UserSchemaType["pair"] = pair.snap();
-  const governedAccount: UserSchemaType["account"] = account.snap();
+  const governed: SchemaType<typeof UserSchema> = map.snap();
+  const governedAge: SchemaType<typeof UserSchema>["age"] = age.snap();
+  const governedFlags: SchemaType<typeof UserSchema>["flags"] = flags.snap();
+  const governedPair: SchemaType<typeof UserSchema>["pair"] = pair.snap();
+  const governedAccount: SchemaType<typeof UserSchema>["account"] = account.snap();
   age.set(38);
   flags.replace([true, false]);
   pair.replace(["next", 3]);
@@ -93,20 +94,20 @@ check("schema association supplies certified reads and ordinary typed mutation c
   });
   const libraryAge = libraries.lib("state").at(["age"]);
   libraryAge.set(38);
-  const libraryGovernedAge: UserSchemaType["age"] = libraryAge.snap();
+  const libraryGovernedAge: SchemaType<typeof UserSchema>["age"] = libraryAge.snap();
   assert.equal(libraries.rev, 1);
 
   if (false) {
     // @ts-expect-error Schema, not a caller-selected generic, controls the governed map type.
-    hsonLiveMap.fromJson(user()).schema.use<UserSchemaType>(UserSchema);
+    hsonLiveMap.fromJson(user()).schema.use<SchemaType<typeof UserSchema>>(UserSchema);
     // @ts-expect-error Candidate domain follows the generated leaf domain.
     age.set("38");
     // @ts-expect-error Named Library handles retain the same candidate domain.
     libraryAge.set("38");
     // @ts-expect-error A plain candidate cannot impersonate the certified integer read.
-    const fabricatedAge: UserSchemaType["age"] = 38;
+    const fabricatedAge: SchemaType<typeof UserSchema>["age"] = 38;
     // @ts-expect-error One Schema's numeric proof is not another Schema's proof.
-    const crossSchemaProof: TreeSchemaType["age"] = age.snap();
+    const crossSchemaProof: SchemaType<typeof TreeSchema>["age"] = age.snap();
     // @ts-expect-error Exact literals remain statically precise in candidates.
     map.at(["status"]).set("other");
     // @ts-expect-error Finite exact literal domains reject outsiders.
@@ -167,7 +168,7 @@ check("nested recursive handles preserve governed reads while accepting ordinary
   const age = map.at(["children", 0, "age"]);
   const before = map.rev;
   age.set(4);
-  const governedAge: TreeSchemaType["age"] | undefined = age.snap();
+  const governedAge: SchemaType<typeof TreeSchema>["age"] | undefined = age.snap();
   assert.equal(age.snap(), 4);
   assert.throws(() => age.set(-1));
   assert.equal(map.rev, before + 1);

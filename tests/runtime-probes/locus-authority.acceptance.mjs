@@ -199,7 +199,7 @@ await check("retained mediated references and privileged mutation APIs are fence
   rejected(() => proxy.$_.set(1));
   rejected(() => array.push(2));
   assert.equal("debug" in map, false);
-  rejected(() => map.schema.use(Hson`<type "data" content <value "number" items <array "number">>>`));
+  rejected(() => map.schema.use(Hson.canonical`<type "data" content <value "number" items <array "number">>>`));
   rejected(() => map.restore(capture));
   rejected(() => map.replay(replayCommit));
   assert.deepEqual(map.snap(), { value: 0, items: [1] });

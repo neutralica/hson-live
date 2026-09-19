@@ -5,7 +5,7 @@ import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/
 import { admit_locus_remote_action_internal } from "../src/api/locus/locus.remote-action.internal.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
-const ValueSchema: HsonSchema = Hson`<type "data" content <value <number <int true min 0>>>>`;
+const ValueSchema: HsonSchema = Hson.schema`<type "data" content <value <number <int true min 0>>>>`;
 export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "locus.hosted-multi-library-admission", title: "Hosted multi-library external admission", category: "Locus", runtime: "node", tags: Object.freeze(["locus", "livemap", "libraries", "actions", "admission"]) });
 const testEvents = create_test_event_emitter("locus.hosted-multi-library-admission");
 let checks = 0;
@@ -86,7 +86,7 @@ await check("the internal admission capability remains bound after the normal ag
     actions: { held: (_context, payload) => payload },
   });
   const result = await admit_locus_remote_action_internal<TestActions>(locus, { message: message("facade", "held", 4) });
-  assert.equal(result.type, "ack"); if (result.type === "ack") assert.equal(result.result?.scalar(), 4);
+  assert.equal(result.type, "ack"); if (result.type === "ack") assert.equal(result.result === undefined ? undefined : Hson.data.materialize(result.result), 4);
   assert.equal(locus.sessions.debug().sessions.length, 0); assert.equal(locus.activity.snapshot().retainedSessionCount, 0); locus.dispose();
 });
 

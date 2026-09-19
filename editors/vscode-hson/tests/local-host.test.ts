@@ -93,6 +93,7 @@ await check("protocol v1 validates every child and stop DTO", () => {
 await check("project resolution follows the application entry's package context and canonicalizes Node", async () => {
   const root = mkdtempSync(join(tmpdir(), "hson-local-host-resolution-"));
   try {
+    writeFileSync(join(root, "package.json"), JSON.stringify({ name: "local-host-fixture", type: "module" }));
     const entry = join(root, "packages", "decks", "dist", "app.mjs");
     mkdirSync(join(root, "packages", "decks", "dist"), { recursive: true });
     writeFileSync(entry, "export const application = {};\n");
@@ -133,6 +134,7 @@ await check("runtime compatibility and workspace security gates are explicit", (
 
 await check("project resolution requires built workspace code and workspace hson-live", async () => {
   const root = mkdtempSync(join(tmpdir(), "hson-local-host-project-"));
+  writeFileSync(join(root, "package.json"), JSON.stringify({ name: "local-host-fixture", type: "module" }));
   try {
     mkdirSync(join(root, "dist"), { recursive: true });
     writeFileSync(join(root, "dist", "app.mjs"), "export const application = {};\n");

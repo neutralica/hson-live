@@ -3,6 +3,6 @@
   "declarationIdentity": "producer.ts#ReuseSchema",
   "sourceDigest": "ee7fc403329b42d1942ce338841c7efc2eb5f78af4ac1120aebd04a72f1764ee",
   "semanticGraphDigest": "b1db252faa91ab0aec103920c91091682388712c8f5e4ca87d9235558aa6f36b",
-  "generatedDeclarationDigest": "a6620f029b638853d7e2e902cec69b00c075c1895ab7a514bd4ded8ee78ddb12",
+  "generatedDeclarationDigest": "efed34f0b44c51d64c63901f734eecdfb567985f398811b907b87eb73760607b",
   "graphHson": "<format \"hson-canonical-schema\" version 3 capabilities <projectedRoot 0> nodes «<kind \"projected-object\" exact true properties ««\"left\",1»,«\"right\",4»,«\"again\",7»»>,<kind \"projected-ref\" target 2>,<kind \"projected-object\" exact true properties ««\"value\",3»»>,<kind \"projected-string\">,<kind \"projected-ref\" target 5>,<kind \"projected-object\" exact true properties ««\"value\",6»»>,<kind \"projected-string\">,<kind \"projected-ref\" target 2>»>"
 }

@@ -78,7 +78,7 @@ Canonical object-property order is explicit in the graph and private carrier. Ob
 ### Documents and HTML import boundaries
 
 `hsonLiveMap` and `hson.liveMap` are the same frozen, DOM-free facade. It has
-exactly `fromJson`, `fromHson`, `fromNode`, and `fromLibraries`; it has no HTML
+exactly `fromJson`, `fromHson`, `fromData`, `fromDocument`, `fromNode`, and `fromLibraries`; it has no HTML
 factories. Parse HTML through the browser Transform owner, then pass its
 canonical node to the LiveMap facade:
 
@@ -97,6 +97,16 @@ const safe = hsonLiveMap.fromNode(
 The Transform step accepts a string; trusted input is unsanitized and untrusted
 input is sanitized. Use `hsonLiveMap.fromHson(...)` or `.fromNode(...)`
 directly when the source is already canonical Hson.
+
+`fromData(data)` accepts a validated `HsonData` string and returns a data map;
+`fromDocument(document)` accepts a validated `HsonDocument` string and returns
+a document map. Both defensively re-admit externally supplied strings.
+`fromData` uses LiveMap's existing data root modes, so its root must be an
+object or array; scalar Hson data remains valid for action payloads and other
+data boundaries.
+`fromHson(text)` remains a classifying boundary: text-only source such as
+`"text"` is interpreted as a document by that boundary. Use the mode-specific
+constructors when the same bytes must retain data semantics.
 
 ### Schema and proxy
 
@@ -124,8 +134,8 @@ Those numbers traverse canonical `$_content`, not data arrays.
 map.snap();                    // cloned root value
 map.snap(["user", "name"]);   // cloned value or undefined
 map.at(["tags"]).snap();      // cloned value
-map.data();                    // exact immutable HsonData root
-map.at(["tags"]).data();      // exact HsonData value or undefined
+map.data();                    // canonical HsonData string root
+map.at(["tags"]).data();      // canonical HsonData string or undefined
 map.rev;                      // current revision
 map.root();                   // detached HsonNode clone
 map.capture();                // { rev, format, payload } plus non-enumerable root
@@ -283,9 +293,9 @@ If the callback throws or any staged operation/schema check fails, nothing is ap
 HsonSchema is the only Schema authoring and authority system.
 
 ```ts
-import { Hson, type HsonSchema } from "hson-live";
+import { Hson, type HsonData, type SchemaType } from "hson-live";
 
-const UserSchema: HsonSchema = Hson`
+const UserSchema = Hson.schema`
   <type "data" content <user <content <
     name "string"
     age <optional "number">
@@ -299,7 +309,7 @@ map.schema.use(UserSchema);
 `map.schema.get()` returns the attached HsonSchema and `map.schema.use(schema)`
 attaches it once to that owner. Attachment validates the current root; later
 mutations, restore, and replay validate before publication. Generic dynamic Hson
-certification is `Hson.certify`; LiveMap exposes no separate authoring or
+certification is `schema.certify`; LiveMap exposes no separate authoring or
 certification facade.
 
 See [Schema](./schema.md) for authored data/document forms, generated TypeScript

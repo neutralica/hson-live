@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { create_echo, create_locus } from "../src/index.ts";
+import { Hson, create_echo, create_locus } from "../src/index.ts";
 import { create_echo_endpoint_internal } from "../src/api/echo/echo.endpoint.ts";
 import type { LocusClientMessage, LocusSocketLike } from "../src/types/locus.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -78,7 +78,7 @@ await check("public endpoint-only Echo uses explicit session lifecycle without r
     incarnationId: "endpoint-only-incarnation",
     actions: {
       async increment(context, payload) {
-        const by = payload?.scalar();
+        const by = payload === undefined ? undefined : Hson.data.materialize(payload);
         if (typeof by !== "number") throw new Error("Expected numeric action data.");
         const value = context.map.snap(["value"]);
         if (typeof value !== "number") throw new Error("Expected numeric authority state.");

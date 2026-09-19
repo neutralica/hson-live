@@ -1,19 +1,19 @@
-import { Hson, HsonData, HsonDocument, type HsonCanonical, type HsonSchema } from "hson-live/hson";
+import { Hson, type HsonData, type HsonDocument, type HsonCanonical, type HsonSchema } from "hson-live/hson";
 import type { HsonCanonical as TransformCanonical } from "hson-live/transform";
 
 declare const schema: HsonSchema;
-const authored: HsonCanonical = Hson`<age 37>`;
+const authored: HsonCanonical = Hson.canonical`<age 37>`;
 const sameBrand: TransformCanonical = authored;
-const checked: HsonCanonical = Hson.certify(schema, sameBrand);
-const exact: HsonData = HsonData.fromHson(authored);
-const document: HsonDocument = HsonDocument.fromHson(Hson`<main/>`);
+const checked: HsonCanonical = schema.certify(sameBrand);
+const exact: HsonData = Hson.data.fromHson(authored);
+const document: HsonDocument = Hson.document.fromHson(Hson.canonical`<main/>`);
 // @ts-expect-error Runtime text must first cross an explicit HsonCanonical boundary.
-HsonDocument.fromHson("<main/>");
-const materialized = exact.materialize();
+Hson.document.fromHson("<main/>");
+const materialized = Hson.data.materialize(exact);
 // @ts-expect-error Canonical authoring does not expose aggregate subsystems.
 Hson.liveTree;
 // @ts-expect-error Arbitrary source text is not canonical input.
-Hson.certify(schema, "<age 37>");
+schema.certify("<age 37>");
 void checked;
 void materialized;
-void document.toNode();
+void Hson.document.toNode(document);

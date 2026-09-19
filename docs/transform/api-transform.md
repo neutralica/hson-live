@@ -46,155 +46,53 @@ The same numeric operation is exported as `hsonCalc`. Runtime authored-Hson text
 
 Every constructor method parses and normalizes input to Hson's canonical node graph.
 
-## Hson authoring and HsonCanonical
+## Hson authoring and semantic strings
 
-`` Hson`...` `` authors canonical Hson inline. Literal template segments are Hson source;
-primitive substitutions are encoded according to their JavaScript types before
-the completed Hson is validated and canonicalized.
+`Hson` is a frozen namespace with four member tags. Each tag admits the complete source in its semantic context and returns a primitive string, except Schema authoring, which returns an immutable Schema object.
 
 ```ts
-import { Hson, type HsonCanonical } from "hson-live/hson";
+import { Hson, type HsonCanonical, type HsonData, type HsonDocument } from "hson-live/hson";
 
-const authored: HsonCanonical = Hson`
-  <p "first"<em "middle"/>"last"/>
-`;
+const canonical: HsonCanonical = Hson.canonical`<main/>`;
+const data: HsonData = Hson.data`<count -0>`;
+const document: HsonDocument = Hson.document`<main/><aside/>`;
+const schema = Hson.schema`<type "data" content <count "number">>`;
 ```
 
-The narrow `/hson` entrypoint exports `Hson` and the same `HsonCanonical` type
-as `/transform`. The root also exports `Hson` for aggregate convenience.
-Lowercase `hson` is a noncallable aggregate object; the old tag has no compatibility alias.
+`Hson.canonical` leaves data/document classification open. `Hson.data` parses in data context; `Hson.document` parses in document context, including the zero-item document (`""`). The same canonical bytes can have different semantics in those contexts. All three values are primitive strings; ordinary string operations return plain `string` and lose their brands. Bare `Hson\`...\`` is not supported.
 
-The public visual grammar is deliberately small:
+Primitive `string`, finite `number`, `boolean`, and `null` substitutions are encoded before full-source admission. A substituted string becomes Hson string data and cannot inject delimiters. Schema tags require substitution-free source so generated proof can be checked statically.
 
-```text
-Hson`...`    author canonical Hson
-hson.*       access hson-live subsystems
-Hson.certify(schema, canonical)    validate canonical Hson
-Hson(...)    unsupported ordinary source calls
-hson(...)    unsupported; the aggregate is not callable
-```
+### Data
 
-Literal source and interpolated JavaScript data remain distinct:
+`HsonData` preserves exact canonical order, signed zero, nested values, and valid names such as `__proto__`. It is already Hson text and has no instance methods.
 
 ```ts
-Hson`37`          // authored Hson number
-Hson`"37"`        // authored Hson string
-Hson`<foo/>`      // authored Hson element
-
-Hson`${37}`       // JavaScript number -> Hson number
-Hson`${"37"}`     // JavaScript string -> Hson string
-Hson`${true}`     // JavaScript boolean -> Hson boolean
+const ordinary = Hson.data.from({ enabled: true });
+const authored = Hson.data`<'10' -0 '2' 2 __proto__ true>`;
+const entries = Hson.data.entries(authored); // ordered [name, HsonData] pairs
+const view = Hson.data.materialize(authored); // detached ordinary JS
+const readBack = Hson.data.fromHson(authored);
 ```
 
-The supported substitution values are primitive JavaScript `string`, `number`,
-`boolean`, and `null`. Strings always become Hson string data; finite numbers
-retain the numeric policy (including `-0`); booleans and null become their Hson
-literals. Arrays, objects, nodes, functions, `undefined`, bigint, and symbols
-reject rather than stringify or splice source.
+`Hson.data.from` safely reads own descriptors and rejects accessors, cycles, unsupported values, and sparse arrays. Materialization is a convenience view; JavaScript object enumeration can reorder integer-like names, while the canonical string retains their authored order. Data LiveMaps expose `map.data(path?)` and `map.at(path).data()` for exact reads.
 
-There is no parse-success fallback and no structural/source interpolation.
+### Document
 
-Raw template segments keep Hson in charge of escapes. The complete reconstructed
-source passes through the same parser, exact root detachment, canonical graph
-admission, default serializer, and `HsonCanonical` branding path.
-
-Runtime `TemplateStringsArray.raw` must not be treated as a byte-for-byte copy of the host file. In particular, JavaScript normalizes physical CRLF template line terminators to LF. Static diagnostics that need original-file offsets must map against the original host source text rather than this runtime string.
-
-The returned spelling may differ from the source because the method reparses the source into canonical `HsonNode` state and serializes that graph with the default Hson options. It does not preserve original formatting, whitespace, line breaks, quoting, shorthand, comments, or other source-level spelling. Invalid input throws the existing parser, normalization, or invariant error. Internally the function parses one `_hson_root`, detaches its exact one semantic child, serializes that non-root node, and applies the `HsonCanonical` brand only after successful serialization.
-
-The return is an `HsonCanonical`, a TypeScript-branded primitive string. It does not imply sanitization, authentication, or trust. The compile-time brand is lost across untyped transport or storage.
-
-## HsonData
-
-`HsonData` is the immutable semantic data-side counterpart to serialization-facing
-`HsonCanonical`. It represents exactly strings, finite numbers (with `0` and
-`-0` distinct), booleans, null, dense arrays, and ordered unique-name data
-objects. It is data-only: it is not a document, graph node, LiveMap commit,
-transport envelope, or runtime capability. `HsonDocument` is its separate
-document-context counterpart.
-
-Data-object names follow canonical Hson name validity. Names in Hson's reserved
-`_hson_` structural namespace are not application data names and reject during
-admission, including when nested. This does not affect valid ordinary names such
-as `__proto__`, `constructor`, and `prototype`.
+`HsonDocument` is a canonical primitive string for an exact notation-closed document. It supports empty, text-only, single-root, and multi-root documents. `Hson.document.fromNode` admits only graphs that survive exact serialization and reparsing.
 
 ```ts
-import { Hson, HsonData } from "hson-live/hson";
-
-const ordinary = HsonData.from({ enabled: true });
-const authored = HsonData.fromHson(Hson`<'10' -0 '2' 2 __proto__ true>`);
-
-authored.kind;          // "object"
-authored.entries();     // exact ordered [name, HsonData] pairs
-authored.materialize(); // fresh ordinary-JavaScript convenience view
-authored.toHson();      // HsonCanonical
+const document = Hson.document`<main/><aside/>`;
+const detachedRoot = Hson.document.toNode(document);
+const roundTrip = Hson.document.fromHson(document);
+console.log(roundTrip === document); // true
 ```
 
-`toHson()` is available on every genuine `HsonData`, including values obtained
-from narrow LiveMap, Echo, or Locus entrypoints; it does not depend on import
-order or prior entrypoint initialization.
+`toNode` returns a detached mutable graph. The empty document (`""`) differs from one empty top-level text item (`'""'`). Canonical bytes give exact equality within the document mode. A document Schema can certify a value separately from document admission.
 
-`HsonData.from` strictly snapshots ordinary JavaScript data using own property
-descriptors. It rejects undefined, non-finite numbers, bigint, symbols,
-functions, sparse arrays, cycles, accessors, symbol-keyed content, class
-instances, platform objects, and unsupported prototypes. Getters are not
-invoked. Data-object names follow canonical Hson name validity: the reserved
-`_hson_` structural namespace is not application data and rejects at admission.
-Null-prototype objects are accepted, and valid names such as
-`__proto__`, `constructor`, `prototype`, the empty ordinary name, and
-integer-like names remain data.
+### Schema definitions
 
-Ordinary JavaScript objects expose property order according to ECMAScript, which
-reorders integer-index names. Admission preserves the order JavaScript actually
-exposes; it does not invent an unavailable order. Use Hson authoring or an
-existing `HsonData` when an otherwise-valid integer-name order must be retained.
-Likewise, `materialize()` safely defines own properties and returns detached
-containers, but its ordinary object view necessarily follows ECMAScript integer
-enumeration order. It is a convenience view, never canonical identity.
-Every genuine `HsonData` can call `toHson()` immediately and independently of
-which public entrypoint produced it or which entrypoints were imported first.
-
-Data LiveMaps provide `map.data(path?)` and `map.at(path).data()` for exact reads
-that bypass `snap()` and ordinary object reconstruction. Document-mode maps do
-not expose this data-only route.
-
-## HsonDocument
-
-`HsonDocument` is an immutable, runtime-nominal, exact canonical Hson value in
-document context. Zero, one, and many ordered top-level items are all the same
-document semantic kind. Its private graph is always an `_hson_root`; that root
-is structural machinery and is never authored literally. `HsonFragment` does
-not exist.
-
-```ts
-import { Hson, HsonDocument } from "hson-live/hson";
-
-const document = HsonDocument.fromHson(Hson`<main/><aside/>`);
-const source = document.toHson(); // HsonCanonical
-const detachedRoot = document.toNode(); // fresh mutable _hson_root clone
-document.equals(HsonDocument.fromHson(source)); // true
-```
-
-At this document-aware boundary, exact zero-length source is the empty document.
-The quoted source `""` is instead one empty top-level text item. Whitespace-only
-and comment-only inputs remain invalid; input is not trimmed.
-
-`fromNode()` safely snapshots only canonical document graphs that serialize and
-reparse to exact graph equality. Canonical attributes, metadata, text
-segmentation, and active QUID strings are retained, but no identity is minted
-and no revision, commit, epoch, ledger, or authority state exists. Every valid
-`HsonDocument` therefore has a total `toHson()` operation. Each `toNode()` call
-returns an independent mutable clone and never exposes the private frozen root.
-
-This value is intentionally narrower than document-mode LiveMap runtime state:
-non-string ordinary attributes and typed or otherwise lossy runtime style values
-remain valid LiveMap state but are not exact `HsonDocument` values. There is no
-LiveMap extraction API in this version. Canonical validity also remains separate
-from conformance to any `HsonSchema`; construction takes no Schema.
-
-`HsonDocument` has no HTML or DOM API and does not mean a browser HTML
-`Document`. HTML trust and HTML ingress remain Transform-owned, while browser
-realization and continuation remain separate runtime concerns.
+`Hson.schema` returns a frozen nominal object that compiles a valid Schema. `schema.toHson()` returns `HsonSchemaData`, a primitive `HsonData` known to define a valid Schema. `Hson.schema.fromHson(schema.toHson())` validates and reconstructs an operational Schema object. Dynamic certification belongs to `schema.certify(candidate)`; it returns a data or document string with Schema-specific proof. Hosted transport compares canonical Schema definitions, not object identity.
 
 Runtime text containing arbitrary authored Hson is a separate operation:
 

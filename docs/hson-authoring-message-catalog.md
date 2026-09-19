@@ -4,7 +4,7 @@ This is the copy-review surface, not a proposed language redesign. Edit prose in
 
 Each `bank.*` ID is the exact exported formatter/constant name. Each entry gives the trigger, range and limitation from its immediately preceding source comment, plus authoring/Schema context and fix classification. Rendered text blocks preserve capitalization, punctuation and leading spaces. Fragments are not standalone diagnostic sentences. Missing-evidence probes do not claim that current validators emit those combinations.
 
-Current Hson syntax: `<age 37 name "Ada">` is a data object, `[1, "x"]` an array, `<button disabled/>` a document element, and `<main <button/>/>` nested content. Object members are NOT separate sibling angle pairs. In Schema examples, `define` means `hson.liveMap.schema.define`; `s` is its callback parameter. Trusted examples use a registered binding and `Hson.certify(ReviewSchema, value)` unless stated otherwise.
+Current Hson syntax: `<age 37 name "Ada">` is a data object, `[1, "x"]` an array, `<button disabled/>` a document element, and `<main <button/>/>` nested content. Object members are NOT separate sibling angle pairs. Older `define` scenarios below describe a retired Schema builder; current Schema declarations use `Hson.schema`. Trusted examples use a registered binding and `ReviewSchema.certify(value)` unless stated otherwise.
 
 Precision: “exact” means a mapped span, not necessarily a single offending token. Syntax uses legacy `point`/`eof`, described as exact point/EOF; `fallback` is unresolved body/document coverage. Substitutions use `substitution-expression`: exact host expression span with semantic, NOT character-exact evaluated-value attribution. Anchors refer to existing closes/names/coverage. Infrastructure has no source squiggle. Successful exact placement adds no prose.
 
@@ -35,7 +35,7 @@ Hson validation failed.
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:133](../editors/vscode-hson/src/diagnostic-messages.ts#L133).
 - Trigger / placement / semantic limit: The tagged admission adapter has Transform details but no local Error instance. Uses literal point/EOF or body fallback; this is not a new admission rule.
-- Authored example: ``Hson`<age 1>```.
+- Authored example: ``Hson.canonical`<age 1>```.
 - Schema / infrastructure condition: `none; synthetic adapter fallback`.
 - Precision: unresolved (or literal point/EOF with details).
 - Related: none unless Transform source roles map
@@ -339,7 +339,7 @@ Variant `empty-label`:
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:14](../editors/vscode-hson/src/diagnostic-messages.ts#L14).
 - Trigger / placement / semantic limit: Trusted capture associates a scalar with one substitution expression. Attached to that expression, not its evaluated characters or literal segments.
-- Authored example: ``Hson`<age ${age}>` with age = "37"``.
+- Authored example: ``Hson.canonical`<age ${age}>` with age = "37"``.
 - Schema / infrastructure condition: `s.object({age:s.number})`.
 - Precision: exact expression span, semantic (not character-exact evaluated token).
 - Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
@@ -369,7 +369,7 @@ This expression evaluated to an Hson value
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:20](../editors/vscode-hson/src/diagnostic-messages.ts#L20).
 - Trigger / placement / semantic limit: TYPE_MISMATCH belongs to a captured substitution expression. Expected is the existing Schema description, not a reconstructed contract.
-- Authored example: ``Hson`<age ${age}>` with age = "37"``.
+- Authored example: ``Hson.canonical`<age ${age}>` with age = "37"``.
 - Schema / infrastructure condition: `s.object({age:s.number})`.
 - Precision: exact expression span, semantic.
 - Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
@@ -393,7 +393,7 @@ This expression evaluated to Hson null, but the Schema requires a different valu
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:26](../editors/vscode-hson/src/diagnostic-messages.ts#L26).
 - Trigger / placement / semantic limit: INVALID_LITERAL belongs to a captured substitution expression. The expression range is used; expected may describe several literals as text.
-- Authored example: ``Hson`<state ${state}>` with state = "pending"``.
+- Authored example: ``Hson.canonical`<state ${state}>` with state = "pending"``.
 - Schema / infrastructure condition: `s.object({state:s.literal("draft","published")})`.
 - Precision: exact expression span, semantic.
 - Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
@@ -417,7 +417,7 @@ This expression evaluated to an Hson string, but the Schema requires literal und
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:32](../editors/vscode-hson/src/diagnostic-messages.ts#L32).
 - Trigger / placement / semantic limit: A captured substitution fails its predicate after base validation succeeds. The expression range is used; without a label no predicate intent is known.
-- Authored example: ``Hson`<age ${age}>` with age = -1``.
+- Authored example: ``Hson.canonical`<age ${age}>` with age = -1``.
 - Schema / infrastructure condition: `s.object({age:s.number.constrain("positive age",n=>n>0)}) / unlabeled`.
 - Precision: exact expression span, semantic.
 - Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
@@ -441,7 +441,7 @@ This expression evaluated to an Hson number that does not satisfy its Schema con
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:38](../editors/vscode-hson/src/diagnostic-messages.ts#L38).
 - Trigger / placement / semantic limit: A substitution issue has no specialized wording for its code. Attached to the expression; the code is retained without inferring a repair.
-- Authored example: ``Hson`${value}```.
+- Authored example: ``Hson.canonical`${value}```.
 - Schema / infrastructure condition: `synthetic unrecognized issue code for a captured scalar`.
 - Precision: exact expression span, semantic.
 - Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
@@ -481,7 +481,7 @@ Variant `anchor`:
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:103](../editors/vscode-hson/src/diagnostic-messages.ts#L103).
 - Trigger / placement / semantic limit: A Schema range could not be mapped truthfully to a character-exact host span. Appended on occurrence-level fallback; static fromHson also uses this legacy text.
-- Authored example: ``Hson`<age "37">`; fromHson('<age "37">')``.
+- Authored example: ``Hson.canonical`<age "37">`; fromHson('<age "37">')``.
 - Schema / infrastructure condition: `same mismatch with unavailable/out-of-bounds source evidence`.
 - Precision: unresolved.
 - Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
@@ -499,7 +499,7 @@ Variant `unresolved`:
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:107](../editors/vscode-hson/src/diagnostic-messages.ts#L107).
 - Trigger / placement / semantic limit: A reconstructed-source span crosses more than one interpolation origin. The mapped host span is explicitly non-character-exact, even if offsets exist.
-- Authored example: ``Hson`<a ${a} b ${b}>```.
+- Authored example: ``Hson.canonical`<a ${a} b ${b}>```.
 - Schema / infrastructure condition: `constraint on a container spanning literal and substitution origins`.
 - Precision: unresolved / composite host span.
 - Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
@@ -517,7 +517,7 @@ Variant `composite`:
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:111](../editors/vscode-hson/src/diagnostic-messages.ts#L111).
 - Trigger / placement / semantic limit: A discovered validation association supplies its Schema label and rendered issue. Wraps any precision without adding validation evidence or changing the range.
-- Authored example: ``Hson`<age "37">```.
+- Authored example: ``Hson.canonical`<age "37">```.
 - Schema / infrastructure condition: `UserSchema requested by validate/use`.
 - Precision: exact / anchor / unresolved.
 - Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
@@ -537,7 +537,7 @@ Variant `exact`:
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:145](../editors/vscode-hson/src/diagnostic-messages.ts#L145).
 - Trigger / placement / semantic limit: The active document's status is displayed, defaulting to off without a record. Status-bar text only; absence of errors must not imply validation success.
-- Authored example: ``Hson`<age "37">```.
+- Authored example: ``Hson.canonical`<age "37">```.
 - Schema / infrastructure condition: `trusted off/waiting/current/stale/ambiguous/unavailable/failed`.
 - Precision: status/infrastructure.
 - Related: none
@@ -555,7 +555,7 @@ Hson Schema: off
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:151](../editors/vscode-hson/src/diagnostic-messages.ts#L151).
 - Trigger / placement / semantic limit: Current source was checked against trusted runtime evidence. Status tooltip only; predicates can be stateful and this is not a certificate.
-- Authored example: ``Hson`<age 37>` / Hson`<age "37">```.
+- Authored example: ``Hson.canonical`<age 37>` / Hson.canonical`<age "37">```.
 - Schema / infrastructure condition: `current valid or invalid registered validation`.
 - Precision: status/infrastructure.
 - Related: none
@@ -573,7 +573,7 @@ Current authored source checked using trusted runtime evidence. Stateful predica
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:155](../editors/vscode-hson/src/diagnostic-messages.ts#L155).
 - Trigger / placement / semantic limit: No current valid/invalid result supplies the default status explanation. Status tooltip only; off/waiting/stale/ambiguous/unavailable/failure share this text.
-- Authored example: ``Hson`<age "37">```.
+- Authored example: ``Hson.canonical`<age "37">```.
 - Schema / infrastructure condition: `off/waiting/stale/ambiguous/unavailable/runtime-failed without detail`.
 - Precision: status/infrastructure.
 - Related: none
@@ -591,7 +591,7 @@ Trusted Schema diagnostics require Workspace Trust, explicit enablement, and a c
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:159](../editors/vscode-hson/src/diagnostic-messages.ts#L159).
 - Trigger / placement / semantic limit: An optional runtime message overrides the default status explanation verbatim. Tooltip only; even an empty supplied message is preserved, with no English parsing.
-- Authored example: ``Hson`<age "37">```.
+- Authored example: ``Hson.canonical`<age "37">```.
 - Schema / infrastructure condition: `any status, optional runtime-provided message`.
 - Precision: status/infrastructure.
 - Related: none
@@ -629,7 +629,7 @@ Variant `empty-override`:
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:137](../editors/vscode-hson/src/diagnostic-messages.ts#L137).
 - Trigger / placement / semantic limit: The trusted client caught a non-Error value while validating. Status tooltip only; no source diagnostic or exception detail is invented.
-- Authored example: ``Hson`<age 37>```.
+- Authored example: ``Hson.canonical`<age 37>```.
 - Schema / infrastructure condition: `client validate catches non-Error`.
 - Precision: status/infrastructure.
 - Related: none
@@ -647,7 +647,7 @@ Trusted Schema runtime failed.
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:141](../editors/vscode-hson/src/diagnostic-messages.ts#L141).
 - Trigger / placement / semantic limit: The diagnostic controller's client promise rejected with a non-Error value. Status tooltip only; this remains distinct from the trusted-client fallback.
-- Authored example: ``Hson`<age 37>```.
+- Authored example: ``Hson.canonical`<age 37>```.
 - Schema / infrastructure condition: `controller client promise rejects with non-Error`.
 - Precision: status/infrastructure.
 - Related: none
@@ -701,7 +701,7 @@ Slow trusted diagnostic request (>= 2 seconds); includes cold load if this is th
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:181](../editors/vscode-hson/src/diagnostic-messages.ts#L181).
 - Trigger / placement / semantic limit: The packaged grammar registry returned no grammar after loading its resources. Infrastructure error only; not an authored syntax error or a color-setting change.
-- Authored example: ``Hson`<age 37>```.
+- Authored example: ``Hson.canonical`<age 37>```.
 - Schema / infrastructure condition: `registry returned no packaged grammar`.
 - Precision: status/infrastructure.
 - Related: none
@@ -721,7 +721,7 @@ Missing packaged Hson grammar
 - Category / owner: A — editor-owned.
 - Source: [diagnostic-messages.ts:117](../editors/vscode-hson/src/diagnostic-messages.ts#L117).
 - Trigger / placement / semantic limit: Discovery proved a validate or map.schema.use association for this occurrence. Related range is the call, not the primary diagnostic or Schema declaration.
-- Authored example: ``Hson`<age "37">`; Hson.certify(UserSchema,value); map.schema.use(UserSchema)``.
+- Authored example: ``Hson.canonical`<age "37">`; UserSchema.certify(value); map.schema.use(UserSchema)``.
 - Schema / infrastructure condition: `discovered UserSchema binding`.
 - Precision: exact call range (related information).
 - Related: Schema requested by this certify call (ReviewSchema). / Schema requested by this map.schema.use call (ReviewSchema).
@@ -1584,7 +1584,7 @@ All use `<age 37>` with an otherwise registered number Schema unless noted; cate
 | node-runtime-entry catch | dispatcher rejects with non-Error | Runtime failure. |
 | node-supervisor trust gate | either trust gate false when calling supervisor directly | Trusted Schema diagnostics require Workspace Trust and explicit enablement. |
 
-Timeout and crash retain `runtime-failed`, not an authored Schema violation. Error instances from Node, IPC, module loading and user predicates carry arbitrary verbatim text; their values cannot have a finite literal inventory. Non-Error values use the fixed boundary fallback. Public `Hson.certify` failure throws `Hson Schema validation failed.` from `src/internal/schema-hson-validation/validate-canonical-hson.ts:13`; that public text stays D-owned when observed through module/callback failure. Its issues are independently validated/formatted for editor diagnostics.
+Timeout and crash retain `runtime-failed`, not an authored Schema violation. Error instances from Node, IPC, module loading and user predicates carry arbitrary verbatim text; their values cannot have a finite literal inventory. Non-Error values use the fixed boundary fallback. Schema-owned `schema.certify` failure throws `Hson Schema validation failed.` from `src/internal/schema-hson-validation/validate-canonical-hson.ts:13`; that public text stays D-owned when observed through module/callback failure. Its issues are independently validated/formatted for editor diagnostics.
 
 ### Suppressed and adapted language (reachability audit)
 
@@ -1666,7 +1666,7 @@ Optional private D1 Node entry path; defaults beside hson.js under internal/trus
 Explicit trusted Node loader arguments, if required by the configured project runtime.
 ```
 
-Diagnostic source labels are `Hson` (syntax/runtime admission) and `Hson Schema` (Schema problems). Output channel label: `Hson Schema diagnostics`. They identify product surfaces, not error assertions. Timing output is JSON field data, not additional English prose.
+Diagnostic source labels are `Hson.canonical` (syntax/runtime admission) and `Hson Schema` (Schema problems). Output channel label: `Hson Schema diagnostics`. They identify product surfaces, not error assertions. Timing output is JSON field data, not additional English prose.
 
 ## 19. Separate color work — deliberately deferred
 
@@ -1676,7 +1676,7 @@ Normal/theme-respecting default highlighting remains unchanged. A possible optio
 
 Run `npm run test:schema-d2-presentation`. It runs the existing presentation suite plus direct message-bank cases, exact composed/related/precision tests, real Schema and syntax catalog snapshots, and runtime/supervisor wording checks. Every exported bank ID must be unique, tested, and present in the catalog; every catalog bank ID must exist. Each direct sample's exact text block must appear under its own ID. Every bank export must have an immediately preceding maintainer comment. Scenario snapshots assert core and editor messages, source slices/precision, and related text.
 
-The catalog is intentionally a static review document, not a generated language source. No public export or launcher was added: helper test modules join the existing registered presentation suite, leaving the 169-script / 161-launcher diagnostics inventory unchanged. Runtime timeout interpolation uses an exact anchored template assertion because measured milliseconds are intentionally variable. Other exact tests use literal expectations or explicit catalog snapshots. The baseline below remains pinned historical evidence; core/runtime files were not edited.
+The catalog is intentionally a static review document, not a generated language source. No public export or launcher was added: helper test modules join the existing registered presentation suite, leaving the 169-script / 161-launcher diagnostics inventory unchanged. Runtime timeout interpolation uses an exact anchored template assertion because measured milliseconds are intentionally variable. Other exact tests use literal expectations or explicit catalog snapshots. The baseline below remains pinned historical evidence from before the semantic-value hard cut; bare `Hson` tags, `Hson.certify`, and old tag identity checks there are obsolete snapshots, not current API guidance. Core/runtime files were not edited.
 
 ## 21. Implementation and completion report
 

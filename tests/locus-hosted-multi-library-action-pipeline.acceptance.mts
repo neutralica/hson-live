@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {
   Hson,
-  HsonData,
+  type HsonData,
   hsonEcho,
   hsonLiveMap,
   hsonLocus,
@@ -11,9 +11,9 @@ import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import { install_fake_document } from "./helpers/fake-document.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
-const StateSchema: HsonSchema = Hson`<type "data" content <value <number <int true min 0>>>>`;
-const OtherSchema: HsonSchema = Hson`<type "data" content <value <number <int true min 0>>>>`;
-const PageSchema: HsonSchema = Hson`<type "document" tag "main" content "empty">`;
+const StateSchema: HsonSchema = Hson.schema`<type "data" content <value <number <int true min 0>>>>`;
+const OtherSchema: HsonSchema = Hson.schema`<type "data" content <value <number <int true min 0>>>>`;
+const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content "empty">`;
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "locus.hosted-multi-library-action-pipeline",
@@ -214,8 +214,8 @@ await check("aggregate retry request payloads detach nested records and arrays f
   };
   const initial = echo.action("stable", payload);
   const retained = initial.request.payload;
-  assert.ok(retained instanceof HsonData);
-  const retainedView = retained.materialize() as typeof payload;
+  assert.equal(typeof retained, "string");
+  const retainedView = Hson.data.materialize(retained as HsonData) as typeof payload;
   assert.notEqual(retained, payload);
   assert.notEqual(retainedView.nested, payload.nested);
   assert.notEqual(retainedView.rows, payload.rows);
@@ -235,8 +235,8 @@ await check("aggregate retry request payloads detach nested records and arrays f
 
   const retry = echo.retryAction(initial.request);
   const retryPayload = retry.request.payload;
-  assert.ok(retryPayload instanceof HsonData);
-  assert.deepEqual(retryPayload.materialize(), {
+  assert.equal(typeof retryPayload, "string");
+  assert.deepEqual(Hson.data.materialize(retryPayload as HsonData), {
     nested: { value: 1 },
     rows: [[1, 2], { label: "original" }],
   });
@@ -256,7 +256,7 @@ await check("named document denial is terminal without mutation and the next que
     map: authority,
     authorizeAction(context) {
       decisions.push(context);
-      const payload = context.payload?.materialize() as { name?: string } | undefined;
+      const payload = context.payload === undefined ? undefined : Hson.data.materialize(context.payload) as { name?: string };
       return payload?.name !== "blocked";
     },
   });
@@ -289,7 +289,7 @@ await check("named document denial is terminal without mutation and the next que
   const evidence = decisions[0] as { session: { resumable: boolean }; logicalMapId: string; incarnationId: string; connection: { principalId?: string }; payload: HsonData };
   assert.equal(evidence.logicalMapId, locus.logicalMapId);
   assert.equal(evidence.connection.principalId, "principal-a");
-  assert.equal((evidence.payload.materialize() as { library?: string }).library, "page");
+  assert.equal((Hson.data.materialize(evidence.payload) as { library?: string }).library, "page");
   echo.dispose();
   locus.dispose();
 });
@@ -301,14 +301,14 @@ await check("application payload decoding precedes authorization and mutation", 
     map: authority,
     actions: {
       validated: async (context, payload) => {
-        const value = payload?.materialize() as { value: number };
+        const value = (payload === undefined ? undefined : Hson.data.materialize(payload)) as { value: number };
         await context.mutate((draft) => draft.lib("state").at(["value"]).set(value.value));
       },
     },
     schema: {
       actions: {
         validated: {
-          payload: (value: unknown): value is HsonData => value instanceof HsonData && typeof (value.materialize() as { value?: unknown }).value === "number",
+          payload: (value: unknown): value is HsonData => typeof value === "string" && typeof (Hson.data.materialize(value as HsonData) as { value?: unknown }).value === "number",
         },
       },
     },
@@ -340,7 +340,7 @@ await check("resumable session reattachment retains one complete aggregate autho
     sessions: { graceMs: 10_000, credential: () => "aggregate-session-credential-0001" },
     actions: {
       "state.set": async (context, payload) => {
-        const value = payload?.materialize() as { value: number };
+        const value = (payload === undefined ? undefined : Hson.data.materialize(payload)) as { value: number };
         await context.mutate((draft) => draft.lib("state").at(["value"]).set(value.value));
       },
     },
@@ -386,7 +386,7 @@ await check("retry, dedupe conflict, and action status match the one-map request
     sessions: { graceMs: 10_000, credential: () => "aggregate-dedupe-credential-01" },
     actions: {
       "state.set": async (context, payload) => {
-        const value = payload?.materialize() as { value: number };
+        const value = (payload === undefined ? undefined : Hson.data.materialize(payload)) as { value: number };
         executions += 1;
         await context.mutate((draft) => draft.lib("state").at(["value"]).set(value.value));
       },

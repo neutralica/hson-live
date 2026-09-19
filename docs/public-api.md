@@ -20,18 +20,16 @@ specialist capability from its owning public subpath.
 ## Roles, without a mandatory sequence
 
 - **Hson authoring and Transform** create and convert the canonical Hson graph.
-  `Hson` authors canonical source; `hsonTransform` is the DOM-free converter.
+  `Hson.canonical`, `.data`, and `.document` author classified canonical strings; `Hson.schema` compiles an immutable Schema object; `hsonTransform` is the DOM-free converter.
   Choose `fromTrustedHtml` only for input already trusted by the application;
   `fromUntrustedHtml` is the explicit sanitizing ingress. There is no output
   sanitizer and no `sanitizeBEWARE`.
-- **HsonData** is immutable, exact semantic data for data values and action
-  payloads. Use `entries()` for exact ordered inspection and `materialize()`
+- **HsonData** is a canonical primitive string with exact semantic data for data values and action
+  payloads. Use `Hson.data.entries(data)` for exact ordered inspection and `Hson.data.materialize(data)`
   only when a detached ordinary JavaScript view is wanted.
-- **HsonDocument** is the immutable exact document-context value. It owns a
-  frozen canonical graph and round-trips zero, one, or many top-level items;
+- **HsonDocument** is a canonical primitive string in document context. It can be converted to a detached graph and round-trips zero, one, or many top-level items;
   it carries no LiveMap authority or browser realization behavior.
-- **Hson Schema** validates canonical authored data/graphs. Generated Schema
-  consumers import `JsonValue` from `hson-live/hson`, not a former types barrel.
+- **Hson Schema** validates canonical authored data/graphs. Generated Schema evidence supplies `SchemaType<typeof Schema>` and Schema-specific Hson string proofs.
 - **LiveMap and Libraries** own local canonical state. A Libraries map is one
   named aggregate authority, not one authority per library.
 - **LiveTree** owns a live browser projection and can be used by itself.
@@ -83,7 +81,7 @@ const count = map.snap(["count"]);
 
 For exact data rather than a materialized object, use `map.data(path?)`; action
 handlers receive `HsonData | undefined`, so inspect it or call
-`payload?.materialize()` instead of assuming application properties are on the
+`payload === undefined ? undefined : Hson.data.materialize(payload)` instead of assuming application properties are on the
 payload object. Runtime coverage: LiveMap mutation and HsonData acceptance
 tests.
 
@@ -131,7 +129,7 @@ import { create_echo } from "hson-live/echo";
 import { hsonLiveMap } from "hson-live/livemap";
 
 const authority = create_locus({ map: documentMap, actions: { save(ctx, payload) {
-  if (payload) payload.entries(); // exact HsonData, not a plain object
+  if (payload) Hson.data.entries(payload); // exact HsonData, not a plain object
   return ctx;
 } } });
 const echo = create_echo({ socket, map: replicaMap, recovery: { logicalMapId: "document" } });
@@ -148,7 +146,7 @@ runtime coverage:* Locus document/recovery and Echo acceptance tests.
 `LocusSocketLike` carries encoded text frames, while ordinary Echo owns client
 message encoding. Specialist protocol peers import the four directional
 codecs, including `encode_locus_client_message`, from `hson-live/locus`; exact
-action `payloadData` is not produced by `HsonData.toHson()`.
+action `payloadData` is not produced by the canonical `HsonData` string.
 
 ### 6. Hosted Libraries — one aggregate, named targets
 
@@ -250,7 +248,7 @@ and document continuation.
 - Replace retired `hson-live/types` imports with `/hson` core types and owning
   specialist subpaths; keep normal composition imports at the package root.
 - Treat action payload/result values as `HsonData`: check presence, use
-  `entries()` for exact semantics or `materialize()` for a detached JS view.
+  `Hson.data.entries(value)` for exact semantics or `Hson.data.materialize(value)` for a detached JS view.
 - Use camelCase Locus/Echo APIs and `DataLocusOptions`; use persistence kind
   `"data"` only where existing persistence integration is actually supplied.
 - Replace LiveMap HTML shortcuts with explicit trusted/untrusted Transform then

@@ -1,21 +1,21 @@
-import { Hson, hsonCalc, hsonLiveMap, hsonLocus, hsonTransform, type HsonNumber } from "hson-live";
+import { InteractionFieldsSchema, RelationalUniqueSchema, TreeSchema, UserSchema } from "./producer.js";
+import { type SchemaType, HsonData, Hson, hsonCalc, hsonLiveMap, hsonLocus, hsonTransform, type HsonNumber } from "hson-live";
 import type { HsonCanonical } from "hson-live/hson";
-import { InteractionFieldsSchema, TreeSchema, UserSchema, type InteractionFieldsSchemaHson, type RelationalUniqueSchemaHson, type TreeSchemaHson, type UserSchemaHson } from "./producer.js";
 
-const authored: UserSchemaHson = Hson`
+const authored: HsonData<typeof UserSchema> = Hson.data`
   <name "Ada" score 37 age 37 percent 80 code "ID-7" key "abc" status "ready" phase "lobby" turn "player1" zero 0 negativeZero -0 signedZeroChoice -0 flags [true, false] pair ["x", 2] account <kind "user" handle "ada">>
 `;
 
 const dynamic: HsonCanonical = hsonTransform.fromJson({ name: "Ada", score: 37, age: 37, percent: 80, code: "ID-7", key: "abc", status: "ready", phase: "finished", turn: null, zero: 0, negativeZero: -0, signedZeroChoice: 0, flags: [true], pair: ["x", 2], account: { kind: "admin", level: 3 } }).toHson().serialize();
-const certified: UserSchemaHson = Hson.certify(UserSchema, dynamic);
+const certified: HsonData<typeof UserSchema> = UserSchema.certify(dynamic);
 const numberEvidence: HsonNumber = hsonCalc(37);
-const recursiveAuthored: TreeSchemaHson = Hson`<value "root" age 2 children [<value "leaf" age 0 children []>]>`;
+const recursiveAuthored: HsonData<typeof TreeSchema> = Hson.data`<value "root" age 2 children [<value "leaf" age 0 children []>]>`;
 const recursiveDynamic: HsonCanonical = hsonTransform.fromJson({ value: "root", age: 3, children: [{ value: "leaf", age: 1, children: [] }] }).toHson().serialize();
-const recursiveCertified: TreeSchemaHson = Hson.certify(TreeSchema, recursiveDynamic);
-const interactionFields: InteractionFieldsSchemaHson = Hson`<args <target "browser" options [null, true, -0, <nested []>]> payload <action "rename" values ["Ada", "Grace"]>>`;
+const recursiveCertified: HsonData<typeof TreeSchema> = TreeSchema.certify(recursiveDynamic);
+const interactionFields: HsonData<typeof InteractionFieldsSchema> = Hson.data`<args <target "browser" options [null, true, -0, <nested []>]> payload <action "rename" values ["Ada", "Grace"]>>`;
 const dynamicInteractionFields: HsonCanonical = hsonTransform.fromJson({ args: [], payload: { arbitrary: { nested: [1, false, null] } } }).toHson().serialize();
-const certifiedInteractionFields: InteractionFieldsSchemaHson = Hson.certify(InteractionFieldsSchema, dynamicInteractionFields);
-const relationalUnique: RelationalUniqueSchemaHson = Hson`<cells [<position "top-right" body "a">, <position "top-left" body "b">]>`;
+const certifiedInteractionFields: HsonData<typeof InteractionFieldsSchema> = InteractionFieldsSchema.certify(dynamicInteractionFields);
+const relationalUnique: HsonData<typeof RelationalUniqueSchema> = Hson.data`<cells [<position "top-right" body "a">, <position "top-left" body "b">]>`;
 
 const libraries = hsonLiveMap.fromLibraries({
   user: {

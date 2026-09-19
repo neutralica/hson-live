@@ -229,7 +229,7 @@ action name
 In action handlers:
 
 * `context.map` is read-only;
-* configured payloads and present successful results are immutable `HsonData`;
+* configured payloads and present successful results are canonical `HsonData` primitive string;
 * mutations use context.mutate(...);
 * awaited and unawaited action mutations are tracked;
 * acknowledgment waits until all tracked mutations settle;

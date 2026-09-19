@@ -8,8 +8,8 @@ import {
 } from "../src/api/livemap/livemap.internal.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
-const StateSchema = Hson`<type "data" content <account <content <id "string">> age <number <int true min 0 under 130>>>>`;
-const ColorsSchema = Hson`<type "data" content <value <string <prefix "#">>>>`;
+const StateSchema = Hson.schema`<type "data" content <account <content <id "string">> age <number <int true min 0 under 130>>>>`;
+const ColorsSchema = Hson.schema`<type "data" content <value <string <prefix "#">>>>`;
 const Q1 = "000000001";
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livemap-hson-schema-transition-proof",

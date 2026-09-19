@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { Hson, HsonData, hsonLiveMap, hsonTransform, type HsonSchema } from "../src/index.ts";
+import { Hson, hsonLiveMap, hsonTransform, type HsonSchema } from "../src/index.ts";
 import { HsonSchemaError } from "../src/api/livemap/livemap.error.ts";
 import { get_livemap_staged_authority } from "../src/api/livemap/livemap.authority.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
@@ -30,7 +30,7 @@ const check = (name: string, run: () => void): void => {
   console.log(`ok ${++checks} - ${name}`);
 };
 
-const DecksSchema: HsonSchema = Hson`<type "data" content <cells <array <
+const DecksSchema: HsonSchema = Hson.schema`<type "data" content <cells <array <
   content <content <position <optional "any"> body "string">>
   unique <
     by "position"
@@ -49,12 +49,12 @@ const DecksSchema: HsonSchema = Hson`<type "data" content <cells <array <
   >
 >>>>`;
 
-function cells(positions: readonly string[]): ReturnType<typeof Hson> {
+function cells(positions: readonly string[]): ReturnType<typeof Hson.canonical> {
   return hsonTransform.fromJson({ cells: positions.map((position, index) => ({ position, body: `body-${index}` })) }).toHson().serialize();
 }
 
-function accepts(schema: HsonSchema, candidate: ReturnType<typeof Hson>): boolean {
-  try { assert.equal(Hson.certify(schema, candidate), candidate); return true; }
+function accepts(schema: HsonSchema, candidate: ReturnType<typeof Hson.canonical>): boolean {
+  try { assert.equal(schema.certify(candidate), candidate); return true; }
   catch { return false; }
 }
 
@@ -73,18 +73,18 @@ check("Decks overlap matrix rejects in both orders and duplicate selectors rejec
     ["top-left", "left-half"], ["left-half", "top-left"], ["top-half", "left-half"], ["left-half", "top-half"],
     ["full", "top-left"], ["top-left", "full"], ["top-left", "top-left"],
   ]) assert.equal(accepts(DecksSchema, cells(positions)), false, positions.join(" + "));
-  assert.equal(accepts(DecksSchema, Hson`<cells [<position "top-left" body "same">, <position "top-left" body "same">]>`), false);
+  assert.equal(accepts(DecksSchema, Hson.canonical`<cells [<position "top-left" body "same">, <position "top-left" body "same">]>`), false);
 });
 
 check("selector boundary rejects missing, nonprimitive, and unmapped values at the direct member", () => {
-  const failures: readonly (readonly [ReturnType<typeof Hson>, "MISSING_REQUIRED" | "TYPE_MISMATCH" | "INVALID_CONSTRAINT"])[] = [
-    [Hson`<cells [<body "missing">]>`, "MISSING_REQUIRED"],
-    [Hson`<cells [<position ["top-right"] body "array">]>`, "TYPE_MISMATCH"],
-    [Hson`<cells [<position <nested true> body "object">]>`, "TYPE_MISMATCH"],
-    [Hson`<cells [<position "unknown" body "unmapped">]>`, "INVALID_CONSTRAINT"],
+  const failures: readonly (readonly [ReturnType<typeof Hson.canonical>, "MISSING_REQUIRED" | "TYPE_MISMATCH" | "INVALID_CONSTRAINT"])[] = [
+    [Hson.canonical`<cells [<body "missing">]>`, "MISSING_REQUIRED"],
+    [Hson.canonical`<cells [<position ["top-right"] body "array">]>`, "TYPE_MISMATCH"],
+    [Hson.canonical`<cells [<position <nested true> body "object">]>`, "TYPE_MISMATCH"],
+    [Hson.canonical`<cells [<position "unknown" body "unmapped">]>`, "INVALID_CONSTRAINT"],
   ];
   for (const [candidate, code] of failures) {
-    assert.throws(() => Hson.certify(DecksSchema, candidate), (error: unknown) => {
+    assert.throws(() => DecksSchema.certify(candidate), (error: unknown) => {
       assert.equal(error instanceof HsonSchemaError, true);
       if (!(error instanceof HsonSchemaError)) return false;
       assert.deepEqual(error.path, ["cells", 0, "position"]);
@@ -95,7 +95,7 @@ check("selector boundary rejects missing, nonprimitive, and unmapped values at t
 });
 
 check("conflict diagnostics retain later primary path, earlier related path, and exact key", () => {
-  assert.throws(() => Hson.certify(DecksSchema, cells(["top-right", "top-half"])), (error: unknown) => {
+  assert.throws(() => DecksSchema.certify(cells(["top-right", "top-half"])), (error: unknown) => {
     assert.equal(error instanceof HsonSchemaError, true);
     if (!(error instanceof HsonSchemaError)) return false;
     assert.deepEqual(error.path, ["cells", 1, "position"]);
@@ -106,34 +106,34 @@ check("conflict diagnostics retain later primary path, earlier related path, and
 });
 
 check("HsonData and runtime-origin canonical ingress use the identical evaluator", () => {
-  const valid = HsonData.from({ cells: [{ position: "top-right", body: "a" }, { position: "bottom-left", body: "b" }] }).toHson();
-  const invalid = HsonData.from({ cells: [{ position: "top-right", body: "a" }, { position: "top-half", body: "b" }] }).toHson();
-  assert.equal(Hson.certify(DecksSchema, valid), valid);
-  assert.throws(() => Hson.certify(DecksSchema, invalid));
+  const valid = Hson.data.from({ cells: [{ position: "top-right", body: "a" }, { position: "bottom-left", body: "b" }] });
+  const invalid = Hson.data.from({ cells: [{ position: "top-right", body: "a" }, { position: "top-half", body: "b" }] });
+  assert.equal(DecksSchema.certify(valid), valid);
+  assert.throws(() => DecksSchema.certify(invalid));
 });
 
 check("selector and derived-key equality distinguish positive and negative zero", () => {
-  const selectors: HsonSchema = Hson`<type "data" content <cells <array <content <content <position "any">> unique <by "position" cases [[0, ["positive"]], [-0, ["negative"]]]>>>>>`;
-  assert.equal(accepts(selectors, Hson`<cells [<position 0>, <position -0>]>`), true);
-  const keys: HsonSchema = Hson`<type "data" content <cells <array <content <content <position "string">> unique <by "position" cases [["a", [0]], ["b", [-0]]]>>>>>`;
-  assert.equal(accepts(keys, Hson`<cells [<position "a">, <position "b">]>`), true);
+  const selectors: HsonSchema = Hson.schema`<type "data" content <cells <array <content <content <position "any">> unique <by "position" cases [[0, ["positive"]], [-0, ["negative"]]]>>>>>`;
+  assert.equal(accepts(selectors, Hson.canonical`<cells [<position 0>, <position -0>]>`), true);
+  const keys: HsonSchema = Hson.schema`<type "data" content <cells <array <content <content <position "string">> unique <by "position" cases [["a", [0]], ["b", [-0]]]>>>>>`;
+  assert.equal(accepts(keys, Hson.canonical`<cells [<position "a">, <position "b">]>`), true);
 });
 
 check("ordinary and configured unique remain independent at different array locations", () => {
-  const schema: HsonSchema = Hson`<type "data" content <cells <array <content <content <position "string">> unique <by "position" cases [["a", ["A"]], ["b", ["B"]]]>>> ids <array <content "number" unique true>>>>`;
-  const valid = Hson`<cells [<position "a">, <position "b">] ids [0, -0]>`;
-  assert.equal(Hson.certify(schema, valid), valid);
-  assert.throws(() => Hson.certify(schema, Hson`<cells [<position "a">, <position "b">] ids [1, 1]>`));
-  assert.throws(() => Hson.certify(schema, Hson`<cells [<position "a">, <position "a">] ids [1, 2]>`));
+  const schema: HsonSchema = Hson.schema`<type "data" content <cells <array <content <content <position "string">> unique <by "position" cases [["a", ["A"]], ["b", ["B"]]]>>> ids <array <content "number" unique true>>>>`;
+  const valid = Hson.canonical`<cells [<position "a">, <position "b">] ids [0, -0]>`;
+  assert.equal(schema.certify(valid), valid);
+  assert.throws(() => schema.certify(Hson.canonical`<cells [<position "a">, <position "b">] ids [1, 1]>`));
+  assert.throws(() => schema.certify(Hson.canonical`<cells [<position "a">, <position "a">] ids [1, 2]>`));
 });
 
 check("generic scheduling and hardware relations are not domain-specific", () => {
-  const scheduling: HsonSchema = Hson`<type "data" content <items <array <content <content <kind "string">> unique <by "kind" cases [["morning-hour", ["09:00", "09:30"]], ["single-0930", ["09:30"]], ["single-1000", ["10:00"]]]>>>>>`;
-  assert.equal(accepts(scheduling, Hson`<items [<kind "morning-hour">, <kind "single-0930">]>`), false);
-  assert.equal(accepts(scheduling, Hson`<items [<kind "morning-hour">, <kind "single-1000">]>`), true);
-  const hardware: HsonSchema = Hson`<type "data" content <items <array <content <content <kind "string">> unique <by "kind" cases [["video-call", ["camera", "microphone", "encoder"]], ["recording", ["camera", "encoder"]], ["speaker", ["speaker"]]]>>>>>`;
-  assert.equal(accepts(hardware, Hson`<items [<kind "video-call">, <kind "recording">]>`), false);
-  assert.equal(accepts(hardware, Hson`<items [<kind "video-call">, <kind "speaker">]>`), true);
+  const scheduling: HsonSchema = Hson.schema`<type "data" content <items <array <content <content <kind "string">> unique <by "kind" cases [["morning-hour", ["09:00", "09:30"]], ["single-0930", ["09:30"]], ["single-1000", ["10:00"]]]>>>>>`;
+  assert.equal(accepts(scheduling, Hson.canonical`<items [<kind "morning-hour">, <kind "single-0930">]>`), false);
+  assert.equal(accepts(scheduling, Hson.canonical`<items [<kind "morning-hour">, <kind "single-1000">]>`), true);
+  const hardware: HsonSchema = Hson.schema`<type "data" content <items <array <content <content <kind "string">> unique <by "kind" cases [["video-call", ["camera", "microphone", "encoder"]], ["recording", ["camera", "encoder"]], ["speaker", ["speaker"]]]>>>>>`;
+  assert.equal(accepts(hardware, Hson.canonical`<items [<kind "video-call">, <kind "recording">]>`), false);
+  assert.equal(accepts(hardware, Hson.canonical`<items [<kind "video-call">, <kind "speaker">]>`), true);
 });
 
 check("configured unique compiler rejects every malformed closed relation shape", () => {
@@ -154,7 +154,7 @@ check("configured unique compiler rejects every malformed closed relation shape"
 check("canonical verifier, graph version, compatibility token, and round-trip close the rule", () => {
   assert.equal(CANONICAL_SCHEMA_VERSION, 3);
   assert.equal(HSON_SCHEMA_MVP_COMPATIBILITY_VERSION, "hson-schema-mvp-10");
-  const compiled = compile_hson_schema(DecksSchema);
+  const compiled = compile_hson_schema(DecksSchema.toHson());
   assert.equal(compiled.ok, true);
   if (!compiled.ok) return;
   const encoded = encode_canonical_schema_graph_hson(compiled.value.graph);
@@ -177,7 +177,7 @@ check("canonical verifier, graph version, compatibility token, and round-trip cl
   ]) assert.equal(verifiesRule(rule), false);
   const tooManyCases = Array.from({ length: CANONICAL_SCHEMA_FORMAT_LIMITS.maxUniqueCases + 1 }, (_, index) => [String(index), []]);
   assert.equal(verify_canonical_schema_graph({ format: CANONICAL_SCHEMA_FORMAT, version: CANONICAL_SCHEMA_VERSION, capabilities: { projectedRoot: 0 }, nodes: [{ kind: "projected-refinement", base: 1, rule: { kind: "array-unique-by-cases", by: "position", cases: tooManyCases } }, { kind: "projected-array" }] }).ok, false);
-  const signed = compile_hson_schema(Hson`<type "data" content <items <array <content <content <value "any">> unique <by "value" cases [[0, [-0]], [-0, [0]]]>>>>>`);
+  const signed = compile_hson_schema(Hson.canonical`<type "data" content <items <array <content <content <value "any">> unique <by "value" cases [[0, [-0]], [-0, [0]]]>>>>>`);
   assert.equal(signed.ok, true);
   if (signed.ok) {
     const signedRoundTrip = decode_canonical_schema_graph_hson(encode_canonical_schema_graph_hson(signed.value.graph));
@@ -187,11 +187,11 @@ check("canonical verifier, graph version, compatibility token, and round-trip cl
 });
 
 check("case-row order is canonical identity but cannot change acceptance", () => {
-  const left: HsonSchema = Hson`<type "data" content <items <array <content <content <kind "string">> unique <by "kind" cases [["a", ["A"]], ["b", ["B"]]]>>>>>`;
-  const right: HsonSchema = Hson`<type "data" content <items <array <content <content <kind "string">> unique <by "kind" cases [["b", ["B"]], ["a", ["A"]]]>>>>>`;
-  const candidate = Hson`<items [<kind "a">, <kind "b">]>`;
+  const left: HsonSchema = Hson.schema`<type "data" content <items <array <content <content <kind "string">> unique <by "kind" cases [["a", ["A"]], ["b", ["B"]]]>>>>>`;
+  const right: HsonSchema = Hson.schema`<type "data" content <items <array <content <content <kind "string">> unique <by "kind" cases [["b", ["B"]], ["a", ["A"]]]>>>>>`;
+  const candidate = Hson.canonical`<items [<kind "a">, <kind "b">]>`;
   assert.equal(accepts(left, candidate), accepts(right, candidate));
-  const a = compile_hson_schema(left), b = compile_hson_schema(right);
+  const a = compile_hson_schema(left.toHson()), b = compile_hson_schema(right.toHson());
   assert.equal(a.ok && b.ok, true);
   if (a.ok && b.ok) assert.notDeepEqual(a.value.graph, b.value.graph);
 });

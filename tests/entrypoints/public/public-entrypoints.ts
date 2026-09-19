@@ -130,8 +130,8 @@ continue_hosted_document({ echo: continuationEcho, root: continuationRoot, inter
 
 declare const genuineHsonData: HsonData;
 const retainedHsonData: HsonData = genuineHsonData;
-void retainedHsonData.kind;
-void retainedHsonData.toHson();
+void retainedHsonData.length;
+void Hson.data.materialize(retainedHsonData);
 type StructuralHsonData = Pick<HsonData, keyof HsonData>;
 declare const structuralHsonData: StructuralHsonData;
 // @ts-expect-error HsonData retains private instance-side nominality.
@@ -143,8 +143,8 @@ void (0 as unknown as HsonDataPrivateBrand);
 
 declare const genuineHsonDocument: HsonDocument;
 const retainedHsonDocument: HsonDocument = genuineHsonDocument;
-void retainedHsonDocument.toHson();
-void retainedHsonDocument.toNode();
+void retainedHsonDocument.length;
+void Hson.document.toNode(retainedHsonDocument);
 type StructuralHsonDocument = Pick<HsonDocument, keyof HsonDocument>;
 declare const structuralHsonDocument: StructuralHsonDocument;
 // @ts-expect-error HsonDocument retains private instance-side nominality.
@@ -195,9 +195,9 @@ import { validate_schema_hson_graph } from "hson-live/livemap";
 // @ts-expect-error Direct-source associations are private tooling.
 import type { TrustedSchemaDirectSource } from "hson-live/types";
 declare const standaloneSchema: HsonSchema;
-const standaloneCanonical: HsonCanonical = Hson.certify(standaloneSchema, Hson`37`);
-// @ts-expect-error Hson.validate was hard-removed in favor of Hson.certify.
-Hson.validate(standaloneSchema, Hson`37`);
+const standaloneCanonical: HsonCanonical = standaloneSchema.certify(Hson.canonical`37`);
+// @ts-expect-error Hson.validate is absent; Schema objects own certification.
+Hson.validate(standaloneSchema, Hson.canonical`37`);
 // @ts-expect-error The narrow authoring subpath also exposes certify, not validate.
 const narrowStandaloneCanonical: HsonCanonical = HsonSubpath.validate(standaloneSchema, standaloneCanonical);
 // @ts-expect-error Arbitrary strings are not branded HsonCanonical.
@@ -247,7 +247,6 @@ import { hsonNumber as removedNarrowHsonNumber } from "hson-live/number";
 import type { HSON_CANONICAL_BRAND } from "hson-live/transform";
 // @ts-expect-error The private number brand symbol is not exported.
 import type { HSON_NUMBER_BRAND } from "hson-live/transform";
-// @ts-expect-error HsonCanonical is intentionally not exported from the package root.
 import type { HsonCanonical as RootHsonCanonical } from "hson-live";
 import {
   CssManager,
@@ -872,12 +871,12 @@ declare const binaryDecodeOptions: BinaryDecodeOptions;
 
 const inferredHsonText = transformSubpath.fromNode(node).toHson().serialize();
 const inferredNormalizedHson = hson.transform.fromHson(arbitrary).toHson().serialize();
-const inferredRootTaggedHson: HsonCanonical = Hson`<main/>`;
-const inferredHsonSubpathTaggedHson: HsonCanonical = HsonSubpath`<main/>`;
-const inferredTaggedNumber: HsonCanonical = Hson`${37}`;
-const inferredTaggedString: HsonCanonical = Hson`${"37"}`;
-const inferredTaggedBoolean: HsonCanonical = Hson`${true}`;
-const inferredTaggedNull: HsonCanonical = Hson`${null}`;
+const inferredRootTaggedHson: HsonCanonical = Hson.canonical`<main/>`;
+const inferredHsonSubpathTaggedHson: HsonCanonical = HsonSubpath.canonical`<main/>`;
+const inferredTaggedNumber: HsonCanonical = Hson.canonical`${37}`;
+const inferredTaggedString: HsonCanonical = Hson.canonical`${"37"}`;
+const inferredTaggedBoolean: HsonCanonical = Hson.canonical`${true}`;
+const inferredTaggedNull: HsonCanonical = Hson.canonical`${null}`;
 // @ts-expect-error Ordinary source-string calls are unsupported.
 hson("<foo/>");
 // @ts-expect-error Ordinary source-string calls are unsupported.
@@ -891,17 +890,17 @@ hson(null);
 // @ts-expect-error Ordinary calls are unsupported.
 hson({});
 // @ts-expect-error Tagged substitutions exclude undefined.
-Hson`${undefined}`;
+Hson.canonical`${undefined}`;
 // @ts-expect-error Tagged substitutions exclude bigint.
-Hson`${1n}`;
+Hson.canonical`${1n}`;
 // @ts-expect-error Tagged substitutions exclude symbol.
-Hson`${Symbol()}`;
+Hson.canonical`${Symbol()}`;
 // @ts-expect-error Tagged substitutions exclude objects.
-Hson`${{}}`;
+Hson.canonical`${{}}`;
 // @ts-expect-error Tagged substitutions exclude arrays.
-Hson`${[]}`;
+Hson.canonical`${[]}`;
 // @ts-expect-error Tagged substitutions exclude functions.
-Hson`${() => {}}`;
+Hson.canonical`${() => {}}`;
 // @ts-expect-error Transform textual admission has no .string surface.
 hson.transform.string;
 // @ts-expect-error Transform textual admission has no .string surface.
@@ -1130,7 +1129,7 @@ import { hson as retiredSubpathAggregate } from "hson-live/hson";
 // @ts-expect-error Subsystems use their own entrypoints or the package root.
 import { hsonLiveMap as retiredAuthoringMap } from "hson-live/hson";
 // @ts-expect-error Canonical input is required at every validation entrance.
-Hson.certify(standaloneSchema, "37");
+standaloneSchema.certify("37");
 const authoredTypeIdentity: AuthoringCanonical = standaloneCanonical;
 const originalTypeIdentity: HsonCanonical = authoredTypeIdentity;
 const sameRootMapType: typeof mapSubpath = hsonLiveMap;

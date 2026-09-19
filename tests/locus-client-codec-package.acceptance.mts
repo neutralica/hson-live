@@ -49,7 +49,7 @@ try {
 
   const typeConsumer = join(consumerRoot, "consumer.mts");
   writeFileSync(typeConsumer, `
-    import { HsonData } from "hson-live/hson";
+    import { Hson } from "hson-live/hson";
     import {
       decode_locus_message,
       decode_locus_server_message,
@@ -61,7 +61,7 @@ try {
     } from "hson-live/locus";
 
     type Actions = Readonly<{ exact: { value: number } }>;
-    const payload = HsonData.from({ value: -0 });
+    const payload = Hson.data.from({ value: -0 });
     const message: LocusClientMessage<Actions> = {
       type: "action", id: "action", name: "exact", payload,
     };
@@ -86,7 +86,7 @@ try {
   const runtimeConsumer = join(consumerRoot, "consumer.mjs");
   writeFileSync(runtimeConsumer, `
     import assert from "node:assert/strict";
-    import { Hson, HsonData } from "hson-live/hson";
+    import { Hson } from "hson-live/hson";
     import * as root from "hson-live";
     import {
       create_locus,
@@ -120,9 +120,9 @@ try {
       });
     }
 
-    const exact = HsonData.fromHson(Hson\`<'10' -0 '2' <nested <__proto__ <constructor 1 prototype 2>>> __proto__ <polluted true> tail [0,-0,null]>\`);
-    assert.deepEqual(exact.entries().map(([name]) => name), ["10", "2", "__proto__", "tail"]);
-    assert.equal(Object.is(exact.entries()[0][1].scalar(), -0), true);
+    const exact = Hson.data.fromHson(Hson.data\`<'10' -0 '2' <nested <__proto__ <constructor 1 prototype 2>>> __proto__ <polluted true> tail [0,-0,null]>\`);
+    assert.deepEqual(Hson.data.entries(exact).map(([name]) => name), ["10", "2", "__proto__", "tail"]);
+    assert.equal(Object.is(Hson.data.materialize(Hson.data.entries(exact)[0][1]), -0), true);
 
     let authorizationCalls = 0;
     let exactExecutions = 0;
@@ -184,17 +184,17 @@ try {
     assert.equal(Object.hasOwn(actionEnvelope, "payload"), false);
     const decodedAction = decode_locus_message(actionWire);
     assert.equal(decodedAction.ok, true, decodedAction.ok ? "" : decodedAction.error.message);
-    assert.equal(decodedAction.value.payload.equals(exact), true);
+    assert.equal(decodedAction.value.payload === exact, true);
 
     pair.client.send(actionWire);
     const acknowledged = await next("ack");
-    assert.equal(acknowledged.result.equals(exact), true);
-    assert.equal(authorizationPayload.equals(exact), true);
-    assert.equal(handlerPayload.equals(exact), true);
+    assert.equal(acknowledged.result === exact, true);
+    assert.equal(authorizationPayload === exact, true);
+    assert.equal(handlerPayload === exact, true);
     assert.equal(exactExecutions, 1);
     const serverRoundTrip = decode_locus_server_message(encode_locus_message(acknowledged));
     assert.equal(serverRoundTrip.ok, true);
-    assert.equal(serverRoundTrip.value.result.equals(exact), true);
+    assert.equal(serverRoundTrip.value.result === exact, true);
 
     pair.client.send(encode_locus_client_message({
       type: "action",

@@ -1,6 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { hson, HsonData } from "../src/index.ts";
+import { hson, Hson } from "../src/index.ts";
+import { ExactDataCarrier } from "../src/api/data/hson-data.ts";
 import { create_persistent_locus } from "../src/api/locus/index.ts";
 import { create_livehost_persistent_store } from "../src/api/livehost/services/livehost.persistent-store.ts";
 import { resolve_locus_document_action } from "../src/api/locus/locus.document-actions.ts";
@@ -247,7 +248,7 @@ check("deduplicated path action executes once", async () => {
     requestId: "same-request",
     ownerPrincipalId: undefined,
     actionName: "document.attrs.set",
-    payload: HsonData.from({ target: { kind: "path" as const, path: [0] }, name: "id", value: "once" }),
+    payload: ExactDataCarrier.from({ target: { kind: "path" as const, path: [0] }, name: "id", value: "once" }),
     retry: false,
     run: async () => {
       executions += 1;

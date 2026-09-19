@@ -25,8 +25,8 @@ const check = (name: string, run: () => void): void => {
     throw error;
   } console.log(`ok ${++checks} - ${name}`); };
 
-const PersonSchema: HsonSchema = Hson`<type "data" content <name "string" age "number">>`;
-const OtherSchema: HsonSchema = Hson`<type "data" content <name "string">>`;
+const PersonSchema: HsonSchema = Hson.schema`<type "data" content <name "string" age "number">>`;
+const OtherSchema: HsonSchema = Hson.schema`<type "data" content <name "string">>`;
 
 check("HsonSchema governs a data LiveMap and use returns the identical map", () => {
   const map = hsonLiveMap.fromJson({ name: "Ada", age: 37 });
@@ -43,7 +43,7 @@ check("HsonSchema rejects invalid mutation before changing state", () => {
 });
 
 check("alphabet refinement governs LiveMap admission and mutation through the shared evaluator", () => {
-  const schema: HsonSchema = Hson`<type "data" content <key <string <len 3 alphabet "abc">>>>`;
+  const schema: HsonSchema = Hson.schema`<type "data" content <key <string <len 3 alphabet "abc">>>>`;
   const map = hsonLiveMap.fromJson({ key: "abc" }).schema.use(schema);
   map.set(["key"], "cba");
   assert.deepEqual(map.snap(), { key: "cba" });
@@ -53,7 +53,7 @@ check("alphabet refinement governs LiveMap admission and mutation through the sh
 });
 
 check("any governs canonical data while preserving negative zero and object order", () => {
-  const schema: HsonSchema = Hson`<type "data" content <args "any" payload "any">>`;
+  const schema: HsonSchema = Hson.schema`<type "data" content <args "any" payload "any">>`;
   const map = hsonLiveMap.fromJson({ args: -0, payload: { z: 1, a: [true, null, {}] } }).schema.use(schema);
   assert.equal(Object.is(map.snap(["args"]), -0), true);
   assert.deepEqual(Object.keys(map.snap(["payload"]) as object), ["z", "a"]);
@@ -64,7 +64,7 @@ check("any governs canonical data while preserving negative zero and object orde
 });
 
 check("primitive union branches govern null values", () => {
-  const schema: HsonSchema = Hson`<type "data" content <value <union ["string", "null"]>>>`;
+  const schema: HsonSchema = Hson.schema`<type "data" content <value <union ["string", "null"]>>>`;
   const map = hsonLiveMap.fromJson({ value: null }).schema.use(schema);
   assert.deepEqual(map.snap(), { value: null });
   map.set(["value"], "ready");
@@ -80,7 +80,7 @@ check("one owner cannot switch Schema while independent owners can reuse it", ()
 });
 
 check("document LiveMap governance consumes HsonSchema", () => {
-  const schema: HsonSchema = Hson`<type "document" tag "main" content <sequence [<tag "section" content "string">]>>`;
+  const schema: HsonSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "section" content "string">]>>`;
   const map = hsonLiveMap.fromHson('<main <section "body"/>/>');
   assert.equal(map.mode, "document");
   if (map.mode !== "document") throw new Error("expected element map");

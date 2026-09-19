@@ -14,9 +14,9 @@ import {
 import { install_fake_document } from "./helpers/fake-document.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
-const StateSchema: HsonSchema = Hson`<type "data" content <theme "string" count <number <int true min 0>> box <content <id "number">>>>`;
-const ColorsSchema: HsonSchema = Hson`<type "data" content <accent "string">>`;
-const PageSchema: HsonSchema = Hson`<type "document" tag "main" content <repeat <tag "item" content "empty">>>`;
+const StateSchema: HsonSchema = Hson.schema`<type "data" content <theme "string" count <number <int true min 0>> box <content <id "number">>>>`;
+const ColorsSchema: HsonSchema = Hson.schema`<type "data" content <accent "string">>`;
+const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "item" content "empty">>>`;
 const QUID = "000008202";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({

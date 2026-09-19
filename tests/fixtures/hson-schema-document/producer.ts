@@ -1,6 +1,6 @@
-import { Hson, type HsonSchema } from "hson-live";
+import { Hson } from "hson-live";
 
-export const PageSchema: HsonSchema<PageSchemaType, "document"> = Hson`
+export const PageSchema: __HsonSchema<__PageSchemaEvidence["value"], __PageSchemaEvidence["mode"], __PageSchemaEvidence["identity"]> = (Hson.schema`
   <
     type "document"
     tag "main"
@@ -12,9 +12,9 @@ export const PageSchema: HsonSchema<PageSchemaType, "document"> = Hson`
       <tag "section" content "string">
     ]>
   >
-`;
+` as unknown as __HsonSchema<__PageSchemaEvidence["value"], __PageSchemaEvidence["mode"], __PageSchemaEvidence["identity"]>);
 
-export const ListSchema: HsonSchema<ListSchemaType, "document"> = Hson`
+export const ListSchema: __HsonSchema<__ListSchemaEvidence["value"], __ListSchemaEvidence["mode"], __ListSchemaEvidence["identity"]> = (Hson.schema`
   <
     type "document"
     defs <
@@ -24,21 +24,19 @@ export const ListSchema: HsonSchema<ListSchemaType, "document"> = Hson`
     tag "list"
     content <repeat <ref "Item"> count 2>
   >
-`;
+` as unknown as __HsonSchema<__ListSchemaEvidence["value"], __ListSchemaEvidence["mode"], __ListSchemaEvidence["identity"]>);
 
-export const DocumentSequenceSchema: HsonSchema<DocumentSequenceSchemaType, "document"> = Hson`
+export const DocumentSequenceSchema: __HsonSchema<__DocumentSequenceSchemaEvidence["value"], __DocumentSequenceSchemaEvidence["mode"], __DocumentSequenceSchemaEvidence["identity"]> = (Hson.schema`
   <
     type "document"
     defs <Item <tag "item" content "empty">>
     content <repeat <ref "Item"> count 2>
   >
-`;
+` as unknown as __HsonSchema<__DocumentSequenceSchemaEvidence["value"], __DocumentSequenceSchemaEvidence["mode"], __DocumentSequenceSchemaEvidence["identity"]>);
 
 // @hson-schema generated type exports
-import type { DocumentSequenceSchemaType, DocumentSequenceSchemaHson } from "./producer.DocumentSequenceSchema.hson-schema.generated.js";
-export type { DocumentSequenceSchemaType, DocumentSequenceSchemaHson };
-import type { ListSchemaType, ListSchemaHson } from "./producer.ListSchema.hson-schema.generated.js";
-export type { ListSchemaType, ListSchemaHson };
-import type { PageSchemaType, PageSchemaHson } from "./producer.PageSchema.hson-schema.generated.js";
-export type { PageSchemaType, PageSchemaHson };
+import type { HsonSchema as __HsonSchema } from "hson-live";
+import type { Evidence as __DocumentSequenceSchemaEvidence } from "./producer.DocumentSequenceSchema.hson-schema.generated.js";
+import type { Evidence as __ListSchemaEvidence } from "./producer.ListSchema.hson-schema.generated.js";
+import type { Evidence as __PageSchemaEvidence } from "./producer.PageSchema.hson-schema.generated.js";
 // @hson-schema end generated type exports

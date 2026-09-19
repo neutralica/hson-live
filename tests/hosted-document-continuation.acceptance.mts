@@ -27,8 +27,8 @@ import { FakeElement, FakeText, install_fake_document } from "./helpers/fake-doc
 install_fake_document();
 
 const path = (...parts: number[]) => Object.freeze({ kind: "path" as const, path: Object.freeze([0, ...parts]) });
-const ButtonSchema: HsonSchema = Hson`<type "document" tag "main" content <sequence [<tag "button" content "empty">]>>`;
-const StateSchema: HsonSchema = Hson`<type "data" content <count "number">>`;
+const ButtonSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "button" content "empty">]>>`;
+const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number">>`;
 
 function documentMap(source: string): DocumentLiveMap {
   const map = hson.liveMap.fromHson(source);
@@ -89,7 +89,7 @@ function mainFixture(quid: string): Readonly<{ root: FakeElement; child: FakeEle
     logicalMapId: "hosted-continuation-replay",
     sessions: {},
     authorizeAction: (context) => context.action !== "document.attrs.set"
-      || (context.payload?.materialize() as { name?: string } | undefined)?.name !== "denied",
+      || (context.payload === undefined ? undefined : Hson.data.materialize(context.payload) as { name?: string } | undefined)?.name !== "denied",
   });
   const installed = install_locus_bootstrap(capture_locus_bootstrap(locus, "continuation:replay", "/continuation"));
   const replica = installed.map;
@@ -232,7 +232,7 @@ function mainFixture(quid: string): Readonly<{ root: FakeElement; child: FakeEle
     subjectQuid: quid,
     kind: "locus-authoritative",
     key: "save",
-    payload: HsonData.from({ exact: true }),
+    payload: Hson.data.from({ exact: true }),
     listener: Object.freeze({
       event: "click", target: "element", capture: false, once: false, passive: false,
       missingTarget: "throw", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false,
@@ -277,7 +277,7 @@ function mainFixture(quid: string): Readonly<{ root: FakeElement; child: FakeEle
   assert.equal(continuation.map, replica.lib("page"));
   button.dispatchEvent(new Event("click"));
   for (let attempt = 0; attempt < 30 && handled === undefined; attempt += 1) await Promise.resolve();
-  assert.equal(handled?.equals(HsonData.from({ exact: true })), true);
+  assert.equal(handled === Hson.data.from({ exact: true }), true);
   continuation.dispose();
   handled = undefined;
   button.dispatchEvent(new Event("click"));

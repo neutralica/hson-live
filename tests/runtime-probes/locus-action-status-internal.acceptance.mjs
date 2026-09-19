@@ -73,7 +73,7 @@ function retained(locus, request, principalId) {
 
 function aggregate_map() {
   return hsonLiveMap.fromLibraries({
-    state: { data: { value: 0 }, schema: Hson`<type "data" content <value <number <int true>>>>` },
+    state: { data: { value: 0 }, schema: Hson.canonical`<type "data" content <value <number <int true>>>>` },
   });
 }
 

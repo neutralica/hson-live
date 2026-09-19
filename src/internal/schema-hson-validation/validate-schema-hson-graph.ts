@@ -6,7 +6,7 @@ export type SchemaGraphValidation = Readonly<{
   issues: readonly HsonSchemaIssue[];
 }>;
 
-/** Callback-authored Schema validation is retired; use Hson.certify or LiveMap schema governance. */
+/** Callback-authored Schema validation is retired; use schema.certify or LiveMap schema governance. */
 export function validate_schema_hson_graph(_schema: unknown, _graph: HsonNode): SchemaGraphValidation {
   return {
     ok: false,
