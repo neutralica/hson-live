@@ -9,6 +9,7 @@ const map = hsonLiveMap.fromLibraries({
   page: { document: '<main <p @000009711 "worker"/>/>', schema: PageSchema },
 });
 const result = render_document({ map });
+const cut = map.cut();
 const encoded = encode_ssr_bootstrap(result.bootstrap);
 const installed = install_libraries_snapshot(result.bootstrap).map;
 const state = installed.lib("state");
@@ -17,6 +18,7 @@ parentPort?.postMessage(Object.freeze({
   html: result.html,
   document: result.document,
   bootstrap: result.bootstrap,
+  cut,
   encoded,
   decoded: decode_ssr_bootstrap(encoded),
   revision: installed.rev,

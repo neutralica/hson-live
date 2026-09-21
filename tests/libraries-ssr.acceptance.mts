@@ -3,6 +3,7 @@ import {
   DocumentSsrError,
   Hson,
   HsonData,
+  encode_ssr_bootstrap,
   add_interaction,
   enable_interactions,
   hsonLiveMap,
@@ -211,6 +212,39 @@ check("only the selected document must satisfy parser realization", () => {
   });
   assert.equal(render_document({ map, document: "page" }).document, "page");
   expect_phase("realize", () => render_document({ map, document: "broken" }));
+});
+
+check("Libraries object cuts infer one document and retain the complete continuation", () => {
+  const map = map_fixture();
+  enable_interactions(map);
+  const cut = map.cut();
+  const rendered = render_document({ map });
+  assert.deepEqual(cut, { html: rendered.html, data: rendered.bootstrap, document: "page" });
+  assert.deepEqual(Object.keys(cut).sort(), ["data", "document", "html"]);
+  assert.equal(cut.data.registry.libraries.some((entry) => entry.name === "state"), true);
+  assert.equal(cut.data.registry.libraries.some((entry) => entry.scope === "hson-internal"), true);
+  map.lib("state").at(["count"]).set(1);
+  assert.equal(data(install_libraries_snapshot(cut.data).map, "state").snap(["count"]), 0);
+  assert.equal(typeof encode_ssr_bootstrap(cut.data), "string");
+  const locus = hsonLocus.create({ map });
+  const hosted = locus.cut();
+  assert.equal(hosted.document, "page");
+  assert.equal(hosted.data.registry.libraries.some((entry) => entry.name === "state"), true);
+  assert.equal(typeof encode_ssr_bootstrap(hosted.data), "string");
+  locus.dispose();
+});
+
+check("Libraries selection and hosted object cuts preserve the aggregate fence", () => {
+  const map = map_fixture(true);
+  expect_phase("select", () => map.cut());
+  assert.notEqual(map.cut("page").html, map.cut("admin").html);
+  const locus = hsonLocus.create({ map });
+  expect_phase("select", () => locus.cut());
+  const cut = locus.cut("page");
+  const rendered = render_hosted_document({ authority: locus, document: "page" });
+  assert.deepEqual(cut, { html: rendered.html, data: rendered.bootstrap, document: "page" });
+  assert.equal(install_locus_libraries_snapshot(cut.data).recovery.cursor?.lastAppliedRev, map.rev);
+  locus.dispose();
 });
 
 process.stdout.write(`1..${checks}\n`);

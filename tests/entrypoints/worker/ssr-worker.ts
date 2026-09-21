@@ -16,6 +16,7 @@ import type { LocusBootstrapAuthority, LocusMultiLibrary } from "hson-live/locus
 declare const map: DocumentLiveMap;
 declare const authority: LocusBootstrapAuthority;
 const local: DocumentSsr = render_document({ map });
+void map.cut().data;
 const hosted: HostedDocumentSsr = render_hosted_document({ authority });
 const localEncoded = encode_ssr_bootstrap(local.bootstrap);
 void decode_ssr_bootstrap(localEncoded).bootstrap;
@@ -27,5 +28,7 @@ declare const libraries: LiveMapLibraries;
 declare const librariesAuthority: LocusMultiLibrary;
 const aggregateLocal: LibrariesDocumentSsr = render_document({ map: libraries });
 const aggregateHosted: HostedLibrariesDocumentSsr = render_hosted_document({ authority: librariesAuthority });
+void libraries.cut().data;
+void librariesAuthority.cut().data;
 void aggregateLocal.document;
 void aggregateHosted.document;

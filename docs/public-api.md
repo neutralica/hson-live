@@ -165,17 +165,17 @@ const authority = create_locus({ map: libraries, actions: {} });
 one atomic authoritative action. This is one aggregate revision and recovery
 authority. Runtime coverage: hosted multi-library acceptance tests.
 
-### 7. Local SSR — render, deliver, restore, continue
+### 7. Local SSR — cut, deliver, restore, continue
 
 ```ts
-import { decode_ssr_bootstrap, encode_ssr_bootstrap, render_document } from "hson-live/ssr";
+import { decode_ssr_bootstrap, encode_ssr_bootstrap } from "hson-live/ssr";
 
-const rendered = render_document({ map: documentMap });
-const encoded = encode_ssr_bootstrap(rendered.bootstrap);
+const cut = documentMap.cut();
+const encoded = encode_ssr_bootstrap(cut.data);
 const decoded = decode_ssr_bootstrap(encoded);
 ```
 
-`rendered.html` is `BrowserRealizationHtml`, not `Hson.toHtml()` transport
+`cut.html` is `BrowserRealizationHtml`, not `Hson.toHtml()` transport
 HTML. Use the matching public installer/restore path for `decoded.bootstrap`,
 then `continue_document` with an explicit existing root Element. Put an
 application-root carrier outside that continued root with no surrounding
@@ -184,18 +184,29 @@ a standard Web `Response`; storage, routes, cache policy, and security remain
 application-owned. Runtime coverage: SSR codec and document-SSR acceptance
 tests.
 
+For a fixed Library registry, use `libraries.cut("page")`; if it contains
+exactly one public document Library, `libraries.cut()` infers its name. The
+result includes `document`, selected-document `html`, and `data` for the
+complete Libraries snapshot, including its data Libraries. Data LiveMaps and
+data-only Loci have no `cut()` method. `render_document({ map })` remains the
+lower-level functional equivalent and returns the payload as `bootstrap`.
+
 ### 8. Hosted SSR — adopt before recovery, then author
 
 ```ts
-import { render_hosted_document } from "hson-live/ssr";
 import { continue_hosted_document } from "hson-live";
 
-const rendered = render_hosted_document({ authority });
+const cut = authority.cut();
 // Install this captured bootstrap, create the replica Echo, then:
 const continuation = await continue_hosted_document({ echo, root });
 await continuation.tree.async.attrs.set("data-ready", "yes");
 continuation.dispose();
 ```
+
+A document Locus has `cut()`; a Libraries Locus has `cut(document?)` with the
+same selection rule as local Libraries. Both return `{ html, data }` (and
+`document` for Libraries). `render_hosted_document({ authority })` remains the
+lower-level functional equivalent with a `bootstrap` field.
 
 The captured cut is installed and the existing DOM is adopted before ordinary
 Echo recovery. Continuation borrows Echo—it does not disconnect or dispose it.
@@ -236,7 +247,7 @@ Hson** and branded `HsonCanonical` are authored/transport text forms. Hson
 `BrowserRealizationHtml` comes only from SSR composition. A semantic bootstrap
 is a captured map/authority state; `EncodedSsrBootstrap` is its deterministic
 delivery encoding. Snapshot transferability is not built-in durable persistence.
-HTML and bootstrap must come from the same captured cut; Libraries SSR also
+HTML and continuation data must come from the same captured cut; Libraries SSR also
 returns the selected document name and it must travel with that result.
 
 For detailed contracts, see the linked subsystem references: Transform,

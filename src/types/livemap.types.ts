@@ -1170,6 +1170,8 @@ type DocumentLiveMapShared<
     InternalDocumentLogicalPathDescriptor<TEvidence, TPath>
   >;
   capture: DocumentLiveMapCaptureApi<TMode>;
+  /** Browser HTML and continuation data from one canonical revision. */
+  cut: () => import("../api/ssr/ssr.types.js").DocumentCut;
   /** Atomically replace this document with a canonical same-mode capture. */
   install: (
     capture: DocumentLiveMapCapture,
@@ -1616,6 +1618,8 @@ export type LiveMapLibraries<TLibraries extends LiveMapLibrariesInput = LiveMapL
   ) => LiveMapLibraryFacadeForInput<TLibraries[TLibrary], TLibrary>;
   /** Capture one detached semantic cut of the complete public and hidden registry. */
   capture: () => LiveMapLibrariesSnapshot;
+  /** Select one document while retaining the complete Libraries continuation. */
+  cut: (document?: string) => import("../api/ssr/ssr.types.js").LibrariesDocumentCut;
   commits: LiveMapMultiLibraryCommitObserverApi<Extract<keyof TLibraries, string>>;
 }>;
 

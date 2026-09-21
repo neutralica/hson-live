@@ -42,3 +42,20 @@ export type HostedLibrariesDocumentSsr = Readonly<{
   bootstrap: HostedLiveMapLibrariesSnapshot;
   document: string;
 }>;
+
+/** Object-owned exact cut; `data` is accepted by the existing bootstrap codec. */
+export type DocumentCut = Readonly<{ html: BrowserRealizationHtml; data: DocumentLiveMapCapture<"document"> }>;
+export type HostedDocumentCut = Readonly<{
+  html: BrowserRealizationHtml;
+  data: Extract<LocusSnapshotEnvelope, { hson: string }> & Readonly<{ mode: "document" }>;
+}>;
+export type LibrariesDocumentCut = Readonly<{
+  html: BrowserRealizationHtml;
+  data: LiveMapLibrariesSnapshot;
+  document: string;
+}>;
+export type HostedLibrariesDocumentCut = Readonly<{
+  html: BrowserRealizationHtml;
+  data: HostedLiveMapLibrariesSnapshot;
+  document: string;
+}>;

@@ -24,6 +24,7 @@ assert.equal(worker.hasDocument, false);
 assert.equal(worker.html, node.html);
 assert.equal(worker.document, node.document);
 assert.deepEqual(worker.bootstrap, node.bootstrap);
+assert.deepEqual(worker.cut, map.cut());
 assert.equal(worker.encoded, encode_ssr_bootstrap(node.bootstrap));
 assert.deepEqual(worker.decoded, { kind: "libraries", bootstrap: node.bootstrap });
 assert.equal(worker.revision, installed.rev);

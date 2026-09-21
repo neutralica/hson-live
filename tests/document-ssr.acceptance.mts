@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import {
   DocumentSsrError,
+  encode_ssr_bootstrap,
   hsonLiveMap,
   hsonLocus,
   render_document,
@@ -288,5 +289,38 @@ assert.throws(
   () => render_document(null as unknown as Readonly<{ map: DocumentLiveMap }>),
   TypeError,
 );
+
+{
+  const map = document_map(`<main <p @000005401 "before"/>/>`);
+  const cut = map.cut();
+  assert.deepEqual(Object.keys(cut).sort(), ["data", "html"]);
+  assert.equal(cut.data.rev, 0);
+  assert.deepEqual(cut, { html: render_document({ map }).html, data: map.capture() });
+  const encoded = encode_ssr_bootstrap(cut.data);
+  assert.equal(typeof encoded, "string");
+  map.document.attrs.set(target(0, 0), "data-cut", "after");
+  assert.equal(map.rev, 1);
+  assert.doesNotMatch(cut.html, /data-cut/);
+  assert.match(map.cut().html, /data-cut="after"/);
+}
+
+{
+  const map = document_map(`<main "hosted cut"/>`);
+  const locus = hsonLocus.create({ map, logicalMapId: "ssr-object-cut", sessions: {} });
+  const cut = locus.cut();
+  const functional = render_hosted_document({ authority: locus });
+  assert.deepEqual(cut, { html: functional.html, data: functional.bootstrap });
+  assert.deepEqual(Object.keys(cut).sort(), ["data", "html"]);
+  assert.equal(typeof encode_ssr_bootstrap(cut.data), "string");
+  locus.dispose();
+}
+
+{
+  const map = hsonLiveMap.fromJson({ count: 0 });
+  const locus = hsonLocus.create({ map });
+  assert.equal("cut" in map, false);
+  assert.equal("cut" in locus, false);
+  locus.dispose();
+}
 
 process.stdout.write("Document SSR acceptance passed.\n");

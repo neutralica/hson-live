@@ -80,6 +80,10 @@ export type {
   HostedDocumentSsr,
   HostedLibrariesDocumentSsr,
   LibrariesDocumentSsr,
+  DocumentCut,
+  HostedDocumentCut,
+  LibrariesDocumentCut,
+  HostedLibrariesDocumentCut,
   SsrBootstrapCodecOptions,
   SsrBootstrapKind,
 } from "./api/ssr/index.js";

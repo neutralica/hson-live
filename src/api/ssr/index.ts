@@ -8,6 +8,10 @@ export type {
   HostedDocumentSsr,
   LibrariesDocumentSsr,
   HostedLibrariesDocumentSsr,
+  DocumentCut,
+  HostedDocumentCut,
+  LibrariesDocumentCut,
+  HostedLibrariesDocumentCut,
 } from "./ssr.types.js";
 export type {
   SsrBootstrapKind,

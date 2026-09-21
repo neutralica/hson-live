@@ -26,6 +26,10 @@ import {
   type HostedDocumentSsr,
   type LibrariesDocumentSsr,
   type HostedLibrariesDocumentSsr,
+  type DocumentCut,
+  type HostedDocumentCut,
+  type LibrariesDocumentCut,
+  type HostedLibrariesDocumentCut,
   type SsrBootstrapKind,
   type EncodedSsrBootstrap,
   type DecodedSsrBootstrap,
@@ -93,6 +97,9 @@ localContinuation.dispose();
 void hostedContinuation;
 void DocumentContinuationError;
 const localSsr: DocumentSsr = render_document({ map: continuationMap });
+const localCut: DocumentCut = continuationMap.cut();
+const localCutEncoded: EncodedSsrBootstrap<"document"> = encode_ssr_bootstrap(localCut.data);
+void localCutEncoded;
 const encodedSsr: EncodedSsrBootstrap<"document"> = encode_ssr_bootstrap(localSsr.bootstrap);
 const decodedSsr: Extract<DecodedSsrBootstrap, { kind: "document" }> = decode_ssr_bootstrap(encodedSsr);
 const ssrKind: SsrBootstrapKind = decodedSsr.kind;
@@ -113,12 +120,25 @@ declare const libraries: import("hson-live/livemap").LiveMapLibraries;
 declare const librariesSnapshot: LiveMapLibrariesSnapshot;
 const installedLibraries = install_libraries_snapshot(librariesSnapshot);
 const librariesSsr: LibrariesDocumentSsr = render_document({ map: libraries });
+const librariesCut: LibrariesDocumentCut = libraries.cut();
+void librariesCut.document;
 declare const librariesAuthority: import("hson-live/locus").LocusMultiLibrary;
 declare const hostedLibrariesSnapshot: HostedLiveMapLibrariesSnapshot;
 const installedHostedLibraries = install_locus_libraries_snapshot(hostedLibrariesSnapshot);
 const encodedHostedLibraries: EncodedSsrBootstrap<"hosted-libraries"> = encode_ssr_bootstrap(hostedLibrariesSnapshot);
 void encodedHostedLibraries;
 const hostedLibrariesSsr: HostedLibrariesDocumentSsr = render_hosted_document({ authority: librariesAuthority });
+const hostedLibrariesCut: HostedLibrariesDocumentCut = librariesAuthority.cut();
+void hostedLibrariesCut.data;
+declare const documentLocus: import("hson-live/locus").Locus<import("hson-live/livemap").DocumentLiveMap>;
+const hostedCut: HostedDocumentCut = documentLocus.cut();
+void hostedCut.html;
+const dataMap = hsonLiveMap.fromJson({ count: 0 });
+// @ts-expect-error Data LiveMaps have no browser-realizable cut.
+dataMap.cut();
+declare const dataLocus: import("hson-live/locus").Locus<import("hson-live/livemap").LiveMap>;
+// @ts-expect-error Data-only Loci have no browser-realizable cut.
+dataLocus.cut();
 void installedLibraries.map;
 void installedHostedLibraries.recovery;
 void librariesSsr.document;

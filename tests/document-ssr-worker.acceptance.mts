@@ -16,6 +16,7 @@ const largeBootstrap = Object.freeze({
 const worker = await new Promise<Readonly<{
   html: string;
   bootstrap: unknown;
+  cut: unknown;
   encoded: string;
   decoded: unknown;
   largeEncoded: string;
@@ -35,6 +36,7 @@ const worker = await new Promise<Readonly<{
 assert.equal(worker.hasDocument, false);
 assert.equal(worker.html, node.html);
 assert.deepEqual(worker.bootstrap, node.bootstrap);
+assert.deepEqual(worker.cut, map.cut());
 assert.equal(worker.encoded, encode_ssr_bootstrap(node.bootstrap));
 assert.deepEqual(worker.decoded, { kind: "document", bootstrap: node.bootstrap });
 assert.equal(worker.largeEncoded, encode_ssr_bootstrap(largeBootstrap));

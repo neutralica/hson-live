@@ -79,6 +79,7 @@ function with_capture(
     at: map.at,
     proxy: map.proxy,
     capture,
+    cut: map.cut,
     install: map.install,
     restore: map.restore,
     replay: map.replay,

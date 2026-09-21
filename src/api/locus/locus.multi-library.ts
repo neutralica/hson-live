@@ -16,11 +16,13 @@ import { alias_locus_remote_action_admission_internal } from "./locus.remote-act
 import { alias_locus_retained_action_status_internal } from "./locus.action-status.internal.js";
 import { make_locus_activity_controller } from "./locus.activity.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
+import { decode_hosted_root } from "../livemap/livemap.hosted.js";
 import {
   create_locus_hosted_aggregate_socket_internal,
 } from "./locus.hosted-multi-library.socket.js";
 import type { LocusHostedAggregateGateInput } from "./locus.hosted-multi-library.js";
-import { register_locus_libraries_snapshot_authority_internal } from "./locus.libraries-snapshot.js";
+import { capture_locus_libraries_snapshot_internal, install_locus_libraries_snapshot, register_locus_libraries_snapshot_authority_internal } from "./locus.libraries-snapshot.js";
+import { cut_hosted_libraries } from "../../internal/document-cut.js";
 
 function establish_authority_identity(
   map: LiveMapLibraries,
@@ -164,6 +166,9 @@ export function create_multi_library_locus_internal<
 
   const locus = Object.freeze({
     map: options.map,
+    cut: (document?: string) => cut_hosted_libraries(
+      () => capture_locus_libraries_snapshot_internal(locus), document,
+      install_locus_libraries_snapshot, decode_hosted_root),
     logicalMapId: authority.logicalMapId,
     incarnationId: authority.incarnationId,
     get rev() { return authority.rev; },

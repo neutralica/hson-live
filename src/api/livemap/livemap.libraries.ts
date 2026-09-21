@@ -41,6 +41,7 @@ import {
 } from "./livemap.internal.js";
 import type { LiveMapAggregateCommit, LiveMapLibraryIdentity } from "./livemap.library.js";
 import { make_classified_livemap } from "./livemap.core.js";
+import { cut_local_libraries } from "../../internal/document-cut.js";
 import { make_livemap_document_mutation_api } from "./livemap.document.mutation.js";
 import { make_livemap_document_attrs_read_api, make_livemap_document_flags_read_api } from "./livemap.document.attrs.js";
 import { make_livemap_document_location_factory, read_livemap_document_logical_location } from "./livemap.document.location.js";
@@ -153,6 +154,8 @@ export function make_livemap_libraries<const TLibraries extends LiveMapLibraries
     get rev() { return aggregate.inspect().revision; },
     lib: (name: string) => selected(name),
     capture: () => aggregate.captureLibraries(),
+    cut: (document?: string) => cut_local_libraries(libraries as LiveMapLibraries, document,
+      install_libraries_snapshot, decode_hosted_root),
     commits: Object.freeze({
       observe: (listener: (commit: LiveMapMultiLibraryCommit) => void) =>
         aggregate.observe((commit) => listener(public_commit(commit))),
