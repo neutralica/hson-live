@@ -8,7 +8,8 @@ This document covers the current style and stylesheet APIs:
 - `LiveTree.style` - inline style stored on the Hson node.
 - `LiveTree.css` - QUID-scoped stylesheet rules.
 - `TreeSelector.style` and `TreeSelector.css` - broadcast proxies.
-- `CssManager.api()` - global stylesheet facade.
+- `LiveTree.css.global` - runtime-global stylesheet facade.
+- `LiveTree.css.snapshot()` - complete DOM-free managed CSS text for headless/SSR use.
 - Shared `StyleSetter`, style getters, CSS variables, selector blocks,
   at-rule facades, `@property`, keyframes, and animations.
 
@@ -293,13 +294,22 @@ tree.css.supports({ display: "grid" });
 
 ---
 
-## CssManager
+## Managed stylesheet ownership
 
-`CssManager` owns the supported global stylesheet entrypoint:
+`tree.css.global` is the application stylesheet facade owned by the tree's LiveTree runtime. `global` means global within that runtime, not process-global.
 
 ```ts
-const css = CssManager.api();
+const css = tree.css.global;
+const cssText = tree.css.snapshot();
 ```
+
+`snapshot()` reads the complete retained stylesheet without a DOM. It includes
+global, scoped, QUID, `@property`, and keyframe rules and is suitable for
+headless/SSR serialization.
+
+For independent Node/SSR stylesheet owners, construct each root with
+`hsonLiveTree.fromHson(source, { isolated: true })` (or `fromNode(node, { isolated: true })`).
+Existing calls without the option retain the compatibility-default runtime.
 
 QUID rule storage, runtime selection and ownership, forced synchronization,
 snapshots, and reset hooks are implementation details. Element-scoped styling
@@ -325,11 +335,11 @@ Runtime scheduling remains automatic:
 
 ## Global CSS
 
-`CssManager.api()` returns the global CSS facade plus shared `atProperty` and
-`keyframes` managers.
+`tree.css.global` returns the runtime-global CSS facade plus the runtime's
+`atProperty` and `keyframes` managers.
 
 ```ts
-const css = CssManager.api();
+const css = tree.css.global;
 
 css.sel("body").set.margin("0");
 css.rule("app-shell", ".app").set.display("grid");
@@ -368,6 +378,9 @@ handle.drop()
 ```
 
 Rules render with deterministic property ordering. Empty rules are dropped.
+The same key may identify rules in distinct at-rule scopes; `css.drop(key)`
+removes that key across all scopes, and `css.list()` reports it once.
+Global and QUID rules preserve first-write cascade order; updates keep their place.
 
 ### Global Variables
 
@@ -387,7 +400,7 @@ css.var.clear();
 
 ## `@property`
 
-`tree.css.atProperty` and `CssManager.api().atProperty` expose the same shared
+`tree.css.atProperty` and `tree.css.global.atProperty` expose the same shared
 registration manager.
 
 ```ts
@@ -426,7 +439,7 @@ Input fields use the compact current names:
 
 ## Keyframes
 
-`tree.css.keyframes` and `CssManager.api().keyframes` expose the shared
+`tree.css.keyframes` and `tree.css.global.keyframes` expose the shared
 keyframes manager.
 
 Object input:
@@ -534,9 +547,10 @@ broadcast.
 | Surface | Storage | Supports pseudos/selectors | Read source |
 | --- | --- | --- | --- |
 | `tree.style` | `node.$_attrs.style` and DOM inline style | no | inline style state |
-| `tree.css` | managed stylesheet, QUID selector | yes | CssManager rule state |
+| `tree.css` | managed stylesheet, QUID selector | yes | runtime rule state |
 | `tree.css.selector(...)` | managed global rule keyed by resolved selector | yes | rendered rule state |
-| `CssManager.api().sel(...)` | managed global rule | yes | rendered rule state |
+| `tree.css.global.sel(...)` | managed global rule | yes | rendered rule state |
+| `tree.css.snapshot()` | complete runtime stylesheet text | n/a | all retained managed CSS |
 
 Use `tree.style` for inline attributes that should serialize with the node. Use
 `tree.css` for stylesheet rules, pseudo states, selectors, media/supports/layer

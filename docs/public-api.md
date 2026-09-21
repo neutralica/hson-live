@@ -33,7 +33,7 @@ specialist capability from its owning public subpath.
 - **LiveMap and Libraries** own local canonical state. A Libraries map is one
   named aggregate authority, not one authority per library.
 - **LiveTree** owns a live browser projection and can be used by itself.
-  Styling is `tree.style`, `tree.css`, and `CssManager.api()`; synchronization
+  Styling is `tree.style`, `tree.css`, and `tree.css.global`; synchronization
   is automatic—there is no public `syncNow`. `tree.content` is a returned
   `ContentManager` capability, not an implementation applications construct.
 - **Reflect** binds a document LiveMap to a LiveTree. It owns its binding, not
@@ -265,5 +265,5 @@ and document continuation.
 - Replace LiveMap HTML shortcuts with explicit trusted/untrusted Transform then
   `hsonLiveMap.fromNode`; use path document requests, not raw QUID targeting.
 - Use `TransformOutput`, `SsrBootstrapCodecError`, `tree.style`/`tree.css` or
-  `CssManager.api()`. Remove `sanitizeBEWARE`, `ensureQuid`, `syncNow`, and
+  `tree.css.global` and `tree.css.snapshot()`. Remove `sanitizeBEWARE`, `ensureQuid`, `syncNow`, and
   independent `ContentManager` construction assumptions.

@@ -162,13 +162,10 @@ await check("LiveTree declarations expose styling capabilities without runtime m
   const content = readFileSync(resolve(repositoryRoot, "dist/api/livetree/managers/content-manager.d.ts"), "utf8");
   const livetree = readFileSync(resolve(repositoryRoot, "dist/api/livetree/index.d.ts"), "utf8");
 
-  for (const retained of ["class CssManager", "static api(): CssManagerApi", "atProperty", "keyframes"]) {
-    assert.equal(cssManager.includes(retained), true, `${retained} must remain reachable`);
+  assert.equal(cssManager.includes("class CssManager"), false, "retired public manager remains declared");
+  for (const retained of ["global: CssGlobalHandle", "snapshot: () => string"]) {
+    assert.equal(cssHandles.includes(retained), true, `${retained} missing from tree CSS`);
   }
-  for (const hidden of [
-    "CssRuntimeManager", "invoke()", "forRuntime", "selectorForQuid", "getForQuid",
-    "setForQuid", "releaseOwnedCssForQuid", "syncNow", "snapshot", "debug_hardReset",
-  ]) assert.equal(cssManager.includes(hidden), false, `${hidden} leaked through CssManager`);
   assert.equal(cssHandles.includes("devSnapshot"), false, "tree CSS diagnostics leaked through CssTreeHandle");
   for (const hidden of ["setOwned", "releaseOwner", "listOwned", "renderOne", "renderAll", "KeyframesOwner", "KeyframesSource"]) {
     assert.equal(keyframes.includes(hidden), false, `${hidden} leaked through keyframes declarations`);
@@ -181,11 +178,12 @@ await check("LiveTree declarations expose styling capabilities without runtime m
   assert.equal(livetree.includes("export { ContentManager"), false, "ContentManager leaked as a runtime value");
   assert.equal(livetree.includes("export type { ContentManager"), true, "tree.content capability type is missing");
   assert.equal(livetree.includes("CssRuntimeManager"), false, "runtime CSS implementation leaked from owning subpath");
+  assert.equal(livetree.includes("CssManager"), false, "retired CSS manager leaked from owning subpath");
 });
 
 const ownerProofs = Object.freeze({
   "dist/hson-authoring.d.ts": ["HsonDocument", "HsonNode", "HsonAttrs", "HsonMeta", "NodeContent", "JsonValue", "Primitive"],
-  "dist/api/livetree/index.d.ts": ["CssManager", "make_tree_selector", "LiveTreeAttributeErrorCode", "LIVETREE_DISPOSED_ERROR_CODE"],
+  "dist/api/livetree/index.d.ts": ["make_tree_selector", "LiveTreeAttributeErrorCode", "LIVETREE_DISPOSED_ERROR_CODE"],
   "dist/api/livemap/index.d.ts": ["make_livemap_core", "make_livemap_store_api", "LiveMapCapture", "LiveMapReplay", "LiveMapCommitObserver", "snap_live_path"],
   "dist/api/reflect/index.d.ts": ["reflect_collection", "CollectionReflect", "CollectionReflectErrorCode", "DocumentMirrorErrorCode", "DOCUMENT_REFLECT_DISPOSED_ERROR_CODE"],
   "dist/api/echo/index.d.ts": ["EchoRecovery", "EchoRecoveryCursor", "EchoRecoveryOptions", "EchoRecoveryStrategy"],

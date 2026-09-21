@@ -1,18 +1,13 @@
 // css-manager.ts
 
 import { normalize_css_key } from "../../transform/utils/attrs-utils/normalize-css.js";
-import { CssPseudoKey, CssValue, CssProp } from "../../../core/style.types.js";
+import { CssValue, CssProp } from "../../../core/style.types.js";
 import { AnimAdapters, CssAnimScope, CssAnimHandle } from "../../../types/animate.types.js";
 import { PropertyManager, PropertyRegistry } from "../../../types/at-property.types.js";
 import { KeyframesManager, KeyframesInput, KeyframesRegistry } from "../../../types/keyframes.types.js";
-import { CssGlobalsApi } from "../../../types/css.types.js";
-import { camel_to_kebab } from "../../transform/utils/attrs-utils/camel_to_kebab.js";
+import { CssGlobalHandle } from "../../../types/css.types.js";
 import { LiveTree } from "../livetree.js";
 import { apply_animation, bind_anim_api } from "../methods/anim.js";
-import {
-  HSON_QUID_MARKUP_NAME,
-} from "../quid/data-quid.js";
-import { is_persisted_quid } from "../../../core/hson-node-quid.js";
 import { manage_property } from "./at-property-builder.js";
 import { GlobalCss, GlobalCssRuntimeApi } from "./global-css.js";
 import { manage_keyframes } from "./keyframes-manager.js";
@@ -23,42 +18,13 @@ import {
   type LiveTreeRuntime,
 } from "../runtime/livetree-runtime.js";
 import { mark_runtime_infrastructure } from "../../../internal/browser-realization/browser-realization-dom.js";
+import { render_complete_css, render_quid_rule, selector_for_quid } from "./css-render.js";
 
 
 const CSS_HOST_TAG = "hson-_style";
 const CSS_HOST_ID = "css-manager";
 const CSS_STYLE_ID = "_hson";
 
-
-export type CssManagerApi = CssGlobalsApi & Readonly<{
-  /** Public access to the shared CSS `@property` registration manager. */
-  atProperty: PropertyManager;
-
-  /** Public access to the shared keyframes manager. */
-  keyframes: KeyframesManager;
-}>;
-
-/**
- * Convert a `CssPseudoKey` into its CSS selector suffix.
- *
- * This is the single mapping table used by both QUID-scoped and global
- * CSS rule generation.
- */
-/** @internal */
-export const pseudo_to_suffix = (p: CssPseudoKey): string => {
-  switch (p) {
-    case "_hover": return ":hover";
-    case "_active": return ":active";
-    case "_focus": return ":focus";
-    case "_focusWithin": return ":focus-within";
-    case "_focusVisible": return ":focus-visible";
-    case "_visited": return ":visited";
-    case "_disabled": return ":disabled";
-    case "_checked": return ":checked";
-    case "__before": return "::before";
-    case "__after": return "::after";
-  }
-};
 
 /**
  * Runtime type guard for `LiveTree` instances.
@@ -99,51 +65,6 @@ export function render_css_value(v: CssValue): string {
 }
 
 /**
- * Map a QUID to the canonical CSS selector used by CssManager.
- *
- * This function centralizes the selector scheme so it stays consistent across:
- * - rule creation,
- * - rule updates,
- * - dev snapshots / debugging output.
- *
- * @param quid QUID to target.
- * @returns A selector string of the form `[hson\:quid="..."]`.
- */
-/** @internal */
-export function selector_for_quid(quid: string): string {
-  if (!is_persisted_quid(quid)) {
-    throw new Error(`Cannot construct a QUID selector for "${quid}".`);
-  }
-  const escapedName = HSON_QUID_MARKUP_NAME.replace(/:/g, "\\:");
-  return `[${escapedName}="${quid}"]`;
-}
-
-/**
- * Convert a canonical property identifier into the exact CSS property name used in rule text.
- *
- * Rules:
- * - Custom properties (`--foo`) are returned unchanged.
- * - Keys already containing `-` are treated as kebab-case and returned unchanged.
- * - Otherwise, camelCase is converted to kebab-case.
- *
- * This exists to keep the StyleSetter-facing API flexible (camel or kebab in calls) while ensuring
- * CssManager emits stable, correct CSS text.
- *
- * @param propCanon Canonical property identifier (camelCase, kebab-case, or `--var`).
- * @returns The CSS property name to emit into a stylesheet rule.
- */
-
-function canon_to_css_prop(propCanon: string): string {
-  // CSS custom properties keep their spelling
-  if (propCanon.startsWith("--")) return propCanon;
-
-  if (propCanon.includes("-")) return propCanon.toLowerCase();
-
-  // shared canonical implementation
-  return camel_to_kebab(propCanon);
-}
-
-/**
  * Runtime-owned manager for QUID-scoped stylesheet rules.
  *
  * `CssManager` owns the “stylesheet-backed” side of styling in Hson/LiveTree.
@@ -177,9 +98,9 @@ function canon_to_css_prop(propCanon: string): string {
  *
  * Render policy:
  * - Mutations mark the manager as changed and schedule/perform a sync to DOM.
- *   (Exact batching behavior depends on `syncToDom()` implementation.)
- * - Output is deterministic where possible (e.g. sorted keys) to make diffs and
- *   snapshots stable in tests.
+ * - Global and QUID selector rules share first-write order. Updating a rule
+ *   retains its place; deleting and re-adding it gives it a new place.
+ * - Browser synchronization writes the exact result of `renderCss()`.
  *
  * Error handling:
  * - Write APIs may throw on programmer errors such as blank QUIDs or invalid
@@ -189,13 +110,15 @@ function canon_to_css_prop(propCanon: string): string {
 export class CssRuntimeManager {
   // QUID → (property → rendered value)
   private readonly rulesByQuid: Map<string, Map<string, string>> = new Map();
+  private readonly quidRuleOrder = new Map<string, number>();
+  private nextRuleOrder = 0;
   private readonly styleEls = new Map<Document, HTMLStyleElement>();
   private atPropManager: PropertyRegistry;
   private keyframeManager: KeyframesRegistry;
   private atPropertyApi: PropertyManager | undefined;
   private keyframesApi: KeyframesManager | undefined;
   private changed: boolean = false;
-  private readonly globalCss = new GlobalCss();
+  private readonly globalCss = new GlobalCss(() => this.nextRuleOrder++);
   private globalsApi: GlobalCssRuntimeApi | undefined;
   private readonly documentListener = (): void => {
     this.changed = true;
@@ -314,86 +237,31 @@ export class CssRuntimeManager {
   // }
 
   // --- INTERNAL: BUILD + SYNC -------------------------------------------
-  /**
- * Builds the complete stylesheet text managed by `CssManager`.
- *
- * Composition order:
- * 1) `@property` registrations (from `atPropManager.renderAll()`)
- * 2) keyframes / animation definitions (from `keyframeManager.renderAll()`)
- * 3) QUID-scoped rule blocks (from `rulesByQuid`)
- *
- * QUID rule format:
- * - Each QUID **must** emit exactly one selector block:
- *   `[hson\:quid="..."] { prop: value; ... }`
- * - Properties are stored internally as *canonical* keys (camelCase, kebab-case,
- *   or `--custom-prop`) and are converted to emitted CSS property names via
- *   `canon_to_css_prop()`.
- * - Values in `rulesByQuid` are **final rendered strings** (no `{value, unit}`
- *   objects survive into this map). A defensive invariant check enforces this.
- *
- * Determinism:
- * - This function is pure with respect to DOM (string-in/string-out).
- * - Output ordering is defined by the iteration order of `rulesByQuid` and each
- *   per-QUID property map; if you need strict stability across runs, ensure
- *   insertion order is deterministic or sort keys before emitting.
- *
- * @returns The full stylesheet text ready to assign to `<style>.textContent`.
- * @throws Error If an invariant check detects a non-string value in `rulesByQuid`.
- */
-  private buildCombinedCss(opts?: { globalsCss?: string }): string {
-    // INVARIANT:
-    // Each QUID MUST emit exactly one selector block.
-    // rulesByQuid is Map<quid, Map<prop, string>> and MUST be folded
-    // into a single `[hson\:quid="..."] { ... }` block.
-    // Do NOT emit per-property selector blocks.
-    //
-    // Boundary: rulesByQuid stores final rendered strings only (no objects).
-
-    // Optional guard (no process.env):
-    for (const [quid, rules] of this.rulesByQuid) {
-      for (const [prop, val] of rules) {
-        if (typeof val !== "string") {
-          throw new Error(
-            `CssManager invariant violated: non-string value at ${quid}.${prop}`
-          );
+  /** Complete DOM-free stylesheet read, shared with browser synchronization. */
+  public renderCss(): string {
+    for (const [quid, props] of this.rulesByQuid) {
+      for (const [prop, value] of props) {
+        if (typeof value !== "string") {
+          throw new Error(`CssManager invariant violated: non-string value at ${quid}.${prop}`);
         }
       }
     }
-    const atPropCss = this.atPropManager.renderAll().trim();
-    const keyframesCss = this.keyframeManager.renderAll().trim();
-
-    const blocks: string[] = [];
-
-    for (const [quid, props] of this.rulesByQuid.entries()) {
+    const rules = [...this.globalCss.renderEntries()];
+    for (const [quid, props] of this.rulesByQuid) {
       if (props.size === 0) continue;
-
-      const decls: string[] = [];
-      for (const [propCanon, value] of props.entries()) {
-        const prop = canon_to_css_prop(propCanon);
-        decls.push(`${prop}: ${value};`);
-      }
-
-      blocks.push(`${selector_for_quid(quid)} { ${decls.join(" ")} }`);
+      const order = this.quidRuleOrder.get(quid);
+      if (order === undefined) throw new Error(`Missing CSS order for QUID ${quid}.`);
+      rules.push({ order, text: render_quid_rule(quid, props) });
     }
-
-    const quidCss = blocks.join("\n\n").trim();
-
-    const parts: string[] = [];
-
-    const globals = opts?.globalsCss?.trim();
-    if (globals) parts.push(globals);
-
-    if (atPropCss) parts.push(atPropCss);
-    if (keyframesCss) parts.push(keyframesCss);
-    if (quidCss) parts.push(quidCss);
-    return parts.join("\n\n");
+    return render_complete_css(
+      this.atPropManager.renderAll(),
+      this.keyframeManager.renderAll(),
+      rules,
+    );
   }
 
   private syncToDom(): void {
-    const cssText = this.buildCombinedCss({
-      globalsCss: this.globals_invoke().renderAll(),
-    });
-
+    const cssText = this.renderCss();
     for (const document of this.runtimeDocuments()) {
       this.ensureStyleElement(document).textContent = cssText;
     }
@@ -528,16 +396,6 @@ export class CssRuntimeManager {
   }
 
   /**
-   * Render the current in-memory CSS to a single string.
-   *
-   * This is a read-only snapshot of what would be written into the managed
-   * `<style>` element, useful for tests or debugging.
-   */
-  public renderCss(): string {
-    return this.buildCombinedCss();
-  }
-
-  /**
    * Exposes the `@property` registration manager used by this `CssManager`.
    *
    * @returns The live `PropertyManager` instance owned by this runtime.
@@ -578,7 +436,7 @@ export class CssRuntimeManager {
    * Register keyframes owned by a QUID-scoped node/branch.
    *
    * The keyframes are emitted globally as CSS `@keyframes`, but their lifecycle
-   * is tied to the owner QUID. Use `CssManager.api().keyframes.set()` for
+   * is tied to the owner QUID. Use `tree.css.global.keyframes.set()` for
    * durable/global keyframes that should not be auto-released.
    */
   public setOwnedKeyframesForQuid(quid: string, input: KeyframesInput): void {
@@ -592,7 +450,7 @@ export class CssRuntimeManager {
    *
    * This is intended for branch/node teardown paths. It clears QUID-scoped
    * declarations and generated keyframes owned by the
-   * QUID. Durable/global CSS created through `CssManager.api()` is unaffected.
+   * QUID. Durable/global CSS created through `tree.css.global` is unaffected.
    */
   public releaseOwnedCssForQuid(quid: string): void {
     const q = quid.trim();
@@ -669,6 +527,7 @@ export class CssRuntimeManager {
     if (!props) {
       props = new Map<string, string>();
       this.rulesByQuid.set(q, props);
+      this.quidRuleOrder.set(q, this.nextRuleOrder++);
     }
 
     props.set(p, v);
@@ -743,7 +602,10 @@ export class CssRuntimeManager {
     if (!props) return;
 
     props.delete(propCanon);
-    if (props.size === 0) this.rulesByQuid.delete(quid);
+    if (props.size === 0) {
+      this.rulesByQuid.delete(quid);
+      this.quidRuleOrder.delete(quid);
+    }
 
     this.markChanged();
   }
@@ -760,6 +622,7 @@ export class CssRuntimeManager {
   public debug_hardReset(): void {
     // clear all internal state
     this.rulesByQuid.clear();
+    this.quidRuleOrder.clear();
     this.changed = false;
     this.scheduled = false;
 
@@ -777,7 +640,7 @@ export class CssRuntimeManager {
     // clear style element if it exists
     for (const styleEl of this.styleEls.values()) styleEl.textContent = "";
     this.styleEls.clear();
-    this.globalCss.api(() => undefined).clearAll();
+    this.globals_invoke().clearAll();
   }
 
   private disposeRuntimeStyles(): void {
@@ -795,7 +658,10 @@ export class CssRuntimeManager {
     }
     this.styleEls.clear();
     this.rulesByQuid.clear();
-    this.globalCss.api(() => undefined).clearAll();
+    this.quidRuleOrder.clear();
+    this.globals_invoke().clearAll();
+    this.globalsApi?.dispose();
+    this.globalsApi = undefined;
   }
 
   /**
@@ -810,6 +676,7 @@ export class CssRuntimeManager {
    */
   public clearQuid(quid: string): void {
     if (!this.rulesByQuid.delete(quid)) return;
+    this.quidRuleOrder.delete(quid);
     this.markChanged();
   }
 
@@ -828,6 +695,7 @@ export class CssRuntimeManager {
   public clearAll(): void {
     if (this.rulesByQuid.size === 0) return;
     this.rulesByQuid.clear();
+    this.quidRuleOrder.clear();
     this.markChanged();
   }
 
@@ -857,22 +725,11 @@ export class CssRuntimeManager {
     return this.globalsApi;
   }
 
-  /**
-   * Public CSS API facade.
-   *
-   * Use `CssManager.api()` for user-facing stylesheet operations:
-   * selector rules, media/supports/layer rules, global variables, `@property`
-   * registrations, keyframes, and related stylesheet helpers.
-   *
-   * Runtime-local variants and stylesheet plumbing remain internal.
-   */
-  public static api(): CssManagerApi {
-    return CssRuntimeManager.apiForRuntime(default_livetree_runtime());
-  }
-
   /** Runtime-local CSS facade for LiveTree handles. @internal */
-  public static apiForRuntime(runtime: LiveTreeRuntime): CssManagerApi {
-    const mgr = CssRuntimeManager.forRuntime(runtime, { claimAmbientDocument: true });
+  public static apiForRuntime(runtime: LiveTreeRuntime): CssGlobalHandle {
+    const mgr = CssRuntimeManager.forRuntime(runtime, {
+      claimAmbientDocument: runtime === default_livetree_runtime(),
+    });
     const globalApi = mgr.globals_invoke();
 
     return {
@@ -893,23 +750,4 @@ export class CssRuntimeManager {
     };
   }
 
-  public snapshot(): string {
-    return this.renderCss()
-  }
-
-}
-
-/**
- * Application-owned global stylesheet entrypoint.
- *
- * Runtime selection, QUID rule storage, synchronization, ownership cleanup,
- * and diagnostics remain package-internal. Element-scoped styling is available
- * from `LiveTree.style` and `LiveTree.css`.
- */
-export class CssManager {
-  private constructor() {}
-
-  public static api(): CssManagerApi {
-    return CssRuntimeManager.api();
-  }
 }

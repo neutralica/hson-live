@@ -112,7 +112,7 @@ export type CssGlobalSupportsQueryInput =
   | Record<string, string | number | boolean>;
 
 /**
- * Supported global stylesheet operations returned by `CssManager.api()`.
+ * Runtime-global stylesheet operations exposed through `tree.css.global`.
  *
  * This surface is rule-based: callers obtain a `CssGlobalRuleHandle` and
  * then use the regular `StyleSetter` API to mutate that rule.
@@ -134,6 +134,12 @@ export type CssGlobalsApi = Readonly<{
   has: (ruleKey: string) => boolean;
   list: () => readonly string[];
   get: (ruleKey: string) => string | undefined;
+}>;
+
+/** Application rules and registries owned by one LiveTree runtime. */
+export type CssGlobalHandle = CssGlobalsApi & Readonly<{
+  atProperty: PropertyManager;
+  keyframes: KeyframesManager;
 }>;
 
 export type StyleHandle<TOwner> = Readonly<
@@ -164,7 +170,11 @@ export type CssHandleBase<TReturn> = Readonly<
   }
 >;
 
-export type CssTreeHandle<TOwner = LiveTree> = CssHandleBase<TOwner>;
+export type CssTreeHandle<TOwner = LiveTree> = CssHandleBase<TOwner> & Readonly<{
+  global: CssGlobalHandle;
+  /** Complete managed stylesheet for this tree's runtime, without DOM access. */
+  snapshot: () => string;
+}>;
 
 // hostless case for “before mount”
 export type CssHandleVoid = CssHandleBase<void>;

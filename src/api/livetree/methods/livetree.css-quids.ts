@@ -4,24 +4,24 @@
 import { normalize_css_key } from "../../transform/utils/attrs-utils/normalize-css.js";
 import { CssHandleVoid, CssTreeHandle, CssHandleBase, CssPseudoKey, CssMapBase, StyleHandle, CssKey, MediaQueryInput, SupportsQueryInput, CssRuleFacade } from "../../../types/css.types.js";
 import { LiveTree } from "../livetree.js";
-import { CssManager, CssRuntimeManager, isLiveTree, pseudo_to_suffix } from "../managers/css-manager.js";
+import { CssRuntimeManager, isLiveTree } from "../managers/css-manager.js";
+import { pseudo_to_suffix } from "../managers/css-render.js";
 import { make_style_get_many, make_style_getter, StyleGetMany, StyleGetter, StyleGetterAdapters } from "../managers/style-getter.js";
 import { make_css_var_facade, make_style_setter, StyleSetter, StyleSetterAdapters } from "../managers/style-setter.js";
-import { runtime_for_tree } from "../runtime/livetree-runtime.js";
+import { default_livetree_runtime, runtime_for_tree } from "../runtime/livetree-runtime.js";
 
 function manager_for_host(host: LiveTree | void): CssRuntimeManager {
-  return host
-    ? CssRuntimeManager.forRuntime(
-      runtime_for_tree(host),
-      { claimAmbientDocument: true },
-    )
-    : CssRuntimeManager.invoke();
+  if (!host) return CssRuntimeManager.invoke();
+  const runtime = runtime_for_tree(host);
+  return CssRuntimeManager.forRuntime(runtime, {
+    claimAmbientDocument: runtime === default_livetree_runtime(),
+  });
 }
 
-function api_for_host(host: LiveTree | void): CssRuleFacade & ReturnType<typeof CssManager.api> {
+function api_for_host(host: LiveTree | void): CssRuleFacade & ReturnType<typeof CssRuntimeManager.apiForRuntime> {
   return host
     ? CssRuntimeManager.apiForRuntime(runtime_for_tree(host))
-    : CssManager.api();
+    : CssRuntimeManager.apiForRuntime(default_livetree_runtime());
 }
 
 function cache_surface_value<TValue>(
@@ -551,7 +551,7 @@ export function css_for_quids(host: LiveTree, quids: readonly string[]): CssTree
 export function css_for_quids(
   a: LiveTree | readonly string[],
   b?: readonly string[],
-): CssHandleBase<any> {
+): CssTreeHandle | CssHandleVoid {
   const mgr = isLiveTree(a)
     ? manager_for_host(a)
     : CssRuntimeManager.invoke();
@@ -580,6 +580,10 @@ export function css_for_quids(
       },
       atProperty: mgr.atProperty,
       keyframes: mgr.keyframes,
+      get global() {
+        return cache_surface_value(this, "global", CssRuntimeManager.apiForRuntime(runtime_for_tree(host)));
+      },
+      snapshot: () => mgr.renderCss(),
       get anim() {
         return cache_surface_value(this, "anim", mgr.animForQuids(ids));
       },

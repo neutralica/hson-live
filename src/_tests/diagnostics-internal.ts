@@ -35,6 +35,7 @@ export {
   livetree_runtime_test_issued_count as _livetree_runtime_test_issued_count,
   livetree_runtime_test_pending_count as _livetree_runtime_test_pending_count,
   livetree_runtime_test_css_manager as _livetree_runtime_test_css_manager,
+  livetree_runtime_test_css_api as _livetree_runtime_test_css_api,
   livetree_runtime_test_owns_document as _livetree_runtime_test_owns_document,
   livetree_runtime_test_resource_counts as _livetree_runtime_test_resource_counts,
   livetree_runtime_test_same_runtime as _livetree_runtime_test_same_runtime,

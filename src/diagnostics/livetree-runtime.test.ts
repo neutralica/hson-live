@@ -54,6 +54,11 @@ export function create_livetree_for_runtime_test(
   return create_livetree_in_runtime(node, runtime_for_handle(handle));
 }
 
+/** Access the runtime-local public-shaped CSS facade without publishing an owner API. */
+export function livetree_runtime_test_css_api(handle: LiveTreeRuntimeTestHandle) {
+  return CssRuntimeManager.apiForRuntime(runtime_for_handle(handle));
+}
+
 export function lookup_livetree_runtime_test_node(
   handle: LiveTreeRuntimeTestHandle,
   quid: string,

@@ -3,12 +3,14 @@
 import { canon_to_css_prop, normalize_css_value } from "../../transform/utils/attrs-utils/normalize-css.js";
 import { CssGlobalsApi, CssMapBase, CssPseudoKey, CssRuleFacade, CssValue, GlobalRule, GlobalRuleHandle, GlobalVarFacade, MediaQueryInput, SupportsQueryInput } from "../../../types/css.types.js";
 import { camel_to_kebab } from "../../transform/utils/attrs-utils/camel_to_kebab.js";
-import { pseudo_to_suffix } from "./css-manager.js";
+import { pseudo_to_suffix, type ManagedCssRule } from "./css-render.js";
 import { make_style_setter } from "./style-setter.js";
 import { normalize_css_var_name } from "./style-getter.js";
 
 const GLOBAL_VARS_RULE_KEY = "global-vars::root";
 const GLOBAL_VARS_SELECTOR = ":root";
+
+type StoredGlobalRule = GlobalRule & { ruleKey: string; order: number; scopes: string[] };
 
 /**
  * Render a StyleSetter value into CSS declaration text.
@@ -198,10 +200,16 @@ export class GlobalCss {
   */
   private static _inst: GlobalCss | undefined;
 
-  private readonly rules = new Map<string, GlobalRule>();
+  private readonly rules = new Map<string, StoredGlobalRule>();
+  private fallbackOrder = 0;
+  private readonly allocateOrder: () => number;
   private readonly rendered = new Map<string, string>();
   private readonly listeners = new Set<() => void>();
   private pending = false;
+
+  public constructor(nextOrder?: () => number) {
+    this.allocateOrder = nextOrder ?? (() => this.fallbackOrder++);
+  }
 
   public static invoke(): GlobalCss {
     if (!this._inst) this._inst = new GlobalCss();
@@ -307,36 +315,31 @@ export class GlobalCss {
     if (!ruleKey) throw new Error("GlobalCss.rule: empty source");
     if (!selector) throw new Error("GlobalCss.rule: empty selector");
 
-    const prior = this.rules.get(ruleKey);
-    const decls: Record<string, string> =
-      prior && prior.selector === selector ? { ...prior.decls } : {};
-
-    /**
-     * Commit the current declaration map for this rule.
-     *
-     * Empty declaration maps remove the rule. Unchanged rendered output is ignored.
-     */
-    const applyNow = (): void => {
+    // The scope stack is part of rule identity; a selector may coexist at base,
+    // media, supports, layer, and nested scopes. No DOM state participates.
+    const identity = this.identity(ruleKey, scopes);
+    const currentDecls = (): Record<string, string> => {
+      const current = this.rules.get(identity);
+      return current?.selector === selector ? { ...current.decls } : {};
+    };
+    const commit = (decls: Record<string, string>): void => {
       const cssText = render_rule(selector, decls).trim();
-
+      const prior = this.rules.get(identity);
       if (!cssText) {
-        // CHANGED: delete both maps explicitly; do not short-circuit before
-        // removing stale rendered CSS.
-        const hadRule = this.rules.delete(ruleKey);
-        const hadRendered = this.rendered.delete(ruleKey);
-
-        if (hadRule || hadRendered) this.notifyChanged();
+        if (this.rules.delete(identity)) {
+          this.rendered.delete(identity);
+          this.notifyChanged();
+        }
         return;
       }
-
-      const prev = this.rendered.get(ruleKey);
-      if (prev === cssText) return;
-
-      this.rules.set(ruleKey, { selector, decls: { ...decls }, scopes: [...scopes] });
-      this.rendered.set(ruleKey, cssText);
+      if (prior?.selector === selector && this.rendered.get(identity) === cssText) return;
+      this.rules.set(identity, {
+        ruleKey, selector, decls: { ...decls }, scopes: [...scopes],
+        order: prior?.order ?? this.allocateOrder(),
+      });
+      this.rendered.set(identity, cssText);
       this.notifyChanged();
     };
-
 
     const setter = make_style_setter<void>(undefined, {
       /**
@@ -347,43 +350,25 @@ export class GlobalCss {
        */
       apply: (propCanon, value) => {
         const rendered = renderCssValue(value);
-
+        const decls = currentDecls();
         if (rendered == null || rendered.length === 0) {
           if (propCanon in decls) {
             delete decls[propCanon];
-            applyNow();
+            commit(decls);
           }
           return;
         }
-
         if (decls[propCanon] === rendered) return;
-
         decls[propCanon] = rendered;
-        applyNow();
+        commit(decls);
       },
-
-      /**
-       * Remove one declaration from the rule.
-       *
-       * @param propCanon Canonical CSS property name.
-       */
       remove: (propCanon) => {
-        if (propCanon in decls) {
-          delete decls[propCanon];
-          applyNow();
-        }
+        const decls = currentDecls();
+        if (!(propCanon in decls)) return;
+        delete decls[propCanon];
+        commit(decls);
       },
-
-      /**
-       * Remove all declarations from the rule.
-       */
-      clear: () => {
-        const hadAny = Object.keys(decls).length > 0;
-        if (!hadAny) return;
-        for (const k of Object.keys(decls)) delete decls[k];
-        applyNow();
-      },
-
+      clear: () => commit({}),
 
       /**
        * Apply a pseudo-class or pseudo-element declaration block.
@@ -414,12 +399,10 @@ export class GlobalCss {
       ruleKey,
       selector,
       drop: () => {
-        // CHANGED: delete both maps explicitly. Using `||` short-circuits after
-        // the first successful delete, which can leave stale rendered CSS behind.
-        const hadRule = this.rules.delete(ruleKey);
-        const hadRendered = this.rendered.delete(ruleKey);
-
-        if (hadRule || hadRendered) this.notifyChanged();
+        if (this.rules.delete(identity)) {
+          this.rendered.delete(identity);
+          this.notifyChanged();
+        }
       },
     };
   }
@@ -436,8 +419,8 @@ export class GlobalCss {
       return normalize_css_var_name(name);
     };
 
-    const getRootRule = (): GlobalRule | undefined => {
-      const found = this.rules.get(GLOBAL_VARS_RULE_KEY);
+    const getRootRule = (): StoredGlobalRule | undefined => {
+      const found = this.rules.get(this.identity(GLOBAL_VARS_RULE_KEY, []));
       if (!found || found.selector !== GLOBAL_VARS_SELECTOR) return undefined;
       return found;
     };
@@ -452,23 +435,26 @@ export class GlobalCss {
 
       if (keys.length === 0) {
         // CHANGED: delete both maps explicitly; do not leave rendered CSS stale.
-        const hadRule = this.rules.delete(GLOBAL_VARS_RULE_KEY);
-        const hadRendered = this.rendered.delete(GLOBAL_VARS_RULE_KEY);
+        const hadRule = this.rules.delete(this.identity(GLOBAL_VARS_RULE_KEY, []));
+        const hadRendered = this.rendered.delete(this.identity(GLOBAL_VARS_RULE_KEY, []));
 
         if (hadRule || hadRendered) this.notifyChanged();
         return;
       }
 
       const cssText = render_rule(GLOBAL_VARS_SELECTOR, decls).trim();
-      const prev = this.rendered.get(GLOBAL_VARS_RULE_KEY);
+      const prev = this.rendered.get(this.identity(GLOBAL_VARS_RULE_KEY, []));
       if (prev === cssText) return;
 
-      this.rules.set(GLOBAL_VARS_RULE_KEY, {
+      this.rules.set(this.identity(GLOBAL_VARS_RULE_KEY, []), {
+        ruleKey: GLOBAL_VARS_RULE_KEY,
+        order: getRootRule()?.order ?? this.allocateOrder(),
+        scopes: [],
         selector: GLOBAL_VARS_SELECTOR,
         decls: { ...decls },
       });
 
-      this.rendered.set(GLOBAL_VARS_RULE_KEY, cssText);
+      this.rendered.set(this.identity(GLOBAL_VARS_RULE_KEY, []), cssText);
       this.notifyChanged();
     };
 
@@ -517,8 +503,8 @@ export class GlobalCss {
       },
 
       clear: () => {
-        const hadRule = this.rules.delete(GLOBAL_VARS_RULE_KEY);
-        const hadRendered = this.rendered.delete(GLOBAL_VARS_RULE_KEY);
+        const hadRule = this.rules.delete(this.identity(GLOBAL_VARS_RULE_KEY, []));
+        const hadRendered = this.rendered.delete(this.identity(GLOBAL_VARS_RULE_KEY, []));
 
         if (hadRule || hadRendered) this.notifyChanged();
       },
@@ -542,64 +528,50 @@ export class GlobalCss {
     return `sel:${selStr.trim()}`;
   }
 
-  /**
-   * Remove a global rule by key.
-   *
-   * @param keyStr Rule key to remove.
-   */
+  private identity(ruleKey: string, scopes: readonly string[]): string {
+    return JSON.stringify([scopes, ruleKey]);
+  }
+
+  /** Public drop addresses every scope bearing the supplied explicit key. */
   private remove(keyStr: string): void {
     const source = keyStr.trim();
     if (!source) return;
-
-    // CHANGED: delete both maps explicitly. This is the authoritative drop path
-    // used by selector-backed clear(), so stale rendered CSS must not survive.
-    const hadRule = this.rules.delete(source);
-    const hadRendered = this.rendered.delete(source);
-
-    if (hadRule || hadRendered) this.notifyChanged();
-  }
-/**
- * Remove all global rules whose key begins with the supplied prefix.
- *
- * This is used by LiveTree CSS handles to clear selector rules owned by one
- * handle without disturbing selector rules owned by child nodes or other
- * handles.
- *
- * @param prefixRaw Rule-key prefix to remove.
- */
-private removeByPrefix(prefixRaw: string): void {
-  const prefix = prefixRaw.trim();
-  if (!prefix) return;
-
-  let changed = false;
-
-  for (const key of Array.from(this.rules.keys())) {
-    if (!key.startsWith(prefix)) continue;
-    this.rules.delete(key);
-    changed = true;
+    let changed = false;
+    for (const [identity, rule] of this.rules) {
+      if (rule.ruleKey !== source) continue;
+      this.rules.delete(identity);
+      this.rendered.delete(identity);
+      changed = true;
+    }
+    if (changed) this.notifyChanged();
   }
 
-  for (const key of Array.from(this.rendered.keys())) {
-    if (!key.startsWith(prefix)) continue;
-    this.rendered.delete(key);
-    changed = true;
+  private removeByPrefix(prefixRaw: string): void {
+    const prefix = prefixRaw.trim();
+    if (!prefix) return;
+    let changed = false;
+    for (const [identity, rule] of this.rules) {
+      if (!rule.ruleKey.startsWith(prefix)) continue;
+      this.rules.delete(identity);
+      this.rendered.delete(identity);
+      changed = true;
+    }
+    if (changed) this.notifyChanged();
   }
-
-  if (changed) this.notifyChanged();
-}
 
   private removeBySelectorFragment(fragmentRaw: string): void {
     const fragment = fragmentRaw.trim();
     if (!fragment) return;
     let changed = false;
-    for (const [key, rule] of [...this.rules]) {
+    for (const [identity, rule] of this.rules) {
       if (!rule.selector.includes(fragment)) continue;
-      this.rules.delete(key);
-      this.rendered.delete(key);
+      this.rules.delete(identity);
+      this.rendered.delete(identity);
       changed = true;
     }
     if (changed) this.notifyChanged();
   }
+
   /**
    * Remove all global rules.
    */
@@ -610,51 +582,38 @@ private removeByPrefix(prefixRaw: string): void {
     this.notifyChanged();
   }
 
-  /**
-   * Test whether a rule currently has rendered CSS.
-   *
-   * @param keyStr Rule key to check.
-   * @returns `true` when a rendered rule exists for the key.
-   */
   private has(keyStr: string): boolean {
-    const source = keyStr.trim();
-    if (!source) return false;
-    return this.rendered.has(source);
+    return this.get(keyStr) !== undefined;
   }
 
-  /**
-   * List rendered rule keys in stable order.
-   *
-   * @returns Sorted rule keys.
-   */
+  /** Public rule-key inventory remains sorted; rendering uses authored order. */
   private list(): readonly string[] {
-    return Array.from(this.rendered.keys()).sort();
+    return [...new Set([...this.rules.values()].map((rule) => rule.ruleKey))].sort();
   }
 
-  /**
-   * Read rendered CSS for one rule.
-   *
-   * @param sourceRaw Rule key to read.
-   * @returns Rendered CSS for the rule, or `undefined` when absent.
-   */
+  /** Prefer the base scope when one key names several scoped rules. */
   private get(sourceRaw: string): string | undefined {
     const source = sourceRaw.trim();
     if (!source) return undefined;
-    return this.rendered.get(source);
+    const base = this.rendered.get(this.identity(source, []));
+    if (base !== undefined) return base;
+    for (const [identity, rule] of this.rules) {
+      if (rule.ruleKey === source) return this.rendered.get(identity);
+    }
+    return undefined;
   }
 
-  /**
-   * Render all global rules.
-   *
-   * @returns All rendered global CSS, separated by blank lines.
-   */
+  /** DOM-free authored-order entries for the complete stylesheet renderer. */
+  public renderEntries(): readonly ManagedCssRule[] {
+    return [...this.rules.values()]
+      .sort((a, b) => a.order - b.order)
+      .map((rule) => ({
+        order: rule.order,
+        text: renderScopedRule(rule.selector, rule.decls, rule.scopes),
+      }));
+  }
+
   private renderAll(): string {
-    return this.list()
-      .map((k) => this.rules.get(k))
-      .filter((r): r is GlobalRule => !!r)
-      .map((r) => renderScopedRule(r.selector, r.decls, r.scopes ?? []))
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .join("\n\n");
+    return this.renderEntries().map((entry) => entry.text).join("\n\n");
   }
 }

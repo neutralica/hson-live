@@ -11,6 +11,7 @@ import {
   _dispose_livetree_runtime_test_handle,
   _livetree_runtime_test_claim_count,
   _livetree_runtime_test_css_manager,
+  _livetree_runtime_test_css_api,
   _livetree_runtime_test_owns_document,
   _livetree_runtime_test_resource_counts,
   _livetree_runtime_test_same_runtime,
@@ -220,6 +221,81 @@ class StyleDocument {
   }
 }
 
+check("headless scoped rules retain independent identities and same-scope updates", () => {
+  const runtime = _create_livetree_runtime_test_handle();
+  const css = _livetree_runtime_test_css_api(runtime);
+  const manager = _livetree_runtime_test_css_manager(runtime);
+  css.sel(".deck").set.color("red");
+  css.media({ maxWidth: 600 }).sel(".deck").set.color("blue");
+  css.media({ maxWidth: 900 }).sel(".deck").set.color("green");
+  css.supports({ display: "grid" }).sel(".deck").set.display("grid");
+  css.layer("components").sel(".deck").set.fontWeight("bold");
+  css.media({ maxWidth: 600 }).supports({ display: "flex" }).sel(".deck").set.display("flex");
+  css.media({ maxWidth: 600 }).sel(".deck").set.backgroundColor("navy");
+  const rendered = manager.renderCss();
+  assert.match(rendered, /\.deck\{color:red;\}/);
+  assert.match(rendered, /@media \(max-width: 600px\) \{[\s\S]*?\.deck\{background-color:navy;color:blue;\}/);
+  assert.match(rendered, /@media \(max-width: 900px\) \{[\s\S]*?\.deck\{color:green;\}/);
+  assert.match(rendered, /@supports \(display: grid\) \{[\s\S]*?\.deck\{display:grid;\}/);
+  assert.match(rendered, /@layer components \{[\s\S]*?\.deck\{font-weight:bold;\}/);
+  assert.match(rendered, /@supports \(display: flex\) \{[\s\S]*?\.deck\{display:flex;\}/);
+  assert.equal((rendered.match(/\.deck\{/g) ?? []).length, 6);
+});
+
+check("explicit rule keys coexist by scope and global drop clears every scope", () => {
+  const runtime = _create_livetree_runtime_test_handle();
+  const css = _livetree_runtime_test_css_api(runtime);
+  const manager = _livetree_runtime_test_css_manager(runtime);
+  css.rule("shared", ".deck").set.color("red");
+  css.media({ maxWidth: 600 }).rule("shared", ".deck").set.color("blue");
+  assert.deepEqual(css.list(), ["shared"]);
+  assert.match(manager.renderCss(), /color:red/);
+  assert.match(manager.renderCss(), /color:blue/);
+  css.drop("shared");
+  assert.equal(css.has("shared"), false);
+  assert.doesNotMatch(manager.renderCss(), /\.deck/);
+});
+
+check("headless complete rendering preserves authored global and QUID rule order", () => {
+  const runtime = _create_livetree_runtime_test_handle();
+  const tree = runtimeTree(runtime, node("main", SAME_QUID));
+  const css = _livetree_runtime_test_css_api(runtime);
+  const manager = _livetree_runtime_test_css_manager(runtime);
+  css.sel(".first").set.color("red");
+  tree.css.set.color("blue");
+  css.media({ maxWidth: 600 }).sel(".last").set.color("green");
+  css.atProperty.register(["--phase", "<number>", "0"]);
+  css.keyframes.set({ name: "fade", steps: { from: { opacity: "0" }, to: { opacity: "1" } } });
+  const initial = manager.renderCss();
+  assert.match(initial, /@property --phase/);
+  assert.match(initial, /@keyframes fade/);
+  assert.ok(initial.indexOf(".first{") < initial.indexOf(`[hson\\:quid="${SAME_QUID}"]`));
+  assert.ok(initial.indexOf(`[hson\\:quid="${SAME_QUID}"]`) < initial.indexOf(".last{"));
+  css.sel(".first").set.backgroundColor("black");
+  assert.ok(manager.renderCss().indexOf(".first{") < manager.renderCss().indexOf(`[hson\\:quid="${SAME_QUID}"]`));
+  assert.equal(tree.css.snapshot(), manager.renderCss());
+  tree.remove();
+});
+
+check("headless runtimes retain separate global and QUID stylesheet state", () => {
+  const left = _create_livetree_runtime_test_handle();
+  const right = _create_livetree_runtime_test_handle();
+  const leftTree = runtimeTree(left, node("main", SAME_QUID));
+  const rightTree = runtimeTree(right, node("main", SAME_QUID));
+  _livetree_runtime_test_css_api(left).sel(".left-only").set.color("red");
+  _livetree_runtime_test_css_api(right).sel(".right-only").set.color("blue");
+  leftTree.css.set.opacity("0.4");
+  rightTree.css.set.opacity("0.8");
+  const leftCss = _livetree_runtime_test_css_manager(left).renderCss();
+  const rightCss = _livetree_runtime_test_css_manager(right).renderCss();
+  assert.match(leftCss, /\.left-only/);
+  assert.doesNotMatch(leftCss, /\.right-only|0\.8/);
+  assert.match(rightCss, /\.right-only/);
+  assert.doesNotMatch(rightCss, /\.left-only|0\.4/);
+  leftTree.remove();
+  rightTree.remove();
+});
+
 check("serialized QUID bytes are runtime-local routing data, not global authority", () => {
   const left = _create_livetree_runtime_test_handle();
   const right = _create_livetree_runtime_test_handle();
@@ -408,6 +484,27 @@ check("one runtime supports many LiveTrees and ordinary QUID selectors in one Do
   rightTree.remove();
 });
 
+check("managed browser style text equals the headless complete renderer", () => {
+  const document = new StyleDocument();
+  const runtime = _create_livetree_runtime_test_handle();
+  const tree = runtimeTree(runtime, node("main", SAME_QUID));
+  const css = tree.css.global;
+  css.sel(".deck").set.color("navy");
+  css.media({ maxWidth: 600 }).sel(".deck").set.display("none");
+  tree.css.set.opacity("0.5");
+  const manager = _livetree_runtime_test_css_manager(runtime);
+  const headlessCss = tree.css.snapshot();
+  assert.equal(headlessCss, manager.renderCss());
+  assert.equal(document.styleTexts().length, 0);
+  projectInto(runtime, tree, document);
+  assert.deepEqual(document.styleTexts(), [headlessCss]);
+  css.sel(".deck").set.backgroundColor("white");
+  tree.css.set.color("blue");
+  manager.syncNow();
+  assert.deepEqual(document.styleTexts(), [tree.css.snapshot()]);
+  tree.remove();
+});
+
 check("equal QUID CSS remains isolated across separate runtimes and Documents", () => {
   const leftDocument = new StyleDocument();
   const rightDocument = new StyleDocument();
@@ -482,10 +579,7 @@ check("shared-Document projection rejects atomically and same-runtime registrati
     /already owned by another LiveTree runtime/,
   );
   Reflect.set(globalThis, "document", document);
-  assert.throws(
-    () => rightTree.css.set.color("red"),
-    /already owned by another LiveTree runtime/,
-  );
+  rightTree.css.set.color("red");
   Reflect.deleteProperty(globalThis, "document");
   assert.equal(document.styleTexts().join("\n"), stylesBefore);
   assert.equal(document.elements().length, elementsBefore);
@@ -497,7 +591,7 @@ check("shared-Document projection rejects atomically and same-runtime registrati
   assert.equal(_livetree_runtime_test_claim_count(right), rightClaimsBefore);
   assert.equal(
     _livetree_runtime_test_css_manager(right).getForQuid(rightTree.quid, "color"),
-    undefined,
+    "red",
   );
   assert.equal(rightTree.dom.el(), undefined);
   assert.equal(_livetree_runtime_test_owns_document(left, document as unknown as Document), true);

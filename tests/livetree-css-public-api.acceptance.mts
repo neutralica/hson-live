@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { CssManager, hsonLiveTree } from "hson-live/livetree";
+import { hsonLiveTree } from "hson-live/livetree";
 import * as livetreeEntrypoint from "hson-live/livetree";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -27,18 +27,16 @@ function check(name: string, run: () => void): void {
   }
 }
 
-const css = CssManager.api();
+const owner = hsonLiveTree.fromNode({ $_tag: "main", $_content: [] });
+const css = owner.css.global;
 css.clearAll();
 
-check("owning subpath exports the application CSS owner but no manager implementations", () => {
-  assert.equal("CssManager" in livetreeEntrypoint, true);
+check("owning subpath exposes LiveTree styling without manager implementations", () => {
+  assert.equal("CssManager" in livetreeEntrypoint, false);
   assert.equal("CssRuntimeManager" in livetreeEntrypoint, false);
   assert.equal("ContentManager" in livetreeEntrypoint, false);
   for (const name of ["selector_for_quid", "render_css_value", "pseudo_to_suffix", "isLiveTree"]) {
     assert.equal(name in livetreeEntrypoint, false, `${name} leaked from the owning subpath`);
-  }
-  for (const name of ["invoke", "forRuntime", "apiForRuntime"]) {
-    assert.equal(name in CssManager, false, `${name} leaked from the application CSS owner`);
   }
 });
 
@@ -59,6 +57,56 @@ check("published global facade retains rules, selectors, variables, property con
   assert.equal(css.var.value("accent"), "rebeccapurple");
   assert.equal(css.atProperty.get("--phase")?.init, "0");
   assert.equal(css.keyframes.get("fade")?.steps.length, 2);
+  assert.match(owner.css.snapshot(), /@property --phase/);
+  assert.match(owner.css.snapshot(), /@keyframes fade/);
+  assert.match(owner.css.snapshot(), /@media \(max-width: 700px\)/);
+});
+
+check("isolated public trees retain separate complete CSS with equal QUIDs", () => {
+  const makeTree = () => hsonLiveTree.fromNode({
+    $_tag: "main", $_meta: { quid: "000000rt1" }, $_content: [],
+  }, { isolated: true });
+  const left = makeTree();
+  const right = makeTree();
+  assert.equal(left.quid, right.quid);
+  left.css.global.sel(".deck").set.color("red");
+  right.css.global.sel(".deck").set.color("blue");
+  left.css.set.opacity("0.4");
+  right.css.set.opacity("0.8");
+  assert.match(left.css.snapshot(), /color:red/);
+  assert.doesNotMatch(left.css.snapshot(), /color:blue|0\.8/);
+  assert.match(right.css.snapshot(), /color:blue/);
+  assert.doesNotMatch(right.css.snapshot(), /color:red|0\.4/);
+  left.remove();
+  right.remove();
+});
+
+check("detached public tree renders every managed CSS component without a DOM", () => {
+  assert.equal("document" in globalThis, false);
+  const tree = hsonLiveTree.fromNode({ $_tag: "main", $_content: [] }, { isolated: true });
+  tree.css.global.sel("body").set.margin("0");
+  tree.css.global.media({ maxWidth: 600 }).sel("body").set.margin("1rem");
+  tree.css.selector("& > .label").set.color("white");
+  tree.css.set.opacity("0.5");
+  tree.css.global.atProperty.register(["--phase", "<number>", "0"]);
+  tree.css.global.keyframes.set({
+    name: "fade", steps: { from: { opacity: "0" }, to: { opacity: "1" } },
+  });
+  const text = tree.css.snapshot();
+  for (const expected of ["body{margin:0;}", "@media (max-width: 600px)", "margin:1rem", ".label", "opacity: 0.5", "@property --phase", "@keyframes fade"]) {
+    assert.ok(text.includes(expected), `missing ${expected}`);
+  }
+  tree.remove();
+});
+
+check("fromHson can create an independent headless stylesheet owner", () => {
+  const first = hsonLiveTree.fromHson("<main/>", { isolated: true });
+  const second = hsonLiveTree.fromHson("<main/>", { isolated: true });
+  first.css.global.sel("body").set.margin("0");
+  assert.match(first.css.snapshot(), /body\{margin:0;\}/);
+  assert.equal(second.css.snapshot(), "");
+  first.remove();
+  second.remove();
 });
 
 check("published tree capabilities retain inline, typed, scoped, selector, variable, and serialization paths", () => {
@@ -84,7 +132,7 @@ check("published tree capabilities retain inline, typed, scoped, selector, varia
 check("application facades do not carry runtime, ownership, or diagnostic hooks", () => {
   const tree = hsonLiveTree.fromNode({ $_tag: "section", $_content: [] });
   for (const name of ["renderAll", "syncNow", "snapshot", "debug_hardReset", "dropByPrefix", "dispose"]) {
-    assert.equal(Object.hasOwn(css, name), false, `${name} leaked from CssManager.api()`);
+    assert.equal(Object.hasOwn(css, name), false, `${name} leaked from tree.css.global`);
   }
   assert.equal(Object.hasOwn(tree.css, "devSnapshot"), false);
   for (const name of ["setOwned", "releaseOwner", "listOwned", "renderOne", "renderAll"]) {
@@ -100,5 +148,6 @@ css.keyframes.delete("fade");
 css.atProperty.unregister("--phase");
 css.var.clear();
 css.clearAll();
+owner.remove();
 process.stdout.write("# LiveTree supported CSS public API checks passed\n");
 testEvents.terminal("pass");
