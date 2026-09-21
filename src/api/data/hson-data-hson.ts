@@ -11,6 +11,13 @@ export function hson_data_value_from_hson(input: HsonCanonical): OrderedProjecte
   }
 }
 
+/** Private exact data admission shared by the carrier and editor tooling. */
+export function admit_canonical_hson_data_value(input: HsonCanonical): OrderedProjectedValue {
+  const value = hson_data_value_from_hson(input);
+  if (hson_data_value_to_hson(value) !== input) throw new TypeError("Expected canonical Hson data text.");
+  return value;
+}
+
 /** Serialize one canonical data carrier through the existing Hson serializer. */
 export function hson_data_value_to_hson(value: OrderedProjectedValue): HsonCanonical {
   return serialize_canonical_hson_data(value) as HsonCanonical;

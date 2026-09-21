@@ -213,6 +213,27 @@ export function structural_closer_for_less_than(
   return object === document ? undefined : object ? ">" : "/>";
 }
 
+/** Admit a bracket gesture only when the Hson parser owns the proposed pair. */
+export function structural_array_pair_for_bracket(
+  fileName: string,
+  languageId: StructuralHostLanguage,
+  text: string,
+  cursor: number,
+): boolean {
+  const region = structural_region_at(fileName, languageId, text, cursor);
+  if (region === undefined || region.protectedRanges.some(range => cursor >= range.start && cursor < range.end)) return false;
+  const body = maskProtectedSource(text, region);
+  if (body === undefined) return false;
+  const local = cursor - region.bodyRange.start;
+  const candidate = body.slice(0, local) + "[]" + body.slice(local);
+  try {
+    parse_hson(candidate);
+    const tokens = tokenize_hson(candidate);
+    return tokens.some(token => token.kind === "ARR_OPEN" && token.pos.index === local)
+      && tokens.some(token => token.kind === "ARR_CLOSE" && token.pos.index === local + 1);
+  } catch { return false; }
+}
+
 function lineOf(source: string, offset: number): number {
   let line = 0;
   for (let index = 0; index < offset; index += 1) if (source.charCodeAt(index) === 10) line += 1;
@@ -266,10 +287,14 @@ function structuralPairs(tokens: readonly Tokens[]): readonly StructuralPair[] {
   return Object.freeze(pairs);
 }
 
-function analyzedPairs(source: string): readonly StructuralPair[] | undefined {
+function analyzedStructure(source: string): Readonly<{
+  pairs: readonly StructuralPair[];
+  tokens: readonly Tokens[];
+}> | undefined {
   try {
     parse_hson(source);
-    return structuralPairs(tokenize_hson(source));
+    const tokens = tokenize_hson(source);
+    return { pairs: structuralPairs(tokens), tokens };
   } catch {
     return undefined;
   }
@@ -389,10 +414,20 @@ export function structural_formatting_edits(
     const body = maskProtectedSource(text, region);
     if (body === undefined) continue;
     const regionEditStart = edits.length;
-    const pairs = analyzedPairs(body);
-    if (pairs === undefined) continue;
+    const structure = analyzedStructure(body);
+    if (structure === undefined) continue;
+    const { pairs, tokens } = structure;
     const lexical = lexicalRanges(body);
     const comments = lexical.comments;
+    for (const token of tokens) {
+      if (token.kind !== "ARR_OPEN" && token.kind !== "ARR_CLOSE") continue;
+      const offset = token.pos.index;
+      const replacement = token.kind === "ARR_OPEN" ? "«" : "»";
+      if (body[offset] !== (token.kind === "ARR_OPEN" ? "[" : "]")) continue;
+      const start = region.bodyRange.start + offset;
+      if (requestedRange !== undefined && (start < requestedRange.start || start >= requestedRange.end)) continue;
+      edits.push(Object.freeze({ start, end: start + 1, text: replacement }));
+    }
     for (const pair of pairs) {
       if (pair.kind !== "object" || pair.openLine === pair.closeLine) continue;
       if (requestedRange !== undefined) {
@@ -479,13 +514,13 @@ export function structural_formatting_edits(
       text: edit.text,
     }));
     let candidate = body;
-    for (const edit of [...regionEdits].sort((left, right) => right.start - left.start)) {
+    for (const edit of [...regionEdits].sort((left, right) => right.start - left.start || right.end - left.end)) {
       candidate = candidate.slice(0, edit.start) + edit.text + candidate.slice(edit.end);
     }
     const beforeMeaning = canonicalMeaning(body);
     if (beforeMeaning === undefined || canonicalMeaning(candidate) !== beforeMeaning) edits.splice(regionEditStart);
   }
-  return Object.freeze(edits.sort((left, right) => left.start - right.start));
+  return Object.freeze(edits.sort((left, right) => left.start - right.start || left.end - right.end));
 }
 
 export function structural_newline_plan(
@@ -514,7 +549,7 @@ export function structural_newline_plan_from_evidence(
   if (region === undefined) return undefined;
   const body = maskProtectedSource(evidence.text, region);
   if (body === undefined) return undefined;
-  const pairs = analyzedPairs(body);
+  const pairs = analyzedStructure(body)?.pairs;
   if (pairs === undefined) return undefined;
   const local = offset - region.bodyRange.start;
   if (insideNonStructuralSyntax(body, local)) return undefined;

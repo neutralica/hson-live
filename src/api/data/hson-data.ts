@@ -11,7 +11,7 @@ import type { HsonData as PublicHsonData } from "../transform/transform.types.js
 import { emit_ordered_json, parse_ordered_json_text } from "../../core/exact-data-codec.js";
 import { assert_canonical_hson_data_value } from "../../core/projected-value-graph.js";
 import {
-  hson_data_value_from_hson,
+  admit_canonical_hson_data_value,
   hson_data_value_to_hson,
 } from "./hson-data-hson.js";
 
@@ -53,9 +53,7 @@ export class ExactDataCarrier {
 
   /** Parse canonical authored Hson and require its complete semantic value to be data. */
   static fromHson(input: HsonCanonical): ExactDataCarrier {
-    const value = hson_data_from_value(hson_data_value_from_hson(input));
-    if (value.toHson() !== input) throw new TypeError("Expected canonical Hson data text.");
-    return value;
+    return hson_data_from_value(admit_canonical_hson_data_value(input));
   }
 
   /** Exact semantic kind. */

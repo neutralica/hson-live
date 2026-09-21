@@ -85,7 +85,9 @@ check("official root and hson entrypoints are recognized in source order", () =>
 
 check("all four semantic member tags share official binding discovery", () => {
   const hostText = 'import { Hson as source } from "hson-live"; source.canonical`a`; source.data`1`; source.document`<main/>`; source.schema`<type "data" content "number">`;';
-  assert.deepEqual(bodySlices(discover(hostText)), ["a", "1", "<main/>", '<type "data" content "number">']);
+  const found = discover(hostText);
+  assert.deepEqual(bodySlices(found), ["a", "1", "<main/>", '<type "data" content "number">']);
+  assert.deepEqual(found.sources.map(source => source.authoringKind), ["canonical", "data", "document", "schema"]);
 });
 
 check("direct imports and aliases use the exact ImportSpecifier binding", () => {
@@ -208,6 +210,9 @@ check("one and multiple substitutions are classified without becoming Hson sourc
   const result = discover(hostText);
   assert.equal(result.sources.length, 0);
   assert.deepEqual(result.interpolated.map((item) => item.substitutionRanges.length), [1, 2]);
+  assert.deepEqual(result.interpolated.map((item) => item.authoringKind), ["canonical", "canonical"]);
+  const contextual = discover('import { Hson as h } from "hson-live"; h.data`<main ${value}/>`; h.document`<foo ${value}>`;');
+  assert.deepEqual(contextual.interpolated.map((item) => item.authoringKind), ["data", "document"]);
   assert.deepEqual(
     result.interpolated.flatMap((item) => item.substitutionRanges.map((range) => hostText.slice(range.start, range.end))),
     ["${value}", "${a}", "${b}"],

@@ -191,6 +191,7 @@ export async function run(): Promise<void> {
     const typeScriptInput = [
       'import { Hson } from "hson-live/hson";',
       "const host =  1;",
+      "const ordinaryArray = [1, 2];",
       "const unrelated = `  untouched`;",
       "const runtime = fromHson(`",
       ' <runtime       "runtime  spaces"    />',
@@ -200,11 +201,12 @@ export async function run(): Promise<void> {
       "a <",
       "b      <c   1>>",
       "d 2",
+      'items ["[literal]",[1,2]]',
       ">",
       "`;",
       "",
     ].join("\n");
-    const typeScriptExpected = typeScriptInput.replace("\n <\na <\nb      <c   1>>\nd 2\n>", "\n<\n  a <\n    b <c 1>\n  >\n  d 2\n>");
+    const typeScriptExpected = typeScriptInput.replace("\n <\na <\nb      <c   1>>\nd 2\nitems [\"[literal]\",[1,2]]\n>", "\n<\n  a <\n    b <c 1>\n  >\n  d 2\n  items «\"[literal]\",«1,2»»\n>");
     await vscode.workspace.fs.writeFile(saveTypeScriptUri, Buffer.from("// format-on-save fixture\n"));
     const saveTypeScript = await vscode.workspace.openTextDocument(saveTypeScriptUri);
     const saveTypeScriptEditor = await vscode.window.showTextDocument(saveTypeScript);
@@ -213,6 +215,7 @@ export async function run(): Promise<void> {
     assert.equal(await saveTypeScript.save(), true);
     assert.equal(saveTypeScript.getText(), typeScriptExpected, `save formats only the binding-recognized Hson template: ${JSON.stringify(saveTypeScript.getText())}`);
     assert.ok(saveTypeScript.getText().includes("const host =  1;"), "save leaves ordinary TypeScript byte-stable");
+    assert.ok(saveTypeScript.getText().includes("const ordinaryArray = [1, 2];"), "save leaves ordinary TypeScript arrays byte-stable");
     assert.ok(saveTypeScript.getText().includes("const unrelated = `  untouched`;"), "save leaves unrelated templates byte-stable");
     assert.ok(saveTypeScript.getText().includes('fromHson(`\n <runtime       "runtime  spaces"    />\n`)'), "save leaves fromHson runtime strings byte-stable");
     const onceFormatted = saveTypeScript.getText();
@@ -284,6 +287,30 @@ export async function run(): Promise<void> {
     await vscode.commands.executeCommand("undo");
 
     const hostPrefix = 'import { Hson } from "hson-live/hson";\n';
+    const typeArray = async (label: string, marked: string, paired: boolean): Promise<void> => {
+      const before = await replaceMarked(marked);
+      await vscode.commands.executeCommand("type", { text: "[" });
+      const insertion = paired ? ["«»"] : ["[", "[]"];
+      assert.ok(insertion.some(value => structural.getText() === before.clean.slice(0, before.offset) + value + before.clean.slice(before.offset)), label);
+      assert.equal(structural.offsetAt(structuralEditor.selection.active), before.offset + 1, `${label} cursor position`);
+    };
+    await typeArray("Hson empty array inserts one canonical pair", hostPrefix + 'const x=Hson.canonical`|`;', true);
+    assert.ok(structural.getText().includes("«»"));
+    await vscode.commands.executeCommand("type", { text: "1" });
+    assert.ok(structural.getText().includes("«1»"), "content enters the generated pair");
+    await vscode.commands.executeCommand("undo");
+    assert.ok(!structural.getText().includes("«1»"), "undo removes the inserted content coherently");
+    await typeArray("Hson nested array", hostPrefix + 'const x=Hson.canonical`«|»`;', true);
+    await typeArray("Hson object array value", hostPrefix + 'const x=Hson.canonical`<items |>`;', true);
+    await typeArray("Hson multiline array", hostPrefix + 'const x=Hson.canonical`\n<\n  items |\n>\n`;', true);
+    await typeArray("Hson completed string stays literal", hostPrefix + 'const x=Hson.canonical`"ab|c"`;', false);
+    await typeArray("Hson incomplete string stays literal", hostPrefix + 'const x=Hson.canonical`"abc|`;', false);
+    await typeArray("Hson escaped string stays literal", hostPrefix + 'const x=Hson.canonical`"a\\"b|"`;', false);
+    await typeArray("TypeScript substitution stays literal", hostPrefix + 'const x=Hson.canonical`<data ${[|1,2]}>`;', false);
+    await typeArray("ordinary TypeScript stays literal", 'const values = |;', false);
+    await typeArray("unrelated template stays literal", 'const value = `|`;', false);
+    await typeArray("lookalike Hson stays literal", 'const Hson=String.raw; const x=Hson.canonical`|`;', false);
+    await typeArray("non-array Hson position stays literal", hostPrefix + 'const x=Hson.canonical`<tag |/>`;', false);
     await ordinaryEnter("incomplete Hson", hostPrefix + 'const x=Hson.canonical`<data 1|`;');
     await ordinaryEnter("parser-invalid Hson", hostPrefix + 'const x=Hson.canonical`<data 1\n  <data2 2|>\n>`;');
     await ordinaryEnter("tokenizer-invalid Hson", hostPrefix + 'const x=Hson.canonical`<a "bad\\q"|>`;');
@@ -331,6 +358,16 @@ export async function run(): Promise<void> {
     assert.ok(structural.getText().includes("\n<\n    data 1\n    data2 2\n>"), `Hson Format Document applied multiline object layout: ${JSON.stringify(structural.getText())}`);
     assert.ok(structural.getText().includes("balanced = Hson.canonical`\n<\n    a <\n        b <c 1>\n    >\n    d 2\n>"), `Hson Format Document detached the multiline owner's closer while preserving its inline child: ${JSON.stringify(structural.getText())}`);
     assert.ok(structural.getText().includes("trailing = Hson.canonical`\n<\n    a <\n        b <\n            c <\n                value 1\n            >\n        >\n    >\n    d 2\n>"), `Hson Format Document separated parser-owned trailing closers: ${JSON.stringify(structural.getText())}`);
+    await replaceDocument(structural, 'import { Hson } from "hson-live/hson";\nconst ordinary = [1, 2];\nconst arrays = Hson.canonical`[[1,2],"[literal]"]`;\n');
+    await vscode.commands.executeCommand("hson.formatDocument");
+    assert.ok(structural.getText().includes('Hson.canonical`««1,2»,"[literal]"»`'), "Hson Format Document canonicalizes only Hson array delimiters");
+    assert.ok(structural.getText().includes("const ordinary = [1, 2];"), "Hson Format Document retains ordinary TypeScript arrays");
+    await replaceDocument(structural, 'import { Hson } from "hson-live/hson";\nconst first = Hson.canonical`[1,2]`;\nconst second = Hson.canonical`[3,4]`;\n');
+    const arraySelectionStart = structural.getText().indexOf("[1,2]");
+    structuralEditor.selection = new vscode.Selection(structural.positionAt(arraySelectionStart), structural.positionAt(arraySelectionStart + 5));
+    await vscode.commands.executeCommand("hson.formatSelection");
+    assert.ok(structural.getText().includes("first = Hson.canonical`«1,2»`"), "Hson Format Selection canonicalizes the selected array");
+    assert.ok(structural.getText().includes("second = Hson.canonical`[3,4]`"), "Hson Format Selection leaves the other array unchanged");
 
     const selectionInput = hostPrefix
       + "const first=Hson.canonical`\n <\na <\nb      <c   1>>\nd 2\n>\n`;\n"

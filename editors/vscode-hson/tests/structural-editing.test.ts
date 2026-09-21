@@ -4,6 +4,7 @@ import { parse_hson } from "../../../src/api/transform/parsers/parse-hson.js";
 import { formatting_target_is_current } from "../src/formatting-target.js";
 import {
   StructuralDocumentEvidenceCache,
+  structural_array_pair_for_bracket,
   structural_closer_for_less_than,
   structural_document_evidence,
   structural_formatting_edits,
@@ -34,6 +35,31 @@ const applyEdits = (text: string, edits: readonly Readonly<{ start: number; end:
 };
 const format = (text: string, insertSpaces = true, tabSize = 2): string => applyEdits(text,
   structural_formatting_edits("/workspace/source.ts", "typescript", text, { insertSpaces, tabSize }));
+const arrayPair = (marked: string, language: "typescript" | "markdown" = "typescript"): boolean => {
+  const offset = marked.indexOf("|");
+  const text = marked.slice(0, offset) + marked.slice(offset + 1);
+  return structural_array_pair_for_bracket(language === "markdown" ? "/workspace/readme.md" : "/workspace/source.ts", language, text, offset);
+};
+
+check("a bracket gesture creates a canonical pair only at parser-owned Hson array positions", () => {
+  assert.equal(arrayPair(template("|")), true);
+  assert.equal(arrayPair(template("«|»")), true);
+  assert.equal(arrayPair(template("<items | >")), true);
+  assert.equal(arrayPair(template("\n<\n  items |\n>\n")), true);
+  assert.equal(arrayPair('import { Hson as Alias } from "hson-live/hson"; const value = Alias.canonical`|`;'), true);
+  assert.equal(arrayPair("Prose [link]\n```hson\n|\n```", "markdown"), true);
+});
+check("a bracket gesture defers to ordinary typing in strings, substitutions, and non-Hson text", () => {
+  assert.equal(arrayPair(template('"|"')), false);
+  assert.equal(arrayPair(template('"abc|')), false);
+  assert.equal(arrayPair(template('"a\\"b|"')), false);
+  assert.equal(arrayPair('import { Hson } from "hson-live/hson"; const value = Hson.canonical`<data ${[|1,2]}>`;'), false);
+  assert.equal(arrayPair('const values = |;'), false);
+  assert.equal(arrayPair('const value = `|`;'), false);
+  assert.equal(arrayPair('const Hson = String.raw; const value = Hson.canonical`|`;'), false);
+  assert.equal(arrayPair("Prose |\n```hson\n«1,2»\n```", "markdown"), false);
+  assert.equal(arrayPair(template("<tag |/>")), false);
+});
 
 check("binding-recognized document context selects the element closer", () => assert.equal(closer("<main |/>"), "/>"));
 check("all four semantic member tags share structural regions and formatting", () => {
@@ -46,6 +72,10 @@ check("all four semantic member tags share structural regions and formatting", (
   const formatted = format(text);
   assert.ok(formatted.includes('Hson.canonical`<a 1>`'));
   assert.ok(formatted.includes('Hson.data`<b 2>`'));
+  const contextInvalid = 'import { Hson } from "hson-live"; Hson.data`<main  <p "x"/>/>`; Hson.document`<foo  1>`;';
+  const stillFormatted = format(contextInvalid);
+  assert.ok(stillFormatted.includes('Hson.data`<main <p "x"/>/>`'));
+  assert.ok(stillFormatted.includes('Hson.document`<foo 1>`'));
 });
 check("an awaited host formatter cannot redirect the Hson phase to a newly focused editor", () => {
   const originalDocument = { isClosed: false };
@@ -89,8 +119,33 @@ check("document formatting repairs nesting without rewriting tokens", () => {
 });
 check("data formatting follows object and array structure", () => {
   const input = template('\n <\nuser <\nname "Ada"\nitems [\n1,\n2\n]\n>\n>\n');
-  const expected = template('\n<\n  user <\n    name "Ada"\n    items [\n      1,\n      2\n    ]\n  >\n>\n');
+  const expected = template('\n<\n  user <\n    name "Ada"\n    items «\n      1,\n      2\n    »\n  >\n>\n');
   assert.equal(format(input), expected);
+});
+check("inline, multiline, nested, and object-member arrays use guillemets without changing layout", () => {
+  const cases = [
+    ["[1, 2]", "«1,2»"],
+    ["[\n1,\n2\n]", "«\n  1,\n  2\n»"],
+    ["[[1,2], [3,4]]", "««1,2»,«3,4»»"],
+    ["<data [1,2]>", "<data «1,2»>"],
+  ] as const;
+  for (const [input, expected] of cases) {
+    assert.equal(format(template(input)), template(expected));
+    assert.equal(format(template(expected)), template(expected));
+  }
+});
+check("array-like characters in strings and unrelated TypeScript stay unchanged", () => {
+  const input = 'import { Hson } from "hson-live/hson";\nconst ordinary = [1, 2];\nconst text = "[outside]";\nconst value = Hson.canonical`["[inside]", [1,2]]`;';
+  const expected = input.replace('["[inside]", [1,2]]', '«"[inside]",«1,2»»');
+  assert.equal(format(input), expected);
+  assert.equal(format(expected), expected);
+});
+check("TypeScript substitutions and Markdown prose keep their brackets", () => {
+  const typeScript = 'import { Hson } from "hson-live/hson";\nconst value = Hson.canonical`<data [1,2] other ${[3,4]}>`;';
+  assert.equal(format(typeScript), typeScript.replace("<data [1,2]", "<data «1,2»"));
+  const markdown = "Prose [link](target) stays.\n```hson\n[1,2]\n```\n```js\n[3,4]\n```\n";
+  const output = applyEdits(markdown, structural_formatting_edits("/workspace/readme.md", "markdown", markdown, { insertSpaces: true, tabSize: 2 }));
+  assert.equal(output, markdown.replace("```hson\n[1,2]", "```hson\n«1,2»"));
 });
 check("object sibling indentation follows containers rather than member sequence", () => {
   const input = template('\n<data 1\n       data2 2\n data3 <\n           data4 4\n  data5 5\n >\n>\n');
@@ -105,7 +160,7 @@ check("multiline data objects move the first member below the opener and are ide
 });
 check("single-line data objects and document element heads remain inline", () => {
   assert.equal(format(template("<data 1>")), template("<data 1>"));
-  assert.equal(format(template("[\n1,\n2\n]")), template("[\n  1,\n  2\n]"));
+  assert.equal(format(template("[\n1,\n2\n]")), template("«\n  1,\n  2\n»"));
   const document = template('\n<article class="note"\n  <h1 "Hello"/>\n  <p "Text"/>\n/>\n');
   assert.equal(format(document), document);
 });
@@ -210,7 +265,7 @@ check("horizontal token trivia follows canonical Hson adjacency without touching
   assert.equal(format(expected), expected);
 
   const namesAndArrays = template("<   'quoted name\\'s'    [  1  ,\t2   ,  \"three  spaces\"  ]   >");
-  const normalized = template("<'quoted name\\'s' [1,2,\"three  spaces\"]>");
+  const normalized = template("<'quoted name\\'s' «1,2,\"three  spaces\"»>");
   assert.equal(format(namesAndArrays), normalized);
   assert.deepEqual(parse_hson(normalized.slice(prefix.length, -2)), parse_hson(namesAndArrays.slice(prefix.length, -2)));
 });
@@ -236,6 +291,13 @@ check("range formatting changes only intersecting Hson regions", () => {
     { insertSpaces: true, tabSize: 2 }, { start: firstStart, end: firstEnd }));
   assert.ok(output.includes("\n<a\n  <b/>\n/>"));
   assert.ok(output.includes("\n <b\n<c/>\n/>"));
+});
+check("range formatting canonicalizes only array delimiters inside the selected Hson region", () => {
+  const input = 'import { Hson } from "hson-live/hson";\nconst first = Hson.canonical`[1,2]`;\nconst second = Hson.canonical`[3,4]`;';
+  const start = input.indexOf("[1,2]");
+  const output = applyEdits(input, structural_formatting_edits("/workspace/source.ts", "typescript", input,
+    { insertSpaces: true, tabSize: 2 }, { start, end: start + 5 }));
+  assert.equal(output, input.replace("[1,2]", "«1,2»"));
 });
 check("newline between a pair creates an inner line and dedented closer", () => {
   const text = template("<main/>");

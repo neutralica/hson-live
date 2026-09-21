@@ -1,7 +1,10 @@
 import ts from "typescript";
 
 import { compile_hson_schema } from "../../../src/internal/hson-schema/compiler.js";
-import { create_hson_source_program } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
+import { admit_hson_source } from "../../../src/api/transform/hson-admission.js";
+import { admit_canonical_hson_data_value } from "../../../src/api/data/hson-data-hson.js";
+import { create_hson_source_program, discover_hson_tagged_templates } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
+import { read_embedded_hson_body } from "../../../src/internal/embedded-hson/embedded-hson-source.js";
 
 export type LocalHsonSchemaDiagnostic = Readonly<{ start: number; end: number; code: string; message: string }>;
 export type LocalHsonSchemaDeclaration = Readonly<{ name: string; start: number; end: number; template: string; templateStart: number; templateEnd: number }>;
@@ -15,10 +18,13 @@ type SchemaSyntax = Readonly<{
 /** Fast authoring feedback backed by the same pure compiler as the build analyzer. */
 export function local_hson_schema_diagnostics(fileName: string, text: string): readonly LocalHsonSchemaDiagnostic[] {
   const diagnostics: LocalHsonSchemaDiagnostic[] = [];
-  for (const syntax of discover_schema_syntax(fileName, text)) {
-    const sourceText = raw_template(syntax.template, syntax.sourceFile);
+  for (const source of discover_hson_tagged_templates(fileName, text).sources) {
+    if (source.authoringKind !== "schema") continue;
+    const sourceText = read_embedded_hson_body(source);
+    try { admit_canonical_hson_data_value(admit_hson_source(sourceText)); }
+    catch { continue; } // Base authoring diagnostics own invalid data syntax/context.
     const result = compile_hson_schema(sourceText);
-    const templateStart = syntax.template.getStart(syntax.sourceFile) + 1;
+    const templateStart = source.bodyRange.start;
     if (!result.ok) for (const issue of result.issues) diagnostics.push(Object.freeze({ start: templateStart + (issue.range?.start ?? 0), end: templateStart + (issue.range?.end ?? sourceText.length), code: issue.code, message: issue.message }));
   }
   return Object.freeze(diagnostics);

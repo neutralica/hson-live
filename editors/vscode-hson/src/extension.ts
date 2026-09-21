@@ -40,6 +40,7 @@ import type { LocalHostState } from "./local-host-controller.js";
 import { hson_quick_pick_actions, hson_status_presentation, type SchemaToolState } from "./hson-status.js";
 import {
   StructuralDocumentEvidenceCache,
+  structural_array_pair_for_bracket,
   structural_closer_for_less_than,
   structural_formatting_edits,
   structural_newline_plan_from_evidence,
@@ -178,7 +179,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const editor = vscode.window.activeTextEditor;
       const typed = args?.text;
       const language = editor === undefined ? undefined : structuralLanguage(editor.document);
-      if (typed !== "<" || editor === undefined || language === undefined
+      if ((typed !== "<" && typed !== "[") || editor === undefined || language === undefined
         || editor.selections.length !== 1 || !editor.selection.isEmpty) {
         await vscode.commands.executeCommand("default:type", args);
         return;
@@ -186,6 +187,17 @@ export function activate(context: vscode.ExtensionContext): void {
       const document = editor.document;
       const offset = document.offsetAt(editor.selection.active);
       const text = document.getText();
+      if (typed === "[") {
+        if (structural_array_pair_for_bracket(document.fileName, language, text, offset)) {
+          await editor.insertSnippet(new vscode.SnippetString("«$0»"), editor.selection, {
+            undoStopBefore: false,
+            undoStopAfter: false,
+          });
+        } else {
+          await vscode.commands.executeCommand("default:type", args);
+        }
+        return;
+      }
       const prospective = text.slice(0, offset) + "<" + text.slice(offset);
       const closer = structural_closer_for_less_than(document.fileName, language, prospective, offset + 1);
       if (closer === undefined) {

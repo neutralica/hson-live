@@ -180,6 +180,14 @@ function normalize_owned_document_boundary(node: HsonNode): HsonNode {
   return fail_admission("$", "node is not document-context Hson content");
 }
 
+/** Private contextual source admission shared with editor diagnostics. */
+export function qualify_hson_document_source(source: string): HsonNode {
+  if (typeof source !== "string") throw new TypeError("ExactDocumentCarrier.fromHson requires canonical Hson source text.");
+  const root = normalize_owned_document_boundary(parse_hson(source, { allowTopLevelDocumentText: true }));
+  qualify_exact_document_root(root);
+  return root;
+}
+
 function qualify_exact_document_root(root: HsonNode): void {
   scan_ingested_hson_node_quids(root, "ExactDocumentCarrier");
   if (root.$_tag !== ROOT_TAG) return fail_admission("$", "private document graph must use _hson_root");
@@ -265,9 +273,9 @@ export class ExactDocumentCarrier {
 
   /** Parse exact document-context Hson, including zero-length empty documents. */
   static fromHson(source: HsonCanonical): ExactDocumentCarrier {
-    if (typeof source !== "string") throw new TypeError("ExactDocumentCarrier.fromHson requires canonical Hson source text.");
-    const parsed = parse_hson(source, { allowTopLevelDocumentText: true });
-    return admit_owned_document_root(normalize_owned_document_boundary(parsed));
+    const root = qualify_hson_document_source(source);
+    deep_freeze(root);
+    return wrap_hson_document(root);
   }
 
   /** Safely copy and admit exact notation-closed document-context Hson. */

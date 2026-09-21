@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 
 import { TransformError } from "../../../src/core/errors.js";
 import { hson } from "../../../src/hson.js";
+import { Hson } from "../../../src/hson-authoring.js";
 import {
   DIAGNOSTIC_SOURCE,
   produce_document_diagnostics,
@@ -297,6 +298,83 @@ check("interpolated templates are discovered without speculative diagnostics", (
   const text = `${officialImport}\nconst page = Hson.canonical\`not hson \${first} still not \${second}\`;`;
   const diagnostics = diagnose(text, "typescript", "/workspace/page.ts");
   assert.deepEqual(diagnostics, []);
+});
+
+check("complete official member tags agree with runtime contextual admission", () => {
+  const cases = [
+    ["canonical", "<foo 1>", true], ["canonical", "<foo/>", true], ["canonical", '"hello"', true], ["canonical", "", false],
+    ["data", "<foo 1>", true], ["data", "[1, 2, 3]", true], ["data", '"hello"', true],
+    ["data", "42", true], ["data", "true", true], ["data", "null", true],
+    ["data", "<foo/>", false], ["data", '<main <p "x"/>/>', false], ["data", "", false],
+    ["document", "", true], ["document", '"hello"', true], ["document", "<foo/>", true],
+    ["document", '<main <p "x"/>/>', true], ["document", "<foo 1>", false],
+    ["document", "<foo 1 bar 2>", false],
+  ] as const;
+  for (const [kind, body, accepted] of cases) {
+    const text = `${officialImport}\nconst value = Hson.${kind}\`${body}\`;`;
+    const diagnostics = diagnose(text, "typescript", "/workspace/modes.ts");
+    assert.equal(diagnostics.length === 0, accepted, `${kind}: ${JSON.stringify(body)}`);
+    const strings = Object.freeze(Object.assign([body], { raw: Object.freeze([body]) }));
+    let runtimeAccepted = true;
+    try { Reflect.apply(Hson[kind], undefined, [strings]); } catch { runtimeAccepted = false; }
+    assert.equal(runtimeAccepted, accepted, `runtime ${kind}: ${JSON.stringify(body)}`);
+    if (!accepted) {
+      assert.ok(diagnostics[0]?.message);
+      assert.ok(diagnostics[0]!.range.start >= text.indexOf("`") + 1);
+      assert.ok(diagnostics[0]!.range.end <= text.lastIndexOf("`"));
+    }
+  }
+});
+
+check("complete Deck and nested data-object reproductions reject in runtime and editor", () => {
+  const deck = '\n<main\n  <h1 "Deck"/>\n  <p "Deck is running."/>\n  <p "" "" ""/>\n/>';
+  const nested = '\n<\n  data <\n    dsdf <\n      no "way" jose "!"\n    >\n  >\n  data2 2\n  data3 <\n    data4 4\n    data5 5\n    data6 6\n  >\n>';
+  for (const [kind, body] of [["data", deck], ["document", nested]] as const) {
+    const text = `${officialImport}\nconst ${kind === "data" ? "doc" : "x"} = Hson.${kind}\`${body}\`;`;
+    assert.equal(diagnose(text, "typescript", "/workspace/reproduction.ts").length, 1);
+    const strings = Object.freeze(Object.assign([body], { raw: Object.freeze([body]) }));
+    assert.throws(() => Reflect.apply(Hson[kind], undefined, [strings]));
+  }
+});
+
+check("member context remains tied to official bindings", () => {
+  const alias = 'import { Hson as markup } from "hson-live"; markup.data`<main/>`; markup.document`<foo 1>`;';
+  assert.equal(diagnose(alias, "typescript", "/workspace/alias.ts").length, 2);
+  const fake = 'const Fake = { data(strings: TemplateStringsArray) { return strings.raw[0]; } }; Fake.data`<main/>`;';
+  assert.deepEqual(diagnose(fake, "typescript", "/workspace/fake.ts"), []);
+  const wrong = 'import { Hson } from "other"; Hson.data`<main/>`;';
+  assert.deepEqual(diagnose(wrong, "typescript", "/workspace/wrong.ts"), []);
+  const shadowed = `${officialImport}\nfunction local(Hson: typeof Fake) { Hson.data\`<main/>\`; }`;
+  assert.deepEqual(diagnose(shadowed, "typescript", "/workspace/shadowed.ts"), []);
+});
+
+check("Schema member tags validate data before the Schema language in any expression", () => {
+  const valid = `${officialImport}\nvoid Hson.schema\`<type "data" content <name "string">>\`;`;
+  assert.deepEqual(diagnose(valid, "typescript", "/workspace/schema.ts"), []);
+  assert.deepEqual(local_hson_schema_diagnostics("/workspace/schema.ts", valid), []);
+  const document = `${officialImport}\nvoid Hson.schema\`<main/>\`;`;
+  assert.equal(diagnose(document, "typescript", "/workspace/schema.ts").length, 1);
+  assert.deepEqual(local_hson_schema_diagnostics("/workspace/schema.ts", document), []);
+  const invalidSchema = `${officialImport}\nvoid Hson.schema\`<type "data" content "unknown">\`;`;
+  assert.deepEqual(diagnose(invalidSchema, "typescript", "/workspace/schema.ts"), []);
+  assert.ok(local_hson_schema_diagnostics("/workspace/schema.ts", invalidSchema).length > 0);
+});
+
+check("interpolation reports only fixed contextual violations", () => {
+  const fixedData = `${officialImport}\nconst value = Hson.data\`<main/> // \${unknownValue}\`;`;
+  const fixedDocument = `${officialImport}\nconst value = Hson.document\`<foo \${unknownValue}>\`;`;
+  for (const text of [fixedData, fixedDocument]) {
+    const diagnostics = diagnose(text, "typescript", "/workspace/hole.ts");
+    assert.equal(diagnostics.length, 1);
+    assert.deepEqual(diagnostics[0]?.range, { start: text.indexOf("`") + 1, end: text.lastIndexOf("`") });
+  }
+  const uncertain = `${officialImport}\nconst value = Hson.data\`<main \${unknownValue}/>\`;`;
+  assert.deepEqual(diagnose(uncertain, "typescript", "/workspace/hole.ts"), []);
+});
+
+check("standalone Hson retains neutral context", () => {
+  assert.deepEqual(diagnose("<main/>", "hson", "/workspace/standalone.hson"), []);
+  assert.deepEqual(diagnose("<foo 1>", "hson", "/workspace/standalone.hson"), []);
 });
 
 check("ordinary templates and damaged TypeScript candidates have no Hson diagnostics", () => {

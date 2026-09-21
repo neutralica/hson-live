@@ -58,6 +58,7 @@ function official_declaration_origin(fileName: string, expected: "Hson" | "HsonD
 }
 
 export type InterpolatedEmbeddedHsonTemplate = Readonly<{
+  authoringKind: HsonAuthoringKind;
   fileName: string;
   hostText: string;
   tagRange: HostSourceRange;
@@ -67,8 +68,15 @@ export type InterpolatedEmbeddedHsonTemplate = Readonly<{
   expressionRanges: readonly HostSourceRange[];
 }>;
 
+export type HsonAuthoringKind = "canonical" | "data" | "document" | "schema";
+export type HsonTaggedTemplateSource = EmbeddedHsonSource & Readonly<{ authoringKind: HsonAuthoringKind }>;
+
+function is_hson_authoring_kind(value: string): value is HsonAuthoringKind {
+  return value === "canonical" || value === "data" || value === "document" || value === "schema";
+}
+
 export type HsonTaggedTemplateDiscoveryResult = Readonly<{
-  sources: readonly EmbeddedHsonSource[];
+  sources: readonly HsonTaggedTemplateSource[];
   interpolated: readonly InterpolatedEmbeddedHsonTemplate[];
 }>;
 
@@ -301,13 +309,13 @@ export function discover_hson_tagged_templates(
   const importSymbols = read_supported_hson_import_symbols(sourceFile, checker, diagnostics);
   if (importSymbols.size === 0) return empty();
 
-  const sources: EmbeddedHsonSource[] = [];
+  const sources: HsonTaggedTemplateSource[] = [];
   const interpolated: InterpolatedEmbeddedHsonTemplate[] = [];
   const visit = (node: ts.Node): void => {
     if (ts.isTaggedTemplateExpression(node)
       && ts.isPropertyAccessExpression(node.tag)
       && ts.isIdentifier(node.tag.expression)
-      && ["canonical", "data", "document", "schema"].includes(node.tag.name.text)
+      && is_hson_authoring_kind(node.tag.name.text)
       && (node.flags & ts.NodeFlags.OptionalChain) === 0
       && node.typeArguments === undefined) {
       const symbol = checker.getSymbolAtLocation(node.tag.expression);
@@ -329,12 +337,14 @@ export function discover_hson_tagged_templates(
           bodyRange,
         );
         if (validated !== undefined) {
+          const authoringKind = node.tag.name.text;
           if (ts.isNoSubstitutionTemplateLiteral(node.template)) {
-            sources.push(validated);
+            sources.push(Object.freeze({ ...validated, authoringKind }));
           } else {
             const substitutionRanges = read_template_substitution_ranges(node.template, hostText, sourceFile);
             if (substitutionRanges !== undefined) {
               interpolated.push(Object.freeze({
+                authoringKind,
                 fileName,
                 hostText,
                 tagRange: validated.tagRange,

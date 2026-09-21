@@ -13,7 +13,8 @@ export const HSON_TAGGED_TEMPLATE_REQUIRED = "HSON_TAGGED_TEMPLATE_REQUIRED" as 
 const HSON_TEMPLATE_SUBSTITUTION_TYPE_REQUIRED =
   "HSON_TEMPLATE_SUBSTITUTION_TYPE_REQUIRED";
 
-function admitHsonSource(source: string): HsonCanonical {
+/** Private neutral source admission shared with editor Schema diagnostics. */
+export function admit_hson_source(source: string): HsonCanonical {
   return serialize_hson(detach_hson_root_value(parse_hson(source)));
 }
 
@@ -104,5 +105,5 @@ export function admit_hson(
       { code: HSON_TAGGED_TEMPLATE_REQUIRED, stage: "template-admission" },
     );
   }
-  return admitHsonSource(reconstruct_hson_template_source(source, substitutions));
+  return admit_hson_source(reconstruct_hson_template_source(source, substitutions));
 }
