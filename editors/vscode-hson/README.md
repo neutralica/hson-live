@@ -69,7 +69,10 @@ Configure a built application entry in workspace settings:
   "hson.localHost.entry": "dist/local-app.js",
   "hson.localHost.applicationExport": "application",
   "hson.localHost.nodeExecutable": "node",
-  "hson.localHost.port": 0
+  "hson.localHost.port": 8787,
+  "hson.localHost.buildCommand": "npm run build",
+  "hson.localHost.restartOnSave": true,
+  "hson.localHost.sourceDirectory": "src"
 }
 ```
 
@@ -77,17 +80,23 @@ The exported value may be a `LiveHostApplication`, an array of applications, or 
 
 Use:
 
+- **Hson: Run All** (Schema Watch and the configured Local App)
 - **Hson: Run Local App**
+- **Hson: Run & Open Local App**
 - **Hson: Open Local App**
+- **Hson: Copy Local App URL**
 - **Hson: Restart Local App**
 - **Hson: Stop Local App**
+- **Hson: Stop All**
 - **Hson: Show Local App Output**
 
-The runner uses loopback networking, supports automatically assigned ports, and manages clean application restart and shutdown. Local application execution requires Workspace Trust and is currently limited to local desktop workspaces.
+The runner uses loopback networking. Port 8787 is the default stable URL; set `hson.localHost.port` to `0` for an ephemeral port. A busy configured port produces an error. Local application execution requires Workspace Trust and is currently limited to local desktop workspaces.
+
+The single Hson status item shows Schema and Local App state. Hover it for context-sensitive Run, Run + Open, Copy URL, Open, Restart, Stop, Schema Watch, and Stop All links. The URL and Copy URL action use the current child-reported endpoint.
 
 Local application hosting is development infrastructure, not an authentication boundary. The extension binds LiveHost Node to loopback and requires Workspace Trust, while the application remains responsible for its own authentication, authorization, and security policy. The extension supervises its local runner and LiveHost resources; additional processes created by application code remain application-owned and are not generically supervised by the extension.
 
-Build/watch remains project-owned. The extension does not provide its own TypeScript executor, bundler, or alternate Hson runtime.
+Build/watch remains project-owned. Set `buildCommand` to the project's existing build command to run it before Local App launch or restart. When `restartOnSave` is enabled, saving under `sourceDirectory` waits for that command to finish successfully before restarting the running app. A failed build leaves the current app running and reports the failure. The extension does not provide its own TypeScript executor, bundler, Vite process, or alternate Hson runtime. Browser opening uses VS Code's external URI handling and the system browser preference.
 
 ## Install the local development build
 

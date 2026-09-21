@@ -76,15 +76,10 @@ assert.deepEqual(manifest.contributes.commands.map(command => command.command), 
   "hson.openSettings",
   "hson.formatDocument", "hson.formatSelection",
   "hson.generateSchemaTypes", "hson.startSchemaWatch", "hson.stopSchemaWatch", "hson.checkSchemas", "hson.showSchemaOutput",
-  "hson.startLocalHost", "hson.stopLocalHost", "hson.restartLocalHost", "hson.openLocalApp", "hson.showLocalHostOutput",
+  "hson.runAll", "hson.stopAll", "hson.startLocalHost", "hson.runAndOpenLocalApp", "hson.stopLocalHost", "hson.restartLocalHost", "hson.openLocalApp", "hson.copyLocalAppUrl", "hson.showLocalHostOutput",
 ]);
-assert.deepEqual(manifest.contributes.commands.slice(-5).map(({ command, title }) => ({ command, title })), [
-  { command: "hson.startLocalHost", title: "Run Local App" },
-  { command: "hson.stopLocalHost", title: "Stop Local App" },
-  { command: "hson.restartLocalHost", title: "Restart Local App" },
-  { command: "hson.openLocalApp", title: "Open Local App" },
-  { command: "hson.showLocalHostOutput", title: "Show Local App Output" },
-]);
+assert.equal(manifest.contributes.commands.find(({ command }) => command === "hson.runAndOpenLocalApp")?.title, "Run & Open Local App");
+assert.equal(manifest.contributes.commands.find(({ command }) => command === "hson.copyLocalAppUrl")?.title, "Copy Local App URL");
 assert.match(readme, /development infrastructure, not an authentication boundary/);
 assert.match(readme, /responsible for its own authentication, authorization, and security policy/);
 assert.match(readme, /additional processes created by application code remain application-owned and are not generically supervised/);
@@ -99,7 +94,7 @@ assert.deepEqual({
   applicationExport: configuration["hson.localHost.applicationExport"].default,
   nodeExecutable: configuration["hson.localHost.nodeExecutable"].default,
   port: configuration["hson.localHost.port"].default,
-}, { entry: "", applicationExport: "application", nodeExecutable: "node", port: 0 });
+}, { entry: "", applicationExport: "application", nodeExecutable: "node", port: 8787 });
 assert.deepEqual(configuration["hson.formatting.formatOnSave"], {
   type: "boolean",
   default: true,

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import type { ChildProcess } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { createServer } from "node:net";
 import { join, resolve } from "node:path";
 
 import { LocalHostController, launch_local_host_child } from "../src/local-host-controller.js";
@@ -108,6 +109,26 @@ try {
   assert.equal(pids.length, 2); assert.notEqual(pids[0], pids[1]);
   await controller.stop();
   await waitFor(() => pids.every(pid => !alive(pid)), "stopped and restarted children remained alive");
+
+  const reservation = createServer();
+  await new Promise<void>(resolveListen => reservation.listen(0, "127.0.0.1", resolveListen));
+  const reserved = reservation.address();
+  assert.ok(reserved && typeof reserved !== "string");
+  const stablePort = reserved.port;
+  await new Promise<void>(resolveClose => reservation.close(() => resolveClose()));
+  const stableRoot = workspace("stable-port");
+  const stableProject = await resolve_local_host_project(stableRoot, stableRoot, { entry: "dist/app.mjs", applicationExport: "application", nodeExecutable: process.execPath, port: stablePort });
+  const stable = new LocalHostController(stableRoot, { runnerPath });
+  const stableFirst = await stable.start(stableProject);
+  assert.equal(stableFirst.httpUrl, `http://127.0.0.1:${stablePort}`);
+  const conflictingRoot = workspace("port-conflict");
+  const conflictingProject = await resolve_local_host_project(conflictingRoot, conflictingRoot, { entry: "dist/app.mjs", applicationExport: "application", nodeExecutable: process.execPath, port: stablePort });
+  const conflicting = new LocalHostController(conflictingRoot, { runnerPath });
+  await assert.rejects(conflicting.start(conflictingProject), new RegExp(`port ${stablePort} is already in use`));
+  await conflicting.dispose();
+  const stableSecond = await stable.restart(stableProject);
+  assert.equal(stableSecond.httpUrl, stableFirst.httpUrl);
+  await stable.dispose();
 
   const alphaRoot = workspace("alpha"), betaRoot = workspace("beta");
   const alphaPids: number[] = [], betaPids: number[] = [];

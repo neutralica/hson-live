@@ -31,6 +31,22 @@ export function application() {
   return { name: "vscode-integration", dispose() { appendFileSync(lifecycle, "stop\\n"); } };
 }
 `);
+await mkdir(join(workspaceDir, "app-src"));
+await writeFile(join(workspaceDir, "app-src", "value.txt"), "zero\n");
+await writeFile(join(workspaceDir, "build-local-app.mjs"), `
+import { appendFile, readFile, writeFile } from "node:fs/promises";
+const root = ${JSON.stringify(workspaceDir)};
+const log = ${JSON.stringify(join(workspaceDir, "local-app-build.txt"))};
+const value = (await readFile(root + "/app-src/value.txt", "utf8")).trim();
+await appendFile(log, "build-start:" + value + "\\n");
+await new Promise(resolve => setTimeout(resolve, 200));
+if (value === "FAIL") { await appendFile(log, "build-fail\\n"); process.exit(1); }
+const app = "import { appendFileSync } from 'node:fs';\\n"
+  + "const log = " + JSON.stringify(${JSON.stringify(localHostLifecycle)}) + ";\\n"
+  + "export function application() { appendFileSync(log, " + JSON.stringify("start:" + value + "\\n") + "); return { name: " + JSON.stringify(value) + ", dispose() { appendFileSync(log, 'stop\\\\n'); } }; }\\n";
+await writeFile(root + "/dist/local-app.mjs", app);
+await appendFile(log, "build-end:" + value + "\\n");
+`);
 await mkdir(join(workspaceDir, "static-project"));
 await writeFile(join(workspaceDir, "static-project", "tsconfig.json"), JSON.stringify({ compilerOptions: { target: "ES2022", module: "ESNext" }, include: ["**/*.ts"] }));
 await writeFile(join(workspaceDir, "static-project", "unopened-invalid.ts"), 'import { Hson } from "hson-live";\nexport const unopened = Hson.canonical`+1`;\n');

@@ -34,7 +34,7 @@
     "check": "npm run check:source && npm run build && npm run validate:artifact",
     "test": "npm run test:grammar && npm run test:unit && npm run test:settings",
     "test:grammar": "node ./tests/grammar.test.mjs && npm run test:baseline",
-    "test:unit": "node ./scripts/build-tests.mjs && node ./.test-dist/unit.cjs && node ./.test-dist/workspace.cjs && node ./.test-dist/local-host.cjs && node ./.test-dist/structural.cjs && node ./.test-dist/status-ui.cjs",
+    "test:unit": "node ./scripts/build-tests.mjs && node ./.test-dist/unit.cjs && node ./.test-dist/workspace.cjs && node ./.test-dist/local-host.cjs && node ./.test-dist/development-actions.cjs && node ./.test-dist/structural.cjs && node ./.test-dist/status-ui.cjs",
     "test:local-host-process": "npm run build && node ./scripts/build-tests.mjs && node ./.test-dist/local-host-process.cjs",
     "test:settings": "node ./scripts/build-tests.mjs && node ./.test-dist/settings.cjs",
     "test:integration": "npm run build && node ./scripts/build-tests.mjs && node ./tests/integration/run.mjs",
@@ -172,13 +172,28 @@
           },
           "hson.localHost.port": {
             "type": "integer",
-            "default": 0,
+            "default": 8787,
             "minimum": 0,
             "maximum": 65535,
             "scope": "resource",
             "order": 40,
             "title": "Port",
-            "markdownDescription": "Loopback port for LiveHost Node. Keep 0 to request a fresh automatic port; the child-reported URL remains authoritative."
+            "markdownDescription": "Stable loopback port for LiveHost Node. Set 0 to request an ephemeral port. A port conflict is reported rather than selecting another port."
+          },
+          "hson.localHost.buildCommand": {
+            "type": "string", "default": "", "scope": "resource", "order": 50,
+            "title": "Build Command",
+            "markdownDescription": "Project-owned command run in the workspace folder before starting or restarting the Local App. Required for rebuild on save; for example, a project script that produces the configured JavaScript entry."
+          },
+          "hson.localHost.restartOnSave": {
+            "type": "boolean", "default": false, "scope": "resource", "order": 60,
+            "title": "Restart on Save",
+            "markdownDescription": "After saving a file in Source Directory, run Build Command to completion and restart a running Local App. Requires Build Command."
+          },
+          "hson.localHost.sourceDirectory": {
+            "type": "string", "default": "src", "scope": "resource", "order": 70,
+            "title": "Source Directory",
+            "markdownDescription": "Workspace-relative directory whose saved files trigger Build Command and Local App restart when Restart on Save is enabled."
           }
         }
       },
@@ -206,10 +221,14 @@
       { "command": "hson.stopSchemaWatch", "title": "Stop Schema Watch", "category": "Hson" },
       { "command": "hson.checkSchemas", "title": "Check Schemas", "category": "Hson" },
       { "command": "hson.showSchemaOutput", "title": "Show Schema Output", "category": "Hson" },
+      { "command": "hson.runAll", "title": "Run All", "category": "Hson" },
+      { "command": "hson.stopAll", "title": "Stop All", "category": "Hson" },
       { "command": "hson.startLocalHost", "title": "Run Local App", "category": "Hson", "enablement": "hson.localHost.canStart" },
+      { "command": "hson.runAndOpenLocalApp", "title": "Run & Open Local App", "category": "Hson" },
       { "command": "hson.stopLocalHost", "title": "Stop Local App", "category": "Hson", "enablement": "hson.localHost.canStop" },
       { "command": "hson.restartLocalHost", "title": "Restart Local App", "category": "Hson", "enablement": "hson.localHost.canRestart" },
       { "command": "hson.openLocalApp", "title": "Open Local App", "category": "Hson", "enablement": "hson.localHost.canOpen" },
+      { "command": "hson.copyLocalAppUrl", "title": "Copy Local App URL", "category": "Hson", "enablement": "hson.localHost.canOpen" },
       { "command": "hson.showLocalHostOutput", "title": "Show Local App Output", "category": "Hson" }
     ],
     "menus": {

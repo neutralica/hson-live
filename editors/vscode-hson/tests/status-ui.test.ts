@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { hson_quick_pick_actions, hson_status_presentation } from "../src/hson-status.js";
+import { HSON_TOOLTIP_COMMANDS, hson_quick_pick_actions, hson_status_presentation, hson_status_tooltip } from "../src/hson-status.js";
 import type { LocalAppAction } from "../src/local-host-presentation.js";
 
 let checks = 0;
@@ -43,6 +43,48 @@ check("the tooltip is the concise authority for both lifecycle states", () => {
   assert.match(hson_status_presentation("error", "failed").tooltip, /Schema: error\nLiveHost: failed$/);
 });
 
+check("clickable tooltip has readable stopped controls and no unavailable actions", () => {
+  const stopped = hson_status_tooltip("stopped", "stopped");
+  const gap = "\u2003\u2003";
+  assert.match(stopped, /^Local App — off\n\n/);
+  assert.ok(stopped.includes(`[[Run]](command:hson.startLocalHost)${gap}[[Run + Open]](command:hson.runAndOpenLocalApp)`));
+  assert.ok(stopped.includes(`\n\n---\n\nSchema — off\n\n[[Watch]](command:hson.startSchemaWatch)${gap}[[Check]](command:hson.checkSchemas)`));
+  assert.match(stopped, /\[\[Run \+ Open\]\]\(command:hson\.runAndOpenLocalApp\)/);
+  assert.doesNotMatch(stopped, /command:hson\.openLocalApp|command:hson\.copyLocalAppUrl|command:hson\.stopAll/);
+  assert.equal(stopped.split("\n\n---\n\n").length, 2);
+});
+
+check("running controls keep the actual URL on its own line and Stop All last", () => {
+  const gap = "\u2003\u2003";
+  const running = hson_status_tooltip("watching", "running", "http://127.0.0.1:8787/");
+  assert.match(running, /^`http:\/\/127\.0\.0\.1:8787\/`\n\n/);
+  assert.doesNotMatch(running, /Local App — on/);
+  assert.ok(running.includes([
+    "[[Open]](command:hson.openLocalApp)", "[[Copy]](command:hson.copyLocalAppUrl)",
+    "[[Restart]](command:hson.restartLocalHost)", "[[Stop]](command:hson.stopLocalHost)",
+  ].join(gap)));
+  assert.ok(running.includes(`\n\n---\n\nSchema — on\n\n[[Stop]](command:hson.stopSchemaWatch)${gap}[[Check]](command:hson.checkSchemas)`));
+  assert.ok(running.endsWith("\n\n---\n\n[[Stop All]](command:hson.stopAll)"));
+  assert.equal(running.split("\n\n---\n\n").length, 3);
+  assert.match(hson_status_tooltip("stopped", "running", "http://127.0.0.1:9000/path"), /^`http:\/\/127\.0\.0\.1:9000\/path`\n\n/);
+});
+
+check("transitional tooltip states retain Check and state-appropriate actions", () => {
+  const starting = hson_status_tooltip("starting", "starting");
+  assert.match(starting, /Local App — starting/);
+  assert.match(starting, /command:hson\.stopLocalHost/);
+  assert.match(starting, /command:hson\.stopSchemaWatch/);
+  assert.match(starting, /command:hson\.checkSchemas/);
+  assert.ok(starting.endsWith("[[Stop All]](command:hson.stopAll)"));
+  const schemaOnly = hson_status_tooltip("watching", "stopped");
+  assert.match(schemaOnly, /Schema — on/);
+  assert.ok(schemaOnly.endsWith("[[Stop All]](command:hson.stopAll)"));
+  assert.doesNotMatch(hson_status_tooltip("error", "failed"), /command:hson\.stopAll/);
+  assert.deepEqual([...HSON_TOOLTIP_COMMANDS].sort(), [...new Set(HSON_TOOLTIP_COMMANDS)].sort());
+  assert.ok(HSON_TOOLTIP_COMMANDS.includes("hson.checkSchemas"));
+  assert.ok(HSON_TOOLTIP_COMMANDS.every(command => command.startsWith("hson.")));
+});
+
 const localActions: readonly LocalAppAction[] = [
   { label: "Open Local App", command: "hson.openLocalApp" },
   { label: "Restart Local App", command: "hson.restartLocalHost" },
@@ -56,7 +98,7 @@ check("the unified picker is ordered Formatting, Schema, LiveHost, Output", () =
   assert.deepEqual(actions.map(action => action.label), [
     "Format Document", "Format Selection",
     "Check Schemas", "Generate Schema Types", "Start Schema Watch", "Stop Schema Watch",
-    "Open Local App", "Restart Local App", "Stop Local App",
+    "Run All", "Open Local App", "Restart Local App", "Stop Local App", "Stop All",
     "Show Schema Output", "Show Local App Output",
   ]);
 });
@@ -76,6 +118,12 @@ check("production creates exactly one status item with one unified click command
   assert.match(extensionSource, /hsonStatus\.command = "hson\.actions"/);
   assert.match(extensionSource, /registerCommand\("hson\.actions"/);
   assert.match(extensionSource, /showQuickPick\(items/);
+  assert.match(extensionSource, /tooltip\.isTrusted = \{ enabledCommands: HSON_TOOLTIP_COMMANDS \}/);
+  assert.match(extensionSource, /displayedTooltip !== undefined && displayedTooltip !== tooltipContent\) hsonStatus\.hide\(\)/);
+  assert.match(extensionSource, /displayedTooltip = tooltipContent;[\s\S]*hsonStatus\.tooltip = tooltip;[\s\S]*hsonStatus\.show\(\)/);
+  assert.match(localHostSource, /clipboard\.writeText\(new URL\(url\)\.href\)/);
+  assert.match(localHostSource, /run_and_open\(\(\) => this\.start\(folder\.uri\), \(\) => this\.open\(folder\.uri\)\)/);
+  assert.match(extensionSource, /registerCommand\("hson\.stopAll", stopAll\)/);
   assert.doesNotMatch(source, /hsonStatus\.color\s*=/);
   assert.match(source, /statusBarItem\.errorBackground/);
   assert.doesNotMatch(source, /hson\.schemaToolActions|hson\.localHostActions/);

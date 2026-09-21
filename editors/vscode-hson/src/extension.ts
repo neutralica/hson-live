@@ -37,7 +37,8 @@ import { HSON_APPEARANCE, HSON_DOCUMENT_SELF_CLOSING_SLASH } from "./appearance.
 import { formatting_target_is_current } from "./formatting-target.js";
 import { LocalHostExtensionManager } from "./local-host-extension.js";
 import type { LocalHostState } from "./local-host-controller.js";
-import { hson_quick_pick_actions, hson_status_presentation, type SchemaToolState } from "./hson-status.js";
+import { HSON_TOOLTIP_COMMANDS, hson_quick_pick_actions, hson_status_presentation, hson_status_tooltip, type SchemaToolState } from "./hson-status.js";
+import { run_development_services, type DevelopmentService } from "./development-actions.js";
 import {
   StructuralDocumentEvidenceCache,
   structural_array_pair_for_bracket,
@@ -671,10 +672,20 @@ export function activate(context: vscode.ExtensionContext): void {
   hsonStatus.name = "Hson Extension";
   hsonStatus.command = "hson.actions";
   let localHostState: LocalHostState = "stopped";
+  let displayedTooltip: string | undefined;
   const updateHsonStatus = (): void => {
-    const presentation = hson_status_presentation(currentSchemaToolState(), localHostState);
+    const schemaState = currentSchemaToolState();
+    const url = localHostManager?.currentUrl;
+    const presentation = hson_status_presentation(schemaState, localHostState, url);
+    const tooltipContent = hson_status_tooltip(schemaState, localHostState, url);
+    // An open VS Code status hover can retain old command links after a tooltip update.
+    // Removing the existing item dismisses that hover before the current state is shown.
+    if (displayedTooltip !== undefined && displayedTooltip !== tooltipContent) hsonStatus.hide();
+    displayedTooltip = tooltipContent;
     hsonStatus.text = presentation.text;
-    hsonStatus.tooltip = presentation.tooltip;
+    const tooltip = new vscode.MarkdownString(tooltipContent);
+    tooltip.isTrusted = { enabledCommands: HSON_TOOLTIP_COMMANDS };
+    hsonStatus.tooltip = tooltip;
     hsonStatus.backgroundColor = presentation.error ? new vscode.ThemeColor("statusBarItem.errorBackground") : undefined;
     hsonStatus.show();
   };
@@ -711,7 +722,7 @@ export function activate(context: vscode.ExtensionContext): void {
     for (const [key, watch] of matches) {
       schemaToolOutput.appendLine(`Stopping extension-managed hson-schema watch for ${watch.project}.`);
       await new Promise<void>(resolveStopped => {
-        if (watch.child.exitCode !== null) return resolveStopped();
+        if (watch.child.exitCode !== null || watch.child.signalCode !== null) return resolveStopped();
         watch.child.once("close", () => resolveStopped());
         terminate_schema_process(watch.child);
       });
@@ -755,11 +766,11 @@ export function activate(context: vscode.ExtensionContext): void {
       });
     });
   };
-  const startSchemaWatch = async (requested?: vscode.Uri): Promise<void> => {
+  const startSchemaWatch = async (requested?: vscode.Uri): Promise<boolean> => {
     const prepared = await prepareSchemaTool(requested);
-    if (prepared === undefined) return;
+    if (prepared === undefined) return false;
     const key = schemaWatchKey(prepared.folder, prepared.project);
-    if (schemaWatches.has(key)) { schemaToolOutput.appendLine(`Hson Schema watch is already running for ${prepared.project}.`); updateSchemaToolStatus(); return; }
+    if (schemaWatches.has(key)) { schemaToolOutput.appendLine(`Hson Schema watch is already running for ${prepared.project}.`); updateSchemaToolStatus(); return true; }
     schemaToolOutput.appendLine(`Starting hson-schema watch --project ${prepared.project}`);
     const child = spawn(process.execPath, [prepared.executable, "watch", "--project", prepared.project], { cwd: prepared.folder.uri.fsPath, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
     const watch = Object.freeze({ folder: prepared.folder, project: prepared.project, child });
@@ -777,6 +788,36 @@ export function activate(context: vscode.ExtensionContext): void {
       if (managed) { schemaToolStates.set(key, code === 0 ? "stopped" : "error"); schemaToolOutput.appendLine(`Hson Schema watch exited with code ${code ?? "unknown"}.`); if (code !== 0) void vscode.window.showErrorMessage("Hson Schema watch stopped unexpectedly.", "Show Hson Output").then(action => action === "Show Hson Output" && schemaToolOutput.show(true)); }
       updateSchemaToolStatus(); refreshSchemaEvidence();
     });
+    return new Promise<boolean>(resolveStart => {
+      child.once("spawn", () => resolveStart(true));
+      child.once("error", () => resolveStart(false));
+    });
+  };
+  const runAll = async (): Promise<void> => {
+    const folders = (vscode.workspace.workspaceFolders ?? []).filter(folder => folder.uri.scheme === "file");
+    const services: DevelopmentService[] = [];
+    for (const folder of folders) {
+      const name = (service: string): string => folders.length === 1 ? service : `${folder.name}: ${service}`;
+      try { discover_schema_project(folder.uri.fsPath); services.push({ name: name("Schema Watch"), start: () => startSchemaWatch(folder.uri) }); }
+      catch { /* No Schema project is configured in this folder. */ }
+      if (localHostManager?.hasConfiguredApp(folder)) services.push({ name: name("Local App"), start: () => localHostManager?.start(folder.uri) ?? Promise.resolve(false) });
+    }
+    const failures = await run_development_services(services);
+    if (services.length === 0) void vscode.window.showWarningMessage("No Hson development services are configured in this workspace.");
+    else if (failures.length > 0) void vscode.window.showErrorMessage(`Hson: Run All could not start ${failures.join(" and ")}.`);
+  };
+  const stopAll = async (): Promise<void> => {
+    for (const folder of vscode.workspace.workspaceFolders ?? []) await localHostManager?.stopRunning(folder);
+    for (const [key, watch] of schemaWatches) {
+      await new Promise<void>(resolveStopped => {
+        if (watch.child.exitCode !== null || watch.child.signalCode !== null) return resolveStopped();
+        watch.child.once("close", () => resolveStopped());
+        terminate_schema_process(watch.child);
+      });
+      schemaWatches.delete(key);
+      schemaToolStates.set(key, "stopped");
+    }
+    updateSchemaToolStatus();
   };
   updateSchemaToolStatus();
   context.subscriptions.push(
@@ -784,6 +825,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("hson.generateSchemaTypes", (uri?: vscode.Uri) => runSchemaOnce("generate", uri)),
     vscode.commands.registerCommand("hson.checkSchemas", (uri?: vscode.Uri) => runSchemaOnce("check", uri)),
     vscode.commands.registerCommand("hson.startSchemaWatch", (uri?: vscode.Uri) => startSchemaWatch(uri)),
+    vscode.commands.registerCommand("hson.runAll", runAll),
+    vscode.commands.registerCommand("hson.stopAll", stopAll),
     vscode.commands.registerCommand("hson.stopSchemaWatch", (uri?: vscode.Uri) => stopSchemaWatch(uri)),
     vscode.commands.registerCommand("hson.showSchemaOutput", () => schemaToolOutput.show(true)),
     vscode.commands.registerCommand("hson.actions", async () => {
@@ -792,6 +835,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const actions = hson_quick_pick_actions(
         { document: canFormatDocument, selection: canFormatDocument && !editor.selection.isEmpty },
         localHostManager?.quickPickActions() ?? [],
+        currentSchemaToolState(),
       );
       type PickerItem = vscode.QuickPickItem & { command?: string };
       const items: PickerItem[] = [];

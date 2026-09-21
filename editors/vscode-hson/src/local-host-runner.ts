@@ -129,7 +129,9 @@ async function main(): Promise<void> {
     send({ protocolVersion: LOCAL_HOST_PROTOCOL_VERSION, type: "ready", projectId: config.projectId, httpUrl: host.httpUrl, port: host.port });
   } catch (error) {
     applicationOwnership = "none";
-    fail("hosting", error);
+    fail("hosting", is_record(error) && error.code === "EADDRINUSE"
+      ? new Error(`Local App port ${config.port} is already in use. Change hson.localHost.port or stop the other process.`)
+      : error);
     request_stop();
   }
 }

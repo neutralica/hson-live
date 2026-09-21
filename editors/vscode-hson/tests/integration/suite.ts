@@ -129,7 +129,7 @@ export async function run(): Promise<void> {
 
   assert.ok(workspace);
   const commands = await vscode.commands.getCommands(true);
-  for (const command of ["hson.actions", "hson.formatDocument", "hson.formatSelection", "hson.startLocalHost", "hson.stopLocalHost", "hson.restartLocalHost", "hson.openLocalApp", "hson.showLocalHostOutput"]) {
+  for (const command of ["hson.actions", "hson.formatDocument", "hson.formatSelection", "hson.runAll", "hson.stopAll", "hson.startLocalHost", "hson.runAndOpenLocalApp", "hson.stopLocalHost", "hson.restartLocalHost", "hson.openLocalApp", "hson.copyLocalAppUrl", "hson.showLocalHostOutput"]) {
     assert.ok(commands.includes(command), `${command} is registered`);
   }
   const folder = vscode.workspace.workspaceFolders?.[0];
@@ -409,6 +409,55 @@ export async function run(): Promise<void> {
   await vscode.commands.executeCommand("hson.stopLocalHost", folder.uri);
   assert.deepEqual(await lifecycle(), ["start", "stop", "start", "stop"]);
   process.stdout.write("ok - real VS Code local-host commands start, deduplicate, restart fresh, and stop idempotently\n");
+
+  await localHostConfiguration.update("buildCommand", `${process.env.HSON_TEST_NODE_EXECUTABLE ?? "node"} build-local-app.mjs`, vscode.ConfigurationTarget.WorkspaceFolder);
+  await localHostConfiguration.update("restartOnSave", true, vscode.ConfigurationTarget.WorkspaceFolder);
+  await localHostConfiguration.update("sourceDirectory", "app-src", vscode.ConfigurationTarget.WorkspaceFolder);
+  const buildUri = vscode.Uri.file(join(workspace, "local-app-build.txt"));
+  const buildLog = async (): Promise<string[]> => {
+    try { return Buffer.from(await vscode.workspace.fs.readFile(buildUri)).toString().trim().split("\n").filter(Boolean); }
+    catch { return []; }
+  };
+  const source = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace, "app-src", "value.txt")));
+  const saveValue = async (value: string): Promise<void> => {
+    const edit = new vscode.WorkspaceEdit();
+    edit.replace(source.uri, new vscode.Range(source.positionAt(0), source.positionAt(source.getText().length)), `${value}\n`);
+    assert.equal(await vscode.workspace.applyEdit(edit), true);
+    assert.equal(await source.save(), true);
+  };
+  await vscode.commands.executeCommand("hson.startLocalHost", folder.uri);
+  await saveValue("one");
+  await waitFor(async () => (await lifecycle()).at(-1) === "start:one", "saved source did not produce a fresh Local App restart");
+  assert.deepEqual((await buildLog()).slice(-2), ["build-start:one", "build-end:one"]);
+  await saveValue("two");
+  await saveValue("three");
+  await waitFor(async () => (await lifecycle()).at(-1) === "start:three", "rapid saves did not settle on the latest output");
+  const beforeFailure = await lifecycle();
+  await saveValue("FAIL");
+  await waitFor(async () => (await buildLog()).at(-1) === "build-fail", "failed build was not reported");
+  assert.deepEqual(await lifecycle(), beforeFailure, "failed build restarted stale output");
+  const beforeStop = await buildLog();
+  await saveValue("after-stop");
+  await vscode.commands.executeCommand("hson.stopLocalHost", folder.uri);
+  await new Promise(resolve => setTimeout(resolve, 350));
+  assert.deepEqual(await buildLog(), beforeStop, "Stop left a pending save build active");
+  assert.equal((await lifecycle()).at(-1), "stop");
+  await vscode.commands.executeCommand("hson.startLocalHost", folder.uri);
+  await vscode.commands.executeCommand("hson.copyLocalAppUrl", folder.uri);
+  assert.match(await vscode.env.clipboard.readText(), /^http:\/\/127\.0\.0\.1:\d+\/$/);
+  await vscode.commands.executeCommand("hson.stopAll");
+  assert.equal((await lifecycle()).at(-1), "stop");
+  await localHostConfiguration.update("restartOnSave", false, vscode.ConfigurationTarget.WorkspaceFolder);
+  await localHostConfiguration.update("buildCommand", "", vscode.ConfigurationTarget.WorkspaceFolder);
+  await vscode.workspace.fs.writeFile(vscode.Uri.file(join(workspace, "dist", "local-app.mjs")), Buffer.from(`
+import { appendFileSync } from "node:fs";
+const lifecycle = ${JSON.stringify(lifecycleUri.fsPath)};
+export function application() {
+  appendFileSync(lifecycle, "start\\n");
+  return { name: "vscode-integration", dispose() { appendFileSync(lifecycle, "stop\\n"); } };
+}
+`));
+  process.stdout.write("ok - real VS Code save builds before restart, coalesces saves, keeps stale output on failure, cancels on Stop, and copies the current URL\n");
 
   const standalone = await vscode.workspace.openTextDocument({ language: "hson", content: "+1" });
   await vscode.window.showTextDocument(standalone);

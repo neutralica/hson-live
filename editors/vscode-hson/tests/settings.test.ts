@@ -116,12 +116,13 @@ check("retired trusted Schema settings are absent", () => assert.equal(Object.ke
 check("local-host settings describe one built entry and narrow runtime controls", () => {
   assert.deepEqual(Object.keys(localHostGroup.properties), [
     "hson.localHost.entry", "hson.localHost.applicationExport", "hson.localHost.nodeExecutable", "hson.localHost.port",
+    "hson.localHost.buildCommand", "hson.localHost.restartOnSave", "hson.localHost.sourceDirectory",
   ]);
   assert.equal(properties["hson.localHost.entry"].default, "");
   assert.equal(properties["hson.localHost.entry"].scope, "resource");
   assert.equal(properties["hson.localHost.applicationExport"].default, "application");
   assert.equal(properties["hson.localHost.nodeExecutable"].default, "node");
-  assert.equal(properties["hson.localHost.port"].default, 0);
+  assert.equal(properties["hson.localHost.port"].default, 8787);
   assert.equal(properties["hson.localHost.port"].minimum, 0);
   assert.equal(properties["hson.localHost.port"].maximum, 65_535);
 });
@@ -155,7 +156,7 @@ check("the compact command set complements settings and status", () => assert.de
   manifest.contributes.commands.map((command: { command: string }) => command.command),
   [
     "hson.openSettings", "hson.formatDocument", "hson.formatSelection", "hson.generateSchemaTypes", "hson.startSchemaWatch", "hson.stopSchemaWatch", "hson.checkSchemas", "hson.showSchemaOutput",
-    "hson.startLocalHost", "hson.stopLocalHost", "hson.restartLocalHost", "hson.openLocalApp", "hson.showLocalHostOutput",
+    "hson.runAll", "hson.stopAll", "hson.startLocalHost", "hson.runAndOpenLocalApp", "hson.stopLocalHost", "hson.restartLocalHost", "hson.openLocalApp", "hson.copyLocalAppUrl", "hson.showLocalHostOutput",
   ],
 ));
 

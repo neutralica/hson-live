@@ -18,6 +18,7 @@
     "tests/structural-editing.test.ts",
     "tests/local-host.test.ts",
     "tests/local-host-process.test.ts",
+    "tests/development-actions.test.ts",
     "tests/benchmark.ts",
     "tests/integration/suite.ts",
     "tests/integration/baseline.ts",

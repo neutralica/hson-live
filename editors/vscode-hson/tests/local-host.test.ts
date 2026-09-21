@@ -259,7 +259,7 @@ await check("multi-root availability and same-name identity remain unambiguous",
   assert.deepEqual(local_host_command_availability(presentations), { canStart: true, canStop: true, canRestart: true, canOpen: true });
   assert.notEqual(presentations[0]?.detail, presentations[1]?.detail);
   assert.deepEqual(local_app_quick_pick_actions(presentations).map(action => action.label), [
-    "Open Local App", "Run Local App", "Restart Local App", "Stop Local App", "Show Local App Output",
+    "Run & Open Local App", "Run Local App", "Open Local App", "Copy Local App URL", "Restart Local App", "Stop Local App", "Show Local App Output",
   ]);
 });
 
@@ -270,11 +270,11 @@ await check("local-app Quick Pick exposes only actions applicable to each lifecy
       : { projectId: "file:///decks", state } as const;
     return local_app_quick_pick_actions([{ projectId: "file:///decks", name: "decks", detail: "/workspace/decks", configured: true, snapshot }]).map(action => action.label);
   };
-  assert.deepEqual(labels("stopped"), ["Run Local App", "Show Local App Output"]);
+  assert.deepEqual(labels("stopped"), ["Run & Open Local App", "Run Local App", "Show Local App Output"]);
   assert.deepEqual(labels("starting"), ["Stop Local App", "Show Local App Output"]);
-  assert.deepEqual(labels("running"), ["Open Local App", "Restart Local App", "Stop Local App", "Show Local App Output"]);
+  assert.deepEqual(labels("running"), ["Open Local App", "Copy Local App URL", "Restart Local App", "Stop Local App", "Show Local App Output"]);
   assert.deepEqual(labels("stopping"), ["Show Local App Output"]);
-  assert.deepEqual(labels("failed"), ["Run Local App", "Show Local App Output"]);
+  assert.deepEqual(labels("failed"), ["Run & Open Local App", "Run Local App", "Show Local App Output"]);
 });
 
 await check("local-app Quick Pick actions route through the existing command IDs", () => {
@@ -283,7 +283,7 @@ await check("local-app Quick Pick actions route through the existing command IDs
     { projectId: "file:///stopped", name: "stopped", detail: "/workspace/stopped", configured: true, snapshot: { projectId: "file:///stopped", state: "stopped" } },
   ];
   assert.deepEqual(local_app_quick_pick_actions(projects).map(action => action.command), [
-    "hson.openLocalApp", "hson.startLocalHost", "hson.restartLocalHost", "hson.stopLocalHost", "hson.showLocalHostOutput",
+    "hson.runAndOpenLocalApp", "hson.startLocalHost", "hson.openLocalApp", "hson.copyLocalAppUrl", "hson.restartLocalHost", "hson.stopLocalHost", "hson.showLocalHostOutput",
   ]);
 });
 
