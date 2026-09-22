@@ -15,6 +15,17 @@ export type ResolvedContinuationDocument = Readonly<{
   aggregate: LiveMapLibraries | undefined;
 }>;
 
+/** Select the public registry name of the exact continuation document. */
+export function continuation_document_library_name(
+  map: LiveMapLibraries,
+  selected: ContinuableDocumentMap,
+): string {
+  for (const entry of map.capture().libraries) {
+    if (entry.mode === "document" && map.lib(entry.name) === selected) return entry.name;
+  }
+  throw new Error("Continuation document is not in the fixed Library registry.");
+}
+
 export function validate_continuation_root(root: unknown): asserts root is Element {
   if (typeof root !== "object" || root === null
     || (root as { nodeType?: unknown }).nodeType !== 1

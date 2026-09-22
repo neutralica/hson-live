@@ -28,7 +28,7 @@ Hson owns one fixed, closed Schema. Its semantic shape is:
 <type "data" content <descriptors <array <union [
   <content <
     id "string"
-    subjectQuid <string <len 9 alphabet "0123456789abcdefghjkmnpqrstvwxyz">>
+    subject <content <library "string" path <array <number <int true min 0>>>>>
     listener <content <
       event "string"
       target <union [<exact "element">, <union [<exact "document">, <exact "window">]>]>
@@ -46,7 +46,7 @@ Hson owns one fixed, closed Schema. Its semantic shape is:
   >>,
   <content <
     id "string"
-    subjectQuid <string <len 9 alphabet "0123456789abcdefghjkmnpqrstvwxyz">>
+    subject <content <library "string" path <array <number <int true min 0>>>>>
     listener <content <
       event "string"
       target <union [<exact "element">, <union [<exact "document">, <exact "window">]>]>
@@ -65,9 +65,13 @@ Hson owns one fixed, closed Schema. Its semantic shape is:
 ]>>>>
 ```
 
-Unknown fields, hybrid variants, malformed listener settings, and invalid persisted QUID strings fail Schema admission before publication or revision movement. `add_interaction` rejects duplicate descriptor IDs, `replace_interaction` rejects missing IDs, and `remove_interaction` rejects missing IDs. These writes are ordinary aggregate mutations: local maps commit locally, Locus-managed maps must author through an authoritative mutation draft, and fenced Echo replicas remain read-only.
+Unknown fields, hybrid variants, malformed listener settings, and invalid library or document paths fail canonical admission before publication or revision movement. `add_interaction` rejects duplicate descriptor IDs, `replace_interaction` rejects missing IDs, and `remove_interaction` rejects missing IDs. These writes are ordinary aggregate mutations: local maps commit locally, Locus-managed maps must author through an authoritative mutation draft, and fenced Echo replicas remain read-only.
 
-The descriptor ID identifies only the descriptor. `subjectQuid` is sparse continuity evidence for a subject in the relevant current owner epoch and activated tree root; it is not an application ID or runtime-resource owner.
+The descriptor ID identifies only the descriptor. The subject uses the fixed application document Library name and canonical numeric document path. Runtime-local QUIDs may follow an activated subject but are never serialized into interaction state.
+
+An established subject that moves keeps its interaction: the authority rewrites its path in the same transition as the document edit. Deletion or identity-destroying replacement removes the descriptor in that transition, so a new subject at the old path cannot inherit it. A descriptor authored before its subject exists remains at its authored path and can activate if a subject appears there.
+
+Generated QUIDs are scoped to one runtime. A runtime can map local QUIDs to and from paths for live continuity; portable interaction state uses the document Library and path. A later Transform migration must stop portable serializers from emitting generated QUIDs and stop portable parsers from installing runtime identity from serialized QUID metadata. Exact same-runtime identity capture belongs to an explicit internal mechanism after Hson text, structural JSON, Transform HTML, browser realization HTML, `.noQuid()`, and hosted graph codecs are reconciled.
 
 ## Exact interaction data
 
@@ -81,6 +85,7 @@ An authoritative descriptor invokes only the optional generic dispatcher:
 const dispose = activate_interactions({
   map,
   tree,
+  document: "page",
   local: localBehaviors,
   dispatch: async (actionKey, payload) => {
     const result = await echo.action(actionKey, payload);

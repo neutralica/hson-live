@@ -229,7 +229,7 @@ function mainFixture(quid: string): Readonly<{ root: FakeElement; child: FakeEle
   });
   const descriptor: InteractionDescriptor = Object.freeze({
     id: "authoritative-click",
-    subjectQuid: quid,
+    subject: Object.freeze({ library: "page", path: [0, 0, 0] }),
     kind: "locus-authoritative",
     key: "save",
     payload: Hson.data.from({ exact: true }),

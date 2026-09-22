@@ -109,10 +109,10 @@ async function activate_echo(echo: Readonly<{
 }
 
 function local(id: string, key: string, args: HsonData = Hson.data.from(null), override: Partial<InteractionListener> = {}): InteractionDescriptor {
-  return Object.freeze({ id, subjectQuid: currentQ, listener: Object.freeze({ ...listener, ...override }), kind: "browser-local", key, args });
+  return Object.freeze({ id, subject: Object.freeze({ library: "page", path: [0, 0, 0] }), listener: Object.freeze({ ...listener, ...override }), kind: "browser-local", key, args });
 }
 function authoritative(id: string, key: string, payload: HsonData): InteractionDescriptor {
-  return Object.freeze({ id, subjectQuid: currentQ, listener, kind: "locus-authoritative", key, payload });
+  return Object.freeze({ id, subject: Object.freeze({ library: "page", path: [0, 0, 0] }), listener, kind: "locus-authoritative", key, payload });
 }
 
 const testEvents = create_test_event_emitter("canonical-interactions");
@@ -159,15 +159,17 @@ await check("strict Schema and authoring semantics reject before revision moveme
   add_interaction(map, local("a", "run"));
   assert.throws(() => add_interaction(map, local("a", "run")), /already exists/);
   const before = map.rev;
-  assert.throws(() => add_interaction(map, { ...local("bad", "run"), subjectQuid: "iiiiiiiii" }), /Schema/);
+  assert.throws(() => add_interaction(map, { ...local("bad", "run"), subject: { library: "page", path: [-1] } }), /path|index/i);
   assert.equal(map.rev, before);
   assert.throws(() => add_interaction(map, { ...local("extra", "run"), extra: true } as unknown as InteractionDescriptor), /unknown or missing/);
   assert.equal(map.rev, before);
   assert.throws(() => replace_interaction(map, local("missing", "run")), /does not exist/);
-  for (const subjectQuid of ["00000000", "00000000i", "00000000l", "00000000o", "00000000u", "00000000A", "00000000-"]) {
-    assert.throws(() => add_interaction(map, { ...local(`bad-${subjectQuid}`, "run"), subjectQuid }), /Schema/);
+  for (const path of [[-1], [1.5], [Number.MAX_SAFE_INTEGER + 1]]) {
+    assert.throws(() => add_interaction(map, { ...local(`bad-${path[0]}`, "run"), subject: { library: "page", path } }), /path|index/i);
     assert.equal(map.rev, before);
   }
+  assert.throws(() => add_interaction(map, { ...local("data-target", "run"), subject: { library: "state", path: [0] } }), /document Library/);
+  assert.equal(map.rev, before);
   assert.throws(() => add_interaction(map, {
     ...local("bad-target", "run"), listener: { ...listener, target: "body" },
   } as unknown as InteractionDescriptor), /Schema/);
@@ -209,7 +211,7 @@ await check("document and interaction effects accept or reject as one authority 
           name: "blocked",
           value: "rejected",
         }));
-        add_interaction(draft, { ...local("invalid", "run"), subjectQuid: "iiiiiiiii" });
+        add_interaction(draft, { ...local("invalid", "run"), subject: { library: "page", path: [-1] } });
       }),
     },
   });
@@ -596,22 +598,24 @@ await check("an ignored missing listener target remains eligible for later reali
 await check("exact subject replacement disposes A and materializes once on B", () => {
   const map = map_fixture();
   add_interaction(map, local("replace-subject", "run"));
-  const page = hsonLiveMap.fromHson(`<main <button @${currentQ}/>/>`);
+  const localQ = "000009001";
+  assert.notEqual(currentQ, localQ);
+  const page = hsonLiveMap.fromHson(`<main <button @${localQ}/>/>`);
   if (page.mode !== "document") throw new Error("Expected document LiveMap.");
   const reflection = hsonMirror(page);
   project_livetree(reflection.tree.node);
-  const first = reflection.tree.find.must.byQuid(currentQ);
+  const first = reflection.tree.find.must.byQuid(localQ);
   const firstNode = first.node;
   const firstElement = first.dom.el() as unknown as import("./helpers/fake-document.mts").FakeElement;
   let calls = 0;
   const dispose = activate_interactions({ map, tree: reflection.tree, local: { run: () => { calls += 1; } } });
   assert.equal(firstElement.listeners.get("click")?.size, 1);
-  const replacementMap = hsonLiveMap.fromHson(`<i @${currentQ}/>`);
+  const replacementMap = hsonLiveMap.fromHson(`<i @${localQ}/>`);
   if (replacementMap.mode !== "document") throw new Error("Expected replacement document LiveMap.");
   const replacement = replacementMap.at([]).snap();
   if (typeof replacement !== "object" || replacement === null || !("$_tag" in replacement)) throw new Error("Expected replacement node.");
   page.at([0]).replace(replacement);
-  const second = reflection.tree.find.must.byQuid(currentQ);
+  const second = reflection.tree.find.must.byQuid(localQ);
   const secondElement = second.dom.el() as unknown as import("./helpers/fake-document.mts").FakeElement;
   assert.notEqual(firstNode, second.node);
   assert.equal(firstElement.listeners.has("click"), false);
@@ -644,7 +648,7 @@ await check("snapshot restore makes current hidden descriptors reconciliation tr
 await check("runtime failures are isolated and canonical descriptors remain", async () => {
   const map = map_fixture();
   add_interaction(map, local("unknown", "missing"));
-  add_interaction(map, { ...local("missing-subject", "ok"), subjectQuid: "000009999" });
+  add_interaction(map, { ...local("missing-subject", "ok"), subject: { library: "page", path: [99] } });
   add_interaction(map, authoritative("no-dispatch", "save", Hson.data.from(1)));
   add_interaction(map, local("missing-target", "ok", Hson.data.from(null), { target: "window" }));
   add_interaction(map, local("working", "ok"));

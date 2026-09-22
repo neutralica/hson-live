@@ -28,7 +28,7 @@
       ...overrides,
     });
     const local = (id, key, event, target, overrides = {}) => ({
-      id, subjectQuid: QUID, listener: listener(event, target, overrides),
+      id, subject: Object.freeze({ library: "page", path: [0, 0, 0] }), listener: listener(event, target, overrides),
       kind: "browser-local", key, args: Hson.data.from(-0),
     });
     add_interaction(map, local("element", "element", "click", "element", {

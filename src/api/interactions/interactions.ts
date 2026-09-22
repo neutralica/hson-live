@@ -1,4 +1,8 @@
 import { Hson } from "../../hson-authoring.js";
+import { is_Node } from "../../core/node-guards.js";
+import { ROOT_TAG } from "../../core/constants.js";
+import { validate_document_path, resolve_document_path } from "../livemap/livemap.document.path.js";
+import { wrap_in_tree } from "../livetree/creation/create-livetree.js";
 import type { HsonData, HsonSchema } from "../transform/transform.types.js";
 import { hsonTransform } from "../transform/transform.facade.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
@@ -39,8 +43,8 @@ import {
 } from "../livetree/runtime/livetree-runtime.js";
 
 const INTERACTION_SCHEMA: HsonSchema = Hson.schema`<type "data" content <descriptors <array <union [
-  <content <id "string" subjectQuid <string <len 9 alphabet "0123456789abcdefghjkmnpqrstvwxyz">> listener <content <event "string" target <union [<exact "element">, <union [<exact "document">, <exact "window">]>]> capture "boolean" once "boolean" passive "boolean" missingTarget <union [<exact "ignore">, <union [<exact "warn">, <exact "throw">]>]> preventDefault "boolean" stopPropagation "boolean" stopImmediatePropagation "boolean">> kind <exact "browser-local"> key "string" args "any">>,
-  <content <id "string" subjectQuid <string <len 9 alphabet "0123456789abcdefghjkmnpqrstvwxyz">> listener <content <event "string" target <union [<exact "element">, <union [<exact "document">, <exact "window">]>]> capture "boolean" once "boolean" passive "boolean" missingTarget <union [<exact "ignore">, <union [<exact "warn">, <exact "throw">]>]> preventDefault "boolean" stopPropagation "boolean" stopImmediatePropagation "boolean">> kind <exact "locus-authoritative"> key "string" payload "any">>
+  <content <id "string" subject <content <library "string" path <array <number <int true min 0>>>>> listener <content <event "string" target <union [<exact "element">, <union [<exact "document">, <exact "window">]>]> capture "boolean" once "boolean" passive "boolean" missingTarget <union [<exact "ignore">, <union [<exact "warn">, <exact "throw">]>]> preventDefault "boolean" stopPropagation "boolean" stopImmediatePropagation "boolean">> kind <exact "browser-local"> key "string" args "any">>,
+  <content <id "string" subject <content <library "string" path <array <number <int true min 0>>>>> listener <content <event "string" target <union [<exact "element">, <union [<exact "document">, <exact "window">]>]> capture "boolean" once "boolean" passive "boolean" missingTarget <union [<exact "ignore">, <union [<exact "warn">, <exact "throw">]>]> preventDefault "boolean" stopPropagation "boolean" stopImmediatePropagation "boolean">> kind <exact "locus-authoritative"> key "string" payload "any">>
 ]>>>>`;
 
 type Storage = Readonly<{
@@ -63,6 +67,7 @@ type RuntimeDescriptor = RuntimeLocalDescriptor | RuntimeAuthoritativeDescriptor
 type ActivationSnapshot = Readonly<{
   map: LiveMapLibraries;
   tree: LiveTree;
+  document: string;
   local: ReadonlyMap<string, InteractionLocalBehavior>;
   dispatch: InteractionActivationOptions["dispatch"];
   onFailure: InteractionActivationOptions["onFailure"];
@@ -158,7 +163,7 @@ export function activate_interactions(options: InteractionActivationOptions): ()
         for (const [id, record] of [...records]) {
           const descriptor = desiredById.get(id);
           let subject: LiveTree | undefined;
-          try { subject = descriptor === undefined ? undefined : activation.tree.find.byQuid(descriptor.subjectQuid); }
+          try { subject = descriptor === undefined ? undefined : resolve_local_subject(activation, descriptor); }
           catch { subject = undefined; }
           const fingerprint = descriptor === undefined ? undefined : descriptor_fingerprint(descriptor);
           if (descriptor === undefined || subject === undefined
@@ -171,7 +176,7 @@ export function activate_interactions(options: InteractionActivationOptions): ()
         for (const descriptor of desired) {
           if (records.has(descriptor.id)) continue;
           let subject: LiveTree | undefined;
-          try { subject = activation.tree.find.byQuid(descriptor.subjectQuid); } catch (cause) {
+          try { subject = resolve_local_subject(activation, descriptor); } catch (cause) {
             report(descriptor, "subject-resolution", cause);
             continue;
           }
@@ -267,6 +272,11 @@ export function activate_interactions(options: InteractionActivationOptions): ()
 function snapshot_activation(options: InteractionActivationOptions): ActivationSnapshot {
   const map = options.map;
   const tree = options.tree;
+  const documentNames = map.capture().libraries.filter((entry) => entry.mode === "document").map((entry) => entry.name);
+  const document = options.document ?? (documentNames.length === 1 ? documentNames[0] : undefined);
+  if (document === undefined || !documentNames.includes(document)) {
+    throw new TypeError("Canonical interaction activation requires a selected document Library.");
+  }
   const local = snapshot_local_behaviors(options.local);
   const dispatch = options.dispatch;
   const onFailure = options.onFailure;
@@ -276,7 +286,19 @@ function snapshot_activation(options: InteractionActivationOptions): ActivationS
   if (onFailure !== undefined && typeof onFailure !== "function") {
     throw new TypeError("Canonical interaction failure observer must be a function.");
   }
-  return Object.freeze({ map, tree, local, dispatch, onFailure });
+  return Object.freeze({ map, tree, document, local, dispatch, onFailure });
+}
+
+function resolve_local_subject(activation: ActivationSnapshot, descriptor: InteractionDescriptor): LiveTree | undefined {
+  if (descriptor.subject.library !== activation.document) return undefined;
+  const path = validate_document_path(descriptor.subject.path);
+  let node;
+  const root = activation.tree.node.$_tag === ROOT_TAG
+    ? activation.tree.node
+    : { $_tag: ROOT_TAG, $_content: [activation.tree.node] };
+  try { node = resolve_document_path(root, "document", path); }
+  catch { return undefined; }
+  return is_Node(node) ? wrap_in_tree(activation.tree, node) : undefined;
 }
 
 function snapshot_local_behaviors(
@@ -321,12 +343,14 @@ function interaction_storage(target: object): Storage {
 
 function descriptor_to_value(descriptor: InteractionDescriptor): OrderedProjectedObject {
   const kind = exact_record(descriptor, descriptor.kind === "browser-local"
-    ? ["id", "subjectQuid", "listener", "kind", "key", "args"]
-    : ["id", "subjectQuid", "listener", "kind", "key", "payload"], "interaction descriptor");
+    ? ["id", "subject", "listener", "kind", "key", "args"]
+    : ["id", "subject", "listener", "kind", "key", "payload"], "interaction descriptor");
+  const subject = exact_record(kind.subject, ["library", "path"], "interaction subject");
+  const path = validate_document_path(subject.path);
   const listener = listener_to_value(kind.listener);
   const common: Array<readonly [string, OrderedProjectedValue]> = [
     ["id", scalar(kind.id)],
-    ["subjectQuid", scalar(kind.subjectQuid)],
+    ["subject", ordered_projected_object([["library", scalar(subject.library)], ["path", ordered_projected_array([...path])]])],
     ["listener", listener],
     ["kind", scalar(kind.kind)],
     ["key", scalar(kind.key)],
@@ -396,7 +420,7 @@ function read_descriptors(value: OrderedProjectedValue): readonly RuntimeDescrip
     const kind = member(entry, "kind");
     const base = {
       id: require_string(member(entry, "id")),
-      subjectQuid: require_string(member(entry, "subjectQuid")),
+      subject: read_subject(require_object(member(entry, "subject"))),
       listener: read_listener(require_object(member(entry, "listener"))),
       key: require_string(member(entry, "key")),
     };
@@ -412,6 +436,12 @@ function read_descriptors(value: OrderedProjectedValue): readonly RuntimeDescrip
     }) satisfies AuthoritativeInteractionDescriptor;
     throw new Error("Canonical interaction descriptor discriminant is malformed.");
   }));
+}
+
+function read_subject(value: OrderedProjectedObject): Readonly<{ library: string; path: readonly number[] }> {
+  const library = require_string(member(value, "library"));
+  const path = validate_document_path(member(value, "path"));
+  return Object.freeze({ library, path });
 }
 
 function read_listener(value: OrderedProjectedObject): InteractionListener {
@@ -460,7 +490,12 @@ function require_missing_policy(value: OrderedProjectedValue | undefined): Inter
 }
 
 function descriptor_fingerprint(descriptor: InteractionDescriptor): string {
-  return encode_hson_data_internal(hson_data_from_value(descriptor_to_value(descriptor)));
+  const value = descriptor_to_value(descriptor);
+  // A canonical path rewrite follows the same local subject. It must not
+  // replace that subject's listener or reset once/resource ownership.
+  return encode_hson_data_internal(hson_data_from_value(ordered_projected_object(
+    value.entries.filter(([name]) => name !== "subject"),
+  )));
 }
 
 function install_listener(subject: LiveTree, listener: InteractionListener, handler: (event: Event) => void): ListenerSub {

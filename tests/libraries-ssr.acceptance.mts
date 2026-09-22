@@ -171,7 +171,7 @@ check("same-cut rendering never rereads source Libraries after aggregate capture
     map.lib("state").at(["count"]).set(1);
     add_interaction(map, Object.freeze({
       id: "after-cut",
-      subjectQuid: QUID,
+      subject: Object.freeze({ library: "page", path: [0, 0, 0] }),
       listener: Object.freeze({
         event: "click", target: "element", capture: false, once: false, passive: false,
         missingTarget: "ignore", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false,

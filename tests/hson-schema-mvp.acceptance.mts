@@ -249,12 +249,12 @@ check("alphabet follows string iteration for Unicode, controls, repetition, and 
   }
 });
 check("generic length plus alphabet expresses persisted QUID validation", () => {
-  const schema: HsonSchema = Hson.schema`<type "data" content <subjectQuid <string <len 9 alphabet "0123456789abcdefghjkmnpqrstvwxyz">>>>`;
+  const schema: HsonSchema = Hson.schema`<type "data" content <quid <string <len 9 alphabet "0123456789abcdefghjkmnpqrstvwxyz">>>>`;
   for (const value of ["000000000", "012345678", "abcdefghj", "zzzzzzzzz"]) {
-    assert.doesNotThrow(() => schema.certify(hsonTransform.fromJson({ subjectQuid: value }).toHson().serialize()), value);
+    assert.doesNotThrow(() => schema.certify(hsonTransform.fromJson({ quid: value }).toHson().serialize()), value);
   }
   for (const value of ["00000000", "0000000000", "!!!!!!!!a", "00000000i", "00000000l", "00000000o", "00000000u", "00000000A", "00000000😀"]) {
-    assert.throws(() => schema.certify(hsonTransform.fromJson({ subjectQuid: value }).toHson().serialize()), value);
+    assert.throws(() => schema.certify(hsonTransform.fromJson({ quid: value }).toHson().serialize()), value);
   }
 });
 check("alphabet canonical Hson round trips repertoire order and Unicode units", () => {

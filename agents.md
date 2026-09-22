@@ -14,6 +14,7 @@ Agents must preserve API stability and runtime identity.
 - LiveTree methods and getters MUST live on the prototype.
 - Do NOT convert instance methods to closures or arrow properties.
 - Avoid patterns that duplicate class definitions across build outputs.
+- Generated QUIDs are runtime-scoped. They may preserve identity while a runtime lives, and LiveMap may map them to and from paths inside that runtime. They are not durable application addresses, network addresses, or persistence identities. Portable and system references and operations use paths unless a separately designed authored portable identity exists.
 
 ## 3. Build and distribution
 

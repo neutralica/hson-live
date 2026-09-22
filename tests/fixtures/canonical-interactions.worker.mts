@@ -55,7 +55,7 @@ const exact = Hson.data.fromHson(Hson.canonical`<'10' -0 '2' 2 __proto__ <pollut
 const authorityMap = make_map();
 enable_interactions(authorityMap);
 const descriptor: InteractionDescriptor = Object.freeze({
-  id: "worker", subjectQuid: QUID, listener, kind: "locus-authoritative", key: "save", payload: exact,
+  id: "worker", subject: Object.freeze({ library: "page", path: [0, 0, 0] }), listener, kind: "locus-authoritative", key: "save", payload: exact,
 });
 add_interaction(authorityMap, descriptor);
 let handled: HsonData | undefined;

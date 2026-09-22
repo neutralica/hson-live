@@ -18,6 +18,7 @@ import {
   validate_continuation_root,
   validate_interaction_shape,
   schedule_continuation_runtime_activation,
+  continuation_document_library_name,
 } from "./continuation.common.js";
 import { DocumentContinuationError } from "./continuation.error.js";
 import type { HostedDocumentContinuation } from "./continuation.types.js";
@@ -145,6 +146,7 @@ export async function continue_hosted_document_internal(options: Readonly<{
         disposeInteractions = activate_interactions({
           map: resolved.aggregate,
           tree: adoption.tree,
+          document: continuation_document_library_name(resolved.aggregate, resolved.selected),
           local: options.interactions.local,
           dispatch,
           ...(options.interactions.onFailure === undefined ? {} : { onFailure: options.interactions.onFailure }),

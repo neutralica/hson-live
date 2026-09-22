@@ -1,6 +1,6 @@
 import type { JsonObj, JsonValue } from "../core/types.js";
 import type { HsonData } from "../api/transform/transform.types.js";
-import type { LiveMapLibraries } from "./livemap.types.js";
+import type { LiveMapDocumentPathInput, LiveMapLibraries } from "./livemap.types.js";
 import type { LiveTree } from "../api/livetree/livetree.js";
 import type { MissingPolicy } from "./listen.types.js";
 
@@ -19,9 +19,15 @@ export type InteractionListener = Readonly<{
 
 type InteractionDataInput = HsonData | number | boolean | null | JsonObj | JsonValue[];
 
+/** Portable coordinate of a document subject in the fixed application registry. */
+export type InteractionSubject = Readonly<{
+  library: string;
+  path: LiveMapDocumentPathInput;
+}>;
+
 export type LocalInteractionDescriptor = Readonly<{
   id: string;
-  subjectQuid: string;
+  subject: InteractionSubject;
   listener: InteractionListener;
   kind: "browser-local";
   key: string;
@@ -30,7 +36,7 @@ export type LocalInteractionDescriptor = Readonly<{
 
 export type AuthoritativeInteractionDescriptor = Readonly<{
   id: string;
-  subjectQuid: string;
+  subject: InteractionSubject;
   listener: InteractionListener;
   kind: "locus-authoritative";
   key: string;
@@ -69,6 +75,8 @@ export type InteractionFailure = Readonly<{
 export type InteractionActivationOptions = Readonly<{
   map: LiveMapLibraries;
   tree: LiveTree;
+  /** Name of the selected document Library; inferred only for a single document Library. */
+  document?: string;
   local: InteractionLocalBehaviors;
   dispatch?: InteractionActionDispatcher;
   onFailure?: (failure: InteractionFailure) => void;

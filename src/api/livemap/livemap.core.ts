@@ -2,6 +2,8 @@
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
 import { register_echo_map_capability_internal } from "../../internal/echo-map-capability.js";
+import { INTERACTION_RESERVED_LIBRARY_KEY } from "../../internal/interaction-storage.js";
+import { rewrite_interaction_subjects, validate_interaction_subjects } from "../../internal/interaction-path-maintenance.js";
 import type { HsonSchema } from "../transform/transform.types.js";
 import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
 import type { ClassifiedLiveMap, HostedLiveMapLibrariesSnapshot, LiveMap, LiveMapAnyOp, LiveMapCommit, LiveMapLibrariesSnapshot, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapDataOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapCaptureOptions, LiveMapApply, LiveMapGraphCommit, LiveMapGraphOp, LiveMapGraphReplaceRootOp, LiveMapRootMode } from "../../types/livemap.types.js";
@@ -1332,6 +1334,7 @@ function make_livemap_core_from_compatibility_root(
     const prevRev = mapRevision;
     const candidates = new Map<LiveMapLibraryIdentity, AggregateCandidate>();
     let systemCandidate: AggregateSystemCandidate | undefined;
+    const replayingSystem = writes.some((write) => write.kind === "replay-data");
     const initialActiveQuids = aggregate_quid_locations(libraryRegistry.all());
     let stagedIssuedLedger = mapIdentityEpoch.issued();
     const operations: LiveMapAggregateOperation[] = [];
@@ -1351,6 +1354,52 @@ function make_livemap_core_from_compatibility_root(
         : make_aggregate_data_candidate(library);
       candidates.set(identity, candidate);
       return candidate;
+    };
+    const system_candidate = (): AggregateSystemCandidate | undefined => {
+      if (systemState === undefined || systemState.key !== INTERACTION_RESERVED_LIBRARY_KEY) return undefined;
+      systemCandidate ??= {
+        system: systemState,
+        baseRoot: clone_live_root(systemState.root),
+        detachedRoot: clone_live_root(systemState.root),
+        value: systemState.projectedValue,
+        writes: [],
+        nextRoot: clone_live_root(systemState.root),
+      };
+      return systemCandidate;
+    };
+    const stage_interaction_paths = (
+      library: LiveMapLibraryState,
+      beforeRoot: HsonNode,
+      beforeOverlay: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay,
+      afterOverlay: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay,
+      operation: LiveMapGraphOp,
+    ): void => {
+      if (replayingSystem || systemState?.key !== INTERACTION_RESERVED_LIBRARY_KEY) return;
+      const name = hostedBindingsByIdentity?.get(library.identity)?.name;
+      if (name === undefined) throw new Error("Interaction document Library name is unavailable.");
+      const current = systemCandidate?.value ?? systemState.projectedValue;
+      const descriptors = ordered_projected_value_at(current, ["descriptors"]);
+      if (descriptors === undefined) throw new Error("Canonical interaction descriptors are unavailable.");
+      const rewritten = rewrite_interaction_subjects(
+        descriptors, name, beforeRoot, beforeOverlay, afterOverlay, operation,
+      );
+      if (rewritten === undefined) return;
+      const candidate = system_candidate();
+      if (candidate === undefined) return;
+      const localWrite: LiveMapCoreWriteOp = { kind: "replace", path: ["descriptors"], value: rewritten };
+      const planned = plan_write_ops(candidate.value, [localWrite]);
+      candidate.value = planned.value;
+      candidate.writes.push(localWrite);
+      for (let index = 0; index < planned.ops.length; index += 1) {
+        const projected = planned.transportOps[index];
+        const operation = planned.ops[index];
+        if (projected === undefined || operation === undefined) throw new Error("Interaction path rewrite evidence is incomplete.");
+        operations.push(Object.freeze({
+          target: aggregate_system_target(candidate.system.identity, operation.path),
+          operation,
+          projected,
+        }));
+      }
     };
     const planned_quid_is_active = (quid: string): boolean => {
       for (const library of libraryRegistry.all()) {
@@ -1424,6 +1473,7 @@ function make_livemap_core_from_compatibility_root(
           target: aggregate_target(library.identity, document_operation_path(operation)),
           operation,
         }));
+        stage_interaction_paths(library, library.root, library.documentOverlay, candidate.overlay, operation);
       }
       candidates.set(library.identity, candidate);
     }
@@ -1485,6 +1535,8 @@ function make_livemap_core_from_compatibility_root(
         if (!is_aggregate_document_candidate(candidate)) {
           throw new Error("Aggregate graph operations require a document library.");
         }
+        const priorRoot = candidate.root;
+        const priorOverlay = candidate.overlay;
         const planned = prepare_document_graph_operation(
           candidate.root,
           "document",
@@ -1506,6 +1558,7 @@ function make_livemap_core_from_compatibility_root(
             target: aggregate_target(library.identity, document_operation_path(planned.operation)),
             operation: planned.operation,
           }));
+          stage_interaction_paths(library, priorRoot, priorOverlay, planned.overlay, planned.operation);
         }
         continue;
       }
@@ -1611,6 +1664,10 @@ function make_livemap_core_from_compatibility_root(
       }
     }
     if (systemCandidate !== undefined) {
+      if (systemCandidate.system.key === INTERACTION_RESERVED_LIBRARY_KEY) {
+        const descriptors = ordered_projected_value_at(systemCandidate.value, ["descriptors"]);
+        validate_interaction_subjects(descriptors, (name) => hostedBindingsByName?.get(name)?.mode === "document");
+      }
       aggregateSchemaValidations += 1;
       must_hson_schema_projected_candidate(systemCandidate.system.hsonSchema, systemCandidate.value);
       const root = projected_candidate_graph(

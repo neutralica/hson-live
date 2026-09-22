@@ -101,7 +101,7 @@ try {
   enable_interactions(librariesMap);
   add_interaction(librariesMap, Object.freeze({
     id: "ssr-click",
-    subjectQuid: "000005203",
+    subject: Object.freeze({ library: "page", path: [0, 0, 0] }),
     listener: Object.freeze({ event: "click", target: "element", capture: false, once: false, passive: false, missingTarget: "throw", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false }),
     kind: "browser-local",
     key: "clicker",
@@ -109,7 +109,7 @@ try {
   }));
   add_interaction(librariesMap, Object.freeze({
     id: "ssr-authoritative",
-    subjectQuid: "000005203",
+    subject: Object.freeze({ library: "page", path: [0, 0, 0] }),
     listener: Object.freeze({ event: "click", target: "element", capture: false, once: false, passive: false, missingTarget: "throw", preventDefault: false, stopPropagation: false, stopImmediatePropagation: false }),
     kind: "locus-authoritative",
     key: "state.interaction",
