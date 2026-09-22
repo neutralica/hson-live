@@ -300,16 +300,13 @@ check("interpolated templates are discovered without speculative diagnostics", (
   assert.deepEqual(diagnostics, []);
 });
 
-check("structural interpolation diagnostics include the leading hash", () => {
-  const forbidden = `${officialImport}\nconst x = Hson.canonical\`#\${value}\`;`;
-  const canonical = diagnose(forbidden, "typescript", "/workspace/page.ts")[0];
-  assert.equal(canonical?.code, "HSON_STRUCTURAL_SLOT_MODE_FORBIDDEN");
-  assert.equal(forbidden.slice(canonical?.range.start, canonical?.range.end), '#${value}');
-
-  const invalid = `${officialImport}\nconst x = Hson.document\`<#\${value}/>\`;`;
+check("grammar-context interpolation diagnoses illegal positions and partial strings", () => {
+  const invalid = `${officialImport}\nconst x = Hson.document\`<\${value}/><p \"hello \${value}\"/>\`;`;
   const document = diagnose(invalid, "typescript", "/workspace/page.ts")[0];
-  assert.equal(document?.code, "HSON_STRUCTURAL_SLOT_POSITION_INVALID");
-  assert.equal(invalid.slice(document?.range.start, document?.range.end), '#${value}');
+  assert.equal(document?.code, "HSON_INTERPOLATION_POSITION_INVALID");
+  assert.equal(invalid.slice(document?.range.start, document?.range.end), '${value}');
+  const partial = `${officialImport}\nconst x = Hson.document\`<p \"hello \${value}\"/>\`;`;
+  assert.equal(diagnose(partial, "typescript", "/workspace/page.ts")[0]?.code, "HSON_QUOTED_INTERPOLATION_PARTIAL");
 });
 
 check("complete official member tags agree with runtime contextual admission", () => {
@@ -378,10 +375,11 @@ check("interpolation reports only fixed contextual violations", () => {
   for (const text of [fixedData, fixedDocument]) {
     const diagnostics = diagnose(text, "typescript", "/workspace/hole.ts");
     assert.equal(diagnostics.length, 1);
-    assert.deepEqual(diagnostics[0]?.range, { start: text.indexOf("`") + 1, end: text.lastIndexOf("`") });
+    assert.ok(diagnostics[0]?.range.start >= text.indexOf("`") + 1);
+    assert.ok(diagnostics[0]?.range.end <= text.lastIndexOf("`") + 1);
   }
   const uncertain = `${officialImport}\nconst value = Hson.data\`<main \${unknownValue}/>\`;`;
-  assert.deepEqual(diagnose(uncertain, "typescript", "/workspace/hole.ts"), []);
+  assert.equal(diagnose(uncertain, "typescript", "/workspace/hole.ts")[0]?.code, "HSON_INTERPOLATION_POSITION_INVALID");
 });
 
 check("standalone Hson retains neutral context", () => {

@@ -60,8 +60,7 @@ export function diagnose_hson_tag(source: HsonTaggedTemplateSource): readonly Do
 // Incomplete containers/tokens and downstream structure cannot be decided here.
 // Codes are emitted by the real tokenizer, not matched by editor syntax rules.
 const prefixFailures = new Set(["HSON_NUMBER_LEADING_PLUS", "HSON_NUMBER_LEADING_ZERO",
-  "HSON_STRING_CONTROL_UNESCAPED", "HSON_NAME_CONTROL_UNESCAPED", "HSON_NAME_LEGACY_BACKTICK", "HSON_UNSUPPORTED_WHITESPACE",
-  "HSON_BARE_HASH"]);
+  "HSON_STRING_CONTROL_UNESCAPED", "HSON_NAME_CONTROL_UNESCAPED", "HSON_NAME_LEGACY_BACKTICK", "HSON_UNSUPPORTED_WHITESPACE"]);
 
 export function diagnose_hson_prefix(source: InterpolatedEmbeddedHsonTemplate): readonly DocumentDiagnosticSpec[] {
   const site = interpolation_site(source, source.fileName);
@@ -70,24 +69,24 @@ export function diagnose_hson_prefix(source: InterpolatedEmbeddedHsonTemplate): 
     site.literals.map(part => part.raw),
     site.expressions.map(() => "x"),
     () => '"x"',
+    source.authoringKind === "document" || source.authoringKind === "data",
   );
-  const firstSlot = preview.slots[0];
-  if (firstSlot !== undefined) {
-    const expression = source.substitutionRanges[firstSlot.substitution]!;
-    const range = { start: expression.start - 1, end: expression.end };
-    if (source.authoringKind === "canonical" || source.authoringKind === "schema") return [{
-      message: `Hson.${source.authoringKind} does not support structural interpolation.`,
-      range, source: "Hson", code: "HSON_STRUCTURAL_SLOT_MODE_FORBIDDEN",
-      precision: "exact", related: [],
-    }];
+  if (source.authoringKind === "schema") return [{
+    message: "Hson.schema requires a substitution-free tagged template.",
+    range: source.substitutionRanges[0]!, source: "Hson", code: "HSON_SCHEMA_INTERPOLATION_FORBIDDEN",
+    precision: "exact", related: [],
+  }];
+  if (preview.slots.length !== 0) {
     try {
-      tokenize_hson(preview.source, 0, undefined, preview.slots, source.authoringKind);
+      tokenize_hson(preview.source, 0, undefined, preview.slots,
+        source.authoringKind === "document" ? "document" : "data", site.expressions.map(() => "x"));
     } catch (error) {
       const details = read_transform_error_details(error);
-      if (details?.code === "HSON_STRUCTURAL_SLOT_POSITION_INVALID") return [{
-        message: error instanceof Error ? error.message : "Structural interpolation is not allowed here.",
-        range, source: "Hson", code: details.code, precision: "exact", related: [],
-      }];
+      if (details?.code === "HSON_INTERPOLATION_POSITION_INVALID" || details?.code === "HSON_QUOTED_INTERPOLATION_PARTIAL") {
+        const slot = preview.slots.find(item => item.offset === details.source?.index) ?? preview.slots[0]!;
+        return [{ message: error instanceof Error ? error.message : "Interpolation is not allowed here.",
+          range: source.substitutionRanges[slot.substitution]!, source: "Hson", code: details.code, precision: "exact", related: [] }];
+      }
     }
   }
   try { tokenize_hson(literal.raw); } catch (error) {

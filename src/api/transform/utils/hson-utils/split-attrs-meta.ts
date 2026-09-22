@@ -76,7 +76,7 @@ export function split_attrs_meta(raw: RawAttr[]): { attrs: HsonAttrs; meta: Hson
     if (k === "style") {
       if (ra.value) {
         // decode first, then parse; keeps parity with other sources
-        const decoded: string = decode_hson_value(ra.value.text, ra.value.quoted);
+        const decoded: string = ra.value.direct ? ra.value.text : decode_hson_value(ra.value.text, ra.value.quoted);
         attrs.style = parse_style_string(decoded);
       } else {
         attrs.style = {};
@@ -92,7 +92,7 @@ export function split_attrs_meta(raw: RawAttr[]): { attrs: HsonAttrs; meta: Hson
     }
 
     // decode quoted Hson once
-    const val: string = decode_hson_value(ra.value.text, ra.value.quoted);
+    const val: string = ra.value.direct ? ra.value.text : decode_hson_value(ra.value.text, ra.value.quoted);
 
     // Maintain disabled="" / disabled="disabled" → key flag behavior
     if (val === k) {

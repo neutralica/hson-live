@@ -313,7 +313,7 @@ check("single raw-text substitutions preserve ordinary and complete managed CSS"
     " \nbody{margin:0}\n ",
     'a::before{content:"</stylesheet> </script> 😀";}',
   ]) {
-    const page = Hson.document`<html <head <style ${cssText}/>/> <body/>/>`;
+    const page = Hson.document`<html <head <style "${cssText}"/>/> <body/>/>`;
     const transport = hsonTransform.fromHson(page).toHtml().serialize();
     assert.equal(hsonTransform.fromTrustedHtml(transport).toHson().serialize(), page);
     assert.doesNotMatch(transport, /<\/?_hson_(?:elem|str)(?=[\s>])/);
@@ -334,7 +334,7 @@ check("external script admits, inline script rejects, and unsafe style closes re
   assert.throws(() => Hson.document`<script "go()"/>`, /requires src and no content/);
   assert.throws(() => Hson.document`<script src="/app.js" "go()"/>`, /requires src and no content/);
 
-  const unsafe = Hson.document`<style ${"a{} </style> body{}"}/>`;
+  const unsafe = Hson.document`<style "${"a{} </style> body{}"}"/>`;
   const map = hsonLiveMap.fromHson(unsafe);
   assert.equal(map.mode, "document");
   if (map.mode === "document") {
@@ -356,12 +356,12 @@ check("single style leaf uses exact RAWTEXT lexical transport", () => {
     "@keyframes fade{from{opacity:0}to{opacity:1}}", "/*hson-raw:0061*/",
   ];
   for (const value of values) {
-    const page = Hson.document`<style ${value}/>`;
+    const page = Hson.document`<style "${value}"/>`;
     const html = hsonTransform.fromHson(page).toHtml().serialize();
     assert.equal(hsonTransform.fromTrustedHtml(html).toHson().serialize(), page, JSON.stringify(value));
     assert.doesNotMatch(html, /<\/?_hson_(?:elem|str)(?=[\s>])/);
   }
-  const closing = Hson.document`<style ${"a</style>b"}/>`;
+  const closing = Hson.document`<style "${"a</style>b"}"/>`;
   const wire = hsonTransform.fromHson(closing).toHtml().serialize();
   assert.equal(wire, "<style>/*hson-raw:0061003c002f007300740079006c0065003e0062*/</style>");
   assert.equal(hsonTransform.fromTrustedHtml(wire).toHson().serialize(), closing);
@@ -395,8 +395,8 @@ check("document style and script semantic admission rejects invalid bodies", () 
   assert.throws(() => Hson.document`<script src="/app.js" ""/>`, /Document <script>/);
 });
 
-check("ordinary substitutions and branded document substitutions retain primitive admission", () => {
-  const ordinary = Hson.document`<main ${"a < b & c"}/>`;
+check("quoted text remains a string and unquoted document content composes structurally", () => {
+  const ordinary = Hson.document`<main "${"a < b & c"}"/>`;
   assert.equal(hsonTransform.fromHson(ordinary).toHtml().serialize(), "<main>a &lt; b &amp; c</main>");
 
   const child = Hson.document`<style "body{margin:0}"/>`;
@@ -405,7 +405,7 @@ check("ordinary substitutions and branded document substitutions retain primitiv
   const head = ((html.$_content[0] as HsonNode).$_content[0] as HsonNode);
   assert.equal(head.$_tag, "head");
   assert.equal((head.$_content[0] as HsonNode).$_tag, "_hson_elem");
-  assert.equal(((head.$_content[0] as HsonNode).$_content[0] as HsonNode).$_tag, "_hson_str");
+  assert.equal(((head.$_content[0] as HsonNode).$_content[0] as HsonNode).$_tag, "style");
 });
 
 process.stdout.write(`1..${checks}\n`);

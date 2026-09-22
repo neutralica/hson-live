@@ -76,11 +76,7 @@ function discoverStructuralRegions(
   for (const source of discovery.interpolated) regions.push(Object.freeze({
     kind: "template",
     bodyRange: source.bodyRange,
-    // Keep the authoring sigil attached to its JavaScript interpolation.
-    protectedRanges: Object.freeze(source.substitutionRanges.map(range =>
-      text[range.start - 1] === "#"
-        ? { start: range.start - 1, end: range.end }
-        : range)),
+    protectedRanges: Object.freeze(source.substitutionRanges),
     baseIndentation: leadingWhitespaceAt(text, source.bodyRange.end),
     bodyStartsAtLineStart: source.bodyRange.start === lineStart(text, source.bodyRange.start),
   }));

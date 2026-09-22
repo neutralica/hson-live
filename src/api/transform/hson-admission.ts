@@ -75,18 +75,11 @@ export function reconstruct_hson_template_source(
   }
 
   const scanned = scan_hson_template_segments(strings.raw, substitutions, encode_hson_template_substitution);
-  if (scanned.slots.length !== 0) {
-    _throw_transform_err(
-      "structural interpolation is unavailable in Hson.canonical",
-      "Hson.canonical", undefined, undefined,
-      { code: "HSON_STRUCTURAL_SLOT_MODE_FORBIDDEN", stage: "template-admission" },
-    );
-  }
   return scanned.source;
 }
 
 /** Private source and slot admission for the two semantic member tags. */
-export function reconstruct_hson_structural_template(
+export function reconstruct_hson_interpolated_template(
   strings: TemplateStringsArray,
   substitutions: readonly HsonTemplatePrimitive[],
 ): Readonly<{ source: string; slots: readonly HsonTemplateSlot[] }> {
@@ -94,7 +87,7 @@ export function reconstruct_hson_structural_template(
     _throw_transform_err("invalid Hson tagged template", "Hson", undefined, undefined,
       { code: HSON_TAGGED_TEMPLATE_REQUIRED, stage: "template-admission" });
   }
-  return scan_hson_template_segments(strings.raw, substitutions, encode_hson_template_substitution);
+  return scan_hson_template_segments(strings.raw, substitutions, encode_hson_template_substitution, true);
 }
 
 /**

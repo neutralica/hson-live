@@ -5,7 +5,7 @@ import { CREATE_NODE } from "../../../core/factories.js";
 import { TOKEN_KIND, CLOSE_KIND, TokenEmptyObj } from "../token.types.js";
 import { HSON_META_INDEX } from "../../../core/constants.js";
 import { HsonNode, NodeContent } from "../../../core/types.js";
-import { Tokens, CloseKind, Position, TokenOpen, TokenClose, TokenArrayOpen, TokenArrayClose, TokenKind, TokenText, TokenStructuralSlot } from "../token.types.js";
+import { Tokens, CloseKind, Position, TokenOpen, TokenClose, TokenArrayOpen, TokenArrayClose, TokenKind, TokenText, TokenInterpolationSlot } from "../token.types.js";
 import { coerce } from "../utils/primitive-utils/coerce-string.utils.js";
 import { _snip } from "../utils/sys-utils/snip.utils.js";
 import { split_attrs_meta } from "../utils/hson-utils/split-attrs-meta.js";
@@ -19,7 +19,7 @@ export type ParseTokensOptions = Readonly<{
     /** Internal document admission for top-level text and exact zero-length source. */
     allowTopLevelDocumentText?: boolean;
     /** Private already-admitted tagged-template slot content. */
-    structural?: Readonly<{ mode: "document" | "data"; values: readonly (readonly HsonNode[])[] }>;
+    interpolation?: Readonly<{ mode: "document" | "data"; values: readonly (readonly HsonNode[])[] }>;
 }>;
 
 
@@ -103,16 +103,16 @@ export function parse_tokens(
 
     let ix = 0;
     const N = tokens.length;
-    function slotNodes(token: TokenStructuralSlot): readonly HsonNode[] {
-        const structural = options.structural;
-        if (structural === undefined || token.context !== (structural.mode === "document" ? "document-content" : "data-value")) {
-            _throw_transform_err("structural interpolation is unavailable in this parser mode", "parse_tokens",
-                undefined, undefined, sourceDetails(token.pos, "HSON_STRUCTURAL_SLOT_POSITION_INVALID", "template-admission"));
+    function slotNodes(token: TokenInterpolationSlot): readonly HsonNode[] {
+        const interpolation = options.interpolation;
+        if (interpolation === undefined || token.context !== (interpolation.mode === "document" ? "document-content" : "data-value")) {
+            _throw_transform_err("interpolation is unavailable in this parser mode", "parse_tokens",
+                undefined, undefined, sourceDetails(token.pos, "HSON_INTERPOLATION_POSITION_INVALID", "template-admission"));
         }
-        const content = structural.values[token.slot];
-        if (content === undefined || (structural.mode === "data" && content.length !== 1)) {
-            _throw_transform_err("invalid structural interpolation slot", "parse_tokens",
-                undefined, undefined, sourceDetails(token.pos, "HSON_STRUCTURAL_SLOT_POSITION_INVALID", "template-admission"));
+        const content = interpolation.values[token.slot];
+        if (content === undefined || (interpolation.mode === "data" && content.length !== 1)) {
+            _throw_transform_err("invalid interpolation slot", "parse_tokens",
+                undefined, undefined, sourceDetails(token.pos, "HSON_INTERPOLATION_POSITION_INVALID", "template-admission"));
         }
         return content;
     }
@@ -158,7 +158,7 @@ export function parse_tokens(
         return !!t && t.kind === TOKEN_KIND.ARR_OPEN;
     }
     function parsedLeaf(token: TokenText): HsonNode {
-        const prim = token.quoted ? JSON.parse(token.raw) : coerce(token.raw);
+        const prim = token.directValue !== undefined ? token.directValue : token.quoted ? JSON.parse(token.raw) : coerce(token.raw);
         const node = make_leaf(prim);
         provenance?.bindScalar(node, token);
         return node;
@@ -243,7 +243,7 @@ export function parse_tokens(
                 continue;
             }
 
-            if (t.kind === TOKEN_KIND.STRUCTURAL_SLOT) {
+            if (t.kind === TOKEN_KIND.INTERPOLATION_SLOT) {
                 _take();
                 kids.push(...slotNodes(t));
                 continue;
@@ -407,11 +407,11 @@ export function parse_tokens(
                 childNode = child.node;
             } else if (t.kind === TOKEN_KIND.ARR_OPEN) {
                 childNode = readArray();
-            } else if (t.kind === TOKEN_KIND.STRUCTURAL_SLOT) {
+            } else if (t.kind === TOKEN_KIND.INTERPOLATION_SLOT) {
                 _take();
                 const content = slotNodes(t);
                 if (content.length !== 1) {
-                    _throw_transform_err("array structural interpolation requires one data value", "parse_tokens");
+                    _throw_transform_err("array interpolation requires one data value", "parse_tokens");
                 }
                 childNode = content[0]!;
             } else {
@@ -470,7 +470,7 @@ export function parse_tokens(
             topPositions.push(tt.pos);
             continue;
         }
-        if (t.kind === TOKEN_KIND.STRUCTURAL_SLOT) {
+        if (t.kind === TOKEN_KIND.INTERPOLATION_SLOT) {
             _take();
             const content = slotNodes(t);
             for (const child of content) {
@@ -519,7 +519,7 @@ export function parse_tokens(
 
         // 3) empty → empty object cluster
         if (kids.length === 0) {
-            if (options.structural?.mode === "document") {
+            if (options.interpolation?.mode === "document") {
                 return CREATE_NODE({ $_tag: ROOT_TAG, $_content: [] });
             }
             return CREATE_NODE({

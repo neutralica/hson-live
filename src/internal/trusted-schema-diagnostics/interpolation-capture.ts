@@ -43,18 +43,19 @@ export function capture_interpolation(site: InterpolationSite, tag: typeof Hson.
   try {
     if (captures.length >= MAX_CAPTURES) overflow = true;
     else if (!overflow && strings.raw.length === site.literals.length && strings.raw.every((s, i) => s === site.literals[i]?.raw)) {
-      const scanned = scan_hson_template_segments(strings.raw, values, encode_hson_template_substitution);
-      const structural = new Set(scanned.slots.map(slot => slot.substitution));
+      const contextual = tag === Hson.document || tag === Hson.data;
+      const scanned = scan_hson_template_segments(strings.raw, values, encode_hson_template_substitution, contextual);
+      const slots = new Set(scanned.slots.map(slot => slot.substitution));
       let source = "";
       let substitution: number | undefined;
       const segments: GeneratedSegment[] = [];
       for (let i = 0; i < strings.raw.length; i++) {
         const start = source.length;
-        source += structural.has(i) ? strings.raw[i].slice(0, -1) : strings.raw[i];
+        source += strings.raw[i];
         segments.push({ kind: "literal", index: i, start, end: source.length });
         if (i < values.length) {
-          if (structural.has(i)) {
-            segments.push({ kind: "substitution", index: i, start: source.length, end: source.length, scalarKind: "structural" });
+          if (slots.has(i)) {
+            segments.push({ kind: "substitution", index: i, start: source.length, end: source.length, scalarKind: "contextual" });
             continue;
           }
           let encoded: string;

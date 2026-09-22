@@ -110,17 +110,17 @@ check("interpolation expressions are protected", () => {
   const prospective = text.slice(0, offset) + "<" + text.slice(offset);
   assert.equal(structural_closer_for_less_than("/workspace/a.ts", "typescript", prospective, offset + 1), undefined);
 });
-check("structural interpolation protects its leading hash during formatting", () => {
+check("interpolation expressions remain protected during formatting", () => {
   for (const [kind, body] of [
-    ["document", "\n <body\n #${example}\n />\n"],
-    ["data", "\n <outer #${example}>\n"],
+    ["document", "\n <body\n ${example}\n />\n"],
+    ["data", "\n <outer ${example}>\n"],
+    ["document", "\n <p \"${example}\"/>\n"],
   ] as const) {
     const input = `import { Hson } from "hson-live"; const example = "";${"\n"}const value=Hson.${kind}\`${body}\`;`;
     const region = structural_regions("/workspace/source.ts", "typescript", input)[0]!;
-    assert.equal(input.slice(region.protectedRanges[0]!.start, region.protectedRanges[0]!.end), "#${example}");
+    assert.equal(input.slice(region.protectedRanges[0]!.start, region.protectedRanges[0]!.end), "${example}");
     const formatted = format(input);
-    assert.ok(formatted.includes("#${example}"));
-    assert.ok(!formatted.includes("# ${example}"));
+    assert.ok(formatted.includes("${example}"));
     assert.equal(format(formatted), formatted);
   }
 });

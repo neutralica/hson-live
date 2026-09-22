@@ -27,76 +27,21 @@ const HSON_TRIVIA = new Set([" ", "\t", "\n", "\r"]);
 
 export type HsonTemplateSlot = Readonly<{ offset: number; substitution: number }>;
 
-/**
- * Assemble raw template segments while recognizing a hash only at a source
- * boundary. This lexical state is shared with the private slot-aware scanner;
- * runtime substitution text is fed only after its slot kind is decided.
- */
+/** Preserve raw authored source and private substitution boundaries. */
 export function scan_hson_template_segments(
   raw: readonly string[],
   substitutions: readonly unknown[],
   encodePrimitive: (value: unknown, index: number) => string,
+  preserveSlots = false,
 ): Readonly<{ source: string; slots: readonly HsonTemplateSlot[] }> {
   let source = "";
   const slots: HsonTemplateSlot[] = [];
-  let quote: '"' | "'" | undefined;
-  let escaped = false;
-  let comment = false;
-  let attributeValue = false;
-  let expectAttributeValue = false;
-
-  const feed = (part: string): void => {
-    for (let index = 0; index < part.length; index += 1) {
-      const char = part[index]!;
-      const next = part[index + 1];
-      if (comment) {
-        if (char === "\n" || char === "\r") comment = false;
-        continue;
-      }
-      if (quote !== undefined) {
-        if (escaped) escaped = false;
-        else if (char === "\\") escaped = true;
-        else if (char === quote) quote = undefined;
-        continue;
-      }
-      if (attributeValue) {
-        if (isHsonTrivia(char) || char === "<" || char === ">" || char === "[" || char === "]"
-          || char === "«" || char === "»" || (char === "/" && next === ">")) {
-          attributeValue = false;
-        } else continue;
-      }
-      if (expectAttributeValue) {
-        if (isHsonTrivia(char)) continue;
-        if (char !== '"' && char !== "'" && char !== "<" && char !== ">" && !(char === "/" && next === "/")) {
-          expectAttributeValue = false;
-          attributeValue = true;
-          continue;
-        }
-        expectAttributeValue = false;
-      }
-      if (char === '"' || char === "'") { quote = char; continue; }
-      if (char === "/" && next === "/") { comment = true; index += 1; continue; }
-      if (char === "=") { expectAttributeValue = true; continue; }
-    }
-    source += part;
-  };
-
   for (let index = 0; index < substitutions.length; index += 1) {
-    const segment = raw[index]!;
-    const hash = segment.endsWith("#") && !segment.endsWith("\\#");
-    const preceding = hash ? segment.slice(0, -1) : segment;
-    feed(preceding);
-    if (hash && quote === undefined && !comment && !attributeValue && !expectAttributeValue) {
-      slots.push({ offset: source.length, substitution: index });
-    } else {
-      if (hash) feed("#");
-      // Interpolated bytes belong to the value, not to the authored lexical
-      // context used to classify a later source-owned hash.
-      source += encodePrimitive(substitutions[index], index);
-      if (expectAttributeValue) expectAttributeValue = false;
-    }
+    source += raw[index]!;
+    if (preserveSlots) slots.push({ offset: source.length, substitution: index });
+    else source += encodePrimitive(substitutions[index], index);
   }
-  feed(raw[substitutions.length] ?? "");
+  source += raw[substitutions.length] ?? "";
   return { source, slots };
 }
 
@@ -120,8 +65,9 @@ export function tokenize_hson(
   hson: string,
   depth = 0,
   collector?: HsonSourceLexicalCollector,
-  structuralSlots: readonly HsonTemplateSlot[] = [],
-  structuralMode?: "document" | "data",
+  templateSlots: readonly HsonTemplateSlot[] = [],
+  interpolationMode?: "document" | "data",
+  substitutions: readonly unknown[] = [],
 ): Tokens[] {
   if (depth < 0 || depth >= MAX_NESTING) {
     _throw_transform_err(
@@ -130,7 +76,7 @@ export function tokenize_hson(
     );
   }
 
-  return new HsonScanner(hson, depth, collector, structuralSlots, structuralMode).scan();
+  return new HsonScanner(hson, depth, collector, templateSlots, interpolationMode, substitutions).scan();
 }
 
 class HsonScanner {
@@ -144,27 +90,37 @@ class HsonScanner {
     private readonly source: string,
     private readonly initialDepth: number,
     private readonly collector?: HsonSourceLexicalCollector,
-    private readonly structuralSlots: readonly HsonTemplateSlot[] = [],
-    private readonly structuralMode?: "document" | "data",
+    private readonly templateSlots: readonly HsonTemplateSlot[] = [],
+    private readonly interpolationMode?: "document" | "data",
+    private readonly substitutions: readonly unknown[] = [],
   ) {}
 
   private slotHere(): HsonTemplateSlot | undefined {
-    const slot = this.structuralSlots[this.nextSlot];
+    const slot = this.templateSlots[this.nextSlot];
     return slot?.offset === this.index ? slot : undefined;
   }
 
   private emitSlot(context: "document-content" | "data-value"): void {
     const slot = this.slotHere();
     if (slot === undefined) return;
-    if (context !== (this.structuralMode === "document" ? "document-content" : "data-value")) {
+    if (context !== (this.interpolationMode === "document" ? "document-content" : "data-value")) {
       this.rejectSlot(context === "document-content" ? "document content under a data tag" : "a data value under a document tag");
     }
-    this.emit({ kind: "STRUCTURAL_SLOT", slot: slot.substitution, context, pos: this.position() });
+    this.emit({ kind: "INTERPOLATION_SLOT", slot: slot.substitution, context, pos: this.position() });
     this.nextSlot += 1;
   }
 
   private rejectSlot(where: string): never {
-    this.fail(`structural interpolation is not allowed in ${where}`, this.position(), "HSON_STRUCTURAL_SLOT_POSITION_INVALID");
+    this.fail(`interpolation cannot appear in ${where}`, this.position(), "HSON_INTERPOLATION_POSITION_INVALID");
+  }
+
+  private quotedSlot(): { slot: number; value: string } {
+    const slot = this.slotHere();
+    if (slot === undefined) this.rejectSlot("a quoted string");
+    const value = this.substitutions[slot.substitution];
+    if (typeof value !== "string") this.fail("quoted interpolation requires a primitive string", this.position(), "HSON_QUOTED_INTERPOLATION_STRING_REQUIRED");
+    this.nextSlot += 1;
+    return { slot: slot.substitution, value };
   }
 
   private emit<TToken extends Tokens>(token: TToken): TToken {
@@ -193,11 +149,11 @@ class HsonScanner {
       this.skipTrivia();
       this.completionSlot("value");
       if (this.slotHere() !== undefined) {
-        this.emitSlot(this.structuralMode === "document" ? "document-content" : "data-value");
+        this.emitSlot(this.interpolationMode === "document" ? "document-content" : "data-value");
         continue;
       }
       if (this.atEnd()) {
-        if (this.nextSlot !== this.structuralSlots.length) this.rejectSlot("a completed Hson value");
+        if (this.nextSlot !== this.templateSlots.length) this.rejectSlot("a completed Hson value");
         return this.tokens;
       }
 
@@ -208,8 +164,8 @@ class HsonScanner {
         this.scanArray(this.initialDepth);
       } else if (ch === `"`) {
         const pos = this.position();
-        const raw = this.scanContentString();
-        const token = this.emit(CREATE_TEXT_TOKEN(raw, true, pos));
+        const value = this.scanContentString();
+        const token = this.emit({ ...CREATE_TEXT_TOKEN(value.raw, true, pos), directValue: value.directValue });
         if (this.collector !== undefined) this.recordToken(token, {
           roles: { coverage: { start: pos.index, end: this.index }, value: { start: pos.index, end: this.index } },
         });
@@ -221,8 +177,6 @@ class HsonScanner {
         );
       } else if (ch === "`") {
         this.rejectLegacyBacktick();
-      } else if (ch === "#") {
-        this.fail(`unattached "#" in authored Hson source`, this.position(), "HSON_BARE_HASH");
       } else if (ch === ">" || ch === "/" || ch === "]" || ch === "»") {
         this.fail(
           this.tokens.length === 0
@@ -457,8 +411,8 @@ class HsonScanner {
     const ch = this.peek();
     if (ch === `"`) {
       const pos = this.position();
-      const raw = this.scanContentString();
-      const token = this.emit(CREATE_TEXT_TOKEN(raw, true, pos));
+      const value = this.scanContentString();
+      const token = this.emit({ ...CREATE_TEXT_TOKEN(value.raw, true, pos), directValue: value.directValue });
       if (this.collector !== undefined) this.recordToken(token, {
         roles: { coverage: { start: pos.index, end: this.index }, value: { start: pos.index, end: this.index } },
       });
@@ -542,6 +496,7 @@ class HsonScanner {
     let quid: { value: string; start: Position; end: Position } | undefined;
     let openEmitted = false;
     let contentStarted = false;
+    let separatedBeforeSlot = false;
 
     const emitOpen = (): void => {
       if (openEmitted) return;
@@ -557,9 +512,11 @@ class HsonScanner {
     };
 
     while (true) {
-      this.skipTrivia();
+      const separated = this.skipTrivia();
+      if (separated) separatedBeforeSlot = true;
       this.completionSlot(contentStarted ? "child" : "header");
       if (this.slotHere() !== undefined) {
+        if (!contentStarted && !separatedBeforeSlot) this.rejectSlot("an element header without a separating space");
         contentStarted = true;
         emitOpen();
         this.emitSlot("document-content");
@@ -608,6 +565,7 @@ class HsonScanner {
           );
         }
         quid = { value, start: quidPos, end: this.previousPosition() };
+        separatedBeforeSlot = false;
         continue;
       }
 
@@ -626,7 +584,9 @@ class HsonScanner {
           );
         }
 
-        this.skipTrivia();
+        const separatedAfterName = this.skipTrivia();
+        if (this.slotHere() !== undefined && !separatedAfterName) this.rejectSlot("an attribute or flag name");
+        separatedBeforeSlot = separatedAfterName;
         if (name.startsWith("hson:")) {
           this.fail(
             `authored Hson metadata must not use element attribute syntax`,
@@ -638,6 +598,7 @@ class HsonScanner {
           const attr = this.scanAttributeValue(name, namePos);
           this.assertUniqueAttribute(attrDeclarations, attr);
           attrs.push(attr);
+          separatedBeforeSlot = false;
           continue;
         }
 
@@ -676,8 +637,8 @@ class HsonScanner {
         const valuePos = this.position();
         contentStarted = true;
         emitOpen();
-        const raw = this.scanContentString();
-        const token = this.emit(CREATE_TEXT_TOKEN(raw, true, valuePos));
+        const value = this.scanContentString();
+        const token = this.emit({ ...CREATE_TEXT_TOKEN(value.raw, true, valuePos), directValue: value.directValue });
         if (this.collector !== undefined) this.recordToken(token, {
           roles: { coverage: { start: valuePos.index, end: this.index }, value: { start: valuePos.index, end: this.index } },
         });
@@ -719,9 +680,6 @@ class HsonScanner {
         this.rejectLegacyBacktick();
       }
 
-      if (ch === "#") {
-        this.fail(`unattached "#" in authored Hson source`, this.position(), "HSON_BARE_HASH");
-      }
 
       if (contentStarted) {
         const invalidPos = this.position();
@@ -850,8 +808,8 @@ class HsonScanner {
 
     if (ch === `"`) {
       const pos = this.position();
-      const raw = this.scanContentString();
-      const token = this.emit(CREATE_TEXT_TOKEN(raw, true, pos));
+      const value = this.scanContentString();
+      const token = this.emit({ ...CREATE_TEXT_TOKEN(value.raw, true, pos), directValue: value.directValue });
       if (this.collector !== undefined) this.recordToken(token, {
         roles: { coverage: { start: pos.index, end: this.index }, value: { start: pos.index, end: this.index } },
       });
@@ -889,7 +847,7 @@ class HsonScanner {
     this.consumeExpected("=");
     this.skipTrivia();
     this.completionSlot("attribute-value");
-    if (this.slotHere() !== undefined) this.rejectSlot("an attribute value");
+    if (this.slotHere() !== undefined) this.rejectSlot("an unquoted attribute value; use name=\"${value}\"");
     if (this.atEnd() || this.startsWith("/>") || this.peek() === ">") {
       this.fail(`missing attribute value for "${name}"`, start, "HSON_ELEMENT_ATTRIBUTE_VALUE_INVALID");
     }
@@ -908,8 +866,8 @@ class HsonScanner {
 
     if (this.peek() === `"`) {
       const valueStart = this.position();
-      const { text, end } = this.scanAttributeString(name);
-      const attr = { name, value: { text, quoted: true }, start, end };
+      const { text, end, direct } = this.scanAttributeString(name);
+      const attr = { name, value: { text, quoted: true, direct }, start, end };
       this.collector?.recordAttribute(attr, {
         coverage: { start: start.index, end: end.index + 1 },
         name: { start: start.index, end: start.index + name.length },
@@ -924,8 +882,7 @@ class HsonScanner {
 
     while (!this.atEnd()) {
       const ch = this.peek();
-      if (this.slotHere() !== undefined) this.rejectSlot("an attribute value");
-      if (ch === "#") this.fail(`unattached "#" in authored Hson source`, this.position(), "HSON_BARE_HASH");
+      if (this.slotHere() !== undefined) this.rejectSlot("an unquoted attribute value; use name=\"${value}\"");
       if (this.startsWith("/>")) break;
       if (isHsonTrivia(ch) || isUnsupportedWhitespace(ch) || ch === "<" || ch === ">" || ch === `"` || ch === "'" || ch === "`" || ch === "«" || ch === "»" || ch === "[" || ch === "]") {
         break;
@@ -953,17 +910,24 @@ class HsonScanner {
   }
 
   /** Return a complete strict JSON-compatible string literal. */
-  private scanContentString(): string {
+  private scanContentString(): { raw: string; directValue?: string } {
     const start = this.position();
     this.consumeExpected(`"`);
+    if (this.slotHere() !== undefined) {
+      const { value } = this.quotedSlot();
+      if (this.slotHere() !== undefined || this.peek() !== `"`) this.fail("interpolation must occupy the entire quoted Hson string", this.position(), "HSON_QUOTED_INTERPOLATION_PARTIAL");
+      this.consumeExpected(`"`);
+      return { raw: `""`, directValue: value };
+    }
     let raw = `"`;
 
     while (!this.atEnd()) {
+      if (this.slotHere() !== undefined) this.fail("interpolation must occupy the entire quoted Hson string", this.position(), "HSON_QUOTED_INTERPOLATION_PARTIAL");
       const ch = this.peek();
 
       if (ch === `"`) {
         this.consumeExpected(`"`);
-        return raw + `"`;
+        return { raw: raw + `"` };
       }
 
       if (ch === "\\") {
@@ -991,12 +955,20 @@ class HsonScanner {
   }
 
   /** Attribute tokens retain their inner source text rather than outer quotes. */
-  private scanAttributeString(name: string): { text: string; end: Position } {
+  private scanAttributeString(name: string): { text: string; end: Position; direct?: boolean } {
     const start = this.position();
     this.consumeExpected(`"`);
+    if (this.slotHere() !== undefined) {
+      const { value } = this.quotedSlot();
+      if (this.slotHere() !== undefined || this.peek() !== `"`) this.fail("interpolation must occupy the entire quoted Hson string", this.position(), "HSON_QUOTED_INTERPOLATION_PARTIAL");
+      const end = this.position();
+      this.consumeExpected(`"`);
+      return { text: value, end, direct: true };
+    }
     let text = "";
 
     while (!this.atEnd()) {
+      if (this.slotHere() !== undefined) this.fail("interpolation must occupy the entire quoted Hson string", this.position(), "HSON_QUOTED_INTERPOLATION_PARTIAL");
       const ch = this.peek();
       if (ch === `"`) {
         const end = this.position();
@@ -1036,6 +1008,7 @@ class HsonScanner {
     let tag = "";
 
     while (!this.atEnd()) {
+      if (this.slotHere() !== undefined) this.rejectSlot("a quoted name");
       const ch = this.peek();
       if (ch === "'") {
         this.consumeExpected("'");
@@ -1151,7 +1124,6 @@ class HsonScanner {
   private scanBareName(where: string): string {
     const start = this.position();
     const first = this.peek();
-    if (first === "#") this.fail(`unattached "#" in authored Hson source`, start, "HSON_BARE_HASH");
     if (!is_hson_bare_name_start(first)) {
       this.fail(
         `malformed ${where}: expected a bare name or single-quoted name`,
@@ -1172,7 +1144,6 @@ class HsonScanner {
     while (!this.atEnd()) {
       const ch = this.peek();
       if (this.slotHere() !== undefined) break;
-      if (ch === "#") this.fail(`unattached "#" in authored Hson source`, this.position(), "HSON_BARE_HASH");
       if (ch === "`") this.rejectLegacyBacktick();
       if (
         isHsonTrivia(ch) || isUnsupportedWhitespace(ch) || ch === "<" || ch === ">" || ch === "/" ||
@@ -1412,7 +1383,10 @@ class HsonScanner {
 
       this.consumeExpected("/");
       this.consumeExpected("/");
-      while (!this.atEnd() && !this.isNewline()) this.consume();
+      while (!this.atEnd() && !this.isNewline()) {
+        if (this.slotHere() !== undefined) this.rejectSlot("a comment");
+        this.consume();
+      }
       if (!this.atEnd()) this.consume();
     }
   }

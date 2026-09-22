@@ -107,8 +107,9 @@ const canonical: HsonCanonical = hsonTransform
 ```
 
 Use `.toNode()` when validation is needed without serialized output. `fromHson`
-truthfully owns runtime source admission; interpolation would encode `source` as
-Hson string data.
+truthfully owns runtime source admission. ``Hson.canonical`${source}``` encodes it
+as Hson string data; unquoted interpolation in `Hson.document` or `Hson.data`
+instead admits the source under that receiving mode.
 
 Hson string values use double quotes. Single quotes delimit authored Hson names;
 they are not an alternate string-value spelling. JavaScript double quotes,
