@@ -3,8 +3,9 @@ import { hsonLiveMap } from "../src/api/livemap/index.ts";
 import { encode_ssr_bootstrap, render_document } from "../src/api/ssr/index.ts";
 import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
+import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
 
-const map = hsonLiveMap.fromNode(parse_hson_exact_runtime(`<main <p @000005301 "a" "" "worker"/>/>`, { allowTopLevelDocumentText: true }));
+const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(`<main <p @000005301 "a" "" "worker"/>/>`, { allowTopLevelDocumentText: true }));
 if (map.mode !== "document") throw new Error("Node SSR fixture requires a document map.");
 const node = render_document({ map });
 const largeBootstrap = Object.freeze({

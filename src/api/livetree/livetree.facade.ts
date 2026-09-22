@@ -11,6 +11,7 @@ import { make_detached_livetree_create } from "./creation/make-detached-livetree
 import { LiveTree } from "./livetree.js";
 import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { create_livetree_runtime } from "./runtime/livetree-runtime.js";
+import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 
 type LiveTreeConstructionOptions = Readonly<{ isolated?: boolean }>;
 
@@ -47,6 +48,7 @@ export const hsonLiveTree = Object.freeze({
     );
   },
   fromNode(node: HsonNode, options?: LiveTreeConstructionOptions): LiveTree {
+    admit_portable_hson_node(node, "LiveTree.fromNode");
     return make_branch_from_node(node, {
       runtime: options?.isolated ? create_livetree_runtime() : undefined,
     });

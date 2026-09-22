@@ -2,7 +2,9 @@ import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
+import { serialize_hson } from "../src/api/transform/serializers/serialize-hson.ts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
+import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
 import {
   canonical_hson_graph_difference,
   canonical_hson_graph_equal,
@@ -49,7 +51,7 @@ const Q1 = "000000qa1";
 const Q2 = "000000qa2";
 
 function element(source: string): DocumentLiveMap {
-  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
+  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error(`Expected element, observed ${map.mode}`);
   return map;
 }
@@ -224,7 +226,7 @@ check("ordinary Hson serialization omits QUID metadata", () => {
   const source = element(`<main @${Q1} <span @${Q2}/>/>`);
   const semanticRoot = source.document.byQuid(Q1);
   assert.ok(semanticRoot);
-  const wire = hson.fromNode(semanticRoot).toHson().serialize();
+  const wire = serialize_hson(semanticRoot);
   const reparsed = element(wire);
   assert.equal(canonical_hson_graph_equal(reparsed.root(), source.root()), false);
   assert.equal(reparsed.document.byQuid(Q1), undefined);
@@ -235,7 +237,7 @@ check("portable serialization omits QUIDs without mutating the source graph", ()
   const before = source.capture();
   const semanticRoot = source.document.byQuid(Q1);
   assert.ok(semanticRoot);
-  const wire = hson.fromNode(semanticRoot).toHson().serialize();
+  const wire = serialize_hson(semanticRoot);
   assert.equal(wire.includes(Q1), false);
   assert.equal(wire.includes(Q2), false);
   assert.equal(canonical_hson_graph_equal(source.root(), before.root), true);
@@ -246,7 +248,7 @@ check("reparsing portable output yields an identity-stripped, not exact-equal, g
   const source = element(`<main @${Q1} <span @${Q2}/>/>`);
   const semanticRoot = source.document.byQuid(Q1);
   assert.ok(semanticRoot);
-  const wire = hson.fromNode(semanticRoot).toHson().serialize();
+  const wire = serialize_hson(semanticRoot);
   const stripped = element(wire);
   assert.equal(canonical_hson_graph_equal(stripped.root(), source.root()), false);
   assert.equal(canonical_hson_graph_difference(stripped.root(), source.root())?.kind, "metadata-presence");

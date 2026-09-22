@@ -24,6 +24,8 @@ import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap
 import { make_livemap_hosted_mirror_from_snapshot_internal } from "../src/api/livemap/livemap.libraries.ts";
 import { FakeElement, FakeText, install_fake_document } from "./helpers/fake-document.mts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
+import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
+import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
 
 install_fake_document();
 
@@ -32,7 +34,7 @@ const ButtonSchema: HsonSchema = Hson.schema`<type "document" tag "main" content
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number">>`;
 
 function documentMap(source: string): DocumentLiveMap {
-  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
+  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error("Expected document map.");
   return map;
 }
@@ -224,7 +226,7 @@ function mainFixture(quid: string): Readonly<{ root: FakeElement; child: FakeEle
 
 {
   const quid = "000004100";
-  const makeMap = () => hsonLiveMap.fromLibraries({
+  const makeMap = () => admit_exact_runtime_livemap_libraries({
     state: { data: { count: 0 }, schema: StateSchema },
     page: { document: parse_hson_exact_runtime(`<main <button @${quid}/>/>`, { allowTopLevelDocumentText: true }), schema: ButtonSchema },
   });

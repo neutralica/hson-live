@@ -1,5 +1,22 @@
 export { hsonLiveMap } from "./livemap.facade.js";
-export { make_classified_livemap, make_livemap_core } from "./livemap.core.js";
+import type { HsonNode } from "../../core/types.js";
+import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
+import {
+  make_classified_livemap as make_classified_livemap_internal,
+  make_livemap_core as make_livemap_core_internal,
+} from "./livemap.core.js";
+
+/** Admit an application graph through the public LiveMap subpath. */
+export function make_classified_livemap(node: HsonNode): ReturnType<typeof make_classified_livemap_internal> {
+  admit_portable_hson_node(node, "make_classified_livemap");
+  return make_classified_livemap_internal(node);
+}
+
+/** Admit an application graph through the public LiveMap subpath. */
+export function make_livemap_core(node: HsonNode): ReturnType<typeof make_livemap_core_internal> {
+  admit_portable_hson_node(node, "make_livemap_core");
+  return make_livemap_core_internal(node);
+}
 export { make_livemap_store_api } from "./livemap.store.js";
 export { install_libraries_snapshot } from "./livemap.libraries.js";
 export {

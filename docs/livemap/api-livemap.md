@@ -49,6 +49,11 @@ const sameShape = hson.liveMap.fromJson(
 `fromJson` accepts a JSON value or JSON string and returns a data LiveMap. Current canonical roots must be objects or arrays; primitive roots are not a public data-map mode. Initial construction starts at revision `0` and emits no commit.
 
 `fromHson(string)` and `fromNode(HsonNode)` return `ClassifiedLiveMap`, whose `mode` discriminates data from document APIs. The input node is prepared as owned canonical state; `root()` returns detached clones.
+Public `fromNode` rejects generated QUID metadata before the new map is
+established. A local `toNode()` or `root()` graph may contain such metadata and
+is not a portable identity source. QUID-free graph input remains valid.
+The public subpath constructors `make_classified_livemap` and
+`make_livemap_core` apply the same rule.
 
 ```ts
 const authored = `<'display name' "Ada" 'preferred pronoun' "she">`;

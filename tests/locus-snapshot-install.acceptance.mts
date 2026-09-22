@@ -12,9 +12,10 @@ import {
   install_locus_snapshot,
 } from "../src/api/locus/index.ts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
+import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
 
 function document_map(source: string): DocumentLiveMap {
-  const map = hsonLiveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
+  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error("Expected a document map.");
   return map;
 }

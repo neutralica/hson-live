@@ -611,7 +611,7 @@ export function serialize_hson_owned_document_content(
 export function serialize_hson_exact_runtime(
   root: HsonNode,
   inputOptions: HsonSerializeInputOptions = {},
-): HsonCanonical {
+): string {
   return serialize_hson_with_ownership(root, inputOptions, false, true);
 }
 
@@ -619,7 +619,7 @@ export function serialize_hson_exact_runtime(
 export function serialize_hson_owned_document_content_exact_runtime(
   root: HsonNode,
   inputOptions: HsonSerializeInputOptions = {},
-): HsonCanonical {
+): string {
   if (root.$_tag === ROOT_TAG) {
     assert_invariants(root, "serialize_hson_owned_document_content_exact_runtime");
     const separator = inputOptions.noBreak ? " " : "\n";

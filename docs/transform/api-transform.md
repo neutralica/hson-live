@@ -225,6 +225,10 @@ Parses Hson text into HsonNodes.
 Parses and validates an external HsonNode graph .
 
 - Does not sanitize.
+- Public graph admission rejects generated runtime QUID metadata with
+  `PORTABLE_RUNTIME_QUID_FORBIDDEN`, including metadata in nested nodes.
+- A QUID-free node remains valid input and may acquire new local identity after
+  admission to a LiveMap or LiveTree runtime.
 
 ### `hson.fromBinary(input: Uint8Array, options?)`
 
@@ -265,8 +269,11 @@ All transform source constructors return a common surface:
 ```
 
 `toNode()` exposes an in-memory graph and may retain local runtime metadata.
-Use the Hson, JSON, HTML, or Binary output terminal for portable serialization;
-serializing the raw node object directly is outside the portable Transform contract.
+It is local inspection material, not a portable transfer format. A node with
+generated QUID metadata cannot be passed to any public `fromNode()` constructor,
+even after `JSON.stringify()` and `JSON.parse()`. Use the Hson, JSON, HTML, or
+Binary output terminal for portable serialization. Same-runtime exact capture
+uses a separate internal facility.
 
 HTML trust is selected when HTML enters Transform. Use `fromTrustedHtml` only
 for trusted input and `fromUntrustedHtml` for external or user-authored input;
@@ -304,7 +311,9 @@ Selects Hson output.
 - Use the source constructor's `.toNode()` terminal for the canonical graph.
 - Hson text is produced lazily by `serialize()`, after Hson options have been   accumulated. The source graph is not cloned or mutated.
 - Every admitted Hson-serializable semantic value is emitted without literal structural VSN names, raw metadata containers, array-index metadata, or generated QUID metadata. Parsing the output reconstructs the application structure and content. Exact runtime graph comparison can still distinguish the source graph's QUID metadata. Object-member metadata is outside this domain and rejects.
-- Direct `serialize_hson(node)` and `hson.fromNode(node).toHson().serialize()`   use the same canonical serializer. `noBreak` changes layout only.
+- For QUID-free admitted nodes, direct `serialize_hson(node)` and
+  `hson.fromNode(node).toHson().serialize()` use the same canonical serializer.
+  `noBreak` changes layout only.
 - Canonical names use the established preferred bare grammar where possible.   Names requiring quoting use apostrophe delimiters, escape apostrophes as   `\'`, and treat backticks as ordinary data. Canonical Hson never emits a   backtick-delimited name.
 - Direct or fluent Hson serialization of any caller-supplied `_hson_root` rejects before layout options. Parser-owned JSON/HTML roots and the Hson parser root are explicitly detached by their source pipeline first.
 - `fromNode()` treats its input as a detached semantic value. Redundant detached   scalar `_hson_obj`/`_hson_elem` carriers normalize to their scalar before   output, while owned object-member carriers, element text clusters, and arrays   remain intact. Direct serialization rejects a detached carrier that bypassed   admission.
@@ -462,7 +471,7 @@ but they are not exported by `hson-live`, `hson-live/transform`, or the public
 | `fromTrustedHtml` | no | trusted developer-authored HTML |
 | `fromJson` | no | structured data |
 | `fromHson` | no | Hson text |
-| `fromNode` | no | existing internal graph |
+| `fromNode` | no | QUID-free graph admission |
 
 Other formats are treated as data. If an existing graph is intentionally
 re-admitted as untrusted HTML, serialize it to HTML and pass that string to
@@ -513,7 +522,8 @@ on Transform fields.
 - `sha256()` hashes the selected serialized representation, not an abstract
   format-independent graph.
 - VSN tag values remain in the `_hson_` namespace; internal node fields use the   `$_` names.
-- `fromNode(node).toNode()` returns the same graph reference; it is not a clone   operation.
+- For admitted QUID-free graphs, `fromNode(node).toNode()` returns the same graph
+  reference; it is not a clone operation.
 
 A separate `hson-transform.md` overview is not currently necessary. The pipeline is small, while `hson-syntax.md`, `hson-nodes.md`, `hson-json.md`, and `hson-html.md` already document the parsers' shared model and format-specific behavior. This file is the appropriate home for the callable transform chain.
 

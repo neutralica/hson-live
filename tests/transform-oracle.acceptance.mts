@@ -385,11 +385,12 @@ check("readable and compact sources close to the same canonical graph", () => {
 check("portable closure uses one explicit identity-free expected projection", () => {
   const semantic = parse_value(`<p @${Q1} "first" <em @${Q2} "middle"/>/>`);
   const expected = clone_without_quids(semantic);
+  assert.equal(serialize_hson(semantic), serialize_hson(expected));
   assertCanonicalClosure({
     launcher: LAUNCHER,
     caseId: "noquid-projection",
     ingress: "canonical-node",
-    node: semantic,
+    node: expected,
     expectedNode: expected,
     serializeOptions: {},
     cycles: 3,
@@ -401,12 +402,14 @@ check("portable closure uses one explicit identity-free expected projection", ()
 check("ordinary closure is nonmutating and repeated cycles converge", () => {
   const semantic = parse_value(`<article @${Q1} data-user="Ada" "before" <strong "middle"/> "after"/>`);
   const before = structuredClone(semantic);
+  const expected = clone_without_quids(semantic);
+  assert.equal(serialize_hson(semantic), serialize_hson(expected));
   assertCanonicalClosure({
     launcher: LAUNCHER,
     caseId: "stable-cycles",
     ingress: "canonical-node",
-    node: semantic,
-    expectedNode: clone_without_quids(semantic),
+    node: expected,
+    expectedNode: expected,
     cycles: 5,
   });
   assert.deepEqual(semantic, before);

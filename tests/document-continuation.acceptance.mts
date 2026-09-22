@@ -17,6 +17,8 @@ import { set_document_adoption_fault_hook_for_tests } from "../src/api/continuat
 import { get_node_for_el, unlinkElement } from "../src/api/livetree/utils/node-map-helpers.ts";
 import { FakeElement, FakeText, install_fake_document } from "./helpers/fake-document.mts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
+import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
+import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
 
 install_fake_document();
 
@@ -25,7 +27,7 @@ const ButtonPageSchema: HsonSchema = Hson.schema`<type "document" tag "main" con
 const path = (...parts: number[]) => Object.freeze({ kind: "path" as const, path: Object.freeze([0, ...parts]) });
 
 function documentMap(source: string): DocumentLiveMap {
-  const map = hsonLiveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
+  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error("Expected document map.");
   return map;
 }
@@ -166,7 +168,7 @@ for (const point of ["after-first-link", "after-links", "after-runtime", "after-
 
 {
   const quid = "000003100";
-  const map = hsonLiveMap.fromLibraries({ page: { document: parse_hson_exact_runtime(`<main <button @${quid}/>/>`, { allowTopLevelDocumentText: true }), schema: ButtonPageSchema } });
+  const map = admit_exact_runtime_livemap_libraries({ page: { document: parse_hson_exact_runtime(`<main <button @${quid}/>/>`, { allowTopLevelDocumentText: true }), schema: ButtonPageSchema } });
   enable_interactions(map);
   const descriptor: InteractionDescriptor = Object.freeze({
     id: "local-click",

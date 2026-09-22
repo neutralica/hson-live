@@ -16,6 +16,7 @@ import {
 import { get_livemap_staged_authority } from "../src/api/livemap/livemap.authority.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
+import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
 
 const Q1 = "000000v81";
 const Q2 = "000000v82";
@@ -48,13 +49,13 @@ function check(name: string, run: () => void): void {
 }
 
 function element(source: string): DocumentLiveMap {
-  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
+  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error("Expected element LiveMap");
   return map;
 }
 
 function multiNodeDocument(source: string): DocumentLiveMap {
-  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
+  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error("Expected multiNodeDocument LiveMap");
   return map;
 }

@@ -117,6 +117,10 @@ const text = hson
   .serialize();
 ```
 
+`toNode()` is a local graph view. It may contain generated runtime QUIDs after
+identity is acquired. Public `fromNode()` admits only graphs without those
+claims; use a portable output format to transfer application state.
+
 The transformation system handles cases that are commonly awkward at format boundaries, including:
 
 - mixed text and element content;

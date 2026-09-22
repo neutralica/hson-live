@@ -25,8 +25,10 @@ import {
   LIVETREE_QUID_MINT_RETRY_LIMIT,
 } from "../src/api/livetree/quid/data-quid.ts";
 import { is_persisted_quid } from "../src/core/persisted-quid.ts";
-import { LiveTree } from "../src/api/livetree/livetree.ts";
+import { construct_exact_runtime_livetree, LiveTree } from "../src/api/livetree/livetree.ts";
 import { begin_livetree_materialization_profile } from "../src/api/livetree/debug/materialization-profile.ts";
+import { read_transform_error_details } from "../src/core/errors.ts";
+import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
 
 const Q1 = "000000001";
 const Q2 = "000000002";
@@ -131,6 +133,12 @@ function assert_validation_code(
   assert.ok(cause, `expected shared validation cause behind: ${observed.message}`);
   assert.equal(cause.code, code);
   return cause;
+}
+
+function assert_portable_node_reject(fn: () => unknown): void {
+  let observed: unknown;
+  try { fn(); } catch (error) { observed = error; }
+  assert.equal(read_transform_error_details(observed)?.code, "PORTABLE_RUNTIME_QUID_FORBIDDEN");
 }
 
 function assert_authored_reserved_name_failure(
@@ -440,30 +448,30 @@ check("local exact DOM ingress retains QUIDs for runtime realization", () => {
   });
 });
 
-check("all portable graph facades reject serialized identity but retain local graph identity", () => {
+check("all portable graph facades reject serialized identity including raw nodes", () => {
   assert.throws(() => hsonTransform.fromHson(`<main @${Q1}/>`).toNode(), /runtime QUID metadata is invalid/);
   assert.throws(() => hsonTransform.fromJson({ main: "", $_meta: { quid: Q1 } }).toNode(), /runtime QUID metadata is invalid/);
   assert.throws(() => hsonTransform.fromTrustedHtml(`<main hson:quid="${Q1}"/>`).toNode(), /runtime QUID metadata is invalid/);
-  const local = hsonTransform.fromNode(document_root(element("main", Q1))).toNode();
+  const local = document_root(element("main", Q1));
   assert.equal(read_hson_node_quid(must_tag(local, "main")), Q1);
-  assert_validation_code(() => hsonTransform.fromNode(document_root(element("main", "bad"))), "MALFORMED_QUID");
+  assert_portable_node_reject(() => hsonTransform.fromNode(local));
+  assert_portable_node_reject(() => hsonLiveMap.fromNode(local));
+  assert_portable_node_reject(() => hsonLiveTree.fromNode(local));
+  assert_portable_node_reject(() => hsonTransform.fromNode(document_root(element("main", "bad"))));
 });
 
-check("raw validated fromNode rejects VSN placement but preserves duplicate canonical claims", () => {
+check("public raw nodes reject QUIDs before exact runtime placement checks", () => {
   const invalidVsn = document_root(element("main", Q1));
   invalidVsn.$_meta = { [HSON_META_QUID]: Q2 };
   const beforeVsn = structuredClone(invalidVsn);
-  assert_validation_code(
-    () => hsonTransform.fromNode(invalidVsn),
-    "INELIGIBLE_QUID",
-  );
+  assert_portable_node_reject(() => hsonTransform.fromNode(invalidVsn));
   assert.deepEqual(invalidVsn, beforeVsn);
 
   const duplicate = document_root(element("main", Q1, [element("aside", Q1)]));
   const beforeDuplicate = structuredClone(duplicate);
-  const coldDuplicate = hsonTransform.fromNode(duplicate).toNode();
-  assert.equal(read_hson_node_quid(must_tag(coldDuplicate, "main")), Q1);
-  assert.equal(read_hson_node_quid(must_tag(coldDuplicate, "aside")), Q1);
+  assert_portable_node_reject(() => hsonTransform.fromNode(duplicate));
+  assert.equal(read_hson_node_quid(must_tag(duplicate, "main")), Q1);
+  assert.equal(read_hson_node_quid(must_tag(duplicate, "aside")), Q1);
   assert.deepEqual(duplicate, beforeDuplicate);
 
   assert_validation_code(
@@ -696,7 +704,7 @@ check("unpublished generated collisions retry and exhaustion is atomic", () => {
   try {
     with_generated_candidates([1], (calls) => {
       assert.throws(
-        () => new LiveTree(exhausted),
+        () => construct_exact_runtime_livetree(exhausted),
         new RegExp(`after ${LIVETREE_QUID_MINT_RETRY_LIMIT} secure attempts`),
       );
       exhaustedCalls = calls();
@@ -813,23 +821,19 @@ check("VSN QUID eligibility has no projected-container exception", () => {
   assert.throws(() => hsonTransform.fromHson(`«@${Q5}»`).toNode(), /runtime QUID metadata is invalid/);
 
   const validRaw = document_root(element("main", Q6));
-  assert.equal(
-    read_hson_node_quid(must_tag(hsonTransform.fromNode(validRaw).toNode(), "main")),
-    Q6,
-  );
+  assert.equal(read_hson_node_quid(must_tag(validRaw, "main")), Q6);
+  assert_portable_node_reject(() => hsonTransform.fromNode(validRaw));
   assert.equal(get_node_by_quid(Q6), undefined);
 
   const malformedRaw = document_root(element("main", "BAD"));
-  assert_validation_code(
-    () => hsonTransform.fromNode(malformedRaw),
-    "MALFORMED_QUID",
-  );
+  assert_portable_node_reject(() => hsonTransform.fromNode(malformedRaw));
 });
 
-check("LiveMap raw installation validates all modes, remains cold, and leaves sources detached", () => {
+check("internal exact LiveMap installation remains cold while public raw admission rejects", () => {
   const valid = document_root(element("main", Q1, [element("p", Q2)]));
   const before = structuredClone(valid);
-  const map = hsonLiveMap.fromNode(valid);
+  assert_portable_node_reject(() => hsonLiveMap.fromNode(valid));
+  const map = admit_exact_runtime_livemap_node(valid);
   assert.deepEqual(valid, before);
   assert.equal(map.mode, "document");
   assert.equal(map.document.byQuid(Q1)?.$_tag, "main");
@@ -837,28 +841,26 @@ check("LiveMap raw installation validates all modes, remains cold, and leaves so
   assert.equal(get_node_by_quid(Q1), undefined);
   assert.equal(get_node_by_quid(Q2), undefined);
 
-  const duplicateCold = hsonTransform.fromNode(
-    document_root(element("main", Q1, [element("aside", Q1)])),
-  ).toNode();
+  const duplicateCold = document_root(element("main", Q1, [element("aside", Q1)]));
   assert.equal(read_hson_node_quid(must_tag(duplicateCold, "main")), Q1);
   assert.equal(read_hson_node_quid(must_tag(duplicateCold, "aside")), Q1);
   assert.throws(
-    () => hsonLiveMap.fromNode(duplicateCold),
+    () => admit_exact_runtime_livemap_node(duplicateCold),
     (error) => error instanceof Error
       && validation_cause(error)?.code === "DUPLICATE_QUID",
   );
   const invalidVsn = document_root(element("main", Q3));
   must_tag(invalidVsn, "_hson_elem").$_meta = { [HSON_META_QUID]: Q1 };
   assert.throws(
-    () => hsonLiveMap.fromNode(invalidVsn),
+    () => admit_exact_runtime_livemap_node(invalidVsn),
     (error) => error instanceof Error
       && (validation_cause(error)?.code === "INELIGIBLE_QUID"
         || /quid must be a canonical persisted QUID on an eligible standard tag/.test(error.message)),
   );
 
   const crossMapSource = document_root(element("shared", Q6));
-  const firstMap = hsonLiveMap.fromNode(crossMapSource);
-  const secondMap = hsonLiveMap.fromNode(crossMapSource);
+  const firstMap = admit_exact_runtime_livemap_node(crossMapSource);
+  const secondMap = admit_exact_runtime_livemap_node(crossMapSource);
   assert.equal(firstMap.mode, "document");
   assert.equal(secondMap.mode, "document");
   assert.equal(firstMap.document.byQuid(Q6)?.$_tag, "shared");
@@ -867,9 +869,9 @@ check("LiveMap raw installation validates all modes, remains cold, and leaves so
 });
 
 check("failed document capture installation is atomic", () => {
-  const target = hsonLiveMap.fromNode(document_root(element("main", Q1)));
+  const target = admit_exact_runtime_livemap_node(document_root(element("main", Q1)));
   if (target.mode !== "document") throw new Error("expected element LiveMap");
-  const source = hsonLiveMap.fromNode(document_root(element("section", Q2)));
+  const source = admit_exact_runtime_livemap_node(document_root(element("section", Q2)));
   if (source.mode !== "document") throw new Error("expected element LiveMap");
   const invalidCapture = structuredClone(source.capture());
   const section = must_tag(invalidCapture.root, "section");

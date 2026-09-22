@@ -14,6 +14,7 @@ import { install_libraries_snapshot } from "../src/api/livemap/index.ts";
 import { install_locus_libraries_snapshot } from "../src/api/locus/index.ts";
 import { install_locus_snapshot } from "../src/api/locus/locus.bootstrap.ts";
 import { encode_view_state_snapshot } from "../src/api/livemap/livemap.document.view-state-codec.ts";
+import { make_classified_livemap } from "../src/api/livemap/livemap.core.ts";
 
 const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 const utf8 = new TextEncoder();
@@ -53,7 +54,7 @@ const style = Object.create(null) as Record<string, unknown>;
 for (const [name, value] of [
   ["constructor", ""], ["prototype", "line\r\n雪"], ["10", -0], ["2", { value: 2, unit: undefined }],
 ] as const) Object.defineProperty(style, name, { value, enumerable: true, writable: true, configurable: true });
-const localMap = hsonLiveMap.fromNode({
+const localMap = make_classified_livemap({
   $_tag: "_hson_root",
   $_content: [{
     $_tag: "main",
@@ -74,7 +75,7 @@ const decodedLocal = decode_ssr_bootstrap(encodedLocal);
 assert.equal(decodedLocal.kind, "document");
 if (decodedLocal.kind !== "document") throw new Error("Wrong local kind.");
 assert.deepEqual(decodedLocal.bootstrap, localBootstrap);
-const localInstalled = hsonLiveMap.fromNode(decodedLocal.bootstrap.root);
+const localInstalled = make_classified_livemap(decodedLocal.bootstrap.root);
 if (localInstalled.mode !== "document") throw new Error("Decoded local map must be a document.");
 localInstalled.restore(decodedLocal.bootstrap, { identity: "preserve-metadata" });
 assert.deepEqual(localInstalled.capture(), localBootstrap);

@@ -17,7 +17,7 @@ import {
   node_from_svg,
   SVG_NS,
 } from "../utils/node-utils/node-from-svg.js";
-import { scan_ingested_hson_node_quids } from "../utils/hson-utils/quid-ingress.js";
+import { admit_portable_hson_node, scan_ingested_hson_node_quids } from "../utils/hson-utils/quid-ingress.js";
 import { normalize_detached_hson_semantic_value } from "../../../core/normalize-hson-semantic-value.js";
 import { assert_invariants } from "../../../core/assert-invariants.js";
 import { detach_hson_root_value } from "../utils/node-utils/detach-hson-root-value.js";
@@ -223,6 +223,7 @@ export function construct_source_1(
      * should already be reflected in how it was constructed.
      */
     fromNode(input: HsonNode): TransformOutput {
+      admit_portable_hson_node(input, "fromNode");
       const node = normalize_detached_hson_semantic_value(input, "fromNode");
       scan_ingested_hson_node_quids(node, "fromNode");
       assert_invariants(node, "fromNode");

@@ -65,6 +65,9 @@ These constructors do not mutate the document. The constructor unwraps an `_hson
 
 `fromNode` uses the supplied graph rather than cloning it. Use
 `cloneBranch()` when a deep detached copy with fresh QUIDs is required.
+Public `fromNode` rejects generated QUID metadata, including QUIDs in a
+`toNode()` result from an active tree. Use it for QUID-free graph construction;
+same-runtime exact capture has a separate internal path.
 
 ### Grafted DOM
 

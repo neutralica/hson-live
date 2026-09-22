@@ -1,5 +1,6 @@
 import { hson } from "../../src/hson.ts";
 import { parse_hson_exact_runtime } from "../../src/internal/exact-runtime-hson-codec.ts";
+import { admit_exact_runtime_livemap_node } from "../../src/internal/exact-runtime-node-admission.ts";
 import { validate_document_path } from "../../src/api/livemap/livemap.document.path.ts";
 import { is_Node } from "../../src/core/node-guards.ts";
 import type { HsonNode } from "../../src/core/types.ts";
@@ -14,7 +15,7 @@ install_fake_document();
 
 export function element(source: string): DocumentLiveMap {
   // Identity-sensitive test fixture: authored portable Hson rejects QUID claims.
-  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
+  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error("Expected DocumentLiveMap");
   return map;
 }

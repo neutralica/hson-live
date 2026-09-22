@@ -7,6 +7,7 @@ import { hsonTransform } from "../src/api/transform/index.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import type { HsonAttrs, HsonMeta, HsonNode, Primitive } from "../src/core/types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
+import { source_before_local_identity } from "./helpers/source-before-local-identity.mts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "transform.binary-hson-vectors",
@@ -329,7 +330,7 @@ await check("legacy present-empty metadata decodes to canonical absence", () => 
   assert.deepEqual(hsonTransform.fromNode(decoded).toBinary().serialize(), encoded);
 });
 await check("portable Binary Hson omits runtime QUID metadata", () => {
-  assert.deepEqual(hsonTransform.fromNode(quidElement).toBinary().serialize(), GOLDEN_EMPTY_ELEMENT);
+  assert.deepEqual(source_before_local_identity(quidElement).toBinary().serialize(), GOLDEN_EMPTY_ELEMENT);
   assert.throws(() => hsonTransform.fromBinary(GOLDEN_QUID).toNode(), (cause: unknown) =>
     cause instanceof Error && "code" in cause && cause.code === "PORTABLE_RUNTIME_QUID_FORBIDDEN");
 });

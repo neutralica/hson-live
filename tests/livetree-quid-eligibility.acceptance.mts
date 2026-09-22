@@ -13,7 +13,7 @@ import {
   reindex_quid,
   remint_quid,
 } from "../src/api/livetree/quid/data-quid.ts";
-import { LiveTree } from "../src/api/livetree/livetree.ts";
+import { construct_exact_runtime_livetree, LiveTree } from "../src/api/livetree/livetree.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livetree.quid-eligibility",
@@ -191,7 +191,7 @@ check("clone remints every ordinary node and leaves nested VSN wrappers unquidde
   const sourceQuids = ordinarySource.map((value) => ensure_quid(value));
   for (const value of vsnSource) assert.equal(get_quid(value), undefined);
 
-  const clone = new LiveTree(source).cloneBranch().node;
+  const clone = construct_exact_runtime_livetree(source).cloneBranch().node;
   const cloneNodes: HsonNode[] = [];
   const collectClone = (current: HsonNode): void => {
     cloneNodes.push(current);

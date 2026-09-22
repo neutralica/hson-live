@@ -48,7 +48,7 @@ const {
   get_node_by_quid,
   get_quid,
 } = await import("../src/api/livetree/quid/data-quid.ts");
-const { LiveTree } = await import("../src/api/livetree/livetree.ts");
+const { LiveTree, construct_exact_runtime_livetree } = await import("../src/api/livetree/livetree.ts");
 const {
   build_livemap_document_identity_overlay,
   LiveMapDocumentIdentityError,
@@ -419,7 +419,7 @@ check("LiveTree and LiveMap both reject QUID-bearing VSNs and graph-local duplic
     node("b", [], { [HSON_META_QUID]: duplicateQ }),
   ]);
   assert.throws(
-    () => new LiveTree(treeSource),
+    () => construct_exact_runtime_livetree(treeSource),
     /Duplicate QUID/,
   );
 

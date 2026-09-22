@@ -4,7 +4,7 @@
 // create-livetree.ts
 
 import { HsonNode } from "../../../core/types.js";
-import { LiveTree } from "../livetree.js";
+import { construct_exact_runtime_livetree, LiveTree } from "../livetree.js";
 import { assert_livetree_node_active } from "../livetree-state.js";
 import {
   runtime_for_tree,
@@ -16,7 +16,7 @@ import {
 // CHANGE: canonical creation for a standalone branch (no parent roots).
 export function create_livetree(node: HsonNode): LiveTree {
   assert_livetree_node_active(node, "create a LiveTree handle");
-  return new LiveTree(node);
+  return construct_exact_runtime_livetree(node);
 }
 
 /** Construct a handle in one already-selected runtime. @internal */
@@ -25,7 +25,7 @@ export function create_livetree_in_runtime(
   runtime: LiveTreeRuntime,
 ): LiveTree {
   assert_livetree_node_active(node, "create a LiveTree handle");
-  return with_livetree_construction_runtime(node, runtime, () => new LiveTree(node));
+  return with_livetree_construction_runtime(node, runtime, () => construct_exact_runtime_livetree(node));
 }
 
 /** Construct a LiveMap-linked handle while preserving canonical QUID absence. @internal */
@@ -34,7 +34,7 @@ export function create_linked_livetree_in_runtime(
   runtime: LiveTreeRuntime,
 ): LiveTree {
   assert_livetree_node_active(node, "create a linked LiveTree handle");
-  return with_linked_livetree_construction_runtime(node, runtime, () => new LiveTree(node));
+  return with_linked_livetree_construction_runtime(node, runtime, () => construct_exact_runtime_livetree(node));
 }
 
 

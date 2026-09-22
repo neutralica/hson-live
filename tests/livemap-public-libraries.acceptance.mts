@@ -13,6 +13,7 @@ import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts
 import { is_Node } from "../src/core/node-guards.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
+import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
 
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number" nested <content <value "number">>>>`;
 const ColorsSchema: HsonSchema = Hson.schema`<type "data" content <primary "string">>`;
@@ -134,7 +135,7 @@ check("named document Library mutations retain their selected authority and glob
 });
 
 check("named document locations keep relative content operations in their selected Library", () => {
-  const map = hsonLiveMap.fromLibraries({
+  const map = admit_exact_runtime_livemap_libraries({
     page: { document: parse_hson_exact_runtime("<main <item @000009111/>/>", { allowTopLevelDocumentText: true }), schema: ItemDocumentSchema },
     modal: { document: "<main <item/>/>", schema: ItemDocumentSchema },
   });
@@ -222,7 +223,7 @@ check("tree-originated selected-document mutation crosses the same Schema bounda
 check("named document QUID lookup remains library-local while active QUIDs remain map-wide", () => {
   const Q1 = "000009001";
   const Q2 = "000009002";
-  const map = hsonLiveMap.fromLibraries({
+  const map = admit_exact_runtime_livemap_libraries({
     page: { document: parse_hson_exact_runtime(`<main @${Q1}/>`, { allowTopLevelDocumentText: true }), schema: PageSchema },
     modal: { document: parse_hson_exact_runtime(`<main @${Q2}/>`, { allowTopLevelDocumentText: true }), schema: PageSchema },
   });
@@ -234,7 +235,7 @@ check("named document QUID lookup remains library-local while active QUIDs remai
   assert.deepEqual(commit.operations.map((entry) => entry.library), ["page"]);
   assert.equal(page.at([]).asElement()!.attrs.get("title"), "path-route");
   assert.equal(modal.at([]).asElement()!.attrs.get("title"), undefined);
-  assert.throws(() => hsonLiveMap.fromLibraries({
+  assert.throws(() => admit_exact_runtime_livemap_libraries({
     page: { document: parse_hson_exact_runtime(`<main @${Q1}/>`, { allowTopLevelDocumentText: true }), schema: PageSchema },
     modal: { document: parse_hson_exact_runtime(`<main @${Q1}/>`, { allowTopLevelDocumentText: true }), schema: PageSchema },
   }), /collision/i);
@@ -262,7 +263,7 @@ check("aggregate document writes reject accidental cross-library QUID transfer",
   const Q1 = "000009101";
   const Q2 = "000009102";
   const Q3 = "000009103";
-  const map = hsonLiveMap.fromLibraries({
+  const map = admit_exact_runtime_livemap_libraries({
     page: { document: parse_hson_exact_runtime(`<main <item @${Q1}/> <item @${Q2}/>/>`, { allowTopLevelDocumentText: true }), schema: ItemDocumentSchema },
     modal: { document: parse_hson_exact_runtime(`<main <item @${Q3}/>/>`, { allowTopLevelDocumentText: true }), schema: ItemDocumentSchema },
   });

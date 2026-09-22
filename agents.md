@@ -15,7 +15,7 @@ Agents must preserve API stability and runtime identity.
 - Do NOT convert instance methods to closures or arrow properties.
 - Avoid patterns that duplicate class definitions across build outputs.
 - Generated QUIDs are runtime-scoped. They may preserve identity while a runtime lives, and LiveMap may map them to and from paths inside that runtime. They are not durable application addresses, network addresses, or persistence identities. Portable and system references and operations use paths unless a separately designed authored portable identity exists.
-- Ordinary portable Transform serialization omits generated QUIDs, and ordinary portable Transform input rejects serialized QUID metadata. Same-runtime exact identity capture is a separate internal runtime facility.
+- Ordinary portable Transform serialization omits generated QUIDs. Every public portable admission surface, including Hson, JSON, Binary, HTML, and node/graph constructors, rejects generated QUID claims before establishing a new runtime context. A `toNode()` result may contain local identity for inspection but is not a portable identity source. Same-runtime exact identity capture is a separate internal runtime facility.
 
 ## 3. Build and distribution
 

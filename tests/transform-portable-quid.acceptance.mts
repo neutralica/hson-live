@@ -3,13 +3,14 @@ import assert from "node:assert/strict";
 import { hsonTransform } from "../src/api/transform/index.ts";
 import { read_transform_error_details } from "../src/core/errors.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
-import { read_hson_node_quid } from "../src/core/hson-node-quid.ts";
+import { assign_hson_node_quid, read_hson_node_quid } from "../src/core/hson-node-quid.ts";
+import { serialize_hson } from "../src/api/transform/serializers/serialize-hson.ts";
 import { parse_hson_exact_runtime, serialize_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
 
 const Q1 = "000000001";
 const Q2 = "000000002";
-const graph = detach_hson_root_value(parse_hson_exact_runtime(`<main @${Q1} id="app"/>`));
+const graph = detach_hson_root_value(parse_hson_exact_runtime(`<main id="app"/>`));
 
 function rejects_portable_quid(run: () => unknown): void {
   let observed: unknown;
@@ -18,6 +19,7 @@ function rejects_portable_quid(run: () => unknown): void {
 }
 
 const source = hsonTransform.fromNode(graph);
+assign_hson_node_quid(graph.$_content[0] as typeof graph, Q1);
 const hson = source.toHson().serialize();
 const json = source.toJson().serialize();
 const value = source.toJson().value();
@@ -44,7 +46,7 @@ assert.equal(serialize_hson_exact_runtime(reparsed), hson);
 assert.equal(canonical_hson_graph_equal(graph, reparsed), false);
 const otherIdentity = detach_hson_root_value(parse_hson_exact_runtime(`<main @${Q2} id="app"/>`));
 assert.equal(canonical_hson_graph_equal(graph, otherIdentity), false);
-assert.equal(hsonTransform.fromNode(otherIdentity).toHson().serialize(), hson);
+assert.equal(serialize_hson(otherIdentity), hson);
 
 const arrayHtml = hsonTransform.fromJson([1]).toHtml().serialize();
 assert.match(arrayHtml, /hson:index="0"/);

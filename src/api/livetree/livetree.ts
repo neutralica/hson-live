@@ -62,6 +62,21 @@ import {
   runtime_for_tree,
   type LiveTreeRuntime,
 } from "./runtime/livetree-runtime.js";
+import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
+
+// This capability is scoped to internal construction calls, never to a node's
+// provenance. Public `new LiveTree(node)` always admits a portable graph.
+const EXACT_NODE_CONSTRUCTION = new WeakSet<HsonNode>();
+
+/** Construct an exact handle for an already local runtime graph. @internal */
+export function construct_exact_runtime_livetree(node: HsonNode): LiveTree {
+  EXACT_NODE_CONSTRUCTION.add(node);
+  try {
+    return new LiveTree(node);
+  } finally {
+    EXACT_NODE_CONSTRUCTION.delete(node);
+  }
+}
 
 /**
  * Create a stable `NodeRef` for a given `HsonNode`.
@@ -235,6 +250,9 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    */
   constructor(input: HsonNode | LiveTree) {
     const inputNode = input instanceof LiveTree ? input.node : input;
+    if (!(input instanceof LiveTree) && !EXACT_NODE_CONSTRUCTION.has(inputNode)) {
+      admit_portable_hson_node(inputNode, "LiveTree.constructor");
+    }
     const runtime = input instanceof LiveTree
       ? runtime_for_tree(input)
       : requested_runtime_for_construction(inputNode)

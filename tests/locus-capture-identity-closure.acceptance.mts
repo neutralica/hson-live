@@ -26,6 +26,7 @@ import {
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import type { ClassifiedLiveMap, DocumentLiveMap } from "../src/types/livemap.types.ts";
 import { element, path, projected_element, raw_node } from "./helpers/reflect-unit6.mts";
+import { source_before_local_identity } from "./helpers/source-before-local-identity.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 const Q1 = "000000v91";
@@ -264,7 +265,7 @@ check("same metadata in a new mirror still supports local QUID lookup", () => {
 
 check("portable Hson reparsing loses map identity continuity", () => {
   const source = element(`<main @${Q1}/>`);
-  const wire = hson.fromNode(authoredNode(source)).toHson().serialize();
+  const wire = source_before_local_identity(authoredNode(source)).toHson().serialize();
   const reparsed = mustElement(hson.liveMap.fromHson(wire));
   assert.equal(reparsed.document.byQuid(Q1), undefined);
 });
@@ -272,7 +273,7 @@ check("portable Hson reparsing loses map identity continuity", () => {
 check("portable Hson reparsing creates a different reflected exact node", () => {
   const source = element(`<main @${Q1}/>`);
   const first = _reflect_document_for_runtime_test(_create_livetree_runtime_test_handle(), source);
-  const wire = hson.fromNode(authoredNode(source)).toHson().serialize();
+  const wire = source_before_local_identity(authoredNode(source)).toHson().serialize();
   const second = _reflect_document_for_runtime_test(_create_livetree_runtime_test_handle(), mustElement(hson.liveMap.fromHson(wire)));
   assert.notEqual(first.tree.node, second.tree.node);
   first.dispose();
@@ -281,7 +282,7 @@ check("portable Hson reparsing creates a different reflected exact node", () => 
 
 check("Transform HTML omits QUID metadata from detached bytes", () => {
   const source = element(`<main @${Q1}/>`);
-  const html = hson.fromNode(authoredNode(source)).toHtml().serialize();
+  const html = source_before_local_identity(authoredNode(source)).toHtml().serialize();
   assert.equal(html.includes(`hson:quid="${Q1}"`), false);
   assert.equal(html.includes("epoch"), false);
 });

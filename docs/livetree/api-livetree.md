@@ -92,7 +92,8 @@ Use `queryDom`, not `queryDOM`.
 The `from*` facade unwraps `_hson_root` only when its sole child is an
 `_hson_elem`. JSON/object/array inputs may therefore return a LiveTree whose
 current node is `_hson_root`. `fromNode` retains the supplied node graph; it
-does not clone it.
+does not clone it. Public node construction rejects generated QUID metadata,
+including metadata on a graph returned by an active tree's `toNode()`.
 
 A direct HTML or SVG `Element` is the source root, not an `innerHTML` snapshot.
 Its attributes, metadata, and descendants enter the graph. `queryDom` and

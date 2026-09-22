@@ -11,6 +11,8 @@ import { create_persistent_locus_internal } from "../../src/api/locus/locus.pers
 import { LocusAuthorityError } from "../../src/api/locus/locus.authority.ts";
 import { get_livemap_staged_authority } from "../../src/api/livemap/livemap.authority.ts";
 import { admit_locus_remote_action_internal } from "../../src/api/locus/locus.remote-action.internal.ts";
+import { acquire_document_identity } from "../helpers/livemap-identity-internal.mts";
+import { set_livemap_document_quid_candidate_source_for_tests } from "../../src/api/livemap/livemap.document.registration.ts";
 import { read_locus_retained_action_status_internal } from "../../src/api/locus/locus.action-status.internal.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -51,8 +53,14 @@ function deferred() {
 }
 
 function element(source = `<main @000001001/>`) {
-  const map = hson.liveMap.fromHson(source);
+  const claims = [...source.matchAll(/ @([0-9a-hjkmnp-tv-z]{9})(?=[\s/>])/g)].map((match) => match[1]);
+  const map = hson.liveMap.fromHson(source.replace(/ @([0-9a-hjkmnp-tv-z]{9})(?=[\s/>])/g, ""));
   if (map.mode !== "document") throw new Error("expected document map");
+  if (claims.length > 1) throw new Error("persistence probe fixture expects at most one local identity claim");
+  if (claims[0] !== undefined) {
+    set_livemap_document_quid_candidate_source_for_tests(map.document, () => claims[0]);
+    acquire_document_identity(map.document, root);
+  }
   return map;
 }
 

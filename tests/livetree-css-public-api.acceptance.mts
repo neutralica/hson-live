@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { hsonLiveTree } from "hson-live/livetree";
 import * as livetreeEntrypoint from "hson-live/livetree";
+import { make_branch_from_node } from "../dist/api/livetree/creation/create-branch.js";
+import { create_livetree_runtime } from "../src/api/livetree/runtime/livetree-runtime.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -63,9 +65,11 @@ check("published global facade retains rules, selectors, variables, property con
 });
 
 check("isolated public trees retain separate complete CSS with equal QUIDs", () => {
-  const makeTree = () => hsonLiveTree.fromNode({
+  // Exact runtime identity for this CSS isolation fixture uses an internal
+  // constructor. Public fromNode deliberately refuses the supplied QUID.
+  const makeTree = () => make_branch_from_node({
     $_tag: "main", $_meta: { quid: "000000rt1" }, $_content: [],
-  }, { isolated: true });
+  }, { runtime: create_livetree_runtime() });
   const left = makeTree();
   const right = makeTree();
   assert.equal(left.quid, right.quid);

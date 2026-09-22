@@ -23,6 +23,7 @@ import type {
 } from "../../types/liveinspect.types.js";
 import type { CollectionReflect, CollectionReflectChange, CollectionReflectKey } from "../../types/reflect.types.js";
 import { LiveTree } from "../livetree/livetree.js";
+import { serialize_html } from "../transform/serializers/serialize-html.js";
 import { make_detached_livetree_create } from "../livetree/creation/make-detached-livetree.js";
 import { own_disposable_for_subject } from "../livetree/managers/lifecycle-registry.js";
 import { format_live_path, path_is_prefix, paths_overlap, relative_live_path } from "../livemap/livemap.path.js";
@@ -815,7 +816,7 @@ class InspectorController {
       if (node === undefined || this.currentSource().origin !== "hson" || !containsConcreteElement(node)) {
         throw unrepresentable(target, handle.path());
       }
-      return TRANSFORM.fromNode(node).toHtml().serialize();
+      return serialize_html(node);
     } catch (error) {
       this.counts.serializationFailures += 1;
       if (error instanceof LiveInspectorError) throw error;

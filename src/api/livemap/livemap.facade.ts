@@ -7,6 +7,7 @@ import { projected_value_to_hson_root } from "../../core/projected-value-graph.j
 import { hsonTransform } from "../transform/transform.facade.js";
 import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { make_classified_livemap } from "./livemap.core.js";
+import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 import { make_livemap_libraries } from "./livemap.libraries.js";
 import type { LiveMapLibraries, LiveMapLibrariesInput } from "../../types/livemap.types.js";
 
@@ -54,6 +55,7 @@ function fromDocument(input: HsonDocument): DocumentLiveMap {
 }
 
 function fromNode(node: HsonNode): ClassifiedLiveMap {
+  admit_portable_hson_node(node, "LiveMap.fromNode");
   return make_classified_livemap(node);
 }
 
@@ -61,6 +63,11 @@ function fromNode(node: HsonNode): ClassifiedLiveMap {
 function fromLibraries<const TLibraries extends LiveMapLibrariesInput>(
   libraries: TLibraries,
 ): LiveMapLibraries<TLibraries> {
+  for (const [name, input] of Object.entries(libraries)) {
+    if ("document" in input && input.document !== undefined && typeof input.document !== "string") {
+      admit_portable_hson_node(input.document, `LiveMap.fromLibraries(${name})`);
+    }
+  }
   return make_livemap_libraries(libraries);
 }
 

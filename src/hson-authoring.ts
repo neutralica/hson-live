@@ -7,6 +7,7 @@ import { make_leaf } from "./api/transform/parsers/parse-tokens.js";
 import { admit_hson_number } from "./core/hson-number.js";
 import { projected_value_to_hson_node } from "./core/projected-value-graph.js";
 import { detach_hson_root_value } from "./api/transform/utils/node-utils/detach-hson-root-value.js";
+import { admit_portable_hson_node } from "./api/transform/utils/hson-utils/quid-ingress.js";
 import { serialize_hson } from "./api/transform/serializers/serialize-hson.js";
 import { _throw_transform_err } from "./core/errors.js";
 import { is_transform_error } from "./core/errors.js";
@@ -133,6 +134,7 @@ export const Hson = Object.freeze({
       return source as HsonDocument;
     },
     fromNode(node: import("./core/types.js").HsonNode): HsonDocument {
+      admit_portable_hson_node(node, "Hson.document.fromNode");
       return ExactDocumentCarrier.fromNode(node).toHson() as HsonDocument;
     },
     toNode(value: HsonDocument): import("./core/types.js").HsonNode {

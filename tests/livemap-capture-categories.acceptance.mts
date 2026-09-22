@@ -1,7 +1,9 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
+import { serialize_hson } from "../src/api/transform/serializers/serialize-hson.ts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
+import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
@@ -38,13 +40,13 @@ function check(name: string, run: () => void): void {
 }
 
 function element(source: string): DocumentLiveMap {
-  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
+  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error("Expected element LiveMap");
   return map;
 }
 
 function multiNodeDocument(source: string): DocumentLiveMap {
-  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
+  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error("Expected multiNodeDocument LiveMap");
   return map;
 }
@@ -56,7 +58,7 @@ function isNode(value: HsonNode["$_content"][number]): value is HsonNode {
 function captureText(map: DocumentLiveMap): string {
   const semanticRoot = map.document.content()[0];
   if (semanticRoot === undefined || !isNode(semanticRoot)) throw new Error("Expected node document content.");
-  return hson.fromNode(semanticRoot).toHson().serialize();
+  return serialize_hson(semanticRoot);
 }
 
 check("default capture remains exact durable metadata", () => {
@@ -197,7 +199,7 @@ check("portable Hson remains an identity-free projection", () => {
   const source = element(`<main @${Q1}/>`);
   const semanticRoot = source.document.content()[0];
   if (semanticRoot === undefined || !isNode(semanticRoot)) throw new Error("Expected node document content.");
-  const wire = hson.fromNode(semanticRoot).toHson().serialize();
+  const wire = serialize_hson(semanticRoot);
   const reparsed = element(wire);
   assert.equal(reparsed.document.byQuid(Q1), undefined);
   assert.equal(canonical_hson_graph_equal(reparsed.root(), source.root()), false);

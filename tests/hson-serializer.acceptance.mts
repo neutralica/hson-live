@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import { hsonTransform } from "../src/api/transform/index.ts";
 import {
-  assertCanonicalClosure,
   assertCanonicalSerializedClosure,
 } from "../src/diagnostics/transform-test-oracle.ts";
 import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
@@ -26,6 +25,7 @@ import { get_node_by_quid } from "../src/api/livetree/quid/data-quid.ts";
 import { TOKEN_KIND } from "../src/api/transform/token.types.ts";
 import type { HsonMeta, HsonNode } from "../src/core/types.ts";
 import { TransformError } from "../src/core/errors.ts";
+import { source_before_local_identity } from "./helpers/source-before-local-identity.mts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "transform.hson-serializer",
@@ -64,11 +64,11 @@ function canonicalize(source: string): string {
 }
 
 function readable(node: HsonNode): string {
-  return hson.fromNode(node).toHson().serialize();
+  return source_before_local_identity(node).toHson().serialize();
 }
 
 function compact(node: HsonNode): string {
-  return hson.fromNode(node).toHson().noBreak().serialize();
+  return source_before_local_identity(node).toHson().noBreak().serialize();
 }
 
 function parse_serialized_value(source: string): HsonNode {
@@ -116,15 +116,9 @@ function assert_wire_closure(
 }
 
 function assert_hson_closure(node: HsonNode): string {
-  const result = assertCanonicalClosure({
-    launcher: "transform.hson-serializer",
-    caseId: `serializer-closure:${node.$_tag}`,
-    ingress: "canonical-node",
-    node,
-    expectedNode: clone_without_quids(node),
-  });
-  assert_vsn_free_wire(result.serialized);
-  return result.serialized;
+  const serialized = source_before_local_identity(node).toHson().serialize();
+  assert_wire_closure(node, serialized, clone_without_quids(node));
+  return serialized;
 }
 
 function elementWithAttrs(attrs: NonNullable<HsonNode["$_attrs"]>): HsonNode {
@@ -478,8 +472,8 @@ check("portable Hson omits generated QUIDs and retains ordinary attributes", () 
 
 check("noBreak keeps portable QUID omission", () => {
   const node = parse(`<p @000000002 "first" <em "middle"/> "last"/>`);
-  const left = hson.fromNode(node).toHson().noBreak().serialize();
-  const right = hson.fromNode(node).toHson().withOptions({ noBreak: true }).serialize();
+  const left = source_before_local_identity(node).toHson().noBreak().serialize();
+  const right = source_before_local_identity(node).toHson().withOptions({ noBreak: true }).serialize();
   assert.equal(left, right);
   assert.equal(left, `<p "first" <em "middle"/> "last"/>`);
 });
@@ -488,15 +482,15 @@ check("withOptions composes with convenience methods", () => {
   const node = parse(`<p @000000003 "first" <em "middle"/> "last"/>`);
   const expected = `<p "first" <em "middle"/> "last"/>`;
   assert.equal(
-    hson.fromNode(node).toHson().withOptions({ noBreak: true }).serialize(),
+    source_before_local_identity(node).toHson().withOptions({ noBreak: true }).serialize(),
     expected,
   );
   assert.equal(
-    hson.fromNode(node).toHson().withOptions({ noBreak: true }).serialize(),
+    source_before_local_identity(node).toHson().withOptions({ noBreak: true }).serialize(),
     expected,
   );
   assert.equal(
-    hson.fromNode(node).toHson().noBreak().withOptions({}).serialize(),
+    source_before_local_identity(node).toHson().noBreak().withOptions({}).serialize(),
     expected,
   );
 });
@@ -504,7 +498,7 @@ check("withOptions composes with convenience methods", () => {
 check("repeated options are idempotent", () => {
   const node = parse(`<tag @000000004 "value"/>`);
   assert.equal(
-    hson.fromNode(node).toHson().noBreak().noBreak().serialize(),
+    source_before_local_identity(node).toHson().noBreak().noBreak().serialize(),
     `<tag "value"/>`,
   );
 });
@@ -512,7 +506,7 @@ check("repeated options are idempotent", () => {
 check("portable Hson output does not mutate the source graph", () => {
   const node = parse(`<tag @000000005 data-user="keep" "value"/>`);
   const before = structuredClone(node);
-  const filtered = hson.fromNode(node).toHson().serialize();
+  const filtered = source_before_local_identity(node).toHson().serialize();
   assert.deepEqual(node, before);
   assert.doesNotMatch(filtered, /@[0123456789abcdefghjkmnpqrstvwxyz]{9}/);
   assert.equal(onlyElement(node).$_meta?.quid, "000000005");
@@ -522,13 +516,13 @@ check("portable serialization does not register imported identity", () => {
   const quid = "000000006";
   const node = parse(`<tag @${quid} "value"/>`);
   assert.equal(get_node_by_quid(quid), undefined);
-  hson.fromNode(node).toHson().serialize();
+  source_before_local_identity(node).toHson().serialize();
   assert.equal(get_node_by_quid(quid), undefined);
 });
 
 check("parsed portable graph equals the graph with only QUID fields removed", () => {
   const node = parse(`<p @000000007 data-user="keep" "first" <em @000000008 "middle"/>/>`);
-  const wire = hson.fromNode(node).toHson().serialize();
+  const wire = source_before_local_identity(node).toHson().serialize();
   assert.deepEqual(parse(wire), clone_without_quids(node));
 });
 
@@ -655,7 +649,7 @@ check("all Hson option combinations retain quoted ordinary attributes", () => {
   onlyElement(node).$_meta = {
     quid: "000000009",
   };
-  const builder = () => hson.fromNode(node).toHson();
+  const builder = () => source_before_local_identity(node).toHson();
   const filtered = `<tag count="2" data-user="keep" enabled="true" disabled/>`;
   assert.equal(builder().serialize(), filtered);
   assert.equal(builder().noBreak().serialize(), filtered);
@@ -675,7 +669,7 @@ check("quoted ordinary attributes are unchanged for structured block content", (
     `<p count="2" disabled\n  "first"\n  <em "middle"/>\n  "last"\n/>`,
   );
   assert.equal(
-    hson.fromNode(node).toHson().noBreak().serialize(),
+    source_before_local_identity(node).toHson().noBreak().serialize(),
     `<p count="2" disabled "first" <em "middle"/> "last"/>`,
   );
 });
@@ -1127,7 +1121,7 @@ check("ordinary attrs and metadata preserve portable data semantics", () => {
   assert.match(serialize_html(graph), /id="x"/);
   assert.doesNotMatch(serialize_json(graph), /"quid"/);
 
-  const detached = hsonTransform.fromNode(graph).toNode();
+  const detached = source_before_local_identity(graph).toNode();
   const detachedElement = onlyElement(detached);
   assert.equal(detachedElement.$_attrs?.id, "x");
   const detachedWidth = detachedElement.$_attrs?.style?.width;
@@ -1135,7 +1129,8 @@ check("ordinary attrs and metadata preserve portable data semantics", () => {
   if (typeof detachedWidth !== "object" || detachedWidth === null) throw new Error("missing detached width");
   assert.equal(Object.hasOwn(detachedWidth, "unit"), true);
   assert.equal(Reflect.get(detachedWidth, "unit"), "px");
-  assert.equal(detachedElement.$_meta?.quid, "000000001");
+  assert.equal(detachedElement.$_meta?.quid, undefined);
+  assert.equal(onlyElement(graph).$_meta?.quid, "000000001");
 
   const array = hson.fromHson(`«1»`).toNode();
   const item = array.$_content[0];
@@ -1588,7 +1583,7 @@ check("canonical closure preserves content and attributes while omitting QUID me
   assert.doesNotMatch(source, /\$_meta/);
 
   const before = structuredClone(node);
-  const portableSource = hson.fromNode(node).toHson().serialize();
+  const portableSource = source_before_local_identity(node).toHson().serialize();
   assert_wire_closure(node, portableSource, clone_without_quids(node));
   assert.deepEqual(node, before);
 });
@@ -1599,8 +1594,8 @@ check("direct and fluent serializers have equivalent closure for every Hson opti
     parse(`<p @000000016 class="copy" "first" <em "middle"/> "last"/>`),
   ]) {
     const cases = [
-      { options: {}, fluent: () => hson.fromNode(node).toHson().serialize() },
-      { options: { noBreak: true }, fluent: () => hson.fromNode(node).toHson().noBreak().serialize() },
+      { options: {}, fluent: () => source_before_local_identity(node).toHson().serialize() },
+      { options: { noBreak: true }, fluent: () => source_before_local_identity(node).toHson().noBreak().serialize() },
     ] as const;
     for (const entry of cases) {
       const direct = serialize_hson(node, entry.options);
@@ -1842,8 +1837,8 @@ check("direct, universal Worker-safe, and browser facade Hson paths serialize id
     parse(`<main @000000018 class="shell" <span "ready"/>/>`),
   ]) {
     const direct = serialize_hson(node);
-    const universal = hsonTransform.fromNode(node).toHson().serialize();
-    const browserFacade = hson.fromNode(node).toHson().serialize();
+    const universal = source_before_local_identity(node).toHson().serialize();
+    const browserFacade = source_before_local_identity(node, hson.fromNode).toHson().serialize();
     assert.equal(universal, direct);
     assert.equal(browserFacade, direct);
     assert_wire_closure(node, direct);

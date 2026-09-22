@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { hsonTransform } from "../src/api/transform/index.ts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
+import { source_before_local_identity } from "./helpers/source-before-local-identity.mts";
 import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -166,7 +167,7 @@ await check("separate finalizer calls remain deterministic", async () => {
 });
 
 await check("Hson digest is independent of generated runtime identity", async () => {
-  const source = hsonTransform.fromNode(detach_hson_root_value(parse_hson_exact_runtime(`<entry @000000001 "ready"/>`)));
+  const source = source_before_local_identity(detach_hson_root_value(parse_hson_exact_runtime(`<entry @000000001 "ready"/>`)));
   const full = source.toHson();
   const filtered = source.toHson();
   assert.equal(full.serialize(), filtered.serialize());
@@ -175,7 +176,7 @@ await check("Hson digest is independent of generated runtime identity", async ()
 });
 
 await check("the Worker fixture hashes the identity-free Hson text", async () => {
-  const representation = hsonTransform.fromNode(detach_hson_root_value(parse_hson_exact_runtime(`<worker @000000001 "ready"/>`))).toHson();
+  const representation = source_before_local_identity(detach_hson_root_value(parse_hson_exact_runtime(`<worker @000000001 "ready"/>`))).toHson();
   assert.equal(representation.serialize(), `<worker "ready"/>`);
   assert.equal(await representation.sha256(), sha256Oracle(`<worker "ready"/>`));
 });

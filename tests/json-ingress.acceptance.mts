@@ -199,7 +199,7 @@ check("raw-node and JSON ingress both reject root metadata", () => {
     $_meta: { quid: QUID },
     $_content: [{ $_tag: "_hson_elem", $_content: [{ $_tag: "div", $_content: [] }] }],
   };
-  assert.throws(() => hson.fromNode(raw).toNode(), /_hson_root.*quid|quid.*_hson_root/i);
+  assert.throws(() => hson.fromNode(raw).toNode(), /runtime QUID metadata is invalid in portable node input/);
   assert.throws(() => parse_json(explicit_root({ quid: QUID })), /runtime QUID metadata is invalid/);
 
   const malformedRaw = {

@@ -21,7 +21,6 @@ import { create_locus_bootstrap_echo } from "hson-live/echo";
 import { create_node_locus_socket } from "hson-live/locus/node";
 import { start_node_application_host } from "hson-live/livehost/node";
 import WebSocket from "ws";
-import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "locus.bootstrap",
@@ -392,13 +391,13 @@ check("data-array bootstrap installs exact state and revision", () => {
 
 check("element bootstrap installs exact state and revision", () => {
   verify_mode("element", create_locus({
-    map: hson.liveMap.fromNode(parse_hson_exact_runtime(`<main @000000001 "hello"/>`, { allowTopLevelDocumentText: true })),
+    map: hson.liveMap.fromHson(`<main "hello"/>`),
   }));
 });
 
 check("multiNodeDocument bootstrap installs exact state and revision", () => {
   verify_mode("multiNodeDocument", create_locus({
-    map: hson.liveMap.fromNode(parse_hson_exact_runtime(`"before" <em @000000002 "middle"/>`, { allowTopLevelDocumentText: true })),
+    map: hson.liveMap.fromHson(`"before" <em "middle"/>`),
   }));
 });
 

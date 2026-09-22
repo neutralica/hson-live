@@ -1,4 +1,5 @@
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
+import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import {
@@ -41,13 +42,13 @@ function check(name: string, fn: () => void): void {
 }
 
 function element(source: string): DocumentLiveMap {
-  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
+  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error(`expected element, observed ${map.mode}`);
   return map;
 }
 
 function multiNodeDocument(source: string): DocumentLiveMap {
-  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
+  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error(`expected multiNodeDocument, observed ${map.mode}`);
   return map;
 }

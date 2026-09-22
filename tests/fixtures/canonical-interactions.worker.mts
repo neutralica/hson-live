@@ -16,6 +16,7 @@ import {
 import type { LocusSocketLike } from "../../src/types/locus.types.ts";
 import { link_node_to_el } from "../../src/api/livetree/utils/node-map-helpers.ts";
 import { parse_hson_exact_runtime } from "../../src/internal/exact-runtime-hson-codec.ts";
+import { admit_exact_runtime_livemap_libraries } from "../../src/internal/exact-runtime-node-admission.ts";
 
 const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "button" content "empty">]>>`;
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number">>`;
@@ -27,7 +28,7 @@ const listener: InteractionListener = Object.freeze({
 });
 
 function make_map() {
-  return hsonLiveMap.fromLibraries({
+  return admit_exact_runtime_livemap_libraries({
     state: { data: { count: 0 }, schema: StateSchema },
     page: { document: parse_hson_exact_runtime(`<main <button @${QUID}/>/>`, { allowTopLevelDocumentText: true }), schema: PageSchema },
   });
