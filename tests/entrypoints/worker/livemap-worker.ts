@@ -116,9 +116,9 @@ const provenanceCode: LiveMapDocumentIdentityProvenanceErrorCode = "FOREIGN_IDEN
 const installCode: LiveMapDocumentInstallFailureCode = "DUPLICATE_PRESERVED_CLAIMS";
 void new LiveMapDocumentIdentityProvenanceError(provenanceCode, installCode);
 
-const renameOp: LiveMapRenameOp | undefined = map.at([]).object.renameKey("ready", "renamed").ops[0] as LiveMapRenameOp;
+const renameOp: LiveMapRenameOp | undefined = map.at([]).asObject()!.renameKey("ready", "renamed").ops[0] as LiveMapRenameOp;
 const moveMap = hsonLiveMap.fromJson({ items: [1, 2] });
-const moveOp: LiveMapMoveOp | undefined = moveMap.at(["items"]).array.move(0, 1).ops[0] as LiveMapMoveOp;
+const moveOp: LiveMapMoveOp | undefined = moveMap.at(["items"]).asArray()!.move(0, 1).ops[0] as LiveMapMoveOp;
 const mutationCode: LiveMapProjectedMutationErrorCode = "OBJECT_RENAME_SOURCE_NOT_FOUND";
 const identityCode: LiveMapProjectedIdentityErrorCode = "PROJECTED_IDENTITY_INELIGIBLE";
 void renameOp;

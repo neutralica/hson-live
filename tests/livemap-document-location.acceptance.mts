@@ -194,7 +194,7 @@ check("coordinate inspection returns a detached logical path", () => {
 check("projected at behavior remains unchanged", () => {
   const map = hson.liveMap.fromJson({ items: ["first"] });
   assert.equal(map.at(["items", 0]).snap(), "first");
-  assert.equal(typeof map.at(["items"]).array.push, "function");
+  assert.equal(typeof map.at(["items"]).asArray()!.push, "function");
 });
 
 check("document namespace does not acquire an at surface", () => {

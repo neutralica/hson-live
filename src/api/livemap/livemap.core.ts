@@ -1283,7 +1283,7 @@ function make_livemap_core_from_compatibility_root(
   }
 
   function aggregate_write_ops(
-    write: Extract<LiveMapAggregateWrite, { kind: "set" | "replace" | "delete" }>,
+    write: Extract<LiveMapAggregateWrite, { kind: "set" | "replace" | "delete" | "splice" | "rename" | "move" }>,
     value: OrderedProjectedValue,
   ): readonly LiveMapCoreWriteOp[] {
     const path = clone_live_path(must_live_path(write.target.path));
@@ -1296,6 +1296,21 @@ function make_livemap_core_from_compatibility_root(
         path,
         value: must_ordered_projected_value(write.value, path),
       })];
+    }
+    if (write.kind === "splice") {
+      return [Object.freeze({
+        kind: "splice" as const,
+        path,
+        start: write.start,
+        deleteCount: write.deleteCount,
+        items: write.items,
+      })];
+    }
+    if (write.kind === "rename") {
+      return [Object.freeze({ kind: "rename" as const, path, from: write.from, to: write.to })];
+    }
+    if (write.kind === "move") {
+      return [Object.freeze({ kind: "move" as const, path, from: write.from, to: write.to })];
     }
     return [Object.freeze({ kind: "delete" as const, path })];
   }

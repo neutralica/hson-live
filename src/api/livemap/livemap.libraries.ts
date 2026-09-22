@@ -1,6 +1,6 @@
 import { clone_node } from "../../core/clone-node.js";
 import { register_echo_map_capability_internal } from "../../internal/echo-map-capability.js";
-import { is_Node } from "../../core/node-guards.js";
+import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { is_persisted_quid } from "../../core/persisted-quid.js";
 import type { HsonNode, JsonValue, Primitive } from "../../core/types.js";
 import type {
@@ -25,11 +25,14 @@ import type {
   LiveMapGraphCommit,
   LiveMapGraphOp,
   LiveMapMultiLibraryCommit,
+  LiveMapSetValue,
+  LiveMapWriteValue,
   LivePath,
 } from "../../types/livemap.types.js";
 import { hson_data_text_from_value } from "../data/hson-data.js";
 import { HsonSchema as HsonSchemaHandle } from "../schema/hson-schema.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
+import type { OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { ordered_projected_value_at } from "../../core/ordered-projected-value-mutation.js";
 import { hsonTransform } from "../transform/transform.facade.js";
 import { parse_hson } from "../transform/parsers/parse-hson.js";
@@ -62,6 +65,9 @@ import {
   decode_hosted_root,
 } from "./livemap.hosted.js";
 import { node_to_json_value } from "./livemap.editor.js";
+import { make_livemap_array_api } from "./livemap.handle-array.js";
+import { make_livemap_object_api } from "./livemap.handle-object.js";
+import type { LiveMapProjectedPropagation } from "./livemap.projected-propagation.js";
 
 type NamedLibrary = Readonly<{
   name: string;
@@ -283,7 +289,25 @@ function make_data_library(
     public_commit(commit) as LiveMapMultiLibraryCommit<string, LiveMapDataOp>;
   const handle = <TValue = JsonValue | undefined>(path: LivePath): LiveMapLibraryPathHandle<TValue> => {
     const stablePath = clone_live_path(must_live_path(path));
-    const facade: LiveMapLibraryPathHandle<TValue> = {
+    type DataCommit = LiveMapMultiLibraryCommit<string, LiveMapDataOp>;
+    const projectedRead = (targetPath: LivePath): OrderedProjectedValue | undefined => ordered_projected_value_at(
+      projected_value_from_hson_node(aggregate.root(library.identity)),
+      targetPath,
+    );
+    const projectedAuthority: LiveMapProjectedPropagation<DataCommit> = {
+      read: projectedRead,
+      feed: () => { throw new Error("Named Library shape helpers do not expose an internal feed."); },
+      commit: (ops) => public_data_commit(aggregate.commit(ops.map((op) => ({
+        target: aggregate.target(library.identity, op.path),
+        ...op,
+      })))),
+    };
+    const objectApi = make_livemap_object_api<TValue, DataCommit>({} as never, stablePath, projectedAuthority);
+    const arrayApi = make_livemap_array_api<TValue, DataCommit>({} as never, stablePath, projectedAuthority);
+    const objectCapabilities = omit_object_discriminant(objectApi);
+    const arrayCapabilities = omit_array_collisions(arrayApi);
+    const currentKind = () => classify_data_path_value(snap(stablePath));
+    const facade = {
       get rev() { return aggregate.inspect().revision; },
       path: () => clone_live_path(stablePath),
       snap: () => snap(stablePath) as TValue,
@@ -295,12 +319,12 @@ function make_data_library(
         return value === undefined ? undefined : hson_data_text_from_value(value);
       },
       at: ((child: LivePath) => handle([...stablePath, ...must_live_path(child)])) as unknown as LiveMapLibraryPathHandle<TValue>["at"],
-      set: (value) => public_data_commit(aggregate.commit([{
+      set: (value: LiveMapSetValue<TValue>) => public_data_commit(aggregate.commit([{
         target: aggregate.target(library.identity, stablePath),
         kind: "set",
         value: must_json_value(value, stablePath),
       }])),
-      replace: (value) => public_data_commit(aggregate.commit([{
+      replace: (value: LiveMapWriteValue<TValue>) => public_data_commit(aggregate.commit([{
         target: aggregate.target(library.identity, stablePath),
         kind: "replace",
         value: must_json_value(value, stablePath),
@@ -309,13 +333,20 @@ function make_data_library(
         target: aggregate.target(library.identity, stablePath),
         kind: "delete",
       }])),
-      update: (updater) => public_data_commit(aggregate.commit([{
+      update: (updater: (value: TValue) => LiveMapSetValue<TValue>) => public_data_commit(aggregate.commit([{
         target: aggregate.target(library.identity, stablePath),
         kind: "set",
         value: must_json_value(updater(snap(stablePath) as TValue), stablePath),
       }])),
+      kind: currentKind,
+      present: () => currentKind() === "missing" ? undefined : handle<Exclude<TValue, undefined>>(stablePath),
+      asObject: () => currentKind() === "object" ? handle<TValue>(stablePath) : undefined,
+      asArray: () => currentKind() === "array" ? handle<TValue>(stablePath) : undefined,
+      asScalar: () => currentKind() === "scalar" ? handle<TValue>(stablePath) : undefined,
+      ...(currentKind() === "object" ? objectCapabilities : {}),
+      ...(currentKind() === "array" ? arrayCapabilities : {}),
     };
-    return Object.freeze(facade);
+    return Object.freeze(facade) as unknown as LiveMapLibraryPathHandle<TValue>;
   };
 
   function library_snap(): JsonValue | undefined;
@@ -338,6 +369,27 @@ function make_data_library(
     schema: Object.freeze({ get: () => library.input.schema }),
   };
   return Object.freeze(facade);
+}
+
+function classify_data_path_value(value: JsonValue | undefined): import("../../types/livemap.types.js").LiveMapPathKind {
+  if (value === undefined) return "missing";
+  if (Array.isArray(value)) return "array";
+  if (typeof value === "object" && value !== null) return "object";
+  return "scalar";
+}
+
+function omit_object_discriminant<TValue, TCommit>(
+  api: ReturnType<typeof make_livemap_object_api<TValue, TCommit>>,
+) {
+  const { is: _is, ...capabilities } = api;
+  return capabilities;
+}
+
+function omit_array_collisions<TValue, TCommit>(
+  api: ReturnType<typeof make_livemap_array_api<TValue, TCommit>>,
+) {
+  const { is: _is, at: _at, replace: _replace, ...capabilities } = api;
+  return capabilities;
 }
 
 function make_document_library(
@@ -499,6 +551,22 @@ function make_document_library(
       id: (value: string) => {
         const found = raw.id(value);
         return found === undefined ? undefined : wrap_location(found);
+      },
+      kind: () => {
+        const value = raw.snap();
+        if (value === undefined) return "missing" as const;
+        if (is_ordinary_element_node(value)) return "element" as const;
+        return is_Node(value) ? "root" as const : "text" as const;
+      },
+      present: () => raw.snap() === undefined ? undefined : wrap_location(raw),
+      asElement: () => is_ordinary_element_node(raw.snap()) ? wrap_location(raw) : undefined,
+      asRoot: () => {
+        const value = raw.snap();
+        return is_Node(value) && !is_ordinary_element_node(value) ? wrap_location(raw) : undefined;
+      },
+      asText: () => {
+        const value = raw.snap();
+        return value !== undefined && !is_Node(value) ? wrap_location(raw) : undefined;
       },
       replace: (value: LiveMapDocumentContent) => multi_commit(raw.replace(value)),
       delete: () => multi_commit(raw.delete()),

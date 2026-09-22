@@ -56,13 +56,13 @@ export type LiveMapProjectedFeedEvent = Readonly<{
   ops: readonly LiveMapProjectedDataOp[];
 }>;
 
-export type LiveMapProjectedPropagation = Readonly<{
+export type LiveMapProjectedPropagation<TCommit = LiveMapCommit> = Readonly<{
   read: (path: LivePath) => OrderedProjectedValue | undefined;
   feed: (
     path: LivePath,
     listener: (event: LiveMapProjectedFeedEvent) => void,
   ) => LiveMapDisposer;
-  commit: (ops: readonly LiveMapProjectedPropagationWrite[]) => LiveMapCommit;
+  commit: (ops: readonly LiveMapProjectedPropagationWrite[]) => TCommit;
 }>;
 
 const projectedPropagation = new WeakMap<object, LiveMapProjectedPropagation>();

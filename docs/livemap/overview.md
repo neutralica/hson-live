@@ -336,7 +336,7 @@ Examples:
 
 ```ts
 map.snap(["profile", "name"]);
-map.at(["profile"]).object.hasKey("nickname");
+map.at(["profile"]).hasKey("nickname");
 ```
 
 Reads do not mutate the graph or advance the revision.
@@ -576,9 +576,9 @@ Array operations must maintain:
 Conceptually:
 
 ```ts
-map.array(["items"]).push(item);
-map.array(["items"]).remove(2);
-map.array(["items"]).move(4, 1);
+map.at(["items"]).push(item);
+map.at(["items"]).remove(2);
+map.at(["items"]).move(4, 1);
 ```
 
 A move is structurally different from deleting and recreating an item when graph identity can be preserved.

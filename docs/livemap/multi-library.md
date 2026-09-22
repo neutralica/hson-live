@@ -10,6 +10,7 @@ const map = hsonLiveMap.fromLibraries({
 });
 
 map.lib("colors").at(["primary"]).set("green");
+map.lib("state").at([]).setKey("ready", true);
 ```
 
 Each entry has exactly one ingress field:
@@ -19,7 +20,26 @@ Each entry has exactly one ingress field:
 
 Every Library requires `schema`. Initial material is validated during construction. The Hson Schema generator augments each Schema declaration with private evidence, so `SchemaType<typeof ColorsSchema>` supplies the selected data and handle types; callers do not pass a duplicate type parameter.
 
-`map.lib(name)` accepts only the literal names in the static registry. A selected data Library has `root()`, `snap()`, `at(path)`, and `schema.get()`. Its Handle paths are relative to that Library, so nested Handle operations never repeat the library name. A selected document Library retains its normal document, capture, and schema APIs. `hsonMirror(map.lib("page"))` binds one named document Library and stays attached across unrelated global revisions and recovery replacement.
+`map.lib(name)` accepts only the literal names in the static registry and is the
+semantic narrowing boundary. A selected data Library has `root()`, `snap()`,
+`at(path)`, and `schema.get()`; a selected document Library has document-wide
+observation/identity operations plus logical `at(path)` locations. No second
+`.data` or `.document` selection is required. Handle paths are relative to that
+Library, so nested operations never repeat the library name.
+
+For generated Schema evidence, `library.at(path)` derives its capability set
+from the existing path-value resolver. Object operations (`setKey`, `setMany`,
+`renameKey`, and related reads), array operations (`push`, `splice`, `insert`,
+`move`, and related reads), and scalar replacement appear directly on the
+appropriate handle. Optional, union-shaped, broad, or ungoverned endpoints use
+`present()`, `asObject()`, `asArray()`, or `asScalar()`. Runtime-refined
+capabilities re-check the current occupant on every operation, so a retained
+array refinement cannot mutate an endpoint that has since become an object.
+
+Document element locations expose `attrs`, `flags`, insertion, and movement;
+text/content locations do not expose those element-only capabilities.
+`hsonMirror(map.lib("page"))` binds one named document Library and stays
+attached across unrelated global revisions and recovery replacement.
 
 Multi-library mutations return `LiveMapMultiLibraryCommit`. It holds one map-wide `prevRev`/`rev` transition and one ordered `operations` array. Every operation is `{ library, operation }`; the library name is public and the engine's opaque library identity is never exposed. A hosted Locus retains that same one global revision and ordered commit stream.
 

@@ -1,8 +1,18 @@
 // handle-api.ts
 
 import type { JsonValue } from "../../core/types.js";
-import type { LiveMapCommit, LiveMapCore, LiveMapDisposer, LiveMapPathHandle, LivePath } from "../../types/livemap.types.js";
-import { must_json_value, must_live_path, must_set_many_values } from "./livemap.guard.js";
+import type {
+  LiveMapArrayPathHandle,
+  LiveMapCommit,
+  LiveMapCore,
+  LiveMapDisposer,
+  LiveMapObjectPathHandle,
+  LiveMapPathHandle,
+  LiveMapPathKind,
+  LiveMapScalarPathHandle,
+  LivePath,
+} from "../../types/livemap.types.js";
+import { must_json_value, must_live_path } from "./livemap.guard.js";
 import { make_livemap_array_api } from "./livemap.handle-array.js";
 import { make_livemap_object_api } from "./livemap.handle-object.js";
 import { clone_live_path, format_live_path, parent_live_path, path_is_prefix } from "./livemap.path.js";
@@ -68,8 +78,13 @@ export function make_livemap_path_handle<TValue = JsonValue | undefined>(
   watch: (listener: (next: TValue) => void) => LiveMapDisposer,
 ): LiveMapPathHandle<TValue> {
   const handlePath = must_live_path(path);
+  const objectApi = make_livemap_object_api<TValue>(core, handlePath);
+  const arrayApi = make_livemap_array_api<TValue>(core, handlePath);
+  const currentKind = (): LiveMapPathKind => classify_path_value(core.snap(handlePath));
+  const objectCapabilities = omit_object_discriminant(objectApi);
+  const arrayCapabilities = omit_array_collisions(arrayApi);
 
-  const handle: LiveMapPathHandle<TValue> = {
+  const handle = {
     get rev() { return core.rev; },
     path: () => clone_live_path(handlePath),
     snap: () => core.snap(handlePath) as TValue,
@@ -80,11 +95,21 @@ export function make_livemap_path_handle<TValue = JsonValue | undefined>(
     at: ((path: LivePath) => core.at([...handlePath, ...must_live_path(path)])) as unknown as LiveMapPathHandle<TValue>["at"],
     set: (value) => core.set(handlePath, must_json_value(value, handlePath)),
     replace: (value) => core.replace(handlePath, must_json_value(value, handlePath)),
-    setMany: (values) => core.setMany(handlePath, must_set_many_values(values, handlePath)),
     delete: () => core.delete(handlePath),
     update: (updater) => core.set(handlePath, must_json_value(updater(core.snap(handlePath) as TValue), handlePath)),
-    array: make_livemap_array_api(core, handlePath),
-    object: make_livemap_object_api<TValue>(core, handlePath),
+    kind: currentKind,
+    present: () => currentKind() === "missing"
+      ? undefined
+      : make_livemap_path_handle<Exclude<TValue, undefined>>(core, handlePath, watch as never),
+    asObject: () => currentKind() === "object"
+      ? make_livemap_path_handle<TValue>(core, handlePath, watch) as unknown as LiveMapObjectPathHandle<TValue>
+      : undefined,
+    asArray: () => currentKind() === "array"
+      ? make_livemap_path_handle<TValue>(core, handlePath, watch) as unknown as LiveMapArrayPathHandle<TValue>
+      : undefined,
+    asScalar: () => currentKind() === "scalar"
+      ? make_livemap_path_handle<TValue>(core, handlePath, watch) as LiveMapScalarPathHandle<TValue>
+      : undefined,
     feed: (listener) => core.feed(handlePath, listener),
     watch,
     linkTo: (target) => {
@@ -157,10 +182,29 @@ export function make_livemap_path_handle<TValue = JsonValue | undefined>(
       write_link_target(target, event.value, event.op.kind === "replace" ? "replace" : "set");
       });
     },
-  };
+    ...(currentKind() === "object" ? objectCapabilities : {}),
+    ...(currentKind() === "array" ? arrayCapabilities : {}),
+  } as LiveMapPathHandle<TValue>;
 
   pathHandleInternals.set(handle, { core, path: handlePath });
   return handle;
+}
+
+function classify_path_value(value: JsonValue | undefined): LiveMapPathKind {
+  if (value === undefined) return "missing";
+  if (Array.isArray(value)) return "array";
+  if (typeof value === "object" && value !== null) return "object";
+  return "scalar";
+}
+
+function omit_object_discriminant<TValue>(api: ReturnType<typeof make_livemap_object_api<TValue>>) {
+  const { is: _is, ...capabilities } = api;
+  return capabilities;
+}
+
+function omit_array_collisions<TValue>(api: ReturnType<typeof make_livemap_array_api<TValue>>) {
+  const { is: _is, at: _at, replace: _replace, ...capabilities } = api;
+  return capabilities;
 }
 
 function write_projected_handle_link(

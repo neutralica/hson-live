@@ -792,6 +792,67 @@ type InternalDocumentResolveRootBranches<
   ? InternalDocumentResolveRootBranch<TEvidence, TPath>
   : never;
 
+type InternalDocumentMaterializedItem<TItem> =
+  TItem extends Primitive
+    ? Readonly<{ kind: "text" }>
+    : TItem extends Readonly<{ $_tag: "_hson_str" }>
+      ? Readonly<{ kind: "text" }>
+      : TItem extends Readonly<{
+          $_tag: infer TTag extends string;
+          $_content: infer TContent extends readonly unknown[];
+        }>
+        ? TTag extends "_hson_root" | "_hson_elem"
+          ? InternalDocumentBroadSubtree
+          : Readonly<{
+              kind: "element";
+              attrs: "broad";
+              content: InternalDocumentMaterializedContent<TContent>;
+            }>
+        : InternalDocumentBroadSubtree;
+
+type InternalDocumentMaterializedContentItems<TContent extends readonly unknown[]> =
+  number extends TContent["length"]
+    ? readonly InternalDocumentMaterializedItem<TContent[number]>[]
+    : TContent extends readonly [infer THead, ...infer TTail]
+      ? THead extends Readonly<{
+          $_tag: "_hson_elem";
+          $_content: infer TCluster extends readonly unknown[];
+        }>
+        ? readonly [
+            ...InternalDocumentMaterializedContentItems<TCluster>,
+            ...InternalDocumentMaterializedContentItems<TTail>,
+          ]
+        : readonly [
+            InternalDocumentMaterializedItem<THead>,
+            ...InternalDocumentMaterializedContentItems<TTail>,
+          ]
+      : readonly [];
+
+type InternalDocumentMaterializedContent<TContent extends readonly unknown[]> = Readonly<{
+  kind: "sequence";
+  items: InternalDocumentMaterializedContentItems<TContent>;
+}>;
+
+type InternalDocumentMaterializedRootDescriptor<TEvidence> =
+  TEvidence extends Readonly<{
+    $_tag: "_hson_root";
+    $_content: infer TContent extends readonly unknown[];
+  }>
+    ? TContent extends readonly [infer TOnly]
+      ? InternalDocumentMaterializedItem<TOnly>
+      : InternalDocumentRootDescriptor<Readonly<{
+          kind: "document";
+          content: InternalDocumentMaterializedContent<TContent>;
+        }>>
+    : InternalDocumentRootDescriptor<TEvidence>;
+
+type InternalDocumentResolveRootDescriptorPath<
+  TDescriptor,
+  TPath extends readonly number[],
+> = TDescriptor extends InternalDocumentRootDescriptor<infer TEvidence>
+  ? InternalDocumentNormalizeBranches<InternalDocumentResolveRootBranches<TEvidence, TPath>>
+  : InternalDocumentDescendItem<TDescriptor, TPath>;
+
 type InternalDocumentLogicalPathDescriptor<
   TEvidence,
   TPath extends readonly number[],
@@ -799,11 +860,11 @@ type InternalDocumentLogicalPathDescriptor<
   ? InternalDocumentUnschematized
   : number extends TPath["length"]
     ? InternalDocumentBroadSubtree
-    : TPath extends readonly []
-      ? InternalDocumentRootDescriptor<TEvidence>
-      : InternalDocumentNormalizeBranches<
-        InternalDocumentResolveRootBranches<TEvidence, TPath>
-      >;
+    : InternalDocumentMaterializedRootDescriptor<TEvidence> extends infer TRootDescriptor
+      ? TPath extends readonly []
+        ? TRootDescriptor
+        : InternalDocumentResolveRootDescriptorPath<TRootDescriptor, TPath>
+      : never;
 
 type InternalDocumentDescriptorEndpoint<TDescriptor> =
   TDescriptor extends InternalDocumentInvalidStaticPath
@@ -1406,6 +1467,15 @@ export type LiveMapMultiLibraryCommit<
 export type LiveMapLibraryPathHandle<
   TValue = JsonValue | undefined,
   TLibrary extends string = string,
+> = LiveMapLibraryPathHandleBase<TValue, TLibrary> & LiveMapPathCapabilities<
+  TValue,
+  LiveMapMultiLibraryCommit<TLibrary, LiveMapDataOp>,
+  LiveMapLibraryPathHandleBase<TValue, TLibrary>
+>;
+
+type LiveMapLibraryPathHandleBase<
+  TValue,
+  TLibrary extends string,
 > = Readonly<{
   readonly rev: number;
   path: () => LivePath;
@@ -1419,7 +1489,25 @@ export type LiveMapLibraryPathHandle<
   replace: (value: LiveMapWriteValue<TValue>) => LiveMapMultiLibraryCommit<TLibrary, LiveMapDataOp>;
   delete: () => LiveMapMultiLibraryCommit<TLibrary, LiveMapDataOp>;
   update: (updater: (value: TValue) => LiveMapSetValue<TValue>) => LiveMapMultiLibraryCommit<TLibrary, LiveMapDataOp>;
+  /** Observe the current runtime endpoint category. This is not permanent proof. */
+  kind: () => LiveMapPathKind;
+  /** Refine a currently present endpoint. Every acquired capability revalidates before use. */
+  present: () => LiveMapLibraryPathHandle<Exclude<TValue, undefined>, TLibrary> | undefined;
+  asObject: () => LiveMapLibraryObjectPathHandle<LiveMapObjectBranch<TValue>, TLibrary> | undefined;
+  asArray: () => LiveMapLibraryArrayPathHandle<LiveMapArrayBranch<TValue>, TLibrary> | undefined;
+  asScalar: () => LiveMapLibraryScalarPathHandle<LiveMapScalarBranch<TValue>, TLibrary> | undefined;
 }>;
+
+export type LiveMapLibraryObjectPathHandle<TValue, TLibrary extends string> =
+  LiveMapLibraryPathHandleBase<TValue, TLibrary>
+  & LiveMapPathObjectCapabilities<TValue, LiveMapMultiLibraryCommit<TLibrary, LiveMapDataOp>>;
+
+export type LiveMapLibraryArrayPathHandle<TValue, TLibrary extends string> =
+  LiveMapLibraryPathHandleBase<TValue, TLibrary>
+  & LiveMapPathArrayCapabilities<TValue, LiveMapMultiLibraryCommit<TLibrary, LiveMapDataOp>>;
+
+export type LiveMapLibraryScalarPathHandle<TValue, TLibrary extends string> =
+  LiveMapLibraryPathHandleBase<TValue, TLibrary>;
 
 /** Read authority for one selected data Library. */
 export type LiveMapDataLibrary<
@@ -1473,7 +1561,18 @@ type LiveMapLibraryDocumentLocation<
   TLibrary extends string,
   TValue = InternalDocumentLegacyEndpoint,
   TDescriptor = unknown,
-> = Readonly<{
+> = Readonly<LiveMapLibraryDocumentLocationBase<TLibrary, TValue, TDescriptor>
+  & ([TDescriptor] extends [Readonly<{ kind: "element" }>]
+    ? LiveMapLibraryDocumentElementCapabilities<TLibrary, TDescriptor>
+    : [TDescriptor] extends [InternalDocumentRootDescriptor<unknown>]
+      ? LiveMapLibraryDocumentContentCapabilities<TLibrary, TDescriptor>
+      : Readonly<Record<never, never>>) >;
+
+interface LiveMapLibraryDocumentLocationBase<
+  TLibrary extends string,
+  TValue,
+  TDescriptor,
+> {
   readonly rev: number;
   path: () => readonly number[];
   snap: () => TValue;
@@ -1492,13 +1591,21 @@ type LiveMapLibraryDocumentLocation<
     InternalDocumentResolveDescriptorPath<TDescriptor, TPath>
   >;
   id: (value: string) => LiveMapLibraryDocumentLocation<TLibrary> | undefined;
+  kind: () => "missing" | "root" | "element" | "text";
+  present: () => LiveMapLibraryDocumentLocation<TLibrary, Exclude<TValue, undefined>, TDescriptor> | undefined;
+  asElement: () => LiveMapLibraryDocumentElementLocation<TLibrary, TValue, TDescriptor> | undefined;
+  asRoot: () => LiveMapLibraryDocumentRootLocation<TLibrary, TValue, TDescriptor> | undefined;
+  asText: () => LiveMapLibraryDocumentTextLocation<TLibrary, TValue, TDescriptor> | undefined;
   replace: (
     value: InternalDocumentWritableItem<TDescriptor>,
   ) => LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceContentOp>;
   delete: () => LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphRemoveContentOp>;
-  insert: (index: number, value: InternalDocumentInsertItem<TDescriptor>) =>
-    LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphInsertContentOp>;
-  move: (from: number, to: number) => LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphMoveContentOp>;
+}
+
+type LiveMapLibraryDocumentElementCapabilities<
+  TLibrary extends string,
+  TDescriptor,
+> = LiveMapLibraryDocumentContentCapabilities<TLibrary, TDescriptor> & Readonly<{
   attrs: InternalDocumentLocationAttrsEvidence<TDescriptor> extends infer TAttrs
     ? Readonly<{
         get: <const TName extends InternalAttrsName<TAttrs>>(name: TName) => InternalAttrRead<TAttrs, TName>;
@@ -1538,6 +1645,35 @@ type LiveMapLibraryDocumentLocation<
       }>
     : never;
 }>;
+
+type LiveMapLibraryDocumentContentCapabilities<
+  TLibrary extends string,
+  TDescriptor,
+> = Readonly<{
+  insert: (index: number, value: InternalDocumentInsertItem<TDescriptor>) =>
+    LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphInsertContentOp>;
+  move: (from: number, to: number) => LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphMoveContentOp>;
+}>;
+
+type LiveMapLibraryDocumentElementLocation<
+  TLibrary extends string,
+  TValue,
+  TDescriptor,
+> = Readonly<LiveMapLibraryDocumentLocationBase<TLibrary, TValue, TDescriptor>
+  & LiveMapLibraryDocumentElementCapabilities<TLibrary, TDescriptor>>;
+
+type LiveMapLibraryDocumentTextLocation<
+  TLibrary extends string,
+  TValue,
+  TDescriptor,
+> = Readonly<LiveMapLibraryDocumentLocationBase<TLibrary, TValue, TDescriptor>>;
+
+type LiveMapLibraryDocumentRootLocation<
+  TLibrary extends string,
+  TValue,
+  TDescriptor,
+> = Readonly<LiveMapLibraryDocumentLocationBase<TLibrary, TValue, TDescriptor>
+  & LiveMapLibraryDocumentContentCapabilities<TLibrary, TDescriptor>>;
 
 /** One selected named document authority. Its writes retain the map-global commit envelope. */
 export type LiveMapDocumentLibrary<
@@ -1949,7 +2085,9 @@ export type LiveMapArrayItem<TValue> = LiveMapArrayShape<TValue> extends readonl
 
 export type LiveMapArrayWriteItem<TValue> = LiveMapWriteValue<LiveMapArrayItem<TValue>>;
 
-export type LiveMapPathHandle<TValue = JsonValue | undefined> = Readonly<{
+export type LiveMapPathKind = "missing" | "object" | "array" | "scalar";
+
+interface LiveMapPathHandleBase<TValue = JsonValue | undefined> {
   /** Current revision of the owning LiveMap. */
   readonly rev: number;
   path: () => LivePath;
@@ -1964,20 +2102,77 @@ export type LiveMapPathHandle<TValue = JsonValue | undefined> = Readonly<{
   set: (value: LiveMapSetValue<TValue>) => LiveMapCommit<LiveMapDataOp>;
   /** Exact replacement at this handle path using replace-shaped commit ops. */
   replace: (value: LiveMapWriteValue<TValue>) => LiveMapCommit<LiveMapDataOp>;
-  /** Shallow object set below this handle path, preserving unspecified siblings. */
-  setMany: (values: NoInfer<LiveMapObjectSetManyValues<TValue>>) => LiveMapCommit<LiveMapDataOp>;
   /** Delete this handle path. */
   delete: () => LiveMapCommit<LiveMapDataOp>;
   update: (updater: (value: TValue) => LiveMapSetValue<TValue>) => LiveMapCommit<LiveMapDataOp>;
-  array: LiveMapPathArrayApi<TValue>;
-  object: LiveMapPathObjectApi<TValue>;
+  /** Observe the current runtime endpoint category. This is not permanent proof. */
+  kind: () => LiveMapPathKind;
+  /** Refine a currently present endpoint. Every acquired capability revalidates before use. */
+  present: () => LiveMapPathHandle<Exclude<TValue, undefined>> | undefined;
+  asObject: () => LiveMapObjectPathHandle<LiveMapObjectBranch<TValue>> | undefined;
+  asArray: () => LiveMapArrayPathHandle<LiveMapArrayBranch<TValue>> | undefined;
+  asScalar: () => LiveMapScalarPathHandle<LiveMapScalarBranch<TValue>> | undefined;
   feed: (listener: LiveMapFeedListener) => LiveMapDisposer;
   /** Observe future canonical value changes and explicit snapshot replacement. */
   watch: (listener: (next: TValue) => void) => LiveMapDisposer;
-  linkTo: (target: LiveMapPathHandle) => LiveMapDisposer;
-}>;
+  linkTo: (target: LiveMapPathHandleBase) => LiveMapDisposer;
+}
 
-export type LiveMapPathObjectApi<TValue = JsonValue | undefined> = Readonly<{
+type LiveMapCanonicalShape<TValue> =
+  TValue extends undefined ? "missing"
+    : TValue extends Primitive ? "scalar"
+      : TValue extends readonly unknown[] ? "array"
+        : TValue extends object ? "object"
+          : "scalar";
+
+type LiveMapObjectBranch<TValue> = TValue extends Primitive | undefined
+  ? never
+  : TValue extends readonly unknown[]
+    ? never
+    : TValue extends object ? TValue : never;
+
+type LiveMapArrayBranch<TValue> = TValue extends readonly unknown[] ? TValue : never;
+
+type LiveMapScalarBranch<TValue> = TValue extends Primitive ? TValue : never;
+
+type LiveMapShapeDomain<TValue> = unknown extends TValue
+  ? LiveMapPathKind
+  : TValue extends unknown ? LiveMapCanonicalShape<TValue> : never;
+
+type LiveMapPathCapabilities<TValue, TCommit, TBase> =
+  [LiveMapShapeDomain<TValue>] extends ["object"]
+    ? LiveMapPathObjectCapabilities<TValue, TCommit>
+    : [LiveMapShapeDomain<TValue>] extends ["array"]
+      ? LiveMapPathArrayCapabilities<TValue, TCommit>
+      : TBase;
+
+export type LiveMapPathObjectCapabilities<TValue, TCommit = LiveMapCommit<LiveMapDataOp>> = Omit<
+  LiveMapPathObjectApi<TValue, TCommit>,
+  "is"
+>;
+
+export type LiveMapPathArrayCapabilities<TValue, TCommit = LiveMapCommit<LiveMapDataOp>> = Omit<
+  LiveMapPathArrayApi<TValue, TCommit>,
+  "is" | "at" | "replace"
+>;
+
+export type LiveMapObjectPathHandle<TValue = Readonly<Record<string, JsonValue>>> =
+  LiveMapPathHandleBase<TValue> & LiveMapPathObjectCapabilities<TValue>;
+
+export type LiveMapArrayPathHandle<TValue = readonly JsonValue[]> =
+  LiveMapPathHandleBase<TValue> & LiveMapPathArrayCapabilities<TValue>;
+
+export type LiveMapScalarPathHandle<TValue = Primitive> = LiveMapPathHandleBase<TValue>;
+
+export type LiveMapPathHandle<TValue = JsonValue | undefined> = Readonly<
+  LiveMapPathHandleBase<TValue>
+  & LiveMapPathCapabilities<TValue, LiveMapCommit<LiveMapDataOp>, LiveMapPathHandleBase<TValue>>
+>;
+
+export type LiveMapPathObjectApi<
+  TValue = JsonValue | undefined,
+  TCommit = LiveMapCommit<LiveMapDataOp>,
+> = Readonly<{
   is: () => boolean;
   toObject: () => LiveMapObjectShape<TValue>;
   pick: <const TKeys extends readonly string[]>(keys: TKeys) => Pick<LiveMapObjectShape<TValue>, Extract<TKeys[number], keyof LiveMapObjectShape<TValue>>>;
@@ -1990,13 +2185,13 @@ export type LiveMapPathObjectApi<TValue = JsonValue | undefined> = Readonly<{
   values: () => readonly LiveMapObjectShape<TValue>[LiveMapObjectKey<TValue>][];
   entries: () => readonly LiveMapObjectEntry<TValue>[];
   /** Set one child key under this object path, creating that key if needed. */
-  setKey: <const TKey extends LiveMapObjectKey<TValue>>(key: TKey, value: NoInfer<LiveMapObjectSetValue<TValue, TKey>>) => LiveMapCommit<LiveMapDataOp>;
+  setKey: <const TKey extends LiveMapObjectKey<TValue>>(key: TKey, value: NoInfer<LiveMapObjectSetValue<TValue, TKey>>) => TCommit;
   /** Shallow child-key writes under this object path, preserving unspecified siblings. */
-  setMany: (values: NoInfer<LiveMapObjectSetManyValues<TValue>>) => LiveMapCommit<LiveMapDataOp>,
-  clear: () => LiveMapCommit<LiveMapDataOp>;
-  deleteKey: (key: string) => LiveMapCommit<LiveMapDataOp>;
-  deleteMany: (keys: readonly string[]) => LiveMapCommit<LiveMapDataOp>;
-  renameKey: (fromKey: string, toKey: string) => LiveMapCommit<LiveMapDataOp>;
+  setMany: (values: NoInfer<LiveMapObjectSetManyValues<TValue>>) => TCommit,
+  clear: () => TCommit;
+  deleteKey: (key: string) => TCommit;
+  deleteMany: (keys: readonly string[]) => TCommit;
+  renameKey: (fromKey: string, toKey: string) => TCommit;
 }>;
 /**
  * Array-scoped helper API.
@@ -2004,7 +2199,10 @@ export type LiveMapPathObjectApi<TValue = JsonValue | undefined> = Readonly<{
  * Helpers require the array path itself to resolve. Array move retains semantic
  * movement intent; other whole-array transformations may use endpoint writes.
  */
-export type LiveMapPathArrayApi<TValue = JsonValue | undefined> = Readonly<{
+export type LiveMapPathArrayApi<
+  TValue = JsonValue | undefined,
+  TCommit = LiveMapCommit<LiveMapDataOp>,
+> = Readonly<{
   is: () => boolean;
   toArray: () => LiveMapArrayShape<TValue>;
   slice: (start?: number, end?: number) => LiveMapArrayShape<TValue>;
@@ -2019,24 +2217,24 @@ export type LiveMapPathArrayApi<TValue = JsonValue | undefined> = Readonly<{
   last: () => LiveMapArrayItem<TValue>;
   includes: (value: JsonValue) => boolean;
   indexOf: (value: JsonValue) => number;
-  push: (value: NoInfer<LiveMapArrayWriteItem<TValue>>) => LiveMapCommit<LiveMapDataOp>;
-  pushMany: (values: readonly NoInfer<LiveMapArrayWriteItem<TValue>>[]) => LiveMapCommit<LiveMapDataOp>;
-  unshift: (value: NoInfer<LiveMapArrayWriteItem<TValue>>) => LiveMapCommit<LiveMapDataOp>;
-  unshiftMany: (values: readonly NoInfer<LiveMapArrayWriteItem<TValue>>[]) => LiveMapCommit<LiveMapDataOp>;
-  pop: () => LiveMapCommit<LiveMapDataOp>;
-  shift: () => LiveMapCommit<LiveMapDataOp>;
-  clear: () => LiveMapCommit<LiveMapDataOp>;
-  reverse: () => LiveMapCommit<LiveMapDataOp>;
-  sortNumbers: (direction?: LiveMapSortDirection) => LiveMapCommit<LiveMapDataOp>;
-  sortStrings: (direction?: LiveMapSortDirection) => LiveMapCommit<LiveMapDataOp>;
-  splice: (...args: [start: number] | [start: number, deleteCount: number, ...items: NoInfer<LiveMapArrayWriteItem<TValue>>[]]) => LiveMapCommit<LiveMapDataOp>;
-  insert: (index: number, value: NoInfer<LiveMapArrayWriteItem<TValue>>) => LiveMapCommit<LiveMapDataOp>;
-  remove: (index: number) => LiveMapCommit<LiveMapDataOp>;
-  replace: (index: number, value: NoInfer<LiveMapArrayWriteItem<TValue>>) => LiveMapCommit<LiveMapDataOp>;
-  move: (fromIndex: number, toIndex: number) => LiveMapCommit<LiveMapDataOp>;
-  unique: () => LiveMapCommit<LiveMapDataOp>;
-  removeValue: (value: JsonValue) => LiveMapCommit<LiveMapDataOp>;
-  removeAll: (value: JsonValue) => LiveMapCommit<LiveMapDataOp>;
+  push: (value: NoInfer<LiveMapArrayWriteItem<TValue>>) => TCommit;
+  pushMany: (values: readonly NoInfer<LiveMapArrayWriteItem<TValue>>[]) => TCommit;
+  unshift: (value: NoInfer<LiveMapArrayWriteItem<TValue>>) => TCommit;
+  unshiftMany: (values: readonly NoInfer<LiveMapArrayWriteItem<TValue>>[]) => TCommit;
+  pop: () => TCommit;
+  shift: () => TCommit;
+  clear: () => TCommit;
+  reverse: () => TCommit;
+  sortNumbers: (direction?: LiveMapSortDirection) => TCommit;
+  sortStrings: (direction?: LiveMapSortDirection) => TCommit;
+  splice: (...args: [start: number] | [start: number, deleteCount: number, ...items: NoInfer<LiveMapArrayWriteItem<TValue>>[]]) => TCommit;
+  insert: (index: number, value: NoInfer<LiveMapArrayWriteItem<TValue>>) => TCommit;
+  remove: (index: number) => TCommit;
+  replace: (index: number, value: NoInfer<LiveMapArrayWriteItem<TValue>>) => TCommit;
+  move: (fromIndex: number, toIndex: number) => TCommit;
+  unique: () => TCommit;
+  removeValue: (value: JsonValue) => TCommit;
+  removeAll: (value: JsonValue) => TCommit;
 }>;
 
 export type HsonSchemaIssueCode =

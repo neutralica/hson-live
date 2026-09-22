@@ -38,7 +38,7 @@ function check(name: string, run: () => void): void {
 const map = (value: Parameters<typeof hson.liveMap.fromJson>[0]) => hson.liveMap.fromJson(value);
 const moved = (items: readonly unknown[], from: number, to: number) => {
   const target = map({ items } as never);
-  const commit = target.at(["items"]).array.move(from, to);
+  const commit = target.at(["items"]).asArray()!.move(from, to);
   return { target, commit };
 };
 
@@ -105,20 +105,20 @@ check("unsafe destination integers reject", () => {
 check("out-of-range source rejects atomically", () => {
   const target = map({ items: [1, 2] });
   const before = target.capture();
-  assert.throws(() => target.at(["items"]).array.move(2, 0));
+  assert.throws(() => target.at(["items"]).asArray()!.move(2, 0));
   assert.deepEqual(target.capture(), before);
 });
 
 check("out-of-range destination rejects atomically", () => {
   const target = map({ items: [1, 2] });
   const before = target.capture();
-  assert.throws(() => target.at(["items"]).array.move(0, 2));
+  assert.throws(() => target.at(["items"]).asArray()!.move(0, 2));
   assert.deepEqual(target.capture(), before);
 });
 
 check("nested ordered objects move without rematerialization", () => {
   const target = map('{"items":[{"10":10,"2":2,"1":1},{"kept":true}]}');
-  target.at(["items"]).array.move(0, 1);
+  target.at(["items"]).asArray()!.move(0, 1);
   assert.equal(target.capture().payload, map('{"items":[{"kept":true},{"10":10,"2":2,"1":1}]}').capture().payload);
 });
 
@@ -130,7 +130,7 @@ check("moved values preserve positive and negative zero", () => {
 
 check("dangerous keys inside a moved object remain data", () => {
   const target = map('{"items":[{"__proto__":1,"constructor":2},false]}');
-  target.at(["items"]).array.move(0, 1);
+  target.at(["items"]).asArray()!.move(0, 1);
   assert.equal(target.capture().payload, map('{"items":[false,{"__proto__":1,"constructor":2}]}').capture().payload);
 });
 
@@ -140,7 +140,7 @@ check("an array inside an object moves as one subtree", () => {
 
 check("move replay closes to the exact graph", () => {
   const source = map({ items: [{ value: 1 }, { value: 2 }, { value: 3 }] });
-  const commit = source.at(["items"]).array.move(0, 2);
+  const commit = source.at(["items"]).asArray()!.move(0, 2);
   const target = map({ items: [{ value: 1 }, { value: 2 }, { value: 3 }] });
   target.replay(commit);
   assert.equal(canonical_hson_graph_equal(source.root(), target.root()), true);
@@ -156,7 +156,7 @@ check("exact transport preserves move intent", () => {
 check("staged replay resolves move indexes after an earlier splice", () => {
   const source = map({ items: ["a", "b", "c"] });
   const splice = source.splice(["items"], 1, 1, "x", "y");
-  const move = source.at(["items"]).array.move(3, 0);
+  const move = source.at(["items"]).asArray()!.move(3, 0);
   if (typeof splice.payload !== "string" || typeof move.payload !== "string") throw new Error("Expected exact replay payloads.");
   const ops = [
     ...decode_livemap_replay_payload(splice.payload),

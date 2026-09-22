@@ -7,18 +7,22 @@ import {
   type OrderedProjectedValue,
 } from "../../core/ordered-projected-value.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
-import type { LiveMapArrayItem, LiveMapArrayShape, LiveMapCore, LiveMapPathArrayApi, LivePath } from "../../types/livemap.types.js";
+import type { LiveMapArrayItem, LiveMapArrayShape, LiveMapCommit, LiveMapCore, LiveMapPathArrayApi, LivePath } from "../../types/livemap.types.js";
 import { array_index_error, must_ordered_projected_value, path_kind_error } from "./livemap.guard.js";
-import { livemap_projected_propagation } from "./livemap.projected-propagation.js";
+import { livemap_projected_propagation, type LiveMapProjectedPropagation } from "./livemap.projected-propagation.js";
 import { LiveMapProjectedMutationError } from "./livemap.error.js";
 
 type LiveMapArrayHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "splice">;
 
-export function make_livemap_array_api<TValue = JsonValue | undefined>(
+export function make_livemap_array_api<
+  TValue = JsonValue | undefined,
+  TCommit = LiveMapCommit,
+>(
   core: LiveMapArrayHandleCore,
   handlePath: LivePath,
-): LiveMapPathArrayApi<TValue> {
-  const projected = livemap_projected_propagation(core);
+  authority?: LiveMapProjectedPropagation<TCommit>,
+): LiveMapPathArrayApi<TValue, TCommit> {
+  const projected = authority ?? livemap_projected_propagation(core) as LiveMapProjectedPropagation<TCommit> | undefined;
   if (projected === undefined) throw new Error("LiveMap array helper has no projected propagation capability.");
 
   const read = (): readonly OrderedProjectedValue[] => {

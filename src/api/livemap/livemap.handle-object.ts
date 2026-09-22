@@ -10,6 +10,7 @@ import {
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import type {
   LiveMapCore,
+  LiveMapCommit,
   LiveMapObjectEntry,
   LiveMapObjectKey,
   LiveMapObjectSetManyValues,
@@ -25,17 +26,21 @@ import {
   must_ordered_projected_value,
   path_kind_error,
 } from "./livemap.guard.js";
-import { livemap_projected_propagation } from "./livemap.projected-propagation.js";
+import { livemap_projected_propagation, type LiveMapProjectedPropagation } from "./livemap.projected-propagation.js";
 import { LiveMapProjectedMutationError } from "./livemap.error.js";
 
 type LiveMapObjectHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "replace" | "setMany" | "delete" | "batch">;
 
 /** Object-scoped helpers backed by the canonical ordered carrier. */
-export function make_livemap_object_api<TValue = JsonValue | undefined>(
+export function make_livemap_object_api<
+  TValue = JsonValue | undefined,
+  TCommit = LiveMapCommit,
+>(
   core: LiveMapObjectHandleCore,
   handlePath: LivePath,
-): LiveMapPathObjectApi<TValue> {
-  const projected = livemap_projected_propagation(core);
+  authority?: LiveMapProjectedPropagation<TCommit>,
+): LiveMapPathObjectApi<TValue, TCommit> {
+  const projected = authority ?? livemap_projected_propagation(core) as LiveMapProjectedPropagation<TCommit> | undefined;
   if (projected === undefined) throw new Error("LiveMap object helper has no projected propagation capability.");
 
   const read = (): OrderedProjectedObject => {
@@ -50,10 +55,10 @@ export function make_livemap_object_api<TValue = JsonValue | undefined>(
     toObject: () => materialize_projected_value(read()) as LiveMapObjectShape<TValue>,
     pick: (keys) => materialize_projected_value(
       object_pick(read(), mustObjectKeyList(keys, handlePath)),
-    ) as ReturnType<LiveMapPathObjectApi<TValue>["pick"]>,
+    ) as ReturnType<LiveMapPathObjectApi<TValue, TCommit>["pick"]>,
     omit: (keys) => materialize_projected_value(
       object_omit(read(), mustObjectKeyList(keys, handlePath)),
-    ) as ReturnType<LiveMapPathObjectApi<TValue>["omit"]>,
+    ) as ReturnType<LiveMapPathObjectApi<TValue, TCommit>["omit"]>,
     hasKey: (key: unknown) => object_entry_index(read(), must_object_key(key, handlePath)) !== -1,
     getKey: <const TKey extends string>(key: TKey): LiveMapObjectValue<TValue, TKey> => {
       const entry = object_entry(read(), must_object_key(key, handlePath));

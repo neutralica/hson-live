@@ -124,11 +124,11 @@ check("document Libraries admit exact zero-length document source", () => {
 check("named document Library mutations retain their selected authority and global commit envelope", () => {
   const map = create_map();
   const page = map.lib("page");
-  const commit = page.at([]).attrs.set("title", "selected");
+  const commit = page.at([]).asElement()!.attrs.set("title", "selected");
   assert.equal(commit.kind, "multi-library");
   assert.deepEqual([commit.prevRev, commit.rev], [0, 1]);
   assert.deepEqual(commit.operations.map((entry) => entry.library), ["page"]);
-  assert.equal(page.at([]).attrs.get("title"), "selected");
+  assert.equal(page.at([]).asElement()!.attrs.get("title"), "selected");
   assert.equal(map.lib("state").snap(["count"]), 1);
 });
 
@@ -141,7 +141,7 @@ check("named document locations keep relative content operations in their select
   const modal = map.lib("modal");
   const incoming = modal.at([0]).snap();
   if (!is_Node(incoming)) throw new Error("Expected selected modal item.");
-  const commit = page.at([]).insert(1, incoming);
+  const commit = page.at([]).asElement()!.insert(1, incoming);
   assert.deepEqual(commit.operations.map((entry) => entry.library), ["page"]);
   assert.equal(node(page.at([]).at([1]).snap()).$_tag, "item");
   assert.equal(node(modal.at([0]).snap()).$_tag, "item");
@@ -158,7 +158,7 @@ check("Reflect binds one selected document Library and advances through unrelate
   assert.equal(binding.sourceRevision, 1);
   assert.equal(binding.diagnostics().updatesApplied, 0);
   assert.equal(binding.diagnostics().incrementalCorrespondenceUpdates, 0);
-  const commit = page.at([]).attrs.set("title", "reflected");
+  const commit = page.at([]).asElement()!.attrs.set("title", "reflected");
   assert.equal(commit.rev, 2);
   assert.equal(binding.sourceRevision, 2);
   assert.equal(node(binding.tree.node.$_content[0]).$_attrs?.title, "reflected");
@@ -203,14 +203,14 @@ check("tree-originated selected-document mutation crosses the same Schema bounda
   if (!is_Node(projected)) throw new Error("Expected projected page root");
   const tree = create_livetree(projected).adoptRoots(binding.tree.hostRootNode());
   tree.attrs.set("title", "from-tree");
-  assert.equal(page.at([]).attrs.get("title"), "from-tree");
+  assert.equal(page.at([]).asElement()!.attrs.get("title"), "from-tree");
   assert.equal(binding.sourceRevision, 1);
   const quid = tree.quid;
   assert.equal(page.document.byQuid(quid)?.$_tag, "main");
   assert.equal(binding.sourceRevision, 2);
   const beforeFailure = livemap_identity_epoch_accounting(page);
   const before = page.root();
-  assert.throws(() => page.at([]).insert(0, "forbidden"), /schema/i);
+  assert.throws(() => page.at([]).asElement()!.insert(0, "forbidden"), /schema/i);
   assert.deepEqual(page.root(), before);
   assert.equal(map.rev, 2);
   assert.equal(binding.sourceRevision, 2);
@@ -231,8 +231,8 @@ check("named document QUID lookup remains library-local while active QUIDs remai
   assert.equal(modal.document.byQuid(Q1), undefined);
   const commit = page.document.attrs.set({ kind: "path", path: [0] }, "title", "path-route");
   assert.deepEqual(commit.operations.map((entry) => entry.library), ["page"]);
-  assert.equal(page.at([]).attrs.get("title"), "path-route");
-  assert.equal(modal.at([]).attrs.get("title"), undefined);
+  assert.equal(page.at([]).asElement()!.attrs.get("title"), "path-route");
+  assert.equal(modal.at([]).asElement()!.attrs.get("title"), undefined);
   assert.throws(() => hsonLiveMap.fromLibraries({
     page: { document: `<main @${Q1}/>`, schema: PageSchema },
     modal: { document: `<main @${Q1}/>`, schema: PageSchema },
@@ -249,7 +249,7 @@ check("one selected document binding is exclusive while separate named documents
   const pageBinding = hsonMirror(page);
   assert.throws(() => hsonMirror(map.lib("page")), /already has an active/i);
   const modalBinding = hsonMirror(modal);
-  page.at([]).attrs.set("title", "page-only");
+  page.at([]).asElement()!.attrs.set("title", "page-only");
   assert.equal(node(pageBinding.tree.node.$_content[0]).$_attrs?.title, "page-only");
   assert.equal(node(modalBinding.tree.node.$_content[0]).$_attrs?.title, undefined);
   assert.equal(modalBinding.sourceRevision, 1);
@@ -350,7 +350,7 @@ if (false) {
   const map = create_map();
   const page = map.lib("page");
   const state = map.lib("state");
-  page.at([]).attrs.set("title", "typed");
+  page.at([]).asElement()!.attrs.set("title", "typed");
   // @ts-expect-error A selected document library is not a projected data library.
   page.snap();
   // @ts-expect-error A selected data library has no document authority.

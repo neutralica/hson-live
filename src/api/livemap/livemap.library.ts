@@ -69,6 +69,25 @@ export type LiveMapAggregateWrite =
   }>
   | Readonly<{
     target: LiveMapAuthorityTarget;
+    kind: "splice";
+    start: number;
+    deleteCount: number;
+    items: readonly OrderedProjectedValue[];
+  }>
+  | Readonly<{
+    target: LiveMapAuthorityTarget;
+    kind: "rename";
+    from: string;
+    to: string;
+  }>
+  | Readonly<{
+    target: LiveMapAuthorityTarget;
+    kind: "move";
+    from: number;
+    to: number;
+  }>
+  | Readonly<{
+    target: LiveMapAuthorityTarget;
     kind: "ensure-quid";
     quid: string;
   }>

@@ -342,7 +342,7 @@ check("LiveMap projection and every numeric path follow canonical physical order
 check("LiveMap splice and move regenerate dense indexes and preserve addressability", () => {
   const map = hson.liveMap.fromJson({ items: ["a", "b", "c"] });
   map.splice(["items"], 1, 1, "x", "y");
-  map.at(["items"]).array.move(3, 0);
+  map.at(["items"]).asArray()!.move(3, 0);
   assert.deepEqual(map.snap(), { items: ["c", "a", "x", "y"] });
   const root = map.root();
   const nestedArray = (() => {

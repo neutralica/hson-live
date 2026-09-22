@@ -68,7 +68,7 @@ check("capture and local install preserve the complete detached aggregate cut", 
   ]);
   assert.equal(snapshot.registry.libraries[2]?.scope, "hson-internal");
   map.lib("state").at(["count"]).set(1);
-  map.lib("page").at([]).attrs.set("title", "source-moved");
+  map.lib("page").at([]).asElement()!.attrs.set("title", "source-moved");
   assert.equal(JSON.stringify(snapshot), retained);
 
   const installed = install_libraries_snapshot(snapshot);
@@ -77,7 +77,7 @@ check("capture and local install preserve the complete detached aggregate cut", 
   assert.deepEqual(installed.map.capture(), snapshot);
   assert.equal(installed.map.rev, snapshot.revision);
   assert.equal(data(installed.map, "state").snap(["count"]), 0);
-  assert.equal(document(installed.map, "page").at([]).attrs.get("title"), "zero");
+  assert.equal(document(installed.map, "page").at([]).asElement()!.attrs.get("title"), "zero");
   assert.throws(() => (installed.map.lib as (name: string) => unknown)(INTERACTION_RESERVED_LIBRARY_KEY), /Unknown/);
   data(installed.map, "state").at(["count"]).set(2);
   assert.equal(JSON.stringify(snapshot), retained);
@@ -141,7 +141,7 @@ check("retired QUID history survives SSR/install without entering HTML", () => {
   const source = hsonLiveMap.fromHson(`<item @${QUID}/>`);
   if (source.mode !== "document") throw new Error("Expected document source.");
   const item = source.root().$_content[0];
-  assert.throws(() => document(installed, "page").at([]).insert(0, item as never), /QUID|identity|issued|reuse/i);
+  assert.throws(() => document(installed, "page").at([]).asElement()!.insert(0, item as never), /QUID|identity|issued|reuse/i);
 });
 
 check("schema and registry tampering fails closed", () => {
@@ -167,7 +167,7 @@ check("same-cut rendering never rereads source Libraries after aggregate capture
   const before = map.capture();
   set_document_ssr_hook_for_tests((point) => {
     if (point !== "local-libraries-after-capture") return;
-    map.lib("page").at([]).attrs.set("title", "one");
+    map.lib("page").at([]).asElement()!.attrs.set("title", "one");
     map.lib("state").at(["count"]).set(1);
     add_interaction(map, Object.freeze({
       id: "after-cut",

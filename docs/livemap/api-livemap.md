@@ -210,28 +210,32 @@ Before application, writes are normalized and previewed on a clone. An attached 
 ```ts
 map.set(["user", "name"], "Grace");
 map.setMany(["user"], { name: "Katherine", active: false });
-map.at(["tags"]).array.push("computing");
-map.at(["tags"]).array.move(1, 0);
+map.at(["tags"]).push("computing");
+map.at(["tags"]).move(1, 0);
 ```
 
 No-op commits have `changed: false`, no ops, and `rev === prevRev`. Changed commits advance exactly once.
 
 ## Path handles
 
-`map.at(path)` returns a `LiveMapPathHandle` with:
+The primary multi-library form is `map.lib(name).at(path)`. One-library maps
+retain `map.at(path)` as compatibility. A handle always has:
 
 - `path()`, `snap()`, and `rev`;
 - `at(relativePath)`;
-- `set`, `setMany`, `replace`, `delete`, and `update`;
-- `.object` and `.array` helper namespaces;
+- `set`, `replace`, `delete`, and `update`;
+- `kind`, `present`, `asObject`, `asArray`, and `asScalar` refinement;
 - `feed(listener)`;
 - `linkTo(target)`.
 
 Handles retain path identity, not a frozen node/value. Reads and writes resolve against the map's current graph. Handles are interned by canonical path within one map and expose no persistent or process-global identifier.
 
+Schema-proven object and array endpoints expose their operations directly;
+optional, union, broad, and ungoverned endpoints require refinement first.
+
 ## Object helpers
 
-`handle.object` provides `is`, `toObject`, `pick`, `omit`, `hasKey`, `getKey`,
+An object-shaped handle provides `toObject`, `pick`, `omit`, `hasKey`, `getKey`,
 `keys`, `values`, `entries`, `size`, and `isEmpty`, plus:
 
 - `setKey(key, value)`: creates a missing key under an existing object;

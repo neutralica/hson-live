@@ -188,7 +188,7 @@ await check("retained mediated references and privileged mutation APIs are fence
   const map = hson.liveMap.fromJson({ value: 0, items: [1] });
   const handle = map.at(["value"]);
   const proxy = map.proxy(["value"]);
-  const array = map.at(["items"]).array;
+  const array = map.at(["items"]);
   const capture = map.capture();
   const replayCommit = hson.liveMap.fromJson({ value: 0, items: [1] }).set(["value"], 1);
   const host = hson.locus.create({ map });

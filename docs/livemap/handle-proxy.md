@@ -1,9 +1,11 @@
 # LiveMap paths, handles, and proxies
 
-Data LiveMaps expose one canonical state through three related access
-styles. Explicit map methods perform path-based reads and writes, `at(path)`
-returns a stable path handle, and `proxy(path?)` provides property/index syntax
-for building a path. None of these surfaces owns a second copy of state.
+The primary LiveMap access path is `map.lib(name).at(path)`. Library selection
+establishes data or document semantics; path resolution then determines the
+handle capabilities. One-library maps retain `map.at(path)` as a compatibility
+facade over the same implementation. `proxy(path?)` remains optional
+property/index syntax for building a path. None of these surfaces owns a second
+copy of state.
 
 ## Explicit paths
 
@@ -22,18 +24,19 @@ state. Mutations use the normal admission, schema, revision, commit, feed, and
 authority rules.
 
 There is no map-level `get(path)` or `has(path)` API. Use `snap`, a path handle,
-or `handle.object.hasKey(key)` as appropriate.
+or `handle.hasKey(key)` on an object-shaped handle as appropriate.
 
 ## Path handles
 
-`map.at(path)` returns a cached `LiveMapPathHandle` for that exact location:
+`library.at(path)` returns a path handle for that exact Library-relative
+location:
 
 ```ts
-const settings = map.at(["settings"]);
+const settings = map.lib("state").at(["settings"]);
 
 settings.snap();
 settings.at(["theme"]).set("dark");
-settings.object.setKey("density", "compact");
+settings.setKey("density", "compact");
 const stop = settings.feed((event) => {
   console.log(event.value);
 });
@@ -42,11 +45,16 @@ const dispose = settings.watch((next) => {
 });
 ```
 
-A path handle exposes:
+A path handle always exposes coordinate reads, relative `at(path)`, endpoint
+replacement, deletion, and runtime refinement. A Schema-proven object or array
+endpoint additionally exposes its shape operations directly:
 
 - `rev`, `path()`, `snap()`, and relative `at(path)`;
-- `set`, `setMany`, `replace`, `delete`, and `update`;
-- `object` and `array` helper namespaces;
+- `set`, `replace`, `delete`, and `update`;
+- object operations such as `setKey`, `setMany`, `renameKey`, and `deleteKey`;
+- array operations such as `push`, `insert`, `splice`, `move`, and `remove`;
+- `kind()`, `present()`, `asObject()`, `asArray()`, and `asScalar()` when
+  presence or shape is not statically singular;
 - `feed(listener)` and `watch(listener)`; and
 - one-way `linkTo(target)`.
 
@@ -54,8 +62,10 @@ The handle follows its stored location. It is not a document-node identity
 handle and does not silently follow a value that moves elsewhere. Removal or
 replacement changes what subsequent reads at that location observe.
 
-Document maps use their single `document` capability. They do not expose the
-data path-handle surface.
+Document Libraries use the same `library.at(path)` entrypoint. Element handles
+expose `attrs`, `flags`, insertion, and movement; text handles expose content
+replacement/deletion but not element-only capabilities. Dynamic document
+locations refine with `asElement()` or `asText()`.
 
 ## Watching current values
 
@@ -64,7 +74,7 @@ Data path handles and passive logical document locations expose
 comparison baseline but does not call the listener immediately:
 
 ```ts
-const location = map.at(["profile", "name"]);
+const location = map.lib("state").at(["profile", "name"]);
 const dispose = location.watch((next) => {
   // next is the current detached value at this fixed coordinate
   console.log(next);
@@ -94,7 +104,8 @@ moved element.
 
 ## Proxies
 
-`map.proxy()` creates a path-building proxy:
+The one-library compatibility facade and document Libraries may expose
+`proxy()` as path-building sugar:
 
 ```ts
 const state = map.proxy();
@@ -128,7 +139,8 @@ the proxy is not the data object itself.
 Promise/debugger/Object probe names such as `then`, `toJSON`, `constructor`, and
 `__proto__` are inert proxy reads. Canonical non-negative integer property names
 become numeric path segments. When data uses one of those spellings as an object
-key, address it through explicit paths or the parent handle's object helpers.
+key, address it through explicit paths or the parent object handle's direct
+helpers.
 
 ## Hosted maps
 

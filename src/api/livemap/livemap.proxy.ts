@@ -20,7 +20,8 @@ type DocumentProxy<TLocation extends DocumentProxyLocation> = Readonly<{
  * probe implicitly. These reads must remain inert: they must not create child
  * proxies, mutate state, or make the proxy appear Promise-like.
  *
- * Data with these names is still reachable through `proxy.$_.object.getKey(...)`.
+ * Data with these names is still reachable through `proxy.$_.getKey(...)` on
+ * an object-shaped handle, or through an explicit path.
  */
 const PROXY_RESERVED_PROPERTIES = new Set<PropertyKey>([
   "then",

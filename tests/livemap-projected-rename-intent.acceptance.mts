@@ -35,7 +35,7 @@ function check(name: string, run: () => void): void {
 const map = (value: Parameters<typeof hson.liveMap.fromJson>[0]) => hson.liveMap.fromJson(value);
 const rename = (value: Parameters<typeof map>[0], from: string, to: string) => {
   const target = map(value);
-  const commit = target.at([]).object.renameKey(from, to);
+  const commit = target.at([]).asObject()!.renameKey(from, to);
   return { target, commit };
 };
 
@@ -66,7 +66,7 @@ check("rename preserves a complete descendant subtree", () => {
 
 check("nested rename is path-authoritative", () => {
   const target = map({ outer: { source: 1, kept: 2 } });
-  const commit = target.at(["outer"]).object.renameKey("source", "destination");
+  const commit = target.at(["outer"]).asObject()!.renameKey("source", "destination");
   assert.deepEqual(commit.ops[0]?.path, ["outer"]);
   assert.deepEqual(target.snap(), { outer: { destination: 1, kept: 2 } });
 });
@@ -83,14 +83,14 @@ check("integer-like key order remains exact", () => {
 
 check("same-name rename is an exact no-op after source validation", () => {
   const target = map({ source: 1 });
-  const commit = target.at([]).object.renameKey("source", "source");
+  const commit = target.at([]).asObject()!.renameKey("source", "source");
   assert.equal(commit.changed, false);
   assert.equal(target.rev, 0);
 });
 
 check("missing rename source rejects structurally", () => {
   const target = map({ kept: 1 });
-  assert.throws(() => target.at([]).object.renameKey("missing", "next"), (error: unknown) => (
+  assert.throws(() => target.at([]).asObject()!.renameKey("missing", "next"), (error: unknown) => (
     typeof error === "object" && error !== null && "code" in error && error.code === "OBJECT_RENAME_SOURCE_NOT_FOUND"
   ));
 });
@@ -98,20 +98,20 @@ check("missing rename source rejects structurally", () => {
 check("missing-source rejection is atomic", () => {
   const target = map({ kept: 1 });
   const before = target.capture();
-  assert.throws(() => target.at([]).object.renameKey("missing", "next"));
+  assert.throws(() => target.at([]).asObject()!.renameKey("missing", "next"));
   assert.deepEqual(target.capture(), before);
 });
 
 check("invalid source key rejects structurally", () => {
   const target = map({ source: 1 });
-  assert.throws(() => target.at([]).object.renameKey(1 as never, "next"), (error: unknown) => (
+  assert.throws(() => target.at([]).asObject()!.renameKey(1 as never, "next"), (error: unknown) => (
     typeof error === "object" && error !== null && "code" in error && error.code === "INVALID_OBJECT_RENAME_SOURCE"
   ));
 });
 
 check("invalid destination key rejects structurally", () => {
   const target = map({ source: 1 });
-  assert.throws(() => target.at([]).object.renameKey("source", null as never), (error: unknown) => (
+  assert.throws(() => target.at([]).asObject()!.renameKey("source", null as never), (error: unknown) => (
     typeof error === "object" && error !== null && "code" in error && error.code === "INVALID_OBJECT_RENAME_DESTINATION"
   ));
 });
@@ -123,7 +123,7 @@ check("changed rename advances exactly one revision", () => {
 
 check("rename replay closes to the exact graph", () => {
   const source = map('{"a":1,"source":{"x":2},"destination":3}');
-  const commit = source.at([]).object.renameKey("source", "destination");
+  const commit = source.at([]).asObject()!.renameKey("source", "destination");
   const target = map('{"a":1,"source":{"x":2},"destination":3}');
   target.replay(commit);
   assert.equal(canonical_hson_graph_equal(source.root(), target.root()), true);

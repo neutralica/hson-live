@@ -54,7 +54,7 @@ check("rename intent reaches canonical commit observers", () => {
     const op = event.kind === "commit" ? event.commit.ops[0] : undefined;
     if (op !== undefined && "kind" in op) kind = op.kind;
   });
-  source.at([]).object.renameKey("source", "destination");
+  source.at([]).asObject()!.renameKey("source", "destination");
   assert.equal(kind, "rename");
 });
 
@@ -65,7 +65,7 @@ check("move intent reaches canonical commit observers", () => {
     const op = event.kind === "commit" ? event.commit.ops[0] : undefined;
     if (op !== undefined && "kind" in op) kind = op.kind;
   });
-  source.at(["items"]).array.move(0, 1);
+  source.at(["items"]).asArray()!.move(0, 1);
   assert.equal(kind, "move");
 });
 
@@ -73,7 +73,7 @@ check("rename intent reaches public feeds", () => {
   const source = map({ source: 1 });
   let kind: string | undefined;
   source.feed([], (event) => { kind = event.op.kind; });
-  source.at([]).object.renameKey("source", "destination");
+  source.at([]).asObject()!.renameKey("source", "destination");
   assert.equal(kind, "rename");
 });
 
@@ -81,7 +81,7 @@ check("move intent reaches path feeds", () => {
   const source = map({ items: [1, 2] });
   let kind: string | undefined;
   source.feed(["items"], (event) => { kind = event.op.kind; });
-  source.at(["items"]).array.move(0, 1);
+  source.at(["items"]).asArray()!.move(0, 1);
   assert.equal(kind, "move");
 });
 
@@ -91,7 +91,7 @@ check("feed mutation cannot alter rename replay", () => {
     const op = event.op;
     if (op.kind === "rename") (op.next as { destination: { value: number } }).destination.value = 9;
   });
-  const commit = source.at([]).object.renameKey("source", "destination");
+  const commit = source.at([]).asObject()!.renameKey("source", "destination");
   const target = map({ source: { value: 1 } });
   target.replay(commit);
   assert.deepEqual(target.snap(), { destination: { value: 1 } });
@@ -103,7 +103,7 @@ check("same-path link propagates rename intent", () => {
   let targetKind: string | undefined;
   target.feed([], (event) => { targetKind = event.op.kind; });
   link_livemap(source, target, { path: [] });
-  source.at([]).object.renameKey("source", "destination");
+  source.at([]).asObject()!.renameKey("source", "destination");
   assert.equal(targetKind, "rename");
   assert.deepEqual(target.snap(), source.snap());
 });
@@ -114,7 +114,7 @@ check("same-path link propagates move intent", () => {
   let targetKind: string | undefined;
   target.feed(["items"], (event) => { targetKind = event.op.kind; });
   link_livemap(source, target, { path: [] });
-  source.at(["items"]).array.move(0, 2);
+  source.at(["items"]).asArray()!.move(0, 2);
   assert.equal(targetKind, "move");
   assert.deepEqual(target.snap(), source.snap());
 });
@@ -123,7 +123,7 @@ check("mapped links translate semantic operation paths", () => {
   const source = map({ left: { source: 1 } });
   const target = map({ right: { source: 1 } });
   link_livemap(source, target, { from: ["left"], to: ["right"] });
-  source.at(["left"]).object.renameKey("source", "destination");
+  source.at(["left"]).asObject()!.renameKey("source", "destination");
   assert.deepEqual(target.snap(), { right: { destination: 1 } });
 });
 
@@ -133,7 +133,7 @@ check("handle links preserve semantic move intent", () => {
   let targetKind: string | undefined;
   target.feed(["copy"], (event) => { targetKind = event.op.kind; });
   source.at(["items"]).linkTo(target.at(["copy"]));
-  source.at(["items"]).array.move(0, 1);
+  source.at(["items"]).asArray()!.move(0, 1);
   assert.equal(targetKind, "move");
 });
 
@@ -141,7 +141,7 @@ check("divergent link targets fall back to scoped replacement", () => {
   const source = map({ source: 1 });
   const target = map({ other: 2 });
   link_livemap(source, target, { path: [] });
-  source.at([]).object.renameKey("source", "destination");
+  source.at([]).asObject()!.renameKey("source", "destination");
   assert.deepEqual(target.snap(), { destination: 1 });
   assert.deepEqual(source.snap(), { destination: 1 });
 });
@@ -150,7 +150,7 @@ check("store snapshots publish order-only rename changes", () => {
   const source = map('{"a":1,"source":2,"z":3}');
   let calls = 0;
   make_livemap_store_api(source).subscribeDiff(() => { calls += 1; });
-  source.at([]).object.renameKey("source", "destination");
+  source.at([]).asObject()!.renameKey("source", "destination");
   assert.equal(calls, 1);
 });
 
@@ -158,7 +158,7 @@ check("store snapshots publish order-only moves", () => {
   const source = map({ items: [1, 2, 3] });
   let calls = 0;
   make_livemap_store_api(source).subscribeDiff(() => { calls += 1; });
-  source.at(["items"]).array.move(0, 2);
+  source.at(["items"]).asArray()!.move(0, 2);
   assert.equal(calls, 1);
 });
 
@@ -168,13 +168,13 @@ check("exact no-op move suppresses feeds and stores", () => {
   let stores = 0;
   source.feed([], () => { feeds += 1; });
   make_livemap_store_api(source).subscribeDiff(() => { stores += 1; });
-  source.at(["items"]).array.move(0, 0);
+  source.at(["items"]).asArray()!.move(0, 0);
   assert.deepEqual([feeds, stores], [0, 0]);
 });
 
 await check_async("Locus history retains rename intent", async () => {
   const host = create_locus({ state: { source: 1 } });
-  await host.mutate((draft) => draft.at([]).object.renameKey("source", "destination"));
+  await host.mutate((draft) => draft.at([]).renameKey("source", "destination"));
   const op = host.stream.history.replayAfter(0)?.[0]?.ops[0];
   assert.equal(op !== undefined && "kind" in op ? op.kind : undefined, "rename");
   host.dispose();
@@ -182,7 +182,7 @@ await check_async("Locus history retains rename intent", async () => {
 
 await check_async("Locus history retains move intent", async () => {
   const host = create_locus({ state: { items: [1, 2] } });
-  await host.mutate((draft) => draft.at(["items"]).array.move(0, 1));
+  await host.mutate((draft) => draft.at(["items"]).move(0, 1));
   const op = host.stream.history.replayAfter(0)?.[0]?.ops[0];
   assert.equal(op !== undefined && "kind" in op ? op.kind : undefined, "move");
   host.dispose();
@@ -190,7 +190,7 @@ await check_async("Locus history retains move intent", async () => {
 
 check("canonical rename replay remains bounded and deterministic", () => {
   const source = map({ source: 1 });
-  const commit = source.at([]).object.renameKey("source", "destination");
+  const commit = source.at([]).asObject()!.renameKey("source", "destination");
   const target = map({ source: 1 });
   target.replay(commit);
   assert.deepEqual(target.snap(), source.snap());
@@ -198,7 +198,7 @@ check("canonical rename replay remains bounded and deterministic", () => {
 
 check("canonical move replay remains bounded and deterministic", () => {
   const source = map({ items: [1, 2, 3] });
-  const commit = source.at(["items"]).array.move(0, 2);
+  const commit = source.at(["items"]).asArray()!.move(0, 2);
   const target = map({ items: [1, 2, 3] });
   target.replay(commit);
   assert.deepEqual(target.snap(), source.snap());
@@ -230,7 +230,7 @@ check("malformed exact rename witnesses reject", () => {
 
 check("stale revision rejection publishes nothing", () => {
   const source = map({ source: 1 });
-  const commit = source.at([]).object.renameKey("source", "destination");
+  const commit = source.at([]).asObject()!.renameKey("source", "destination");
   const target = map({ source: 1 });
   target.set(["source"], 2);
   const before = target.capture();
@@ -242,7 +242,7 @@ check("stale revision rejection publishes nothing", () => {
 
 check("replay witness mismatch is atomic", () => {
   const source = map({ items: [1, 2] });
-  const commit = source.at(["items"]).array.move(0, 1);
+  const commit = source.at(["items"]).asArray()!.move(0, 1);
   const target = map({ items: [9, 2] });
   const before = target.capture();
   assert.throws(() => target.replay(commit), (error: unknown) => (
@@ -253,8 +253,8 @@ check("replay witness mismatch is atomic", () => {
 
 check("rename and move close through strict canonical graph equality", () => {
   const source = map({ source: { items: [1, 2, 3] } });
-  const rename = source.at([]).object.renameKey("source", "destination");
-  const move = source.at(["destination", "items"]).array.move(0, 2);
+  const rename = source.at([]).asObject()!.renameKey("source", "destination");
+  const move = source.at(["destination", "items"]).asArray()!.move(0, 2);
   const target = map({ source: { items: [1, 2, 3] } });
   target.replay(rename);
   target.replay(move);
@@ -265,8 +265,8 @@ check("propagation never introduces QUID metadata", () => {
   const source = map({ source: { items: [1, 2] } });
   const target = map({ source: { items: [1, 2] } });
   link_livemap(source, target, { path: [] });
-  source.at([]).object.renameKey("source", "destination");
-  source.at(["destination", "items"]).array.move(0, 1);
+  source.at([]).asObject()!.renameKey("source", "destination");
+  source.at(["destination", "items"]).asArray()!.move(0, 1);
   assert.equal(JSON.stringify(target.root()).includes("quid"), false);
 });
 
