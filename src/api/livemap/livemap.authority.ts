@@ -1,4 +1,3 @@
-import { clone_node } from "../../core/clone-node.js";
 import type { LiveMapAnyOp, LiveMapCommit, LiveMapRootMode } from "../../types/livemap.types.js";
 import type { LiveMapAggregateCommit } from "./livemap.library.js";
 
@@ -12,9 +11,9 @@ export type PreparedLiveMapTransition = Readonly<{
   readonly mode: LiveMapRootMode;
 }>;
 
-/** Opaque prepared aggregate transition; never accepted by the legacy Locus boundary. @internal */
-export type PreparedLiveMapAggregateTransition = Readonly<{
-  readonly kind: "aggregate";
+/** Opaque prepared map-authority transition. @internal */
+export type PreparedLiveMapAuthorityTransition = Readonly<{
+  readonly kind: "authority";
   readonly commit: LiveMapAggregateCommit;
   readonly baseRevision: number;
   readonly nextRevision: number;
@@ -27,7 +26,7 @@ export type LiveMapTransitionAcceptance = Readonly<{
 }>;
 
 /** Internal acceptance result retaining the non-serializable aggregate commit. @internal */
-export type LiveMapAggregateTransitionAcceptance = Readonly<{
+export type LiveMapAuthorityTransitionAcceptance = Readonly<{
   commit: LiveMapAggregateCommit;
   notificationFailureCount: number;
 }>;
@@ -53,36 +52,20 @@ export class LiveMapTransitionError extends Error {
 
 type TransitionState = "pending" | "accepted" | "discarded";
 
-type TransitionRecord = {
+type AuthorityTransitionRecord<TCommit> = {
   state: TransitionState;
   baseRevision: number;
   generation: number;
-  mode: LiveMapRootMode;
-  commit: LiveMapCommit<LiveMapAnyOp>;
+  commit: TCommit;
   baseStillCurrent: () => boolean;
   install: () => void;
-  notify: (commit: LiveMapCommit<LiveMapAnyOp>) => void;
+  notify: (commit: TCommit) => void;
 };
 
-type AggregateTransitionRecord = {
-  state: TransitionState;
-  baseRevision: number;
-  generation: number;
-  commit: LiveMapAggregateCommit;
-  baseStillCurrent: () => boolean;
-  install: () => void;
-  notify: (commit: LiveMapAggregateCommit) => void;
-};
-
-export type LiveMapTransitionPreparation = Readonly<{
-  commit: LiveMapCommit<LiveMapAnyOp>;
-  baseStillCurrent: () => boolean;
-  install: () => void;
-  notify: (commit: LiveMapCommit<LiveMapAnyOp>) => void;
-}>;
+type MapAuthorityTransitionRecord = AuthorityTransitionRecord<LiveMapAggregateCommit>;
 
 /** Internal aggregate preparation accepted by the same map-wide controller. @internal */
-export type LiveMapAggregateTransitionPreparation = Readonly<{
+export type LiveMapAuthorityTransitionPreparation = Readonly<{
   commit: LiveMapAggregateCommit;
   libraryModes: readonly LiveMapRootMode[];
   baseStillCurrent: () => boolean;
@@ -91,23 +74,28 @@ export type LiveMapAggregateTransitionPreparation = Readonly<{
 }>;
 
 export type LiveMapTransitionController = Readonly<{
-  prepare: (preparation: LiveMapTransitionPreparation) => PreparedLiveMapTransition;
   /** @internal */
-  prepareAggregate: (
-    preparation: LiveMapAggregateTransitionPreparation,
-  ) => PreparedLiveMapAggregateTransition;
+  prepareAuthority: (
+    preparation: LiveMapAuthorityTransitionPreparation,
+  ) => PreparedLiveMapAuthorityTransition;
+  /** Present one aggregate authority transition through the temporary solo token contract. @internal */
+  projectAggregateCompatibility: (
+    transition: PreparedLiveMapAuthorityTransition,
+    commit: LiveMapCommit<LiveMapAnyOp>,
+    mode: LiveMapRootMode,
+  ) => PreparedLiveMapTransition;
   accept: (
     transition: PreparedLiveMapTransition,
     policy?: LiveMapTransitionNotificationPolicy,
   ) => LiveMapTransitionAcceptance;
   /** @internal */
-  acceptAggregate: (
-    transition: PreparedLiveMapAggregateTransition,
+  acceptAuthority: (
+    transition: PreparedLiveMapAuthorityTransition,
     policy?: LiveMapTransitionNotificationPolicy,
-  ) => LiveMapAggregateTransitionAcceptance;
+  ) => LiveMapAuthorityTransitionAcceptance;
   discard: (transition: PreparedLiveMapTransition) => void;
   /** @internal */
-  discardAggregate: (transition: PreparedLiveMapAggregateTransition) => void;
+  discardAuthority: (transition: PreparedLiveMapAuthorityTransition) => void;
   invalidate: () => void;
   assertPublicMutationAllowed: () => void;
   claimManagement: (owner: object, schedule: LiveMapManagedMutationScheduler<object>) => void;
@@ -138,11 +126,13 @@ const authorities = new WeakMap<object, LiveMapStagedAuthority<object>>();
 
 /** Construct one closure-local transition controller for a single LiveMap authority. */
 export function make_livemap_transition_controller(
-  mode: LiveMapRootMode,
   getRevision: () => number,
 ): LiveMapTransitionController {
-  const records = new WeakMap<PreparedLiveMapTransition, TransitionRecord>();
-  const aggregateRecords = new WeakMap<PreparedLiveMapAggregateTransition, AggregateTransitionRecord>();
+  const authorityRecords = new WeakMap<PreparedLiveMapAuthorityTransition, MapAuthorityTransitionRecord>();
+  const aggregateCompatibility = new WeakMap<PreparedLiveMapTransition, Readonly<{
+    transition: PreparedLiveMapAuthorityTransition;
+    commit: LiveMapCommit<LiveMapAnyOp>;
+  }>>();
   let generation = 0;
   let management: Readonly<{
     owner: object;
@@ -150,28 +140,40 @@ export function make_livemap_transition_controller(
   }> | undefined;
   let managedExecutionOwner: object | undefined;
 
-  function prepare(preparation: LiveMapTransitionPreparation): PreparedLiveMapTransition {
+  function authority_record_for(
+    transition: PreparedLiveMapAuthorityTransition,
+  ): MapAuthorityTransitionRecord {
+    const record = authorityRecords.get(transition);
+    if (record !== undefined) return record;
+    throw new LiveMapTransitionError(
+      "LIVEMAP_TRANSITION_FOREIGN",
+      "Prepared LiveMap authority transition belongs to another authority.",
+    );
+  }
+
+  function prepareAuthority(
+    preparation: LiveMapAuthorityTransitionPreparation,
+  ): PreparedLiveMapAuthorityTransition {
     const baseRevision = getRevision();
     const commit = preparation.commit;
     if (commit.prevRev !== baseRevision
       || commit.rev !== (commit.changed ? baseRevision + 1 : baseRevision)) {
       throw new LiveMapTransitionError(
         "LIVEMAP_TRANSITION_INVALID",
-        "Prepared LiveMap transition revisions are invalid.",
+        "Prepared LiveMap authority transition revisions are invalid.",
       );
     }
-
     const token = Object.freeze({
-      commit: deep_freeze(clone_node(commit)),
+      kind: "authority" as const,
+      commit,
       baseRevision,
       nextRevision: commit.rev,
-      mode,
+      libraryModes: Object.freeze([...preparation.libraryModes]),
     });
-    records.set(token, {
+    authorityRecords.set(token, {
       state: "pending",
       baseRevision,
       generation,
-      mode,
       commit,
       baseStillCurrent: preparation.baseStillCurrent,
       install: preparation.install,
@@ -180,55 +182,26 @@ export function make_livemap_transition_controller(
     return token;
   }
 
-  function record_for(transition: PreparedLiveMapTransition): TransitionRecord {
-    const record = records.get(transition);
-    if (record !== undefined) return record;
-    throw new LiveMapTransitionError(
-      "LIVEMAP_TRANSITION_FOREIGN",
-      "Prepared LiveMap transition belongs to another authority.",
-    );
-  }
-
-  function aggregate_record_for(
-    transition: PreparedLiveMapAggregateTransition,
-  ): AggregateTransitionRecord {
-    const record = aggregateRecords.get(transition);
-    if (record !== undefined) return record;
-    throw new LiveMapTransitionError(
-      "LIVEMAP_TRANSITION_FOREIGN",
-      "Prepared aggregate LiveMap transition belongs to another authority.",
-    );
-  }
-
-  function prepareAggregate(
-    preparation: LiveMapAggregateTransitionPreparation,
-  ): PreparedLiveMapAggregateTransition {
-    const baseRevision = getRevision();
-    const commit = preparation.commit;
-    if (commit.prevRev !== baseRevision
-      || commit.rev !== (commit.changed ? baseRevision + 1 : baseRevision)
-      || preparation.libraryModes.length === 0) {
+  function projectAggregateCompatibility(
+    transition: PreparedLiveMapAuthorityTransition,
+    commit: LiveMapCommit<LiveMapAnyOp>,
+    compatibilityMode: LiveMapRootMode,
+  ): PreparedLiveMapTransition {
+    authority_record_for(transition);
+    if (commit.prevRev !== transition.baseRevision || commit.rev !== transition.nextRevision
+      || commit.changed !== transition.commit.changed) {
       throw new LiveMapTransitionError(
         "LIVEMAP_TRANSITION_INVALID",
-        "Prepared aggregate LiveMap transition revisions or libraries are invalid.",
+        "Solo compatibility commit disagrees with its map authority transition.",
       );
     }
-    const token = Object.freeze({
-      kind: "aggregate" as const,
+    const token: PreparedLiveMapTransition = Object.freeze({
       commit,
-      baseRevision,
-      nextRevision: commit.rev,
-      libraryModes: Object.freeze([...preparation.libraryModes]),
+      baseRevision: transition.baseRevision,
+      nextRevision: transition.nextRevision,
+      mode: compatibilityMode,
     });
-    aggregateRecords.set(token, {
-      state: "pending",
-      baseRevision,
-      generation,
-      commit,
-      baseStillCurrent: preparation.baseStillCurrent,
-      install: preparation.install,
-      notify: preparation.notify,
-    });
+    aggregateCompatibility.set(token, Object.freeze({ transition, commit }));
     return token;
   }
 
@@ -236,149 +209,94 @@ export function make_livemap_transition_controller(
     transition: PreparedLiveMapTransition,
     policy: LiveMapTransitionNotificationPolicy = "legacy",
   ): LiveMapTransitionAcceptance {
-    const record = record_for(transition);
-    if (record.state === "accepted") {
-      throw new LiveMapTransitionError(
-        "LIVEMAP_TRANSITION_ALREADY_ACCEPTED",
-        "Prepared LiveMap transition was already accepted.",
-      );
+    const compatibility = aggregateCompatibility.get(transition);
+    if (compatibility !== undefined) {
+      const accepted = acceptAuthority(compatibility.transition, policy);
+      return Object.freeze({
+        commit: compatibility.commit,
+        notificationFailureCount: accepted.notificationFailureCount,
+      });
     }
-    if (record.state === "discarded") {
-      throw new LiveMapTransitionError(
-        "LIVEMAP_TRANSITION_DISCARDED",
-        "Prepared LiveMap transition was discarded.",
-      );
-    }
-    if (record.mode !== mode
-      || record.baseRevision !== getRevision()
-      || record.generation !== generation
-      || !record.baseStillCurrent()) {
-      throw new LiveMapTransitionError(
-        "LIVEMAP_TRANSITION_STALE",
-        "Prepared LiveMap transition is stale.",
-      );
-    }
-
-    if (record.commit.changed) {
-      try {
-        record.install();
-      } catch (cause) {
-        record.state = "discarded";
-        generation += 1;
-        throw new LiveMapTransitionError(
-          "LIVEMAP_TRANSITION_INVALID",
-          "Prepared LiveMap transition installation failed.",
-          { cause },
-        );
-      }
-      generation += 1;
-    }
-    record.state = "accepted";
-
-    let notificationFailureCount = 0;
-    if (record.commit.changed) {
-      if (policy === "legacy") {
-        record.notify(record.commit);
-      } else {
-        try {
-          record.notify(record.commit);
-        } catch {
-          notificationFailureCount = 1;
-        }
-      }
-    }
-
-    return Object.freeze({
-      commit: record.commit,
-      notificationFailureCount,
-    });
+    throw new LiveMapTransitionError(
+      "LIVEMAP_TRANSITION_FOREIGN",
+      "Prepared LiveMap transition belongs to another authority.",
+    );
   }
 
   function discard(transition: PreparedLiveMapTransition): void {
-    const record = record_for(transition);
-    if (record.state === "accepted") {
-      throw new LiveMapTransitionError(
-        "LIVEMAP_TRANSITION_ALREADY_ACCEPTED",
-        "Accepted LiveMap transition cannot be discarded.",
-      );
+    const compatibility = aggregateCompatibility.get(transition);
+    if (compatibility !== undefined) {
+      discardAuthority(compatibility.transition);
+      return;
     }
-    if (record.state === "discarded") return;
-    record.state = "discarded";
+    throw new LiveMapTransitionError(
+      "LIVEMAP_TRANSITION_FOREIGN",
+      "Prepared LiveMap transition belongs to another authority.",
+    );
   }
 
-  function acceptAggregate(
-    transition: PreparedLiveMapAggregateTransition,
+  function acceptAuthority(
+    transition: PreparedLiveMapAuthorityTransition,
     policy: LiveMapTransitionNotificationPolicy = "legacy",
-  ): LiveMapAggregateTransitionAcceptance {
-    const record = aggregate_record_for(transition);
+  ): LiveMapAuthorityTransitionAcceptance {
+    const record = authority_record_for(transition);
+    return accept_record(record, "LiveMap authority", policy);
+  }
+
+  function accept_record<TCommit extends Readonly<{ changed: boolean }>>(
+    record: AuthorityTransitionRecord<TCommit>,
+    label: string,
+    policy: LiveMapTransitionNotificationPolicy,
+  ): Readonly<{ commit: TCommit; notificationFailureCount: number }> {
     if (record.state === "accepted") {
-      throw new LiveMapTransitionError(
-        "LIVEMAP_TRANSITION_ALREADY_ACCEPTED",
-        "Prepared aggregate LiveMap transition was already accepted.",
-      );
+      throw new LiveMapTransitionError("LIVEMAP_TRANSITION_ALREADY_ACCEPTED", `Prepared ${label} transition was already accepted.`);
     }
     if (record.state === "discarded") {
-      throw new LiveMapTransitionError(
-        "LIVEMAP_TRANSITION_DISCARDED",
-        "Prepared aggregate LiveMap transition was discarded.",
-      );
+      throw new LiveMapTransitionError("LIVEMAP_TRANSITION_DISCARDED", `Prepared ${label} transition was discarded.`);
     }
     if (record.baseRevision !== getRevision()
-      || record.generation !== generation
-      || !record.baseStillCurrent()) {
-      throw new LiveMapTransitionError(
-        "LIVEMAP_TRANSITION_STALE",
-        "Prepared aggregate LiveMap transition is stale.",
-      );
+      || record.generation !== generation || !record.baseStillCurrent()) {
+      throw new LiveMapTransitionError("LIVEMAP_TRANSITION_STALE", `Prepared ${label} transition is stale.`);
     }
     if (record.commit.changed) {
-      try {
-        record.install();
-      } catch (cause) {
+      try { record.install(); }
+      catch (cause) {
         record.state = "discarded";
         generation += 1;
-        throw new LiveMapTransitionError(
-          "LIVEMAP_TRANSITION_INVALID",
-          "Prepared aggregate LiveMap transition installation failed.",
-          { cause },
-        );
+        throw new LiveMapTransitionError("LIVEMAP_TRANSITION_INVALID", `Prepared ${label} transition installation failed.`, { cause });
       }
       generation += 1;
     }
     record.state = "accepted";
     let notificationFailureCount = 0;
     if (record.commit.changed) {
-      if (policy === "legacy") {
-        record.notify(record.commit);
-      } else {
-        try {
-          record.notify(record.commit);
-        } catch {
-          notificationFailureCount = 1;
-        }
+      if (policy === "legacy") record.notify(record.commit);
+      else {
+        try { record.notify(record.commit); }
+        catch { notificationFailureCount = 1; }
       }
     }
     return Object.freeze({ commit: record.commit, notificationFailureCount });
   }
 
-  function discardAggregate(transition: PreparedLiveMapAggregateTransition): void {
-    const record = aggregate_record_for(transition);
+  function discardAuthority(transition: PreparedLiveMapAuthorityTransition): void {
+    const record = authority_record_for(transition);
     if (record.state === "accepted") {
       throw new LiveMapTransitionError(
         "LIVEMAP_TRANSITION_ALREADY_ACCEPTED",
-        "Accepted aggregate LiveMap transition cannot be discarded.",
+        "Accepted LiveMap authority transition cannot be discarded.",
       );
     }
     if (record.state !== "discarded") record.state = "discarded";
   }
 
   return Object.freeze({
-    prepare,
-    prepareAggregate,
+    prepareAuthority,
+    projectAggregateCompatibility,
     accept,
-    acceptAggregate,
+    acceptAuthority,
     discard,
-    discardAggregate,
+    discardAuthority,
     invalidate(): void {
       generation += 1;
     },
@@ -451,10 +369,4 @@ export function schedule_livemap_managed_mutation<TMap extends object>(
 ): Promise<LiveMapCommit<LiveMapAnyOp>> | undefined {
   const authority = authorities.get(map);
   return authority?.scheduleManaged(mutation as (draft: object) => LiveMapCommit<LiveMapAnyOp>);
-}
-
-function deep_freeze<T>(value: T): T {
-  if (typeof value !== "object" || value === null || Object.isFrozen(value)) return value;
-  for (const item of Object.values(value)) deep_freeze(item);
-  return Object.freeze(value);
 }

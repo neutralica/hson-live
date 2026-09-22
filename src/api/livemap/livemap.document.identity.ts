@@ -319,7 +319,7 @@ export function assert_livemap_document_identity_overlay(
 
 const overlayOwners = new WeakMap<object, () => LiveMapDocumentIdentityOverlay>();
 const overlayEntries = new WeakMap<LiveMapDocumentIdentityOverlay, ReadonlyMap<string, LiveMapDocumentPath>>();
-const commitIdentityEffects = new WeakMap<LiveMapGraphCommit, readonly LiveMapDocumentIdentityEffect[]>();
+const commitIdentityEffects = new WeakMap<object, readonly LiveMapDocumentIdentityEffect[]>();
 let completedOverlayBuilds = 0;
 let completedOverlayReconciliations = 0;
 let completedOverlayEntriesVisited = 0;
@@ -359,7 +359,7 @@ export function register_livemap_document_identity_effects(
 
 /** Resolve derived identity evidence without widening the public commit shape. */
 export function livemap_document_identity_effects_for(
-  commit: LiveMapGraphCommit,
+  commit: object,
 ): readonly LiveMapDocumentIdentityEffect[] | undefined {
   return commitIdentityEffects.get(commit);
 }

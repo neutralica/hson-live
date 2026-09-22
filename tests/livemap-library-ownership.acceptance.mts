@@ -32,7 +32,7 @@ const check = (name: string, run: () => void): void => {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 };
 
-check("one stable internal default library owns the projected graph and mode", () => {
+check("one stable solo compatibility record owns the projected graph and mode", () => {
   const map = hson.liveMap.fromJson({ name: "Ada", age: 37 });
   const before = internal_livemap_library_ownership(map);
   assert.equal(before.mode, "data-object");
@@ -46,7 +46,7 @@ check("one stable internal default library owns the projected graph and mode", (
   assert.equal(after.quidEpoch, before.quidEpoch);
 });
 
-check("Schema attaches to the default library while map revision remains global", () => {
+check("Schema attaches to the solo compatibility record while map revision remains global", () => {
   const map = hson.liveMap.fromJson({ name: "Ada", age: 37 });
   const before = internal_livemap_library_ownership(map);
   map.schema.use(DataSchema);
@@ -72,7 +72,7 @@ check("the single map-wide QUID ledger survives library-local graph changes", ()
   assert.equal(retired.revision, 2);
 });
 
-check("projected restore cannot bypass default-library HsonSchema admission", () => {
+check("projected restore cannot bypass solo HsonSchema admission", () => {
   const governed = hson.liveMap.fromJson({ name: "Ada", age: 37 }).schema.use(DataSchema);
   const invalid = hson.liveMap.fromJson({ name: "Ada" }).capture();
   assert.throws(() => governed.restore(invalid));

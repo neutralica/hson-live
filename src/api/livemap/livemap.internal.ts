@@ -11,8 +11,9 @@ import type {
   LiveMapLibraryState,
   LiveMapStructuralTarget,
 } from "./livemap.library.js";
+import type { LiveMapSystemIdentity } from "./livemap.system.js";
 import type {
-  PreparedLiveMapAggregateTransition,
+  PreparedLiveMapAuthorityTransition,
   LiveMapTransitionController,
 } from "./livemap.authority.js";
 import type { PreparedDocumentMutation } from "./livemap.document.mutation.js";
@@ -38,18 +39,18 @@ const INTERNAL_LIBRARY_OWNERS = new WeakMap<object, InternalLiveMapLibraryOwner>
 
 /** Non-public aggregate capability used only by architecture acceptance tests. @internal */
 export type InternalLiveMapAggregateAuthority = Readonly<{
-  defaultLibrary: () => LiveMapLibraryIdentity;
   /** Insertion-ordered opaque identities; this is an in-package test seam, not a selector API. */
   libraries: () => readonly LiveMapLibraryIdentity[];
-  addLibrary: (root: HsonNode, options?: Readonly<{ hsonSchema?: HsonSchema }>) => LiveMapLibraryIdentity;
-  /** Attach one structurally hidden Hson-owned Library before the first transition. @internal */
-  addReservedLibrary: (
+  /** Configure the authority's pre-existing Hson-owned interaction state slot. @internal */
+  configureSystemState: (
     key: string,
     transportName: string,
     root: HsonNode,
     hsonSchema: HsonSchema,
-  ) => LiveMapLibraryIdentity;
-  reservedLibrary: (key: string) => LiveMapLibraryIdentity | undefined;
+  ) => LiveMapSystemIdentity;
+  systemState: (key: string) => LiveMapSystemIdentity | undefined;
+  systemRoot: (system: LiveMapSystemIdentity) => HsonNode;
+  systemTarget: (system: LiveMapSystemIdentity, path: LivePath) => import("./livemap.library.js").LiveMapSystemTarget;
   /** Fix public names and exact Schema sources before hosted capture/replay. @internal */
   configureHostedRegistry: (bindings: readonly HostedRegistryBinding[]) => HostedRegistry;
   hostedRegistry: () => HostedRegistry;
@@ -69,14 +70,14 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   snap: (library: LiveMapLibraryIdentity, path?: LivePath) => JsonValue | undefined;
   handle: (library: LiveMapLibraryIdentity, path: LivePath) => InternalLiveMapPathAuthority;
   resolveQuid: (quid: string) => LiveMapStructuralTarget | undefined;
-  prepare: (writes: readonly LiveMapAggregateWrite[]) => PreparedLiveMapAggregateTransition;
+  prepare: (writes: readonly LiveMapAggregateWrite[]) => PreparedLiveMapAuthorityTransition;
   /** Prepare through the Locus-owned management claim. @internal */
   prepareManaged: (
     owner: object,
     writes: readonly LiveMapAggregateWrite[],
-  ) => PreparedLiveMapAggregateTransition;
-  accept: LiveMapTransitionController["acceptAggregate"];
-  discard: LiveMapTransitionController["discardAggregate"];
+  ) => PreparedLiveMapAuthorityTransition;
+  accept: LiveMapTransitionController["acceptAuthority"];
+  discard: LiveMapTransitionController["discardAuthority"];
   /** Claim/release the same exclusive mutation boundary used by solo Locus. @internal */
   claimManagement: (owner: object) => void;
   releaseManagement: (owner: object) => void;
@@ -124,7 +125,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
       value: JsonValue | undefined;
     }>) => void,
   ) => () => void;
-  /** Detached aggregate state evidence. Legacy map.capture/root still describe only the default library. */
+  /** Detached application-registry evidence. Solo capture/root remain compatibility-facade concerns. */
   inspect: () => Readonly<{
     revision: number;
     libraries: readonly Readonly<{

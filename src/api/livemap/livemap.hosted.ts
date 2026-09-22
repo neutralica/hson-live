@@ -37,6 +37,7 @@ import {
   type LiveMapProjectedDataOp,
 } from "./livemap.transport.js";
 import type { LiveMapLibraryIdentity } from "./livemap.library.js";
+import type { LiveMapSystemIdentity } from "./livemap.system.js";
 import { validate_document_path } from "./livemap.document.path.js";
 
 export const HOSTED_REGISTRY_FORMAT = "hson-hosted-registry" as const;
@@ -78,7 +79,7 @@ export type HostedRegistry = Readonly<{
 export type HostedRegistryBinding = Readonly<{
   name: string;
   scope?: "hson-internal";
-  identity: LiveMapLibraryIdentity;
+  identity: LiveMapLibraryIdentity | LiveMapSystemIdentity;
   mode: LiveMapRootMode;
   schema: HsonSchema;
 }>;
@@ -165,13 +166,13 @@ export function make_hosted_authority_fence(): HostedAuthorityFence {
 export function make_hosted_commit(
   fence: HostedAuthorityFence,
   registry: HostedRegistry,
-  bindingsByIdentity: ReadonlyMap<LiveMapLibraryIdentity, HostedRegistryBinding>,
+  bindingsByIdentity: ReadonlyMap<object, HostedRegistryBinding>,
   input: Readonly<{
     changed: boolean;
     prevRev: number;
     rev: number;
     operations: readonly Readonly<{
-      target: Readonly<{ library: LiveMapLibraryIdentity }>;
+      target: Readonly<{ library?: LiveMapLibraryIdentity; system?: LiveMapSystemIdentity }>;
       operation: LiveMapAnyOp;
       projected?: LiveMapProjectedDataOp;
     }>[];
@@ -183,7 +184,8 @@ export function make_hosted_commit(
   const semantic: HostedSemanticOperation[] = [];
   const replay: HostedReplayOperation[] = [];
   for (const entry of input.operations) {
-    const binding = bindingsByIdentity.get(entry.target.library);
+    const identity = entry.target.library ?? entry.target.system;
+    const binding = identity === undefined ? undefined : bindingsByIdentity.get(identity);
     if (binding === undefined) throw new HostedAggregateRepresentationError("Hosted commit references an unregistered Library identity.");
     const evidence = entry.projected === undefined
       ? encode_hosted_operation(binding.name, binding.mode, entry.operation)

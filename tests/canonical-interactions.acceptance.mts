@@ -20,6 +20,7 @@ import {
 } from "../src/index.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
+import { validate_document_path } from "../src/api/livemap/index.ts";
 import {
   set_interaction_activation_initialization_hook_for_tests,
   set_interaction_activation_initialization_materialization_hook_for_tests,
@@ -129,7 +130,7 @@ await check("hidden storage is aggregate state but not public selection", () => 
   assert.equal(map.rev, 0);
   enable_interactions(map);
   assert.equal(map.rev, 0);
-  assert.equal(aggregate.inspect().libraries.length, 3);
+  assert.equal(aggregate.inspect().libraries.length, 2);
   const snapshot = aggregate.captureHosted();
   assert.equal(snapshot.registry.libraries.filter((entry) => entry.scope === "hson-internal").length, 1);
   assert.throws(() => map.lib("@hson/canonical-interactions/v1" as "state"), /Unknown/);
@@ -182,6 +183,54 @@ await check("strict Schema and authoring semantics reject before revision moveme
   remove_interaction(map, "a");
   assert.equal(map.rev, before + 1);
   assert.throws(() => remove_interaction(map, "a"), /does not exist/);
+});
+
+await check("document and interaction effects accept or reject as one authority transition", async () => {
+  const map = map_fixture();
+  const aggregate = internal_livemap_aggregate_authority(map);
+  const locus = hsonLocus.create({
+    map,
+    actions: {
+      mixed: (context) => context.mutate((draft) => {
+        draft.lib("page").graph(Object.freeze({
+          domain: "graph",
+          op: "set-attr",
+          target: Object.freeze({ kind: "path", path: validate_document_path([0]) }),
+          name: "title",
+          value: "accepted",
+        }));
+        add_interaction(draft, local("mixed", "run"));
+      }),
+      invalid: (context) => context.mutate((draft) => {
+        draft.lib("page").graph(Object.freeze({
+          domain: "graph",
+          op: "set-attr",
+          target: Object.freeze({ kind: "path", path: validate_document_path([0]) }),
+          name: "blocked",
+          value: "rejected",
+        }));
+        add_interaction(draft, { ...local("invalid", "run"), subjectQuid: "iiiiiiiii" });
+      }),
+    },
+  });
+
+  const accepted = await locus.dispatchAction({ type: "action", id: "mixed-accept", name: "mixed" });
+  assert.equal(accepted.type, "ack");
+  assert.equal(map.rev, 1);
+  assert.equal(map.lib("page").document.attrs.get({ kind: "path", path: [0] }, "title"), "accepted");
+  const acceptedCapture = aggregate.captureHosted();
+  assert.match(JSON.stringify(acceptedCapture), /mixed/);
+
+  const beforeRevision = map.rev;
+  const beforeIssued = aggregate.identityEpoch().issued().size;
+  const beforeCapture = JSON.stringify(acceptedCapture);
+  const rejected = await locus.dispatchAction({ type: "action", id: "mixed-reject", name: "invalid" });
+  assert.equal(rejected.type, "error");
+  assert.equal(map.rev, beforeRevision);
+  assert.equal(aggregate.identityEpoch().issued().size, beforeIssued);
+  assert.equal(map.lib("page").document.attrs.get({ kind: "path", path: [0] }, "blocked"), undefined);
+  assert.equal(JSON.stringify(aggregate.captureHosted()), beforeCapture);
+  locus.dispose();
 });
 
 await check("Locus staging authors hidden descriptors while direct managed writes are fenced", async () => {

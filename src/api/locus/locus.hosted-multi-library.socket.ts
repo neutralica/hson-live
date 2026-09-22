@@ -218,10 +218,14 @@ export function create_locus_hosted_aggregate_socket_internal<
   const registry = aggregate.hostedRegistry();
   const bindings = aggregate.libraries();
   const identitiesByName = new Map<string, object>();
+  let applicationIndex = 0;
   for (let index = 0; index < registry.libraries.length; index += 1) {
     const entry = registry.libraries[index];
-    const identity = bindings[index];
-    if (entry === undefined || identity === undefined) throw new Error("Hosted aggregate registry identity binding is unavailable.");
+    if (entry === undefined) throw new Error("Hosted aggregate registry identity binding is unavailable.");
+    if (entry.scope === "hson-internal") continue;
+    const identity = bindings[applicationIndex];
+    applicationIndex += 1;
+    if (identity === undefined) throw new Error("Hosted aggregate application identity binding is unavailable.");
     identitiesByName.set(entry.name, identity);
   }
 

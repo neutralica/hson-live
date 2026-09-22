@@ -40,7 +40,7 @@ import {
   register_internal_livemap_aggregate_owner,
 } from "./livemap.internal.js";
 import type { LiveMapAggregateCommit, LiveMapLibraryIdentity } from "./livemap.library.js";
-import { make_classified_livemap } from "./livemap.core.js";
+import { make_livemap_registry_authority, type InitialSystemState } from "./livemap.core.js";
 import { cut_local_libraries } from "../../internal/document-cut.js";
 import { make_livemap_document_mutation_api } from "./livemap.document.mutation.js";
 import { make_livemap_document_attrs_read_api, make_livemap_document_flags_read_api } from "./livemap.document.attrs.js";
@@ -77,23 +77,25 @@ export function is_public_multi_library_livemap(value: unknown): value is object
 }
 
 /**
- * Establish a fixed local Library registry over the already-complete aggregate
- * engine. Names remain only at this public facade; the engine continues to use
- * opaque map-local library identities.
+ * Admit the complete named registry before constructing its map-global authority.
+ * Names remain at this public facade; the engine uses opaque map-local identities.
  */
 export function make_livemap_libraries<const TLibraries extends LiveMapLibrariesInput>(
   inputs: TLibraries,
+  systems: readonly InitialSystemState[] = [],
 ): LiveMapLibraries<TLibraries> {
   const entries = Object.entries(inputs);
   if (entries.length === 0) throw new Error("LiveMap fromLibraries requires at least one named Library.");
 
-  const firstEntry = entries[0];
-  if (firstEntry === undefined) throw new Error("LiveMap fromLibraries could not read its first Library.");
-  const [firstName, firstInput] = firstEntry;
-  const first = must_library_input(firstName, firstInput);
-  const firstMap = make_classified_livemap(library_root(first));
-  firstMap.schema.use(first.schema);
-  const aggregate = internal_livemap_aggregate_authority(firstMap);
+  const definitions = entries.map(([name, value]) => ({
+    name,
+    input: must_library_input(name, value),
+  }));
+  const built = make_livemap_registry_authority(definitions.map(({ input }) => ({
+    root: library_root(input),
+    hsonSchema: input.schema,
+  })), systems);
+  const aggregate = built.aggregate;
   const namesByIdentity = new Map<LiveMapLibraryIdentity, string>();
   const named = new Map<string, NamedLibrary>();
   const selectedFacades = new Map<string, LiveMapDataLibrary | LiveMapDocumentLibrary>();
@@ -104,12 +106,11 @@ export function make_livemap_libraries<const TLibraries extends LiveMapLibraries
     named.set(name, Object.freeze({ name, identity, input }));
   };
 
-  add(firstName, first, aggregate.defaultLibrary());
-  for (const entry of entries.slice(1)) {
-    const [name, rawInput] = entry;
-    const input = must_library_input(name, rawInput);
-    const identity = aggregate.addLibrary(library_root(input), { hsonSchema: input.schema });
-    add(name, input, identity);
+  for (let index = 0; index < definitions.length; index += 1) {
+    const definition = definitions[index];
+    const identity = built.identities[index];
+    if (definition === undefined || identity === undefined) throw new Error("LiveMap registry construction is incomplete.");
+    add(definition.name, definition.input, identity);
   }
 
   const inspectedByIdentity = new Map(
@@ -132,6 +133,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapLibraries
     prevRev: commit.prevRev,
     rev: commit.rev,
     operations: Object.freeze(commit.operations.flatMap((entry): readonly LiveMapLibraryOperation[] => {
+      if (entry.target.domain !== "application") return [];
       const library = namesByIdentity.get(entry.target.library);
       if (library === undefined) return [];
       return [Object.freeze({ library, operation: entry.operation })];
@@ -223,6 +225,7 @@ export function make_livemap_mirror_from_snapshot_internal(
   }
 
   const inputs: Record<string, LiveMapLibraryInput> = Object.create(null);
+  const systems: InitialSystemState[] = [];
   for (let index = 0; index < snapshot.registry.libraries.length; index += 1) {
     const registry = snapshot.registry.libraries[index];
     const library = snapshot.libraries[index];
@@ -234,25 +237,22 @@ export function make_livemap_mirror_from_snapshot_internal(
       throw new Error("LiveMap Libraries snapshot Library metadata is malformed.");
     }
     const root = decode_hosted_root(library.root);
-    if (registry.scope === "hson-internal") continue;
+    if (registry.scope === "hson-internal") {
+      systems.push(Object.freeze({
+        key: registry.name,
+        transportName: registry.name,
+        root,
+        hsonSchema: HsonSchemaHandle.fromHson(registry.schema),
+      }));
+      continue;
+    }
     inputs[registry.name] = registry.mode === "document"
       ? { document: root, schema: HsonSchemaHandle.fromHson(registry.schema) }
       : { data: node_to_json_value(root), schema: HsonSchemaHandle.fromHson(registry.schema) };
   }
 
-  const mirror = make_livemap_libraries(inputs);
+  const mirror = make_livemap_libraries(inputs, systems);
   const aggregate = internal_livemap_aggregate_authority(mirror);
-  for (let index = 0; index < snapshot.registry.libraries.length; index += 1) {
-    const registry = snapshot.registry.libraries[index];
-    const library = snapshot.libraries[index];
-    if (registry === undefined || library === undefined || registry.scope !== "hson-internal") continue;
-    aggregate.addReservedLibrary(
-      registry.name,
-      registry.name,
-      decode_hosted_root(library.root),
-      HsonSchemaHandle.fromHson(registry.schema),
-    );
-  }
   if (hosted === undefined) aggregate.restoreLibraries(snapshot);
   else aggregate.restoreHosted(hosted);
   return mirror;

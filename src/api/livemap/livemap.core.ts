@@ -9,14 +9,12 @@ import type { LiveMapProjectedGraphEnsureQuidOp } from "./livemap.identity.types
 import {
   clone_live_root,
   delete_live_path,
-  overwrite_hson_node,
   project_live_path,
   replace_live_path,
-  replace_live_path_from_projected,
   resolve_value_node,
   set_live_path,
-  set_live_path_from_projected,
   snap_live_path,
+  overwrite_hson_node,
 } from "./livemap.editor.js";
 import { make_livemap_feed_hub } from "./livemap.feed.js";
 import { make_livemap_commit_observer_hub } from "./livemap.commit-observer.js";
@@ -31,6 +29,7 @@ import { hson_data_text_from_value } from "../data/hson-data.js";
 import {
   is_ordered_projected_object,
   optional_ordered_projected_value_equal,
+  ordered_projected_object,
   ordered_projected_value_equal,
   type OrderedProjectedObject,
   type OrderedProjectedValue,
@@ -44,10 +43,7 @@ import {
   ordered_projected_value_replace,
   ordered_projected_value_set,
 } from "../../core/ordered-projected-value-mutation.js";
-import {
-  assert_canonical_hson_data_value,
-  projected_value_to_hson_root,
-} from "../../core/projected-value-graph.js";
+import { projected_value_to_hson_root } from "../../core/projected-value-graph.js";
 import { ROOT_TAG } from "../../core/constants.js";
 import { is_Node } from "../../core/node-guards.js";
 import { is_persisted_quid } from "../../core/hson-node-quid.js";
@@ -93,6 +89,7 @@ import {
 } from "./livemap.projected-propagation.js";
 import {
   register_livemap_document_identity_effects,
+  livemap_document_identity_effects_for,
   livemap_document_identity_quids,
   replace_livemap_document_identity_overlay_effects,
   type LiveMapDocumentIdentityEffect,
@@ -135,6 +132,7 @@ import {
 import {
   enumerate_livemap_issued_quids,
   type LiveMapIdentityEpochController,
+  type LiveMapIssuedQuidLedger,
   LiveMapIdentityEpochError,
   make_livemap_issued_quid_ledger,
   make_livemap_identity_epoch,
@@ -162,7 +160,7 @@ import {
 } from "./livemap.hosted.js";
 import {
   livemap_library_target,
-  make_default_livemap_library,
+  livemap_system_target,
   make_livemap_library,
   make_livemap_library_registry,
   reject_livemap_aggregate_legacy_lowering,
@@ -173,6 +171,11 @@ import {
   type LiveMapLibraryState,
   type LiveMapStructuralTarget,
 } from "./livemap.library.js";
+import {
+  make_livemap_system_identity,
+  type LiveMapSystemIdentity,
+  type LiveMapSystemState,
+} from "./livemap.system.js";
 
 type LiveMapConstructiveSetWriteOp = Readonly<{
   kind: "constructive-set";
@@ -196,18 +199,13 @@ type LiveMapCoreWriteOp =
   | LiveMapProjectedMoveWriteOp
   | LiveMapConstructiveSetWriteOp;
 
-type LiveMapCommitPublisher = (
-  commit: LiveMapCommit<LiveMapAnyOp>,
-  publishExisting: () => void,
-) => void;
-
 type BuiltLiveMapCore = Readonly<{
   core: LiveMapCore<JsonValue | undefined>;
   projected: LiveMapProjectedPropagation;
   document?: LiveMapDocumentInstallController & LiveMapDocumentMutationController & LiveMapDocumentReplayController & InternalDocumentSchemaController;
   transitionController: LiveMapTransitionController;
   aggregateAuthority: InternalLiveMapAggregateAuthority;
-  defaultLibrary: () => LiveMapLibraryState;
+  compatibilityLibrary: () => LiveMapLibraryState;
   mapRevision: () => number;
   mapIdentityEpoch: LiveMapIdentityEpochController;
   currentRoot: () => HsonNode;
@@ -223,6 +221,45 @@ type BuiltLiveMapCore = Readonly<{
   prepareProjectedBatch: (fn: (tx: LiveMapBatchTx<JsonValue | undefined>) => void) => PreparedLiveMapTransition;
 }>;
 
+export type RegistryRoot = Readonly<{
+  root: HsonNode;
+  hsonSchema?: HsonSchema;
+}>;
+
+export type InitialSystemState = Readonly<{
+  key: string;
+  transportName: string;
+  root: HsonNode;
+  hsonSchema: HsonSchema;
+}>;
+
+/** Construct all named graphs before opening their shared transition authority. @internal */
+export function make_livemap_registry_authority(
+  roots: readonly RegistryRoot[],
+  systems: readonly InitialSystemState[] = [],
+): Readonly<{
+  aggregate: InternalLiveMapAggregateAuthority;
+  identities: readonly LiveMapLibraryIdentity[];
+}> {
+  if (roots.length === 0) throw new Error("LiveMap registry requires at least one library.");
+  const prepared = roots.map(({ root, hsonSchema }) => {
+    const graph = prepare_livemap_root(root);
+    if (hsonSchema !== undefined) must_hson_schema_root(hsonSchema, graph.root);
+    return { graph, hsonSchema };
+  });
+  // The compatibility facade is deliberately neutral for a registry-backed
+  // authority. No application record supplies its mode, root, or identity.
+  const compatibilityRoot = prepare_livemap_root(projected_value_to_hson_root(ordered_projected_object([])));
+  const built = make_livemap_core_from_compatibility_root(compatibilityRoot, {
+    registry: prepared,
+    systems,
+  });
+  return Object.freeze({
+    aggregate: built.aggregateAuthority,
+    identities: built.aggregateAuthority.libraries(),
+  });
+}
+
 
 
 /**
@@ -233,7 +270,8 @@ type BuiltLiveMapCore = Readonly<{
  * generation, feeds, links, batching, and later transport-compatible behavior.
  *
  * `at(path)` is the data data handle. `root()` returns a detached canonical
- * clone. The owned canonical graph is never exposed through the public facade.
+ * clone. The solo compatibility record's canonical graph is never exposed
+ * through the public facade.
  *
  * Mutation contract:
  * - `set(path, value)` requires the addressed path to resolve. Plain object
@@ -249,11 +287,11 @@ type BuiltLiveMapCore = Readonly<{
  */
 export function make_livemap_core(input: HsonNode): LiveMapCore<JsonValue | undefined> {
   const prepared = prepare_livemap_root(input);
-  const built = make_livemap_core_from_owned_root(prepared);
+  const built = make_livemap_core_from_compatibility_root(prepared);
   register_internal_livemap_owner(built.core, built.currentRoot);
   register_internal_livemap_library_owner(
     built.core,
-    built.defaultLibrary,
+    built.compatibilityLibrary,
     built.mapRevision,
     built.mapIdentityEpoch,
   );
@@ -266,7 +304,7 @@ export function make_livemap_core(input: HsonNode): LiveMapCore<JsonValue | unde
 /** Construct the public shape-specific façade after detached root ownership. */
 export function make_classified_livemap(input: HsonNode): ClassifiedLiveMap {
   const prepared = prepare_livemap_root(input);
-  const built = make_livemap_core_from_owned_root(prepared);
+  const built = make_livemap_core_from_compatibility_root(prepared);
   const facade = facade_for_livemap_root(
     built.core,
     prepared,
@@ -277,14 +315,14 @@ export function make_classified_livemap(input: HsonNode): ClassifiedLiveMap {
   register_internal_livemap_owner(facade, built.currentRoot);
   register_internal_livemap_library_owner(
     built.core,
-    built.defaultLibrary,
+    built.compatibilityLibrary,
     built.mapRevision,
     built.mapIdentityEpoch,
   );
   register_internal_livemap_aggregate_owner(built.core, built.aggregateAuthority);
   register_internal_livemap_library_owner(
     facade,
-    built.defaultLibrary,
+    built.compatibilityLibrary,
     built.mapRevision,
     built.mapIdentityEpoch,
   );
@@ -296,32 +334,42 @@ export function make_classified_livemap(input: HsonNode): ClassifiedLiveMap {
 }
 
 /** Build the shared Core around a root already cloned, validated, and indexed. */
-function make_livemap_core_from_owned_root(
+function make_livemap_core_from_compatibility_root(
   prepared: ReturnType<typeof prepare_livemap_root>,
   initial: Readonly<{
     revision?: number;
     hsonSchema?: HsonSchema;
+    registry?: readonly Readonly<{
+      graph: ReturnType<typeof prepare_livemap_root>;
+      hsonSchema?: HsonSchema;
+    }>[];
+    systems?: readonly InitialSystemState[];
   }> = {},
 ): BuiltLiveMapCore {
-  const owned = make_default_livemap_library(prepared, initial.hsonSchema);
-  const libraryRegistry = make_livemap_library_registry(owned);
-  const initialMode = owned.mode;
-  if (initialMode !== "document") {
-    owned.projectedValue = must_projected_root_value(owned.root);
+  const compatibilityLibrary = make_livemap_library(prepared, initial.hsonSchema);
+  const states = initial.registry === undefined
+    ? [compatibilityLibrary]
+    : initial.registry.map(({ graph, hsonSchema }) => make_livemap_library(graph, hsonSchema));
+  const libraryRegistry = make_livemap_library_registry(states);
+  if (compatibilityLibrary.mode !== "document") {
+    compatibilityLibrary.projectedValue = must_projected_root_value(compatibilityLibrary.root);
   }
+  for (const library of states) {
+    if (library.mode !== "document") library.projectedValue = must_projected_root_value(library.root);
+  }
+  const initialMode = compatibilityLibrary.mode;
   // Revision, transition, publication, and QUID identity authority stay on the
   // enclosing LiveMap. A Library owns only graph-local state.
   let mapRevision = initial.revision ?? 0;
   const getProjectedValue = (): OrderedProjectedValue => {
-    if (owned.projectedValue === undefined) throw new Error("Data value is unavailable in document mode.");
-    return owned.projectedValue;
+    if (compatibilityLibrary.projectedValue === undefined) throw new Error("Data value is unavailable in document mode.");
+    return compatibilityLibrary.projectedValue;
   };
-  const setProjectedValue = (value: OrderedProjectedValue): void => { owned.projectedValue = value; };
   const feedHub = make_livemap_feed_hub();
   const commitObserverHub = make_livemap_commit_observer_hub<LiveMapAnyOp>();
   const projectedWatchHub = make_livemap_watch_hub({
     clonePath: clone_live_path,
-    read: (path: LivePath) => project_live_path(owned.root, path),
+    read: (path: LivePath) => project_live_path(compatibilityLibrary.root, path),
     equal: optional_ordered_projected_value_equal,
     detach: (value: OrderedProjectedValue | undefined): JsonValue | undefined => (
       value === undefined ? undefined : materialize_projected_value(value)
@@ -336,20 +384,16 @@ function make_livemap_core_from_owned_root(
       if (initialMode !== "document") {
         throw new Error("Document location watch is unavailable in data mode.");
       }
-      return read_livemap_document_logical_location(owned.root, initialMode, path);
+      return read_livemap_document_logical_location(compatibilityLibrary.root, initialMode, path);
     },
     equal: optional_livemap_document_endpoint_equal,
     detach: detach_livemap_document_endpoint,
     relevant: () => true,
   });
   // This is deliberately one-per-LiveMap, not one-per-Library. It is the
-  // map-wide QUID epoch and issued ledger, even while the active overlay below
-  // is graph-local and currently belongs to the default Library.
-  const mapIdentityEpoch = make_livemap_identity_epoch(
-    prepared.documentOverlay === undefined
-      ? livemap_projected_identity_quids(require_projected_overlay(prepared.projectedOverlay))
-      : livemap_document_identity_quids(prepared.documentOverlay),
-  );
+  // map-wide QUID epoch and issued ledger. Active overlays remain graph-local
+  // to their selected application Libraries.
+  const mapIdentityEpoch = make_livemap_identity_epoch(aggregate_quid_locations(states).keys());
   /** Legacy root replacement resets an identity epoch and is one-library-only. */
   const assert_legacy_identity_epoch_reset_available = (): void => {
     if (libraryRegistry.size() === 1) return;
@@ -358,7 +402,7 @@ function make_livemap_core_from_owned_root(
     );
   };
   /** Revision zero represents the initial graph before any changed commit. */
-  const transitionController = make_livemap_transition_controller(initialMode, () => mapRevision);
+  const transitionController = make_livemap_transition_controller(() => mapRevision);
   const publicationQueue: Array<() => void> = [];
   let publicationCursor = 0;
   let publishing = false;
@@ -403,7 +447,7 @@ function make_livemap_core_from_owned_root(
       ? Object.freeze({
         mode: initialMode,
         revision: commit.rev,
-        root: owned.root,
+        root: compatibilityLibrary.root,
         continuity: livemap_document_commit_continuity(commit)
           ?? (commit.ops[0] !== undefined
             && "domain" in commit.ops[0]
@@ -435,7 +479,7 @@ function make_livemap_core_from_owned_root(
       ? Object.freeze({
         mode: initialMode,
         revision,
-        root: owned.root,
+        root: compatibilityLibrary.root,
         continuity: continuity ?? "new-epoch",
       })
       : undefined;
@@ -462,107 +506,124 @@ function make_livemap_core_from_owned_root(
     detachedRoot: HsonNode,
     preparedInput?: ReturnType<typeof prepare_livemap_root>,
   ): PreparedLiveMapTransition {
-    const baseRoot = clone_live_root(owned.root);
     const preparedNext = preparedInput ?? prepare_livemap_root(detachedRoot);
     if (preparedNext.mode !== initialMode) {
       throw new Error(`Prepared LiveMap transition mode mismatch: expected ${initialMode}, observed ${preparedNext.mode}.`);
     }
-    if (owned.hsonSchema !== undefined) must_hson_schema_root(owned.hsonSchema, preparedNext.root);
-    if ((initialMode === "document")
-      ? livemap_document_commit_continuity(commit) === "new-epoch"
-      : commit.ops.some((operation) => (
-        !("domain" in operation) && operation.kind === "replace" && operation.path.length === 0
-      ))) {
-      assert_legacy_identity_epoch_reset_available();
-    }
-    const installsProjectedDelta = initialMode !== "document"
-      && require_projected_overlay(owned.projectedOverlay).size === 0
-      && require_projected_overlay(preparedNext.projectedOverlay).size === 0
-      && commit.ops.every((operation) => !("domain" in operation))
-      && !commit.ops.some((operation) => (
-        !("domain" in operation) && operation.kind === "replace" && operation.path.length === 0
-      ));
-    return transitionController.prepare({
-      commit,
-      baseStillCurrent: () => mapRevision === commit.prevRev && canonical_graph_equal(owned.root, baseRoot),
-      install: () => {
-        if (initialMode === "document") {
-          const continuity = livemap_document_commit_continuity(commit);
-          if (continuity === "new-epoch") {
-            mapIdentityEpoch.replace(livemap_document_identity_quids(
-              require_document_overlay(preparedNext.documentOverlay),
-            ));
-          } else if (continuity === "same-epoch") {
-            mapIdentityEpoch.install(retain_livemap_identity_epoch(
-              mapIdentityEpoch.issued(),
-              livemap_document_identity_quids(require_document_overlay(preparedNext.documentOverlay)),
-            ));
-          } else {
-            mapIdentityEpoch.install(stage_livemap_identity_epoch(
-              mapIdentityEpoch.issued(),
-              livemap_document_identity_quids(require_document_overlay(owned.documentOverlay)),
-              livemap_document_identity_quids(require_document_overlay(preparedNext.documentOverlay)),
-            ));
-          }
-          Object.assign(owned, {
-            root: preparedNext.root,
-            documentOverlay: preparedNext.documentOverlay,
-            projectedOverlay: undefined,
-          });
-          mapRevision = commit.rev;
-        } else if (installsProjectedDelta) {
-          apply_materialized_projected_ops(owned.root, commit.ops as readonly LiveMapDataOp[]);
-          owned.projectedValue = must_projected_root_value(preparedNext.root);
-          mapRevision = commit.rev;
-        } else {
-          if (commit.ops.some((operation) => (
-            !("domain" in operation)
-            && operation.kind === "replace"
-            && operation.path.length === 0
-          ))) {
-            mapIdentityEpoch.replace(livemap_projected_identity_quids(
-              require_projected_overlay(preparedNext.projectedOverlay),
-            ));
-          } else {
-            mapIdentityEpoch.install(stage_livemap_identity_epoch(
-              mapIdentityEpoch.issued(),
-              livemap_projected_identity_quids(require_projected_overlay(owned.projectedOverlay)),
-              livemap_projected_identity_quids(require_projected_overlay(preparedNext.projectedOverlay)),
-            ));
-          }
-          overwrite_hson_node(owned.root, preparedNext.root);
-          owned.projectedValue = must_projected_root_value(preparedNext.root);
-          owned.projectedOverlay = preparedNext.projectedOverlay;
-          mapRevision = commit.rev;
+    let aggregateTransition: import("./livemap.authority.js").PreparedLiveMapAuthorityTransition;
+    if (initialMode === "document") {
+      const documentOverlay = require_document_overlay(preparedNext.documentOverlay);
+      const operations: LiveMapGraphOp[] = [];
+      for (const operation of commit.ops) {
+        if (!is_document_graph_operation(operation)) {
+          throw new Error("Document compatibility staging produced a non-graph operation.");
         }
-      },
-      notify: (acceptedCommit) => {
-        publishCommitWithWatch(acceptedCommit, () => {
-          if (initialMode === "document") {
-            commitObserverHub.emitCommit(acceptedCommit, "authoritative");
-          } else {
-            feedHub.emitProjected(acceptedCommit as LiveMapCommit<LiveMapDataOp>, (path) => project_live_path(owned.root, path));
-            commitObserverHub.emitCommit(acceptedCommit, "authoritative");
-          }
-        });
-      },
-    });
+        operations.push(operation);
+      }
+      aggregateTransition = prepare_authority_transition([], [{
+        library: compatibilityLibrary.identity,
+        root: preparedNext.root,
+        overlay: documentOverlay,
+        operations,
+        identityEffects: livemap_document_identity_effects_for(commit) ?? [],
+        ...(livemap_document_commit_continuity(commit) === undefined
+          ? {}
+          : { continuity: livemap_document_commit_continuity(commit) }),
+      }]);
+    } else {
+      const writes: LiveMapAggregateWrite[] = is_projected_identity_commit(commit)
+        ? [Object.freeze({
+          target: aggregate_target(compatibilityLibrary.identity, commit.ops[0]!.target.path),
+          kind: "ensure-quid" as const,
+          quid: commit.ops[0]!.quid,
+        })]
+        : must_livemap_replay(commit).ops.map((operation) => Object.freeze({
+          target: aggregate_target(compatibilityLibrary.identity, operation.path),
+          kind: "replay-data" as const,
+          operation,
+        }));
+      aggregateTransition = prepare_authority_transition(writes);
+      compatibilityCommitByAggregate.set(aggregateTransition.commit, commit);
+    }
+    aggregateOriginByCommit.set(aggregateTransition.commit, "authoritative");
+    return transitionController.projectAggregateCompatibility(
+      aggregateTransition,
+      commit,
+      initialMode,
+    );
   }
 
   function useDocumentSchema(schema: HsonSchema): void {
-    if (owned.hsonSchema === schema) return;
-    if (owned.hsonSchema !== undefined) {
+    if (compatibilityLibrary.hsonSchema === schema) return;
+    if (compatibilityLibrary.hsonSchema !== undefined) {
       throw new Error("LiveMap document schema contract is already attached and cannot be replaced.");
     }
     transitionController.assertPublicMutationAllowed();
     if (initialMode !== "document") {
       throw new TypeError("Document schema attachment is unavailable in data mode.");
     }
-    must_hson_schema_root(schema, owned.root);
-    owned.hsonSchema = schema;
+    must_hson_schema_root(schema, compatibilityLibrary.root);
+    compatibilityLibrary.hsonSchema = schema;
     transitionController.invalidate();
   }
   let storeApi: LiveMapStoreApi<JsonValue | undefined> | undefined;
+
+  const prepareCompatibilityDataAggregate = (
+    writeOps: readonly LiveMapCoreWriteOp[],
+    origin: "authoritative" | "replay",
+  ): import("./livemap.authority.js").PreparedLiveMapAuthorityTransition => {
+    const planned = plan_write_ops_with_identity(
+      getProjectedValue(),
+      writeOps,
+      require_projected_overlay(compatibilityLibrary.projectedOverlay),
+    );
+    const transition = prepare_authority_transition(planned.transportOps.map((operation) => Object.freeze({
+      target: aggregate_target(compatibilityLibrary.identity, operation.path),
+      kind: "replay-data" as const,
+      operation,
+    })));
+    aggregateOriginByCommit.set(transition.commit, origin);
+    compatibility_data_commit_for(transition.commit);
+    return transition;
+  };
+
+  const compatibility_data_commit_for = (
+    aggregateCommit: LiveMapAggregateCommit,
+  ): LiveMapCommit<LiveMapAnyOp> => {
+    const existing = compatibilityCommitByAggregate.get(aggregateCommit);
+    if (existing !== undefined) return existing;
+    const operations = aggregateCommit.operations
+      .filter((entry) => entry.target.domain === "application"
+        && entry.target.library === compatibilityLibrary.identity)
+      .map((entry) => entry.operation as LiveMapAnyOp);
+    const projected = aggregateCommit.operations
+      .filter((entry) => entry.target.domain === "application"
+        && entry.target.library === compatibilityLibrary.identity
+        && entry.projected !== undefined)
+      .map((entry) => entry.projected!);
+    const commit: LiveMapCommit<LiveMapAnyOp> = Object.freeze({
+      changed: operations.length > 0,
+      prevRev: aggregateCommit.prevRev,
+      rev: aggregateCommit.rev,
+      ops: Object.freeze(operations),
+      ...encode_livemap_replay_transport(projected),
+    });
+    compatibilityCommitByAggregate.set(aggregateCommit, commit);
+    return commit;
+  };
+
+  const prepareCompatibilityDataTransition = (
+    writeOps: readonly LiveMapCoreWriteOp[],
+    origin: "authoritative" | "replay" = "authoritative",
+  ): PreparedLiveMapTransition => {
+    const aggregateTransition = prepareCompatibilityDataAggregate(writeOps, origin);
+    return transitionController.projectAggregateCompatibility(
+      aggregateTransition,
+      compatibility_data_commit_for(aggregateTransition.commit),
+      initialMode,
+    );
+  };
+
   const commitOps = (
     writeOps: readonly LiveMapCoreWriteOp[],
     origin: "authoritative" | "replay" = "authoritative",
@@ -571,41 +632,10 @@ function make_livemap_core_from_owned_root(
     if (writeOps.some((operation) => operation.kind === "replace" && operation.path.length === 0)) {
       assert_legacy_identity_epoch_reset_available();
     }
-    if (origin === "replay") {
-      transitionController.invalidate();
-      return apply_replay_ops(
-        owned.root,
-        getProjectedValue,
-        setProjectedValue,
-        owned.hsonSchema,
-        feedHub,
-        () => mapRevision,
-        (revision) => { mapRevision = revision; },
-        writeOps,
-        commitObserverHub,
-        publishCommitWithWatch,
-        require_projected_overlay(owned.projectedOverlay),
-        (overlay) => { owned.projectedOverlay = overlay; },
-        mapIdentityEpoch,
-      );
-    }
-    const transition = prepare_projected_transition(
-      owned.root,
-      getProjectedValue,
-      setProjectedValue,
-      owned.hsonSchema,
-      feedHub,
-      () => mapRevision,
-      (revision) => { mapRevision = revision; },
-      writeOps,
-      commitObserverHub,
-      publishCommitWithWatch,
-      transitionController,
-      require_projected_overlay(owned.projectedOverlay),
-      (overlay) => { owned.projectedOverlay = overlay; },
-      mapIdentityEpoch,
-    );
-    return transitionController.accept(transition, "legacy").commit as LiveMapCommit;
+    const transition = prepareCompatibilityDataAggregate(writeOps, origin);
+    const commit = compatibility_data_commit_for(transition.commit) as LiveMapCommit;
+    transitionController.acceptAuthority(transition);
+    return commit;
   };
 
   const getStoreApi = (): LiveMapStoreApi<JsonValue | undefined> => {
@@ -642,24 +672,24 @@ function make_livemap_core_from_owned_root(
   });
 
   const schemaApi: LiveMapCoreSchemaApi<JsonValue | undefined> = Object.freeze({
-    get: () => owned.hsonSchema,
+    get: () => compatibilityLibrary.hsonSchema,
 
     use: ((schema: HsonSchema) => {
-      if (owned.hsonSchema === schema) return core;
-      if (owned.hsonSchema !== undefined) {
+      if (compatibilityLibrary.hsonSchema === schema) return core;
+      if (compatibilityLibrary.hsonSchema !== undefined) {
         throw new Error("LiveMap data schema contract is already attached and cannot be replaced.");
       }
       transitionController.assertPublicMutationAllowed();
-      must_hson_schema_root(schema, owned.root);
-      owned.hsonSchema = schema;
+      must_hson_schema_root(schema, compatibilityLibrary.root);
+      compatibilityLibrary.hsonSchema = schema;
       transitionController.invalidate();
       return core;
     }) as LiveMapCoreSchemaApi<JsonValue | undefined>["use"],
   });
 
   const applyProjectedIdentityTransition = (
-    nextRoot: HsonNode,
-    nextOverlay: LiveMapProjectedIdentityOverlay,
+    _nextRoot: HsonNode,
+    _nextOverlay: LiveMapProjectedIdentityOverlay,
     operation: LiveMapProjectedGraphEnsureQuidOp,
     origin: "authoritative" | "replay" = "authoritative",
   ): LiveMapGraphCommit<LiveMapProjectedGraphEnsureQuidOp> => {
@@ -667,41 +697,35 @@ function make_livemap_core_from_owned_root(
     if (initialMode === "document") {
       throw new Error("Data identity acquisition is unavailable in document mode.");
     }
-    const prevRev = mapRevision;
+    const transition = prepare_authority_transition([Object.freeze({
+      target: aggregate_target(compatibilityLibrary.identity, operation.target.path),
+      kind: "ensure-quid" as const,
+      quid: operation.quid,
+    })]);
+    aggregateOriginByCommit.set(transition.commit, origin);
+    const aggregateOperation = transition.commit.operations[0]?.operation;
+    if (aggregateOperation === undefined || !("op" in aggregateOperation)
+      || aggregateOperation.op !== "ensure-quid") {
+      transitionController.discardAuthority(transition);
+      throw new Error("Projected identity planning did not produce its canonical graph operation.");
+    }
     const commit: LiveMapGraphCommit<LiveMapProjectedGraphEnsureQuidOp> = Object.freeze({
       changed: true,
-      prevRev,
-      rev: prevRev + 1,
-      ops: Object.freeze([operation]),
+      prevRev: transition.commit.prevRev,
+      rev: transition.commit.rev,
+      ops: Object.freeze([aggregateOperation as LiveMapProjectedGraphEnsureQuidOp]),
     });
-    const nextLedger = stage_livemap_identity_epoch(
-      mapIdentityEpoch.issued(),
-      livemap_projected_identity_quids(require_projected_overlay(owned.projectedOverlay)),
-      livemap_projected_identity_quids(nextOverlay),
-    );
-    const transition = transitionController.prepare({
-      commit,
-      baseStillCurrent: () => mapRevision === prevRev,
-      install: () => {
-        mapIdentityEpoch.install(nextLedger);
-        overwrite_hson_node(owned.root, nextRoot);
-        owned.projectedOverlay = nextOverlay;
-        mapRevision = commit.rev;
-      },
-      notify: (acceptedCommit) => publishCommitWithWatch(
-        acceptedCommit,
-        () => commitObserverHub.emitCommit(acceptedCommit, origin),
-      ),
-    });
-    return transitionController.accept(transition, "legacy").commit as LiveMapGraphCommit<LiveMapProjectedGraphEnsureQuidOp>;
+    compatibilityCommitByAggregate.set(transition.commit, commit);
+    transitionController.acceptAuthority(transition);
+    return commit;
   };
 
   let core: LiveMapCore<JsonValue | undefined>;
   const projectedIdentityApi = make_livemap_projected_identity_api(
     () => core,
     Object.freeze({
-      root: () => owned.root,
-      overlay: () => require_projected_overlay(owned.projectedOverlay),
+      root: () => compatibilityLibrary.root,
+      overlay: () => require_projected_overlay(compatibilityLibrary.projectedOverlay),
       identityEpoch: mapIdentityEpoch,
       applyIdentity: applyProjectedIdentityTransition,
     }),
@@ -729,7 +753,7 @@ function make_livemap_core_from_owned_root(
         );
       }
       const path = clone_live_path(operation.target.path);
-      const nextRoot = clone_live_root(owned.root);
+      const nextRoot = clone_live_root(compatibilityLibrary.root);
       const endpoint = resolve_value_node(nextRoot, path);
       if (endpoint === undefined || !is_livemap_projected_identity_target(endpoint)) {
         throw new LiveMapProjectedIdentityError(
@@ -738,14 +762,14 @@ function make_livemap_core_from_owned_root(
           "replay target is ineligible",
         );
       }
-      if (require_projected_overlay(owned.projectedOverlay).quidAtPath(path) !== undefined) {
+      if (require_projected_overlay(compatibilityLibrary.projectedOverlay).quidAtPath(path) !== undefined) {
         throw new LiveMapProjectedIdentityError(
           "PROJECTED_IDENTITY_COLLISION",
           path,
           "replay target already carries a QUID",
         );
       }
-      if (require_projected_overlay(owned.projectedOverlay).pathForQuid(operation.quid) !== undefined) {
+      if (require_projected_overlay(compatibilityLibrary.projectedOverlay).pathForQuid(operation.quid) !== undefined) {
         throw new LiveMapProjectedIdentityError(
           "PROJECTED_IDENTITY_COLLISION",
           path,
@@ -760,7 +784,7 @@ function make_livemap_core_from_owned_root(
         );
       }
       const nextOverlay = register_livemap_projected_identity_at_path(
-        require_projected_overlay(owned.projectedOverlay),
+        require_projected_overlay(compatibilityLibrary.projectedOverlay),
         operation.quid,
         path,
       );
@@ -771,21 +795,21 @@ function make_livemap_core_from_owned_root(
     }
     const normalized = must_livemap_replay(input);
     must_expected_rev(normalized.prevRev, mapRevision);
-    return commitOps(replay_write_ops(owned.root, normalized.ops), "replay");
+    return commitOps(replay_write_ops(compatibilityLibrary.root, normalized.ops), "replay");
   }
 
   core = {
     /** Root capability selected during detached canonical construction. */
     mode: initialMode,
-    /** Return a detached structural clone of the root owned by this map core. */
-    root: () => clone_live_root(owned.root),
+    /** Return a detached structural clone of the root compatibilityLibrary by this map core. */
+    root: () => clone_live_root(compatibilityLibrary.root),
 
     /** Read the current projected JSON value at a path, or the whole graph. */
-    snap: ((path: LivePath = []) => snap_live_path(owned.root, must_live_path(path))) as LiveMapCoreSnap<JsonValue | undefined>,
+    snap: ((path: LivePath = []) => snap_live_path(compatibilityLibrary.root, must_live_path(path))) as LiveMapCoreSnap<JsonValue | undefined>,
 
     /** Read exact canonical data without crossing an ordinary object. */
     data: (path: LivePath = []) => {
-      const value = project_live_path(owned.root, must_live_path(path));
+      const value = project_live_path(compatibilityLibrary.root, must_live_path(path));
       return value === undefined ? undefined : hson_data_text_from_value(value);
     },
 
@@ -809,7 +833,7 @@ function make_livemap_core_from_owned_root(
         write_ops_from_set(
           livePath,
           value,
-          project_live_path(owned.root, livePath),
+          project_live_path(compatibilityLibrary.root, livePath),
         ),
       );
     },
@@ -822,7 +846,7 @@ function make_livemap_core_from_owned_root(
         write_ops_from_set_many(
           livePath,
           projectedValues,
-          project_live_path(owned.root, livePath),
+          project_live_path(compatibilityLibrary.root, livePath),
         ),
       );
     },
@@ -830,7 +854,7 @@ function make_livemap_core_from_owned_root(
     /** Apply one semantic array splice and preserve it in the resulting commit. */
     splice: (path, start, deleteCount, ...items) => {
       const livePath = must_live_path(path);
-      const currentValue = project_live_path(owned.root, livePath);
+      const currentValue = project_live_path(compatibilityLibrary.root, livePath);
       const op = splice_write_op(livePath, currentValue, start, deleteCount, items);
       return commitOps([op]);
     },
@@ -844,14 +868,14 @@ function make_livemap_core_from_owned_root(
      */
     replace: function (pathOrValue: unknown, value?: unknown) {
       const op = replace_write_op_from_args(arguments.length, pathOrValue, value);
-      must_resolved_path("replace", op.path, project_live_path(owned.root, op.path));
+      must_resolved_path("replace", op.path, project_live_path(compatibilityLibrary.root, op.path));
       return commitOps([op]);
     },
 
     /** Delete a data object-property path, emit the resulting commit, and return it. */
     delete: (path) => {
       const livePath = must_live_path(path);
-      must_resolved_path("delete", livePath, project_live_path(owned.root, livePath));
+      must_resolved_path("delete", livePath, project_live_path(compatibilityLibrary.root, livePath));
       return commitOps([
         { kind: "delete", path: livePath },
       ]);
@@ -862,7 +886,7 @@ function make_livemap_core_from_owned_root(
       transitionController.assertPublicMutationAllowed();
       const writeOps: LiveMapCoreWriteOp[] = [];
       let isOpen = true;
-      const tx = make_batch_tx(owned.root, writeOps, () => isOpen);
+      const tx = make_batch_tx(compatibilityLibrary.root, writeOps, () => isOpen);
 
       try {
         fn(tx);
@@ -885,13 +909,13 @@ function make_livemap_core_from_owned_root(
     },
     /** Capture the current data root together with its committed revision. */
     capture: (options?: LiveMapCaptureOptions) => {
-      const projected = must_projected_root_value(owned.root);
+      const projected = must_projected_root_value(compatibilityLibrary.root);
       return capture_livemap_projected(
         mapIdentityEpoch,
         mapRevision,
-        owned.root,
+        compatibilityLibrary.root,
         projected,
-        require_projected_overlay(owned.projectedOverlay),
+        require_projected_overlay(compatibilityLibrary.projectedOverlay),
         options,
       );
     },
@@ -907,7 +931,7 @@ function make_livemap_core_from_owned_root(
         path: [],
         value: normalized.value,
       };
-      const planned = plan_write_ops(must_projected_root_value(owned.root), [operation]);
+      const planned = plan_write_ops(must_projected_root_value(compatibilityLibrary.root), [operation]);
       let candidate = clone_live_root(normalized.root);
       if (options?.identity === "strip") candidate = clone_hson_graph_without_quids(candidate);
       if (options?.identity === "reject") {
@@ -925,7 +949,7 @@ function make_livemap_core_from_owned_root(
         throw new Error(`LiveMap projected restore mode mismatch: expected ${initialMode}, observed ${observedMode}.`);
       }
       const preparedCandidate = prepare_livemap_root(candidate);
-      if (owned.hsonSchema !== undefined) must_hson_schema_root(owned.hsonSchema, preparedCandidate.root);
+      if (compatibilityLibrary.hsonSchema !== undefined) must_hson_schema_root(compatibilityLibrary.hsonSchema, preparedCandidate.root);
       const continuity = projected_capture_continuity(mapIdentityEpoch, capture as object, options);
       const capturedOverlay = projected_capture_identity_overlay(capture as object);
       if (options?.identity === "reject" && (capturedOverlay?.size ?? 0) !== 0) {
@@ -949,13 +973,13 @@ function make_livemap_core_from_owned_root(
           restoredQuids,
         ));
       }
-      Object.assign(owned, {
+      Object.assign(compatibilityLibrary, {
         root: preparedCandidate.root,
         documentOverlay: undefined,
         projectedOverlay: restoredOverlay,
       });
       mapRevision = normalized.rev;
-      owned.projectedValue = planned.value;
+      compatibilityLibrary.projectedValue = planned.value;
       transitionController.invalidate();
       publishSnapshotWithWatch(normalized.rev);
     },
@@ -988,7 +1012,7 @@ function make_livemap_core_from_owned_root(
   const pathHandleCaches = new WeakMap<object, Map<string, LiveMapPathHandle>>();
 
   const projected: LiveMapProjectedPropagation = Object.freeze({
-    read: (path) => project_live_path(owned.root, path),
+    read: (path) => project_live_path(compatibilityLibrary.root, path),
     feed: (path, listener) => feedHub.addProjected(path, listener),
     commit: (ops: readonly LiveMapProjectedPropagationWrite[]) => commitOps(ops),
   });
@@ -996,7 +1020,7 @@ function make_livemap_core_from_owned_root(
 
   function get_path_handle(path: LivePath): LiveMapPathHandle {
     const handlePath = must_live_path(path);
-    const target = livemap_library_target(owned, handlePath);
+    const target = livemap_library_target(compatibilityLibrary, handlePath);
     const pathHandleCache = pathHandleCaches.get(target.library)
       ?? (() => {
         const cache = new Map<string, LiveMapPathHandle>();
@@ -1023,7 +1047,7 @@ function make_livemap_core_from_owned_root(
     value: OrderedProjectedValue;
     overlay: LiveMapProjectedIdentityOverlay;
     writes: LiveMapCoreWriteOp[];
-    nextRoot?: HsonNode;
+    nextRoot: HsonNode;
   };
   type AggregateDocumentCandidate = {
     readonly library: LiveMapLibraryState;
@@ -1032,6 +1056,16 @@ function make_livemap_core_from_owned_root(
     overlay: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay;
     operations: LiveMapGraphOp[];
     identityEffects: LiveMapDocumentIdentityEffect[];
+    sourceCandidate?: PreparedDocumentMutation;
+    continuity?: "same-epoch" | "new-epoch";
+  };
+  type AggregateSystemCandidate = {
+    readonly system: LiveMapSystemState;
+    readonly baseRoot: HsonNode;
+    readonly detachedRoot: HsonNode;
+    value: OrderedProjectedValue;
+    writes: LiveMapCoreWriteOp[];
+    nextRoot: HsonNode;
   };
   type AggregateCandidate = AggregateDataCandidate | AggregateDocumentCandidate;
   type AggregateWatch = Readonly<{
@@ -1068,18 +1102,49 @@ function make_livemap_core_from_owned_root(
   // Aggregate commits retain the exact selected-document commit that supplied
   // their graph operation.  Reflection consumes that evidence without ever
   // inventing a document-local revision stream.
-  const documentCommitByAggregate = new WeakMap<LiveMapAggregateCommit, Map<LiveMapLibraryIdentity, LiveMapGraphCommit>>();
+  const documentCommitByAggregate = new WeakMap<
+    LiveMapAggregateCommit,
+    Map<LiveMapLibraryIdentity, LiveMapGraphCommit<LiveMapGraphOp>>
+  >();
   const aggregateByDocumentCommit = new WeakMap<LiveMapGraphCommit, LiveMapAggregateCommit>();
+  const aggregateOriginByCommit = new WeakMap<LiveMapAggregateCommit, "authoritative" | "replay">();
+  const compatibilityCommitByAggregate = new WeakMap<LiveMapAggregateCommit, LiveMapCommit<LiveMapAnyOp>>();
   let hostedRegistry: HostedRegistry | undefined;
   let hostedFence: HostedAuthorityFence | undefined;
-  let hostedBindingsByIdentity: ReadonlyMap<LiveMapLibraryIdentity, HostedRegistryBinding> | undefined;
+  let hostedBindingsByIdentity: ReadonlyMap<object, HostedRegistryBinding> | undefined;
   let hostedBindingsByName: ReadonlyMap<string, HostedRegistryBinding> | undefined;
-  const reservedLibraries = new Map<string, LiveMapLibraryIdentity>();
+  const systemIdentity = make_livemap_system_identity();
+  let systemState: LiveMapSystemState | undefined;
+
+  function prepare_system_state(input: InitialSystemState): LiveMapSystemState {
+    const preparedSystem = prepare_livemap_root(input.root);
+    if (preparedSystem.mode === "document") {
+      throw new Error("Transactional Hson system state must be data-mode.");
+    }
+    if ((preparedSystem.projectedOverlay?.size ?? 0) !== 0) {
+      throw new Error("Transactional Hson system state cannot own QUID identity.");
+    }
+    must_hson_schema_root(input.hsonSchema, preparedSystem.root);
+    return {
+      identity: systemIdentity,
+      key: input.key,
+      transportName: input.transportName,
+      root: preparedSystem.root,
+      projectedValue: must_projected_root_value(preparedSystem.root),
+      hsonSchema: input.hsonSchema,
+    };
+  }
+
+  if ((initial.systems?.length ?? 0) > 1) {
+    throw new Error("LiveMap currently supports one transactional Hson system-state domain.");
+  }
+  const initialSystem = initial.systems?.[0];
+  if (initialSystem !== undefined) systemState = prepare_system_state(initialSystem);
 
   function require_hosted_state(): Readonly<{
     registry: HostedRegistry;
     fence: HostedAuthorityFence;
-    byIdentity: ReadonlyMap<LiveMapLibraryIdentity, HostedRegistryBinding>;
+    byIdentity: ReadonlyMap<object, HostedRegistryBinding>;
     byName: ReadonlyMap<string, HostedRegistryBinding>;
   }> {
     if (hostedRegistry === undefined || hostedFence === undefined
@@ -1132,6 +1197,18 @@ function make_livemap_core_from_owned_root(
     return livemap_library_target(require_library(library), clone_live_path(must_live_path(path)));
   }
 
+  function require_system(identity: LiveMapSystemIdentity): LiveMapSystemState {
+    if (systemState !== undefined && systemState.identity === identity) return systemState;
+    throw new Error("Transactional Hson system target belongs to another map authority.");
+  }
+
+  function aggregate_system_target(
+    system: LiveMapSystemIdentity,
+    path: LivePath,
+  ): import("./livemap.library.js").LiveMapSystemTarget {
+    return livemap_system_target(require_system(system).identity, clone_live_path(must_live_path(path)));
+  }
+
   function aggregate_snap(
     libraryIdentity: LiveMapLibraryIdentity,
     path: LivePath = [],
@@ -1179,6 +1256,7 @@ function make_livemap_core_from_owned_root(
       value,
       overlay,
       writes: [],
+      nextRoot: detachedRoot,
     };
   }
 
@@ -1222,13 +1300,33 @@ function make_livemap_core_from_owned_root(
     return [Object.freeze({ kind: "delete" as const, path })];
   }
 
-  function prepare_aggregate_transition(
+  function prepare_authority_transition(
     writes: readonly LiveMapAggregateWrite[],
-  ): import("./livemap.authority.js").PreparedLiveMapAggregateTransition {
+    preparedDocuments: readonly Readonly<{
+      library: LiveMapLibraryIdentity;
+      root: HsonNode;
+      overlay: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay;
+      operations: readonly LiveMapGraphOp[];
+      identityEffects: readonly LiveMapDocumentIdentityEffect[];
+      issuedLedger?: LiveMapIssuedQuidLedger;
+      sourceCandidate?: PreparedDocumentMutation;
+      continuity?: "same-epoch" | "new-epoch";
+    }>[] = [],
+  ): import("./livemap.authority.js").PreparedLiveMapAuthorityTransition {
     transitionController.assertPublicMutationAllowed();
     const prevRev = mapRevision;
     const candidates = new Map<LiveMapLibraryIdentity, AggregateCandidate>();
+    let systemCandidate: AggregateSystemCandidate | undefined;
+    const initialActiveQuids = aggregate_quid_locations(libraryRegistry.all());
+    let stagedIssuedLedger = mapIdentityEpoch.issued();
     const operations: LiveMapAggregateOperation[] = [];
+    const merge_issued_ledgers = (
+      left: LiveMapIssuedQuidLedger,
+      right: LiveMapIssuedQuidLedger,
+    ): LiveMapIssuedQuidLedger => make_livemap_issued_quid_ledger([
+      ...enumerate_livemap_issued_quids(left),
+      ...enumerate_livemap_issued_quids(right),
+    ]);
     const candidate_for = (identity: LiveMapLibraryIdentity): AggregateCandidate => {
       const existing = candidates.get(identity);
       if (existing !== undefined) return existing;
@@ -1239,8 +1337,132 @@ function make_livemap_core_from_owned_root(
       candidates.set(identity, candidate);
       return candidate;
     };
+    const planned_quid_is_active = (quid: string): boolean => {
+      for (const library of libraryRegistry.all()) {
+        const candidate = candidates.get(library.identity);
+        const overlay = candidate === undefined
+          ? library.documentOverlay ?? library.projectedOverlay
+          : candidate.overlay;
+        if (overlay?.pathForQuid(quid) !== undefined) return true;
+      }
+      return false;
+    };
+    const stage_candidate_identity = (
+      beforeQuids: Iterable<string>,
+      afterQuids: Iterable<string>,
+    ): void => {
+      const before = new Set(beforeQuids);
+      const after = new Set(afterQuids);
+      const stagedAfter = new Set(after);
+      for (const quid of after) {
+        if (before.has(quid)) continue;
+        if (planned_quid_is_active(quid)) {
+          throw new Error(`LiveMap-wide active QUID collision for ${JSON.stringify(quid)}.`);
+        }
+        // A QUID moved from another application library is diagnosed after all
+        // candidates are complete, where both qualified locations are known.
+        if (initialActiveQuids.has(quid)) stagedAfter.delete(quid);
+      }
+      stagedIssuedLedger = stage_livemap_identity_epoch(
+        stagedIssuedLedger,
+        before,
+        stagedAfter,
+      );
+    };
+
+    for (const prepared of preparedDocuments) {
+      const library = require_library(prepared.library);
+      if (library.mode !== "document" || library.documentOverlay === undefined) {
+        throw new Error("Prepared document effects require a document application Library.");
+      }
+      if (candidates.has(library.identity)) {
+        throw new Error("One authority transition cannot install two prepared candidates for one document Library.");
+      }
+      aggregateCandidateRootsCloned += 1;
+      const baseRoot = clone_live_root(library.root);
+      const candidate: AggregateDocumentCandidate = {
+        library,
+        baseRoot,
+        root: prepared.root,
+        overlay: prepared.overlay,
+        operations: [...prepared.operations],
+        identityEffects: [...prepared.identityEffects],
+        ...(prepared.sourceCandidate === undefined ? {} : { sourceCandidate: prepared.sourceCandidate }),
+        ...(prepared.continuity === undefined ? {} : { continuity: prepared.continuity }),
+      };
+      if (canonical_graph_equal(library.root, prepared.root) && prepared.issuedLedger === undefined) {
+        candidate.operations.length = 0;
+        candidate.identityEffects.length = 0;
+      }
+      const replacesRoot = candidate.operations.some((operation) => operation.op === "replace-root");
+      if (!replacesRoot) {
+        stage_candidate_identity(
+          livemap_document_identity_quids(library.documentOverlay),
+          livemap_document_identity_quids(candidate.overlay),
+        );
+        if (prepared.issuedLedger !== undefined) {
+          stagedIssuedLedger = merge_issued_ledgers(stagedIssuedLedger, prepared.issuedLedger);
+        }
+      }
+      for (const operation of candidate.operations) {
+        operations.push(Object.freeze({
+          target: aggregate_target(library.identity, document_operation_path(operation)),
+          operation,
+        }));
+      }
+      candidates.set(library.identity, candidate);
+    }
 
     for (const write of writes) {
+      if (write.target.domain === "system") {
+        const system = require_system(write.target.system);
+        systemCandidate ??= {
+          system,
+          baseRoot: clone_live_root(system.root),
+          detachedRoot: clone_live_root(system.root),
+          value: system.projectedValue,
+          writes: [],
+          nextRoot: clone_live_root(system.root),
+        };
+        const candidate = systemCandidate;
+        const target = aggregate_system_target(system.identity, write.target.path);
+        if (write.kind === "graph" || write.kind === "ensure-quid") {
+          throw new Error("Transactional Hson system state cannot own graph identity.");
+        }
+        if (write.kind === "replay-data") {
+          const currentValue = ordered_projected_value_at(candidate.value, write.operation.path);
+          must_replay_value(write.operation.path, write.operation.prev, currentValue);
+          const localWrite = projected_write_op_from_transport(write.operation);
+          const planned = plan_write_ops(candidate.value, [localWrite]);
+          const nextValue = ordered_projected_value_at(planned.value, write.operation.path);
+          must_replay_value(write.operation.path, write.operation.next, nextValue);
+          candidate.value = planned.value;
+          candidate.writes.push(localWrite);
+          operations.push(Object.freeze({
+            target,
+            operation: materialize_livemap_projected_op(write.operation),
+            projected: write.operation,
+          }));
+          continue;
+        }
+        const localWrites = aggregate_write_ops(write, candidate.value);
+        const planned = plan_write_ops(candidate.value, localWrites);
+        candidate.value = planned.value;
+        candidate.writes.push(...localWrites);
+        for (let index = 0; index < planned.ops.length; index += 1) {
+          const operation = planned.ops[index];
+          const projected = planned.transportOps[index];
+          if (operation === undefined || projected === undefined) {
+            throw new Error("System-state operation evidence is incomplete.");
+          }
+          operations.push(Object.freeze({
+            target: aggregate_system_target(system.identity, operation.path),
+            operation,
+            projected,
+          }));
+        }
+        continue;
+      }
       const library = require_library(write.target.library);
       const target = aggregate_target(library.identity, write.target.path);
       const candidate = candidate_for(library.identity);
@@ -1255,6 +1477,12 @@ function make_livemap_core_from_owned_root(
           candidate.overlay,
         );
         if (!canonical_graph_equal(candidate.root, planned.root)) {
+          if (planned.operation.op !== "replace-root") {
+            stage_candidate_identity(
+              livemap_document_identity_quids(candidate.overlay),
+              livemap_document_identity_quids(planned.overlay),
+            );
+          }
           candidate.root = planned.root;
           candidate.overlay = planned.overlay;
           candidate.operations.push(planned.operation);
@@ -1284,7 +1512,12 @@ function make_livemap_core_from_owned_root(
         if (existing !== undefined || candidate.overlay.pathForQuid(write.quid) !== undefined) {
           throw new Error("Aggregate QUID registration collides with an active library claim.");
         }
-        candidate.overlay = register_livemap_projected_identity_at_path(candidate.overlay, write.quid, target.path);
+        const nextOverlay = register_livemap_projected_identity_at_path(candidate.overlay, write.quid, target.path);
+        stage_candidate_identity(
+          livemap_projected_identity_quids(candidate.overlay),
+          livemap_projected_identity_quids(nextOverlay),
+        );
+        candidate.overlay = nextOverlay;
         operations.push(Object.freeze({
           target,
           operation: Object.freeze({
@@ -1304,11 +1537,18 @@ function make_livemap_core_from_owned_root(
         const nextValue = ordered_projected_value_at(planned.value, write.operation.path);
         must_replay_value(write.operation.path, write.operation.next, nextValue);
         if (planned.transportOps.length !== 1) {
-          throw new Error("Hosted replay operation did not produce one exact aggregate transition operation.");
+          throw new Error("Hosted replay operation did not produce one exact authority operation.");
+        }
+        const nextOverlay = reconcile_livemap_projected_identity_overlay(candidate.overlay, planned.transportOps);
+        if (!(localWrite.kind === "replace" && localWrite.path.length === 0)) {
+          stage_candidate_identity(
+            livemap_projected_identity_quids(candidate.overlay),
+            livemap_projected_identity_quids(nextOverlay),
+          );
         }
         candidate.value = planned.value;
         candidate.writes.push(localWrite);
-        candidate.overlay = reconcile_livemap_projected_identity_overlay(candidate.overlay, planned.transportOps);
+        candidate.overlay = nextOverlay;
         operations.push(Object.freeze({
           target,
           operation: materialize_livemap_projected_op(write.operation),
@@ -1318,9 +1558,16 @@ function make_livemap_core_from_owned_root(
       }
       const localWrites = aggregate_write_ops(write, candidate.value);
       const planned = plan_write_ops_with_identity(candidate.value, localWrites, candidate.overlay);
+      const nextOverlay = reconcile_livemap_projected_identity_overlay(candidate.overlay, planned.transportOps);
+      if (!localWrites.some((operation) => operation.kind === "replace" && operation.path.length === 0)) {
+        stage_candidate_identity(
+          livemap_projected_identity_quids(candidate.overlay),
+          livemap_projected_identity_quids(nextOverlay),
+        );
+      }
       candidate.value = planned.value;
       candidate.writes.push(...localWrites);
-      candidate.overlay = reconcile_livemap_projected_identity_overlay(candidate.overlay, planned.transportOps);
+      candidate.overlay = nextOverlay;
       for (let index = 0; index < planned.ops.length; index += 1) {
         const operation = planned.ops[index];
         const projected = planned.transportOps[index];
@@ -1348,8 +1595,22 @@ function make_livemap_core_from_owned_root(
         candidate.nextRoot = root;
       }
     }
+    if (systemCandidate !== undefined) {
+      aggregateSchemaValidations += 1;
+      must_hson_schema_projected_candidate(systemCandidate.system.hsonSchema, systemCandidate.value);
+      const root = projected_candidate_graph(
+        systemCandidate.detachedRoot,
+        systemCandidate.value,
+        systemCandidate.writes,
+      );
+      const preparedSystem = prepare_livemap_root(root);
+      if (preparedSystem.mode === "document" || (preparedSystem.projectedOverlay?.size ?? 0) !== 0) {
+        throw new Error("Transactional Hson system state cannot own QUID identity.");
+      }
+      systemCandidate.nextRoot = preparedSystem.root;
+    }
 
-    const beforeActive = aggregate_quid_locations(libraryRegistry.all());
+    const beforeActive = initialActiveQuids;
     const afterStates = libraryRegistry.all().map((library) => {
       const candidate = candidates.get(library.identity);
       if (candidate === undefined) return library;
@@ -1357,7 +1618,7 @@ function make_livemap_core_from_owned_root(
         ...library,
         ...(is_aggregate_document_candidate(candidate)
           ? { root: candidate.root, documentOverlay: candidate.overlay, projectedOverlay: undefined, projectedValue: undefined }
-          : { root: candidate.nextRoot ?? library.root, documentOverlay: undefined, projectedOverlay: candidate.overlay, projectedValue: candidate.value }),
+          : { root: candidate.nextRoot, documentOverlay: undefined, projectedOverlay: candidate.overlay, projectedValue: candidate.value }),
       };
     });
     const afterActive = aggregate_quid_locations(afterStates);
@@ -1369,11 +1630,29 @@ function make_livemap_core_from_owned_root(
         );
       }
     }
-    const nextLedger = stage_livemap_identity_epoch(
-      mapIdentityEpoch.issued(),
-      beforeActive.keys(),
-      afterActive.keys(),
-    );
+    const resetsIdentityEpoch = operations.some((entry) => entry.target.domain === "application"
+      && "kind" in entry.operation && entry.operation.kind === "replace" && entry.operation.path.length === 0)
+      || [...candidates.values()].some((candidate) => is_aggregate_document_candidate(candidate)
+        && candidate.operations.some((operation) => operation.op === "replace-root")
+        && candidate.continuity !== "same-epoch");
+    const retainsIdentityEpoch = [...candidates.values()].some((candidate) => is_aggregate_document_candidate(candidate)
+      && candidate.operations.some((operation) => operation.op === "replace-root")
+      && candidate.continuity === "same-epoch");
+    if (resetsIdentityEpoch && libraryRegistry.size() !== 1) {
+      throw new Error("Whole-root replacement cannot reset a map-global QUID epoch across multiple application Libraries.");
+    }
+    const validatedLedger = resetsIdentityEpoch
+      ? undefined
+      : retainsIdentityEpoch
+        ? retain_livemap_identity_epoch(mapIdentityEpoch.issued(), afterActive.keys())
+      : stage_livemap_identity_epoch(
+        mapIdentityEpoch.issued(),
+        beforeActive.keys(),
+        afterActive.keys(),
+      );
+    const nextLedger = validatedLedger === undefined
+      ? undefined
+      : merge_issued_ledgers(validatedLedger, stagedIssuedLedger);
     const changed = operations.length > 0;
     const rev = changed ? prevRev + 1 : prevRev;
     const commit: LiveMapAggregateCommit = Object.freeze({
@@ -1384,27 +1663,39 @@ function make_livemap_core_from_owned_root(
       operations: Object.freeze(operations),
       ...hosted_commit_fields(changed, prevRev, rev, operations),
     });
-    const documentCommits = new Map<LiveMapLibraryIdentity, LiveMapGraphCommit>();
+    const documentCommits = new Map<LiveMapLibraryIdentity, LiveMapGraphCommit<LiveMapGraphOp>>();
     for (const candidate of candidates.values()) {
       if (!is_aggregate_document_candidate(candidate) || candidate.operations.length === 0) continue;
-      const documentCommit: LiveMapGraphCommit = Object.freeze({
+      const documentCommit: LiveMapGraphCommit<LiveMapGraphOp> = Object.freeze({
         changed,
         prevRev,
         rev: commit.rev,
         ops: Object.freeze([...candidate.operations]),
       });
+      if (candidate.sourceCandidate !== undefined) {
+        register_livemap_document_identity_candidate_commit(candidate.sourceCandidate, documentCommit);
+      }
       register_livemap_document_identity_effects(documentCommit, candidate.identityEffects);
+      if (candidate.operations.some((operation) => operation.op === "replace-root")) {
+        register_livemap_document_commit_continuity(
+          documentCommit,
+          candidate.continuity ?? "new-epoch",
+        );
+      }
       documentCommits.set(candidate.library.identity, documentCommit);
       aggregateByDocumentCommit.set(documentCommit, commit);
     }
     if (documentCommits.size > 0) documentCommitByAggregate.set(commit, documentCommits);
-    return transitionController.prepareAggregate({
+    return transitionController.prepareAuthority({
       commit,
       libraryModes: Object.freeze([...candidates.values()].map((candidate) => candidate.library.mode)),
       baseStillCurrent: () => mapRevision === prevRev
-        && [...candidates.values()].every((candidate) => canonical_graph_equal(candidate.library.root, candidate.baseRoot)),
+        && [...candidates.values()].every((candidate) => canonical_graph_equal(candidate.library.root, candidate.baseRoot))
+        && (systemCandidate === undefined
+          || canonical_graph_equal(systemCandidate.system.root, systemCandidate.baseRoot)),
       install: () => {
-        mapIdentityEpoch.install(nextLedger);
+        if (resetsIdentityEpoch) mapIdentityEpoch.replace(afterActive.keys());
+        else mapIdentityEpoch.install(nextLedger!);
         for (const candidate of candidates.values()) {
           if (is_aggregate_document_candidate(candidate)) {
             Object.assign(candidate.library, {
@@ -1414,15 +1705,17 @@ function make_livemap_core_from_owned_root(
               projectedValue: undefined,
             });
           } else {
-            const nextRoot = candidate.nextRoot;
-            if (nextRoot === undefined) throw new Error("Aggregate candidate root is unavailable.");
+            overwrite_hson_node(candidate.library.root, candidate.nextRoot);
             Object.assign(candidate.library, {
-              root: nextRoot,
               documentOverlay: undefined,
               projectedOverlay: candidate.overlay,
               projectedValue: candidate.value,
             });
           }
+        }
+        if (systemCandidate !== undefined) {
+          overwrite_hson_node(systemCandidate.system.root, systemCandidate.nextRoot);
+          systemCandidate.system.projectedValue = systemCandidate.value;
         }
         mapRevision = commit.rev;
       },
@@ -1430,6 +1723,42 @@ function make_livemap_core_from_owned_root(
         enqueuePublication(() => {
           aggregateAcceptedTransitions += 1;
           aggregatePublications += 1;
+          const compatibilityOperations = acceptedCommit.operations.filter((operation) => (
+            operation.target.domain === "application"
+            && operation.target.library === compatibilityLibrary.identity
+          ));
+          if (compatibilityOperations.length > 0) {
+            if (initialMode === "document") {
+              const documentCommit = documentCommitByAggregate.get(acceptedCommit)?.get(compatibilityLibrary.identity);
+              if (documentCommit !== undefined) {
+                publishCommitWithWatch(documentCommit, () => commitObserverHub.emitCommit(
+                  documentCommit,
+                  aggregateOriginByCommit.get(acceptedCommit) ?? "authoritative",
+                ));
+              }
+            } else {
+              const commit = compatibility_data_commit_for(acceptedCommit);
+              publishCommitWithWatch(commit, () => {
+                const dataOps = commit.ops.filter((operation): operation is LiveMapDataOp => !("domain" in operation));
+                if (dataOps.length > 0) {
+                  const dataProjected = compatibilityOperations.flatMap((entry) => (
+                    entry.projected === undefined ? [] : [entry.projected]
+                  ));
+                  const dataCommit: LiveMapCommit<LiveMapDataOp> = Object.freeze({
+                    changed: true,
+                    prevRev: commit.prevRev,
+                    rev: commit.rev,
+                    ops: Object.freeze(dataOps),
+                    ...encode_livemap_replay_transport(dataProjected),
+                  });
+                  feedHub.emitProjected(dataCommit, (path) => (
+                    project_live_path(compatibilityLibrary.root, path)
+                  ));
+                }
+                commitObserverHub.emitCommit(commit, aggregateOriginByCommit.get(acceptedCommit) ?? "authoritative");
+              });
+            }
+          }
           for (const watch of [...aggregateWatches]) {
             if (require_library(watch.library).mode === "document") continue;
             if (!acceptedCommit.operations.some((operation) => (
@@ -1464,31 +1793,20 @@ function make_livemap_core_from_owned_root(
     libraryIdentity: LiveMapLibraryIdentity,
     candidate: PreparedDocumentMutation<TOp>,
   ): LiveMapGraphCommit<TOp> {
-    transitionController.assertPublicMutationAllowed();
     const library = require_library(libraryIdentity);
     if (library.mode !== "document" || library.documentOverlay === undefined) {
       throw new Error("Aggregate document mutation requires one document library.");
     }
-    if (library.hsonSchema !== undefined) must_hson_schema_root(library.hsonSchema, candidate.root);
-
-    let nextLedger;
-    const beforeActive = aggregate_quid_locations(libraryRegistry.all());
-    const afterStates = libraryRegistry.all().map((current) => current.identity === library.identity
-      ? { ...current, root: candidate.root, documentOverlay: candidate.overlay, projectedOverlay: undefined }
-      : current);
-    const afterActive = aggregate_quid_locations(afterStates);
-    for (const [quid, beforeTarget] of beforeActive) {
-      const afterTarget = afterActive.get(quid);
-      if (afterTarget !== undefined && afterTarget.library !== beforeTarget.library) {
-        throw new Error("Cross-library QUID movement requires an explicit LiveMap transfer semantic.");
-      }
-    }
+    let transition: import("./livemap.authority.js").PreparedLiveMapAuthorityTransition;
     try {
-      nextLedger = stage_livemap_identity_epoch(
-        mapIdentityEpoch.issued(),
-        beforeActive.keys(),
-        afterActive.keys(),
-      );
+      transition = prepare_authority_transition([], [{
+        library: libraryIdentity,
+        root: candidate.root,
+        overlay: candidate.overlay,
+        operations: [candidate.operation],
+        identityEffects: candidate.identityEffects,
+        sourceCandidate: candidate,
+      }]);
     } catch (cause) {
       if (cause instanceof LiveMapIdentityEpochError && cause.code === "SAME_EPOCH_QUID_REUSE") {
         throw new LiveMapDocumentMutationError(
@@ -1500,73 +1818,15 @@ function make_livemap_core_from_owned_root(
       }
       throw cause;
     }
-
-    const prevRev = mapRevision;
-    const changed = !canonical_graph_equal(library.root, candidate.root);
-    const documentCommit: LiveMapGraphCommit<TOp> = changed
-      ? Object.freeze({
-        changed: true,
-        prevRev,
-        rev: prevRev + 1,
-        ops: Object.freeze([candidate.operation]),
-      })
-      : Object.freeze({ changed: false, prevRev, rev: prevRev, ops: Object.freeze([]) });
-    if (changed) {
-      register_livemap_document_identity_candidate_commit(candidate, documentCommit);
-      register_livemap_document_identity_effects(documentCommit, candidate.identityEffects);
-    }
-    const aggregateCommit: LiveMapAggregateCommit = Object.freeze({
-      kind: "aggregate",
-      changed,
-      prevRev,
-      rev: documentCommit.rev,
-      operations: changed
-        ? Object.freeze([Object.freeze({
-          target: aggregate_target(library.identity, document_operation_path(candidate.operation)),
-          operation: candidate.operation,
-        })])
-        : Object.freeze([]),
-      ...hosted_commit_fields(
-        changed,
-        prevRev,
-        documentCommit.rev,
-        changed
-          ? [Object.freeze({
-            target: aggregate_target(library.identity, document_operation_path(candidate.operation)),
-            operation: candidate.operation,
-          })]
-          : [],
-      ),
+    const accepted = transitionController.acceptAuthority(transition).commit;
+    const documentCommit = documentCommitByAggregate.get(accepted)?.get(library.identity);
+    if (documentCommit !== undefined) return documentCommit as LiveMapGraphCommit<TOp>;
+    return Object.freeze({
+      changed: false,
+      prevRev: accepted.prevRev,
+      rev: accepted.rev,
+      ops: Object.freeze([]),
     });
-    if (changed) {
-      documentCommitByAggregate.set(aggregateCommit, new Map([[library.identity, documentCommit]]));
-      aggregateByDocumentCommit.set(documentCommit, aggregateCommit);
-    }
-    const baseRoot = clone_live_root(library.root);
-    const transition = transitionController.prepareAggregate({
-      commit: aggregateCommit,
-      libraryModes: Object.freeze([library.mode]),
-      baseStillCurrent: () => mapRevision === prevRev && canonical_graph_equal(library.root, baseRoot),
-      install: () => {
-        mapIdentityEpoch.install(nextLedger);
-        Object.assign(library, {
-          root: candidate.root,
-          documentOverlay: candidate.overlay,
-          projectedOverlay: undefined,
-          projectedValue: undefined,
-        });
-        mapRevision = aggregateCommit.rev;
-      },
-      notify: (acceptedCommit) => {
-        enqueuePublication(() => {
-          aggregateAcceptedTransitions += 1;
-          aggregatePublications += 1;
-          for (const observer of [...aggregateObservers]) observer(acceptedCommit);
-        });
-      },
-    });
-    transitionController.acceptAggregate(transition);
-    return documentCommit;
   }
 
   function make_internal_path_authority(
@@ -1617,11 +1877,18 @@ function make_livemap_core_from_owned_root(
       }
       return Object.freeze({ ...raw });
     });
-    return install_hosted_registry(bindings);
+    const systemBinding = systemState === undefined ? [] : [Object.freeze({
+      name: systemState.transportName,
+      scope: "hson-internal" as const,
+      identity: systemState.identity,
+      mode: "data-object" as const,
+      schema: systemState.hsonSchema,
+    })];
+    return install_hosted_registry([...bindings, ...systemBinding]);
   }
 
   function install_hosted_registry(bindingsInput: readonly HostedRegistryBinding[]): HostedRegistry {
-    const byIdentity = new Map<LiveMapLibraryIdentity, HostedRegistryBinding>();
+    const byIdentity = new Map<object, HostedRegistryBinding>();
     const byName = new Map<string, HostedRegistryBinding>();
     const bindings = bindingsInput.map((raw): HostedRegistryBinding => {
       const binding = Object.freeze({ ...raw });
@@ -1645,7 +1912,14 @@ function make_livemap_core_from_owned_root(
     const libraries = hosted.registry.libraries.map((entry) => {
       const binding = hosted.byName.get(entry.name);
       if (binding === undefined) throw new Error("Hosted registry binding is unavailable during aggregate capture.");
-      const state = require_library(binding.identity);
+      const state = binding.scope === "hson-internal"
+        ? (() => {
+          if (systemState === undefined || binding.identity !== systemState.identity) {
+            throw new Error("Hosted system-state binding is unavailable during aggregate capture.");
+          }
+          return systemState;
+        })()
+        : require_library(binding.identity as LiveMapLibraryIdentity);
       return Object.freeze({
         name: entry.name,
         mode: entry.mode,
@@ -1715,6 +1989,11 @@ function make_livemap_core_from_owned_root(
       projectedOverlay?: LiveMapProjectedIdentityOverlay;
       projectedValue?: OrderedProjectedValue;
     }>> = [];
+    let systemCandidate: Readonly<{
+      state: LiveMapSystemState;
+      root: HsonNode;
+      projectedValue: OrderedProjectedValue;
+    }> | undefined;
     for (let index = 0; index < snapshot.libraries.length; index += 1) {
       const encoded = snapshot.libraries[index];
       const entry = hosted.registry.libraries[index];
@@ -1730,8 +2009,20 @@ function make_livemap_core_from_owned_root(
       const prepared = prepare_livemap_root(root);
       if (prepared.mode !== entry.mode) throw new Error("Hosted aggregate snapshot root mode disagrees with its registry.");
       must_hson_schema_root(binding.schema, prepared.root);
+      if (entry.scope === "hson-internal") {
+        if (systemState === undefined || binding.identity !== systemState.identity
+          || prepared.mode === "document" || (prepared.projectedOverlay?.size ?? 0) !== 0) {
+          throw new Error("Hosted aggregate snapshot system state is incompatible.");
+        }
+        systemCandidate = Object.freeze({
+          state: systemState,
+          root: prepared.root,
+          projectedValue: must_projected_root_value(prepared.root),
+        });
+        continue;
+      }
       candidates.push(Object.freeze({
-        library: require_library(binding.identity),
+        library: require_library(binding.identity as LiveMapLibraryIdentity),
         root: prepared.root,
         mode: prepared.mode,
         ...(prepared.documentOverlay === undefined ? {} : { documentOverlay: prepared.documentOverlay }),
@@ -1769,6 +2060,9 @@ function make_livemap_core_from_owned_root(
     const changedLibraries = Object.freeze(candidates
       .filter((candidate) => !canonical_graph_equal(candidate.library.root, candidate.root))
       .map((candidate) => candidate.library.identity));
+    if (systemState !== undefined && systemCandidate === undefined) {
+      throw new Error("Hosted aggregate snapshot omitted configured transactional system state.");
+    }
     for (const candidate of candidates) {
       Object.assign(candidate.library, {
         root: candidate.root,
@@ -1776,6 +2070,10 @@ function make_livemap_core_from_owned_root(
         projectedOverlay: candidate.projectedOverlay,
         projectedValue: candidate.projectedValue,
       });
+    }
+    if (systemCandidate !== undefined) {
+      systemCandidate.state.root = systemCandidate.root;
+      systemCandidate.state.projectedValue = systemCandidate.projectedValue;
     }
     mapIdentityEpoch.hydrate(snapshot.identity.epoch, issuedLedger);
     mapRevision = snapshot.revision;
@@ -1830,9 +2128,12 @@ function make_livemap_core_from_owned_root(
       throw new LiveMapRevError(input.prevRev, mapRevision);
     }
     const writes: LiveMapAggregateWrite[] = decoded.map((entry): LiveMapAggregateWrite => {
-      const target = aggregate_target(entry.library.identity, "path" in entry.semantic ? entry.semantic.path : (
+      const path = "path" in entry.semantic ? entry.semantic.path : (
         "target" in entry.semantic ? entry.semantic.target.path : []
-      ));
+      );
+      const target = entry.library.scope === "hson-internal"
+        ? aggregate_system_target(entry.library.identity as LiveMapSystemIdentity, path)
+        : aggregate_target(entry.library.identity as LiveMapLibraryIdentity, path);
       if (entry.projected !== undefined) {
         return Object.freeze({ target, kind: "replay-data", operation: entry.projected });
       }
@@ -1843,83 +2144,47 @@ function make_livemap_core_from_owned_root(
       }
       return Object.freeze({ target, kind: "graph", operation: operation as LiveMapGraphOp });
     });
-    const transition = prepare_aggregate_transition(writes);
+    const transition = prepare_authority_transition(writes);
     if (transition.commit.hosted === undefined || JSON.stringify(transition.commit.hosted) !== JSON.stringify(input)) {
-      transitionController.discardAggregate(transition);
+      transitionController.discardAuthority(transition);
       throw new Error("Hosted aggregate replay did not reproduce its exact semantic commit envelope.");
     }
-    return transitionController.acceptAggregate(transition).commit;
+    return transitionController.acceptAuthority(transition).commit;
   }
 
   const aggregateAuthority: InternalLiveMapAggregateAuthority = Object.freeze({
-    defaultLibrary: () => owned.identity,
     libraries: () => Object.freeze(libraryRegistry.all().map((library) => library.identity)),
-    addLibrary: (root, options) => {
+    configureSystemState: (key, transportName, root, hsonSchema) => {
       transitionController.assertPublicMutationAllowed();
-      if (hostedRegistry !== undefined) {
-        throw new Error("Hosted LiveMap topology is immutable after registry construction.");
+      if (systemState !== undefined) {
+        if (systemState.key === key) return systemState.identity;
+        throw new Error("LiveMap transactional system-state slot is already configured.");
       }
       if (mapRevision !== 0) {
-        throw new Error("Internal libraries may be attached only before the LiveMap accepts a transition.");
-      }
-      const preparedLibrary = prepare_livemap_root(root);
-      if (options?.hsonSchema !== undefined) must_hson_schema_root(options.hsonSchema, preparedLibrary.root);
-      const library = make_livemap_library(preparedLibrary, options?.hsonSchema);
-      if (library.mode !== "document") {
-        library.projectedValue = must_projected_root_value(library.root);
-      }
-      const beforeActive = aggregate_quid_locations(libraryRegistry.all());
-      const afterActive = aggregate_quid_locations([...libraryRegistry.all(), library]);
-      const nextLedger = stage_livemap_identity_epoch(
-        mapIdentityEpoch.issued(),
-        beforeActive.keys(),
-        afterActive.keys(),
-      );
-      mapIdentityEpoch.install(nextLedger);
-      libraryRegistry.add(library);
-      return library.identity;
-    },
-    addReservedLibrary: (key, transportName, root, hsonSchema) => {
-      transitionController.assertPublicMutationAllowed();
-      const existing = reservedLibraries.get(key);
-      if (existing !== undefined) return existing;
-      if (mapRevision !== 0) {
-        throw new Error("Reserved LiveMap libraries must be enabled before the first transition.");
+        throw new Error("Transactional Hson system state must be configured before the first transition.");
       }
       if (hostedRegistry === undefined || hostedBindingsByIdentity === undefined) {
         throw new Error("Canonical interactions require a fixed multi-library LiveMap.");
       }
-      const preparedLibrary = prepare_livemap_root(root);
-      must_hson_schema_root(hsonSchema, preparedLibrary.root);
-      const library = make_livemap_library(preparedLibrary, hsonSchema);
-      if (library.mode === "document") {
-        throw new Error("Reserved canonical interaction storage must be data-mode.");
-      }
-      library.projectedValue = must_projected_root_value(library.root);
-      const beforeActive = aggregate_quid_locations(libraryRegistry.all());
-      const afterActive = aggregate_quid_locations([...libraryRegistry.all(), library]);
-      mapIdentityEpoch.install(stage_livemap_identity_epoch(
-        mapIdentityEpoch.issued(),
-        beforeActive.keys(),
-        afterActive.keys(),
-      ));
-      libraryRegistry.add(library);
-      reservedLibraries.set(key, library.identity);
-      const priorBindings = libraryRegistry.all().slice(0, -1).map((state) => {
+      const candidate = prepare_system_state({ key, transportName, root, hsonSchema });
+      const applicationBindings = libraryRegistry.all().map((state) => {
         const binding = hostedBindingsByIdentity?.get(state.identity);
-        if (binding === undefined) throw new Error("Hosted LiveMap binding disappeared during reserved-library enablement.");
+        if (binding === undefined) throw new Error("Hosted LiveMap application binding disappeared during system-state configuration.");
         return binding;
       });
-      install_hosted_registry([...priorBindings, Object.freeze({
+      install_hosted_registry([...applicationBindings, Object.freeze({
         name: transportName,
         scope: "hson-internal",
-        identity: library.identity,
-        mode: library.mode,
+        identity: candidate.identity,
+        mode: "data-object",
         schema: hsonSchema,
       })]);
-      return library.identity;
+      systemState = candidate;
+      return candidate.identity;
     },
-    reservedLibrary: (key) => reservedLibraries.get(key),
+    systemState: (key) => systemState?.key === key ? systemState.identity : undefined,
+    systemRoot: (system) => require_system(system).root,
+    systemTarget: aggregate_system_target,
     configureHostedRegistry: configure_hosted_registry,
     hostedRegistry: () => require_hosted_state().registry,
     captureLibraries: capture_libraries_aggregate,
@@ -1946,13 +2211,13 @@ function make_livemap_core_from_owned_root(
     snap: aggregate_snap,
     handle: make_internal_path_authority,
     resolveQuid: (quid) => aggregate_quid_locations(libraryRegistry.all()).get(quid),
-    prepare: prepare_aggregate_transition,
+    prepare: prepare_authority_transition,
     prepareManaged: (owner, writes) => transitionController.runManaged(
       owner,
-      () => prepare_aggregate_transition(writes),
+      () => prepare_authority_transition(writes),
     ),
-    accept: transitionController.acceptAggregate,
-    discard: transitionController.discardAggregate,
+    accept: transitionController.acceptAuthority,
+    discard: transitionController.discardAuthority,
     claimManagement: (owner) => transitionController.claimManagement(
       owner,
       () => Promise.reject(new LiveMapTransitionError(
@@ -1961,7 +2226,7 @@ function make_livemap_core_from_owned_root(
       )),
     ),
     releaseManagement: transitionController.releaseManagement,
-    commit: (writes) => transitionController.acceptAggregate(prepare_aggregate_transition(writes)).commit,
+    commit: (writes) => transitionController.acceptAuthority(prepare_authority_transition(writes)).commit,
     commitDocumentMutation: commit_aggregate_document_mutation,
     documentCommitFor: (library, commit) => documentCommitByAggregate.get(commit)?.get(library),
     aggregateCommitForDocument: (commit) => aggregateByDocumentCommit.get(commit),
@@ -2028,15 +2293,15 @@ function make_livemap_core_from_owned_root(
       projected,
       transitionController,
       aggregateAuthority,
-      defaultLibrary: () => owned,
+      compatibilityLibrary: () => compatibilityLibrary,
       mapRevision: () => mapRevision,
       mapIdentityEpoch,
-      currentRoot: () => owned.root,
-      currentHsonSchema: () => owned.hsonSchema,
+      currentRoot: () => compatibilityLibrary.root,
+      currentHsonSchema: () => compatibilityLibrary.hsonSchema,
       currentPreparedRoot: () => ({
-        root: owned.root,
+        root: compatibilityLibrary.root,
         mode: initialMode,
-        projectedOverlay: require_projected_overlay(owned.projectedOverlay),
+        projectedOverlay: require_projected_overlay(compatibilityLibrary.projectedOverlay),
       }),
       watchDocument: documentWatchHub.add,
       prepareDetachedCommit,
@@ -2044,22 +2309,7 @@ function make_livemap_core_from_owned_root(
         if (writeOps.some((operation) => operation.kind === "replace" && operation.path.length === 0)) {
           assert_legacy_identity_epoch_reset_available();
         }
-        return prepare_projected_transition(
-          owned.root,
-          getProjectedValue,
-          setProjectedValue,
-          owned.hsonSchema,
-          feedHub,
-          () => mapRevision,
-          (revision) => { mapRevision = revision; },
-          writeOps,
-          commitObserverHub,
-          publishCommitWithWatch,
-          transitionController,
-          require_projected_overlay(owned.projectedOverlay),
-          (overlay) => { owned.projectedOverlay = overlay; },
-          mapIdentityEpoch,
-        );
+        return prepareCompatibilityDataTransition(writeOps);
       },
       prepareProjectedBatch: (fn) => {
         const writeOps: LiveMapCoreWriteOp[] = [];
@@ -2069,22 +2319,7 @@ function make_livemap_core_from_owned_root(
         if (writeOps.some((operation) => operation.kind === "replace" && operation.path.length === 0)) {
           assert_legacy_identity_epoch_reset_available();
         }
-        return prepare_projected_transition(
-          owned.root,
-          getProjectedValue,
-          setProjectedValue,
-          owned.hsonSchema,
-          feedHub,
-          () => mapRevision,
-          (revision) => { mapRevision = revision; },
-          writeOps,
-          commitObserverHub,
-          publishCommitWithWatch,
-          transitionController,
-          require_projected_overlay(owned.projectedOverlay),
-          (overlay) => { owned.projectedOverlay = overlay; },
-          mapIdentityEpoch,
-        );
+        return prepareCompatibilityDataTransition(writeOps);
       },
     };
   }
@@ -2092,9 +2327,9 @@ function make_livemap_core_from_owned_root(
   const document: LiveMapDocumentInstallController & LiveMapDocumentMutationController & LiveMapDocumentReplayController & InternalDocumentSchemaController = {
     mode: initialMode,
     rev: () => mapRevision,
-    root: () => owned.root,
+    root: () => compatibilityLibrary.root,
     overlay: () => {
-      const identity = owned.documentOverlay;
+      const identity = compatibilityLibrary.documentOverlay;
       if (identity === undefined) {
         throw new Error(`LiveMap document mode ${initialMode} has no identity overlay.`);
       }
@@ -2102,63 +2337,45 @@ function make_livemap_core_from_owned_root(
     },
     commits: Object.freeze({ observe: commitObserverHub.observe }),
     identityEpoch: mapIdentityEpoch,
-    getDocumentSchema: () => owned.hsonSchema,
+    getDocumentSchema: () => compatibilityLibrary.hsonSchema,
     useDocumentSchema,
     apply: (
       candidate: PreparedDocumentInstall,
       continuity: "same-epoch" | "new-epoch",
     ): LiveMapGraphCommit<LiveMapGraphReplaceRootOp> => {
       transitionController.assertPublicMutationAllowed();
-      if (owned.hsonSchema !== undefined) must_hson_schema_root(owned.hsonSchema, candidate.root);
-      const prevRev = mapRevision;
-      const unchanged = canonical_graph_equal(owned.root, candidate.root);
-      const commit: LiveMapGraphCommit<LiveMapGraphReplaceRootOp> = unchanged
-        ? Object.freeze({ changed: false, prevRev, rev: prevRev, ops: Object.freeze([]) })
-        : Object.freeze({
-          changed: true,
-          prevRev,
-          rev: prevRev + 1,
-          ops: Object.freeze([Object.freeze({
-            domain: "graph",
-            op: "replace-root",
-            mode: candidate.mode,
-            root: clone_live_root(candidate.root),
-          })]),
-        });
-      if (commit.changed) {
-        register_livemap_document_commit_continuity(commit, continuity);
-        if (continuity === "new-epoch") assert_legacy_identity_epoch_reset_available();
-        const currentOverlay = owned.documentOverlay;
-        if (currentOverlay === undefined) throw new Error("LiveMap document identity overlay is unavailable.");
-        register_livemap_document_identity_effects(
-          commit,
-          replace_livemap_document_identity_overlay_effects(currentOverlay, candidate.overlay),
-        );
+      const unchanged = canonical_graph_equal(compatibilityLibrary.root, candidate.root);
+      if (continuity === "new-epoch" && !unchanged) assert_legacy_identity_epoch_reset_available();
+      const currentOverlay = compatibilityLibrary.documentOverlay;
+      if (currentOverlay === undefined) throw new Error("LiveMap document identity overlay is unavailable.");
+      const operation: LiveMapGraphReplaceRootOp = Object.freeze({
+        domain: "graph",
+        op: "replace-root",
+        mode: candidate.mode,
+        root: clone_live_root(candidate.root),
+      });
+      const transition = prepare_authority_transition([], [{
+        library: compatibilityLibrary.identity,
+        root: candidate.root,
+        overlay: candidate.overlay,
+        operations: unchanged ? [] : [operation],
+        identityEffects: unchanged
+          ? []
+          : replace_livemap_document_identity_overlay_effects(currentOverlay, candidate.overlay),
+        continuity,
+      }]);
+      aggregateOriginByCommit.set(transition.commit, "authoritative");
+      const accepted = transitionController.acceptAuthority(transition).commit;
+      const documentCommit = documentCommitByAggregate.get(accepted)?.get(compatibilityLibrary.identity);
+      if (documentCommit !== undefined) {
+        return documentCommit as LiveMapGraphCommit<LiveMapGraphReplaceRootOp>;
       }
-      const candidateQuids = livemap_document_identity_quids(candidate.overlay);
-      const retainedLedger = continuity === "same-epoch"
-        ? retain_livemap_identity_epoch(mapIdentityEpoch.issued(), candidateQuids)
-        : undefined;
-      const transition = prepare_document_transition(
-        owned.root,
-        commit,
-        transitionController,
-        () => {
-          if (continuity === "new-epoch") mapIdentityEpoch.replace(candidateQuids);
-          else if (retainedLedger !== undefined) mapIdentityEpoch.install(retainedLedger);
-          Object.assign(owned, {
-            root: candidate.root,
-            documentOverlay: candidate.overlay,
-            projectedOverlay: undefined,
-          });
-          mapRevision = commit.rev;
-        },
-        (acceptedCommit) => publishCommitWithWatch(
-          acceptedCommit,
-          () => commitObserverHub.emitCommit(acceptedCommit, "authoritative"),
-        ),
-      );
-      return transitionController.accept(transition, "legacy").commit as LiveMapGraphCommit<LiveMapGraphReplaceRootOp>;
+      return Object.freeze({
+        changed: false,
+        prevRev: accepted.prevRev,
+        rev: accepted.rev,
+        ops: Object.freeze([]),
+      });
     },
     restore: (
       candidate: PreparedDocumentInstall,
@@ -2166,7 +2383,7 @@ function make_livemap_core_from_owned_root(
       continuity: "same-epoch" | "new-epoch",
     ): void => {
       transitionController.assertPublicMutationAllowed();
-      if (owned.hsonSchema !== undefined) must_hson_schema_root(owned.hsonSchema, candidate.root);
+      if (compatibilityLibrary.hsonSchema !== undefined) must_hson_schema_root(compatibilityLibrary.hsonSchema, candidate.root);
       if (continuity === "new-epoch") assert_legacy_identity_epoch_reset_available();
       const candidateQuids = livemap_document_identity_quids(candidate.overlay);
       if (continuity === "new-epoch") {
@@ -2177,7 +2394,7 @@ function make_livemap_core_from_owned_root(
           candidateQuids,
         ));
       }
-      Object.assign(owned, {
+      Object.assign(compatibilityLibrary, {
         root: candidate.root,
         documentOverlay: candidate.overlay,
         projectedOverlay: undefined,
@@ -2187,80 +2404,30 @@ function make_livemap_core_from_owned_root(
       publishSnapshotWithWatch(revision, continuity);
     },
     applyMutation: <TOp extends LiveMapGraphOp>(candidate: PreparedDocumentMutation<TOp>): LiveMapGraphCommit<TOp> => {
-      transitionController.assertPublicMutationAllowed();
-      if (owned.hsonSchema !== undefined) must_hson_schema_root(owned.hsonSchema, candidate.root);
-      let nextLedger;
-      try {
-        nextLedger = stage_livemap_identity_epoch(
-          mapIdentityEpoch.issued(),
-          livemap_document_identity_quids(require_document_overlay(owned.documentOverlay)),
-          livemap_document_identity_quids(candidate.overlay),
-        );
-      } catch (cause) {
-        if (cause instanceof LiveMapIdentityEpochError && cause.code === "SAME_EPOCH_QUID_REUSE") {
-          throw new LiveMapDocumentMutationError(
-            "DOCUMENT_IDENTITY_REUSE",
-            candidate.operation.op,
-            "a retired QUID cannot identify unrelated content in the same owner epoch",
-            { cause },
-          );
-        }
-        throw cause;
-      }
-      const prevRev = mapRevision;
-      const unchanged = canonical_graph_equal(owned.root, candidate.root);
-      const rev = unchanged ? prevRev : prevRev + 1;
-      const commit: LiveMapGraphCommit<TOp> = unchanged
-        ? Object.freeze({ changed: false, prevRev, rev, ops: Object.freeze([]) })
-        : Object.freeze({
-          changed: true,
-          prevRev,
-          rev,
-          ops: Object.freeze([candidate.operation]),
-        });
-      register_livemap_document_identity_candidate_commit(candidate, commit);
-      if (commit.changed) register_livemap_document_identity_effects(commit, candidate.identityEffects);
-      const transition = prepare_document_transition(
-        owned.root,
-        commit,
-        transitionController,
-        () => {
-          mapIdentityEpoch.install(nextLedger);
-          Object.assign(owned, {
-            root: candidate.root,
-            documentOverlay: candidate.overlay,
-            projectedOverlay: undefined,
-          });
-          mapRevision = rev;
-        },
-        (acceptedCommit) => publishCommitWithWatch(
-          acceptedCommit,
-          () => commitObserverHub.emitCommit(acceptedCommit, "authoritative"),
-        ),
-      );
-      return transitionController.accept(transition, "legacy").commit as LiveMapGraphCommit<TOp>;
+      return commit_aggregate_document_mutation(compatibilityLibrary.identity, candidate);
     },
     applyReplay: (candidate: PreparedDocumentReplay): LiveMapGraphCommit => {
       transitionController.assertPublicMutationAllowed();
-      if (owned.hsonSchema !== undefined) must_hson_schema_root(owned.hsonSchema, candidate.root);
       register_livemap_document_identity_effects(candidate.commit, candidate.identityEffects);
-      if (candidate.commit.ops[0]?.op === "replace-root") {
-        assert_legacy_identity_epoch_reset_available();
-        mapIdentityEpoch.replace(livemap_document_identity_quids(candidate.overlay));
-      } else {
-        mapIdentityEpoch.install(candidate.issuedLedger);
-      }
-      Object.assign(owned, {
+      const replacesRoot = candidate.commit.ops[0]?.op === "replace-root";
+      if (replacesRoot) assert_legacy_identity_epoch_reset_available();
+      const transition = prepare_authority_transition([], [{
+        library: compatibilityLibrary.identity,
         root: candidate.root,
-        documentOverlay: candidate.overlay,
-        projectedOverlay: undefined,
-      });
-      mapRevision = candidate.commit.rev;
-      transitionController.invalidate();
-      publishCommitWithWatch(
-        candidate.commit,
-        () => commitObserverHub.emitCommit(candidate.commit, "replay"),
-      );
+        overlay: candidate.overlay,
+        operations: candidate.commit.ops,
+        identityEffects: candidate.identityEffects,
+        issuedLedger: candidate.issuedLedger,
+        ...(replacesRoot ? { continuity: "new-epoch" as const } : {}),
+      }]);
+      const generated = documentCommitByAggregate.get(transition.commit);
+      if (generated !== undefined) generated.set(compatibilityLibrary.identity, candidate.commit);
+      aggregateByDocumentCommit.set(candidate.commit, transition.commit);
+      if (replacesRoot) {
+        register_livemap_document_commit_continuity(candidate.commit, "new-epoch");
+      }
+      aggregateOriginByCommit.set(transition.commit, "replay");
+      transitionController.acceptAuthority(transition);
       return candidate.commit;
     },
   };
@@ -2271,41 +2438,23 @@ function make_livemap_core_from_owned_root(
     document,
     transitionController,
     aggregateAuthority,
-    defaultLibrary: () => owned,
+    compatibilityLibrary: () => compatibilityLibrary,
     mapRevision: () => mapRevision,
     mapIdentityEpoch,
-    currentRoot: () => owned.root,
-    currentHsonSchema: () => owned.hsonSchema,
+    currentRoot: () => compatibilityLibrary.root,
+    currentHsonSchema: () => compatibilityLibrary.hsonSchema,
     currentPreparedRoot: () => ({
-      root: owned.root,
+      root: compatibilityLibrary.root,
       mode: initialMode,
-      ...(owned.documentOverlay === undefined ? {} : { documentOverlay: owned.documentOverlay }),
-      ...(owned.projectedOverlay === undefined ? {} : { projectedOverlay: owned.projectedOverlay }),
+      ...(compatibilityLibrary.documentOverlay === undefined ? {} : { documentOverlay: compatibilityLibrary.documentOverlay }),
+      ...(compatibilityLibrary.projectedOverlay === undefined ? {} : { projectedOverlay: compatibilityLibrary.projectedOverlay }),
     }),
     watchDocument: documentWatchHub.add,
     prepareDetachedCommit,
-    prepareProjectedWriteOps: (writeOps) => {
-      if (initialMode === "document") {
-        throw new LiveMapTransitionError(
-          "LIVEMAP_TRANSITION_INVALID",
-          "Projected staged write operations are unavailable for document maps.",
-        );
-      }
-      return prepare_projected_transition(
-        owned.root,
-        getProjectedValue,
-        setProjectedValue,
-        owned.hsonSchema,
-        feedHub,
-        () => mapRevision,
-        (revision) => { mapRevision = revision; },
-        writeOps,
-        commitObserverHub,
-        publishCommitWithWatch,
-        transitionController,
-        require_projected_overlay(owned.projectedOverlay),
-        (overlay) => { owned.projectedOverlay = overlay; },
-        mapIdentityEpoch,
+    prepareProjectedWriteOps: () => {
+      throw new LiveMapTransitionError(
+        "LIVEMAP_TRANSITION_INVALID",
+        "Projected staged write operations are unavailable for document maps.",
       );
     },
     prepareProjectedBatch: () => {
@@ -2319,6 +2468,12 @@ function make_livemap_core_from_owned_root(
 
 /** Register the internal callback-based staging seam on one completed façade. */
 function register_staged_facade<TMap extends object>(map: TMap, built: BuiltLiveMapCore): void {
+  let stagedManagementOwner: object | undefined;
+  const prepareThroughManagement = <T>(operation: () => T): T => (
+    stagedManagementOwner === undefined
+      ? operation()
+      : built.transitionController.runManaged(stagedManagementOwner, operation)
+  );
   const stagedAuthority: LiveMapStagedAuthority<TMap> = Object.freeze({
     prepare(mutation): PreparedLiveMapTransition {
       type DetachedFallback = Readonly<{
@@ -2343,7 +2498,7 @@ function register_staged_facade<TMap extends object>(map: TMap, built: BuiltLive
         }
         if (fallback !== undefined) return fallback;
         const preparedDraft = prepare_livemap_root(built.currentRoot());
-        const draftBuilt = make_livemap_core_from_owned_root(preparedDraft, {
+        const draftBuilt = make_livemap_core_from_compatibility_root(preparedDraft, {
           revision: built.core.rev,
           ...(built.currentHsonSchema() !== undefined ? { hsonSchema: built.currentHsonSchema() } : {}),
         });
@@ -2389,7 +2544,7 @@ function register_staged_facade<TMap extends object>(map: TMap, built: BuiltLive
               if (fastTransition !== undefined) {
                 throw new LiveMapTransitionError("LIVEMAP_TRANSITION_INVALID", "Staged LiveMap mutation must produce exactly one commit.");
               }
-              fastTransition = built.prepareProjectedBatch(fn);
+              fastTransition = prepareThroughManagement(() => built.prepareProjectedBatch(fn));
               return fastTransition.commit as LiveMapCommit;
             };
           }
@@ -2440,11 +2595,11 @@ function register_staged_facade<TMap extends object>(map: TMap, built: BuiltLive
         throw new Error("Staged LiveMap no-op mutation changed detached authority state.");
       }
 
-      return built.prepareDetachedCommit(
-        result,
-        detached.draftBuilt.currentRoot(),
-        detached.draftBuilt.currentPreparedRoot(),
-      );
+      return prepareThroughManagement(() => built.prepareDetachedCommit(
+          result,
+          detached.draftBuilt.currentRoot(),
+          detached.draftBuilt.currentPreparedRoot(),
+        ));
     },
     accept: built.transitionController.accept,
     discard: built.transitionController.discard,
@@ -2453,6 +2608,7 @@ function register_staged_facade<TMap extends object>(map: TMap, built: BuiltLive
         owner,
         schedule as unknown as (mutation: (draft: object) => LiveMapCommit<LiveMapAnyOp>) => Promise<LiveMapCommit<LiveMapAnyOp>>,
       );
+      stagedManagementOwner = owner;
       try {
         const currentMode = classify_live_root_mode(built.currentRoot());
         if (currentMode !== built.core.mode) {
@@ -2462,10 +2618,14 @@ function register_staged_facade<TMap extends object>(map: TMap, built: BuiltLive
         }
       } catch (cause) {
         built.transitionController.releaseManagement(owner);
+        if (stagedManagementOwner === owner) stagedManagementOwner = undefined;
         throw cause;
       }
     },
-    releaseManagement: built.transitionController.releaseManagement,
+    releaseManagement: (owner) => {
+      built.transitionController.releaseManagement(owner);
+      if (stagedManagementOwner === owner) stagedManagementOwner = undefined;
+    },
     runManaged: built.transitionController.runManaged,
     scheduleManaged: (mutation) => built.transitionController.scheduleManaged(
       mutation as (draft: object) => LiveMapCommit<LiveMapAnyOp>,
@@ -2942,6 +3102,11 @@ function must_projected_root_value(root: HsonNode): OrderedProjectedValue {
   throw new Error("LiveMap data root does not resolve.");
 }
 
+function is_document_graph_operation(operation: LiveMapAnyOp): operation is LiveMapGraphOp {
+  if (!("domain" in operation) || operation.domain !== "graph") return false;
+  return operation.op !== "ensure-quid" || !("projected" in operation.target);
+}
+
 /** Preserve direct data roots unless an explicit whole-root replacement owns the change. */
 function projected_candidate_graph(
   currentRoot: HsonNode,
@@ -2954,193 +3119,6 @@ function projected_candidate_graph(
   const candidate = root.$_content[0];
   if (is_Node(candidate)) return candidate;
   throw new Error("LiveMap data constructor did not produce a value node.");
-}
-
-/** Apply accepted data data operations without rebuilding unaffected graph branches. */
-function apply_materialized_projected_ops(
-  root: HsonNode,
-  operations: readonly LiveMapDataOp[],
-): void {
-  for (const operation of operations) {
-    if (operation.kind === "delete") {
-      delete_live_path(root, operation.path);
-    } else if (operation.kind === "set") {
-      if (operation.next === undefined) throw new Error("Projected set operation is missing its next value.");
-      set_live_path(root, operation.path, operation.next);
-    } else {
-      if (operation.next === undefined) throw new Error("Data operation is missing its next value.");
-      replace_live_path(root, operation.path, operation.next);
-    }
-  }
-}
-
-/** Apply already-admitted transition operations to only their addressed graph branches. */
-function apply_projected_transport_ops(
-  root: HsonNode,
-  operations: readonly LiveMapProjectedDataOp[],
-): void {
-  for (const operation of operations) {
-    if (operation.kind === "delete") {
-      delete_live_path(root, operation.path);
-    } else if (operation.kind === "set") {
-      set_live_path_from_projected(root, operation.path, operation.next);
-    } else {
-      replace_live_path_from_projected(root, operation.path, operation.next);
-    }
-  }
-}
-
-
-/** Prepare one exact projected transition entirely against detached state. */
-function prepare_projected_transition(
-  root: HsonNode,
-  getProjectedValue: () => OrderedProjectedValue,
-  setProjectedValue: (value: OrderedProjectedValue) => void,
-  hsonSchema: HsonSchema | undefined,
-  feedHub: ReturnType<typeof make_livemap_feed_hub>,
-  getRev: () => number,
-  setRev: (rev: number) => void,
-  writeOps: readonly LiveMapCoreWriteOp[],
-  commitObserverHub: ReturnType<typeof make_livemap_commit_observer_hub<LiveMapAnyOp>>,
-  publishCommit: LiveMapCommitPublisher,
-  transitionController: LiveMapTransitionController,
-  currentOverlay: LiveMapProjectedIdentityOverlay,
-  setOverlay: (overlay: LiveMapProjectedIdentityOverlay) => void,
-  identityEpoch: LiveMapIdentityEpochController,
-): PreparedLiveMapTransition {
-  const planned = plan_write_ops_with_identity(
-    getProjectedValue(),
-    writeOps,
-    currentOverlay,
-  );
-  assert_canonical_hson_data_value(planned.value);
-  must_hson_schema_projected_candidate(hsonSchema, planned.value);
-  const nextOverlay = reconcile_livemap_projected_identity_overlay(currentOverlay, planned.transportOps);
-  const replacesRoot = planned.changed
-    && writeOps.some((op) => op.kind === "replace" && op.path.length === 0);
-  const installsProjectedDelta = currentOverlay.size === 0
-    && nextOverlay.size === 0
-    && !replacesRoot;
-  const nextRoot = installsProjectedDelta
-    ? undefined
-    : projected_candidate_graph(root, planned.value, writeOps);
-  if (nextRoot !== undefined) apply_livemap_projected_identity_overlay(nextRoot, nextOverlay);
-  const nextLedger = replacesRoot
-    ? undefined
-    : stage_livemap_identity_epoch(
-      identityEpoch.issued(),
-      livemap_projected_identity_quids(currentOverlay),
-      livemap_projected_identity_quids(nextOverlay),
-    );
-  const prevRev = getRev();
-  const rev = planned.changed
-    ? prevRev + 1
-    : prevRev;
-  const commit: LiveMapCommit = Object.freeze({
-    changed: planned.changed,
-    prevRev,
-    rev,
-    ops: planned.ops,
-    ...encode_livemap_replay_transport(planned.transportOps),
-  });
-  return transitionController.prepare({
-    commit,
-    baseStillCurrent: () => getRev() === prevRev,
-    install: () => {
-      if (installsProjectedDelta) apply_projected_transport_ops(root, planned.transportOps);
-      else overwrite_hson_node(root, nextRoot!);
-      setProjectedValue(planned.value);
-      setRev(rev);
-      setOverlay(nextOverlay);
-      if (replacesRoot) identityEpoch.replace(livemap_projected_identity_quids(nextOverlay));
-      else if (nextLedger !== undefined) identityEpoch.install(nextLedger);
-    },
-    notify: (acceptedCommit) => {
-      publishCommit(acceptedCommit, () => {
-        feedHub.emitProjected(acceptedCommit as LiveMapCommit<LiveMapDataOp>, (feedPath) => project_live_path(root, feedPath));
-        commitObserverHub.emitCommit(acceptedCommit, "authoritative");
-      });
-    },
-  });
-}
-
-/** Privileged historical replay retains its exact existing notification semantics. */
-function apply_replay_ops(
-  root: HsonNode,
-  getProjectedValue: () => OrderedProjectedValue,
-  setProjectedValue: (value: OrderedProjectedValue) => void,
-  hsonSchema: HsonSchema | undefined,
-  feedHub: ReturnType<typeof make_livemap_feed_hub>,
-  getRev: () => number,
-  setRev: (rev: number) => void,
-  writeOps: readonly LiveMapCoreWriteOp[],
-  commitObserverHub: ReturnType<typeof make_livemap_commit_observer_hub<LiveMapAnyOp>>,
-  publishCommit: LiveMapCommitPublisher,
-  currentOverlay: LiveMapProjectedIdentityOverlay,
-  setOverlay: (overlay: LiveMapProjectedIdentityOverlay) => void,
-  identityEpoch: LiveMapIdentityEpochController,
-): LiveMapCommit {
-  const planned = plan_write_ops_with_identity(
-    getProjectedValue(),
-    writeOps,
-    currentOverlay,
-  );
-  must_hson_schema_projected_candidate(hsonSchema, planned.value);
-  const prevRev = getRev();
-  const rev = planned.changed ? prevRev + 1 : prevRev;
-  if (planned.changed) {
-    const nextOverlay = reconcile_livemap_projected_identity_overlay(currentOverlay, planned.transportOps);
-    const replacesRoot = writeOps.some((op) => op.kind === "replace" && op.path.length === 0);
-    const installsProjectedDelta = currentOverlay.size === 0
-      && nextOverlay.size === 0
-      && !replacesRoot;
-    const nextRoot = installsProjectedDelta
-      ? undefined
-      : projected_candidate_graph(root, planned.value, writeOps);
-    if (nextRoot !== undefined) apply_livemap_projected_identity_overlay(nextRoot, nextOverlay);
-    const nextLedger = replacesRoot
-      ? undefined
-      : stage_livemap_identity_epoch(
-        identityEpoch.issued(),
-        livemap_projected_identity_quids(currentOverlay),
-        livemap_projected_identity_quids(nextOverlay),
-      );
-    if (installsProjectedDelta) apply_projected_transport_ops(root, planned.transportOps);
-    else overwrite_hson_node(root, nextRoot!);
-    setProjectedValue(planned.value);
-    setOverlay(nextOverlay);
-    if (replacesRoot) identityEpoch.replace(livemap_projected_identity_quids(nextOverlay));
-    else if (nextLedger !== undefined) identityEpoch.install(nextLedger);
-    setRev(rev);
-  }
-  const commit: LiveMapCommit = Object.freeze({
-    changed: planned.changed,
-    prevRev,
-    rev,
-    ops: planned.ops,
-    ...encode_livemap_replay_transport(planned.transportOps),
-  });
-  publishCommit(commit, () => {
-    feedHub.emitProjected(commit, (feedPath) => project_live_path(root, feedPath));
-    commitObserverHub.emitCommit(commit, "replay");
-  });
-  return commit;
-}
-
-function prepare_document_transition(
-  currentRoot: HsonNode,
-  commit: LiveMapCommit<LiveMapGraphOp>,
-  transitionController: LiveMapTransitionController,
-  install: () => void,
-  notify: (commit: LiveMapCommit<LiveMapAnyOp>) => void,
-): PreparedLiveMapTransition {
-  const baseRoot = clone_live_root(currentRoot);
-  return transitionController.prepare({
-    commit,
-    baseStillCurrent: () => canonical_graph_equal(currentRoot, baseRoot),
-    install,
-    notify,
-  });
 }
 
 /**

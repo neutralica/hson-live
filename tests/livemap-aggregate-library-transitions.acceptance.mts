@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
-import { Hson, hson } from "../src/index.ts";
+import { Hson, hson, hsonLiveMap } from "../src/index.ts";
 import {
   internal_livemap_aggregate_authority,
-  internal_livemap_library_ownership,
 } from "../src/api/livemap/livemap.internal.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
+import type { JsonValue } from "../src/core/types.ts";
 
 const NumberSchema = Hson.schema`<type "data" content <value "number">>`;
 const StringSchema = Hson.schema`<type "data" content <value "string">>`;
@@ -40,7 +40,23 @@ const check = (name: string, run: () => void): void => {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 };
 
-check("default-library public behavior and legacy commit shape remain unchanged", () => {
+function pair(
+  data: JsonValue,
+  colors: JsonValue,
+  dataSchema = NumberSchema,
+  colorsSchema = StringSchema,
+) {
+  const map = hsonLiveMap.fromLibraries({
+    data: { data, schema: dataSchema },
+    colors: { data: colors, schema: colorsSchema },
+  });
+  const aggregate = internal_livemap_aggregate_authority(map);
+  const [dataIdentity, colorsIdentity] = aggregate.libraries();
+  if (dataIdentity === undefined || colorsIdentity === undefined) throw new Error("Expected fixed pair registry.");
+  return { map, aggregate, data: dataIdentity, colors: colorsIdentity };
+}
+
+check("one-library public behavior and legacy commit shape remain unchanged", () => {
   const map = hson.liveMap.fromJson({ value: 1 }).schema.use(NumberSchema);
   const firstHandle = map.at(["value"]);
   const commit = map.set(["value"], 2);
@@ -55,10 +71,7 @@ check("default-library public behavior and legacy commit shape remain unchanged"
 });
 
 check("two internal libraries share one revision while same paths and handles stay distinct", () => {
-  const map = hson.liveMap.fromJson({ value: 1 }).schema.use(NumberSchema);
-  const aggregate = internal_livemap_aggregate_authority(map);
-  const data = aggregate.defaultLibrary();
-  const colors = aggregate.addLibrary(hson.fromJson({ value: "blue" }).toNode(), { hsonSchema: StringSchema });
+  const { map, aggregate, data, colors } = pair({ value: 1 }, { value: "blue" });
   const dataHandle = aggregate.handle(data, ["value"]);
   const colorsHandle = aggregate.handle(colors, ["value"]);
 
@@ -71,15 +84,12 @@ check("two internal libraries share one revision while same paths and handles st
   assert.equal(colorsHandle.at([]), colorsHandle);
   assert.equal(dataHandle.snap(), 1);
   assert.equal(colorsHandle.snap(), "blue");
-  assert.equal(map.at(["value"]).snap(), 1);
+  assert.equal(aggregate.handle(data, ["value"]).snap(), 1);
   assert.equal(map.rev, 0);
 });
 
 check("one aggregate commit preserves total library-qualified order and advances the map once", () => {
-  const map = hson.liveMap.fromJson({ value: 1 }).schema.use(NumberSchema);
-  const aggregate = internal_livemap_aggregate_authority(map);
-  const data = aggregate.defaultLibrary();
-  const colors = aggregate.addLibrary(hson.fromJson({ value: "blue" }).toNode(), { hsonSchema: StringSchema });
+  const { map, aggregate, data, colors } = pair({ value: 1 }, { value: "blue" });
   const observed: unknown[] = [];
   const dataWatched: unknown[] = [];
   const colorsWatched: unknown[] = [];
@@ -124,13 +134,10 @@ check("one aggregate commit preserves total library-qualified order and advances
 });
 
 check("a schema rejection in one affected library atomically rejects every candidate", () => {
-  const map = hson.liveMap.fromJson({ value: 1 }).schema.use(NumberSchema);
-  const aggregate = internal_livemap_aggregate_authority(map);
-  const data = aggregate.defaultLibrary();
-  const colors = aggregate.addLibrary(hson.fromJson({ value: "blue" }).toNode(), { hsonSchema: StringSchema });
+  const { map, aggregate, data, colors } = pair({ value: 1 }, { value: "blue" });
   let publications = 0;
   aggregate.observe(() => { publications += 1; });
-  const beforeOwnership = internal_livemap_library_ownership(map);
+  const issuedBefore = aggregate.identityEpoch().issued().size;
 
   assert.throws(() => aggregate.commit([
     { target: aggregate.target(data, ["value"]), kind: "set", value: 2 },
@@ -141,14 +148,17 @@ check("a schema rejection in one affected library atomically rejects every candi
   assert.equal(aggregate.snap(colors, ["value"]), "blue");
   assert.equal(map.rev, 0);
   assert.equal(publications, 0);
-  assert.equal(internal_livemap_library_ownership(map).issuedQuids, beforeOwnership.issuedQuids);
+  assert.equal(aggregate.identityEpoch().issued().size, issuedBefore);
 });
 
 check("QUID claims are globally issued, resolve to library targets, and reject cross-library ABA reuse", () => {
-  const map = hson.liveMap.fromJson({ active: {}, retired: {}, duplicate: {} });
-  const aggregate = internal_livemap_aggregate_authority(map);
-  const data = aggregate.defaultLibrary();
-  const colors = aggregate.addLibrary(hson.fromJson({ active: {}, reuse: {}, duplicate: {} }).toNode());
+  const AnyData = Hson.schema`<type "data" content <active <optional "any"> retired <optional "any"> duplicate <optional "any"> reuse <optional "any">>>`;
+  const { map, aggregate, data, colors } = pair(
+    { active: {}, retired: {}, duplicate: {}, reuse: {} },
+    { active: {}, retired: {}, reuse: {}, duplicate: {} },
+    AnyData,
+    AnyData,
+  );
 
   aggregate.commit([
     { target: aggregate.target(data, ["active"]), kind: "ensure-quid", quid: Q1 },
@@ -156,7 +166,7 @@ check("QUID claims are globally issued, resolve to library targets, and reject c
   ]);
   assert.deepEqual(aggregate.resolveQuid(Q1), aggregate.target(data, ["active"]));
   assert.deepEqual(aggregate.resolveQuid(Q2), aggregate.target(colors, ["active"]));
-  assert.equal(internal_livemap_library_ownership(map).issuedQuids, 2);
+  assert.equal(aggregate.identityEpoch().issued().size, 2);
 
   const beforeCollision = map.rev;
   assert.throws(() => aggregate.commit([
@@ -174,15 +184,13 @@ check("QUID claims are globally issued, resolve to library targets, and reject c
   ]), /retired/i);
   assert.equal(map.rev, beforeReuse);
   assert.equal(aggregate.resolveQuid(Q1), undefined);
-  assert.equal(internal_livemap_library_ownership(map).issuedQuids, 2);
+  assert.equal(aggregate.identityEpoch().issued().size, 2);
 });
 
 check("failure in another library cannot partially issue a QUID claim", () => {
-  const map = hson.liveMap.fromJson({ item: {} });
-  const aggregate = internal_livemap_aggregate_authority(map);
-  const data = aggregate.defaultLibrary();
-  const colors = aggregate.addLibrary(hson.fromJson({ value: "blue" }).toNode(), { hsonSchema: StringSchema });
-  const before = internal_livemap_library_ownership(map);
+  const AnyData = Hson.schema`<type "data" content <item <optional "any">>>`;
+  const { map, aggregate, data, colors } = pair({ item: {} }, { value: "blue" }, AnyData, StringSchema);
+  const issuedBefore = aggregate.identityEpoch().issued().size;
 
   assert.throws(() => aggregate.commit([
     { target: aggregate.target(data, ["item"]), kind: "ensure-quid", quid: Q1 },
@@ -191,14 +199,17 @@ check("failure in another library cannot partially issue a QUID claim", () => {
 
   assert.equal(map.rev, 0);
   assert.equal(aggregate.resolveQuid(Q1), undefined);
-  assert.equal(internal_livemap_library_ownership(map).issuedQuids, before.issuedQuids);
+  assert.equal(aggregate.identityEpoch().issued().size, issuedBefore);
 });
 
 check("a document-mode internal library can coexist under the same map authority", () => {
-  const map = hson.liveMap.fromJson({ value: 1 });
+  const map = hsonLiveMap.fromLibraries({
+    data: { data: { value: 1 }, schema: NumberSchema },
+    document: { document: "<main/>", schema: Hson.schema`<type "document" tag "main" content <sequence []>>` },
+  });
   const aggregate = internal_livemap_aggregate_authority(map);
-  const data = aggregate.defaultLibrary();
-  const document = aggregate.addLibrary(hson.fromHson("<main/>").toNode());
+  const [data, document] = aggregate.libraries();
+  if (data === undefined || document === undefined) throw new Error("Expected fixed mixed registry.");
   const commit = aggregate.commit([
     { target: aggregate.target(data, ["value"]), kind: "set", value: 2 },
   ]);
@@ -215,10 +226,7 @@ check("aggregate preparation clones only affected library candidates and publish
   single.set(["value"], 2);
   const singleMs = performance.now() - singleStart;
 
-  const map = hson.liveMap.fromJson({ value: 1 });
-  const aggregate = internal_livemap_aggregate_authority(map);
-  const data = aggregate.defaultLibrary();
-  const colors = aggregate.addLibrary(hson.fromJson({ value: "blue" }).toNode());
+  const { map, aggregate, data, colors } = pair({ value: 1 }, { value: "blue" });
   const before = aggregate.telemetry();
   const aggregateStart = performance.now();
   aggregate.commit([

@@ -25,7 +25,7 @@ import {
   type HostedAggregateCommit,
 } from "../livemap/livemap.hosted.js";
 import { make_livemap_hosted_mirror_from_snapshot_internal } from "../livemap/livemap.libraries.js";
-import type { PreparedLiveMapAggregateTransition } from "../livemap/livemap.authority.js";
+import type { PreparedLiveMapAuthorityTransition } from "../livemap/livemap.authority.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
 import {
   is_ordered_projected_object,
@@ -102,7 +102,7 @@ export type LocusHostedAggregateAction = (
 ) => unknown | void | Promise<unknown | void>;
 
 export type LocusHostedAggregateGateInput = Readonly<{
-  transition: PreparedLiveMapAggregateTransition;
+  transition: PreparedLiveMapAuthorityTransition;
   commit: HostedAggregateCommit;
   baseRevision: number;
   nextRevision: number;
@@ -143,7 +143,7 @@ export type LocusHostedAggregateClient = Readonly<{
 
 /**
  * Internal aggregate server authority. It owns one existing aggregate LiveMap
- * and lowers every action into exactly one exact aggregate transition.
+ * and lowers every action into exactly one exact map-authority transition.
  */
 export function create_locus_hosted_aggregate_internal(
   options: LocusHostedAggregateOptions,
@@ -178,7 +178,7 @@ export function create_locus_hosted_aggregate_internal(
       const hosted = transition.commit.hosted;
       if (hosted === undefined) {
         aggregate.discard(transition);
-        throw new Error("Hosted aggregate transition did not produce exact replay evidence.");
+        throw new Error("Hosted map-authority transition did not produce exact replay evidence.");
       }
       let wire: string;
       try {
@@ -384,13 +384,16 @@ function make_managed_aggregate_draft(
   const registry = aggregate.hostedRegistry();
   const identities = aggregate.libraries();
   const byName = new Map<string, Readonly<{ identity: LiveMapLibraryIdentity; mode: string }>>();
+  let applicationIndex = 0;
   for (let index = 0; index < registry.libraries.length; index += 1) {
     const library = registry.libraries[index];
-    const identity = identities[index];
-    if (library === undefined || identity === undefined) {
+    if (library === undefined) {
       throw new Error("Hosted aggregate registry identity binding is unavailable.");
     }
     if (library.scope !== "hson-internal") {
+      const identity = identities[applicationIndex];
+      applicationIndex += 1;
+      if (identity === undefined) throw new Error("Hosted application registry identity binding is unavailable.");
       byName.set(library.name, Object.freeze({ identity, mode: library.mode }));
     }
   }
@@ -451,9 +454,9 @@ function make_managed_aggregate_draft(
     });
   };
   const draft = Object.freeze({ lib: selected });
-  const interactionLibrary = aggregate.reservedLibrary(INTERACTION_RESERVED_LIBRARY_KEY);
-  if (interactionLibrary !== undefined) {
-    const interactionRoot = projected_value_from_hson_node(aggregate.root(interactionLibrary));
+  const interactionSystem = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
+  if (interactionSystem !== undefined) {
+    const interactionRoot = projected_value_from_hson_node(aggregate.systemRoot(interactionSystem));
     if (!is_ordered_projected_object(interactionRoot)) {
       throw new Error("Canonical interaction Library root is malformed.");
     }
@@ -464,13 +467,13 @@ function make_managed_aggregate_draft(
     let interactionValue: OrderedProjectedValue = initialInteractionValue;
     register_interaction_draft_internal(
       draft,
-      interactionLibrary,
+      interactionSystem,
       () => interactionValue,
       (value) => {
         assert_open();
         interactionValue = value;
         writes.push(Object.freeze({
-          target: aggregate.target(interactionLibrary, ["descriptors"]),
+          target: aggregate.systemTarget(interactionSystem, ["descriptors"]),
           kind: "replace",
           value,
         }));

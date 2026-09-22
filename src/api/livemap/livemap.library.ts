@@ -7,6 +7,7 @@ import type { LiveMapProjectedIdentityOverlay } from "./livemap.projected.identi
 import type { OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import type { HostedAggregateCommit } from "./livemap.hosted.js";
 import type { LiveMapProjectedDataOp } from "./livemap.transport.js";
+import type { LiveMapSystemIdentity } from "./livemap.system.js";
 
 /**
  * Opaque, map-local library authority. It intentionally has no string form:
@@ -17,20 +18,32 @@ export type LiveMapLibraryIdentity = object;
 
 /** A graph-local coordinate; QUID resolution may later lower to this shape. @internal */
 export type LiveMapStructuralTarget = Readonly<{
+  domain: "application";
   library: LiveMapLibraryIdentity;
+  system?: never;
   path: LivePath;
 }>;
 
+/** A coordinate in canonical Hson-owned state, outside application topology. @internal */
+export type LiveMapSystemTarget = Readonly<{
+  domain: "system";
+  system: LiveMapSystemIdentity;
+  library?: never;
+  path: LivePath;
+}>;
+
+export type LiveMapAuthorityTarget = LiveMapStructuralTarget | LiveMapSystemTarget;
+
 /** One library-qualified operation in the map-global internal order. @internal */
 export type LiveMapAggregateOperation = Readonly<{
-  target: LiveMapStructuralTarget;
+  target: LiveMapAuthorityTarget;
   operation: LiveMapAnyOp;
   /** Carrier-native evidence for exact data transport. @internal */
   projected?: LiveMapProjectedDataOp;
 }>;
 
 /**
- * The authoritative internal commit shape for an aggregate transition.
+ * The authoritative internal commit shape for one map-global transition.
  *
  * It deliberately has no legacy transport payload. The existing public/Locus
  * envelope remains a single-library lowering boundary and must reject this
@@ -50,22 +63,22 @@ export type LiveMapAggregateCommit = Readonly<{
 /** Narrow internal write request used only by aggregate-library tests. @internal */
 export type LiveMapAggregateWrite =
   | Readonly<{
-    target: LiveMapStructuralTarget;
+    target: LiveMapAuthorityTarget;
     kind: "set" | "replace" | "delete";
     value?: unknown;
   }>
   | Readonly<{
-    target: LiveMapStructuralTarget;
+    target: LiveMapAuthorityTarget;
     kind: "ensure-quid";
     quid: string;
   }>
   | Readonly<{
-    target: LiveMapStructuralTarget;
+    target: LiveMapAuthorityTarget;
     kind: "graph";
     operation: import("../../types/livemap.types.js").LiveMapGraphOp;
   }>
   | Readonly<{
-    target: LiveMapStructuralTarget;
+    target: LiveMapAuthorityTarget;
     kind: "replay-data";
     operation: import("./livemap.transport.js").LiveMapProjectedDataOp;
   }>;
@@ -106,21 +119,11 @@ export type LiveMapLibraryState = {
  * @internal
  */
 export type LiveMapLibraryRegistry = Readonly<{
-  defaultLibrary: () => LiveMapLibraryState;
   get: (identity: LiveMapLibraryIdentity) => LiveMapLibraryState | undefined;
   require: (identity: LiveMapLibraryIdentity) => LiveMapLibraryState;
   all: () => readonly LiveMapLibraryState[];
-  add: (library: LiveMapLibraryState) => void;
   size: () => number;
 }>;
-
-/** Create the sole, stable internal library for the lifetime of this LiveMap. @internal */
-export function make_default_livemap_library(
-  prepared: PreparedLiveMapRoot,
-  hsonSchema?: HsonSchema,
-): LiveMapLibraryState {
-  return make_livemap_library(prepared, hsonSchema);
-}
 
 /** Create one opaque graph-local library record. @internal */
 export function make_livemap_library(
@@ -140,14 +143,13 @@ export function make_livemap_library(
 /**
  * Make one internal registry with insertion-ordered iteration.
  *
- * The first registered record is the legacy default/solo library. This is an
- * internal topology fact only: it does not choose a future public default for
- * a multi-library LiveMap.
+ * Initial records are admitted together, before the map accepts transitions.
  * @internal
  */
 export function make_livemap_library_registry(
-  initialLibrary: LiveMapLibraryState,
+  initialLibraries: readonly LiveMapLibraryState[],
 ): LiveMapLibraryRegistry {
+  if (initialLibraries.length === 0) throw new Error("LiveMap library registry requires at least one library.");
   const entries = new Map<LiveMapLibraryIdentity, LiveMapLibraryState>();
   const ordered: LiveMapLibraryState[] = [];
 
@@ -159,9 +161,8 @@ export function make_livemap_library_registry(
     ordered.push(library);
   };
 
-  add(initialLibrary);
+  for (const library of initialLibraries) add(library);
   return Object.freeze({
-    defaultLibrary: () => initialLibrary,
     get: (identity) => entries.get(identity),
     require: (identity) => {
       const library = entries.get(identity);
@@ -169,7 +170,6 @@ export function make_livemap_library_registry(
       throw new Error("LiveMap aggregate target belongs to another map authority.");
     },
     all: () => Object.freeze([...ordered]),
-    add,
     size: () => ordered.length,
   });
 }
@@ -179,5 +179,13 @@ export function livemap_library_target(
   library: LiveMapLibraryState,
   path: LivePath,
 ): LiveMapStructuralTarget {
-  return Object.freeze({ library: library.identity, path });
+  return Object.freeze({ domain: "application", library: library.identity, path });
+}
+
+/** Keep system coordinates out of the application Library registry. @internal */
+export function livemap_system_target(
+  system: LiveMapSystemIdentity,
+  path: LivePath,
+): LiveMapSystemTarget {
+  return Object.freeze({ domain: "system", system, path });
 }

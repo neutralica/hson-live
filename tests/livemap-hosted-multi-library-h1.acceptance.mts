@@ -196,10 +196,7 @@ check("invalid later-Library replay rejects every staged Library and publishes n
 check("aggregate snapshot carries every root, exact Schema source, revision, registry, and full issued ledger", () => {
   const map = makeMap();
   const aggregate = internal_livemap_aggregate_authority(map);
-  assert.throws(
-    () => aggregate.addLibrary(hson.fromJson({ enabled: true }).toNode(), { hsonSchema: FlagSchema }),
-    /topology is immutable/i,
-  );
+  assert.equal("addLibrary" in aggregate, false);
   const [, , page] = aggregate.libraries();
   if (page === undefined) throw new Error("Expected page Library");
   aggregate.commit([{ target: aggregate.target(page, [0]), kind: "graph", operation: graphInsert(Q_RETIRED) }]);
@@ -208,7 +205,12 @@ check("aggregate snapshot carries every root, exact Schema source, revision, reg
   assert.equal(snapshot.revision, 2);
   assert.equal(snapshot.registryDigest, aggregate.hostedRegistry().digest);
   assert.deepEqual(snapshot.libraries.map((entry) => entry.name), ["alpha", "beta", "page", "modal"]);
-  assert.deepEqual(snapshot.libraries.map((entry) => entry.schema), [DataSchema, FlagSchema, DocumentSchema, DocumentSchema]);
+  assert.deepEqual(snapshot.libraries.map((entry) => entry.schema), [
+    DataSchema.toHson(),
+    FlagSchema.toHson(),
+    DocumentSchema.toHson(),
+    DocumentSchema.toHson(),
+  ]);
   assert.deepEqual(snapshot.identity.issuedQuids, [Q_RETIRED]);
 });
 

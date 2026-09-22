@@ -85,11 +85,11 @@ export function set_interaction_activation_initialization_materialization_hook_f
   activationInitializationMaterializationHook = hook;
 }
 
-/** Opt one fixed multi-library LiveMap into its Hson-owned hidden interaction Library. */
+/** Opt one fixed multi-library LiveMap into transactional Hson interaction state. */
 export function enable_interactions(map: LiveMapLibraries): void {
   const aggregate = internal_livemap_aggregate_authority(map);
-  if (aggregate.reservedLibrary(INTERACTION_RESERVED_LIBRARY_KEY) !== undefined) return;
-  aggregate.addReservedLibrary(
+  if (aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY) !== undefined) return;
+  aggregate.configureSystemState(
     INTERACTION_RESERVED_LIBRARY_KEY,
     INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME,
     hsonTransform.fromJson({ descriptors: [] }).toNode(),
@@ -129,8 +129,8 @@ export function remove_interaction(target: object, descriptorId: string): void {
 export function activate_interactions(options: InteractionActivationOptions): () => void {
   const activation = snapshot_activation(options);
   const aggregate = internal_livemap_aggregate_authority(activation.map);
-  const library = aggregate.reservedLibrary(INTERACTION_RESERVED_LIBRARY_KEY);
-  if (library === undefined) throw new Error("Canonical interactions are not enabled for this LiveMap.");
+  const system = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
+  if (system === undefined) throw new Error("Canonical interactions are not enabled for this LiveMap.");
   const records = new Map<string, RuntimeRecord>();
   let disposed = false;
   let reconciling = false;
@@ -151,7 +151,7 @@ export function activate_interactions(options: InteractionActivationOptions): ()
     try {
       do {
         pending = false;
-        const interactionRoot = require_object(projected_value_from_hson_node(aggregate.root(library)));
+        const interactionRoot = require_object(projected_value_from_hson_node(aggregate.systemRoot(system)));
         const desired = read_descriptors(require_member(interactionRoot, "descriptors"));
         const desiredById = new Map(desired.map((descriptor) => [descriptor.id, descriptor] as const));
 
@@ -304,15 +304,15 @@ function interaction_storage(target: object): Storage {
   const draft = interaction_draft_capability_internal(target);
   if (draft !== undefined) return Object.freeze({ read: draft.read, replace: draft.replace });
   const aggregate = internal_livemap_aggregate_authority(target);
-  const library = aggregate.reservedLibrary(INTERACTION_RESERVED_LIBRARY_KEY);
-  if (library === undefined) throw new Error("Canonical interactions are not enabled for this LiveMap.");
+  const system = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
+  if (system === undefined) throw new Error("Canonical interactions are not enabled for this LiveMap.");
   return Object.freeze({
     read: () => {
-      const root = projected_value_from_hson_node(aggregate.root(library));
+      const root = projected_value_from_hson_node(aggregate.systemRoot(system));
       return require_member(require_object(root), "descriptors");
     },
     replace: (value) => { aggregate.commit([{
-      target: aggregate.target(library, ["descriptors"]),
+      target: aggregate.systemTarget(system, ["descriptors"]),
       kind: "replace",
       value,
     }]); },

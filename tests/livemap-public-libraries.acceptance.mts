@@ -73,6 +73,46 @@ check("fromLibraries establishes fixed named data and document Libraries", () =>
   assert.equal("library" in map, false);
 });
 
+check("named registry construction preserves selection and atomic commits in either declaration order", () => {
+  for (const order of [["left", "right"], ["right", "left"]] as const) {
+    const inputs = Object.fromEntries(order.map((name) => [name, {
+      data: { count: name === "left" ? 1 : 2, nested: { value: 0 } },
+      schema: StateSchema,
+    }]));
+    const map = hsonLiveMap.fromLibraries(inputs);
+    const authority = internal_livemap_aggregate_authority(map);
+    const identities = authority.libraries();
+    assert.equal("root" in map, false);
+    assert.equal(map.lib("left"), map.lib("left"));
+    assert.equal(map.lib("right"), map.lib("right"));
+    assert.equal(identities.length, 2);
+    assert.notEqual(identities[0], identities[1]);
+    const identityByName = new Map(order.map((name, index) => [name, identities[index]!]));
+    const left = identityByName.get("left")!;
+    const right = identityByName.get("right")!;
+    const commit = authority.commit([
+      { target: authority.target(right, ["count"]), kind: "set", value: 20 },
+      { target: authority.target(left, ["count"]), kind: "set", value: 10 },
+    ]);
+    assert.deepEqual([commit.prevRev, commit.rev], [0, 1]);
+    assert.deepEqual(commit.operations.map((entry) => entry.target.library), [right, left]);
+    assert.equal(map.lib("left").snap(["count"]), 10);
+    assert.equal(map.lib("right").snap(["count"]), 20);
+    assert.equal(map.rev, 1);
+  }
+});
+
+check("one-library data and document constructors seed the same registry authority", () => {
+  const data = hsonLiveMap.fromData(Hson.data.from({ count: 1 }));
+  const document = hsonLiveMap.fromDocument(Hson.document.fromHson(Hson.canonical`<main/>`));
+  for (const [map, mode] of [[data, "data-object"], [document, "document"]] as const) {
+    const authority = internal_livemap_aggregate_authority(map);
+    assert.equal(authority.libraries().length, 1);
+    assert.equal(authority.inspect().libraries[0]?.mode, mode);
+    assert.equal(authority.inspect().revision, map.rev);
+  }
+});
+
 check("document Libraries admit exact zero-length document source", () => {
   const map = hsonLiveMap.fromLibraries({
     empty: { document: "", schema: EmptyDocumentSchema },

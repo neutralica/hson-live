@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
-import { Hson, hson } from "../src/index.ts";
-import { get_livemap_staged_authority } from "../src/api/livemap/livemap.authority.ts";
+import { Hson, hsonLiveMap } from "../src/index.ts";
 import {
   internal_livemap_aggregate_authority,
-  internal_livemap_library_ownership,
 } from "../src/api/livemap/livemap.internal.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -39,10 +37,13 @@ function check(name: string, run: () => void): void {
 }
 
 function governed() {
-  const map = hson.liveMap.fromJson({ account: { id: "ada" }, age: 37 }).schema.use(StateSchema);
+  const map = hsonLiveMap.fromLibraries({
+    state: { data: { account: { id: "ada" }, age: 37 }, schema: StateSchema },
+    colors: { data: { value: "#blue" }, schema: ColorsSchema },
+  });
   const aggregate = internal_livemap_aggregate_authority(map);
-  const state = aggregate.defaultLibrary();
-  const colors = aggregate.addLibrary(hson.fromJson({ value: "#blue" }).toNode(), { hsonSchema: ColorsSchema });
+  const [state, colors] = aggregate.libraries();
+  if (state === undefined || colors === undefined) throw new Error("Expected fixed governed registry.");
   return { map, aggregate, state, colors };
 }
 
@@ -50,7 +51,7 @@ check("one invalid aggregate candidate rejects every library before QUID ledger 
   const { map, aggregate, state, colors } = governed();
   const observed: unknown[] = [];
   aggregate.observe((commit) => observed.push(commit));
-  const beforeOwnership = internal_livemap_library_ownership(map);
+  const issuedBefore = aggregate.identityEpoch().issued().size;
   const telemetry = aggregate.telemetry();
 
   assert.throws(() => aggregate.commit([
@@ -62,7 +63,7 @@ check("one invalid aggregate candidate rejects every library before QUID ledger 
   assert.equal(aggregate.snap(state, ["age"]), 37);
   assert.equal(aggregate.snap(colors, ["value"]), "#blue");
   assert.equal(aggregate.resolveQuid(Q1), undefined);
-  assert.equal(internal_livemap_library_ownership(map).issuedQuids, beforeOwnership.issuedQuids);
+  assert.equal(aggregate.identityEpoch().issued().size, issuedBefore);
   assert.equal(observed.length, 0);
   assert.equal(aggregate.telemetry().schemaValidations - telemetry.schemaValidations, 2);
   assert.equal(aggregate.telemetry().candidateRootsCloned - telemetry.candidateRootsCloned, 2);
@@ -95,15 +96,16 @@ check("refined leaf rejection is atomic across a valid peer library", () => {
   assert.equal(Number.isFinite(elapsed), true);
 });
 
-check("staged candidates gain no governed proof until accepted", () => {
+check("prepared candidates gain no governed proof until accepted", () => {
   const { map, aggregate, state, colors } = governed();
-  const staged = get_livemap_staged_authority(map);
-  const valid = staged.prepare((draft) => draft.set(["age"], 38));
-  staged.accept(valid);
+  const valid = aggregate.prepare([{ target: aggregate.target(state, ["age"]), kind: "set", value: 38 }]);
+  aggregate.accept(valid);
   assert.equal(map.rev, 1);
   assert.equal(aggregate.snap(state, ["age"]), 38);
 
-  assert.throws(() => staged.prepare((draft) => draft.set(["age"], 38.5)));
+  assert.throws(() => aggregate.prepare([
+    { target: aggregate.target(state, ["age"]), kind: "set", value: 38.5 },
+  ]));
   assert.throws(() => aggregate.prepare([
     { target: aggregate.target(state, ["age"]), kind: "set", value: 39 },
     { target: aggregate.target(colors, ["value"]), kind: "set", value: "green" },

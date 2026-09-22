@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
-import { Hson, hson } from "../src/index.ts";
-import { get_livemap_staged_authority } from "../src/api/livemap/livemap.authority.ts";
+import { Hson, hson, hsonLiveMap } from "../src/index.ts";
 import {
   internal_livemap_aggregate_authority,
-  internal_livemap_library_ownership,
 } from "../src/api/livemap/livemap.internal.ts";
 import {
   make_livemap_library,
@@ -49,18 +47,20 @@ function check(name: string, run: () => void): void {
 }
 
 function triple() {
-  const map = hson.liveMap.fromJson({ value: 1 }).schema.use(DataSchema);
+  const map = hsonLiveMap.fromLibraries({
+    data: { data: { value: 1 }, schema: DataSchema },
+    colors: { data: { value: "blue" }, schema: ColorSchema },
+    view: { data: { value: false }, schema: ViewSchema },
+  });
   const aggregate = internal_livemap_aggregate_authority(map);
-  const data = aggregate.defaultLibrary();
-  const colors = aggregate.addLibrary(hson.fromJson({ value: "blue" }).toNode(), { hsonSchema: ColorSchema });
-  const view = aggregate.addLibrary(hson.fromJson({ value: false }).toNode(), { hsonSchema: ViewSchema });
+  const [data, colors, view] = aggregate.libraries();
+  if (data === undefined || colors === undefined || view === undefined) throw new Error("Expected fixed three-Library registry.");
   return { map, aggregate, data, colors, view };
 }
 
-check("registry keeps a stable default plus deterministic opaque two and three library identities", () => {
+check("registry keeps deterministic opaque application library identities", () => {
   const { aggregate, data, colors, view } = triple();
   assert.deepEqual(aggregate.libraries(), [data, colors, view]);
-  assert.equal(aggregate.defaultLibrary(), data);
   assert.notEqual(data, colors);
   assert.notEqual(colors, view);
   assert.notEqual(data, view);
@@ -73,17 +73,20 @@ check("registry keeps a stable default plus deterministic opaque two and three l
 
 check("the internal registry rejects duplicate opaque identities", () => {
   const library = make_livemap_library(prepare_livemap_root(hson.fromJson({ value: 1 }).toNode()));
-  const registry = make_livemap_library_registry(library);
-  assert.equal(registry.defaultLibrary(), library);
-  assert.throws(() => registry.add(library), /identity twice/i);
-  assert.equal(registry.size(), 1);
+  assert.throws(() => make_livemap_library_registry([library, library]), /identity twice/i);
+  const registry = make_livemap_library_registry([library]);
+  assert.deepEqual(registry.all(), [library]);
 });
 
 check("library equality is authority identity, not structural root equality", () => {
-  const map = hson.liveMap.fromJson({ value: 1 });
+  const SameSchema = Hson.schema`<type "data" content <value "number">>`;
+  const map = hsonLiveMap.fromLibraries({
+    first: { data: { value: 1 }, schema: SameSchema },
+    second: { data: { value: 1 }, schema: SameSchema },
+  });
   const aggregate = internal_livemap_aggregate_authority(map);
-  const first = aggregate.defaultLibrary();
-  const second = aggregate.addLibrary(hson.fromJson({ value: 1 }).toNode());
+  const [first, second] = aggregate.libraries();
+  if (first === undefined || second === undefined) throw new Error("Expected fixed equal-root registry.");
   assert.notEqual(first, second);
   assert.deepEqual(aggregate.snap(first), aggregate.snap(second));
   assert.notEqual(aggregate.handle(first, ["value"]), aggregate.handle(second, ["value"]));
@@ -163,10 +166,13 @@ check("each affected candidate uses its own HsonSchema and one invalid library r
 });
 
 check("data and document libraries coexist under one map authority with separate roots, modes, and schemas", () => {
-  const map = hson.liveMap.fromJson({ value: 1 }).schema.use(DataSchema);
+  const map = hsonLiveMap.fromLibraries({
+    data: { data: { value: 1 }, schema: DataSchema },
+    document: { document: "<main/>", schema: DocumentSchema },
+  });
   const aggregate = internal_livemap_aggregate_authority(map);
-  const data = aggregate.defaultLibrary();
-  const document = aggregate.addLibrary(hson.fromHson("<main/>").toNode(), { hsonSchema: DocumentSchema });
+  const [data, document] = aggregate.libraries();
+  if (data === undefined || document === undefined) throw new Error("Expected fixed data/document registry.");
   const documentRoot = aggregate.root(document);
   const before = aggregate.inspect();
   assert.deepEqual(before.libraries.map((library) => library.mode), ["data-object", "document"]);
@@ -176,28 +182,32 @@ check("data and document libraries coexist under one map authority with separate
   assert.equal(aggregate.snap(data, ["value"]), 2);
   assert.equal(aggregate.root(document), documentRoot);
   assert.throws(() => aggregate.handle(document, []), /data library/i);
-  assert.equal(map.snap(["value"]), 2);
+  assert.equal(aggregate.snap(data, ["value"]), 2);
   assert.equal(aggregate.inspect().libraries.length, 2);
 });
 
 check("one global QUID ledger resolves library-qualified locations, rejects collision and ABA, and defers cross-library movement", () => {
-  const map = hson.liveMap.fromJson({ active: {}, retired: {}, duplicate: {} });
+  const AnyData = Hson.schema`<type "data" content <active <optional "any"> retired <optional "any"> duplicate <optional "any"> reuse <optional "any"> incoming <optional "any">>>`;
+  const map = hsonLiveMap.fromLibraries({
+    data: { data: { active: {}, retired: {}, duplicate: {}, reuse: {}, incoming: {} }, schema: AnyData },
+    colors: { data: { active: {}, retired: {}, reuse: {}, duplicate: {}, incoming: {} }, schema: AnyData },
+  });
   const aggregate = internal_livemap_aggregate_authority(map);
-  const data = aggregate.defaultLibrary();
-  const colors = aggregate.addLibrary(hson.fromJson({ active: {}, reuse: {}, duplicate: {}, incoming: {} }).toNode());
+  const [data, colors] = aggregate.libraries();
+  if (data === undefined || colors === undefined) throw new Error("Expected fixed QUID registry.");
   aggregate.commit([
     { target: aggregate.target(data, ["active"]), kind: "ensure-quid", quid: Q1 },
     { target: aggregate.target(colors, ["active"]), kind: "ensure-quid", quid: Q2 },
   ]);
   assert.deepEqual(aggregate.resolveQuid(Q1), aggregate.target(data, ["active"]));
   assert.deepEqual(aggregate.resolveQuid(Q2), aggregate.target(colors, ["active"]));
-  const issuedBeforeFailure = internal_livemap_library_ownership(map).issuedQuids;
+  const issuedBeforeFailure = aggregate.identityEpoch().issued().size;
   assert.throws(() => aggregate.commit([
     { target: aggregate.target(data, ["duplicate"]), kind: "ensure-quid", quid: Q3 },
     { target: aggregate.target(colors, ["duplicate"]), kind: "ensure-quid", quid: Q3 },
   ]), /collision/i);
   assert.equal(aggregate.resolveQuid(Q3), undefined);
-  assert.equal(internal_livemap_library_ownership(map).issuedQuids, issuedBeforeFailure);
+  assert.equal(aggregate.identityEpoch().issued().size, issuedBeforeFailure);
   assert.throws(() => aggregate.commit([
     { target: aggregate.target(data, ["active"]), kind: "delete" },
     { target: aggregate.target(colors, ["incoming"]), kind: "ensure-quid", quid: Q1 },
@@ -208,14 +218,12 @@ check("one global QUID ledger resolves library-qualified locations, rejects coll
     { target: aggregate.target(colors, ["reuse"]), kind: "ensure-quid", quid: Q1 },
   ]), /retired/i);
   assert.equal(aggregate.resolveQuid(Q1), undefined);
-  assert.equal(internal_livemap_library_ownership(map).issuedQuids, issuedBeforeFailure);
+  assert.equal(aggregate.identityEpoch().issued().size, issuedBeforeFailure);
 });
 
-check("existing staging remains global while aggregate preparation is stale-safe and atomic", () => {
+check("aggregate preparation is stale-safe and atomic across the fixed registry", () => {
   const { map, aggregate, data, colors } = triple();
-  const staged = get_livemap_staged_authority(map);
-  const stagedA = staged.prepare((draft) => draft.set(["value"], 2));
-  staged.accept(stagedA);
+  aggregate.commit([{ target: aggregate.target(data, ["value"]), kind: "set", value: 2 }]);
   assert.equal(map.rev, 1);
   assert.equal(aggregate.snap(data, ["value"]), 2);
   assert.equal(aggregate.snap(colors, ["value"]), "blue");
@@ -230,24 +238,24 @@ check("existing staging remains global while aggregate preparation is stale-safe
   assert.equal(aggregate.snap(colors, ["value"]), "green");
 
   const stale = aggregate.prepare([{ target: aggregate.target(colors, ["value"]), kind: "set", value: "red" }]);
-  map.set(["value"], 4);
+  aggregate.commit([{ target: aggregate.target(data, ["value"]), kind: "set", value: 4 }]);
   assert.throws(() => aggregate.accept(stale), /stale/i);
   assert.equal(map.rev, 3);
   assert.equal(aggregate.snap(colors, ["value"]), "green");
 });
 
-check("aggregate introspection is private and legacy capture/root continue to represent only the default graph", () => {
+check("aggregate capture preserves the complete fixed application registry", () => {
   const { map, aggregate, data, colors, view } = triple();
   aggregate.commit([{ target: aggregate.target(colors, ["value"]), kind: "set", value: "green" }]);
   const capture = map.capture();
   const inspected = aggregate.inspect();
-  assert.equal(capture.rev, 1);
-  assert.equal(map.snap(["value"]), 1);
+  assert.equal(capture.revision, 1);
+  assert.deepEqual(capture.registry.libraries.map((entry) => entry.name), ["data", "colors", "view"]);
   assert.deepEqual(inspected.libraries.map((library) => library.identity), [data, colors, view]);
   assert.equal(aggregate.snap(colors, ["value"]), "green");
   assert.equal(aggregate.snap(view, ["value"]), false);
   assert.equal("libraries" in map, false);
-  assert.equal("lib" in map, false);
+  assert.equal("lib" in map, true);
   assert.equal("library" in map, false);
   assert.equal("repository" in map, false);
   assert.equal("addLibrary" in map, false);

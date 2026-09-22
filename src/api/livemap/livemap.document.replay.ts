@@ -34,7 +34,7 @@ import { LiveMapIdentityEpochError } from "./livemap.identity-epoch.js";
 export type PreparedDocumentReplay = Readonly<{
   root: HsonNode;
   overlay: PreparedDocumentInstall["overlay"];
-  commit: LiveMapGraphCommit;
+  commit: LiveMapGraphCommit<LiveMapGraphOp>;
   identityEffects: readonly LiveMapDocumentIdentityEffect[];
   issuedLedger: LiveMapIssuedQuidLedger;
 }>;

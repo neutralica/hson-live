@@ -224,7 +224,8 @@ check("LiveMap initial admission, mutation, staging, restore, replay, and aggreg
   assert.equal(map.rev, stagedRev);
 
   const aggregate = internal_livemap_aggregate_authority(map);
-  const library = aggregate.defaultLibrary();
+  const library = aggregate.libraries()[0];
+  if (library === undefined) throw new Error("Expected one application Library.");
   assert.throws(() => aggregate.commit([{ target: aggregate.target(library, ["cells", 1, "position"]), kind: "set", value: "left-half" }]));
   assert.equal(map.rev, stagedRev);
 });
