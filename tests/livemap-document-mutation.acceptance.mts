@@ -87,6 +87,24 @@ function assertAtomic(map: DocumentLiveMap, before: DocumentLiveMapCapture, fn: 
   assert.equal(map.rev, rev);
 }
 
+check("style and external script remain document-valid across content and attribute mutations", () => {
+  const style = element('<style "a"/>');
+  const styleBefore = style.capture();
+  assertAtomic(style, styleBefore, () => style.document.content.insert(path(0, 0), 1, "b"));
+  assertAtomic(style, styleBefore, () => style.document.content.insert(
+    path(0, 0), 1, { $_tag: "b", $_content: [] },
+  ));
+
+  const script = element('<script src="/a.js"/>');
+  const scriptBefore = script.capture();
+  assertAtomic(script, scriptBefore, () => script.document.attrs.drop(path(0), "src"));
+  assertAtomic(script, scriptBefore, () => script.document.attrs.replace(path(0), {}));
+  assertAtomic(script, scriptBefore, () => script.document.content.insert(
+    path(0), 0,
+    { $_tag: "_hson_elem", $_content: [{ $_tag: "_hson_str", $_content: ["go()"] }] },
+  ));
+});
+
 function mustNode(value: HsonNode | Primitive | undefined, message: string): HsonNode {
   if (!is_Node(value)) throw new Error(message);
   return value;

@@ -9,6 +9,8 @@ import { discover_static_from_hson_sources } from "../../../src/internal/embedde
 import { map_static_hson_range } from "../../../src/internal/embedded-hson/static-hson-source.js";
 import { markdown_hson_fence_regions } from "./markdown-fence-marker.js";
 import { HSON_APPEARANCE, hsonTokenScopes } from "./appearance.js";
+import { interpolation_site } from "../../../src/internal/trusted-schema-diagnostics/interpolation-source.js";
+import { scan_hson_template_segments } from "../../../src/api/transform/parsers/tokenize-hson.js";
 
 export { hsonTokenScopes } from "./appearance.js";
 export type HsonHighlight = Readonly<{ range: HostSourceRange; type: keyof typeof hsonTokenScopes; scopes: readonly string[] }>;
@@ -49,8 +51,24 @@ export function hson_highlights(grammar: IGrammar, fileName: string, text: strin
   const calls = discover_static_from_hson_sources(fileName, text);
   const result: HsonHighlight[] = [];
   const noHoles: readonly HostSourceRange[] = [];
+  const structural = tags.interpolated.map(source => {
+    const site = interpolation_site(source, fileName);
+    const scanned = scan_hson_template_segments(
+      site.literals.map(literal => literal.raw),
+      site.expressions.map(() => "x"),
+      () => '"x"',
+    );
+    const structuralSlots = new Set(scanned.slots.map(slot => slot.substitution));
+    return {
+      source,
+      holes: source.substitutionRanges.map((range, index) => structuralSlots.has(index)
+        ? { start: range.start - 1, end: range.end } : range),
+      sigils: source.substitutionRanges.flatMap((range, index) =>
+        structuralSlots.has(index) ? [{ start: range.start - 1, end: range.start }] : []),
+    };
+  });
   const islands = [...tags.sources.map(source => ({ source, holes: noHoles })),
-    ...tags.interpolated.map(source => ({ source, holes: source.substitutionRanges })),
+    ...structural,
     ...calls.interpolated.map(source => ({ source, holes: source.substitutionRanges }))];
   for (const { source, holes } of islands) {
     // Omit expressions from grammar input and output, retaining offsets and
@@ -81,6 +99,16 @@ export function hson_highlights(grammar: IGrammar, fileName: string, text: strin
       stack = tokens.ruleStack;
       offset += line.length + 1;
     }
+  }
+  for (const island of structural) {
+    for (const range of island.sigils) result.push({
+      range,
+      type: island.source.authoringKind === "canonical" || island.source.authoringKind === "schema"
+        ? "hsonInvalid" : "hsonOperator",
+      scopes: [island.source.authoringKind === "canonical" || island.source.authoringKind === "schema"
+        ? "invalid.illegal.structural-interpolation.hson"
+        : "keyword.operator.structural-interpolation.hson"],
+    });
   }
   for (const source of calls.sources) {
     // Highlight only literals written directly inside the recognized call.

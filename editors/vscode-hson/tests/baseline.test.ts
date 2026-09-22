@@ -345,6 +345,14 @@ async function run(): Promise<void> {
     assert.ok(nameToken(text));
     assert.ok(tokens(text).every(token => token.range.end <= start || token.range.start >= end));
   });
+  check("structural interpolation highlights only the source-owned hash", () => {
+    const text = 'import { Hson } from "hson-live"; Hson.document`<body #${fragment}/>`;';
+    const hash = text.indexOf('#${');
+    const emitted = tokens(text);
+    assert.ok(emitted.some(token => token.range.start === hash && token.range.end === hash + 1
+      && token.scopes.includes("keyword.operator.structural-interpolation.hson")));
+    assert.ok(emitted.every(token => token.range.end <= hash + 1 || token.range.start >= text.indexOf('}', hash) + 1));
+  });
   check("secure mode never executes interpolation or invents values", () => {
     const text = source('<thing ${(()=>{throw new Error("must not execute")})()}>');
     assert.deepEqual(diagnose(text), []);

@@ -1,6 +1,14 @@
 import type { AcceptedCorpusCase, RejectedCorpusCase } from "./corpus-types.mts";
 import { elem, element, obj, str, val } from "./graph-expectations.mts";
 
+function detachedStringHtml(value: string): string {
+  let hex = "";
+  for (let index = 0; index < value.length; index += 1) {
+    hex += value.charCodeAt(index).toString(16).padStart(4, "0");
+  }
+  return "<_hson_obj><!--hson-text:" + hex + "-->" + value + "</_hson_obj>";
+}
+
 function acceptedCarrier(
   id: string,
   claim: string,
@@ -23,10 +31,10 @@ function acceptedCarrier(
 }
 
 export const graphAcceptedTransportCases: readonly AcceptedCorpusCase[] = [
-  acceptedCarrier("object-string-ordinary", "A detached Hson object string carrier normalizes to its ordinary string leaf.", obj(str("ordinary")), str("ordinary"), "\"ordinary\"", "\"ordinary\"", "<_hson_obj><_hson_str>&quot;ordinary&quot;</_hson_str></_hson_obj>"),
-  acceptedCarrier("object-string-empty", "A detached Hson object string carrier normalizes to its empty string leaf.", obj(str("")), str(""), "\"\"", "\"\"", "<_hson_obj><_hson_str>&quot;&quot;</_hson_str></_hson_obj>"),
-  acceptedCarrier("element-string-ordinary", "A detached Hson element string carrier normalizes to its ordinary text leaf.", elem(str("ordinary")), str("ordinary"), "\"ordinary\"", "\"ordinary\"", "<_hson_obj><_hson_str>&quot;ordinary&quot;</_hson_str></_hson_obj>"),
-  acceptedCarrier("element-string-empty", "A detached Hson element string carrier normalizes to its empty text leaf.", elem(str("")), str(""), "\"\"", "\"\"", "<_hson_obj><_hson_str>&quot;&quot;</_hson_str></_hson_obj>"),
+  acceptedCarrier("object-string-ordinary", "A detached Hson object string carrier normalizes to its ordinary string leaf.", obj(str("ordinary")), str("ordinary"), "\"ordinary\"", "\"ordinary\"", detachedStringHtml("ordinary")),
+  acceptedCarrier("object-string-empty", "A detached Hson object string carrier normalizes to its empty string leaf.", obj(str("")), str(""), "\"\"", "\"\"", detachedStringHtml("")),
+  acceptedCarrier("element-string-ordinary", "A detached Hson element string carrier normalizes to its ordinary text leaf.", elem(str("ordinary")), str("ordinary"), "\"ordinary\"", "\"ordinary\"", detachedStringHtml("ordinary")),
+  acceptedCarrier("element-string-empty", "A detached Hson element string carrier normalizes to its empty text leaf.", elem(str("")), str(""), "\"\"", "\"\"", detachedStringHtml("")),
   acceptedCarrier("object-true", "A detached Hson object carrier transports true.", obj(val(true)), val(true), "true", "true", "<_hson_obj><_hson_val>true</_hson_val></_hson_obj>"),
   acceptedCarrier("object-false", "A detached Hson object carrier transports false.", obj(val(false)), val(false), "false", "false", "<_hson_obj><_hson_val>false</_hson_val></_hson_obj>"),
   acceptedCarrier("object-null", "A detached Hson object carrier transports null.", obj(val(null)), val(null), "null", "null", "<_hson_obj><_hson_val>null</_hson_val></_hson_obj>"),

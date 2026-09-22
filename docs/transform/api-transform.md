@@ -79,7 +79,7 @@ const readBack = Hson.data.fromHson(authored);
 
 ### Document
 
-`HsonDocument` is a canonical primitive string for an exact notation-closed document. It supports empty, text-only, single-root, and multi-root documents. `Hson.document.fromNode` admits only graphs that survive exact serialization and reparsing.
+`HsonDocument` is a canonical primitive string for an exact notation-closed document. It supports empty, text-only, single-root, and multi-root documents. `Hson.document.fromNode` admits only graphs that survive exact serialization and reparsing. Document admission also requires `<style/>` or one nonempty style string leaf, and permits `<script>` only with `src` and no content. LiveMap document imports and mutations enforce the same rules.
 
 ```ts
 const document = Hson.document`<main/><aside/>`;
@@ -268,8 +268,12 @@ there is no universal post-output sanitizer operation.
 
 ### `.toHtml()`
 
-Selects Hson transport HTML output. It preserves canonical distinctions through
-`_hson_*` carriers where necessary; it is not the internal SSR continuation
+Selects Hson transport HTML output. String leaves use HTML text with reserved
+`hson-text` comments when exact boundaries or code units need them.
+Every nonempty RAWTEXT body uses a reserved `hson-raw` lexical token.
+Structural/type carriers `_hson_obj`, `_hson_arr`,
+`_hson_ii`, and `_hson_val` remain where needed. `_hson_str` and `_hson_elem`
+are never serialized as HTML elements. This is not the internal SSR continuation
 renderer.
 
 - `serialize()` returns an HTML string.

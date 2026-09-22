@@ -14,51 +14,22 @@ import { clone_node } from '../../../core/clone-node.js';
 import { HsonNode } from '../../../core/types.js';
 import { _throw_transform_err } from '../utils/sys-utils/throw-transform-err.utils.js';
 import { encode_html_key_tag } from '../utils/html-utils/encode-html-tag.js';
+import { can_melt_html_text_leaf, encode_html_raw_text, encode_html_text_leaf } from '../utils/html-utils/html-text-transport.js';
 
 const RAWTEXT = new Set(["style", "script"]);
 
-/**
- * Collect raw textual content from a subtree without trimming or escaping.
- *
- * Behavior:
- * - Walks a mixed list of `HsonNode | Primitive`.
- * - For `_hson_str` nodes:
- *   - Takes the first `$_content` entry (if any),
- *   - Uses it as a string if already a string, otherwise stringifies it.
- * - For other node types:
- *   - Recursively descends into their `$_content`.
- * - For primitive leaves:
- *   - Appends `String(primitive)` directly.
- *
- * Notes:
- * - Does not perform any HTML/XML escaping.
- * - Does not collapse whitespace or remove newlines.
- *
- * Intended use:
- * - Raw-text serialization for RAWTEXT elements like `<style>` and `<script>`
- *   where content should be preserved verbatim as much as possible.
- *
- * @param nodes - The mixed child list to traverse.
- * @returns Concatenated raw text content.
- */
-function collect_raw_text(nodes: (HsonNode | Primitive)[] | undefined): string {
-  if (!nodes || !nodes.length) return "";
-  let out = "";
-  for (const ch of nodes) {
-    if (is_Node(ch)) {
-      if (ch.$_tag === STR_TAG) {
-        const seg = (ch.$_content?.[0] ?? "") as unknown;
-        out += typeof seg === "string" ? seg : String(seg);
-      } else {
-        // descend, in case someone wrapped _hson_str in an extra node
-        out += collect_raw_text(ch.$_content as any);
-      }
-    } else {
-      // primitive leaf: take as-is (no entity escaping)
-      out += String(ch);
+/** Extract canonical RAWTEXT string leaves without merging their boundaries. */
+function raw_text_values(nodes: readonly (HsonNode | Primitive)[]): string[] {
+  const content = nodes.length === 1 && is_Node(nodes[0]) && nodes[0].$_tag === ELEM_TAG
+    ? nodes[0].$_content
+    : nodes;
+  return content.map((child) => {
+    if (!is_Node(child) || child.$_tag !== STR_TAG || child.$_content.length !== 1
+      || typeof child.$_content[0] !== "string") {
+      _throw_transform_err("RAWTEXT transport requires string leaves", "serialize_html");
     }
-  }
-  return out;
+    return child.$_content[0];
+  });
 }
 
 
@@ -110,33 +81,6 @@ function primitive_to_xml(p: Primitive): string {
   return escape_html_text(typeof p === "number" && Object.is(p, -0) ? "-0" : String(p));
 }
 
-function explicit_string_transport(node: HsonNode): string {
-  const content = node.$_content;
-  if (content.length !== 1 || typeof content[0] !== "string") {
-    _throw_transform_err('<_hson_str> must contain exactly one string', 'serialize_html');
-  }
-  const json = JSON.stringify(content[0]).replace(/[\u007f-\uffff]/g, (unit) =>
-    `\\u${unit.charCodeAt(0).toString(16).padStart(4, "0")}`
-  );
-  return `<${STR_TAG}>${escape_html_text(json)}</${STR_TAG}>`;
-}
-
-function element_cluster_needs_explicit_transport(content: readonly (HsonNode | Primitive)[]): boolean {
-  for (let index = 0; index < content.length; index += 1) {
-    const child = content[index];
-    if (!is_Node(child) || child.$_tag !== STR_TAG) continue;
-    const value = child.$_content[0];
-    if (typeof value !== "string") return true;
-    if (value.length === 0 || value.trim() !== value || value === '""'
-      || /[\u0000-\u001f\ud800-\udfff\ufffe\uffff]/.test(value)) return true;
-    const previous = content[index - 1];
-    const next = content[index + 1];
-    if ((is_Node(previous) && previous.$_tag === STR_TAG)
-      || (is_Node(next) && next.$_tag === STR_TAG)) return true;
-  }
-  return false;
-}
-
 /**
  * Low-level XML serializer for Hson nodes.
  *
@@ -149,20 +93,16 @@ function element_cluster_needs_explicit_transport(content: readonly (HsonNode | 
  * - Primitive input:
  *   - Delegated to `primitive_to_xml(p)`.
  *
- * - `_hson_str`:
- *   - Must have exactly one string in `$_content`.
- *   - Explicit transport uses one HTML-escaped JSON string payload so every
- *     admitted code unit and empty value is XML-safe and reversible.
+ * - `_hson_str`: emits HTML text, with a reserved boundary comment when exact
+ *   code units or leaf topology require it.
  *
  * - `_hson_val`:
  *   - Must have exactly one primitive in `$_content`.
  *   - Rendered as `<_hson_val>…</_hson_val>` with escaped contents to preserve
  *     type boundaries on round trip.
  *
- * - `_hson_elem`:
- *   - Melts when ordinary HTML text boundaries are unambiguous.
- *   - Remains explicit when adjacent, empty, or whitespace-sensitive string
- *     leaves require a structural boundary on reparse.
+ * - `_hson_elem`: melts into HTML children. Reserved boundary comments retain
+ *   adjacent, empty, and whitespace-sensitive text leaves.
  *
  * - `_hson_root`:
  *   - Must contain exactly one child.
@@ -180,8 +120,8 @@ function element_cluster_needs_explicit_transport(content: readonly (HsonNode | 
  *     ensures `xmlns` is set if missing.
  *   - Attribute values are escaped via `escape_attr`.
  * - Children:
- *   - RAWTEXT tags (`style`, `script`) use `collect_raw_text` with a
- *     guard against `</style` / `</script` sequences.
+ *   - RAWTEXT tags (`style`, `script`) use the reserved lexical codec for
+ *     every nonempty textual body.
  *   - Others map children to either:
  *       - recursive `serialize_xml` for nodes, or
  *       - `primitive_to_xml` for primitives.
@@ -218,10 +158,13 @@ function serialize_xml_node(node: HsonNode | Primitive | undefined): string {
   }
 
   switch (tag) {
-    // Explicit string transport is injective over empty, adjacent, and
-    // whitespace-sensitive text items.
+    // Semantic string leaves remain HTML text; reserved comments retain
+    // boundaries and code units that HTML/XML would otherwise erase.
     case STR_TAG: {
-      return explicit_string_transport(node);
+      if (content.length !== 1 || typeof content[0] !== "string") {
+        _throw_transform_err("invalid _hson_str leaf", "serialize_html");
+      }
+      return encode_html_text_leaf(content[0]);
     }
 
     // keep <_hson_val> literal for round-trip typing
@@ -234,23 +177,22 @@ function serialize_xml_node(node: HsonNode | Primitive | undefined): string {
     }
 
     // Melt ordinary element content when the text-node boundaries are already
-    // unambiguous. Otherwise retain an explicit transport cluster so adjacent,
+    // unambiguous. Otherwise emit a reserved text boundary so adjacent,
     // empty, sentinel-like, and boundary-whitespace strings remain injective.
     case ELEM_TAG: {
       const kids = content as (HsonNode | Primitive)[];
-      if (element_cluster_needs_explicit_transport(kids)) {
-        return `<${ELEM_TAG}>${kids.map(ch => serialize_xml_node(ch)).join("")}</${ELEM_TAG}>`;
-      }
-      return kids.map(ch => {
-        if (is_Node(ch) && ch.$_tag === STR_TAG) {
-          const value = ch.$_content[0];
-          if (typeof value !== "string") {
-            _throw_transform_err('<_hson_str> must contain exactly one string', 'serialize_html');
-          }
-          return escape_html_text(value);
+      return kids.map((child, index) => {
+        if (is_Node(child) && child.$_tag === STR_TAG) {
+          const value = child.$_content[0];
+          if (typeof value !== "string") _throw_transform_err("invalid _hson_str leaf", "serialize_html");
+          const previous = kids[index - 1];
+          const next = kids[index + 1];
+          if (can_melt_html_text_leaf(value)
+            && !(is_Node(previous) && previous.$_tag === STR_TAG)
+            && !(is_Node(next) && next.$_tag === STR_TAG)) return escape_html_text(value);
         }
-        return serialize_xml_node(ch);
-      }).join('\n');
+        return serialize_xml_node(child);
+      }).join("");
     }
 
     // melt _hson_root (must have exactly one cluster child)
@@ -289,16 +231,10 @@ function serialize_xml_node(node: HsonNode | Primitive | undefined): string {
 
   const kids = (content as (HsonNode | Primitive)[]) ?? [];
 
-  // RAW-TEXT MODE: style/script → emit verbatim, no escaping/trim/collapse
+  // One reserved lexical mode keeps all nonempty RAWTEXT bodies unambiguous.
   let inner: string;
   if (RAWTEXT.has(tag.toLowerCase())) {
-    const only = kids[0];
-    inner = kids.length === 1
-      && is_Node(only)
-      && only.$_tag === ELEM_TAG
-      && element_cluster_needs_explicit_transport(only.$_content)
-      ? serialize_xml_node(only)
-      : collect_raw_text(kids).replace(/<\/(style|script)/gi, "<\\/$1>"); // guard early close
+    inner = encode_html_raw_text(raw_text_values(kids));
   } else {
     inner = kids.map(ch => is_Node(ch) ? serialize_xml_node(ch as HsonNode)
       : primitive_to_xml(ch as Primitive))
@@ -338,18 +274,17 @@ export function serialize_xml(node: HsonNode | Primitive | undefined): string {
  *      replacement; this matches standard HTML boolean attribute semantics.
  *
  * 5. Finalization:
- *    - Returns `htmlString.trim()` to remove leading/trailing whitespace.
+ *    - Returns the transport string without altering text data.
  *
  * Characteristics:
- * - `_hson_str` is explicit when required to preserve a transport boundary.
+ * - String content is HTML text. Reserved comments preserve text topology.
  * - `_hson_val` uses a `<_hson_val>…</_hson_val>` literal representation.
- * - `_hson_elem` appears only when its transport boundary is required;
- *   `_hson_root` never appears as a tag.
+ * - `_hson_elem` and `_hson_root` never appear as HTML carrier tags.
  * - `_hson_obj` and other clusters remain visible where necessary to preserve
  *   Hson’s JSON-mode structure.
  *
  * @param node - Root Hson node or primitive to serialize as HTML.
- * @returns A trimmed HTML string ready for DOM insertion or inspection.
+ * @returns An HTML transport string for trusted Transform ingress.
  * @throws If invariants fail or if the input is not a valid HsonNode.
  */
 export function serialize_html(node: HsonNode | Primitive): string {
@@ -373,6 +308,6 @@ export function serialize_html(node: HsonNode | Primitive): string {
   // HTML boolean attrs: key="key" → key
   const htmlString = xmlString.replace(/\b([^\s=]+)="\1"/g, '$1');
 
-  return htmlString.trim();
+  return htmlString;
 
 }

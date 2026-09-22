@@ -1,5 +1,6 @@
 import { Hson } from "../../hson-authoring.js";
 import { encode_hson_template_substitution } from "../../api/transform/hson-admission.js";
+import { scan_hson_template_segments } from "../../api/transform/parsers/tokenize-hson.js";
 import { read_transform_error_details, type TransformErrorDetails } from "../../core/errors.js";
 import type { HsonCanonical } from "../../api/transform/transform.types.js";
 import type { GeneratedSegment, InterpolationSite } from "./interpolation-source.js";
@@ -42,14 +43,20 @@ export function capture_interpolation(site: InterpolationSite, tag: typeof Hson.
   try {
     if (captures.length >= MAX_CAPTURES) overflow = true;
     else if (!overflow && strings.raw.length === site.literals.length && strings.raw.every((s, i) => s === site.literals[i]?.raw)) {
+      const scanned = scan_hson_template_segments(strings.raw, values, encode_hson_template_substitution);
+      const structural = new Set(scanned.slots.map(slot => slot.substitution));
       let source = "";
       let substitution: number | undefined;
       const segments: GeneratedSegment[] = [];
       for (let i = 0; i < strings.raw.length; i++) {
         const start = source.length;
-        source += strings.raw[i];
+        source += structural.has(i) ? strings.raw[i].slice(0, -1) : strings.raw[i];
         segments.push({ kind: "literal", index: i, start, end: source.length });
         if (i < values.length) {
+          if (structural.has(i)) {
+            segments.push({ kind: "substitution", index: i, start: source.length, end: source.length, scalarKind: "structural" });
+            continue;
+          }
           let encoded: string;
           try { encoded = encode_hson_template_substitution(values[i], i); }
           catch { substitution = i; break; }
@@ -59,7 +66,15 @@ export function capture_interpolation(site: InterpolationSite, tag: typeof Hson.
         }
         if (source.length > MAX_SOURCE || totalSource + source.length > MAX_TOTAL_SOURCE) { overflow = true; break; }
       }
-      if (!overflow) {
+      if (failed && substitution === undefined) {
+        const details = read_transform_error_details(cause);
+        const pathSlot = /^\$slot\[(\d+)\]$/.exec(details?.path ?? "");
+        substitution = pathSlot === null ? undefined : Number(pathSlot[1]);
+        if (substitution === undefined) {
+          substitution = scanned.slots.find(slot => slot.offset === details?.source?.index)?.substitution;
+        }
+      }
+      if (!overflow && source === scanned.source) {
         capture = Object.freeze({ evaluationId, site, source, segments: Object.freeze(segments), canonical,
           timings: { admissionMs, traceMs: performance.now() - traceStart },
           failure: failed ? { message: cause instanceof Error ? cause.message : "Hson admission failed.", details: read_transform_error_details(cause), substitution } : undefined });

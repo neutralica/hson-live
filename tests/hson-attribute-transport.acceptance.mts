@@ -75,7 +75,7 @@ function prepare_parser_element(
   node: Record<string, unknown>,
   inheritedNamespace = HTML_NS,
 ): void {
-  if (node.nodeType === 3) {
+  if (node.nodeType === 3 || node.nodeType === 8) {
     Object.defineProperty(node, "textContent", {
       configurable: true,
       value: String(node.data ?? ""),
@@ -424,17 +424,18 @@ check("transport-sensitive attrs retain canonical equality through Hson text", (
   assert.equal(must_tag(reparsed, "main").$_attrs?.a__colon__b, "2");
 });
 
-check("HTML comments are ingress trivia inside _hson_str across all parser paths", () => {
-  const source = `<_hson_str>&quot;a<!-- ignored -->b&quot;</_hson_str>`;
-  const direct = parse_html(parser_document(source).documentElement);
-  for (const root of [worker(source), browser(source), direct]) {
-    assert.deepEqual(must_tag(root, "_hson_str").$_content, ["ab"]);
-  }
-  const meaningfulChild = `<_hson_str>&quot;a&quot;<span/></_hson_str>`;
-  assert_rejects_both(meaningfulChild, /_hson_str.*text only/);
-  assert.throws(
-    () => parse_html(parser_document(meaningfulChild).documentElement),
-    /_hson_str.*text only/,
+check("reserved text boundaries decode intentionally across both trusted string parsers", () => {
+  const source = '<main><!--hson-text:0061-->a<!--hson-text:--><!--hson-text:0062-->b</main>';
+  const workerNode = worker(source);
+  assert_worker_browser_equal("reserved-text-boundary", workerNode, browser(source));
+  const cluster = must_tag(workerNode, "main").$_content[0] as HsonNode;
+  assert.deepEqual(cluster.$_content.map((child) => (child as HsonNode).$_content[0]), ["a", "", "b"]);
+  assert_rejects_both('<main><!--hson-text:zz--></main>', /malformed reserved Hson text payload/);
+  assert_rejects_both('<main><!--hson-text--></main>', /malformed reserved Hson text boundary/);
+  assert_worker_browser_equal(
+    "browser-boundary-is-not-transform-text",
+    worker('<main><!--hson-boundary:v1:plan:between:0-->a</main>'),
+    browser('<main><!--hson-boundary:v1:plan:between:0-->a</main>'),
   );
   const dangling = `<main/><!--`;
   assert_worker_browser_equal(
@@ -442,6 +443,20 @@ check("HTML comments are ingress trivia inside _hson_str across all parser paths
     worker(dangling),
     browser(dangling),
   );
+});
+
+check("reserved RAWTEXT tokens decode across both trusted string parsers", () => {
+  const source = "<style>/*hson-raw:0061003c002f007300740079006c0065003e0062*/</style>";
+  const workerNode = worker(source);
+  assert_worker_browser_equal("reserved-rawtext-style", workerNode, browser(source));
+  const style = must_tag(workerNode, "style");
+  const cluster = style.$_content[0] as HsonNode;
+  assert.equal((cluster.$_content[0] as HsonNode).$_content[0], "a</style>b");
+  assert_rejects_both("<style>/*hson-raw:zz*/</style>", /malformed reserved Hson raw-text token/);
+  assert_rejects_both("<style>x/*hson-raw:0061*/</style>", /malformed or misplaced reserved Hson raw-text token/);
+  const segmented = '<style>/*hson-raw:a:005b002200610022002c00220022002c002200620022005d*/</style>';
+  assert_worker_browser_equal("reserved-rawtext-segmented", worker(segmented), browser(segmented));
+  assert_rejects_both("<style>/*hson-raw:a:zz*/</style>", /malformed reserved Hson raw-text token/);
 });
 
 check("HTML QUID ingress rejects every structural carrier on all parser paths", () => {
@@ -482,14 +497,14 @@ check("structural HTML typed scalars use only the detached object carrier", () =
 
   assert_rejects_both(
     `<_hson_elem><_hson_val>1</_hson_val></_hson_elem>`,
-    /_hson_val.*forbidden under.*_hson_elem/,
+    /obsolete Hson HTML carrier/,
   );
 });
 
 check("reserved HTML transport lowering agrees across browser and Worker", () => {
   const sources = [
     `<value><_hson_val>-0</_hson_val></value>`,
-    `<_hson_elem><_hson_str>&quot;a&quot;</_hson_str><_hson_str>&quot;&quot;</_hson_str><_hson_str>&quot;b&quot;</_hson_str></_hson_elem>`,
+    `<div><!--hson-text:0061-->a<!--hson-text:--><!--hson-text:0062-->b</div>`,
   ];
   for (const [index, source] of sources.entries()) {
     const workerNode = worker(source);
@@ -504,14 +519,14 @@ check("reserved HTML transport lowering agrees across browser and Worker", () =>
   assert.equal(value.$_tag, "_hson_val");
   assert.equal(Object.is(value.$_content[0], -0), true);
 
-  const text = detach_hson_root_value(worker(sources[1]!));
+  const text = ((detach_hson_root_value(worker(sources[1]!)).$_content[0] as HsonNode).$_content[0] as HsonNode);
   assert.deepEqual(
     text.$_content.map((child) => (child as HsonNode).$_content[0]),
     ["a", "", "b"],
   );
   assert_rejects_both(
     `<_hson_str data-x="lost">&quot;text&quot;</_hson_str>`,
-    /must not carry attributes or metadata/,
+    /obsolete Hson HTML carrier/,
   );
 });
 

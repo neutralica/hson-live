@@ -42,7 +42,7 @@ function sha256BytesOracle(bytes: Uint8Array): string {
 
 const HSON_CAFE = `<note "café">`;
 const JSON_CAFE = `{\n  "note": "café"\n}`;
-const HTML_CAFE = `<_hson_obj>\n<note><_hson_obj>\n<_hson_str>&quot;caf\\u00e9&quot;</_hson_str>\n</_hson_obj></note>\n</_hson_obj>`;
+const HTML_CAFE = `<_hson_obj>\n<note><_hson_obj>\n<!--hson-text:00630061006600e9-->café\n</_hson_obj></note>\n</_hson_obj>`;
 
 await check("the independent oracle has the empty SHA-256 vector", () => {
   assert.equal(sha256Oracle(""), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
@@ -67,7 +67,7 @@ await check("JSON hashes its exact checked-in serializer output", async () => {
 await check("HTML hashes its exact checked-in serializer output", async () => {
   const representation = hsonTransform.fromJson({ note: "café" }).toHtml();
   assert.equal(representation.serialize(), HTML_CAFE);
-  assert.equal(await representation.sha256(), "0cf5d6904c133769a8a72e6d2de4668b8b7e4a384301d73ef14ed660fe0a6ed0");
+  assert.equal(await representation.sha256(), "d36ba6314128db4ecfae28207bb21fc464dab677ce6d4314067543e2725d66bc");
 });
 
 await check("every textual lane agrees with the independent UTF-8 oracle", async () => {

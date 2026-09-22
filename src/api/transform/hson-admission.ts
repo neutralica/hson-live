@@ -1,6 +1,7 @@
 import type { Primitive } from "../../core/types.js";
 import { admit_hson_number } from "../../core/hson-number.js";
 import { parse_hson } from "./parsers/parse-hson.js";
+import { scan_hson_template_segments, type HsonTemplateSlot } from "./parsers/tokenize-hson.js";
 import { serialize_hson } from "./serializers/serialize-hson.js";
 import type { HsonCanonical } from "./transform.types.js";
 import { detach_hson_root_value } from "./utils/node-utils/detach-hson-root-value.js";
@@ -73,12 +74,27 @@ export function reconstruct_hson_template_source(
     );
   }
 
-  let source = strings.raw[0];
-  for (let index = 0; index < substitutions.length; index += 1) {
-    source += encode_hson_template_substitution(substitutions[index], index);
-    source += strings.raw[index + 1];
+  const scanned = scan_hson_template_segments(strings.raw, substitutions, encode_hson_template_substitution);
+  if (scanned.slots.length !== 0) {
+    _throw_transform_err(
+      "structural interpolation is unavailable in Hson.canonical",
+      "Hson.canonical", undefined, undefined,
+      { code: "HSON_STRUCTURAL_SLOT_MODE_FORBIDDEN", stage: "template-admission" },
+    );
   }
-  return source;
+  return scanned.source;
+}
+
+/** Private source and slot admission for the two semantic member tags. */
+export function reconstruct_hson_structural_template(
+  strings: TemplateStringsArray,
+  substitutions: readonly HsonTemplatePrimitive[],
+): Readonly<{ source: string; slots: readonly HsonTemplateSlot[] }> {
+  if (!isTemplateStringsArray(strings) || strings.raw.length !== substitutions.length + 1) {
+    _throw_transform_err("invalid Hson tagged template", "Hson", undefined, undefined,
+      { code: HSON_TAGGED_TEMPLATE_REQUIRED, stage: "template-admission" });
+  }
+  return scan_hson_template_segments(strings.raw, substitutions, encode_hson_template_substitution);
 }
 
 /**

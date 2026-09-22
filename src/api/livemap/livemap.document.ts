@@ -57,6 +57,7 @@ import { make_livemap_document_proxy } from "./livemap.proxy.js";
 import type { LiveMapDocumentWatchRegistration } from "./livemap.watch.js";
 import type { InternalDocumentSchemaController } from "./livemap.document.schema.js";
 import { cut_local_document } from "../../internal/document-cut.js";
+import { assert_document_special_tags } from "../../core/document-special-tags.js";
 
 export type PreparedLiveMapRoot = Readonly<{
   root: HsonNode;
@@ -107,7 +108,9 @@ export function classify_live_root_mode(root: HsonNode): LiveMapRootMode {
     throw new Error("LiveMap cannot own a malformed canonical Hson root.", { cause });
   }
 
-  return classify_live_root_shape(root);
+  const mode = classify_live_root_shape(root);
+  if (mode === "document") assert_document_special_tags(root);
+  return mode;
 }
 
 function classify_live_root_shape(root: HsonNode): LiveMapRootMode {

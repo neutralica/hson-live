@@ -204,7 +204,7 @@ check("JSON and HTML numeric transports preserve negative zero explicitly", () =
   }
 });
 
-check("HTML reserved transport establishes mode before ordinary wrapping", () => {
+check("HTML reserved boundary annotations preserve text topology", () => {
   const adjacent = node("_hson_elem", [
     node("_hson_str", ["a"]),
     node("_hson_str", [""]),
@@ -213,10 +213,19 @@ check("HTML reserved transport establishes mode before ordinary wrapping", () =>
   const wire = hsonTransform.fromNode(adjacent).toHtml().serialize();
   assert.equal(
     wire,
-    `<_hson_elem><_hson_str>&quot;a&quot;</_hson_str><_hson_str>&quot;&quot;</_hson_str><_hson_str>&quot;b&quot;</_hson_str></_hson_elem>`,
+    '<!--hson-text:0061-->a<!--hson-text:--><!--hson-text:0062-->b',
   );
+  assert.doesNotMatch(wire, /<\/?_hson_(?:str|elem)(?=[\s>])/);
   const reparsed = detach_hson_root_value(hsonTransform.fromTrustedHtml(wire).toNode());
   assert.deepEqual(reparsed, adjacent);
+
+  const literal = node("_hson_elem", [node("div", [
+    node("_hson_elem", [node("_hson_str", ["<_hson_str>literal</_hson_str>"])]),
+  ])]);
+  const literalWire = hsonTransform.fromNode(literal).toHtml().serialize();
+  assert.ok(literalWire.includes("&lt;_hson_str&gt;literal&lt;/_hson_str&gt;"));
+  assert.doesNotMatch(literalWire, /<\/?_hson_(?:str|elem)(?=[\s>])/);
+  assert.deepEqual(detach_hson_root_value(hsonTransform.fromTrustedHtml(literalWire).toNode()), literal);
 
   const objectScalar = detach_hson_root_value(
     hsonTransform.fromTrustedHtml(`<value><_hson_val>-0</_hson_val></value>`).toNode(),

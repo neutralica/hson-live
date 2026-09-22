@@ -32,7 +32,7 @@ import {
 } from "../utils/hson-utils/quid-ingress.js";
 import { normalize_hson_array_index_order } from "../../../core/hson-array-indexes.js";
 import { classify_ordinary_hson_structure } from "../../../core/hson-structural-mode.js";
-import { decode_html_string_transport } from "../utils/html-utils/decode-html-string-transport.js";
+import { decode_html_raw_text, decode_html_text_boundary } from "../utils/html-utils/html-text-transport.js";
 
 
 
@@ -131,7 +131,7 @@ function parse_html_internal(
     let inputElement: Element;
     const allowHsonTransit = typeof input === "string";
     if (typeof input === "string") {
-        const stripped = strip_html_comments(input);
+        const stripped = strip_html_comments(input, true);
         const bools = expand_flags(stripped);
         const safe = escape_text(bools);
         const ents = expand_entities(safe);
@@ -321,8 +321,8 @@ function parse_html_internal(
  *   - Reject unknown tags starting with `_` that are not recognized VSNs.
  * - Parse attributes and meta via `parse_html_attrs`.
  * - Handle special raw-text elements (`<style>`, `<script>`):
- *   - Treat their entire (optionally CDATA-wrapped) text content as a
- *     single `_hson_str` child.
+ *   - Decode trusted lexical RAWTEXT transport without trimming or CDATA
+ *     interpretation. Direct Element ingress keeps its literal text.
  * - Convert children:
  *   - Calls `elementToNode` to transform child DOM nodes into a mix of
  *     primitives and `HsonNode`s.
@@ -338,10 +338,7 @@ function parse_html_internal(
  *       - Children must be valid index tags, returned as `_hson_arr`.
  *   - `<_hson_ii>`:
  *       - Must have exactly one child, returned as `_hson_ii` with optional meta.
- *   - `<_hson_elem>`:
- *       - Establishes element mode before ordinary parent construction.
- *   - `<_hson_str>`:
- *       - Decodes one JSON-string payload without merging sibling items.
+ *   - `_hson_elem` and `_hson_str` HTML carrier elements are obsolete and reject.
  * - Default HTML element path:
  *   - For zero children:
  *       - Produce an element with an empty `_hson_elem` cluster.
@@ -400,42 +397,20 @@ function convert(
         assign_ingested_hson_node_quid(CREATE_NODE({ $_tag: dec }), quid, "parse-html");
     }
 
-    if (dec === STR_TAG) {
-        if (Object.keys(sortedAcc).length > 0 || (metaAcc && Object.keys(metaAcc).length > 0)) {
-            _throw_transform_err('<_hson_str> transport must not carry attributes or metadata', 'parse-html');
-        }
-        const parts = Array.from(el.childNodes).filter((child) => child.nodeType !== 8);
-        if (parts.some((child) => child.nodeType !== 3)) {
-            _throw_transform_err('<_hson_str> transport must contain text only', 'parse-html');
-        }
-        return finish(CREATE_NODE({
-            $_tag: STR_TAG,
-            $_content: [decode_html_string_transport(
-                parts.map((child) => child.textContent ?? "").join(""),
-                "parse-html",
-            )],
-        }));
+    if (dec === STR_TAG || dec === ELEM_TAG) {
+        _throw_transform_err("obsolete Hson HTML carrier <" + dec + "> is forbidden", "parse-html");
     }
 
-    // Raw text elements: treat their textContent as a single string node
+    // RAWTEXT body tokens are Transform-only; native browser realization has
+    // its own parser-compatible serializer and never emits these tokens.
     const specialExceptions = ['style', 'script'];
-    if (specialExceptions.includes(dec)
-        && !Array.from(el.childNodes).some((child) =>
-            child.nodeType === 1
-            && (child as Element).tagName.toLowerCase() === ELEM_TAG
-        )) {
-        let text_content = el.textContent?.trim();
-
-        //  handle <![CDATA[ ... ]]> safely
-        if (text_content?.startsWith("<![CDATA[")) {
-            const end = text_content.indexOf("]]>");
-            if (end === -1) {
-                _throw_transform_err("Malformed CDATA block: missing closing ']]>'", "parse-html");
-            }
-            text_content = text_content.slice("<![CDATA[".length, end);
-        }
-
-        if (text_content) {
+    if (allowHsonTransit && specialExceptions.includes(dec)) {
+        const raw = el.textContent ?? Array.from(el.childNodes)
+            .filter((child) => child.nodeType === 3 || child.nodeType === 4)
+            .map((child) => child.textContent ?? (child as unknown as { data?: string }).data ?? "")
+            .join("");
+        const leaves = decode_html_raw_text(raw, "parse-html");
+        if (leaves.length > 0) {
             return finishOrdinary(CREATE_NODE({
                 $_tag: dec,
                 $_attrs: sortedAcc,
@@ -444,9 +419,7 @@ function convert(
                 $_content: [
                     CREATE_NODE({
                         $_tag: ELEM_TAG,
-                        $_content: [
-                            CREATE_NODE({ $_tag: STR_TAG, $_content: [text_content] })
-                        ]
+                        $_content: leaves.map((value) => CREATE_NODE({ $_tag: STR_TAG, $_content: [value] }))
                     })
                 ]
             }));
@@ -528,16 +501,6 @@ function convert(
         }));
     }
 
-    if (dec === ELEM_TAG) {
-        if (Object.keys(sortedAcc).length > 0 || (metaAcc && Object.keys(metaAcc).length > 0)) {
-            _throw_transform_err('<_hson_elem> transport must not carry attributes or metadata', 'parse-html');
-        }
-        if (childNodes.some((child) => child.$_tag === VAL_TAG)) {
-            _throw_transform_err('<_hson_val> transport is forbidden under <_hson_elem>', 'parse-html');
-        }
-        return finish(CREATE_NODE({ $_tag: ELEM_TAG, $_content: childNodes }));
-    }
-
     // ---------- Default: normal HTML element ----------
 
     if (childNodes.length === 0) {
@@ -608,6 +571,10 @@ function convert(
  */
 function wrap_as_root(node: HsonNode): HsonNode {
     if (node.$_tag === ROOT_TAG) return node; // already rooted
+    if (node.$_tag === OBJ_TAG && node.$_content.length === 1
+        && (node.$_content[0] as HsonNode).$_tag === STR_TAG) {
+        return CREATE_NODE({ $_tag: ROOT_TAG, $_content: [node.$_content[0]] });
+    }
     if (node.$_tag === OBJ_TAG || node.$_tag === ARR_TAG || node.$_tag === ELEM_TAG
         || node.$_tag === STR_TAG || node.$_tag === VAL_TAG) {
         return CREATE_NODE({ $_tag: ROOT_TAG, $_content: [node] });
@@ -631,6 +598,8 @@ function wrap_as_root(node: HsonNode): HsonNode {
  *
  * Behavior:
  * - Iterates over the given `ChildNode`s:
+ *   - `COMMENT_NODE`: trusted reserved text boundaries become exact string
+ *     leaves and consume their following display text; other comments vanish.
  *   - `ELEMENT_NODE`:
  *       - Recursively converted via `convert`, returning a `HsonNode`.
  *   - `TEXT_NODE`:
@@ -656,14 +625,27 @@ function elementToNode(
     recordElement?: ElementProvenanceRecorder,
 ): (HsonNode | Primitive)[] {
     const contents: (HsonNode | Primitive)[] = [];
+    let skipAnnotatedText = false;
 
     for (const item of Array.from(els)) {
+        if (item.nodeType === 8) {
+            const boundary = allowHsonTransit
+                ? decode_html_text_boundary(item.textContent ?? "", "parse-html")
+                : undefined;
+            if (boundary !== undefined) {
+                contents.push(CREATE_NODE({ $_tag: STR_TAG, $_content: [boundary] }));
+                skipAnnotatedText = true;
+            }
+            continue;
+        }
         if (item.nodeType === 1) {
+            skipAnnotatedText = false;
             contents.push(convert(item as Element, parentTag, allowHsonTransit, recordElement));
             continue;
         }
 
         if (item.nodeType === 3) {
+            if (skipAnnotatedText) continue;
             const raw = item.textContent ?? "";
 
             /* handle the empty-string sentinel after trimming */

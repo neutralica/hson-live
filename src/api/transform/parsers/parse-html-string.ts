@@ -21,7 +21,7 @@ import {
   hson_metadata_candidate_key,
 } from "../../../core/hson-metadata.js";
 import { CREATE_NODE } from "../../../core/factories.js";
-import { is_indexed } from "../../../core/node-guards.js";
+import { is_Node, is_indexed } from "../../../core/node-guards.js";
 import type { HsonAttrs, HsonMeta, HsonNode, Primitive } from "../../../core/types.js";
 import { normalize_attr_ws } from "../utils/attrs-utils/normalize_attrs_ws.js";
 import { parse_style_string } from "../utils/attrs-utils/parse-style.js";
@@ -36,7 +36,7 @@ import { normalize_hson_array_index_order } from "../../../core/hson-array-index
 import { is_valid_hson_attribute_name } from "../../../core/hson-name.js";
 import { normalize_html_source_attributes } from "../utils/html-preflights/ordinary-attribute-transit.js";
 import { classify_ordinary_hson_structure } from "../../../core/hson-structural-mode.js";
-import { decode_html_string_transport } from "../utils/html-utils/decode-html-string-transport.js";
+import { decode_html_raw_text, decode_html_text_boundary } from "../utils/html-utils/html-text-transport.js";
 
 const ALLOWED_ATTRS = new Set([
   "href",
@@ -175,15 +175,26 @@ function child_values(
   svgContext = false,
 ): (HsonNode | string)[] {
   const values: (HsonNode | string)[] = [];
+  let skipAnnotatedText = false;
 
   for (const child of children) {
+    if (isComment(child)) {
+      const boundary = sanitize ? undefined : decode_html_text_boundary(child.data, "parse-html-string");
+      if (boundary !== undefined) {
+        values.push(CREATE_NODE({ $_tag: STR_TAG, $_content: [boundary] }));
+        skipAnnotatedText = true;
+      }
+      continue;
+    }
     if (isTag(child)) {
+      skipAnnotatedText = false;
       const converted = element_to_hson(child, parentTag, sanitize, svgContext);
       if (converted !== undefined) values.push(converted);
       continue;
     }
 
     if (!isText(child)) continue;
+    if (skipAnnotatedText) continue;
     const raw = child.data;
     const trimmed = raw.trim();
 
@@ -240,43 +251,14 @@ function element_to_hson(
     return node;
   };
 
-  if (tag === STR_TAG) {
-    if (Object.keys(attrs).length > 0 || meta !== undefined) {
-      _throw_transform_err(
-        "<_hson_str> transport must not carry attributes or metadata",
-        "parse-html-string",
-      );
-    }
-    const carrierChildren = element.children.filter((child) => !isComment(child));
-    if (carrierChildren.some((child) => !isText(child))) {
-      _throw_transform_err(
-        "<_hson_str> transport must contain text only",
-        "parse-html-string",
-      );
-    }
-    return finish(CREATE_NODE({
-      $_tag: STR_TAG,
-      $_content: [decode_html_string_transport(
-        carrierChildren.map((child) => isText(child) ? child.data : "").join(""),
-        "parse-html-string",
-      )],
-    }));
+  if (tag === STR_TAG || tag === ELEM_TAG) {
+    _throw_transform_err("obsolete Hson HTML carrier <" + tag + "> is forbidden", "parse-html-string");
   }
 
-  if ((tag === "style" || tag === "script")
-    && !sanitize
-    && !element.children.some((child) =>
-      isTag(child) && child.name.toLowerCase() === ELEM_TAG
-    )) {
-    let content = text_content(element.children).trim();
-    if (content.startsWith("<![CDATA[")) {
-      const end = content.indexOf("]]>");
-      if (end === -1) {
-        _throw_transform_err("Malformed CDATA block: missing closing ']]>'", "parse-html-string");
-      }
-      content = content.slice("<![CDATA[".length, end);
-    }
-    if (content.length > 0) {
+  if ((tag === "style" || tag === "script") && !sanitize) {
+    const raw = text_content(element.children);
+    const leaves = decode_html_raw_text(raw, "parse-html-string");
+    if (leaves.length > 0) {
       return finish(CREATE_NODE({
         $_tag: tag,
         $_attrs: attrs,
@@ -284,7 +266,7 @@ function element_to_hson(
         $_content: [
           CREATE_NODE({
             $_tag: ELEM_TAG,
-            $_content: [CREATE_NODE({ $_tag: STR_TAG, $_content: [content] })],
+            $_content: leaves.map((value) => CREATE_NODE({ $_tag: STR_TAG, $_content: [value] })),
           }),
         ],
       }));
@@ -336,22 +318,6 @@ function element_to_hson(
     }
     return finish(CREATE_NODE({ $_tag: II_TAG, $_content: [childNodes[0]], $_meta: meta }));
   }
-  if (tag === ELEM_TAG) {
-    if (Object.keys(attrs).length > 0 || meta !== undefined) {
-      _throw_transform_err(
-        "<_hson_elem> transport must not carry attributes or metadata",
-        "parse-html-string",
-      );
-    }
-    if (childNodes.some((child) => child.$_tag === VAL_TAG)) {
-      _throw_transform_err(
-        "<_hson_val> transport is forbidden under <_hson_elem>",
-        "parse-html-string",
-      );
-    }
-    return finish(CREATE_NODE({ $_tag: ELEM_TAG, $_content: childNodes }));
-  }
-
   const content = childNodes.length === 0
     ? []
     : childNodes.length === 1 &&
@@ -397,6 +363,10 @@ function root_from_children(children: ChildNode[], sanitize: boolean): HsonNode 
       nodes[0].$_tag === ELEM_TAG)
   ) {
     const only = nodes[0];
+    if (only.$_tag === OBJ_TAG && only.$_content.length === 1
+      && is_Node(only.$_content[0]) && only.$_content[0].$_tag === STR_TAG) {
+      return CREATE_NODE({ $_tag: ROOT_TAG, $_content: [only.$_content[0]] });
+    }
     return only.$_tag === ROOT_TAG
       ? only
       : CREATE_NODE({ $_tag: ROOT_TAG, $_content: [only] });

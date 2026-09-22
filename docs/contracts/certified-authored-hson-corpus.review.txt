@@ -10,10 +10,10 @@ SUMMARY
     "graphOnlyAcceptedTransport": 11,
     "graphOnlyRejectedTransport": 9,
     "structuralJsonTransport": 14,
-    "structuralHtmlTransport": 49,
+    "structuralHtmlTransport": 47,
     "diagnosticCircuitRegressions": 4,
     "specializedTestReferences": 10,
-    "totalConcreteDescriptors": 370,
+    "totalConcreteDescriptors": 368,
     "uniqueAuthoredSources": 273,
     "declaredSourceReuse": 0
   }
@@ -43,8 +43,6 @@ TRANSPORT INVENTORY
 - html.accept.control-empty-unicode-adjacent
 - html.accept.empty-nonempty-empty
 - html.accept.identical-adjacent
-- html.accept.ingress.element-string-empty
-- html.accept.ingress.element-string-ordinary
 - html.accept.ingress.object-false
 - html.accept.ingress.object-negative-number
 - html.accept.ingress.object-negative-zero
@@ -55,7 +53,7 @@ TRANSPORT INVENTORY
 - html.accept.ingress.object-true
 - html.accept.ingress.object-zero
 - html.accept.ordinary-melted-text
-- html.accept.script-line-ending-carrier
+- html.accept.script-line-ending-raw-text
 - html.accept.script-ordinary-raw-text
 - html.accept.script-segmented-carrier
 - html.accept.string-ampersand
@@ -331,7 +329,7 @@ hand-authored expected graph:
 }
 exact Hson output: "\"\""
 exact JSON output: "\"\""
-exact HTML output: "<_hson_obj><_hson_str>&quot;&quot;</_hson_str></_hson_obj>"
+exact HTML output: "<_hson_obj><!--hson-text:--></_hson_obj>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves: —
@@ -366,7 +364,7 @@ hand-authored expected graph:
 }
 exact Hson output: "\"ordinary\""
 exact JSON output: "\"ordinary\""
-exact HTML output: "<_hson_obj><_hson_str>&quot;ordinary&quot;</_hson_str></_hson_obj>"
+exact HTML output: "<_hson_obj><!--hson-text:006f007200640069006e006100720079-->ordinary</_hson_obj>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves: —
@@ -581,7 +579,7 @@ hand-authored expected graph:
 }
 exact Hson output: "\"\""
 exact JSON output: "\"\""
-exact HTML output: "<_hson_obj><_hson_str>&quot;&quot;</_hson_str></_hson_obj>"
+exact HTML output: "<_hson_obj><!--hson-text:--></_hson_obj>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves: —
@@ -616,7 +614,7 @@ hand-authored expected graph:
 }
 exact Hson output: "\"ordinary\""
 exact JSON output: "\"ordinary\""
-exact HTML output: "<_hson_obj><_hson_str>&quot;ordinary&quot;</_hson_str></_hson_obj>"
+exact HTML output: "<_hson_obj><!--hson-text:006f007200640069006e006100720079-->ordinary</_hson_obj>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves: —
@@ -13235,7 +13233,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<div><_hson_elem><_hson_str>&quot;ordinary&quot;</_hson_str><_hson_str>&quot;&quot;</_hson_str><_hson_str>&quot;\\u0000&quot;</_hson_str><_hson_str>&quot;\\ud83d\\ude00&quot;</_hson_str><_hson_str>&quot;\\r\\n&quot;</_hson_str></_hson_elem></div>"
+exact HTML output: "<div><!--hson-text:006f007200640069006e006100720079-->ordinary<!--hson-text:--><!--hson-text:0000-->�<!--hson-text:d83dde00-->😀<!--hson-text:000d000a-->&#13;\n</div>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -13304,7 +13302,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<div><_hson_elem><_hson_str>&quot;&quot;</_hson_str><_hson_str>&quot;x&quot;</_hson_str><_hson_str>&quot;&quot;</_hson_str></_hson_elem></div>"
+exact HTML output: "<div><!--hson-text:--><!--hson-text:0078-->x<!--hson-text:--></div>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -13365,7 +13363,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<div><_hson_elem><_hson_str>&quot;same&quot;</_hson_str><_hson_str>&quot;same&quot;</_hson_str></_hson_elem></div>"
+exact HTML output: "<div><!--hson-text:00730061006d0065-->same<!--hson-text:00730061006d0065-->same</div>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -13383,82 +13381,6 @@ specialized-test reference: —
 declared source reuse: —
 tags: html, transport, structural-transport
 rationale: Identical adjacent strings do not merge.
-
-=== html.accept.ingress.element-string-empty ===
-claim: An HTML Hson element carrier detaches empty text.
-classification: structural-html-transport
-ingress format: html
-escaped input: "\"<_hson_elem><_hson_str>&quot;&quot;</_hson_str></_hson_elem>\""
-verbatim input: —
-semantic shape: structural-html
-slot: detached-semantic-boundary
-variation: element-string-empty
-defect: —
-disposition: accept
-hand-authored expected graph:
-{
-  "$_content": [
-    ""
-  ],
-  "$_tag": "_hson_str"
-}
-exact Hson output: —
-exact JSON output: —
-exact HTML output: "<_hson_obj><_hson_str>&quot;&quot;</_hson_str></_hson_obj>"
-exact diagnostic output: —
-expected key sequences: —
-expected string leaves:
-[
-  ""
-]
-negative-zero paths: —
-structured rejection: —
-origin: mode-sensitive-scalar-normalization
-provenance: —
-novelty: —
-human-review priority: —
-specialized-test reference: —
-declared source reuse: —
-tags: html, transport, scalar-carrier
-rationale: An HTML Hson element carrier detaches empty text.
-
-=== html.accept.ingress.element-string-ordinary ===
-claim: An HTML Hson element carrier detaches ordinary text.
-classification: structural-html-transport
-ingress format: html
-escaped input: "\"<_hson_elem><_hson_str>&quot;ordinary&quot;</_hson_str></_hson_elem>\""
-verbatim input: —
-semantic shape: structural-html
-slot: detached-semantic-boundary
-variation: element-string-ordinary
-defect: —
-disposition: accept
-hand-authored expected graph:
-{
-  "$_content": [
-    "ordinary"
-  ],
-  "$_tag": "_hson_str"
-}
-exact Hson output: —
-exact JSON output: —
-exact HTML output: "<_hson_obj><_hson_str>&quot;ordinary&quot;</_hson_str></_hson_obj>"
-exact diagnostic output: —
-expected key sequences: —
-expected string leaves:
-[
-  "ordinary"
-]
-negative-zero paths: —
-structured rejection: —
-origin: mode-sensitive-scalar-normalization
-provenance: —
-novelty: —
-human-review priority: —
-specialized-test reference: —
-declared source reuse: —
-tags: html, transport, scalar-carrier
-rationale: An HTML Hson element carrier detaches ordinary text.
 
 === html.accept.ingress.object-false ===
 claim: An HTML Hson object carrier detaches typed false.
@@ -13644,7 +13566,7 @@ rationale: An HTML Hson object carrier detaches a positive finite number.
 claim: An HTML Hson object carrier detaches an empty string.
 classification: structural-html-transport
 ingress format: html
-escaped input: "\"<_hson_obj><_hson_str>&quot;&quot;</_hson_str></_hson_obj>\""
+escaped input: "\"<_hson_obj><!--hson-text:--></_hson_obj>\""
 verbatim input: —
 semantic shape: structural-html
 slot: detached-semantic-boundary
@@ -13660,7 +13582,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<_hson_obj><_hson_str>&quot;&quot;</_hson_str></_hson_obj>"
+exact HTML output: "<_hson_obj><!--hson-text:--></_hson_obj>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -13682,7 +13604,7 @@ rationale: An HTML Hson object carrier detaches an empty string.
 claim: An HTML Hson object carrier detaches an ordinary string.
 classification: structural-html-transport
 ingress format: html
-escaped input: "\"<_hson_obj><_hson_str>&quot;ordinary&quot;</_hson_str></_hson_obj>\""
+escaped input: "\"<_hson_obj><!--hson-text:006f007200640069006e006100720079-->ordinary</_hson_obj>\""
 verbatim input: —
 semantic shape: structural-html
 slot: detached-semantic-boundary
@@ -13698,7 +13620,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<_hson_obj><_hson_str>&quot;ordinary&quot;</_hson_str></_hson_obj>"
+exact HTML output: "<_hson_obj><!--hson-text:006f007200640069006e006100720079-->ordinary</_hson_obj>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -13839,15 +13761,15 @@ declared source reuse: —
 tags: html, transport, ordinary-html
 rationale: One unambiguous ordinary HTML text leaf may remain melted.
 
-=== html.accept.script-line-ending-carrier ===
-claim: Script text with LF uses an explicit structural carrier to preserve code units.
+=== html.accept.script-line-ending-raw-text ===
+claim: Generic script text with LF and less-than uses reserved raw lexical transport.
 classification: structural-html-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"script\",\"$_content\":[{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"_hson_str\",\"$_content\":[\"const x={\\nvalue:\\\"<>&/\\\"\\n};\"]}]}]}]}"
 verbatim input: —
 semantic shape: _hson_elem
 slot: html-transport
-variation: script-line-ending-carrier
+variation: script-line-ending-raw-text
 defect: —
 disposition: accept
 hand-authored expected graph:
@@ -13874,7 +13796,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<script><_hson_elem><_hson_str>&quot;const x={\\nvalue:\\&quot;&lt;&gt;&amp;/\\&quot;\\n};&quot;</_hson_str></_hson_elem></script>"
+exact HTML output: "<script>/*hson-raw:0063006f006e0073007400200078003d007b000a00760061006c00750065003a0022003c003e0026002f0022000a007d003b*/</script>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -13890,10 +13812,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, structural-transport
-rationale: Script text with LF uses an explicit structural carrier to preserve code units.
+rationale: Generic script text with LF and less-than uses reserved raw lexical transport.
 
 === html.accept.script-ordinary-raw-text ===
-claim: Ordinary script raw text preserves braces, quotes, angle characters, ampersands, slashes, comments, JSON-looking text, and Hson-looking text.
+claim: Generic Transform script raw text remains exact outside HsonDocument.
 classification: structural-html-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"script\",\"$_content\":[{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"_hson_str\",\"$_content\":[\"const x={value:\\\"<>&/\\\",note:\\\"// /* */ <a/> «1,2»\\\"};\"]}]}]}]}"
@@ -13927,7 +13849,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<script>const x={value:\"<>&/\",note:\"// /* */ <a/> «1,2»\"};</script>"
+exact HTML output: "<script>/*hson-raw:0063006f006e0073007400200078003d007b00760061006c00750065003a0022003c003e0026002f0022002c006e006f00740065003a0022002f002f0020002f002a0020002a002f0020003c0061002f003e002000ab0031002c003200bb0022007d003b*/</script>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -13942,11 +13864,11 @@ novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: html, transport, ordinary-html
-rationale: Ordinary script raw text preserves braces, quotes, angle characters, ampersands, slashes, comments, JSON-looking text, and Hson-looking text.
+tags: html, transport, structural-transport
+rationale: Generic Transform script raw text remains exact outside HsonDocument.
 
 === html.accept.script-segmented-carrier ===
-claim: Explicit structural carriers override script raw-text melting when segmentation matters.
+claim: Generic Transform retains segmented script text outside HsonDocument.
 classification: structural-html-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"script\",\"$_content\":[{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"_hson_str\",\"$_content\":[\"a\"]},{\"$_tag\":\"_hson_str\",\"$_content\":[\"\"]},{\"$_tag\":\"_hson_str\",\"$_content\":[\"b\"]}]}]}]}"
@@ -13992,7 +13914,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<script><_hson_elem><_hson_str>&quot;a&quot;</_hson_str><_hson_str>&quot;&quot;</_hson_str><_hson_str>&quot;b&quot;</_hson_str></_hson_elem></script>"
+exact HTML output: "<script>/*hson-raw:a:005b002200610022002c00220022002c002200620022005d*/</script>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -14010,10 +13932,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, structural-transport
-rationale: Explicit structural carriers override script raw-text melting when segmentation matters.
+rationale: Generic Transform retains segmented script text outside HsonDocument.
 
 === html.accept.string-ampersand ===
-claim: Explicit string transport preserves ampersand exactly.
+claim: Reserved text boundary preserves ampersand exactly.
 classification: structural-html-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_str\",\"$_content\":[\"&\"]}"
@@ -14032,7 +13954,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<_hson_obj><_hson_str>&quot;&amp;&quot;</_hson_str></_hson_obj>"
+exact HTML output: "<_hson_obj><!--hson-text:0026-->&amp;</_hson_obj>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -14048,10 +13970,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, structural-transport
-rationale: Explicit string transport preserves ampersand exactly.
+rationale: Reserved text boundary preserves ampersand exactly.
 
 === html.accept.string-backslash ===
-claim: Explicit string transport preserves backslash exactly.
+claim: Reserved text boundary preserves backslash exactly.
 classification: structural-html-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_str\",\"$_content\":[\"\\\\\"]}"
@@ -14070,7 +13992,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<_hson_obj><_hson_str>&quot;\\\\&quot;</_hson_str></_hson_obj>"
+exact HTML output: "<_hson_obj><!--hson-text:005c-->\\</_hson_obj>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -14086,10 +14008,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, structural-transport
-rationale: Explicit string transport preserves backslash exactly.
+rationale: Reserved text boundary preserves backslash exactly.
 
 === html.accept.string-backspace ===
-claim: Explicit string transport preserves backspace exactly.
+claim: Reserved text boundary preserves backspace exactly.
 classification: structural-html-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_str\",\"$_content\":[\"\\b\"]}"
@@ -14108,7 +14030,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<_hson_obj><_hson_str>&quot;\\b&quot;</_hson_str></_hson_obj>"
+exact HTML output: "<_hson_obj><!--hson-text:0008-->�</_hson_obj>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -14124,10 +14046,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, structural-transport
-rationale: Explicit string transport preserves backspace exactly.
+rationale: Reserved text boundary preserves backspace exactly.
 
 === html.accept.string-bmp-non-ascii ===
-claim: Explicit string transport preserves bmp-non-ascii exactly.
+claim: Reserved text boundary preserves bmp-non-ascii exactly.
 classification: structural-html-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_str\",\"$_content\":[\"λ漢\"]}"
@@ -14146,7 +14068,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<_hson_obj><_hson_str>&quot;\\u03bb\\u6f22&quot;</_hson_str></_hson_obj>"
+exact HTML output: "<_hson_obj><!--hson-text:03bb6f22-->λ漢</_hson_obj>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -14162,10 +14084,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, structural-transport
-rationale: Explicit string transport preserves bmp-non-ascii exactly.
+rationale: Reserved text boundary preserves bmp-non-ascii exactly.
 
 === html.accept.string-carriage-return ===
-claim: Explicit string transport preserves carriage-return exactly.
+claim: Reserved text boundary preserves carriage-return exactly.
 classification: structural-html-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_str\",\"$_content\":[\"\\r\"]}"
@@ -14184,7 +14106,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<_hson_obj><_hson_str>&quot;\\r&quot;</_hson_str></_hson_obj>"
+exact HTML output: "<_hson_obj><!--hson-text:000d-->&#13;</_hson_obj>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -14200,10 +14122,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, structural-transport
-rationale: Explicit string transport preserves carriage-return exactly.
+rationale: Reserved text boundary preserves carriage-return exactly.
 
 === html.accept.string-crlf ===
-claim: Explicit string transport preserves crlf exactly.
+claim: Reserved text boundary preserves crlf exactly.
 classification: structural-html-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_str\",\"$_content\":[\"\\r\\n\"]}"
@@ -14222,7 +14144,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<_hson_obj><_hson_str>&quot;\\r\\n&quot;</_hson_str></_hson_obj>"
+exact HTML output: "<_hson_obj><!--hson-text:000d000a-->&#13;\n</_hson_obj>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -14238,10 +14160,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, structural-transport
-rationale: Explicit string transport preserves crlf exactly.
+rationale: Reserved text boundary preserves crlf exactly.
 
 === html.accept.string-form-feed ===
-claim: Explicit string transport preserves form-feed exactly.
+claim: Reserved text boundary preserves form-feed exactly.
 classification: structural-html-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_str\",\"$_content\":[\"\\f\"]}"
@@ -14260,7 +14182,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<_hson_obj><_hson_str>&quot;\\f&quot;</_hson_str></_hson_obj>"
+exact HTML output: "<_hson_obj><!--hson-text:000c-->�</_hson_obj>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -14276,10 +14198,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, structural-transport
-rationale: Explicit string transport preserves form-feed exactly.
+rationale: Reserved text boundary preserves form-feed exactly.
 
 === html.accept.string-greater-than ===
-claim: Explicit string transport preserves greater-than exactly.
+claim: Reserved text boundary preserves greater-than exactly.
 classification: structural-html-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_str\",\"$_content\":[\">\"]}"
@@ -14298,7 +14220,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<_hson_obj><_hson_str>&quot;&gt;&quot;</_hson_str></_hson_obj>"
+exact HTML output: "<_hson_obj><!--hson-text:003e-->&gt;</_hson_obj>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -14314,10 +14236,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, structural-transport
-rationale: Explicit string transport preserves greater-than exactly.
+rationale: Reserved text boundary preserves greater-than exactly.
 
 === html.accept.string-isolated-high-surrogate ===
-claim: Explicit string transport preserves isolated-high-surrogate exactly.
+claim: Reserved text boundary preserves isolated-high-surrogate exactly.
 classification: structural-html-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_str\",\"$_content\":[\"\\ud800\"]}"
@@ -14336,7 +14258,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<_hson_obj><_hson_str>&quot;\\ud800&quot;</_hson_str></_hson_obj>"
+exact HTML output: "<_hson_obj><!--hson-text:d800-->�</_hson_obj>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -14352,10 +14274,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, structural-transport
-rationale: Explicit string transport preserves isolated-high-surrogate exactly.
+rationale: Reserved text boundary preserves isolated-high-surrogate exactly.
 
 === html.accept.string-isolated-low-surrogate ===
-claim: Explicit string transport preserves isolated-low-surrogate exactly.
+claim: Reserved text boundary preserves isolated-low-surrogate exactly.
 classification: structural-html-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_str\",\"$_content\":[\"\\udc00\"]}"
@@ -14374,7 +14296,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<_hson_obj><_hson_str>&quot;\\udc00&quot;</_hson_str></_hson_obj>"
+exact HTML output: "<_hson_obj><!--hson-text:dc00-->�</_hson_obj>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -14390,10 +14312,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, structural-transport
-rationale: Explicit string transport preserves isolated-low-surrogate exactly.
+rationale: Reserved text boundary preserves isolated-low-surrogate exactly.
 
 === html.accept.string-less-than ===
-claim: Explicit string transport preserves less-than exactly.
+claim: Reserved text boundary preserves less-than exactly.
 classification: structural-html-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_str\",\"$_content\":[\"<\"]}"
@@ -14412,7 +14334,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<_hson_obj><_hson_str>&quot;&lt;&quot;</_hson_str></_hson_obj>"
+exact HTML output: "<_hson_obj><!--hson-text:003c-->&lt;</_hson_obj>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -14428,10 +14350,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, structural-transport
-rationale: Explicit string transport preserves less-than exactly.
+rationale: Reserved text boundary preserves less-than exactly.
 
 === html.accept.string-line-feed ===
-claim: Explicit string transport preserves line-feed exactly.
+claim: Reserved text boundary preserves line-feed exactly.
 classification: structural-html-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_str\",\"$_content\":[\"\\n\"]}"
@@ -14450,7 +14372,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<_hson_obj><_hson_str>&quot;\\n&quot;</_hson_str></_hson_obj>"
+exact HTML output: "<_hson_obj><!--hson-text:000a-->\n</_hson_obj>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -14466,10 +14388,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, structural-transport
-rationale: Explicit string transport preserves line-feed exactly.
+rationale: Reserved text boundary preserves line-feed exactly.
 
 === html.accept.string-nul ===
-claim: Explicit string transport preserves nul exactly.
+claim: Reserved text boundary preserves nul exactly.
 classification: structural-html-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_str\",\"$_content\":[\"\\u0000\"]}"
@@ -14488,7 +14410,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<_hson_obj><_hson_str>&quot;\\u0000&quot;</_hson_str></_hson_obj>"
+exact HTML output: "<_hson_obj><!--hson-text:0000-->�</_hson_obj>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -14504,10 +14426,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, structural-transport
-rationale: Explicit string transport preserves nul exactly.
+rationale: Reserved text boundary preserves nul exactly.
 
 === html.accept.string-quote ===
-claim: Explicit string transport preserves quote exactly.
+claim: Reserved text boundary preserves quote exactly.
 classification: structural-html-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_str\",\"$_content\":[\"\\\"\"]}"
@@ -14526,7 +14448,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<_hson_obj><_hson_str>&quot;\\&quot;&quot;</_hson_str></_hson_obj>"
+exact HTML output: "<_hson_obj><!--hson-text:0022-->&quot;</_hson_obj>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -14542,10 +14464,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, structural-transport
-rationale: Explicit string transport preserves quote exactly.
+rationale: Reserved text boundary preserves quote exactly.
 
 === html.accept.string-slash ===
-claim: Explicit string transport preserves slash exactly.
+claim: Reserved text boundary preserves slash exactly.
 classification: structural-html-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_str\",\"$_content\":[\"/\"]}"
@@ -14564,7 +14486,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<_hson_obj><_hson_str>&quot;/&quot;</_hson_str></_hson_obj>"
+exact HTML output: "<_hson_obj><!--hson-text:002f-->/</_hson_obj>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -14580,10 +14502,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, structural-transport
-rationale: Explicit string transport preserves slash exactly.
+rationale: Reserved text boundary preserves slash exactly.
 
 === html.accept.string-supplementary-unicode ===
-claim: Explicit string transport preserves supplementary-unicode exactly.
+claim: Reserved text boundary preserves supplementary-unicode exactly.
 classification: structural-html-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_str\",\"$_content\":[\"😀\"]}"
@@ -14602,7 +14524,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<_hson_obj><_hson_str>&quot;\\ud83d\\ude00&quot;</_hson_str></_hson_obj>"
+exact HTML output: "<_hson_obj><!--hson-text:d83dde00-->😀</_hson_obj>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -14618,10 +14540,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, structural-transport
-rationale: Explicit string transport preserves supplementary-unicode exactly.
+rationale: Reserved text boundary preserves supplementary-unicode exactly.
 
 === html.accept.string-tab ===
-claim: Explicit string transport preserves tab exactly.
+claim: Reserved text boundary preserves tab exactly.
 classification: structural-html-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_str\",\"$_content\":[\"\\t\"]}"
@@ -14640,7 +14562,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<_hson_obj><_hson_str>&quot;\\t&quot;</_hson_str></_hson_obj>"
+exact HTML output: "<_hson_obj><!--hson-text:0009-->\t</_hson_obj>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -14656,10 +14578,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, structural-transport
-rationale: Explicit string transport preserves tab exactly.
+rationale: Reserved text boundary preserves tab exactly.
 
 === html.accept.style-line-ending-carrier ===
-claim: Style text with CRLF uses an explicit structural carrier to preserve code units.
+claim: Style text with CRLF uses reserved raw lexical transport.
 classification: structural-html-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"style\",\"$_content\":[{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"_hson_str\",\"$_content\":[\"a{\\r\\nb:c\\r\\n}\"]}]}]}]}"
@@ -14693,7 +14615,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<style><_hson_elem><_hson_str>&quot;a{\\r\\nb:c\\r\\n}&quot;</_hson_str></_hson_elem></style>"
+exact HTML output: "<style>/*hson-raw:0061007b000d000a0062003a0063000d000a007d*/</style>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -14709,10 +14631,10 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, structural-transport
-rationale: Style text with CRLF uses an explicit structural carrier to preserve code units.
+rationale: Style text with CRLF uses reserved raw lexical transport.
 
 === html.accept.style-ordinary-raw-text ===
-claim: Ordinary style raw text preserves braces, quotes, angle characters, ampersands, slashes, comments, JSON-looking text, and Hson-looking text.
+claim: Style raw text preserves parser-sensitive code units.
 classification: structural-html-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"style\",\"$_content\":[{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"_hson_str\",\"$_content\":[\"a{content:\\\"<>&/\\\"}/* // */{\\\"x\\\":1}<a/>«1,2»\"]}]}]}]}"
@@ -14746,7 +14668,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<style>a{content:\"<>&/\"}/* // */{\"x\":1}<a/>«1,2»</style>"
+exact HTML output: "<style>/*hson-raw:0061007b0063006f006e00740065006e0074003a0022003c003e0026002f0022007d002f002a0020002f002f0020002a002f007b002200780022003a0031007d003c0061002f003e00ab0031002c003200bb*/</style>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -14761,11 +14683,11 @@ novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: html, transport, ordinary-html
-rationale: Ordinary style raw text preserves braces, quotes, angle characters, ampersands, slashes, comments, JSON-looking text, and Hson-looking text.
+tags: html, transport, structural-transport
+rationale: Style raw text preserves parser-sensitive code units.
 
 === html.accept.style-segmented-carrier ===
-claim: Explicit structural carriers override style raw-text melting when segmentation matters.
+claim: Generic Transform retains segmented style text outside HsonDocument.
 classification: structural-html-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"style\",\"$_content\":[{\"$_tag\":\"_hson_elem\",\"$_content\":[{\"$_tag\":\"_hson_str\",\"$_content\":[\"a\"]},{\"$_tag\":\"_hson_str\",\"$_content\":[\"\"]},{\"$_tag\":\"_hson_str\",\"$_content\":[\"b\"]}]}]}]}"
@@ -14811,7 +14733,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<style><_hson_elem><_hson_str>&quot;a&quot;</_hson_str><_hson_str>&quot;&quot;</_hson_str><_hson_str>&quot;b&quot;</_hson_str></_hson_elem></style>"
+exact HTML output: "<style>/*hson-raw:a:005b002200610022002c00220022002c002200620022005d*/</style>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -14829,7 +14751,7 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, transport, structural-transport
-rationale: Explicit structural carriers override style raw-text melting when segmentation matters.
+rationale: Generic Transform retains segmented style text outside HsonDocument.
 
 === html.accept.three-adjacent-strings ===
 claim: Three adjacent strings remain three leaves.
@@ -14878,7 +14800,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<div><_hson_elem><_hson_str>&quot;a&quot;</_hson_str><_hson_str>&quot;b&quot;</_hson_str><_hson_str>&quot;c&quot;</_hson_str></_hson_elem></div>"
+exact HTML output: "<div><!--hson-text:0061-->a<!--hson-text:0062-->b<!--hson-text:0063-->c</div>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -14945,7 +14867,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<div><_hson_elem><_hson_str>&quot;&quot;</_hson_str><_hson_str>&quot;&quot;</_hson_str><_hson_str>&quot;&quot;</_hson_str></_hson_elem></div>"
+exact HTML output: "<div><!--hson-text:--><!--hson-text:--><!--hson-text:--></div>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -15006,7 +14928,7 @@ hand-authored expected graph:
 }
 exact Hson output: —
 exact JSON output: —
-exact HTML output: "<div><_hson_elem><_hson_str>&quot;a&quot;</_hson_str><_hson_str>&quot;b&quot;</_hson_str></_hson_elem></div>"
+exact HTML output: "<div><!--hson-text:0061-->a<!--hson-text:0062-->b</div>"
 exact diagnostic output: —
 expected key sequences: —
 expected string leaves:
@@ -15250,7 +15172,7 @@ tags: html, typed-value, structural-mode, rejection
 rationale: Structural HTML forbids typed zero beneath an Hson element carrier.
 
 === html.reject.nested-element-value ===
-claim: Structural HTML rejects a typed value beneath an ordinary element in element mode.
+claim: Obsolete element carriers reject before nested content is interpreted.
 classification: structural-html-transport
 ingress format: html
 escaped input: "\"<_hson_elem><div><_hson_val>true</_hson_val></div></_hson_elem>\""
@@ -15266,9 +15188,8 @@ exact JSON output: —
 exact HTML output: —
 structured rejection:
 {
-  "code": "HSON_CANONICAL_INVARIANT_VIOLATION",
-  "operation": "parse-html-string",
-  "stage": "canonical-invariant-admission"
+  "code": "TRANSFORM_ERROR",
+  "operation": "parse-html-string"
 }
 source evidence: —
 path evidence: —
@@ -15280,7 +15201,7 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: html, typed-value, structural-mode, rejection
-rationale: Structural HTML rejects a typed value beneath an ordinary element in element mode.
+rationale: Obsolete element carriers reject before nested content is interpreted.
 
 === json.accept.structural-json-order.array-inside-object ===
 claim: Structural JSON preserves the handwritten canonical property sequence for structural-json-order.array-inside-object.

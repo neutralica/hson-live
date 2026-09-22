@@ -300,6 +300,18 @@ check("interpolated templates are discovered without speculative diagnostics", (
   assert.deepEqual(diagnostics, []);
 });
 
+check("structural interpolation diagnostics include the leading hash", () => {
+  const forbidden = `${officialImport}\nconst x = Hson.canonical\`#\${value}\`;`;
+  const canonical = diagnose(forbidden, "typescript", "/workspace/page.ts")[0];
+  assert.equal(canonical?.code, "HSON_STRUCTURAL_SLOT_MODE_FORBIDDEN");
+  assert.equal(forbidden.slice(canonical?.range.start, canonical?.range.end), '#${value}');
+
+  const invalid = `${officialImport}\nconst x = Hson.document\`<#\${value}/>\`;`;
+  const document = diagnose(invalid, "typescript", "/workspace/page.ts")[0];
+  assert.equal(document?.code, "HSON_STRUCTURAL_SLOT_POSITION_INVALID");
+  assert.equal(invalid.slice(document?.range.start, document?.range.end), '#${value}');
+});
+
 check("complete official member tags agree with runtime contextual admission", () => {
   const cases = [
     ["canonical", "<foo 1>", true], ["canonical", "<foo/>", true], ["canonical", '"hello"', true], ["canonical", "", false],

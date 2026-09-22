@@ -115,6 +115,10 @@ The parser accepts this combined form and multiple inline content nodes, such as
 
 Internally, strings become `_hson_str`; non-string primitives become `_hson_val`. Those leaf VSNs normally melt into literal syntax when Hson is serialized.
 
+Authored quoted strings occupy one physical source line; escapes such as `\n` create newline code units in the value. Tagged-template interpolation quotes and escapes a runtime JavaScript string as one Hson string, so a multiline CSS snapshot can be interpolated into `<style ${cssText}/>` without multiline Hson literal syntax. HsonDocument admits `<style/>` or exactly one nonempty string leaf, and `<script src="..."/>` with no content. These are document admission rules, not general parser grammar.
+
+In `Hson.document` and `Hson.data` tagged templates, `${value}` remains primitive interpolation. The explicit `#${value}` form requires a primitive string and re-admits its Hson source under the receiving tag. A document slot inserts the candidate document's ordered top-level content (possibly zero items); a data slot inserts exactly one scalar, object, or array value. It never spreads object members or array items. The composed result must pass the receiving tag's full admission rules. Both public values remain primitive strings; child Schema proof does not certify the result. `Hson.canonical` and `Hson.schema` do not support structural interpolation. The `#` is tagged-template authoring syntax and is absent from canonical Hson output.
+
 Element mixed content means strings interleaved with recursively element-structured ordinary children. It does not permit object or array relationships inside the same `_hson_elem` branch.
 
 ---
@@ -240,7 +244,7 @@ The former property-angle and anonymous-wrapper grammar has been removed. Adjace
 
 ## Canonicalization and VSNs
 
-Serialization melts semantic `_hson_obj`, `_hson_elem`, `_hson_arr`, `_hson_ii`, `_hson_str`, and `_hson_val` nodes into syntax. `_hson_root` is different: it is an internal attachment carrier and every root rejects direct Hson serialization. Hson, JSON, and HTML source pipelines detach their parser-owned root before Hson output. A root supplied through `fromNode()` is not silently unwrapped. VSNs remain explicit in the IR and can appear literally in cross-format HTML/JSON where scaffolding is required to preserve structure.
+Serialization melts semantic `_hson_obj`, `_hson_elem`, `_hson_arr`, `_hson_ii`, `_hson_str`, and `_hson_val` nodes into syntax. `_hson_root` is different: it is an internal attachment carrier and every root rejects direct Hson serialization. Hson, JSON, and HTML source pipelines detach their parser-owned root before Hson output. A root supplied through `fromNode()` is not silently unwrapped. VSNs remain explicit in the IR. HTML uses structural/type carriers only where needed; it never emits `_hson_str` or `_hson_elem` elements.
 
 Hson output itself is VSN-free. Every semantic object value uses one object angle pair, arrays use array notation while their `_hson_ii` indexes are reconstructed from order, strings and scalar values use primitive notation, and document content uses ordinary element-mode tags in canonical order. The serializer never writes `_hson_*` tag spellings, `$_meta`, or array-index metadata as Hson source. Persisted QUID metadata is represented by the `@quid` header sigil only for eligible element nodes. Object-member metadata rejects.
 

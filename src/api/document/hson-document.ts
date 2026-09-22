@@ -9,6 +9,7 @@ import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { serialize_hson_owned_document_content } from "../transform/serializers/serialize-hson.js";
 import type { HsonCanonical } from "../transform/transform.types.js";
 import { scan_ingested_hson_node_quids } from "../transform/utils/hson-utils/quid-ingress.js";
+import { assert_document_special_tags } from "../../core/document-special-tags.js";
 
 let wrap_hson_document: (root: HsonNode) => ExactDocumentCarrier;
 const hson_document_roots = new WeakMap<object, HsonNode>();
@@ -200,6 +201,7 @@ function qualify_exact_document_root(root: HsonNode): void {
       );
     }
   }
+  assert_document_special_tags(root);
 
   const source = serialize_hson_owned_document_content(root);
   const reparsed = normalize_owned_document_boundary(parse_hson(source, {

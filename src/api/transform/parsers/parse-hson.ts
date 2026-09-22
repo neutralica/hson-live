@@ -7,6 +7,7 @@ import { CREATE_NODE } from "../../../core/factories.js";
 import { HsonNode } from "../../../core/types.js";
 import { parse_tokens, type ParseTokensOptions } from "./parse-tokens.js";
 import { tokenize_hson } from "./tokenize-hson.js";
+import type { HsonTemplateSlot } from "./tokenize-hson.js";
 import { scan_ingested_hson_node_quids } from "../utils/hson-utils/quid-ingress.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
 import type { HsonSourceProvenanceBuilder } from "../../../internal/hson-source-provenance/hson-source-provenance.js";
@@ -32,6 +33,27 @@ import type { HsonSourceProvenanceBuilder } from "../../../internal/hson-source-
  */
 export function parse_hson(str: string, options: ParseTokensOptions = {}): HsonNode {
     return parse_hson_attached(str, options);
+}
+
+/** Private tagged-template path: slot content is resolved before validation. */
+export function parse_hson_structural_template(
+    source: string,
+    slots: readonly HsonTemplateSlot[],
+    mode: "document" | "data",
+    values: readonly (readonly HsonNode[])[],
+): HsonNode {
+    const tokens = tokenize_hson(source, 0, undefined, slots, mode);
+    if (tokens.length === 0) {
+        _throw_transform_err("structural template has no semantic value", "parse_hson",
+            undefined, undefined, { code: "HSON_SOURCE_EMPTY", stage: "source-admission" });
+    }
+    const root = parse_tokens(tokens, {
+        allowTopLevelDocumentText: mode === "document",
+        structural: { mode, values },
+    });
+    scan_ingested_hson_node_quids(root, "parse_hson");
+    assert_invariants(root, "parse hson structural template");
+    return root;
 }
 
 /** Shared private pipeline used by authored parsing and provenance capture. */

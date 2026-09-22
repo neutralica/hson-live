@@ -290,15 +290,15 @@ check("document-content shapes remain stable across one-root, multi-root, text a
   assert.equal(hson.fromNode(one).toHtml().serialize(), `<p hson:quid="${Q1}"></p>`);
   assert.equal(
     hson.fromNode(many).toHtml().serialize(),
-    `<p hson:quid="${Q1}"></p>\n<hr hson:quid="${Q2}"></hr>`,
+    `<p hson:quid="${Q1}"></p><hr hson:quid="${Q2}"></hr>`,
   );
   assert.equal(
     hson.fromNode(text).toHtml().serialize(),
-    `<_hson_obj><_hson_str>&quot;text&quot;</_hson_str></_hson_obj>`,
+    '<_hson_obj><!--hson-text:0074006500780074-->text</_hson_obj>',
   );
   assert.equal(
     hson.fromNode(mixed).toHtml().serialize(),
-    `before\n<strong hson:quid="${Q1}">middle</strong>\nafter`,
+    `before<strong hson:quid="${Q1}">middle</strong>after`,
   );
 });
 

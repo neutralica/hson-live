@@ -2,13 +2,14 @@
 
 # Hson Spec[3]
 ## HTML transport representation in Hson
-Updated: 2026-07-13
+Updated: 2026-09-21
 
 HTML maps into the Hson graph as ordered element content. The mapping preserves the structure required to re-emit useful equivalent markup, but it is canonicalizing rather than source-text-lossless.
 
-Public `.toHtml()` is the Hson transport serializer. Its `_hson_*` carriers are
-canonical/transport structural names and are intentionally retained where the
-transport needs them. This output is not the native-browser SSR realization
+Public `.toHtml()` is the Hson transport serializer. It retains structural/type
+carriers such as `_hson_obj`, `_hson_arr`, `_hson_ii`, and `_hson_val` where
+HTML would lose that information. It never emits `_hson_str` or `_hson_elem`
+elements. This output is not the native-browser SSR realization
 required by exact document continuation. The separate browser-realization
 serializer remains internal in the current release.
 
@@ -36,7 +37,7 @@ p
          └─ _hson_str ("world")
 ```
 
-`_hson_elem` is structural and is normally melted when ordinary HTML is serialized. The transport retains it explicitly when melting would lose adjacent, empty, control-bearing, or boundary-whitespace text items. Its direct children may be only `_hson_str` leaves or ordinary element nodes. Typed `_hson_val`, JSON object or array clusters, and array items cannot appear directly inside it.
+`_hson_elem` is internal structure and melts into ordinary HTML children. Reserved `hson-text` comments preserve adjacent, empty, control-bearing, and whitespace-sensitive leaves; each string also appears as HTML text. Its direct children may be only `_hson_str` leaves or ordinary element nodes. Typed `_hson_val`, JSON object or array clusters, and array items cannot appear directly inside it.
 
 Empty and void elements use canonical ordinary `$_content: []`; an empty `_hson_elem` is not retained. Voidness is inferred from tag semantics during HTML serialization; the source spelling `<img>`, `<img/>`, or an expanded repair form is not retained.
 
@@ -91,7 +92,9 @@ General HTML parsing trims each non-empty text node and drops layout-only whites
 
 records `"Hello"`, not `"Hello "`, on the general parser path. Text is neither fully whitespace-lossless nor guaranteed to reproduce the exact original `textContent` around element boundaries.
 
-`style` and `script` content is also trimmed and stored as one `_hson_str` leaf, with a recognized CDATA wrapper removed. HTML comments are ingress trivia and are ignored on string, direct-DOM, and Worker-safe paths, including between otherwise valid `_hson_str` carrier text parts. They never become Hson nodes or metadata and are never emitted. Other non-element, non-text DOM nodes are ignored where the ingress route exposes them.
+Trusted Transform `style` and `script` RAWTEXT is never trimmed. Every nonempty serialized body uses one `/*hson-raw:<lowercase UTF-16 hex>*/` token. Generic Transform uses `/*hson-raw:a:<lowercase UTF-16 hex>*/` for multiple raw text leaves; the `a:` discriminator is needed only in that case. Empty content has no body payload. This single wire mode avoids collisions with literal reserved-token-looking stylesheet text without a separate escape grammar. The HTML tokenizer sees these ASCII tokens as raw text; trusted ingress decodes them before canonical construction. Literal CDATA-looking content remains literal. Ordinary source comments are ingress trivia, while reserved Hson text comments are decoded explicitly. Other non-element, non-text DOM nodes are ignored where the ingress route exposes them.
+
+HsonDocument has narrower semantics: `<style/>` or one nonempty string leaf; `<script src="..."/>` with no content. An explicit empty style leaf, inline script, and structural content under either tag reject at document admission. Runtime string interpolation can supply multiline CSS without multiline Hson literal syntax. Browser realization is separate and rejects stylesheet text that actual HTML parsing cannot preserve exactly.
 
 There are specialized SVG ingestion paths whose text handling differs and can retain raw SVG text-node whitespace. Code that depends on whitespace should test the exact source constructor and format route it uses.
 
@@ -129,9 +132,9 @@ The general XML-backed HTML parser normalizes element tags to lowercase. Trusted
 
 The parser adds or removes namespace scaffolding as needed for XML processing. It is therefore inaccurate to promise verbatim namespace-prefix or declaration round-tripping. The goal is usable SVG/XML structure, not preservation of every namespace token from the source.
 
-Reserved transport tags are lowered before an ordinary HTML element is constructed. `<_hson_obj>` establishes object mode and `<_hson_elem>` establishes element mode. A direct `<_hson_val>` child establishes an ordinary object-scalar relationship and is never inserted under `_hson_elem`.
+Reserved transport tags are lowered before an ordinary HTML element is constructed. `<_hson_obj>` establishes object mode; `_hson_arr` and `_hson_ii` preserve array structure; `_hson_val` retains non-string scalar type. `_hson_elem` is internal only and is forbidden as a serialized HTML carrier.
 
-Explicit `<_hson_str>` transport contains one HTML-escaped JSON string. This keeps adjacent and empty text-item boundaries distinct and represents control characters without relying on XML-invalid raw code points. Detached `_hson_str` and `_hson_val` values are carried under `_hson_obj` on the HTML wire. Reserved carriers and leaves remain subject to the same canonical graph invariants; transport lowering is not an invariant bypass.
+Strings use HTML text. When text topology or XML-hostile code units require exact evidence, a preceding `<!--hson-text:<lowercase UTF-16 hex>-->` annotation identifies one semantic leaf. Detached strings use this annotation and text under `_hson_obj`; detached typed values use `_hson_val` under `_hson_obj`. `_hson_str` is internal only and forbidden as an HTML carrier. Malformed reserved annotations reject on trusted ingress.
 
 ---
 
@@ -159,7 +162,7 @@ Untrusted HTML sanitization and canonical graph validation are separate stages. 
 
 ## Round-trip contract
 
-Serializer-owned node -> HTML -> node transport is total over valid canonical semantic graphs. It preserves structural mode, typed values, ordered and empty text items, attributes, metadata, and `-0`. Arbitrary authored HTML still passes through the documented HTML normalization rules and does not promise:
+Serializer-owned node -> HTML -> node transport preserves structural mode, typed values, ordered and empty text items, attributes, metadata, and `-0` on supported canonical graphs. Generic Transform RAWTEXT nodes with child elements or object/array/value content remain outside this HTML transport; the serializer rejects them rather than silently flattening their structure. HsonDocument admission excludes those shapes for `style` and `script`. Arbitrary authored HTML still passes through the documented HTML normalization rules and does not promise:
 
 - the original source string;
 - comments or layout-only whitespace;

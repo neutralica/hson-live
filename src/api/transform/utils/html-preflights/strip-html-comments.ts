@@ -8,6 +8,8 @@
  *   content, using a non-greedy match.
  * - Also removes a dangling or unterminated `<!-- ...` that runs to end-of-input,
  *   which commonly appears in malformed real-world HTML.
+ * - With `preserveHsonTextBoundaries`, retains only reserved trusted text
+ *   boundary comments for explicit parser decoding.
  * - Leaves all non-comment text untouched.
  *
  * Intended use:
@@ -17,16 +19,22 @@
  *   effects outside comment removal.
  *
  * @param input - Raw markup string that may contain HTML comments.
- * @returns Markup string with all comments removed.
+ * @returns Markup string with ordinary comments removed.
  */
-export function strip_html_comments(input: string): string {
+export function strip_html_comments(input: string, preserveHsonTextBoundaries = false): string {
   if (!input || input.indexOf('<!--') === -1) return input;
 
   // 1) Remove all properly closed comments
-  let out = input.replace(/<!--[\s\S]*?-->/g, '');
+  let out = input.replace(/<!--[\s\S]*?-->/g, (comment) =>
+    preserveHsonTextBoundaries && comment.startsWith("<!--hson-text")
+      ? comment
+      : ""
+  );
 
-  // 2) Remove any leftover unterminated comment to end-of-input
-  out = out.replace(/<!--[\s\S]*$/g, '');
+  // 2) Remove only a leftover unterminated comment. Preserved transport
+  // boundaries are closed comments and must reach the trusted parser.
+  const dangling = out.lastIndexOf('<!--');
+  if (dangling > out.lastIndexOf('-->')) out = out.slice(0, dangling);
 
   return out;
 }

@@ -7,6 +7,7 @@
     { "include": "#data-strings" },
     { "include": "#quoted-names" },
     { "include": "#unquoted-attribute-values" },
+    { "include": "#bare-hash" },
     { "include": "#reserved-names" },
     { "include": "#quids" },
     { "include": "#numbers" },
@@ -16,6 +17,14 @@
     { "include": "#structural-punctuation" }
   ],
   "repository": {
+    "bare-hash": {
+      "patterns": [
+        {
+          "name": "invalid.illegal.bare-hash.hson",
+          "match": "#"
+        }
+      ]
+    },
     "comments": {
       "patterns": [
         {

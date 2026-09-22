@@ -60,7 +60,7 @@ export interface BaseToken {
 export type TokenKind =
   | 'OPEN' | 'CLOSE'
   | 'ARR_OPEN' | 'ARR_CLOSE'
-  | 'TEXT' | 'EMPTY_OBJ';
+  | 'TEXT' | 'EMPTY_OBJ' | 'STRUCTURAL_SLOT';
 
 /*******
  * Semantic close target for a CLOSE token.
@@ -164,6 +164,14 @@ export type TokenEmptyObj = {
   pos: Position;
 };
 
+/** Private tagged-template boundary; never a serialized Hson token. */
+export type TokenStructuralSlot = {
+  kind: typeof TOKEN_KIND.STRUCTURAL_SLOT;
+  slot: number;
+  context: "document-content" | "data-value";
+  pos: Position;
+};
+
 /*******
  * Union of all concrete tokenizer output types.
  *
@@ -173,7 +181,7 @@ export type TokenEmptyObj = {
 export type Tokens =
   | TokenOpen | TokenClose
   | TokenArrayOpen | TokenArrayClose
-  | TokenText | TokenEmptyObj;
+  | TokenText | TokenEmptyObj | TokenStructuralSlot;
 
 /*******
  * Canonical token kind constants.
@@ -188,6 +196,7 @@ export const TOKEN_KIND = {
   ARR_CLOSE: 'ARR_CLOSE',
   TEXT: 'TEXT',
   EMPTY_OBJ: 'EMPTY_OBJ',
+  STRUCTURAL_SLOT: 'STRUCTURAL_SLOT',
 } as const;
 
 /*******

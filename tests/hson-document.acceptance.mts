@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 import * as publicApi from "../src/index.ts";
-import { Hson, type HsonDocument } from "../src/index.ts";
+import { Hson, hsonLiveMap, hsonLiveTree, hsonTransform, render_document, type HsonDocument } from "../src/index.ts";
 import type { HsonCanonical } from "../src/api/transform/transform.types.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -292,6 +292,120 @@ check("the core value has no DOM dependency or browser-realization surface", () 
     assert.equal(name in Hson.document, false);
     assert.equal(name in Object(document), false);
   }
+});
+
+check("single raw-text substitutions preserve ordinary and complete managed CSS", () => {
+  assert.equal(typeof globalThis.document, "undefined");
+  const tree = hsonLiveTree.fromHson("<main/>", { isolated: true });
+  tree.css.global.sel("body").set.margin("0");
+  tree.css.global.media({ maxWidth: 600 }).sel("body").set.margin("1rem");
+  tree.css.selector("& > .label").set.color("white");
+  tree.css.global.atProperty.register(["--phase", "<number>", "0"]);
+  tree.css.global.keyframes.set({
+    name: "fade", steps: { from: { opacity: "0" }, to: { opacity: "1" } },
+  });
+  assert.ok(tree.css.snapshot().includes("\n"));
+
+  for (const cssText of [
+    "body{margin:0}",
+    tree.css.snapshot(),
+    '.deck::before{content:"a:b;{c}";animation:fade 250ms ease-in-out;}',
+    " \nbody{margin:0}\n ",
+    'a::before{content:"</stylesheet> </script> 😀";}',
+  ]) {
+    const page = Hson.document`<html <head <style ${cssText}/>/> <body/>/>`;
+    const transport = hsonTransform.fromHson(page).toHtml().serialize();
+    assert.equal(hsonTransform.fromTrustedHtml(transport).toHson().serialize(), page);
+    assert.doesNotMatch(transport, /<\/?_hson_(?:elem|str)(?=[\s>])/);
+    const map = hsonLiveMap.fromHson(page);
+    assert.equal(map.mode, "document");
+    if (map.mode !== "document") continue;
+    const browserHtml = render_document({ map }).html;
+    assert.ok(browserHtml.includes(`<style>${cssText}</style>`));
+    assert.doesNotMatch(browserHtml, /hson-raw:/);
+  }
+  tree.remove();
+});
+
+check("external script admits, inline script rejects, and unsafe style closes reject browser realization", () => {
+  const script = Hson.document`<script src="/app.js"/>`;
+  assert.equal(hsonTransform.fromHson(script).toHtml().serialize(), '<script src="/app.js"></script>');
+  assert.equal(hsonLiveMap.fromDocument(script).cut().html, '<script src="/app.js"></script>');
+  assert.throws(() => Hson.document`<script "go()"/>`, /requires src and no content/);
+  assert.throws(() => Hson.document`<script src="/app.js" "go()"/>`, /requires src and no content/);
+
+  const unsafe = Hson.document`<style ${"a{} </style> body{}"}/>`;
+  const map = hsonLiveMap.fromHson(unsafe);
+  assert.equal(map.mode, "document");
+  if (map.mode === "document") {
+    assert.throws(
+      () => render_document({ map }),
+      (error: unknown) => error instanceof Error
+        && error.cause instanceof Error
+        && /closing sentinel/.test(error.cause.message),
+    );
+  }
+});
+
+check("single style leaf uses exact RAWTEXT lexical transport", () => {
+  assert.equal(hsonTransform.fromHson(Hson.document`<style/>`).toHtml().serialize(), "<style></style>");
+  const values = [
+    "a{color:red}", "a\nb", " \nbody{margin:0}\n ", "a\rb", "a\r\nb",
+    "\0", "\b", "\f", "\ud800", "\udc00", "<", "</style>", "</StYlE>",
+    "<![CDATA[x]]>", "<!--", 'a{content:"<x>"}', "@property --x{syntax:'<number>'}",
+    "@keyframes fade{from{opacity:0}to{opacity:1}}", "/*hson-raw:0061*/",
+  ];
+  for (const value of values) {
+    const page = Hson.document`<style ${value}/>`;
+    const html = hsonTransform.fromHson(page).toHtml().serialize();
+    assert.equal(hsonTransform.fromTrustedHtml(html).toHson().serialize(), page, JSON.stringify(value));
+    assert.doesNotMatch(html, /<\/?_hson_(?:elem|str)(?=[\s>])/);
+  }
+  const closing = Hson.document`<style ${"a</style>b"}/>`;
+  const wire = hsonTransform.fromHson(closing).toHtml().serialize();
+  assert.equal(wire, "<style>/*hson-raw:0061003c002f007300740079006c0065003e0062*/</style>");
+  assert.equal(hsonTransform.fromTrustedHtml(wire).toHson().serialize(), closing);
+});
+
+check("document style and script semantic admission rejects invalid bodies", () => {
+  const invalid = [
+    '<style ""/>', '<style "a" "b"/>', '<style "" "b"/>',
+    '<style <b "x"/>/>', '<script/>', '<script "go()"/>',
+    '<script src="/app.js" "go()"/>', '<script src="/app.js" ""/>',
+  ];
+  for (const source of invalid) {
+    const graph = hsonTransform.fromHson(source).toNode();
+    assert.throws(() => Hson.document.fromNode(graph), /Document <(?:style|script)>/);
+    assert.throws(() => Hson.document.fromHson(hsonTransform.fromHson(source).toHson().serialize()), /Document <(?:style|script)>/);
+    assert.throws(() => hsonLiveMap.fromHson(source), /Document <(?:style|script)>/);
+  }
+  for (const tag of ["style", "script"]) {
+    for (const payload of [
+      node("_hson_obj", [node("x", [node("_hson_val", [1])])]),
+      node("_hson_arr", [node("_hson_ii", [node("_hson_val", [1])])]),
+      node("_hson_val", [1]),
+    ]) {
+      assert.throws(() => Hson.document.fromNode(root(node(tag, [payload]))));
+    }
+  }
+  assert.throws(() => Hson.document`<style ""/>`, /Document <style>/);
+  assert.throws(() => Hson.document`<style "a" "b"/>`, /Document <style>/);
+  assert.throws(() => Hson.document`<style <b "x"/>/>`, /Document <style>/);
+  assert.throws(() => Hson.document`<script/>`, /Document <script>/);
+  assert.throws(() => Hson.document`<script src="/app.js" ""/>`, /Document <script>/);
+});
+
+check("ordinary substitutions and branded document substitutions retain primitive admission", () => {
+  const ordinary = Hson.document`<main ${"a < b & c"}/>`;
+  assert.equal(hsonTransform.fromHson(ordinary).toHtml().serialize(), "<main>a &lt; b &amp; c</main>");
+
+  const child = Hson.document`<style "body{margin:0}"/>`;
+  const parent = Hson.document`<html <head ${child}/> <body/>/>`;
+  const html = Hson.document.toNode(parent).$_content[0] as HsonNode;
+  const head = ((html.$_content[0] as HsonNode).$_content[0] as HsonNode);
+  assert.equal(head.$_tag, "head");
+  assert.equal((head.$_content[0] as HsonNode).$_tag, "_hson_elem");
+  assert.equal(((head.$_content[0] as HsonNode).$_content[0] as HsonNode).$_tag, "_hson_str");
 });
 
 process.stdout.write(`1..${checks}\n`);

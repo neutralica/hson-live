@@ -25,6 +25,81 @@ const MAX_NESTING = 75;
 const NUMBER_LITERAL = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
 const HSON_TRIVIA = new Set([" ", "\t", "\n", "\r"]);
 
+export type HsonTemplateSlot = Readonly<{ offset: number; substitution: number }>;
+
+/**
+ * Assemble raw template segments while recognizing a hash only at a source
+ * boundary. This lexical state is shared with the private slot-aware scanner;
+ * runtime substitution text is fed only after its slot kind is decided.
+ */
+export function scan_hson_template_segments(
+  raw: readonly string[],
+  substitutions: readonly unknown[],
+  encodePrimitive: (value: unknown, index: number) => string,
+): Readonly<{ source: string; slots: readonly HsonTemplateSlot[] }> {
+  let source = "";
+  const slots: HsonTemplateSlot[] = [];
+  let quote: '"' | "'" | undefined;
+  let escaped = false;
+  let comment = false;
+  let attributeValue = false;
+  let expectAttributeValue = false;
+
+  const feed = (part: string): void => {
+    for (let index = 0; index < part.length; index += 1) {
+      const char = part[index]!;
+      const next = part[index + 1];
+      if (comment) {
+        if (char === "\n" || char === "\r") comment = false;
+        continue;
+      }
+      if (quote !== undefined) {
+        if (escaped) escaped = false;
+        else if (char === "\\") escaped = true;
+        else if (char === quote) quote = undefined;
+        continue;
+      }
+      if (attributeValue) {
+        if (isHsonTrivia(char) || char === "<" || char === ">" || char === "[" || char === "]"
+          || char === "«" || char === "»" || (char === "/" && next === ">")) {
+          attributeValue = false;
+        } else continue;
+      }
+      if (expectAttributeValue) {
+        if (isHsonTrivia(char)) continue;
+        if (char !== '"' && char !== "'" && char !== "<" && char !== ">" && !(char === "/" && next === "/")) {
+          expectAttributeValue = false;
+          attributeValue = true;
+          continue;
+        }
+        expectAttributeValue = false;
+      }
+      if (char === '"' || char === "'") { quote = char; continue; }
+      if (char === "/" && next === "/") { comment = true; index += 1; continue; }
+      if (char === "=") { expectAttributeValue = true; continue; }
+    }
+    source += part;
+  };
+
+  for (let index = 0; index < substitutions.length; index += 1) {
+    const segment = raw[index]!;
+    const hash = segment.endsWith("#") && !segment.endsWith("\\#");
+    const preceding = hash ? segment.slice(0, -1) : segment;
+    feed(preceding);
+    if (hash && quote === undefined && !comment && !attributeValue && !expectAttributeValue) {
+      slots.push({ offset: source.length, substitution: index });
+    } else {
+      if (hash) feed("#");
+      // Interpolated bytes belong to the value, not to the authored lexical
+      // context used to classify a later source-owned hash.
+      source += encodePrimitive(substitutions[index], index);
+      if (expectAttributeValue) expectAttributeValue = false;
+    }
+  }
+  feed(raw[substitutions.length] ?? "");
+  return { source, slots };
+}
+
 function isHsonTrivia(value: string): boolean {
   return HSON_TRIVIA.has(value);
 }
@@ -45,6 +120,8 @@ export function tokenize_hson(
   hson: string,
   depth = 0,
   collector?: HsonSourceLexicalCollector,
+  structuralSlots: readonly HsonTemplateSlot[] = [],
+  structuralMode?: "document" | "data",
 ): Tokens[] {
   if (depth < 0 || depth >= MAX_NESTING) {
     _throw_transform_err(
@@ -53,7 +130,7 @@ export function tokenize_hson(
     );
   }
 
-  return new HsonScanner(hson, depth, collector).scan();
+  return new HsonScanner(hson, depth, collector, structuralSlots, structuralMode).scan();
 }
 
 class HsonScanner {
@@ -61,12 +138,34 @@ class HsonScanner {
   private index = 0;
   private line = 1;
   private col = 1;
+  private nextSlot = 0;
 
   public constructor(
     private readonly source: string,
     private readonly initialDepth: number,
     private readonly collector?: HsonSourceLexicalCollector,
+    private readonly structuralSlots: readonly HsonTemplateSlot[] = [],
+    private readonly structuralMode?: "document" | "data",
   ) {}
+
+  private slotHere(): HsonTemplateSlot | undefined {
+    const slot = this.structuralSlots[this.nextSlot];
+    return slot?.offset === this.index ? slot : undefined;
+  }
+
+  private emitSlot(context: "document-content" | "data-value"): void {
+    const slot = this.slotHere();
+    if (slot === undefined) return;
+    if (context !== (this.structuralMode === "document" ? "document-content" : "data-value")) {
+      this.rejectSlot(context === "document-content" ? "document content under a data tag" : "a data value under a document tag");
+    }
+    this.emit({ kind: "STRUCTURAL_SLOT", slot: slot.substitution, context, pos: this.position() });
+    this.nextSlot += 1;
+  }
+
+  private rejectSlot(where: string): never {
+    this.fail(`structural interpolation is not allowed in ${where}`, this.position(), "HSON_STRUCTURAL_SLOT_POSITION_INVALID");
+  }
 
   private emit<TToken extends Tokens>(token: TToken): TToken {
     this.tokens.push(token);
@@ -93,7 +192,14 @@ class HsonScanner {
     while (true) {
       this.skipTrivia();
       this.completionSlot("value");
-      if (this.atEnd()) return this.tokens;
+      if (this.slotHere() !== undefined) {
+        this.emitSlot(this.structuralMode === "document" ? "document-content" : "data-value");
+        continue;
+      }
+      if (this.atEnd()) {
+        if (this.nextSlot !== this.structuralSlots.length) this.rejectSlot("a completed Hson value");
+        return this.tokens;
+      }
 
       const ch = this.peek();
       if (ch === "<") {
@@ -115,6 +221,8 @@ class HsonScanner {
         );
       } else if (ch === "`") {
         this.rejectLegacyBacktick();
+      } else if (ch === "#") {
+        this.fail(`unattached "#" in authored Hson source`, this.position(), "HSON_BARE_HASH");
       } else if (ch === ">" || ch === "/" || ch === "]" || ch === "»") {
         this.fail(
           this.tokens.length === 0
@@ -171,6 +279,7 @@ class HsonScanner {
   /** Lower `name value` object members to the existing canonical token shape. */
   private scanObjectAfterOpen(openPos: Position, depth: number): void {
     this.completionSlot("member");
+    if (this.slotHere() !== undefined) this.rejectSlot("an object member name");
     // Preserve the compact empty-object token used by existing parser APIs.
     if (this.peek() === ">") {
       this.consumeExpected(">");
@@ -231,6 +340,7 @@ class HsonScanner {
     while (true) {
       const namePos = this.position();
       this.completionSlot("member");
+      if (this.slotHere() !== undefined) this.rejectSlot("an object member name");
       if (this.peek() === ",") {
         this.fail(`object members do not use commas`, namePos, "HSON_OBJECT_COMMA_FORBIDDEN");
       }
@@ -284,7 +394,7 @@ class HsonScanner {
 
       const separatedFromValue = this.skipTrivia();
       if (separatedFromValue) this.completionSlot("value");
-      if (this.atEnd() || this.peek() === ">") {
+      if (this.slotHere() === undefined && (this.atEnd() || this.peek() === ">")) {
         this.fail(`object member "${name}" is missing its value`, namePos, "missing-object-member-value");
       }
       if (!separatedFromValue) {
@@ -343,6 +453,7 @@ class HsonScanner {
 
   private scanObjectMemberValue(depth: number, memberName: string): void {
     this.assertNesting(depth);
+    if (this.slotHere() !== undefined) { this.emitSlot("data-value"); return; }
     const ch = this.peek();
     if (ch === `"`) {
       const pos = this.position();
@@ -408,6 +519,7 @@ class HsonScanner {
   private scanElementAfterOpen(openPos: Position, depth: number): void {
     this.skipTrivia();
     this.completionSlot("tag");
+    if (this.slotHere() !== undefined) this.rejectSlot("an element name");
     if (this.atEnd()) this.fail(`unterminated angle construct`, openPos, "HSON_CONTAINER_UNTERMINATED");
 
     if (this.startsWith("/>")) {
@@ -447,6 +559,12 @@ class HsonScanner {
     while (true) {
       this.skipTrivia();
       this.completionSlot(contentStarted ? "child" : "header");
+      if (this.slotHere() !== undefined) {
+        contentStarted = true;
+        emitOpen();
+        this.emitSlot("document-content");
+        continue;
+      }
       if (this.atEnd()) this.fail(`unterminated tag <${tag}>`, openPos, "HSON_CONTAINER_UNTERMINATED");
 
       if (this.startsWith("/>")) {
@@ -601,6 +719,10 @@ class HsonScanner {
         this.rejectLegacyBacktick();
       }
 
+      if (ch === "#") {
+        this.fail(`unattached "#" in authored Hson source`, this.position(), "HSON_BARE_HASH");
+      }
+
       if (contentStarted) {
         const invalidPos = this.position();
         const raw = this.scanBareToken();
@@ -655,6 +777,12 @@ class HsonScanner {
     while (true) {
       this.skipTrivia();
       if (expectItem) this.completionSlot("value");
+      if (expectItem && this.slotHere() !== undefined) {
+        this.scanArrayItem(depth + 1);
+        sawItem = true;
+        expectItem = false;
+        continue;
+      }
       if (this.atEnd()) {
         this.fail(`unterminated ${opener}${closer} array`, openPos, "HSON_CONTAINER_UNTERMINATED");
       }
@@ -707,6 +835,7 @@ class HsonScanner {
 
   private scanArrayItem(depth: number): void {
     this.assertNesting(depth);
+    if (this.slotHere() !== undefined) { this.emitSlot("data-value"); return; }
     const ch = this.peek();
 
     if (ch === "<") {
@@ -760,6 +889,7 @@ class HsonScanner {
     this.consumeExpected("=");
     this.skipTrivia();
     this.completionSlot("attribute-value");
+    if (this.slotHere() !== undefined) this.rejectSlot("an attribute value");
     if (this.atEnd() || this.startsWith("/>") || this.peek() === ">") {
       this.fail(`missing attribute value for "${name}"`, start, "HSON_ELEMENT_ATTRIBUTE_VALUE_INVALID");
     }
@@ -794,6 +924,8 @@ class HsonScanner {
 
     while (!this.atEnd()) {
       const ch = this.peek();
+      if (this.slotHere() !== undefined) this.rejectSlot("an attribute value");
+      if (ch === "#") this.fail(`unattached "#" in authored Hson source`, this.position(), "HSON_BARE_HASH");
       if (this.startsWith("/>")) break;
       if (isHsonTrivia(ch) || isUnsupportedWhitespace(ch) || ch === "<" || ch === ">" || ch === `"` || ch === "'" || ch === "`" || ch === "«" || ch === "»" || ch === "[" || ch === "]") {
         break;
@@ -1019,6 +1151,7 @@ class HsonScanner {
   private scanBareName(where: string): string {
     const start = this.position();
     const first = this.peek();
+    if (first === "#") this.fail(`unattached "#" in authored Hson source`, start, "HSON_BARE_HASH");
     if (!is_hson_bare_name_start(first)) {
       this.fail(
         `malformed ${where}: expected a bare name or single-quoted name`,
@@ -1038,6 +1171,8 @@ class HsonScanner {
 
     while (!this.atEnd()) {
       const ch = this.peek();
+      if (this.slotHere() !== undefined) break;
+      if (ch === "#") this.fail(`unattached "#" in authored Hson source`, this.position(), "HSON_BARE_HASH");
       if (ch === "`") this.rejectLegacyBacktick();
       if (
         isHsonTrivia(ch) || isUnsupportedWhitespace(ch) || ch === "<" || ch === ">" || ch === "/" ||
@@ -1256,7 +1391,8 @@ class HsonScanner {
   private skipTrivia(): boolean {
     const start = this.index;
     while (true) {
-      while (!this.atEnd() && isHsonTrivia(this.peek())) this.consume();
+      while (this.slotHere() === undefined && !this.atEnd() && isHsonTrivia(this.peek())) this.consume();
+      if (this.slotHere() !== undefined) return this.index !== start;
       if (isUnsupportedWhitespace(this.peek())) {
         const ch = this.peek();
         this.fail(
