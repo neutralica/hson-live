@@ -15,6 +15,7 @@ import { create_livehost_locus_registry_internal } from "../src/api/livehost/ser
 import { create_livehost_store } from "../src/api/livehost/services/livehost.store.ts";
 import type { JsonValue } from "hson-live/hson";
 import type { LiveMap } from "hson-live/livemap";
+import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livehost.authority-lifecycle",
@@ -600,7 +601,7 @@ check("persistent append and checkpoint work are reported as Locus activity", as
     },
     async replaceCheckpoint() {},
   };
-  const map = hson.liveMap.fromHson(`<main @000002001/>`);
+  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(`<main @000002001/>`, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error("expected element map");
   const host = await create_persistent_locus({
     map,

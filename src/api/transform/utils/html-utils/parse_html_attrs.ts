@@ -80,6 +80,7 @@ export function parse_html_attrs(
   options: Readonly<{
     allowHsonTransit?: boolean;
     allowOrdinaryTransit?: boolean;
+    exactRuntimeIdentity?: boolean;
   }> = {},
 ): {
   attrs: HsonAttrs;
@@ -147,6 +148,15 @@ export function parse_html_attrs(
     }
 
     if (metadataMarkupName !== undefined) {
+      if (!options.exactRuntimeIdentity && metadataMarkupName.toLowerCase() === `${HSON_META_MARKUP_PREFIX}${HSON_META_QUID}`) {
+        _throw_transform_err(
+          "generated runtime QUID metadata is invalid in portable Transform input",
+          "parse-html-attrs",
+          undefined,
+          undefined,
+          { code: "PORTABLE_RUNTIME_QUID_FORBIDDEN", stage: "source-admission" },
+        );
+      }
       const admission = admit_hson_metadata_markup(
         nodeTag,
         metadataMarkupName,

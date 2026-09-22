@@ -1,5 +1,6 @@
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
+import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import {
   hson,
   hsonLocus,
@@ -171,9 +172,10 @@ check("LiveTree exposes attrs and flags without obsolete aliases", () => {
 });
 
 check("LiveMap exposes only detached canonical root copies", () => {
-  const node = hson.fromHson(
+  const node = parse_hson_exact_runtime(
     `<button id="primary" data-user="kept" @000000001 "hello"/>`,
-  ).toNode();
+    { allowTopLevelDocumentText: true },
+  );
   const map = hson.liveMap.fromNode(node);
 
   assert.equal("node" in map, false);
@@ -214,7 +216,7 @@ check("detached public observations cannot mutate canonical ownership", () => {
 });
 
 check("document install is present only on document runtime façades", () => {
-  const document = hson.liveMap.fromHson(`<main @000000003/>`);
+  const document = hson.liveMap.fromNode(parse_hson_exact_runtime(`<main @000000003/>`, { allowTopLevelDocumentText: true }));
   if (document.mode !== "document") throw new Error(`expected element, observed ${document.mode}`);
   assert.equal("install" in document, true);
   assert.equal(typeof document.install, "function");

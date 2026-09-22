@@ -4,6 +4,7 @@ import { hson } from "../src/hson.ts";
 import { hsonTransform } from "../src/api/transform/index.ts";
 import { construct_source_1 } from "../src/api/transform/constructors/construct-source-1.ts";
 import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
+import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import { serialize_hson } from "../src/api/transform/serializers/serialize-hson.ts";
 import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
@@ -473,7 +474,7 @@ check("root containing an element content carrier rejects direct and fluent Hson
 
 check("root rejection precedes every readable compact and QUID option combination", () => {
   const attached = root(node("_hson_elem", [node("a")]));
-  for (const options of [{}, { noBreak: true }, { noQuid: true }, { noBreak: true, noQuid: true }]) {
+  for (const options of [{}, { noBreak: true }, {}, { noBreak: true }]) {
     assert.throws(() => serialize_hson(attached, options), /internal attachment carrier/);
   }
 });
@@ -530,10 +531,10 @@ check("Unit 1 mixed-mode rejection and uniform grouping remain enforced", () => 
   assert.equal(publicNode(`<a 1 b 2>`).$_tag, "_hson_obj");
 });
 
-check("valid QUID metadata survives root detachment and Hson output", () => {
-  const value = publicNode(`<main @000000001/>`);
+check("runtime QUID metadata survives internal detachment but not portable output", () => {
+  const value = detach_hson_root_value(parse_hson_exact_runtime(`<main @000000001/>`));
   assert.equal((value.$_content[0] as HsonNode).$_meta?.quid, "000000001");
-  assert.match(hson.fromNode(value).toHson().serialize(), /@000000001/);
+  assert.doesNotMatch(hson.fromNode(value).toHson().serialize(), /@000000001/);
 });
 
 check("array indexes survive detachment and reconstruction", () => {

@@ -279,9 +279,7 @@ const GOLDEN_NESTED = fixedHex(`
   15 00 00 00000001
     10 00000004 006d 0061 0069 006e
       00
-      01 00000001
-        00000004 0071 0075 0069 0064
-        00000009 0030 0030 0030 0030 0030 0030 0030 0030 0031
+      00
       00000001
         15 00 00 00000001
           10 00000006 0073 0074 0072 006f 006e 0067 00 00 00000001
@@ -293,8 +291,8 @@ const orderedObject = hson.fromHson(`<b 2 a 1>`).toNode();
 const indexedArray = hson.fromHson(`«1,2»`).toNode();
 const emptyElement = hson.fromHson(`<main/>`).toNode();
 const orderedElement = hson.fromHson(`<main "a" "" "b"/>`).toNode();
-const quidElement = hson.fromHson(`<main @000000001/>`).toNode();
-const nestedElement = hson.fromHson(`<main @000000001 <strong "ok"/>/>`).toNode();
+const quidElement = elem(node("main", [], undefined, { quid: "000000001" }));
+const nestedElement = hson.fromHson(`<main <strong "ok"/>/>`).toNode();
 const attrsElement = elem(node("main", [], { id: "x", disabled: false }));
 const rawStyleAttrs: HsonAttrs = {};
 Reflect.set(rawStyleAttrs, "style", "color:red");
@@ -330,7 +328,11 @@ await check("legacy present-empty metadata decodes to canonical absence", () => 
   assert.equal(Object.hasOwn(decoded, "$_meta"), false);
   assert.deepEqual(hsonTransform.fromNode(decoded).toBinary().serialize(), encoded);
 });
-await check("QUID metadata uses the ordinary metadata string grammar", () => assertGolden(quidElement, GOLDEN_QUID));
+await check("portable Binary Hson omits runtime QUID metadata", () => {
+  assert.deepEqual(hsonTransform.fromNode(quidElement).toBinary().serialize(), GOLDEN_EMPTY_ELEMENT);
+  assert.throws(() => hsonTransform.fromBinary(GOLDEN_QUID).toNode(), (cause: unknown) =>
+    cause instanceof Error && "code" in cause && cause.code === "PORTABLE_RUNTIME_QUID_FORBIDDEN");
+});
 await check("a raw style string uses the ordinary string attribute grammar", () => assertGolden(rawStyleElement, GOLDEN_RAW_STYLE));
 await check("0x26 contains a primitive structured-style entry", () => assertGolden(primitiveStyleElement, GOLDEN_PRIMITIVE_STYLE));
 await check("typed style unit state 0x00 preserves absence", () => {

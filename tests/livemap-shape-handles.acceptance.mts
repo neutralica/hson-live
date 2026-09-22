@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
+import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 
 type RuntimeShape = Readonly<{
   count: number;
@@ -29,7 +30,7 @@ const map = hsonLiveMap.fromLibraries({
     schema: DynamicSchema,
   },
   page: {
-    document: `<main @000009991 id=hero <section "body"/>/>`,
+    document: parse_hson_exact_runtime(`<main @000009991 id=hero <section "body"/>/>`, { allowTopLevelDocumentText: true }),
     schema: PageSchema,
   },
 });

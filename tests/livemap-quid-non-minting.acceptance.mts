@@ -1,3 +1,4 @@
+import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
@@ -43,7 +44,7 @@ const ROOT = { kind: "path", path: [0] } as const;
 const CHILD_CLUSTER = { kind: "path", path: [0, 0] } as const;
 
 function element(source: string): DocumentLiveMap {
-  const map = hson.liveMap.fromHson(source);
+  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error(`Expected element, observed ${map.mode}`);
   return map;
 }

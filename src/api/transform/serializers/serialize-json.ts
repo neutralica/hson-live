@@ -4,7 +4,7 @@ import { JsonObj, Primitive } from "../../../core/types.js";
 import { assert_invariants } from "../../../core/assert-invariants.js";
 import { collect_hson_node_quid_claims } from "../../../core/hson-node-quid.js";
 import { is_Node, is_indexed } from "../../../core/node-guards.js";
-import { ROOT_TAG, EVERY_VSN, ARR_TAG, OBJ_TAG, STR_TAG, VAL_TAG, ELEM_TAG, II_TAG, HSON_SYS_PREFIX, ATTRS_KEY, META_KEY } from "../../../core/constants.js";
+import { ROOT_TAG, EVERY_VSN, ARR_TAG, OBJ_TAG, STR_TAG, VAL_TAG, ELEM_TAG, II_TAG, HSON_SYS_PREFIX, ATTRS_KEY, META_KEY, HSON_META_QUID } from "../../../core/constants.js";
 import {  HsonNode } from "../../../core/types.js";
 import { JsonValue } from "../../../core/types.js";
 import { clone_node } from "../../../core/clone-node.js";
@@ -90,6 +90,14 @@ function ordered_json_value_from_node($node: HsonNode): OrderedProjectedValue {
     return orderedJsonFromNode(clone);
 }
 
+function portable_node_meta(node: HsonNode): Record<string, string> | undefined {
+    if (node.$_meta === undefined) return undefined;
+    const meta = Object.fromEntries(
+        Object.entries(node.$_meta).filter(([key]) => key !== HSON_META_QUID),
+    );
+    return Object.keys(meta).length === 0 ? undefined : meta;
+}
+
 function orderedJsonFromNode(node: HsonNode): OrderedProjectedValue {
     if (!node || typeof node.$_tag !== "string") {
         _throw_transform_err("Invalid node or node tag", "serialize_json");
@@ -166,8 +174,9 @@ function orderedJsonFromNode(node: HsonNode): OrderedProjectedValue {
             if (node.$_attrs && Object.keys(node.$_attrs).length > 0) {
                 entries.push([ATTRS_KEY, ordered_json_from_runtime_value(node.$_attrs as JsonValue)]);
             }
-            if (node.$_meta && Object.keys(node.$_meta).length > 0) {
-                entries.push([META_KEY, ordered_json_from_runtime_value(node.$_meta as JsonValue)]);
+            const meta = portable_node_meta(node);
+            if (meta !== undefined) {
+                entries.push([META_KEY, ordered_json_from_runtime_value(meta)]);
             }
             return ordered_projected_object(entries);
         }
@@ -429,7 +438,7 @@ function jsonFromNode(node: HsonNode): JsonValue {
 
             /* handle $_meta */
             const hasAttrs = node.$_attrs && Object.keys(node.$_attrs).length > 0;
-            const hasMeta = node.$_meta && Object.keys(node.$_meta).length > 0;
+            const meta = portable_node_meta(node);
             const finalJson: JsonObj = tempJson;
 
             if (hasAttrs) {
@@ -439,9 +448,8 @@ function jsonFromNode(node: HsonNode): JsonValue {
                 };
             }
 
-            // meta stays as-is
-            if (hasMeta) {
-                (finalJson as any).$_meta = node.$_meta;
+            if (meta !== undefined) {
+                (finalJson as any).$_meta = meta;
             }
             return finalJson;
         }

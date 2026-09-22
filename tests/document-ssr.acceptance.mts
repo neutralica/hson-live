@@ -17,6 +17,7 @@ import type {
 } from "../src/types/locus.types.ts";
 import type { LocusBootstrapAuthority } from "../src/api/locus/locus.bootstrap.ts";
 import { set_document_ssr_hook_for_tests } from "../src/api/ssr/ssr.ts";
+import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 
 const target = (...parts: number[]) => Object.freeze({
   kind: "path" as const,
@@ -24,7 +25,7 @@ const target = (...parts: number[]) => Object.freeze({
 });
 
 function document_map(source: string): DocumentLiveMap {
-  const map = hsonLiveMap.fromHson(source);
+  const map = hsonLiveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error("Expected a document map.");
   return map;
 }

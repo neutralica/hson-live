@@ -15,8 +15,8 @@ serializer remains internal in the current release.
 
 In particular, `_hson_*` names are canonical/transport structure,
 `hson-boundary` is derived browser-realization evidence, and `hson:quid` is
-sparse identity evidence. The latter two meanings do not turn an Hson boundary
-marker into canonical state.
+runtime identity evidence in managed browser markup. Ordinary Transform HTML
+omits `hson:quid` on output and rejects it on input.
 
 ---
 
@@ -110,7 +110,7 @@ The parser canonicalizes them:
 - `style` is parsed into a structured CSS map rather than retained as one raw string.
 - `xmlns`, `xmlns:*`, and `xml:*` namespace plumbing is dropped.
 - SVG `xlink:href` is mapped to `href` when no `href` is already present.
-- Registered `hson:index` and `hson:quid` names are routed to `$_meta`, not `$_attrs`; each member retains its own placement rule, and unknown `hson:*` names reject. `hson:quid` is never legal on an `_hson_*` carrier; `hson:index` is legal only on `_hson_ii`.
+- Registered `hson:index` is routed to `$_meta`, not `$_attrs`, and is legal only on `_hson_ii`. Ordinary Transform input rejects `hson:quid`; local LiveTree realization handles runtime identity separately. Unknown `hson:*` names reject.
 - Private transit names are rejected at public ingress and never enter the canonical graph.
 - Every `data-*` attribute is routed to `$_attrs` as application data, including the literal name `data--attrmap`.
 - other attribute whitespace is normalized.
@@ -156,7 +156,7 @@ When a constructor receives an `Element`, the supplied element is the source roo
 
 The Transform `queryDOM(selector)` and `queryBody()` helpers are intentionally different: they snapshot selected children or body children through `innerHTML`. LiveTree `queryDom(selector).graft()` and `queryBody().graft()` instead treat the selected Element itself as the managed root.
 
-Untrusted HTML sanitization and canonical graph validation are separate stages. Sanitization removes unsafe markup behavior without silently deleting Hson metadata candidates. Valid descendant QUIDs are therefore preserved as canonical identity; malformed, unknown, misplaced, or duplicate metadata rejects. Ordinary `data-*` attributes remain application data.
+Untrusted HTML sanitization and canonical graph validation are separate stages. Sanitization removes unsafe markup behavior without silently deleting Hson metadata candidates. Ordinary Transform input rejects generated `hson:quid` claims with `PORTABLE_RUNTIME_QUID_FORBIDDEN`; malformed, unknown, misplaced, or duplicate metadata also rejects. Local LiveTree graft and browser realization use their separate runtime path. Ordinary `data-*` attributes remain application data.
 
 ---
 

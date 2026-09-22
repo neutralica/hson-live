@@ -2,12 +2,12 @@
 
 import { ELEM_TAG, HSON_SYS_PREFIX } from "../../../../core/constants.js";
 import { is_svg_context_tag } from "../../../../core/all-html-tags.js";
-import { parse_html } from "../../../transform/parsers/parse-html.js";
+import { parse_html_exact_runtime } from "../../../transform/parsers/parse-html.js";
 import { TagName, HtmlTag, SvgTag, HtmlCreateHelper } from "../../../../types/livetree.types.js";
 import { SvgLiveTree } from "../../../../types/svg.types.js";
 import { HsonNode } from "../../../../core/types.js";
 import { unwrap_root_elem } from "../../../transform/utils/html-utils/unwrap-root-elem.js";
-import { is_svg_markup, node_from_svg } from "../../../transform/utils/node-utils/node-from-svg.js";
+import { is_svg_markup, node_from_svg_exact_runtime } from "../../../transform/utils/node-utils/node-from-svg.js";
 import { is_Node } from "../../../../core/node-guards.js";
 import { create_livetree_in_runtime } from "../../creation/create-livetree.js";
 import { runtime_for_tree } from "../../runtime/livetree-runtime.js";
@@ -93,10 +93,10 @@ function parse_trusted_markup_to_hson(
       .parseFromString(source, "image/svg+xml")
       .documentElement;
 
-    return node_from_svg(el);
+    return node_from_svg_exact_runtime(el);
   }
 
-  return parse_html(source);
+  return parse_html_exact_runtime(source);
 }
 
 export function make_create_core(tree: LiveTree): CreateCore {
@@ -343,5 +343,5 @@ function parse_svg_fragment_to_hson(source: string, Parser: DomParserConstructor
     throw new Error("failed to parse svg fragment");
   }
 
-  return node_from_svg(root);
+  return node_from_svg_exact_runtime(root);
 }

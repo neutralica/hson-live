@@ -65,6 +65,29 @@ function json_input_plain_record(value: JsonInputObject): Record<string, unknown
     return ordered_json_to_runtime_value(value) as Record<string, unknown>;
 }
 
+function reject_portable_json_quids(value: JsonInputValue, path = "$", seen = new WeakSet<object>()): void {
+    if (value === null || typeof value !== "object" || seen.has(value)) return;
+    seen.add(value);
+    if (Array.isArray(value)) {
+        value.forEach((child, index) => reject_portable_json_quids(child, `${path}[${index}]`, seen));
+        return;
+    }
+    if (!is_json_input_object(value)) return;
+    const meta = json_input_get(value, META_KEY);
+    if (is_json_input_object(meta) && json_input_has(meta, "quid")) {
+        _throw_transform_err(
+            "generated runtime QUID metadata is invalid in portable Transform input",
+            "parse_json",
+            path,
+            undefined,
+            { code: "PORTABLE_RUNTIME_QUID_FORBIDDEN", stage: "source-admission", path: `${path}.${META_KEY}.quid` },
+        );
+    }
+    for (const [key, child] of json_input_entries(value)) {
+        reject_portable_json_quids(child, `${path}.${key}`, seen);
+    }
+}
+
 function describe_json_input(value: unknown): string {
     return make_string(is_ordered_projected_object(value) ? ordered_json_to_runtime_value(value) : value);
 }
@@ -149,6 +172,15 @@ function optional_json_record(
         _throw_transform_err(`${field} must be a plain object when present`, "parse_json", where);
     }
     const record = json_input_plain_record(value);
+    if (field === META_KEY && Object.prototype.hasOwnProperty.call(record, "quid")) {
+        _throw_transform_err(
+            "generated runtime QUID metadata is invalid in portable Transform input",
+            "parse_json",
+            where,
+            undefined,
+            { code: "PORTABLE_RUNTIME_QUID_FORBIDDEN", stage: "source-admission" },
+        );
+    }
     return Object.keys(record).length === 0 ? undefined : { ...record };
 }
 
@@ -545,6 +577,7 @@ export function parse_json(input: string | JsonValue): HsonNode {
             throw error;
         }
     }
+    reject_portable_json_quids(parsed);
     const { node } = nodeFromJson(parsed, getTag(parsed));
     const root = node.$_tag === ROOT_TAG
         ? node

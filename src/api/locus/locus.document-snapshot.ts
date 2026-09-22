@@ -12,8 +12,7 @@ import {
 } from "../livemap/livemap.document.view-state-codec.js";
 import { ViewStateSnapshotCodecError } from "../livemap/livemap.document.view-state-codec.error.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
-import { parse_hson } from "../transform/parsers/parse-hson.js";
-import { serialize_hson_owned_document_content } from "../transform/serializers/serialize-hson.js";
+import { parse_hson_exact_runtime, serialize_hson_owned_document_content_exact_runtime } from "../../internal/exact-runtime-hson-codec.js";
 
 /** @internal Common outer recovery fields shared by both snapshot bodies. */
 export type LocusSnapshotCommonFields = Pick<
@@ -114,7 +113,7 @@ export function encode_locus_document_snapshot(
       ...common,
       rev: capture.rev,
       mode: capture.mode,
-      hson: serialize_hson_owned_document_content(
+      hson: serialize_hson_owned_document_content_exact_runtime(
         capture.root,
         { noBreak: true },
       ),
@@ -151,7 +150,7 @@ export function decode_locus_document_snapshot(
   snapshot: LocusValidatedSnapshotEnvelope,
 ): DocumentLiveMapCapture {
   if ("hson" in snapshot) {
-    const staged = make_classified_livemap(parse_hson(
+    const staged = make_classified_livemap(parse_hson_exact_runtime(
       snapshot.hson,
       { allowTopLevelDocumentText: true },
     ));

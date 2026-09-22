@@ -71,7 +71,7 @@ The descriptor ID identifies only the descriptor. The subject uses the fixed app
 
 An established subject that moves keeps its interaction: the authority rewrites its path in the same transition as the document edit. Deletion or identity-destroying replacement removes the descriptor in that transition, so a new subject at the old path cannot inherit it. A descriptor authored before its subject exists remains at its authored path and can activate if a subject appears there.
 
-Generated QUIDs are scoped to one runtime. A runtime can map local QUIDs to and from paths for live continuity; portable interaction state uses the document Library and path. A later Transform migration must stop portable serializers from emitting generated QUIDs and stop portable parsers from installing runtime identity from serialized QUID metadata. Exact same-runtime identity capture belongs to an explicit internal mechanism after Hson text, structural JSON, Transform HTML, browser realization HTML, `.noQuid()`, and hosted graph codecs are reconciled.
+Generated QUIDs are scoped to one runtime. A runtime can map local QUIDs to and from paths for live continuity; portable interaction state uses the document Library and path. Ordinary Hson, structural JSON, and Transform HTML now omit generated QUIDs on output and reject serialized QUID claims on input. Same-runtime exact capture is separate. Browser continuation and hosted graph identity remain later migration boundaries.
 
 ## Exact interaction data
 

@@ -48,7 +48,9 @@ try {
   ], { encoding: "utf8" });
   if (bundle.status !== 0) throw new Error(bundle.stderr || "Document continuation browser bundle failed.");
 
-  const authority = hson.liveMap.fromHson(`<main id="hosted" <p @000000777 "before"/>/>`);
+  const hostedNode = hson.liveMap.fromHson(`<main id="hosted" <p "before"/>/>`).root();
+  hostedNode.$_content[0].$_content[0].$_content[0].$_meta = { quid: "000000777" };
+  const authority = hson.liveMap.fromNode(hostedNode);
   if (authority.mode !== "document") throw new Error("Hosted browser fixture requires a document map.");
   locus = hsonLocus.create({ map: authority, logicalMapId: "browser-document-continuation", sessions: {} });
   const bootstrap = capture_locus_bootstrap(locus, "browser:continuation", "/locus");

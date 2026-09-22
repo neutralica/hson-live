@@ -1,7 +1,10 @@
 import type { GraftConstructor } from "../../types/constructor.types.js";
 import type { JsonValue } from "../../core/types.js";
 import type { HsonNode } from "../../types/node.types.js";
-import { SAFE_TRANSFORM_SOURCE, UNSAFE_TRANSFORM_SOURCE } from "../transform/transform.browser.js";
+import { UNSAFE_TRANSFORM_SOURCE } from "../transform/transform.browser.js";
+import { parse_html_exact_runtime } from "../transform/parsers/parse-html.js";
+import { parse_external_html_exact_runtime } from "../transform/parsers/parse-external-html.transform.js";
+import { is_svg_markup, node_from_svg_exact_runtime } from "../transform/utils/node-utils/node-from-svg.js";
 import { make_branch_from_node } from "./creation/create-branch.js";
 import { graft } from "./creation/graft.js";
 import { make_detached_livetree_create } from "./creation/make-detached-livetree.js";
@@ -15,13 +18,20 @@ type LiveTreeConstructionOptions = Readonly<{ isolated?: boolean }>;
 export const hsonLiveTree = Object.freeze({
   fromUntrustedHtml(input: string | Element): LiveTree {
     return make_branch_from_node(
-      SAFE_TRANSFORM_SOURCE.fromHtml(input, { sanitize: true }).toNode(),
+      parse_external_html_exact_runtime(typeof input === "string" ? input : input.outerHTML),
       { quidGraphValidated: true },
     );
   },
   fromTrustedHtml(input: string | Element): LiveTree {
+    const source = typeof input === "string" ? input : input.outerHTML;
+    const svg = is_svg_markup(source.trimStart());
+    const node = svg
+      ? node_from_svg_exact_runtime(typeof input === "string"
+        ? new DOMParser().parseFromString(input, "image/svg+xml").documentElement
+        : input)
+      : parse_html_exact_runtime(input);
     return make_branch_from_node(
-      UNSAFE_TRANSFORM_SOURCE.fromHtml(input, { sanitize: false }).toNode(),
+      node,
       { quidGraphValidated: true },
     );
   },

@@ -14,6 +14,8 @@ import { normalize_detached_hson_semantic_value } from "../../core/normalize-hso
 import { assert_invariants } from "../../core/assert-invariants.js";
 import { detach_hson_root_value } from "./utils/node-utils/detach-hson-root-value.js";
 import { parse_binary } from "./binary/binary-codec.js";
+import { collect_hson_node_quid_claims } from "../../core/hson-node-quid.js";
+import { _throw_transform_err } from "./utils/sys-utils/throw-transform-err.utils.js";
 
 function frame_meta(origin: string, unsafe: boolean): Record<string, unknown> {
   return {
@@ -71,6 +73,15 @@ export function transform_from_binary(
 ): TransformOutput {
   const node = parse_binary(input, options);
   scan_ingested_hson_node_quids(node, "fromBinary");
+  if (collect_hson_node_quid_claims(node).length > 0) {
+    _throw_transform_err(
+      "generated runtime QUID metadata is invalid in portable Transform input",
+      "fromBinary",
+      undefined,
+      undefined,
+      { code: "PORTABLE_RUNTIME_QUID_FORBIDDEN", stage: "source-admission" },
+    );
+  }
   const frame: TransformFrame = {
     input: "[Binary Hson]",
     node,

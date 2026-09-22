@@ -66,13 +66,22 @@ export const is_svg_markup = (s: string) => /^<\s*svg[\s>]/i.test(s);
  * @returns An `HsonNode` representing `el` and its SVG subtree.
  */
 export function node_from_svg(el: Element): HsonNode {
-  const root = normalize_hson_array_index_order(convert_svg_element(el), "node_from_svg");
+  return node_from_svg_internal(el, false);
+}
+
+/** @internal Local LiveTree realization ingress; never ordinary Transform. */
+export function node_from_svg_exact_runtime(el: Element): HsonNode {
+  return node_from_svg_internal(el, true);
+}
+
+function node_from_svg_internal(el: Element, exactRuntimeIdentity: boolean): HsonNode {
+  const root = normalize_hson_array_index_order(convert_svg_element(el, exactRuntimeIdentity), "node_from_svg");
   scan_ingested_hson_node_quids(root, "node_from_svg");
   assert_invariants(root, "node_from_svg");
   return root;
 }
 
-function convert_svg_element(el: Element): HsonNode {
+function convert_svg_element(el: Element, exactRuntimeIdentity: boolean): HsonNode {
   const tag = el.tagName; 
   const attrs: Record<string, string> = {};
   const meta: HsonMeta = {};
@@ -95,6 +104,15 @@ function convert_svg_element(el: Element): HsonNode {
       );
     }
     if (name.startsWith(HSON_META_MARKUP_PREFIX)) {
+      if (!exactRuntimeIdentity && name.toLowerCase() === "hson:quid") {
+        _throw_transform_err(
+          "generated runtime QUID metadata is invalid in portable Transform input",
+          "node_from_svg",
+          undefined,
+          undefined,
+          { code: "PORTABLE_RUNTIME_QUID_FORBIDDEN", stage: "source-admission" },
+        );
+      }
       const admission = admit_hson_metadata_markup(tag, name, a.value);
       if (!admission.valid) {
         _throw_transform_err(admission.reason, "node_from_svg");
@@ -112,7 +130,7 @@ function convert_svg_element(el: Element): HsonNode {
   }
   const kids: HsonNode[] = [];
   el.childNodes.forEach(n => {
-    if (n.nodeType === 1) kids.push(convert_svg_element(n as Element));
+    if (n.nodeType === 1) kids.push(convert_svg_element(n as Element, exactRuntimeIdentity));
     else if (n.nodeType === 3 && n.nodeValue) {
       kids.push(CREATE_NODE({ $_tag: STR_TAG, $_content: [n.nodeValue] }));
     }

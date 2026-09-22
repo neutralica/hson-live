@@ -34,7 +34,7 @@ import {
   type LocusDocumentSnapshotEncoding,
   type LocusOutboundDocumentSnapshotEnvelope,
 } from "./locus.document-snapshot.js";
-import { serialize_hson } from "../transform/serializers/serialize-hson.js";
+import { serialize_hson_exact_runtime } from "../../internal/exact-runtime-hson-codec.js";
 import { detach_hson_root_value } from "../transform/utils/node-utils/detach-hson-root-value.js";
 
 const DEFAULT_MAX_TAIL_COMMITS = 256;
@@ -384,7 +384,7 @@ export function make_locus_recovery_planner_internal<TMap extends LiveMapAuthori
               incarnationId: stream.incarnationId,
               rev: capture.rev,
               mode: map.mode,
-              hson: serialize_hson(
+              hson: serialize_hson_exact_runtime(
                 detach_hson_root_value(capture.root),
                 { noBreak: true },
               ),

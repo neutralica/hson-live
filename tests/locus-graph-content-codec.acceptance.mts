@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { hson } from "../src/hson.ts";
+import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
+import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import {
@@ -43,9 +45,9 @@ function expect_rejection(value: unknown, code: string): void {
 }
 
 check("exact graph payload round-trips nested nodes, typed attributes, structured style, and persisted QUIDs", () => {
-  const source = hson.fromHson(
+  const source = detach_hson_root_value(parse_hson_exact_runtime(
     `<main @000000001 <input @000000002 checked=false/>/>`,
-  ).toNode();
+  ));
   assert.equal(source.$_tag, "_hson_elem");
   const main = source.$_content[0];
   if (!is_Node(main)) throw new Error("Expected main");
@@ -107,7 +109,7 @@ check("strict envelopes reject missing, extra, removed-version, and malformed Hs
 
 check("duplicate persisted QUIDs and structurally invalid canonical nodes are rejected", () => {
   const valid = encode_locus_graph_content(
-    hson.fromHson(`<main @000000001 <p @000000002/>/>`).toNode(),
+    detach_hson_root_value(parse_hson_exact_runtime(`<main @000000001 <p @000000002/>/>`)),
   );
   expect_rejection(
     { ...valid, payload: valid.payload.replace("000000002", "000000001") },

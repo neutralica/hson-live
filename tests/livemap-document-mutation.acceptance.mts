@@ -1,3 +1,4 @@
+import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { hson, LiveMapDocumentMutationError } from "../src/index.ts";
@@ -33,13 +34,13 @@ function check(name: string, fn: () => void): void {
 }
 
 function element(source: string): DocumentLiveMap {
-  const map = hson.liveMap.fromHson(source);
+  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error(`expected element, observed ${map.mode}`);
   return map;
 }
 
 function multiNodeDocument(source: string): DocumentLiveMap {
-  const map = hson.liveMap.fromHson(source);
+  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error(`expected multiNodeDocument, observed ${map.mode}`);
   return map;
 }
@@ -63,7 +64,7 @@ function nodes(root: HsonNode): HsonNode[] {
 }
 
 function ordinary(source: string): HsonNode {
-  const root = hson.fromHson(source).toNode();
+  const root = parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true });
   const node = nodes(root).find((candidate) => !candidate.$_tag.startsWith("_hson_"));
   assert.ok(node);
   return node;

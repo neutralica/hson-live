@@ -134,7 +134,7 @@ check("HsonDocument is a primitive semantic string across root and Hson entrypoi
     const empty = NarrowHson.document.fromHson("");
     const quotedEmpty = NarrowHson.document.fromHson('\"\"');
     if (typeof empty !== "string" || empty === quotedEmpty || empty !== "") throw new Error("empty document semantics diverged");
-    const value = NarrowHson.document.fromHson('<main @000000001 id="root"/>');
+    const value = NarrowHson.document.fromHson('<main id="root"/>');
     if (RootHson.document.fromHson(value) !== value) throw new Error("document round trip failed");
   `;
   const child = spawnSync(process.execPath, ["--input-type=module", "--eval", source], {

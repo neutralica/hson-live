@@ -149,7 +149,7 @@ Before element content begins, the bare names `true`, `false`, and `null` are or
 
 The canonical graph representation is the string-valued entry `{ disabled: "disabled" }`. Exact `value === key` equality distinguishes a flag; for example, programmatic `{ disabled: true }` serializes as the ordinary valued attribute `disabled="true"`, not as a flag. Input `disabled="disabled"` is normalized to the canonical flag representation. 
 
-All attribute names, including every `data-*` spelling, go to `$_attrs`. Structural metadata is declared only through its dedicated syntax: `@quid` in Hson and registered `hson:*` names in HTML/SVG. Metadata is exact-allowlist and default-deny. Backtick quoting never applies to attribute or metadata names. Object members cannot author QUIDs, metadata, attributes, or flags. An object-structured ordinary node carrying metadata is outside the Hson-serializable domain; serialization rejects it even under `noQuid()`.
+All attribute names, including every `data-*` spelling, go to `$_attrs`. Generated QUID metadata is runtime-local. Ordinary portable Hson rejects `@quid`, and Transform HTML rejects `hson:quid`; other registered metadata follows its existing grammar. Metadata is exact-allowlist and default-deny. Backtick quoting never applies to attribute or metadata names. Object members cannot author QUIDs, metadata, attributes, or flags. An object-structured ordinary node carrying metadata is outside the Hson-serializable domain; serialization rejects it.
 
 ---
 
@@ -246,7 +246,7 @@ The former property-angle and anonymous-wrapper grammar has been removed. Adjace
 
 Serialization melts semantic `_hson_obj`, `_hson_elem`, `_hson_arr`, `_hson_ii`, `_hson_str`, and `_hson_val` nodes into syntax. `_hson_root` is different: it is an internal attachment carrier and every root rejects direct Hson serialization. Hson, JSON, and HTML source pipelines detach their parser-owned root before Hson output. A root supplied through `fromNode()` is not silently unwrapped. VSNs remain explicit in the IR. HTML uses structural/type carriers only where needed; it never emits `_hson_str` or `_hson_elem` elements.
 
-Hson output itself is VSN-free. Every semantic object value uses one object angle pair, arrays use array notation while their `_hson_ii` indexes are reconstructed from order, strings and scalar values use primitive notation, and document content uses ordinary element-mode tags in canonical order. The serializer never writes `_hson_*` tag spellings, `$_meta`, or array-index metadata as Hson source. Persisted QUID metadata is represented by the `@quid` header sigil only for eligible element nodes. Object-member metadata rejects.
+Hson output itself is VSN-free. Every semantic object value uses one object angle pair, arrays use array notation while their `_hson_ii` indexes are reconstructed from order, strings and scalar values use primitive notation, and document content uses ordinary element-mode tags in canonical order. The serializer never writes `_hson_*` tag spellings, `$_meta`, or array-index metadata as Hson source. Generated QUID metadata is omitted from ordinary Hson output. Object-member metadata rejects.
 
 The canonical closure rule is semantic rather than byte-oriented:
 
@@ -255,16 +255,16 @@ admitted Hson-serializable semantic value
   -> serialize_hson(node)
   -> parse_hson(output)
   -> detach_hson_root_value()
-  -> canonical_hson_graph_equal(node, detached)
+  -> equivalent application structure/content (generated QUIDs omitted)
 ```
 
-Readable and compact layouts can differ in whitespace, and canonical spelling can differ from authored input, but both must reconstruct the same graph.
+Readable and compact layouts can differ in whitespace, and canonical spelling can differ from authored input, but both must reconstruct the same application structure and content.
 
 Canonical Hson is not a preservation of authored layout. The serializer can change indentation, line breaks, array delimiters, key quoting, attribute spelling, and compact/expanded node form while preserving the represented graph semantics.
 
 Canonical readable Hson is the default and uses two-space indentation. `noBreak()` selects canonical compact Hson: it removes cosmetic line breaks and indentation but retains conventional spaces between a tag name, attributes, flags, and content. Both layouts are emitted structurally rather than by rewriting whitespace in an already serialized string.
 
-`noQuid()` removes only the defined `quid` field from eligible element nodes and never mutates the graph or identity registry. It does not legalize object metadata. Structural VSN metadata is restricted to the operational `index` on `_hson_ii`; it is omitted because array order carries the same information and parsing regenerates it. `_hson_root`, `_hson_elem`, `_hson_obj`, `_hson_arr`, `_hson_str`, and `_hson_val` accept no metadata. Every other `$_meta` key is undefined and rejected on every node kind; it is never silently stripped. Adding metadata requires an explicit future field/node-kind contract in the registry.
+Portable Hson output always omits generated `quid` without mutating the graph or identity registry. This does not legalize object metadata. Structural VSN metadata is restricted to the operational `index` on `_hson_ii`; it is omitted because array order carries the same information and parsing regenerates it. `_hson_root`, `_hson_elem`, `_hson_obj`, `_hson_arr`, `_hson_str`, and `_hson_val` accept no metadata. Every other `$_meta` key is undefined and rejected on every node kind; it is never silently stripped. Adding metadata requires an explicit future field/node-kind contract in the registry.
 
 An empty `_hson_root` remains an internal structural mechanism. Like every populated root, it rejects direct/general Hson egress and is never substituted with `<>`, `{}`, or another value. The existing owned-document serializer instead melts that root to its document content, producing zero source characters for zero items.
 

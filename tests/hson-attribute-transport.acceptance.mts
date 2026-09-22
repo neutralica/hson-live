@@ -360,13 +360,9 @@ check("nested SVG xlink alias and case behavior agree across browser and Worker"
   assert_worker_browser_equal("svg-alias-parity", workerNode, browserNode);
 });
 
-check("HTML metadata spelling follows case-insensitive HTML name semantics", () => {
+check("HTML runtime QUID metadata rejects case-insensitively", () => {
   const source = `<main Hson:QUID="${Q1}"/>`;
-  const workerNode = worker(source);
-  const browserNode = browser(source);
-  assert.equal(must_tag(workerNode, "main").$_meta?.quid, Q1);
-  assert.equal(must_tag(browserNode, "main").$_meta?.quid, Q1);
-  assert_worker_browser_equal("metadata-case-parity", workerNode, browserNode);
+  assert_rejects_both(source, /runtime QUID metadata is invalid in portable Transform input/);
 });
 
 check("standalone SVG and direct SVG Element use the same xlink alias rule", () => {
@@ -392,7 +388,7 @@ check("standalone SVG and direct SVG Element use the same xlink alias rule", () 
 });
 
 check("transport-sensitive attrs satisfy parse/serialize/parse closure", () => {
-  const source = `<main a:b="1" c:d="2" data--attrmap="owned" hson:quid="${Q1}" disabled/>`;
+  const source = `<main a:b="1" c:d="2" data--attrmap="owned" disabled/>`;
   for (const parse of [worker, browser]) {
     const first = parse(source);
     const wire = serialize_html(first);
@@ -470,7 +466,7 @@ check("HTML QUID ingress rejects every structural carrier on all parser paths", 
     `<_hson_val hson:quid="${Q1}">1</_hson_val>`,
   ];
   for (const source of cases) {
-    const placement = /ineligible Hson structural node|metadata "quid" is not defined/;
+    const placement = /runtime QUID metadata is invalid in portable Transform input/;
     assert.throws(() => worker(source), placement);
     assert.throws(() => browser(source), placement);
     assert.throws(() => parse_html(parser_document(source).documentElement), placement);

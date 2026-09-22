@@ -52,19 +52,18 @@ After `toHson()`, readable Hson is the default and these Hson options compose:
 
 ```ts
 .noBreak()
-.noQuid()
 .withOptions(options)
 .serialize()
 ```
 
-`noBreak` produces canonical compact Hson. `noQuid` filters only persisted
-`quid` from output; it does not mutate the graph, touch the identity
+`noBreak` produces canonical compact Hson. Ordinary portable Hson output
+always omits generated `quid`; it does not mutate the graph, touch the identity
 registry, or remove array `index` metadata. Hson serialization is delayed
 until `serialize()` so options selected after `toHson()` take effect. The former
 `spaced`, `linted`, and `lineLength` options are not part of this surface.
 
-JSON and HTML serialization behavior is unchanged. `.toHtml()` means Hson
-transport HTML, not browser SSR realization HTML.
+Ordinary JSON and Transform HTML serialization omit generated QUID metadata.
+`.toHtml()` means Hson transport HTML, not browser SSR realization HTML.
 
 Normal browser projection is derived from the same internal realization plan
 used by exact continuation and its internal SSR serializer. Derived `<tbody>`
@@ -201,14 +200,15 @@ Reusable detach intentionally retains runtime registrations rather than
 suspending them. Observers, timers, and subscriptions that are not already
 lifecycle-owned may continue while the retained element is off-document.
 
-Valid supplied QUIDs are preserved in cold canonical graphs. Cold parsing
-validates syntax, eligibility, and placement without claiming active runtime
-ownership; established duplicate valid values may therefore remain cold.
+Valid QUIDs already present on a local canonical graph remain available to
+runtime realization. Ordinary portable Hson, JSON, and Transform HTML input
+reject serialized generated QUID claims. Internal exact capture and local DOM
+realization retain their own identity-sensitive paths.
 Activation claims QUIDs and enforces uniqueness atomically. Detach and
 reattachment retain identity, `cloneBranch()` assigns fresh identity throughout
 the clone, terminal removal releases active ownership while retaining the QUID
-as issued for that runtime lifetime, and serializer
-`.noQuid()` filters output without changing the graph or runtime.
+as issued for that runtime lifetime, and ordinary portable serialization omits generated QUID metadata without
+changing the graph or runtime.
 
 An ordinary graph supplying an issued-but-inactive QUID is rejected rather than
 treated as restoration. Copying, serializing, decoding, or rebuilding equal

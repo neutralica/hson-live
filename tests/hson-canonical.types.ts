@@ -31,7 +31,11 @@ const repeated: HsonCanonical = hsonTransform.fromHson(branded).toHson().seriali
 const fluent: HsonCanonical = hsonTransform.fromNode(node).toHson().serialize();
 const readable: HsonCanonical = hsonTransform.fromNode(node).toHson().serialize();
 const compact: HsonCanonical = hsonTransform.fromNode(node).toHson().noBreak().serialize();
-const withoutQuids: HsonCanonical = hsonTransform.fromNode(node).toHson().noQuid().serialize();
+const portable: HsonCanonical = hsonTransform.fromNode(node).toHson().serialize();
+// @ts-expect-error The redundant QUID serialization switch was retired.
+hsonTransform.fromNode(node).toHson().noQuid();
+// @ts-expect-error Portable serialization has no QUID option.
+hsonTransform.fromNode(node).toHson().withOptions({ noQuid: true });
 const html = hsonTransform.fromNode(node).toHtml().serialize();
 const json = hsonTransform.fromNode(node).toJson().serialize();
 const hsonHash: Promise<string> = hsonTransform.fromNode(node).toHson().sha256();
@@ -130,7 +134,7 @@ void taggedBoolean;
 void taggedNull;
 void readable;
 void compact;
-void withoutQuids;
+void portable;
 void invalidHtml;
 void invalidJson;
 void ordinary;

@@ -35,6 +35,11 @@ export function parse_hson(str: string, options: ParseTokensOptions = {}): HsonN
     return parse_hson_attached(str, options);
 }
 
+/** @internal Temporary exact-runtime Hson ingress for hosted recovery only. */
+export function parse_hson_exact_runtime(str: string, options: ParseTokensOptions = {}): HsonNode {
+    return parse_hson_attached_internal(str, options, undefined, true);
+}
+
 /** Private tagged-template path: slot content is resolved before validation. */
 export function parse_hson_interpolated_template(
     source: string,
@@ -46,6 +51,7 @@ export function parse_hson_interpolated_template(
         _throw_transform_err("interpolated template has no semantic value", "parse_hson",
             undefined, undefined, { code: "HSON_SOURCE_EMPTY", stage: "source-admission" });
     }
+    reject_portable_quid_tokens(tokens);
     const root = parse_tokens(tokens, {
         allowTopLevelDocumentText: mode === "document",
         interpolation: { mode, values },
@@ -61,6 +67,15 @@ export function parse_hson_attached(
     options: ParseTokensOptions = {},
     provenance?: HsonSourceProvenanceBuilder,
 ): HsonNode {
+    return parse_hson_attached_internal(str, options, provenance, false);
+}
+
+function parse_hson_attached_internal(
+    str: string,
+    options: ParseTokensOptions,
+    provenance: HsonSourceProvenanceBuilder | undefined,
+    exactRuntimeIdentity: boolean,
+): HsonNode {
     if (str.length === 0 && options.allowTopLevelDocumentText) {
         const emptyRoot = CREATE_NODE({ $_tag: ROOT_TAG, $_content: [] });
         scan_ingested_hson_node_quids(emptyRoot, "parse_hson");
@@ -68,6 +83,7 @@ export function parse_hson_attached(
         return emptyRoot;
     }
     const newTokens = tokenize_hson(str, 0, provenance);
+    if (!exactRuntimeIdentity) reject_portable_quid_tokens(newTokens);
     if (newTokens.length === 0) {
         _throw_transform_err(
             "empty, whitespace-only, or comment-only Hson source has no semantic value",
@@ -85,4 +101,23 @@ export function parse_hson_attached(
     scan_ingested_hson_node_quids(newNode, "parse_hson");
     assert_invariants(newNode, 'parse hson');
     return newNode;
+}
+
+function reject_portable_quid_tokens(tokens: readonly Tokens[]): void {
+    for (const token of tokens) {
+        if ((token.kind === "OPEN" || token.kind === "ARR_OPEN") && token.quid !== undefined) {
+            const { start } = token.quid;
+            _throw_transform_err(
+                "generated runtime QUID metadata is invalid in portable Transform input",
+                "parse_hson",
+                undefined,
+                undefined,
+                {
+                    code: "PORTABLE_RUNTIME_QUID_FORBIDDEN",
+                    stage: "source-admission",
+                    source: { index: start.index, line: start.line, column: start.col },
+                },
+            );
+        }
+    }
 }

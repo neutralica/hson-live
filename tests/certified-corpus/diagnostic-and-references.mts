@@ -49,7 +49,7 @@ export const specializedReferenceCases: readonly SpecializedReferenceCase[] = [
   reference("tokenizer-token-arrays", "Tokenizer token-array shape remains specialized ownership.", ["tests/hson-tokenizer.acceptance.mts#token-summary"], ["tokenizer"]),
   reference("coordinate-mechanics", "Exhaustive coordinate mechanics remain specialized ownership.", ["tests/hson-tokenizer.acceptance.mts#structured-identities"], ["diagnostics"]),
   reference("malformed-graph-admission", "General malformed graph admission remains specialized ownership.", ["tests/hson-root-boundary.acceptance.mts#malformed-graph-admission", "tests/hson-structural-mode.acceptance.mts#canonical-invariant-admission"], ["graph-ingress", "invariants"]),
-  reference("serializer-options", "Serializer noBreak/noQuid option matrices remain specialized ownership.", ["tests/hson-serializer.acceptance.mts#option-matrix"], ["serializer"]),
+  reference("serializer-options", "Serializer layout and portable QUID omission remain specialized ownership.", ["tests/hson-serializer.acceptance.mts#option-matrix"], ["serializer"]),
   reference("quid-mechanics", "QUID ingress and egress mechanics remain specialized ownership.", ["tests/hson-node-quid-ingress.acceptance.mts", "tests/hson-node-quid-egress.acceptance.mts"], ["quid"]),
   reference("runtime-wiring", "Worker and browser wiring remain specialized ownership.", ["tests/transform-worker.acceptance.mts", "hson-demo2/tests/browser/parse.spec.ts"], ["worker", "browser"]),
   reference("oracle-self-tests", "Transform-oracle implementation self-tests remain specialized ownership.", ["tests/transform-oracle.acceptance.mts"], ["oracle", "diagnostics"]),

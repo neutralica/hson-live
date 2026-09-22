@@ -32,8 +32,8 @@ identity is terminally retired or preserved.
 QUID identity follows those lifecycle boundaries. Valid supplied QUIDs remain
 cold during Transform parsing and are claimed only when a graph becomes
 actively owned. Detach and reattachment preserve the claim, cloning creates
-fresh identity, and terminal removal releases it. Hson `.noQuid()` is an output
-filter only; it does not mutate the graph or its active ownership.
+fresh identity, and terminal removal releases it. Ordinary portable Hson output omits generated QUID metadata without
+mutating the graph or its active ownership.
 
 Release is active-state release, not namespace reuse. The owning runtime keeps
 the retired QUID in its monotonic issued ledger. Ordinary construction,

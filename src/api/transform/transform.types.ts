@@ -74,7 +74,6 @@ export type TransformOutputRenderFormat =
 
 export interface TransformFrameOptions {
   noBreak?: boolean;
-  noQuid?: boolean;
 }
 
 export interface TransformFrame {
@@ -119,7 +118,6 @@ export interface TransformOutputOptions<K extends TransformOutputRenderFormat> {
 export interface TransformHsonOptions {
   withOptions(options: TransformFrameOptions): TransformHsonOptions & TransformHsonSerialize;
   noBreak(): TransformHsonOptions & TransformHsonSerialize;
-  noQuid(): TransformHsonOptions & TransformHsonSerialize;
 }
 
 export type TransformRender<K extends TransformOutputRenderFormat> =

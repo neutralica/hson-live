@@ -294,12 +294,11 @@ export interface OptionsConstructor_3<K extends OutputRenderFormats> {
 
 /**
  * Active Hson serialization preferences. Readable output is the default;
- * `noBreak` selects canonical compact layout and `noQuid` filters only the
- * persisted `quid` metadata key from Hson output.
+ * `noBreak` selects canonical compact layout. Portable Hson output always
+ * omits generated runtime QUID metadata.
  */
 export interface FrameOptions {
   noBreak?: boolean;
-  noQuid?: boolean;
 }
 
 /** JSON/HTML retain their existing noBreak option surface. */
@@ -310,7 +309,6 @@ export type PublicFrameOptions<K extends OutputRenderFormats> =
 export interface HsonOptionsConstructor_3 {
   withOptions(opts: FrameOptions): HsonOptionsConstructor_3 & HsonSerializeConstructor_4;
   noBreak(): HsonOptionsConstructor_3 & HsonSerializeConstructor_4;
-  noQuid(): HsonOptionsConstructor_3 & HsonSerializeConstructor_4;
 }
 
 

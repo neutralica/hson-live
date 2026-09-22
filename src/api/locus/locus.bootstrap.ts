@@ -17,6 +17,7 @@ import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { parse_json } from "../transform/parsers/parse-json.js";
 import { json_value_from_node } from "../transform/serializers/serialize-json.js";
 import { serialize_hson } from "../transform/serializers/serialize-hson.js";
+import { parse_hson_exact_runtime } from "../../internal/exact-runtime-hson-codec.js";
 import { detach_hson_root_value } from "../transform/utils/node-utils/detach-hson-root-value.js";
 import { decode_locus_document_snapshot } from "./locus.document-snapshot.js";
 
@@ -267,7 +268,7 @@ function map_from_snapshot(
 ): ClassifiedLiveMap {
   let root;
   try {
-    root = parse_hson(snapshot.hson, { allowTopLevelDocumentText: true });
+    root = parse_hson_exact_runtime(snapshot.hson, { allowTopLevelDocumentText: true });
   } catch (cause) {
     throw new LocusBootstrapError(
       "LOCUS_BOOTSTRAP_STATE_INVALID",

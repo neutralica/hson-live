@@ -9,7 +9,7 @@ import type {
   LiveMapGraphCommit,
 } from "../../types/livemap.types.js";
 import type { LiveMapProjectedGraphEnsureQuidOp } from "../livemap/livemap.identity.types.js";
-import { parse_hson } from "../transform/parsers/parse-hson.js";
+import { parse_hson_exact_runtime } from "../../internal/exact-runtime-hson-codec.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
 import { make_canonical_livemap_projected_capture } from "../livemap/livemap.projected.capture.js";
 import {
@@ -491,7 +491,7 @@ export function create_solo_echo_internal<
             "Canonical document snapshot cannot restore a data mirror.",
           );
         }
-        const staged = make_classified_livemap(parse_hson(snapshot.hson));
+        const staged = make_classified_livemap(parse_hson_exact_runtime(snapshot.hson));
         if (staged.mode !== snapshot.mode || staged.mode !== map.mode || !is_projected_live_map(staged)) {
           throw new Error(`Recovery snapshot mode ${snapshot.mode} does not match mirror mode ${map.mode}.`);
         }

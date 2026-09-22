@@ -106,8 +106,8 @@ admission. Direct Hson serialization validates before normalization and never
 uses the narrow legacy empty-element normalization to repair malformed egress.
 It does not compensate for structural crossings with explicit VSN syntax.
 Every admitted Hson-serializable semantic value reparses, detaches, and compares
-canonically equal, including order, negative zero, array indexes, element QUIDs,
-and structural mode. `_hson_root`, object-member metadata, cross-mode arrays,
+equal in application structure and content, including order, negative zero,
+array indexes, and structural mode. Generated element QUIDs are omitted. `_hson_root`, object-member metadata, cross-mode arrays,
 and detached scalar carrier clusters are outside that serialization domain and
 reject rather than projecting lossily.
 
@@ -115,9 +115,8 @@ Serializer projection is intentionally lossy only for implementation
 scaffolding that Hson syntax reconstructs: `_hson_ii` wrappers and their
 `index` metadata are represented by array position, and structural VSN names
 are represented by notation rather than literal tags. Ordinary attributes and
-eligible element QUID metadata retain their semantic values. `noQuid()` omits
-only that element projection, never mutates its source graph, and cannot
-legalize object metadata.
+generated element QUID metadata remains runtime-local and is omitted without
+mutating its source graph. This cannot legalize object metadata.
 
 Transform `fromNode()` is a detached semantic admission boundary. It collapses
 an unowned `_hson_obj([_hson_str])`, `_hson_obj([_hson_val])`, or

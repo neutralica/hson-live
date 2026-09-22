@@ -160,11 +160,10 @@ check("style and script quoted slots use normal document admission", () => {
   error(() => Hson.document`<script "${"go()"}"/>`, "HSON_INTERPOLATION_COMPOSED_INVALID");
 });
 
-check("document QUID claims retain cold duplicate policy", () => {
-  const child = Hson.document`<main @000000001/>`;
-  const composed = Hson.document`<body @000000001 ${child}/>`;
-  assert.match(composed, /body @000000001/);
-  assert.match(composed, /main @000000001/);
+check("portable document templates reject runtime QUID claims", () => {
+  error(() => Hson.document`<main @000000001/>`, "PORTABLE_RUNTIME_QUID_FORBIDDEN");
+  const child = Hson.document`<main/>`;
+  error(() => Hson.document`<body @000000001 ${child}/>`, "PORTABLE_RUNTIME_QUID_FORBIDDEN");
 });
 
 process.stdout.write(`# ${checks} grammar-context interpolation checks passed\n`);

@@ -1,3 +1,4 @@
+import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
@@ -44,7 +45,7 @@ const Q3 = "000000203";
 const rootTarget = { kind: "path", path: [0] } as const;
 
 function element(source: string): DocumentLiveMap {
-  const map = hson.liveMap.fromHson(source);
+  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error("Expected element map");
   return map;
 }

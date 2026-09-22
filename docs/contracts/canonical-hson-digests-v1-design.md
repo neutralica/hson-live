@@ -1,5 +1,9 @@
 # Canonical Hson digests v1 — design checkpoint
 
+> Historical design record: references to `noQuid` and QUID-bearing ordinary
+> Transform output describe the pre-Phase-2 contract. Current portable
+> Transform omits generated QUIDs by default and has no `noQuid` option.
+
 Status: byte grammar and implementation plan are complete. Two narrowly scoped
 repository mismatches must be corrected before production digest work begins;
 their intended outcomes are now settled in “Confirmed prerequisites.” No

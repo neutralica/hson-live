@@ -141,6 +141,7 @@
     "test:hson-node-quid": "node --import=tsx tests/hson-node-quid.acceptance.mts",
     "test:hson-node-quid-ingress": "node --import=tsx tests/hson-node-quid-ingress.acceptance.mts",
     "test:hson-node-quid-egress": "node --import=tsx tests/hson-node-quid-egress.acceptance.mts",
+    "test:transform-portable-quid": "node --import=tsx tests/transform-portable-quid.acceptance.mts",
     "test:hson-serializer": "node --import=tsx tests/hson-serializer.acceptance.mts",
     "test:json-ingress": "node --import=tsx tests/json-ingress.acceptance.mts",
     "test:hson-array-index": "node --import=tsx tests/hson-array-index.acceptance.mts",

@@ -8,6 +8,7 @@ import {
   assertCanonicalSerializedClosure,
 } from "../src/diagnostics/transform-test-oracle.ts";
 import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
+import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import { parse_json } from "../src/api/transform/parsers/parse-json.ts";
 import { tokenize_hson } from "../src/api/transform/parsers/tokenize-hson.ts";
 import { assert_invariants } from "../src/core/assert-invariants.ts";
@@ -55,7 +56,7 @@ function check(name: string, fn: () => void): void {
 }
 
 function parse(source: string): HsonNode {
-  return hson.fromHson(source).toNode();
+  return detach_hson_root_value(parse_hson_exact_runtime(source));
 }
 
 function canonicalize(source: string): string {
@@ -99,7 +100,7 @@ function assert_vsn_free_wire(source: string): void {
 function assert_wire_closure(
   original: HsonNode,
   source: string,
-  expected: HsonNode = original,
+  expected: HsonNode = clone_without_quids(original),
 ): HsonNode {
   assert_vsn_free_wire(source);
   const reparsed = assertCanonicalSerializedClosure({
@@ -120,6 +121,7 @@ function assert_hson_closure(node: HsonNode): string {
     caseId: `serializer-closure:${node.$_tag}`,
     ingress: "canonical-node",
     node,
+    expectedNode: clone_without_quids(node),
   });
   assert_vsn_free_wire(result.serialized);
   return result.serialized;
@@ -189,15 +191,11 @@ check("canonicalize normalizes irregular and compact source to default readable 
   );
 });
 
-check("canonicalize preserves canonical QUID metadata through default serialization", () => {
-  const normalized = canonicalize(
-    `<panel class="x" @d1r6x8qwc hidden "Content"/>`,
+check("canonicalize rejects serialized runtime QUID metadata", () => {
+  assert.throws(
+    () => canonicalize(`<panel class="x" @d1r6x8qwc hidden "Content"/>`),
+    (error) => error instanceof TransformError && error.code === "PORTABLE_RUNTIME_QUID_FORBIDDEN",
   );
-  assert.equal(
-    normalized,
-    `<panel @d1r6x8qwc class="x" hidden "Content"/>`,
-  );
-  assert.equal(onlyElement(parse(normalized)).$_meta?.["quid"], "d1r6x8qwc");
 });
 
 check("canonicalize preserves negative zero and empty element/object modes", () => {
@@ -245,12 +243,12 @@ check("canonicalize retains existing syntax, name, metadata, and number rejectio
   assert.throws(() => canonicalize(`<value NaN>`), /invariant|number|NaN/i);
 });
 
-check("@quid parses into metadata and serializes immediately after the tag", () => {
+check("internal exact QUID fixtures have portable output without identity", () => {
   const node = parse(`<panel class="settings" @d1r6x8qwc hidden "Content"/>`);
   const panel = onlyElement(node);
   assert.equal(panel.$_meta?.["quid"], "d1r6x8qwc");
-  assert.equal(compact(node), `<panel @d1r6x8qwc class="settings" hidden "Content"/>`);
-  assert.equal(compact(parse(`<panel @000000000/>`)), `<panel @000000000/>`);
+  assert.equal(compact(node), `<panel class="settings" hidden "Content"/>`);
+  assert.equal(compact(parse(`<panel @000000000/>`)), `<panel/>`);
   assert.throws(() => parse(`<panel @000000000 @000000000/>`), /duplicate persisted QUID/);
 });
 
@@ -471,20 +469,17 @@ check("quoted names and escaped string content snapshot", () => {
   assert.equal(compact(node), expected);
 });
 
-check("noQuid filters only the exact persisted QUID key", () => {
+check("portable Hson omits generated QUIDs and retains ordinary attributes", () => {
   const node = parse(`<tag @000000001 data-user="keep" "value"/>`);
   const plain = readable(node);
-  const filtered = hson.fromNode(node).toHson().noQuid().serialize();
-  assert.match(plain, /@000000001/);
-  assert.doesNotMatch(filtered, /@[0123456789abcdefghjkmnpqrstvwxyz]{9}/);
-  assert.match(filtered, /data-user="keep"/);
-  assert.notEqual(plain, filtered);
+  assert.doesNotMatch(plain, /@[0123456789abcdefghjkmnpqrstvwxyz]{9}/);
+  assert.match(plain, /data-user="keep"/);
 });
 
-check("noBreak and noQuid compose in either order", () => {
+check("noBreak keeps portable QUID omission", () => {
   const node = parse(`<p @000000002 "first" <em "middle"/> "last"/>`);
-  const left = hson.fromNode(node).toHson().noBreak().noQuid().serialize();
-  const right = hson.fromNode(node).toHson().noQuid().noBreak().serialize();
+  const left = hson.fromNode(node).toHson().noBreak().serialize();
+  const right = hson.fromNode(node).toHson().withOptions({ noBreak: true }).serialize();
   assert.equal(left, right);
   assert.equal(left, `<p "first" <em "middle"/> "last"/>`);
 });
@@ -493,15 +488,15 @@ check("withOptions composes with convenience methods", () => {
   const node = parse(`<p @000000003 "first" <em "middle"/> "last"/>`);
   const expected = `<p "first" <em "middle"/> "last"/>`;
   assert.equal(
-    hson.fromNode(node).toHson().withOptions({ noBreak: true, noQuid: true }).serialize(),
+    hson.fromNode(node).toHson().withOptions({ noBreak: true }).serialize(),
     expected,
   );
   assert.equal(
-    hson.fromNode(node).toHson().withOptions({ noBreak: true }).noQuid().serialize(),
+    hson.fromNode(node).toHson().withOptions({ noBreak: true }).serialize(),
     expected,
   );
   assert.equal(
-    hson.fromNode(node).toHson().noBreak().withOptions({ noQuid: true }).serialize(),
+    hson.fromNode(node).toHson().noBreak().withOptions({}).serialize(),
     expected,
   );
 });
@@ -509,37 +504,37 @@ check("withOptions composes with convenience methods", () => {
 check("repeated options are idempotent", () => {
   const node = parse(`<tag @000000004 "value"/>`);
   assert.equal(
-    hson.fromNode(node).toHson().noBreak().noBreak().noQuid().noQuid().serialize(),
+    hson.fromNode(node).toHson().noBreak().noBreak().serialize(),
     `<tag "value"/>`,
   );
 });
 
-check("noQuid does not mutate or contaminate the source graph", () => {
+check("portable Hson output does not mutate the source graph", () => {
   const node = parse(`<tag @000000005 data-user="keep" "value"/>`);
   const before = structuredClone(node);
-  const filtered = hson.fromNode(node).toHson().noQuid().serialize();
+  const filtered = hson.fromNode(node).toHson().serialize();
   assert.deepEqual(node, before);
   assert.doesNotMatch(filtered, /@[0123456789abcdefghjkmnpqrstvwxyz]{9}/);
-  assert.match(readable(node), /@000000005/);
+  assert.equal(onlyElement(node).$_meta?.quid, "000000005");
 });
 
-check("noQuid does not register imported identity", () => {
+check("portable serialization does not register imported identity", () => {
   const quid = "000000006";
   const node = parse(`<tag @${quid} "value"/>`);
   assert.equal(get_node_by_quid(quid), undefined);
-  hson.fromNode(node).toHson().noQuid().serialize();
+  hson.fromNode(node).toHson().serialize();
   assert.equal(get_node_by_quid(quid), undefined);
 });
 
-check("parsed noQuid graph equals the graph with only QUID fields removed", () => {
+check("parsed portable graph equals the graph with only QUID fields removed", () => {
   const node = parse(`<p @000000007 data-user="keep" "first" <em @000000008 "middle"/>/>`);
-  const wire = hson.fromNode(node).toHson().noQuid().serialize();
+  const wire = hson.fromNode(node).toHson().serialize();
   assert.deepEqual(parse(wire), clone_without_quids(node));
 });
 
 check("native Hson array order regenerates canonical positional indexes", () => {
   const node = parse(`«"a","b",<name "Ada">»`);
-  const wire = hson.fromNode(node).toHson().noQuid().serialize();
+  const wire = hson.fromNode(node).toHson().serialize();
   const reparsed = parse(wire);
   assert.deepEqual(reparsed, node);
   assert.deepEqual(
@@ -661,14 +656,13 @@ check("all Hson option combinations retain quoted ordinary attributes", () => {
     quid: "000000009",
   };
   const builder = () => hson.fromNode(node).toHson();
-  const plain = `<tag @000000009 count="2" data-user="keep" enabled="true" disabled/>`;
   const filtered = `<tag count="2" data-user="keep" enabled="true" disabled/>`;
-  assert.equal(builder().serialize(), plain);
-  assert.equal(builder().noBreak().serialize(), plain);
-  assert.equal(builder().noQuid().serialize(), filtered);
-  assert.equal(builder().noBreak().noQuid().serialize(), filtered);
-  assert.equal(builder().noQuid().noBreak().serialize(), filtered);
-  const withOptions = builder().withOptions({ noBreak: true, noQuid: true }).serialize();
+  assert.equal(builder().serialize(), filtered);
+  assert.equal(builder().noBreak().serialize(), filtered);
+  assert.equal(builder().serialize(), filtered);
+  assert.equal(builder().noBreak().serialize(), filtered);
+  assert.equal(builder().noBreak().serialize(), filtered);
+  const withOptions = builder().withOptions({ noBreak: true }).serialize();
   assert.equal(withOptions, filtered);
   assert.doesNotMatch(withOptions, /count=2(?:\s|\/|>)/);
 });
@@ -678,10 +672,10 @@ check("quoted ordinary attributes are unchanged for structured block content", (
   onlyElement(node).$_attrs = { count: 2, disabled: "disabled" };
   assert.equal(
     readable(node),
-    `<p @00000000a count="2" disabled\n  "first"\n  <em "middle"/>\n  "last"\n/>`,
+    `<p count="2" disabled\n  "first"\n  <em "middle"/>\n  "last"\n/>`,
   );
   assert.equal(
-    hson.fromNode(node).toHson().noBreak().noQuid().serialize(),
+    hson.fromNode(node).toHson().noBreak().serialize(),
     `<p count="2" disabled "first" <em "middle"/> "last"/>`,
   );
 });
@@ -1129,9 +1123,9 @@ check("ordinary attrs and metadata preserve portable data semantics", () => {
   const graph = elementWithAttrs(attrs);
   onlyElement(graph).$_meta = meta;
   assert.doesNotThrow(() => assert_invariants(graph, "portable attr/meta records"));
-  assert.equal(readable(graph), `<tag @000000001 id="x" style="width: 2px"/>`);
+  assert.equal(readable(graph), `<tag id="x" style="width: 2px"/>`);
   assert.match(serialize_html(graph), /id="x"/);
-  assert.match(serialize_json(graph), /"quid": "000000001"/);
+  assert.doesNotMatch(serialize_json(graph), /"quid"/);
 
   const detached = hsonTransform.fromNode(graph).toNode();
   const detachedElement = onlyElement(detached);
@@ -1583,19 +1577,19 @@ check("canonical closure covers element text, nesting, document sequences, QUIDs
   for (const node of fixtures) assert_hson_closure(node);
 });
 
-check("canonical closure preserves ordinary attributes, structured style, and QUID metadata", () => {
+check("canonical closure preserves content and attributes while omitting QUID metadata", () => {
   const node = parse(
     `<panel @000000015 aria-label="Settings" disabled style="color: red; margin-top: 2px" "ready"/>`,
   );
   const source = assert_hson_closure(node);
-  assert.match(source, /@000000015/);
+  assert.doesNotMatch(source, /@000000015/);
   assert.match(source, /aria-label="Settings"/);
   assert.match(source, /disabled/);
   assert.doesNotMatch(source, /\$_meta/);
 
   const before = structuredClone(node);
-  const noQuidSource = hson.fromNode(node).toHson().noQuid().serialize();
-  assert_wire_closure(node, noQuidSource, clone_without_quids(node));
+  const portableSource = hson.fromNode(node).toHson().serialize();
+  assert_wire_closure(node, portableSource, clone_without_quids(node));
   assert.deepEqual(node, before);
 });
 
@@ -1607,20 +1601,11 @@ check("direct and fluent serializers have equivalent closure for every Hson opti
     const cases = [
       { options: {}, fluent: () => hson.fromNode(node).toHson().serialize() },
       { options: { noBreak: true }, fluent: () => hson.fromNode(node).toHson().noBreak().serialize() },
-      { options: { noQuid: true }, fluent: () => hson.fromNode(node).toHson().noQuid().serialize() },
-      {
-        options: { noBreak: true, noQuid: true },
-        fluent: () => hson.fromNode(node).toHson().noBreak().noQuid().serialize(),
-      },
     ] as const;
     for (const entry of cases) {
       const direct = serialize_hson(node, entry.options);
       assert.equal(entry.fluent(), direct);
-      assert_wire_closure(
-        node,
-        direct,
-        "noQuid" in entry.options && entry.options.noQuid ? clone_without_quids(node) : node,
-      );
+      assert_wire_closure(node, direct, clone_without_quids(node));
     }
   }
 });
@@ -1639,10 +1624,10 @@ check("serialization is nonmutating and repeated parse/serialize cycles converge
     const nextSource = serialize_hson(current);
     assert.equal(nextSource, first);
     const next = parse_serialized_value(nextSource);
-    assert.equal(canonical_hson_graph_equal(original, next), true);
+    assert.equal(canonical_hson_graph_equal(clone_without_quids(original), next), true);
     current = next;
   }
-  assert.equal((current.$_content[0] as HsonNode).$_meta?.quid, "000000017");
+  assert.equal((current.$_content[0] as HsonNode).$_meta?.quid, undefined);
 });
 
 check("forbidden-output inspection distinguishes syntax from user string data", () => {
@@ -1695,14 +1680,14 @@ check("object member metadata and QUIDs are outside the Hson serialization domai
   };
   assert.throws(() => serialize_hson(node), /object member <member> cannot carry metadata or a QUID/);
   assert.throws(
-    () => serialize_hson(node, { noQuid: true }),
+    () => serialize_hson(node, {}),
     /object member <member> cannot carry metadata or a QUID/,
   );
 
   const unknownMetadata = structuredClone(node);
   (unknownMetadata.$_content[0] as HsonNode).$_meta = { custom: "value" } as unknown as HsonMeta;
   assert.throws(() => serialize_hson(unknownMetadata), /unknown canonical metadata key/);
-  assert.throws(() => serialize_hson(unknownMetadata, { noQuid: true }), /unknown canonical metadata key/);
+  assert.throws(() => serialize_hson(unknownMetadata, {}), /unknown canonical metadata key/);
 
   const attributed = structuredClone(node);
   delete (attributed.$_content[0] as HsonNode).$_meta;

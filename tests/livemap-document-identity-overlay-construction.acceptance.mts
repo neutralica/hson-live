@@ -1,3 +1,4 @@
+import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
@@ -43,13 +44,13 @@ const Q2 = "000000002";
 const Q3 = "000000003";
 
 function element(source: string) {
-  const map = hson.liveMap.fromHson(source);
+  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error("Expected element map");
   return map;
 }
 
 function multiNodeDocument(source: string) {
-  const map = hson.liveMap.fromHson(source);
+  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error("Expected multiNodeDocument map");
   return map;
 }

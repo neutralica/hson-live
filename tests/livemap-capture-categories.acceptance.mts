@@ -1,6 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
+import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
@@ -37,13 +38,13 @@ function check(name: string, run: () => void): void {
 }
 
 function element(source: string): DocumentLiveMap {
-  const map = hson.liveMap.fromHson(source);
+  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error("Expected element LiveMap");
   return map;
 }
 
 function multiNodeDocument(source: string): DocumentLiveMap {
-  const map = hson.liveMap.fromHson(source);
+  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error("Expected multiNodeDocument LiveMap");
   return map;
 }
@@ -187,16 +188,16 @@ check("unsupported admission categories fail structurally", () => {
   );
 });
 
-check("ordinary Hson remains an exact metadata-preserving format", () => {
+check("ordinary Hson omits generated identity metadata", () => {
   const source = element(`<main @${Q1}/>`);
-  assert.equal(canonical_hson_graph_equal(element(captureText(source)).root(), source.root()), true);
+  assert.equal(canonical_hson_graph_equal(element(captureText(source)).root(), source.root()), false);
 });
 
-check("noQuid Hson remains an identity-free projection", () => {
+check("portable Hson remains an identity-free projection", () => {
   const source = element(`<main @${Q1}/>`);
   const semanticRoot = source.document.content()[0];
   if (semanticRoot === undefined || !isNode(semanticRoot)) throw new Error("Expected node document content.");
-  const wire = hson.fromNode(semanticRoot).toHson().noQuid().serialize();
+  const wire = hson.fromNode(semanticRoot).toHson().serialize();
   const reparsed = element(wire);
   assert.equal(reparsed.document.byQuid(Q1), undefined);
   assert.equal(canonical_hson_graph_equal(reparsed.root(), source.root()), false);

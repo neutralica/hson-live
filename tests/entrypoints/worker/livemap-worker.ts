@@ -41,7 +41,7 @@ declare const optionalProjectedMap: LiveMap<Readonly<{ user?: Readonly<{ name: s
 const optionalProjectedName: string | undefined = optionalProjectedMap.proxy().user.name.$_.snap();
 void optionalProjectedName;
 
-const documentMap = hsonLiveMap.fromHson(`<main @000000v01/>`);
+const documentMap = hsonLiveMap.fromHson(`<main/>`);
 if (documentMap.mode === "document") {
   const documentLocation = documentMap.at([0]);
   const documentEndpoint = documentLocation.at([1]).snap();

@@ -27,6 +27,11 @@ const documentMap = (source) => {
   if (map.mode !== "document") throw new Error("expected document map");
   return map;
 };
+const documentMapWithChildQuid = (source, quid) => {
+  const graph = documentMap(source).root();
+  graph.$_content[0].$_content[0].$_content[0].$_meta = { quid };
+  return hson.liveMap.fromNode(graph);
+};
 const markup = (map) => serialize_browser_realization(plan_browser_realization(map.root()));
 const mount = (map, owner = document) => {
   const template = owner.createElement("template");
@@ -40,7 +45,7 @@ const flush = () => new Promise((resolve) => queueMicrotask(resolve));
 const stringLeaf = (value) => ({ $_tag: "_hson_str", $_content: [value] });
 
 try {
-  const map = documentMap(`<main id="app" <p @000000123 class="copy" "hello"/> <input value="server"/>/>`);
+  const map = documentMapWithChildQuid(`<main id="app" <p class="copy" "hello"/> <input value="server"/>/>`, "000000123");
   const root = mount(map);
   const paragraph = root.firstElementChild;
   const text = paragraph.firstChild;
@@ -108,7 +113,7 @@ try {
   ];
   for (const [caseIndex, [name, mutate]] of mismatchCases.entries()) {
     const quid = String(1000 + caseIndex).padStart(9, "0");
-    const mismatchMap = documentMap(`<main id="mismatch" <p @${quid} "hello"/> <input value="server"/>/>`);
+    const mismatchMap = documentMapWithChildQuid(`<main id="mismatch" <p "hello"/> <input value="server"/>/>`, quid);
     let candidate = mount(mismatchMap);
     mutate(candidate);
     if (!candidate.isConnected) candidate = document.body.lastElementChild;
@@ -297,7 +302,7 @@ try {
   managerObserver.disconnect();
 
   const failedManagerDocument = document.implementation.createHTMLDocument("manager-failure");
-  const failedManagerMap = documentMap(`<main <p @000000123 "conflict"/>/>`);
+  const failedManagerMap = documentMapWithChildQuid(`<main <p "conflict"/>/>`, "000000123");
   const failedManagerRoot = mount(failedManagerMap, failedManagerDocument);
   let failedManagerContinuation;
   try { continue_document({ map: failedManagerMap, root: failedManagerRoot }); } catch (cause) { failedManagerContinuation = cause; }

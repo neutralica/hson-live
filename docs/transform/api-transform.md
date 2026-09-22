@@ -167,11 +167,11 @@ Parses external HTML through the safe HTML path.
 - Accepts a string or an existing `Element`.
 - A supplied `Element` is the source root. The canonical graph includes that   element itself, its attributes and metadata, and its descendants.
 - Syntactic `hson:*` candidates remain observable after sanitization and are   admitted or rejected by the same metadata registry used for trusted input.
-- A valid descendant `hson:quid` is preserved as graph identity. Malformed,   unknown, misplaced, or duplicate metadata rejects rather than disappearing.
+- Serialized `hson:quid` is rejected as runtime-local identity metadata. Unknown or malformed metadata also rejects rather than disappearing.
 - `data-*` remains application-owned and is never reinterpreted as Hson   metadata.
 - External SVG markup is rejected on this safe path.
 
-This is the default choice for user-authored or third-party HTML. QUID identity is not trust, authorization, authentication, or execution capability. Existing live-graph uniqueness and ownership checks still apply when a cold parsed graph becomes active.
+This is the default choice for user-authored or third-party HTML. A receiving runtime establishes its own generated identity when needed.
 
 ### `hson.fromTrustedHtml(input: string | Element)`
 
@@ -247,7 +247,8 @@ The decoder rejects a wrong marker, truncation, trailing bytes, unknown
 discriminators, non-finite numbers, malformed nodes, duplicate or unsorted
 attribute/metadata keys, exceeded limits, and any accepted graph whose
 re-encoded bytes differ from the input. Binary Hson has no numeric version
-field or compatibility fallback.
+field or compatibility fallback. Serialized generated QUID metadata rejects
+with `PORTABLE_RUNTIME_QUID_FORBIDDEN`.
 
 ---
 
@@ -260,8 +261,12 @@ All transform source constructors return a common surface:
 .toJson()           // returns a JSON object or string
 .toHson()           // returns an Hson string
 .toBinary()         // returns canonical Binary Hson bytes
-.toNode()           // returns the underlying HsonNode graph (in JSON)
+.toNode()           // returns the underlying in-memory HsonNode graph
 ```
+
+`toNode()` exposes an in-memory graph and may retain local runtime metadata.
+Use the Hson, JSON, HTML, or Binary output terminal for portable serialization;
+serializing the raw node object directly is outside the portable Transform contract.
 
 HTML trust is selected when HTML enters Transform. Use `fromTrustedHtml` only
 for trusted input and `fromUntrustedHtml` for external or user-authored input;
@@ -287,7 +292,9 @@ Selects JSON output.
 - `serialize()` returns a JSON string with key order canonicalized
 - `value()` returns an in-memory `JsonValue` directly
 
-The raw HsonNode data type is also represented in JSON. Serialized keys beginning with the reserved prefix`$_` indicate raw HsonNode data, serialized via `toNode()` rather than `toJson()`
+The raw in-memory HsonNode type uses reserved `$_` keys for structure and may
+include runtime metadata. `toJson()` is the portable JSON output; `toNode()`
+returns the graph itself.
 
 ### `.toHson()`
 
@@ -296,15 +303,15 @@ Selects Hson output.
 - `serialize()` returns `HsonCanonical`, a primitive Hson string.
 - Use the source constructor's `.toNode()` terminal for the canonical graph.
 - Hson text is produced lazily by `serialize()`, after Hson options have been   accumulated. The source graph is not cloned or mutated.
-- Every admitted Hson-serializable semantic value is emitted without literal structural   VSN names, raw metadata containers, or array-index metadata. Parsing that   output, detaching the parser root, and comparing canonically reconstructs the   original graph. Object-member metadata is outside this domain and rejects.   `noQuid()` applies the same rule after removing only eligible element QUID   metadata from the expected projection; it cannot legalize object metadata.
+- Every admitted Hson-serializable semantic value is emitted without literal structural VSN names, raw metadata containers, array-index metadata, or generated QUID metadata. Parsing the output reconstructs the application structure and content. Exact runtime graph comparison can still distinguish the source graph's QUID metadata. Object-member metadata is outside this domain and rejects.
 - Direct `serialize_hson(node)` and `hson.fromNode(node).toHson().serialize()`   use the same canonical serializer. `noBreak` changes layout only.
 - Canonical names use the established preferred bare grammar where possible.   Names requiring quoting use apostrophe delimiters, escape apostrophes as   `\'`, and treat backticks as ordinary data. Canonical Hson never emits a   backtick-delimited name.
-- Direct or fluent Hson serialization of any caller-supplied `_hson_root`   rejects before layout and QUID options. Parser-owned JSON/HTML roots and the   Hson parser root are explicitly detached by their source pipeline first.
+- Direct or fluent Hson serialization of any caller-supplied `_hson_root` rejects before layout options. Parser-owned JSON/HTML roots and the Hson parser root are explicitly detached by their source pipeline first.
 - `fromNode()` treats its input as a detached semantic value. Redundant detached   scalar `_hson_obj`/`_hson_elem` carriers normalize to their scalar before   output, while owned object-member carriers, element text clusters, and arrays   remain intact. Direct serialization rejects a detached carrier that bypassed   admission.
 
 ### `.toBinary()`
 
-Selects the canonical binary representation of the exact detached Hson graph:
+Selects the canonical portable binary representation of the detached Hson graph:
 
 ```ts
 const binary = hsonTransform.fromHson(`<note "hello"/>`).toBinary();
@@ -318,7 +325,8 @@ widths, preserves graph/content order and UTF-16 code units, sorts
 attribute/metadata record keys by code unit, and writes finite numbers as
 big-endian binary64. It is a graph transport, not the UTF-8 bytes of serialized
 Hson, JSON, or HTML. A `_hson_root` carrier is not a detached Binary Hson value
-and rejects.
+and rejects. Generated QUID metadata is omitted; other admitted metadata keeps
+its binary representation.
 
 `toBinary()` snapshots the source graph when that output is selected. Later
 mutation of a caller-owned node cannot change the returned representation.
@@ -331,7 +339,7 @@ It is assignable to `string`, but an arbitrary `string` is not assignable to `Hs
 
 Transport and persistence boundaries such as HTTP, WebSocket, JSON, storage, environment variables, process boundaries, and third-party APIs typed as plain strings normally erase the brand. Receivers accept transported Hson text as an ordinary `string` and parse it normally. Parsing arbitrary text produces canonical `HsonNode` graph state after success; it does not brand the input text.
 
-Readable, compact (`noBreak`), and `noQuid` Hson serialization all return `HsonCanonical`. The type does not imply that those options produce identical bytes, preserve source spelling, whitespace, quoting, comments, or formatting, or preserve JavaScript object identity for shared references. Direct/general serialization still rejects every empty or populated `_hson_root`. The existing owned-document serializer is a separate internal boundary: it melts the root and produces the exact zero-length `HsonCanonical` for an empty document, which only document-aware parsing admits again.
+Readable and compact (`noBreak`) Hson serialization return `HsonCanonical`. The type does not imply preservation of source spelling, whitespace, quoting, comments, formatting, generated identity, or JavaScript object identity for shared references. Direct/general serialization still rejects every empty or populated `_hson_root`. The existing owned-document serializer is a separate internal boundary: it melts the root and produces the exact zero-length `HsonCanonical` for an empty document, which only document-aware parsing admits again.
 
 ## Hson Serialization Options
 
@@ -339,7 +347,6 @@ After `toHson()`, the API exposes a composable option/finalizer surface:
 
 ```ts
 .noBreak()
-.noQuid()
 .withOptions(options)
 .serialize()
 ```
@@ -349,30 +356,24 @@ The active Hson options are:
 ```ts
 type FrameOptions = {
   noBreak?: boolean;
-  noQuid?: boolean;
 };
 ```
 
-Readable, two-space-indented Hson is the default. `noBreak` selects canonical compact Hson without cosmetic newlines or indentation while retaining conventional spaces between tag/header/content terms. `noQuid` omits only the persisted `quid` metadata key and does not alter live identity registration. `index` is the separate operational field on `_hson_ii`. Every `data-*` spelling is an ordinary application attribute.
+Readable, two-space-indented Hson is the default. `noBreak` selects canonical compact Hson without cosmetic newlines or indentation while retaining conventional spaces between tag/header/content terms. Portable Hson always omits generated `quid` metadata without altering live identity registration. `index` is the separate operational field on `_hson_ii`. Every `data-*` spelling is an ordinary application attribute.
 
 Ordinary Hson attributes have string-valued wire semantics in either layout. The parser accepts both `count=2` and `count="2"` as `{ count: "2" }`, while canonical serialization emits `count="2"`. Programmatic number, boolean, and null values are likewise stringified and quoted without mutating the source graph. Presence flags are the distinct exact-equality form `{ disabled: "disabled" }` and serialize as bare `disabled`.
 
-### Persisted QUID declarations
+### Generated QUID boundary
 
-Hson has one identity-specific header declaration: `@quid`. It maps only to canonical `$_meta["quid"]`; it is neither HTML `id`, a selector, nor a request to generate identity. Persisted QUIDs are random 45-bit identifiers: exactly 9 lowercase Base32 characters from `0123456789abcdefghjkmnpqrstvwxyz`. They are generated from the first 45 bits of 6 secure random bytes; there is no normalization, legacy-width admission, fallback format, quoted form, or `@@` form.
+Generated `$_meta.quid` is runtime-local identity. Ordinary Hson, JSON, Transform HTML, and Binary Hson serialization omit it. Ordinary parsing rejects `@quid`, structural JSON `$_meta.quid`, HTML `hson:quid`, and binary QUID metadata with `PORTABLE_RUNTIME_QUID_FORBIDDEN`. The receiving runtime creates identity under its normal local rules; portable round trips preserve application structure and content rather than exact QUID equality. Other metadata, including array ordering, retains its established behavior.
 
-```hson
-<panel @d1r6x8qwc class="settings" "Content"/>
-```
-
-Parsing accepts one declaration anywhere in an opening header before inline content; serialization is canonical and writes it immediately after the tag. `@` after content and duplicate declarations are errors. Attribute tokens, including `data-_quid`, are ordinary Hson attributes and never metadata. Only ordinary elements may carry persisted identity, and duplicate values across a document remain a LiveMap graph-invariant error. HTML and SVG use `hson:quid`.
+Same-runtime capture keeps exact graph identity through an internal capability. Hosted recovery temporarily uses a separate internal exact-runtime Hson codec. Browser realization and SSR continuation markup are separate from Transform HTML and remain a later migration boundary.
 
 Options compose and are idempotent:
 
 ```ts
-hson.fromNode(node).toHson().noBreak().noQuid().serialize();
-hson.fromNode(node).toHson().noQuid().noBreak().serialize();
-hson.fromNode(node).toHson().withOptions({ noBreak: true, noQuid: true }).serialize();
+hson.fromNode(node).toHson().noBreak().serialize();
+hson.fromNode(node).toHson().withOptions({ noBreak: true }).serialize();
 ```
 
 The former `spaced`, `linted`, and `lineLength` options have been removed. `.toJson()` materializes the in-memory projection once; `value()` returns that projection and `serialize()` stringifies it. HTML output behavior is unchanged.

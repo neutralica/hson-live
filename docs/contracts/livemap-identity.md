@@ -299,8 +299,8 @@ Every controlled boundary has one of four meanings:
 
 1. **Same-epoch live capture** preserves canonical ordinary-element QUID metadata and privately carries any data-overlay claims in an opaque exact-object capability issued by the same active map epoch. `capture({ identity: "same-epoch" })` creates that local capability. `install` or `restore` must explicitly request `identity: "same-epoch"`; copied, spread, JSON-round-tripped, view-state-decoded, stale, mutated, or foreign captures reject. The capability is held out of band in a `WeakMap`, has no enumerable or serialized field, authorizes nothing, and becomes stale when a changed durable install or durable restore replaces the map epoch.
 2. **Durable structural capture** preserves the exact canonical graph, ordinary-element QUID metadata, and revision. An exact in-memory data capture also carries active map-local overlay claims out of band so a new owner epoch can be seeded without placing QUIDs on structural nodes; copying or serialization loses that private carrier. Existing `capture()` retains this compatibility meaning; `capture({ identity: "preserve-metadata" })` is its explicit form. View-state, graph-content, Locus snapshots, bootstrap, recovery, and persistence checkpoints validate only identity representable by their documented canonical formats. Installation of preserved claims creates fresh map-local identity and does not prove continuity with handles from the source map, process, mirror, or LiveTree runtime.
-3. **Identity-free projection** intentionally removes QUID metadata. `capture({ identity: "strip" })`, install/restore with `identity: "strip"`, Hson `noQuid`, and ordinary application JSON are examples. The source is unchanged, the installed overlay is empty or reduced to remaining claims, and exact canonical equality is lost when metadata was removed. This is valid projection, not corruption.
-4. **External graph admission** covers every graph without trusted same-epoch provenance, including syntactically valid serialized QUIDs. Install/restore policy is explicit: `preserve-metadata` validates and admits claims as fresh local identity, `strip` removes them before ownership, and `reject` refuses QUID-bearing input. Internal owner-authorized acquisition remains ensure-if-absent only; no public acquisition, rekey, raw assignment, replacement, or retirement API is exposed. Construction, authored transforms, graph-content insertion, LiveTree import, and graft retain their existing collision-aware admission rules and never treat the bytes as proof of prior handle continuity.
+3. **Identity-free projection** intentionally removes QUID metadata. `capture({ identity: "strip" })`, install/restore with `identity: "strip"`, ordinary portable Transform output, and ordinary application JSON are examples. The source is unchanged, the installed overlay is empty or reduced to remaining claims, and exact canonical equality is lost when metadata was removed. This is valid projection, not corruption.
+4. **External graph admission** covers every graph without trusted same-epoch provenance. Ordinary portable Transform input rejects serialized QUIDs. Install/restore policy remains explicit: `preserve-metadata` validates and admits claims as fresh local identity, `strip` removes them before ownership, and `reject` refuses QUID-bearing input. Internal owner-authorized acquisition remains ensure-if-absent only; no public acquisition, rekey, raw assignment, replacement, or retirement API is exposed. The temporary hosted graph-content codec and local LiveTree realization retain their collision-aware identity admission paths without treating bytes as proof of prior handle continuity.
 
 The core distinction is:
 
@@ -322,11 +322,11 @@ One document LiveMap epoch and one `LiveTreeRuntime` epoch are separate owners. 
 | document `install` | External/durable by default; explicit preserve, strip, reject, or same-epoch | Preserved metadata becomes fresh local overlay identity; exact continuity only with valid capability | Default behavior retained; explicit tightening is opt-in |
 | document `restore` | Same policies as install, with captured revision installed | Durable restore replaces the map epoch; same-epoch restore retains it | Default bytes/revision behavior retained |
 | document replay | Current-epoch canonical transition; path-first operations may preserve QUID metadata/witnesses | Uses the target map's staged overlay; no capture provenance is inferred | No change |
-| Hson parse/serialize | Durable metadata or external input; `@quid` preserved | Detached metadata only until a live owner admits it | No format change |
-| Hson `noQuid` | Identity-free projection | No identity is adopted or minted | No change |
-| structural HTML | External/durable metadata in `hson:quid` | Copied markup has no epoch proof | No format change |
+| ordinary Hson parse/serialize | Generated `@quid` rejected on input and omitted on output | Receiving runtime establishes local identity | Phase 2 hard migration |
+| Transform HTML | Generated `hson:quid` rejected on input and omitted on output | Receiving runtime establishes local identity | Phase 2 hard migration |
 | ordinary HTML / managed DOM | LiveTree diagnostic/runtime representation; copied markup is external | Exact mounted nodes belong to the current LiveTree runtime; strings alone prove nothing | No change |
-| structural JSON | External/durable metadata in `$_meta.quid` | Detached until admitted | No format change |
+| ordinary structural JSON | Generated `$_meta.quid` rejected on input and omitted on output | Receiving runtime establishes local identity | Phase 2 hard migration |
+| Binary Hson Transform | Generated QUID metadata rejected on input and omitted on output | Receiving runtime establishes local identity | Phase 2 hard migration |
 | ordinary application JSON | Identity-free application projection; a user `quid` key remains user data | No system identity | No change |
 | current view-state codec | Durable exact structural capture preserving QUID metadata | Decoding never recreates a same-epoch capability | One current form |
 | current graph-content codec | Durable/external detached content preserving QUID metadata | Insert admission validates fresh local claims; no source-handle continuity | One current form |
@@ -342,9 +342,9 @@ One document LiveMap epoch and one `LiveTreeRuntime` epoch are separate owners. 
 
 Stable failures distinguish unsupported categories, missing same-epoch provenance, stale and foreign epochs, identity-policy mismatch, malformed envelopes, and duplicate preserved claims. Every failure occurs before root, overlay, revision, history, feed, Reflection, or persistence publication.
 
-## `noQuid` is identity-stripping
+## Portable Transform is identity-free
 
-Hson `noQuid` output deliberately removes QUID metadata without mutating the source graph. Reparsing that output produces an identity-stripped graph that is not exact-equal to a QUID-bearing source.
+Ordinary Hson output deliberately removes QUID metadata without mutating the source graph. Reparsing that output produces an identity-stripped graph that is not exact-equal to a QUID-bearing source.
 
 The projection does not promise to preserve retained handles, active continuity, QUID-backed CSS, events, animation, resources, reflection associations, lifecycle state, or exact canonical graph identity.
 
@@ -368,7 +368,7 @@ Automated acceptance coverage must continue to establish:
 3. No second identity clock or permanent hidden node ID exists.
 4. A QUID-free LiveMap remains functional and ordinary behavior never implicitly mints.
 5. Controlled exact capture and persistence may preserve QUIDs.
-6. `noQuid` explicitly abandons exact identity continuity.
+6. Ordinary portable Transform output does not carry exact generated identity continuity.
 7. Serialized QUID bytes alone establish neither provenance nor authority.
 8. Standalone LiveTree remains QUID-authoritative; a LiveMap-linked runtime owns exact runtime objects but cannot originate canonical identity metadata.
 9. LiveMap paths remain the planned authoritative target for durable structural operations.

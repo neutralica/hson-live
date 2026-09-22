@@ -10,6 +10,7 @@ import {
   type TransformRegressionCase,
 } from "../src/diagnostics/transform-test-oracle.ts";
 import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
+import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import {
   serialize_hson,
   serialize_hson_owned_document_content,
@@ -74,7 +75,7 @@ function node(
 }
 
 function parse_value(source: string): HsonNode {
-  return detach_hson_root_value(parse_hson(source));
+  return detach_hson_root_value(parse_hson_exact_runtime(source));
 }
 
 function capture(fn: () => unknown): unknown {
@@ -381,7 +382,7 @@ check("readable and compact sources close to the same canonical graph", () => {
   assert.equal(canonical_hson_graph_equal(readable.reparsed, compact.reparsed), true);
 });
 
-check("noQuid closure uses one explicit expected projection", () => {
+check("portable closure uses one explicit identity-free expected projection", () => {
   const semantic = parse_value(`<p @${Q1} "first" <em @${Q2} "middle"/>/>`);
   const expected = clone_without_quids(semantic);
   assertCanonicalClosure({
@@ -390,7 +391,7 @@ check("noQuid closure uses one explicit expected projection", () => {
     ingress: "canonical-node",
     node: semantic,
     expectedNode: expected,
-    serializeOptions: { noQuid: true },
+    serializeOptions: {},
     cycles: 3,
   });
   assert.equal(semantic.$_meta?.quid, undefined);
@@ -405,6 +406,7 @@ check("ordinary closure is nonmutating and repeated cycles converge", () => {
     caseId: "stable-cycles",
     ingress: "canonical-node",
     node: semantic,
+    expectedNode: clone_without_quids(semantic),
     cycles: 5,
   });
   assert.deepEqual(semantic, before);

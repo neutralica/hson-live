@@ -82,20 +82,20 @@ check("the numeric leaf entrypoint is Worker-safe and preserves negative zero", 
   assert.equal(Object.is(hsonCalc(() => -0), -0), true);
 });
 
-check("Worker-safe Transform produces readable, compact, and no-QUID Hson", () => {
+check("Worker-safe Transform produces identity-free readable and compact Hson", () => {
   const node = hsonTransform
-    .fromHson(`<worker @000000001 "ready"/>`)
+    .fromHson(`<worker "ready"/>`)
     .toNode();
   assert.equal(
     hsonTransform.fromNode(node).toHson().serialize(),
-    `<worker @000000001 "ready"/>`,
+    `<worker "ready"/>`,
   );
   assert.equal(
     hsonTransform.fromNode(node).toHson().noBreak().serialize(),
-    `<worker @000000001 "ready"/>`,
+    `<worker "ready"/>`,
   );
   assert.equal(
-    hsonTransform.fromNode(node).toHson().noQuid().serialize(),
+    hsonTransform.fromNode(node).toHson().serialize(),
     `<worker "ready"/>`,
   );
 });
@@ -105,10 +105,10 @@ check("Worker-safe Transform oracle proves strict closure without Node support",
     launcher: "transform-worker",
     caseId: "worker-strict-closure",
     ingress: "hson-source",
-    source: `<worker @${Q1} "ready"/>`,
+    source: `<worker "ready"/>`,
     cycles: 3,
   });
-  assert.equal(result.serialized, `<worker @${Q1} "ready"/>`);
+  assert.equal(result.serialized, `<worker "ready"/>`);
 });
 
 check("Worker-safe structural JSON preserves order and duplicate identity", () => {
@@ -172,24 +172,24 @@ check("existing HTML graphs are sanitized by explicit untrusted re-ingress", () 
   assert.equal(hsonTransform.fromNode(sanitized).toHtml().serialize().includes("ready"), true);
 });
 
-check("untrusted Worker parsing preserves valid Hson identity while removing unsafe behavior", () => {
+check("untrusted Worker parsing retains ordinary data while removing unsafe behavior", () => {
   const node = hsonTransform
     .fromUntrustedHtml(
-      `<main><span hson:quid="${Q1}" data-_quid="application" onclick="run()">ready</span></main>`,
+      `<main><span data-_quid="application" onclick="run()">ready</span></main>`,
     )
     .toNode();
   let span: HsonNode | undefined;
   walk(node, (current) => {
     if (current.$_tag === "span") span = current;
   });
-  assert.equal(span?.$_meta?.quid, Q1);
+  assert.equal(span?.$_meta?.quid, undefined);
   assert.equal(span?.$_attrs?.["data-_quid"], "application");
   assert.equal(span?.$_attrs?.onclick, undefined);
 });
 
 check("untrusted Worker parsing routes malformed and unknown metadata to canonical admission", () => {
   for (const [source, reason] of [
-    [`<main hson:quid="bad"/>`, /invalid value for Hson metadata "hson:quid"/],
+    [`<main hson:quid="bad"/>`, /runtime QUID metadata is invalid/],
     [`<main hson:unknown="value"/>`, /unknown Hson metadata markup name "hson:unknown"/],
     [`<main hson:index="0"/>`, /metadata "index" is not defined for node "main"/],
   ] as const) {
@@ -337,13 +337,13 @@ check("Worker-safe authored diagnostics retain portable codes and related positi
   }
 });
 
-const workerShaRepresentation = hsonTransform.fromHson(`<worker @000000001 "ready"/>`).toHson();
+const workerShaRepresentation = hsonTransform.fromHson(`<worker "ready"/>`).toHson();
 const shaCase = "Worker-safe Transform hashes exact Hson output with WebCrypto";
 testEvents.case_begin(shaCase, shaCase);
 try {
   assert.equal(
     await workerShaRepresentation.sha256(),
-    "47eebceca8428b19a36dc1ae429cddb1da2de7eda05ddb3bbfad81bd8a1659c3",
+    "673c50086ba4906100d29adeb6369f5b5761537f0c088cba73feb44f3ea0a70e",
   );
   testEvents.case_end(shaCase, "pass");
 } catch (error) {

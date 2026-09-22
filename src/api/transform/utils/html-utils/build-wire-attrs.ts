@@ -5,6 +5,7 @@ import {
   hson_metadata_policy,
   hson_metadata_value_is_valid,
 } from "../../../../core/hson-metadata.js";
+import { HSON_META_QUID } from "../../../../core/constants.js";
 import { HsonNode } from "../../../../core/types.js";
 import { serialize_style } from "../attrs-utils/serialize-style.js";
 
@@ -67,6 +68,7 @@ export function build_wire_attrs(n: HsonNode): Record<string, string> {
       if (!hson_metadata_value_is_valid(k, v)) {
         throw new Error(`Invalid value for Hson metadata "${k}" on <${n.$_tag}>.`);
       }
+      if (k === HSON_META_QUID) continue;
       out[policy.definition.markupName] = v;
     }
   }

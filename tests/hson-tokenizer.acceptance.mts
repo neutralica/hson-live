@@ -1,5 +1,6 @@
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
+import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
 import { hsonTransform } from "../src/api/transform/index.ts";
 import { parse_json } from "../src/api/transform/parsers/parse-json.ts";
@@ -211,8 +212,8 @@ check("element grammar and canonical graph remain unchanged", () => {
     [`<a href=// layout\nfoo//bar/>`, `<a href="foo//bar"/>`],
     [`<a <b/>/>`, `<a\n  <b/>\n/>`],
     [
-      `<a @000000001 style="color: red" "before" <b/> "after"/>`,
-      `<a @000000001 style="color: red"\n  "before"\n  <b/>\n  "after"\n/>`,
+      `<a style="color: red" "before" <b/> "after"/>`,
+      `<a style="color: red"\n  "before"\n  <b/>\n  "after"\n/>`,
     ],
     [`<a/><b/>`, `<a/>\n<b/>`],
   ];
@@ -371,7 +372,9 @@ for (const fixture of token_cases) {
   check(`canonical tokens: ${fixture.name}`, () => {
     const tokens = tokenize_hson(fixture.source);
     assert.deepEqual(token_summary(tokens), fixture.expected);
-    assert.deepEqual(parse_tokens(tokens), parse_hson(fixture.source));
+    assert.deepEqual(parse_tokens(tokens), fixture.source.includes("@000000001")
+      ? parse_hson_exact_runtime(fixture.source)
+      : parse_hson(fixture.source));
   });
 }
 

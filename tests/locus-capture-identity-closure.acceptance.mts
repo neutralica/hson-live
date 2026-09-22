@@ -262,27 +262,27 @@ check("same metadata in a new mirror still supports local QUID lookup", () => {
   assert.equal(mirror.document.byQuid(Q1)?.$_tag, "main");
 });
 
-check("noQuid reparsing loses map identity continuity", () => {
+check("portable Hson reparsing loses map identity continuity", () => {
   const source = element(`<main @${Q1}/>`);
-  const wire = hson.fromNode(authoredNode(source)).toHson().noQuid().serialize();
+  const wire = hson.fromNode(authoredNode(source)).toHson().serialize();
   const reparsed = mustElement(hson.liveMap.fromHson(wire));
   assert.equal(reparsed.document.byQuid(Q1), undefined);
 });
 
-check("noQuid reparsing creates a different reflected exact node", () => {
+check("portable Hson reparsing creates a different reflected exact node", () => {
   const source = element(`<main @${Q1}/>`);
   const first = _reflect_document_for_runtime_test(_create_livetree_runtime_test_handle(), source);
-  const wire = hson.fromNode(authoredNode(source)).toHson().noQuid().serialize();
+  const wire = hson.fromNode(authoredNode(source)).toHson().serialize();
   const second = _reflect_document_for_runtime_test(_create_livetree_runtime_test_handle(), mustElement(hson.liveMap.fromHson(wire)));
   assert.notEqual(first.tree.node, second.tree.node);
   first.dispose();
   second.dispose();
 });
 
-check("structural HTML preserves QUID metadata as detached bytes", () => {
+check("Transform HTML omits QUID metadata from detached bytes", () => {
   const source = element(`<main @${Q1}/>`);
   const html = hson.fromNode(authoredNode(source)).toHtml().serialize();
-  assert.equal(html.includes(`hson:quid="${Q1}"`), true);
+  assert.equal(html.includes(`hson:quid="${Q1}"`), false);
   assert.equal(html.includes("epoch"), false);
 });
 

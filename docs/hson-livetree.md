@@ -83,7 +83,7 @@ Physical `_hson_*` transport/carrier Elements, non-HTML/SVG roots, and namespace
 
 The public LiveTree facade spells the method `queryDom`, not `queryDOM`.
 
-When an HTML source constructor receives an `Element`, it snapshots that element as the source root, including its attributes, metadata, and descendants. It does not reinterpret the input as child-only `innerHTML`. Untrusted input passes through its sanitizer, but syntactic Hson metadata candidates remain subject to the canonical metadata registry afterward. Valid supplied root and descendant QUIDs are preserved as cold graph identity; malformed or unknown metadata rejects.
+When an HTML source constructor receives an `Element`, it snapshots that element as the source root, including its attributes and descendants. It does not reinterpret the input as child-only `innerHTML`. Ordinary Transform HTML rejects generated `hson:quid`; local LiveTree realization and graft use their own exact runtime path. Untrusted input passes through its sanitizer, and unknown metadata rejects.
 
 ### Detached creation
 
@@ -97,7 +97,7 @@ QUIDs connect an Hson node to its managed DOM and CSS state. They are internal l
 
 Identity is stable through movement, detach, and reattachment, but it is not a security credential or a byte-for-byte source preservation guarantee:
 
-- supplied valid QUIDs are preserved in cold canonical graphs; duplicate valid values may coexist cold under the established Transform contract;
+- valid QUIDs already present on local graphs remain available to local LiveTree realization; ordinary portable Transform input rejects serialized QUID claims;
 - when a graph becomes live, active uniqueness and ownership are enforced atomically without partial registry claims;
 - detach retains identity and reattachment keeps the same QUID;
 - `cloneBranch()` issues fresh QUIDs;
@@ -105,7 +105,7 @@ Identity is stable through movement, detach, and reattachment, but it is not a s
   the runtime's issued ledger;
 - ordinary admission cannot reuse retired bytes in that runtime; the same bytes
   may be admitted in a fresh runtime lifetime;
-- `.noQuid()` filters output only and does not mutate the source graph, release ownership, or change lifecycle state;
+- ordinary portable Hson output omits generated QUIDs without mutating the source graph, releasing ownership, or changing lifecycle state;
 - parse/serialize cycles may normalize source spelling and structure; and
 - ordinary transform APIs are graph conversions, not LiveTree identity persistence APIs.
 

@@ -1,4 +1,5 @@
 import { create_test_event_emitter } from "./test-events.mjs";
+import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import assert from "node:assert/strict";
 import { hson, hsonLiveMap, hsonTransform } from "../src/hson.ts";
 import type { HsonNode, NodeContent, Primitive } from "../src/core/types.ts";
@@ -147,9 +148,10 @@ check("malformed and unsupported canonical roots are rejected with causes", () =
 });
 
 check("fromNode takes detached ownership of the complete canonical graph", () => {
-  const source = hson.fromHson(
+  const source = parse_hson_exact_runtime(
     `<main id="original" style="color: red" data-user="kept" @000000001 <p @000000002 "x"/>/>`,
-  ).toNode();
+    { allowTopLevelDocumentText: true },
+  );
   const sourceMain = find_nodes(source, "main")[0];
   if (sourceMain !== undefined) {
     sourceMain.$_attrs = {
@@ -185,9 +187,10 @@ check("data fromNode construction also takes detached ownership", () => {
 });
 
 check("element reads and captures are recursively detached", () => {
-  const map = hson.liveMap.fromHson(
+  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(
     `<main id="original" style="color: red" @000000001 <p @000000002 "x"/>/>`,
-  );
+    { allowTopLevelDocumentText: true },
+  ));
   assert.equal(map.mode, "document");
   const baseline = map.root();
   const beforeRev = map.rev;
@@ -211,9 +214,10 @@ check("element reads and captures are recursively detached", () => {
 });
 
 check("multiNodeDocument reads preserve repeated siblings and mixed content in order", () => {
-  const map = hson.liveMap.fromHson(
+  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(
     `"before" <div id="a" @000000003 "one"/> <div id="b" @000000004 "two"/> "after"`,
-  );
+    { allowTopLevelDocumentText: true },
+  ));
   assert.equal(map.mode, "document");
   const baseline = map.root();
   const content = map.document.content();
@@ -231,9 +235,10 @@ check("multiNodeDocument reads preserve repeated siblings and mixed content in o
 });
 
 check("document identity is sparse and preserves only explicitly persisted QUIDs", () => {
-  const map = hson.liveMap.fromHson(
+  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(
     `<main @000000001 <p "one"/> <p @000000005 "two"/>/>`,
-  );
+    { allowTopLevelDocumentText: true },
+  ));
   assert.equal(map.mode, "document");
   const first = map.root();
   const second = map.root();
@@ -277,7 +282,7 @@ check("unquidded construction and every detached read preserve identity absence"
 
 check("duplicate and malformed persisted document QUIDs are rejected", () => {
   assert.throws(
-    () => hson.liveMap.fromHson(`<div @000000006/> <span @000000006/>`),
+    () => hson.liveMap.fromNode(parse_hson_exact_runtime(`<div @000000006/> <span @000000006/>`, { allowTopLevelDocumentText: true })),
     /duplicate quid "000000006"/,
   );
   assert.throws(
@@ -367,7 +372,7 @@ check("first changed operations advance from zero to one exactly once", () => {
 });
 
 check("document root observation is detached from canonical ownership", () => {
-  const map = hson.liveMap.fromHson(`<main @000000001 "x"/>`);
+  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(`<main @000000001 "x"/>`, { allowTopLevelDocumentText: true }));
   assert.equal(map.mode, "document");
   const beforeRev = map.rev;
   const detached = map.root();

@@ -17,6 +17,7 @@ import { install_locus_libraries_snapshot } from "../src/api/locus/index.ts";
 import { set_document_ssr_hook_for_tests } from "../src/api/ssr/ssr.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { INTERACTION_RESERVED_LIBRARY_KEY } from "../src/internal/interaction-storage.ts";
+import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number">>`;
@@ -36,7 +37,7 @@ function check(name: string, run: () => void): void {
 function map_fixture(multiple = false) {
   return hsonLiveMap.fromLibraries({
     state: { data: { count: 0 }, schema: StateSchema },
-    page: { document: `<main title="zero" <item @${QUID}/>/>`, schema: PageSchema },
+    page: { document: parse_hson_exact_runtime(`<main title="zero" <item @${QUID}/>/>`, { allowTopLevelDocumentText: true }), schema: PageSchema },
     ...(multiple ? { admin: { document: "<aside/>", schema: AdminSchema } } : {}),
   });
 }
@@ -138,7 +139,7 @@ check("retired QUID history survives SSR/install without entering HTML", () => {
   assert.equal(ssr.html.includes(QUID), false);
   const installed = install_libraries_snapshot(ssr.bootstrap).map;
   assert.equal(installed.capture().identity.issuedQuids.includes(QUID), true);
-  const source = hsonLiveMap.fromHson(`<item @${QUID}/>`);
+  const source = hsonLiveMap.fromNode(parse_hson_exact_runtime(`<item @${QUID}/>`));
   if (source.mode !== "document") throw new Error("Expected document source.");
   const item = source.root().$_content[0];
   assert.throws(() => document(installed, "page").at([]).asElement()!.insert(0, item as never), /QUID|identity|issued|reuse/i);

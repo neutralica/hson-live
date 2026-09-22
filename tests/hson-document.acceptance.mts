@@ -80,9 +80,9 @@ check("document Hson constructs empty, one, many, text, quoted-empty, and mixed 
   }
 });
 
-check("attrs, structured style, metadata, and active QUID state retain exact closure", () => {
+check("attrs and structured style retain portable document closure", () => {
   const document = Hson.document.fromHson(
-    Hson.canonical`<main @000000001 class="shell" hidden style="color: red; margin-top: 2" <span @000000002 "ready"/>/>`,
+    Hson.canonical`<main class="shell" hidden style="color: red; margin-top: 2" <span "ready"/>/>`,
   );
   const first = Hson.document.toNode(document).$_content[0];
   assert.ok(typeof first === "object" && first !== null);
@@ -91,9 +91,8 @@ check("attrs, structured style, metadata, and active QUID state retain exact clo
     hidden: "hidden",
     style: { color: "red", marginTop: "2" },
   });
-  assert.deepEqual(first.$_meta, { quid: "000000001" });
-  assert.match(document, /<main @000000001/);
-  assert.match(document, /<span @000000002/);
+  assert.equal(first.$_meta?.quid, undefined);
+  assert.doesNotMatch(document, /@000000001|@000000002/);
   assert.equal(Hson.document.fromHson(document), document);
 });
 
@@ -262,8 +261,7 @@ check("equality uses exact canonical graph distinctions", () => {
   assert.notEqual(Hson.document.fromHson(canonical("")), Hson.document`""`);
   assert.notEqual(Hson.document.fromNode(root(str("a"), str("b"))), Hson.document.fromNode(root(str("ab"))));
   assert.notEqual(Hson.document`<box/>`, Hson.document`<box ""/>`);
-  assert.notEqual(Hson.document`<main @000000001/>`, Hson.document`<main/>`);
-  assert.notEqual(Hson.document`<main @000000001/>`, Hson.document`<main @000000002/>`);
+  assert.throws(() => Hson.document`<main @000000001/>`, /runtime QUID metadata is invalid/);
 });
 
 check("every accepted fixture has total exact readable serialization closure", () => {
@@ -274,7 +272,7 @@ check("every accepted fixture has total exact readable serialization closure", (
     Hson.document.fromHson(Hson.canonical`"text"`),
     Hson.document.fromHson(Hson.canonical`""`),
     Hson.document`"a"<b/>"c"`,
-    Hson.document.fromHson(Hson.canonical`<main @000000001 id="x" style="color: red"/>`),
+    Hson.document.fromHson(Hson.canonical`<main id="x" style="color: red"/>`),
     Hson.document.fromNode(root(str("a"), str("b"))),
   ];
   for (const document of fixtures) {

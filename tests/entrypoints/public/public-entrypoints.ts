@@ -952,8 +952,8 @@ const repeatedNormalizedHson: HsonCanonical = hson.fromHson(normalizedHson).toHs
 const readableHson: HsonCanonical = transformSubpath.fromNode(node).toHson().serialize();
 const compactHson: HsonCanonical =
   transformSubpath.fromNode(node).toHson().noBreak().serialize();
-const noQuidHson: HsonCanonical =
-  transformSubpath.fromNode(node).toHson().noQuid().serialize();
+const portableHson: HsonCanonical =
+  transformSubpath.fromNode(node).toHson().serialize();
 const ordinaryText: string = hsonText;
 const inferredNamespaceNumber = hson.transform.calc(arbitraryNumber);
 const inferredNamedNumber = hsonCalc(arbitraryNumber);
@@ -1049,7 +1049,7 @@ type CalcCallbackIsFriendly = Expect<
 
 void readableHson;
 void compactHson;
-void noQuidHson;
+void portableHson;
 void ordinaryText;
 void ordinaryNumber;
 void transformAdmittedNumber;

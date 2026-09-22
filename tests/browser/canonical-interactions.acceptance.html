@@ -17,9 +17,11 @@
     const QUID = "000008398";
     const PageSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "button" content "empty">]>>`;
     const StateSchema = Hson.schema`<type "data" content <count "number">>`;
+    const page = hsonLiveMap.fromHson("<main <button/>/>").root();
+    page.$_content[0].$_content[0].$_content[0].$_meta = { quid: QUID };
     const map = hsonLiveMap.fromLibraries({
       state: { data: { count: 0 }, schema: StateSchema },
-      page: { document: `<main <button @${QUID}/>/>`, schema: PageSchema },
+      page: { document: page, schema: PageSchema },
     });
     enable_interactions(map);
     const listener = (event, target, overrides = {}) => ({

@@ -1,3 +1,4 @@
+import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
@@ -36,13 +37,13 @@ function check(name: string, fn: () => void): void {
 }
 
 function element(source: string): DocumentLiveMap {
-  const map = hson.liveMap.fromHson(source);
+  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error(`Expected element, observed ${map.mode}`);
   return map;
 }
 
 function multiNodeDocument(source: string): DocumentLiveMap {
-  const map = hson.liveMap.fromHson(source);
+  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error(`Expected multiNodeDocument, observed ${map.mode}`);
   return map;
 }
@@ -246,9 +247,10 @@ check("install and recapture preserve completely unquidded document graphs", () 
 });
 
 check("installed ownership and graph commit payload are recursively detached", () => {
-  const sourceNode = hson.fromHson(
+  const sourceNode = parse_hson_exact_runtime(
     `<main id="original" data-user="meta" @000000001 <p @000000002 "x"/>/>`,
-  ).toNode();
+    { allowTopLevelDocumentText: true },
+  );
   const main = nodes(sourceNode).find((node) => node.$_tag === "main");
   if (main !== undefined) main.$_attrs = { ...main.$_attrs, style: { color: "red" } };
   const source = hson.liveMap.fromNode(sourceNode);

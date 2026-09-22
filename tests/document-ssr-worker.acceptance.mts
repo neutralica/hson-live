@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { hsonLiveMap } from "../src/api/livemap/index.ts";
 import { encode_ssr_bootstrap, render_document } from "../src/api/ssr/index.ts";
 import { repository_typescript_worker } from "./helpers/repository-typescript-worker.mts";
+import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 
-const map = hsonLiveMap.fromHson(`<main <p @000005301 "a" "" "worker"/>/>`);
+const map = hsonLiveMap.fromNode(parse_hson_exact_runtime(`<main <p @000005301 "a" "" "worker"/>/>`, { allowTopLevelDocumentText: true }));
 if (map.mode !== "document") throw new Error("Node SSR fixture requires a document map.");
 const node = render_document({ map });
 const largeBootstrap = Object.freeze({

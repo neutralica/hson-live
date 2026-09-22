@@ -85,15 +85,14 @@ export function construct_hson_options_3(
 
   return {
     withOptions(opts: TransformFrameOptions): HsonOptionFinalizer {
+      if (Object.hasOwn(opts, "noQuid")) {
+        throw new TypeError("noQuid is retired; ordinary portable Hson always omits generated QUIDs");
+      }
       return finalize(with_frame_options(render, opts));
     },
 
     noBreak(): HsonOptionFinalizer {
       return finalize(with_frame_options(render, { noBreak: true }));
-    },
-
-    noQuid(): HsonOptionFinalizer {
-      return finalize(with_frame_options(render, { noQuid: true }));
     },
 
     ...construct_hson_render_4(render),

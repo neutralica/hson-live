@@ -151,10 +151,9 @@ Metadata is structural support, not semantic JSON/HTML content. QUID identity
 is stored as `$_meta["quid"]`; array index metadata uses
 `$_meta["index"]`.
 
-Authored Hson persists QUIDs only on element nodes. Object-member QUIDs and any
+Ordinary authored Hson rejects generated QUID declarations. Object-member QUIDs and any
 other object-member metadata are outside the Hson serialization domain and
-reject rather than being silently omitted; `noQuid` does not legalize such an
-object graph. For element output, `noQuid` filters only persisted `quid`.
+reject rather than being silently omitted. Portable element output omits generated `quid`.
 Array indexes are implicit in textual item order and rebuilt during parsing.
 
 ---
@@ -181,14 +180,14 @@ and handle continuity. Supplied identity is preserved; absent identity is
 assigned lazily where live behavior needs it.
 QUIDs are not a universal transform round-trip guarantee:
 
-- valid supplied root and descendant QUIDs are preserved in cold canonical
+- valid QUIDs already present on a local graph are preserved in cold canonical
   graphs after syntax, eligibility, and placement validation;
 - duplicate valid values may remain cold, while active LiveTree admission
   claims identity and enforces uniqueness atomically;
 - detach, movement, and reattachment preserve QUID identity;
 - cloned LiveTree branches receive fresh QUIDs;
 - terminal destruction releases active QUID ownership;
-- Hson `.noQuid()` filters output only and does not mutate graph identity or
+- ordinary Hson output omits generated QUID metadata without mutating graph identity or
   runtime ownership; and
 - transform/canonicalization operations may rebuild or normalize graphs.
 

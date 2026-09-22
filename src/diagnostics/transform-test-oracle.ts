@@ -47,7 +47,7 @@ export type TransformOracleWitness = Readonly<{
   ingress?: string;
   source?: string;
   graphFixture?: unknown;
-  serializeOptions?: Readonly<{ noBreak?: boolean; noQuid?: boolean }>;
+  serializeOptions?: Readonly<{ noBreak?: boolean }>;
   expectedClassification: TransformOracleExpectedClassification;
   actualClassification: TransformOracleClassification;
   stage?: TransformOracleStage | string;
@@ -120,11 +120,10 @@ function clone_value<T>(value: T, seen = new WeakMap<object, unknown>()): T {
   return output as T;
 }
 
-function projected_options(options: HsonSerializeInputOptions | undefined): Readonly<{ noBreak?: boolean; noQuid?: boolean }> | undefined {
+function projected_options(options: HsonSerializeInputOptions | undefined): Readonly<{ noBreak?: boolean }> | undefined {
   if (options === undefined) return undefined;
   return Object.freeze({
     ...(options.noBreak === undefined ? {} : { noBreak: options.noBreak }),
-    ...(options.noQuid === undefined ? {} : { noQuid: options.noQuid }),
   });
 }
 
@@ -217,7 +216,6 @@ export function assert_canonical_oracle_graph_equal(input: Readonly<{
 function fluent_serialize(node: HsonNode, options: HsonSerializeInputOptions): string {
   let builder = hsonTransform.fromNode(node).toHson();
   if (options.noBreak === true) builder = builder.noBreak();
-  if (options.noQuid === true) builder = builder.noQuid();
   return builder.serialize();
 }
 

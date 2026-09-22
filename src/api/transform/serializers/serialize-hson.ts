@@ -31,12 +31,11 @@ type HsonLayout = "readable" | "compact";
 
 export type HsonSerializeInputOptions = Readonly<{
   noBreak?: boolean;
-  noQuid?: boolean;
 }>;
 
 type HsonSerializeOptions = Readonly<{
   layout: HsonLayout;
-  noQuid: boolean;
+  exactRuntimeIdentity: boolean;
   ownedDocumentText: boolean;
 }>;
 
@@ -83,7 +82,7 @@ function escape_hson_quoted_attr_value(value: string): string {
 function effectiveMeta(
   nodeTag: string,
   meta: Readonly<HsonMeta> | undefined,
-  noQuid: boolean,
+  exactRuntimeIdentity: boolean,
 ): Readonly<Record<string, string>> | undefined {
   if (!meta) return undefined;
 
@@ -105,7 +104,7 @@ function effectiveMeta(
       );
     }
 
-    if (noQuid && key === HSON_META_QUID) continue;
+    if (!exactRuntimeIdentity && key === HSON_META_QUID) continue;
     if (policy.definition.hsonProjection === "quid-sigil") {
       out[key] = value;
     }
@@ -219,7 +218,7 @@ function emitArray(node: HsonNode, depth: number, ctx: SerializeContext): string
   if (node.$_attrs && Object.keys(node.$_attrs).length !== 0) {
     _throw_transform_err("serialize-hson: _hson_arr may not carry $_attrs", "serialize_hson.emitArray");
   }
-  const meta = effectiveMeta(node.$_tag, node.$_meta, ctx.options.noQuid);
+  const meta = effectiveMeta(node.$_tag, node.$_meta, ctx.options.exactRuntimeIdentity);
   const quid = meta?.[HSON_META_QUID];
   const header = quid === undefined ? "«" : `«@${quid}`;
   const wrappers = node.$_content;
@@ -312,7 +311,7 @@ function emitObject(node: HsonNode, depth: number, ctx: SerializeContext): strin
       "serialize_hson.emitObject",
     );
   }
-  const meta = effectiveMeta(node.$_tag, node.$_meta, ctx.options.noQuid);
+  const meta = effectiveMeta(node.$_tag, node.$_meta, ctx.options.exactRuntimeIdentity);
   const quid = meta?.[HSON_META_QUID];
   const header = quid === undefined ? "<" : `<@${quid}`;
   if (node.$_content.length === 0) return `${pad}${header}>`;
@@ -444,7 +443,7 @@ function emitStandardNode(
 ): string {
   const pad = indent(ctx, depth);
   const tag = serialize_hson_tag_name(node.$_tag);
-  const meta = effectiveMeta(node.$_tag, node.$_meta, ctx.options.noQuid);
+  const meta = effectiveMeta(node.$_tag, node.$_meta, ctx.options.exactRuntimeIdentity);
   const quid = meta?.[HSON_META_QUID];
   if (quid !== undefined && !is_persisted_quid(quid)) {
     _throw_transform_err(`serialize-hson: invalid quid`, "serialize_hson");
@@ -514,7 +513,11 @@ function serialize_hson_with_ownership(
   root: HsonNode,
   inputOptions: HsonSerializeInputOptions = {},
   ownedDocumentText = false,
+  exactRuntimeIdentity = false,
 ): HsonCanonical {
+  if (Object.hasOwn(inputOptions, "noQuid")) {
+    _throw_transform_err("noQuid is retired; ordinary portable Hson always omits generated QUIDs", "serialize_hson");
+  }
   assert_invariants(root, "serialize_hson");
   if (!is_Node(root)) {
     _throw_transform_err(
@@ -555,7 +558,7 @@ function serialize_hson_with_ownership(
   const ctx: SerializeContext = {
     options: {
       layout: inputOptions.noBreak ? "compact" : "readable",
-      noQuid: inputOptions.noQuid ?? false,
+      exactRuntimeIdentity,
       ownedDocumentText,
     },
     guard: cycleGuard(),
@@ -602,4 +605,30 @@ export function serialize_hson_owned_document_content(
     }).join(separator) as HsonCanonical;
   }
   return serialize_hson_with_ownership(root, inputOptions, true);
+}
+
+/** @internal Temporary exact-runtime Hson codec for hosted recovery. */
+export function serialize_hson_exact_runtime(
+  root: HsonNode,
+  inputOptions: HsonSerializeInputOptions = {},
+): HsonCanonical {
+  return serialize_hson_with_ownership(root, inputOptions, false, true);
+}
+
+/** @internal Temporary exact-runtime document codec for hosted recovery. */
+export function serialize_hson_owned_document_content_exact_runtime(
+  root: HsonNode,
+  inputOptions: HsonSerializeInputOptions = {},
+): HsonCanonical {
+  if (root.$_tag === ROOT_TAG) {
+    assert_invariants(root, "serialize_hson_owned_document_content_exact_runtime");
+    const separator = inputOptions.noBreak ? " " : "\n";
+    return root.$_content.map((item) => {
+      if (!is_Node(item)) {
+        _throw_transform_err("document root content must be canonical Hson nodes", "serialize_hson_owned_document_content_exact_runtime");
+      }
+      return serialize_hson_with_ownership(item, inputOptions, true, true);
+    }).join(separator) as HsonCanonical;
+  }
+  return serialize_hson_with_ownership(root, inputOptions, true, true);
 }

@@ -10,6 +10,7 @@ import { projected_value_from_hson_node } from "../src/core/projected-value-grap
 import { materialize_projected_value } from "../src/core/projected-value-materialization.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import { install_fake_document } from "./helpers/fake-document.mts";
+import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 
 install_fake_document();
 
@@ -48,7 +49,7 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
 
 {
   const map = hsonLiveMap.fromLibraries({
-    page: { document: "<main <button @000007101/> <button @000007102/>/>", schema: ButtonSchema },
+    page: { document: parse_hson_exact_runtime("<main <button @000007101/> <button @000007102/>/>", { allowTopLevelDocumentText: true }), schema: ButtonSchema },
   });
   enable_interactions(map);
   add_interaction(map, descriptor("a", [0, 0, 1]));
@@ -93,7 +94,7 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
 
 {
   const map = hsonLiveMap.fromLibraries({
-    page: { document: "<main <button @000007201/>/>", schema: ButtonSchema },
+    page: { document: parse_hson_exact_runtime("<main <button @000007201/>/>", { allowTopLevelDocumentText: true }), schema: ButtonSchema },
   });
   enable_interactions(map);
   const authority = internal_livemap_aggregate_authority(map);
@@ -123,7 +124,7 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
 
 {
   const authorityMap = hsonLiveMap.fromLibraries({
-    page: { document: "<main <button @000007401/> <button @000007402/>/>", schema: ButtonSchema },
+    page: { document: parse_hson_exact_runtime("<main <button @000007401/> <button @000007402/>/>", { allowTopLevelDocumentText: true }), schema: ButtonSchema },
   });
   enable_interactions(authorityMap);
   add_interaction(authorityMap, descriptor("recovered", [0, 0, 1]));
@@ -147,7 +148,7 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
 
 {
   const map = hsonLiveMap.fromLibraries({
-    page: { document: "<main <button @000007501/>/>", schema: ButtonSchema },
+    page: { document: parse_hson_exact_runtime("<main <button @000007501/>/>", { allowTopLevelDocumentText: true }), schema: ButtonSchema },
   });
   enable_interactions(map);
   add_interaction(map, descriptor("unresolved", [0, 0, 1]));
@@ -174,7 +175,7 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
 
 {
   const map = hsonLiveMap.fromLibraries({
-    page: { document: "<main <section <button @000007301/>/> <section <button @000007302/>/>/>", schema: NestedSchema },
+    page: { document: parse_hson_exact_runtime("<main <section <button @000007301/>/> <section <button @000007302/>/>/>", { allowTopLevelDocumentText: true }), schema: NestedSchema },
   });
   enable_interactions(map);
   add_interaction(map, descriptor("descendant", [0, 0, 1, 0, 0]));

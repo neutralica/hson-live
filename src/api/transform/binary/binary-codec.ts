@@ -7,6 +7,7 @@ import {
   ROOT_TAG,
   STR_TAG,
   VAL_TAG,
+  HSON_META_QUID,
 } from "../../../core/constants.js";
 import { is_typed_css_value } from "../../../core/inline-style.js";
 import { normalize_empty_hson_metadata } from "../../../core/normalize-hson-graph.js";
@@ -154,7 +155,7 @@ function write_style_record(writer: BinaryWriter, value: unknown): void {
   });
 }
 
-function write_fields(writer: BinaryWriter, node: HsonNode): void {
+function write_fields(writer: BinaryWriter, node: HsonNode, exactRuntimeIdentity: boolean): void {
   if (Object.hasOwn(node, "$_attrs")) {
     writer.byte(PRESENT);
     const attrs = node.$_attrs;
@@ -167,11 +168,14 @@ function write_fields(writer: BinaryWriter, node: HsonNode): void {
     writer.byte(ABSENT);
   }
 
-  if (Object.hasOwn(node, "$_meta")) {
+  const meta = node.$_meta;
+  const emittedMeta = meta === undefined || exactRuntimeIdentity
+    ? meta
+    : Object.fromEntries(Object.entries(meta).filter(([key]) => key !== HSON_META_QUID));
+  if (emittedMeta !== undefined && (exactRuntimeIdentity || Object.keys(emittedMeta).length > 0)) {
     writer.byte(PRESENT);
-    const meta = node.$_meta;
-    if (!is_plain_record(meta)) fail("present metadata must be a plain record");
-    write_sorted_record(writer, meta, (value) => {
+    if (!is_plain_record(emittedMeta)) fail("present metadata must be a plain record");
+    write_sorted_record(writer, emittedMeta, (value) => {
       if (typeof value !== "string") fail("metadata values must be strings");
       writer.string(value);
     });
@@ -180,21 +184,21 @@ function write_fields(writer: BinaryWriter, node: HsonNode): void {
   }
 }
 
-function write_content(writer: BinaryWriter, content: HsonNode["$_content"]): void {
+function write_content(writer: BinaryWriter, content: HsonNode["$_content"], exactRuntimeIdentity: boolean): void {
   writer.u32(content.length);
   for (const child of content) {
     if (typeof child !== "object" || child === null) fail("primitive outside a leaf node");
-    write_node(writer, child);
+    write_node(writer, child, exactRuntimeIdentity);
   }
 }
 
-function write_node(writer: BinaryWriter, node: HsonNode): void {
+function write_node(writer: BinaryWriter, node: HsonNode, exactRuntimeIdentity: boolean): void {
   switch (node.$_tag) {
     case ROOT_TAG:
       fail("_hson_root is not a detached Binary Hson value");
     case STR_TAG:
       writer.byte(STR);
-      write_fields(writer, node);
+      write_fields(writer, node, exactRuntimeIdentity);
       if (node.$_content.length !== 1 || typeof node.$_content[0] !== "string") {
         fail("invalid _hson_str payload");
       }
@@ -202,7 +206,7 @@ function write_node(writer: BinaryWriter, node: HsonNode): void {
       return;
     case VAL_TAG:
       writer.byte(VAL);
-      write_fields(writer, node);
+      write_fields(writer, node, exactRuntimeIdentity);
       if (node.$_content.length !== 1) fail("invalid _hson_val payload");
       write_primitive(writer, node.$_content[0], false);
       return;
@@ -222,21 +226,21 @@ function write_node(writer: BinaryWriter, node: HsonNode): void {
       writer.byte(ORDINARY);
       writer.string(node.$_tag);
   }
-  write_fields(writer, node);
-  write_content(writer, node.$_content);
+  write_fields(writer, node, exactRuntimeIdentity);
+  write_content(writer, node.$_content, exactRuntimeIdentity);
 }
 
-function serialize_binary_representation(node: HsonNode): Uint8Array {
+function serialize_binary_representation(node: HsonNode, exactRuntimeIdentity: boolean): Uint8Array {
   if (node.$_tag === ROOT_TAG) fail("_hson_root is not a detached Binary Hson value");
   const writer = new BinaryWriter();
   for (const byte of MARKER) writer.byte(byte);
-  write_node(writer, node);
+  write_node(writer, node, exactRuntimeIdentity);
   return writer.finish();
 }
 
 export function serialize_binary(node: HsonNode): Uint8Array {
   assert_invariants(node, "toBinary");
-  return serialize_binary_representation(node);
+  return serialize_binary_representation(node, false);
 }
 
 type Limits = Readonly<{
@@ -468,7 +472,7 @@ export function parse_binary(input: Uint8Array, options: BinaryDecodeOptions = {
   }
   const decoded = reader.node(0);
   if (!reader.at_end()) fail("trailing bytes");
-  const canonical = serialize_binary_representation(decoded);
+  const canonical = serialize_binary_representation(decoded, true);
   if (!same_bytes(canonical, input)) fail("accepted bytes are not canonically spelled");
   const node = normalize_empty_hson_metadata(decoded);
   assert_invariants(node, "fromBinary");

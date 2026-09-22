@@ -1,12 +1,13 @@
 import { parentPort } from "node:worker_threads";
 import { Hson, decode_ssr_bootstrap, encode_ssr_bootstrap, hsonLiveMap, render_document, type HsonSchema } from "../../src/index.ts";
 import { install_libraries_snapshot } from "../../src/api/livemap/index.ts";
+import { parse_hson_exact_runtime } from "../../src/internal/exact-runtime-hson-codec.ts";
 
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number">>`;
 const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "p" content "string">]>>`;
 const map = hsonLiveMap.fromLibraries({
   state: { data: { count: 4 }, schema: StateSchema },
-  page: { document: '<main <p @000009711 "worker"/>/>', schema: PageSchema },
+  page: { document: parse_hson_exact_runtime('<main <p @000009711 "worker"/>/>', { allowTopLevelDocumentText: true }), schema: PageSchema },
 });
 const result = render_document({ map });
 const cut = map.cut();

@@ -1,3 +1,4 @@
+import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
@@ -90,7 +91,7 @@ function assertCleanProjection(root: StyleNode, authoredAttrs: readonly string[]
 }
 
 function elementMap(source: string): DocumentLiveMap {
-  const map = hson.liveMap.fromHson(source);
+  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error("Expected an element LiveMap.");
   return map;
 }
@@ -830,9 +831,9 @@ check("borrowed tree destruction stops its bridge and later binding disposal is 
 });
 
 check("ordinary public LiveTree calls retain one compatibility runtime", () => {
-  const first = hson.liveTree.fromHson(`<main @000000rt2/>`);
+  const first = hson.liveTree.fromNode(parse_hson_exact_runtime(`<main @000000rt2/>`));
   assert.throws(
-    () => hson.liveTree.fromHson(`<aside @000000rt2/>`),
+    () => hson.liveTree.fromNode(parse_hson_exact_runtime(`<aside @000000rt2/>`)),
     /Duplicate QUID/,
   );
   first.remove();

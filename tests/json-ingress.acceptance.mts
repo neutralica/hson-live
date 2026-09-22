@@ -174,8 +174,8 @@ check("JSON text and value reject every populated root metadata class", () => {
       assert.throws(
         () => parse_json(input as JsonValue),
         (cause) => cause instanceof Error
-          && cause.message.includes("_hson_root")
-          && cause.message.includes("meta"),
+          && ("code" in cause && cause.code === "PORTABLE_RUNTIME_QUID_FORBIDDEN"
+            || cause.message.includes("_hson_root") && cause.message.includes("meta")),
       );
     }
   }
@@ -200,7 +200,7 @@ check("raw-node and JSON ingress both reject root metadata", () => {
     $_content: [{ $_tag: "_hson_elem", $_content: [{ $_tag: "div", $_content: [] }] }],
   };
   assert.throws(() => hson.fromNode(raw).toNode(), /_hson_root.*quid|quid.*_hson_root/i);
-  assert.throws(() => parse_json(explicit_root({ quid: QUID })), /_hson_root.*quid|quid.*_hson_root/i);
+  assert.throws(() => parse_json(explicit_root({ quid: QUID })), /runtime QUID metadata is invalid/);
 
   const malformedRaw = {
     $_tag: "_hson_root",
@@ -223,7 +223,6 @@ check("structured style normalizes only after a detached copy", () => {
           opacity: 0.5,
         },
       },
-      $_meta: { quid: QUID },
     }],
   } as unknown as JsonValue;
   const before = structuredClone(input);
@@ -240,7 +239,7 @@ check("structured style normalizes only after a detached copy", () => {
       opacity: "0.5",
     },
   });
-  assert.deepEqual(div.$_meta, { quid: QUID });
+  assert.equal(div.$_meta?.quid, undefined);
 });
 
 check("nested element styles and ordinary attrs do not mutate caller input", () => {
@@ -383,7 +382,6 @@ check("JSON text and parsed values produce canonically equal graphs", () => {
       _hson_elem: [{
         div: "",
         $_attrs: { "data-user": "x", style: { backgroundColor: " red " } },
-        $_meta: { quid: QUID },
       }],
     } as unknown as JsonValue,
   ];

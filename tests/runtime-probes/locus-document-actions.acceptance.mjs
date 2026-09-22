@@ -1,3 +1,4 @@
+import { parse_hson_exact_runtime } from "../../src/internal/exact-runtime-hson-codec.ts";
 import { create_test_event_emitter } from "../test-events.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../../src/index.ts";
@@ -48,13 +49,13 @@ function socket_pair() {
 }
 
 function element(source) {
-  const map = hson.liveMap.fromHson(source);
+  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error(`Expected document, observed ${map.mode}`);
   return map;
 }
 
 function multiNodeDocument(source) {
-  const map = hson.liveMap.fromHson(source);
+  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error(`Expected document, observed ${map.mode}`);
   return map;
 }

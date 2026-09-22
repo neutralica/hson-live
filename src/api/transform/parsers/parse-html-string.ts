@@ -119,6 +119,15 @@ function attributes_from_element(
     if (lower === "xmlns" || lower.startsWith("xmlns:") || lower.startsWith("xml:")) continue;
 
     if (hson_metadata_candidate_key(lower) !== undefined) {
+      if (lower === "hson:quid") {
+        _throw_transform_err(
+          "generated runtime QUID metadata is invalid in portable Transform input",
+          "parse-html-string",
+          undefined,
+          undefined,
+          { code: "PORTABLE_RUNTIME_QUID_FORBIDDEN", stage: "source-admission" },
+        );
+      }
       const admission = admit_hson_metadata_markup(nodeTag, lower, value);
       if (!admission.valid) {
         _throw_transform_err(admission.reason, "parse-html-string");
@@ -412,6 +421,15 @@ function standalone_svg_node(element: Element): HsonNode {
       );
     }
     if (hson_metadata_candidate_key(lower) !== undefined) {
+      if (lower === "hson:quid") {
+        _throw_transform_err(
+          "generated runtime QUID metadata is invalid in portable Transform input",
+          "parse-html-string",
+          undefined,
+          undefined,
+          { code: "PORTABLE_RUNTIME_QUID_FORBIDDEN", stage: "source-admission" },
+        );
+      }
       const admission = admit_hson_metadata_markup(element.name, lower, value);
       if (!admission.valid) {
         _throw_transform_err(admission.reason, "parse-html-string");

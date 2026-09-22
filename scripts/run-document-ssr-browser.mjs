@@ -6,6 +6,7 @@ import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { WebSocketServer } from "ws";
 import { Hson, add_interaction, enable_interactions, encode_ssr_bootstrap, hson, hsonLocus, render_document, render_hosted_document } from "../dist/index.js";
+import { parse_hson_exact_runtime } from "../dist/internal/exact-runtime-hson-codec.js";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
 const temporaryRoot = join(repositoryRoot, "tmp");
@@ -49,7 +50,7 @@ try {
   ], { encoding: "utf8" });
   if (bundle.status !== 0) throw new Error(bundle.stderr || "Document SSR browser bundle failed.");
 
-  const localMap = hson.liveMap.fromHson(`<main id="local-ssr" <p @000005201 "a" "" "b"/>/>`);
+  const localMap = hson.liveMap.fromNode(parse_hson_exact_runtime(`<main id="local-ssr" <p @000005201 "a" "" "b"/>/>`, { allowTopLevelDocumentText: true }));
   if (localMap.mode !== "document") throw new Error("Local SSR fixture requires a document map.");
   localMap.document.attrs.set({ kind: "path", path: [0] }, "data-revision", "N");
   const local = render_document({ map: localMap });
@@ -68,7 +69,7 @@ try {
   const LocalLibrariesPageSchema = Hson.schema`<type "document" tag "main" attrs <props <id "string">> content <sequence [<tag "button" content "empty">]>>`;
   const localLibrariesMap = hson.liveMap.fromLibraries({
     state: { data: { count: 7 }, schema: LocalLibrariesStateSchema },
-    page: { document: '<main id="local-libraries-ssr" <button @000005204/>/>', schema: LocalLibrariesPageSchema },
+    page: { document: parse_hson_exact_runtime('<main id="local-libraries-ssr" <button @000005204/>/>', { allowTopLevelDocumentText: true }), schema: LocalLibrariesPageSchema },
   });
   const localLibraries = render_document({ map: localLibrariesMap });
 
@@ -95,7 +96,7 @@ try {
   const AdminSchema = Hson.schema`<type "document" tag "aside" attrs <props <data-recovered <optional "string">>> content "empty">`;
   const librariesMap = hson.liveMap.fromLibraries({
     state: { data: { count: 0 }, schema: StateSchema },
-    page: { document: '<main id="libraries-ssr" <button @000005203/>/>', schema: PageSchema },
+    page: { document: parse_hson_exact_runtime('<main id="libraries-ssr" <button @000005203/>/>', { allowTopLevelDocumentText: true }), schema: PageSchema },
     admin: { document: "<aside/>", schema: AdminSchema },
   });
   enable_interactions(librariesMap);

@@ -8,6 +8,7 @@ import { encode_view_state_snapshot } from "../../src/api/livemap/livemap.docume
 import { ViewStateSnapshotCodecError } from "../../src/api/livemap/livemap.document.view-state-codec.error.ts";
 import { LocusDocumentSnapshotEncodeError } from "../../src/api/locus/locus.document-snapshot.ts";
 import { internal_livemap_root } from "../../src/api/livemap/livemap.internal.ts";
+import { parse_hson_exact_runtime } from "../../src/internal/exact-runtime-hson-codec.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "locus.document-recovery",
@@ -71,13 +72,13 @@ function socket_pair() {
 }
 
 function element(source) {
-  const map = hson.liveMap.fromHson(source);
+  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error(`Expected element, observed ${map.mode}`);
   return map;
 }
 
 function multiNodeDocument(source) {
-  const map = hson.liveMap.fromHson(source);
+  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error(`Expected multiNodeDocument, observed ${map.mode}`);
   return map;
 }
@@ -414,7 +415,7 @@ await check("an old client without capabilities receives the established Hson sn
   assert.equal("format" in snapshot, false);
   assert.equal("formatVersion" in snapshot, false);
   assert.equal("payload" in snapshot, false);
-  const recovered = hson.liveMap.fromHson(snapshot.hson);
+  const recovered = hson.liveMap.fromNode(parse_hson_exact_runtime(snapshot.hson, { allowTopLevelDocumentText: true }));
   assert.equal(canonical_hson_graph_equal(recovered.capture().root, authority.capture().root), true);
 });
 
@@ -574,7 +575,7 @@ await check("snapshot negotiation is isolated across simultaneous connections an
   assert.deepEqual(modernPlan.snapshotEncoding, { format: "view-state" });
   assert.equal(modernSnapshot.format, "view-state");
   assert.equal(canonical_hson_graph_equal(modernConnection.client.map.capture().root, authority.capture().root), true);
-  const oldRecovered = hson.liveMap.fromHson(oldSnapshot.hson);
+  const oldRecovered = hson.liveMap.fromNode(parse_hson_exact_runtime(oldSnapshot.hson, { allowTopLevelDocumentText: true }));
   assert.equal(canonical_hson_graph_equal(oldRecovered.capture().root, authority.capture().root), true);
 
   modernConnection.client.disconnect();

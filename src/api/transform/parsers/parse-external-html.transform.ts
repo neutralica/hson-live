@@ -8,7 +8,7 @@ import {
   decode_hson_metadata_transit,
   encode_hson_metadata_transit,
 } from "../utils/html-preflights/hson-metadata-transit.js";
-import { parse_html } from "./parse-html.js";
+import { parse_html, parse_html_exact_runtime } from "./parse-html.js";
 
 const XML_SHAPED_ARRAY_WRAPPER = /<\/?_hson_(?:arr|ii)(?=[\s/>])/i;
 
@@ -32,6 +32,15 @@ const XML_SHAPED_ARRAY_WRAPPER = /<\/?_hson_(?:arr|ii)(?=[\s/>])/i;
  * @see parse_html
  */
 export function parse_external_html(raw: string): HsonNode {
+  return parse_external_html_internal(raw, false);
+}
+
+/** @internal Local LiveTree realization ingress after the same sanitizer. */
+export function parse_external_html_exact_runtime(raw: string): HsonNode {
+  return parse_external_html_internal(raw, true);
+}
+
+function parse_external_html_internal(raw: string, exactRuntimeIdentity: boolean): HsonNode {
   const sourceAwareHtml = normalize_html_source_attributes(raw);
   const xmlShaped = XML_SHAPED_ARRAY_WRAPPER.test(sourceAwareHtml);
   const sanitizerInput = xmlShaped
@@ -53,5 +62,5 @@ export function parse_external_html(raw: string): HsonNode {
     );
   }
 
-  return parse_html(safeHtml);
+  return exactRuntimeIdentity ? parse_html_exact_runtime(safeHtml) : parse_html(safeHtml);
 }

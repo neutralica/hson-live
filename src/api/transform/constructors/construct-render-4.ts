@@ -66,7 +66,6 @@ export function construct_hson_render_4(
       : context.frame.node;
     return serialize_hson(node, {
       noBreak: context.frame.options?.noBreak ?? false,
-      noQuid: context.frame.options?.noQuid ?? false,
     });
   };
   return {

@@ -87,9 +87,9 @@ class AttributeProjection {
   }
 }
 
-check("Hson egress preserves canonical identity and rejects malformed spelling", () => {
+check("Hson egress omits canonical runtime identity and rejects malformed spelling", () => {
   const valid = element("panel", [], Q1);
-  assert.equal(hson.fromNode(valid).toHson().noBreak().serialize(), `<panel @${Q1}/>`);
+  assert.equal(hson.fromNode(valid).toHson().noBreak().serialize(), `<panel/>`);
   for (const invalid of ["short", "000000000000010I", "000000000000010A"]) {
     const malformed = element("panel", [], invalid);
     assert.throws(
@@ -104,7 +104,7 @@ check("Hson egress rejects QUIDs on every VSN", () => {
   for (const tag of ["_hson_obj", "_hson_arr"] as const) {
     const semantic: HsonNode = { $_tag: tag, $_content: [], $_meta: { [HSON_META_QUID]: Q1 } };
     assert.throws(() => hson.fromNode(semantic).toHson().noBreak().serialize(), /ineligible Hson structural node/);
-    assert.throws(() => hson.fromNode(semantic).toHson().noBreak().noQuid().serialize(), /ineligible Hson structural node/);
+    assert.throws(() => hson.fromNode(semantic).toHson().noBreak().serialize(), /ineligible Hson structural node/);
   }
   const invalid = {
     $_tag: "_hson_elem",
@@ -119,7 +119,7 @@ check("Hson egress rejects QUIDs on every VSN", () => {
   assert.deepEqual(invalid, before);
 });
 
-check("Hson egress rejects object-member QUIDs even with noQuid", () => {
+check("Hson egress rejects object-member QUIDs on portable egress", () => {
   const graph: HsonNode = {
     $_tag: "_hson_obj",
     $_content: [{
@@ -136,20 +136,20 @@ check("Hson egress rejects object-member QUIDs even with noQuid", () => {
     /object member <member> cannot carry metadata or a QUID/,
   );
   assert.throws(
-    () => hson.fromNode(graph).toHson().noQuid().serialize(),
+    () => hson.fromNode(graph).toHson().serialize(),
     /object member <member> cannot carry metadata or a QUID/,
   );
 });
 
-check("cold Hson egress preserves duplicate canonical values without mutation", () => {
+check("cold Hson egress omits duplicate canonical values without mutation", () => {
   const graph = elementContent([element("div", [], Q1), element("span", [], Q1)]);
   const before = structuredClone(graph);
   const wire = hson.fromNode(graph).toHson().noBreak().serialize();
-  assert.equal(occurrences(wire, `@${Q1}`), 2);
+  assert.equal(occurrences(wire, `@${Q1}`), 0);
   assert.deepEqual(graph, before);
 });
 
-check("HTML egress emits protected QUID metadata exactly once", () => {
+check("Transform HTML egress omits protected QUID metadata", () => {
   const graph = element("button", [], Q1);
   graph.$_attrs = {
     id: "save",
@@ -160,9 +160,9 @@ check("HTML egress emits protected QUID metadata exactly once", () => {
   const wire = hson.fromNode(graph).toHtml().serialize();
   assert.equal(
     wire,
-    `<button data-_index="ordinary" data-_quid="application" data-kind="action" hson:quid="${Q1}" id="save"></button>`,
+    `<button data-_index="ordinary" data-_quid="application" data-kind="action" id="save"></button>`,
   );
-  assert.equal(occurrences(wire, "hson:quid="), 1);
+  assert.equal(occurrences(wire, "hson:quid="), 0);
   assert.doesNotMatch(wire, /_hson_meta_attr_v2_/);
 
   const arrayWire = hson.fromJson([{}]).toHtml().serialize();
@@ -187,10 +187,10 @@ check("HTML egress rejects malformed and VSN-hosted identity", () => {
   );
 });
 
-check("cold HTML document sequences serialize duplicate valid identity faithfully", () => {
+check("cold HTML document sequences omit duplicate runtime identity", () => {
   const graph = elementContent([element("div", [], Q1), element("span", [], Q1)]);
   const wire = hson.fromNode(graph).toHtml().serialize();
-  assert.equal(occurrences(wire, `hson:quid="${Q1}"`), 2);
+  assert.equal(occurrences(wire, `hson:quid="${Q1}"`), 0);
 });
 
 check("SVG and XML-like egress preserve namespace and unrelated attributes", () => {
@@ -198,21 +198,21 @@ check("SVG and XML-like egress preserve namespace and unrelated attributes", () 
   svg.$_attrs = { viewBox: "0 0 10 10", "aria-label": "shape" };
   const before = structuredClone(svg);
   const wire = hson.fromNode(svg).toHtml().serialize();
-  assert.match(wire, new RegExp(`^<svg [^>]*hson:quid="${Q1}"`));
+  assert.doesNotMatch(wire, /hson:quid/);
   assert.match(wire, /xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
   assert.match(wire, /viewBox="0 0 10 10"/);
-  assert.match(wire, new RegExp(`<g hson:quid="${Q2}"></g>`));
+  assert.match(wire, /<g><\/g>/);
   assert.deepEqual(svg, before);
 
   const xml = element("catalog", [element("entry", [], Q2)], Q1);
   xml.$_attrs = { "data-kind": "xml" };
   assert.equal(
     hson.fromNode(xml).toHtml().serialize(),
-    `<catalog data-kind="xml" hson:quid="${Q1}"><entry hson:quid="${Q2}"></entry></catalog>`,
+    `<catalog data-kind="xml"><entry></entry></catalog>`,
   );
 });
 
-check("noQuid is output-only and normal serialization remains repeatable", () => {
+check("portable output is identity-free while local ownership remains intact", () => {
   const child = element("span", [], Q2);
   const root = element("main", [child], Q1);
   root.$_attrs = { "data-user": "keep" };
@@ -223,8 +223,8 @@ check("noQuid is output-only and normal serialization remains repeatable", () =>
   const before = structuredClone(root);
   try {
     const normal = hson.fromNode(root).toHson().noBreak().serialize();
-    const filtered = hson.fromNode(root).toHson().noBreak().noQuid().serialize();
-    assert.equal(occurrences(normal, "@"), 2);
+    const filtered = hson.fromNode(root).toHson().noBreak().serialize();
+    assert.equal(occurrences(normal, "@"), 0);
     assert.doesNotMatch(filtered, /@[0-9a-z]{9}/);
     assert.match(filtered, /data-user="keep"/);
     assert.deepEqual(root, before);
@@ -245,7 +245,7 @@ check("serialization never mints an absent descendant identity", () => {
   try {
     assert.equal(read_hson_node_quid(child), undefined);
     hson.fromNode(root).toHson().serialize();
-    hson.fromNode(root).toHson().noQuid().serialize();
+    hson.fromNode(root).toHson().serialize();
     hson.fromNode(root).toHtml().serialize();
     assert.equal(read_hson_node_quid(child), undefined);
   } finally {
@@ -261,11 +261,11 @@ check("LiveTree graph-backed markup validates exactly the emitted scope", () => 
   try {
     assert.equal(
       tree.content.markup.innerHTML,
-      `<em hson:quid="${Q5}"></em>`,
+      `<em></em>`,
     );
     assert.equal(
       tree.content.markup.outerHTML,
-      `<section hson:quid="${Q4}"><em hson:quid="${Q5}"></em></section>`,
+      `<section><em></em></section>`,
     );
     assert.equal(unrelated.$_meta?.[HSON_META_QUID], "not-canonical");
 
@@ -287,10 +287,10 @@ check("document-content shapes remain stable across one-root, multi-root, text a
     element("strong", [{ $_tag: "_hson_str", $_content: ["middle"] }], Q1),
     { $_tag: "_hson_str", $_content: ["after"] },
   ]);
-  assert.equal(hson.fromNode(one).toHtml().serialize(), `<p hson:quid="${Q1}"></p>`);
+  assert.equal(hson.fromNode(one).toHtml().serialize(), `<p></p>`);
   assert.equal(
     hson.fromNode(many).toHtml().serialize(),
-    `<p hson:quid="${Q1}"></p><hr hson:quid="${Q2}"></hr>`,
+    `<p></p><hr></hr>`,
   );
   assert.equal(
     hson.fromNode(text).toHtml().serialize(),
@@ -298,15 +298,14 @@ check("document-content shapes remain stable across one-root, multi-root, text a
   );
   assert.equal(
     hson.fromNode(mixed).toHtml().serialize(),
-    `before<strong hson:quid="${Q1}">middle</strong>after`,
+    `before<strong>middle</strong>after`,
   );
 });
 
-check("JSON projection validates identity after canonical empty-element normalization", () => {
+check("JSON projection omits runtime identity after canonical empty-element normalization", () => {
   const canonical = element("record", [], Q1);
   assert.deepEqual(hson.fromNode(canonical).toJson().value(), {
     record: { _hson_elem: [] },
-    $_meta: { [HSON_META_QUID]: Q1 },
   });
   assert.deepEqual(hson.fromJson({ a: 1, nested: [true, null] }).toJson().value(), {
     a: 1,

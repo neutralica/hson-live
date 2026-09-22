@@ -110,7 +110,12 @@ type ParsedHtmlElementProvenance = Readonly<{
 }>;
 
 export function parse_html(input: string | Element): HsonNode {
-    return parse_html_internal(input);
+    return parse_html_internal(input, undefined, false);
+}
+
+/** @internal Local LiveTree realization ingress; never ordinary Transform. */
+export function parse_html_exact_runtime(input: string | Element): HsonNode {
+    return parse_html_internal(input, undefined, true);
 }
 
 /** Parse one realized Element while retaining exact ordinary-node provenance. @internal */
@@ -120,13 +125,14 @@ export function parse_html_with_element_provenance(
     const elements = new Map<HsonNode, Element>();
     const root = parse_html_internal(input, (node, element) => {
         elements.set(node, element);
-    });
+    }, true);
     return Object.freeze({ root, elements });
 }
 
 function parse_html_internal(
     input: string | Element,
     recordElement?: ElementProvenanceRecorder,
+    exactRuntimeIdentity = false,
 ): HsonNode {
     let inputElement: Element;
     const allowHsonTransit = typeof input === "string";
@@ -300,7 +306,7 @@ function parse_html_internal(
     } else {
         inputElement = input;
     }
-    const actualContentRootNode = convert(inputElement, undefined, allowHsonTransit, recordElement);
+    const actualContentRootNode = convert(inputElement, undefined, allowHsonTransit, recordElement, exactRuntimeIdentity);
     const final = normalize_hson_array_index_order(
         wrap_as_root(actualContentRootNode),
         "parse-html",
@@ -357,6 +363,7 @@ function convert(
     parentTag?: string,
     allowHsonTransit = false,
     recordElement?: ElementProvenanceRecorder,
+    exactRuntimeIdentity = false,
 ): HsonNode {
     const baseTag = el.tagName;
     const tagLower = baseTag.toLowerCase();
@@ -374,6 +381,7 @@ function convert(
         {
             allowHsonTransit,
             allowOrdinaryTransit: allowHsonTransit,
+            exactRuntimeIdentity,
         },
     );
     const finish = (node: HsonNode): HsonNode => {
@@ -428,7 +436,7 @@ function convert(
 
     // Build children (DOM → Hson)
     const childNodes: HsonNode[] = [];
-    const children = elementToNode(el.childNodes, dec, allowHsonTransit, recordElement);
+    const children = elementToNode(el.childNodes, dec, allowHsonTransit, recordElement, exactRuntimeIdentity);
 
     for (const child of children) {
         if (is_Primitive(child)) {
@@ -623,6 +631,7 @@ function elementToNode(
     parentTag: string, // already lowercased
     allowHsonTransit: boolean,
     recordElement?: ElementProvenanceRecorder,
+    exactRuntimeIdentity = false,
 ): (HsonNode | Primitive)[] {
     const contents: (HsonNode | Primitive)[] = [];
     let skipAnnotatedText = false;
@@ -640,7 +649,7 @@ function elementToNode(
         }
         if (item.nodeType === 1) {
             skipAnnotatedText = false;
-            contents.push(convert(item as Element, parentTag, allowHsonTransit, recordElement));
+            contents.push(convert(item as Element, parentTag, allowHsonTransit, recordElement, exactRuntimeIdentity));
             continue;
         }
 

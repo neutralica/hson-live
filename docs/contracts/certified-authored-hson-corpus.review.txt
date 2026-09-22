@@ -3,9 +3,9 @@ CERTIFIED AUTHORED-Hson CORPUS — FULLY MATERIALIZED REVIEW
 SUMMARY
 {
   "counts": {
-    "literalAcceptedAuthoredHson": 51,
+    "literalAcceptedAuthoredHson": 50,
     "transparentAcceptedAuthoredHson": 50,
-    "literalRejectedAuthoredHson": 55,
+    "literalRejectedAuthoredHson": 56,
     "transparentRejectedAuthoredHson": 117,
     "graphOnlyAcceptedTransport": 11,
     "graphOnlyRejectedTransport": 9,
@@ -4558,47 +4558,6 @@ specialized-test reference: —
 declared source reuse: —
 tags: element, nested
 rationale: An Hson element may contain a nested element.
-
-=== hson.accept.literal.element.quid ===
-claim: An element QUID remains supported.
-classification: literal-accepted-authored-hson
-ingress format: hson
-escaped input: "\"<main @000000001/>\""
-verbatim input: —
-semantic shape: element
-slot: element-quid
-variation: quid
-defect: —
-disposition: accept
-hand-authored expected graph:
-{
-  "$_content": [
-    {
-      "$_content": [],
-      "$_meta": {
-        "quid": "000000001"
-      },
-      "$_tag": "main"
-    }
-  ],
-  "$_tag": "_hson_elem"
-}
-exact Hson output: "<main @000000001/>"
-exact JSON output: —
-exact HTML output: —
-exact diagnostic output: —
-expected key sequences: —
-expected string leaves: —
-negative-zero paths: —
-structured rejection: —
-origin: settled-authored-hson-language
-provenance: —
-novelty: —
-human-review priority: —
-specialized-test reference: —
-declared source reuse: —
-tags: element, quid
-rationale: An element QUID remains supported.
 
 === hson.accept.literal.element.text ===
 claim: An Hson element may contain quoted string content.
@@ -11993,6 +11952,49 @@ declared source reuse: —
 tags: element, number, structural-mode
 rationale: Numeric typed content beneath an Hson element rejects.
 
+=== hson.reject.literal.element.runtime-quid ===
+claim: Portable Hson rejects runtime QUID metadata.
+classification: literal-rejected-authored-hson
+ingress format: hson
+escaped input: "\"<main @000000001/>\""
+verbatim input: —
+semantic shape: element
+slot: element-quid
+variation: —
+defect: runtime-quid
+disposition: reject
+hand-authored expected graph: —
+exact Hson output: —
+exact JSON output: —
+exact HTML output: —
+structured rejection:
+{
+  "code": "PORTABLE_RUNTIME_QUID_FORBIDDEN",
+  "operation": "parse_hson",
+  "source": {
+    "column": 7,
+    "index": 6,
+    "line": 1
+  },
+  "stage": "source-admission"
+}
+source evidence:
+{
+  "column": 7,
+  "index": 6,
+  "line": 1
+}
+path evidence: —
+related evidence: —
+origin: settled-authored-hson-language
+provenance: —
+novelty: —
+human-review priority: —
+specialized-test reference: —
+declared source reuse: —
+tags: element, quid
+rationale: Portable Hson rejects runtime QUID metadata.
+
 === hson.reject.literal.empty-attribute-name ===
 claim: An empty decoded attribute name rejects.
 classification: literal-rejected-authored-hson
@@ -16789,7 +16791,7 @@ tags: specialized-test, worker, browser
 rationale: Worker and browser wiring remain specialized ownership.
 
 === reference.serializer-options ===
-claim: Serializer noBreak/noQuid option matrices remain specialized ownership.
+claim: Serializer layout and portable QUID omission remain specialized ownership.
 classification: specialized-test-cross-reference
 ingress format: reference
 escaped input: "[\"tests/hson-serializer.acceptance.mts#option-matrix\"]"
@@ -16812,7 +16814,7 @@ human-review priority: —
 specialized-test reference: —
 declared source reuse: —
 tags: specialized-test, serializer
-rationale: Serializer noBreak/noQuid option matrices remain specialized ownership.
+rationale: Serializer layout and portable QUID omission remain specialized ownership.
 
 === reference.tokenizer-token-arrays ===
 claim: Tokenizer token-array shape remains specialized ownership.
