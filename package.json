@@ -297,6 +297,7 @@
     "test:livehost-node-hosting": "node --import=tsx tests/livehost-node-hosting.acceptance.mts",
     "test:hson-structural-mode": "node --import=tsx tests/hson-structural-mode.acceptance.mts",
     "test:hson-completion-context": "node --import=tsx tests/hson-completion-context.acceptance.mts",
+    "test:hson-editor-introspection": "node --import=tsx tests/hson-editor-introspection.acceptance.mts",
     "test:representation-sha-worker": "node --import=tsx tests/representation-sha-worker.acceptance.mts",
     "test:binary-hson-rejection": "node --import=tsx tests/binary-hson-rejection.acceptance.mts",
     "test:certified-authored-hson-corpus": "node --import=tsx tests/certified-authored-hson-corpus.acceptance.mts",

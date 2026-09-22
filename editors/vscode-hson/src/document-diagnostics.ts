@@ -12,6 +12,7 @@ import {
   type HostSourceRange,
 } from "../../../src/internal/embedded-hson/embedded-hson-source.js";
 import { diagnose_hson_tag, diagnose_hson_prefix } from "./tag-admission.js";
+import { static_interpolation_diagnostics } from "./static-interpolation-diagnostics.js";
 import { discover_static_from_hson_sources } from "../../../src/internal/embedded-hson/discover-static-from-hson-sources.js";
 import {
   map_static_hson_point,
@@ -151,6 +152,7 @@ function validateEmbedded(input: DocumentDiagnosticInput): readonly DocumentDiag
     diagnostics.push(...diagnose_hson_tag(source));
   }
   for (const source of discovery.interpolated) diagnostics.push(...diagnose_hson_prefix(source));
+  diagnostics.push(...static_interpolation_diagnostics(input.fileName, input.text));
   const staticSources = discover_static_from_hson_sources(input.fileName, input.text).sources;
   for (const source of staticSources) {
     try {

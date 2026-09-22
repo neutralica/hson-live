@@ -22,6 +22,8 @@ import { resolve_projected_hson_location } from "../../api/livemap/livemap.edito
 import { ordered_projected_value_equal } from "../../core/ordered-projected-value.js";
 
 export const HSON_SCHEMA_MVP_COMPATIBILITY_VERSION = "hson-schema-mvp-10" as const;
+/** Data-root order is shared by validation and editor introspection. */
+export const HSON_SCHEMA_DATA_ROOT_ORDER = ["type", "defs", "content"] as const;
 
 export type HsonSchemaIssueCode =
   | "INVALID_ROOT"
@@ -194,7 +196,7 @@ export function compile_hson_schema(source: string): HsonSchemaCompilation {
   }
   let semantic: HsonSchemaSemanticNode | undefined;
   if (materialized.type === "data") {
-    const expected = definitionsInput === undefined ? ["type", "content"] : ["type", "defs", "content"];
+    const expected = HSON_SCHEMA_DATA_ROOT_ORDER.filter(member => member !== "defs" || definitionsInput !== undefined);
     if (rootKeys.length !== expected.length || rootKeys.some((key, index) => key !== expected[index])) {
       return failure("INVALID_ROOT", [], 'Data Hson Schema root must contain `type "data"`, optional `defs`, then `content`.');
     }

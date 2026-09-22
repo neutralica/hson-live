@@ -10,6 +10,7 @@ import {
 import { ARR_SYMBOL, CLOSE_KIND } from "../token.types.js";
 import type { ArraySymbol, CloseKind, Position, RawAttr, Tokens } from "../token.types.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
+import { read_transform_error_details } from "../../../core/errors.js";
 import { is_persisted_quid } from "../../../core/hson-node-quid.js";
 import {
   is_hson_bare_name_char,
@@ -26,6 +27,54 @@ const NUMBER_LITERAL = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
 const HSON_TRIVIA = new Set([" ", "\t", "\n", "\r"]);
 
 export type HsonTemplateSlot = Readonly<{ offset: number; substitution: number }>;
+export type HsonEditorMode = "canonical" | "data" | "document" | "schema";
+export type HsonGrammarCheckpoint = Readonly<{
+  kind: "member" | "value" | "tag" | "header" | "child" | "attribute-value";
+  path: readonly (string | number)[];
+  existing: readonly string[];
+  range: Readonly<{ start: number; end: number }>;
+  openContainers: readonly ("object" | "array" | "element")[];
+  rootType?: "data" | "document";
+}>;
+export type HsonInterpolationRole = "data-value" | "document-content" | "quoted-string";
+
+/** Observe the production scanner at a cursor, before incomplete suffixes fail. */
+export function hson_grammar_checkpoint(
+  source: string, cursor: number, mode: HsonEditorMode,
+  slots: readonly HsonTemplateSlot[] = [],
+): HsonGrammarCheckpoint | undefined {
+  if (!Number.isInteger(cursor) || cursor < 0 || cursor > source.length || source.length > 128_000) return undefined;
+  const stop = {};
+  let result: HsonGrammarCheckpoint | undefined;
+  const scanner = new HsonScanner(source, 0, undefined, slots.filter(slot => slot.offset < cursor),
+    mode === "document" ? "document" : "data", slots.map(() => ""), mode, cursor, checkpoint => { result = checkpoint; throw stop; });
+  try { scanner.scan(); } catch (error) { if (error !== stop) return undefined; }
+  return result;
+}
+
+/** Observe only proven interpolation roles; malformed prefixes yield no role. */
+export function hson_interpolation_roles(source: string, mode: HsonEditorMode, slots: readonly HsonTemplateSlot[]): readonly (HsonInterpolationRole | undefined)[] {
+  const roles: (HsonInterpolationRole | undefined)[] = Array(slots.length).fill(undefined);
+  if (mode !== "data" && mode !== "document" || source.length > 128_000) return roles;
+  const substitutions = slots.map(() => "");
+  const scanner = new HsonScanner(source, 0, undefined, slots, mode, substitutions, mode, undefined, undefined,
+    (index, role) => { roles[index] = role; });
+  try { scanner.scan(); } catch { /* A later syntax error does not erase earlier proven roles. */ }
+  // Angle-mode classification may inspect source beyond a slot before the
+  // scanner reaches it. Recover an unresolved role from its own authored
+  // prefix, where later incomplete syntax cannot invalidate earlier context.
+  for (let index = 0; index < Math.min(slots.length, 256); index += 1) {
+    const slot = slots[index];
+    if (slot === undefined || roles[slot.substitution] !== undefined) continue;
+    const end = slot.offset + (source[slot.offset] === '"' ? 1 : 0);
+    const prefixSlots = slots.slice(0, index + 1);
+    const prefix = new HsonScanner(source.slice(0, end), 0, undefined, prefixSlots, mode,
+      substitutions, mode, undefined, undefined,
+      (substitution, role) => { if (substitution === slot.substitution) roles[substitution] = role; });
+    try { prefix.scan(); } catch { /* An unproven or invalid prefix has no role. */ }
+  }
+  return roles;
+}
 
 /** Preserve raw authored source and private substitution boundaries. */
 export function scan_hson_template_segments(
@@ -93,7 +142,16 @@ class HsonScanner {
     private readonly templateSlots: readonly HsonTemplateSlot[] = [],
     private readonly interpolationMode?: "document" | "data",
     private readonly substitutions: readonly unknown[] = [],
+    private readonly editorMode?: HsonEditorMode,
+    private readonly editorCursor?: number,
+    private readonly editorCheckpoint?: (checkpoint: HsonGrammarCheckpoint) => void,
+    private readonly editorSlot?: (index: number, role: HsonInterpolationRole) => void,
   ) {}
+  private readonly editorPath: (string | number)[] = [];
+  private readonly editorContainers: ("object" | "array" | "element")[] = [];
+  private editorExisting: readonly string[] = [];
+  private editorRootType: "data" | "document" | undefined;
+  private editorCommentEof = false;
 
   private slotHere(): HsonTemplateSlot | undefined {
     const slot = this.templateSlots[this.nextSlot];
@@ -106,6 +164,7 @@ class HsonScanner {
     if (context !== (this.interpolationMode === "document" ? "document-content" : "data-value")) {
       this.rejectSlot(context === "document-content" ? "document content under a data tag" : "a data value under a document tag");
     }
+    this.editorSlot?.(slot.substitution, context);
     this.emit({ kind: "INTERPOLATION_SLOT", slot: slot.substitution, context, pos: this.position() });
     this.nextSlot += 1;
   }
@@ -133,6 +192,16 @@ class HsonScanner {
   }
 
   private completionSlot(kind: Parameters<NonNullable<HsonSourceLexicalCollector["completionSlot"]>>[0], start?: number): void {
+    if (this.editorCheckpoint !== undefined && !this.editorCommentEof) {
+      let boundary = start ?? this.index;
+      if (start === undefined) while (boundary > 0 && isHsonTrivia(this.source[boundary - 1])) boundary--;
+      const cursor = this.editorCursor;
+      if (cursor !== undefined && cursor >= boundary && cursor <= this.index) {
+        this.editorCheckpoint({ kind, path: [...this.editorPath], existing: [...this.editorExisting],
+          range: start === undefined ? { start: cursor, end: cursor } : { start: boundary, end: this.index },
+          openContainers: [...this.editorContainers], rootType: this.editorRootType });
+      }
+    }
     if (this.collector?.completionSlot === undefined) return;
     if (start !== undefined) {
       this.collector.completionSlot(kind, { start, end: this.index });
@@ -219,7 +288,12 @@ class HsonScanner {
   private scanAngle(depth: number): void {
     this.assertNesting(depth);
     const openPos = this.position();
-    const closeKind = this.classifyAngleCloser(openPos);
+    const closeKind = this.editorMode === undefined ? this.classifyAngleCloser(openPos) : this.editorAngleCloser(openPos);
+    if (this.editorMode === "data" || this.editorMode === "schema") {
+      if (closeKind !== CLOSE_KIND.obj) this.fail("element syntax is not a data value", openPos, "HSON_STRUCTURAL_MODE_CROSSING");
+    } else if (this.editorMode === "document" && closeKind !== CLOSE_KIND.elem) {
+      this.fail("object syntax is not document content", openPos, "HSON_STRUCTURAL_MODE_CROSSING");
+    }
     this.consumeExpected("<");
 
     if (closeKind === CLOSE_KIND.obj) {
@@ -230,8 +304,23 @@ class HsonScanner {
     this.scanElementAfterOpen(openPos, depth);
   }
 
+  private editorAngleCloser(openPos: Position): CloseKind {
+    try { return this.classifyAngleCloser(openPos); }
+    catch (error) {
+      // The requested cursor ends inside this angle. Only the explicit semantic
+      // tag mode may decide its unfinished grammar; canonical remains ambiguous.
+      if (read_transform_error_details(error)?.code !== "HSON_CONTAINER_UNTERMINATED") throw error;
+      if (this.editorMode === "data" || this.editorMode === "schema") return CLOSE_KIND.obj;
+      if (this.editorMode === "document") return CLOSE_KIND.elem;
+      throw error;
+    }
+  }
+
   /** Lower `name value` object members to the existing canonical token shape. */
   private scanObjectAfterOpen(openPos: Position, depth: number): void {
+    this.editorContainers.push("object");
+    const previousExisting = this.editorExisting;
+    this.editorExisting = [];
     this.completionSlot("member");
     if (this.slotHere() !== undefined) this.rejectSlot("an object member name");
     // Preserve the compact empty-object token used by existing parser APIs.
@@ -245,6 +334,8 @@ class HsonScanner {
           close: { start: this.index - 1, end: this.index },
         },
       });
+      this.editorContainers.pop();
+      this.editorExisting = previousExisting;
       return;
     }
 
@@ -345,6 +436,8 @@ class HsonScanner {
         );
       }
       declarations.set(name, namePos);
+      this.editorExisting = [...declarations.keys()];
+      this.editorPath.push(name);
 
       const separatedFromValue = this.skipTrivia();
       if (separatedFromValue) this.completionSlot("value");
@@ -372,6 +465,7 @@ class HsonScanner {
         coverageStart: namePos.index,
       });
       this.scanObjectMemberValue(depth + 1, name);
+      this.editorPath.pop();
       const memberEnd = this.index;
       const memberClose = this.emit(CREATE_END_TOKEN(CLOSE_KIND.obj, this.previousPosition()));
       if (this.collector !== undefined) this.recordToken(memberClose, {
@@ -390,6 +484,8 @@ class HsonScanner {
           roles: { close: { start: closePos.index, end: closePos.index + 1 } },
           coverageEnd: closePos.index + 1,
         });
+        this.editorExisting = previousExisting;
+        this.editorContainers.pop();
         return;
       }
       if (this.peek() === ",") {
@@ -412,6 +508,12 @@ class HsonScanner {
     if (ch === `"`) {
       const pos = this.position();
       const value = this.scanContentString();
+      if (this.editorMode === "schema" && this.editorPath.length === 1 && memberName === "type") {
+        try {
+          const parsed: unknown = JSON.parse(value.raw);
+          if (parsed === "data" || parsed === "document") this.editorRootType = parsed;
+        } catch { /* Invalid strings are handled by the scanner. */ }
+      }
       const token = this.emit({ ...CREATE_TEXT_TOKEN(value.raw, true, pos), directValue: value.directValue });
       if (this.collector !== undefined) this.recordToken(token, {
         roles: { coverage: { start: pos.index, end: this.index }, value: { start: pos.index, end: this.index } },
@@ -420,7 +522,7 @@ class HsonScanner {
     }
     if (ch === "<") {
       const pos = this.position();
-      if (this.classifyAngleCloser(pos) !== CLOSE_KIND.obj) {
+      if ((this.editorMode === undefined ? this.classifyAngleCloser(pos) : this.editorAngleCloser(pos)) !== CLOSE_KIND.obj) {
         this.fail(
           `object member "${memberName}" cannot contain an element-mode value`,
           pos,
@@ -471,6 +573,7 @@ class HsonScanner {
 
   /** Existing named element syntax, selected only after a matching `/>`. */
   private scanElementAfterOpen(openPos: Position, depth: number): void {
+    this.editorContainers.push("element");
     this.skipTrivia();
     this.completionSlot("tag");
     if (this.slotHere() !== undefined) this.rejectSlot("an element name");
@@ -534,6 +637,7 @@ class HsonScanner {
           roles: { close: { start: closePos.index, end: closePos.index + 2 } },
           coverageEnd: closePos.index + 2,
         });
+        this.editorContainers.pop();
         return;
       }
 
@@ -647,7 +751,7 @@ class HsonScanner {
 
       if (ch === "<") {
         const childPos = this.position();
-        if (this.classifyAngleCloser(childPos) !== CLOSE_KIND.elem) {
+        if ((this.editorMode === undefined ? this.classifyAngleCloser(childPos) : this.editorAngleCloser(childPos)) !== CLOSE_KIND.elem) {
           this.fail(
             `structural mode crossing: element <${tag}> cannot contain an object-mode value`,
             childPos,
@@ -696,6 +800,7 @@ class HsonScanner {
   }
 
   private scanArray(depth: number): void {
+    this.editorContainers.push("array");
     this.assertNesting(depth);
     const opener = this.peek();
     const closer = opener === "«" ? "»" : "]";
@@ -732,11 +837,18 @@ class HsonScanner {
 
     let expectItem = true;
     let sawItem = false;
+    let itemIndex = 0;
     while (true) {
       this.skipTrivia();
-      if (expectItem) this.completionSlot("value");
+      if (expectItem) {
+        this.editorPath.push(itemIndex);
+        this.completionSlot("value");
+        this.editorPath.pop();
+      }
       if (expectItem && this.slotHere() !== undefined) {
+        this.editorPath.push(itemIndex++);
         this.scanArrayItem(depth + 1);
+        this.editorPath.pop();
         sawItem = true;
         expectItem = false;
         continue;
@@ -753,6 +865,7 @@ class HsonScanner {
           roles: { close: { start: closePos.index, end: closePos.index + 1 } },
           coverageEnd: closePos.index + 1,
         });
+        this.editorContainers.pop();
         return;
       }
 
@@ -785,7 +898,9 @@ class HsonScanner {
         );
       }
 
+      this.editorPath.push(itemIndex++);
       this.scanArrayItem(depth + 1);
+      this.editorPath.pop();
       sawItem = true;
       expectItem = false;
     }
@@ -914,8 +1029,9 @@ class HsonScanner {
     const start = this.position();
     this.consumeExpected(`"`);
     if (this.slotHere() !== undefined) {
-      const { value } = this.quotedSlot();
+      const { slot, value } = this.quotedSlot();
       if (this.slotHere() !== undefined || this.peek() !== `"`) this.fail("interpolation must occupy the entire quoted Hson string", this.position(), "HSON_QUOTED_INTERPOLATION_PARTIAL");
+      this.editorSlot?.(slot, "quoted-string");
       this.consumeExpected(`"`);
       return { raw: `""`, directValue: value };
     }
@@ -959,8 +1075,9 @@ class HsonScanner {
     const start = this.position();
     this.consumeExpected(`"`);
     if (this.slotHere() !== undefined) {
-      const { value } = this.quotedSlot();
+      const { slot, value } = this.quotedSlot();
       if (this.slotHere() !== undefined || this.peek() !== `"`) this.fail("interpolation must occupy the entire quoted Hson string", this.position(), "HSON_QUOTED_INTERPOLATION_PARTIAL");
+      this.editorSlot?.(slot, "quoted-string");
       const end = this.position();
       this.consumeExpected(`"`);
       return { text: value, end, direct: true };
@@ -1387,6 +1504,7 @@ class HsonScanner {
         if (this.slotHere() !== undefined) this.rejectSlot("a comment");
         this.consume();
       }
+      if (this.atEnd()) this.editorCommentEof = true;
       if (!this.atEnd()) this.consume();
     }
   }

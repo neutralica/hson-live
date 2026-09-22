@@ -124,6 +124,18 @@ async function main(): Promise<void> {
     controller.dispose();
   });
 
+  await check("workspace diagnostics publish inferred data-in-document mismatches from open TypeScript", () => {
+    const host = new Host(); const publisher = new Publisher(); const value = source("/workspace/inferred-interpolation.ts");
+    const text = 'import { Hson } from "hson-live"; const data = Hson.data`<main "">`; const route = "/"; Hson.document`<html <head <style "a>b"/> /> ${data} <body <iframe src=${route} title="Pulse"/> /> />`;';
+    const opened = document(value, text, 1);
+    host.documents = [opened];
+    const controller = start_workspace_diagnostics(host, publisher);
+    const diagnostic = publisher.values.get(value.uri)?.find(item => item.code === "HSON_INTERPOLATION_DATA_IN_DOCUMENT");
+    assert.equal(diagnostic?.message.startsWith("HsonData cannot be interpolated into Hson.document content."), true);
+    assert.deepEqual(diagnostic?.range, { start: text.indexOf("${data}") + 2, end: text.indexOf("${data}") + 6 });
+    controller.dispose();
+  });
+
   await check("file pragma suppresses unopened, open, closed, and reopened ordinary diagnostics independent of Schema Watch", async () => {
     const host = new Host(); const publisher = new Publisher();
     const ignored = source("/workspace/ignored.hson", "hson");

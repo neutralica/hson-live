@@ -27,6 +27,7 @@ import {
   schema_target_at,
 } from "../src/hson-schema-symbols.js";
 import { discover_schema_project, resolve_workspace_hson_schema_tool, schema_tool_arguments, schema_watch_output_state } from "../src/schema-tooling.js";
+import { HsonEditorCompletionCache } from "../src/editor-completion.js";
 
 let checks = 0;
 function check(name: string, body: () => void): void {
@@ -627,6 +628,65 @@ check("unsupported transitions and unexpected adapter errors clear stale diagnos
   host.runTimer(2);
   assert.equal(publisher.published.has(value.uri), false);
   controller.dispose();
+});
+
+check("editor completion uses current same-file Schema and exact partial token ranges", () => {
+  const cache = new HsonEditorCompletionCache();
+  const source = 'import { Hson, type HsonData } from "hson-live"; const S = Hson.schema`<type "data" content <count "number" color "string" presentation <content <theme "string">>>>`; const x: HsonData<typeof S> = Hson.data`<co`';
+  const result = cache.complete("/workspace/completion.ts", source, 1, source.length - 1);
+  assert.deepEqual(result.map(entry => entry.candidate.label), ["count", "color"]);
+  assert.deepEqual(result[0]?.range, { start: source.length - 3, end: source.length - 1 });
+  const nested = source.replace('Hson.data`<co`', 'Hson.data`<presentation <th`');
+  assert.deepEqual(cache.complete("/workspace/completion.ts", nested, 2, nested.length - 1).map(entry => entry.candidate.label), ["theme"]);
+  const used = source.replace('Hson.data`<co`', 'Hson.data`<count 1 co`');
+  assert.deepEqual(cache.complete("/workspace/completion.ts", used, 3, used.length - 1).map(entry => entry.candidate.label), ["color"]);
+  const noSchema = 'import { Hson } from "hson-live"; const x = Hson.data`<co`';
+  assert.deepEqual(cache.complete("/workspace/no-schema.ts", noSchema, 1, noSchema.length - 1), []);
+  const schema = 'import { Hson } from "hson-live"; const S = Hson.schema`<type "data" co`';
+  assert.deepEqual(cache.complete("/workspace/schema-completion.ts", schema, 1, schema.length - 1).map(entry => entry.candidate.label), ["content"]);
+  const interpolated = source.replace('Hson.data`<co`', 'Hson.data`<count ${count} co`');
+  assert.deepEqual(cache.complete("/workspace/completion.ts", interpolated, 4, interpolated.indexOf("${count}") + 3), []);
+  assert.deepEqual(cache.complete("/workspace/completion.ts", interpolated, 4, interpolated.length - 1).map(entry => entry.candidate.label), ["color"]);
+});
+
+check("static interpolation diagnostics report only proven family mismatches", () => {
+  const prefix = 'import { Hson, type HsonData, type HsonDocument, type HsonCanonical } from "hson-live"; const S = Hson.schema`<type "data" content <value "string">>`; const D = Hson.schema`<type "document" tag "main" content "empty">`; const data: HsonData<typeof S> = Hson.data`<value "x">`; const document: HsonDocument<typeof D> = Hson.document`<main/>`; const plain: string = "<main/>"; declare const canonical: HsonCanonical; ';
+  const codes = (body: string) => diagnose(prefix + body, "typescript", "/workspace/interpolation.ts").map(d => d.code).filter(code => code?.includes("STATIC_TYPE") || code?.includes("DATA_IN_DOCUMENT") || code?.includes("DOCUMENT_IN_DATA"));
+  assert.deepEqual(codes('Hson.document`<main ${data}/>`;'), ["HSON_INTERPOLATION_DATA_IN_DOCUMENT"]);
+  const mismatchSource = prefix + 'Hson.document`<main ${data}/>`;';
+  const mismatch = diagnose(mismatchSource, "typescript", "/workspace/interpolation.ts").find(d => d.code === "HSON_INTERPOLATION_DATA_IN_DOCUMENT");
+  assert.deepEqual(mismatch?.range, { start: mismatchSource.lastIndexOf("${data}") + 2, end: mismatchSource.lastIndexOf("${data}") + 6 });
+  assert.deepEqual(codes('Hson.data`<value ${document}>`;'), ["HSON_INTERPOLATION_DOCUMENT_IN_DATA"]);
+  assert.deepEqual(codes('Hson.document`<main ${document}/>`;'), []);
+  assert.deepEqual(codes('Hson.data`<value ${data}>`;'), []);
+  assert.deepEqual(codes('Hson.document`<main ${plain}/>`;'), []);
+  assert.deepEqual(codes('Hson.document`<main ${canonical}/>`;'), []);
+  assert.deepEqual(codes('Hson.document`<main "${data}"/>`;'), []);
+  assert.deepEqual(codes('Hson.document`<main "${123}"/>`;'), ["HSON_QUOTED_INTERPOLATION_STATIC_TYPE"]);
+  assert.deepEqual(codes('Hson.document`<main ${123}/>`;'), ["HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"]);
+  assert.deepEqual(codes('Hson.document`<main ${true}/>`;'), ["HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"]);
+  assert.deepEqual(codes('Hson.document`<main ${null}/>`;'), ["HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"]);
+  assert.deepEqual(codes('Hson.data`<value ${123}>`;'), []);
+  assert.deepEqual(codes('Hson.data`<value ${false}>`;'), []);
+  assert.deepEqual(codes('Hson.data`<value ${null}>`;'), []);
+  assert.deepEqual(codes('Hson.data`<value ${{ a: 1 }}> `;'), ["HSON_INTERPOLATION_DATA_STATIC_TYPE"]);
+  assert.deepEqual(codes('Hson.document`<main ${[1, 2]}/>`;'), ["HSON_INTERPOLATION_DOCUMENT_STATIC_TYPE"]);
+  assert.deepEqual(codes('Hson.data`<value ${new String("x")}>`;'), ["HSON_INTERPOLATION_DATA_STATIC_TYPE"]);
+});
+
+check("inferred Hson families diagnose symmetrically in authored templates", () => {
+  const prefix = 'import { Hson } from "hson-live"; ';
+  const familyCodes = (body: string) => diagnose(prefix + body, "typescript", "/workspace/inferred.ts")
+    .map(diagnostic => diagnostic.code)
+    .filter(code => code === "HSON_INTERPOLATION_DATA_IN_DOCUMENT" || code === "HSON_INTERPOLATION_DOCUMENT_IN_DATA");
+  assert.deepEqual(familyCodes('const data = Hson.data`<x 1>`; Hson.document`<main ${data}/>`;'), ["HSON_INTERPOLATION_DATA_IN_DOCUMENT"]);
+  assert.deepEqual(familyCodes('const doc = Hson.document`<main/>`; Hson.data`<x ${doc}>`;'), ["HSON_INTERPOLATION_DOCUMENT_IN_DATA"]);
+  assert.deepEqual(familyCodes('const doc = Hson.document`<main/>`; Hson.document`<body ${doc}/>`;'), []);
+  assert.deepEqual(familyCodes('const data = Hson.data`<x 1>`; Hson.data`<x ${data}>`;'), []);
+  assert.deepEqual(familyCodes('const source: string = "<main/>"; Hson.document`${source}`;'), []);
+  assert.deepEqual(familyCodes('const data = Hson.data`<x 1>`; Hson.document`<p "${data}"/>`;'), []);
+  assert.deepEqual(familyCodes('const data = Hson.data`<main "">`; Hson.document`<html <head/> ${data}/>`;'), ["HSON_INTERPOLATION_DATA_IN_DOCUMENT"]);
+  assert.deepEqual(familyCodes('const data = Hson.data`<main "">`; const route = "/"; Hson.document`<html <head <style "a>b"/> /> ${data} <body <iframe src=${route} title="Pulse"/> /> />`;'), ["HSON_INTERPOLATION_DATA_IN_DOCUMENT"]);
 });
 
 process.stdout.write(`ok - ${checks} focused runtime and lifecycle checks passed\n`);

@@ -29,7 +29,9 @@ export type CompletionContext = Readonly<{
   timings: Readonly<{ contextMs: number; parseMs: number; resolveMs: number }>;
 }>;
 
-/** One grammar-selected probe, never a candidate search or a tolerant parser. */
+/** Historical D6 probe, retained for legacy acceptance coverage only.
+ * New editor features use editor-introspection/query.ts and scanner checkpoints.
+ */
 export function completion_context(source: string, cursor: number, unknownRanges: readonly HsonSourceRange[] = []): CompletionContext | undefined {
   if (!Number.isInteger(cursor) || cursor < 0 || cursor > source.length || source.length > 128_000) return undefined;
   const started = performance.now();

@@ -3,7 +3,9 @@ import type { InterpolationCapture } from "../../../src/internal/trusted-schema-
 import { is_static_hson_source, read_authored_hson_source } from "../../../src/internal/embedded-hson/authored-hson-source.js";
 import { map_interpolation_range, type GeneratedSegment } from "../../../src/internal/trusted-schema-diagnostics/interpolation-source.js";
 
-/** Source mapping only. Unknown substitutions are opaque scalar slots, not values. */
+/** Historical D6 source mapper, retained for legacy acceptance coverage only.
+ * The active completion provider uses editor-completion.ts.
+ */
 export function completion_source(association: DiscoveredSchemaValidation, offset: number, capture?: InterpolationCapture) {
   if (is_static_hson_source(association.source)) return undefined;
   const site = association.interpolation;
