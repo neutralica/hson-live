@@ -531,10 +531,10 @@ check("Unit 1 mixed-mode rejection and uniform grouping remain enforced", () => 
   assert.equal(publicNode(`<a 1 b 2>`).$_tag, "_hson_obj");
 });
 
-check("runtime QUID metadata survives internal detachment but not portable output", () => {
+check("runtime QUID metadata survives internal detachment but public fromNode rejects it", () => {
   const value = detach_hson_root_value(parse_hson_exact_runtime(`<main @000000001/>`));
   assert.equal((value.$_content[0] as HsonNode).$_meta?.quid, "000000001");
-  assert.doesNotMatch(hson.fromNode(value).toHson().serialize(), /@000000001/);
+  assert.throws(() => hson.fromNode(value), /QUID|quid|identity/i);
 });
 
 check("array indexes survive detachment and reconstruction", () => {

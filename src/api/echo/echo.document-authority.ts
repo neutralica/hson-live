@@ -211,7 +211,6 @@ export function make_echo_document_authority(
       cancel_revision_waits(reason);
     },
     pendingRevisionWaits: () => revisionWaits.size,
-    rejectIdentityDemand: true,
   });
 }
 

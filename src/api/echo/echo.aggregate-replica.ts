@@ -139,13 +139,11 @@ function create_multi_library_echo_semantic_client_internal<
   let logicalMapId = options.logicalMapId;
   let incarnationId: string | undefined;
   let registryDigest: string | undefined;
-  let lastAppliedRev: number | undefined;
   if (map !== undefined) {
     const snapshot = replica.captureHosted();
     logicalMapId ??= snapshot.authority.logicalMapId;
     incarnationId = snapshot.authority.incarnationId;
     registryDigest = snapshot.registryDigest;
-    lastAppliedRev = snapshot.revision;
   }
   if (logicalMapId === undefined || logicalMapId.length === 0) {
     replica.dispose();
@@ -250,7 +248,6 @@ function create_multi_library_echo_semantic_client_internal<
       const snapshot = replica.captureHosted();
       incarnationId = snapshot.authority.incarnationId;
       registryDigest = snapshot.registryDigest;
-      lastAppliedRev = snapshot.revision;
     }
     status = "recovering";
     replica.markRecovering();
@@ -270,9 +267,9 @@ function create_multi_library_echo_semantic_client_internal<
         type: "recover",
         id,
         logicalMapId: clientLogicalMapId,
-        ...(incarnationId === undefined || registryDigest === undefined || lastAppliedRev === undefined
+        ...(incarnationId === undefined || registryDigest === undefined || map === undefined
           ? {}
-          : { cursor: Object.freeze({ incarnationId, registryDigest, lastAppliedRev }) }),
+          : { cursor: Object.freeze({ incarnationId, registryDigest, lastAppliedRev: map.rev }) }),
       });
       options.connection.synchronization.begin(request);
     });
@@ -323,11 +320,25 @@ function create_multi_library_echo_semantic_client_internal<
       apply_envelope(message.commit);
       return;
     }
+    if (message.type === "recovery-progress") {
+      const active = current_recovery(message.id);
+      if (active === undefined) return;
+      if (active.outcome !== "replay" && active.outcome !== "snapshot") throw new Error("Hosted recovery received unexpected authority progress.");
+      apply_progress(message.progress);
+      return;
+    }
     if (message.type === "commit") {
       const active = liveRecovery;
       if (status !== "live" || active === undefined || active.id !== message.id) return;
       if (endpoint.session.status !== "attached" || endpoint.session.sessionId !== active.sessionId || endpoint.session.epoch !== active.sessionEpoch) return;
       apply_envelope(message.commit);
+      return;
+    }
+    if (message.type === "progress") {
+      const active = liveRecovery;
+      if (status !== "live" || active === undefined || active.id !== message.id) return;
+      if (endpoint.session.status !== "attached" || endpoint.session.sessionId !== active.sessionId || endpoint.session.epoch !== active.sessionEpoch) return;
+      apply_progress(message.progress);
       return;
     }
     if (message.type === "recovery-caught-up") {
@@ -336,7 +347,7 @@ function create_multi_library_echo_semantic_client_internal<
       if (message.logicalMapId !== clientLogicalMapId || message.incarnationId !== incarnationId || message.registryDigest !== registryDigest) {
         throw new Error("Hosted recovery caught-up fence is incompatible with this mirror.");
       }
-      if (map === undefined || map.rev !== message.throughRev || lastAppliedRev !== message.throughRev) {
+      if (map === undefined || map.rev !== message.throughRev) {
         throw new Error("Hosted recovery caught-up revision does not match the complete Echo replica.");
       }
       status = "live";
@@ -377,7 +388,6 @@ function create_multi_library_echo_semantic_client_internal<
     }
     incarnationId = snapshot.authority.incarnationId;
     registryDigest = snapshot.registryDigest;
-    lastAppliedRev = snapshot.revision;
   }
 
   function apply_envelope(envelope: LocusHostedAggregateWireEnvelope): void {
@@ -390,7 +400,16 @@ function create_multi_library_echo_semantic_client_internal<
       registryDigest,
       maxWireBytes: DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES,
     }));
-    lastAppliedRev = replica.replayHosted(commit);
+    replica.replayHosted(commit);
+  }
+
+  function apply_progress(progress: import("../locus/locus.hosted-multi-library.transport.internal.js").LocusHostedAggregateProgress): void {
+    if (map === undefined || incarnationId === undefined || registryDigest === undefined) {
+      throw new Error("Hosted authority progress arrived before aggregate bootstrap.");
+    }
+    if (progress.logicalMapId !== clientLogicalMapId || progress.incarnationId !== incarnationId
+      || progress.registryDigest !== registryDigest) throw new Error("Hosted authority progress fence is incompatible.");
+    replica.advanceHostedProgress(progress);
   }
 
   function wait_until_ready(): Promise<void> {
@@ -409,7 +428,7 @@ function create_multi_library_echo_semantic_client_internal<
     logicalMapId: clientLogicalMapId,
     get incarnationId() { return incarnationId; },
     get registryDigest() { return registryDigest; },
-    get lastAppliedRev() { return lastAppliedRev; },
+    get lastAppliedRev() { return map?.rev; },
     replica,
     clientId,
     session,

@@ -124,7 +124,7 @@ export function create_lazy_replica_echo_internal<
       ...(internalOptions.sessionRequestId === undefined ? {} : { sessionRequestId: internalOptions.sessionRequestId }),
     }),
     ...(aggregate ? {
-      endpointMessageFormat: "hson-locus-hosted-aggregate-message",
+      endpointMessageFormat: "hson-locus-hosted-aggregate-message-v2",
       actionMessageId: "attempt" as const,
       operationLossError: (reason: "disconnect" | "fenced" | "ended") => new Error(reason === "ended"
         ? "Hosted aggregate Echo session ended before the pending operation completed."

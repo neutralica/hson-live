@@ -12,6 +12,13 @@ export type EchoAggregateReplicaCapability = EchoReplicaCapability<LiveMapLibrar
   captureHosted: () => HostedLiveMapLibrariesSnapshot;
   restoreHosted: (snapshot: HostedLiveMapLibrariesSnapshot) => void;
   replayHosted: (commit: HostedAggregateCommit) => number;
+  advanceHostedProgress: (progress: Readonly<{
+    logicalMapId: string;
+    incarnationId: string;
+    registryDigest: string;
+    prevRev: number;
+    rev: number;
+  }>) => number;
 }>;
 
 /** @internal Construct an aggregate replica independently of endpoint/session mechanics. */
@@ -57,6 +64,10 @@ export function create_echo_aggregate_replica_capability_internal(
     replayHosted(commit): number {
       if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");
       return internal_livemap_aggregate_authority(map).replayHostedManaged(owner, commit).rev;
+    },
+    advanceHostedProgress(progress): number {
+      if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");
+      return internal_livemap_aggregate_authority(map).advanceHostedProgressManaged(owner, progress);
     },
     markRecovering(): void {
       if (disposed) return;

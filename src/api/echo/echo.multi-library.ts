@@ -90,7 +90,7 @@ export function create_multi_library_echo<
           });
         },
         () => options.map.rev,
-        (listener) => options.map.commits.observe(listener),
+        (listener) => internal_livemap_aggregate_authority(options.map).observeAuthorityPosition(listener),
         () => endpoint.replica.ready,
         endpoint.replica.onDispose,
         endpoint.replica.waitUntilReady,

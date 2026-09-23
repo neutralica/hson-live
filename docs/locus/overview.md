@@ -3,7 +3,7 @@
 Locus is hson-live’s one-map authority layer for shared live state and live documents.
 It combines a `LiveMap` with ordered mutation authority, actions, authorization, sessions, recovery, persistence, and transport-facing publication. An authoritative map remains the canonical application state; Locus determines how that state may change, how accepted changes are ordered, and how clients recover and continue from the same authority.
 Locus is authoritative over its owned `LiveMap`. Canonical transitions pass through one Locus-owned FIFO; the original map and all retained mutation surfaces are fenced for the lifetime of that ownership. Document authorities may additionally use backend-agnostic durable persistence. In that configuration, every changed commit is appended durably before it becomes visible in memory or to connected clients.
-Locus does not own DOM or LiveTree semantics. Reflect bridges LiveTree and
+Locus does not own DOM or LiveTree semantics. Mirror bridges LiveTree and
 LiveMap, while Echo carries pessimistic hosted authoring to Locus and replays
 accepted canonical commits back into the replica.
 
@@ -28,7 +28,7 @@ Locus
   recovery, persistence, and client publication
 Echo
   semantic hosted client participation, optionally carrying an exact LiveMap replica
-Reflect
+Mirror
   LiveTree ↔ LiveMap bridge
 
 
@@ -38,9 +38,9 @@ persistent storage → Locus → authoritative DocumentLiveMap
                               ↕
                          Echo protocol
                               ↕
-Echo → replica DocumentLiveMap ↔ Reflect ↔ LiveTree / DOM
+Echo → replica DocumentLiveMap ↔ Mirror ↔ LiveTree / DOM
 
-Endpoint-only Echo omits the replica/Reflect portion. A replica-bearing Echo
+Endpoint-only Echo omits the replica/Mirror portion. A replica-bearing Echo
 requires an explicit map and recovery configuration; caught-up recovery state,
 not map presence, establishes exactness. Transport connection, semantic
 session establishment, and recovery are separate lifecycle layers.
@@ -51,12 +51,12 @@ The complete hosted document path is:
 
 ```text
 LiveTree semantic mutation
-→ Reflect
+→ Mirror
 → Echo
 → Locus
 → authoritative LiveMap commit
 → Echo LiveMap replay
-→ Reflect
+→ Mirror
 → LiveTree / DOM convergence
 ```
 
@@ -146,7 +146,7 @@ A DocumentLiveMap exposes the Hson document graph directly, including:
 * privileged restore and replay.
 
 Document maps are the basis for authoritative live documents and current
-Echo/Reflect hosted authoring.
+Echo/Mirror hosted authoring.
 
 Document hosts may be persistent.
 

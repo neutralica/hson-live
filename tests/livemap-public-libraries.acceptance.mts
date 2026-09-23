@@ -209,13 +209,13 @@ check("tree-originated selected-document mutation crosses the same Schema bounda
   assert.equal(binding.sourceRevision, 1);
   const quid = tree.quid;
   assert.equal(page.document.byQuid(quid)?.$_tag, "main");
-  assert.equal(binding.sourceRevision, 2);
+  assert.equal(binding.sourceRevision, 1);
   const beforeFailure = livemap_identity_epoch_accounting(page);
   const before = page.root();
   assert.throws(() => page.at([]).asElement()!.insert(0, "forbidden"), /schema/i);
   assert.deepEqual(page.root(), before);
-  assert.equal(map.rev, 2);
-  assert.equal(binding.sourceRevision, 2);
+  assert.equal(map.rev, 1);
+  assert.equal(binding.sourceRevision, 1);
   assert.deepEqual(livemap_identity_epoch_accounting(page), beforeFailure);
   binding.dispose();
 });

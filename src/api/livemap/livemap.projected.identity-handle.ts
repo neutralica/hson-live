@@ -1,15 +1,11 @@
 import type { HsonNode } from "../../core/types.js";
-import type { LiveMapGraphCommit, LivePath } from "../../types/livemap.types.js";
-import type {
-  LiveMapProjectedGraphEnsureQuidOp,
-  LiveMapProjectedIdentityHandle,
-} from "./livemap.identity.types.js";
+import type { LivePath } from "../../types/livemap.types.js";
+import type { LiveMapProjectedIdentityHandle } from "./livemap.identity.types.js";
 import type { LiveMapDocumentIdentityEpochController } from "./livemap.document.capture.js";
-import { clone_live_root, resolve_value_node, snap_live_path } from "./livemap.editor.js";
+import { resolve_value_node, snap_live_path } from "./livemap.editor.js";
 import { LiveMapProjectedIdentityError } from "./livemap.error.js";
 import { clone_live_path, live_path_key } from "./livemap.path.js";
 import {
-  register_livemap_projected_identity_at_path,
   is_livemap_projected_identity_target,
   type LiveMapProjectedIdentityOverlay,
 } from "./livemap.projected.identity.js";
@@ -25,11 +21,7 @@ export type LiveMapProjectedIdentityController = Readonly<{
   root: () => HsonNode;
   overlay: () => LiveMapProjectedIdentityOverlay;
   identityEpoch: LiveMapDocumentIdentityEpochController;
-  applyIdentity: (
-    root: HsonNode,
-    overlay: LiveMapProjectedIdentityOverlay,
-    operation: LiveMapProjectedGraphEnsureQuidOp,
-  ) => LiveMapGraphCommit<LiveMapProjectedGraphEnsureQuidOp>;
+  acquireLocalIdentity: (path: LivePath, quid: string) => void;
 }>;
 
 type LiveMapProjectedIdentityApi = Readonly<{
@@ -55,7 +47,7 @@ export function make_livemap_projected_identity_api(
     acquire: (pathInput) => {
       const path = clone_live_path(pathInput);
       const current = current_claim(controller, path);
-      const quid = current ?? allocate_and_commit(owner(), controller, path);
+      const quid = current ?? allocate_local(owner(), controller, path);
       return make_handle(controller, quid, controller.identityEpoch.current());
     },
   });
@@ -111,7 +103,7 @@ function current_claim(
   return existing;
 }
 
-function allocate_and_commit(
+function allocate_local(
   owner: object,
   controller: LiveMapProjectedIdentityController,
   path: LivePath,
@@ -121,8 +113,7 @@ function allocate_and_commit(
     (quid) => controller.identityEpoch.issued().has(quid)
       || controller.overlay().pathForQuid(quid) !== undefined,
     (quid) => {
-      const root = clone_live_root(controller.root());
-      const endpoint = resolve_value_node(root, path);
+      const endpoint = resolve_value_node(controller.root(), path);
       if (endpoint === undefined || !is_livemap_projected_identity_target(endpoint)) {
         throw new LiveMapProjectedIdentityError(
           "PROJECTED_IDENTITY_INELIGIBLE",
@@ -131,21 +122,7 @@ function allocate_and_commit(
         );
       }
       try {
-        const overlay = register_livemap_projected_identity_at_path(controller.overlay(), quid, path);
-        const operation: LiveMapProjectedGraphEnsureQuidOp = Object.freeze({
-          domain: "graph",
-          op: "ensure-quid",
-          target: Object.freeze({ kind: "path", path, projected: true as const }),
-          quid,
-        });
-        const commit = controller.applyIdentity(root, overlay, operation);
-        if (!commit.changed) {
-          throw new LiveMapProjectedIdentityError(
-            "PROJECTED_IDENTITY_INVARIANT",
-            path,
-            "new registration did not change canonical graph state",
-          );
-        }
+        controller.acquireLocalIdentity(path, quid);
         return Object.freeze({ claimed: true, value: quid });
       } catch (cause) {
         if (cause instanceof LiveMapProjectedIdentityError) throw cause;

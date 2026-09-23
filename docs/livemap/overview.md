@@ -183,7 +183,7 @@ This mode is suited to:
 - renderer-facing graphs;
 - editable structured documents;
 - identity-preserving capture and restoration;
-- current Echo/Reflect hosted projection and local renderer bridges.
+- current Echo/Mirror hosted projection and local renderer bridges.
 
 Data and document maps share revision, commit, batching, observation, capture, and replay infrastructure, but they intentionally expose different mutation surfaces.
 
@@ -1004,7 +1004,7 @@ QUIDs support stable identity across:
 - document capture;
 - exact restoration;
 - replay;
-- Reflect-managed LiveTree / DOM projection;
+- Mirror-managed LiveTree / DOM projection;
 - Echo replay from hosted Locus authority;
 - renderer reconciliation.
 
@@ -1715,7 +1715,7 @@ DocumentLiveMap
 → renderer
 ```
 
-For a hosted document, Reflect binds LiveTree to an Echo-governed LiveMap.
+For a hosted document, Mirror binds LiveTree to an Echo-governed LiveMap.
 Authoring is pessimistic: Echo queues semantic intent, Locus alone accepts the
 canonical mutation, and only accepted replay changes the Echo LiveMap,
 LiveTree, and DOM. Direct public mutation of an Echo LiveMap is rejected.

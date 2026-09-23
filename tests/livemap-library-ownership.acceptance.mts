@@ -69,7 +69,7 @@ check("the single map-wide QUID ledger survives library-local graph changes", ()
   const retired = internal_livemap_library_ownership(map);
   assert.equal(retired.library, before.library);
   assert.equal(retired.issuedQuids, 1);
-  assert.equal(retired.revision, 2);
+  assert.equal(retired.revision, 1);
 });
 
 check("projected restore cannot bypass solo HsonSchema admission", () => {

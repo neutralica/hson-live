@@ -2,6 +2,7 @@ import { ARR_TAG, ELEM_TAG, OBJ_TAG, ROOT_TAG, STR_TAG } from "../../core/consta
 import { assert_invariants } from "../../core/assert-invariants.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { is_persisted_quid } from "../../core/persisted-quid.js";
+import { HsonNodeQuidValidationError } from "../../core/hson-node-quid.js";
 import type { HsonNode } from "../../core/types.js";
 import type { HsonSchema } from "../transform/transform.types.js";
 import type {
@@ -22,6 +23,7 @@ import type {
 import { clone_live_root } from "./livemap.editor.js";
 import {
   build_livemap_document_identity_overlay,
+  clone_livemap_document_exact_view,
   register_livemap_document_identity_overlay,
   type LiveMapDocumentIdentityOverlay,
 } from "./livemap.document.identity.js";
@@ -225,8 +227,15 @@ function make_document_livemap(
       if (!is_persisted_quid(quid)) return undefined;
       const path = controller.overlay().pathForQuid(quid);
       if (path === undefined) return undefined;
-      const node = resolve_document_path(controller.root(), mode, path);
-      return is_Node(node) ? clone_live_root(node) : undefined;
+      try {
+        const view = clone_livemap_document_exact_view(controller.root(), mode, controller.overlay());
+        const node = resolve_document_path(view, mode, path);
+        return is_Node(node) ? node : undefined;
+      } catch (cause) {
+        if (!(cause instanceof HsonNodeQuidValidationError)) throw cause;
+        const node = resolve_document_path(controller.root(), mode, path);
+        return is_Node(node) ? clone_live_root(node) : undefined;
+      }
     },
     attrs,
     flags,
@@ -255,6 +264,7 @@ function make_document_livemap(
     "document",
     core.rev,
     core.root(),
+    controller.overlay(),
     options,
   );
   let documentMap: DocumentLiveMap;

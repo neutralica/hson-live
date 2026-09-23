@@ -1,9 +1,11 @@
 import { is_Node } from "../../core/node-guards.js";
 import {
+  assign_hson_node_quid,
   HsonNodeQuidValidationError,
   read_hson_node_quid,
 } from "../../core/hson-node-quid.js";
 import type { HsonNode, Primitive } from "../../core/types.js";
+import { clone_live_root } from "./livemap.editor.js";
 import type {
   DocumentLiveMapMode,
   LiveMapGraphCommit,
@@ -347,6 +349,41 @@ export function livemap_document_identity_quids(
   overlay: LiveMapDocumentIdentityOverlay,
 ): readonly string[] {
   return Object.freeze([...entries_for_overlay(overlay).keys()]);
+}
+
+/** Compare runtime identity separately from strict canonical graph equality. */
+export function livemap_document_identity_overlay_equal(
+  left: LiveMapDocumentIdentityOverlay,
+  right: LiveMapDocumentIdentityOverlay,
+): boolean {
+  if (left === right) return true;
+  if (left.size !== right.size) return false;
+  for (const [quid, path] of entries_for_overlay(left)) {
+    const other = right.pathForQuid(quid);
+    if (other === undefined || !document_path_equal(path, other)) return false;
+  }
+  return true;
+}
+
+/** Detached same-runtime view; the canonical document graph remains QUID-free. */
+export function clone_livemap_document_exact_view(
+  root: HsonNode,
+  mode: DocumentLiveMapMode,
+  overlay: LiveMapDocumentIdentityOverlay,
+): HsonNode {
+  const view = clone_live_root(root);
+  for (const [quid, path] of entries_for_overlay(overlay)) {
+    const endpoint = resolve_document_path(view, mode, path);
+    if (!is_Node(endpoint)) {
+      throw new LiveMapDocumentIdentityError("OVERLAY_INVARIANT", "Exact identity view target disappeared.");
+    }
+    const existing = read_hson_node_quid(endpoint);
+    if (existing !== undefined && existing !== quid) {
+      throw new LiveMapDocumentIdentityError("OVERLAY_INVARIANT", "Exact identity view conflicts with legacy metadata.");
+    }
+    if (existing === undefined) assign_hson_node_quid(endpoint, quid);
+  }
+  return view;
 }
 
 /** Attach derived identity evidence to the exact internal commit envelope. */

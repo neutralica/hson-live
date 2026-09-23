@@ -40,6 +40,7 @@ import type {
   LiveMapReplacementLineage,
 } from "../../types/livemap.types.js";
 import type { LiveMapGraphEnsureQuidOp } from "./livemap.identity.types.js";
+import type { LiveMapRuntimeIdentityParticipant } from "./livemap.runtime-identity.js";
 import { LiveMapDocumentMutationError } from "./livemap.error.js";
 import { clone_live_root } from "./livemap.editor.js";
 import {
@@ -94,6 +95,11 @@ export type LiveMapDocumentMutationController = Readonly<{
   rev: () => number;
   root: () => HsonNode;
   overlay: () => LiveMapDocumentIdentityOverlay;
+  acquireLocalIdentity: (
+    path: import("../../types/livemap.types.js").LiveMapDocumentPath,
+    quid: string,
+    participant?: LiveMapRuntimeIdentityParticipant,
+  ) => void;
   applyMutation: <TOp extends LiveMapGraphOp>(
     candidate: PreparedDocumentMutation<TOp>,
   ) => LiveMapGraphCommit<TOp>;
@@ -720,11 +726,24 @@ function reconcile_operation_identity(
     );
   }
   if (operation.op === "replace-content") {
-    return reconcile_livemap_document_identity_overlay(
+    const replaced = reconcile_livemap_document_identity_overlay(
       overlay,
       effect,
       { content: operation.replacement, path: append_document_path(operation.target.path, operation.index) },
     );
+    const base = append_document_path(operation.target.path, operation.index);
+    let next = replaced.overlay;
+    const effects: LiveMapDocumentIdentityEffect[] = [...replaced.effects];
+    for (const entry of operation.lineage ?? []) {
+      const source = validate_document_path([...base, ...entry.source]);
+      const destination = validate_document_path([...base, ...entry.destination]);
+      const quid = overlay.quidAtPath(source);
+      if (quid === undefined) continue;
+      const registered = register_livemap_document_identity_at_path(next, quid, destination);
+      next = registered.overlay;
+      effects.push(...registered.effects);
+    }
+    return Object.freeze({ overlay: next, effects: Object.freeze(effects) });
   }
   return reconcile_livemap_document_identity_overlay(overlay, effect);
 }

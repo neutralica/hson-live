@@ -9,6 +9,7 @@ import { validate_document_path } from "../src/api/livemap/livemap.document.path
 import { _create_livetree_runtime_test_handle, _reflect_document_for_runtime_test } from "../src/_tests/diagnostics-internal.ts";
 import { mount, raw_node } from "./helpers/reflect-unit6.mts";
 import { get_el_for_node } from "../src/api/livetree/utils/node-map-helpers.ts";
+import { set_livemap_document_quid_candidate_source_for_tests } from "../src/api/livemap/livemap.document.registration.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import type { DocumentLiveMap, LiveMapReplacementLineage } from "../src/types/livemap.types.ts";
 
@@ -147,7 +148,7 @@ check("Mirror follows receiving-runtime lineage and reuses compatible local DOM 
   assert.equal(get_el_for_node(oldC), domC);
   assert.equal(get_el_for_node(oldA), domA);
   assert.equal(document.document.byQuid("000009603"), undefined);
-  assert.equal(binding.status, "active");
+  assert.equal(binding.status, "active", binding.failure?.message);
   const beforeRejectedRev = document.rev;
   assert.throws(() => apply(document, node("<section <x/> <new/> <a/>/>"), [
     lineage_entry([], []), lineage_entry([], [0, 0]),
@@ -156,6 +157,28 @@ check("Mirror follows receiving-runtime lineage and reuses compatible local DOM 
   assert.equal(raw_node(binding.tree.node, [0, 0, 0, 2]), oldA);
   assert.equal(get_el_for_node(oldA), domA);
   assert.equal(binding.status, "active");
+  binding.dispose();
+});
+
+check("QUID-free replacement lineage carries an overlay-only local identity through Mirror", () => {
+  const document = map("<main <section <a/> <b/>/>/>");
+  const runtime = _create_livetree_runtime_test_handle();
+  const binding = _reflect_document_for_runtime_test(runtime, document);
+  const oldA = raw_node(binding.tree.node, [0, 0, 0, 0]);
+  set_livemap_document_quid_candidate_source_for_tests(document.document, () => "000004b01");
+  const quid = binding.tree.find.byTag("a")!.quid;
+  assert.equal(quid, "000004b01");
+  assert.equal(document.rev, 0);
+  assert.equal(JSON.stringify(document.root()).includes('"quid"'), false);
+  apply(document, node("<section <b/> <a/>/>"), [
+    lineage_entry([], []),
+    lineage_entry([0, 0], [0, 1]),
+  ]);
+  assert.equal(document.rev, 1);
+  assert.equal(document.document.byQuid(quid)?.$_tag, "a");
+  assert.equal(binding.status, "active", binding.failure?.message);
+  assert.equal(raw_node(binding.tree.node, [0, 0, 0, 1]), oldA);
+  assert.equal(JSON.stringify(document.root()).includes('"quid"'), false);
   binding.dispose();
 });
 

@@ -1,6 +1,6 @@
-# Reflect API reference
+# Mirror API reference
 
-Reflect projects LiveMap-owned state into LiveTree while keeping LiveMap as the
+Mirror projects LiveMap-owned state into LiveTree while keeping LiveMap as the
 only canonical authority. It does not make the DOM authoritative and does not
 observe arbitrary DOM mutation.
 
@@ -55,7 +55,7 @@ Construction captures the current canonical document projection and revision, bu
 fresh LiveTree projection, establishes path/QUID correspondence, registers its
 identity participant, then subscribes to LiveMap commit observations. If the
 map changes during that initialization window, construction fails instead of
-publishing a binding that skipped a revision. Only one active document Reflect
+publishing a binding that skipped a revision. Only one active document Mirror
 may own a given exact map object.
 
 The returned object has live getters:
@@ -87,7 +87,7 @@ type DocumentMirror = Readonly<{
 
 ### Authority and accepted map operations
 
-LiveMap remains canonical. Reflect consumes exact accepted-state evidence and
+LiveMap remains canonical. Mirror consumes exact accepted-state evidence and
 ordered commit revisions; it never infers canonical state from the projected
 tree or DOM.
 
@@ -97,33 +97,34 @@ canonical authoring throws before publishing a request. Callers enter the
 explicit `tree.async` context; its exact semantic descriptor is queued by Echo
 and lowered only at queue head against the latest accepted replica. No
 optimistic LiveTree or DOM mutation occurs. Authorization rejection rejects the
-initiating Promise and leaves Reflect active because there is no accepted
+initiating Promise and leaves Mirror active because there is no accepted
 evidence to project.
 
 A hosted AsyncLiveTree Promise resolves after Locus terminal success and after
 the same logical-map/incarnation Echo reaches the returned `completionRev`.
 That revision is authoritative-head evidence used as an exact client barrier,
-not a statement that Reflect or DOM realization succeeded. Read projected or
-runtime state explicitly through `asyncTree.sync` and inspect Reflect status
+not a statement that Mirror or DOM realization succeeded. Read projected or
+runtime state explicitly through `asyncTree.sync` and inspect Mirror status
 separately.
 
 Native form editing remains browser-owned realization state: unrelated accepted
 document changes do not reset a dirty control, and denial does not roll native
 state back. A bound `form.setValue(...)` or `form.setChecked(...)` performs no
 independent property write. When accepted canonical evidence changes that same
-field, Reflect explicitly realizes the accepted `.value` or `.checked` property,
+field, Mirror explicitly realizes the accepted `.value` or `.checked` property,
 including on an already-dirty input, textarea, or select as applicable.
 
-Hosted QUID demand is intentionally bounded: QUIDs already present in accepted
-state remain readable, while synchronous identity demand for an unquidded
-Echo-bound node rejects without a local `ensure-quid` commit.
+Hosted QUID demand is local to the Echo replica LiveMap. An unquidded bound
+node can acquire a client-local QUID without a Locus request, authority
+revision, map revision, or application commit. Mirror, LiveTree, and local DOM
+realize the same Echo map-local claim.
 
-Document Reflect handles the public document graph operations currently
+Document Mirror handles the public document graph operations currently
 produced by LiveMap:
 
 - `set-attr`, `remove-attr`, and `replace-attrs`;
 - `insert-content`, `remove-content`, `move-content`, and `replace-content`;
-- `ensure-quid` identity registration;
+- legacy replayed `ensure-quid` registration;
 - a sole `replace-root` operation; and
 - snapshot observations produced by restore.
 
@@ -155,7 +156,7 @@ application/domain actions are intentionally absent.
 Direct structural LiveTree operations that cannot be expressed as one
 supported canonical map operation are rejected with
 `DOCUMENT_REFLECT_UNSUPPORTED_OPERATION` or
-`DOCUMENT_REFLECT_DELEGATION_UNSUPPORTED`. In particular, Reflect does not
+`DOCUMENT_REFLECT_DELEGATION_UNSUPPORTED`. In particular, Mirror does not
 pretend that arbitrary `append`, text overwrite, reparenting, or direct graph
 editing is bidirectional synchronization. View-local listeners and styling do
 not become LiveMap data.
@@ -166,7 +167,7 @@ Initialization failures throw a classified `DocumentMirrorError` and unwind
 the partial binding. An error while consuming an already accepted map
 observation moves the binding to `failed`, records the first failure, and
 unsubscribes both commit observation and identity participation. The
-authoritative LiveMap commit has already happened; Reflect failure does not
+authoritative LiveMap commit has already happened; Mirror failure does not
 roll it back.
 
 `dispose()` is idempotent. It unsubscribes and releases correspondence
@@ -176,7 +177,7 @@ remove that projection separately. `diagnostics()` throws after disposal.
 
 ## Collection reflection
 
-Collection Reflect maintains one dedicated empty LiveTree host from an
+Collection Mirror maintains one dedicated empty LiveTree host from an
 array-valued LiveMap path handle:
 
 ```ts
@@ -215,9 +216,9 @@ For the complete renderer, key, source-replacement, cleanup, diagnostics, and
 known-limitations contract, see
 [Experimental Collection Reflect](../contracts/reflect-collection-experimental.md).
 
-## What Reflect does not do
+## What Mirror does not do
 
-Current Reflect provides no:
+Current Mirror provides no:
 
 - adoption or hydration of existing DOM;
 - arbitrary DOM observation or DOM-to-Hson diffing;

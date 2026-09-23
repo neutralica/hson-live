@@ -6,8 +6,12 @@ import { INTERACTION_RESERVED_LIBRARY_KEY } from "../../internal/interaction-sto
 import { rewrite_interaction_subjects, validate_interaction_subjects } from "../../internal/interaction-path-maintenance.js";
 import type { HsonSchema } from "../transform/transform.types.js";
 import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
-import type { ClassifiedLiveMap, HostedLiveMapLibrariesSnapshot, LiveMap, LiveMapAnyOp, LiveMapCommit, LiveMapLibrariesSnapshot, LocalLibrariesContinuationSnapshot, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapDataOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapCaptureOptions, LiveMapApply, LiveMapGraphCommit, LiveMapGraphOp, LiveMapGraphReplaceRootOp, LiveMapRootMode } from "../../types/livemap.types.js";
+import type { ClassifiedLiveMap, HostedLiveMapLibrariesSnapshot, LiveMap, LiveMapAnyOp, LiveMapCommit, LiveMapLibrariesSnapshot, LocalLibrariesContinuationSnapshot, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapDataOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapCaptureOptions, LiveMapApply, LiveMapGraphCommit, LiveMapGraphOp, LiveMapGraphReplaceRootOp, LiveMapRootMode, LiveMapDocumentPath } from "../../types/livemap.types.js";
 import type { LiveMapProjectedGraphEnsureQuidOp } from "./livemap.identity.types.js";
+import { is_ordinary_element_node } from "../../core/node-guards.js";
+import { resolve_document_path } from "./livemap.document.path.js";
+import { register_livemap_document_identity_at_path } from "./livemap.document.identity.js";
+import type { LiveMapRuntimeIdentityParticipant } from "./livemap.runtime-identity.js";
 import {
   clone_live_root,
   delete_live_path,
@@ -93,6 +97,7 @@ import {
   register_livemap_document_identity_effects,
   livemap_document_identity_effects_for,
   livemap_document_identity_quids,
+  livemap_document_identity_overlay_equal,
   replace_livemap_document_identity_overlay_effects,
   type LiveMapDocumentIdentityEffect,
 } from "./livemap.document.identity.js";
@@ -397,6 +402,8 @@ function make_livemap_core_from_compatibility_root(
   // map-wide QUID epoch and issued ledger. Active overlays remain graph-local
   // to their selected application Libraries.
   const mapIdentityEpoch = make_livemap_identity_epoch(aggregate_quid_locations(states).keys());
+  let identityGeneration = 0;
+  let localIdentityTransactionActive = false;
   /** Legacy root replacement resets an identity epoch and is one-library-only. */
   const assert_legacy_identity_epoch_reset_available = (): void => {
     if (libraryRegistry.size() === 1) return;
@@ -730,7 +737,8 @@ function make_livemap_core_from_compatibility_root(
       root: () => compatibilityLibrary.root,
       overlay: () => require_projected_overlay(compatibilityLibrary.projectedOverlay),
       identityEpoch: mapIdentityEpoch,
-      applyIdentity: applyProjectedIdentityTransition,
+      acquireLocalIdentity: (path: LivePath, quid: string) =>
+        acquire_local_projected_identity(compatibilityLibrary.identity, path, quid),
     }),
   );
 
@@ -1088,6 +1096,10 @@ function make_livemap_core_from_compatibility_root(
   }>;
 
   const aggregateObservers: Array<(commit: LiveMapAggregateCommit) => void> = [];
+  const aggregatePositionObservers: Array<(revision: number) => void> = [];
+  const publishAuthorityPosition = (): void => {
+    for (const observer of [...aggregatePositionObservers]) observer(mapRevision);
+  };
   const aggregateRestoreObservers: Array<(event: Readonly<{
     previousRevision: number;
     revision: number;
@@ -1246,6 +1258,103 @@ function make_livemap_core_from_compatibility_root(
     return locations;
   }
 
+  /** One map-wide, non-revisioned identity installation shared by every Library. */
+  function transact_local_identity(
+    library: LiveMapLibraryState,
+    quid: string,
+    installOverlay: () => void,
+    restoreOverlay: () => void,
+    participant?: LiveMapRuntimeIdentityParticipant,
+  ): void {
+    if (localIdentityTransactionActive) throw new Error("A LiveMap local identity transaction is already active.");
+    const before = aggregate_quid_locations(libraryRegistry.all());
+    if (before.has(quid) || mapIdentityEpoch.issued().has(quid)) {
+      throw new Error("LiveMap-wide local QUID candidate was already issued.");
+    }
+    const nextLedger = stage_livemap_identity_epoch(
+      mapIdentityEpoch.issued(),
+      before.keys(),
+      [...before.keys(), quid],
+    );
+    const revision = mapRevision;
+    const generation = identityGeneration;
+    const currentRoot = library.root;
+    const currentOverlay = library.documentOverlay ?? library.projectedOverlay;
+    localIdentityTransactionActive = true;
+    let reservation: ReturnType<LiveMapRuntimeIdentityParticipant["preflight"]> | undefined;
+    let overlayInstalled = false;
+    let claimApplied = false;
+    try {
+      reservation = participant?.preflight();
+      if (mapRevision !== revision || identityGeneration !== generation
+        || library.root !== currentRoot
+        || (library.documentOverlay ?? library.projectedOverlay) !== currentOverlay) {
+        throw new Error("LiveMap local identity preflight became stale.");
+      }
+      reservation?.apply();
+      claimApplied = reservation !== undefined;
+      installOverlay();
+      overlayInstalled = true;
+      participant?.realize();
+      // All fallible local claims and projections are complete before the
+      // monotonic issued ledger and generation become visible.
+      mapIdentityEpoch.install(nextLedger);
+      identityGeneration += 1;
+    } catch (cause) {
+      if (overlayInstalled) restoreOverlay();
+      reservation?.rollback();
+      if (claimApplied) participant?.rollbackRealization();
+      throw cause;
+    } finally {
+      reservation?.release();
+      localIdentityTransactionActive = false;
+    }
+  }
+
+  function acquire_local_document_identity(
+    libraryIdentity: LiveMapLibraryIdentity,
+    path: LiveMapDocumentPath,
+    quid: string,
+    participant?: LiveMapRuntimeIdentityParticipant,
+  ): void {
+    const library = require_library(libraryIdentity);
+    if (library.mode !== "document") throw new Error("Local document identity requires a document Library.");
+    const endpoint = resolve_document_path(library.root, "document", path);
+    if (!is_ordinary_element_node(endpoint)) throw new Error("Local document identity target is ineligible.");
+    const previous = require_document_overlay(library.documentOverlay);
+    if (previous.quidAtPath(path) !== undefined) throw new Error("Local document identity target is already claimed.");
+    const next = register_livemap_document_identity_at_path(previous, quid, path).overlay;
+    transact_local_identity(
+      library,
+      quid,
+      () => { library.documentOverlay = next; },
+      () => { library.documentOverlay = previous; },
+      participant,
+    );
+  }
+
+  function acquire_local_projected_identity(
+    libraryIdentity: LiveMapLibraryIdentity,
+    path: LivePath,
+    quid: string,
+  ): void {
+    const library = require_library(libraryIdentity);
+    if (library.mode === "document") throw new Error("Local data identity requires a data Library.");
+    const endpoint = resolve_value_node(library.root, path);
+    if (endpoint === undefined || !is_livemap_projected_identity_target(endpoint)) {
+      throw new Error("Local data identity target is ineligible.");
+    }
+    const previous = require_projected_overlay(library.projectedOverlay);
+    if (previous.quidAtPath(path) !== undefined) throw new Error("Local data identity target is already claimed.");
+    const next = register_livemap_projected_identity_at_path(previous, quid, path);
+    transact_local_identity(
+      library,
+      quid,
+      () => { library.projectedOverlay = next; },
+      () => { library.projectedOverlay = previous; },
+    );
+  }
+
   function make_aggregate_data_candidate(library: LiveMapLibraryState): AggregateDataCandidate {
     const overlay = require_projected_library(library);
     const value = library.projectedValue;
@@ -1333,6 +1442,7 @@ function make_livemap_core_from_compatibility_root(
   ): import("./livemap.authority.js").PreparedLiveMapAuthorityTransition {
     transitionController.assertPublicMutationAllowed();
     const prevRev = mapRevision;
+    const preparedIdentityGeneration = identityGeneration;
     const candidates = new Map<LiveMapLibraryIdentity, AggregateCandidate>();
     let systemCandidate: AggregateSystemCandidate | undefined;
     const replayingSystem = writes.some((write) => write.kind === "replay-data");
@@ -1455,7 +1565,9 @@ function make_livemap_core_from_compatibility_root(
         ...(prepared.sourceCandidate === undefined ? {} : { sourceCandidate: prepared.sourceCandidate }),
         ...(prepared.continuity === undefined ? {} : { continuity: prepared.continuity }),
       };
-      if (canonical_graph_equal(library.root, prepared.root) && prepared.issuedLedger === undefined) {
+      if (canonical_graph_equal(library.root, prepared.root)
+        && livemap_document_identity_overlay_equal(prepared.overlay, library.documentOverlay)
+        && prepared.issuedLedger === undefined) {
         candidate.operations.length = 0;
         candidate.identityEffects.length = 0;
       }
@@ -1544,7 +1656,8 @@ function make_livemap_core_from_compatibility_root(
           write.operation,
           candidate.overlay,
         );
-        if (!canonical_graph_equal(candidate.root, planned.root)) {
+        if (!canonical_graph_equal(candidate.root, planned.root)
+          || !livemap_document_identity_overlay_equal(planned.overlay, candidate.overlay)) {
           if (planned.operation.op !== "replace-root") {
             stage_candidate_identity(
               livemap_document_identity_quids(candidate.overlay),
@@ -1763,6 +1876,7 @@ function make_livemap_core_from_compatibility_root(
       commit,
       libraryModes: Object.freeze([...candidates.values()].map((candidate) => candidate.library.mode)),
       baseStillCurrent: () => mapRevision === prevRev
+        && identityGeneration === preparedIdentityGeneration
         && [...candidates.values()].every((candidate) => canonical_graph_equal(candidate.library.root, candidate.baseRoot))
         && (systemCandidate === undefined
           || canonical_graph_equal(systemCandidate.system.root, systemCandidate.baseRoot)),
@@ -1853,6 +1967,7 @@ function make_livemap_core_from_compatibility_root(
             }));
           }
           for (const observer of [...aggregateObservers]) observer(acceptedCommit);
+          publishAuthorityPosition();
         });
       },
     });
@@ -2170,6 +2285,7 @@ function make_livemap_core_from_compatibility_root(
     });
     enqueuePublication(() => {
       for (const observer of [...aggregateRestoreObservers]) observer(event);
+      publishAuthorityPosition();
     });
   }
 
@@ -2277,6 +2393,28 @@ function make_livemap_core_from_compatibility_root(
       owner,
       () => replay_hosted_aggregate(commit),
     ),
+    advanceHostedProgressManaged: (owner, progress) => transitionController.runManaged(owner, () => {
+      const hosted = require_hosted_state();
+      if (progress.logicalMapId !== hosted.fence.logicalMapId
+        || progress.incarnationId !== hosted.fence.incarnationId
+        || progress.registryDigest !== hosted.registry.digest) {
+        throw new Error("Hosted authority progress fence is incompatible.");
+      }
+      if (!Number.isSafeInteger(progress.prevRev) || !Number.isSafeInteger(progress.rev)
+        || progress.prevRev !== mapRevision || progress.rev !== mapRevision + 1) {
+        throw new LiveMapRevError(progress.prevRev, mapRevision);
+      }
+      mapRevision = progress.rev;
+      publishAuthorityPosition();
+      return mapRevision;
+    }),
+    observeAuthorityPosition: (listener) => {
+      aggregatePositionObservers.push(listener);
+      return () => {
+        const index = aggregatePositionObservers.indexOf(listener);
+        if (index !== -1) aggregatePositionObservers.splice(index, 1);
+      };
+    },
     target: aggregate_target,
     root: (library) => require_library(library).root,
     documentOverlay: (library) => {
@@ -2285,6 +2423,8 @@ function make_livemap_core_from_compatibility_root(
       return overlay;
     },
     identityEpoch: () => mapIdentityEpoch,
+    acquireLocalDocumentIdentity: acquire_local_document_identity,
+    acquireLocalProjectedIdentity: acquire_local_projected_identity,
     snap: aggregate_snap,
     handle: make_internal_path_authority,
     resolveQuid: (quid) => aggregate_quid_locations(libraryRegistry.all()).get(quid),
@@ -2483,6 +2623,8 @@ function make_livemap_core_from_compatibility_root(
     applyMutation: <TOp extends LiveMapGraphOp>(candidate: PreparedDocumentMutation<TOp>): LiveMapGraphCommit<TOp> => {
       return commit_aggregate_document_mutation(compatibilityLibrary.identity, candidate);
     },
+    acquireLocalIdentity: (path: LiveMapDocumentPath, quid: string, participant?: LiveMapRuntimeIdentityParticipant) =>
+      acquire_local_document_identity(compatibilityLibrary.identity, path, quid, participant),
     applyReplay: (candidate: PreparedDocumentReplay): LiveMapGraphCommit => {
       transitionController.assertPublicMutationAllowed();
       register_livemap_document_identity_effects(candidate.commit, candidate.identityEffects);

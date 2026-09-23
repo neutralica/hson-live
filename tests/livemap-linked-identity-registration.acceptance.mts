@@ -13,6 +13,7 @@ import {
 import { is_persisted_quid } from "../src/core/hson-node-quid.ts";
 import { canonical_graph_equal } from "../src/api/livemap/livemap.document.install.ts";
 import { FakeElement } from "./helpers/fake-document.mts";
+import { livemap_document_identity_overlay_for } from "../src/api/livemap/livemap.document.identity.ts";
 
 const syntheticHead = new FakeElement("head");
 syntheticHead.isConnected = true;
@@ -76,10 +77,11 @@ check("linked descendant QUID demand is supported", () => {
   close(binding);
 });
 
-check("registration mutates canonical metadata", () => {
+check("registration leaves canonical metadata untouched", () => {
   const { map, binding } = reflected(`<main/>`);
   const quid = authoredRoot(binding).quid;
-  assert.equal((map.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, quid);
+  assert.equal((map.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, undefined);
+  assert.deepEqual(livemap_document_identity_overlay_for(map.document).pathForQuid(quid), [0]);
   close(binding);
 });
 
@@ -91,40 +93,28 @@ check("registration mutates projected metadata with the same bytes", () => {
   close(binding);
 });
 
-check("new registration advances the ordinary revision once", () => {
+check("new registration leaves the ordinary revision unchanged", () => {
   const { map, binding } = reflected(`<main/>`);
   void authoredRoot(binding).quid;
-  assert.equal(map.rev, 1);
+  assert.equal(map.rev, 0);
   close(binding);
 });
 
-check("registration publishes one semantic ensure-quid operation", () => {
+check("registration publishes no application operation", () => {
   const { map, binding } = reflected(`<main/>`);
   const observations: unknown[] = [];
   map.commits.observe((observation) => observations.push(observation));
   void authoredRoot(binding).quid;
-  const observation = observations[0];
-  assert.equal(typeof observation, "object");
-  const commit = Reflect.get(observation!, "commit");
-  assert.equal(Reflect.get(Reflect.get(commit, "ops")[0], "op"), "ensure-quid");
+  assert.equal(observations.length, 0);
   close(binding);
 });
 
-check("registration target is a frozen canonical path", () => {
+check("registration records a path in the local overlay", () => {
   const { map, binding } = reflected(`<main/>`);
-  let target: unknown;
-  map.commits.observe((observation) => {
-      if (observation.kind === "commit") {
-        const operation = observation.commit.ops[0];
-        if (operation !== undefined && "domain" in operation && operation.op !== "replace-root") {
-          target = operation.target;
-        }
-      }
-  });
-  void authoredRoot(binding).quid;
-  assert.deepEqual(target, { kind: "path", path: [0] });
-  assert.equal(typeof target, "object");
-  assert.equal(Object.isFrozen(Reflect.get(target!, "path")), true);
+  const quid = authoredRoot(binding).quid;
+  const path = livemap_document_identity_overlay_for(map.document).pathForQuid(quid);
+  assert.deepEqual(path, [0]);
+  assert.equal(Object.isFrozen(path), true);
   close(binding);
 });
 
@@ -165,7 +155,7 @@ check("second QUID access is an exact no-op", () => {
   const first = root.quid;
   const second = root.quid;
   assert.equal(second, first);
-  assert.equal(map.rev, 1);
+  assert.equal(map.rev, 0);
   close(binding);
 });
 
@@ -180,11 +170,11 @@ check("existing canonical QUID access publishes nothing", () => {
   close(binding);
 });
 
-check("registration is visible to strict canonical equality", () => {
+check("registration preserves strict canonical equality", () => {
   const { map, binding } = reflected(`<main/>`);
   const before = map.root();
   void authoredRoot(binding).quid;
-  assert.equal(canonical_graph_equal(before, map.root()), false);
+  assert.equal(canonical_graph_equal(before, map.root()), true);
   close(binding);
 });
 
@@ -197,17 +187,13 @@ check("durable capture preserves registered metadata", () => {
   close(binding);
 });
 
-check("recorded registration replays without allocation", () => {
-  const { map, binding } = reflected(`<main/>`);
-  let commit: unknown;
-  map.commits.observe((observation) => {
-    if (observation.kind === "commit") commit = observation.commit;
-  });
-  const quid = authoredRoot(binding).quid;
+check("legacy recorded registration replays without allocation", () => {
+  const quid = "000002102";
+  const commit = { changed: true, prevRev: 0, rev: 1,
+    ops: [{ domain: "graph", op: "ensure-quid", target: { kind: "path", path: [0] }, quid }] };
   const mirror = element(`<main/>`);
   Reflect.apply(mirror.replay, mirror, [commit]);
   assert.equal((mirror.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, quid);
-  close(binding);
 });
 
 check("registered descendant survives detached capture and replay", () => {

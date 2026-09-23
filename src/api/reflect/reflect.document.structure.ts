@@ -9,10 +9,11 @@ import {
   HSON_META_QUID,
 } from "../../core/constants.js";
 import { clone_node } from "../../core/clone-node.js";
+import { assign_hson_node_quid } from "../../core/hson-node-quid.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { canonical_public_attrs_equal, decode_public_attrs } from "../../core/public-attrs.js";
 import type { CanonicalPublicAttrs, HsonNode, Primitive } from "../../core/types.js";
-import type { LiveMapDocumentCommitTarget, LiveMapGraphOp } from "../../types/livemap.types.js";
+import type { LiveMapDocumentCommitTarget, LiveMapGraphOp, LiveMapReplacementLineage } from "../../types/livemap.types.js";
 import { reconcile_browser_realization_children } from "../../internal/browser-realization/browser-realization-dom.js";
 import { index_subtree_ownership, release_subtree_ownership } from "../livetree/lifecycle/graph-ownership.js";
 import { apply_projected_attrs_replacement } from "../livetree/managers/attr-handle.js";
@@ -152,7 +153,7 @@ export function plan_document_structural_transaction(
         add_ordinary_owner(affectedOwners, target);
         assert_existing_index(target, operation.index, operation.op);
         const current = target.content[operation.index];
-        const replacement = plan_replacement(target, current, operation.replacement, continuity);
+        const replacement = plan_replacement(target, current, operation.replacement, operation.lineage, continuity);
         target.content[operation.index] = replacement;
         incomingRoots.push(replacement);
         break;
@@ -301,9 +302,47 @@ function plan_replacement(
   parent: ShadowNode,
   current: ShadowContent | undefined,
   replacementInput: HsonNode | Primitive,
+  lineage: LiveMapReplacementLineage | undefined,
   continuity: ContinuityPlanningContext,
 ): ShadowContent {
-  return plan_continuous_content(parent, current, clone_node(replacementInput), continuity);
+  const replacement = clone_node(replacementInput);
+  if (is_Node(replacement) && is_shadow_node(current) && lineage !== undefined) {
+    // Explicit lineage is the portable continuity source. The receiving Mirror
+    // realizes its own local QUIDs in this detached planning copy only.
+    for (const entry of lineage) {
+      const source = shadow_at_relative_path(current, entry.source);
+      const destination = node_at_relative_path(replacement, entry.destination);
+      const quid = source?.persistedQuid;
+      if (quid === undefined || destination === undefined) continue;
+      const existing = is_ordinary_element_node(destination) ? destination.$_meta?.[HSON_META_QUID] : undefined;
+      if (existing !== undefined && existing !== quid) {
+        throw new DocumentMirrorError(
+          DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
+          "Replacement lineage conflicts with local projected identity.",
+        );
+      }
+      if (existing === undefined) assign_hson_node_quid(destination, quid);
+    }
+  }
+  return plan_continuous_content(parent, current, replacement, continuity);
+}
+
+function shadow_at_relative_path(root: ShadowNode, path: readonly number[]): ShadowNode | undefined {
+  let current: ShadowContent = root;
+  for (const segment of path) {
+    if (!is_shadow_node(current)) return undefined;
+    current = current.content[segment];
+  }
+  return is_shadow_node(current) ? current : undefined;
+}
+
+function node_at_relative_path(root: HsonNode, path: readonly number[]): HsonNode | undefined {
+  let current: HsonNode | Primitive = root;
+  for (const segment of path) {
+    if (!is_Node(current)) return undefined;
+    current = current.$_content[segment];
+  }
+  return is_Node(current) ? current : undefined;
 }
 
 function plan_continuous_content(

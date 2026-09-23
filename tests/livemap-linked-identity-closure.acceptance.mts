@@ -75,14 +75,15 @@ function authoredRoot(binding: ReturnType<typeof reflected>["binding"]) {
   return _create_livetree_for_runtime_test(runtime, node).adoptRoots(binding.tree.hostRootNode());
 }
 
-check("capture plus replay preserves the semantic registration", () => {
+check("exact capture preserves local identity without a registration commit", () => {
   const { map, binding } = reflected(`<main/>`);
   let commit: LiveMapCommit<LiveMapAnyOp> | undefined;
   map.commits.observe((observation) => { if (observation.kind === "commit") commit = observation.commit; });
   const quid = authoredRoot(binding).quid;
   const mirror = element(`<main/>`);
-  Reflect.apply(mirror.replay, mirror, [commit]);
-  assert.equal((mirror.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, quid);
+  mirror.restore(map.capture());
+  assert.equal(commit, undefined);
+  assert.equal(mirror.document.byQuid(quid)?.$_tag, "main");
   close(binding);
 });
 
@@ -98,14 +99,12 @@ check("replay never consults the map allocator", () => {
   assert.equal((map.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, Q1);
 });
 
-check("Locus canonical history retains path and recorded QUID", () => {
-  const { map, binding } = reflected(`<main/>`);
-  let commit: LiveMapCommit<LiveMapAnyOp> | undefined;
-  map.commits.observe((observation) => { if (observation.kind === "commit") commit = observation.commit; });
-  const quid = authoredRoot(binding).quid;
-  const encoded = make_locus_canonical_commit(map, commit!, "identity-map", "identity-incarnation", 0);
-  assert.deepEqual(encoded.ops[0], { domain: "graph", op: "ensure-quid", target: path(), quid });
-  close(binding);
+check("legacy Locus canonical history retains path and recorded QUID", () => {
+  const map = element(`<main/>`);
+  const commit = map.replay({ changed: true, prevRev: 0, rev: 1,
+    ops: [{ domain: "graph", op: "ensure-quid", target: path(), quid: Q1 }] });
+  const encoded = make_locus_canonical_commit(map, commit, "identity-map", "identity-incarnation", 0);
+  assert.deepEqual(encoded.ops[0], { domain: "graph", op: "ensure-quid", target: path(), quid: Q1 });
 });
 
 check("current Locus decoder accepts additive ensure-quid transport", () => {
@@ -150,12 +149,12 @@ check("decoded Locus registration replays on a document mirror", () => {
   assert.equal(mirror.document.byQuid(Q1)?.$_tag, "main");
 });
 
-check("new registration publishes exactly one authoritative observation", () => {
+check("new registration publishes no authoritative observation", () => {
   const { map, binding } = reflected(`<main/>`);
   const origins: string[] = [];
   map.commits.observe((observation) => { if (observation.kind === "commit") origins.push(observation.origin); });
   void authoredRoot(binding).quid;
-  assert.deepEqual(origins, ["authoritative"]);
+  assert.deepEqual(origins, []);
   close(binding);
 });
 
@@ -168,12 +167,12 @@ check("existing registration suppresses observations", () => {
   close(binding);
 });
 
-check("first linked CSS demand acquires canonical identity", () => {
+check("first linked CSS demand acquires local identity", () => {
   const { map, binding } = reflected(`<main/>`);
   const root = authoredRoot(binding);
   assert.ok(root.css);
-  assert.equal(map.rev, 1);
-  assert.equal((map.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, root.quid);
+  assert.equal(map.rev, 0);
+  assert.equal((map.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, undefined);
   close(binding);
 });
 
@@ -213,7 +212,7 @@ check("QUID-scoped CSS remains the sole identity registration before TreeEvents 
   const root = authoredRoot(binding);
   void root.css;
   const revisionAfterCss = map.rev;
-  assert.equal(revisionAfterCss, 1);
+  assert.equal(revisionAfterCss, 0);
   assert.equal(_livetree_runtime_test_claim_count(runtime), 1);
   void root.events;
   assert.equal(map.rev, revisionAfterCss);

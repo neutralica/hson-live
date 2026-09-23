@@ -266,7 +266,7 @@ check("document watch always delivers restore including missing-to-missing", () 
   assert.deepEqual(missing, [undefined, undefined, undefined]);
 });
 
-check("document watch observes replay and strict canonical metadata changes", () => {
+check("document watch observes replay but not local identity acquisition", () => {
   const source = document(`<main <a/> <b/>/>`);
   const receiver = document(`<main <a/> <b/>/>`);
   const replayTags: string[] = [];
@@ -281,16 +281,7 @@ check("document watch observes replay and strict canonical metadata changes", ()
     kind: "path" as const,
     path: Object.freeze([0, 0, 0]),
   }));
-  assert.equal(metadata.length, 1);
-  assert.equal(
-    typeof metadata[0] === "object"
-      && metadata[0] !== null
-      && "$_meta" in metadata[0]
-      && typeof metadata[0].$_meta === "object"
-      && metadata[0].$_meta !== null
-      && "quid" in metadata[0].$_meta,
-    true,
-  );
+  assert.equal(metadata.length, 0);
 
   const installed = document(`<main <a/> <aside state="old"/>/>`);
   const installedTags: string[] = [];

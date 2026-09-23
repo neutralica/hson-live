@@ -1,11 +1,10 @@
 import { is_ordinary_element_node } from "../../core/node-guards.js";
-import { read_hson_node_quid } from "../../core/hson-node-quid.js";
 import type { LiveMapDocumentPath, LiveMapDocumentPathInput } from "../../types/livemap.types.js";
 import type { LiveMapDocumentIdentityHandle } from "./livemap.identity.types.js";
-import { clone_live_root } from "./livemap.editor.js";
 import type { LiveMapDocumentIdentityEpochController } from "./livemap.document.capture.js";
 import { resolve_document_path, validate_document_path } from "./livemap.document.path.js";
 import { ensure_livemap_document_canonical_identity } from "./livemap.document.registration.js";
+import { clone_livemap_document_exact_view } from "./livemap.document.identity.js";
 import type { LiveMapDocumentMutationController } from "./livemap.document.mutation.js";
 import { normalize_document_request_target } from "./livemap.document.target.js";
 import { LiveMapDocumentMutationError } from "./livemap.error.js";
@@ -81,7 +80,7 @@ function make_identity_handle(
     if (path === undefined || controller.overlay().quidAtPath(path) !== quid) return undefined;
     try {
       const endpoint = resolve_document_path(controller.root(), controller.mode, path);
-      if (!is_ordinary_element_node(endpoint) || read_hson_node_quid(endpoint) !== quid) return undefined;
+      if (!is_ordinary_element_node(endpoint)) return undefined;
       return validate_document_path(path);
     } catch {
       return undefined;
@@ -96,8 +95,9 @@ function make_identity_handle(
     snap: () => {
       const path = current_path();
       if (path === undefined) return undefined;
-      const endpoint = resolve_document_path(controller.root(), controller.mode, path);
-      return is_ordinary_element_node(endpoint) ? clone_live_root(endpoint) : undefined;
+      const view = clone_livemap_document_exact_view(controller.root(), controller.mode, controller.overlay());
+      const endpoint = resolve_document_path(view, controller.mode, path);
+      return is_ordinary_element_node(endpoint) ? endpoint : undefined;
     },
     dispose: () => {
       disposed = true;

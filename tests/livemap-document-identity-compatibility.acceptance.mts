@@ -19,6 +19,7 @@ import { set_livemap_document_quid_candidate_source_for_tests } from "../src/api
 import { FakeElement } from "./helpers/fake-document.mts";
 
 const Q1 = "000002c01";
+const Q2 = "000002c02";
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livemap.document-identity-compatibility",
   title: "Raw-QUID boundary and reflected continuity closure",
@@ -98,7 +99,7 @@ check("raw-QUID observation does not authorize handle reconstruction", () => {
   assert.equal(Reflect.get(map.document, "fromQuid"), undefined);
 });
 
-check("new registration is observable through the ordinary commit feed", () => {
+check("new registration is absent from the ordinary commit feed", () => {
   const map = element(`<main/>`);
   const operations: string[] = [];
   map.commits.observe((observation) => {
@@ -108,7 +109,7 @@ check("new registration is observable through the ordinary commit feed", () => {
     }
   });
   acquire_document_identity(map.document, target());
-  assert.deepEqual(operations, ["ensure-quid"]);
+  assert.deepEqual(operations, []);
 });
 
 check("existing registration publishes no feed event", () => {
@@ -159,7 +160,7 @@ check("one acquisition adds only one sparse overlay entry", () => {
   assert.equal(map.document.byQuid(Q1)?.$_attrs?.data, "500");
 });
 
-check("internal malformed metadata remains outside overlay and revision reconciliation", () => {
+check("local overlay remains authoritative when legacy node metadata disappears", () => {
   const map = element(`<main @${Q1}/>`);
   const handle = acquire_document_identity(map.document, target());
   const meta = internal_livemap_node(map, ["main"])?.$_meta;
@@ -167,14 +168,14 @@ check("internal malformed metadata remains outside overlay and revision reconcil
   delete meta.quid;
   assert.equal(map.rev, 0);
   assert.equal(livemap_document_identity_overlay_for(map).pathForQuid(Q1) !== undefined, true);
-  assert.equal(handle.active, false);
+  assert.equal(handle.active, true);
 });
 
 check("supported acquisition rejects an internally-created graph-overlay disagreement", () => {
   const map = element(`<main @${Q1}/>`);
   const meta = internal_livemap_node(map, ["main"])?.$_meta;
   if (meta === undefined) throw new Error("missing unsafe metadata fixture");
-  delete meta.quid;
+  meta.quid = Q2;
   assert.throws(() => acquire_document_identity(map.document, target()), errorCode("INVALID_DOCUMENT_IDENTITY"));
 });
 

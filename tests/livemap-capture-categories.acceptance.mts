@@ -72,9 +72,9 @@ check("explicit preserve-metadata capture retains QUIDs", () => {
   assert.equal(JSON.stringify(capture).includes(Q2), true);
 });
 
-check("same-epoch capture retains canonical QUID metadata", () => {
+check("same-epoch capture carries QUID identity out of band", () => {
   const capture = element(`<main @${Q1}/>`).capture({ identity: "same-epoch" });
-  assert.equal(JSON.stringify(capture).includes(Q1), true);
+  assert.equal(JSON.stringify(capture).includes(Q1), false);
 });
 
 check("identity-free capture strips every QUID", () => {

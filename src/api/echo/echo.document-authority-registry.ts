@@ -5,7 +5,6 @@ export type EchoDocumentAuthority = Readonly<{
   enqueue: (lower: () => EchoDocumentAction | undefined) => Promise<void>;
   dispose: () => void;
   pendingRevisionWaits: () => number;
-  rejectIdentityDemand: true;
 }>;
 
 const authorities = new WeakMap<object, EchoDocumentAuthority>();
@@ -25,7 +24,7 @@ export function echo_document_authority_for(map: object): EchoDocumentAuthority 
   return authorities.get(map);
 }
 
-/** @internal Queue pre-load document requests and reject non-authoritative identity minting. */
+/** @internal Queue pre-load document application requests. */
 export function create_deferred_echo_document_authority_internal(): Readonly<{
   authority: EchoDocumentAuthority;
   dispose: () => void;
@@ -50,7 +49,6 @@ export function create_deferred_echo_document_authority_internal(): Readonly<{
       for (const request of pending.splice(0)) request.reject(reason);
     },
     pendingRevisionWaits: () => attached?.pendingRevisionWaits() ?? 0,
-    rejectIdentityDemand: true,
   });
   deferredAttachments.set(authority, (next) => {
     if (disposed || attached !== undefined) return;

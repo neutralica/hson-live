@@ -292,10 +292,10 @@ For each recovering connection:
 
 1. establish recovery head `H`;
 2. pin immutable replay commits through `H`, or capture a snapshot at `H`;
-3. queue canonical commits created after `H`;
+3. queue client stream events created after `H`;
 4. deliver replay or snapshot through `H`;
 5. signal that recovery through `H` is complete;
-6. deliver queued commits beginning at `H + 1`;
+6. deliver queued commit or progress events beginning at `H + 1`;
 7. continue the live stream.
 
 A snapshot captured at revision `H` must never be labeled with a later revision.
@@ -303,6 +303,13 @@ A snapshot captured at revision `H` must never be labeled with a later revision.
 Commits created during snapshot serialization must not be lost or folded into the snapshot without updating the declared cut.
 
 ## 10. Client authoritative cursor
+
+For the managed aggregate Echo replica, `map.rev` is the processed authority
+position. Snapshot installation, graph replay, and generic progress all advance
+that same position. There is no secondary `lastAppliedRev` counter for this
+replica. Progress carries no graph effect, application commit, or DOM work.
+The following separate-cursor description applies to the older solo recovery
+path.
 
 The client tracks an explicit authoritative cursor:
 
@@ -320,6 +327,11 @@ The mirror's local revision may differ because:
 Locus validates canonical wire continuity using the authoritative cursor, not the mirror's local revision counter.
 
 ## 11. Client commit application
+
+Managed aggregate Echo applies commit and progress events contiguously under
+the same logical map, incarnation, registry, and revision fences. A progress
+event advances only `map.rev`; it is never a fabricated graph commit. The
+duplicate and gap rules below describe the older solo recovery path.
 
 For a commit from the current incarnation:
 

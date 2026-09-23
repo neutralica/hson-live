@@ -50,8 +50,11 @@ oracle and will be removed in Phase 4C.
 
 Echo does not perform optimistic mutation, authorization, application policy,
 or generic data proposals. Hosted data changes continue through
-application-defined Locus actions. An accepted QUID remains readable after
-replay; synchronous QUID demand for an unquidded Echo-bound node is rejected.
+application-defined Locus actions. A client-local QUID remains readable after
+replay while its subject survives. An unquidded Echo-bound node may acquire a
+client-local QUID through its
+LiveMap and Mirror. That demand does not contact Locus, advance `map.rev`, or
+publish an application commit.
 
 Transport connection, semantic session establishment, and replica recovery
 are separate lifecycle layers. `connect()` installs listeners on the supplied
@@ -68,8 +71,12 @@ for a replica-bearing Echo, releases exclusive management.
 
 An action's `completionRev` is the authoritative stream head at terminal
 settlement, interpreted with the current session's `logicalMapId` and
-`incarnationId`. Receipt of that result does not claim local replica or Reflect
-convergence.
+`incarnationId`. Receipt of that result does not claim local replica or Mirror
+convergence. Echo processes one ordered authority stream: a graph commit applies
+an application effect, while generic progress advances the processed authority
+position without graph or DOM work. `map.rev` is the processed authority
+position. A completion waiter settles only after Echo has processed every
+revision through `completionRev`, including progress-only revisions.
 
 Configured actions preserve full canonical Hson data fidelity in both
 directions. `Echo.action(name, payload)` accepts strictly admissible ordinary
@@ -100,7 +107,10 @@ Echo exposes its actual Schema-bound `LiveMap`, not a duplicate read-only map
 hierarchy. Direct public mutation rejects with the managed-mutation authority
 error; only accepted canonical replay mutates an Echo-governed map.
 
-Replica state observation belongs to LiveMap commit/sub/feed/watch facilities.
+Replica graph changes are observed through LiveMap commit/sub/feed/watch
+facilities. Progress-only authority advancement emits no application commit or
+value/mutation observation; internal authority-position observers support Echo
+convergence and Mirror revision ordering.
 `EchoRecovery` has no `onChange` observation member. Echo has no topology-aware
 `subscribe`/`unsubscribe`, public `seq`, or `onEvent` surface.
 

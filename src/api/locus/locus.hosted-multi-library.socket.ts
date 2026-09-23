@@ -69,6 +69,7 @@ import {
 } from "./locus.action-status.internal.js";
 import type {
   LocusHostedAggregateDownstreamSink,
+  LocusHostedAggregateProgress,
   LocusHostedAggregateSemanticAttachment,
 } from "./locus.hosted-multi-library.transport.internal.js";
 import type { LocusFiniteOperationRequest } from "./locus.transport.internal.js";
@@ -306,13 +307,14 @@ export function create_locus_hosted_aggregate_socket_internal<
       throw new Error("Hosted aggregate semantic output is malformed.");
     }
     const semantic: Record<string, unknown> = { ...message };
-    if (semantic.type === "commit") {
+    if (semantic.type === "commit" || semantic.type === "progress") {
       connection.downstream.publication(semantic as Parameters<LocusHostedAggregateDownstreamSink["publication"]>[0]);
       return;
     }
     if (semantic.type === "recovery-plan"
       || semantic.type === "recovery-snapshot"
       || semantic.type === "recovery-commit"
+      || semantic.type === "recovery-progress"
       || semantic.type === "recovery-caught-up") {
       connection.downstream.synchronization(semantic as Parameters<LocusHostedAggregateDownstreamSink["synchronization"]>[0]);
       return;
@@ -358,6 +360,11 @@ export function create_locus_hosted_aggregate_socket_internal<
   }
 
   function send_live_commit(connection: HostedConnection, id: string, envelope: LocusHostedAggregateWireEnvelope): void {
+    const progress = derive_locus_hosted_progress_internal(envelope);
+    if (progress !== undefined) {
+      send(connection, Object.freeze({ type: "progress", id, progress }));
+      return;
+    }
     send(connection, Object.freeze({
       type: "commit",
       id,
@@ -450,12 +457,10 @@ export function create_locus_hosted_aggregate_socket_internal<
     } else {
       for (const entry of replay) {
         if (!recovery_delivery_current(connection, activeRecovery)) return;
-        send(connection, Object.freeze({
-          type: "recovery-commit",
-          id: request.id,
-          phase: "body",
-          commit: entry.envelope,
-        }));
+        const progress = derive_locus_hosted_progress_internal(entry.envelope);
+        send(connection, progress === undefined
+          ? Object.freeze({ type: "recovery-commit", id: request.id, phase: "body", commit: entry.envelope })
+          : Object.freeze({ type: "recovery-progress", id: request.id, phase: "body", progress }));
         if (!recovery_delivery_current(connection, activeRecovery)) return;
       }
     }
@@ -1118,6 +1123,20 @@ function aggregate_envelope_from_wire(wire: string, locus: LocusHostedAggregate)
     maxWireBytes: DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES,
   }));
   return envelope;
+}
+
+/** Derive replica progress from exact authority history without rewriting that history. */
+export function derive_locus_hosted_progress_internal(envelope: LocusHostedAggregateWireEnvelope): LocusHostedAggregateProgress | undefined {
+  const commit = envelope.commit;
+  if (commit.operations.length === 0
+    || !commit.operations.every((entry) => "op" in entry.operation && entry.operation.op === "ensure-quid")) return undefined;
+  return Object.freeze({
+    logicalMapId: envelope.logicalMapId,
+    incarnationId: envelope.incarnationId,
+    registryDigest: envelope.registryDigest,
+    prevRev: commit.prevRev,
+    rev: commit.rev,
+  });
 }
 
 function decode_request(raw: string, maxWireBytes: number): HostedRequest {

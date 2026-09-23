@@ -233,12 +233,13 @@ check("new-epoch QUID-less root install is fresh and retains absence", () => {
   close(binding);
 });
 
-check("linked QUID access acquires exactly one canonical claim", () => {
+check("linked QUID access acquires exactly one map-local claim", () => {
   const { map, binding } = reflected(`<main/>`);
   const root = authoredRoot(binding);
   const quid = root.quid;
   assert.equal(root.node.$_meta?.quid, quid);
-  assert.equal((map.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, quid);
+  assert.equal((map.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, undefined);
+  assert.equal(map.document.byQuid(quid)?.$_tag, "main");
   assert.equal(_livetree_runtime_test_claim_count(runtime), 1);
   close(binding);
 });
@@ -249,7 +250,7 @@ check("QUID-scoped CSS acquires once and later TreeEvents access adds no acquisi
   const root = authoredRoot(binding);
   assert.ok(root.css);
   const revisionAfterCss = map.rev;
-  assert.equal(revisionAfterCss, 1);
+  assert.equal(revisionAfterCss, 0);
   assert.ok(root.events);
   const result = profile.stop();
   assert.equal(result.quidEnsureCalls, 0);

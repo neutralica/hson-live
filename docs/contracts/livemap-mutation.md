@@ -209,27 +209,21 @@ Live calls accept path-only `LiveMapDocumentRequestTarget` values. Stored graph 
 | `replace-content` | Hson-node parent path; existing index | Old subtree at the slot is retired; siblings retain paths; replacement owns the slot | Exact canonical replacement is a no-op; invalid slot/content, identity, mode, path, or witness conflicts reject. |
 | `remove-content` | Hson-node parent path; existing index | Removed subtree retires; later siblings shift `-1` | A missing slot conflicts; a resulting document-mode change conflicts. |
 | `move-content` | Hson-node parent path; existing `from` and `to` | Moved subtree and descendants move to final index `to`; intervening siblings shift once | `from === to` is a no-op; malformed/out-of-range indexes conflict. |
-| `ensure-quid` | Eligible ordinary-element path; system-generated recorded QUID | Adds canonical `$_meta.quid` without structural path change | Existing same QUID is an operation-level no-op; malformed, colliding, ineligible, or different-existing claims reject. Replay never allocates. |
+| legacy `ensure-quid` replay | Eligible ordinary-element path; recorded QUID | Admits historical canonical `$_meta.quid` without structural path change | Existing same QUID is an operation-level no-op; malformed, colliding, ineligible, or different-existing claims reject. Replay never allocates. New demand does not produce this operation. |
 | `replace-root` | No target; same document mode | Every old path retires and the supplied canonical root becomes authoritative | Exact root equality is a no-op at install; in replay it must be the sole operation and mode must match. |
 
 `move-content.to` is the final position after removal, not a pre-removal insertion boundary. Thus moving `1 -> 3` in `[a,b,c,d]` yields `[a,c,d,b]`, while `3 -> 1` yields `[a,d,b,c]`.
 
 Mutation, replay, and reflection consume the same path-authoritative operation semantics. The neutral document-path module owns validation, resolution, ordering, equality, prefix, append/parent, deterministic encoding, and insertion/deletion/replacement/move/root path transforms. It contains no QUID behavior.
 
-`ensure-quid` is produced only by the internal LiveMap authority in response to
-an owner-authorized continuity facility, including exact linked identity demand.
-No public LiveMap method requests it, and callers cannot select the QUID.
-Document commits use the numeric document commit target; data commits use
-`{ kind: "path", path: LivePath, projected: true }`. Both are path-authoritative,
-and neither accepts a raw-QUID route. Candidate generation is outside replay and
-outside the canonical operation reducer. One changed registration advances the
-ordinary revision once and publishes through ordinary canonical commit and
-history observers; reuse publishes nothing. Data value feeds, links, and
-stores publish nothing for metadata-only registration because their values are
-unchanged. The operation is
-additive in current exact Locus graph transport because it preserves the
-established graph discriminants, path target, and recorded scalar value without
-changing the envelope version. Replay validates the recorded value and never
+New generated identity acquisition is a map-owned runtime transaction. It
+validates a path, stages the sparse overlay and issued ledger, preflights
+attached Mirror/LiveTree/DOM claims, and installs atomically. It does not
+change the canonical application graph, advance `map.rev`, or publish an
+application commit. No public LiveMap method requests it and callers cannot
+select a QUID. Historical document and projected `ensure-quid` commits remain
+readable for exact legacy replay. Their targets are path-authoritative and
+never accept a raw-QUID route. Replay validates the recorded value and never
 allocates.
 
 Identity acquisition is package-internal and accepts a path-only target, as do
@@ -243,12 +237,13 @@ array-item wrappers are never registration targets.
 ### Same-epoch identity non-reuse
 
 Graph staging carries an immutable issued-QUID ledger alongside the sparse
-active overlay. A new `ensure-quid` admission enters both; retirement changes
-only the active overlay. Each later operation in a batch sees QUIDs issued by
-earlier ordinals even if a later ordinal retires them. Allocation retries an
-issued candidate, while replay and incoming QUID-bearing content reject retired
-same-epoch reuse without allocating. Active collision and retired issued reuse
-remain distinct structured conflicts.
+active overlay. A successful local identity transaction enters both without
+creating a graph revision; retirement changes only the active overlay. Each
+later graph operation in a batch sees QUIDs issued by earlier ordinals even if
+a later ordinal retires them. Allocation retries an issued candidate, while
+legacy replay and incoming QUID-bearing content reject retired same-epoch
+reuse without allocating. Active collision and retired issued reuse remain
+distinct structured conflicts.
 
 Failure publishes neither graph, revision, active overlay, issued ledger,
 history, observation, nor handle state. Whole-root new-epoch admission instead

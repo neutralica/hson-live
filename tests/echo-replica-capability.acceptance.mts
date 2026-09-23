@@ -349,7 +349,6 @@ await check("pre-readiness deferred document requests retain their own settlemen
     enqueue: async () => { throw expected; },
     dispose() {},
     pendingRevisionWaits: () => 0,
-    rejectIdentityDemand: true,
   });
   register_echo_document_authority(map, attached);
   await assert.rejects(pending, (error) => error === expected);

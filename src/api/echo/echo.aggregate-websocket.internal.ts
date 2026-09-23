@@ -7,6 +7,7 @@ import {
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../locus/locus.hosted-multi-library.protocol.js";
 import type {
   LocusHostedAggregateCanonicalPublication,
+  LocusHostedAggregateProgress,
   LocusHostedAggregateSynchronizationOutput,
   LocusHostedAggregateSynchronizationRequest,
 } from "../locus/locus.hosted-multi-library.transport.internal.js";
@@ -84,7 +85,12 @@ export function decode_echo_hosted_aggregate_synchronization_frame_internal(raw:
     if (value.phase !== "body" && value.phase !== "tail") throw new Error("Hosted recovery commit phase is malformed.");
     return Object.freeze({ type: "recovery-commit", id, phase: value.phase, commit: value.commit as LocusHostedAggregateWireEnvelope });
   }
+  if (value.type === "recovery-progress") {
+    if (value.phase !== "body" && value.phase !== "tail") throw new Error("Hosted recovery progress phase is malformed.");
+    return Object.freeze({ type: "recovery-progress", id, phase: value.phase, progress: decode_progress(value.progress) });
+  }
   if (value.type === "commit") return Object.freeze({ type: "commit", id, commit: value.commit as LocusHostedAggregateWireEnvelope });
+  if (value.type === "progress") return Object.freeze({ type: "progress", id, progress: decode_progress(value.progress) });
   if (value.type === "recovery-caught-up") {
     const logicalMapId = required_string(value.logicalMapId);
     const incarnationId = required_string(value.incarnationId);
@@ -104,3 +110,18 @@ function exact_record(value: unknown, label: string): Record<string, unknown> {
 function required_string(value: unknown): string | undefined { return typeof value === "string" && value.length > 0 ? value : undefined; }
 function required_digest(value: unknown): string | undefined { return typeof value === "string" && /^[0-9a-f]{64}$/u.test(value) ? value : undefined; }
 function required_revision(value: unknown): number | undefined { return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined; }
+function decode_progress(input: unknown): LocusHostedAggregateProgress {
+  const progress = exact_record(input, "Hosted authority progress");
+  const fields = ["logicalMapId", "incarnationId", "registryDigest", "prevRev", "rev"];
+  if (Object.keys(progress).length !== fields.length || fields.some((field) => !Object.hasOwn(progress, field))) {
+    throw new Error("Hosted authority progress fields are malformed.");
+  }
+  const logicalMapId = required_string(progress.logicalMapId);
+  const incarnationId = required_string(progress.incarnationId);
+  const registryDigest = required_digest(progress.registryDigest);
+  const prevRev = required_revision(progress.prevRev);
+  const rev = required_revision(progress.rev);
+  if (logicalMapId === undefined || incarnationId === undefined || registryDigest === undefined
+    || prevRev === undefined || rev !== prevRev + 1) throw new Error("Hosted authority progress is malformed.");
+  return Object.freeze({ logicalMapId, incarnationId, registryDigest, prevRev, rev });
+}

@@ -202,10 +202,9 @@ check("clone receives fresh identity instead of copied provenance", () => {
   assert.notEqual(clone.quid, Q1);
 });
 
-check("public fromNode observes same-runtime non-reuse", () => {
-  const first = hson.liveTree.fromNode(node("main", Q1));
-  first.remove();
-  assert.throws(() => hson.liveTree.fromNode(node("main", Q1)), reuse);
+check("public fromNode rejects generated identity claims", () => {
+  assert.throws(() => hson.liveTree.fromNode(node("main", Q1)), /runtime QUID metadata is invalid in portable node input/i);
+  assert.throws(() => hson.liveTree.fromNode(node("main", Q1)), /runtime QUID metadata is invalid in portable node input/i);
 });
 
 check("remove returns void and no restoration artifact", () => {

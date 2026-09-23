@@ -328,8 +328,10 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
   });
   assert.equal((await identityClient.recovery.recover()).strategy, "snapshot");
   const identityRev = identityClient.map.rev;
-  assert.throws(() => acquire_projected_identity(identityClient.map, ["container"]), /managed|controlled|identity/i);
-  assert.equal(identityClient.map.rev, identityRev, "Echo fencing forbids local identity acquisition after snapshot recovery");
+  const requestsBeforeDemand = identityPair.clientSent.length;
+  assert.equal(acquire_projected_identity(identityClient.map, ["container"]).active, true);
+  assert.equal(identityClient.map.rev, identityRev);
+  assert.equal(identityPair.clientSent.length, requestsBeforeDemand);
 
   const equalHost = hson.locus.create({ state: { value: 5 }, logicalMapId: "map-equal-snapshot" });
   const equalMirror = hson.liveMap.fromJson({ value: 5 });
@@ -414,7 +416,13 @@ await check("replay applies exact commits once and current emits no body", async
   const identitySource = hson.liveMap.fromJson({ container: {} });
   let identityCommit;
   identitySource.commits.observe((event) => { if (event.kind === "commit") identityCommit = event.commit; });
-  acquire_projected_identity(identitySource, ["container"]);
+  // Retained authority history can still contain an old identity-only revision.
+  identitySource.replay({
+    changed: true,
+    prevRev: 0,
+    rev: 1,
+    ops: [{ domain: "graph", op: "ensure-quid", target: { kind: "path", path: ["container"], projected: true }, quid: "000004c11" }],
+  });
   const identityBase = 0;
   const identityHost = create_locus_internal({
     map: identitySource,

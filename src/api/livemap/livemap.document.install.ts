@@ -13,6 +13,7 @@ import { clone_live_root } from "./livemap.editor.js";
 import { LiveMapDocumentInstallError, LiveMapRevError } from "./livemap.error.js";
 import {
   clone_hson_graph_without_quids,
+  same_epoch_livemap_document_overlay,
   validate_livemap_document_admission,
   type LiveMapDocumentIdentityEpochController,
 } from "./livemap.document.capture.js";
@@ -168,7 +169,10 @@ export function prepare_document_install(
     return {
       mode: observedMode,
       root,
-      overlay: build_livemap_document_identity_overlay(root, observedMode),
+      overlay: identity === "same-epoch"
+        ? same_epoch_livemap_document_overlay(capture)
+          ?? build_livemap_document_identity_overlay(root, observedMode)
+        : build_livemap_document_identity_overlay(root, observedMode),
     };
   } catch (cause) {
     throw new LiveMapDocumentInstallError(

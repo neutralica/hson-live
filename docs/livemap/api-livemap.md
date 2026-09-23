@@ -385,16 +385,17 @@ Links are one-way and the disposer stops propagation. There is no general bidire
 Data object and array containers never carry canonical QUID metadata because
 all `_hson_*` nodes are QUID-ineligible. Data maps expose no public
 identity-acquisition method. Internal owner-authorized continuity facilities
-may ensure one path-authoritative claim in the map-local sparse overlay,
-producing the established `ensure-quid` commit and revision behavior without
-mutating the canonical graph. Application code cannot request a claim or
+may ensure one path-authoritative claim in the map-local sparse overlay.
+This is a non-revisioned runtime identity transaction: it does not change the
+canonical graph, advance `map.rev`, or publish an application commit.
+Application code cannot request a claim or
 provide its QUID.
 
 Internally retained overlay identity follows object-key rename, array move, ancestor movement, and insertion/removal shifts. Nested leaf mutation preserves it; deletion, replacement, or owner-epoch replacement retires it. Semantic data objects and arrays are eligible map-local targets, while primitives and property/scalar carriers remain ineligible. This target rule is not canonical QUID eligibility.
 
 Within the current owner epoch, retired QUID bytes remain reserved in an internal issued ledger. Allocation retries those bytes, so an unrelated container cannot reactivate a stale handle. A new owner epoch starts a fresh ledger seeded from active claims carried by an exact capture capability; old handles remain fenced even if that epoch later uses equal bytes. Exact same-epoch restoration preserves the living ledger rather than rolling it back to capture time.
 
-The claim is map-local overlay state, not canonical Hson metadata, a data property, array item, enumerable key, or schema field. `snap()`, `root()`, feeds, links, selectors, serializers, and stores see the same canonical graph/data value before and after acquisition. Commit observers still see the identity registration. Exact live capture capabilities privately carry active overlay claims; copied or serialized Hson/HTML/JSON/binary graph representations do not.
+The claim is map-local overlay state, not canonical Hson metadata, a data property, array item, enumerable key, or schema field. `snap()`, `root()`, feeds, links, selectors, serializers, and stores see the same canonical graph/data value before and after acquisition. Commit observers do not see identity acquisition. Exact live capture capabilities privately carry active overlay claims; copied or serialized Hson/HTML/JSON/binary graph representations do not.
 
 `map.at(path)` remains a passive location: it follows whatever currently occupies that path and never mints merely because it is created, read, bound, or subscribed. Data mode adds no `byQuid` or `fromQuid` constructor. Raw QUID bytes cannot recreate a handle or cross an owner/epoch boundary.
 
@@ -408,13 +409,13 @@ Ordinary element locations also expose `location.attrs` with `get`, `has`, `keys
 
 Element locations also expose `location.flags.has(name)`, `location.flags.set(...names)`, and `location.flags.clear(...names)`. The explicit-target equivalents are `map.document.flags.has(target, name)`, `.set(target, ...names)`, and `.clear(target, ...names)`. A flag exists exactly when the complete canonical attr bag owns the key and its value equals the canonical name. Multi-name writes are atomic, and clear preserves a same-key ordinary value. These operations address by path and do not mint QUIDs.
 
-Document maps expose no public identity-acquisition method. Existing QUIDs may still be inspected through the active-epoch `document.byQuid` observation surface, and internal linked continuity facilities may request a canonical path-authoritative claim. Only ordinary elements are eligible for that internal document operation.
+Document maps expose no public identity-acquisition method. Existing QUIDs may still be inspected through the active-epoch `document.byQuid` observation surface, and internal linked continuity facilities may request a map-local path-authoritative claim. Only ordinary elements are eligible. The claim changes the runtime overlay and issued ledger without changing canonical node metadata, `map.rev`, or the application commit stream. LiveMap-backed Mirror and LiveTree use the same local QUID; attached DOM may realize it as browser-local `hson:quid` metadata.
 
-Handles follow content moves and insertion shifts and survive attribute changes. Removal or replacement without explicit continuity makes them inactive. Local replacement authoring can derive that continuity from same-runtime QUID evidence; hosted replacement carries operation-relative source/destination path lineage. Changed durable install, durable restore, and replayed root replacement fence the old owner epoch; exact same-epoch capture admission may preserve continuity. Multiple handles may share one QUID. Disposing a handle does not remove metadata or create a commit.
+Handles follow content moves and insertion shifts and survive attribute changes. Removal or replacement without explicit continuity makes them inactive. Replacement lineage carries operation-relative source/destination paths, and the receiving runtime applies its local overlay. Changed durable install, durable restore, and replayed root replacement fence the old owner epoch; exact same-epoch capture admission may preserve continuity. Multiple handles may share one QUID. Disposing a handle does not remove the local claim or create a commit.
 
 Document identity uses the same owner-epoch issued ledger. Removal or an identity-replacing replacement makes `document.byQuid(q)` absent, and the retired bytes cannot be allocated, replayed, or introduced on another element in that epoch. An explicit replacement lineage preserves the receiving runtime's active local QUID when one exists. Raw QUIDs still do not survive owner-epoch replacement as identity claims.
 
-The linked LiveTree projection also participates in its runtime's lifetime issued ledger. If LiveMap allocation proposes bytes retired by a prior claim in that runtime, Reflection rejects the local reservation and the map-owned allocator retries before canonical publication. This adds no public acquisition or restoration surface.
+The linked LiveTree projection also participates in its runtime's lifetime issued ledger. If LiveMap allocation proposes bytes retired by a prior claim in that runtime, Mirror rejects the local reservation and the map-owned allocator retries before local claim installation. This adds no public acquisition or restoration surface.
 
 `document.byQuid`, `LiveTree.quid`, `LiveTree.find.byQuid`, and diagnostic QUID output remain active-epoch observation surfaces. QUIDs are sparse runtime continuity evidence, not application IDs, authorization, durable references, or handle constructors. There is no raw-QUID mutation target, `fromQuid`, raw setter, public replacement/retirement operation, or user-selected QUID API.
 
@@ -428,7 +429,7 @@ map.capture({ identity: "preserve-metadata" });
 map.capture({ identity: "strip" });
 ```
 
-Same-epoch output is an exact local object capability; copying or serializing it removes that proof. Preserve-metadata output retains QUID bytes for durable structure but does not transfer old handles. Strip output removes QUID metadata from the detached capture without mutating or minting into the source.
+Same-epoch output is an exact local object capability with out-of-band identity overlay; copying or serializing it removes that proof. Preserve-metadata output can synthesize QUID bytes into a detached exact view for legacy durable structure, but does not transfer old handles. Strip output removes QUID metadata from the detached capture without mutating or minting into the source.
 
 `install(capture, { expectedRev?, identity? })` atomically replaces a same-mode document and advances revision. `restore` installs the exact captured revision without an ordinary commit. Admission supports `same-epoch`, `preserve-metadata`, `strip`, and `reject`. The compatibility default is `preserve-metadata`: claims are validated and become fresh map-local overlay identity, not proof of the source map's epoch. `replay(commit)` validates identity witnesses, operation domain, and exact revision continuity. `commits.observe` is the supported graph publication surface.
 

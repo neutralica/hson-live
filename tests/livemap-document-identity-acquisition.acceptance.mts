@@ -18,6 +18,7 @@ import {
   encode_view_state_snapshot,
 } from "../src/api/livemap/livemap.document.view-state-codec.ts";
 import type { LiveMapGraphCommit } from "../src/types/livemap.types.ts";
+import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 
 const Q1 = "000002a01";
 const Q2 = "000002a02";
@@ -66,45 +67,37 @@ check("an eligible ordinary element acquires an active handle", () => {
   assert.equal(handle.snap()?.$_tag, "main");
 });
 
-check("new acquisition writes one valid canonical QUID", () => {
+check("new acquisition creates one valid local QUID without canonical metadata", () => {
   const map = element(`<main/>`);
   const handle = acquire_document_identity(map.document, target());
   assert.equal(is_persisted_quid(handle.snap()?.$_meta?.quid), true);
+  assert.equal(canonical_hson_graph_equal(map.root(), element(`<main/>`).root()), true);
 });
 
-check("new acquisition advances the ordinary revision once", () => {
+check("new acquisition leaves the ordinary revision unchanged", () => {
   const map = element(`<main/>`);
   acquire_document_identity(map.document, target());
-  assert.equal(map.rev, 1);
+  assert.equal(map.rev, 0);
 });
 
-check("new acquisition publishes ensure-quid", () => {
+check("new acquisition publishes no application commit", () => {
   const map = element(`<main/>`);
   let commit: LiveMapGraphCommit | undefined;
   map.commits.observe((observation) => {
     if (observation.kind === "commit") commit = observation.commit as LiveMapGraphCommit;
   });
   acquire_document_identity(map.document, target());
-  assert.equal(commit?.ops[0]?.op, "ensure-quid");
+  assert.equal(commit, undefined);
 });
 
-check("registration commits use one frozen path-authoritative target", () => {
+check("identity acquisition leaves the application operation stream empty", () => {
   const map = element(`<main/>`);
-  let operation: LiveMapGraphCommit["ops"][number] | undefined;
+  let operations = 0;
   map.commits.observe((observation) => {
-    if (observation.kind === "commit") {
-      const candidate = observation.commit.ops[0];
-      if (candidate !== undefined
-        && "domain" in candidate
-        && (candidate.op !== "ensure-quid" || !("projected" in candidate.target))) operation = candidate as LiveMapGraphCommit["ops"][number];
-    }
+    if (observation.kind === "commit") operations += observation.commit.ops.length;
   });
   acquire_document_identity(map.document, target());
-  assert.equal(operation?.op, "ensure-quid");
-  if (operation?.op !== "ensure-quid") throw new Error("missing ensure-quid fixture");
-  assert.deepEqual(operation.target, { kind: "path", path: [0] });
-  assert.equal(Object.isFrozen(operation.target.path), true);
-  assert.equal("witness" in operation.target, false);
+  assert.equal(operations, 0);
 });
 
 check("the sparse overlay resolves newly registered metadata", () => {
@@ -114,11 +107,11 @@ check("the sparse overlay resolves newly registered metadata", () => {
   assert.equal(map.document.byQuid(quid!)?.$_tag, "main");
 });
 
-check("registration changes strict canonical graph equality", () => {
+check("registration preserves strict canonical graph equality", () => {
   const map = element(`<main/>`);
   const before = map.root();
   acquire_document_identity(map.document, target());
-  assert.equal(canonical_hson_graph_equal(before, map.root()), false);
+  assert.equal(canonical_hson_graph_equal(before, map.root()), true);
 });
 
 check("existing valid identity is reused without revision or commit", () => {
@@ -148,19 +141,17 @@ check("durable capture preserves acquired metadata", () => {
   assert.equal(restored.document.byQuid(quid!)?.$_tag, "main");
 });
 
-check("recorded registration replays without minting", () => {
-  const source = element(`<main/>`);
-  let commit: LiveMapGraphCommit | undefined;
-  source.commits.observe((observation) => {
-    if (observation.kind === "commit") commit = observation.commit as LiveMapGraphCommit;
-  });
-  const quid = acquire_document_identity(source.document, target()).snap()?.$_meta?.quid;
+check("legacy recorded registration replays without minting", () => {
+  const commit: LiveMapGraphCommit = {
+    changed: true, prevRev: 0, rev: 1,
+    ops: [{ domain: "graph", op: "ensure-quid", target: { kind: "path", path: validate_document_path([0]) }, quid: Q1 }],
+  };
   const mirror = element(`<main/>`);
   set_livemap_document_quid_candidate_source_for_tests(mirror.document, () => {
     throw new Error("replay minted");
   });
-  mirror.replay(commit!);
-  assert.equal(mirror.document.byQuid(quid!)?.$_tag, "main");
+  mirror.replay(commit);
+  assert.equal(mirror.document.byQuid(Q1)?.$_tag, "main");
 });
 
 check("view-state persistence preserves acquired exact metadata", () => {

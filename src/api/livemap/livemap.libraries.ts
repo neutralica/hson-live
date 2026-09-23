@@ -41,6 +41,7 @@ import { clone_live_path } from "./livemap.path.js";
 import { must_json_value, must_live_path } from "./livemap.guard.js";
 import {
   internal_livemap_aggregate_authority,
+  register_internal_authority_position_observer,
   register_internal_livemap_aggregate_owner,
 } from "./livemap.internal.js";
 import type { LiveMapAggregateCommit, LiveMapLibraryIdentity } from "./livemap.library.js";
@@ -56,7 +57,7 @@ import {
   make_livemap_document_identity_api,
   register_livemap_document_identity_api,
 } from "./livemap.document.identity-handle.js";
-import { register_livemap_document_identity_overlay } from "./livemap.document.identity.js";
+import { clone_livemap_document_exact_view, register_livemap_document_identity_overlay } from "./livemap.document.identity.js";
 import { register_livemap_document_identity_authority } from "./livemap.document.registration.js";
 import { register_livemap_identity_epoch_owner } from "./livemap.identity-epoch.js";
 import {
@@ -374,7 +375,9 @@ function make_data_library(
     at: library_at as LiveMapDataLibrary["at"],
     schema: Object.freeze({ get: () => library.input.schema }),
   };
-  return Object.freeze(facade);
+  const selected = Object.freeze(facade);
+  register_internal_authority_position_observer(selected, aggregate.observeAuthorityPosition);
+  return selected;
 }
 
 function classify_data_path_value(value: JsonValue | undefined): import("../../types/livemap.types.js").LiveMapPathKind {
@@ -492,6 +495,8 @@ function make_document_library(
     },
     applyMutation: <TOp extends LiveMapGraphOp>(candidate: import("./livemap.document.mutation.js").PreparedDocumentMutation<TOp>) =>
       aggregate.commitDocumentMutation(library.identity, candidate),
+    acquireLocalIdentity: (path: import("../../types/livemap.types.js").LiveMapDocumentPath, quid: string, participant?: import("./livemap.runtime-identity.js").LiveMapRuntimeIdentityParticipant) =>
+      aggregate.acquireLocalDocumentIdentity(library.identity, path, quid, participant),
   });
   const mutation = make_livemap_document_mutation_api(controller);
   const rawAttrs = Object.freeze({
@@ -633,8 +638,9 @@ function make_document_library(
       if (!is_persisted_quid(quid)) return undefined;
       const path = controller.overlay().pathForQuid(quid);
       if (path === undefined) return undefined;
-      const node = resolve_document_path(root(), "document", path);
-      return is_Node(node) ? clone_node(node) : undefined;
+      const view = clone_livemap_document_exact_view(root(), "document", controller.overlay());
+      const node = resolve_document_path(view, "document", path);
+      return is_Node(node) ? node : undefined;
     },
     attrs,
     flags,
@@ -650,6 +656,7 @@ function make_document_library(
     "document",
     aggregate.inspect().revision,
     root(),
+    controller.overlay(),
     options,
   );
   const facade: LiveMapDocumentLibrary = {
@@ -665,7 +672,9 @@ function make_document_library(
   };
   register_livemap_document_identity_overlay(facade, controller.overlay);
   register_livemap_identity_epoch_owner(facade, controller.identityEpoch);
-  return Object.freeze(facade);
+  const selected = Object.freeze(facade);
+  register_internal_authority_position_observer(selected, aggregate.observeAuthorityPosition);
+  return selected;
 }
 
 function must_library_input(name: string, value: unknown): LiveMapLibraryInput {

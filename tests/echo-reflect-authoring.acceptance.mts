@@ -45,8 +45,9 @@ function document(source: string): DocumentLiveMap {
 function socket_pair() {
   const clientMessages = new Set<(raw: string) => void>();
   const serverMessages = new Set<(raw: string) => void>();
+  const clientSent: string[] = [];
   const client = {
-    send(raw: string) { for (const listener of [...serverMessages]) listener(raw); },
+    send(raw: string) { clientSent.push(raw); for (const listener of [...serverMessages]) listener(raw); },
     close() {},
     onMessage(listener: (raw: string) => void) { clientMessages.add(listener); return () => clientMessages.delete(listener); },
     onClose() { return () => {}; },
@@ -57,7 +58,7 @@ function socket_pair() {
     onMessage(listener: (raw: string) => void) { serverMessages.add(listener); return () => serverMessages.delete(listener); },
     onClose() { return () => {}; },
   };
-  return { client, server };
+  return { client, server, clientSent };
 }
 
 function authored_element(binding: ReturnType<typeof hson.reflect>) {
@@ -111,10 +112,46 @@ await check("one-map Echo fences direct mutation before graph, revision, publica
   assert.equal(publications, 0);
   assert.equal(tree.attrs.get("title"), undefined);
   assert.equal(dom.getAttribute("title"), null);
-  assert.throws(() => tree.quid, /identity|QUID/i);
+  const localQuid = tree.quid;
+  assert.equal(typeof localQuid, "string");
+  assert.equal(replica.document.byQuid(localQuid)?.$_tag, "main");
+  assert.equal(authoritative.rev, 0);
+  assert.equal(publications, 0);
   assert.equal(replica.rev, 0);
   binding.dispose();
   echo.dispose();
+});
+
+await check("connected Echo acquires client-local Mirror identity without a Locus request", async () => {
+  const authoritative = document("<main/>");
+  const host = hson.locus.create({ map: authoritative, logicalMapId: "echo-local-identity" });
+  const replica = document("<main/>");
+  const pair = socket_pair();
+  host.connect(pair.server);
+  const echo = hson.echo.create({ socket: pair.client, map: replica, session: {}, recovery: { logicalMapId: host.stream.logicalMapId } });
+  echo.connect();
+  await echo.session.create();
+  await echo.recovery.recover();
+  const binding = hson.reflect(replica);
+  const tree = authored_element(binding);
+  const sentBefore = pair.clientSent.length;
+  let commits = 0;
+  replica.commits.observe((observation) => { if (observation.kind === "commit") commits += 1; });
+  const quid = tree.quid;
+  assert.equal(replica.document.byQuid(quid)?.$_tag, "main");
+  assert.equal(replica.rev, 0);
+  assert.equal(authoritative.rev, 0);
+  assert.equal(pair.clientSent.length, sentBefore);
+  assert.equal(commits, 0);
+  await host.mutate((draft) => draft.document.attrs.set({ kind: "path", path: [0] }, "title", "next"));
+  await wait_for_revision(replica, 1);
+  assert.equal(replica.rev, 1);
+  assert.equal(authoritative.rev, 1);
+  assert.equal(replica.document.byQuid(quid)?.$_attrs?.title, "next");
+  assert.equal(binding.status, "active");
+  binding.dispose();
+  echo.dispose();
+  host.dispose();
 });
 
 await check("hosted nested remove is a void request and changes projection only after acceptance", async () => {

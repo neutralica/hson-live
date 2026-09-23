@@ -5,6 +5,7 @@ import { hson } from "../src/index.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { is_persisted_quid, scan_hson_node_quids } from "../src/core/hson-node-quid.ts";
 import { acquire_projected_identity } from "./helpers/livemap-identity-internal.mts";
+import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import {
   LIVEMAP_PROJECTED_QUID_MINT_RETRY_LIMIT,
   set_livemap_projected_quid_candidate_source_for_tests,
@@ -47,12 +48,12 @@ check("root object acquisition remains available internally", () => { const owne
 check("root array acquisition remains available internally", () => { const owner = map([1, 2]); const h = acquire_projected_identity(owner, []); assert.deepEqual(h.snap(), [1, 2]); });
 check("nested object acquisition remains path based internally", () => { const owner = map({ a: { b: 1 } }); const h = acquire_projected_identity(owner, ["a"]); assert.deepEqual(h.path(), ["a"]); });
 check("nested array acquisition remains path based internally", () => { const owner = map({ a: [1] }); const h = acquire_projected_identity(owner, ["a"]); assert.deepEqual(h.snap(), [1]); });
-check("new registration advances one ordinary revision", () => { const owner = map({}); acquire_projected_identity(owner, []); assert.equal(owner.rev, 1); });
-check("new registration publishes the shared ensure-quid operation", () => {
-  const owner = map({}); let op: unknown; owner.commits.observe((e) => { if (e.kind === "commit") op = e.commit.ops[0]; }); acquire_projected_identity(owner, []);
-  assert.deepEqual(op && typeof op === "object" ? (op as { target: unknown }).target : undefined, { kind: "path", path: [], projected: true });
+check("new registration leaves the ordinary revision unchanged", () => { const owner = map({}); acquire_projected_identity(owner, []); assert.equal(owner.rev, 0); });
+check("new registration publishes no application commit", () => {
+  const owner = map({}); let commits = 0; owner.commits.observe((e) => { if (e.kind === "commit") commits += 1; }); acquire_projected_identity(owner, []);
+  assert.equal(commits, 0);
 });
-check("registration allocates a valid 9-character overlay QUID", () => { const owner = map({}); let quid: unknown; owner.commits.observe((event) => { if (event.kind === "commit") quid = (event.commit.ops[0] as { quid?: unknown }).quid; }); acquire_projected_identity(owner, []); assert.equal(is_persisted_quid(quid), true); });
+check("registration allocates a valid 9-character overlay QUID", () => { const owner = map({}); set_livemap_projected_quid_candidate_source_for_tests(owner, () => Q1); acquire_projected_identity(owner, []); assert.equal(is_persisted_quid(Q1), true); assert.deepEqual(internal_livemap_aggregate_authority(owner).resolveQuid(Q1)?.path, []); });
 check("existing registration is a no-op", () => { const owner = map({}); const a = acquire_projected_identity(owner, []); const rev = owner.rev; let seen = 0; owner.commits.observe(() => seen += 1); const b = acquire_projected_identity(owner, []); assert.equal(owner.rev, rev); assert.equal(seen, 0); assert.deepEqual(b.path(), a.path()); });
 check("projected JavaScript value is unchanged", () => { const owner = map({ a: [1, { b: true }] }); const before = owner.snap(); acquire_projected_identity(owner, ["a", 1]); assert.deepEqual(owner.snap(), before); });
 check("overlay acquisition leaves canonical graph equality unchanged", () => { const owner = map({}); const before = owner.root(); acquire_projected_identity(owner, []); assert.equal(canonical_hson_graph_equal(before, owner.root()), true); assert.equal(scan_hson_node_quids(owner.root()).size, 0); });
@@ -64,7 +65,7 @@ check("primitive number targets reject", () => { const owner = map({ a: 1 }); as
 check("boolean and null targets reject", () => { const booleanOwner = map({ a: true }); const nullOwner = map({ a: null }); assert.throws(() => acquire_projected_identity(booleanOwner, ["a"])); assert.throws(() => acquire_projected_identity(nullOwner, ["a"])); });
 check("missing paths reject atomically", () => { const owner = map({}); assert.throws(() => acquire_projected_identity(owner, ["missing"]), code("PROJECTED_IDENTITY_TARGET_NOT_FOUND")); assert.equal(owner.rev, 0); });
 check("path input is detached from the handle", () => { const owner = map({ a: {} }); const path: (string | number)[] = ["a"]; const h = acquire_projected_identity(owner, path); path[0] = "x"; assert.deepEqual(h.path(), ["a"]); });
-check("allocator collisions retry against the sparse overlay", () => { const owner = map({ a: {}, b: {} }); set_livemap_projected_quid_candidate_source_for_tests(owner, () => Q1); acquire_projected_identity(owner, ["a"]); let calls = 0; let allocated: unknown; owner.commits.observe((event) => { if (event.kind === "commit") allocated = (event.commit.ops[0] as { quid?: unknown }).quid; }); set_livemap_projected_quid_candidate_source_for_tests(owner, () => (++calls === 1 ? Q1 : Q2)); acquire_projected_identity(owner, ["b"]); assert.equal(allocated, Q2); });
+check("allocator collisions retry against the sparse overlay", () => { const owner = map({ a: {}, b: {} }); set_livemap_projected_quid_candidate_source_for_tests(owner, () => Q1); acquire_projected_identity(owner, ["a"]); let calls = 0; set_livemap_projected_quid_candidate_source_for_tests(owner, () => (++calls === 1 ? Q1 : Q2)); acquire_projected_identity(owner, ["b"]); assert.deepEqual(internal_livemap_aggregate_authority(owner).resolveQuid(Q2)?.path, ["b"]); });
 check("allocator exhaustion is atomic", () => { const owner = map({}); let calls = 0; set_livemap_projected_quid_candidate_source_for_tests(owner, () => { calls += 1; return "bad"; }); assert.throws(() => acquire_projected_identity(owner, []), code("PROJECTED_IDENTITY_ALLOCATOR_EXHAUSTED")); assert.equal(calls, LIVEMAP_PROJECTED_QUID_MINT_RETRY_LIMIT); assert.equal(owner.rev, 0); });
 check("passive map.at reads never acquire identity", () => { const owner = map({ a: {} }); owner.at(["a"]).snap(); assert.equal(owner.rev, 0); assert.equal(scan_hson_node_quids(owner.root()).size, 0); });
 

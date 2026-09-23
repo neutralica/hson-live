@@ -210,13 +210,13 @@ check("disposing one handle leaves another handle active", () => {
   assert.equal(second.active, true);
 });
 
-check("handle disposal does not remove canonical QUID metadata", () => {
+check("handle disposal does not remove the local QUID claim", () => {
   const map = element(`<main/>`);
   const handle = acquire_document_identity(map.document, target());
   const quid = handle.snap()?.$_meta?.quid;
   handle.dispose();
   assert.equal(map.document.byQuid(quid!)?.$_tag, "main");
-  assert.equal(map.rev, 1);
+  assert.equal(map.rev, 0);
 });
 
 check("disposed handles remain inactive after later map changes", () => {

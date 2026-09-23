@@ -101,8 +101,9 @@ identity.
 `hsonLiveMap.fromLibraries(...)`. The map keeps its literal Library names and
 per-Library HsonSchemas. Actions use the same `context.mutate(...)` model, with
 `draft.lib("name")` selecting the Library for that one atomic global action.
-There is still one revision cursor and one ordered commit stream, not a stream
-per Library. The normal `hsonEcho.create({ map, socket, recovery })` route
+There is still one revision cursor and one ordered authority stream, not a stream
+per Library. Client delivery includes a graph commit or generic progress for
+each revision. The normal `hsonEcho.create({ map, socket, recovery })` route
 has one complete same-topology mirror. Connection, session establishment, and
 recovery are explicit separate operations. Named document Libraries work with
 `hsonMirror` across live updates and in-place replacement recovery.
@@ -163,9 +164,14 @@ where the authority or protocol requires it.
 
 ## Canonical history and recovery
 
-Changed commits advance the authoritative map revision once. Clients apply
-commits in order, ignore exact duplicates, and reject gaps or conflicting
-overlap. `make_locus_canonical_stream` and `make_locus_recovery_planner` expose
+Changed commits advance the authoritative map revision once. Local generated
+QUID demand does not advance it or enter authority history. Echo processes
+commits and generic progress in one contiguous stream, ignores exact duplicates,
+and rejects gaps or conflicting overlap. Progress advances Echo's processed
+authority position without a graph mutation or application commit. Retained
+legacy identity-only commits may be translated to client progress without
+changing durable authority history. `make_locus_canonical_stream` and
+`make_locus_recovery_planner` expose
 the lower-level current/replay/snapshot machinery.
 
 Recovery identity uses `LocusLogicalMapId` and `LocusIncarnationId`. Client

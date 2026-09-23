@@ -22,11 +22,13 @@ through the physical attachment that submitted its request.
 
 Synchronization begins or resumes from exact replica evidence and delivers a
 typed recovery plan, current/replay/snapshot material, recovery tail, caught-up
-boundary, and ordered live canonical publications. Canonical state continues to
+boundary, and ordered live authority publications. Each authority revision in
+the Echo client stream carries either a graph commit or generic progress with
+no graph effect. Canonical state continues to
 use the exact LiveMap/Hson graph representations; action `HsonData` is not used
 as a replacement commit format.
 
-Locus installs live observation before recovery transfer completes. Commits
+Locus installs live observation before recovery transfer completes. Revisions
 accepted across that cut are retained as tail or pending-live output, so the
 internal seam does not turn recovery into a separate fetch followed by a later
 subscription.
@@ -49,8 +51,13 @@ security principal.
 Recovery is semantic; reconnect is transport lifecycle. Authority settlement
 is likewise distinct from Echo replica convergence. AsyncLiveTree continues to
 wait for the accepted operation's `completionRev`, delivered later through
-ordered canonical synchronization, and Reflect/DOM realization remains a
+ordered authority synchronization, and Mirror/DOM realization remains a
 separate convergence boundary.
+
+Generated QUID acquisition is local to the Echo or Locus runtime. It creates
+neither an authority revision nor an application commit. Retained historical
+identity-only authority commits may be represented as generic progress in the
+client stream; exact hosted identity formats remain readable during migration.
 
 ## Current scope
 

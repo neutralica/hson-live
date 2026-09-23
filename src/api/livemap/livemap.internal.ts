@@ -17,6 +17,8 @@ import type {
   LiveMapTransitionController,
 } from "./livemap.authority.js";
 import type { PreparedDocumentMutation } from "./livemap.document.mutation.js";
+import type { LiveMapRuntimeIdentityParticipant } from "./livemap.runtime-identity.js";
+import type { LiveMapDocumentPath } from "../../types/livemap.types.js";
 import type {
   HostedAggregateCommit,
   HostedRegistry,
@@ -36,6 +38,22 @@ type InternalLiveMapLibraryOwner = Readonly<{
 }>;
 
 const INTERNAL_LIBRARY_OWNERS = new WeakMap<object, InternalLiveMapLibraryOwner>();
+const INTERNAL_AUTHORITY_POSITION_OBSERVERS = new WeakMap<object, (listener: (revision: number) => void) => () => void>();
+
+/** Selected managed libraries can follow map-wide authority position without a mutation event. @internal */
+export function register_internal_authority_position_observer(
+  owner: object,
+  observe: (listener: (revision: number) => void) => () => void,
+): void {
+  INTERNAL_AUTHORITY_POSITION_OBSERVERS.set(owner, observe);
+}
+
+/** Present on map-backed selected libraries when their owner reports position. @internal */
+export function internal_authority_position_observer(
+  owner: object,
+): ((listener: (revision: number) => void) => () => void) | undefined {
+  return INTERNAL_AUTHORITY_POSITION_OBSERVERS.get(owner);
+}
 
 /** Non-public aggregate capability used only by architecture acceptance tests. @internal */
 export type InternalLiveMapAggregateAuthority = Readonly<{
@@ -64,10 +82,27 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   replayHosted: (commit: HostedAggregateCommit) => LiveMapAggregateCommit;
   /** Apply a transport commit while this aggregate is client-managed. @internal */
   replayHostedManaged: (owner: object, commit: HostedAggregateCommit) => LiveMapAggregateCommit;
+  /** Advance a managed replica through one effect-free authority revision. @internal */
+  advanceHostedProgressManaged: (owner: object, progress: Readonly<{
+    logicalMapId: string;
+    incarnationId: string;
+    registryDigest: string;
+    prevRev: number;
+    rev: number;
+  }>) => number;
+  /** Authority position, including commits, progress, and snapshot installation. @internal */
+  observeAuthorityPosition: (listener: (revision: number) => void) => () => void;
   target: (library: LiveMapLibraryIdentity, path: LivePath) => LiveMapStructuralTarget;
   root: (library: LiveMapLibraryIdentity) => HsonNode;
   documentOverlay: (library: LiveMapLibraryIdentity) => LiveMapDocumentIdentityOverlay;
   identityEpoch: () => LiveMapIdentityEpochController;
+  acquireLocalDocumentIdentity: (
+    library: LiveMapLibraryIdentity,
+    path: LiveMapDocumentPath,
+    quid: string,
+    participant?: LiveMapRuntimeIdentityParticipant,
+  ) => void;
+  acquireLocalProjectedIdentity: (library: LiveMapLibraryIdentity, path: LivePath, quid: string) => void;
   snap: (library: LiveMapLibraryIdentity, path?: LivePath) => JsonValue | undefined;
   handle: (library: LiveMapLibraryIdentity, path: LivePath) => InternalLiveMapPathAuthority;
   resolveQuid: (quid: string) => LiveMapStructuralTarget | undefined;

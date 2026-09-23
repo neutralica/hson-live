@@ -199,13 +199,13 @@ check("identity stripping remains an explicit metadata fence", () => {
   assert.equal(livemap_document_identity_overlay_for(target).size, 0);
 });
 
-check("linked explicit QUID demand registers exactly one canonical identity", () => {
+check("linked explicit QUID demand registers exactly one map-local identity", () => {
   const map = element(`<main/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
   const root = authoredRoot(binding);
   const quid = root.quid;
-  assert.equal(map.rev, 1);
-  assert.equal((map.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, quid);
+  assert.equal(map.rev, 0);
+  assert.equal((map.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, undefined);
   assert.equal(root.node.$_meta?.quid, quid);
   assert.equal(_livetree_runtime_test_claim_count(runtime), 1);
   binding.dispose();

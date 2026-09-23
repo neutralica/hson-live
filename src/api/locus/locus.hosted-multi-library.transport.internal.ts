@@ -24,19 +24,27 @@ export type LocusHostedAggregateSynchronizationRequest = Readonly<{
 type PlanOutcome = "current" | "replay" | "snapshot" | "reject";
 type SnapshotReason = "no_usable_revision" | "incarnation_mismatch" | "registry_mismatch" | "history_unavailable";
 
+/** One ordered authority revision with no graph effect for this replica. */
+export type LocusHostedAggregateProgress = Readonly<{
+  logicalMapId: string;
+  incarnationId: string;
+  registryDigest: string;
+  prevRev: number;
+  rev: number;
+}>;
+
 export type LocusHostedAggregateSynchronizationOutput =
   | Readonly<{ type: "recovery-plan"; id: string; logicalMapId: string; incarnationId: string; registryDigest: string; headRev: number; outcome: Exclude<PlanOutcome, "reject">; reason?: SnapshotReason }>
   | Readonly<{ type: "recovery-plan"; id: string; logicalMapId: string; incarnationId: string; registryDigest: string; headRev: number; outcome: "reject"; error: Readonly<{ code?: string; message: string }> }>
   | Readonly<{ type: "recovery-snapshot"; id: string; snapshot: HostedLiveMapLibrariesSnapshot }>
   | Readonly<{ type: "recovery-commit"; id: string; phase: "body" | "tail"; commit: LocusHostedAggregateWireEnvelope }>
+  | Readonly<{ type: "recovery-progress"; id: string; phase: "body" | "tail"; progress: LocusHostedAggregateProgress }>
   | Readonly<{ type: "recovery-caught-up"; id: string; logicalMapId: string; incarnationId: string; registryDigest: string; throughRev: number }>
   | Readonly<{ type: "synchronization-failure"; error: Readonly<{ code?: string; message: string; cause?: unknown }> }>;
 
-export type LocusHostedAggregateCanonicalPublication = Readonly<{
-  type: "commit";
-  id: string;
-  commit: LocusHostedAggregateWireEnvelope;
-}>;
+export type LocusHostedAggregateCanonicalPublication =
+  | Readonly<{ type: "commit"; id: string; commit: LocusHostedAggregateWireEnvelope }>
+  | Readonly<{ type: "progress"; id: string; progress: LocusHostedAggregateProgress }>;
 
 export type LocusHostedAggregateDownstreamSink = LocusDownstreamSink<
   LocusHostedAggregateSynchronizationOutput,

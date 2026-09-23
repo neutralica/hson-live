@@ -108,8 +108,9 @@ QUID-bearing root.
 `apply` is conditional whole-state replacement. Its `prevRev` must equal the
 current revision; a changed result becomes one ordinary data commit.
 
-`replay` accepts either a current structural operation envelope or the public
-projected `ensure-quid` graph commit. Operation replay requires exact
+`replay` accepts either a current structural operation envelope or a legacy
+projected `ensure-quid` graph commit. New local identity demand does not
+produce such a commit. Operation replay requires exact
 `prevRev`, verifies recorded previous and next witnesses, validates the
 prospective schema, and emits the accepted replay commit. It does not silently
 repair a gap or accept an old transport shape.

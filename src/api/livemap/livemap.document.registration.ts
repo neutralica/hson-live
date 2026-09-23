@@ -8,17 +8,16 @@ import type {
   LiveMapGraphCommit,
   LiveMapGraphOp,
 } from "../../types/livemap.types.js";
-import type { LiveMapGraphEnsureQuidOp } from "./livemap.identity.types.js";
 import {
   LiveMapDocumentIdentityRegistrationError,
   LiveMapDocumentMutationError,
 } from "./livemap.error.js";
 import { document_path_equal, resolve_document_path } from "./livemap.document.path.js";
 import {
-  prepare_ensure_document_quid,
   type LiveMapDocumentMutationController,
   type PreparedDocumentMutation,
 } from "./livemap.document.mutation.js";
+import type { LiveMapRuntimeIdentityParticipant } from "./livemap.runtime-identity.js";
 import {
   allocate_livemap_quid,
   LIVEMAP_QUID_MINT_RETRY_LIMIT,
@@ -45,7 +44,9 @@ export type LiveMapDocumentIdentityCommitReservation = Readonly<{
 /** One active local projection participant; never serialized or exposed publicly. */
 export type LiveMapDocumentIdentityParticipant = Readonly<{
   preflight: (operations: readonly LiveMapGraphOp[]) => LiveMapDocumentIdentityCommitReservation;
+  preflightLocalIdentity: (path: LiveMapDocumentPath, quid: string) => LiveMapDocumentIdentityCommitReservation;
   verifyExisting: (path: LiveMapDocumentPath, quid: string) => void;
+  realize: (path: LiveMapDocumentPath) => void;
 }>;
 
 /** Retryable local namespace conflict found before canonical acceptance. */
@@ -143,16 +144,16 @@ function acquire_livemap_document_canonical_identity(
     );
   }
   const overlay = authority.overlay();
-  const existing = read_hson_node_quid(endpoint);
-  const indexed = overlay.quidAtPath(target.path);
+  const metadata = read_hson_node_quid(endpoint);
+  const existing = overlay.quidAtPath(target.path);
   const indexedPath = existing === undefined ? undefined : overlay.pathForQuid(existing);
-  if (existing !== indexed
+  if ((metadata !== undefined && metadata !== existing)
     || (existing !== undefined
       && (indexedPath === undefined || !document_path_equal(indexedPath, target.path)))) {
     throw new LiveMapDocumentMutationError(
       "INVALID_DOCUMENT_IDENTITY",
       "ensure-quid",
-      "canonical graph and sparse identity overlay disagree",
+      "document identity metadata and runtime overlay disagree",
     );
   }
   if (existing !== undefined) {
@@ -168,42 +169,24 @@ function acquire_livemap_document_canonical_identity(
       || authority.identityEpoch.issued().has(candidateQuid)
       || authority.overlay().pathForQuid(candidateQuid) !== undefined,
     (candidateQuid) => {
-    let prepared: PreparedDocumentMutation<LiveMapGraphEnsureQuidOp>;
-    let reservation: LiveMapDocumentIdentityCommitReservation | undefined;
+    const runtimeParticipant: LiveMapRuntimeIdentityParticipant | undefined = participant === undefined
+      ? undefined
+      : Object.freeze({
+        preflight: () => participant.preflightLocalIdentity(target.path, candidateQuid),
+        realize: () => {
+          participant.realize(target.path);
+          participant.verifyExisting(target.path, candidateQuid);
+        },
+        rollbackRealization: () => participant.realize(target.path),
+      });
+    reserved.add(candidateQuid);
     try {
-      prepared = prepare_ensure_document_quid(
-        authority.root(),
-        authority.mode,
-        authority.overlay(),
-        target,
-        candidateQuid,
-      );
-      reservation = participant?.preflight(Object.freeze([prepared.operation]));
+      authority.acquireLocalIdentity(target.path, candidateQuid, runtimeParticipant);
+      return Object.freeze({ claimed: true, value: candidateQuid });
     } catch (cause) {
       if (cause instanceof LiveMapDocumentIdentityParticipantCollisionError) return Object.freeze({ claimed: false });
       throw cause;
-    }
-
-    reserved.add(candidateQuid);
-    if (reservation !== undefined) reservationForCandidate.set(prepared, reservation);
-    try {
-      const commit = authority.applyMutation(prepared);
-      if (!commit.changed || commit.ops[0]?.op !== "ensure-quid") {
-        throw new LiveMapDocumentIdentityRegistrationError(
-          "LIVEMAP_IDENTITY_PROJECTION_NOT_APPLIED",
-          "Canonical identity acquisition did not publish its registration operation.",
-        );
-      }
-      if (reservation !== undefined && !reservation.applied) {
-        throw new LiveMapDocumentIdentityRegistrationError(
-          "LIVEMAP_IDENTITY_PROJECTION_NOT_APPLIED",
-          "Canonical identity committed, but the local projection did not install the supplied claim.",
-        );
-      }
-      participant?.verifyExisting(target.path, candidateQuid);
-      return Object.freeze({ claimed: true, value: candidateQuid });
     } finally {
-      reservation?.release();
       reserved.delete(candidateQuid);
     }
   });

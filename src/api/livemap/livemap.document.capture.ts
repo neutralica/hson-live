@@ -13,6 +13,7 @@ import type {
 import { clone_live_root } from "./livemap.editor.js";
 import { LiveMapDocumentIdentityProvenanceError } from "./livemap.error.js";
 import type { LiveMapIdentityEpochController } from "./livemap.identity-epoch.js";
+import { clone_livemap_document_exact_view, type LiveMapDocumentIdentityOverlay } from "./livemap.document.identity.js";
 
 type CaptureCategory = DocumentLiveMapCaptureIdentity | "default";
 
@@ -23,6 +24,7 @@ type CaptureProvenance = Readonly<{
   mode: DocumentLiveMapMode;
   rev: number;
   root: HsonNode;
+  overlay: LiveMapDocumentIdentityOverlay;
 }>;
 
 export type LiveMapDocumentIdentityEpochController = LiveMapIdentityEpochController;
@@ -44,12 +46,13 @@ export function capture_livemap_document<TMode extends DocumentLiveMapMode>(
   mode: TMode,
   rev: number,
   root: HsonNode,
+  overlay: LiveMapDocumentIdentityOverlay,
   options?: DocumentLiveMapCaptureOptions,
 ): DocumentLiveMapCapture<TMode> {
   const category = capture_category(options);
-  const captureRoot = category === "strip"
+  const captureRoot = category === "strip" || category === "same-epoch"
     ? clone_hson_graph_without_quids(root)
-    : clone_live_root(root);
+    : clone_livemap_document_exact_view(root, mode, overlay);
   const capture: DocumentLiveMapCapture<TMode> = Object.freeze({
     kind: "hson-document",
     mode,
@@ -65,9 +68,18 @@ export function capture_livemap_document<TMode extends DocumentLiveMapMode>(
       mode,
       rev,
       root: clone_live_root(captureRoot),
+      overlay,
     }));
   }
   return capture;
+}
+
+/** Exact-object local identity evidence, never admitted from a copied capture. */
+export function same_epoch_livemap_document_overlay(
+  capture: DocumentLiveMapCapture,
+): LiveMapDocumentIdentityOverlay | undefined {
+  const provenance = captureProvenance.get(capture);
+  return provenance?.category === "same-epoch" ? provenance.overlay : undefined;
 }
 
 /** Resolve and validate one install policy before any candidate is published. */

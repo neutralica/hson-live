@@ -97,6 +97,7 @@ import {
 import {
   livemap_document_identity_effects_for,
   livemap_document_identity_overlay_for,
+  clone_livemap_document_exact_view,
   type LiveMapDocumentIdentityEffect,
 } from "../livemap/livemap.document.identity.js";
 import {
@@ -108,6 +109,7 @@ import {
   type LiveMapDocumentIdentityCommitReservation,
 } from "../livemap/livemap.document.registration.js";
 import { livemap_document_observation_evidence } from "../livemap/livemap.document.capture.js";
+import { internal_authority_position_observer } from "../livemap/livemap.internal.js";
 import {
   append_document_path,
   document_path_effect_for_graph_operation,
@@ -191,7 +193,11 @@ function reflect_document_binding_in_runtime(
   let sourceRoot: HsonNode;
   try {
     capturedRevision = map.rev;
-    sourceRoot = map.root();
+    sourceRoot = clone_livemap_document_exact_view(
+      map.root(),
+      "document",
+      livemap_document_identity_overlay_for(map.document),
+    );
   } catch (cause) {
     ACTIVE_DOCUMENT_BINDINGS.delete(map);
     throw as_binding_error(cause, DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE, "Initial document binding capture failed.");
@@ -234,6 +240,7 @@ function reflect_document_binding_in_runtime(
   let correspondenceEntriesChanged = 0;
   let identityEffectsConsumed = 0;
   let off: LiveMapDisposer | undefined;
+  let offAuthorityPosition: (() => void) | undefined;
   let offIdentityParticipant: (() => void) | undefined;
   let rootRegistration: DocumentBindingNodeRegistration | undefined;
 
@@ -254,6 +261,8 @@ function reflect_document_binding_in_runtime(
     const disposeObserver = off;
     off = undefined;
     disposeObserver?.();
+    offAuthorityPosition?.();
+    offAuthorityPosition = undefined;
     offIdentityParticipant?.();
     offIdentityParticipant = undefined;
   };
@@ -479,6 +488,8 @@ function reflect_document_binding_in_runtime(
     const disposeObserver = off;
     off = undefined;
     disposeObserver?.();
+    offAuthorityPosition?.();
+    offAuthorityPosition = undefined;
     offIdentityParticipant?.();
     offIdentityParticipant = undefined;
     for (const registration of registrations) unregister_document_binding_node(registration.node, owner);
@@ -601,7 +612,8 @@ function reflect_document_binding_in_runtime(
     const pathKey = path_key(path);
     const persistedQuid = livemap_document_identity_overlay_for(map.document)
       .quidAtPath(path);
-    if (node.$_meta?.[HSON_META_QUID] !== persistedQuid) {
+    if (node.$_meta?.[HSON_META_QUID] !== undefined
+      && node.$_meta?.[HSON_META_QUID] !== persistedQuid) {
       throw new DocumentMirrorError(
         DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
         "Projected element did not preserve its canonical persisted QUID.",
@@ -615,12 +627,8 @@ function reflect_document_binding_in_runtime(
       canonicalPath: path,
       canonicalTarget,
       ...(persistedQuid === undefined ? {} : { persistedQuid }),
-      requireCanonicalIdentity: () => {
-        if (persistedQuid === undefined && echo_document_authority_for(map)?.rejectIdentityDemand === true) {
-          throw new LiveTreeLinkedIdentityRequiredError("hosted QUID demand");
-        }
-        return require_livemap_document_canonical_identity(map.document, registration.canonicalTarget);
-      },
+      requireCanonicalIdentity: () =>
+        require_livemap_document_canonical_identity(map.document, registration.canonicalTarget),
       delegateAttrs: (mutation) => delegate_attrs(registration, mutation),
       delegateAttrsAsync: (mutation) => delegate_attrs_async(registration, mutation),
       delegateText: (mutation) => delegate_text(registration, mutation),
@@ -695,6 +703,7 @@ function reflect_document_binding_in_runtime(
 
   const preflight_identity_operations = (
     operations: readonly LiveMapGraphOp[],
+    localClaim?: Readonly<{ path: LiveMapDocumentPath; quid: string }>,
   ): LiveMapDocumentIdentityCommitReservation => {
     type Pending = { registration: ProjectedRegistration; path: LiveMapDocumentPath };
     type Claim = {
@@ -710,52 +719,57 @@ function reflect_document_binding_in_runtime(
     }));
     const claims: Claim[] = [];
 
+    const stage_claim = (claimPath: LiveMapDocumentPath, quid: string): void => {
+      const pendingTarget = pending.find((entry) => document_path_equal(entry.path, claimPath));
+      if (pendingTarget === undefined) {
+        throw new DocumentMirrorError(
+          DOCUMENT_REFLECT_TARGET_MISSING_ERROR_CODE,
+          "Map-local identity target has no exact projected correspondence.",
+        );
+      }
+      validate_bound_registration(pendingTarget.registration);
+      const activeCollision = runtime.quidToNode.get(quid);
+      const pendingCollision = runtime.pendingQuidClaims.get(quid);
+      if ((activeCollision !== undefined && activeCollision !== pendingTarget.registration.node)
+        || (pendingCollision !== undefined && pendingCollision !== pendingTarget.registration.node)) {
+        throw new LiveMapDocumentIdentityParticipantCollisionError(
+          "QUID candidate collides in the selected LiveTree runtime.",
+        );
+      }
+      let runtimeReservation: SuppliedLiveTreeQuidReservation;
+      try {
+        runtimeReservation = preflight_supplied_livetree_quid(
+          pendingTarget.registration.node,
+          quid,
+          runtime,
+        );
+      } catch (cause) {
+        if (cause instanceof LiveTreeQuidReuseError) {
+          throw new LiveMapDocumentIdentityParticipantCollisionError(
+            "QUID candidate was already issued in the selected LiveTree runtime.",
+            { cause },
+          );
+        }
+        throw new DocumentMirrorError(
+          DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
+          "Projected node cannot accept the supplied local QUID.",
+          cause,
+        );
+      }
+      claims.push({
+        registration: pendingTarget.registration,
+        node: pendingTarget.registration.node,
+        quid,
+        path: pendingTarget.path,
+        reservation: runtimeReservation,
+      });
+    };
+
     try {
+      if (localClaim !== undefined) stage_claim(localClaim.path, localClaim.quid);
       for (const operation of operations) {
         if (operation.op === "ensure-quid") {
-          const pendingTarget = pending.find((entry) => document_path_equal(entry.path, operation.target.path));
-          if (pendingTarget === undefined) {
-            throw new DocumentMirrorError(
-              DOCUMENT_REFLECT_TARGET_MISSING_ERROR_CODE,
-              "Canonical identity registration target has no exact projected correspondence.",
-            );
-          }
-          validate_bound_registration(pendingTarget.registration);
-          const activeCollision = runtime.quidToNode.get(operation.quid);
-          const pendingCollision = runtime.pendingQuidClaims.get(operation.quid);
-          if ((activeCollision !== undefined && activeCollision !== pendingTarget.registration.node)
-            || (pendingCollision !== undefined && pendingCollision !== pendingTarget.registration.node)) {
-            throw new LiveMapDocumentIdentityParticipantCollisionError(
-              "Canonical QUID candidate collides in the selected LiveTree runtime.",
-            );
-          }
-          let runtimeReservation: SuppliedLiveTreeQuidReservation;
-          try {
-            runtimeReservation = preflight_supplied_livetree_quid(
-              pendingTarget.registration.node,
-              operation.quid,
-              runtime,
-            );
-          } catch (cause) {
-            if (cause instanceof LiveTreeQuidReuseError) {
-              throw new LiveMapDocumentIdentityParticipantCollisionError(
-                "Canonical QUID candidate was already issued in the selected LiveTree runtime.",
-                { cause },
-              );
-            }
-            throw new DocumentMirrorError(
-              DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
-              "Projected node cannot accept the supplied canonical QUID.",
-              cause,
-            );
-          }
-          claims.push({
-            registration: pendingTarget.registration,
-            node: pendingTarget.registration.node,
-            quid: operation.quid,
-            path: pendingTarget.path,
-            reservation: runtimeReservation,
-          });
+          stage_claim(operation.target.path, operation.quid);
           continue;
         }
 
@@ -1138,10 +1152,15 @@ function reflect_document_binding_in_runtime(
   ): void => {
     for (const registration of registrations) validate_bound_registration(registration);
     const priorRootQuid = byPath.get(path_key([]))?.persistedQuid;
+    const exactRoot = clone_livemap_document_exact_view(
+      canonicalMaterial.root,
+      "document",
+      livemap_document_identity_overlay_for(map.document),
+    );
     const convergence = plan_document_root_convergence(
       projectedRoot,
-      canonicalMaterial.root,
-      observedMaterial,
+      exactRoot,
+      Object.freeze({ mode: observedMaterial.mode, root: exactRoot }),
       priorRootQuid,
       (node) => {
         const registration = document_binding_for_node(node);
@@ -1268,7 +1287,11 @@ function reflect_document_binding_in_runtime(
       for (const registration of registrations) validate_bound_registration(registration);
       const plan = plan_document_structural_transaction(
         projectedRoot,
-        document_root_from_root(evidence.root),
+        clone_livemap_document_exact_view(
+          document_root_from_root(evidence.root),
+          "document",
+          livemap_document_identity_overlay_for(map.document),
+        ),
         commit.ops,
         (node) => {
           const registration = document_binding_for_node(node);
@@ -1351,9 +1374,24 @@ function reflect_document_binding_in_runtime(
     // revision recheck then closes the capture-to-subscribe initialization gap.
     offIdentityParticipant = register_livemap_document_identity_participant(map.document, Object.freeze({
       preflight: preflight_identity_operations,
+      preflightLocalIdentity: (path: LiveMapDocumentPath, quid: string) =>
+        preflight_identity_operations(Object.freeze([]), Object.freeze({ path, quid })),
       verifyExisting: verify_existing_identity,
+      realize: refresh_registration_at_path,
     }));
     off = map.commits.observe(on_observation);
+    offAuthorityPosition = internal_authority_position_observer(map)?.((revision) => {
+      if (currentStatus !== "active") return;
+      if (revision === currentRevision) return; // A graph commit or snapshot already supplied this position.
+      if (revision !== currentRevision + 1) {
+        fail(new DocumentMirrorError(
+          DOCUMENT_REFLECT_REVISION_GAP_ERROR_CODE,
+          `Mirror expected authority revision ${currentRevision + 1}, received ${revision}.`,
+        ));
+        return;
+      }
+      currentRevision = revision; // Progress has no document or DOM work.
+    });
     if (map.rev !== capturedRevision) {
       throw new DocumentMirrorError(
         DOCUMENT_REFLECT_REVISION_GAP_ERROR_CODE,
@@ -1364,6 +1402,8 @@ function reflect_document_binding_in_runtime(
   } catch (cause) {
     off?.();
     off = undefined;
+    offAuthorityPosition?.();
+    offAuthorityPosition = undefined;
     offIdentityParticipant?.();
     offIdentityParticipant = undefined;
     if (rootRegistration !== undefined) {
