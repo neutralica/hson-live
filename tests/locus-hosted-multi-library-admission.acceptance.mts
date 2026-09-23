@@ -1,3 +1,4 @@
+import { test_public_exposure } from "./helpers/hosted-exposure.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonLocus, type HsonSchema } from "../src/index.ts";
 import type { LocusClientActionMessage } from "../src/types/locus.types.ts";
@@ -25,6 +26,7 @@ function message(id: string, name: keyof TestActions, payload: TestActions[keyof
 await check("bound aggregate admission preserves atomic completion, authorization context, dedupe, and cleanup", async () => {
   const map = make_map(); let executions = 0; const sessions: string[] = []; let server!: ReturnType<typeof create_locus_hosted_aggregate_socket_internal<TestActions>>;
   server = create_locus_hosted_aggregate_socket_internal<TestActions>({
+    exposure: test_public_exposure(map),
     map,
     authorizeAction(context) {
       sessions.push(context.session.sessionId); assert.equal(context.session.resumable, false);
@@ -54,7 +56,7 @@ await check("bound aggregate admission preserves atomic completion, authorizatio
 
 await check("aggregate whole-action FIFO remains ahead of the common admission seam", async () => {
   const map = make_map(), gate = deferred<void>(), entered: number[] = [];
-  const server = create_locus_hosted_aggregate_socket_internal<TestActions>({ map, actions: {
+  const server = create_locus_hosted_aggregate_socket_internal<TestActions>({ exposure: test_public_exposure(map), map, actions: {
     held: async (context, payload) => {
       const value = payload?.scalar(); if (typeof value !== "number") throw new Error("Expected numeric action data.");
       entered.push(value); if (value === 1) await gate.promise;
@@ -72,7 +74,7 @@ await check("aggregate whole-action FIFO remains ahead of the common admission s
 });
 
 await check("aggregate authorization rejection retains no lineage or ephemeral session", async () => {
-  const server = create_locus_hosted_aggregate_socket_internal<TestActions>({ map: make_map(), authorizeAction: () => false, actions: { held: () => 1 } });
+  const server = create_locus_hosted_aggregate_socket_internal<TestActions>({ exposure: test_public_exposure(make_map()), map: make_map(), authorizeAction: () => false, actions: { held: () => 1 } });
   const result = await admit_locus_remote_action_internal<TestActions>(server, { message: message("denied", "held", 1), connection: { principalId: "alice" } });
   assert.equal(result.type, "error"); if (result.type === "error") assert.equal(result.error.code, "LOCUS_ACTION_FORBIDDEN");
   assert.equal(server.actionRequests.debug().retainedTerminalCount, 0); assert.equal(server.sessions.debug().sessions.length, 0); server.dispose();
@@ -81,6 +83,7 @@ await check("aggregate authorization rejection retains no lineage or ephemeral s
 await check("the internal admission capability remains bound after the normal aggregate Locus facade is created", async () => {
   let locus!: ReturnType<typeof hsonLocus.create>;
   locus = hsonLocus.create({
+    exposure: test_public_exposure(make_map()),
     map: make_map(),
     authorizeAction: () => { assert.equal(locus.activity.snapshot().retainedSessionCount, 1); return true; },
     actions: { held: (_context, payload) => payload },

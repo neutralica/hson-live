@@ -62,6 +62,7 @@ import type {
   LocusRecoverySnapshotReason,
   LocusSocketLike,
 } from "./locus.protocol.types.js";
+import type { LocusExposureEntry, LocusProjectionAuthorizer, LocusRequestedProjection } from "./locus.projection.types.js";
 import type {
   LocusActionId,
   LocusActionName,
@@ -420,6 +421,12 @@ export type LocusMultiLibraryOptions<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = Readonly<{
   map: TMap;
+  /** Exactly one explicit classification for every application library. */
+  exposure: readonly LocusExposureEntry[];
+  /** Optional request used when a session supplies no request. Never implies all libraries. */
+  defaultProjection?: LocusRequestedProjection;
+  /** Absent authorizer grants no read, system-feature, or built-in write scope. */
+  authorizeProjection?: LocusProjectionAuthorizer;
   state?: never;
   actions?: Partial<LocusMultiLibraryActions<NoInfer<TMap>, TActions>>;
   logicalMapId?: LocusLogicalMapId;
@@ -529,7 +536,7 @@ export type LocusSessionLifecycleEvent =
   | Readonly<{
     kind: "revoked";
     session: LocusSessionDiagnostic;
-    reason: "goodbye" | "locus_disposed";
+    reason: "goodbye" | "locus_disposed" | "policy_revoked";
   }>
   | Readonly<{
     kind: "fenced";
@@ -764,6 +771,8 @@ export type LocusMultiLibrary<
   sessions: LocusSessionInspector;
   actionRequests: LocusActionDedupeInspector;
   mutate: (mutation: (draft: MultiLibraryMutationDraft<MultiLibraryInputs<TMap>>) => void | Promise<void>) => Promise<void>;
+  /** Fence and revoke an existing session when its read policy is withdrawn. */
+  revokeSession: (sessionId: LocusSessionId) => boolean;
   dispatchAction: (message: LocusClientActionMessage<TActions>) => Promise<LocusServerMessage<JsonValue | undefined>>;
   connect: (socket: LocusSocketLike, context?: LocusConnectionContext) => LocusConnection;
   dispose: LocusDisposer;

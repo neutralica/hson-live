@@ -22,7 +22,7 @@ function document_map(source: string): DocumentLiveMap {
 
 const authority = document_map(`<main <p @000005101 "snapshot"/>/>`);
 authority.document.attrs.set({ kind: "path", path: [0] }, "data-rev", "one");
-const locus = hsonLocus.create({ map: authority, logicalMapId: "snapshot-install", sessions: {} });
+const locus = hsonLocus.create({   map: authority, logicalMapId: "snapshot-install", sessions: {} });
 const ssr = render_hosted_document({ authority: locus });
 const semantic = install_locus_snapshot(ssr.bootstrap);
 const transport = install_locus_bootstrap(capture_locus_bootstrap(locus, "snapshot:install", "/socket"));

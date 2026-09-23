@@ -1,4 +1,5 @@
 // @hson-live-external-test
+import { test_public_exposure } from "./helpers/hosted-exposure.mts";
 import assert from "node:assert/strict";
 import {
   DocumentContinuationError,
@@ -208,7 +209,7 @@ function mainFixture(_quid: string): Readonly<{ root: FakeElement; child: FakeEl
   const quid = "000004002";
   const source = `<main <p @${quid} "hello"/>/>`;
   const authority = documentMap(source);
-  const locus = hsonLocus.create({ map: authority, logicalMapId: "hosted-continuation-recover-failure", sessions: {} });
+  const locus = hsonLocus.create({   map: authority, logicalMapId: "hosted-continuation-recover-failure", sessions: {} });
   const installed = install_locus_bootstrap(capture_locus_bootstrap(locus, "continuation:failure", "/continuation"));
   const replica = installed.map;
   if (replica.mode !== "document") throw new Error("Expected installed document bootstrap.");
@@ -234,7 +235,7 @@ function mainFixture(_quid: string): Readonly<{ root: FakeElement; child: FakeEl
   const quid = "000004003";
   const source = `<main <p @${quid} "hello"/>/>`;
   const authority = documentMap(source);
-  const locus = hsonLocus.create({ map: authority, logicalMapId: "hosted-continuation-snapshot", sessions: {} });
+  const locus = hsonLocus.create({   map: authority, logicalMapId: "hosted-continuation-snapshot", sessions: {} });
   const bootstrap = capture_locus_bootstrap(locus, "continuation:snapshot", "/continuation");
   const replica = documentMap(source);
   const pair = socketPair();
@@ -286,6 +287,7 @@ function mainFixture(_quid: string): Readonly<{ root: FakeElement; child: FakeEl
   let handled: HsonData | undefined;
   const locus = hsonLocus.create({
     map: authority,
+    exposure: test_public_exposure(authority),
     actions: { save: (_context, payload) => { handled = payload; } },
   });
   const replica = make_livemap_hosted_mirror_from_snapshot_internal(

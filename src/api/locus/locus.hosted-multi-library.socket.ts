@@ -20,10 +20,9 @@ import type {
   LocusSessionOptions,
   LocusActionDedupeOptions,
   LocusSchema,
-
-
-
-
+  LocusExposureEntry,
+  LocusProjectionAuthorizer,
+  LocusRequestedProjection,
   LocusSocketLike,
 } from "../../types/locus.types.js";
 import { decode_locus_message } from "./locus.protocol.js";
@@ -35,6 +34,7 @@ import { locus_client_error_message } from "./locus.client-error.js";
 import { validate_document_path } from "../livemap/livemap.document.path.js";
 import { make_locus_action_dedupe_store } from "./locus.actions.js";
 import { make_locus_session_manager } from "./locus.session.js";
+import { make_locus_hosted_projection_policy, normalize_locus_effective_projection, type LocusEffectiveProjection } from "./locus.projection.js";
 import { decode_locus_action_payload, locus_schema_error_message } from "./locus.action-validation.js";
 import {
   resolve_locus_document_action,
@@ -87,7 +87,7 @@ type HostedCursor = Readonly<{
 
 type HostedRequest =
   | Readonly<{ type: "recover"; id: string; logicalMapId: string; cursor?: HostedCursor }>
-  | Readonly<{ type: "session-create"; id: string }>
+  | Readonly<{ type: "session-create"; id: string; projection?: LocusRequestedProjection }>
   | Readonly<{ type: "session-attach"; id: string; credential?: unknown }>
   | Readonly<{ type: "session-goodbye"; id: string }>
   | Readonly<{ type: "action-status"; id: string; clientId: string; requestId: string }>
@@ -130,6 +130,8 @@ type HostedConnection = {
   sessionId: string | undefined;
   sessionEpoch: number | undefined;
   sessionResumable: boolean;
+  establishing: boolean;
+  effectiveProjection?: LocusEffectiveProjection;
   fenced: boolean;
 };
 
@@ -145,6 +147,9 @@ export type LocusHostedAggregateSocketOptions<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = Readonly<{
   map: LiveMapLibraries;
+  exposure: readonly LocusExposureEntry[];
+  defaultProjection?: LocusRequestedProjection;
+  authorizeProjection?: LocusProjectionAuthorizer;
   actions?: Readonly<Record<string, LocusHostedAggregateAction>>;
   gate?: (input: LocusHostedAggregateGateInput) => void | Promise<void>;
   maxWireBytes?: number;
@@ -184,7 +189,7 @@ export type LocusHostedAggregateSocketServer<
   mutate: LocusHostedAggregate["mutate"];
   dispatch_action: LocusHostedAggregate["dispatch_action"];
   dispatch_message: (message: import("../../types/locus.types.js").LocusClientActionMessage) => Promise<LocusClientActionResult>;
-  sessions: Readonly<{ debug: ReturnType<typeof make_locus_session_manager>["debug"]; onChange: ReturnType<typeof make_locus_session_manager>["onChange"]; dispose: () => void }>;
+  sessions: Readonly<{ debug: ReturnType<typeof make_locus_session_manager>["debug"]; onChange: ReturnType<typeof make_locus_session_manager>["onChange"]; revoke: ReturnType<typeof make_locus_session_manager>["revoke"]; projection: ReturnType<typeof make_locus_session_manager>["projection"]; dispose: () => void }>;
   actionRequests: Readonly<{ debug: ReturnType<typeof make_locus_action_dedupe_store>["debug"]; dispose: () => void }>;
   /** Ordered internal barrier used by persistence checkpointing. */
   run_exclusive: LocusHostedAggregate["run_exclusive"];
@@ -219,6 +224,8 @@ export function create_locus_hosted_aggregate_socket_internal<
   const aggregate = internal_livemap_aggregate_authority(options.map);
   const initial = aggregate.captureHosted();
   const registry = aggregate.hostedRegistry();
+  const projectionPolicy = make_locus_hosted_projection_policy(registry, initial.authority, options.exposure,
+    options.defaultProjection, options.authorizeProjection);
   const bindings = aggregate.libraries();
   const identitiesByName = new Map<string, object>();
   let applicationIndex = 0;
@@ -380,7 +387,8 @@ export function create_locus_hosted_aggregate_socket_internal<
   }
 
   async function recover(connection: HostedConnection, request: Extract<HostedRequest, { type: "recover" }>): Promise<void> {
-    if (!bind_session(connection, false)) {
+    const binding = bind_session(connection, false);
+    if (!(binding instanceof Promise ? await binding : binding)) {
       reject(connection, "LOCUS_SESSION_NOT_ATTACHED", "Hosted aggregate recovery requires an active Locus session.", request.id);
       return;
     }
@@ -547,57 +555,105 @@ export function create_locus_hosted_aggregate_socket_internal<
     });
   }
 
-  function bind_session(connection: HostedConnection, resumable: boolean): boolean {
+  function bind_session(connection: HostedConnection, resumable: boolean): boolean | Promise<boolean> {
     if (connection.sessionId !== undefined) {
       return connection.sessionEpoch !== undefined
         && !connection.fenced
         && sessions.is_active(connection.sessionId, connection.sessionEpoch);
     }
-    const sessionId = next_session_id();
-    const created = sessions.create(
-      sessionId,
-      resumable,
-      session_attachment(connection),
-      () => {},
-      () => 0,
-      connection.context,
-    );
-    if (!created.ok) {
+    if (connection.establishing) return false;
+    connection.establishing = true;
+    let projection: LocusEffectiveProjection | Promise<LocusEffectiveProjection>;
+    try {
+      projection = normalize_locus_effective_projection(projectionPolicy, undefined, connection.context);
+    } catch {
+      connection.establishing = false;
       return false;
     }
-    connection.sessionId = created.value.sessionId;
-    connection.sessionEpoch = created.value.epoch;
-    connection.sessionResumable = created.value.resumable;
-    return true;
+    const finish = (effectiveProjection: LocusEffectiveProjection): boolean => {
+      if (connection.closed || connection.fenced || connection.sessionId !== undefined) {
+        connection.establishing = false;
+        return false;
+      }
+      const sessionId = next_session_id();
+      const created = sessions.create(
+        sessionId,
+        resumable,
+        session_attachment(connection),
+        () => {},
+        () => 0,
+        connection.context,
+        effectiveProjection,
+      );
+      if (!created.ok) {
+        connection.establishing = false;
+        return false;
+      }
+      connection.sessionId = created.value.sessionId;
+      connection.sessionEpoch = created.value.epoch;
+      connection.sessionResumable = created.value.resumable;
+      connection.effectiveProjection = effectiveProjection;
+      connection.establishing = false;
+      return true;
+    };
+    if (projection instanceof Promise) return projection.then(finish, () => { connection.establishing = false; return false; });
+    return finish(projection);
   }
 
-  function session_create(connection: HostedConnection, request: Extract<HostedRequest, { type: "session-create" }>): void {
-    if (connection.sessionId !== undefined) {
+  function session_create(connection: HostedConnection, request: Extract<HostedRequest, { type: "session-create" }>): void | Promise<void> {
+    if (connection.sessionId !== undefined || connection.establishing) {
       send(connection, Object.freeze({ type: "session-rejected", id: request.id, code: "LOCUS_SESSION_NOT_ATTACHED", message: "This transport already owns a Locus session." }));
       return;
     }
-    const sessionId = next_session_id();
-    const created = sessions.create(sessionId, true, session_attachment(connection), () => {}, () => 0, connection.context);
-    if (!created.ok || created.value.credential === undefined) {
-      send(connection, Object.freeze({ type: "session-rejected", id: request.id, code: "LOCUS_SESSION_NOT_ATTACHED", message: "Locus could not create a resumable session." }));
+    connection.establishing = true;
+    const failProjection = (): void => {
+      connection.establishing = false;
+      if (!connection.closed) send(connection, Object.freeze({ type: "session-rejected", id: request.id, code: "LOCUS_PROJECTION_UNAVAILABLE", message: "Requested client projection is unavailable." }));
+    };
+    let projection: LocusEffectiveProjection | Promise<LocusEffectiveProjection>;
+    try {
+      projection = normalize_locus_effective_projection(projectionPolicy, request.projection, connection.context);
+    } catch {
+      failProjection();
       return;
     }
-    connection.sessionId = created.value.sessionId;
-    connection.sessionEpoch = created.value.epoch;
-    connection.sessionResumable = true;
-    send(connection, Object.freeze({
-      type: "session-created",
-      id: request.id,
-      sessionId: created.value.sessionId,
-      credential: created.value.credential,
-      epoch: created.value.epoch,
-      logicalMapId: locus.logicalMapId,
-      incarnationId: locus.incarnationId,
-    }));
+    const finish = (effectiveProjection: LocusEffectiveProjection): void => {
+      if (connection.closed || connection.fenced || connection.sessionId !== undefined) {
+        connection.establishing = false;
+        return;
+      }
+      const sessionId = next_session_id();
+      const created = sessions.create(sessionId, true, session_attachment(connection), () => {}, () => 0, connection.context, effectiveProjection);
+      if (!created.ok || created.value.credential === undefined) {
+        connection.establishing = false;
+        send(connection, Object.freeze({ type: "session-rejected", id: request.id, code: "LOCUS_SESSION_NOT_ATTACHED", message: "Locus could not create a resumable session." }));
+        return;
+      }
+      connection.sessionId = created.value.sessionId;
+      connection.sessionEpoch = created.value.epoch;
+      connection.sessionResumable = true;
+      connection.effectiveProjection = effectiveProjection;
+      connection.establishing = false;
+      send(connection, Object.freeze({
+        type: "session-created",
+        id: request.id,
+        sessionId: created.value.sessionId,
+        credential: created.value.credential,
+        epoch: created.value.epoch,
+        logicalMapId: locus.logicalMapId,
+        incarnationId: locus.incarnationId,
+      }));
+    };
+    if (projection instanceof Promise) return projection.then(finish, failProjection);
+    finish(projection);
   }
 
   function session_attach(connection: HostedConnection, request: Extract<HostedRequest, { type: "session-attach" }>): void {
-    if (connection.sessionId !== undefined) {
+    if (Object.prototype.hasOwnProperty.call(request, "projection")) {
+      send(connection, Object.freeze({ type: "session-rejected", id: request.id, code: "LOCUS_SESSION_NOT_ATTACHED", message: "A different projection requires a new Locus session." }));
+      return;
+    }
+    if (connection.sessionId !== undefined || connection.establishing) {
       send(connection, Object.freeze({ type: "session-rejected", id: request.id, code: "LOCUS_SESSION_NOT_ATTACHED", message: "This transport already owns a Locus session." }));
       return;
     }
@@ -609,6 +665,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     connection.sessionId = attached.value.sessionId;
     connection.sessionEpoch = attached.value.epoch;
     connection.sessionResumable = attached.value.resumable;
+    connection.effectiveProjection = attached.value.effectiveProjection;
     send(connection, Object.freeze({
       type: "session-attached",
       id: request.id,
@@ -714,7 +771,8 @@ export function create_locus_hosted_aggregate_socket_internal<
         });
     let live = true;
     const attachment = Object.freeze({ fence: () => { live = false; } });
-    const created = sessions.create(next_ephemeral_session_id(), false, attachment, () => {}, () => 0, connection);
+    const effectiveProjection = await normalize_locus_effective_projection(projectionPolicy, { libraries: [] }, connection);
+    const created = sessions.create(next_ephemeral_session_id(), false, attachment, () => {}, () => 0, connection, effectiveProjection);
     if (!created.ok) {
       return Object.freeze({
         type: "error",
@@ -753,7 +811,8 @@ export function create_locus_hosted_aggregate_socket_internal<
   }
 
   async function action(connection: HostedConnection, request: Extract<HostedRequest, { type: "action" }>): Promise<void> {
-    if (!bind_session(connection, false) || connection.sessionId === undefined || connection.sessionEpoch === undefined) return;
+    const binding = bind_session(connection, false);
+    if (!(binding instanceof Promise ? await binding : binding) || connection.sessionId === undefined || connection.sessionEpoch === undefined) return;
     const capturedSessionId = connection.sessionId;
     const capturedEpoch = connection.sessionEpoch;
     const origin = Object.freeze({
@@ -846,6 +905,37 @@ export function create_locus_hosted_aggregate_socket_internal<
     return Object.freeze({ type: "error", id: request.id, ok: false, seq: outcome.seq, completionRev: outcome.completionRev, error: outcome.error });
   }
 
+  async function action_status(connection: HostedConnection, request: Extract<HostedRequest, { type: "action-status" }>): Promise<void> {
+    const binding = bind_session(connection, false);
+    if (!(binding instanceof Promise ? await binding : binding)) return;
+    if (connection.sessionId === undefined || connection.sessionEpoch === undefined) return;
+    const capturedSessionId = connection.sessionId;
+    const capturedEpoch = connection.sessionEpoch;
+    if (!attachment_current(connection, capturedSessionId, capturedEpoch)) return;
+    const status = read_locus_retained_action_status_internal(server, {
+      clientId: request.clientId,
+      requestId: request.requestId,
+      ...(connection.context === undefined ? {} : { connection: connection.context }),
+    });
+    if (!attachment_current(connection, capturedSessionId, capturedEpoch)) return;
+    if (!status.ok) {
+      send(connection, Object.freeze({
+        type: "session-rejected",
+        id: request.id,
+        code: status.code,
+        message: status.message,
+      }));
+      return;
+    }
+    send(connection, Object.freeze({
+      type: "action-status",
+      id: request.id,
+      requestId: request.requestId,
+      state: status.state,
+      ...(status.outcome === undefined ? {} : { outcome: status.outcome }),
+    }));
+  }
+
   function dispatch_request(connection: HostedConnection, request: HostedRequest): void | Promise<void> {
     if (request.type === "recover") {
       void recover(connection, request).catch((cause: unknown) => {
@@ -856,8 +946,7 @@ export function create_locus_hosted_aggregate_socket_internal<
       return;
     }
     if (request.type === "session-create") {
-      session_create(connection, request);
-      return;
+      return session_create(connection, request);
     }
     if (request.type === "session-attach") {
       session_attach(connection, request);
@@ -868,34 +957,7 @@ export function create_locus_hosted_aggregate_socket_internal<
       return;
     }
     if (request.type === "action-status") {
-      if (!bind_session(connection, false)) return;
-      if (connection.sessionId === undefined || connection.sessionEpoch === undefined) return;
-      const capturedSessionId = connection.sessionId;
-      const capturedEpoch = connection.sessionEpoch;
-      if (!attachment_current(connection, capturedSessionId, capturedEpoch)) return;
-      const status = read_locus_retained_action_status_internal(server, {
-        clientId: request.clientId,
-        requestId: request.requestId,
-        ...(connection.context === undefined ? {} : { connection: connection.context }),
-      });
-      if (!attachment_current(connection, capturedSessionId, capturedEpoch)) return;
-      if (!status.ok) {
-        send(connection, Object.freeze({
-          type: "session-rejected",
-          id: request.id,
-          code: status.code,
-          message: status.message,
-        }));
-        return;
-      }
-      send(connection, Object.freeze({
-        type: "action-status",
-        id: request.id,
-        requestId: request.requestId,
-        state: status.state,
-        ...(status.outcome === undefined ? {} : { outcome: status.outcome }),
-      }));
-      return;
+      return action_status(connection, request);
     }
     return action(connection, request);
   }
@@ -905,10 +967,16 @@ export function create_locus_hosted_aggregate_socket_internal<
     context?: LocusConnectionContext,
     onClose?: LocusDisposer,
   ): LocusHostedAggregateSemanticAttachment<TActions> {
+    // Bind the authenticated principal at transport attachment, including
+    // across an asynchronous projection decision.
+    const attachedContext = context === undefined ? undefined : Object.freeze({
+      ...(context.principalId === undefined ? {} : { principalId: context.principalId }),
+      ...(context.attachment === undefined ? {} : { attachment: context.attachment }),
+    });
     if (disposed) {
       return Object.freeze({
         binding: Object.freeze({
-          principalId: context?.principalId,
+          principalId: attachedContext?.principalId,
           logicalMapId: locus.logicalMapId,
           incarnationId: locus.incarnationId,
           get sessionId() { return undefined; },
@@ -933,9 +1001,10 @@ export function create_locus_hosted_aggregate_socket_internal<
       sessionId: undefined,
       sessionEpoch: undefined,
       sessionResumable: false,
+      establishing: false,
       fenced: false,
       ...(releaseConnectionActivity === undefined ? {} : { releaseActivity: releaseConnectionActivity }),
-      ...(context === undefined ? {} : { context }),
+      ...(attachedContext === undefined ? {} : { context: attachedContext }),
     };
     connections.add(connection);
     const dispose = (): void => {
@@ -951,7 +1020,7 @@ export function create_locus_hosted_aggregate_socket_internal<
       connection.onClose?.();
     };
     const binding = Object.freeze({
-      principalId: context?.principalId,
+      principalId: attachedContext?.principalId,
       logicalMapId: locus.logicalMapId,
       incarnationId: locus.incarnationId,
       get sessionId() { return connection.sessionId; },
@@ -1031,7 +1100,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     mutate: locus.mutate,
     dispatch_action: locus.dispatch_action,
     dispatch_message,
-    sessions: Object.freeze({ debug: sessions.debug, onChange: sessions.onChange, dispose: sessions.dispose }),
+    sessions: Object.freeze({ debug: sessions.debug, onChange: sessions.onChange, revoke: sessions.revoke, projection: sessions.projection, dispose: sessions.dispose }),
     actionRequests: Object.freeze({ debug: actionRequests.debug, dispose: actionRequests.dispose }),
     run_exclusive: locus.run_exclusive,
     debug: () => Object.freeze({

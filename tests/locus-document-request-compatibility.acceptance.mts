@@ -341,7 +341,7 @@ check("persistence load rejects a QUID-only canonical tail", async () => {
 check("new persistence append stores a path target", async () => {
   const adapter = new CapturingPersistenceAdapter();
   const map = element(`<main @${Q1}/>`);
-  const host = await create_persistent_locus({ map, persistence: adapter });
+  const host = await create_persistent_locus({   map, persistence: adapter });
   await host.mutate((draft) => draft.document.attrs.set(
     { kind: "path", path: [0] }, "id", "persisted",
   ));
@@ -352,7 +352,7 @@ check("new persistence append stores a path target", async () => {
 check("new persistence append does not synthesize a witness QUID", async () => {
   const adapter = new CapturingPersistenceAdapter();
   const map = element(`<main @${Q1}/>`);
-  const host = await create_persistent_locus({ map, persistence: adapter });
+  const host = await create_persistent_locus({   map, persistence: adapter });
   await host.mutate((draft) => draft.document.attrs.set(
     { kind: "path", path: [0] }, "id", "persisted",
   ));

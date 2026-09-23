@@ -1,3 +1,4 @@
+import { test_public_exposure } from "./helpers/hosted-exposure.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonLocus, type HsonSchema } from "../src/index.ts";
 import { create_livehost_locus_registry_internal } from "../src/api/livehost/services/livehost.authority-registry.ts";
@@ -133,6 +134,7 @@ await check("aggregate recovery activity releases on success", async () => {
   const release = deferred();
   const activity = make_locus_activity_controller();
   const server = create_locus_hosted_aggregate_socket_internal({
+    exposure: test_public_exposure(make_map()),
     map: make_map(),
     internal: {
       afterRecoveryCut: async () => { entered.resolve(); await release.promise; },
@@ -160,6 +162,7 @@ await check("aggregate recovery activity releases on failure", async () => {
   const release = deferred();
   const activity = make_locus_activity_controller();
   const server = create_locus_hosted_aggregate_socket_internal({
+    exposure: test_public_exposure(make_map()),
     map: make_map(),
     internal: {
       afterRecoveryCut: async () => { entered.resolve(); await release.promise; throw new Error("forced recovery failure"); },
@@ -185,6 +188,7 @@ await check("aggregate recovery activity releases on disconnect", async () => {
   const release = deferred();
   const activity = make_locus_activity_controller();
   const server = create_locus_hosted_aggregate_socket_internal({
+    exposure: test_public_exposure(make_map()),
     map: make_map(),
     internal: {
       afterRecoveryCut: async () => { entered.resolve(); await release.promise; },
@@ -211,6 +215,7 @@ await check("aggregate recovery activity releases when the session attachment is
   const release = deferred();
   const activity = make_locus_activity_controller();
   const server = create_locus_hosted_aggregate_socket_internal({
+    exposure: test_public_exposure(make_map()),
     map: make_map(),
     sessions: { credential: () => "aggregate-recovery-fence-credential" },
     internal: {
@@ -241,6 +246,7 @@ await check("aggregate recovery activity releases idempotently on authority disp
   const release = deferred();
   const activity = make_locus_activity_controller();
   const server = create_locus_hosted_aggregate_socket_internal({
+    exposure: test_public_exposure(make_map()),
     map: make_map(),
     internal: {
       afterRecoveryCut: async () => { entered.resolve(); await release.promise; },
@@ -265,6 +271,7 @@ await check("aggregate recovery activity releases idempotently on authority disp
 await check("disconnect retains one resumable session blocker until deterministic grace expiry", () => {
   const clock = controlled_schedule();
   const locus = hsonLocus.create({
+    exposure: test_public_exposure(make_map()),
     map: make_map(),
     sessions: { graceMs: 100, now: clock.now, schedule: clock.schedule, credential: () => "aggregate-credential-0001" },
   });
@@ -292,6 +299,7 @@ await check("repeated detach and reattach keeps exactly one logical-session bloc
   const clock = controlled_schedule();
   let credentialId = 0;
   const locus = hsonLocus.create({
+    exposure: test_public_exposure(make_map()),
     map: make_map(),
     sessions: {
       graceMs: 100,
@@ -327,6 +335,7 @@ await check("repeated detach and reattach keeps exactly one logical-session bloc
 await check("goodbye releases retained session activity exactly once", () => {
   const clock = controlled_schedule();
   const locus = hsonLocus.create({
+    exposure: test_public_exposure(make_map()),
     map: make_map(),
     sessions: { graceMs: 100, now: clock.now, schedule: clock.schedule, credential: () => "aggregate-credential-0002" },
   });
@@ -347,6 +356,7 @@ await check("goodbye releases retained session activity exactly once", () => {
 await check("authority disposal releases a live retained session before activity becomes terminal", () => {
   const clock = controlled_schedule();
   const locus = hsonLocus.create({
+    exposure: test_public_exposure(make_map()),
     map: make_map(),
     sessions: { graceMs: 100, now: clock.now, schedule: clock.schedule, credential: () => "aggregate-credential-0005" },
   });
@@ -373,6 +383,7 @@ await check("retained session and admitted action own independent activity block
   const entered = deferred();
   const release = deferred();
   const locus = hsonLocus.create({
+    exposure: test_public_exposure(make_map()),
     map: make_map(),
     sessions: { graceMs: 100, now: clock.now, schedule: clock.schedule, credential: () => "aggregate-credential-0003" },
     actions: { slow: async () => { entered.resolve(); await release.promise; } },
@@ -409,6 +420,7 @@ await check("retained aggregate session blocks registry eviction until expiry", 
     idleMs: 100,
     create(key: string) {
       return hsonLocus.create({
+        exposure: test_public_exposure(make_map()),
         map: make_map(),
         logicalMapId: key,
         sessions: { graceMs: 100, now: clock.now, schedule: clock.schedule, credential: () => "aggregate-credential-0004" },

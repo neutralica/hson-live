@@ -20,6 +20,7 @@ import { create_multi_library_locus_internal } from "./locus.multi-library.js";
 import { alias_locus_remote_action_admission_internal } from "./locus.remote-action.internal.js";
 import { alias_locus_retained_action_status_internal } from "./locus.action-status.internal.js";
 import { alias_locus_libraries_snapshot_authority_internal } from "./locus.libraries-snapshot.js";
+import { make_locus_hosted_projection_policy } from "./locus.projection.js";
 
 function checkpoint_record(snapshot: HostedLiveMapLibrariesSnapshot): object {
   return durable_aggregate_checkpoint(snapshot);
@@ -87,6 +88,9 @@ async function persistent_view<
   options: PersistentLocusMultiLibraryOptions<TMap, TActions>,
   initialize: boolean,
 ): Promise<PersistentLocusMultiLibrary<TMap, TActions>> {
+  const exposureAuthority = internal_livemap_aggregate_authority(options.map);
+  make_locus_hosted_projection_policy(exposureAuthority.hostedRegistry(), exposureAuthority.captureHosted().authority,
+    options.exposure, options.defaultProjection, options.authorizeProjection);
   if (initialize) {
     set_initial_authority(options.map, options.logicalMapId, options.incarnationId);
     try {
@@ -127,7 +131,10 @@ export async function create_persistent_multi_library_locus<
 >(
   options: PersistentLocusMultiLibraryOptions<TMap, TActions>,
 ): Promise<PersistentLocusMultiLibrary<TMap, TActions>> {
-  const initial = internal_livemap_aggregate_authority(options.map).captureHosted();
+  const initialAuthority = internal_livemap_aggregate_authority(options.map);
+  const initial = initialAuthority.captureHosted();
+  make_locus_hosted_projection_policy(initialAuthority.hostedRegistry(), initial.authority,
+    options.exposure, options.defaultProjection, options.authorizeProjection);
   const logicalMapId = options.logicalMapId ?? initial.authority.logicalMapId;
   const restored = await load_persistent_locus_hosted_aggregate_internal(logicalMapId, {
     persistence: options.persistence as LocusHostedAggregatePersistenceAdapter,

@@ -1,3 +1,4 @@
+import { test_public_exposure } from "./helpers/hosted-exposure.mts";
 import type { SchemaType } from "hson-live";
 import {
   create_locus,
@@ -177,7 +178,7 @@ const libraries = hsonLiveMap.fromLibraries({
   user: { data: initialUser, schema: UserSchema },
   tree: { data: { value: "root", age: 1, children: [] }, schema: TreeSchema },
 });
-const multiAuthority = create_locus({ map: libraries });
+const multiAuthority = create_locus({ map: libraries, exposure: test_public_exposure(libraries) });
 const multiClient = create_echo({
   socket,
   map: libraries,
@@ -188,7 +189,7 @@ const exactUserName: string = multiClient.map.lib("user").snap().name;
 void exactUserName;
 multiClient.connect();
 declare const multiPersistence: LocusMultiLibraryPersistenceAdapter;
-create_persistent_locus({ map: libraries, persistence: multiPersistence });
+create_persistent_locus({ exposure: test_public_exposure(libraries), map: libraries, persistence: multiPersistence });
 
 const liveHostRegistry = create_livehost_locus_registry({
   maxLoci: 1,
@@ -210,7 +211,7 @@ function declare_document_persistence(map: DocumentLiveMap): void {
 
 declare const documentPersistence: LocusPersistenceAdapter;
 function declare_persistent_document_locus(map: DocumentLiveMap, persistence: LocusPersistenceAdapter): void {
-  void create_persistent_locus({ map, persistence });
+  void create_persistent_locus({   map, persistence });
 }
 
 type ProofBearingAssertions =

@@ -24,6 +24,7 @@ import {
 import type { LocusHostedAggregateGateInput } from "./locus.hosted-multi-library.js";
 import { capture_locus_libraries_snapshot_internal, register_locus_libraries_snapshot_authority_internal } from "./locus.libraries-snapshot.js";
 import { cut_hosted_libraries } from "../../internal/document-cut.js";
+import { make_locus_hosted_projection_policy } from "./locus.projection.js";
 
 function establish_authority_identity(
   map: LiveMapLibraries,
@@ -68,6 +69,10 @@ export function create_multi_library_locus_internal<
   locus: LocusMultiLibrary<TMap, TActions>;
   run_exclusive: <TResult>(operation: () => TResult | Promise<TResult>) => Promise<TResult>;
 }> {
+  const startingAuthority = internal_livemap_aggregate_authority(options.map);
+  const startingSnapshot = startingAuthority.captureHosted();
+  make_locus_hosted_projection_policy(startingAuthority.hostedRegistry(), startingSnapshot.authority,
+    options.exposure, options.defaultProjection, options.authorizeProjection);
   establish_authority_identity(options.map, options.logicalMapId, options.incarnationId);
   const activity = make_locus_activity_controller();
   let actionSequence = 0;
@@ -112,6 +117,9 @@ export function create_multi_library_locus_internal<
 
   const authority = create_locus_hosted_aggregate_socket_internal({
     map: options.map,
+    exposure: options.exposure,
+    ...(options.defaultProjection === undefined ? {} : { defaultProjection: options.defaultProjection }),
+    ...(options.authorizeProjection === undefined ? {} : { authorizeProjection: options.authorizeProjection }),
     ...(Object.keys(actions).length === 0 ? {} : { actions }),
     ...(internal.gate === undefined ? {} : { gate: internal.gate }),
     ...(options.authorizeAction === undefined ? {} : { authorizeAction: options.authorizeAction }),
@@ -172,6 +180,7 @@ export function create_multi_library_locus_internal<
     get rev() { return authority.rev; },
     activity: activity.public,
     sessions: authority.sessions,
+    revokeSession: authority.sessions.revoke,
     actionRequests: authority.actionRequests,
     mutate,
     dispatchAction,

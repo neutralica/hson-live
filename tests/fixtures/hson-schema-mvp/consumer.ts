@@ -36,6 +36,10 @@ libraries.lib("user").at(["name"]).set(37);
 libraries.lib("users");
 const hostedLibraries = hsonLocus.create({
   map: libraries,
+  exposure: [
+    { library: "user", exposure: "client-public" },
+    { library: "tree", exposure: "client-public" },
+  ],
   actions: {
     async rename(context) {
       await context.mutate((draft) => {

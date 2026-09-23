@@ -192,7 +192,7 @@ persistentElementHost.then((host) => {
 // @ts-expect-error persistence is available only through the async persistent constructor
 create_locus({ map: elementCandidate, persistence: persistenceAdapter });
 // @ts-expect-error data persistence is deliberately unsupported in version one
-create_persistent_locus({ map: existingProjectedMap, persistence: persistenceAdapter });
+create_persistent_locus({   map: existingProjectedMap, persistence: persistenceAdapter });
 const elementHostAlias: Locus<DocumentLiveMap> = elementHost;
 const documentTarget = { kind: "path", path: [] } as const;
 const optionalAttr = elementCandidate.document.attrs.get(documentTarget, "title");

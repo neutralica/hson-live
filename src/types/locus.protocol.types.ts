@@ -290,6 +290,7 @@ export type LocusClientRecoverMessage = Readonly<{
 export type LocusClientSessionCreateMessage = Readonly<{
   type: "session-create";
   id: LocusSessionRequestId;
+  projection?: import("./locus.projection.types.js").LocusRequestedProjection;
 }>;
 
 export type LocusClientSessionAttachMessage = Readonly<{

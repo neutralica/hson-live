@@ -67,6 +67,7 @@ export type * from "../../types/locus.shared.types.js";
 export type * from "../../types/live.trace.types.js";
 export type * from "../../types/locus.representation.types.js";
 export type * from "../../types/locus.protocol.types.js";
+export type * from "../../types/locus.projection.types.js";
 export type * from "../../types/locus.persistence.types.js";
 export type {
   LocusRecoveryRequest,

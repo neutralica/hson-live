@@ -1,3 +1,4 @@
+import { test_public_exposure } from "./helpers/hosted-exposure.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonMirror, type HsonSchema } from "../src/index.ts";
@@ -191,7 +192,7 @@ await check("Echo processes commit, consecutive progress, commit as one contiguo
     source.commit([{ target: source.target(source.libraries()[0]!, ["value"]), kind: "set", value: revision }]);
   }
   const snapshot = source.captureHosted();
-  const server = create_locus_hosted_aggregate_socket_internal({ map: authority });
+  const server = create_locus_hosted_aggregate_socket_internal({ exposure: test_public_exposure(authority), map: authority });
   const pair = socket_pair();
   server.connect(pair.server);
   const client = create_multi_library_echo_socket_client_internal({ socket: pair.client, logicalMapId: server.logicalMapId });
@@ -243,7 +244,7 @@ await check("replay history processes commit, progress, commit, final progress b
   sourceReplica.advanceHostedProgress(progress(snapshot, 1));
   sourceReplica.dispose();
   const third = committed_value(source, 2);
-  const server = create_locus_hosted_aggregate_socket_internal({ map: authority });
+  const server = create_locus_hosted_aggregate_socket_internal({ exposure: test_public_exposure(authority), map: authority });
   const pair = socket_pair();
   pair.replaceServerDelivery((message) => {
     if (message.type === "recovery-plan") {
@@ -289,7 +290,7 @@ await check("snapshot recovery drains buffered progress and graph tail through c
   sourceReplica.advanceHostedProgress(progress(snapshot, 4));
   sourceReplica.dispose();
   const sixth = committed_value(source, 6);
-  const server = create_locus_hosted_aggregate_socket_internal({ map: authority });
+  const server = create_locus_hosted_aggregate_socket_internal({ exposure: test_public_exposure(authority), map: authority });
   const pair = socket_pair();
   pair.replaceServerDelivery((message) => {
     if (message.type === "recovery-snapshot") {
@@ -336,7 +337,7 @@ await check("Echo rejects progress gaps, stale duplicates, and wrong authority f
   for (const scenario of cases) {
     const authority = make_map();
     const snapshot = internal_livemap_aggregate_authority(authority).captureHosted();
-    const server = create_locus_hosted_aggregate_socket_internal({ map: authority });
+    const server = create_locus_hosted_aggregate_socket_internal({ exposure: test_public_exposure(authority), map: authority });
     const pair = socket_pair();
     server.connect(pair.server);
     const client = create_multi_library_echo_socket_client_internal({ socket: pair.client, logicalMapId: server.logicalMapId });

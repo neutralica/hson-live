@@ -1,4 +1,5 @@
 import { parentPort } from "node:worker_threads";
+import { test_public_exposure } from "../helpers/hosted-exposure.mts";
 import {
   Hson,
   HsonData,
@@ -66,6 +67,7 @@ add_interaction(authorityMap, descriptor);
 let handled: HsonData | undefined;
 const locus = hsonLocus.create({
   map: authorityMap,
+  exposure: test_public_exposure(authorityMap),
   actions: { save: (_context, payload) => { handled = payload; } },
 });
 const replicaMap = make_map();

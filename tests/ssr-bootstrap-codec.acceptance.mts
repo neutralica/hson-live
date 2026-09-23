@@ -1,3 +1,4 @@
+import { test_public_exposure } from "./helpers/hosted-exposure.mts";
 import assert from "node:assert/strict";
 import {
   Hson,
@@ -98,7 +99,7 @@ const hostedMap = hsonLiveMap.fromNode({
   $_content: [{ $_tag: "main", $_content: [{ $_tag: "_hson_elem", $_content: [{ $_tag: "_hson_str", $_content: [adversarial] }] }] }],
 });
 if (hostedMap.mode !== "document") throw new Error("Hosted fixture must be a document map.");
-const locus = hsonLocus.create({ map: hostedMap, logicalMapId: "map-</script>", incarnationId: "incarnation-雪", sessions: {} });
+const locus = hsonLocus.create({   map: hostedMap, logicalMapId: "map-</script>", incarnationId: "incarnation-雪", sessions: {} });
 const hostedBootstrap = render_hosted_document({ authority: locus }).bootstrap;
 const encodedHosted = encode_ssr_bootstrap(hostedBootstrap);
 const reorderedHostedBootstrap: typeof hostedBootstrap = {
@@ -151,7 +152,7 @@ assert.deepEqual(decodedLibraries.bootstrap, librariesBootstrap);
 assert.deepEqual(install_libraries_snapshot(decodedLibraries.bootstrap).map.cut().data, librariesBootstrap);
 assert.deepEqual(decodedLibraries.bootstrap.registry.libraries.map((entry) => entry.name), librariesBootstrap.registry.libraries.map((entry) => entry.name));
 
-const librariesLocus = hsonLocus.create({ map: librariesMap, logicalMapId: "aggregate-map", incarnationId: "aggregate-incarnation", sessions: {} });
+const librariesLocus = hsonLocus.create({ exposure: test_public_exposure(librariesMap), map: librariesMap, logicalMapId: "aggregate-map", incarnationId: "aggregate-incarnation", sessions: {} });
 const hostedLibrariesBootstrap = render_hosted_document({ authority: librariesLocus, document: "prototype" }).bootstrap;
 const encodedHostedLibraries = encode_ssr_bootstrap(hostedLibrariesBootstrap);
 assert.equal(decodeText(encodedHostedLibraries).includes("identityEpoch"), false);

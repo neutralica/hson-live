@@ -1,3 +1,4 @@
+import { test_public_exposure } from "./helpers/hosted-exposure.mts";
 import assert from "node:assert/strict";
 import {
   Hson,
@@ -376,7 +377,7 @@ check("the public commit family preserves future cross-library operation order",
 
 check("ordinary Locus accepts and exclusively manages a public multi-library map", () => {
   const map = create_map();
-  const locus = hsonLocus.create({ map });
+  const locus = hsonLocus.create({ exposure: test_public_exposure(map), map });
   assert.equal(locus.map, map);
   assert.throws(() => map.lib("state").at(["count"]).set(2), /exclusive Locus authority/i);
   locus.dispose();

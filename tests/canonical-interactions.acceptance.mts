@@ -1,3 +1,4 @@
+import { test_public_exposure } from "./helpers/hosted-exposure.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import {
@@ -196,6 +197,7 @@ await check("document and interaction effects accept or reject as one authority 
   const map = map_fixture();
   const aggregate = internal_livemap_aggregate_authority(map);
   const locus = hsonLocus.create({
+    exposure: test_public_exposure(map),
     map,
     actions: {
       mixed: (context) => context.mutate((draft) => {
@@ -244,6 +246,7 @@ await check("Locus staging authors hidden descriptors while direct managed write
   const map = map_fixture();
   const descriptor = local("managed", "run", Hson.data.from(-0));
   const locus = hsonLocus.create({
+    exposure: test_public_exposure(map),
     map,
     actions: {
       add: (context) => context.mutate((draft) => add_interaction(draft, descriptor)),
@@ -713,6 +716,7 @@ await check("public Echo dispatcher preserves exact payload through configured L
   add_interaction(authorityMap, authoritative("echo", "save", exact));
   let handled: HsonData | undefined;
   const locus = hsonLocus.create({
+    exposure: test_public_exposure(authorityMap),
     map: authorityMap,
     actions: { save: (_context, payload) => { handled = payload; } },
   });

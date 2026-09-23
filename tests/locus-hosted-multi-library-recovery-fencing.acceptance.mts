@@ -1,3 +1,4 @@
+import { test_public_exposure } from "./helpers/hosted-exposure.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
 import { create_multi_library_echo_socket_client_internal } from "../src/api/echo/echo.multi-library.socket.ts";
@@ -135,6 +136,7 @@ await check("replacement after the recovery cut stops plan and body delivery and
   const release = deferred();
   let hold = true;
   const server = create_locus_hosted_aggregate_socket_internal({
+    exposure: test_public_exposure(make_map()),
     map: make_map(),
     internal: {
       afterRecoveryCut: async () => {
@@ -167,6 +169,7 @@ await check("replacement immediately before caught-up prevents completion and st
   const release = deferred();
   let hold = true;
   const server = create_locus_hosted_aggregate_socket_internal({
+    exposure: test_public_exposure(make_map()),
     map: make_map(),
     internal: {
       beforeRecoveryCaughtUp: async () => {
@@ -200,6 +203,7 @@ await check("replacement after caught-up suppresses queued live drain", async ()
   const release = deferred();
   let caughtUpCount = 0;
   const server = create_locus_hosted_aggregate_socket_internal({
+    exposure: test_public_exposure(make_map()),
     map: make_map(),
     internal: {
       afterRecoveryCaughtUp: async () => {
@@ -317,6 +321,7 @@ await check("physical disconnect settles active recovery and a fresh endpoint ca
   const release = deferred();
   let hold = true;
   const server = create_locus_hosted_aggregate_socket_internal({
+    exposure: test_public_exposure(make_map()),
     map: make_map(),
     internal: {
       afterRecoveryCut: async () => {

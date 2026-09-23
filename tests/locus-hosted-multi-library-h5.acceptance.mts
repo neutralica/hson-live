@@ -1,3 +1,4 @@
+import { test_public_exposure } from "./helpers/hosted-exposure.mts";
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 import {
@@ -192,6 +193,7 @@ await check("the public Locus and Echo paths bootstrap one typed aggregate mirro
   install_fake_document();
   const serverMap = make_map();
   const locus = hsonLocus.create({
+    exposure: test_public_exposure(serverMap),
     map: serverMap,
     actions: {
       "theme.all": async (context) => {
@@ -326,6 +328,7 @@ await check("named document Echo authoring honors aggregate authorization and co
   const decisions = [false, true];
   const serverMap = make_map();
   const locus = hsonLocus.create({
+    exposure: test_public_exposure(serverMap),
     map: serverMap,
     authorizeAction: () => decisions.shift() ?? true,
   });
@@ -362,7 +365,7 @@ await check("named Mirror text replacement carries empty portable lineage throug
   const TextPageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "item" content "string">>>`;
   const definitions = { page: { document: "<main <item \"old\"/>/>", schema: TextPageSchema } } as const;
   const serverMap = hsonLiveMap.fromLibraries(definitions);
-  const locus = hsonLocus.create({ map: serverMap });
+  const locus = hsonLocus.create({ exposure: test_public_exposure(serverMap), map: serverMap });
   const pair = socket_pair();
   locus.connect(pair.server);
   const clientMap = hsonLiveMap.fromLibraries(definitions);
@@ -390,7 +393,7 @@ await check("named Mirror text replacement carries empty portable lineage throug
 await check("public recovery replays retained history and replaces one complete observed mirror in place", async () => {
   install_fake_document();
   const serverMap = make_map();
-  const locus = hsonLocus.create({ map: serverMap });
+  const locus = hsonLocus.create({ exposure: test_public_exposure(serverMap), map: serverMap });
   await locus.mutate((draft) => {
     draft.lib("state").at(["theme"]).set("dark");
     draft.lib("page").graph(insert_item(RECOVERY_QUID));
@@ -471,7 +474,7 @@ await check("public recovery replays retained history and replaces one complete 
 });
 
 await check("LiveHost lifecycle composition treats the multi-library Locus as one ordinary authority", async () => {
-  const locus = hsonLocus.create({ map: make_map() });
+  const locus = hsonLocus.create({ exposure: test_public_exposure(make_map()), map: make_map() });
   const registry = create_livehost_locus_registry({
     maxLoci: 1,
     idleMs: 0,
@@ -488,7 +491,7 @@ await check("LiveHost lifecycle composition treats the multi-library Locus as on
 
 await check("the public socket fails closed for malformed requests and an ahead global recovery cursor", async () => {
   const map = make_map();
-  const locus = hsonLocus.create({ map });
+  const locus = hsonLocus.create({ exposure: test_public_exposure(map), map });
   const pair = socket_pair();
   locus.connect(pair.server);
   pair.client.send("{");
@@ -526,6 +529,7 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   const persistence = new MemoryPersistence();
   const serverMap = make_map();
   const host = await create_persistent_locus({
+    exposure: test_public_exposure(serverMap),
     map: serverMap,
     logicalMapId: "h5-persisted-map",
     persistence,
@@ -581,6 +585,7 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   const restoredMap = make_map();
   const restartStarted = performance.now();
   const restored = await create_persistent_locus({
+    exposure: test_public_exposure(restoredMap),
     map: restoredMap,
     logicalMapId: "h5-persisted-map",
     persistence,
@@ -653,7 +658,9 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   restored.dispose();
 
   await assert.rejects(
-    () => create_persistent_locus({
+    () => create_persistent_locus({ exposure: test_public_exposure(hsonLiveMap.fromLibraries({
+        state: { data: { theme: "light", count: 0 }, schema: StateSchema },
+      })),
       map: hsonLiveMap.fromLibraries({
         state: { data: { theme: "light", count: 0 }, schema: StateSchema },
       }),
@@ -665,7 +672,8 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
 
   persistence.corrupt();
   await assert.rejects(
-    () => create_persistent_locus({ map: make_map(), logicalMapId: "h5-persisted-map", persistence }),
+    () => create_persistent_locus({
+    exposure: test_public_exposure(make_map()), map: make_map(), logicalMapId: "h5-persisted-map", persistence }),
     /persisted state is invalid/i,
   );
 });
@@ -674,6 +682,7 @@ await check("public hosted failures reject before acceptance and leave the aggre
   const persistence = new MemoryPersistence();
   const map = make_map();
   const host = await create_persistent_locus({
+    exposure: test_public_exposure(map),
     map,
     persistence,
     actions: {

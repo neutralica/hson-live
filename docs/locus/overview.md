@@ -505,6 +505,11 @@ projection delivered to an Echo. Authorization to mutate a document does not
 automatically imply authorization to receive every part of that document; the
 application must configure both authority and projection deliberately.
 
+Step 6A defines explicit hosted application-library exposure and an immutable,
+authorized session projection. See [hosted client projection configuration](./authorized-client-projection.md).
+Client egress filtering is not yet complete: current hosted bootstrap, live,
+recovery, and cut paths still carry the complete authority representation.
+
 ⸻
 
 Current public construction patterns
@@ -543,7 +548,7 @@ The exact callable surface is documented separately in the Locus API reference.
 
 What Locus does not yet provide
 
-The current Locus generation establishes the authority substrate for server-rendered and variably participating live documents, but does not yet implement that projection system.
+The current Locus generation establishes the authority substrate for server-rendered and variably participating live documents. Step 6A defines projection policy and session scope, but does not yet implement selective client representation or egress filtering.
 
 Not yet canonicalized:
 

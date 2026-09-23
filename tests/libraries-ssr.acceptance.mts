@@ -1,3 +1,4 @@
+import { test_public_exposure } from "./helpers/hosted-exposure.mts";
 import assert from "node:assert/strict";
 import {
   DocumentSsrError,
@@ -194,7 +195,7 @@ check("same-cut rendering never rereads source Libraries after aggregate capture
 check("hosted rendering preserves its fence and produces the existing aggregate recovery cursor", () => {
   const map = map_fixture();
   enable_interactions(map);
-  const locus = hsonLocus.create({ map });
+  const locus = hsonLocus.create({ exposure: test_public_exposure(map), map });
   const ssr = render_hosted_document({ authority: locus });
   assert.equal(ssr.document, "page");
   assert.equal(ssr.bootstrap.authority.logicalMapId, locus.logicalMapId);
@@ -228,7 +229,7 @@ check("Libraries object cuts infer one document and retain the complete continua
   map.lib("state").at(["count"]).set(1);
   assert.equal(data(install_libraries_snapshot(cut.data).map, "state").snap(["count"]), 0);
   assert.equal(typeof encode_ssr_bootstrap(cut.data), "string");
-  const locus = hsonLocus.create({ map });
+  const locus = hsonLocus.create({ exposure: test_public_exposure(map), map });
   const hosted = locus.cut();
   assert.equal(hosted.document, "page");
   assert.equal(hosted.data.registry.libraries.some((entry) => entry.name === "state"), true);
@@ -240,7 +241,7 @@ check("Libraries selection and hosted object cuts preserve the aggregate fence",
   const map = map_fixture(true);
   expect_phase("select", () => map.cut());
   assert.notEqual(map.cut("page").html, map.cut("admin").html);
-  const locus = hsonLocus.create({ map });
+  const locus = hsonLocus.create({ exposure: test_public_exposure(map), map });
   expect_phase("select", () => locus.cut());
   const cut = locus.cut("page");
   const rendered = render_hosted_document({ authority: locus, document: "page" });

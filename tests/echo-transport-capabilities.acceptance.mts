@@ -1,3 +1,4 @@
+import { test_public_exposure } from "./helpers/hosted-exposure.mts";
 import assert from "node:assert/strict";
 import type { JsonValue } from "../src/core/types.ts";
 import { Hson, HsonData, hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
@@ -224,7 +225,7 @@ await check("semantic session survives attachment replacement and fences the sta
 await check("aggregate authority uses the same operation/synchronization attachment split below socket framing", async () => {
   const schema: HsonSchema = Hson.schema`<type "data" content <value "number">>`;
   const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema } });
-  const server = create_locus_hosted_aggregate_socket_internal({ map, actions: { echo: (_context, payload) => payload } });
+  const server = create_locus_hosted_aggregate_socket_internal({ exposure: test_public_exposure(map), map, actions: { echo: (_context, payload) => payload } });
   const outputs: Array<LocusFiniteOperationOutcome | LocusHostedAggregateSynchronizationOutput | LocusHostedAggregateCanonicalPublication> = [];
   const attachment = server.attach({
     finite: (output) => outputs.push(output),
@@ -366,6 +367,7 @@ await check("aggregate result and publication ingress remain independently order
   const schema: HsonSchema = Hson.schema`<type "data" content <value "number">>`;
   const authorityMap = hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema } });
   const server = create_locus_hosted_aggregate_socket_internal({
+    exposure: test_public_exposure(authorityMap),
     map: authorityMap,
     actions: {
       async set(context, payload) {

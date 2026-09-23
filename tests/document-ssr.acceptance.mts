@@ -162,7 +162,7 @@ for (const map of [emptyDocument, document_map(`<main/> <aside/>`)]) {
 
 {
   const map = document_map(`<main <p @000005003 "hosted N"/>/>`);
-  const locus = hsonLocus.create({ map, logicalMapId: "ssr-same-cut", sessions: {} });
+  const locus = hsonLocus.create({   map, logicalMapId: "ssr-same-cut", sessions: {} });
   let plans = 0;
   let exactSnapshot: LocusSnapshotEnvelope | undefined;
   const authority = counted_authority(locus, (plan) => {
@@ -196,7 +196,7 @@ for (const map of [emptyDocument, document_map(`<main/> <aside/>`)]) {
 
 {
   const map = document_map(`<main "stable"/>`);
-  const locus = hsonLocus.create({ map, logicalMapId: "ssr-deterministic", sessions: {} });
+  const locus = hsonLocus.create({   map, logicalMapId: "ssr-deterministic", sessions: {} });
   const first = render_hosted_document({ authority: locus });
   const second = render_hosted_document({ authority: locus });
   assert.equal(first.html, second.html);
@@ -207,7 +207,7 @@ for (const map of [emptyDocument, document_map(`<main/> <aside/>`)]) {
 {
   const map = document_map(`<p <div "hosted direct DOM only"/>/>`);
   const before = map.capture();
-  const locus = hsonLocus.create({ map, logicalMapId: "ssr-incompatible", sessions: {} });
+  const locus = hsonLocus.create({   map, logicalMapId: "ssr-incompatible", sessions: {} });
   assert.throws(
     () => render_hosted_document({ authority: locus }),
     (cause) => cause instanceof DocumentSsrError
@@ -221,7 +221,7 @@ for (const map of [emptyDocument, document_map(`<main/> <aside/>`)]) {
 
 {
   const data = hsonLiveMap.fromJson({ ready: true });
-  const locus = hsonLocus.create({ map: data, logicalMapId: "ssr-wrong-mode", sessions: {} });
+  const locus = hsonLocus.create({   map: data, logicalMapId: "ssr-wrong-mode", sessions: {} });
   assert.throws(
     () => render_hosted_document({ authority: locus }),
     (cause) => cause instanceof DocumentSsrError && cause.phase === "select",
@@ -231,7 +231,7 @@ for (const map of [emptyDocument, document_map(`<main/> <aside/>`)]) {
 
 {
   const map = document_map(`<main "malformed semantic state"/>`);
-  const locus = hsonLocus.create({ map, logicalMapId: "ssr-malformed-snapshot", sessions: {} });
+  const locus = hsonLocus.create({   map, logicalMapId: "ssr-malformed-snapshot", sessions: {} });
   let disposed = false;
   const recovery: LocusRecoveryPlanner = Object.freeze({
     plan(request, hooks) {
@@ -277,7 +277,7 @@ for (const map of [emptyDocument, document_map(`<main/> <aside/>`)]) {
 
 {
   const map = document_map(`<main "hosted capture failure"/>`);
-  const locus = hsonLocus.create({ map, logicalMapId: "ssr-capture-failure", sessions: {} });
+  const locus = hsonLocus.create({   map, logicalMapId: "ssr-capture-failure", sessions: {} });
   const recovery: LocusRecoveryPlanner = Object.freeze({
     plan() { throw new Error("hosted-capture-fault"); },
     debug: locus.recovery.debug,
@@ -315,7 +315,7 @@ assert.throws(
 
 {
   const map = document_map(`<main "hosted cut"/>`);
-  const locus = hsonLocus.create({ map, logicalMapId: "ssr-object-cut", sessions: {} });
+  const locus = hsonLocus.create({   map, logicalMapId: "ssr-object-cut", sessions: {} });
   const cut = locus.cut();
   const functional = render_hosted_document({ authority: locus });
   assert.deepEqual(cut, { html: functional.html, data: functional.bootstrap });
@@ -326,7 +326,7 @@ assert.throws(
 
 {
   const map = hsonLiveMap.fromJson({ count: 0 });
-  const locus = hsonLocus.create({ map });
+  const locus = hsonLocus.create({   map });
   assert.equal("cut" in map, false);
   assert.equal("cut" in locus, false);
   locus.dispose();

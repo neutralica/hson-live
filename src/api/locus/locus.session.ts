@@ -12,6 +12,7 @@ import type {
   LocusSessionRejectCode,
   LocusSessionState,
 } from "../../types/locus.types.js";
+import type { LocusEffectiveProjection } from "./locus.projection.js";
 
 const DEFAULT_GRACE_MS = 30_000;
 
@@ -24,6 +25,7 @@ type SessionRecord = {
   readonly credential?: LocusSessionCredential;
   readonly resumable: boolean;
   readonly principalId?: string;
+  readonly effectiveProjection?: LocusEffectiveProjection;
   readonly disposeResources: LocusDisposer;
   readonly subscriptionCount: () => number;
   state: LocusSessionState;
@@ -43,6 +45,7 @@ type SessionSuccess = Readonly<{
   epoch: LocusConnectionEpoch;
   resumable: boolean;
   credential?: LocusSessionCredential;
+  effectiveProjection?: LocusEffectiveProjection;
 }>;
 
 export type LocusSessionManager = Readonly<{
@@ -53,6 +56,7 @@ export type LocusSessionManager = Readonly<{
     disposeResources: LocusDisposer,
     subscriptionCount: () => number,
     context?: LocusConnectionContext,
+    effectiveProjection?: LocusEffectiveProjection,
   ) => LocusResult<SessionSuccess>;
   reattach: (
     credential: unknown,
@@ -61,9 +65,11 @@ export type LocusSessionManager = Readonly<{
   ) => LocusResult<SessionSuccess>;
   detach: (sessionId: LocusSessionId, epoch: LocusConnectionEpoch) => boolean;
   goodbye: (sessionId: LocusSessionId, epoch: LocusConnectionEpoch) => LocusResult<void>;
+  revoke: (sessionId: LocusSessionId) => boolean;
   /** Permanently release one attached non-resumable operation session. */
   release_ephemeral: (sessionId: LocusSessionId, epoch: LocusConnectionEpoch) => boolean;
   is_active: (sessionId: LocusSessionId, epoch: LocusConnectionEpoch) => boolean;
+  projection: (sessionId: LocusSessionId) => LocusEffectiveProjection | undefined;
   debug: () => LocusSessionDiagnostics;
   onChange: (listener: (event: LocusSessionLifecycleEvent) => void) => LocusDisposer;
   dispose: LocusDisposer;
@@ -166,6 +172,7 @@ export function make_locus_session_manager(options: LocusSessionOptions = {}): L
     disposeResources: LocusDisposer,
     subscriptionCount: () => number,
     context?: LocusConnectionContext,
+    effectiveProjection?: LocusEffectiveProjection,
   ): LocusResult<SessionSuccess> {
     if (disposed) return fail("LOCUS_SESSION_ALREADY_GONE", "Locus session manager is disposed.");
     if (sessions.has(sessionId)) return fail("LOCUS_SESSION_CREDENTIAL_UNKNOWN", `Locus session ID is already in use: ${sessionId}`);
@@ -180,6 +187,7 @@ export function make_locus_session_manager(options: LocusSessionOptions = {}): L
       ...(credential ? { credential } : {}),
       resumable,
       ...(context?.principalId === undefined ? {} : { principalId: context.principalId }),
+      ...(effectiveProjection === undefined ? {} : { effectiveProjection }),
       disposeResources,
       subscriptionCount,
       state: "attached",
@@ -193,7 +201,9 @@ export function make_locus_session_manager(options: LocusSessionOptions = {}): L
     sessions.set(sessionId, record);
     if (credential) credentials.set(credential, record);
     emit(Object.freeze({ kind: "attached", session: diagnostic(record), attachment: "created" }));
-    return ok({ sessionId, epoch: record.epoch, resumable, ...(credential ? { credential } : {}) });
+    return ok({ sessionId, epoch: record.epoch, resumable, ...(credential ? { credential } : {}),
+      ...(effectiveProjection === undefined ? {} : { effectiveProjection }),
+    });
   }
 
   function reattach(
@@ -234,7 +244,9 @@ export function make_locus_session_manager(options: LocusSessionOptions = {}): L
     record.reattachmentCount += 1;
     totalReattachments += 1;
     emit(Object.freeze({ kind: "attached", session: diagnostic(record), attachment: "reattached" }));
-    return ok({ sessionId: record.sessionId, epoch: record.epoch, resumable: record.resumable });
+    return ok({ sessionId: record.sessionId, epoch: record.epoch, resumable: record.resumable,
+      ...(record.effectiveProjection === undefined ? {} : { effectiveProjection: record.effectiveProjection }),
+    });
   }
 
   function detach(sessionId: LocusSessionId, epoch: LocusConnectionEpoch): boolean {
@@ -268,6 +280,26 @@ export function make_locus_session_manager(options: LocusSessionOptions = {}): L
     return ok(undefined);
   }
 
+  function revoke(sessionId: LocusSessionId): boolean {
+    const record = sessions.get(sessionId);
+    if (!record || record.state === "expired" || record.state === "revoked") return false;
+    record.stopExpiry?.();
+    record.stopExpiry = undefined;
+    if (record.attachment) {
+      record.attachment.fence(record.sessionId, record.epoch);
+      record.fencingCount += 1;
+      totalFencing += 1;
+      emit(Object.freeze({ kind: "fenced", sessionId: record.sessionId, epoch: record.epoch }));
+    }
+    record.attachment = undefined;
+    record.state = "revoked";
+    record.disconnectedAt = undefined;
+    record.expiresAt = undefined;
+    dispose_resources(record);
+    emit(Object.freeze({ kind: "revoked", session: diagnostic(record), reason: "policy_revoked" }));
+    return true;
+  }
+
   function release_ephemeral(sessionId: LocusSessionId, epoch: LocusConnectionEpoch): boolean {
     const record = sessions.get(sessionId);
     if (!record || record.resumable || record.epoch !== epoch) return false;
@@ -286,6 +318,11 @@ export function make_locus_session_manager(options: LocusSessionOptions = {}): L
   function is_active(sessionId: LocusSessionId, epoch: LocusConnectionEpoch): boolean {
     const record = sessions.get(sessionId);
     return record?.state === "attached" && record.epoch === epoch && record.attachment !== undefined;
+  }
+
+  function projection(sessionId: LocusSessionId): LocusEffectiveProjection | undefined {
+    const record = sessions.get(sessionId);
+    return record?.state === "attached" || record?.state === "disconnected" ? record.effectiveProjection : undefined;
   }
 
   function diagnostic(record: SessionRecord): LocusSessionDiagnostic {
@@ -341,5 +378,5 @@ export function make_locus_session_manager(options: LocusSessionOptions = {}): L
     listeners.clear();
   }
 
-  return Object.freeze({ create, reattach, detach, goodbye, release_ephemeral, is_active, debug, onChange, dispose });
+  return Object.freeze({ create, reattach, detach, goodbye, revoke, release_ephemeral, is_active, projection, debug, onChange, dispose });
 }
