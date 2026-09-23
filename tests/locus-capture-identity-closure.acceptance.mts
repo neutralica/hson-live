@@ -81,10 +81,11 @@ function authoredNode(map: DocumentLiveMap) {
   return subject;
 }
 
-check("view-state is a durable exact-metadata capture", () => {
+check("view-state captures portable state without runtime identity", () => {
   const source = element(`<main @${Q1}/>`);
   const decoded = decode_view_state_snapshot(encode_view_state_snapshot(source.capture()));
-  assert.equal(canonical_hson_graph_equal(decoded.root, source.root()), true);
+  assert.equal(canonical_hson_graph_equal(decoded.root, source.capture().root), true);
+  assert.equal(JSON.stringify(decoded).includes(Q1), false);
 });
 
 check("view-state bytes do not carry same-epoch provenance", () => {
@@ -97,13 +98,13 @@ check("view-state bytes do not carry same-epoch provenance", () => {
   );
 });
 
-check("a persistence-checkpoint restart admits metadata into a new local map", () => {
+check("a portable checkpoint restart does not admit old identity", () => {
   const source = element(`<main @${Q1}/>`);
-  const checkpoint = encode_view_state_snapshot(source.capture({ identity: "preserve-metadata" }));
+  const checkpoint = encode_view_state_snapshot(source.capture());
   const capture = decode_view_state_snapshot(checkpoint);
   const restarted = element(`<main/>`);
-  restarted.restore(capture, { identity: "preserve-metadata" });
-  assert.equal(restarted.document.byQuid(Q1)?.$_tag, "main");
+  restarted.restore(capture);
+  assert.equal(restarted.document.byQuid(Q1), undefined);
 });
 
 check("a persistence restart does not adopt the old local capability", () => {
@@ -125,13 +126,15 @@ check("graph-content codec preserves detached QUID metadata", () => {
   assert.notEqual(decoded, node);
 });
 
-check("graph-content admission creates fresh map-local lookup", () => {
+check("public graph-content admission rejects exact QUID metadata", () => {
   const decoded = decode_locus_graph_content(
     encode_locus_graph_content(projected_element(`<i @${Q1}/>`)),
   );
   const target = element(`<main <b/>/>`);
-  target.document.content.insert(path(0), 0, decoded);
-  assert.equal(target.document.byQuid(Q1)?.$_tag, "i");
+  const before = target.capture();
+  assert.throws(() => target.document.content.insert(path(0), 0, decoded), /runtime QUID metadata is invalid/);
+  assert.deepEqual(target.capture(), before);
+  assert.equal(target.document.byQuid(Q1), undefined);
 });
 
 check("graph-content bytes never mint absent QUIDs", () => {
@@ -139,7 +142,7 @@ check("graph-content bytes never mint absent QUIDs", () => {
   assert.equal(JSON.stringify(decoded).includes("quid"), false);
 });
 
-check("view-state Locus snapshots retain exact metadata", () => {
+check("view-state Locus snapshots retain portable state", () => {
   const source = element(`<main @${Q1}/>`);
   const snapshot = encode_locus_document_snapshot(
     { logicalMapId: "unit7-view", incarnationId: "inc-view" },
@@ -147,10 +150,10 @@ check("view-state Locus snapshots retain exact metadata", () => {
     { format: "view-state" },
   );
   const decoded = decode_locus_document_snapshot(snapshot);
-  assert.equal(canonical_hson_graph_equal(decoded.root, source.root()), true);
+  assert.equal(canonical_hson_graph_equal(decoded.root, source.capture().root), true);
 });
 
-check("Hson Locus snapshots retain exact metadata", () => {
+check("Hson Locus snapshots retain portable state", () => {
   const source = element(`<main @${Q1}/>`);
   const snapshot = encode_locus_document_snapshot(
     { logicalMapId: "unit7-hson", incarnationId: "inc-hson" },
@@ -159,7 +162,7 @@ check("Hson Locus snapshots retain exact metadata", () => {
   );
   const decoded = decode_locus_document_snapshot(snapshot);
   assert.equal(decoded.root.$_content.length > 0, true);
-  assert.equal(JSON.stringify(decoded.root).includes(Q1), true);
+  assert.equal(JSON.stringify(decoded.root).includes(Q1), false);
 });
 
 check("Hson Locus snapshots close over the exact empty document state", () => {
@@ -258,11 +261,11 @@ check("a new mirror with the same QUID bytes has a new exact node", () => {
   right.dispose();
 });
 
-check("same metadata in a new mirror still supports local QUID lookup", () => {
+check("portable restore into a new mirror has no source QUID lookup", () => {
   const source = element(`<main @${Q1}/>`);
   const mirror = element(`<main/>`);
   mirror.restore(source.capture());
-  assert.equal(mirror.document.byQuid(Q1)?.$_tag, "main");
+  assert.equal(mirror.document.byQuid(Q1), undefined);
 });
 
 check("portable Hson reparsing loses map identity continuity", () => {

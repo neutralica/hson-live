@@ -118,19 +118,19 @@ check("removing the only QUID reports metadata presence", () => {
   );
 });
 
-check("QUID addition through canonical install advances the ordinary revision", () => {
+check("portable capture cannot add QUID through canonical install", () => {
   const target = element(`<main/>`);
   const commit = target.install(element(`<main @${Q1}/>`).capture());
-  assert.deepEqual([commit.changed, commit.prevRev, commit.rev, target.rev], [true, 0, 1, 1]);
-  assert.equal(target.document.byQuid(Q1)?.$_tag, "main");
+  assert.deepEqual([commit.changed, commit.prevRev, commit.rev, target.rev], [false, 0, 0, 0]);
+  assert.equal(target.document.byQuid(Q1), undefined);
 });
 
-check("QUID replacement through canonical install advances the ordinary revision", () => {
+check("portable install retires old local identity without importing replacement bytes", () => {
   const target = element(`<main @${Q1}/>`);
   const commit = target.install(element(`<main @${Q2}/>`).capture());
   assert.deepEqual([commit.changed, commit.prevRev, commit.rev, target.rev], [true, 0, 1, 1]);
   assert.equal(target.document.byQuid(Q1), undefined);
-  assert.equal(target.document.byQuid(Q2)?.$_tag, "main");
+  assert.equal(target.document.byQuid(Q2), undefined);
 });
 
 check("QUID removal through canonical install advances the ordinary revision", () => {
@@ -140,7 +140,7 @@ check("QUID removal through canonical install advances the ordinary revision", (
   assert.equal(target.document.byQuid(Q1), undefined);
 });
 
-check("QUID-only canonical install publishes in the ordinary commit stream", () => {
+check("removing existing QUID-bearing canonical metadata publishes an ordinary commit", () => {
   const target = element(`<main @${Q1}/>`);
   const events: LiveMapCommitObservation[] = [];
   target.commits.observe((event) => events.push(event));
@@ -157,69 +157,70 @@ check("QUID-only canonical install is represented by an ordinary replace-root op
   assert.equal(commit.ops[0]?.op === "replace-root" && commit.ops[0].root.$_content.length > 0, true);
 });
 
-check("strict equality prevents QUID-only install from being declared a no-op", () => {
+check("strict equality observes removal of old exact QUID metadata", () => {
   const target = element(`<main @${Q1}/>`);
   const commit = target.install(element(`<main @${Q2}/>`).capture());
   assert.equal(commit.changed, true);
   assert.equal(commit.ops.length, 1);
 });
 
-check("installing an exact-equal QUID-bearing graph remains a no-op", () => {
+check("ordinary capture of an exact QUID graph removes identity on install", () => {
   const target = element(`<main @${Q1}/>`);
   const commit = target.install(target.capture());
-  assert.deepEqual(commit, { changed: false, prevRev: 0, rev: 0, ops: [] });
+  assert.equal(commit.changed, true);
+  assert.equal(target.document.byQuid(Q1), undefined);
 });
 
-check("exact capture preserves admitted QUID metadata", () => {
+check("ordinary capture strips admitted QUID metadata", () => {
   const map = element(`<main @${Q1} <span @${Q2}/>/>`);
   const capture = map.capture();
-  assert.deepEqual(quids(capture.root), [Q1, Q2]);
+  assert.deepEqual(quids(capture.root), []);
   assert.equal(map.document.byQuid(Q1)?.$_tag, "main");
   assert.equal(map.document.byQuid(Q2)?.$_tag, "span");
 });
 
-check("exact restore preserves QUID metadata and the named revision", () => {
+check("portable restore preserves the named revision without QUID metadata", () => {
   const source = element(`<main @${Q1} <span @${Q2}/>/>`);
   const capture = withRevision(source.capture(), 7);
   const target = element(`<main/>`);
   target.restore(capture);
   assert.equal(target.rev, 7);
-  assert.equal(target.document.byQuid(Q1)?.$_tag, "main");
-  assert.equal(target.document.byQuid(Q2)?.$_tag, "span");
+  assert.equal(target.document.byQuid(Q1), undefined);
+  assert.equal(target.document.byQuid(Q2), undefined);
 });
 
-check("exact restore does not normalize a supplied QUID to an old local value", () => {
+check("portable restore removes old and source QUID values", () => {
   const target = element(`<main @${Q1}/>`);
   target.restore(withRevision(element(`<main @${Q2}/>`).capture(), 4));
   assert.equal(target.document.byQuid(Q1), undefined);
-  assert.equal(target.document.byQuid(Q2)?.$_tag, "main");
+  assert.equal(target.document.byQuid(Q2), undefined);
 });
 
-check("exact replay preserves a QUID addition", () => {
+check("portable replay cannot add a source QUID", () => {
   const source = element(`<main/>`);
   const target = element(`<main/>`);
   const commit = source.install(element(`<main @${Q1}/>`).capture());
-  target.replay(commit);
-  assert.equal(target.document.byQuid(Q1)?.$_tag, "main");
+  assert.equal(commit.changed, false);
+  assert.equal(target.document.byQuid(Q1), undefined);
   assert.equal(canonical_hson_graph_equal(target.root(), source.root()), true);
 });
 
-check("exact replay preserves a QUID replacement", () => {
+check("portable replay retires old identity without importing replacement QUID", () => {
   const source = element(`<main @${Q1}/>`);
   const target = element(`<main @${Q1}/>`);
   const commit = source.install(element(`<main @${Q2}/>`).capture());
   target.replay(commit);
   assert.equal(target.document.byQuid(Q1), undefined);
-  assert.equal(target.document.byQuid(Q2)?.$_tag, "main");
+  assert.equal(target.document.byQuid(Q2), undefined);
 });
 
-check("view-state persistence preserves exact QUID metadata", () => {
+check("view-state persistence transfers state without QUID metadata", () => {
   const source = element(`<main @${Q1} <span @${Q2}/>/>`);
   const decoded = decode_view_state_snapshot(encode_view_state_snapshot(source.capture()));
-  assert.equal(canonical_hson_graph_equal(decoded.root, source.root()), true);
+  assert.equal(canonical_hson_graph_equal(decoded.root, source.capture().root), true);
   const target = element(`<main/>`);
   target.restore(decoded);
-  assert.equal(target.document.byQuid(Q2)?.$_tag, "span");
+  assert.equal(target.document.byQuid(Q2), undefined);
 });
 
 check("ordinary Hson serialization omits QUID metadata", () => {
@@ -240,7 +241,7 @@ check("portable serialization omits QUIDs without mutating the source graph", ()
   const wire = serialize_hson(semanticRoot);
   assert.equal(wire.includes(Q1), false);
   assert.equal(wire.includes(Q2), false);
-  assert.equal(canonical_hson_graph_equal(source.root(), before.root), true);
+  assert.equal(canonical_hson_graph_equal(source.capture().root, before.root), true);
   assert.equal(source.document.byQuid(Q2)?.$_tag, "span");
 });
 

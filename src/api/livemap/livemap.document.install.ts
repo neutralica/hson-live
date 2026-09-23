@@ -12,7 +12,6 @@ import type {
 import { clone_live_root } from "./livemap.editor.js";
 import { LiveMapDocumentInstallError, LiveMapRevError } from "./livemap.error.js";
 import {
-  clone_hson_graph_without_quids,
   same_epoch_livemap_document_overlay,
   validate_livemap_document_admission,
   type LiveMapDocumentIdentityEpochController,
@@ -108,7 +107,7 @@ function assert_install_options(
 export function prepare_document_install(
   capture: DocumentLiveMapCapture,
   targetMode: DocumentLiveMapMode,
-  identity: DocumentLiveMapInstallOptions["identity"] = "preserve-metadata",
+  identity: DocumentLiveMapInstallOptions["identity"] = "reject",
 ): PreparedDocumentInstall {
   assert_capture_object(capture);
   if (capture.kind !== "hson-document") {
@@ -129,9 +128,7 @@ export function prepare_document_install(
   let root: HsonNode;
   let observedMode;
   try {
-    const detachedRoot = identity === "strip"
-      ? clone_hson_graph_without_quids(capture.root)
-      : clone_live_root(capture.root);
+    const detachedRoot = clone_live_root(capture.root);
     root = normalize_hson_array_index_order(
       detachedRoot,
       "prepare_document_install",
@@ -157,7 +154,7 @@ export function prepare_document_install(
     );
   }
 
-  if (identity === "reject" && collect_hson_node_quid_claims(root).length > 0) {
+  if (identity !== "same-epoch" && collect_hson_node_quid_claims(root).length > 0) {
     throw new LiveMapDocumentInstallError(
       "identity policy rejects QUID-bearing external content",
       undefined,

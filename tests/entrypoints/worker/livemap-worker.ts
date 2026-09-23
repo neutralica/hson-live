@@ -89,7 +89,7 @@ if (documentMap.mode === "document") {
   // @ts-expect-error canonical ID discovery belongs to locations, not the document façade
   documentMap.document.id("target");
   const captureIdentity: DocumentLiveMapCaptureIdentity = "same-epoch";
-  const installIdentity: DocumentLiveMapInstallIdentity = "preserve-metadata";
+  const installIdentity: DocumentLiveMapInstallIdentity = "same-epoch";
   const capture = documentMap.capture({ identity: captureIdentity });
   documentMap.install(capture, { identity: installIdentity });
   const documentAcquisitionIsPublic: "ensureIdentity" extends keyof typeof documentMap.document ? true : false = false;

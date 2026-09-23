@@ -210,7 +210,7 @@ check("repeated snapshots independently reconstruct from accepted evidence", () 
   binding.dispose();
 });
 
-check("new snapshot epochs admit fresh tag and root QUID transitions", () => {
+check("new snapshot epochs admit tag changes without source QUID continuity", () => {
   const tagMap = element(`<main @000000606/>`);
   const tagBinding = hsonMirror(tagMap);
   const tagTree = tagBinding.tree;
@@ -227,7 +227,7 @@ check("new snapshot epochs admit fresh tag and root QUID transitions", () => {
   quidMap.restore(element(`<main @000000608/>`).capture());
   assert.equal(quidBinding.status, "active");
   assert.notEqual(quidBinding.tree.node, quidRoot);
-  assert.equal(raw_node(quidBinding.tree.node, []).$_meta?.quid, "000000608");
+  assert.equal(raw_node(quidBinding.tree.node, []).$_meta?.quid, undefined);
   quidBinding.dispose();
 });
 

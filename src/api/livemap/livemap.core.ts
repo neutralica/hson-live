@@ -29,7 +29,7 @@ import { make_livemap_proxy } from "./livemap.proxy.js";
 import { make_livemap_store_api } from "./livemap.store.js";
 import { must_feed_listener, must_live_path, must_ordered_projected_object, must_ordered_projected_value, path_kind_error } from "./livemap.guard.js";
 import { append_live_path, clone_live_path, format_live_path, live_path_key, paths_overlap } from "./livemap.path.js";
-import { LiveMapDocumentMutationError, LiveMapProjectedIdentityError, LiveMapProjectedMutationError, LiveMapProjectedTransportError, LiveMapReplayError, LiveMapRevError, } from "./livemap.error.js";
+import { LiveMapDocumentMutationError, LiveMapProjectedIdentityError, LiveMapProjectedMutationError, LiveMapProjectedTransportError, LiveMapReplayError, LiveMapReplayInputError, LiveMapRevError, } from "./livemap.error.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import { hson_data_text_from_value } from "../data/hson-data.js";
 import {
@@ -121,7 +121,19 @@ import {
   projected_capture_continuity,
   projected_capture_identity_overlay,
 } from "./livemap.projected.capture.js";
+import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 import { clone_hson_graph_without_quids } from "./livemap.document.capture.js";
+
+const hostedSnapshotProvenance = new WeakMap<object, Readonly<{
+  owner: object;
+  epoch: number;
+  bytes: string;
+  overlays: ReadonlyMap<string, Readonly<{
+    document?: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay;
+    projected?: LiveMapProjectedIdentityOverlay;
+  }>>;
+}>>();
+const hostedCommitProvenance = new WeakMap<object, Readonly<{ owner: object; epoch: number; bytes: string }>>();
 import { read_livemap_document_logical_location } from "./livemap.document.location.js";
 import {
   detach_livemap_document_endpoint,
@@ -152,7 +164,6 @@ import {
   LIVEMAP_LIBRARIES_SNAPSHOT_FORMAT,
   assert_libraries_snapshot_bound,
   assert_libraries_snapshot_shape,
-  assert_local_libraries_snapshot_shape,
   assert_hosted_libraries_snapshot_shape,
   decode_hosted_commit,
   decode_hosted_client_commit,
@@ -948,12 +959,8 @@ function make_livemap_core_from_compatibility_root(
       };
       const planned = plan_write_ops(must_projected_root_value(compatibilityLibrary.root), [operation]);
       let candidate = clone_live_root(normalized.root);
-      if (options?.identity === "strip") candidate = clone_hson_graph_without_quids(candidate);
-      if (options?.identity === "reject") {
-        const preparedForReject = prepare_livemap_root(candidate);
-        if ((preparedForReject.projectedOverlay?.size ?? 0) !== 0) {
-          throw new Error("Projected restore rejected QUID-bearing canonical metadata.");
-        }
+      if (options?.identity !== "same-epoch") {
+        admit_portable_hson_node(candidate, "LiveMap.restore");
       }
       const candidateProjected = must_projected_root_value(candidate);
       if (!ordered_projected_value_equal(candidateProjected, planned.value)) {
@@ -967,12 +974,12 @@ function make_livemap_core_from_compatibility_root(
       if (compatibilityLibrary.hsonSchema !== undefined) must_hson_schema_root(compatibilityLibrary.hsonSchema, preparedCandidate.root);
       const continuity = projected_capture_continuity(mapIdentityEpoch, capture as object, options);
       const capturedOverlay = projected_capture_identity_overlay(capture as object);
-      if (options?.identity === "reject" && (capturedOverlay?.size ?? 0) !== 0) {
+      if (options?.identity !== "same-epoch" && (capturedOverlay?.size ?? 0) !== 0) {
         throw new Error("Projected restore rejected out-of-band identity claims.");
       }
-      const restoredOverlay = options?.identity === "strip"
-        ? preparedCandidate.projectedOverlay
-        : capturedOverlay ?? preparedCandidate.projectedOverlay;
+      const restoredOverlay = options?.identity === "same-epoch"
+        ? capturedOverlay
+        : preparedCandidate.projectedOverlay;
       if (restoredOverlay === undefined) {
         throw new Error("Same-epoch projected capture lost its identity overlay capability.");
       }
@@ -1015,7 +1022,12 @@ function make_livemap_core_from_compatibility_root(
       ]);
     },
     /** Replay semantic ops only when their base revision and prior values match. */
-    replay,
+    replay: (input: LiveMapReplay) => {
+      if (is_projected_identity_commit(input)) {
+        throw new LiveMapReplayInputError("Public replay cannot install generated identity.");
+      }
+      return replay(input);
+    },
 
 
   };
@@ -1185,14 +1197,18 @@ function make_livemap_core_from_compatibility_root(
     operations: readonly LiveMapAggregateOperation[],
   ): Readonly<{ hosted?: HostedAggregateCommit }> {
     if (hostedRegistry === undefined || hostedFence === undefined || hostedBindingsByIdentity === undefined) return {};
-    return {
-      hosted: make_hosted_commit(hostedFence, hostedRegistry, hostedBindingsByIdentity, {
-        changed,
-        prevRev,
-        rev,
-        operations,
-      }),
-    };
+    const hosted = make_hosted_commit(hostedFence, hostedRegistry, hostedBindingsByIdentity, {
+      changed,
+      prevRev,
+      rev,
+      operations,
+    });
+    hostedCommitProvenance.set(hosted, Object.freeze({
+      owner: mapIdentityEpoch.owner,
+      epoch: mapIdentityEpoch.current(),
+      bytes: JSON.stringify(hosted),
+    }));
+    return { hosted };
   }
 
   function require_library(identity: LiveMapLibraryIdentity): LiveMapLibraryState {
@@ -2117,23 +2133,15 @@ function make_livemap_core_from_compatibility_root(
         mode: entry.mode,
         schema: entry.schema,
         schemaDigest: entry.schemaDigest,
-        root: encode_hosted_root(clone_live_root(state.root)),
+        root: encode_hosted_root(clone_hson_graph_without_quids(state.root)),
       });
     });
-    const issuedQuids = enumerate_livemap_issued_quids(mapIdentityEpoch.issued());
-    if (issuedQuids.length > HOSTED_MAX_ISSUED_QUIDS) {
-      throw new Error("Hosted aggregate issued-QUID ledger exceeds its supported bound.");
-    }
     const snapshot: LiveMapLibrariesSnapshot = Object.freeze({
       format: LIVEMAP_LIBRARIES_SNAPSHOT_FORMAT,
       revision: mapRevision,
       registry: hosted.registry,
       registryDigest: hosted.registry.digest,
       libraries: Object.freeze(libraries),
-      identity: Object.freeze({
-        epoch: mapIdentityEpoch.current(),
-        issuedQuids,
-      }),
     });
     assert_libraries_snapshot_bound(snapshot);
     return snapshot;
@@ -2141,20 +2149,63 @@ function make_livemap_core_from_compatibility_root(
 
   function capture_hosted_aggregate(): HostedLiveMapLibrariesSnapshot {
     const hosted = require_hosted_state();
-    const snapshot = Object.freeze({ ...capture_libraries_aggregate(), authority: hosted.fence });
+    const portable = capture_libraries_aggregate();
+    const issuedQuids = enumerate_livemap_issued_quids(mapIdentityEpoch.issued());
+    if (issuedQuids.length > HOSTED_MAX_ISSUED_QUIDS) {
+      throw new Error("Hosted aggregate issued-QUID ledger exceeds its supported bound.");
+    }
+    const libraries = portable.libraries.map((entry) => {
+      const binding = hosted.byName.get(entry.name);
+      if (binding === undefined) throw new Error("Hosted Library binding is unavailable during exact capture.");
+      const state = binding.scope === "hson-internal"
+        ? systemState
+        : require_library(binding.identity as LiveMapLibraryIdentity);
+      if (state === undefined) throw new Error("Hosted system state is unavailable during exact capture.");
+      return Object.freeze({ ...entry, root: encode_hosted_root(clone_live_root(state.root)) });
+    });
+    const snapshot: HostedLiveMapLibrariesSnapshot = Object.freeze({
+      ...portable,
+      libraries: Object.freeze(libraries),
+      identity: Object.freeze({ epoch: mapIdentityEpoch.current(), issuedQuids }),
+      authority: hosted.fence,
+    });
     assert_libraries_snapshot_bound(snapshot);
+    const overlays = new Map<string, Readonly<{
+      document?: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay;
+      projected?: LiveMapProjectedIdentityOverlay;
+    }>>();
+    for (const entry of hosted.registry.libraries) {
+      const binding = hosted.byName.get(entry.name);
+      if (binding === undefined || binding.scope === "hson-internal") continue;
+      const state = require_library(binding.identity as LiveMapLibraryIdentity);
+      overlays.set(entry.name, Object.freeze({
+        ...(state.documentOverlay === undefined ? {} : { document: state.documentOverlay }),
+        ...(state.projectedOverlay === undefined ? {} : { projected: state.projectedOverlay }),
+      }));
+    }
+    hostedSnapshotProvenance.set(snapshot, Object.freeze({
+      owner: mapIdentityEpoch.owner,
+      epoch: mapIdentityEpoch.current(),
+      bytes: JSON.stringify(snapshot),
+      overlays,
+    }));
     return snapshot;
   }
 
   function restore_libraries_aggregate(
-    snapshot: LiveMapLibrariesSnapshot | LocalLibrariesContinuationSnapshot,
+    snapshot: LiveMapLibrariesSnapshot | HostedLiveMapLibrariesSnapshot,
     authority?: HostedAuthorityFence,
   ): void {
     transitionController.assertPublicMutationAllowed();
     const hosted = require_hosted_state();
     const identity = "identity" in snapshot ? snapshot.identity : undefined;
-    if ("identity" in snapshot) assert_libraries_snapshot_shape(snapshot);
-    else assert_local_libraries_snapshot_shape(snapshot);
+    const proof = identity === undefined ? undefined : hostedSnapshotProvenance.get(snapshot);
+    if (identity !== undefined && (proof === undefined || proof.owner !== mapIdentityEpoch.owner
+      || proof.epoch !== mapIdentityEpoch.current() || proof.bytes !== JSON.stringify(snapshot))) {
+      throw new Error("Exact hosted snapshot requires its original living runtime owner and epoch.");
+    }
+    if ("identity" in snapshot) assert_hosted_libraries_snapshot_shape(snapshot);
+    else assert_libraries_snapshot_shape(snapshot);
     assert_libraries_snapshot_bound(snapshot);
     if (snapshot.format !== LIVEMAP_LIBRARIES_SNAPSHOT_FORMAT
       || snapshot.registryDigest !== hosted.registry.digest
@@ -2200,6 +2251,7 @@ function make_livemap_core_from_compatibility_root(
       const binding = hosted.byName.get(entry.name);
       if (binding === undefined) throw new Error("Hosted aggregate snapshot Library binding is unavailable.");
       const root = decode_hosted_root(encoded.root);
+      if (identity === undefined) admit_portable_hson_node(root, "LiveMap Libraries snapshot");
       const prepared = prepare_livemap_root(root);
       if (prepared.mode !== entry.mode) throw new Error("Hosted aggregate snapshot root mode disagrees with its registry.");
       must_hson_schema_root(binding.schema, prepared.root);
@@ -2219,9 +2271,10 @@ function make_livemap_core_from_compatibility_root(
         library: require_library(binding.identity as LiveMapLibraryIdentity),
         root: prepared.root,
         mode: prepared.mode,
-        ...(prepared.documentOverlay === undefined ? {} : { documentOverlay: prepared.documentOverlay }),
-        ...(prepared.projectedOverlay === undefined ? {} : {
-          projectedOverlay: prepared.projectedOverlay,
+        ...((proof?.overlays.get(entry.name)?.document ?? prepared.documentOverlay) === undefined
+          ? {} : { documentOverlay: proof?.overlays.get(entry.name)?.document ?? prepared.documentOverlay }),
+        ...((proof?.overlays.get(entry.name)?.projected ?? prepared.projectedOverlay) === undefined ? {} : {
+          projectedOverlay: proof?.overlays.get(entry.name)?.projected ?? prepared.projectedOverlay,
           projectedValue: must_projected_root_value(prepared.root),
         }),
       }));
@@ -2270,7 +2323,10 @@ function make_livemap_core_from_compatibility_root(
       systemCandidate.state.projectedValue = systemCandidate.projectedValue;
     }
     if (identity === undefined) mapIdentityEpoch.replace([]);
-    else if (issuedLedger !== undefined) mapIdentityEpoch.hydrate(identity.epoch, issuedLedger);
+    else if (issuedLedger !== undefined) mapIdentityEpoch.install(make_livemap_issued_quid_ledger([
+      ...enumerate_livemap_issued_quids(mapIdentityEpoch.issued()),
+      ...enumerate_livemap_issued_quids(issuedLedger),
+    ]));
     mapRevision = snapshot.revision;
     if (authority !== undefined) hostedFence = Object.freeze({ ...authority });
     transitionController.invalidate();
@@ -2293,23 +2349,20 @@ function make_livemap_core_from_compatibility_root(
     });
   }
 
-  function restore_hosted_aggregate(snapshot: HostedLiveMapLibrariesSnapshot): void {
+  function restore_hosted_aggregate(snapshot: HostedLiveMapLibrariesSnapshot, authorityOverride?: HostedAuthorityFence): void {
     assert_hosted_libraries_snapshot_shape(snapshot);
+    const proof = hostedSnapshotProvenance.get(snapshot);
+    if (proof === undefined || proof.owner !== mapIdentityEpoch.owner
+      || proof.epoch !== mapIdentityEpoch.current() || proof.bytes !== JSON.stringify(snapshot)) {
+      throw new Error("Exact hosted snapshot requires its original living runtime owner and epoch.");
+    }
     if (typeof snapshot.authority.logicalMapId !== "string"
       || snapshot.authority.logicalMapId.length === 0
       || typeof snapshot.authority.incarnationId !== "string"
       || snapshot.authority.incarnationId.length === 0) {
       throw new Error("Hosted aggregate snapshot authority is malformed.");
     }
-    const semantic: LiveMapLibrariesSnapshot = Object.freeze({
-      format: snapshot.format,
-      revision: snapshot.revision,
-      registry: snapshot.registry,
-      registryDigest: snapshot.registryDigest,
-      libraries: snapshot.libraries,
-      identity: snapshot.identity,
-    });
-    restore_libraries_aggregate(semantic, snapshot.authority);
+    restore_libraries_aggregate(snapshot, authorityOverride ?? snapshot.authority);
   }
 
   function restore_client_hosted_aggregate(snapshot: HostedClientLibrariesSnapshot): void {
@@ -2353,7 +2406,28 @@ function make_livemap_core_from_compatibility_root(
       publishAuthorityPosition();
       return undefined;
     }
-    if (local === undefined || JSON.stringify(make_hosted_client_commit(local)) !== JSON.stringify(input)) {
+    const localClient = local === undefined ? undefined : make_hosted_client_commit(local);
+    const matchesPortableEffects = localClient !== undefined
+      && localClient.format === input.format
+      && JSON.stringify(localClient.authority) === JSON.stringify(input.authority)
+      && localClient.registryDigest === input.registryDigest
+      && localClient.prevRev === input.prevRev
+      && localClient.rev === input.rev
+      && (() => {
+        let applied = 0;
+        for (const expected of input.operations) {
+          if (applied < localClient.operations.length
+            && JSON.stringify(localClient.operations[applied]) === JSON.stringify(expected)) {
+            applied += 1;
+          } else if (expected.domain !== "graph") {
+            return false;
+          }
+          // A valid graph operation may collapse against this runtime's
+          // identity-free graph, while a following system/path effect remains.
+        }
+        return applied === localClient.operations.length;
+      })();
+    if (!matchesPortableEffects) {
       transitionController.discardAuthority(transition);
       throw new Error("Hosted client replay did not reproduce its portable operation semantics.");
     }
@@ -2372,6 +2446,11 @@ function make_livemap_core_from_compatibility_root(
 
   function replay_hosted_aggregate(input: HostedAggregateCommit): LiveMapAggregateCommit {
     transitionController.assertPublicMutationAllowed();
+    const proof = hostedCommitProvenance.get(input);
+    if (proof === undefined || proof.owner !== mapIdentityEpoch.owner
+      || proof.epoch !== mapIdentityEpoch.current() || proof.bytes !== JSON.stringify(input)) {
+      throw new Error("Exact hosted replay requires its original living runtime owner and epoch.");
+    }
     const hosted = require_hosted_state();
     const decoded = decode_hosted_commit(input, hosted.registry, hosted.byName);
     if (input.authority.logicalMapId !== hosted.fence.logicalMapId

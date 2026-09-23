@@ -90,12 +90,12 @@ check("accepted attr mutation atomically retains the exact overlay with the new 
   assert.equal(after.quidAtPath(validate_document_path([0])), Q1);
 });
 
-check("capture serializes graph identity but not the derived overlay", () => {
+check("portable capture serializes neither graph identity nor derived overlay", () => {
   const map = element(`<main @${Q1}/>`);
   const before = livemap_document_identity_overlay_build_count();
   const capture = map.capture();
   assert.deepEqual(Object.keys(capture).sort(), ["kind", "mode", "rev", "root"]);
-  assert.equal(JSON.stringify(capture.root).includes(Q1), true);
+  assert.equal(JSON.stringify(capture.root).includes(Q1), false);
   assert.equal(livemap_document_identity_overlay_build_count(), before);
 });
 
@@ -113,7 +113,7 @@ check("install builds its candidate overlay once before publication", () => {
   const before = livemap_document_identity_overlay_build_count();
   target.install(source.capture());
   assert.equal(livemap_document_identity_overlay_build_count(), before + 1);
-  assert.equal(target.document.byQuid(Q2)?.$_tag, "article");
+  assert.equal(target.document.byQuid(Q2), undefined);
 });
 
 check("restore builds its candidate overlay once and installs the exact revision", () => {
@@ -125,7 +125,8 @@ check("restore builds its candidate overlay once and installs the exact revision
   target.restore(source.capture());
   assert.equal(livemap_document_identity_overlay_build_count(), before + 1);
   assert.equal(target.rev, 2);
-  assert.equal(target.document.byQuid(Q2)?.$_attrs?.id, "two");
+  assert.equal(target.document.byQuid(Q2), undefined);
+  assert.equal(target.document.attrs.get(rootTarget, "id"), "two");
 });
 
 check("single-operation replay reconciles without a full overlay rebuild", () => {
@@ -146,7 +147,7 @@ check("replace-root replay builds and installs one candidate overlay", () => {
   const before = livemap_document_identity_overlay_build_count();
   target.replay(commit);
   assert.equal(livemap_document_identity_overlay_build_count(), before + 1);
-  assert.equal(target.document.byQuid(Q2)?.$_tag, "article");
+  assert.equal(target.document.byQuid(Q2), undefined);
 });
 
 check("duplicate install candidates reject before any overlay publication", () => {
@@ -217,16 +218,17 @@ check("QUID-free accepted transitions retain an empty overlay without rebuilding
   assert.equal(livemap_document_identity_overlay_for(target).size, 0);
 });
 
-check("supplied sparse QUIDs remain exact across insertion", () => {
+check("supplied sparse QUIDs reject atomically at insertion", () => {
   const target = element(`<main @${Q1}/>`);
-  target.document.content.insert(rootTarget, 0, {
+  assert.throws(() => target.document.content.insert(rootTarget, 0, {
     $_tag: "_hson_elem",
     $_content: [{ $_tag: "span", $_content: [], $_meta: { quid: Q2 } }],
-  });
+  }));
   const overlay = livemap_document_identity_overlay_for(target);
-  assert.equal(overlay.size, 2);
+  assert.equal(overlay.size, 1);
   assert.deepEqual(overlay.pathForQuid(Q1), [0]);
-  assert.deepEqual(overlay.pathForQuid(Q2), [0, 0, 0]);
+  assert.equal(overlay.pathForQuid(Q2), undefined);
+  assert.equal(target.rev, 0);
 });
 
 check("removal retires only removed sparse identity", () => {
@@ -242,7 +244,7 @@ check("commit observers see the already-installed root and overlay", () => {
   const target = element(`<main @${Q1}/>`);
   let witnessed: string | undefined;
   target.commits.observe((event) => {
-    if (event.kind === "commit") witnessed = target.document.byQuid(Q2)?.$_tag;
+    if (event.kind === "commit") witnessed = (target.root().$_content[0] as { $_tag?: string }).$_tag;
   });
   target.install(element(`<article @${Q2}/>`).capture());
   assert.equal(witnessed, "article");
@@ -261,12 +263,12 @@ check("canonical no-op candidates reconcile without rebuild revision or publicat
   assert.deepEqual(events, []);
 });
 
-check("installed sparse QUID values survive capture and restore exactly", () => {
+check("portable capture and restore leave all source QUIDs behind", () => {
   const source = element(`<main @${Q1} <span @${Q2}/>/` + `>`);
   const target = element(`<aside @${Q3}/>`);
   target.restore(source.capture());
-  assert.equal(target.document.byQuid(Q1)?.$_tag, "main");
-  assert.equal(target.document.byQuid(Q2)?.$_tag, "span");
+  assert.equal(target.document.byQuid(Q1), undefined);
+  assert.equal(target.document.byQuid(Q2), undefined);
   assert.equal(target.document.byQuid(Q3), undefined);
 });
 

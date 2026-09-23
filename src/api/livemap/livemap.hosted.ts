@@ -497,17 +497,13 @@ export function assert_libraries_snapshot_bound(snapshot: LiveMapLibrariesSnapsh
 
 export function assert_libraries_snapshot_shape(snapshot: LiveMapLibrariesSnapshot): void {
   const record = exact_record(snapshot, "Hosted aggregate snapshot");
-  exact_keys(record, ["format", "revision", "registry", "registryDigest", "libraries", "identity"], "Hosted aggregate snapshot");
-  const identity = exact_record(record.identity, "Hosted snapshot identity");
-  exact_keys(identity, ["epoch", "issuedQuids"], "Hosted snapshot identity");
+  exact_keys(record, ["format", "revision", "registry", "registryDigest", "libraries"], "Hosted aggregate snapshot");
   assert_libraries_snapshot_entries(record);
 }
 
 /** Local browser bootstrap deliberately has no authority identity state. @internal */
 export function assert_local_libraries_snapshot_shape(snapshot: LocalLibrariesContinuationSnapshot): void {
-  const record = exact_record(snapshot, "Local aggregate snapshot");
-  exact_keys(record, ["format", "revision", "registry", "registryDigest", "libraries"], "Local aggregate snapshot");
-  assert_libraries_snapshot_entries(record);
+  assert_libraries_snapshot_shape(snapshot);
 }
 
 function assert_libraries_snapshot_entries(record: Readonly<Record<string, unknown>>): void {
@@ -536,13 +532,14 @@ export function assert_hosted_libraries_snapshot_shape(snapshot: HostedLiveMapLi
   exact_keys(record, ["format", "revision", "registry", "registryDigest", "libraries", "identity", "authority"], "Hosted aggregate snapshot");
   const authority = exact_record(record.authority, "Hosted snapshot authority");
   exact_keys(authority, ["logicalMapId", "incarnationId"], "Hosted snapshot authority");
+  const identity = exact_record(record.identity, "Hosted snapshot identity");
+  exact_keys(identity, ["epoch", "issuedQuids"], "Hosted snapshot identity");
   const semantic = Object.freeze({
     format: snapshot.format,
     revision: snapshot.revision,
     registry: snapshot.registry,
     registryDigest: snapshot.registryDigest,
     libraries: snapshot.libraries,
-    identity: snapshot.identity,
   });
   assert_libraries_snapshot_shape(semantic);
 }

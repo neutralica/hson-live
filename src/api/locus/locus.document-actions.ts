@@ -6,7 +6,6 @@ import type {
   LiveMapReplacementLineage,
 } from "../../types/livemap.types.js";
 import type { JsonValue } from "../../core/types.js";
-import { clone_node } from "../../core/clone-node.js";
 import { is_Node } from "../../core/node-guards.js";
 import type {
   LocusDocumentActionName,
@@ -20,7 +19,7 @@ import {
 } from "./locus.protocol.js";
 import { decode_locus_portable_graph_content } from "./locus.graph-content-codec.js";
 import { resolve_document_path, validate_document_path } from "../livemap/livemap.document.path.js";
-import { apply_replacement_lineage, normalize_replacement_lineage } from "../livemap/livemap.document.lineage.js";
+import { normalize_replacement_lineage } from "../livemap/livemap.document.lineage.js";
 
 export type LocusDocumentActionResolution =
   | Readonly<{ kind: "not-document-action" }>
@@ -185,10 +184,8 @@ export function resolve_locus_document_action(
         if (!is_Node(parent)) throw new TypeError("Replacement lineage scope is not a document node.");
         const before = parent.$_content[index];
         if (before === undefined) throw new TypeError("Replacement lineage source is absent.");
-        const localReplacement = clone_node(replacement);
-        const checked = normalize_replacement_lineage(lineage, before, localReplacement);
-        apply_replacement_lineage(before, localReplacement, checked, true);
-        return document_api_for(targetMap).content.replace(target, index, localReplacement, checked);
+        const checked = normalize_replacement_lineage(lineage, before, replacement);
+        return document_api_for(targetMap).content.replace(target, index, replacement, checked);
       },
     });
   }

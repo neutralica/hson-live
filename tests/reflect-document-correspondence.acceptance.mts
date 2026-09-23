@@ -12,10 +12,7 @@ import {
   _create_livetree_runtime_test_handle,
   _reflect_document_for_runtime_test,
 } from "../src/_tests/diagnostics-internal.ts";
-import {
-  DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
-  DOCUMENT_REFLECT_STRUCTURAL_UPDATE_FAILED_ERROR_CODE,
-} from "../src/api/reflect/reflect.document.error.ts";
+import { DOCUMENT_REFLECT_STRUCTURAL_UPDATE_FAILED_ERROR_CODE } from "../src/api/reflect/reflect.document.error.ts";
 import type {
   LiveMapAnyOp,
   LiveMapCommitObservation,
@@ -135,7 +132,7 @@ check("staged multi-operation replay publishes only final correspondence", () =>
   const { runtime, binding } = reflected(map);
   const a = raw_node(binding.tree.node, [0, 0]);
   replay(map, [
-    { domain: "graph", op: "insert-content", target: path(0), index: 1, content: projected_element(`<i @${Q3}/>`), },
+    { domain: "graph", op: "insert-content", target: path(0), index: 1, content: projected_element(`<i/>`), },
     { domain: "graph", op: "move-content", target: path(0), from: 0, to: 2 },
     { domain: "graph", op: "set-attr", target: path(0, 2), name: "final", value: true },
   ]);
@@ -146,25 +143,25 @@ check("staged multi-operation replay publishes only final correspondence", () =>
   binding.dispose();
 });
 
-check("failed planning leaves mounted DOM untouched", () => {
+check("foreign identity insertion rejects before mounted DOM planning", () => {
   const runtime = _create_livetree_runtime_test_handle();
   _create_livetree_for_runtime_test(runtime, projected_element(`<aside @${COLLISION}/>`));
   const map = element(`<main <a/>/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
   const before = structuredClone(binding.tree.node);
-  map.document.content.insert(path(0), 1, projected_element(`<b @${COLLISION}/>`));
-  assert.equal(binding.failure?.code, DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE);
+  assert.throws(() => map.document.content.insert(path(0), 1, projected_element(`<b @${COLLISION}/>`)));
+  assert.equal(binding.status, "active");
   assert.deepEqual(binding.tree.node, before);
   binding.dispose();
 });
 
-check("failed planning publishes no completed correspondence revision", () => {
+check("rejected identity insertion publishes no correspondence revision", () => {
   const runtime = _create_livetree_runtime_test_handle();
   _create_livetree_for_runtime_test(runtime, projected_element(`<aside @${COLLISION}/>`));
   const map = element(`<main <a/>/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
   const before = binding.diagnostics();
-  map.document.content.insert(path(0), 1, projected_element(`<b @${COLLISION}/>`));
+  assert.throws(() => map.document.content.insert(path(0), 1, projected_element(`<b @${COLLISION}/>`)));
   const after = binding.diagnostics();
   assert.equal(binding.sourceRevision, 0);
   assert.equal(after.incrementalCorrespondenceUpdates, before.incrementalCorrespondenceUpdates);

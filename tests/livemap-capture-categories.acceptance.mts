@@ -61,15 +61,13 @@ function captureText(map: DocumentLiveMap): string {
   return serialize_hson(semanticRoot);
 }
 
-check("default capture remains exact durable metadata", () => {
+check("default capture is portable and QUID-free", () => {
   const capture = element(`<main @${Q1}/>`).capture();
-  assert.equal(JSON.stringify(capture).includes(Q1), true);
+  assert.equal(JSON.stringify(capture).includes(Q1), false);
 });
 
-check("explicit preserve-metadata capture retains QUIDs", () => {
-  const capture = element(`<main @${Q1} <i @${Q2}/>/>`).capture({ identity: "preserve-metadata" });
-  assert.equal(JSON.stringify(capture).includes(Q1), true);
-  assert.equal(JSON.stringify(capture).includes(Q2), true);
+check("retired preserve-metadata capture category is rejected", () => {
+  assert.throws(() => element(`<main @${Q1}/>`).capture({ identity: "preserve-metadata" } as never));
 });
 
 check("same-epoch capture carries QUID identity out of band", () => {
@@ -95,9 +93,9 @@ check("identity-free capture preserves the exact revision", () => {
   assert.equal(map.capture({ identity: "strip" }).rev, 1);
 });
 
-check("identity-free capture is canonically unequal when QUIDs were removed", () => {
+check("default and explicit portable captures agree when QUIDs were removed", () => {
   const map = element(`<main @${Q1}/>`);
-  assert.equal(canonical_hson_graph_equal(map.capture().root, map.capture({ identity: "strip" }).root), false);
+  assert.equal(canonical_hson_graph_equal(map.capture().root, map.capture({ identity: "strip" }).root), true);
 });
 
 check("QUID-free capture categories remain canonically equal", () => {
@@ -125,21 +123,22 @@ check("capture categories never mint into a QUID-free source", () => {
   const map = element(`<main <i/>/>`);
   map.capture();
   map.capture({ identity: "same-epoch" });
-  map.capture({ identity: "preserve-metadata" });
+  assert.throws(() => map.capture({ identity: "preserve-metadata" } as never));
   map.capture({ identity: "strip" });
   assert.equal(JSON.stringify(map.root()).includes("quid"), false);
 });
 
-check("default install preserves metadata as fresh map-local claims", () => {
+check("default install transfers state without source identity", () => {
   const target = element(`<main/>`);
   target.install(element(`<main @${Q1}/>`).capture());
-  assert.equal(target.document.byQuid(Q1)?.$_tag, "main");
+  assert.equal(target.document.byQuid(Q1), undefined);
+  const content = target.document.content()[0];
+  assert.equal(content !== undefined && isNode(content) ? content.$_tag : undefined, "main");
 });
 
-check("explicit durable install preserves metadata as fresh map-local claims", () => {
+check("retired preserve-metadata install category is rejected", () => {
   const target = element(`<main/>`);
-  target.install(element(`<main @${Q1}/>`).capture(), { identity: "preserve-metadata" });
-  assert.equal(target.document.byQuid(Q1)?.$_tag, "main");
+  assert.throws(() => target.install(element(`<main @${Q1}/>`).capture(), { identity: "preserve-metadata" } as never));
 });
 
 check("identity-free install publishes a QUID-free graph", () => {
@@ -166,7 +165,7 @@ check("strict external rejection accepts QUID-free captures", () => {
 check("strict external rejection refuses QUID-bearing captures", () => {
   const target = element(`<main/>`);
   assert.throws(
-    () => target.install(element(`<main @${Q1}/>`).capture(), { identity: "reject" }),
+    () => target.install({ ...element(`<main @${Q1}/>`).capture(), root: element(`<main @${Q1}/>`).root() }, { identity: "reject" }),
     (error: unknown) => typeof error === "object" && error !== null
       && "reasonCode" in error && error.reasonCode === "IDENTITY_POLICY_MISMATCH",
   );

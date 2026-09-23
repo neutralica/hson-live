@@ -36,12 +36,9 @@ function establish_authority_identity(
   if (snapshot.revision !== 0) {
     throw new Error("A hosted multi-library Locus identity may be set only before its first transition.");
   }
-  aggregate.restoreHosted(Object.freeze({
-    ...snapshot,
-    authority: Object.freeze({
-      logicalMapId: logicalMapId ?? snapshot.authority.logicalMapId,
-      incarnationId: incarnationId ?? snapshot.authority.incarnationId,
-    }),
+  aggregate.restoreHosted(snapshot, Object.freeze({
+    logicalMapId: logicalMapId ?? snapshot.authority.logicalMapId,
+    incarnationId: incarnationId ?? snapshot.authority.incarnationId,
   }));
 }
 

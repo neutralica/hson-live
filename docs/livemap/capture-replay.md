@@ -20,7 +20,7 @@ type LiveMapCapture = Readonly<{
 ```
 
 At runtime, `capture()` returns an immutable object whose enumerable transport
-fields are `rev`, `format`, and `payload`. `root` is a detached exact canonical
+fields are `rev`, `format`, and `payload`. `root` is a detached QUID-free canonical
 graph carried as a non-enumerable property. The `structural-json` payload is the
 current format-discriminated transport form: it preserves ordered object entries,
 dangerous property names, and `-0` without relying on JavaScript plain-object
@@ -51,8 +51,8 @@ type DocumentLiveMapCapture = Readonly<{
 ```
 
 All four fields are enumerable. The root is detached canonical Hson and the
-capture preserves admitted sparse element QUID metadata unless identity is
-explicitly stripped.
+default capture removes generated QUID metadata. It preserves application
+structure and revision for transfer into another runtime.
 
 `DocumentLiveMapCapture` is not versioned. It has no `version` or
 `formatVersion` field. Locus may serialize a document capture into a separate
@@ -61,25 +61,20 @@ must not be confused with the public LiveMap capture object.
 
 ## Capture identity categories
 
-Both families accept the explicit capture identities `same-epoch`,
-`preserve-metadata`, and `strip`:
+Both families accept explicit `same-epoch` and `strip` capture identities:
 
 ```ts
 const localCapability = map.capture({ identity: "same-epoch" });
-const durable = map.capture({ identity: "preserve-metadata" });
-const identityFree = map.capture({ identity: "strip" });
+const portable = map.capture();
 ```
 
-Omitting options behaves as durable `preserve-metadata` capture, but only an
-explicit options-bearing capture receives the private provenance needed for a
-later `same-epoch` restore or install.
+Omitting options produces portable QUID-free state. Only explicit `same-epoch`
+capture receives the private provenance needed for local exact restoration.
 
-- `same-epoch` retains QUID metadata and records an exact-object, owner, epoch,
-  revision, and graph proof. It is a local capability, not serializable data.
-- `preserve-metadata` retains valid QUID bytes for durable reconstruction. The
-  receiving owner validates them and starts a new live identity epoch.
-- `strip` removes QUID metadata from the detached graph without changing the
-  source map.
+- `same-epoch` retains local identity out of band with exact-object, owner,
+  epoch, revision, and graph proof. It is a local capability, not transferable
+  identity data.
+- `strip` explicitly requests the same QUID-free graph as default capture.
 
 Copying, cloning, serializing, or decoding a same-epoch capture preserves at
 most its data. It does not preserve the private capability. Equal QUID bytes do
@@ -99,18 +94,17 @@ sets the map revision to `capture.rev`. It emits a snapshot observation and
 notifies active watchers once, but it creates no commit, publishes no feed
 event, and does not increment the captured revision.
 
-Data restore accepts the admission policies `same-epoch`,
-`preserve-metadata`, `strip`, and `reject`. `same-epoch` requires the exact
-active capture capability from the same owner epoch. Every other policy creates
-a new identity epoch; `strip` removes QUID metadata and `reject` refuses a
-QUID-bearing root.
+Data restore accepts `same-epoch`, `strip`, and `reject`. `same-epoch` requires
+the exact active capture capability from the same owner epoch. Default and
+other portable admission create a fresh identity epoch and reject QUID-bearing
+roots or out-of-band overlays.
 
 `apply` is conditional whole-state replacement. Its `prevRev` must equal the
 current revision; a changed result becomes one ordinary data commit.
 
-`replay` accepts either a current structural operation envelope or a legacy
-projected `ensure-quid` graph commit. New local identity demand does not
-produce such a commit. Operation replay requires exact
+`replay` accepts a current structural operation envelope. It rejects legacy
+projected `ensure-quid` commits as public input; bounded internal history
+decoding is separate. Operation replay requires exact
 `prevRev`, verifies recorded previous and next witnesses, validates the
 prospective schema, and emits the accepted replay commit. It does not silently
 repair a gap or accept an old transport shape.
@@ -139,8 +133,8 @@ starts a new epoch and fences old identity handles.
 creates no ordinary commit or local increment, and publishes a snapshot
 observation to watchers and commit observers.
 
-Document admission accepts `same-epoch`, `preserve-metadata`, `strip`, and
-`reject`. The default is `preserve-metadata`. Only an exact explicit
+Document admission accepts `same-epoch`, `strip`, and `reject`. Default
+admission rejects supplied QUID metadata. Only an exact explicit
 same-epoch capture from the same current owner epoch can retain existing live
 identity continuity. Other successful complete-root admissions start a new
 owner epoch and invalidate prior identity handles even when QUID bytes remain
@@ -148,9 +142,10 @@ equal.
 
 `replay` accepts one canonical graph commit whose `prevRev` equals the current
 revision and whose `rev` is exactly `prevRev + 1`. It validates the operation
-domain, paths, graph witnesses, schema, and identity effects before applying the
+domain, paths, schema, and identity effects before applying the
 commit. Replay is ordered reconstruction; it is not application intent or a
-merge protocol.
+merge protocol. It rejects supplied QUID witnesses, QUID-bearing content, and
+`ensure-quid` before graph mutation.
 
 ## Persistence boundary
 

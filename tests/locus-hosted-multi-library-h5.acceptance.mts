@@ -157,7 +157,7 @@ class MemoryPersistence {
   }
 }
 
-function insert_item(quid = QUID) {
+function insert_item(_quid = QUID) {
   return {
     domain: "graph" as const,
     op: "insert-content" as const,
@@ -165,7 +165,7 @@ function insert_item(quid = QUID) {
     index: 0,
     content: {
       $_tag: "_hson_elem" as const,
-      $_content: [{ $_tag: "item", $_meta: { quid }, $_content: [] }],
+      $_content: [{ $_tag: "item", $_content: [] }],
     },
   };
 }
@@ -269,6 +269,11 @@ await check("the public Locus and Echo paths bootstrap one typed aggregate mirro
   assert.equal(clientMap.lib("state").snap(["theme"]), "dark");
   assert.equal(clientMap.lib("colors").snap(["theme"]), "blue");
   assert.equal(page.document.byQuid(QUID), undefined);
+  const serverAuthority = internal_livemap_aggregate_authority(serverMap);
+  const serverPage = serverAuthority.libraries()[2];
+  if (serverPage === undefined) throw new Error("Expected server page Library.");
+  serverAuthority.acquireLocalDocumentIdentity(serverPage, validate_document_path([0, 0, 0]), QUID);
+  assert.equal(serverMap.rev, 1);
   assert.equal(page_item(clientMap)?.$_tag, "item");
   assert.equal(reflection.sourceRevision, 1);
   assert.equal(reflection.diagnostics().updatesApplied, 1);

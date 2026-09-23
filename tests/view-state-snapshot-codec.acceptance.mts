@@ -221,7 +221,7 @@ function add_empty_root_metadata(value: JsonValue): JsonValue {
   return copy;
 }
 
-check("element capture round-trips with detached nested identity and typed document data", () => {
+check("exact codec round-trips nested identity but public restore rejects those bytes", () => {
   const capture = element_capture(node(
     "main",
     [node("_hson_elem", [
@@ -241,8 +241,9 @@ check("element capture round-trips with detached nested identity and typed docum
 
   const target = hson.liveMap.fromNode(element_capture(node("aside"), 0).root);
   if (target.mode !== "document") throw new Error("Expected element map.");
-  target.restore(decoded);
-  assert.equal(canonical_hson_graph_equal(target.capture().root, capture.root), true);
+  assert.throws(() => target.restore(decoded));
+  assert.equal(target.rev, 0);
+  assert.equal(target.document.byQuid("000000001"), undefined);
 });
 
 check("nontrivial multiNodeDocument capture round-trips in order", () => {

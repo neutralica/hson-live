@@ -187,7 +187,9 @@ function committed_value(source: LiveMapLibraries, value: number) {
 await check("Echo processes commit, consecutive progress, commit as one contiguous authority stream", async () => {
   const authority = make_map();
   const source = internal_livemap_aggregate_authority(authority);
-  source.restoreHosted(Object.freeze({ ...source.captureHosted(), revision: 9 }));
+  for (let revision = 1; revision <= 9; revision += 1) {
+    source.commit([{ target: source.target(source.libraries()[0]!, ["value"]), kind: "set", value: revision }]);
+  }
   const snapshot = source.captureHosted();
   const server = create_locus_hosted_aggregate_socket_internal({ map: authority });
   const pair = socket_pair();
@@ -215,7 +217,10 @@ await check("Echo processes commit, consecutive progress, commit as one contiguo
   assert.equal(client.lastAppliedRev, 12);
   assert.equal(state.snap(["value"]), 1);
   assert.equal(commits, 1);
-  originAuthority.restoreHosted(Object.freeze({ ...originAuthority.captureHosted(), revision: 12 }));
+  const originReplica = create_echo_aggregate_replica_capability_internal(origin);
+  originReplica.advanceHostedProgress(progress(snapshot, 10));
+  originReplica.advanceHostedProgress(progress(snapshot, 11));
+  originReplica.dispose();
   pair.sendFromServer({ type: "commit", id, commit: committed_value(origin, 2) });
   assert.equal(map.rev, 13);
   assert.equal(client.lastAppliedRev, 13);
@@ -234,7 +239,9 @@ await check("replay history processes commit, progress, commit, final progress b
   const source = make_livemap_hosted_mirror_from_snapshot_internal(snapshot);
   const sourceAuthority = internal_livemap_aggregate_authority(source);
   const first = committed_value(source, 1);
-  sourceAuthority.restoreHosted(Object.freeze({ ...sourceAuthority.captureHosted(), revision: 2 }));
+  const sourceReplica = create_echo_aggregate_replica_capability_internal(source);
+  sourceReplica.advanceHostedProgress(progress(snapshot, 1));
+  sourceReplica.dispose();
   const third = committed_value(source, 2);
   const server = create_locus_hosted_aggregate_socket_internal({ map: authority });
   const pair = socket_pair();
@@ -273,10 +280,14 @@ await check("replay history processes commit, progress, commit, final progress b
 await check("snapshot recovery drains buffered progress and graph tail through caught-up", async () => {
   const authority = make_map();
   const aggregate = internal_livemap_aggregate_authority(authority);
-  aggregate.restoreHosted(Object.freeze({ ...aggregate.captureHosted(), revision: 4 }));
+  for (let revision = 1; revision <= 4; revision += 1) {
+    aggregate.commit([{ target: aggregate.target(aggregate.libraries()[0]!, ["value"]), kind: "set", value: revision }]);
+  }
   const snapshot = aggregate.captureHosted();
   const source = make_livemap_hosted_mirror_from_snapshot_internal(snapshot);
-  internal_livemap_aggregate_authority(source).restoreHosted(Object.freeze({ ...snapshot, revision: 5 }));
+  const sourceReplica = create_echo_aggregate_replica_capability_internal(source);
+  sourceReplica.advanceHostedProgress(progress(snapshot, 4));
+  sourceReplica.dispose();
   const sixth = committed_value(source, 6);
   const server = create_locus_hosted_aggregate_socket_internal({ map: authority });
   const pair = socket_pair();

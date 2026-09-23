@@ -96,24 +96,24 @@ check("malformed incoming QUID rejects before publication", () => {
   assertState(map, before);
 });
 
-check("duplicate QUIDs inside an incoming subtree reject atomically", () => {
+check("QUIDs inside an incoming subtree reject atomically", () => {
   const map = element(`<main @${Q1}/>`);
   const before = state(map);
   const incoming = branch("section", Q2, ordinary("b", Q2));
-  assert.throws(() => map.document.content.insert(target(), 0, incoming), /duplicate quid/i);
+  assert.throws(() => map.document.content.insert(target(), 0, incoming), /runtime QUID|identity/i);
   assertState(map, before);
 });
 
 check("incoming collision with a surviving graph claim rejects atomically", () => {
   const map = element(`<main @${Q1}/>`);
   const before = state(map);
-  assert.throws(() => map.document.content.insert(target(), 0, branch("span", Q1)), /duplicate quid/i);
+  assert.throws(() => map.document.content.insert(target(), 0, branch("span", Q1)), /runtime QUID|identity/i);
   assertState(map, before);
 });
 
-check("replacement may reuse the displaced subtree QUID", () => {
+check("replacement lineage may preserve the displaced local QUID", () => {
   const map = element(`<main <i @${Q2}/>/` + `>`);
-  map.document.content.replace(target(0), 0, ordinary("b", Q2));
+  map.document.content.replace(target(0), 0, ordinary("b"), [{ source: path(), destination: path() }]);
   assert.equal(map.document.byQuid(Q2)?.$_tag, "b");
   assert.equal(map.rev, 1);
 });
@@ -136,7 +136,7 @@ check("invalid path never reroutes to a matching QUID", () => {
     domain: "graph", op: "set-attr",
     target: { kind: "path", path: path(9), witness: { quid: Q1 } },
     name: "id", value: "bad",
-  }]), /path/i);
+  }]), /witness/i);
   assertState(map, before);
 });
 
@@ -182,12 +182,13 @@ check("failed staged commit publishes no partial observation", () => {
   assert.deepEqual(events, []);
 });
 
-check("observer failure occurs after root revision and overlay installation", () => {
+check("observer failure occurs after root revision and portable graph installation", () => {
   const map = element(`<main @${Q1}/>`);
   map.commits.observe(() => { throw new Error("observer-failure"); });
-  assert.throws(() => map.document.content.insert(target(), 0, branch("span", Q2)), /observer-failure/);
+  assert.throws(() => map.document.content.insert(target(), 0, branch("span")), /observer-failure/);
   assert.equal(map.rev, 1);
-  assert.equal(map.document.byQuid(Q2)?.$_tag, "span");
+  assert.equal(map.document.byQuid(Q2), undefined);
+  assert.equal(map.document.content().length, 1);
 });
 
 check("replay revision conflict is atomic", () => {
@@ -250,7 +251,7 @@ check("same-position move is a complete atomic no-op", () => {
 });
 
 check("exact content replacement is a complete no-op", () => {
-  const map = element(`<main <a @${Q2}/>/` + `>`);
+  const map = element('<main <a/>/>');
   const content = map.root().$_content[0];
   if (typeof content !== "object") throw new Error("Expected canonical branch");
   const before = state(map);

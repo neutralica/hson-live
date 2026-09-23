@@ -344,7 +344,7 @@ await check("persistent store unload and checkpoint-plus-tail reload preserve ex
   await host.checkpoint();
   const inserted = {
     $_tag: "_hson_elem",
-    $_content: [element(`<section @000001011 style="display:block"/>`).root().$_content[0]],
+    $_content: [element(`<section style="display:block"/>`).root().$_content[0]],
   };
   await host.mutate((draft) => draft.document.content.insert(root, 0, inserted));
   const persistedTail = adapter.state("persistent-reload").commits[0];

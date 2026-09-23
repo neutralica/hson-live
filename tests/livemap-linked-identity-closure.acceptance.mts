@@ -15,7 +15,6 @@ import {
   set_livemap_document_quid_candidate_source_for_tests,
 } from "../src/api/livemap/livemap.document.registration.ts";
 import { livemap_document_identity_overlay_for } from "../src/api/livemap/livemap.document.identity.ts";
-import { make_locus_canonical_commit } from "../src/api/locus/locus.history.ts";
 import {
   decode_locus_canonical_commit,
   decode_locus_document_commit,
@@ -75,39 +74,44 @@ function authoredRoot(binding: ReturnType<typeof reflected>["binding"]) {
   return _create_livetree_for_runtime_test(runtime, node).adoptRoots(binding.tree.hostRootNode());
 }
 
-check("exact capture preserves local identity without a registration commit", () => {
+check("owner-proven exact capture preserves local identity without a registration commit", () => {
   const { map, binding } = reflected(`<main/>`);
   let commit: LiveMapCommit<LiveMapAnyOp> | undefined;
   map.commits.observe((observation) => { if (observation.kind === "commit") commit = observation.commit; });
   const quid = authoredRoot(binding).quid;
+  const exact = map.capture({ identity: "same-epoch" });
+  map.restore(exact, { identity: "same-epoch" });
+  assert.equal(commit, undefined);
+  assert.equal(map.document.byQuid(quid)?.$_tag, "main");
   const mirror = element(`<main/>`);
   mirror.restore(map.capture());
-  assert.equal(commit, undefined);
-  assert.equal(mirror.document.byQuid(quid)?.$_tag, "main");
+  assert.equal(mirror.document.byQuid(quid), undefined);
   close(binding);
 });
 
-check("replay never consults the map allocator", () => {
+check("public identity replay rejects before consulting the allocator", () => {
   const map = element(`<main/>`);
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => { throw new Error("allocator called"); });
-  map.replay({
+  assert.throws(() => map.replay({
     changed: true,
     prevRev: 0,
     rev: 1,
     ops: [{ domain: "graph", op: "ensure-quid", target: path(), quid: Q1 }],
+  }));
+  assert.equal((map.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, undefined);
+  assert.equal(map.rev, 0);
+});
+
+check("legacy Locus decoder can inspect old path and recorded QUID", () => {
+  const decoded = decode_locus_canonical_commit({
+    logicalMapId: "identity-map", incarnationId: "identity-incarnation", mode: "document",
+    prevRev: 0, rev: 1,
+    ops: [{ domain: "graph", op: "ensure-quid", target: path(), quid: Q1 }],
   });
-  assert.equal((map.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, Q1);
+  assert.deepEqual(decoded?.ops[0], { domain: "graph", op: "ensure-quid", target: path(), quid: Q1 });
 });
 
-check("legacy Locus canonical history retains path and recorded QUID", () => {
-  const map = element(`<main/>`);
-  const commit = map.replay({ changed: true, prevRev: 0, rev: 1,
-    ops: [{ domain: "graph", op: "ensure-quid", target: path(), quid: Q1 }] });
-  const encoded = make_locus_canonical_commit(map, commit, "identity-map", "identity-incarnation", 0);
-  assert.deepEqual(encoded.ops[0], { domain: "graph", op: "ensure-quid", target: path(), quid: Q1 });
-});
-
-check("current Locus decoder accepts additive ensure-quid transport", () => {
+check("bounded legacy Locus decoder accepts old ensure-quid transport", () => {
   const encoded = {
     logicalMapId: "identity-map",
     incarnationId: "identity-incarnation",
@@ -135,7 +139,7 @@ check("Locus decoder rejects malformed registration QUID", () => {
   }), undefined);
 });
 
-check("decoded Locus registration replays on a document mirror", () => {
+check("decoded legacy registration cannot replay through the public document API", () => {
   const encoded = decode_locus_canonical_commit({
     logicalMapId: "identity-map",
     incarnationId: "identity-incarnation",
@@ -145,8 +149,9 @@ check("decoded Locus registration replays on a document mirror", () => {
     ops: [{ domain: "graph", op: "ensure-quid", target: path(), quid: Q1 }],
   })!;
   const mirror = element(`<main/>`);
-  Reflect.apply(mirror.replay, mirror, [decode_locus_document_commit(encoded)]);
-  assert.equal(mirror.document.byQuid(Q1)?.$_tag, "main");
+  assert.throws(() => Reflect.apply(mirror.replay, mirror, [decode_locus_document_commit(encoded)]));
+  assert.equal(mirror.document.byQuid(Q1), undefined);
+  assert.equal(mirror.rev, 0);
 });
 
 check("new registration publishes no authoritative observation", () => {

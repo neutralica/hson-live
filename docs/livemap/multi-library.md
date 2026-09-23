@@ -46,13 +46,13 @@ Multi-library mutations return `LiveMapMultiLibraryCommit`. It holds one map-wid
 There is no default Library on a multi-map, no public topology lifecycle (`add`, `remove`, `replace`, or `rename`), and no solo-to-multi migration/export API in this release. QUID allocation remains map-wide within the underlying authority, but raw QUIDs do not route mutation requests across Libraries and identities cannot be transferred between Libraries. `root` and `snap` are selected-Library operations.
 
 `map.capture()` synchronously returns one detached `LiveMapLibrariesSnapshot`.
-It contains the complete ordered registry, public and hidden roots, exact Schema
-sources and digests, root codecs, registry digest, one global revision, numeric
-identity epoch, and the complete issued-QUID ledger including retired QUIDs.
+It contains the complete ordered registry, QUID-free public and hidden roots,
+exact Schema sources and digests, root codecs, registry digest, and one global
+revision. It contains no generated identity epoch or issued-QUID ledger.
 Later source mutation cannot change the snapshot. `install_libraries_snapshot`
 validates every Library before publishing anything and installs the complete cut
-into a fresh local runtime/capability domain. It preserves durable aggregate
-identity history without inventing logical hosted identity or transport state.
+into a fresh local runtime/capability domain. The receiving map owns fresh
+generated identity and does not inherit source QUID claims or issued history.
 
 ## Hosted use
 
@@ -78,6 +78,6 @@ For a client, create the same fixed topology with `fromLibraries(...)`, then use
 
 Actions use the same retry-safe client request identity, action status, authorization evidence, and resumable session semantics as a solo Locus. A Library name is target evidence within the validated payload; it does not scope sessions, dedupe records, status, ordering, or revision authority. Application actions and named document actions enter one FIFO and complete against the aggregate revision.
 
-`create_persistent_locus({ map, logicalMapId, persistence })` supports the same fixed registry. Calling that same ordinary constructor after a restart with the same `logicalMapId` reconstructs persisted state before the Locus is exposed. Its persistence adapter stores opaque authoritative records; checkpointing and restart reconstruction preserve the map-wide issued-QUID ledger, including retired identities, so ABA reuse remains rejected.
+`create_persistent_locus({ map, logicalMapId, persistence })` supports the same fixed registry. Calling that same ordinary constructor after a restart with the same `logicalMapId` reconstructs persisted application and authority state before the Locus is exposed. The new process starts a fresh generated-QUID runtime epoch. Issued-QUID nonreuse is enforced within each living epoch.
 
 Static topology is the hosted contract: dynamic Library lifecycle, a default Library, cross-Library QUID transfer, and solo-to-multi in-place migration are intentionally unsupported. One Echo reproduces the authoritative application registry—names, order, modes, Schemas, and one global revision. Locus and Echo each own local generated QUID identity, so equal subjects may have different QUIDs. Local-only application state belongs in a separate local LiveMap. A named document Library may be bound through Mirror; supported LiveTree authoring becomes visible only after Locus acceptance and aggregate Echo replay.

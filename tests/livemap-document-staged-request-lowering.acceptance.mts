@@ -59,8 +59,8 @@ const path = (...segments: number[]) => Object.freeze({
   path: Object.freeze(segments),
 });
 
-function child(tag: string, quid: string) {
-  const value = element(`<${tag} @${quid}/>`).root().$_content[0];
+function child(tag: string, quid?: string) {
+  const value = element(`<${tag}${quid === undefined ? "" : ` @${quid}`}/>`).root().$_content[0];
   if (value === undefined || value === null || typeof value !== "object") {
     throw new Error("Expected authored document child");
   }
@@ -103,16 +103,17 @@ check("raw-QUID staging rejects atomically at its ordinal", () => {
   assert.deepEqual(map.capture(), before);
 });
 
-check("inserted supplied identity remains observable through a path mutation", () => {
+check("inserted portable content remains addressable through a path mutation", () => {
   const map = source();
   replay(map, [
-    { domain: "graph", op: "insert-content", target: path(0, 0), index: 0, content: child("i", Q4) },
+    { domain: "graph", op: "insert-content", target: path(0, 0), index: 0, content: child("i") },
     { domain: "graph", op: "set-attr", target: path(0, 0, 0), name: "id", value: "inserted" },
   ]);
-  assert.equal(map.document.byQuid(Q4)?.$_attrs?.id, "inserted");
+  assert.equal(map.document.attrs.get(path(0, 0, 0), "id"), "inserted");
+  assert.equal(map.document.byQuid(Q4), undefined);
 });
 
-check("witness QUID remains non-routing replay evidence", () => {
+check("public replay rejects witness QUID evidence", () => {
   const map = source();
   assert.throws(() => replay(map, [{
     domain: "graph",
@@ -120,8 +121,7 @@ check("witness QUID remains non-routing replay evidence", () => {
     target: { kind: "path", path: [0, 0, 0], witness: { quid: Q3 } },
     name: "id",
     value: "bad",
-  }]), (error: unknown) => error instanceof LiveMapDocumentStagingError
-    && error.reasonCode === "DOCUMENT_WITNESS_MISMATCH");
+  }]), /QUID witness/i);
   assert.equal(map.rev, 0);
 });
 

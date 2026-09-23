@@ -265,12 +265,13 @@ check("sparse deletion retires removed supplied QUID and does not mint survivors
   assert.equal(quidForTag(map.root(), "footer"), undefined);
 });
 
-check("sparse exact capture, codec, install, and replay preserve only supplied QUIDs", () => {
+check("portable capture and codec transfer structure without source QUIDs", () => {
   const source = sparse();
   const decoded = decode_view_state_snapshot(encode_view_state_snapshot(source.capture()));
   const target = manyUnquidded();
   target.install(decoded);
-  assertSparse(target);
+  assert.deepEqual(quids(target.root()), []);
+  assert.deepEqual(target.capture().root, decoded.root);
   const mirror = sparse();
   const commit = source.document.attrs.set(ROOT, "data-state", "ready");
   mirror.replay(commit);

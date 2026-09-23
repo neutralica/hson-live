@@ -97,7 +97,7 @@ function record_issued_quid(q: string, runtime: LiveTreeRuntime): void {
   runtime.issuedQuids.add(q);
 }
 
-/** Generate one canonical 45-bit persisted QUID from secure random bytes. */
+/** Generate one canonical 45-bit runtime-local QUID from secure random bytes. */
 export function mint_quid(): string {
   return mint_hson_node_quid();
 }
@@ -644,7 +644,7 @@ export const HSON_QUID_MARKUP_NAME =
  * issued ledger remains monotonic and is not reset here.
  *
  * Not used for normal detach/remove flows. A detached branch still owns its
- * Hson nodes and persisted QUIDs so it can remain valid while unmounted and may
+ * Hson nodes and runtime QUIDs so it can remain valid while unmounted and may
  * be grafted again later.
  ***************************************/
 export function drop_quid(

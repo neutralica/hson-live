@@ -6,9 +6,6 @@ import type { HsonNode } from "../src/core/types.ts";
 import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import { hsonMirror } from "../src/api/reflect/reflect.facade.ts";
-import {
-  DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
-} from "../src/api/reflect/reflect.document.error.ts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import { project_livetree } from "../src/api/livetree/creation/project-live-tree.ts";
 import { get_el_for_node } from "../src/api/livetree/utils/node-map-helpers.ts";
@@ -145,7 +142,7 @@ check("replayed replace-root constructs one fresh projection transaction", () =>
 });
 
 check("canonical-equivalent install performs no convergence", () => {
-  const map = element(`<main @000000504 class="same"/>`);
+  const map = element('<main class="same"/>');
   const binding = hsonMirror(map);
   const root = binding.tree.node;
   const commit = map.install(map.capture());
@@ -156,7 +153,7 @@ check("canonical-equivalent install performs no convergence", () => {
   binding.dispose();
 });
 
-check("new epochs admit fresh tag and persisted root-QUID transitions", () => {
+check("new epochs admit fresh tags without transferring source root QUIDs", () => {
   const tagMap = element(`<main @000000505/>`);
   const tagBinding = hsonMirror(tagMap);
   const tagRoot = tagBinding.tree.node;
@@ -172,22 +169,21 @@ check("new epochs admit fresh tag and persisted root-QUID transitions", () => {
   quidMap.install(element(`<main @000000507/>`).capture());
   assert.equal(quidBinding.status, "active");
   assert.notEqual(quidBinding.tree.node, quidRoot);
-  assert.equal(raw_node(quidBinding.tree.node, []).$_meta?.quid, "000000507");
+  assert.equal(raw_node(quidBinding.tree.node, []).$_meta?.quid, undefined);
   quidBinding.dispose();
 });
 
-check("descendant QUID collision fails before projected mutation", () => {
+check("portable capture prevents a foreign descendant QUID collision", () => {
   const collisionRoot = element(`<aside @000000508/>`).at([]).snap();
   if (!is_Node(collisionRoot)) throw new Error("Expected collision element");
   create_livetree(collisionRoot);
   const map = element(`<main @000000509 <a/>/>`);
   const binding = hsonMirror(map);
-  const before = structuredClone(binding.tree.node);
   map.install(element(`<main @000000509 <aside @000000508/>/>`).capture());
-  assert.equal(binding.status, "failed");
-  assert.equal(binding.failure?.code, DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE);
-  assert.deepEqual(binding.tree.node, before);
-  assert.equal(binding.sourceRevision, 0);
+  assert.equal(binding.status, "active");
+  assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "aside");
+  assert.equal(raw_node(binding.tree.node, [0, 0]).$_meta?.quid, undefined);
+  assert.equal(binding.sourceRevision, 1);
   binding.dispose();
 });
 

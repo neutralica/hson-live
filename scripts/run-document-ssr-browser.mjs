@@ -65,7 +65,8 @@ try {
     incarnationId: "browser-large-incarnation",
     rev: 0,
     mode: "document",
-    hson: "browser-large:" + "x".repeat(2 * 1_024 * 1_024),
+    format: "hson-client-snapshot-v1",
+    payload: "browser-large:" + "x".repeat(2 * 1_024 * 1_024),
   });
 
   const LocalLibrariesStateSchema = Hson.schema`<type "data" content <count "number">>`;

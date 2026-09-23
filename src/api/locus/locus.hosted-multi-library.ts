@@ -27,6 +27,7 @@ import {
   make_hosted_client_commit,
 } from "../livemap/livemap.hosted.js";
 import { make_livemap_client_mirror_from_snapshot_internal } from "../livemap/livemap.libraries.js";
+import { admit_public_document_graph_operation } from "../livemap/livemap.document.mutation.js";
 import type { PreparedLiveMapAuthorityTransition } from "../livemap/livemap.authority.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
 import {
@@ -432,6 +433,7 @@ function make_managed_aggregate_draft(
     if (binding.mode === "document") {
       const graph = (operation: LiveMapGraphOp): void => {
         assert_open();
+        admit_public_document_graph_operation(operation);
         const path = operation.op === "replace-root" ? [] : operation.target.path;
         writes.push(Object.freeze({
           target: aggregate.target(binding.identity, path),

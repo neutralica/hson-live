@@ -4,6 +4,7 @@ import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { hson, LiveMapDocumentMutationError } from "../src/index.ts";
 import { is_Node } from "../src/core/node-guards.ts";
+import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 import type { HsonNode, Primitive } from "../src/core/types.ts";
 import type { DocumentLiveMapCapture, DocumentLiveMap, LiveMapDocumentRequestTarget } from "../src/types/livemap.types.ts";
 
@@ -81,6 +82,11 @@ function contentCluster(source: string): HsonNode {
 function errorCode(fn: () => unknown, code: string): void {
   assert.throws(fn, (cause) => cause instanceof LiveMapDocumentMutationError && cause.code === code);
 }
+function portableQuidError(fn: () => unknown): void {
+  assert.throws(fn, (cause: unknown) => typeof cause === "object" && cause !== null
+    && "code" in cause && cause.code === "PORTABLE_RUNTIME_QUID_FORBIDDEN");
+}
+const sameSubject = [{ source: validate_document_path([]), destination: validate_document_path([]) }];
 
 function assertAtomic(map: DocumentLiveMap, before: DocumentLiveMapCapture, fn: () => unknown): void {
   const rev = map.rev;
@@ -402,7 +408,7 @@ check("content.replace changes exactly one existing physical content slot", () =
   const map = element(`<main @000000001 "one" <b @000000003 "two"/> "three"/>`);
   const clusterBefore = mustNode(documentElement(map).$_content[0], "expected element cluster before replacement");
   assert.equal(clusterBefore.$_content.length, 3);
-  const replacement = ordinary(`<em @000000004 "middle"/>`);
+  const replacement = ordinary(`<em "middle"/>`);
   const commit = map.document.content.replace(elementPath(0), 1, replacement);
   assert.equal(commit.changed, true);
   assert.equal(commit.prevRev, 0);
@@ -423,13 +429,13 @@ check("content.replace changes exactly one existing physical content slot", () =
   assert.equal(mustNode(cluster.$_content[2], "expected final text node").$_content[0], "three");
   assert.equal(documentElement(map).$_meta?.["quid"], "000000001");
   assert.equal(map.document.byQuid("000000003"), undefined);
-  assert.equal(map.document.byQuid("000000004")?.$_tag, "em");
+  assert.equal(map.document.byQuid("000000004"), undefined);
 
   replacement.$_tag = "caller-mutated";
   const replaceOp = commit.ops[0];
   if (replaceOp?.op !== "replace-content" || !is_Node(replaceOp.replacement)) throw new Error("expected replace-content node op");
   replaceOp.replacement.$_tag = "commit-mutated";
-  assert.equal(map.document.byQuid("000000004")?.$_tag, "em");
+  assert.equal(mustNode(cluster.$_content[1], "expected replacement node").$_tag, "em");
 });
 
 check("primitive slots replace canonically and identical replacements are no-ops", () => {
@@ -460,22 +466,22 @@ check("content identity preflight handles removal, addition, collision, duplicat
 
   const colliding = ordinary(`<new @000000006/>`);
   assertAtomic(map, before, () => map.document.content.replace(elementPath(0), 0, colliding));
-  errorCode(() => map.document.content.replace(elementPath(0), 0, colliding), "DOCUMENT_IDENTITY_COLLISION");
+  portableQuidError(() => map.document.content.replace(elementPath(0), 0, colliding));
 
   const duplicate = ordinary(`<section @000000007 <i @000000008/> <b @000000009/>/>`);
   const duplicateNode = nodes(duplicate).find((node) => node.$_tag === "b");
   if (duplicateNode === undefined) throw new Error("expected duplicate fixture node");
   duplicateNode.$_meta = { quid: "000000008" };
-  errorCode(() => map.document.content.replace(elementPath(0), 0, duplicate), "DOCUMENT_IDENTITY_COLLISION");
+  portableQuidError(() => map.document.content.replace(elementPath(0), 0, duplicate));
   assert.deepEqual(map.capture(), before);
 
   const malformed = ordinary(`<section/>`);
   Reflect.set(malformed, "$_meta", { quid: 42 });
-  errorCode(() => map.document.content.replace(elementPath(0), 0, malformed), "INVALID_DOCUMENT_IDENTITY");
+  portableQuidError(() => map.document.content.replace(elementPath(0), 0, malformed));
   assert.deepEqual(map.capture(), before);
 
-  const continuity = ordinary(`<new @000000005 <child/>/>`);
-  const changed = map.document.content.replace(elementPath(0), 0, continuity);
+  const continuity = ordinary(`<new <child/>/>`);
+  const changed = map.document.content.replace(elementPath(0), 0, continuity, sameSubject);
   assert.equal(changed.changed, true);
   assert.equal(map.document.byQuid("000000005")?.$_tag, "new");
   assert.equal(map.document.byQuid("000000006")?.$_tag, "keep");
@@ -492,13 +498,13 @@ check("content.insert supports beginning, middle, append, empty, primitive and c
     rev: 1,
     ops: [{ domain: "graph", op: "insert-content", target, index: 0, content: "a" }],
   });
-  const inserted = ordinary(`<c @000000011/>`);
+  const inserted = ordinary(`<c/>`);
   const middle = map.document.content.insert(target, 2, inserted);
   assert.equal(middle.ops[0]?.op, "insert-content");
   const clusterBeforeAppend = mustNode(documentElement(map).$_content[0], "expected content cluster");
   const appended = map.document.content.insert(target, clusterBeforeAppend.$_content.length, "e");
   assert.deepEqual([beginning.rev, middle.rev, appended.rev, map.rev], [1, 2, 3, 3]);
-  assert.equal(map.document.byQuid("000000011")?.$_tag, "c");
+  assert.equal(map.document.byQuid("000000011"), undefined);
   const cluster = mustNode(documentElement(map).$_content[0], "expected appended content cluster");
   assert.deepEqual(cluster.$_content.map((item) => is_Node(item) ? item.$_tag : item), ["_hson_str", "_hson_str", "c", "_hson_str", "_hson_str"]);
 
@@ -506,7 +512,7 @@ check("content.insert supports beginning, middle, append, empty, primitive and c
   const insertOp = middle.ops[0];
   if (insertOp?.op !== "insert-content" || !is_Node(insertOp.content)) throw new Error("expected node insert operation");
   insertOp.content.$_tag = "commit-mutated";
-  assert.equal(map.document.byQuid("000000011")?.$_tag, "c");
+  assert.equal(mustNode(cluster.$_content[2], "expected inserted node").$_tag, "c");
 
   const empty = element(`<main/>`);
   const emptyCommit = empty.document.content.insert(elementPath(), 0, contentCluster(`<span "only"/>`));
@@ -521,14 +527,14 @@ check("content.insert validates bounds, canonical identity and mode atomically",
     errorCode(() => map.document.content.insert(elementPath(0), index, "x"), "INVALID_DOCUMENT_CONTENT_INDEX");
   }
   const duplicate = ordinary(`<new @000000013/>`);
-  errorCode(() => map.document.content.insert(elementPath(0), 1, duplicate), "DOCUMENT_IDENTITY_COLLISION");
+  portableQuidError(() => map.document.content.insert(elementPath(0), 1, duplicate));
   errorCode(() => insertWithUnknown(map, { $_tag: "bad" }), "INVALID_DOCUMENT_REPLACEMENT");
   assert.deepEqual(map.capture(), before);
 
   const multiNodeDocumentRoot = multiNodeDocument(`"left"`);
-  const node = ordinary(`<aside @000000014/>`);
+  const node = ordinary(`<aside/>`);
   multiNodeDocumentRoot.document.content.insert(path(), 1, node);
-  assert.equal(multiNodeDocumentRoot.document.byQuid("000000014")?.$_tag, "aside");
+  assert.equal(multiNodeDocumentRoot.document.byQuid("000000014"), undefined);
 });
 
 check("content.remove supports every existing slot, QUID targets and mode-safe only-slot removal", () => {
@@ -599,12 +605,12 @@ check("same-position move is a complete no-op and invalid move indexes are atomi
 check("multi-node document replacement preserves document authority and capture interoperability", () => {
   const map = multiNodeDocument(`"before" <div @000000009 "one"/> "after"`);
   const beforeCount = map.document.content().length;
-  const replacement = ordinary(`<span @00000000a "middle"/>`);
+  const replacement = ordinary(`<span "middle"/>`);
   const changed = map.document.content.replace(path(), 1, replacement);
   assert.equal(changed.changed, true);
   assert.equal(map.document.content().length, beforeCount);
   assert.equal(map.document.byQuid("000000009"), undefined);
-  assert.equal(map.document.byQuid("00000000a")?.$_tag, "span");
+  assert.equal(map.document.byQuid("00000000a"), undefined);
 
   const capture = map.capture();
   const target = multiNodeDocument(`"left" <b/> "right"`);

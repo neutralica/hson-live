@@ -89,17 +89,18 @@ assert.equal(authority.document.byQuid(A)?.$_tag, "p");
 assert.equal(replica.document.byQuid(B)?.$_tag, "p");
 assert.deepEqual(portable(replica), portable(authority));
 
-await locus.mutate((draft) => draft.document.content.replace(main, 1, node(`<article @${A} "server"/>`)));
+await locus.mutate((draft) => draft.document.content.replace(main, 1, node('<article "server"/>'), [{ source: [], destination: [] }]));
 assert.equal(authority.document.byQuid(A)?.$_tag, "article");
 assert.equal(replica.document.byQuid(B)?.$_tag, "article");
 assert.deepEqual(portable(replica), portable(authority));
 
-await locus.mutate((draft) => draft.document.content.insert(main, 2, node(`<aside @${C}/>`)));
-assert.equal(authority.document.byQuid(C)?.$_tag, "aside");
+await locus.mutate((draft) => draft.document.content.insert(main, 2, node('<aside/>')));
+set_livemap_document_quid_candidate_source_for_tests(authority.document, () => C);
+assert.equal(acquire_document_identity(authority.document, { kind: "path", path: [0, 0, 2] }).snap()?.$_meta?.quid, C);
 assert.equal(replica.document.byQuid(C), undefined);
 assert.deepEqual(portable(replica), portable(authority));
 
-const inserted = await echo.action("document.content.insert", { target: main, index: 3, content: node(`<strong @${D}/>` ) });
+const inserted = await echo.action("document.content.insert", { target: main, index: 3, content: node('<strong/>') });
 assert.equal(inserted.type, "ack");
 assert.equal(authority.document.byQuid(D), undefined);
 assert.equal(replica.document.byQuid(D), undefined);
@@ -108,10 +109,10 @@ assert.deepEqual(portable(replica), portable(authority));
 const replaced = await echo.action("document.content.replace", {
   target: main,
   index: 1,
-  replacement: node(`<em @${B} "client"/>`),
+  replacement: node('<em "client"/>'),
   lineage: [{ source: [], destination: [] }],
 });
-assert.equal(replaced.type, "ack");
+assert.equal(replaced.type, "ack", JSON.stringify(replaced));
 assert.equal(authority.document.byQuid(A)?.$_tag, "em");
 assert.equal(replica.document.byQuid(B)?.$_tag, "em");
 assert.deepEqual(portable(replica), portable(authority));
@@ -166,7 +167,7 @@ set_livemap_document_quid_candidate_source_for_tests(replayReplica.document, () 
 const retainedHandle = acquire_document_identity(replayReplica.document, subject);
 const replayEpoch = livemap_identity_epoch_accounting(replayReplica.document).epoch;
 await replayLocus.mutate((draft) => draft.document.content.move(main, 0, 1));
-await replayLocus.mutate((draft) => draft.document.content.replace(main, 1, node(`<article @${A} "retained"/>`)));
+await replayLocus.mutate((draft) => draft.document.content.replace(main, 1, node('<article "retained"/>'), [{ source: [], destination: [] }]));
 const replayWire = pair();
 replayLocus.connect(replayWire.server);
 const replayEcho = hson.echo.create({ socket: replayWire.client, map: replayReplica, session: {}, recovery: replayInstall.recovery });

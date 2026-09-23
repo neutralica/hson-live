@@ -44,7 +44,6 @@ customElements.define("graft-witness", GraftWitness);
 
 const fixture = document.createElement("section");
 fixture.id = "graft-fixture";
-fixture.setAttribute("hson:quid", "000000001");
 fixture.innerHTML = `
   <!-- discarded -->
   before
@@ -165,19 +164,19 @@ check("retained descendant mutation", witnessTree.dom.el() === witness && witnes
 for (const element of [fixture, witness, button, control, textHost, middle]) {
   check(`QUID markup ${element.id || element.localName}`, /^[-0-9a-z]{9}$/.test(element.getAttribute("hson:quid") ?? ""));
 }
-check("supplied root QUID preserved", fixture.getAttribute("hson:quid") === "000000001");
+check("graft minted local root QUID", fixture.getAttribute("hson:quid") === tree.quid);
 const repeated = hsonLiveTree.queryDom("#graft-fixture").graft();
 check("repeated graft node idempotence", repeated.node === tree.node);
 check("repeated graft element idempotence", repeated.dom.el() === fixture);
 
 const conflict = document.createElement("section");
 conflict.id = "conflict";
-conflict.setAttribute("hson:quid", "000000001");
+conflict.setAttribute("hson:quid", tree.quid);
 conflict.append(document.createComment("must-survive"), document.createElement("i"));
 document.body.append(conflict);
 let conflictRejected = false;
 try { hsonLiveTree.queryDom("#conflict").graft(); } catch { conflictRejected = true; }
-check("QUID conflict rejected", conflictRejected);
+check("foreign QUID graft rejected", conflictRejected);
 check("QUID conflict failure is pre-normalization", conflict.firstChild.nodeType === Node.COMMENT_NODE && !conflict.querySelector("i").hasAttribute("hson:quid"));
 
 const carrier = document.createElement("section");

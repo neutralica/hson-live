@@ -85,7 +85,7 @@ function invalid_capture(value: unknown): DocumentLiveMapCapture {
   return value as DocumentLiveMapCapture;
 }
 
-check("element install atomically replaces root, identity, revision, and returns one graph op", () => {
+check("element install atomically replaces portable root and revision without source identity", () => {
   const source = element(`<main @000000007 <p @000000008 "new"/>/>`);
   const target = element(`<aside @000000009 "old"/>`);
   const sourceCapture = source.capture();
@@ -104,8 +104,8 @@ check("element install atomically replaces root, identity, revision, and returns
     root: sourceCapture.root,
   });
   assert.deepEqual(target.root(), sourceCapture.root);
-  assert.equal(target.document.byQuid("000000007")?.$_tag, "main");
-  assert.equal(target.document.byQuid("000000008")?.$_tag, "p");
+  assert.equal(target.document.byQuid("000000007"), undefined);
+  assert.equal(target.document.byQuid("000000008"), undefined);
   assert.equal(target.document.byQuid("000000009"), undefined);
   assert.notEqual(commit.ops[0]?.root, target.root());
 });
@@ -128,7 +128,7 @@ check("multiNodeDocument install preserves canonical document varieties", () => 
     assert.equal(commit.changed, true);
     assert.deepEqual(target.capture().root, capture.root);
     assert.equal(target.capture().mode, capture.mode);
-    for (const quid of quids(capture.root)) assert.notEqual(target.document.byQuid(quid), undefined);
+    assert.deepEqual(quids(capture.root), []);
   }
 });
 
@@ -138,7 +138,7 @@ check("one/many document captures interoperate and obsolete mode declarations ro
   assert.equal(commit.changed, true);
   assert.equal(target.mode, "document");
   assert.equal(target.document.content().length, 2);
-  assert.equal(target.document.byQuid("00000000b")?.$_tag, "aside");
+  assert.equal(target.document.byQuid("00000000b"), undefined);
 
   const before = target.capture();
   const known = quids(before.root);
@@ -202,26 +202,24 @@ check("expectedRev is target-local and rejects stale, future, and invalid values
   assert.notEqual(freshTarget.rev, sourceWithForeignRev.rev);
 });
 
-check("install accepts sparse identity and rejects invalid present identity", () => {
+check("install accepts portable content and rejects every supplied identity claim", () => {
   const target = element(`<main @00000000a/>`);
   const base = element(`<section @000000005 <p @000000002/>/>`).capture();
 
-  const sparse = structuredClone(base);
-  delete nodes(sparse.root).find((node) => node.$_tag === "p")?.$_meta?.["quid"];
-  const sparseCommit = target.install(sparse);
-  assert.equal(sparseCommit.changed, true);
+  const portableCommit = target.install(structuredClone(base));
+  assert.equal(portableCommit.changed, true);
   assert.equal(target.rev, 1);
   assert.equal(target.document.byQuid("00000000a"), undefined);
-  assert.equal(target.document.byQuid("000000005")?.$_tag, "section");
+  assert.equal(target.document.byQuid("000000005"), undefined);
   assert.equal(nodes(target.capture().root).find((node) => node.$_tag === "p")?.$_meta?.["quid"], undefined);
 
   const empty = structuredClone(base);
   const emptyNode = nodes(empty.root).find((node) => node.$_tag === "p");
-  if (emptyNode?.$_meta !== undefined) emptyNode.$_meta["quid"] = "";
+  if (emptyNode !== undefined) emptyNode.$_meta = { quid: "" };
   const duplicate = structuredClone(base);
   const duplicateNodes = nodes(duplicate.root).filter((node) => node.$_tag === "section" || node.$_tag === "p");
-  if (duplicateNodes[0]?.$_meta !== undefined) duplicateNodes[0].$_meta["quid"] = "same";
-  if (duplicateNodes[1]?.$_meta !== undefined) duplicateNodes[1].$_meta["quid"] = "same";
+  if (duplicateNodes[0] !== undefined) duplicateNodes[0].$_meta = { quid: "000000005" };
+  if (duplicateNodes[1] !== undefined) duplicateNodes[1].$_meta = { quid: "000000005" };
   const malformed = structuredClone(base);
   const malformedNode = nodes(malformed.root).find((node) => node.$_tag === "p");
   if (malformedNode !== undefined) malformedNode.$_meta = { quid: 42 as unknown as string };
@@ -274,12 +272,12 @@ check("installed ownership and graph commit payload are recursively detached", (
     opRoot.$_meta = { quid: "000000012" };
   }
   assert.deepEqual(target.root(), installed);
-  assert.equal(target.document.byQuid("000000001")?.$_tag, "main");
-  assert.equal(target.document.byQuid("000000002")?.$_tag, "p");
+  assert.equal(target.document.byQuid("000000001"), undefined);
+  assert.equal(target.document.byQuid("000000002"), undefined);
 });
 
 check("canonical identical install follows data replace no-op policy", () => {
-  const target = element(`<main @000000001/>`);
+  const target = element('<main/>');
   const before = target.capture();
   const commit = target.install(before);
   assert.deepEqual(commit, { changed: false, prevRev: before.rev, rev: before.rev, ops: [] });
@@ -296,7 +294,7 @@ check("valid install replaces a target damaged through internal malformed-state 
   const sourceCapture = element(`<section @000000010/>`).capture();
   target.install(sourceCapture);
   assert.equal(target.document.byQuid("00000000f"), undefined);
-  assert.equal(target.document.byQuid("000000010")?.$_tag, "section");
+  assert.equal(target.document.byQuid("000000010"), undefined);
 });
 
 check("data façades do not expose document install at runtime", () => {

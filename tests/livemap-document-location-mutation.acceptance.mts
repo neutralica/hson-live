@@ -106,13 +106,13 @@ check("replace rejects the document root location", () => {
 check("replace emits the exact existing replace-content operation", () => {
   const byLocation = document(`<main <a @000000001/>/>`);
   const byDocument = document(`<main <a @000000001/>/>`);
-  const replacement = ordinary(`<x @000000002/>`);
+  const replacement = ordinary(`<x/>`);
   const locationCommit = byLocation.at([0]).replace(replacement);
   const documentCommit = byDocument.document.content.replace(target(0, 0), 0, replacement);
   assert.deepEqual(locationCommit, documentCommit);
   assert.deepEqual(byLocation.root(), byDocument.root());
   assert.equal(byLocation.document.byQuid("000000001"), undefined);
-  assert.equal(byLocation.document.byQuid("000000002")?.$_tag, "x");
+  assert.equal(byLocation.document.byQuid("000000002"), undefined);
 });
 
 check("replace advances revision exactly once", () => {

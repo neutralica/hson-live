@@ -80,8 +80,9 @@ same-epoch graph can remain QUID-free. Projected/data capture already uses an
 out-of-band identity overlay. A detached exact view may expose QUID metadata,
 but ordinary portable capture and Transform output do not establish identity.
 
-The compatibility `preserve-metadata` capture and legacy authority persistence
-formats remain readable. Phase 4C does not change authority restart policy.
+Portable capture and authority persistence transfer application state without
+generated identity. Explicit same-epoch capture alone can restore local exact
+identity after owner and epoch provenance is verified.
 Legacy history and snapshots may contain `ensure-quid`, `$_meta.quid`, identity
 epochs, issued ledgers, and QUID witnesses. Replay validates those exact
 claims internally, but an ordinary new runtime identity demand produces no

@@ -60,19 +60,19 @@ export type LiveMapLibrariesSnapshot = Readonly<{
     schemaDigest: string;
     root: Readonly<{ format: "hson-exact-value"; payload: string }>;
   }>[];
-  identity: Readonly<{ epoch: number; issuedQuids: readonly string[] }>;
 }>;
 
 /** Complete local browser cut with portable roots and no server runtime identity. */
-export type LocalLibrariesContinuationSnapshot = Readonly<Omit<LiveMapLibrariesSnapshot, "identity">>;
+export type LocalLibrariesContinuationSnapshot = LiveMapLibrariesSnapshot;
 
-/** One complete Libraries semantic cut plus its durable hosted authority fence. */
+/** Internal owner-local exact cut plus its hosted authority fence. */
 export type HostedLiveMapLibrariesSnapshot = LiveMapLibrariesSnapshot & Readonly<{
+  identity: Readonly<{ epoch: number; issuedQuids: readonly string[] }>;
   authority: Readonly<{ logicalMapId: string; incarnationId: string }>;
 }>;
 
 /** Complete QUID-free client replica cut; durable authority encoding has separate version tags. */
-export type HostedClientLibrariesSnapshot = Readonly<Omit<LiveMapLibrariesSnapshot, "format" | "identity"> & {
+export type HostedClientLibrariesSnapshot = Readonly<Omit<LiveMapLibrariesSnapshot, "format"> & {
   format: "hson-livemap-client-snapshot-v1";
   authority: Readonly<{ logicalMapId: string; incarnationId: string }>;
 }>;
@@ -153,14 +153,11 @@ export type LiveMapCoreSnap<TValue = JsonValue | undefined> = {
   (): TValue;
 };
 
-export type LiveMapCaptureIdentity = "same-epoch" | "preserve-metadata" | "strip";
+export type LiveMapCaptureIdentity = "same-epoch" | "strip";
 export type LiveMapCaptureOptions = Readonly<{ identity: LiveMapCaptureIdentity }>;
 export type LiveMapRestoreOptions = Readonly<{ identity?: LiveMapCaptureIdentity | "reject" }>;
 
-export type LiveMapCoreReplay = {
-  (input: LiveMapGraphCommit<LiveMapProjectedGraphEnsureQuidOp>): LiveMapGraphCommit<LiveMapProjectedGraphEnsureQuidOp>;
-  (input: LiveMapReplay): LiveMapCommit<LiveMapDataOp>;
-};
+export type LiveMapCoreReplay = (input: LiveMapReplay) => LiveMapCommit<LiveMapDataOp>;
 
 declare const LIVEMAP_INVALID_STATIC_PATH: unique symbol;
 type LiveMapInvalidStaticPath = Readonly<{ [LIVEMAP_INVALID_STATIC_PATH]: true }>;
@@ -403,7 +400,7 @@ export type LiveMap<TValue = JsonValue | undefined> = Readonly<
   }
 >;
 
-/** Detached exact canonical capture, including admitted QUID metadata. */
+/** Detached document state; only an owner-proven same-epoch capability retains identity. */
 export type DocumentLiveMapCapture<
   TMode extends DocumentLiveMapMode = DocumentLiveMapMode,
 > = Readonly<{
@@ -416,10 +413,9 @@ export type DocumentLiveMapCapture<
 /** Explicit identity treatment for one detached document capture. */
 export type DocumentLiveMapCaptureIdentity =
   | "same-epoch"
-  | "preserve-metadata"
   | "strip";
 
-/** Capture policy. Omission preserves durable exact metadata. */
+/** Capture policy. Omission produces portable, QUID-free state. */
 export type DocumentLiveMapCaptureOptions = Readonly<{
   identity: DocumentLiveMapCaptureIdentity;
 }>;
@@ -462,7 +458,7 @@ export type LiveMapDocumentRequestTarget = Readonly<{
   path: LiveMapDocumentPathInput;
 }>;
 
-/** Optional same-epoch diagnostic evidence; never a routing address. */
+/** Internal same-runtime diagnostic evidence; never a portable routing address. */
 export type LiveMapDocumentTargetWitness = Readonly<{ quid: string }>;
 
 /** Path-authoritative target stored by canonical graph operations. */
@@ -561,6 +557,7 @@ export type DocumentLiveMapContentApi = (() => readonly NodeContent[number][]) &
     target: LiveMapDocumentRequestTarget,
     index: number,
     replacement: LiveMapDocumentContent,
+    lineage?: LiveMapReplacementLineage,
   ) => LiveMapGraphCommit<LiveMapGraphReplaceContentOp>;
   insert: (
     target: LiveMapDocumentRequestTarget,
@@ -1252,7 +1249,7 @@ type DocumentLiveMapShared<
     capture: DocumentLiveMapCapture,
     options?: DocumentLiveMapInstallOptions,
   ) => void;
-  /** Atomically replay one validated canonical graph commit. */
+  /** Replay portable graph effects; exact identity evidence is owner-local. */
   replay: (commit: LiveMapGraphCommit) => LiveMapGraphCommit;
   /** Observe successful canonical graph commits without data path coercion. */
   commits: LiveMapCommitObserverApi;
@@ -1717,7 +1714,7 @@ export type LiveMapDocumentLibrary<
   document: Readonly<{
     root: () => HsonNode;
     content: (() => readonly NodeContent[number][]) & Readonly<{
-      replace: (target: LiveMapDocumentRequestTarget, index: number, replacement: LiveMapDocumentContent) =>
+      replace: (target: LiveMapDocumentRequestTarget, index: number, replacement: LiveMapDocumentContent, lineage?: LiveMapReplacementLineage) =>
         LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceContentOp>;
       insert: (target: LiveMapDocumentRequestTarget, index: number, content: LiveMapDocumentContent) =>
         LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphInsertContentOp>;
@@ -2282,7 +2279,7 @@ export type LiveMapSpliceOp = Readonly<{
   next: JsonValue;
 }>;
 
-/** Canonical projected-state capture with detached exact graph metadata. */
+/** Canonical projected-state capture; exact identity stays out of band and owner-local. */
 export type LiveMapCapture = Readonly<{
   rev: number;
   root: HsonNode;

@@ -80,56 +80,56 @@ function overlayPaths(map: DocumentLiveMap, quids: readonly string[]) {
   return quids.map((quid) => overlay.pathForQuid(quid));
 }
 
-check("insert then mutate resolves the inserted QUID at the next ordinal", () => {
+check("insert then mutate resolves the inserted path at the next ordinal", () => {
   const map = element(`<main @${Q1} <a @${Q2}/>/` + `>`);
   replay(map, [
-    { domain: "graph", op: "insert-content", target: target(0), index: 0, content: ordinary("b", Q4) },
-    { domain: "graph", op: "set-attr", target: { kind: "path", path: path(0, 0, 0), witness: { quid: Q4 } }, name: "id", value: "inserted" },
+    { domain: "graph", op: "insert-content", target: target(0), index: 0, content: ordinary("b") },
+    { domain: "graph", op: "set-attr", target: target(0, 0), name: "id", value: "inserted" },
   ]);
-  assert.equal(map.document.byQuid(Q4)?.$_attrs?.id, "inserted");
+  assert.equal(map.document.attrs.get(target(0, 0), "id"), "inserted");
 });
 
-check("delete then mutate resolves the shifted sibling and witness", () => {
+check("delete then mutate resolves the shifted sibling by path", () => {
   const map = element(`<main <a @${Q2}/> <b @${Q3}/>/` + `>`);
   replay(map, [
     { domain: "graph", op: "remove-content", target: target(0), index: 0 },
-    { domain: "graph", op: "set-attr", target: { kind: "path", path: path(0, 0, 0), witness: { quid: Q3 } }, name: "id", value: "shifted" },
+    { domain: "graph", op: "set-attr", target: target(0, 0), name: "id", value: "shifted" },
   ]);
   assert.equal(map.document.byQuid(Q3)?.$_attrs?.id, "shifted");
 });
 
-check("move then mutate resolves the final destination and witness", () => {
+check("move then mutate resolves the final destination by path", () => {
   const map = element(`<main <a @${Q2}/> <b @${Q3}/>/` + `>`);
   replay(map, [
     { domain: "graph", op: "move-content", target: target(0), from: 0, to: 1 },
-    { domain: "graph", op: "set-attr", target: { kind: "path", path: path(0, 0, 1), witness: { quid: Q2 } }, name: "id", value: "moved" },
+    { domain: "graph", op: "set-attr", target: target(0, 1), name: "id", value: "moved" },
   ]);
   assert.equal(map.document.byQuid(Q2)?.$_attrs?.id, "moved");
 });
 
-check("later witness reads the staged overlay produced by the prior operation", () => {
+check("later path operation reads the staged overlay produced by movement", () => {
   const map = element(`<main <a @${Q2}/> <b @${Q3}/>/` + `>`);
   replay(map, [
     { domain: "graph", op: "move-content", target: target(0), from: 0, to: 1 },
-    { domain: "graph", op: "set-attr", target: { kind: "path", path: path(0, 0, 1), witness: { quid: Q2 } }, name: "id", value: "observed" },
+    { domain: "graph", op: "set-attr", target: target(0, 1), name: "id", value: "observed" },
   ]);
   assert.deepEqual(overlayPaths(map, [Q2, Q3]), [[0, 0, 1], [0, 0, 0]]);
 });
 
-check("later stale witness rejects against the staged overlay", () => {
+check("later public witness rejects before staged movement", () => {
   const map = element(`<main <a @${Q2}/> <b @${Q3}/>/` + `>`);
   const before = map.capture();
   assert.throws(() => replay(map, [
     { domain: "graph", op: "move-content", target: target(0), from: 0, to: 1 },
     { domain: "graph", op: "set-attr", target: { kind: "path", path: path(0, 0, 0), witness: { quid: Q2 } }, name: "id", value: "bad" },
-  ]), (error: unknown) => error instanceof LiveMapDocumentStagingError && error.opIndex === 1);
+  ]), /QUID witness/);
   assert.deepEqual(map.capture(), before);
 });
 
 check("replace then invalid descendant access rejects at its exact ordinal", () => {
   const map = element(`<main <section @${Q2} <b @${Q3}/>/` + `>/` + `>`);
   assert.throws(() => replay(map, [
-    { domain: "graph", op: "replace-content", target: target(0), index: 0, replacement: ordinary("i", Q4) },
+    { domain: "graph", op: "replace-content", target: target(0), index: 0, replacement: ordinary("i") },
     { domain: "graph", op: "set-attr", target: target(0, 0, 0, 0), name: "id", value: "bad" },
   ]), (error: unknown) => error instanceof LiveMapDocumentStagingError && error.opIndex === 1);
   assert.equal(map.rev, 0);
@@ -150,7 +150,7 @@ check("the same canonical commit yields equal sparse overlays", () => {
   const left = element(`<main <a @${Q2}/> <b @${Q3}/>/` + `>`);
   const right = element(`<main <a @${Q2}/> <b @${Q3}/>/` + `>`);
   const commit = left.replay(graphCommit(left, [
-    { domain: "graph", op: "insert-content", target: target(0), index: 1, content: ordinary("i", Q4) },
+    { domain: "graph", op: "insert-content", target: target(0), index: 1, content: ordinary("i") },
     { domain: "graph", op: "remove-content", target: target(0), index: 0 },
   ]));
   right.replay(commit);
@@ -179,7 +179,7 @@ check("multi-operation replay performs no full overlay reconstruction", () => {
   const map = element(`<main <a @${Q2}/> <b @${Q3}/>/` + `>`);
   const before = livemap_document_identity_accounting();
   replay(map, [
-    { domain: "graph", op: "insert-content", target: target(0), index: 1, content: ordinary("i", Q4) },
+    { domain: "graph", op: "insert-content", target: target(0), index: 1, content: ordinary("i") },
     { domain: "graph", op: "move-content", target: target(0), from: 2, to: 0 },
   ]);
   const after = livemap_document_identity_accounting();
@@ -200,7 +200,7 @@ check("multi-operation replay reconciles once per staged operation", () => {
 check("insert admission visits only the incoming subtree nodes", () => {
   const map = element(`<main <a @${Q2}/> <b @${Q3}/>/` + `>`);
   const before = livemap_document_identity_accounting();
-  map.document.content.insert(target(0), 1, ordinary("i", Q4));
+  map.document.content.insert(target(0), 1, ordinary("i"));
   const after = livemap_document_identity_accounting();
   assert.equal(after.incomingNodesVisited, before.incomingNodesVisited + 1);
 });
@@ -208,17 +208,17 @@ check("insert admission visits only the incoming subtree nodes", () => {
 check("insert reconciliation visits sparse overlay entries rather than graph nodes", () => {
   const map = element(`<main <a @${Q2}/> <b/> <c @${Q3}/>/` + `>`);
   const before = livemap_document_identity_accounting();
-  map.document.content.insert(target(0), 1, ordinary("i", Q4));
+  map.document.content.insert(target(0), 1, ordinary("i"));
   const after = livemap_document_identity_accounting();
   assert.equal(after.overlayEntriesVisited, before.overlayEntriesVisited + 2);
 });
 
-check("insert accounting records only shifted and introduced sparse claims as changed", () => {
+check("insert accounting records only shifted sparse claims as changed", () => {
   const map = element(`<main <a @${Q2}/> <b @${Q3}/>/` + `>`);
   const before = livemap_document_identity_accounting();
-  map.document.content.insert(target(0), 1, ordinary("i", Q4));
+  map.document.content.insert(target(0), 1, ordinary("i"));
   const after = livemap_document_identity_accounting();
-  assert.equal(after.overlayEntriesChanged, before.overlayEntriesChanged + 2);
+  assert.equal(after.overlayEntriesChanged, before.overlayEntriesChanged + 1);
 });
 
 check("repeated QUID lookup changes no reconciliation accounting", () => {
@@ -282,19 +282,19 @@ check("capture serializes no overlay and changes no identity accounting", () => 
   assert.deepEqual(Object.keys(capture).sort(), ["kind", "mode", "rev", "root"]);
 });
 
-check("canonical witnessed replay lowers through the same incremental reducer", () => {
+check("public witnessed replay rejects before the incremental reducer", () => {
   const map = element(`<main @${Q1}/>`);
   const before = livemap_document_identity_accounting();
-  const commit = Reflect.apply(map.replay, map, [{
+  assert.throws(() => Reflect.apply(map.replay, map, [{
     changed: true,
     prevRev: 0,
     rev: 1,
     ops: [{ domain: "graph", op: "set-attr", target: { kind: "path", path: path(0), witness: { quid: Q1 } }, name: "id", value: "legacy" }],
-  }]);
+  }]), /QUID witness/);
   const after = livemap_document_identity_accounting();
-  assert.equal(after.fullBuilds, before.fullBuilds);
-  assert.equal(commit.ops[0]?.op === "set-attr" && commit.ops[0].target.kind, "path");
-  assert.equal(map.document.byQuid(Q1)?.$_attrs?.id, "legacy");
+  assert.deepEqual(after, before);
+  assert.equal(map.rev, 0);
+  assert.equal(map.document.byQuid(Q1)?.$_attrs?.id, undefined);
 });
 
 process.stdout.write(`1..${checks}\n`);

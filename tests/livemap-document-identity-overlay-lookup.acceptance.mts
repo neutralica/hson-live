@@ -12,7 +12,6 @@ import {
   type LiveMapDocumentIdentityOverlay,
 } from "../src/api/livemap/livemap.document.identity.ts";
 import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
-import { LiveMapDocumentStagingError } from "../src/api/livemap/livemap.error.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -118,28 +117,28 @@ check("repeated document.byQuid lookup performs no overlay rebuild", () => {
   assert.equal(livemap_document_identity_overlay_build_count(), before);
 });
 
-check("matching witness validation reads path-to-QUID overlay evidence", () => {
+check("public replay rejects even a matching QUID witness", () => {
   const map = element(`<main @${Q1}/>`);
-  Reflect.apply(map.replay, map, [witnessedCommit(Q1)]);
-  assert.equal(map.document.attrs.get({ kind: "path", path: [0] }, "title"), "seen");
+  assert.throws(() => Reflect.apply(map.replay, map, [witnessedCommit(Q1)]), /QUID witness/);
+  assert.equal(map.rev, 0);
 });
 
-check("different active overlay evidence reports witness mismatch", () => {
+check("public replay rejects a mismatching QUID witness", () => {
   const map = element(`<main @${Q2}/>`);
-  assert.throws(() => Reflect.apply(map.replay, map, [witnessedCommit(Q1)]), (error: unknown) =>
-    error instanceof LiveMapDocumentStagingError && error.reasonCode === "DOCUMENT_WITNESS_MISMATCH");
+  assert.throws(() => Reflect.apply(map.replay, map, [witnessedCommit(Q1)]), /QUID witness/);
+  assert.equal(map.rev, 0);
 });
 
-check("missing overlay evidence remains diagnostic-only for witnesses", () => {
+check("public replay rejects witness when no local identity exists", () => {
   const map = element(`<main/>`);
-  Reflect.apply(map.replay, map, [witnessedCommit(Q1)]);
-  assert.equal(map.document.attrs.get({ kind: "path", path: [0] }, "title"), "seen");
+  assert.throws(() => Reflect.apply(map.replay, map, [witnessedCommit(Q1)]), /QUID witness/);
+  assert.equal(map.rev, 0);
 });
 
-check("an invalid path never reroutes through a matching QUID elsewhere", () => {
+check("witness cannot reroute an invalid path", () => {
   const map = element(`<main @${Q1}/>`);
-  assert.throws(() => Reflect.apply(map.replay, map, [witnessedCommit(Q1, [9])]), (error: unknown) =>
-    error instanceof LiveMapDocumentStagingError && error.reasonCode === "DOCUMENT_PATH_OUT_OF_RANGE");
+  assert.throws(() => Reflect.apply(map.replay, map, [witnessedCommit(Q1, [9])]), /QUID witness/);
+  assert.equal(map.rev, 0);
 });
 
 check("path requests remain path-authoritative beside sparse identity", () => {
@@ -155,11 +154,11 @@ check("raw-QUID requests reject without building an overlay", () => {
   assert.equal(livemap_document_identity_overlay_build_count(), before);
 });
 
-check("install makes lookup resolve the newly installed current root", () => {
+check("portable install clears source and prior lookup identity", () => {
   const source = element(`<article @${Q1}/>`);
   const target = element(`<main @${Q2}/>`);
   target.install(source.capture());
-  assert.equal(target.document.byQuid(Q1)?.$_tag, "article");
+  assert.equal(target.document.byQuid(Q1), undefined);
   assert.equal(target.document.byQuid(Q2), undefined);
 });
 
@@ -168,7 +167,8 @@ check("a stale detached old node cannot influence new overlay resolution", () =>
   const stale = target.document.byQuid(Q1);
   target.install(element(`<aside @${Q1}/>`).capture());
   if (stale !== undefined) stale.$_tag = "tampered";
-  assert.equal(target.document.byQuid(Q1)?.$_tag, "aside");
+  assert.equal(target.document.byQuid(Q1), undefined);
+  assert.equal((target.root().$_content[0] as { $_tag?: string }).$_tag, "aside");
 });
 
 check("agreement assertion accepts a freshly constructed overlay", () => {

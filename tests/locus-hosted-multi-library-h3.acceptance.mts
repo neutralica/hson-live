@@ -161,8 +161,8 @@ function page_item(map: LiveMapLibraries): HsonNode | undefined {
   return typeof item === "object" && item !== null ? item : undefined;
 }
 
-function insert_item(quid = QUID) {
-  const item: HsonNode = { $_tag: "item", $_meta: { quid }, $_content: [] };
+function insert_item(quid?: string) {
+  const item: HsonNode = { $_tag: "item", ...(quid === undefined ? {} : { $_meta: { quid } }), $_content: [] };
   const content: HsonNode = { $_tag: "_hson_elem", $_content: [item] };
   return Object.freeze({
     domain: "graph" as const,
@@ -358,7 +358,7 @@ await check("aggregate action rejects generated QUID content before authority ad
   const attached = await attach(server);
   const before = internal_livemap_aggregate_authority(map).captureHosted();
   const ledger = livemap_identity_epoch_accounting(page_library(map).document);
-  const exact = encode_locus_graph_content(insert_item().content);
+  const exact = encode_locus_graph_content(insert_item(QUID).content);
   const result = await attached.client.action("document.content.insert", {
     library: "page",
     target: { kind: "path", path: [0] },
@@ -375,6 +375,8 @@ await check("authority retains local issued-QUID history while client bootstrap 
   const map = make_map();
   const server = create_locus_hosted_aggregate_socket_internal({ map });
   await server.mutate((draft) => document(draft, "page").graph(insert_item()));
+  set_livemap_document_quid_candidate_source_for_tests(page_library(map).document, () => QUID);
+  acquire_document_identity(page_library(map).document, { kind: "path", path: validate_document_path([0, 0, 0]) });
   await server.mutate((draft) => document(draft, "page").content.remove({ kind: "path", path: validate_document_path([0]) }, 0));
   const attached = await attach(server);
   const mirror = attached.client.map!;
@@ -383,7 +385,7 @@ await check("authority retains local issued-QUID history while client bootstrap 
   assert.equal("identity" in snapshot, false);
   assert.equal(JSON.stringify(snapshot).includes(QUID), false);
   await assert.rejects(
-    () => server.mutate((draft) => document(draft, "page").graph(insert_item())),
+    () => server.mutate((draft) => document(draft, "page").graph(insert_item(QUID))),
     /QUID|reuse|identity/i,
   );
   assert.equal(mirror.rev, 2);

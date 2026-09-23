@@ -393,7 +393,7 @@ provide its QUID.
 
 Internally retained overlay identity follows object-key rename, array move, ancestor movement, and insertion/removal shifts. Nested leaf mutation preserves it; deletion, replacement, or owner-epoch replacement retires it. Semantic data objects and arrays are eligible map-local targets, while primitives and property/scalar carriers remain ineligible. This target rule is not canonical QUID eligibility.
 
-Within the current owner epoch, retired QUID bytes remain reserved in an internal issued ledger. Allocation retries those bytes, so an unrelated container cannot reactivate a stale handle. A new owner epoch starts a fresh ledger seeded from active claims carried by an exact capture capability; old handles remain fenced even if that epoch later uses equal bytes. Exact same-epoch restoration preserves the living ledger rather than rolling it back to capture time.
+Within the current owner epoch, retired QUID bytes remain reserved in an internal issued ledger. Allocation retries those bytes, so an unrelated container cannot reactivate a stale handle. Portable restoration starts a fresh local epoch without source claims. Exact same-epoch restoration preserves the living ledger rather than rolling it back to capture time.
 
 The claim is map-local overlay state, not canonical Hson metadata, a data property, array item, enumerable key, or schema field. `snap()`, `root()`, feeds, links, selectors, serializers, and stores see the same canonical graph/data value before and after acquisition. Commit observers do not see identity acquisition. Exact live capture capabilities privately carry active overlay claims; copied or serialized Hson/HTML/JSON/binary graph representations do not.
 
@@ -421,17 +421,16 @@ The linked LiveTree projection also participates in its runtime's lifetime issue
 
 `document.attrs` provides `get`, `has`, `keys`, `must.get`, `set`, `drop`, `setMany`, `dropMany`, `clear`, and `replace`. `document.content` is callable for top-level detached content and has `replace`, `insert`, `remove`, and `move`. Mutations accept a canonical path target and return graph-domain commits. Attrs are one complete canonical bag: `setMany` is an atomic overlay, `replace` is complete replacement, and `clear` removes flag-form members too. Style remains whole canonical attr state manipulated through `attrs`; there is no LiveMap style convenience in this phase.
 
-`capture()` remains the durable exact-metadata compatibility form. Explicit capture categories are additive:
+`capture()` returns portable QUID-free state. Explicit same-epoch capture retains local identity through owner provenance:
 
 ```ts
 map.capture({ identity: "same-epoch" });
-map.capture({ identity: "preserve-metadata" });
 map.capture({ identity: "strip" });
 ```
 
-Same-epoch output is an exact local object capability with out-of-band identity overlay; copying or serializing it removes that proof. Preserve-metadata output can synthesize QUID bytes into a detached exact view for legacy durable structure, but does not transfer old handles. Strip output removes QUID metadata from the detached capture without mutating or minting into the source.
+Same-epoch output is an exact local object capability with an out-of-band identity overlay; copying or serializing it removes that proof. Default and strip output remove QUID metadata from the detached capture without changing the source.
 
-`install(capture, { expectedRev?, identity? })` atomically replaces a same-mode document and advances revision. `restore` installs the exact captured revision without an ordinary commit. Admission supports `same-epoch`, `preserve-metadata`, `strip`, and `reject`. The compatibility default is `preserve-metadata`: claims are validated and become fresh map-local overlay identity, not proof of the source map's epoch. `replay(commit)` validates identity witnesses, operation domain, and exact revision continuity. `commits.observe` is the supported graph publication surface.
+`install(capture, { expectedRev?, identity? })` atomically replaces a same-mode document and advances revision. `restore` installs the captured revision without an ordinary commit. Default, strip, and reject admission refuse supplied generated identity; only owner-proven `same-epoch` admission preserves it. Public `replay(commit)` accepts semantic graph effects and refuses `ensure-quid`, QUID witnesses, and QUID-bearing content. `commits.observe` is the supported graph publication surface.
 
 `DocumentLiveMapCapture` is deliberately unversioned and has exactly four
 enumerable fields: `kind`, `mode`, `rev`, and `root`. View-state is a separate
@@ -459,7 +458,7 @@ const serialized = JSON.stringify(transfer);
 
 Use `snap()` for a detached rendering value and `capture()` when the revision must travel with it. Clone/isolate per-request state unless intentional shared mutation is required. A batch can prepare one deterministic request-scoped transition and one commit.
 
-LiveMap supplies state to a renderer; it does not render HTML. LiveTree is the DOM projection API and has different runtime constraints. A server-created data capture includes exact structural transport and a detached canonical root so hidden identity metadata can be durably restored. Document captures likewise contain Hson nodes; Locus recovery serializes durable structural form as the selected current Hson or view-state representation. Neither wire format carries the local same-epoch capability.
+LiveMap supplies state to a renderer; it does not render HTML. LiveTree is the DOM projection API and has different runtime constraints. A server-created data capture includes structural transport and a detached QUID-free canonical root. Document captures likewise contain QUID-free Hson nodes; Locus recovery serializes durable application state as the selected current Hson or view-state representation. Neither wire format carries the local same-epoch capability.
 
 Passing browser `Element` objects belongs to other hson/LiveTree construction paths and is unavailable in Node/Worker execution. Synchronization coordination between an authoritative LiveMap/Locus revision and LiveTree remains an explicit application composition.
 

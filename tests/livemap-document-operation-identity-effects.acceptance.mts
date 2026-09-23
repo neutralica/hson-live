@@ -11,6 +11,8 @@ import {
   replace_livemap_document_identity_overlay_effects,
 } from "../src/api/livemap/livemap.document.identity.ts";
 import { prepare_document_graph_operation } from "../src/api/livemap/livemap.document.mutation.ts";
+import { set_livemap_document_quid_candidate_source_for_tests } from "../src/api/livemap/livemap.document.registration.ts";
+import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
 import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -220,7 +222,9 @@ check("ordinary operation sequence performs no full overlay reconstruction", () 
   const map = element(`<main @${Q1} <a @${Q2}/>/>`);
   const before = livemap_document_identity_overlay_build_count();
   map.document.attrs.set(target(), "id", "x");
-  map.document.content.insert(target(0), 0, ordinary("b", Q3));
+  map.document.content.insert(target(0), 0, ordinary("b"));
+  set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q3);
+  acquire_document_identity(map.document, target(0, 0));
   map.document.content.move(target(0), 0, 1);
   map.document.content.remove(target(0), 0);
   assert.equal(livemap_document_identity_overlay_build_count(), before);
@@ -228,7 +232,9 @@ check("ordinary operation sequence performs no full overlay reconstruction", () 
 
 check("incremental candidate overlay agrees with a fresh diagnostic scan", () => {
   const map = element(`<main @${Q1} <a @${Q2}/>/>`);
-  map.document.content.insert(target(0), 0, ordinary("b", Q3));
+  map.document.content.insert(target(0), 0, ordinary("b"));
+  set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q3);
+  acquire_document_identity(map.document, target(0, 0));
   const overlay = livemap_document_identity_overlay_for(map);
   assert.deepEqual(overlay.pathForQuid(Q1), [0]);
   assert.deepEqual(overlay.pathForQuid(Q2), [0, 0, 1]);

@@ -9,6 +9,9 @@ import {
   raw_node,
 } from "./helpers/reflect-unit6.mts";
 import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
+import { set_livemap_document_quid_candidate_source_for_tests } from "../src/api/livemap/livemap.document.registration.ts";
+import { clone_hson_graph_without_quids } from "../src/api/livemap/livemap.document.capture.ts";
+import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 import {
   _create_livetree_for_runtime_test,
   _create_livetree_runtime_test_handle,
@@ -58,6 +61,11 @@ const target = (...segments: number[]) => Object.freeze({
   path: Object.freeze([0, ...segments]),
 });
 const mountedRuntime = _create_livetree_runtime_test_handle();
+const sameSubject = [{ source: validate_document_path([]), destination: validate_document_path([]) }];
+const sameRootAndChild = [
+  { source: validate_document_path([]), destination: validate_document_path([]) },
+  { source: validate_document_path([0, 0]), destination: validate_document_path([0, 0]) },
+];
 
 function effects(commit: object): readonly string[] {
   return livemap_document_identity_effects_for(commit as never)?.map((effect) => effect.kind) ?? [];
@@ -74,13 +82,15 @@ check("A to absent retires the active mapping but retains the issued ledger entr
   assert.equal(handle.active, false);
 });
 
-check("A to B retires A, introduces B, and grows the monotonic issued ledger", () => {
+check("replacement retires A and later local demand introduces B", () => {
   const A = "000008202";
   const B = "000008203";
   const map = element(`<main <a @${A}/>/` + `>`);
   const oldHandle = acquire_document_identity(map.document, target(0, 0));
-  const commit = map.document.content.replace(path(0), 0, projected_element(`<b @${B}/>`));
-  assert.deepEqual(effects(commit), ["retired", "introduced"]);
+  const commit = map.document.content.replace(path(0), 0, projected_element(`<b/>`));
+  assert.deepEqual(effects(commit), ["retired"]);
+  set_livemap_document_quid_candidate_source_for_tests(map.document, () => B);
+  acquire_document_identity(map.document, target(0, 0));
   assert.equal(map.document.byQuid(A), undefined);
   assert.equal(map.document.byQuid(B)?.$_tag, "b");
   assert.deepEqual(livemap_identity_epoch_accounting(map.document), { epoch: 0, issued: 2 });
@@ -91,7 +101,7 @@ check("A to A same-tag replacement keeps one canonical active subject", () => {
   const A = "000008204";
   const map = element(`<main <a @${A} title="old"/>/>`);
   const handle = acquire_document_identity(map.document, target(0, 0));
-  const commit = map.document.content.replace(path(0), 0, projected_element(`<a @${A} title="new"/>`));
+  const commit = map.document.content.replace(path(0), 0, projected_element(`<a title="new"/>`), sameSubject);
   assert.deepEqual(effects(commit), ["retired", "introduced"]);
   assert.deepEqual(livemap_document_identity_overlay_for(map.document).pathForQuid(A), [0, 0, 0]);
   assert.deepEqual(livemap_identity_epoch_accounting(map.document), { epoch: 0, issued: 1 });
@@ -107,7 +117,7 @@ check("A to A same-tag replacement preserves exact objects and converges DOM att
   mount(binding.tree.node);
   const oldNode = raw_node(binding.tree.node, [0, 0]);
   const oldDom = get_el_for_node(oldNode);
-  map.document.content.replace(path(0), 0, projected_element(`<a @${A} title="new"/>`));
+  map.document.content.replace(path(0), 0, projected_element(`<a title="new"/>`), sameSubject);
   assert.equal(binding.status, "active");
   assert.equal(raw_node(binding.tree.node, [0, 0]), oldNode);
   assert.equal(get_el_for_node(oldNode), oldDom);
@@ -124,7 +134,7 @@ check("A to A same-tag replacement preserves runtime claim and root-owned resour
   const oldNode = raw_node(binding.tree.node, [0, 0]);
   let disposed = 0;
   _own_livetree_runtime_test_disposable(runtime, A, () => { disposed += 1; }, "listener");
-  map.document.content.replace(path(0), 0, projected_element(`<a @${A} title="new"/>`));
+  map.document.content.replace(path(0), 0, projected_element(`<a title="new"/>`), sameSubject);
   assert.equal(_lookup_livetree_runtime_test_node(runtime, A), oldNode);
   assert.equal(_livetree_runtime_test_resource_counts(runtime, A).listener, 1);
   assert.equal(disposed, 0);
@@ -135,7 +145,7 @@ check("A to A different-tag replacement still preserves canonical subject contin
   const A = "000008207";
   const map = element(`<main <a @${A}/>/` + `>`);
   const handle = acquire_document_identity(map.document, target(0, 0));
-  const commit = map.document.content.replace(path(0), 0, projected_element(`<i @${A}/>`));
+  const commit = map.document.content.replace(path(0), 0, projected_element(`<i/>`), sameSubject);
   assert.deepEqual(effects(commit), ["retired", "introduced"]);
   assert.equal(map.document.byQuid(A)?.$_tag, "i");
   assert.equal(handle.active, true);
@@ -152,7 +162,7 @@ check("A to A different-tag replacement transfers the active runtime lineage", (
   const oldHandle = create_livetree(oldNode).adoptRoots(binding.tree.hostRootNode());
   let disposed = 0;
   _own_livetree_runtime_test_disposable(runtime, A, () => { disposed += 1; }, "other");
-  map.document.content.replace(path(0), 0, projected_element(`<i @${A}/>`));
+  map.document.content.replace(path(0), 0, projected_element(`<i/>`), sameSubject);
   const replacement = raw_node(binding.tree.node, [0, 0]);
   assert.equal(map.rev, 1);
   assert.equal(binding.status, "active");
@@ -165,14 +175,16 @@ check("A to A different-tag replacement transfers the active runtime lineage", (
   binding.dispose();
 });
 
-check("absent to A introduces one canonical and runtime identity", () => {
+check("QUID-free replacement allows later local identity demand", () => {
   const A = "000008209";
   const runtime = _create_livetree_runtime_test_handle();
   const map = element(`<main <a/>/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
-  const commit = map.document.content.replace(path(0), 0, projected_element(`<b @${A}/>`));
+  const commit = map.document.content.replace(path(0), 0, projected_element(`<b/>`));
+  set_livemap_document_quid_candidate_source_for_tests(map.document, () => A);
+  acquire_document_identity(map.document, target(0, 0));
   const projected = raw_node(binding.tree.node, [0, 0]);
-  assert.deepEqual(effects(commit), ["introduced"]);
+  assert.deepEqual(effects(commit), []);
   assert.deepEqual(livemap_identity_epoch_accounting(map.document), { epoch: 0, issued: 1 });
   assert.equal(map.document.byQuid(A)?.$_tag, "b");
   assert.equal(_lookup_livetree_runtime_test_node(runtime, A), projected);
@@ -200,7 +212,7 @@ check("compatible A replacement keeps the root but terminally replaces QUID-free
   const oldRoot = raw_node(binding.tree.node, [0, 0]);
   const oldChild = raw_node(binding.tree.node, [0, 0, 0, 0]);
   const oldChildHandle = create_livetree(oldChild).adoptRoots(binding.tree.hostRootNode());
-  map.document.content.replace(path(0), 0, projected_element(`<section @${A} <b/>/>`));
+  map.document.content.replace(path(0), 0, projected_element(`<section <b/>/>`), sameSubject);
   assert.equal(raw_node(binding.tree.node, [0, 0]), oldRoot);
   assert.notEqual(raw_node(binding.tree.node, [0, 0, 0, 0]), oldChild);
   assert.equal(oldChildHandle.isDisposed, true);
@@ -217,7 +229,8 @@ check("deep A and B equal-byte replacement preserves both canonical handles", ()
   map.document.content.replace(
     path(0),
     0,
-    projected_element(`<section @${A} <i @${B} title="new"/>/>`),
+    projected_element(`<section <i title="new"/>/>`),
+    sameRootAndChild,
   );
   assert.equal(rootHandle.active, true);
   assert.equal(childHandle.active, true);
@@ -238,7 +251,8 @@ check("deep A and B equal-byte replacement preserves recursive runtime continuit
   map.document.content.replace(
     path(0),
     0,
-    projected_element(`<section @${A} <i @${B} title="new"/>/>`),
+    projected_element(`<section <i title="new"/>/>`),
+    sameRootAndChild,
   );
   assert.equal(binding.status, "active");
   assert.equal(binding.sourceRevision, 1);
@@ -270,7 +284,8 @@ check("incompatible A transfer preserves a compatible active B descendant", () =
   map.document.content.replace(
     path(0),
     0,
-    projected_element(`<article @${A} <i @${B} title="kept"/>/>`),
+    projected_element(`<article <i title="kept"/>/>`),
+    sameRootAndChild,
   );
   const newA = raw_node(binding.tree.node, [0, 0]);
   const retainedB = raw_node(binding.tree.node, [0, 0, 0, 0]);
@@ -298,7 +313,7 @@ check("attrs-only A replacement preserves exact DOM identity and fully converges
   mount(binding.tree.node);
   const oldNode = raw_node(binding.tree.node, [0, 0]);
   const oldDom = get_el_for_node(oldNode);
-  map.document.content.replace(path(0), 0, projected_element(`<a @${A} title="new" class="kept"/>`));
+  map.document.content.replace(path(0), 0, projected_element(`<a title="new" class="kept"/>`), sameSubject);
   assert.equal(raw_node(binding.tree.node, [0, 0]), oldNode);
   assert.equal(get_el_for_node(oldNode), oldDom);
   assert.equal(oldNode.$_attrs?.title, "new");
@@ -314,13 +329,19 @@ check("replay preserves the receiver's active A lineage, not the source exact ob
   const source = element(`<main <a @${A} title="old"/>/>`);
   const sourceBinding = _reflect_document_for_runtime_test(sourceRuntime, source);
   const sourceObject = raw_node(sourceBinding.tree.node, [0, 0]);
-  const commit = source.document.content.replace(path(0), 0, projected_element(`<a @${A} title="new"/>`));
+  const commit = source.document.content.replace(path(0), 0, projected_element(`<a title="new"/>`), sameSubject);
 
   const receiverRuntime = _create_livetree_runtime_test_handle();
   const receiver = element(`<main <a @${A} title="old"/>/>`);
   const receiverBinding = _reflect_document_for_runtime_test(receiverRuntime, receiver);
   const receiverObject = raw_node(receiverBinding.tree.node, [0, 0]);
-  receiver.replay(commit);
+  const portableCommit = {
+    ...commit,
+    ops: commit.ops.map((operation) => operation.op === "replace-content"
+      ? { ...operation, replacement: clone_hson_graph_without_quids(operation.replacement as HsonNode) }
+      : operation),
+  };
+  receiver.replay(portableCommit);
   assert.deepEqual(receiver.capture(), source.capture());
   assert.equal(raw_node(receiverBinding.tree.node, [0, 0]), receiverObject);
   assert.notEqual(receiverObject, sourceObject);
@@ -361,7 +382,7 @@ check("durable new-epoch root install replaces exact runtime and DOM identity", 
   let disposed = 0;
   _own_livetree_runtime_test_disposable(runtime, A, () => { disposed += 1; }, "listener");
   map.install(element(`<main @${A} title="new"/>`).capture());
-  assert.deepEqual(livemap_identity_epoch_accounting(map.document), { epoch: 1, issued: 1 });
+  assert.deepEqual(livemap_identity_epoch_accounting(map.document), { epoch: 1, issued: 0 });
   assert.equal(oldHandle.active, false);
   assert.equal(binding.status, "active");
   const newRoot = raw_node(binding.tree.node, []);
@@ -372,7 +393,7 @@ check("durable new-epoch root install replaces exact runtime and DOM identity", 
   assert.equal(oldTree.isDisposed, true);
   assert.equal(get_el_for_node(oldRoot), undefined);
   assert.equal(newDom?.getAttribute("title"), "new");
-  assert.equal(_lookup_livetree_runtime_test_node(runtime, A), newRoot);
+  assert.equal(_lookup_livetree_runtime_test_node(runtime, A), undefined);
   assert.equal(_livetree_runtime_test_resource_counts(runtime, A).listener, 0);
   assert.equal(disposed, 1);
   binding.dispose();
@@ -423,7 +444,7 @@ check("copied same-epoch capture has no continuity authority", () => {
   binding.dispose();
 });
 
-check("serialized A replacement bytes update the currently active A rather than admit a new subject", () => {
+check("serialized A replacement bytes cannot establish identity through mutation", () => {
   const A = "00000820m";
   const runtime = _create_livetree_runtime_test_handle();
   const map = element(`<main <a @${A} title="old"/>/>`);
@@ -432,10 +453,14 @@ check("serialized A replacement bytes update the currently active A rather than 
   const handle = acquire_document_identity(map.document, target(0, 0));
   const serialized = JSON.stringify(projected_element(`<a @${A} title="serialized"/>`));
   const replacement = JSON.parse(serialized) as HsonNode;
-  map.document.content.replace(path(0), 0, replacement);
+  assert.throws(
+    () => map.document.content.replace(path(0), 0, replacement),
+    (cause: unknown) => Reflect.get(cause as object, "code") === "PORTABLE_RUNTIME_QUID_FORBIDDEN",
+  );
   assert.equal(handle.active, true);
   assert.equal(raw_node(binding.tree.node, [0, 0]), oldNode);
-  assert.equal(oldNode.$_attrs?.title, "serialized");
+  assert.equal(oldNode.$_attrs?.title, "old");
+  assert.equal(map.rev, 0);
   assert.equal(_lookup_livetree_runtime_test_node(runtime, A), oldNode);
   binding.dispose();
 });
@@ -448,7 +473,7 @@ check("terminal canonical retirement rejects later equal A bytes atomically", ()
   const before = map.capture();
   assert.throws(
     () => map.document.content.insert(path(0), 0, projected_element(`<b @${A}/>`)),
-    /retired QUID cannot identify unrelated content/,
+    (cause: unknown) => Reflect.get(cause as object, "code") === "PORTABLE_RUNTIME_QUID_FORBIDDEN",
   );
   assert.deepEqual(map.capture(), before);
   assert.equal(map.rev, 1);
@@ -485,19 +510,23 @@ check("fresh runtime may admit equal A bytes without reconstructing the old exac
   assert.equal(_lookup_livetree_runtime_test_node(freshRuntime, A), freshTree.node);
 });
 
-check("independently active runtime A blocks Reflection before data mutation", () => {
+check("foreign A is rejected before document mutation or Mirror realization", () => {
   const A = "00000820r";
   const runtime = _create_livetree_runtime_test_handle();
   const foreign = _create_livetree_for_runtime_test(runtime, projected_element(`<aside @${A}/>`));
   const map = element(`<main <a/>/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
   const oldProjected = raw_node(binding.tree.node, [0, 0]);
-  map.document.content.replace(path(0), 0, projected_element(`<b @${A}/>`));
-  assert.equal(map.document.byQuid(A)?.$_tag, "b");
-  assert.equal(binding.status, "failed");
+  assert.throws(
+    () => map.document.content.replace(path(0), 0, projected_element(`<b @${A}/>`)),
+    (cause: unknown) => Reflect.get(cause as object, "code") === "PORTABLE_RUNTIME_QUID_FORBIDDEN",
+  );
+  assert.equal(map.document.byQuid(A), undefined);
+  assert.equal(binding.status, "active");
   assert.equal(binding.sourceRevision, 0);
   assert.equal(raw_node(binding.tree.node, [0, 0]), oldProjected);
   assert.equal(_lookup_livetree_runtime_test_node(runtime, A), foreign.node);
+  assert.equal(map.rev, 0);
   binding.dispose();
 });
 
@@ -508,7 +537,7 @@ check("duplicate incoming A rejects during canonical planning before publication
   const before = map.capture();
   assert.throws(
     () => map.document.content.replace(path(0), 1, projected_element(`<b @${A}/>`)),
-    /duplicate quid/i,
+    (cause: unknown) => Reflect.get(cause as object, "code") === "PORTABLE_RUNTIME_QUID_FORBIDDEN",
   );
   assert.deepEqual(map.capture(), before);
   assert.equal(map.rev, 0);
@@ -517,9 +546,8 @@ check("duplicate incoming A rejects during canonical planning before publication
   binding.dispose();
 });
 
-check("throwing resource cleanup is isolated while A to B runtime transfer completes", () => {
+check("throwing resource cleanup is isolated while A is retired", () => {
   const A = "00000820t";
-  const B = "00000820w";
   const runtime = _create_livetree_runtime_test_handle();
   const map = element(`<main <a @${A}/>/` + `>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
@@ -528,7 +556,7 @@ check("throwing resource cleanup is isolated while A to B runtime transfer compl
   console.warn = (...values: unknown[]) => { warnings.push(values); };
   try {
     _own_livetree_runtime_test_disposable(runtime, A, () => { throw new Error("cleanup failure"); }, "other");
-    map.document.content.replace(path(0), 0, projected_element(`<b @${B}/>`));
+    map.document.content.replace(path(0), 0, projected_element(`<b/>`));
   } finally {
     console.warn = priorWarn;
   }
@@ -537,7 +565,7 @@ check("throwing resource cleanup is isolated while A to B runtime transfer compl
   assert.equal(binding.status, "active");
   assert.equal(binding.sourceRevision, 1);
   assert.equal(_lookup_livetree_runtime_test_node(runtime, A), undefined);
-  assert.equal(_lookup_livetree_runtime_test_node(runtime, B), next);
+  assert.equal(next.$_meta?.quid, undefined);
   assert.equal(_livetree_runtime_test_resource_counts(runtime, A).total, 0);
   binding.dispose();
 });

@@ -18,6 +18,7 @@ import {
   _reflect_document_for_runtime_test,
 } from "../src/_tests/diagnostics-internal.ts";
 import { get_el_for_node } from "../src/api/livetree/utils/node-map-helpers.ts";
+import { set_livemap_document_quid_candidate_source_for_tests } from "../src/api/livemap/livemap.document.registration.ts";
 import { FakeElement } from "./helpers/fake-document.mts";
 
 const syntheticDocument = globalThis.document;
@@ -177,22 +178,24 @@ check("delegated attributes retain the canonical claim", () => {
   close(binding);
 });
 
-check("canonical insertion registers a supplied descendant claim", () => {
+check("QUID-free insertion permits local descendant identity demand", () => {
   const { map, binding } = reflected(`<main @${Q1} "kept"/>`);
   mount(binding.tree.node);
-  map.document.content.insert(path(0), 1, projected_element(`<span @${Q3}/>`));
+  map.document.content.insert(path(0), 1, projected_element(`<span/>`));
+  set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q3);
+  assert.equal(binding.tree.find.byTag("span")?.quid, Q3);
   const inserted = raw_node(binding.tree.node, [0, 1]);
   assert.equal(_lookup_livetree_runtime_test_node(runtime, Q3), inserted);
   assert.equal(get_el_for_node(inserted)?.getAttribute("hson:quid"), Q3);
   close(binding);
 });
 
-check("mixed insertion preserves supplied identity and QUID absence", () => {
+check("mixed insertion preserves existing identity and QUID absence", () => {
   const { map, binding } = reflected(`<main @${Q1} <a/>/>`);
-  map.document.content.insert(path(0), 1, projected_element(`<b @${Q3}/>`));
+  map.document.content.insert(path(0), 1, projected_element(`<b/>`));
   assert.equal(raw_node(binding.tree.node, [0, 0]).$_meta?.quid, undefined);
-  assert.equal(raw_node(binding.tree.node, [0, 1]).$_meta?.quid, Q3);
-  assert.equal(_livetree_runtime_test_claim_count(runtime), 2);
+  assert.equal(raw_node(binding.tree.node, [0, 1]).$_meta?.quid, undefined);
+  assert.equal(_livetree_runtime_test_claim_count(runtime), 1);
   close(binding);
 });
 
@@ -229,22 +232,22 @@ check("equal canonical QUIDs admit independently in separate runtimes", () => {
   _dispose_livetree_runtime_test_handle(rightRuntime);
 });
 
-check("durable capture preserves supplied QUID metadata", () => {
+check("portable capture excludes supplied local QUID metadata", () => {
   const source = element(`<main @${Q1} <span @${Q2}/>/>`);
   const restored = element(`<main/>`);
   restored.restore(source.capture());
-  assert.equal((restored.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, Q1);
-  assert.equal(raw_node(restored.root(), [0, 0]).$_meta?.quid, Q2);
+  assert.equal((restored.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, undefined);
+  assert.equal(raw_node(restored.root(), [0, 0]).$_meta?.quid, undefined);
 });
 
-check("durably restored QUIDs project without reminting", () => {
+check("portable restored state projects without source QUIDs", () => {
   const source = element(`<main @${Q1} <span @${Q2}/>/>`);
   const restored = element(`<main/>`);
   restored.restore(source.capture());
   const profile = begin_livetree_materialization_profile();
   const binding = _reflect_document_for_runtime_test(runtime, restored);
   const result = profile.stop();
-  assert.equal(authoredRoot(binding).quid, Q1);
+  assert.equal(authoredRoot(binding).node.$_meta?.quid, undefined);
   assert.equal(result.quidEnsureCalls, 0);
   close(binding);
 });

@@ -13,7 +13,7 @@ import type {
 import { clone_live_root } from "./livemap.editor.js";
 import { LiveMapDocumentIdentityProvenanceError } from "./livemap.error.js";
 import type { LiveMapIdentityEpochController } from "./livemap.identity-epoch.js";
-import { clone_livemap_document_exact_view, type LiveMapDocumentIdentityOverlay } from "./livemap.document.identity.js";
+import type { LiveMapDocumentIdentityOverlay } from "./livemap.document.identity.js";
 
 type CaptureCategory = DocumentLiveMapCaptureIdentity | "default";
 
@@ -40,7 +40,7 @@ export type LiveMapDocumentObservationEvidence = Readonly<{
   continuity: "same-epoch" | "new-epoch";
 }>;
 
-/** Capture exact metadata, explicit same-epoch provenance, or an identity-free graph. */
+/** Capture portable state, with optional owner-proven same-epoch identity. */
 export function capture_livemap_document<TMode extends DocumentLiveMapMode>(
   controller: LiveMapDocumentIdentityEpochController,
   mode: TMode,
@@ -50,9 +50,7 @@ export function capture_livemap_document<TMode extends DocumentLiveMapMode>(
   options?: DocumentLiveMapCaptureOptions,
 ): DocumentLiveMapCapture<TMode> {
   const category = capture_category(options);
-  const captureRoot = category === "strip" || category === "same-epoch"
-    ? clone_hson_graph_without_quids(root)
-    : clone_livemap_document_exact_view(root, mode, overlay);
+  const captureRoot = clone_hson_graph_without_quids(root);
   const capture: DocumentLiveMapCapture<TMode> = Object.freeze({
     kind: "hson-document",
     mode,
@@ -60,7 +58,7 @@ export function capture_livemap_document<TMode extends DocumentLiveMapMode>(
     root: captureRoot,
   });
 
-  if (options !== undefined) {
+  if (category === "same-epoch") {
     captureProvenance.set(capture, Object.freeze({
       owner: controller.owner,
       epoch: controller.current(),
@@ -187,7 +185,7 @@ function capture_category(options: DocumentLiveMapCaptureOptions | undefined): C
     );
   }
   const category = options.identity;
-  if (category === "same-epoch" || category === "preserve-metadata" || category === "strip") {
+  if (category === "same-epoch" || category === "strip") {
     return category;
   }
   throw provenance_error(
@@ -197,9 +195,8 @@ function capture_category(options: DocumentLiveMapCaptureOptions | undefined): C
 }
 
 function install_identity(identity: unknown): DocumentLiveMapInstallIdentity {
-  if (identity === undefined) return "preserve-metadata";
+  if (identity === undefined) return "reject";
   if (identity === "same-epoch"
-    || identity === "preserve-metadata"
     || identity === "strip"
     || identity === "reject") {
     return identity;

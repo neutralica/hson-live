@@ -178,31 +178,34 @@ check("registration preserves strict canonical equality", () => {
   close(binding);
 });
 
-check("durable capture preserves registered metadata", () => {
+check("portable capture transfers state without registered metadata", () => {
   const { map, binding } = reflected(`<main/>`);
   const quid = authoredRoot(binding).quid;
   const restored = element(`<main/>`);
   restored.restore(map.capture());
-  assert.equal((restored.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, quid);
+  assert.equal((restored.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, undefined);
+  assert.equal(restored.document.byQuid(quid), undefined);
   close(binding);
 });
 
-check("legacy recorded registration replays without allocation", () => {
+check("public replay rejects recorded registration", () => {
   const quid = "000002102";
   const commit = { changed: true, prevRev: 0, rev: 1,
     ops: [{ domain: "graph", op: "ensure-quid", target: { kind: "path", path: [0] }, quid }] };
   const mirror = element(`<main/>`);
-  Reflect.apply(mirror.replay, mirror, [commit]);
-  assert.equal((mirror.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, quid);
+  assert.throws(() => Reflect.apply(mirror.replay, mirror, [commit]));
+  assert.equal(mirror.rev, 0);
+  assert.equal((mirror.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, undefined);
 });
 
-check("registered descendant survives detached capture and replay", () => {
+check("registered descendant does not cross detached portable capture", () => {
   const { map, binding } = reflected(`<main <span/>/>`);
   const child = binding.tree.find.byTag("span")!;
   const quid = child.quid;
   const restored = element(`<main/>`);
   restored.restore(map.capture());
-  assert.equal(restored.document.byQuid(quid)?.$_tag, "span");
+  assert.equal(restored.document.byQuid(quid), undefined);
+  assert.equal((restored.root().$_content[0] as { $_tag?: string }).$_tag, "main");
   close(binding);
 });
 

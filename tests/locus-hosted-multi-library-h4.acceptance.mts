@@ -94,7 +94,7 @@ function document(draft: LocusHostedAggregateDraft, name: string): LocusHostedAg
   return library;
 }
 
-function insert_item(quid: string): Extract<LiveMapGraphOp, Readonly<{ op: "insert-content" }>> {
+function insert_item(quid?: string): Extract<LiveMapGraphOp, Readonly<{ op: "insert-content" }>> {
   return Object.freeze({
     domain: "graph" as const,
     op: "insert-content" as const,
@@ -102,7 +102,7 @@ function insert_item(quid: string): Extract<LiveMapGraphOp, Readonly<{ op: "inse
     index: 0,
     content: {
       $_tag: "_hson_elem",
-      $_content: [{ $_tag: "item", $_meta: { quid }, $_content: [] }],
+      $_content: [{ $_tag: "item", ...(quid === undefined ? {} : { $_meta: { quid } }), $_content: [] }],
     } satisfies HsonNode,
   });
 }
@@ -217,7 +217,7 @@ await check("initial durable aggregate cut and atomic cross-library tail omit ge
   const accepted = await host.mutate((draft) => {
     data(draft, "state").at(["theme"]).set("dark");
     data(draft, "colors").at(["accent"]).set("#fff");
-    document(draft, "page").graph(insert_item(ACTIVE_QUID));
+    document(draft, "page").graph(insert_item());
   });
   assert.equal(accepted?.prevRev, 0);
   assert.equal(accepted?.rev, 1);
@@ -243,7 +243,7 @@ await check("append failure and an invalid later library leave the entire aggreg
   host.on_wire((wire) => wires.push(wire));
   adapter.failAppend = new Error("durability unavailable");
   await assert.rejects(
-    () => host.mutate((draft) => document(draft, "page").graph(insert_item(ACTIVE_QUID))),
+    () => host.mutate((draft) => document(draft, "page").graph(insert_item())),
     (error: unknown) => error instanceof LocusPersistenceError && error.code === "LOCUS_PERSISTENCE_APPEND_FAILED",
   );
   assert.deepEqual(internal_livemap_aggregate_authority(map).captureHosted(), before);
@@ -272,7 +272,7 @@ await check("checkpoint is an aggregate FIFO barrier: it captures one prior glob
   await tick();
   const queued = host.mutate((draft) => {
     data(draft, "colors").at(["accent"]).set("#fff");
-    document(draft, "page").graph(insert_item(ACTIVE_QUID));
+    document(draft, "page").graph(insert_item());
   });
   await tick();
   assert.equal(map.rev, 1);
@@ -299,7 +299,11 @@ await check("checkpoint-pruned generated identity is absent after fresh-runtime 
     logicalMapId: "h4-restart",
     incarnationId: "h4-restart-incarnation",
   });
-  await host.mutate((draft) => document(draft, "page").graph(insert_item(RETIRED_QUID)));
+  await host.mutate((draft) => document(draft, "page").graph(insert_item()));
+  const localAuthority = internal_livemap_aggregate_authority(map);
+  const localPage = localAuthority.libraries()[2];
+  if (localPage === undefined) throw new Error("Expected document Library.");
+  localAuthority.acquireLocalDocumentIdentity(localPage, validate_document_path([0, 0, 0]), RETIRED_QUID);
   await host.mutate((draft) => document(draft, "page").graph(remove_item()));
   const oldOwner = internal_livemap_aggregate_authority(map).identityEpoch().owner;
   await host.checkpoint();
@@ -390,10 +394,10 @@ await check("fresh-runtime local identity follows movement and explicit replacem
   const host = await create_persistent_locus_hosted_aggregate_internal({
     map, persistence: adapter, logicalMapId: "h4-lineage", incarnationId: "h4-lineage-incarnation",
   });
-  await host.mutate((draft) => document(draft, "page").graph(insert_item("000008307")));
+  await host.mutate((draft) => document(draft, "page").graph(insert_item()));
   await host.mutate((draft) => document(draft, "page").graph({
     domain: "graph", op: "insert-content", target: { kind: "path", path: validate_document_path([0, 0]) },
-    index: 1, content: { $_tag: "item", $_meta: { quid: "000008308" }, $_content: [] },
+    index: 1, content: { $_tag: "item", $_content: [] },
   }));
   await host.checkpoint();
   assert.equal(adapter.state(host.logicalMapId)?.checkpoint.rev, 2);

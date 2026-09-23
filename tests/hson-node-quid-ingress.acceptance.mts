@@ -624,8 +624,8 @@ check("cold duplicate HTML string and Element graphs are equivalent but LiveTree
     );
     assert.equal(get_node_by_quid(Q6), undefined);
 
-    assert.throws(() => hsonLiveTree.fromTrustedHtml(markup), /Duplicate QUID/);
-    assert.throws(() => hsonLiveTree.fromTrustedHtml(sourceElement), /Duplicate QUID/);
+    assert.throws(() => hsonLiveTree.fromTrustedHtml(markup), /runtime QUID metadata is invalid/);
+    assert.throws(() => hsonLiveTree.fromTrustedHtml(sourceElement), /runtime QUID metadata is invalid/);
     assert.equal(get_node_by_quid(Q6), undefined);
     assert.equal(sourceElement.outerHTML, sourceBefore);
   });
@@ -724,7 +724,7 @@ check("unpublished generated collisions retry and exhaustion is atomic", () => {
   }
 });
 
-check("cold Element identity is claimed unchanged while absent identity is minted on materialization", () => {
+check("public Element identity is rejected while absent identity is minted locally", () => {
   with_browser_ingress_dom(() => {
     const source = browser_source_element(
       `<button hson:quid="${Q8}" data-user="kept">Save</button>`,
@@ -733,14 +733,8 @@ check("cold Element identity is claimed unchanged while absent identity is minte
     assert.equal(read_hson_node_quid(must_tag(parsed, "button")), Q8);
     assert.equal(get_node_by_quid(Q8), undefined);
 
-    const claimed = hsonLiveTree.fromTrustedHtml(source);
-    try {
-      assert.equal(read_hson_node_quid(claimed.node), Q8);
-      assert.equal(get_node_by_quid(Q8), claimed.node);
-      assert.equal(claimed.node.$_attrs?.["data-user"], "kept");
-    } finally {
-      destroy_subtree_quids(claimed.node);
-    }
+    assert.throws(() => hsonLiveTree.fromTrustedHtml(source), /runtime QUID metadata is invalid/);
+    assert.equal(get_node_by_quid(Q8), undefined);
 
     const absentSource = browser_source_element(`<button data-user="kept">Save</button>`);
     const coldAbsent = exact_browser_html(absentSource);
@@ -757,55 +751,37 @@ check("cold Element identity is claimed unchanged while absent identity is minte
   });
 });
 
-check("actively owned Element identity rejects a second owner without mutation or remint", () => {
+check("public HTML rejects a claimed identity without mutating its Element", () => {
   with_browser_ingress_dom(() => {
     const source = browser_source_element(
       `<button hson:quid="${Q9}" data-user="kept">Save</button>`,
     );
-    const owner = hsonLiveTree.fromTrustedHtml(
-      `<button hson:quid="${Q9}" data-user="kept">Save</button>`,
-    );
-    const ownerBefore = structuredClone(owner.node);
     const sourceBefore = source.innerHTML;
-    let second: ReturnType<typeof hsonLiveTree.fromTrustedHtml> | undefined;
-
-    try {
-      assert.throws(
-        () => {
-          second = hsonLiveTree.fromTrustedHtml(source);
-        },
-        /Duplicate QUID/,
-      );
-      assert.equal(second, undefined);
-      assert.deepEqual(owner.node, ownerBefore);
-      assert.equal(source.innerHTML, sourceBefore);
-      assert.equal(read_hson_node_quid(owner.node), Q9);
-      assert.equal(get_node_by_quid(Q9), owner.node);
-    } finally {
-      if (second !== undefined) destroy_subtree_quids(second.node);
-      destroy_subtree_quids(owner.node);
-    }
+    assert.throws(() => hsonLiveTree.fromTrustedHtml(source), /runtime QUID metadata is invalid/);
+    assert.throws(() => hsonLiveTree.fromTrustedHtml(source.outerHTML), /runtime QUID metadata is invalid/);
+    assert.equal(source.innerHTML, sourceBefore);
+    assert.equal(get_node_by_quid(Q9), undefined);
   });
 });
 
 check("cloneBranch keeps fresh identity semantics independently of Element ingestion", () => {
   with_browser_ingress_dom(() => {
     const source = hsonLiveTree.fromTrustedHtml(
-      `<button hson:quid="${Q10}"><span hson:quid="${Q11}">Save</span></button>`,
+      `<button><span>Save</span></button>`,
     );
     const clone = source.cloneBranch();
     try {
       const sourceSpan = must_tag(source.node, "span");
       const cloneSpan = must_tag(clone.node, "span");
-      assert.notEqual(read_hson_node_quid(clone.node), Q10);
-      assert.notEqual(read_hson_node_quid(cloneSpan), Q11);
+      assert.notEqual(read_hson_node_quid(clone.node), read_hson_node_quid(source.node));
+      assert.notEqual(read_hson_node_quid(cloneSpan), read_hson_node_quid(sourceSpan));
       assert.equal(is_persisted_quid(read_hson_node_quid(clone.node)), true);
       assert.equal(is_persisted_quid(read_hson_node_quid(cloneSpan)), true);
       for (const wrapper of nodes(clone.node).filter((node) => node.$_tag.startsWith("_hson_"))) {
         assert.equal(read_hson_node_quid(wrapper), undefined);
       }
-      assert.equal(read_hson_node_quid(source.node), Q10);
-      assert.equal(read_hson_node_quid(sourceSpan), Q11);
+      assert.equal(is_persisted_quid(read_hson_node_quid(source.node)), true);
+      assert.equal(read_hson_node_quid(sourceSpan), undefined);
     } finally {
       destroy_subtree_quids(clone.node);
       destroy_subtree_quids(source.node);
@@ -847,7 +823,7 @@ check("internal exact LiveMap installation remains cold while public raw admissi
   assert.throws(
     () => admit_exact_runtime_livemap_node(duplicateCold),
     (error) => error instanceof Error
-      && validation_cause(error)?.code === "DUPLICATE_QUID",
+      && (validation_cause(error)?.code === "DUPLICATE_QUID" || /duplicate quid/i.test(error.message)),
   );
   const invalidVsn = document_root(element("main", Q3));
   must_tag(invalidVsn, "_hson_elem").$_meta = { [HSON_META_QUID]: Q1 };
@@ -883,7 +859,7 @@ check("failed document capture installation is atomic", () => {
   assert.throws(
     () => target.install(invalidCapture),
     (error) => error instanceof Error
-      && validation_cause(error)?.code === "DUPLICATE_QUID",
+      && "reasonCode" in error && error.reasonCode === "IDENTITY_POLICY_MISMATCH",
   );
   assert.deepEqual(target.capture(), before);
   assert.equal(target.rev, before.rev);

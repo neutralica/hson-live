@@ -8,7 +8,6 @@ import type { HsonNode } from "../src/core/types.ts";
 import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
 import { hsonMirror } from "../src/api/reflect/reflect.facade.ts";
 import {
-  DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
   DOCUMENT_REFLECT_DELEGATION_UNSUPPORTED_ERROR_CODE,
   DOCUMENT_REFLECT_STRUCTURAL_UPDATE_FAILED_ERROR_CODE,
   DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
@@ -88,7 +87,7 @@ check("nested raw insertion projects elements, QUID-less nodes, wrappers, and te
   const map = element(`<main @000000401 <a @000000402/> <b/> "tail"/>`);
   const binding = hsonMirror(map);
   const rootDom = mount(binding.tree.node);
-  map.document.content.insert(path(0), 1, projected_element(`<c @000000403 "inside"/>`));
+  map.document.content.insert(path(0), 1, projected_element('<c "inside"/>'));
   map.document.content.insert(path(0), 2, projected_element(`<d/>`));
   map.document.content.insert(path(0), 3, "middle");
   const wrapper = raw_node(binding.tree.node, [0]);
@@ -140,18 +139,18 @@ check("forward and backward moves preserve projected node, DOM, and local identi
   binding.dispose();
 });
 
-check("replace preserves compatible same-QUID roots and replaces incompatible roots", () => {
+check("replace preserves compatible path-lineage roots and replaces incompatible roots", () => {
   const map = element(`<main @000000407 <b @000000408 "old"/>/>`);
   const binding = hsonMirror(map);
   mount(binding.tree.node);
   const original = raw_node(binding.tree.node, [0, 0]);
   const originalDom = get_el_for_node(original);
-  map.document.content.replace(path(0), 0, projected_element(`<b @000000408 title="new" "next"/>`));
+  map.document.content.replace(path(0), 0, projected_element('<b title="new" "next"/>'), [{ source: validate_document_path([]), destination: validate_document_path([]) }]);
   assert.equal(raw_node(binding.tree.node, [0, 0]), original);
   assert.equal(get_el_for_node(original), originalDom);
   assert.equal(original.$_attrs?.title, "new");
 
-  map.document.content.replace(path(0), 0, projected_element(`<em @000000408/>`));
+  map.document.content.replace(path(0), 0, projected_element('<em/>'), [{ source: validate_document_path([]), destination: validate_document_path([]) }]);
   const incompatible = raw_node(binding.tree.node, [0, 0]);
   assert.notEqual(incompatible, original);
   assert.notEqual(get_el_for_node(incompatible), originalDom);
@@ -175,14 +174,13 @@ check("replace projects text-wrapper/node transitions and primitive leaves at ex
   binding.dispose();
 });
 
-check("foreign global QUID ownership rejects insertion before projected mutation", () => {
+check("foreign generated QUID content rejects insertion before projected mutation", () => {
   create_livetree(projected_element(`<aside @000000414/>`));
   const map = element(`<main @000000415 <a/>/>`);
   const binding = hsonMirror(map);
   const before = structuredClone(binding.tree.node);
-  map.document.content.insert(path(0), 1, projected_element(`<aside @000000414/>`));
-  assert.equal(binding.status, "failed");
-  assert.equal(binding.failure?.code, DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE);
+  assert.throws(() => map.document.content.insert(path(0), 1, projected_element(`<aside @000000414/>`)), /QUID|identity|portable/i);
+  assert.equal(binding.status, "active");
   assert.deepEqual(binding.tree.node, before);
   assert.equal(binding.sourceRevision, 0);
   binding.dispose();
@@ -264,7 +262,7 @@ check("failed structural replacement disposes the disconnected old owned subtree
   const displacedTree = create_livetree(displaced).adoptRoots(binding.tree.hostRootNode());
   rootDom.failReplace = true;
 
-  const commit = map.document.content.replace(path(0), 0, projected_element(`<b @000000420/>`));
+  const commit = map.document.content.replace(path(0), 0, projected_element('<b/>'));
   assert.equal(commit.changed, true);
   assert.equal(map.rev, 1);
   assert.equal(raw_node(projected_element_from_map(map), [0, 0]).$_tag, "b");

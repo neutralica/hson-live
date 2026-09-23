@@ -13,8 +13,7 @@ import {
 } from "../src/_tests/diagnostics-internal.ts";
 import {
   LiveMapDocumentIdentityRegistrationError,
-  LiveMapDocumentMutationError,
-  LiveMapDocumentStagingError,
+  LiveMapReplayInputError,
 } from "../src/api/livemap/livemap.error.ts";
 import {
   LIVEMAP_DOCUMENT_QUID_MINT_RETRY_LIMIT,
@@ -176,65 +175,64 @@ check("missing exact correspondence rejects a stale linked handle", () => {
   binding.tree.remove();
 });
 
-check("different existing canonical QUID rejects replay atomically", () => {
+check("public replay rejects identity overwrite atomically", () => {
   const map = element(`<main @${Q1}/>`);
   const before = map.capture();
-  assert.throws(() => map.replay(replay(0, [ensure(path(), Q2)])), LiveMapDocumentStagingError);
+  assert.throws(() => map.replay(replay(0, [ensure(path(), Q2)])), LiveMapReplayInputError);
   assert.deepEqual(map.capture(), before);
 });
 
-check("malformed replayed QUID rejects atomically", () => {
+check("malformed public identity replay rejects atomically", () => {
   const map = element(`<main/>`);
-  assert.throws(() => map.replay(replay(0, [ensure(path(), "bad")])), LiveMapDocumentStagingError);
+  assert.throws(() => map.replay(replay(0, [ensure(path(), "bad")])), LiveMapReplayInputError);
   assert.equal(map.rev, 0);
 });
 
-check("replayed canonical collision rejects atomically", () => {
+check("public replay rejects identity collision atomically", () => {
   const map = element(`<main <a @${Q1}/> <b/>/>`);
-  assert.throws(() => map.replay(replay(0, [ensure(path(0, 1), Q1)])), LiveMapDocumentStagingError);
+  assert.throws(() => map.replay(replay(0, [ensure(path(0, 1), Q1)])), LiveMapReplayInputError);
   assert.equal(raw_node(map.root(), [0, 1]).$_meta?.quid, undefined);
 });
 
-check("two registrations in one replay transaction remain distinct", () => {
+check("two local acquisitions remain distinct without a replay commit", () => {
   const { map, binding } = reflected(`<main <a/> <b/>/>`);
-  map.replay(replay(0, [ensure(path(0, 0), Q1), ensure(path(0, 1), Q2)]));
-  assert.equal(map.rev, 1);
+  set_livemap_document_quid_candidate_source_for_tests(map.document, source(Q1, Q2));
+  assert.equal(binding.tree.find.byTag("a")!.quid, Q1);
+  assert.equal(binding.tree.find.byTag("b")!.quid, Q2);
+  assert.equal(map.rev, 0);
   assert.equal(_livetree_runtime_test_claim_count(runtime), 2);
   assert.notEqual(raw_node(binding.tree.node, [0, 0]).$_meta?.quid, raw_node(binding.tree.node, [0, 1]).$_meta?.quid);
   close(binding);
 });
 
-check("registration followed by move maps QUID to the final path", () => {
+check("local acquisition followed by move maps QUID to the final path", () => {
   const { map, binding } = reflected(`<main <a/> <b/>/>`);
   const moved = raw_node(binding.tree.node, [0, 0]);
-  map.replay(replay(0, [
-    ensure(path(0, 0), Q1),
-    { domain: "graph", op: "move-content", target: path(0), from: 0, to: 1 },
-  ]));
+  set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
+  assert.equal(binding.tree.find.byTag("a")!.quid, Q1);
+  map.document.content.move(path(0), 0, 1);
   assert.equal(raw_node(binding.tree.node, [0, 1]), moved);
   assert.equal(map.document.byQuid(Q1)?.$_tag, "a");
   close(binding);
 });
 
-check("move followed by registration resolves the staged moved path", () => {
+check("move followed by local acquisition resolves the moved path", () => {
   const { map, binding } = reflected(`<main <a/> <b/>/>`);
   const moved = raw_node(binding.tree.node, [0, 0]);
-  map.replay(replay(0, [
-    { domain: "graph", op: "move-content", target: path(0), from: 0, to: 1 },
-    ensure(path(0, 1), Q1),
-  ]));
+  map.document.content.move(path(0), 0, 1);
+  set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
+  assert.equal(binding.tree.find.byTag("a")!.quid, Q1);
   assert.equal(_lookup_livetree_runtime_test_node(runtime, Q1), moved);
   assert.equal(raw_node(binding.tree.node, [0, 1]).$_meta?.quid, Q1);
   close(binding);
 });
 
-check("registration followed by removal publishes no retired runtime claim", () => {
+check("local acquisition followed by removal publishes no retired runtime claim", () => {
   const { map, binding } = reflected(`<main <a/> <b/>/>`);
   const removed = raw_node(binding.tree.node, [0, 0]);
-  map.replay(replay(0, [
-    ensure(path(0, 0), Q1),
-    { domain: "graph", op: "remove-content", target: path(0), index: 0 },
-  ]));
+  set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
+  assert.equal(binding.tree.find.byTag("a")!.quid, Q1);
+  map.document.content.remove(path(0), 0);
   assert.equal(map.document.byQuid(Q1), undefined);
   assert.equal(_lookup_livetree_runtime_test_node(runtime, Q1), undefined);
   assert.equal(_is_livetree_node_disposed(removed), true);
@@ -247,7 +245,7 @@ check("failed later staged operation preserves batch atomicity", () => {
   assert.throws(() => map.replay(replay(0, [
     ensure(path(0, 0), Q1),
     { domain: "graph", op: "remove-content", target: path(0), index: 99 },
-  ])), LiveMapDocumentStagingError);
+  ])), LiveMapReplayInputError);
   assert.deepEqual(map.capture(), before);
   assert.equal(_livetree_runtime_test_claim_count(runtime), 0);
   close(binding);
@@ -277,20 +275,19 @@ check("descendant preflight retains exact projected node", () => {
 
 check("same candidate can be used after a failed canonical transition", () => {
   const map = element(`<main/>`);
-  assert.throws(() => map.replay(replay(0, [ensure(path(), Q1), ensure(path(), Q2)])), LiveMapDocumentStagingError);
+  assert.throws(() => map.replay(replay(0, [ensure(path(), Q1), ensure(path(), Q2)])), LiveMapReplayInputError);
   const binding = _reflect_document_for_runtime_test(runtime, map);
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
   assert.equal(authoredRoot(binding).quid, Q1);
   close(binding);
 });
 
-check("different existing QUID is classified explicitly by the reducer", () => {
+check("public replay rejects a different QUID before the identity reducer", () => {
   const map = element(`<main @${Q1}/>`);
   assert.throws(
     () => map.replay(replay(0, [ensure(path(), Q2)])),
-    (cause: unknown) => cause instanceof LiveMapDocumentStagingError
-      && cause.cause instanceof LiveMapDocumentMutationError
-      && cause.cause.code === "DOCUMENT_IDENTITY_DIFFERENT",
+    (cause: unknown) => cause instanceof LiveMapReplayInputError
+      && cause.reasonCode === "INVALID_REPLAY_ENVELOPE",
   );
 });
 

@@ -6,9 +6,10 @@ import {
   hsonLocus,
   type HsonSchema,
 } from "../src/index.ts";
-import { validate_document_path, type LiveMapMultiLibraryCommit } from "../src/api/livemap/index.ts";
+import { install_libraries_snapshot, validate_document_path, type LiveMapMultiLibraryCommit } from "../src/api/livemap/index.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.identity-epoch.ts";
+import { decode_hosted_root, encode_hosted_root } from "../src/api/livemap/livemap.hosted.ts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -73,6 +74,40 @@ check("fromLibraries establishes fixed named data and document Libraries", () =>
   assert.equal("add" in map.lib, false);
   assert.equal("create" in map.lib, false);
   assert.equal("library" in map, false);
+});
+
+check("public aggregate snapshot transfers state and revision without generated identity", () => {
+  const source = create_map();
+  const sourceAuthority = internal_livemap_aggregate_authority(source);
+  const page = sourceAuthority.libraries()[2];
+  if (page === undefined) throw new Error("Expected page Library");
+  const quid = "00004c001";
+  sourceAuthority.acquireLocalDocumentIdentity(page, validate_document_path([0]), quid);
+  source.lib("state").at(["count"]).set(3);
+  assert.equal(livemap_identity_epoch_accounting(source.lib("page")).issued, 1);
+  const snapshot = source.capture();
+  assert.equal("identity" in snapshot, false);
+  assert.equal(JSON.stringify(snapshot).includes(quid), false);
+  const received = install_libraries_snapshot(snapshot).map;
+  assert.equal(received.rev, source.rev);
+  const receivedState = received.lib("state");
+  const receivedPage = received.lib("page");
+  if (!("snap" in receivedState) || !("document" in receivedPage)) throw new Error("Installed registry modes changed");
+  assert.deepEqual(receivedState.snap(), source.lib("state").snap());
+  assert.equal(receivedPage.document.byQuid(quid), undefined);
+  assert.equal(livemap_identity_epoch_accounting(receivedPage).issued, 0);
+  assert.notEqual(internal_livemap_aggregate_authority(received).identityEpoch().owner, sourceAuthority.identityEpoch().owner);
+
+  assert.throws(() => install_libraries_snapshot({ ...snapshot, identity: { epoch: 0, issuedQuids: [quid] } } as never));
+  const pageEntry = snapshot.libraries[2];
+  if (pageEntry === undefined) throw new Error("Expected captured page");
+  const root = decode_hosted_root(pageEntry.root);
+  const main = root.$_content[0];
+  if (!is_Node(main)) throw new Error("Expected page element");
+  main.$_meta = { quid };
+  const tampered = { ...snapshot, libraries: snapshot.libraries.map((entry, index) =>
+    index === 2 ? { ...entry, root: encode_hosted_root(root) } : entry) };
+  assert.throws(() => install_libraries_snapshot(tampered), /runtime QUID metadata is invalid/);
 });
 
 check("named registry construction preserves selection and atomic commits in either declaration order", () => {

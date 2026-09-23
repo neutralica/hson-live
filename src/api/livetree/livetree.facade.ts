@@ -2,9 +2,9 @@ import type { GraftConstructor } from "../../types/constructor.types.js";
 import type { JsonValue } from "../../core/types.js";
 import type { HsonNode } from "../../types/node.types.js";
 import { UNSAFE_TRANSFORM_SOURCE } from "../transform/transform.browser.js";
-import { parse_html_exact_runtime } from "../transform/parsers/parse-html.js";
-import { parse_external_html_exact_runtime } from "../transform/parsers/parse-external-html.transform.js";
-import { is_svg_markup, node_from_svg_exact_runtime } from "../transform/utils/node-utils/node-from-svg.js";
+import { parse_html } from "../transform/parsers/parse-html.js";
+import { parse_external_html } from "../transform/parsers/parse-external-html.transform.js";
+import { is_svg_markup, node_from_svg } from "../transform/utils/node-utils/node-from-svg.js";
 import { make_branch_from_node } from "./creation/create-branch.js";
 import { graft } from "./creation/graft.js";
 import { make_detached_livetree_create } from "./creation/make-detached-livetree.js";
@@ -19,7 +19,7 @@ type LiveTreeConstructionOptions = Readonly<{ isolated?: boolean }>;
 export const hsonLiveTree = Object.freeze({
   fromUntrustedHtml(input: string | Element): LiveTree {
     return make_branch_from_node(
-      parse_external_html_exact_runtime(typeof input === "string" ? input : input.outerHTML),
+      parse_external_html(typeof input === "string" ? input : input.outerHTML),
       { quidGraphValidated: true },
     );
   },
@@ -27,10 +27,10 @@ export const hsonLiveTree = Object.freeze({
     const source = typeof input === "string" ? input : input.outerHTML;
     const svg = is_svg_markup(source.trimStart());
     const node = svg
-      ? node_from_svg_exact_runtime(typeof input === "string"
+      ? node_from_svg(typeof input === "string"
         ? new DOMParser().parseFromString(input, "image/svg+xml").documentElement
         : input)
-      : parse_html_exact_runtime(input);
+      : parse_html(input);
     return make_branch_from_node(
       node,
       { quidGraphValidated: true },

@@ -10,7 +10,6 @@ import type {
   HostedLiveMapLibrariesSnapshot,
   HostedClientLibrariesSnapshot,
   LiveMapLibrariesSnapshot,
-  LocalLibrariesContinuationSnapshot,
   LiveMapLibrariesInput,
   LiveMapLibraryInput,
   LiveMapLibraryOperation,
@@ -38,6 +37,7 @@ import type { OrderedProjectedValue } from "../../core/ordered-projected-value.j
 import { ordered_projected_value_at } from "../../core/ordered-projected-value-mutation.js";
 import { hsonTransform } from "../transform/transform.facade.js";
 import { parse_hson } from "../transform/parsers/parse-hson.js";
+import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 import { clone_live_path } from "./livemap.path.js";
 import { must_json_value, must_live_path } from "./livemap.guard.js";
 import {
@@ -64,9 +64,9 @@ import { register_livemap_identity_epoch_owner } from "./livemap.identity-epoch.
 import {
   assert_libraries_snapshot_bound,
   assert_libraries_snapshot_shape,
-  assert_local_libraries_snapshot_shape,
   assert_hosted_libraries_snapshot_shape,
   hosted_client_snapshot_as_local,
+  make_hosted_client_snapshot,
   decode_hosted_root,
 } from "./livemap.hosted.js";
 import { node_to_json_value } from "./livemap.editor.js";
@@ -212,8 +212,7 @@ export function make_livemap_hosted_mirror_from_snapshot_internal(
 ): LiveMapLibraries {
   assert_hosted_libraries_snapshot_shape(snapshot);
   assert_libraries_snapshot_bound(snapshot);
-  const semantic = semantic_snapshot(snapshot);
-  return make_livemap_mirror_from_snapshot_internal(semantic, snapshot);
+  return make_livemap_client_mirror_from_snapshot_internal(make_hosted_client_snapshot(snapshot));
 }
 
 /** Construct an Echo replica from QUID-free client state and its protocol fence. */
@@ -228,18 +227,16 @@ export function make_livemap_client_mirror_from_snapshot_internal(
 
 /** Install one detached complete aggregate semantic cut into a fresh runtime domain. */
 export function install_libraries_snapshot(
-  snapshot: LiveMapLibrariesSnapshot | LocalLibrariesContinuationSnapshot,
+  snapshot: LiveMapLibrariesSnapshot,
 ): Readonly<{ map: LiveMapLibraries }> {
   return Object.freeze({ map: make_livemap_mirror_from_snapshot_internal(snapshot) });
 }
 
 /** @internal Shared exact aggregate decoder/installer used by local and hosted installation. */
 export function make_livemap_mirror_from_snapshot_internal(
-  snapshot: LiveMapLibrariesSnapshot | LocalLibrariesContinuationSnapshot,
-  hosted?: HostedLiveMapLibrariesSnapshot,
+  snapshot: LiveMapLibrariesSnapshot,
 ): LiveMapLibraries {
-  if ("identity" in snapshot) assert_libraries_snapshot_shape(snapshot);
-  else assert_local_libraries_snapshot_shape(snapshot);
+  assert_libraries_snapshot_shape(snapshot);
   assert_libraries_snapshot_bound(snapshot);
   if (snapshot.registryDigest !== snapshot.registry.digest
     || snapshot.libraries.length !== snapshot.registry.libraries.length) {
@@ -259,6 +256,7 @@ export function make_livemap_mirror_from_snapshot_internal(
       throw new Error("LiveMap Libraries snapshot Library metadata is malformed.");
     }
     const root = decode_hosted_root(library.root);
+    admit_portable_hson_node(root, "LiveMap Libraries snapshot");
     if (registry.scope === "hson-internal") {
       systems.push(Object.freeze({
         key: registry.name,
@@ -275,23 +273,8 @@ export function make_livemap_mirror_from_snapshot_internal(
 
   const mirror = make_livemap_libraries(inputs, systems);
   const aggregate = internal_livemap_aggregate_authority(mirror);
-  if (hosted === undefined) {
-    if ("identity" in snapshot) aggregate.restoreLibraries(snapshot);
-    else aggregate.restorePortableLibraries(snapshot);
-  }
-  else aggregate.restoreHosted(hosted);
+  aggregate.restorePortableLibraries(snapshot);
   return mirror;
-}
-
-function semantic_snapshot(snapshot: HostedLiveMapLibrariesSnapshot): LiveMapLibrariesSnapshot {
-  return Object.freeze({
-    format: snapshot.format,
-    revision: snapshot.revision,
-    registry: snapshot.registry,
-    registryDigest: snapshot.registryDigest,
-    libraries: snapshot.libraries,
-    identity: snapshot.identity,
-  });
 }
 
 function make_data_library(

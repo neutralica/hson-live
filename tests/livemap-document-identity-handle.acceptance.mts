@@ -6,6 +6,7 @@ import { acquire_document_identity } from "./helpers/livemap-identity-internal.m
 import type { HsonNode } from "../src/core/types.ts";
 import type { DocumentLiveMap, LiveMapGraphCommit } from "../src/types/livemap.types.ts";
 import { set_livemap_document_quid_candidate_source_for_tests } from "../src/api/livemap/livemap.document.registration.ts";
+import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 
 const Q1 = "000002b01";
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -133,12 +134,15 @@ check("structurally equal replacement without identity still retires", () => {
   assert.equal(handle.active, false);
 });
 
-check("deliberate same-QUID replacement follows existing canonical continuity", () => {
+check("explicit path lineage preserves the local handle through replacement", () => {
   const { map, handle } = identified(`<main <a/>/>`, 0, 0);
   const replacement = handle.snap();
   if (replacement === undefined) throw new Error("missing replacement fixture");
   replacement.$_attrs = { replaced: true };
-  map.document.content.replace(target(0), 0, replacement);
+  delete replacement.$_meta;
+  map.document.content.replace(target(0), 0, replacement, [{
+    source: validate_document_path([]), destination: validate_document_path([]),
+  }]);
   assert.equal(handle.active, true);
   assert.equal(handle.snap()?.$_attrs?.replaced, true);
 });

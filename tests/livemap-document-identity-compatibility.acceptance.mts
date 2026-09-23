@@ -196,7 +196,7 @@ check("durable epoch replacement fences stale raw bytes from old handles", () =>
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
   const handle = acquire_document_identity(map.document, target());
   map.restore(element(`<article @${Q1}/>`).capture());
-  assert.equal(map.document.byQuid(Q1)?.$_tag, "article");
+  assert.equal(map.document.byQuid(Q1), undefined);
   assert.equal(handle.active, false);
 });
 

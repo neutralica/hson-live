@@ -92,7 +92,7 @@ function document_library(libraries: LiveMapLibraries, name: string) {
   return library;
 }
 
-function insert_item(quid = QUID) {
+function insert_item(quid?: string) {
   return {
     domain: "graph" as const,
     op: "insert-content" as const,
@@ -100,7 +100,7 @@ function insert_item(quid = QUID) {
     index: 0,
     content: {
       $_tag: "_hson_elem",
-      $_content: [{ $_tag: "item", $_meta: { quid }, $_content: [] }],
+      $_content: [{ $_tag: "item", ...(quid === undefined ? {} : { $_meta: { quid } }), $_content: [] }],
     },
   };
 }
@@ -152,7 +152,7 @@ await check("one managed action stages state, colors, and page behind one gate a
   assert.equal(map.rev, 1);
   assert.equal(map.lib("state").snap(["theme"]), "dark");
   assert.equal(map.lib("colors").snap(["accent"]), "#fff");
-  assert.equal(map.lib("page").document.byQuid(QUID)?.$_tag, "item");
+  assert.equal((page_item(map) as { $_tag?: string } | undefined)?.$_tag, "item");
   assert.equal(publications, 1);
   assert.equal(wires.length, 1);
 
@@ -266,7 +266,7 @@ await check("page Reflect receives structural work once while unrelated data onl
   server.dispose();
 });
 
-await check("internally issued QUID collisions and oversized live envelopes reject before aggregate acceptance", async () => {
+await check("supplied QUID content and oversized live envelopes reject before aggregate acceptance", async () => {
   const map = make_map();
   const authority = internal_livemap_aggregate_authority(map);
   const stateIdentity = authority.libraries()[0];
@@ -280,7 +280,7 @@ await check("internally issued QUID collisions and oversized live envelopes reje
   const before = authority.captureHosted();
   await assert.rejects(() => server.mutate((draft) => {
     document(draft, "page").graph(insert_item(QUID));
-  }), /collision/i);
+  }), /QUID|identity|portable/i);
   assert.deepEqual(authority.captureHosted(), before);
   await assert.rejects(() => server.mutate((draft) => data(draft, "state").at(["theme"]).set("dark")), /byte limit/i);
   assert.deepEqual(authority.captureHosted(), before);

@@ -10,6 +10,7 @@ import {
 import { is_Node, is_ordinary_element_node } from "../../../core/node-guards.js";
 import type { HsonNode, Primitive } from "../../../core/types.js";
 import { parse_html_with_element_provenance } from "../../transform/parsers/parse-html.js";
+import { admit_portable_hson_node } from "../../transform/utils/hson-utils/quid-ingress.js";
 import { _throw_transform_err } from "../../transform/utils/sys-utils/throw-transform-err.utils.js";
 import { SVG_NS } from "../../transform/utils/node-utils/node-from-svg.js";
 import { LiveTree } from "../livetree.js";
@@ -364,6 +365,7 @@ export function graft(
 
   const parsed = parse_html_with_element_provenance(targetElement);
   const root = selected_root_node(targetElement, parsed.elements);
+  admit_portable_hson_node(root, "LiveTree.graft");
   if (contains_physical_hson_carrier(targetElement)) {
     throw new Error("graft cannot adopt physical _hson_* carrier Elements without replacing them.");
   }

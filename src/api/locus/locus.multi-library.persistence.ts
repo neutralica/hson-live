@@ -43,12 +43,9 @@ function set_initial_authority(
       "A hosted multi-library persistence identity may be set only before its first transition.",
     );
   }
-  aggregate.restoreHosted(Object.freeze({
-    ...snapshot,
-    authority: Object.freeze({
-      logicalMapId: logicalMapId ?? snapshot.authority.logicalMapId,
-      incarnationId: incarnationId ?? snapshot.authority.incarnationId,
-    }),
+  aggregate.restoreHosted(snapshot, Object.freeze({
+    logicalMapId: logicalMapId ?? snapshot.authority.logicalMapId,
+    incarnationId: incarnationId ?? snapshot.authority.incarnationId,
   }));
 }
 

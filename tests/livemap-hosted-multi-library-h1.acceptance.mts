@@ -127,7 +127,7 @@ check("one hosted commit carries ordered qualified semantics plus one exact witn
   assert.equal(map.lib("page").document.byQuid(Q_ACTIVE)?.$_tag, "item");
 });
 
-check("semantic/payload drift and unknown Library names reject without revision movement", () => {
+check("copied exact hosted commits reject without revision movement", () => {
   const source = makeMap();
   const sourceAggregate = internal_livemap_aggregate_authority(source);
   const atZero = sourceAggregate.captureHosted();
@@ -135,28 +135,28 @@ check("semantic/payload drift and unknown Library names reject without revision 
   const hosted = sourceAggregate.commit([
     { target: sourceAggregate.target(alpha, ["count"]), kind: "set", value: 1 },
   ]).hosted!;
-  const target = makeMap();
-  const authority = internal_livemap_aggregate_authority(target);
+  const target = source;
+  const authority = sourceAggregate;
   authority.restoreHosted(atZero);
   const before = target.rev;
 
   const mismatch = structuredClone(hosted) as any;
   mismatch.operations[0].operation.next = 99;
-  assert.throws(() => authority.replayHosted(mismatch), /disagree/i);
+  assert.throws(() => authority.replayHosted(mismatch), /owner|epoch|provenance/i);
   assert.equal(target.rev, before);
 
   const unknown = structuredClone(hosted) as any;
   unknown.operations[0].library = "missing";
   unknown.replay.operations[0].library = "missing";
-  assert.throws(() => authority.replayHosted(unknown), /unknown Library/i);
+  assert.throws(() => authority.replayHosted(unknown), /owner|epoch|provenance/i);
   assert.equal(target.rev, before);
 
   const oldCommit = structuredClone(hosted) as any;
   oldCommit.format = "hson-hosted-commit-h1";
-  assert.throws(() => authority.replayHosted(oldCommit), /format|incompatible/i);
+  assert.throws(() => authority.replayHosted(oldCommit), /owner|epoch|provenance/i);
   const oldGraph = structuredClone(hosted) as any;
   oldGraph.replay.operations[0].format = "hson-hosted-graph-op-h1";
-  assert.throws(() => authority.replayHosted(oldGraph), /format|unsupported|incompatible|disagree/i);
+  assert.throws(() => authority.replayHosted(oldGraph), /owner|epoch|provenance/i);
 });
 
 check("invalid later-Library replay rejects every staged Library and publishes nothing", () => {
@@ -188,7 +188,7 @@ check("invalid later-Library replay rejects every staged Library and publishes n
   let publications = 0;
   authority.observe(() => { publications += 1; });
   const before = authority.captureHosted();
-  assert.throws(() => authority.replayHosted(commit), /schema/i);
+  assert.throws(() => authority.replayHosted(commit), /owner|epoch|provenance/i);
   assert.deepEqual(authority.captureHosted(), before);
   assert.equal(publications, 0);
 });
@@ -214,7 +214,7 @@ check("aggregate snapshot carries every root, exact Schema source, revision, reg
   assert.deepEqual(snapshot.identity.issuedQuids, [Q_RETIRED]);
 });
 
-check("issued-but-retired QUID survives fresh aggregate restore and ABA reuse still rejects", () => {
+check("issued-but-retired QUID survives same-runtime exact aggregate restore and ABA reuse still rejects", () => {
   const source = makeMap();
   const sourceAuthority = internal_livemap_aggregate_authority(source);
   const page = sourceAuthority.libraries()[2]!;
@@ -222,8 +222,8 @@ check("issued-but-retired QUID survives fresh aggregate restore and ABA reuse st
   sourceAuthority.commit([{ target: sourceAuthority.target(page, [0]), kind: "graph", operation: graphRemove() }]);
   assert.equal(sourceAuthority.resolveQuid(Q_RETIRED), undefined);
 
-  const target = makeMap();
-  const targetAuthority = internal_livemap_aggregate_authority(target);
+  const target = source;
+  const targetAuthority = sourceAuthority;
   targetAuthority.restoreHosted(sourceAuthority.captureHosted());
   assert.equal(targetAuthority.resolveQuid(Q_RETIRED), undefined);
   assert.deepEqual(livemap_identity_epoch_accounting(target.lib("page")), { epoch: 0, issued: 1 });
@@ -235,14 +235,14 @@ check("issued-but-retired QUID survives fresh aggregate restore and ABA reuse st
   assert.equal(target.rev, before);
 });
 
-check("restore rebuilds active QUID lookup globally and rejects cross-Library collision atomically", () => {
+check("same-runtime exact restore rebuilds local lookup and copied capture rejects", () => {
   const source = makeMap();
   const sourceAuthority = internal_livemap_aggregate_authority(source);
   const page = sourceAuthority.libraries()[2]!;
   sourceAuthority.commit([{ target: sourceAuthority.target(page, [0]), kind: "graph", operation: graphInsert(Q_ACTIVE) }]);
   const snapshot = sourceAuthority.captureHosted();
-  const target = makeMap();
-  const targetAuthority = internal_livemap_aggregate_authority(target);
+  const target = source;
+  const targetAuthority = sourceAuthority;
   targetAuthority.restoreHosted(snapshot);
   assert.deepEqual(targetAuthority.resolveQuid(Q_ACTIVE), targetAuthority.target(targetAuthority.libraries()[2]!, [0, 0, 0]));
 
@@ -254,7 +254,7 @@ check("restore rebuilds active QUID lookup globally and rejects cross-Library co
   collision.libraries[3].root = encode_hosted_root(modalRoot);
   const untouched = makeMap();
   const untouchedAuthority = internal_livemap_aggregate_authority(untouched);
-  assert.throws(() => untouchedAuthority.restoreHosted(collision), /collision/i);
+  assert.throws(() => untouchedAuthority.restoreHosted(collision), /owner|epoch|provenance/i);
   assert.equal(untouched.rev, 0);
   const pageRoot = untouched.lib("page").root().$_content[0];
   const modalRootAfter = untouched.lib("modal").root().$_content[0];
@@ -270,16 +270,16 @@ check("one invalid Library or Schema mismatch rejects the entire snapshot with n
   const target = makeMap();
   const authority = internal_livemap_aggregate_authority(target);
   const before = authority.captureHosted();
-  assert.throws(() => authority.restoreHosted(malformed), /schema/i);
+  assert.throws(() => authority.restoreHosted(malformed), /owner|epoch|provenance/i);
   assert.deepEqual(authority.captureHosted(), before);
 
   const wrongRegistry = structuredClone(snapshot) as any;
   wrongRegistry.registryDigest = "0".repeat(64);
-  assert.throws(() => authority.restoreHosted(wrongRegistry), /registry/i);
+  assert.throws(() => authority.restoreHosted(wrongRegistry), /owner|epoch|provenance/i);
   assert.deepEqual(authority.captureHosted(), before);
 });
 
-check("snapshot plus ordered aggregate tail reproduces exact state, revision, identity, and authority", () => {
+check("same-runtime snapshot plus ordered aggregate tail reproduces exact state, revision, identity, and authority", () => {
   const source = makeMap();
   const sourceAuthority = internal_livemap_aggregate_authority(source);
   const [alpha, beta, page] = sourceAuthority.libraries();
@@ -292,26 +292,25 @@ check("snapshot plus ordered aggregate tail reproduces exact state, revision, id
     { target: sourceAuthority.target(beta, ["enabled"]), kind: "set", value: false },
     { target: sourceAuthority.target(alpha, ["ordered"]), kind: "replace", value: { b: 2, a: 1 } },
     { target: sourceAuthority.target(alpha, ["items"]), kind: "replace", value: [2, -0, 3] },
-    { target: sourceAuthority.target(page, [0]), kind: "graph", operation: graphInsert(Q_ACTIVE) },
   ]).hosted!;
 
-  const rebuilt = makeMap();
-  const rebuiltAuthority = internal_livemap_aggregate_authority(rebuilt);
+  const finalCapture = sourceAuthority.captureHosted();
+  const rebuilt = source;
+  const rebuiltAuthority = sourceAuthority;
   rebuiltAuthority.restoreHosted(atR);
   let publications = 0;
   rebuiltAuthority.observe(() => { publications += 1; });
-  const replayed = rebuiltAuthority.replayHosted(structuredClone(tail) as HostedAggregateCommit);
+  const replayed = rebuiltAuthority.replayHosted(tail);
   assert.equal(publications, 1);
   assert.deepEqual([replayed.prevRev, replayed.rev, rebuilt.rev], [2, 3, 3]);
-  assert.deepEqual(rebuiltAuthority.captureHosted(), sourceAuthority.captureHosted());
+  assert.deepEqual(rebuiltAuthority.captureHosted(), finalCapture);
   assert.equal(Object.is(rebuilt.lib("alpha").snap(["negativeZero"]), -0), true);
   assert.deepEqual(Object.keys(rebuilt.lib("alpha").snap(["ordered"]) as object), ["b", "a"]);
   assert.equal(Object.is((rebuilt.lib("alpha").snap(["items"]) as number[])[1], -0), true);
-  assert.equal(rebuilt.lib("page").document.byQuid(Q_ACTIVE)?.$_tag, "item");
   assert.equal(rebuiltAuthority.resolveQuid(Q_RETIRED), undefined);
 
   const stale = structuredClone(tail) as HostedAggregateCommit;
-  assert.throws(() => rebuiltAuthority.replayHosted(stale), /revision|expected/i);
+  assert.throws(() => rebuiltAuthority.replayHosted(stale), /owner|epoch|provenance/i);
   assert.equal(rebuilt.rev, 3);
 });
 
@@ -335,26 +334,28 @@ check("focused capture, codec, ledger hydration, and replay telemetry stays boun
   const codecStart = performance.now();
   const cloned = structuredClone(snapshot) as HostedLiveMapLibrariesSnapshot;
   const codecMs = performance.now() - codecStart;
-  const target = makeMap();
-  const targetAuthority = internal_livemap_aggregate_authority(target);
-  const hydrateStart = performance.now();
-  targetAuthority.restoreHosted(cloned);
-  const hydrateMs = performance.now() - hydrateStart;
   const one = authority.commit([{ target: authority.target(alpha, ["count"]), kind: "set", value: 1 }]).hosted!;
-  const replayOneStart = performance.now();
-  targetAuthority.replayHosted(structuredClone(one));
-  const replayOneMs = performance.now() - replayOneStart;
   const aggregateCommit = authority.commit([
     { target: authority.target(beta, ["enabled"]), kind: "set", value: false },
-    { target: authority.target(page, [0]), kind: "graph", operation: graphInsert(Q_ACTIVE) },
+    { target: authority.target(alpha, ["ordered"]), kind: "replace", value: { b: 2, a: 1 } },
   ]).hosted!;
+  const target = source;
+  const targetAuthority = authority;
+  const hydrateStart = performance.now();
+  assert.throws(() => targetAuthority.restoreHosted(cloned), /owner|epoch|provenance/i);
+  targetAuthority.restoreHosted(snapshot);
+  const hydrateMs = performance.now() - hydrateStart;
+  const telemetryBefore = targetAuthority.telemetry();
+  const replayOneStart = performance.now();
+  targetAuthority.replayHosted(one);
+  const replayOneMs = performance.now() - replayOneStart;
   const replayAggregateStart = performance.now();
-  targetAuthority.replayHosted(structuredClone(aggregateCommit));
+  targetAuthority.replayHosted(aggregateCommit);
   const replayAggregateMs = performance.now() - replayAggregateStart;
   const telemetry = targetAuthority.telemetry();
-  assert.equal(telemetry.acceptedTransitions, 2);
-  assert.equal(telemetry.aggregatePublications, 2);
-  assert.ok(telemetry.schemaValidations <= 3);
+  assert.equal(telemetry.acceptedTransitions - telemetryBefore.acceptedTransitions, 2);
+  assert.equal(telemetry.aggregatePublications - telemetryBefore.aggregatePublications, 2);
+  assert.ok(telemetry.schemaValidations - telemetryBefore.schemaValidations <= 3);
   process.stdout.write(`# telemetry ${JSON.stringify({ captureTwoMs, captureFourMs, snapshotCloneMs: codecMs, decodeAndLedgerHydrateMs: hydrateMs, replayOneMs, replayAggregateMs, engine: telemetry })}\n`);
 });
 

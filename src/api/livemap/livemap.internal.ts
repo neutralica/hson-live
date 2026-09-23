@@ -76,7 +76,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   captureHosted: () => HostedLiveMapLibrariesSnapshot;
   restoreLibraries: (snapshot: LiveMapLibrariesSnapshot) => void;
   restorePortableLibraries: (snapshot: LocalLibrariesContinuationSnapshot) => void;
-  restoreHosted: (snapshot: HostedLiveMapLibrariesSnapshot) => void;
+  restoreHosted: (snapshot: HostedLiveMapLibrariesSnapshot, authorityOverride?: import("./livemap.hosted.js").HostedAuthorityFence) => void;
   /** QUID-free network snapshot; installs a fresh local identity epoch. @internal */
   restoreClientHosted: (snapshot: import("../../types/livemap.types.js").HostedClientLibrariesSnapshot) => void;
   restoreClientHostedManaged: (owner: object, snapshot: import("../../types/livemap.types.js").HostedClientLibrariesSnapshot) => void;

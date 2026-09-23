@@ -43,6 +43,7 @@ import type { LiveMapGraphEnsureQuidOp } from "./livemap.identity.types.js";
 import type { LiveMapRuntimeIdentityParticipant } from "./livemap.runtime-identity.js";
 import { LiveMapDocumentMutationError } from "./livemap.error.js";
 import { clone_live_root } from "./livemap.editor.js";
+import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 import {
   build_livemap_document_identity_overlay,
   LiveMapDocumentIdentityError,
@@ -409,6 +410,9 @@ function prepare_replace_document_content(
 ): PreparedDocumentMutation<LiveMapGraphReplaceContentOp> {
   const operationName = "replace-content";
   const index = normalize_content_index(indexInput, operationName);
+  if (targetAuthority === "request" && is_Node(replacementInput)) {
+    admit_portable_hson_node(replacementInput, "LiveMap.document.content.replace");
+  }
   const replacement = clone_content(replacementInput, operationName);
   const root = clone_live_root(inputRoot);
   const preparedTarget = prepare_target(root, mode, overlay, targetInput, operationName, targetAuthority);
@@ -473,6 +477,9 @@ function prepare_insert_document_content(
 ): PreparedDocumentMutation<LiveMapGraphInsertContentOp> {
   const operationName = "insert-content";
   const index = normalize_content_index(indexInput, operationName);
+  if (targetAuthority === "request" && is_Node(contentInput)) {
+    admit_portable_hson_node(contentInput, "LiveMap.document.content.insert");
+  }
   const content = clone_content(contentInput, operationName);
   const root = clone_live_root(inputRoot);
   const preparedTarget = prepare_target(root, mode, overlay, targetInput, operationName, targetAuthority);
@@ -746,6 +753,26 @@ function reconcile_operation_identity(
     return Object.freeze({ overlay: next, effects: Object.freeze(effects) });
   }
   return reconcile_livemap_document_identity_overlay(overlay, effect);
+}
+
+/** Reject runtime identity on a caller-authored graph operation. */
+export function admit_public_document_graph_operation(operation: LiveMapGraphOp): void {
+  if (operation.op === "ensure-quid") {
+    throw new Error("Public graph operations cannot install generated identity.");
+  }
+  if (operation.op === "replace-root") {
+    if (is_Node(operation.root)) admit_portable_hson_node(operation.root, "LiveMap graph operation");
+    return;
+  }
+  if (operation.target?.witness !== undefined) {
+    throw new Error("Public graph operations cannot admit a QUID witness.");
+  }
+  if (operation.op === "insert-content" && is_Node(operation.content)) {
+    admit_portable_hson_node(operation.content, "LiveMap graph operation");
+  }
+  if (operation.op === "replace-content" && is_Node(operation.replacement)) {
+    admit_portable_hson_node(operation.replacement, "LiveMap graph operation");
+  }
 }
 
 /** Validate and plan one graph operation against a detached candidate root. */

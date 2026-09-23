@@ -16,9 +16,9 @@ import {
   _reflect_document_for_runtime_test,
 } from "../src/_tests/diagnostics-internal.ts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
+import { validate_document_path } from "../src/api/livemap/index.ts";
 import { get_el_for_node } from "../src/api/livetree/utils/node-map-helpers.ts";
 import {
-  DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
   DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
   DocumentMirrorError,
 } from "../src/api/reflect/reflect.document.error.ts";
@@ -132,75 +132,75 @@ check("move preserves tree-event and other resource ownership", () => {
   binding.dispose();
 });
 
-check("compatible same-QUID replacement preserves the exact root node", () => {
+check("compatible path-lineage replacement preserves the exact root node", () => {
   const map = element(`<main <a @${Q1} "old"/>/>`);
   const { binding } = reflected(map);
   const original = raw_node(binding.tree.node, [0, 0]);
-  map.document.content.replace(path(0), 0, projected_element(`<a @${Q1} title="new"/>`));
+  map.document.content.replace(path(0), 0, projected_element('<a title="new"/>'), [{ source: validate_document_path([]), destination: validate_document_path([]) }]);
   assert.equal(raw_node(binding.tree.node, [0, 0]), original);
   assert.equal(original.$_attrs?.title, "new");
   binding.dispose();
 });
 
-check("compatible same-QUID replacement preserves root DOM identity", () => {
+check("compatible path-lineage replacement preserves root DOM identity", () => {
   const map = element(`<main <a @${Q3}/>/` + `>`);
   const { binding } = reflected(map, documentRuntime);
   mount(binding.tree.node);
   const original = raw_node(binding.tree.node, [0, 0]);
   const dom = get_el_for_node(original);
-  map.document.content.replace(path(0), 0, projected_element(`<a @${Q3} title="new"/>`));
+  map.document.content.replace(path(0), 0, projected_element('<a title="new"/>'), [{ source: validate_document_path([]), destination: validate_document_path([]) }]);
   assert.equal(get_el_for_node(original), dom);
   binding.dispose();
 });
 
-check("differing-QUID replacement allocates a new projected node", () => {
+check("replacement without lineage allocates a new projected node", () => {
   const map = element(`<main <a @${Q1}/>/` + `>`);
   const { binding } = reflected(map);
   const original = raw_node(binding.tree.node, [0, 0]);
-  map.document.content.replace(path(0), 0, projected_element(`<a @${Q2}/>`));
+  map.document.content.replace(path(0), 0, projected_element('<a/>'));
   assert.notEqual(raw_node(binding.tree.node, [0, 0]), original);
   binding.dispose();
 });
 
-check("differing-QUID replacement terminally drains old resources", () => {
+check("replacement without lineage terminally drains old resources", () => {
   const map = element(`<main <a @${Q1}/>/` + `>`);
   const { runtime, binding } = reflected(map);
   let disposed = 0;
   _own_livetree_runtime_test_disposable(runtime, Q1, () => { disposed += 1; }, "other");
-  map.document.content.replace(path(0), 0, projected_element(`<a @${Q2}/>`));
+  map.document.content.replace(path(0), 0, projected_element('<a/>'));
   assert.equal(disposed, 1);
   assert.equal(_lookup_livetree_runtime_test_node(runtime, Q1), undefined);
   binding.dispose();
 });
 
-check("same-QUID replacement with a different tag does not reuse", () => {
+check("path-lineage replacement with a different tag does not reuse", () => {
   const map = element(`<main <a @${Q1}/>/` + `>`);
   const { binding } = reflected(map);
   const original = raw_node(binding.tree.node, [0, 0]);
-  map.document.content.replace(path(0), 0, projected_element(`<i @${Q1}/>`));
+  map.document.content.replace(path(0), 0, projected_element('<i/>'), [{ source: validate_document_path([]), destination: validate_document_path([]) }]);
   assert.notEqual(raw_node(binding.tree.node, [0, 0]), original);
   binding.dispose();
 });
 
-check("insertion admits the exact fresh projected subtree", () => {
+check("insertion admits a portable subtree without supplied identity", () => {
   const map = element(`<main "tail"/>`);
   const { binding } = reflected(map, documentRuntime);
-  map.document.content.insert(path(0), 0, projected_element(`<a @${Q2}/>`));
+  map.document.content.insert(path(0), 0, projected_element('<a/>'));
   const inserted = raw_node(binding.tree.node, [0, 0]);
   mount(binding.tree.node);
-  assert.equal(_lookup_livetree_runtime_test_node(documentRuntime, Q2), inserted);
-  assert.equal(get_el_for_node(inserted)?.getAttribute("hson:quid"), Q2);
+  assert.equal(inserted.$_tag, 'a');
+  assert.equal(get_el_for_node(inserted)?.tagName, 'a');
   binding.dispose();
 });
 
-check("insertion preserves runtime collision-aware admission", () => {
+check("insertion rejects supplied foreign runtime identity before mutation", () => {
   const map = element(`<main "tail"/>`);
   const runtime = _create_livetree_runtime_test_handle();
   _create_livetree_for_runtime_test(runtime, projected_element(`<aside @${Q1}/>`));
   const binding = _reflect_document_for_runtime_test(runtime, map);
-  map.document.content.insert(path(0), 0, projected_element(`<a @${Q1}/>`));
-  assert.equal(binding.status, "failed");
-  assert.equal(binding.failure?.code, DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE);
+  assert.throws(() => map.document.content.insert(path(0), 0, projected_element(`<a @${Q1}/>`)), /QUID|identity|portable/i);
+  assert.equal(binding.status, "active");
+  assert.equal(map.rev, 0);
   binding.dispose();
 });
 

@@ -34,7 +34,7 @@ try {
   check("browser local encoding matches Node byte-for-byte", encode_ssr_bootstrap(decodedLocalBootstrap.bootstrap) === state.encoded.local);
   const decodedLargeBootstrap = decode_ssr_bootstrap(state.encoded.largeHosted);
   check("browser larger encoding matches Node byte-for-byte", encode_ssr_bootstrap(state.largeHostedBootstrap) === state.encoded.largeHosted);
-  check("browser larger canonical decode is exact", decodedLargeBootstrap.kind === "hosted-document" && decodedLargeBootstrap.bootstrap.hson === state.largeHostedBootstrap.hson);
+  check("browser larger canonical decode is exact", decodedLargeBootstrap.kind === "hosted-document" && decodedLargeBootstrap.bootstrap.payload === state.largeHostedBootstrap.payload);
 
   const localRoot = document.querySelector("#local-ssr");
   check("application root is delivered in standards mode", document.compatMode === "CSS1Compat");
@@ -144,7 +144,10 @@ try {
   check("hosted element identity survives recovery", hostedRoot.firstElementChild === hostedParagraph);
   check("hosted text identity survives recovery", hostedParagraph.firstChild === hostedText);
   check("hosted N+1 mutation is reflected", hostedParagraph.getAttribute("data-recovered") === "yes");
-  await hostedContinuation.tree.find.must.byQuid("000005202").async.attrs.set("data-async", "accepted");
+  const hostedParagraphTree = hostedContinuation.tree.find.must.byTag("p");
+  const hostedLocalQuid = hostedParagraphTree.quid;
+  check("hosted browser identity is acquired locally", typeof hostedLocalQuid === "string" && hostedParagraph.getAttribute("hson:quid") === hostedLocalQuid);
+  await hostedParagraphTree.async.attrs.set("data-async", "accepted");
   check("AsyncLiveTree mutates after SSR continuation", hostedParagraph.getAttribute("data-async") === "accepted" && installed.map.rev === 2);
   hostedContinuation.dispose();
   echo.dispose();
@@ -188,7 +191,10 @@ try {
   }
   check("canonical hidden interactions activate after aggregate continuation", interactionCalls === 1);
   check("canonical authoritative interaction dispatches through Echo", librariesEcho.map.lib("state").snap(["count"]) === 5 && librariesInstalled.map.rev === state.libraries.bootstrap.revision + 2);
-  await librariesContinuation.tree.find.must.byQuid("000005203").async.attrs.set("data-async", "accepted");
+  const librariesButtonTree = librariesContinuation.tree.find.must.byTag("button");
+  const librariesLocalQuid = librariesButtonTree.quid;
+  check("aggregate browser identity is acquired locally", typeof librariesLocalQuid === "string" && librariesButton.getAttribute("hson:quid") === librariesLocalQuid);
+  await librariesButtonTree.async.attrs.set("data-async", "accepted");
   check("aggregate AsyncLiveTree uses the global revision", librariesButton.getAttribute("data-async") === "accepted" && librariesInstalled.map.rev === state.libraries.bootstrap.revision + 3);
   const action = await librariesEcho.action("state.increment");
   check("configured aggregate action remains operational", action.type === "ack" && librariesEcho.map.lib("state").snap(["count"]) === 2 && librariesInstalled.map.rev === state.libraries.bootstrap.revision + 4);

@@ -204,7 +204,9 @@ check("element reads and captures are recursively detached", () => {
   assert.equal(Object.hasOwn(capture, "version"), false);
   assert.equal(capture.mode, "document");
   assert.equal(capture.rev, beforeRev);
-  assert_fully_detached(rootCopy, capture.root);
+  assert_fully_detached(rootCopy, map.root());
+  assert_fully_detached(capture.root, map.capture().root);
+  assert.equal(JSON.stringify(capture.root).includes('"quid"'), false);
   mutate_graph(rootCopy);
   mutate_graph(capture.root);
   element.$_tag = "changed-element";
@@ -235,7 +237,7 @@ check("multiNodeDocument reads preserve repeated siblings and mixed content in o
   assert.equal(map.rev, 0);
 });
 
-check("document identity is sparse and preserves only explicitly persisted QUIDs", () => {
+check("local document identity is sparse while default capture omits it", () => {
   const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(
     `<main @000000001 <p "one"/> <p @000000005 "two"/>/>`,
     { allowTopLevelDocumentText: true },
@@ -249,7 +251,9 @@ check("document identity is sparse and preserves only explicitly persisted QUIDs
   assert.equal(paragraphs[1]?.$_meta?.["quid"], "000000005");
   assert.equal(paragraphs[0]?.$_meta?.["quid"], undefined);
   assert.deepEqual(second, first);
-  assert.deepEqual(map.capture().root, first);
+  const portable = map.capture().root;
+  assert.equal(find_nodes(portable, "main")[0]?.$_meta?.quid, undefined);
+  assert.equal(find_nodes(portable, "p")[1]?.$_meta?.quid, undefined);
   assert.equal(map.document.byQuid("000000001")?.$_tag, "main");
   assert.equal(map.document.byQuid("000000005")?.$_tag, "p");
   assert.equal(map.document.byQuid("unknown"), undefined);

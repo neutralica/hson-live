@@ -94,7 +94,7 @@ check("mounted DOM remains at n inside the pre-Reflection watch and converges af
   binding.dispose();
 });
 
-check("canonical QUID paths advance before runtime QUID correspondence", () => {
+check("local QUID retirement precedes Mirror runtime correspondence cleanup", () => {
   const oldQuid = "000008101";
   const nextQuid = "000008102";
   const map = element(`<main <a @${oldQuid}/>/` + `>`);
@@ -110,15 +110,16 @@ check("canonical QUID paths advance before runtime QUID correspondence", () => {
       runtimeNext: _lookup_livetree_runtime_test_node(runtime, nextQuid),
     };
   });
-  map.document.content.replace(path(0), 0, projected_element(`<b @${nextQuid}/>`));
+  map.document.content.replace(path(0), 0, projected_element('<b/>'));
   assert.deepEqual(seam, {
     canonicalOld: undefined,
-    canonicalNext: "b",
+    canonicalNext: undefined,
     runtimeOld: true,
     runtimeNext: undefined,
   });
   assert.equal(_lookup_livetree_runtime_test_node(runtime, oldQuid), undefined);
-  assert.equal(_lookup_livetree_runtime_test_node(runtime, nextQuid), raw_node(binding.tree.node, [0, 0]));
+  assert.equal(_lookup_livetree_runtime_test_node(runtime, nextQuid), undefined);
+  assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "b");
   binding.dispose();
 });
 

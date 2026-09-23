@@ -43,13 +43,11 @@ export function capture_livemap_projected(
   overlay: LiveMapProjectedIdentityOverlay,
   options?: LiveMapCaptureOptions,
 ): LiveMapCapture {
-  const category = options?.identity ?? "preserve-metadata";
-  if (category !== "same-epoch" && category !== "preserve-metadata" && category !== "strip") {
+  const category = options?.identity ?? "strip";
+  if (category !== "same-epoch" && category !== "strip") {
     throw new Error(`Unsupported data identity capture category ${JSON.stringify(category)}.`);
   }
-  const captureRoot = category === "strip"
-    ? clone_hson_graph_without_quids(root)
-    : clone_live_root(root);
+  const captureRoot = clone_hson_graph_without_quids(root);
   const transport = encode_projected_value_transport(projected);
   const capture = make_canonical_livemap_projected_capture(
     rev,
@@ -57,8 +55,8 @@ export function capture_livemap_projected(
     transport.payload,
     captureRoot,
   );
-  if (category !== "strip") captureIdentityOverlay.set(capture, overlay);
-  if (options !== undefined) {
+  if (category === "same-epoch") {
+    captureIdentityOverlay.set(capture, overlay);
     provenance.set(capture, Object.freeze({
       owner: controller.owner,
       epoch: controller.current(),
@@ -84,7 +82,7 @@ export function projected_capture_continuity(
   capture: object,
   options?: LiveMapRestoreOptions,
 ): "same-epoch" | "new-epoch" {
-  const policy = options?.identity ?? "preserve-metadata";
+  const policy = options?.identity ?? "reject";
   if (policy !== "same-epoch") return "new-epoch";
   const proof = provenance.get(capture);
   if (proof === undefined

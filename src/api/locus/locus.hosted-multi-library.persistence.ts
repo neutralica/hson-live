@@ -296,11 +296,11 @@ function set_initial_authority(
       "A hosted aggregate persistence identity may be set only before its first transition.",
     );
   }
-  const authority = Object.freeze({
+  const authorityOverride = Object.freeze({
     logicalMapId: logicalMapId ?? snapshot.authority.logicalMapId,
     incarnationId: incarnationId ?? snapshot.authority.incarnationId,
   });
-  aggregate.restoreHosted(Object.freeze({ ...snapshot, authority }));
+  aggregate.restoreHosted(snapshot, authorityOverride);
 }
 
 function make_durability_gate(

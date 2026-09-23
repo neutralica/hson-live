@@ -338,7 +338,7 @@ function map_from_snapshot(
       ));
     } else if (is_document_map(map)) {
       const capture = decode_locus_document_snapshot(snapshot);
-      map.restore(capture, { identity: "preserve-metadata" });
+      map.restore(capture, { identity: "strip" });
     } else {
       throw new Error("Locus bootstrap reconstructed an unsupported map mode.");
     }

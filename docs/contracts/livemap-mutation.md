@@ -196,7 +196,7 @@ ordinal i -> graph after ordinals 0..i-1
 
 Paths and content indexes are interpreted at their own ordinal. They are never silently rebased against `prevRev`.
 
-Live calls accept path-only `LiveMapDocumentRequestTarget` values. Stored graph operations use `LiveMapDocumentCommitTarget` (path plus an optional non-routing QUID witness). A witness can detect an active different QUID at the routed endpoint but cannot route, repair an invalid path, or prove epoch provenance. Raw-QUID request targeting is rejected.
+Live calls accept path-only `LiveMapDocumentRequestTarget` values. Current public replay is semantic: it rejects any supplied QUID witness, QUID-bearing graph content, or `ensure-quid` operation. Internal same-runtime history may retain a non-routing witness for stale-target diagnosis. Raw-QUID request targeting is rejected.
 
 ### Document operation matrix
 
@@ -209,7 +209,7 @@ Live calls accept path-only `LiveMapDocumentRequestTarget` values. Stored graph 
 | `replace-content` | Hson-node parent path; existing index | Old subtree at the slot is retired; siblings retain paths; replacement owns the slot | Exact canonical replacement is a no-op; invalid slot/content, identity, mode, path, or witness conflicts reject. |
 | `remove-content` | Hson-node parent path; existing index | Removed subtree retires; later siblings shift `-1` | A missing slot conflicts; a resulting document-mode change conflicts. |
 | `move-content` | Hson-node parent path; existing `from` and `to` | Moved subtree and descendants move to final index `to`; intervening siblings shift once | `from === to` is a no-op; malformed/out-of-range indexes conflict. |
-| legacy `ensure-quid` replay | Eligible ordinary-element path; recorded QUID | Admits historical canonical `$_meta.quid` without structural path change | Existing same QUID is an operation-level no-op; malformed, colliding, ineligible, or different-existing claims reject. Replay never allocates. New demand does not produce this operation. |
+| legacy `ensure-quid` | Internal historical path and recorded QUID | Bounded same-runtime history handling only | Public replay rejects it before graph mutation or identity reservation. New demand does not produce this operation. |
 | `replace-root` | No target; same document mode | Every old path retires and the supplied canonical root becomes authoritative | Exact root equality is a no-op at install; in replay it must be the sole operation and mode must match. |
 
 `move-content.to` is the final position after removal, not a pre-removal insertion boundary. Thus moving `1 -> 3` in `[a,b,c,d]` yields `[a,c,d,b]`, while `3 -> 1` yields `[a,d,b,c]`.
@@ -221,10 +221,10 @@ validates a path, stages the sparse overlay and issued ledger, preflights
 attached Mirror/LiveTree/DOM claims, and installs atomically. It does not
 change the canonical application graph, advance `map.rev`, or publish an
 application commit. No public LiveMap method requests it and callers cannot
-select a QUID. Historical document and projected `ensure-quid` commits remain
-readable for exact legacy replay. Their targets are path-authoritative and
-never accept a raw-QUID route. Replay validates the recorded value and never
-allocates.
+select a QUID. Historical document and projected `ensure-quid` records remain
+readable inside bounded internal history handling. Public replay rejects them,
+including copied historical commits; it never allocates or installs a supplied
+QUID.
 
 Identity acquisition is package-internal and accepts a path-only target, as do
 ordinary document mutations. This fence keeps raw QUID bytes from becoming

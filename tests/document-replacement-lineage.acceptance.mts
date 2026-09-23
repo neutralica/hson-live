@@ -113,18 +113,19 @@ check("lineage preserves sparse lifetimes without minting local QUIDs", () => {
   assert.equal(root.includes('"quid"'), false);
 });
 
-check("authority authoring derives descendant lineage from its own local QUID evidence", () => {
+check("authority authoring accepts explicit path lineage with portable replacement content", () => {
   const document = fixture("00000970");
-  const replacement = node("<article @000009701 <c @000009704/> <new/> <a @000009702/>/>");
-  const commit = document.document.content.replace(target, 0, replacement);
+  const replacement = node("<article <c/> <new/> <a/>/>");
+  const expected = [
+    lineage_entry([], []),
+    lineage_entry([0, 2], [0, 0]),
+    lineage_entry([0, 0], [0, 2]),
+  ];
+  const commit = document.document.content.replace(target, 0, replacement, expected);
   const operation = commit.ops[0];
   assert.equal(operation?.op, "replace-content");
   if (operation?.op !== "replace-content") throw new TypeError("Expected replacement operation.");
-  assert.deepEqual(operation.lineage, [
-    { source: [], destination: [] },
-    { source: [0, 2], destination: [0, 0] },
-    { source: [0, 0], destination: [0, 2] },
-  ]);
+  assert.deepEqual(operation.lineage, expected);
   assert.equal(document.document.byQuid("000009701")?.$_tag, "article");
   assert.equal(document.document.byQuid("000009703"), undefined);
 });
@@ -182,7 +183,7 @@ check("QUID-free replacement lineage carries an overlay-only local identity thro
   binding.dispose();
 });
 
-check("invalid lineage and conflicting exact-QUID oracle reject without state or ledger changes", () => {
+check("invalid lineage and supplied QUID claims reject without state or ledger changes", () => {
   const invalid: readonly unknown[] = [
     [{ source: [], destination: [] }, { source: [], destination: [0] }],
     [{ source: [], destination: [] }, { source: [0], destination: [] }],
@@ -202,7 +203,7 @@ check("invalid lineage and conflicting exact-QUID oracle reject without state or
   }
   const document = map("<main <a @000009501/>/>");
   const before = JSON.stringify(document.capture());
-  assert.throws(() => apply(document, node("<a @000009501/>"), []), /lineage/i);
+  assert.throws(() => apply(document, node("<a @000009501/>"), []), /runtime QUID metadata is invalid/i);
   assert.equal(JSON.stringify(document.capture()), before);
   assert.equal(document.rev, 0);
   const partialOracle = fixture("00000980");
@@ -210,7 +211,7 @@ check("invalid lineage and conflicting exact-QUID oracle reject without state or
   assert.throws(() => apply(partialOracle,
     node("<section @000009801 <c @000009804/> <new/> <a/>/>"),
     [lineage_entry([], []), lineage_entry([0, 2], [0, 0]), lineage_entry([0, 0], [0, 2])]),
-    /lineage/i);
+    /runtime QUID metadata is invalid/i);
   assert.equal(JSON.stringify(partialOracle.capture()), partialBefore);
   assert.equal(partialOracle.rev, 0);
   const collided = map("<main <a @000009711/> <outside @000009712/>/>");

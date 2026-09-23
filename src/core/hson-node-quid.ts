@@ -4,7 +4,7 @@ import { hson_metadata_policy } from "./hson-metadata.js";
 import { ensure_node_meta, prune_empty_node_meta } from "./node-storage.js";
 import type { HsonNode } from "./types.js";
 
-/** Canonical 45-bit persisted node identity. */
+/** Canonical 45-bit runtime-local subject identity. */
 export type PersistedQuid = string;
 
 export const PERSISTED_QUID_LENGTH = 9;
@@ -14,7 +14,7 @@ const PERSISTED_QUID_RANDOM_BYTE_LENGTH = 6;
 
 const PERSISTED_QUID_CHARS = new Set(PERSISTED_QUID_ALPHABET);
 
-/** True only for an already-canonical persisted QUID; this never normalizes. */
+/** True only for a canonical runtime QUID; this never normalizes. */
 export function is_persisted_quid(value: unknown): value is PersistedQuid {
   if (typeof value !== "string" || value.length !== PERSISTED_QUID_LENGTH) return false;
   for (const char of value) if (!PERSISTED_QUID_CHARS.has(char)) return false;
@@ -75,7 +75,7 @@ export class HsonNodeQuidValidationError extends Error {
   }
 }
 
-/** Generate one canonical 45-bit persisted QUID from secure random bytes. */
+/** Generate one canonical 45-bit runtime QUID from secure random bytes. */
 export function mint_hson_node_quid(): PersistedQuid {
   if (!globalThis.crypto?.getRandomValues) {
     throw new Error("secure QUID generation is unavailable");
@@ -99,7 +99,7 @@ export function assert_hson_node_quid_eligible(
 }
 
 /**
- * Read and validate persisted QUID metadata without consulting a consumer
+ * Read and validate local QUID metadata without consulting a consumer
  * registry. Clean VSNs report absence; QUID-bearing VSNs reject.
  */
 export function read_hson_node_quid(node: HsonNode): PersistedQuid | undefined {

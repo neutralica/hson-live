@@ -24,6 +24,20 @@ const check = (name, condition) => {
   results.push({ name, pass: Boolean(condition) });
   if (!condition) throw new Error(name);
 };
+const claimedElement = document.createElement("p");
+claimedElement.setAttribute("hson:quid", "000000991");
+for (const [name, create] of [
+  ["trusted string", () => hson.liveTree.fromTrustedHtml('<p hson:quid="000000991"/>')],
+  ["trusted Element", () => hson.liveTree.fromTrustedHtml(claimedElement)],
+  ["untrusted string", () => hson.liveTree.fromUntrustedHtml('<p hson:quid="000000991"/>')],
+  ["untrusted Element", () => hson.liveTree.fromUntrustedHtml(claimedElement)],
+]) {
+  let rejected = false;
+  try { create(); } catch (error) { rejected = error?.code === "PORTABLE_RUNTIME_QUID_FORBIDDEN"; }
+  check(`public LiveTree ${name} rejects supplied QUID`, rejected);
+}
+const standalone = hson.liveTree.fromTrustedHtml("<p/>");
+check("standalone LiveTree mints local identity after portable HTML construction", /^[-0-9a-z]{9}$/.test(standalone.quid));
 const path = (...parts) => ({ kind: "path", path: [0, ...parts] });
 const documentMap = (source) => {
   const map = hson.liveMap.fromHson(source);
@@ -154,9 +168,9 @@ try {
   check("path-addressed move retains adopted DOM without SSR QUID markup",
     movingRoot.lastElementChild === movingParagraph && movingParagraph.firstChild === movingText
     && movingContinuation.reflect.status === "active");
-  const localReplacement = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(`<p @000000780 title="replaced" "move"/>`, { allowTopLevelDocumentText: true })).at([]).snap();
-  movingMap.document.content.replace(path(0), 1, localReplacement);
-  check("same runtime QUID replacement keeps the adopted Element",
+  const localReplacement = documentMap(`<p title="replaced" "move"/>`).at([]).snap();
+  movingMap.document.content.replace(path(0), 1, localReplacement, [{ source: [], destination: [] }]);
+  check("same-runtime path lineage replacement keeps the adopted Element",
     movingRoot.lastElementChild === movingParagraph && movingParagraph.getAttribute("title") === "replaced"
     && movingContinuation.reflect.status === "active");
   movingContinuation.dispose();
@@ -184,10 +198,10 @@ try {
     && browserParagraph.firstChild === browserText && browserParagraph.getAttribute("hson:quid") === browserQuid
     && browserContinuation.reflect.status === "active");
   browserMap.document.content.replace(path(0), 1, {
-    $_tag: "p", $_meta: { quid: browserQuid }, $_attrs: { title: "same browser subject" },
+    $_tag: "p", $_attrs: { title: "same browser subject" },
     $_content: [{ $_tag: "_hson_elem", $_content: [stringLeaf("local move")] }],
-  });
-  check("same browser QUID replacement retains adopted Element", browserRoot.lastElementChild === browserParagraph
+  }, [{ source: [], destination: [] }]);
+  check("same browser subject lineage replacement retains adopted Element", browserRoot.lastElementChild === browserParagraph
     && browserParagraph.getAttribute("title") === "same browser subject" && browserContinuation.reflect.status === "active");
   browserMap.document.content.replace(path(0), 1, {
     $_tag: "p", $_attrs: { title: "new browser subject" },
@@ -523,6 +537,18 @@ try {
   check("hosted disposal borrows Echo", echo.session.status === "attached" && echo.recovery.status === "caught_up");
   echo.dispose();
   browserSocket.dispose();
+
+  claimedElement.id = "foreign-graft-identity";
+  document.body.append(claimedElement);
+  let graftRejected = false;
+  try { hson.liveTree.queryDom("#foreign-graft-identity").graft(); }
+  catch (error) { graftRejected = error?.code === "PORTABLE_RUNTIME_QUID_FORBIDDEN"; }
+  check("public DOM graft rejects foreign QUID before runtime adoption", graftRejected);
+  claimedElement.removeAttribute("hson:quid");
+  const grafted = hson.liveTree.queryDom("#foreign-graft-identity").graft();
+  check("QUID-free DOM graft owns a local identity", /^[-0-9a-z]{9}$/.test(grafted.quid));
+  check("already-owned DOM graft retains same-runtime identity", hson.liveTree.queryDom("#foreign-graft-identity").graft().quid === grafted.quid);
+  claimedElement.remove();
 
   document.documentElement.dataset.status = "pass";
   document.documentElement.dataset.detail = `${results.length}/${results.length}`;

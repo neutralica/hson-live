@@ -137,58 +137,57 @@ check("canonical target path values are frozen", () => {
   assert.equal(operation.target.witness, undefined);
 });
 
-check("matching active witness validates but the path performs routing", () => {
+check("matching active witness is rejected by public replay", () => {
   const map = multiNodeDocument(`<a @${Q1}/> <guard/>`);
-  rawReplay(map, [{
-    domain: "graph", op: "set-attr", target: commitTarget([0], Q1), name: "id", value: "matched",
-  }]);
-  assert.equal(map.document.attrs.get({ kind: "path", path: [0] }, "id"), "matched");
-});
-
-check("active different QUID reports a structured stale-identity conflict", () => {
-  const map = multiNodeDocument(`<a @${Q2}/> <guard/>`);
   assert.throws(() => rawReplay(map, [{
-    domain: "graph", op: "set-attr", target: commitTarget([0], Q1), name: "id", value: "bad",
-  }]), (error: unknown) => error instanceof LiveMapDocumentStagingError
-    && error.reasonCode === "DOCUMENT_WITNESS_MISMATCH"
-    && error.opIndex === 0);
+    domain: "graph", op: "set-attr", target: commitTarget([0], Q1), name: "id", value: "matched",
+  }]), /QUID witness/i);
+  assert.equal(map.document.attrs.get({ kind: "path", path: [0] }, "id"), undefined);
   assert.equal(map.rev, 0);
 });
 
-check("missing witness evidence does not block path-authoritative replay", () => {
+check("active different QUID witness is rejected by public replay", () => {
+  const map = multiNodeDocument(`<a @${Q2}/> <guard/>`);
+  assert.throws(() => rawReplay(map, [{
+    domain: "graph", op: "set-attr", target: commitTarget([0], Q1), name: "id", value: "bad",
+  }]), /QUID witness/i);
+  assert.equal(map.rev, 0);
+});
+
+check("path-authoritative replay needs no witness evidence", () => {
   const map = multiNodeDocument(`<a/> <guard/>`);
   rawReplay(map, [{
-    domain: "graph", op: "set-attr", target: commitTarget([0], Q1), name: "id", value: "identity-free",
+    domain: "graph", op: "set-attr", target: commitTarget([0]), name: "id", value: "identity-free",
   }]);
   assert.equal(map.document.attrs.get({ kind: "path", path: [0] }, "id"), "identity-free");
 });
 
-check("a witness found elsewhere never reroutes a valid unquidded path", () => {
+check("a witness found elsewhere is rejected without rerouting", () => {
   const map = multiNodeDocument(`<a/> <b @${Q1}/>`);
-  rawReplay(map, [{
+  assert.throws(() => rawReplay(map, [{
     domain: "graph", op: "set-attr", target: commitTarget([0], Q1), name: "id", value: "path-wins",
-  }]);
-  assert.equal(map.document.attrs.get({ kind: "path", path: [0] }, "id"), "path-wins");
+  }]), /QUID witness/i);
+  assert.equal(map.document.attrs.get({ kind: "path", path: [0] }, "id"), undefined);
   assert.equal(map.document.attrs.get({ kind: "path", path: [1] }, "id"), undefined);
 });
 
-check("an invalid path is not repaired by a matching witness elsewhere", () => {
+check("an invalid path is rejected without identity routing", () => {
   const map = multiNodeDocument(`<a @${Q1}/> <guard/>`);
   assert.throws(() => rawReplay(map, [{
-    domain: "graph", op: "set-attr", target: commitTarget([9], Q1), name: "id", value: "bad",
+    domain: "graph", op: "set-attr", target: commitTarget([9]), name: "id", value: "bad",
   }]), (error: unknown) => error instanceof LiveMapDocumentStagingError
     && error.reasonCode === "DOCUMENT_PATH_OUT_OF_RANGE");
 });
 
-check("witness evidence cannot make a primitive a valid attribute target", () => {
+check("path replay cannot make a primitive a valid attribute target", () => {
   const map = multiNodeDocument(`"text" <a @${Q1}/>`);
   assert.throws(() => rawReplay(map, [{
-    domain: "graph", op: "set-attr", target: commitTarget([0, 0], Q1), name: "id", value: "bad",
+    domain: "graph", op: "set-attr", target: commitTarget([0, 0]), name: "id", value: "bad",
   }]), (error: unknown) => error instanceof LiveMapDocumentStagingError
     && error.reasonCode === "DOCUMENT_TARGET_KIND");
 });
 
-check("malformed witnesses reject with a stable structured reason", () => {
+check("malformed witnesses reject at public replay admission", () => {
   const map = multiNodeDocument(`<a/> <guard/>`);
   assert.throws(() => rawReplay(map, [{
     domain: "graph",
@@ -196,8 +195,7 @@ check("malformed witnesses reject with a stable structured reason", () => {
     target: { kind: "path", path: [0], witness: { quid: "short" } },
     name: "id",
     value: "bad",
-  }]), (error: unknown) => error instanceof LiveMapDocumentStagingError
-    && error.reasonCode === "INVALID_DOCUMENT_WITNESS");
+  }]), /QUID witness/i);
 });
 
 check("canonical operation planning rejects a QUID-only target", () => {
@@ -249,7 +247,7 @@ check("path requests preserve sparse gaps without minting", () => {
   assert.deepEqual(allQuids(map.root()), [Q1]);
 });
 
-check("identity-free replay accepts a witnessed commit from a quidded source", () => {
+check("identity-free replay accepts a path commit from a quidded source", () => {
   const source = multiNodeDocument(`<a @${Q1}/> <guard/>`);
   const commit = source.document.attrs.set({ kind: "path", path: [0] }, "id", "portable");
   const target = multiNodeDocument(`<a/> <guard/>`);

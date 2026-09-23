@@ -142,7 +142,7 @@ check("retired server QUID history stays outside local SSR/install", () => {
   assert.doesNotMatch(ssr.html, /hson:quid/);
   assert.equal(ssr.html.includes(QUID), false);
   const installed = install_libraries_snapshot(ssr.bootstrap).map;
-  assert.equal(installed.capture().identity.issuedQuids.includes(QUID), false);
+  assert.equal("identity" in installed.capture(), false);
   assert.equal(installed.rev, ssr.bootstrap.revision);
 });
 

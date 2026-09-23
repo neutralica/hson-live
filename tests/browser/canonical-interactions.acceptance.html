@@ -2,7 +2,7 @@
 <!-- Bundle dist/index.js to .canonical-interactions.library.bundle.js before direct execution. -->
 <html>
 <body>
-  <button id="subject" hson:quid="000008398">subject</button>
+  <button id="subject">subject</button>
   <output id="result">running</output>
   <script type="module">
     import {
@@ -44,6 +44,7 @@
     }));
 
     const tree = hsonLiveTree.queryBody().graft();
+    const treeButtonQuid = tree.find.must.byId("subject").quid;
     const calls = { element: 0, document: 0, window: 0, passive: 0 };
     let exactArgs = false;
     const dispose = activate_interactions({
@@ -52,7 +53,8 @@
       local: {
         element: (_event, subject, args) => {
           calls.element += 1;
-          exactArgs = subject.node.$_meta?.quid === QUID && Object.is(Hson.data.materialize(args), -0);
+          exactArgs = subject.node.$_meta?.quid === treeButtonQuid
+            && treeButtonQuid !== QUID && Object.is(Hson.data.materialize(args), -0);
         },
         document: () => { calls.document += 1; },
         window: () => { calls.window += 1; },

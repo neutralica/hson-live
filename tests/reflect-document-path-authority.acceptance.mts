@@ -11,7 +11,6 @@ import {
   _create_livetree_runtime_test_handle,
   _reflect_document_for_runtime_test,
 } from "../src/_tests/diagnostics-internal.ts";
-import { LiveMapDocumentStagingError } from "../src/api/livemap/livemap.error.ts";
 import type {
   LiveMapCommitObservation,
   LiveMapAnyOp,
@@ -153,11 +152,12 @@ check("QUID-free structural reflection remains path-routed", () => {
   binding.dispose();
 });
 
-check("a matching witness validates after path resolution", () => {
+check("a matching witness is rejected at public replay admission", () => {
   const map = element(`<main <a @${Q1}/>/` + `>`);
   const binding = hsonMirror(map);
-  replay(map, [{ domain: "graph", op: "set-attr", target: witnessed_path(Q1, 0, 0), name: "ok", value: 1 }]);
-  assert.equal(raw_node(binding.tree.node, [0, 0]).$_attrs?.ok, 1);
+  assert.throws(() => replay(map, [{ domain: "graph", op: "set-attr", target: witnessed_path(Q1, 0, 0), name: "ok", value: 1 }]), /QUID witness/);
+  assert.equal(raw_node(binding.tree.node, [0, 0]).$_attrs?.ok, undefined);
+  assert.equal(map.rev, 0);
   binding.dispose();
 });
 
@@ -174,7 +174,7 @@ check("a conflicting witness is rejected before reflection publication", () => {
   const binding = hsonMirror(map);
   assert.throws(() => replay(map, [
     { domain: "graph", op: "set-attr", target: witnessed_path(Q2, 0, 0), name: "bad", value: 1 },
-  ]), LiveMapDocumentStagingError);
+  ]), /QUID witness/);
   assert.equal(binding.sourceRevision, 0);
   assert.equal(binding.status, "active");
   binding.dispose();
@@ -185,7 +185,7 @@ check("a matching QUID elsewhere cannot reroute an invalid path", () => {
   const binding = hsonMirror(map);
   assert.throws(() => replay(map, [
     { domain: "graph", op: "set-attr", target: witnessed_path(Q1, 0, 1), name: "bad", value: 1 },
-  ]), LiveMapDocumentStagingError);
+  ]), /QUID witness/);
   assert.equal(raw_node(binding.tree.node, [0, 0]).$_attrs?.bad, undefined);
   binding.dispose();
 });
@@ -219,7 +219,7 @@ check("multi-operation replay exposes only canonical path targets", () => {
   map.commits.observe((event) => events.push(event));
   replay(map, [
     { domain: "graph", op: "move-content", target: path(0), from: 0, to: 1 },
-    { domain: "graph", op: "set-attr", target: witnessed_path(Q1, 0, 1), name: "moved", value: true },
+    { domain: "graph", op: "set-attr", target: path(0, 1), name: "moved", value: true },
   ]);
   assert.ok(observed_commit(events).ops.every((operation) => operation.op === "replace-root" || operation.target.kind === "path"));
 });
@@ -239,7 +239,7 @@ check("local structural operations use incremental correspondence", () => {
   const map = element(`<main @${Q1} <a @${Q2}/>/` + `>`);
   const binding = hsonMirror(map);
   const before = binding.diagnostics();
-  map.document.content.insert(path(0), 0, projected_element(`<b @${Q3}/>`));
+  map.document.content.insert(path(0), 0, projected_element(`<b/>`));
   const after = binding.diagnostics();
   assert.equal(after.wholeCorrespondenceBuilds, before.wholeCorrespondenceBuilds);
   assert.equal(after.incrementalCorrespondenceUpdates, before.incrementalCorrespondenceUpdates + 1);
@@ -274,7 +274,7 @@ check("replacement targets remain path-authoritative when QUIDs differ", () => {
     op: "replace-content",
     target: path(0),
     index: 0,
-    replacement: projected_element(`<b @${Q2}/>`),
+    replacement: projected_element(`<b/>`),
   }]);
   assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "b");
   binding.dispose();

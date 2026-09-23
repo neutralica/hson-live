@@ -11,10 +11,7 @@ import {
   normalize_document_commit_target,
 } from "../src/api/livemap/livemap.document.target.ts";
 import { livemap_document_identity_overlay_for } from "../src/api/livemap/livemap.document.identity.ts";
-import {
-  LiveMapDocumentMutationError,
-  LiveMapDocumentStagingError,
-} from "../src/api/livemap/livemap.error.ts";
+import { LiveMapDocumentMutationError } from "../src/api/livemap/livemap.error.ts";
 import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -126,19 +123,20 @@ check("malformed QUID request rejects at request admission", () => {
   );
 });
 
-check("matching witness validates the authoritative path", () => {
+check("matching local witness is rejected by public replay", () => {
   const map = element(`<main <section @${Q1}/>/>`);
-  rawReplay(map, [{
+  assert.throws(() => rawReplay(map, [{
     domain: "graph",
     op: "set-attr",
     target: { kind: "path", path: [0, 0, 0], witness: { quid: Q1 } },
     name: "id",
     value: "matched",
-  }]);
-  assert.equal(map.document.byQuid(Q1)?.$_attrs?.id, "matched");
+  }]), /QUID witness/i);
+  assert.equal(map.document.byQuid(Q1)?.$_attrs?.id, undefined);
+  assert.equal(map.rev, 0);
 });
 
-check("active different QUID reports witness mismatch", () => {
+check("different local witness is rejected by public replay", () => {
   const map = element(`<main <section @${Q2}/>/>`);
   assert.throws(() => rawReplay(map, [{
     domain: "graph",
@@ -146,24 +144,25 @@ check("active different QUID reports witness mismatch", () => {
     target: { kind: "path", path: [0, 0, 0], witness: { quid: Q1 } },
     name: "id",
     value: "bad",
-  }]), (error: unknown) => error instanceof LiveMapDocumentStagingError
-    && error.reasonCode === "DOCUMENT_WITNESS_MISMATCH");
+  }]), /QUID witness/i);
+  assert.equal(map.rev, 0);
 });
 
-check("QUID found elsewhere cannot reroute a valid path", () => {
+check("witness found elsewhere cannot enter public replay", () => {
   const map = element(`<main <a/> <b @${Q1}/>/>`);
-  rawReplay(map, [{
+  assert.throws(() => rawReplay(map, [{
     domain: "graph",
     op: "set-attr",
     target: { kind: "path", path: [0, 0, 0], witness: { quid: Q1 } },
     name: "id",
     value: "path-wins",
-  }]);
-  assert.equal(map.document.attrs.get({ kind: "path", path: [0, 0, 0] }, "id"), "path-wins");
+  }]), /QUID witness/i);
+  assert.equal(map.document.attrs.get({ kind: "path", path: [0, 0, 0] }, "id"), undefined);
   assert.equal(map.document.byQuid(Q1)?.$_attrs?.id, undefined);
+  assert.equal(map.rev, 0);
 });
 
-check("invalid path is never repaired by a matching witness", () => {
+check("invalid path with a witness is rejected before replay", () => {
   const map = element(`<main <a @${Q1}/>/>`);
   assert.throws(() => rawReplay(map, [{
     domain: "graph",
@@ -171,11 +170,11 @@ check("invalid path is never repaired by a matching witness", () => {
     target: { kind: "path", path: [0, 0, 9], witness: { quid: Q1 } },
     name: "id",
     value: "bad",
-  }]), (error: unknown) => error instanceof LiveMapDocumentStagingError
-    && error.reasonCode === "DOCUMENT_PATH_OUT_OF_RANGE");
+  }]), /QUID witness/i);
+  assert.equal(map.rev, 0);
 });
 
-check("identity-free replay interprets a witnessed path", () => {
+check("identity-free replay interprets a semantic path commit", () => {
   const source = element(`<main @${Q1}/>`);
   const commit = source.document.attrs.set({ kind: "path", path: [0] }, "id", "portable");
   const target = element(`<main/>`);

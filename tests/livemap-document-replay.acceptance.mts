@@ -4,6 +4,7 @@ import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import { prepare_document_graph_operation } from "../src/api/livemap/livemap.document.mutation.ts";
+import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.identity-epoch.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import type {
@@ -316,7 +317,7 @@ check("insert, remove and final-position move replay through the single graph pl
   const target = multiNodeDocument(initial);
   const events: LiveMapCommitObservation[] = [];
   target.commits.observe((event) => events.push(event));
-  const inserted = documentElement(element(`<d @00000001d/>`));
+  const inserted = documentElement(element(`<d/>`));
   const commits = [
     source.document.content.insert(rootTarget, 1, inserted),
     source.document.content.move(rootTarget, 1, 3),
@@ -327,7 +328,7 @@ check("insert, remove and final-position move replay through the single graph pl
   ]);
   for (const commit of commits) target.replay(commit);
   assert.deepEqual(target.capture(), source.capture());
-  assert.equal(target.document.byQuid("00000001d")?.$_tag, "d");
+  assert.equal(target.document.byQuid("00000001d"), undefined);
   assert.equal(target.document.byQuid("00000001c")?.$_tag, "c");
   assert.equal(events.length, 3);
   assert.ok(events.every((event) => event.kind === "commit" && event.origin === "replay"));
@@ -358,14 +359,14 @@ check("malformed structural graph operations reject atomically", () => {
   assert.deepEqual(target.capture(), before);
 });
 
-check("replace-root graph commit replays with canonical mode and QUID identity", () => {
+check("replace-root graph commit replays portable state without source identity", () => {
   const sourceState = element(`<article @000000009/>`);
   const source = element(`<main @00000000a/>`);
   const target = element(`<main @00000000a/>`);
   const commit = source.install(sourceState.capture());
   target.replay(commit);
   assert.deepEqual(target.capture(), source.capture());
-  assert.equal(target.document.byQuid("000000009")?.$_tag, "article");
+  assert.equal(target.document.byQuid("000000009"), undefined);
   assert.equal(target.document.byQuid("00000000a"), undefined);
 });
 
@@ -388,7 +389,7 @@ check("malformed and out-of-order graph replay leave state unchanged", () => {
   assert.equal(target.rev, 1);
 });
 
-check("snapshot restore swaps mode-compatible root, QUID index, and exact revision", () => {
+check("snapshot restore swaps portable root and exact revision without source identity", () => {
   const source = element(`<article @000000006 <em @000000007/>/>`);
   source.document.attrs.set(elementTarget, "id", "one");
   source.document.attrs.set(elementTarget, "title", "two");
@@ -397,10 +398,53 @@ check("snapshot restore swaps mode-compatible root, QUID index, and exact revisi
   target.commits.observe((event) => events.push(event));
   target.restore(source.capture());
   assert.equal(target.rev, 2);
-  assert.deepEqual(target.root(), source.root());
-  assert.equal(target.document.byQuid("000000007")?.$_tag, "em");
+  assert.deepEqual(target.capture().root, source.capture().root);
+  assert.equal(target.document.byQuid("000000007"), undefined);
   assert.equal(target.document.byQuid("000000008"), undefined);
   assert.deepEqual(events, [{ kind: "snapshot", origin: "snapshot", revision: 2 }]);
+});
+
+check("public node mutation rejects supplied QUIDs atomically", () => {
+  const map = element("<main <p/>/>");
+  const foreign = documentElement(element("<item @000008801/>"));
+  const before = map.capture();
+  const accounting = livemap_identity_epoch_accounting(map);
+  let publications = 0;
+  map.commits.observe(() => { publications += 1; });
+  assert.throws(() => map.document.content.insert(elementTarget, 0, foreign), /runtime QUID metadata is invalid/);
+  assert.throws(() => map.document.content.replace(rootTarget, 0, foreign), /runtime QUID metadata is invalid/);
+  assert.throws(() => map.at([0]).replace(foreign), /runtime QUID metadata is invalid/);
+  assert.deepEqual(map.capture(), before);
+  assert.equal(map.rev, before.rev);
+  assert.deepEqual(livemap_identity_epoch_accounting(map), accounting);
+  assert.equal(publications, 0);
+});
+
+check("public graph replay rejects ensure-quid, witnesses, and QUID-bearing content atomically", () => {
+  const map = element("<main/>");
+  const foreign = documentElement(element("<item @000008802/>"));
+  const before = map.capture();
+  const accounting = livemap_identity_epoch_accounting(map);
+  let publications = 0;
+  map.commits.observe(() => { publications += 1; });
+  const claimedRoot = structuredClone(element("<item/>").capture().root);
+  const claimedItem = claimedRoot.$_content[0];
+  if (!is_Node(claimedItem)) throw new Error("Expected claimed root item.");
+  claimedItem.$_meta = { quid: "000008804" };
+  const rejected = [
+    { domain: "graph", op: "ensure-quid", target: elementTarget, quid: "000008803" },
+    { domain: "graph", op: "set-attr", target: { ...elementTarget, witness: { quid: "000008803" } }, name: "id", value: "x" },
+    { domain: "graph", op: "insert-content", target: elementTarget, index: 0, content: foreign },
+    { domain: "graph", op: "replace-content", target: rootTarget, index: 0, replacement: foreign },
+    { domain: "graph", op: "replace-root", mode: "document", root: claimedRoot },
+  ];
+  for (const operation of rejected) {
+    assert.throws(() => Reflect.apply(map.replay, map, [{ changed: true, prevRev: 0, rev: 1, ops: [operation] }]));
+    assert.deepEqual(map.capture(), before);
+    assert.equal(map.rev, 0);
+    assert.deepEqual(livemap_identity_epoch_accounting(map), accounting);
+  }
+  assert.equal(publications, 0);
 });
 
 process.stdout.write(`# ${checks} document observation/replay checks passed\n`);

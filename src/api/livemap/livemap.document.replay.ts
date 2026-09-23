@@ -19,6 +19,7 @@ import {
   type PreparedDocumentInstall,
 } from "./livemap.document.install.js";
 import {
+  admit_public_document_graph_operation,
   prepare_document_graph_operation,
 } from "./livemap.document.mutation.js";
 import {
@@ -55,6 +56,12 @@ export function replay_livemap_document_commit(
   input: LiveMapGraphCommit,
 ): LiveMapGraphCommit {
   const envelope = must_graph_commit_envelope(input);
+  for (const operation of envelope.ops) {
+    if (operation.op === "ensure-quid") {
+      throw new LiveMapReplayInputError("Public replay cannot install generated identity.");
+    }
+    admit_public_document_graph_operation(operation);
+  }
   if (envelope.prevRev !== controller.rev()) {
     throw new LiveMapRevError(envelope.prevRev, controller.rev());
   }

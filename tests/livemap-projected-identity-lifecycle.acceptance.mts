@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { hson } from "../src/index.ts";
+import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.identity-epoch.ts";
 import { acquire_projected_identity } from "./helpers/livemap-identity-internal.mts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -51,6 +52,27 @@ check("whole-root replacement fences the identity epoch", () => { const m = map(
 check("durable restore fences old handles", () => { const m = map({ a: {} }); const h = acquire_projected_identity(m, ["a"]); m.restore(m.capture()); assert.equal(h.active, false); });
 check("exact same-epoch restore preserves continuity", () => { const m = map({ a: {} }); const h = acquire_projected_identity(m, ["a"]); const c = m.capture({ identity: "same-epoch" }); m.restore(c, { identity: "same-epoch" }); assert.equal(h.active, true); });
 check("copied same-epoch capture cannot preserve continuity", () => { const m = map({ a: {} }); acquire_projected_identity(m, ["a"]); const c = m.capture({ identity: "same-epoch" }); assert.throws(() => m.restore({ ...c }, { identity: "same-epoch" })); });
+check("foreign projected capture cannot install its overlay", () => {
+  const source = map({ a: { value: 1 } });
+  acquire_projected_identity(source, ["a"]);
+  const exact = source.capture({ identity: "same-epoch" });
+  const target = map({ a: { value: 0 } });
+  const before = target.capture();
+  assert.throws(() => target.restore(exact, { identity: "same-epoch" }));
+  assert.deepEqual(target.capture(), before);
+  assert.equal(livemap_identity_epoch_accounting(target).issued, 0);
+});
+check("portable projected capture transfers state without overlay or ledger", () => {
+  const source = map({ a: { value: 1 } });
+  acquire_projected_identity(source, ["a"]);
+  const portable = source.capture();
+  assert.equal(JSON.stringify(portable).includes("quid"), false);
+  const target = map({ a: { value: 0 } });
+  target.restore(portable);
+  assert.deepEqual(target.snap(), source.snap());
+  assert.equal(target.rev, source.rev);
+  assert.equal(livemap_identity_epoch_accounting(target).issued, 0);
+});
 
 process.stdout.write(`1..${checks}\n`);
 testEvents.terminal("pass");
