@@ -32,10 +32,9 @@ function documentMap(source: string): DocumentLiveMap {
   return map;
 }
 
-function mainFixture(quid?: string): Readonly<{ root: FakeElement; child: FakeElement; text: FakeText }> {
+function mainFixture(_quid?: string): Readonly<{ root: FakeElement; child: FakeElement; text: FakeText }> {
   const root = new FakeElement("main");
   const child = new FakeElement("p");
-  if (quid !== undefined) child.setAttribute("hson:quid", quid);
   const text = new FakeText("hello");
   child.appendChild(text);
   root.appendChild(child);
@@ -62,7 +61,7 @@ function source(quid?: string): string {
   assert.equal(map.rev, 0);
   assert.equal(materialization.quidEnsureCalls, 0);
   assert.equal(fixture.root.getAttribute("hson:quid"), null);
-  assert.equal(fixture.child.getAttribute("hson:quid"), quid);
+  assert.equal(fixture.child.getAttribute("hson:quid"), null);
   map.document.attrs.set(path(0, 0), "title", "continued");
   assert.equal(fixture.child.getAttribute("title"), "continued");
   continuation.dispose();
@@ -184,7 +183,6 @@ for (const point of ["after-first-link", "after-links", "after-runtime", "after-
   add_interaction(map, descriptor);
   const root = new FakeElement("main");
   const button = new FakeElement("button");
-  button.setAttribute("hson:quid", quid);
   root.appendChild(button);
   let calls = 0;
   const continuation = continue_document({

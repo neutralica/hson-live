@@ -66,8 +66,10 @@ const localMap = make_classified_livemap({
   }],
 });
 if (localMap.mode !== "document") throw new Error("Local fixture must be a document map.");
-const localBootstrap = localMap.capture();
+const localBootstrap = localMap.capture({ identity: "strip" });
 const encodedLocal = encode_ssr_bootstrap(localBootstrap);
+assert.equal(decodeText(encodedLocal).includes("000009901"), false);
+assert.equal(decodeText(encode_ssr_bootstrap(localMap.capture())).includes("000009901"), false);
 assert.match(encodedLocal, /^[A-Za-z0-9_-]+$/);
 assert.equal(encodedLocal.includes("="), false);
 assert.equal(encode_ssr_bootstrap(localBootstrap), encodedLocal);
@@ -77,8 +79,8 @@ if (decodedLocal.kind !== "document") throw new Error("Wrong local kind.");
 assert.deepEqual(decodedLocal.bootstrap, localBootstrap);
 const localInstalled = make_classified_livemap(decodedLocal.bootstrap.root);
 if (localInstalled.mode !== "document") throw new Error("Decoded local map must be a document.");
-localInstalled.restore(decodedLocal.bootstrap, { identity: "preserve-metadata" });
-assert.deepEqual(localInstalled.capture(), localBootstrap);
+localInstalled.restore(decodedLocal.bootstrap, { identity: "strip" });
+assert.deepEqual(localInstalled.capture({ identity: "strip" }), localBootstrap);
 const decodedRootElement = decodedLocal.bootstrap.root.$_content[0];
 if (typeof decodedRootElement !== "object" || decodedRootElement === null) throw new Error("Decoded root element is missing.");
 const decodedStyle = decodedRootElement.$_attrs?.style as Record<string, unknown>;
@@ -142,11 +144,15 @@ for (const name of ["__proto__", "constructor", "prototype", "10", "2"]) {
 const librariesMap = hsonLiveMap.fromLibraries(inputs);
 const librariesBootstrap = render_document({ map: librariesMap, document: "prototype" }).bootstrap;
 const encodedLibraries = encode_ssr_bootstrap(librariesBootstrap);
+const localLibrariesWire = JSON.parse(decodeText(encodedLibraries)) as { payload: Record<string, unknown> };
+assert.equal(Object.hasOwn(localLibrariesWire.payload, "identityEpoch"), false);
+assert.equal(Object.hasOwn(localLibrariesWire.payload, "issuedQuids"), false);
+expectCode(encodeText(JSON.stringify({ ...localLibrariesWire, payload: { ...localLibrariesWire.payload, identityEpoch: 0, issuedQuids: [] } })), "SSR_BOOTSTRAP_PAYLOAD_INVALID");
 const decodedLibraries = decode_ssr_bootstrap(encodedLibraries);
 assert.equal(decodedLibraries.kind, "libraries");
 if (decodedLibraries.kind !== "libraries") throw new Error("Wrong Libraries kind.");
 assert.deepEqual(decodedLibraries.bootstrap, librariesBootstrap);
-assert.deepEqual(install_libraries_snapshot(decodedLibraries.bootstrap).map.capture(), librariesBootstrap);
+assert.deepEqual(install_libraries_snapshot(decodedLibraries.bootstrap).map.cut().data, librariesBootstrap);
 assert.deepEqual(decodedLibraries.bootstrap.registry.libraries.map((entry) => entry.name), librariesBootstrap.registry.libraries.map((entry) => entry.name));
 
 const librariesLocus = hsonLocus.create({ map: librariesMap, logicalMapId: "aggregate-map", incarnationId: "aggregate-incarnation", sessions: {} });
@@ -156,7 +162,7 @@ const decodedHostedLibraries = decode_ssr_bootstrap(encodedHostedLibraries);
 assert.equal(decodedHostedLibraries.kind, "hosted-libraries");
 if (decodedHostedLibraries.kind !== "hosted-libraries") throw new Error("Wrong hosted Libraries kind.");
 assert.deepEqual(decodedHostedLibraries.bootstrap, hostedLibrariesBootstrap);
-assert.deepEqual(install_locus_libraries_snapshot(decodedHostedLibraries.bootstrap).map.capture(), librariesBootstrap);
+assert.deepEqual(install_locus_libraries_snapshot(decodedHostedLibraries.bootstrap).map.cut().data, librariesBootstrap);
 assert.equal(({} as Record<string, unknown>).polluted, undefined);
 assert.equal(Object.prototype.hasOwnProperty.call(Object.prototype, "polluted"), false);
 

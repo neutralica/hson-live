@@ -19,6 +19,7 @@ import type {
   LiveMapRootMode,
   HostedLiveMapLibrariesSnapshot,
   LiveMapLibrariesSnapshot,
+  LocalLibrariesContinuationSnapshot,
   LivePath,
 } from "../../types/livemap.types.js";
 import type {
@@ -320,7 +321,7 @@ export function decode_hosted_root(input: unknown): HsonNode {
   return root;
 }
 
-export function assert_libraries_snapshot_bound(snapshot: LiveMapLibrariesSnapshot): void {
+export function assert_libraries_snapshot_bound(snapshot: LiveMapLibrariesSnapshot | LocalLibrariesContinuationSnapshot): void {
   assert_encoded_bound(snapshot, HOSTED_MAX_SNAPSHOT_BYTES, "Hosted aggregate snapshot");
 }
 
@@ -329,6 +330,17 @@ export function assert_libraries_snapshot_shape(snapshot: LiveMapLibrariesSnapsh
   exact_keys(record, ["format", "revision", "registry", "registryDigest", "libraries", "identity"], "Hosted aggregate snapshot");
   const identity = exact_record(record.identity, "Hosted snapshot identity");
   exact_keys(identity, ["epoch", "issuedQuids"], "Hosted snapshot identity");
+  assert_libraries_snapshot_entries(record);
+}
+
+/** Local browser bootstrap deliberately has no authority identity state. @internal */
+export function assert_local_libraries_snapshot_shape(snapshot: LocalLibrariesContinuationSnapshot): void {
+  const record = exact_record(snapshot, "Local aggregate snapshot");
+  exact_keys(record, ["format", "revision", "registry", "registryDigest", "libraries"], "Local aggregate snapshot");
+  assert_libraries_snapshot_entries(record);
+}
+
+function assert_libraries_snapshot_entries(record: Readonly<Record<string, unknown>>): void {
   const registry = exact_record(record.registry, "Hosted snapshot registry");
   exact_keys(registry, ["format", "libraries", "digest"], "Hosted snapshot registry");
   if (!Array.isArray(registry.libraries) || !Array.isArray(record.libraries)) {

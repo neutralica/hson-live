@@ -4,12 +4,15 @@ import type {
   HostedLiveMapLibrariesSnapshot,
   LiveMapLibraries,
   LiveMapLibrariesSnapshot,
+  LocalLibrariesContinuationSnapshot,
 } from "../types/livemap.types.js";
 import type { LocusSnapshotEnvelope } from "../types/locus.representation.types.js";
 import type { HsonNode } from "../core/types.js";
 import { plan_browser_realization } from "./browser-realization/browser-realization-plan.js";
 import { serialize_browser_realization } from "./browser-realization/browser-realization-serialize.js";
 import { DocumentSsrError } from "./document-cut.error.js";
+import { clone_hson_graph_without_quids } from "../api/livemap/livemap.document.capture.js";
+import { encode_hosted_root } from "../api/livemap/livemap.hosted.js";
 import type {
   BrowserRealizationHtml,
   DocumentCut,
@@ -56,7 +59,11 @@ function realize(capture: DocumentLiveMapCapture<"document">): BrowserRealizatio
 }
 
 export function cut_document_capture(capture: DocumentLiveMapCapture): DocumentCut {
-  const data = validate_capture(capture);
+  const validated = validate_capture(capture);
+  const data: DocumentLiveMapCapture<"document"> = Object.freeze({
+    ...validated,
+    root: clone_hson_graph_without_quids(validated.root),
+  });
   return Object.freeze({ html: realize(data), data });
 }
 
@@ -66,7 +73,7 @@ export function cut_local_document(
 ): DocumentCut {
   let capture: DocumentLiveMapCapture;
   try {
-    capture = validate_capture(map.capture());
+    capture = validate_capture(map.capture({ identity: "strip" }));
   } catch (cause) {
     if (cause instanceof DocumentSsrError) throw cause;
     throw new DocumentSsrError("capture", "The document cut could not be captured.", cause);
@@ -139,7 +146,18 @@ export function cut_local_libraries(
     throw new DocumentSsrError("capture", "The complete Libraries cut could not be captured.", cause);
   }
   afterCapture?.();
-  return cut_libraries_snapshot(snapshot, document, install, decodeRoot);
+  const cut = cut_libraries_snapshot(snapshot, document, install, decodeRoot);
+  const data: LocalLibrariesContinuationSnapshot = Object.freeze({
+    format: snapshot.format,
+    revision: snapshot.revision,
+    registry: snapshot.registry,
+    registryDigest: snapshot.registryDigest,
+    libraries: Object.freeze(snapshot.libraries.map((library) => Object.freeze({
+      ...library,
+      root: encode_hosted_root(clone_hson_graph_without_quids(decodeRoot(library.root))),
+    }))),
+  });
+  return Object.freeze({ html: cut.html, data, document: cut.document });
 }
 
 export function cut_hosted_libraries(

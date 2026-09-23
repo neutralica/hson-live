@@ -42,7 +42,7 @@ try {
   const localText = localParagraph.firstChild;
   const localMap = hson.liveMap.fromNode(decodedLocalBootstrap.bootstrap.root);
   if (localMap.mode !== "document") throw new Error("local SSR bootstrap must be a document");
-  localMap.restore(decodedLocalBootstrap.bootstrap, { identity: "preserve-metadata" });
+  localMap.restore(decodedLocalBootstrap.bootstrap, { identity: "strip" });
   const observer = new MutationObserver(() => {});
   observer.observe(localRoot, { subtree: true, childList: true, attributes: true, characterData: true });
   const localContinuation = continue_document({ map: localMap, root: localRoot });
@@ -51,11 +51,22 @@ try {
   check("local text identity survives continuation", localParagraph.firstChild === localText);
   check("local continuation writes nothing", observer.takeRecords().length === 0);
   check("local revision is exact N", localMap.rev === state.local.bootstrap.rev && localMap.rev === 1);
-  check("local canonical capture is exact", JSON.stringify(localMap.capture()) === JSON.stringify(state.local.bootstrap));
-  check("local QUID is exact", localParagraph.getAttribute("hson:quid") === "000005201");
+  check("local canonical capture has no server QUID", JSON.stringify(localMap.capture({ identity: "strip" })) === JSON.stringify(state.local.bootstrap)
+    && !JSON.stringify(localMap.capture()).includes("000005201"));
+  check("local subject begins without inherited QUID", localParagraph.getAttribute("hson:quid") === null
+    && !JSON.stringify(decodedLocalBootstrap.bootstrap).includes("000005201"));
   check("local root remains QUID-free", localRoot.getAttribute("hson:quid") === null);
   check("Hson boundary comments were parsed", [...localParagraph.childNodes].filter((node) => node.nodeType === Node.COMMENT_NODE).length >= 2);
   observer.disconnect();
+  const localParagraphTree = localContinuation.tree.find.must.byTag("p");
+  const localQuid = localParagraphTree.quid;
+  check("browser identity demand establishes local QUID", typeof localQuid === "string" && localParagraph.getAttribute("hson:quid") === localQuid);
+  check("local QUID lookup resolves adopted subject", localContinuation.tree.find.byQuid(localQuid)?.dom.el() === localParagraph);
+  localParagraphTree.css.set.color("red");
+  const localCss = localParagraphTree.css.snapshot();
+  check("local CSS ownership uses browser QUID", localCss.includes(localQuid)
+    && /color:\s*red/.test(localCss)
+    && !localCss.includes("000005201"));
   localContinuation.dispose();
 
   const browserLocal = render_document({ map: localMap });
@@ -92,7 +103,7 @@ try {
   const decodedFull = decode_ssr_bootstrap(state.encoded.full);
   const fullMap = hson.liveMap.fromNode(decodedFull.bootstrap.root);
   if (fullMap.mode !== "document") throw new Error("full SSR bootstrap must be a document");
-  fullMap.restore(decodedFull.bootstrap, { identity: "preserve-metadata" });
+  fullMap.restore(decodedFull.bootstrap, { identity: "strip" });
   const parsedFull = new DOMParser().parseFromString(state.full.html, "text/html");
   check("full document parses in standards mode", parsedFull.compatMode === "CSS1Compat");
   const fullRoot = parsedFull.documentElement;

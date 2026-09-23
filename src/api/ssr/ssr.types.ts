@@ -2,6 +2,7 @@ import type {
   DocumentLiveMapCapture,
   HostedLiveMapLibrariesSnapshot,
   LiveMapLibrariesSnapshot,
+  LocalLibrariesContinuationSnapshot,
 } from "../../types/livemap.types.js";
 import type { LocusSnapshotEnvelope } from "../../types/locus.representation.types.js";
 
@@ -32,7 +33,7 @@ export type HostedDocumentSsr = Readonly<{
 /** One selected document realization paired with its complete local Libraries cut. */
 export type LibrariesDocumentSsr = Readonly<{
   html: BrowserRealizationHtml;
-  bootstrap: LiveMapLibrariesSnapshot;
+  bootstrap: LocalLibrariesContinuationSnapshot;
   document: string;
 }>;
 
@@ -43,7 +44,7 @@ export type HostedLibrariesDocumentSsr = Readonly<{
   document: string;
 }>;
 
-/** Object-owned exact cut; `data` is accepted by the existing bootstrap codec. */
+/** Object-owned local cut; `data` is accepted by the bootstrap codec. */
 export type DocumentCut = Readonly<{ html: BrowserRealizationHtml; data: DocumentLiveMapCapture<"document"> }>;
 export type HostedDocumentCut = Readonly<{
   html: BrowserRealizationHtml;
@@ -51,7 +52,7 @@ export type HostedDocumentCut = Readonly<{
 }>;
 export type LibrariesDocumentCut = Readonly<{
   html: BrowserRealizationHtml;
-  data: LiveMapLibrariesSnapshot;
+  data: LocalLibrariesContinuationSnapshot;
   document: string;
 }>;
 export type HostedLibrariesDocumentCut = Readonly<{

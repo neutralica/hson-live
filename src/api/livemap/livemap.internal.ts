@@ -1,6 +1,6 @@
 import type { HsonNode, JsonValue } from "../../core/types.js";
 import type { HsonSchema } from "../transform/transform.types.js";
-import type { HostedLiveMapLibrariesSnapshot, LiveMapGraphCommit, LiveMapGraphOp, LiveMapLibrariesSnapshot, LivePath } from "../../types/livemap.types.js";
+import type { HostedLiveMapLibrariesSnapshot, LiveMapGraphCommit, LiveMapGraphOp, LiveMapLibrariesSnapshot, LocalLibrariesContinuationSnapshot, LivePath } from "../../types/livemap.types.js";
 import { resolveLiveMapNode } from "./livemap.node.js";
 import type { LiveMapIdentityEpochController } from "./livemap.identity-epoch.js";
 import type { LiveMapDocumentIdentityOverlay } from "./livemap.document.identity.js";
@@ -57,6 +57,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   captureLibraries: () => LiveMapLibrariesSnapshot;
   captureHosted: () => HostedLiveMapLibrariesSnapshot;
   restoreLibraries: (snapshot: LiveMapLibrariesSnapshot) => void;
+  restorePortableLibraries: (snapshot: LocalLibrariesContinuationSnapshot) => void;
   restoreHosted: (snapshot: HostedLiveMapLibrariesSnapshot) => void;
   /** Apply a transport snapshot while this aggregate is client-managed. @internal */
   restoreHostedManaged: (owner: object, snapshot: HostedLiveMapLibrariesSnapshot) => void;

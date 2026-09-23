@@ -65,7 +65,7 @@ let server;
 try {
   await copyFile(resolve(repositoryRoot, "tests/browser/canonical-interactions.acceptance.html"), join(fixtureRoot, htmlName));
   const bundle = spawnSync(resolve(repositoryRoot, "node_modules/.bin/esbuild"), [
-    resolve(repositoryRoot, "dist/index.js"),
+    resolve(repositoryRoot, "tests/browser/canonical-interactions.entry.mjs"),
     "--bundle",
     "--format=esm",
     "--platform=browser",

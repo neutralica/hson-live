@@ -19,7 +19,6 @@ import {
 } from '../../../core/hson-node-quid.js';
 import { is_ordinary_element_node } from '../../../core/node-guards.js';
 import { LiveTreeQuidReuseError } from "../livetree.error.js";
-import { forget_inherited_dom_quid, matches_inherited_dom_quid, record_inherited_dom_quid } from "./inherited-dom-quid.js";
 import {
   assert_graph_runtime_available,
   bind_graph_runtime,
@@ -443,8 +442,7 @@ export function preflight_supplied_livetree_quid(
   }
   const element = get_el_for_node(node);
   const priorDomQuid = element?.getAttribute(HSON_QUID_MARKUP_NAME) ?? null;
-  const inheritedDomQuid = element !== undefined && matches_inherited_dom_quid(element);
-  if (priorDomQuid !== null && !inheritedDomQuid) {
+  if (priorDomQuid !== null) {
     throw new Error("Supplied QUID target DOM element already carries identity metadata.");
   }
   runtime.pendingQuidClaims.set(quid, node);
@@ -460,7 +458,6 @@ export function preflight_supplied_livetree_quid(
     if (currentElement?.getAttribute(HSON_QUID_MARKUP_NAME) === quid) {
       if (priorDomQuid === null) currentElement.removeAttribute(HSON_QUID_MARKUP_NAME);
       else currentElement.setAttribute(HSON_QUID_MARKUP_NAME, priorDomQuid);
-      if (inheritedDomQuid) record_inherited_dom_quid(currentElement);
     }
     if (!issuedBefore) runtime.issuedQuids.delete(quid);
     applied = false;
@@ -478,13 +475,11 @@ export function preflight_supplied_livetree_quid(
       }
       const currentElement = get_el_for_node(node);
       if (currentElement !== element
-        || (currentElement?.getAttribute(HSON_QUID_MARKUP_NAME) ?? null) !== priorDomQuid
-        || (inheritedDomQuid && (currentElement === undefined || !matches_inherited_dom_quid(currentElement)))) {
+        || (currentElement?.getAttribute(HSON_QUID_MARKUP_NAME) ?? null) !== priorDomQuid) {
         throw new Error("Supplied QUID target DOM metadata changed after preflight.");
       }
       try {
         currentElement?.setAttribute(HSON_QUID_MARKUP_NAME, quid);
-        if (inheritedDomQuid && currentElement !== undefined) forget_inherited_dom_quid(currentElement);
         assign_hson_node_quid(node, quid);
         runtime.quidToNode.set(quid, node);
         runtime.nodeToQuid.set(node, quid);
@@ -498,7 +493,6 @@ export function preflight_supplied_livetree_quid(
         if (currentElement?.getAttribute(HSON_QUID_MARKUP_NAME) === quid) {
           if (priorDomQuid === null) currentElement.removeAttribute(HSON_QUID_MARKUP_NAME);
           else currentElement.setAttribute(HSON_QUID_MARKUP_NAME, priorDomQuid);
-          if (inheritedDomQuid) record_inherited_dom_quid(currentElement);
         }
         if (!issuedBefore) runtime.issuedQuids.delete(quid);
         throw cause;

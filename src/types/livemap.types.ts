@@ -63,6 +63,9 @@ export type LiveMapLibrariesSnapshot = Readonly<{
   identity: Readonly<{ epoch: number; issuedQuids: readonly string[] }>;
 }>;
 
+/** Complete local browser cut with portable roots and no server runtime identity. */
+export type LocalLibrariesContinuationSnapshot = Readonly<Omit<LiveMapLibrariesSnapshot, "identity">>;
+
 /** One complete Libraries semantic cut plus its durable hosted authority fence. */
 export type HostedLiveMapLibrariesSnapshot = LiveMapLibrariesSnapshot & Readonly<{
   authority: Readonly<{ logicalMapId: string; incarnationId: string }>;

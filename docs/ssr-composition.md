@@ -24,9 +24,9 @@ for principal-specific content and cache policy.
 
 ## The same-cut guarantee
 
-`render_document` calls `map.capture()` once. It validates that detached
+`render_document` calls `map.capture({ identity: "strip" })` once. It validates that detached
 document capture, derives a browser-realization plan from `capture.root`, and
-serializes the plan. The exact capture used for HTML is returned as
+serializes the plan. The identity-free capture used for HTML is returned as
 `bootstrap`. Neither HTML nor bootstrap construction rereads the map.
 
 `render_hosted_document` asks the existing Locus recovery planner for one exact
@@ -40,8 +40,8 @@ call, not a promise that it is permanently the newest authority state.
 
 For Libraries, `map.capture()` captures one `LiveMapLibrariesSnapshot`
 synchronously. Selection is resolved only against that captured ordered
-registry, and the selected exact root is decoded from that snapshot. The source
-map, selected facade, registry, hidden state, and ledger are never reread after
+registry, and the selected root is decoded from that snapshot. The source
+map, selected facade, registry, and hidden state are never reread after
 capture. Hosted composition captures the corresponding
 `HostedLiveMapLibrariesSnapshot` once and verifies its logical-map/incarnation
 fence. The hosted type adds only that semantic authority fence; neither snapshot
@@ -64,8 +64,9 @@ license to interpolate the value into an arbitrary string context.
 
 The HTML contains only canonical browser realization and its derived Hson text
 boundary comments. It does not contain runtime CSS infrastructure or a bootstrap
-wrapper. Canonical QUID attributes and boundary markers come from the same
-captured graph as the bootstrap; SSR never mints a QUID.
+wrapper. No server-generated QUID appears in HTML, including element attributes
+and boundary marker fingerprints. Browser-local DOM QUID metadata can appear
+later when a local runtime feature requests identity.
 
 When the sole canonical root is `<html>`, serialization prepends
 `<!doctype html>` and produces standards-mode full-document output. An
@@ -109,15 +110,16 @@ string values or ordered entry-array contents, including names such as
 
 `SsrBootstrapCodecOptions` has one option, `maxEncodedBytes`. It must be a
 positive safe integer. The default is 96 MiB and is checked before base64
-decoding; the existing snapshot codecs, schemas, registries, roots, identity
-ledgers, and installers retain their deeper semantic bounds and validation.
+decoding; the existing snapshot codecs, schemas, registries, roots, and
+installers retain their deeper semantic bounds and validation.
 `SsrBootstrapCodecError` reports `encode` or `decode` plus a compact code
 without copying attacker-controlled payload text into its message.
 
-The codec preserves the exact admitted semantic state: revisions, `-0`, array
+The codec preserves local application state: revisions, `-0`, array
 and graph order, optional presence, lone UTF-16 surrogates, exact root payloads,
-Schemas and digests, registry order, identity epoch, issued and retired QUIDs,
-hidden Libraries, and the hosted logical-map/incarnation fence. It adds no
+Schemas and digests, registry order, and hidden Libraries. Hosted bootstraps
+temporarily retain their exact identity epoch, issued ledger, and
+logical-map/incarnation fence for Echo compatibility. It adds no
 session, route, endpoint, selector, socket, HTTP, or transport metadata.
 
 ## Application-owned delivery
@@ -229,12 +231,12 @@ await continue_hosted_document({
 });
 ```
 
-Installation restores every public and hidden Library, exact Schema sources and
-digests, ordered registry and digest, one global revision, numeric identity
-epoch, and the full issued-QUID ledger including retired identities. Hidden
+Local installation restores every public and hidden Library, exact Schema sources and
+digests, ordered registry and digest, and one global revision. It establishes
+a fresh browser identity epoch with no inherited server QUID claims. Hidden
 canonical interaction storage remains hidden and has no side payload. Local
 installation creates fresh runtime capability objects without fabricating a
-hosted identity. Hosted installation retains the logical/incarnation fence and
+hosted identity. Hosted installation retains the exact identity ledger and logical/incarnation fence and
 returns the ordinary aggregate Echo recovery cursor.
 
 ## Domain and delivery limits

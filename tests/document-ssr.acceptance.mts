@@ -70,8 +70,8 @@ function counted_authority(
   assert.equal(result.bootstrap.rev, 0);
   assert.equal(map.rev, 1);
   assert.doesNotMatch(result.html, /data-cut/);
-  assert.match(result.html, /hson:quid="000005001"/);
-  assert.deepEqual(result.bootstrap, document_map(`<main <p @000005001 "before"/>/>`).capture());
+  assert.doesNotMatch(result.html, /hson:quid|000005001/);
+  assert.deepEqual(result.bootstrap, document_map(`<main <p @000005001 "before"/>/>`).capture({ identity: "strip" }));
 }
 
 {
@@ -103,6 +103,10 @@ for (const source of [
   const paired = render_document({ map: document_map(`<main <p "a" "" "b"/>/>`) });
   assert.match(paired.html, /hson-boundary:v1:/);
   assert.equal(JSON.stringify(paired.bootstrap).includes("hson-boundary"), false);
+  const identityClaimed = render_document({ map: document_map(`<main @000005099 <p @000005100 "a" "" "b"/>/>`) });
+  assert.equal(identityClaimed.html, paired.html);
+  assert.doesNotMatch(identityClaimed.html, /hson:quid|000005099|000005100/);
+  assert.doesNotMatch(JSON.stringify(identityClaimed.bootstrap), /000005099|000005100|"quid"/);
 }
 
 {
@@ -184,7 +188,7 @@ for (const map of [emptyDocument, document_map(`<main/> <aside/>`)]) {
   assert.equal("endpoint" in result.bootstrap, false);
   assert.equal("locusSelector" in result.bootstrap, false);
   assert.doesNotMatch(result.html, /data-authority/);
-  assert.match(result.html, /hson:quid="000005003"/);
+  assert.doesNotMatch(result.html, /hson:quid|000005003/);
   locus.dispose();
 }
 
@@ -297,7 +301,8 @@ assert.throws(
   const cut = map.cut();
   assert.deepEqual(Object.keys(cut).sort(), ["data", "html"]);
   assert.equal(cut.data.rev, 0);
-  assert.deepEqual(cut, { html: render_document({ map }).html, data: map.capture() });
+  assert.deepEqual(cut, { html: render_document({ map }).html, data: map.capture({ identity: "strip" }) });
+  assert.doesNotMatch(JSON.stringify(cut), /000005401|hson:quid|"quid"/);
   const encoded = encode_ssr_bootstrap(cut.data);
   assert.equal(typeof encoded, "string");
   map.document.attrs.set(target(0, 0), "data-cut", "after");

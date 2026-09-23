@@ -73,10 +73,9 @@ function socketPair(): Readonly<{
   });
 }
 
-function mainFixture(quid: string): Readonly<{ root: FakeElement; child: FakeElement; text: FakeText }> {
+function mainFixture(_quid: string): Readonly<{ root: FakeElement; child: FakeElement; text: FakeText }> {
   const root = new FakeElement("main");
   const child = new FakeElement("p");
-  child.setAttribute("hson:quid", quid);
   const text = new FakeText("hello");
   child.appendChild(text);
   root.appendChild(child);
@@ -259,7 +258,6 @@ function mainFixture(quid: string): Readonly<{ root: FakeElement; child: FakeEle
   await echo.session.create();
   const root = new FakeElement("main");
   const button = new FakeElement("button");
-  button.setAttribute("hson:quid", quid);
   root.appendChild(button);
   await assert.rejects(
     continue_hosted_document({

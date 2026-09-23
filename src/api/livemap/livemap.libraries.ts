@@ -9,6 +9,7 @@ import type {
   LiveMapLibraries,
   HostedLiveMapLibrariesSnapshot,
   LiveMapLibrariesSnapshot,
+  LocalLibrariesContinuationSnapshot,
   LiveMapLibrariesInput,
   LiveMapLibraryInput,
   LiveMapLibraryOperation,
@@ -61,6 +62,7 @@ import { register_livemap_identity_epoch_owner } from "./livemap.identity-epoch.
 import {
   assert_libraries_snapshot_bound,
   assert_libraries_snapshot_shape,
+  assert_local_libraries_snapshot_shape,
   assert_hosted_libraries_snapshot_shape,
   decode_hosted_root,
 } from "./livemap.hosted.js";
@@ -213,17 +215,18 @@ export function make_livemap_hosted_mirror_from_snapshot_internal(
 
 /** Install one detached complete aggregate semantic cut into a fresh runtime domain. */
 export function install_libraries_snapshot(
-  snapshot: LiveMapLibrariesSnapshot,
+  snapshot: LiveMapLibrariesSnapshot | LocalLibrariesContinuationSnapshot,
 ): Readonly<{ map: LiveMapLibraries }> {
   return Object.freeze({ map: make_livemap_mirror_from_snapshot_internal(snapshot) });
 }
 
 /** @internal Shared exact aggregate decoder/installer used by local and hosted installation. */
 export function make_livemap_mirror_from_snapshot_internal(
-  snapshot: LiveMapLibrariesSnapshot,
+  snapshot: LiveMapLibrariesSnapshot | LocalLibrariesContinuationSnapshot,
   hosted?: HostedLiveMapLibrariesSnapshot,
 ): LiveMapLibraries {
-  assert_libraries_snapshot_shape(snapshot);
+  if ("identity" in snapshot) assert_libraries_snapshot_shape(snapshot);
+  else assert_local_libraries_snapshot_shape(snapshot);
   assert_libraries_snapshot_bound(snapshot);
   if (snapshot.registryDigest !== snapshot.registry.digest
     || snapshot.libraries.length !== snapshot.registry.libraries.length) {
@@ -259,7 +262,10 @@ export function make_livemap_mirror_from_snapshot_internal(
 
   const mirror = make_livemap_libraries(inputs, systems);
   const aggregate = internal_livemap_aggregate_authority(mirror);
-  if (hosted === undefined) aggregate.restoreLibraries(snapshot);
+  if (hosted === undefined) {
+    if ("identity" in snapshot) aggregate.restoreLibraries(snapshot);
+    else aggregate.restorePortableLibraries(snapshot);
+  }
   else aggregate.restoreHosted(hosted);
   return mirror;
 }

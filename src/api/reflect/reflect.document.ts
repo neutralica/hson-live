@@ -35,7 +35,6 @@ import {
   type SuppliedLiveTreeQuidReservation,
 } from "../livetree/quid/data-quid.js";
 import { LiveTreeQuidReuseError } from "../livetree/livetree.error.js";
-import { forget_inherited_dom_quid, matches_inherited_dom_quid } from "../livetree/quid/inherited-dom-quid.js";
 import {
   assert_node_element_link,
   get_dom_for_node,
@@ -225,6 +224,7 @@ function reflect_document_binding_in_runtime(
   const byQuid = new Map<string, ProjectedRegistration>();
   const runtimeEpochQuids = new Set<string>();
   const mountedElements = new WeakMap<HsonNode, Element>();
+  const observedDomIdentity = new WeakSet<Element>();
   let currentStatus: DocumentMirrorStatus = "initializing";
   let currentRevision = capturedRevision;
   let currentFailure: DocumentMirrorError | undefined;
@@ -1055,7 +1055,7 @@ function reflect_document_binding_in_runtime(
         "Projected element is no longer present at its canonical raw document path.",
       );
     }
-    validate_registration(registration, mountedElements);
+    validate_registration(registration, mountedElements, observedDomIdentity, borrowed);
   };
 
   /** Cross the approved hard owner-epoch boundary with a fresh exact projection lineage. */
@@ -1231,7 +1231,7 @@ function reflect_document_binding_in_runtime(
     if (hasIdentityRegistration && identityReservation === undefined) {
       throw new DocumentMirrorError(
         DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
-        "Canonical identity registration reached Reflection without local preflight evidence.",
+        "Canonical identity registration reached Mirror without local preflight evidence.",
       );
     }
     const replaceRoot = commit.ops.length === 1 && commit.ops[0]?.op === "replace-root"
@@ -1432,7 +1432,7 @@ function validate_borrowed_document_tree(
   if (document_binding_for_node(borrowedRoot) !== undefined) {
     throw new DocumentMirrorError(
       DOCUMENT_REFLECT_ALREADY_BOUND_ERROR_CODE,
-      "Borrowed LiveTree root already belongs to a document Reflect binding.",
+      "Borrowed LiveTree root already belongs to a document Mirror binding.",
     );
   }
   if (parent_for_node(borrowedRoot) !== undefined) {
@@ -1479,7 +1479,7 @@ function validate_borrowed_document_tree(
     if (document_binding_for_node(node) !== undefined) {
       throw new DocumentMirrorError(
         DOCUMENT_REFLECT_ALREADY_BOUND_ERROR_CODE,
-        "Borrowed LiveTree node already belongs to a document Reflect binding.",
+        "Borrowed LiveTree node already belongs to a document Mirror binding.",
       );
     }
     const quid = is_ordinary_element_node(node) ? node.$_meta?.[HSON_META_QUID] : undefined;
@@ -1590,6 +1590,8 @@ function read_projected_attrs(node: HsonNode): CanonicalPublicAttrs {
 function validate_registration(
   registration: ProjectedRegistration,
   mountedElements: WeakMap<HsonNode, Element>,
+  observedDomIdentity: WeakSet<Element>,
+  borrowed: boolean,
 ): void {
   if (!is_ordinary_element_node(registration.node)) {
     throw new DocumentMirrorError(
@@ -1643,9 +1645,10 @@ function validate_registration(
     );
   }
   const projectedDomQuid = element.getAttribute(HSON_QUID_MARKUP_NAME) ?? undefined;
-  if (projectedDomQuid === registration.persistedQuid) {
-    forget_inherited_dom_quid(element);
-  } else if (!matches_inherited_dom_quid(element)) {
+  if (projectedDomQuid === registration.persistedQuid && projectedDomQuid !== undefined) {
+    observedDomIdentity.add(element);
+  } else if (projectedDomQuid !== registration.persistedQuid
+    && !(borrowed && projectedDomQuid === undefined && !observedDomIdentity.has(element))) {
     throw new DocumentMirrorError(
       DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
       "Mounted projected element does not carry its expected persisted QUID.",

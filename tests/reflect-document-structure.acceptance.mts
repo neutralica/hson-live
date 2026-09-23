@@ -1,6 +1,7 @@
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
-import { hson } from "../src/index.ts";
+import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
+import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
 import { validate_document_path } from "../src/api/livemap/index.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import type { HsonNode } from "../src/core/types.ts";
@@ -48,7 +49,7 @@ function check(name: string, fn: () => void): void {
 install_fake_document();
 
 function element(source: string): DocumentLiveMap {
-  const map = hson.liveMap.fromHson(source);
+  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error("Expected DocumentLiveMap");
   return map;
 }

@@ -107,7 +107,7 @@ export async function continue_hosted_document_internal(options: Readonly<{
         runtime_for_tree(adoption.tree),
       );
       if (reflect.status !== "active" || reflect.sourceRevision !== revision) {
-        throw new Error("Reflect did not establish exact correspondence at the captured revision.");
+        throw new Error("Mirror did not establish exact correspondence at the captured revision.");
       }
     } catch (cause) {
       throw new DocumentContinuationError("reflect", cause);
@@ -124,7 +124,7 @@ export async function continue_hosted_document_internal(options: Readonly<{
     }
     try {
       if (reflect.status !== "active" || reflect.sourceRevision !== resolved.selected.rev) {
-        throw reflect.failure ?? new Error("Reflect is not current after Echo recovery.");
+        throw reflect.failure ?? new Error("Mirror is not current after Echo recovery.");
       }
     } catch (cause) {
       throw new DocumentContinuationError("reflect", cause);

@@ -37,6 +37,8 @@ const worker = await new Promise<Readonly<{
 
 assert.equal(worker.hasDocument, false);
 assert.equal(worker.html, node.html);
+assert.doesNotMatch(worker.html, /hson:quid|000005301/);
+assert.doesNotMatch(JSON.stringify(worker.bootstrap), /000005301|"quid"/);
 assert.deepEqual(worker.bootstrap, node.bootstrap);
 assert.deepEqual(worker.cut, map.cut());
 assert.equal(worker.encoded, encode_ssr_bootstrap(node.bootstrap));

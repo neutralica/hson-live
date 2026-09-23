@@ -6,7 +6,7 @@ import { INTERACTION_RESERVED_LIBRARY_KEY } from "../../internal/interaction-sto
 import { rewrite_interaction_subjects, validate_interaction_subjects } from "../../internal/interaction-path-maintenance.js";
 import type { HsonSchema } from "../transform/transform.types.js";
 import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
-import type { ClassifiedLiveMap, HostedLiveMapLibrariesSnapshot, LiveMap, LiveMapAnyOp, LiveMapCommit, LiveMapLibrariesSnapshot, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapDataOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapCaptureOptions, LiveMapApply, LiveMapGraphCommit, LiveMapGraphOp, LiveMapGraphReplaceRootOp, LiveMapRootMode } from "../../types/livemap.types.js";
+import type { ClassifiedLiveMap, HostedLiveMapLibrariesSnapshot, LiveMap, LiveMapAnyOp, LiveMapCommit, LiveMapLibrariesSnapshot, LocalLibrariesContinuationSnapshot, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapDataOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapCaptureOptions, LiveMapApply, LiveMapGraphCommit, LiveMapGraphOp, LiveMapGraphReplaceRootOp, LiveMapRootMode } from "../../types/livemap.types.js";
 import type { LiveMapProjectedGraphEnsureQuidOp } from "./livemap.identity.types.js";
 import {
   clone_live_root,
@@ -147,6 +147,7 @@ import {
   LIVEMAP_LIBRARIES_SNAPSHOT_FORMAT,
   assert_libraries_snapshot_bound,
   assert_libraries_snapshot_shape,
+  assert_local_libraries_snapshot_shape,
   assert_hosted_libraries_snapshot_shape,
   decode_hosted_commit,
   decode_hosted_root,
@@ -2027,12 +2028,14 @@ function make_livemap_core_from_compatibility_root(
   }
 
   function restore_libraries_aggregate(
-    snapshot: LiveMapLibrariesSnapshot,
+    snapshot: LiveMapLibrariesSnapshot | LocalLibrariesContinuationSnapshot,
     authority?: HostedAuthorityFence,
   ): void {
     transitionController.assertPublicMutationAllowed();
     const hosted = require_hosted_state();
-    assert_libraries_snapshot_shape(snapshot);
+    const identity = "identity" in snapshot ? snapshot.identity : undefined;
+    if ("identity" in snapshot) assert_libraries_snapshot_shape(snapshot);
+    else assert_local_libraries_snapshot_shape(snapshot);
     assert_libraries_snapshot_bound(snapshot);
     if (snapshot.format !== LIVEMAP_LIBRARIES_SNAPSHOT_FORMAT
       || snapshot.registryDigest !== hosted.registry.digest
@@ -2041,16 +2044,16 @@ function make_livemap_core_from_compatibility_root(
       throw new Error("Hosted aggregate snapshot registry is incompatible with this LiveMap.");
     }
     if (!Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0
-      || !Number.isSafeInteger(snapshot.identity?.epoch) || snapshot.identity.epoch < 0
-      || !Array.isArray(snapshot.identity?.issuedQuids)
-      || snapshot.identity.issuedQuids.length > HOSTED_MAX_ISSUED_QUIDS
+      || (identity !== undefined && (!Number.isSafeInteger(identity.epoch) || identity.epoch < 0
+        || !Array.isArray(identity.issuedQuids)
+        || identity.issuedQuids.length > HOSTED_MAX_ISSUED_QUIDS))
       || !Array.isArray(snapshot.libraries)
       || snapshot.libraries.length !== hosted.registry.libraries.length) {
       throw new Error("Hosted aggregate snapshot envelope is malformed.");
     }
 
-    const issuedLedger = make_livemap_issued_quid_ledger(snapshot.identity.issuedQuids);
-    if (issuedLedger.size !== snapshot.identity.issuedQuids.length) {
+    const issuedLedger = identity === undefined ? undefined : make_livemap_issued_quid_ledger(identity.issuedQuids);
+    if (identity !== undefined && issuedLedger?.size !== identity.issuedQuids.length) {
       throw new Error("Hosted aggregate snapshot issued-QUID ledger contains duplicates.");
     }
     const candidates: Array<Readonly<{
@@ -2114,7 +2117,7 @@ function make_livemap_core_from_compatibility_root(
     }));
     const active = aggregate_quid_locations(candidateStates);
     for (const quid of active.keys()) {
-      if (!issuedLedger.has(quid)) {
+      if (issuedLedger === undefined || !issuedLedger.has(quid)) {
         throw new Error("Hosted aggregate snapshot active QUID is absent from its issued ledger.");
       }
     }
@@ -2122,10 +2125,10 @@ function make_livemap_core_from_compatibility_root(
     // All fallible decoding, compilation, Schema, mode, identity, and bound checks
     // are complete before this single installation section begins.
     const previousRevision = mapRevision;
-    const continuity = authority !== undefined
+    const continuity = authority !== undefined && identity !== undefined && issuedLedger !== undefined
       && hosted.fence.logicalMapId === authority.logicalMapId
       && hosted.fence.incarnationId === authority.incarnationId
-      && mapIdentityEpoch.current() === snapshot.identity.epoch
+      && mapIdentityEpoch.current() === identity.epoch
       && enumerate_livemap_issued_quids(mapIdentityEpoch.issued()).every((quid) => issuedLedger.has(quid))
       ? "same-epoch" as const
       : "new-epoch" as const;
@@ -2147,7 +2150,8 @@ function make_livemap_core_from_compatibility_root(
       systemCandidate.state.root = systemCandidate.root;
       systemCandidate.state.projectedValue = systemCandidate.projectedValue;
     }
-    mapIdentityEpoch.hydrate(snapshot.identity.epoch, issuedLedger);
+    if (identity === undefined) mapIdentityEpoch.replace([]);
+    else if (issuedLedger !== undefined) mapIdentityEpoch.hydrate(identity.epoch, issuedLedger);
     mapRevision = snapshot.revision;
     if (authority !== undefined) hostedFence = Object.freeze({ ...authority });
     transitionController.invalidate();
@@ -2262,6 +2266,7 @@ function make_livemap_core_from_compatibility_root(
     captureLibraries: capture_libraries_aggregate,
     captureHosted: capture_hosted_aggregate,
     restoreLibraries: (snapshot) => restore_libraries_aggregate(snapshot),
+    restorePortableLibraries: (snapshot) => restore_libraries_aggregate(snapshot),
     restoreHosted: restore_hosted_aggregate,
     restoreHostedManaged: (owner, snapshot) => transitionController.runManaged(
       owner,

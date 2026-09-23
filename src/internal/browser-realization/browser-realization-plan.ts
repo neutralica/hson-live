@@ -193,7 +193,7 @@ export function plan_browser_realization(
   const parentNamespace = options.parentNamespace ?? "html";
   const capability = options.capability ?? "ssr";
   const fingerprint = browser_realization_fingerprint(value, parentNamespace);
-  const roots = plan_atoms(flatten_value(value, "0"), parentNamespace, "ordinary", fingerprint);
+  const roots = plan_atoms(flatten_value(value, "0"), parentNamespace, "ordinary", fingerprint, undefined, capability);
   const plan: BrowserRealizationPlan = Object.freeze({
     version: 1,
     fingerprint,
@@ -244,6 +244,7 @@ function plan_atoms(
   parserContext: BrowserParserContext,
   fingerprint: string,
   atomicHost?: string,
+  capability: "dom" | "ssr" = "ssr",
 ): BrowserRealizationNode[] {
   if (parserContext !== "ordinary") return plan_atomic(atoms, parserContext, atomicHost ?? "", fingerprint);
   const result: BrowserRealizationNode[] = [];
@@ -252,7 +253,7 @@ function plan_atoms(
   let boundaryOrdinal = 0;
   for (const atom of atoms) {
     if (atom.kind === "element-atom") {
-      result.push(plan_element(atom.node, atom.path, parentNamespace));
+      result.push(plan_element(atom.node, atom.path, parentNamespace, capability));
       previousWasText = false;
       continue;
     }
@@ -282,6 +283,7 @@ function plan_element(
   node: HsonNode,
   path: string,
   parentNamespace: BrowserNamespace,
+  capability: "dom" | "ssr",
 ): BrowserRealizationElement {
   if (node.$_tag.startsWith(HSON_SYS_PREFIX)) {
     throw incompatible("a reserved virtual node reached native element planning", path);
@@ -290,7 +292,7 @@ function plan_element(
   const attrs: BrowserRealizationAttribute[] = [];
   const plannedAttrNames = new Set<string>();
   const quid = node.$_meta?.[HSON_META_QUID];
-  if (quid !== undefined) {
+  if (capability === "dom" && quid !== undefined) {
     attrs.push(Object.freeze({ name: "hson:quid", value: quid }));
     plannedAttrNames.add("hson:quid");
   }
@@ -311,7 +313,7 @@ function plan_element(
   const atoms = flatten_content(node.$_content, `${path}.c`);
   validate_document_structure(names.namespace, names.localName, atoms, path);
   const elementFingerprint = browser_realization_fingerprint(node, names.namespace);
-  let children = plan_atoms(atoms, names.childNamespace, parserContext, elementFingerprint, names.localName);
+  let children = plan_atoms(atoms, names.childNamespace, parserContext, elementFingerprint, names.localName, capability);
   if (names.namespace === "html" && names.localName === "table") {
     children = derive_table_wrappers(children, path);
   }

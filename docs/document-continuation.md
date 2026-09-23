@@ -13,10 +13,10 @@ exposes only the semantic `{ html, bootstrap }` composition boundary.
 
 The structural names have distinct authorities: `_hson_*` names belong to
 canonical Hson and its transport representation; `hson-boundary` names derived
-browser-realization evidence; and `hson:quid` is temporary SSR output carrying
-sparse runtime identity metadata on eligible Elements. It is not portable
-adoption evidence. An Hson boundary marker is never a canonical
-node and never acquires QUID semantics.
+browser-realization evidence. Server SSR emits no generated `hson:quid`
+attributes. A running browser may later add local `hson:quid` metadata when a
+feature requests identity. Boundary markers derive from portable structure and
+parser evidence, never runtime identity.
 
 The package root exports two orchestration functions:
 
@@ -42,7 +42,10 @@ continuation.tree.attrs.set("data-ready", "yes");
 continuation.dispose();
 ```
 
-`map` may be a document `LiveMap`, or an aggregate public-library map. With one
+The local SSR bootstrap carries document state and revision, without generated
+server QUIDs. Admit the decoded solo root through ordinary portable node
+admission, then restore its revision with `identity: "strip"`; this gives the
+browser a fresh runtime identity context. `map` may be a document `LiveMap`, or an aggregate public-library map. With one
 public document library the aggregate selection is inferred. With two or more,
 pass its stable public document-library handle as `document`. Hidden canonical
 interaction storage is not a selectable document library. The returned `map`
@@ -95,10 +98,10 @@ await continuation.tree.async.attrs.set("data-state", "accepted");
 
 The caller supplies a replica-bearing `Echo` whose exact map already contains
 the selected document. Continuation first admits the existing DOM at its
-captured revision and binds `Reflect`, then awaits ordinary Echo recovery. It
-resolves only when Echo is caught up and `Reflect` is active at the current map
+captured revision and binds Mirror, then awaits ordinary Echo recovery. It
+resolves only when Echo is caught up and Mirror is active at the current map
 revision. Compatible replay therefore advances the already-adopted nodes in
-place. An incompatible root epoch fails closed through existing `Reflect`
+place. An incompatible root epoch fails closed through existing Mirror
 continuity rules.
 
 Hosted interactions are activated once, after that readiness boundary. Their
@@ -129,7 +132,7 @@ document mode, namespace and tag names, exact authored attributes,
 child order, text node count and boundaries, text
 values, virtual-node lowering, derived table wrappers, template content,
 Hson boundary markers, owner document, and runtime identity claims.
-The established existing-document `Reflect` admission then verifies the full
+The established existing-document Mirror admission then verifies the full
 canonical graph, mappings, ownership, and revision fence again.
 Canonical paths and the plan's ordered positions pair each canonical node with
 its existing DOM node. Generated QUID equality across server and browser
@@ -142,12 +145,10 @@ For corresponding input, admission writes nothing anywhere in the containing
 `Document`. It preserves the
 actual `Element` and `Text` objects, attributes, text boundaries, focus,
 selection, and browser dirty form properties. It neither mints QUIDs nor writes
-`hson:quid`. Existing server-emitted `hson:quid` attributes are temporary
-legacy metadata during this phase. Their value, presence, or absence is not
-matched against the incoming canonical graph; all other attributes remain
-exact. A later browser-local QUID may replace that metadata when local
-identity is demanded. Mirror still checks the browser-local graph and runtime
-registry and checks DOM QUID metadata once it is established locally. Arbitrary
+`hson:quid`. A pre-existing `hson:quid` in unbound SSR DOM rejects admission;
+markup cannot claim browser runtime identity. Later local QUID demand may
+create browser-owned DOM metadata. Mirror checks the browser graph, runtime
+registry, and established local DOM QUID metadata. Arbitrary
 comments, separator whitespace, malformed or wrong-plan Hson boundary markers,
 and any other unplanned child are mismatches rather than tolerated decoration.
 
@@ -178,10 +179,10 @@ a canonical document can remain valid and directly realizable even when no
 lossless HTML-source realization exists.
 
 Any construction failure releases provisional mappings, identity claims,
-`Reflect`, interaction activation, and the active-root reservation. It leaves
+Mirror, interaction activation, and the active-root reservation. It leaves
 the DOM and canonical map untouched. A root can have only one active high-level
 continuation. `dispose()` is idempotent and removes continuation-owned
-interactions and `Reflect` propagation, but does not dispose the normal
+interactions and Mirror propagation, but does not dispose the normal
 `LiveTree`, mutate the map or DOM, or remove browser-owned roots.
 
 Hosted continuation borrows Echo. Disposal never disconnects or disposes Echo,

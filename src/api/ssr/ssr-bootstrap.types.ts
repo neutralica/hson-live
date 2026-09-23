@@ -2,6 +2,7 @@ import type {
   DocumentLiveMapCapture,
   HostedLiveMapLibrariesSnapshot,
   LiveMapLibrariesSnapshot,
+  LocalLibrariesContinuationSnapshot,
 } from "../../types/livemap.types.js";
 import type { LocusSnapshotEnvelope } from "../../types/locus.representation.types.js";
 
@@ -32,7 +33,7 @@ export type DecodedSsrBootstrap =
     kind: "hosted-document";
     bootstrap: Extract<LocusSnapshotEnvelope, { hson: string }> & Readonly<{ mode: "document" }>;
   }>
-  | Readonly<{ kind: "libraries"; bootstrap: LiveMapLibrariesSnapshot }>
+  | Readonly<{ kind: "libraries"; bootstrap: LocalLibrariesContinuationSnapshot }>
   | Readonly<{ kind: "hosted-libraries"; bootstrap: HostedLiveMapLibrariesSnapshot }>;
 
 /** Outer encoded-size admission for SSR bootstrap transport. */

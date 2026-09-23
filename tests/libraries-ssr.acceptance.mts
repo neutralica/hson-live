@@ -132,18 +132,18 @@ check("hidden storage is bootstrapped but never selectable or counted for infere
   assert.equal(hidden?.scope, "hson-internal");
 });
 
-check("retired QUID history survives SSR/install without entering HTML", () => {
+check("retired server QUID history stays outside local SSR/install", () => {
   const map = map_fixture();
   map.lib("page").at([]).at([0]).delete();
   const ssr = render_document({ map });
-  assert.equal(ssr.bootstrap.identity.issuedQuids.includes(QUID), true);
+  assert.equal("identity" in ssr.bootstrap, false);
+  assert.equal(JSON.stringify(ssr.bootstrap).includes(QUID), false);
+  assert.doesNotMatch(JSON.stringify(ssr.bootstrap), /identityEpoch|issuedQuids|"quid"/);
+  assert.doesNotMatch(ssr.html, /hson:quid/);
   assert.equal(ssr.html.includes(QUID), false);
   const installed = install_libraries_snapshot(ssr.bootstrap).map;
-  assert.equal(installed.capture().identity.issuedQuids.includes(QUID), true);
-  const source = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(`<item @${QUID}/>`));
-  if (source.mode !== "document") throw new Error("Expected document source.");
-  const item = source.root().$_content[0];
-  assert.throws(() => document(installed, "page").at([]).asElement()!.insert(0, item as never), /QUID|identity|issued|reuse/i);
+  assert.equal(installed.capture().identity.issuedQuids.includes(QUID), false);
+  assert.equal(installed.rev, ssr.bootstrap.revision);
 });
 
 check("schema and registry tampering fails closed", () => {
@@ -166,7 +166,7 @@ check("schema and registry tampering fails closed", () => {
 check("same-cut rendering never rereads source Libraries after aggregate capture", () => {
   const map = map_fixture();
   enable_interactions(map);
-  const before = map.capture();
+  const before = map.cut().data;
   set_document_ssr_hook_for_tests((point) => {
     if (point !== "local-libraries-after-capture") return;
     map.lib("page").at([]).asElement()!.attrs.set("title", "one");

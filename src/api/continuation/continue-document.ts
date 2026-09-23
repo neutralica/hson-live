@@ -83,7 +83,7 @@ export function continue_document(options: Readonly<{
       if (reflect.status !== "active"
         || reflect.sourceRevision !== revision
         || resolved.selected.rev !== revision) {
-        throw new Error("Reflect did not establish exact correspondence at the captured revision.");
+        throw new Error("Mirror did not establish exact correspondence at the captured revision.");
       }
     } catch (cause) {
       throw new DocumentContinuationError("reflect", cause);

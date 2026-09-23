@@ -182,7 +182,7 @@ function match_node(
   if (element.namespaceURI !== expectedNamespace || !tagMatches) {
     throw new Error(`Existing Element namespace or tag does not match planned <${plan.localName}>.`);
   }
-  validate_attrs(plan, element);
+  validate_attrs(plan, element, allowRuntimeInfrastructure);
   if (plan.kind === "element") links.push(Object.freeze({ canonicalNode: plan.canonicalNode, domNode: element }));
   const target = child_target(element, plan);
   const actualChildren = Array.from(target.childNodes).filter((child) => (
@@ -199,19 +199,18 @@ function match_node(
   }
 }
 
-function validate_attrs(plan: BrowserRealizationElement | BrowserRealizationWrapper, element: Element): void {
-  // Generated QUID markup in older SSR output is legacy runtime metadata, not
-  // portable correspondence evidence on canonical elements. Parser-derived
-  // wrappers have no runtime subject and must not carry that metadata.
-  const ignoreLegacyQuid = plan.kind === "element";
-  const expected = new Map(plan.attrs.filter((attr) => !ignoreLegacyQuid || attr.name !== "hson:quid").map((attr) => [attr.name, attr.value]));
+function validate_attrs(plan: BrowserRealizationElement | BrowserRealizationWrapper, element: Element, allowRuntimeInfrastructure: boolean): void {
+  // Initial SSR admission rejects foreign identity markup. An already bound
+  // browser runtime may carry its own QUID metadata, checked by Mirror.
+  const ignoreRuntimeQuid = allowRuntimeInfrastructure && plan.kind === "element";
+  const expected = new Map(plan.attrs.filter((attr) => !ignoreRuntimeQuid || attr.name !== "hson:quid").map((attr) => [attr.name, attr.value]));
   for (const [name, value] of expected) {
     if (element.getAttribute(name) !== value) {
       throw new Error(`Existing <${plan.localName}> attribute ${JSON.stringify(name)} does not match its realization plan.`);
     }
   }
   for (const name of element.getAttributeNames()) {
-    if ((!ignoreLegacyQuid || name !== "hson:quid") && !expected.has(name)) {
+    if ((!ignoreRuntimeQuid || name !== "hson:quid") && !expected.has(name)) {
       throw new Error(`Existing <${plan.localName}> contains unplanned attribute ${JSON.stringify(name)}.`);
     }
   }

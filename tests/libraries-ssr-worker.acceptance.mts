@@ -24,6 +24,8 @@ const worker = await new Promise<any>((resolve, reject) => {
 
 assert.equal(worker.hasDocument, false);
 assert.equal(worker.html, node.html);
+assert.doesNotMatch(worker.html, /hson:quid|000009711/);
+assert.doesNotMatch(JSON.stringify(worker.bootstrap), /000009711|identityEpoch|issuedQuids|"identity"|"quid"/);
 assert.equal(worker.document, node.document);
 assert.deepEqual(worker.bootstrap, node.bootstrap);
 assert.deepEqual(worker.cut, map.cut());

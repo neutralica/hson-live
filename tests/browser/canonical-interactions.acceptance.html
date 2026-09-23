@@ -12,6 +12,7 @@
       enable_interactions,
       hsonLiveMap,
       hsonLiveTree,
+      admit_exact_runtime_livemap_libraries,
     } from "./.canonical-interactions.library.bundle.js";
 
     const QUID = "000008398";
@@ -19,7 +20,7 @@
     const StateSchema = Hson.schema`<type "data" content <count "number">>`;
     const page = hsonLiveMap.fromHson("<main <button/>/>").root();
     page.$_content[0].$_content[0].$_content[0].$_meta = { quid: QUID };
-    const map = hsonLiveMap.fromLibraries({
+    const map = admit_exact_runtime_livemap_libraries({
       state: { data: { count: 0 }, schema: StateSchema },
       page: { document: page, schema: PageSchema },
     });
