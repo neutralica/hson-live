@@ -40,11 +40,12 @@ import {
 import type { LiveMapLibraryIdentity } from "./livemap.library.js";
 import type { LiveMapSystemIdentity } from "./livemap.system.js";
 import { validate_document_path } from "./livemap.document.path.js";
+import { normalize_replacement_lineage } from "./livemap.document.lineage.js";
 
 export const HOSTED_REGISTRY_FORMAT = "hson-hosted-registry" as const;
 export const HOSTED_COMMIT_FORMAT = "hson-hosted-commit" as const;
 export const LIVEMAP_LIBRARIES_SNAPSHOT_FORMAT = "hson-livemap-libraries-snapshot" as const;
-export const HOSTED_GRAPH_OP_FORMAT = "hson-hosted-graph-op" as const;
+export const HOSTED_GRAPH_OP_FORMAT = "hson-hosted-graph-op-v2" as const;
 export const HOSTED_ROOT_FORMAT = "hson-exact-value" as const;
 
 export const HOSTED_MAX_LIBRARIES = 1_024;
@@ -431,7 +432,7 @@ function encode_hosted_graph_operation(operation: LiveMapGraphOp | LiveMapProjec
     else if (operation.op === "remove-attr") representation = { domain: "graph", op: operation.op, target, name: operation.name };
     else if (operation.op === "replace-attrs") representation = { domain: "graph", op: operation.op, target, attrs: encode_projected_json(operation.attrs as JsonValue) };
     else if (operation.op === "ensure-quid") representation = { domain: "graph", op: operation.op, target, quid: operation.quid };
-    else if (operation.op === "replace-content") representation = { domain: "graph", op: operation.op, target, index: operation.index, replacement: encode_exact_hson_value(operation.replacement) };
+    else if (operation.op === "replace-content") representation = { domain: "graph", op: operation.op, target, index: operation.index, replacement: encode_exact_hson_value(operation.replacement), lineage: operation.lineage };
     else if (operation.op === "insert-content") representation = { domain: "graph", op: operation.op, target, index: operation.index, content: encode_exact_hson_value(operation.content) };
     else if (operation.op === "remove-content") representation = { domain: "graph", op: operation.op, target, index: operation.index };
     else representation = { domain: "graph", op: operation.op, target, from: operation.from, to: operation.to };
@@ -478,11 +479,13 @@ function decode_hosted_graph_operation(payload: string, mode: LiveMapRootMode): 
   }
   if (record.op === "replace-content" || record.op === "insert-content") {
     const field = record.op === "replace-content" ? "replacement" : "content";
-    exact_keys(record, ["domain", "op", "target", "index", field], "Hosted graph operation");
+    exact_keys(record, record.op === "replace-content"
+      ? ["domain", "op", "target", "index", field, "lineage"]
+      : ["domain", "op", "target", "index", field], "Hosted graph operation");
     if (mode !== "document" || !valid_index(record.index) || typeof record[field] !== "string") throw incompatible_graph();
     const content = decode_exact_hson_value(record[field] as string);
     return record.op === "replace-content"
-      ? Object.freeze({ domain: "graph", op: record.op, target: target as LiveMapDocumentCommitTarget, index: record.index, replacement: content })
+      ? Object.freeze({ domain: "graph", op: record.op, target: target as LiveMapDocumentCommitTarget, index: record.index, replacement: content, lineage: normalize_replacement_lineage(record.lineage) })
       : Object.freeze({ domain: "graph", op: record.op, target: target as LiveMapDocumentCommitTarget, index: record.index, content });
   }
   if (record.op === "remove-content") {

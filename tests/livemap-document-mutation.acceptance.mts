@@ -414,6 +414,7 @@ check("content.replace changes exactly one existing physical content slot", () =
     target: elementPath(0),
     index: 1,
     replacement,
+    lineage: [],
   });
   const cluster = mustNode(documentElement(map).$_content[0], "expected element cluster after replacement");
   assert.equal(cluster.$_content.length, 3);

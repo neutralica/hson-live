@@ -10,6 +10,7 @@ import type {
   LiveMapDocumentAttributeValue,
   LiveMapDocumentAttrs,
   LiveMapDocumentContent,
+  LiveMapReplacementLineage,
   LiveMapDocumentCommitTarget,
   LiveMapDocumentRequestTarget,
   LiveMapGraphOp,
@@ -129,6 +130,7 @@ export type LocusDocumentActionPayloads = Readonly<{
     target: LocusDocumentTargetPayload;
     index: number;
     replacement: LiveMapDocumentContent;
+    lineage?: LiveMapReplacementLineage;
   };
   "document.content.insert": {
     target: LocusDocumentTargetPayload;

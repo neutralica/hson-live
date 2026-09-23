@@ -1,4 +1,5 @@
 import { parse_hson_exact_runtime } from "../../src/internal/exact-runtime-hson-codec.ts";
+import { admit_exact_runtime_livemap_node } from "../../src/internal/exact-runtime-node-admission.ts";
 import { create_test_event_emitter } from "../test-events.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../../src/index.ts";
@@ -53,7 +54,7 @@ function decode(value) {
 }
 
 function element_root(source = `<main @000000001/>`) {
-  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
+  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error(`Expected element, observed ${map.mode}`);
   return map.capture().root;
 }
@@ -111,6 +112,7 @@ check("document commits decode only current canonical path targets", () => {
       target: { kind: "path", path: [] },
       index: 0,
       replacement: encode_locus_graph_content({ $_tag: "span", $_meta: { quid: "000000002" }, $_content: [] }),
+      lineage: [],
     },
     {
       domain: "graph",
@@ -144,6 +146,17 @@ check("document commits decode only current canonical path targets", () => {
   if (!valid.ok || valid.value.type !== "commit") throw new Error("Expected decoded commit");
   assert.equal(valid.value.commit.mode, "document");
   assert.equal(valid.value.commit.ops[0].domain, "graph");
+});
+
+check("replacement commits require portable lineage even when it is empty", () => {
+  const withoutLineage = decode(commit("document", [{
+    domain: "graph",
+    op: "replace-content",
+    target: { kind: "path", path: [] },
+    index: 0,
+    replacement: encode_locus_graph_content({ $_tag: "span", $_content: [] }),
+  }]));
+  assert.equal(withoutLineage.ok, false);
 });
 
 check("QUID-only canonical recovery input rejects", () => {

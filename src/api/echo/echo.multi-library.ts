@@ -12,6 +12,7 @@ import type {
   EchoOptions,
 } from "../../types/locus.types.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
+import { derive_replacement_lineage_for_action } from "../livemap/livemap.document.lineage.js";
 import {
   document_action_payload_with_library,
   make_echo_document_authority,
@@ -64,7 +65,7 @@ export function create_multi_library_echo<
           const payload: JsonValue = (action.name === "document.content.insert"
             ? Object.freeze({ ...action.payload, library: entry.name, content: encode_locus_graph_content(action.payload.content) })
             : action.name === "document.content.replace"
-              ? Object.freeze({ ...action.payload, library: entry.name, replacement: encode_locus_graph_content(action.payload.replacement) })
+              ? Object.freeze({ ...action.payload, library: entry.name, replacement: encode_locus_graph_content(action.payload.replacement), lineage: derive_replacement_lineage_for_action(map.root(), "document", action.payload.target, action.payload.index, action.payload.replacement) })
               : document_action_payload_with_library(action, entry.name)) as unknown as JsonValue;
           let pending = endpoint.action(action.name, payload);
           let result;

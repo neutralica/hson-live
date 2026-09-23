@@ -11,7 +11,7 @@ import { materialize_projected_value } from "../src/core/projected-value-materia
 import { is_Node } from "../src/core/node-guards.ts";
 import { install_fake_document } from "./helpers/fake-document.mts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
-import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
+import { admit_exact_runtime_livemap_libraries, admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
 
 install_fake_document();
 
@@ -186,6 +186,31 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
   assert.equal(map.rev, before + 1);
   assert.deepEqual(paths(map), { descendant: [0, 0, 0, 0, 0] });
   assert.deepEqual(authority.documentOverlay(authority.libraries()[0]!).pathForQuid("000007302"), [0, 0, 0, 0, 0]);
+}
+
+{
+  const map = admit_exact_runtime_livemap_libraries({
+    page: { document: parse_hson_exact_runtime("<main <section <button/> <button/>/>/>", { allowTopLevelDocumentText: true }), schema: NestedSchema },
+  });
+  enable_interactions(map);
+  add_interaction(map, descriptor("survivor", [0, 0, 0, 0, 0]));
+  add_interaction(map, descriptor("terminated", [0, 0, 0, 0, 1]));
+  const replacementMap = admit_exact_runtime_livemap_node(parse_hson_exact_runtime("<section <button/> <button/> <button/>/>", { allowTopLevelDocumentText: true }));
+  if (replacementMap.mode !== "document") throw new Error("Expected document replacement.");
+  const replacement = replacementMap.at([]).snap();
+  if (!is_Node(replacement)) throw new Error("Expected replacement section.");
+  const authority = internal_livemap_aggregate_authority(map);
+  authority.commit([{
+    target: authority.target(authority.libraries()[0]!, [0, 0]),
+    kind: "graph",
+    operation: Object.freeze({
+      domain: "graph", op: "replace-content",
+      target: Object.freeze({ kind: "path", path: validate_document_path([0, 0]) }),
+      index: 0, replacement,
+      lineage: Object.freeze([{ source: validate_document_path([0, 0]), destination: validate_document_path([0, 2]) }]),
+    }),
+  }]);
+  assert.deepEqual(paths(map), { survivor: [0, 0, 0, 0, 2] });
 }
 
 process.stdout.write("interaction subject path lifecycle passed\n");

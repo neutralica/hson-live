@@ -257,11 +257,15 @@ function canonical_graph_op(op: LiveMapGraphOp | LiveMapProjectedGraphEnsureQuid
     });
   }
   if (documentOp.op === "replace-content") {
+    if (documentOp.lineage === undefined) {
+      throw new Error("Locus replacement commit is missing portable lineage.");
+    }
     return Object.freeze({
       domain: "graph",
       op: "replace-content",
       target,
       index: documentOp.index,
+      lineage: documentOp.lineage,
       replacement: encode_locus_graph_content(
         is_Node(documentOp.replacement) ? clone_live_root(documentOp.replacement) : documentOp.replacement,
       ),

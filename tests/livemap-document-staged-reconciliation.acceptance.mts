@@ -282,14 +282,14 @@ check("capture serializes no overlay and changes no identity accounting", () => 
   assert.deepEqual(Object.keys(capture).sort(), ["kind", "mode", "rev", "root"]);
 });
 
-check("legacy QUID replay lowers through the same incremental reducer", () => {
+check("canonical witnessed replay lowers through the same incremental reducer", () => {
   const map = element(`<main @${Q1}/>`);
   const before = livemap_document_identity_accounting();
   const commit = Reflect.apply(map.replay, map, [{
     changed: true,
     prevRev: 0,
     rev: 1,
-    ops: [{ domain: "graph", op: "set-attr", target: { kind: "quid", quid: Q1 }, name: "id", value: "legacy" }],
+    ops: [{ domain: "graph", op: "set-attr", target: { kind: "path", path: path(0), witness: { quid: Q1 } }, name: "id", value: "legacy" }],
   }]);
   const after = livemap_document_identity_accounting();
   assert.equal(after.fullBuilds, before.fullBuilds);

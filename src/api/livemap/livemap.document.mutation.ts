@@ -14,6 +14,7 @@ import {
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import {
   assign_hson_node_quid,
+  HsonNodeQuidValidationError,
   is_persisted_quid,
   read_hson_node_quid,
 } from "../../core/hson-node-quid.js";
@@ -36,6 +37,7 @@ import type {
   LiveMapGraphRemoveContentOp,
   LiveMapGraphReplaceContentOp,
   LiveMapGraphSetAttrOp,
+  LiveMapReplacementLineage,
 } from "../../types/livemap.types.js";
 import type { LiveMapGraphEnsureQuidOp } from "./livemap.identity.types.js";
 import { LiveMapDocumentMutationError } from "./livemap.error.js";
@@ -56,6 +58,11 @@ import {
   validate_document_path,
 } from "./livemap.document.path.js";
 import { classify_live_root_mode } from "./livemap.document.js";
+import {
+  apply_replacement_lineage,
+  derive_replacement_lineage,
+  normalize_replacement_lineage,
+} from "./livemap.document.lineage.js";
 import {
   decode_document_attr_value,
   decode_document_attrs,
@@ -107,6 +114,7 @@ export function make_livemap_document_mutation_api(
     target: LiveMapDocumentRequestTarget,
     index: number,
     replacement: LiveMapDocumentContent,
+    lineage?: LiveMapReplacementLineage,
   ) => LiveMapGraphCommit<LiveMapGraphReplaceContentOp>;
   insertContent: (
     target: LiveMapDocumentRequestTarget,
@@ -139,8 +147,8 @@ export function make_livemap_document_mutation_api(
     attrs,
     flags,
     replaceAttrs: (target, values) => replace_document_attrs(controller, target, values),
-    replaceContent: (target, index, replacement) =>
-      replace_document_content(controller, target, index, replacement),
+    replaceContent: (target, index, replacement, lineage) =>
+      replace_document_content(controller, target, index, replacement, lineage),
     insertContent: (target, index, content) =>
       insert_document_content(controller, target, index, content),
     removeContent: (target, index) =>
@@ -377,8 +385,9 @@ function replace_document_content(
   targetInput: unknown,
   indexInput: unknown,
   replacementInput: unknown,
+  lineageInput?: unknown,
 ): LiveMapGraphCommit<LiveMapGraphReplaceContentOp> {
-  const candidate = prepare_replace_document_content(controller.root(), controller.mode, controller.overlay(), targetInput, indexInput, replacementInput);
+  const candidate = prepare_replace_document_content(controller.root(), controller.mode, controller.overlay(), targetInput, indexInput, replacementInput, "request", lineageInput);
   return finish_mutation(controller, candidate);
 }
 
@@ -390,6 +399,7 @@ function prepare_replace_document_content(
   indexInput: unknown,
   replacementInput: unknown,
   targetAuthority: PreparedTargetAuthority = "request",
+  lineageInput?: unknown,
 ): PreparedDocumentMutation<LiveMapGraphReplaceContentOp> {
   const operationName = "replace-content";
   const index = normalize_content_index(indexInput, operationName);
@@ -405,6 +415,22 @@ function prepare_replace_document_content(
     );
   }
   const canonicalReplacement = insertion_content(endpoint, replacement);
+  const before = endpoint.$_content[index];
+  if (before === undefined) {
+    throw mutation_error("INVALID_DOCUMENT_REPLACEMENT", operationName, "replacement source is absent");
+  }
+  let lineage: LiveMapReplacementLineage;
+  try {
+    lineage = lineageInput === undefined
+      ? derive_replacement_lineage(before, canonicalReplacement)
+      : normalize_replacement_lineage(lineageInput, before, canonicalReplacement);
+    apply_replacement_lineage(before, canonicalReplacement, lineage);
+  } catch (cause) {
+    if (cause instanceof HsonNodeQuidValidationError) {
+      throw mutation_error("INVALID_DOCUMENT_IDENTITY", operationName, "candidate persisted identity is invalid", cause);
+    }
+    throw mutation_error("INVALID_DOCUMENT_REPLACEMENT", operationName, "replacement lineage is invalid", cause);
+  }
   endpoint.$_content[index] = canonicalReplacement;
 
   const operation: LiveMapGraphReplaceContentOp = Object.freeze({
@@ -413,6 +439,7 @@ function prepare_replace_document_content(
     target: preparedTarget.target,
     index,
     replacement: clone_content(canonicalReplacement, operationName),
+    lineage,
   });
   return prepare_finished_mutation(mode, root, overlay, operation, operationName);
 }
@@ -735,8 +762,10 @@ function prepare_graph_operation(
     return prepare_replace_document_attrs(root, mode, overlay, input.target, input.attrs, targetAuthority);
   }
   if (input.op === "replace-content") {
-    must_exact_keys(input, ["domain", "op", "target", "index", "replacement"], input.op);
-    return prepare_replace_document_content(root, mode, overlay, input.target, input.index, input.replacement, targetAuthority);
+    must_exact_keys(input, Object.hasOwn(input, "lineage")
+      ? ["domain", "op", "target", "index", "replacement", "lineage"]
+      : ["domain", "op", "target", "index", "replacement"], input.op);
+    return prepare_replace_document_content(root, mode, overlay, input.target, input.index, input.replacement, targetAuthority, input.lineage);
   }
   if (input.op === "insert-content") {
     must_exact_keys(input, ["domain", "op", "target", "index", "content"], input.op);

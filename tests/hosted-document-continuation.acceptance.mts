@@ -146,6 +146,42 @@ function mainFixture(_quid: string): Readonly<{ root: FakeElement; child: FakeEl
   assert.equal(fixture.child.getAttribute("data-async"), "accepted");
   assert.equal(pair.delivered.some((message) => message.type === "ack" && message.completionRev === 2), true);
 
+  // An Echo-authored replacement can carry foreign exact-QUID evidence while
+  // its portable lineage preserves the Locus-local subject lifetime.
+  const observedLineages: unknown[] = [];
+  const stopLineages = authority.commits.observe((event) => {
+    if (event.kind !== "commit") return;
+    for (const operation of event.commit.ops) {
+      if ("domain" in operation && operation.op === "replace-content") observedLineages.push(operation.lineage);
+    }
+  });
+  const foreign = "000004099";
+  const replacement = documentMap(`<p @${foreign} "changed"/>`).at([]).snap();
+  if (replacement === undefined) throw new Error("Expected replacement content.");
+  const request = JSON.parse(JSON.stringify({
+    target: path(0), index: 0, replacement,
+    lineage: [{ source: [], destination: [] }],
+  }));
+  const replaced = await echo.action("document.content.replace", request);
+  assert.equal(replaced.type, "ack");
+  assert.deepEqual(observedLineages, [[{ source: [], destination: [] }]]);
+  assert.equal(authority.document.byQuid(quid)?.$_tag, "p");
+  assert.equal(authority.document.byQuid(foreign), undefined);
+  assert.equal(replica.document.byQuid(quid)?.$_tag, "p");
+  assert.equal(continuation.reflect.sourceRevision, 3);
+  assert.equal(continuation.tree.find.byQuid(quid)?.dom.el(), childBefore as unknown as Element);
+  assert.equal((fixture.child.childNodes[0] as FakeText | undefined)?.data, "changed");
+
+  // Mirror's existing pessimistic text authoring also emits an explicit
+  // empty lineage for its replacement of a structural text leaf.
+  await continuation.tree.find.must.byQuid(quid).async.text.set("via Mirror");
+  assert.equal(authority.rev, 4);
+  assert.equal(replica.rev, 4);
+  assert.equal(continuation.reflect.sourceRevision, 4);
+  assert.equal((fixture.child.childNodes[0] as FakeText | undefined)?.data, "via Mirror");
+  assert.deepEqual(observedLineages, [[{ source: [], destination: [] }], []]);
+  stopLineages();
+
   const beforeDenial = replica.rev;
   await assert.rejects(childTree.async.attrs.set("denied", "no"));
   assert.equal(replica.rev, beforeDenial);

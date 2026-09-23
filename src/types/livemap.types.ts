@@ -1865,12 +1865,20 @@ export type LiveMapGraphReplaceAttrsOp = Readonly<{
   attrs: LiveMapDocumentAttrs;
 }>;
 
+/** Relative paths within the pre/post replace-content slot; no generated identity. */
+export type LiveMapReplacementLineage = readonly Readonly<{
+  source: LiveMapDocumentPath;
+  destination: LiveMapDocumentPath;
+}>[];
+
 export type LiveMapGraphReplaceContentOp = Readonly<{
   domain: "graph";
   op: "replace-content";
   target: LiveMapDocumentCommitTarget;
   index: number;
   replacement: LiveMapDocumentContent;
+  /** Present on newly planned operations; omitted input derives current local evidence. */
+  lineage?: LiveMapReplacementLineage;
 }>;
 
 export type LiveMapGraphInsertContentOp = Readonly<{

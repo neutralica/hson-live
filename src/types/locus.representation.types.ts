@@ -12,6 +12,7 @@ import type {
   LiveMapDocumentContent,
   LiveMapDocumentCommitTarget,
   LiveMapGraphOp,
+  LiveMapReplacementLineage,
   LiveMapAnyOp,
   LiveMapCommit,
   LiveMapAuthority,
@@ -122,8 +123,8 @@ type WithLocusCanonicalDocumentTarget<TOperation> = TOperation extends Readonly<
 
 export type LocusEncodedGraphReplaceContentOp = Omit<
   WithLocusCanonicalDocumentTarget<Extract<LiveMapGraphOp, { op: "replace-content" }>>,
-  "replacement"
-> & Readonly<{ replacement: LocusEncodedGraphContent }>;
+  "replacement" | "lineage"
+> & Readonly<{ replacement: LocusEncodedGraphContent; lineage: LiveMapReplacementLineage }>;
 
 export type LocusEncodedGraphInsertContentOp = Omit<
   WithLocusCanonicalDocumentTarget<Extract<LiveMapGraphOp, { op: "insert-content" }>>,

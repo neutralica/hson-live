@@ -62,6 +62,7 @@ import {
   is_locus_encoded_graph_content,
 } from "./locus.graph-content-codec.js";
 import { validate_document_path } from "../livemap/livemap.document.path.js";
+import { normalize_replacement_lineage } from "../livemap/livemap.document.lineage.js";
 import {
   decode_hson_data_internal,
   encode_hson_data_internal,
@@ -350,13 +351,15 @@ function decode_graph_op(
     return Object.freeze({ domain: "graph", op: "ensure-quid", target, quid: value.quid });
   }
   if (value.op === "replace-content") {
-    if (!has_exact_keys(value, ["domain", "op", "target", "index", "replacement"])) return undefined;
+    if (!has_exact_keys(value, ["domain", "op", "target", "index", "replacement", "lineage"])) return undefined;
     const index = required_rev(value.index);
     if (index === undefined) return undefined;
     const replacement = is_locus_encoded_graph_content(value.replacement) ? value.replacement : undefined;
+    let lineage;
+    try { lineage = normalize_replacement_lineage(value.lineage); } catch { return undefined; }
     return replacement === undefined
       ? undefined
-      : Object.freeze({ domain: "graph", op: "replace-content", target, index, replacement });
+      : Object.freeze({ domain: "graph", op: "replace-content", target, index, replacement, lineage });
   }
   if (value.op === "insert-content") {
     if (!has_exact_keys(value, ["domain", "op", "target", "index", "content"])) return undefined;

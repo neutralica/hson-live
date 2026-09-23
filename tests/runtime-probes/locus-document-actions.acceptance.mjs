@@ -1,7 +1,8 @@
 import { parse_hson_exact_runtime } from "../../src/internal/exact-runtime-hson-codec.ts";
+import { admit_exact_runtime_livemap_node } from "../../src/internal/exact-runtime-node-admission.ts";
 import { create_test_event_emitter } from "../test-events.mjs";
 import assert from "node:assert/strict";
-import { hson } from "../../src/index.ts";
+import { Hson, hson } from "../../src/index.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "locus.document-actions",
@@ -49,13 +50,13 @@ function socket_pair() {
 }
 
 function element(source) {
-  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
+  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error(`Expected document, observed ${map.mode}`);
   return map;
 }
 
 function multiNodeDocument(source) {
-  const map = hson.liveMap.fromNode(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
+  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error(`Expected document, observed ${map.mode}`);
   return map;
 }
@@ -486,7 +487,7 @@ await check("bulk authorization receives the complete decoded target, names and 
   const host = hson.locus.create({
     map: element(`<main/>`),
     authorizeAction(context) {
-      observed.push({ action: context.action, payload: context.payload.materialize() });
+      observed.push({ action: context.action, payload: Hson.data.materialize(context.payload) });
       return false;
     },
   });

@@ -271,6 +271,23 @@ remain unsupported.
 
 ## Graph-content codec
 
+`replace-content` commits carry `lineage`, an operation-local partial bijection
+of `{ source, destination }` document paths. Each path is relative to the
+replaced content slot: `source` addresses the pre-effect subtree and
+`destination` addresses the post-effect subtree. An empty path addresses the
+replaced subject itself. Mapped subjects survive, including descendants that
+move or change tag. Unmapped old subjects terminate, and unmapped new subjects
+begin new lifetimes; equal paths alone imply no continuity. Duplicate sources,
+duplicate destinations, missing endpoints, and local identity collisions reject
+before installation.
+
+The authority derives lineage from its local replacement evidence. Echo sends
+the same correspondence for hosted replacement requests, and Locus transfers
+only its own local QUIDs onto mapped destinations. The exact QUID claims in
+hosted graph content remain temporarily for migration consistency checks and
+general hosted identity replication. Their removal belongs to Phase 4C.
+`replace-root` remains a separate whole-root identity boundary.
+
 Canonical document commit operations use a separate exact graph-content
 transport for inserted or replacement content:
 

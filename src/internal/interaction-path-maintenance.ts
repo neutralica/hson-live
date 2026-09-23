@@ -10,7 +10,9 @@ import type { HsonNode } from "../core/types.js";
 import type { LiveMapGraphOp } from "../types/livemap.types.js";
 import type { LiveMapDocumentIdentityOverlay } from "../api/livemap/livemap.document.identity.js";
 import {
+  append_document_path,
   document_path_effect_for_graph_operation,
+  document_path_is_prefix,
   resolve_document_path,
   transform_document_path,
   validate_document_path,
@@ -69,7 +71,18 @@ export function rewrite_interaction_subjects(
       continue;
     }
     const priorQuid = beforeOverlay.quidAtPath(path);
-    const continuedPath = priorQuid === undefined ? undefined : afterOverlay.pathForQuid(priorQuid);
+    let continuedPath = priorQuid === undefined ? undefined : afterOverlay.pathForQuid(priorQuid);
+    if (operation.op === "replace-content" && operation.lineage !== undefined) {
+      const scope = append_document_path(operation.target.path, operation.index);
+      if (document_path_is_prefix(scope, path)) {
+        const relative = path.slice(scope.length);
+        const match = operation.lineage.find(({ source }) =>
+          source.length === relative.length && source.every((part, index) => part === relative[index]));
+        continuedPath = match === undefined
+          ? undefined
+          : validate_document_path([...scope, ...match.destination]);
+      }
+    }
     const transformed = transform_document_path(path, effect);
     if (transformed.kind === "invalid") throw new TypeError(transformed.reason);
     const targetPath = continuedPath ?? (transformed.kind === "retired" ? undefined : transformed.path);

@@ -32,14 +32,21 @@ same `Echo` family and reproduces the complete authoritative registry under
 one global revision.
 
 ```text
-LiveTree ⇅ Reflect ⇅ replica LiveMap ⇅ Echo ⇅ Locus ⇅ Locus LiveMap
+LiveTree ⇅ Mirror ⇅ replica LiveMap ⇅ Echo ⇅ Locus ⇅ Locus LiveMap
                                    Echo ⇅ Locus
 ```
 
-Echo serializes supported Reflect requests, lowers each at queue head against
+Echo serializes supported Mirror requests, lowers each at queue head against
 the latest accepted replica, sends an existing built-in document action, and
 does not lower the next request until the replica reaches `completionRev`.
-Rejection changes neither map nor projection and does not fail Reflect.
+Rejection changes neither map nor projection and does not fail Mirror.
+
+For hosted `replace-content` authoring, Echo derives operation-relative
+source/destination path lineage from its own local replacement intent. Locus
+applies that correspondence to Locus-local identities; the generated QUIDs of
+the two runtimes do not define the portable replacement lifetime. Exact-QUID
+graph content and witnesses remain in the temporary Phase 4A stream as an
+oracle and will be removed in Phase 4C.
 
 Echo does not perform optimistic mutation, authorization, application policy,
 or generic data proposals. Hosted data changes continue through

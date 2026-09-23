@@ -166,14 +166,27 @@ export function plan_document_structural_transaction(
   collect_shadow_nodes(root, finalNodes);
   validate_incoming_quids(incomingRoots, oldNodes, finalNodes, runtime);
   const removedRoots = find_removed_roots(projectedRoot, finalNodes);
-  const mountedAffectedOwners = [...affectedOwners]
-    .map((shadow) => shadow.node)
-    .filter((node) => finalNodes.has(node) && get_el_for_node(node) !== undefined);
+  const mountedAffectedOwners = new Set(
+    [...affectedOwners]
+      .map((shadow) => shadow.node)
+      .filter((node) => finalNodes.has(node) && get_el_for_node(node) !== undefined),
+  );
+  // A compatible subject can keep its Element while receiving entirely new
+  // descendants. Reconcile that retained Element's children as well as the
+  // operation's parent; reconciling the parent alone reuses the Element and
+  // never descends into it.
+  walk_shadow(root, (shadow) => {
+    if (shadow.replacementSource !== undefined
+      && finalNodes.has(shadow.node)
+      && get_el_for_node(shadow.node) !== undefined) {
+      mountedAffectedOwners.add(shadow.node);
+    }
+  });
   return Object.freeze({
     root,
     finalNodes,
     removedRoots,
-    affectedOwners: Object.freeze(mountedAffectedOwners),
+    affectedOwners: Object.freeze([...mountedAffectedOwners]),
     runtime,
     lineageTransfers: Object.freeze([...continuity.transfers]),
   });

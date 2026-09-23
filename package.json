@@ -307,6 +307,7 @@
     "test:certified-authored-hson-corpus": "node --import=tsx tests/certified-authored-hson-corpus.acceptance.mts",
     "test:livetree-livemap-attrs-convergence": "node --import=tsx tests/livetree-livemap-attrs-convergence.acceptance.mts",
     "test:document-same-quid-replacement-continuity": "node --import=tsx tests/document-same-quid-replacement-continuity.acceptance.mts",
+    "test:document-replacement-lineage": "node --import=tsx tests/document-replacement-lineage.acceptance.mts",
     "test:livemap-document": "node --import=tsx tests/livemap-document.acceptance.mts",
     "test:livemap-projected-rename-intent": "node --import=tsx tests/livemap-projected-rename-intent.acceptance.mts",
     "test:livemap-projected-array-move-intent": "node --import=tsx tests/livemap-projected-array-move-intent.acceptance.mts",

@@ -17,6 +17,7 @@ import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts
 import { create_test_event_emitter } from "./test-events.mjs";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { read_locus_retained_action_status_internal } from "../src/api/locus/locus.action-status.internal.ts";
+import { encode_locus_graph_content } from "../src/api/locus/locus.graph-content-codec.ts";
 
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <theme "string" count <number <int true min 0>>>>`;
 const ColorsSchema: HsonSchema = Hson.schema`<type "data" content <theme "string" accent "string">>`;
@@ -278,6 +279,21 @@ await check("the public Locus and Echo paths bootstrap one typed aggregate mirro
   assert.equal(serverMap.lib("page").document.attrs.get({ kind: "path", path: [0] }, "title"), "echoed");
   assert.equal(reflectedMain.attrs.get("title"), "echoed");
   assert.equal(reflection.sourceRevision, 3);
+  const foreign = "000008299";
+  const replacementRequest = JSON.parse(JSON.stringify({
+    library: "page",
+    target: { kind: "path", path: [0, 0] },
+    index: 0,
+    replacement: encode_locus_graph_content({ $_tag: "item", $_attrs: { title: "lineage" }, $_meta: { quid: foreign }, $_content: [] }),
+    lineage: [{ source: [], destination: [] }],
+  }));
+  const replacementResult = await client.action("document.content.replace", replacementRequest);
+  assert.equal(replacementResult.type, "ack", JSON.stringify(replacementResult));
+  await wait_for_aggregate_revision(clientMap, 4);
+  assert.equal(serverMap.lib("page").document.byQuid(QUID)?.$_attrs?.title, "lineage");
+  assert.equal(clientMap.lib("page").document.byQuid(QUID)?.$_attrs?.title, "lineage");
+  assert.equal(serverMap.lib("page").document.byQuid(foreign), undefined);
+  assert.equal(reflection.sourceRevision, 4);
   stopState();
   stopColors();
   reflection.dispose();
@@ -320,6 +336,36 @@ await check("named document Echo authoring honors aggregate authorization and co
   reflection.dispose();
   echo.dispose();
   locus.dispose();
+});
+
+await check("named Mirror text replacement carries empty portable lineage through Echo and Locus", async () => {
+  install_fake_document();
+  const TextPageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "item" content "string">>>`;
+  const definitions = { page: { document: "<main <item \"old\"/>/>", schema: TextPageSchema } } as const;
+  const serverMap = hsonLiveMap.fromLibraries(definitions);
+  const locus = hsonLocus.create({ map: serverMap });
+  const pair = socket_pair();
+  locus.connect(pair.server);
+  const clientMap = hsonLiveMap.fromLibraries(definitions);
+  const echo = hsonEcho.create({ socket: pair.client, map: clientMap, recovery: { logicalMapId: locus.logicalMapId } });
+  echo.connect();
+  await echo.session.create();
+  await echo.recovery.recover();
+  const reflection = hsonMirror(clientMap.lib("page"));
+  const lineages: unknown[] = [];
+  const stop = serverMap.commits.observe((commit) => {
+    for (const entry of commit.operations) {
+      if ("op" in entry.operation && entry.operation.op === "replace-content") lineages.push(entry.operation.lineage);
+    }
+  });
+  await reflection.tree.find.must.byTag("item").async.text.set("new");
+  assert.deepEqual(lineages, [[]]);
+  assert.equal(serverMap.rev, 1);
+  assert.equal(clientMap.rev, 1);
+  assert.equal(reflection.sourceRevision, 1);
+  assert.equal(reflection.tree.find.must.byTag("item").text.get(), "new");
+  assert.equal(clientMap.lib("page").document.byQuid(QUID), undefined);
+  stop(); reflection.dispose(); echo.dispose(); locus.dispose();
 });
 
 await check("public recovery replays retained history and replaces one complete observed mirror in place", async () => {

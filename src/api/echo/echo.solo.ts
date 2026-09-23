@@ -11,6 +11,7 @@ import type {
 import type { LiveMapProjectedGraphEnsureQuidOp } from "../livemap/livemap.identity.types.js";
 import { parse_hson_exact_runtime } from "../../internal/exact-runtime-hson-codec.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
+import { derive_replacement_lineage_for_action } from "../livemap/livemap.document.lineage.js";
 import { make_canonical_livemap_projected_capture } from "../livemap/livemap.projected.capture.js";
 import {
   make_echo_document_authority,
@@ -955,7 +956,10 @@ export function create_solo_echo_internal<
         case "document.attrs.dropMany": return documentAction(request.name, request.payload);
         case "document.attrs.clear": return documentAction(request.name, request.payload);
         case "document.attrs.replace": return documentAction(request.name, request.payload);
-        case "document.content.replace": return documentAction(request.name, request.payload);
+        case "document.content.replace": return documentAction(request.name, {
+          ...request.payload,
+          lineage: derive_replacement_lineage_for_action(map.root(), "document", request.payload.target, request.payload.index, request.payload.replacement),
+        });
         case "document.content.insert": return documentAction(request.name, request.payload);
         case "document.content.remove": return documentAction(request.name, request.payload);
         case "document.content.move": return documentAction(request.name, request.payload);

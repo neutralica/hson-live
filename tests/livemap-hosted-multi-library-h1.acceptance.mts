@@ -120,7 +120,7 @@ check("one hosted commit carries ordered qualified semantics plus one exact witn
   assert.deepEqual(hosted.operations.map((entry) => entry.library), ["alpha", "beta", "alpha", "alpha", "page"]);
   assert.deepEqual(hosted.replay.operations.map((entry) => entry.library), ["alpha", "beta", "alpha", "alpha", "page"]);
   assert.deepEqual(hosted.replay.operations.map((entry) => entry.domain), ["data", "data", "data", "data", "graph"]);
-  assert.equal(hosted.replay.operations[4]?.format, "hson-hosted-graph-op");
+  assert.equal(hosted.replay.operations[4]?.format, "hson-hosted-graph-op-v2");
   assert.equal(Object.is(map.lib("alpha").snap(["negativeZero"]), -0), true);
   assert.deepEqual(Object.keys(map.lib("alpha").snap(["ordered"]) as object), ["b", "a"]);
   assert.equal(Object.is((map.lib("alpha").snap(["items"]) as number[])[1], -0), true);
