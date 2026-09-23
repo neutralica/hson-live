@@ -4,6 +4,7 @@ import {
   DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES,
   type LocusHostedAggregateWireEnvelope,
 } from "../locus/locus.hosted-multi-library.js";
+import type { LocusLiveProjectedWireEnvelope } from "../locus/locus.live-projection.js";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../locus/locus.hosted-multi-library.protocol.js";
 import type {
   LocusHostedAggregateCanonicalPublication,
@@ -89,7 +90,7 @@ export function decode_echo_hosted_aggregate_synchronization_frame_internal(raw:
     if (value.phase !== "body" && value.phase !== "tail") throw new Error("Hosted recovery progress phase is malformed.");
     return Object.freeze({ type: "recovery-progress", id, phase: value.phase, progress: decode_progress(value.progress) });
   }
-  if (value.type === "commit") return Object.freeze({ type: "commit", id, commit: value.commit as LocusHostedAggregateWireEnvelope });
+  if (value.type === "commit") return Object.freeze({ type: "commit", id, commit: value.commit as LocusLiveProjectedWireEnvelope });
   if (value.type === "progress") return Object.freeze({ type: "progress", id, progress: decode_progress(value.progress) });
   if (value.type === "recovery-caught-up") {
     const logicalMapId = required_string(value.logicalMapId);

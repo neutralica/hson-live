@@ -7,7 +7,8 @@ import { create_multi_library_echo_socket_client_internal } from "../src/api/ech
 import { make_echo_document_authority } from "../src/api/echo/echo.document-authority.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { make_livemap_client_mirror_from_snapshot_internal, make_livemap_hosted_mirror_from_snapshot_internal } from "../src/api/livemap/livemap.libraries.ts";
-import { make_hosted_commit, make_hosted_client_commit, make_hosted_client_snapshot, type HostedRegistryBinding } from "../src/api/livemap/livemap.hosted.ts";
+import { complete_hosted_registry_as_projected_digest_internal, make_hosted_commit, make_hosted_client_commit, make_hosted_client_snapshot, type HostedRegistryBinding } from "../src/api/livemap/livemap.hosted.ts";
+import { LOCUS_LIVE_PROJECTED_COMMIT_FORMAT, LOCUS_LIVE_PROJECTED_WIRE_FORMAT } from "../src/api/locus/locus.live-projection.ts";
 import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 import { LOCUS_HOSTED_AGGREGATE_WIRE_FORMAT, decode_locus_hosted_aggregate_envelope } from "../src/api/locus/locus.hosted-multi-library.ts";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.hosted-multi-library.protocol.ts";
@@ -67,6 +68,11 @@ function progress(snapshot: ReturnType<ReturnType<typeof fixture>["aggregate"]["
     prevRev,
     rev: prevRev + 1,
   });
+}
+
+function live_progress(snapshot: ReturnType<ReturnType<typeof fixture>["aggregate"]["captureHosted"]>, prevRev: number) {
+  return Object.freeze({ ...progress(snapshot, prevRev),
+    registryDigest: complete_hosted_registry_as_projected_digest_internal(snapshot.registry) });
 }
 
 await check("progress advances only managed authority position and Mirror bookkeeping", () => {
@@ -185,6 +191,16 @@ function committed_value(source: LiveMapLibraries, value: number) {
   });
 }
 
+function live_committed_value(source: LiveMapLibraries, value: number) {
+  const complete = committed_value(source, value);
+  const digest = complete_hosted_registry_as_projected_digest_internal(
+    internal_livemap_aggregate_authority(source).hostedRegistry());
+  return Object.freeze({ format: LOCUS_LIVE_PROJECTED_WIRE_FORMAT,
+    logicalMapId: complete.logicalMapId, incarnationId: complete.incarnationId, registryDigest: digest,
+    commit: Object.freeze({ ...complete.commit, format: LOCUS_LIVE_PROJECTED_COMMIT_FORMAT, registryDigest: digest }),
+  });
+}
+
 await check("Echo processes commit, consecutive progress, commit as one contiguous authority stream", async () => {
   const authority = make_map();
   const source = internal_livemap_aggregate_authority(authority);
@@ -209,12 +225,12 @@ await check("Echo processes commit, consecutive progress, commit as one contiguo
   const originAuthority = internal_livemap_aggregate_authority(origin);
   let commits = 0;
   map.commits.observe(() => { commits += 1; });
-  pair.sendFromServer({ type: "commit", id, commit: committed_value(origin, 1) });
+  pair.sendFromServer({ type: "commit", id, commit: live_committed_value(origin, 1) });
   assert.equal(map.rev, 10);
   assert.equal(state.snap(["value"]), 1);
-  pair.sendFromServer({ type: "progress", id, progress: progress(snapshot, 10) });
-  pair.sendFromServer({ type: "progress", id, progress: progress(snapshot, 11) });
-  assert.equal(map.rev, 12);
+  pair.sendFromServer({ type: "progress", id, progress: live_progress(snapshot, 10) });
+  pair.sendFromServer({ type: "progress", id, progress: live_progress(snapshot, 11) });
+  assert.equal(map.rev, 10);
   assert.equal(client.lastAppliedRev, 12);
   assert.equal(state.snap(["value"]), 1);
   assert.equal(commits, 1);
@@ -222,12 +238,12 @@ await check("Echo processes commit, consecutive progress, commit as one contiguo
   originReplica.advanceHostedProgress(progress(snapshot, 10));
   originReplica.advanceHostedProgress(progress(snapshot, 11));
   originReplica.dispose();
-  pair.sendFromServer({ type: "commit", id, commit: committed_value(origin, 2) });
-  assert.equal(map.rev, 13);
+  pair.sendFromServer({ type: "commit", id, commit: live_committed_value(origin, 2) });
+  assert.equal(map.rev, 11);
   assert.equal(client.lastAppliedRev, 13);
   assert.equal(state.snap(["value"]), 2);
   assert.equal(commits, 2);
-  assert.equal(mirror.sourceRevision, 13);
+  assert.equal(mirror.sourceRevision, 11);
   assert.equal(mirror.status, "active");
   mirror.dispose();
   client.dispose();
@@ -328,6 +344,7 @@ await check("Echo rejects progress gaps, stale duplicates, and wrong authority f
     firstValid?: true;
   }>[] = [
     { name: "gap", make: (base) => ({ ...base, prevRev: 1, rev: 2 }) },
+    { name: "jump after current position", make: (base) => ({ ...base, rev: 2 }) },
     { name: "wrong previous revision", make: (base) => ({ ...base, prevRev: 3, rev: 4 }) },
     { name: "wrong logical map", make: (base) => ({ ...base, logicalMapId: "wrong" }) },
     { name: "wrong incarnation", make: (base) => ({ ...base, incarnationId: "wrong" }) },
@@ -343,14 +360,18 @@ await check("Echo rejects progress gaps, stale duplicates, and wrong authority f
     const client = create_multi_library_echo_socket_client_internal({ socket: pair.client, logicalMapId: server.logicalMapId });
     await client.connect();
     const id = JSON.parse(pair.serverSent.find((raw) => JSON.parse(raw).type === "recovery-caught-up")!).id;
-    const base = progress(snapshot, 0);
+    const base = live_progress(snapshot, 0);
     if (scenario.firstValid === true) {
       pair.sendFromServer({ type: "progress", id, progress: base });
-      assert.equal(client.map?.rev, 1);
+      assert.equal(client.map?.rev, 0);
     }
-    pair.sendFromServer({ type: "progress", id, progress: scenario.make(base) });
-    assert.equal(client.diagnostics().status, "failed", scenario.name);
-    assert.equal(client.map?.rev, scenario.firstValid === true ? 1 : 0, scenario.name);
+    if (scenario.name === "jump after current position") {
+      assert.throws(() => pair.sendFromServer({ type: "progress", id, progress: scenario.make(base) }), /malformed/i);
+    } else {
+      pair.sendFromServer({ type: "progress", id, progress: scenario.make(base) });
+      assert.equal(client.diagnostics().status, "failed", scenario.name);
+    }
+    assert.equal(client.map?.rev, 0, scenario.name);
     client.dispose();
     server.dispose();
   }

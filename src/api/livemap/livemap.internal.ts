@@ -131,6 +131,8 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     owner: object,
     writes: readonly LiveMapAggregateWrite[],
   ) => PreparedLiveMapAuthorityTransition;
+  /** Detached resulting system root of one prepared transition, before acceptance. @internal */
+  preparedSystemRoot: (transition: PreparedLiveMapAuthorityTransition) => HsonNode | undefined;
   accept: LiveMapTransitionController["acceptAuthority"];
   discard: LiveMapTransitionController["discardAuthority"];
   /** Claim/release the same exclusive mutation boundary used by solo Locus. @internal */

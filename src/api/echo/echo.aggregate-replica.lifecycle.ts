@@ -14,7 +14,7 @@ export type EchoAggregateReplicaCapability = EchoReplicaCapability<LiveMapLibrar
   captureHosted: () => HostedLiveMapLibrariesSnapshot;
   clientProjection: () => Readonly<{ authority: HostedAuthorityFence; registry: HostedRegistry; revision: number; libraries: readonly string[] }> | undefined;
   restoreHosted: (snapshot: HostedClientLibrariesSnapshot) => void;
-  replayHosted: (commit: HostedClientCommit, authorityRev: number) => number;
+  replayHosted: (commit: HostedClientCommit, authorityRev?: number) => number;
   advanceHostedProgress: (progress: Readonly<{
     logicalMapId: string;
     incarnationId: string;

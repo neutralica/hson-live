@@ -19,12 +19,15 @@ import { make_livemap_client_mirror_from_snapshot_internal } from "../livemap/li
 import {
   assert_libraries_snapshot_bound,
   assert_hosted_client_snapshot_shape,
+  complete_hosted_registry_as_projected_digest_internal,
 } from "../livemap/livemap.hosted.js";
 import {
   DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES,
+  LOCUS_HOSTED_AGGREGATE_WIRE_FORMAT,
   decode_locus_hosted_aggregate_envelope,
   type LocusHostedAggregateWireEnvelope,
 } from "../locus/locus.hosted-multi-library.js";
+import { decode_locus_live_projected_envelope_internal, type LocusLiveProjectedWireEnvelope } from "../locus/locus.live-projection.js";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../locus/locus.hosted-multi-library.protocol.js";
 import {
   create_echo_endpoint_connection_internal,
@@ -341,21 +344,24 @@ function create_multi_library_echo_semantic_client_internal<
       const active = current_recovery(message.id);
       if (active === undefined) return;
       if (active.outcome !== "replay" && active.outcome !== "snapshot") throw new Error("Hosted recovery received unexpected authority progress.");
-      apply_progress(message.progress);
+      apply_progress(message.progress, false);
       return;
     }
     if (message.type === "commit") {
       const active = liveRecovery;
       if (status !== "live" || active === undefined || active.id !== message.id) return;
       if (endpoint.session.status !== "attached" || endpoint.session.sessionId !== active.sessionId || endpoint.session.epoch !== active.sessionEpoch) return;
-      apply_envelope(message.commit);
+      // The old complete-authority recovery tail remains a separate, known
+      // migration path until the next Step 6 phase.
+      if (message.commit.format === LOCUS_HOSTED_AGGREGATE_WIRE_FORMAT) apply_envelope(message.commit);
+      else apply_live_envelope(message.commit);
       return;
     }
     if (message.type === "progress") {
       const active = liveRecovery;
       if (status !== "live" || active === undefined || active.id !== message.id) return;
       if (endpoint.session.status !== "attached" || endpoint.session.sessionId !== active.sessionId || endpoint.session.epoch !== active.sessionEpoch) return;
-      apply_progress(message.progress);
+      apply_progress(message.progress, true);
       return;
     }
     if (message.type === "recovery-caught-up") {
@@ -421,21 +427,44 @@ function create_multi_library_echo_semantic_client_internal<
     if (authorityRev === undefined || commit.prevRev !== authorityRev) {
       throw new Error("Hosted aggregate commit is not contiguous with the Echo authority cursor.");
     }
+    replica.replayHosted(commit, replica.clientProjection() === undefined ? undefined : authorityRev);
+    authorityRev = commit.rev;
+    publishAuthorityPosition();
+  }
+
+  function apply_live_envelope(envelope: LocusHostedAggregateWireEnvelope | LocusLiveProjectedWireEnvelope): void {
+    if (map === undefined || incarnationId === undefined || registryDigest === undefined) {
+      throw new Error("Projected live commit requires a hosted map.");
+    }
+    const liveDigest = replica.clientProjection()?.registry.digest
+      ?? complete_hosted_registry_as_projected_digest_internal(replica.captureHosted().registry);
+    const admitted = decode_locus_live_projected_envelope_internal(envelope, Object.freeze({
+      logicalMapId: clientLogicalMapId, incarnationId, registryDigest: liveDigest,
+    }));
+    if (authorityRev === undefined || admitted.prevRev !== authorityRev) {
+      throw new Error("Projected live commit is not contiguous with the Echo authority cursor.");
+    }
+    const commit = Object.freeze({ ...admitted, registryDigest });
     replica.replayHosted(commit, authorityRev);
     authorityRev = commit.rev;
     publishAuthorityPosition();
   }
 
-  function apply_progress(progress: import("../locus/locus.hosted-multi-library.transport.internal.js").LocusHostedAggregateProgress): void {
+  function apply_progress(progress: import("../locus/locus.hosted-multi-library.transport.internal.js").LocusHostedAggregateProgress, live: boolean): void {
     if (map === undefined || incarnationId === undefined || registryDigest === undefined) {
       throw new Error("Hosted authority progress arrived before aggregate bootstrap.");
     }
+    const expectedDigest = live && replica.clientProjection() === undefined
+      ? complete_hosted_registry_as_projected_digest_internal(replica.captureHosted().registry)
+      : registryDigest;
     if (progress.logicalMapId !== clientLogicalMapId || progress.incarnationId !== incarnationId
-      || progress.registryDigest !== registryDigest) throw new Error("Hosted authority progress fence is incompatible.");
-    if (authorityRev === undefined || progress.prevRev !== authorityRev) {
+      || progress.registryDigest !== expectedDigest) throw new Error("Hosted authority progress fence is incompatible.");
+    if (authorityRev === undefined || progress.prevRev !== authorityRev
+      || !Number.isSafeInteger(progress.prevRev) || progress.prevRev < 0
+      || progress.rev !== progress.prevRev + 1) {
       throw new Error("Hosted progress is not contiguous with the Echo authority cursor.");
     }
-    replica.advanceHostedProgress(progress);
+    if (!live || replica.clientProjection() !== undefined) replica.advanceHostedProgress(progress);
     authorityRev = progress.rev;
     publishAuthorityPosition();
   }

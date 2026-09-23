@@ -1,4 +1,4 @@
-import { test_public_exposure } from "./helpers/hosted-exposure.mts";
+import { test_public_projection } from "./helpers/hosted-exposure.mts";
 import assert from "node:assert/strict";
 import {
   Hson,
@@ -127,7 +127,7 @@ install_fake_document();
 await check("aggregate application handlers receive session origin externally and direct origin for trusted dispatch", async () => {
   const origins: unknown[] = [];
   const locus = hsonLocus.create({
-    exposure: test_public_exposure(make_map()),
+    ...test_public_projection(make_map()),
     map: make_map(),
     actions: {
       probe(context) { origins.push(context.origin); },
@@ -200,7 +200,7 @@ await check("independent aggregate endpoints use reload-safe client and request 
 
 await check("aggregate retry request payloads detach nested records and arrays from caller mutation", async () => {
   const locus = hsonLocus.create({
-    exposure: test_public_exposure(make_map()),
+    ...test_public_projection(make_map()),
     map: make_map(),
     actions: {
       stable: (_context, payload) => payload,
@@ -256,7 +256,7 @@ await check("named document denial is terminal without mutation and the next que
   const authority = make_map();
   const decisions: unknown[] = [];
   const locus = hsonLocus.create({
-    exposure: test_public_exposure(authority),
+    ...test_public_projection(authority),
     map: authority,
     authorizeAction(context) {
       decisions.push(context);
@@ -302,7 +302,7 @@ await check("application payload decoding precedes authorization and mutation", 
   const authority = make_map();
   let authorizations = 0;
   const locus = hsonLocus.create({
-    exposure: test_public_exposure(authority),
+    ...test_public_projection(authority),
     map: authority,
     actions: {
       validated: async (context, payload) => {
@@ -340,7 +340,7 @@ await check("resumable session reattachment retains one complete aggregate autho
   const authority = make_map();
   let sessionNumber = 0;
   const locus = hsonLocus.create({
-    exposure: test_public_exposure(authority),
+    ...test_public_projection(authority),
     map: authority,
     sessionId: () => `aggregate-session-${++sessionNumber}`,
     sessions: { graceMs: 10_000, credential: () => "aggregate-session-credential-0001" },
@@ -388,7 +388,7 @@ await check("retry, dedupe conflict, and action status match the one-map request
   const authority = make_map();
   let executions = 0;
   const locus = hsonLocus.create({
-    exposure: test_public_exposure(authority),
+    ...test_public_projection(authority),
     map: authority,
     sessions: { graceMs: 10_000, credential: () => "aggregate-dedupe-credential-01" },
     actions: {
@@ -438,7 +438,7 @@ await check("aggregate retained action lineage enforces exact principal continui
   const authority = make_map();
   let executions = 0;
   const locus = hsonLocus.create({
-    exposure: test_public_exposure(authority),
+    ...test_public_projection(authority),
     map: authority,
     actions: {
       owned() {
@@ -496,7 +496,7 @@ await check("built-ins and single- or cross-library application actions share on
   const authority = make_map();
   const order: string[] = [];
   const locus = hsonLocus.create({
-    exposure: test_public_exposure(authority),
+    ...test_public_projection(authority),
     map: authority,
     actions: {
       "state.only": async (context) => {
@@ -542,7 +542,7 @@ await check("replacement during authorization cannot cross aggregate admission",
   const authorizationRelease = deferred();
   let executions = 0;
   const locus = hsonLocus.create({
-    exposure: test_public_exposure(make_map()),
+    ...test_public_projection(make_map()),
     map: make_map(),
     sessions: { graceMs: 10_000, credential: () => "aggregate-auth-fence-credential" },
     authorizeAction: async () => {
@@ -591,7 +591,7 @@ await check("replacement after admission retains the outcome but fences late del
   const handlerRelease = deferred();
   const authority = make_map();
   const locus = hsonLocus.create({
-    exposure: test_public_exposure(authority),
+    ...test_public_projection(authority),
     map: authority,
     sessions: { graceMs: 10_000, credential: () => "aggregate-post-admit-credential" },
     actions: {
@@ -644,7 +644,7 @@ await check("disconnect after admission cannot evict or cancel aggregate authori
   const handlerRelease = deferred();
   const authority = make_map();
   const locus = hsonLocus.create({
-    exposure: test_public_exposure(authority),
+    ...test_public_projection(authority),
     map: authority,
     sessions: { graceMs: 10_000, credential: () => "aggregate-disconnect-credential" },
     actions: {

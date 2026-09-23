@@ -124,6 +124,8 @@ export type LocusHostedAggregateOptions = Readonly<{
   actions?: Readonly<Record<string, LocusHostedAggregateAction>>;
   /** The existing Locus pre-accept/durability boundary, at aggregate granularity. */
   gate?: (input: LocusHostedAggregateGateInput) => void | Promise<void>;
+  /** Synchronous final egress preflight after the gate and before acceptance. @internal */
+  beforeAccept?: (input: LocusHostedAggregateGateInput) => void;
   /** Optional internal live transport sink. One accepted transition emits once. */
   send?: (wire: string) => void;
   maxWireBytes?: number;
@@ -201,13 +203,15 @@ export function create_locus_hosted_aggregate_internal(
         aggregate.discard(transition);
         throw cause;
       }
-      try {
-        await options.gate?.(Object.freeze({
+      const gateInput = Object.freeze({
           transition,
           commit: hosted,
           baseRevision: transition.baseRevision,
           nextRevision: transition.nextRevision,
-        }));
+        });
+      try {
+        await options.gate?.(gateInput);
+        options.beforeAccept?.(gateInput);
       } catch (cause) {
         aggregate.discard(transition);
         throw cause;

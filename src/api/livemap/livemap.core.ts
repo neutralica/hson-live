@@ -1113,6 +1113,7 @@ function make_livemap_core_from_compatibility_root(
   }>;
 
   const aggregateObservers: Array<(commit: LiveMapAggregateCommit) => void> = [];
+  const preparedSystemRoots = new WeakMap<import("./livemap.authority.js").PreparedLiveMapAuthorityTransition, HsonNode | undefined>();
   const aggregatePositionObservers: Array<(revision: number) => void> = [];
   const publishAuthorityPosition = (): void => {
     for (const observer of [...aggregatePositionObservers]) observer(mapRevision);
@@ -1920,7 +1921,7 @@ function make_livemap_core_from_compatibility_root(
       aggregateByDocumentCommit.set(documentCommit, commit);
     }
     if (documentCommits.size > 0) documentCommitByAggregate.set(commit, documentCommits);
-    return transitionController.prepareAuthority({
+    const prepared = transitionController.prepareAuthority({
       commit,
       libraryModes: Object.freeze([...candidates.values()].map((candidate) => candidate.library.mode)),
       baseStillCurrent: () => mapRevision === prevRev
@@ -2019,6 +2020,8 @@ function make_livemap_core_from_compatibility_root(
         });
       },
     });
+    preparedSystemRoots.set(prepared, systemCandidate === undefined ? systemState?.root : systemCandidate.nextRoot);
+    return prepared;
   }
 
   function document_operation_path(operation: LiveMapGraphOp): LivePath {
@@ -2547,7 +2550,7 @@ function make_livemap_core_from_compatibility_root(
       || input.authority.incarnationId !== hosted.fence.incarnationId) {
       throw new Error("Hosted client commit authority fence is incompatible.");
     }
-    if (composition !== undefined) {
+    if (composition !== undefined || authorityRev !== undefined) {
       if (authorityRev === undefined || input.prevRev !== authorityRev) {
         throw new LiveMapRevError(input.prevRev, authorityRev ?? -1);
       }
@@ -2583,8 +2586,7 @@ function make_livemap_core_from_compatibility_root(
       && localClient.format === input.format
       && JSON.stringify(localClient.authority) === JSON.stringify(input.authority)
       && localClient.registryDigest === input.registryDigest
-      && localClient.prevRev === input.prevRev
-      && localClient.rev === input.rev
+      && (authorityRev !== undefined || (localClient.prevRev === input.prevRev && localClient.rev === input.rev))
       && (() => {
         let applied = 0;
         for (const expected of input.operations) {
@@ -2782,6 +2784,10 @@ function make_livemap_core_from_compatibility_root(
       owner,
       () => prepare_authority_transition(writes),
     ),
+    preparedSystemRoot: (transition) => {
+      if (!preparedSystemRoots.has(transition)) throw new Error("Unknown prepared authority transition.");
+      return preparedSystemRoots.get(transition);
+    },
     accept: transitionController.acceptAuthority,
     discard: transitionController.discardAuthority,
     claimManagement: (owner) => {

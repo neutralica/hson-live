@@ -35,6 +35,8 @@ import { validate_document_path } from "../livemap/livemap.document.path.js";
 import { make_locus_action_dedupe_store } from "./locus.actions.js";
 import { make_locus_session_manager } from "./locus.session.js";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection, type LocusEffectiveProjection } from "./locus.projection.js";
+import { LOCUS_LIVE_PROJECTED_WIRE_FORMAT, project_locus_live_transition_internal, type LocusLiveProjectedEvent } from "./locus.live-projection.js";
+import { INTERACTION_RESERVED_LIBRARY_KEY } from "../../internal/interaction-storage.js";
 import { decode_locus_action_payload, locus_schema_error_message } from "./locus.action-validation.js";
 import {
   resolve_locus_document_action,
@@ -244,10 +246,26 @@ export function create_locus_hosted_aggregate_socket_internal<
   let retainedBytes = 0;
   const history: HostedHistoryEntry[] = [];
   const connections = new Set<HostedConnection>();
+  const preparedLiveEvents = new WeakMap<object, ReadonlyMap<HostedConnection, LocusLiveProjectedEvent>>();
   const locus = create_locus_hosted_aggregate_internal({
     map: options.map,
     ...(options.actions === undefined ? {} : { actions: options.actions }),
     ...(options.gate === undefined ? {} : { gate: options.gate }),
+    beforeAccept({ transition, commit }) {
+      const system = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
+      const beforeSystem = system === undefined ? undefined : aggregate.systemRoot(system);
+      const afterSystem = aggregate.preparedSystemRoot(transition);
+      const events = new Map<HostedConnection, LocusLiveProjectedEvent>();
+      for (const connection of connections) {
+        if (connection.closed || !connection.live || connection.recovering) continue;
+        const effective = connection.effectiveProjection;
+        if (effective === undefined) throw new Error("Live publication has no immutable session projection.");
+        const event = project_locus_live_transition_internal(commit, effective, beforeSystem, afterSystem);
+        encode_downstream_message(projected_live_output(connection, event, effective), maxWireBytes);
+        events.set(connection, event);
+      }
+      preparedLiveEvents.set(commit, events);
+    },
     maxWireBytes,
   });
   let seq = 0;
@@ -283,14 +301,49 @@ export function create_locus_hosted_aggregate_socket_internal<
       commit,
     });
     append_history(envelope);
+    const events = preparedLiveEvents.get(commit);
     for (const connection of [...connections]) {
       if (connection.closed) continue;
       if (connection.recovering) connection.pendingLive.push(envelope);
       else if (connection.live && connection.recoveryId !== undefined) {
-        send_live_commit(connection, connection.recoveryId, envelope);
+        const effective = connection.effectiveProjection;
+        const event = events?.get(connection);
+        if (effective === undefined || event === undefined) {
+          close_failed_publication(connection);
+          continue;
+        }
+        try { send(connection, projected_live_output(connection, event, effective)); }
+        catch { close_failed_publication(connection); }
       }
     }
   });
+
+  function projected_live_output(connection: HostedConnection, event: LocusLiveProjectedEvent, effective: LocusEffectiveProjection) {
+    const id = connection.recoveryId;
+    if (id === undefined) throw new Error("Live publication has no recovery identity.");
+    return event.kind === "progress"
+      ? Object.freeze({ type: "progress" as const, id, progress: event.progress })
+      : Object.freeze({ type: "commit" as const, id, commit: Object.freeze({
+        format: LOCUS_LIVE_PROJECTED_WIRE_FORMAT,
+        logicalMapId: effective.authority.logicalMapId,
+        incarnationId: effective.authority.incarnationId,
+        registryDigest: event.commit.registryDigest,
+        commit: event.commit,
+      }) });
+  }
+
+  function close_failed_publication(connection: HostedConnection): void {
+    if (connection.closed) return;
+    connection.closed = true;
+    stop_recovery(connection);
+    connections.delete(connection);
+    if (connection.sessionId !== undefined && connection.sessionEpoch !== undefined) {
+      sessions.detach(connection.sessionId, connection.sessionEpoch);
+    }
+    connection.releaseActivity?.();
+    connection.releaseActivity = undefined;
+    try { connection.onClose?.(); } catch { /* Transport cleanup is isolated. */ }
+  }
 
   function append_history(envelope: LocusHostedAggregateAuthorityEnvelope): void {
     const commit = envelope.commit;
@@ -373,7 +426,8 @@ export function create_locus_hosted_aggregate_socket_internal<
     }));
   }
 
-  function send_live_commit(connection: HostedConnection, id: string, envelope: LocusHostedAggregateAuthorityEnvelope): void {
+  /** Complete-authority recovery tail; later Step 6 migration must project this path. */
+  function send_legacy_recovery_tail_event(connection: HostedConnection, id: string, envelope: LocusHostedAggregateAuthorityEnvelope): void {
     const progress = derive_locus_hosted_progress_internal(envelope);
     if (progress !== undefined) {
       send(connection, Object.freeze({ type: "progress", id, progress }));
@@ -499,7 +553,7 @@ export function create_locus_hosted_aggregate_socket_internal<
       const pending = connection.pendingLive.shift();
       if (pending === undefined) continue;
       if (pending.commit.prevRev < cut) continue;
-      send_live_commit(connection, request.id, pending);
+      send_legacy_recovery_tail_event(connection, request.id, pending);
       if (!recovery_attachment_current(connection, activeRecovery) || !connection.live) return;
     }
     connection.releaseRecoveryActivity?.();

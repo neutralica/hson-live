@@ -756,6 +756,13 @@ function registry_canonical_text(entries: readonly HostedRegistryEntry[]): strin
   });
 }
 
+/** Complete-topology legacy bootstrap can verify only an all-included live projection. @internal */
+export function complete_hosted_registry_as_projected_digest_internal(registry: HostedRegistry): string {
+  const application = registry.libraries.filter((entry) => entry.scope === undefined).sort((a, b) => a.name.localeCompare(b.name));
+  const system = registry.libraries.filter((entry) => entry.scope === "hson-internal");
+  return hosted_sha256(registry_canonical_text([...application, ...system]));
+}
+
 function must_library_name(name: string): void {
   if (typeof name !== "string" || name.length === 0 || encoder.encode(name).byteLength > HOSTED_MAX_LIBRARY_NAME_BYTES) {
     throw new HostedAggregateRepresentationError("Hosted Library name is empty or exceeds its UTF-8 byte bound.");

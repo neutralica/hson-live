@@ -1,6 +1,7 @@
 import type { LocusActionPayloads } from "../../types/locus.types.js";
 import type { HostedClientLibrariesSnapshot } from "../../types/livemap.types.js";
 import type { LocusHostedAggregateWireEnvelope } from "./locus.hosted-multi-library.js";
+import type { LocusLiveProjectedWireEnvelope } from "./locus.live-projection.js";
 import type {
   LocusDownstreamSink,
   LocusFiniteOperationRequest,
@@ -43,7 +44,7 @@ export type LocusHostedAggregateSynchronizationOutput =
   | Readonly<{ type: "synchronization-failure"; error: Readonly<{ code?: string; message: string; cause?: unknown }> }>;
 
 export type LocusHostedAggregateCanonicalPublication =
-  | Readonly<{ type: "commit"; id: string; commit: LocusHostedAggregateWireEnvelope }>
+  | Readonly<{ type: "commit"; id: string; commit: LocusHostedAggregateWireEnvelope | LocusLiveProjectedWireEnvelope }>
   | Readonly<{ type: "progress"; id: string; progress: LocusHostedAggregateProgress }>;
 
 export type LocusHostedAggregateDownstreamSink = LocusDownstreamSink<
