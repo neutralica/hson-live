@@ -185,10 +185,10 @@ await check("typed synchronization preserves recovery cut, tail, caught-up, live
   assert.equal(caught?.type === "recovery-caught-up" && caught.caughtUp.throughRev, base + 2);
 
   await host.mutate((draft) => draft.set(["value"], 3));
-  assert.deepEqual(publications.map((output) => output.commit.rev), [base + 3]);
+  assert.deepEqual(publications.filter((output) => output.type === "commit").map((output) => output.commit.rev), [base + 3]);
   attachment.synchronization.cancel();
   await host.mutate((draft) => draft.set(["value"], 4));
-  assert.deepEqual(publications.map((output) => output.commit.rev), [base + 3]);
+  assert.deepEqual(publications.filter((output) => output.type === "commit").map((output) => output.commit.rev), [base + 3]);
   attachment.close();
   host.dispose();
 });

@@ -18,6 +18,7 @@ import type {
 import type { LocusBootstrapAuthority } from "../src/api/locus/locus.bootstrap.ts";
 import { set_document_ssr_hook_for_tests } from "../src/api/ssr/ssr.ts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
+import { project_locus_client_snapshot } from "../src/api/locus/locus.client-replication.ts";
 import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
 
 const target = (...parts: number[]) => Object.freeze({
@@ -180,11 +181,12 @@ for (const map of [emptyDocument, document_map(`<main/> <aside/>`)]) {
   const result = render_hosted_document({ authority });
   set_document_ssr_hook_for_tests(undefined);
   assert.equal(plans, 1);
-  assert.equal(result.bootstrap, exactSnapshot);
+  assert.deepEqual(result.bootstrap, project_locus_client_snapshot(exactSnapshot!));
   assert.equal(result.bootstrap.rev, 0);
   assert.equal(map.rev, 1);
   assert.equal(result.bootstrap.logicalMapId, "ssr-same-cut");
-  assert.deepEqual(Object.keys(result.bootstrap).sort(), ["hson", "incarnationId", "logicalMapId", "mode", "rev"]);
+  assert.deepEqual(Object.keys(result.bootstrap).sort(), ["format", "incarnationId", "logicalMapId", "mode", "payload", "rev"]);
+  assert.equal(result.bootstrap.payload.includes("000005003"), false);
   assert.equal("endpoint" in result.bootstrap, false);
   assert.equal("locusSelector" in result.bootstrap, false);
   assert.doesNotMatch(result.html, /data-authority/);

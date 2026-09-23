@@ -1,6 +1,6 @@
 import { create_test_event_emitter } from "../test-events.mjs";
 import assert from "node:assert/strict";
-import { HsonData, hson } from "../../src/index.ts";
+import { Hson, hson } from "../../src/index.ts";
 import {
   create_live_trace_collector,
   create_live_trace_console_sink,
@@ -93,8 +93,8 @@ async function fixture(trace) {
       actions: {
         update: {
           payload(value) {
-            if (!(value instanceof HsonData)) return false;
-            const ordinary = value.materialize();
+            if (typeof value !== "string") return false;
+            const ordinary = Hson.data.materialize(value);
             return typeof ordinary === "object"
               && ordinary !== null
               && !Array.isArray(ordinary)
@@ -106,7 +106,7 @@ async function fixture(trace) {
     },
     actions: {
       async update(ctx, payload) {
-        await ctx.mutate((draft) => draft.set(["value"], payload.materialize().value));
+        await ctx.mutate((draft) => draft.set(["value"], Hson.data.materialize(payload).value));
         return { accepted: true };
       },
       async unchanged(ctx) {

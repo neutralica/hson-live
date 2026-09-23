@@ -14,7 +14,7 @@ export {
   LocusBootstrapError,
 } from "./locus.bootstrap.js";
 export { install_locus_libraries_snapshot } from "./locus.libraries-snapshot.js";
-export type { HostedLiveMapLibrariesSnapshot } from "../../types/livemap.types.js";
+export type { HostedLiveMapLibrariesSnapshot, HostedClientLibrariesSnapshot } from "../../types/livemap.types.js";
 export type {
   LocusBootstrap,
   LocusBootstrapAuthority,

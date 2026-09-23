@@ -5,7 +5,15 @@ It combines a `LiveMap` with ordered mutation authority, actions, authorization,
 Locus is authoritative over its owned `LiveMap`. Canonical transitions pass through one Locus-owned FIFO; the original map and all retained mutation surfaces are fenced for the lifetime of that ownership. Document authorities may additionally use backend-agnostic durable persistence. In that configuration, every changed commit is appended durably before it becomes visible in memory or to connected clients.
 Locus does not own DOM or LiveTree semantics. Mirror bridges LiveTree and
 LiveMap, while Echo carries pessimistic hosted authoring to Locus and replays
-accepted canonical commits back into the replica.
+accepted application and system effects, plus authority progress, back into the replica.
+
+Locus and Echo have independent generated-QUID namespaces. Current hosted
+client snapshots and effects omit Locus node QUIDs, identity epochs, and issued
+ledgers; Echo owns those runtime-local identities. Paths and replacement
+lineage carry portable continuity. Retained incremental effects preserve
+Echo-local identity, while snapshot fallback starts a fresh Echo-local epoch.
+Locus durable history and restart persistence remain internally exact until
+Phase 5.
 
 LiveHost is separate. It owns application registration, routing, HTTP/WebSocket
 runtime policy, resource limits, health, and shutdown, and may expose a bounded

@@ -5,8 +5,8 @@ import { create_echo_aggregate_replica_capability_internal } from "../src/api/ec
 import { create_multi_library_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { make_echo_document_authority } from "../src/api/echo/echo.document-authority.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
-import { make_livemap_hosted_mirror_from_snapshot_internal } from "../src/api/livemap/livemap.libraries.ts";
-import { make_hosted_commit, type HostedRegistryBinding } from "../src/api/livemap/livemap.hosted.ts";
+import { make_livemap_client_mirror_from_snapshot_internal, make_livemap_hosted_mirror_from_snapshot_internal } from "../src/api/livemap/livemap.libraries.ts";
+import { make_hosted_commit, make_hosted_client_commit, make_hosted_client_snapshot, type HostedRegistryBinding } from "../src/api/livemap/livemap.hosted.ts";
 import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 import { LOCUS_HOSTED_AGGREGATE_WIRE_FORMAT, decode_locus_hosted_aggregate_envelope } from "../src/api/locus/locus.hosted-multi-library.ts";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.hosted-multi-library.protocol.ts";
@@ -173,12 +173,14 @@ function committed_value(source: LiveMapLibraries, value: number) {
   const library = aggregate.libraries()[0]!;
   const commit = aggregate.commit([{ target: aggregate.target(library, ["value"]), kind: "set", value }]).hosted;
   if (commit === undefined) throw new Error("Expected hosted graph commit.");
+  const client = make_hosted_client_commit(commit);
+  if (client === undefined) throw new Error("Expected client graph effect.");
   return Object.freeze({
     format: LOCUS_HOSTED_AGGREGATE_WIRE_FORMAT,
     logicalMapId: commit.authority.logicalMapId,
     incarnationId: commit.authority.incarnationId,
     registryDigest: commit.registryDigest,
-    commit,
+    commit: client,
   });
 }
 
@@ -423,6 +425,40 @@ await check("legacy exact identity history derives generic client progress witho
   assert.deepEqual(derive_locus_hosted_progress_internal(envelope), progress(snapshot, 0));
   assert.equal(JSON.stringify(envelope), original);
   assert.equal(JSON.stringify(derive_locus_hosted_progress_internal(envelope)).includes("quid"), false);
+
+  const mixed = make_hosted_commit(snapshot.authority, aggregate.hostedRegistry(), bindings, Object.freeze({
+    changed: true,
+    prevRev: 0,
+    rev: 1,
+    operations: Object.freeze([
+      Object.freeze({
+        target: aggregate.target(identities[0]!, ["value"]),
+        operation: Object.freeze({ kind: "set" as const, path: Object.freeze(["value"]), prev: 0, next: 1 }),
+      }),
+      Object.freeze({
+        target: Object.freeze({ library: pageIdentity }),
+        operation: Object.freeze({
+          domain: "graph" as const,
+          op: "ensure-quid" as const,
+          target: Object.freeze({ kind: "path" as const, path: validate_document_path([0]) }),
+          quid: "000004b31",
+        }),
+      }),
+    ]),
+  }));
+  const client = make_hosted_client_commit(mixed);
+  assert.equal(client?.rev, 1);
+  assert.equal(client?.operations.length, 1);
+  assert.equal(client?.operations[0]?.kind, "set");
+  assert.equal(JSON.stringify(client).includes("000004b31"), false);
+  if (client === undefined) throw new Error("Mixed authority commit lost its graph effect.");
+  const mirror = make_livemap_client_mirror_from_snapshot_internal(make_hosted_client_snapshot(snapshot));
+  const clientIdentityBefore = internal_livemap_aggregate_authority(mirror).captureHosted().identity;
+  internal_livemap_aggregate_authority(mirror).replayClientHosted(client);
+  const state = mirror.lib("state");
+  if (!("snap" in state)) throw new Error("Expected projected state Library.");
+  assert.equal(state.snap(["value"]), 1);
+  assert.deepEqual(internal_livemap_aggregate_authority(mirror).captureHosted().identity, clientIdentityBefore);
 });
 
 process.stdout.write(`1..${checks}\n`);

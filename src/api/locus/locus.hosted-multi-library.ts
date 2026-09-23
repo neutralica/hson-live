@@ -7,7 +7,7 @@ import type {
   LiveMapDocumentContent,
   LiveMapGraphOp,
   LiveMapLibraries,
-  HostedLiveMapLibrariesSnapshot,
+  HostedClientLibrariesSnapshot,
   LivePath,
 } from "../../types/livemap.types.js";
 import type { LocusActionOrigin, LocusClientActionMessage } from "../../types/locus.types.js";
@@ -23,8 +23,10 @@ import type {
 import {
   HOSTED_MAX_COMMIT_BYTES,
   type HostedAggregateCommit,
+  type HostedClientCommit,
+  make_hosted_client_commit,
 } from "../livemap/livemap.hosted.js";
-import { make_livemap_hosted_mirror_from_snapshot_internal } from "../livemap/livemap.libraries.js";
+import { make_livemap_client_mirror_from_snapshot_internal } from "../livemap/livemap.libraries.js";
 import type { PreparedLiveMapAuthorityTransition } from "../livemap/livemap.authority.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
 import {
@@ -37,12 +39,20 @@ import {
 } from "../../internal/interaction-storage.js";
 
 /** Internal routing marker. The enclosed commit is exact aggregate evidence. */
-export const LOCUS_HOSTED_AGGREGATE_WIRE_FORMAT = "hson-locus-hosted-aggregate-commit" as const;
+export const LOCUS_HOSTED_AGGREGATE_WIRE_FORMAT = "hson-locus-hosted-client-commit-v1" as const;
 /** Keep aggregate live traffic inside the existing Locus four-megabyte history budget. */
 export const DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES = 4 * 1_024 * 1_024;
 
 export type LocusHostedAggregateWireEnvelope = Readonly<{
   format: typeof LOCUS_HOSTED_AGGREGATE_WIRE_FORMAT;
+  logicalMapId: string;
+  incarnationId: string;
+  registryDigest: string;
+  commit: HostedClientCommit;
+}>;
+
+/** Complete exact authority history/persistence envelope, never a client message. */
+export type LocusHostedAggregateAuthorityEnvelope = Readonly<{
   logicalMapId: string;
   incarnationId: string;
   registryDigest: string;
@@ -129,6 +139,8 @@ export type LocusHostedAggregate = Readonly<{
   /** @internal Ordered non-mutation barrier shared with aggregate mutations. */
   run_exclusive: <TResult>(operation: () => TResult | Promise<TResult>) => Promise<TResult>;
   on_wire: (listener: (wire: string) => void) => () => void;
+  /** Internal exact transition feed for retained authority history. */
+  on_commit: (listener: (commit: HostedAggregateCommit) => void) => () => void;
   dispose: () => void;
 }>;
 
@@ -153,6 +165,7 @@ export function create_locus_hosted_aggregate_internal(
   const owner = Object.freeze({});
   const maxWireBytes = valid_wire_bound(options.maxWireBytes);
   const listeners = new Set<(wire: string) => void>();
+  const commitListeners = new Set<(commit: HostedAggregateCommit) => void>();
   let disposed = false;
   let tail = Promise.resolve();
   const directOrigin: LocusActionOrigin = Object.freeze({ kind: "direct" });
@@ -180,9 +193,9 @@ export function create_locus_hosted_aggregate_internal(
         aggregate.discard(transition);
         throw new Error("Hosted map-authority transition did not produce exact replay evidence.");
       }
-      let wire: string;
+      let wire: string | undefined;
       try {
-        wire = encode_locus_hosted_aggregate_wire(hosted, maxWireBytes);
+        if (make_hosted_client_commit(hosted) !== undefined) wire = encode_locus_hosted_aggregate_wire(hosted, maxWireBytes);
       } catch (cause) {
         aggregate.discard(transition);
         throw cause;
@@ -205,9 +218,14 @@ export function create_locus_hosted_aggregate_internal(
       }
       // State is accepted before external publication, matching the established
       // Locus authority sequence. Listener failures do not split the transition.
-      options.send?.(wire);
-      for (const listener of [...listeners]) {
-        try { listener(wire); } catch { /* Transport observers are isolated. */ }
+      for (const listener of [...commitListeners]) {
+        try { listener(acceptedHosted); } catch { /* History observers are isolated. */ }
+      }
+      if (wire !== undefined) {
+        options.send?.(wire);
+        for (const listener of [...listeners]) {
+          try { listener(wire); } catch { /* Transport observers are isolated. */ }
+        }
       }
       return Object.freeze({ result, commit: acceptedHosted });
     };
@@ -251,6 +269,10 @@ export function create_locus_hosted_aggregate_internal(
       listeners.add(listener);
       return () => { listeners.delete(listener); };
     },
+    on_commit(listener) {
+      commitListeners.add(listener);
+      return () => { commitListeners.delete(listener); };
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
@@ -264,10 +286,10 @@ export function create_locus_hosted_aggregate_internal(
  * commit replay.
  */
 export function create_locus_hosted_aggregate_client_internal(
-  snapshot: HostedLiveMapLibrariesSnapshot,
+  snapshot: HostedClientLibrariesSnapshot,
   options: Readonly<{ maxWireBytes?: number }> = {},
 ): LocusHostedAggregateClient {
-  const map = make_livemap_hosted_mirror_from_snapshot_internal(snapshot);
+  const map = make_livemap_client_mirror_from_snapshot_internal(snapshot);
   const aggregate = internal_livemap_aggregate_authority(map);
   const maxWireBytes = valid_wire_bound(options.maxWireBytes);
   const authority = snapshot.authority;
@@ -289,9 +311,8 @@ export function create_locus_hosted_aggregate_client_internal(
           maxWireBytes,
         }),
       );
-      // The aggregate engine performs exact semantic/replay reconciliation, library-mode,
-      // schema, QUID-ledger, and revision validation before its one install.
-      return aggregate.replayHosted(commit);
+      // Replay checks portable operation semantics and the resulting local transition.
+      return aggregate.replayClientHosted(commit);
     },
   });
 }
@@ -301,6 +322,8 @@ export function encode_locus_hosted_aggregate_wire(
   commit: HostedAggregateCommit,
   maxWireBytes = DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES,
 ): string {
+  const clientCommit = make_hosted_client_commit(commit);
+  if (clientCommit === undefined) throw new Error("Identity-only authority revision must be sent as progress.");
   const message: LocusHostedAggregateWireMessage = Object.freeze({
     type: "commit",
     id: "hosted-aggregate",
@@ -309,7 +332,7 @@ export function encode_locus_hosted_aggregate_wire(
       logicalMapId: commit.authority.logicalMapId,
       incarnationId: commit.authority.incarnationId,
       registryDigest: commit.registryDigest,
-      commit,
+      commit: clientCommit,
     }),
   });
   const encoded = JSON.stringify(message);
@@ -328,7 +351,7 @@ export function decode_locus_hosted_aggregate_wire(
     registryDigest: string;
     maxWireBytes?: number;
   }>,
-): HostedAggregateCommit {
+): HostedClientCommit {
   if (typeof wire !== "string" || new TextEncoder().encode(wire).byteLength > valid_wire_bound(expected.maxWireBytes)) {
     throw new Error("Hosted aggregate Locus wire message is malformed or exceeds its byte limit.");
   }
@@ -356,7 +379,7 @@ export function decode_locus_hosted_aggregate_envelope(
     registryDigest: string;
     maxWireBytes?: number;
   }>,
-): HostedAggregateCommit {
+): HostedClientCommit {
   const envelope = exact_record(input, "Hosted aggregate Locus commit envelope");
   exact_keys(envelope, ["format", "logicalMapId", "incarnationId", "registryDigest", "commit"], "Hosted aggregate Locus commit envelope");
   if (envelope.format !== LOCUS_HOSTED_AGGREGATE_WIRE_FORMAT
@@ -365,7 +388,7 @@ export function decode_locus_hosted_aggregate_envelope(
     || envelope.registryDigest !== expected.registryDigest) {
     throw new Error("Hosted aggregate Locus wire fence is incompatible with this mirror.");
   }
-  const commit = exact_record(envelope.commit, "Hosted aggregate commit") as HostedAggregateCommit;
+  const commit = exact_record(envelope.commit, "Hosted client commit") as HostedClientCommit;
   if (commit.authority?.logicalMapId !== envelope.logicalMapId
     || commit.authority?.incarnationId !== envelope.incarnationId
     || commit.registryDigest !== envelope.registryDigest) {

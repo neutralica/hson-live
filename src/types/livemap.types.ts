@@ -71,6 +71,12 @@ export type HostedLiveMapLibrariesSnapshot = LiveMapLibrariesSnapshot & Readonly
   authority: Readonly<{ logicalMapId: string; incarnationId: string }>;
 }>;
 
+/** Complete QUID-free client replica cut. Authority persistence uses HostedLiveMapLibrariesSnapshot. */
+export type HostedClientLibrariesSnapshot = Readonly<Omit<LiveMapLibrariesSnapshot, "format" | "identity"> & {
+  format: "hson-livemap-client-snapshot-v1";
+  authority: Readonly<{ logicalMapId: string; incarnationId: string }>;
+}>;
+
 /**
  * Runtime Proxy surface for ergonomic projected-path access.
  *

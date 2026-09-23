@@ -1,11 +1,12 @@
 import type {
   DocumentLiveMapCapture,
-  HostedLiveMapLibrariesSnapshot,
+  HostedClientLibrariesSnapshot,
   LiveMapLibrariesSnapshot,
   LocalLibrariesContinuationSnapshot,
   LiveMapRootMode,
 } from "../../types/livemap.types.js";
-import type { LocusSnapshotEnvelope } from "../../types/locus.representation.types.js";
+import type { LocusClientSnapshotEnvelope } from "../../types/locus.representation.types.js";
+import { assert_no_hson_runtime_quid_sigil, decode_locus_client_document_snapshot } from "../locus/locus.document-snapshot.js";
 import type { HsonSchemaData } from "../transform/transform.types.js";
 import { is_Node } from "../../core/node-guards.js";
 import { HsonSchema as HsonSchemaHandle } from "../schema/hson-schema.js";
@@ -17,7 +18,7 @@ import {
   encode_view_state_snapshot,
 } from "../livemap/livemap.document.view-state-codec.js";
 import {
-  assert_hosted_libraries_snapshot_shape,
+  assert_hosted_client_snapshot_shape,
   assert_libraries_snapshot_bound,
   assert_libraries_snapshot_shape,
   assert_local_libraries_snapshot_shape,
@@ -32,14 +33,14 @@ import type {
 } from "./ssr-bootstrap.types.js";
 
 const FORMAT = "hson-ssr-bootstrap" as const;
-const VERSION = 1 as const;
+const VERSION = 2 as const;
 const DEFAULT_MAX_ENCODED_BYTES = 96 * 1_024 * 1_024;
 const BASE64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 const BASE64URL_INPUT_CHUNK_BYTES = 24 * 1_024;
 const encoder = new TextEncoder();
 const asciiDecoder = new TextDecoder();
 
-type HostedDocumentBootstrap = Extract<LocusSnapshotEnvelope, { hson: string }> & Readonly<{ mode: "document" }>;
+type HostedDocumentBootstrap = LocusClientSnapshotEnvelope & Readonly<{ mode: "document" }>;
 type WireRegistryEntry = Readonly<{
   name: string;
   scope: null | "hson-internal";
@@ -57,15 +58,13 @@ type WireLibrary = Readonly<{
   rootPayload: string;
 }>;
 type LibrariesPayload = Readonly<{
-  snapshotFormat: "hson-livemap-libraries-snapshot";
+  snapshotFormat: "hson-livemap-libraries-snapshot" | "hson-livemap-client-snapshot-v1";
   revision: number;
   registryFormat: "hson-hosted-registry";
   registry: readonly WireRegistryEntry[];
   registryDigest: string;
   snapshotRegistryDigest: string;
   libraries: readonly WireLibrary[];
-  identityEpoch?: number;
-  issuedQuids?: readonly string[];
 }>;
 
 export function encode_ssr_bootstrap(
@@ -77,7 +76,7 @@ export function encode_ssr_bootstrap(
   options?: SsrBootstrapCodecOptions,
 ): EncodedSsrBootstrap<"hosted-document">;
 export function encode_ssr_bootstrap(
-  bootstrap: HostedLiveMapLibrariesSnapshot,
+  bootstrap: HostedClientLibrariesSnapshot,
   options?: SsrBootstrapCodecOptions,
 ): EncodedSsrBootstrap<"hosted-libraries">;
 export function encode_ssr_bootstrap(
@@ -85,7 +84,7 @@ export function encode_ssr_bootstrap(
   options?: SsrBootstrapCodecOptions,
 ): EncodedSsrBootstrap<"libraries">;
 export function encode_ssr_bootstrap(
-  bootstrap: DocumentLiveMapCapture<"document"> | HostedDocumentBootstrap | LocalLibrariesContinuationSnapshot | HostedLiveMapLibrariesSnapshot,
+  bootstrap: DocumentLiveMapCapture<"document"> | HostedDocumentBootstrap | LocalLibrariesContinuationSnapshot | HostedClientLibrariesSnapshot,
   options?: SsrBootstrapCodecOptions,
 ): EncodedSsrBootstrap {
   const maximum = max_encoded_bytes(options, "encode");
@@ -191,11 +190,10 @@ function normalize_bootstrap(bootstrap: unknown): Readonly<{ kind: SsrBootstrapK
     }));
     return { kind: "document", payload: { viewStateFormat: viewState.format, viewStatePayload: viewState.payload } };
   }
-  if (bootstrap.format === "hson-livemap-libraries-snapshot") {
+  if (bootstrap.format === "hson-livemap-libraries-snapshot" || bootstrap.format === "hson-livemap-client-snapshot-v1") {
     if (Object.hasOwn(bootstrap, "authority")) {
-      const hosted = bootstrap as HostedLiveMapLibrariesSnapshot;
-      assert_hosted_libraries_snapshot_shape(hosted);
-      assert_libraries_snapshot_bound(hosted);
+      const hosted = bootstrap as HostedClientLibrariesSnapshot;
+      assert_hosted_client_snapshot_shape(hosted);
       if (typeof hosted.authority.logicalMapId !== "string" || typeof hosted.authority.incarnationId !== "string") {
         throw new TypeError("Hosted Libraries authority is malformed.");
       }
@@ -212,29 +210,29 @@ function normalize_bootstrap(bootstrap: unknown): Readonly<{ kind: SsrBootstrapK
     assert_libraries_snapshot_bound(local);
     return { kind: "libraries", payload: libraries_payload(local) };
   }
-  if (Object.hasOwn(bootstrap, "hson")) {
-    exact_keys(bootstrap, ["logicalMapId", "incarnationId", "rev", "mode", "hson"]);
+  if (bootstrap.format === "hson-client-snapshot-v1" || bootstrap.format === "view-state-client-snapshot-v1") {
+    exact_keys(bootstrap, ["logicalMapId", "incarnationId", "rev", "mode", "format", "payload"]);
     if (typeof bootstrap.logicalMapId !== "string" || typeof bootstrap.incarnationId !== "string"
-      || !safe_nonnegative_integer(bootstrap.rev) || bootstrap.mode !== "document" || typeof bootstrap.hson !== "string") {
+      || !safe_nonnegative_integer(bootstrap.rev) || bootstrap.mode !== "document" || typeof bootstrap.payload !== "string") {
       throw new TypeError("Hosted document bootstrap is malformed.");
     }
+    if (bootstrap.format === "hson-client-snapshot-v1") assert_no_hson_runtime_quid_sigil(bootstrap.payload);
+    else decode_locus_client_document_snapshot(bootstrap as HostedDocumentBootstrap);
     return { kind: "hosted-document", payload: {
       logicalMapId: bootstrap.logicalMapId,
       incarnationId: bootstrap.incarnationId,
       revision: bootstrap.rev,
       mode: bootstrap.mode,
-      hson: bootstrap.hson,
+      snapshotFormat: bootstrap.format,
+      snapshotPayload: bootstrap.payload,
     } };
   }
   throw new TypeError("Bootstrap family is unsupported.");
 }
 
-function libraries_payload(snapshot: LiveMapLibrariesSnapshot | LocalLibrariesContinuationSnapshot): LibrariesPayload {
-  if (snapshot.format !== "hson-livemap-libraries-snapshot" || snapshot.registry.format !== "hson-hosted-registry"
+function libraries_payload(snapshot: HostedClientLibrariesSnapshot | LocalLibrariesContinuationSnapshot): LibrariesPayload {
+  if ((snapshot.format !== "hson-livemap-libraries-snapshot" && snapshot.format !== "hson-livemap-client-snapshot-v1") || snapshot.registry.format !== "hson-hosted-registry"
     || !safe_nonnegative_integer(snapshot.revision)) throw new TypeError("Libraries scalar fields are malformed.");
-  const identity = "identity" in snapshot ? snapshot.identity : undefined;
-  if (identity !== undefined && (!safe_nonnegative_integer(identity.epoch)
-    || identity.issuedQuids.some((value) => typeof value !== "string"))) throw new TypeError("Libraries identity fields are malformed.");
   return {
     snapshotFormat: snapshot.format,
     revision: snapshot.revision,
@@ -257,7 +255,6 @@ function libraries_payload(snapshot: LiveMapLibrariesSnapshot | LocalLibrariesCo
       rootFormat: require_root_format(entry.root.format),
       rootPayload: require_string(entry.root.payload),
     })),
-    ...(identity === undefined ? {} : { identityEpoch: identity.epoch, issuedQuids: [...identity.issuedQuids] }),
   };
 }
 
@@ -270,21 +267,25 @@ function decode_payload(kind: SsrBootstrapKind, input: unknown): DecodedSsrBoots
     return Object.freeze({ kind, bootstrap: bootstrap as DocumentLiveMapCapture<"document"> });
   }
   if (kind === "hosted-document") {
-    const payload = record(input); exact_keys(payload, ["logicalMapId", "incarnationId", "revision", "mode", "hson"]);
+    const payload = record(input); exact_keys(payload, ["logicalMapId", "incarnationId", "revision", "mode", "snapshotFormat", "snapshotPayload"]);
     if (typeof payload.logicalMapId !== "string" || typeof payload.incarnationId !== "string"
-      || !safe_nonnegative_integer(payload.revision) || payload.mode !== "document" || typeof payload.hson !== "string") throw new TypeError("Hosted document payload is malformed.");
+      || !safe_nonnegative_integer(payload.revision) || payload.mode !== "document"
+      || (payload.snapshotFormat !== "hson-client-snapshot-v1" && payload.snapshotFormat !== "view-state-client-snapshot-v1")
+      || typeof payload.snapshotPayload !== "string") throw new TypeError("Hosted document payload is malformed.");
     const bootstrap: HostedDocumentBootstrap = Object.freeze({
       logicalMapId: payload.logicalMapId, incarnationId: payload.incarnationId,
-      rev: payload.revision, mode: "document", hson: payload.hson,
+      rev: payload.revision, mode: "document", format: payload.snapshotFormat, payload: payload.snapshotPayload,
     });
+    if (bootstrap.format === "hson-client-snapshot-v1") assert_no_hson_runtime_quid_sigil(bootstrap.payload);
+    else decode_locus_client_document_snapshot(bootstrap);
     return Object.freeze({ kind, bootstrap });
   }
   const hosted = kind === "hosted-libraries";
   const payload = record(input);
   exact_keys(payload, hosted
-    ? ["logicalMapId", "incarnationId", "snapshotFormat", "revision", "registryFormat", "registry", "registryDigest", "snapshotRegistryDigest", "libraries", "identityEpoch", "issuedQuids"]
+    ? ["logicalMapId", "incarnationId", "snapshotFormat", "revision", "registryFormat", "registry", "registryDigest", "snapshotRegistryDigest", "libraries"]
     : ["snapshotFormat", "revision", "registryFormat", "registry", "registryDigest", "snapshotRegistryDigest", "libraries"]);
-  if (payload.snapshotFormat !== "hson-livemap-libraries-snapshot" || payload.registryFormat !== "hson-hosted-registry"
+  if (payload.snapshotFormat !== (hosted ? "hson-livemap-client-snapshot-v1" : "hson-livemap-libraries-snapshot") || payload.registryFormat !== "hson-hosted-registry"
     || !safe_nonnegative_integer(payload.revision)
     || !Array.isArray(payload.registry) || !Array.isArray(payload.libraries)
     || typeof payload.registryDigest !== "string" || typeof payload.snapshotRegistryDigest !== "string") throw new TypeError("Libraries payload is malformed.");
@@ -297,15 +298,12 @@ function decode_payload(kind: SsrBootstrapKind, input: unknown): DecodedSsrBoots
   });
   if (!hosted) { assert_local_libraries_snapshot_shape(local); assert_local_libraries_roots_portable(local); return Object.freeze({ kind, bootstrap: local }); }
   if (typeof payload.logicalMapId !== "string" || typeof payload.incarnationId !== "string") throw new TypeError("Hosted Libraries authority is malformed.");
-  if (!safe_nonnegative_integer(payload.identityEpoch) || !is_string_array(payload.issuedQuids)) {
-    throw new TypeError("Hosted Libraries identity is malformed.");
-  }
-  const bootstrap: HostedLiveMapLibrariesSnapshot = Object.freeze({
+  const bootstrap: HostedClientLibrariesSnapshot = Object.freeze({
     ...local,
-    identity: Object.freeze({ epoch: payload.identityEpoch, issuedQuids: Object.freeze([...payload.issuedQuids]) }),
+    format: "hson-livemap-client-snapshot-v1",
     authority: Object.freeze({ logicalMapId: payload.logicalMapId, incarnationId: payload.incarnationId }),
   });
-  assert_hosted_libraries_snapshot_shape(bootstrap);
+  assert_hosted_client_snapshot_shape(bootstrap);
   return Object.freeze({ kind, bootstrap });
 }
 

@@ -14,11 +14,11 @@ import type {
   LocusSocketLike,
 } from "../../types/locus.types.js";
 import type { EchoMapManagementLease } from "../../internal/echo-map-capability.js";
-import type { HostedLiveMapLibrariesSnapshot } from "../../types/livemap.types.js";
-import { make_livemap_hosted_mirror_from_snapshot_internal } from "../livemap/livemap.libraries.js";
+import type { HostedClientLibrariesSnapshot } from "../../types/livemap.types.js";
+import { make_livemap_client_mirror_from_snapshot_internal } from "../livemap/livemap.libraries.js";
 import {
   assert_libraries_snapshot_bound,
-  assert_hosted_libraries_snapshot_shape,
+  assert_hosted_client_snapshot_shape,
 } from "../livemap/livemap.hosted.js";
 import {
   DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES,
@@ -370,16 +370,15 @@ function create_multi_library_echo_semantic_client_internal<
     return active;
   }
 
-  function install_snapshot(snapshot: HostedLiveMapLibrariesSnapshot): void {
-    assert_hosted_libraries_snapshot_shape(snapshot);
-    assert_libraries_snapshot_bound(snapshot);
+  function install_snapshot(snapshot: HostedClientLibrariesSnapshot): void {
+    assert_hosted_client_snapshot_shape(snapshot);
     if (snapshot.authority.logicalMapId !== clientLogicalMapId) throw new Error("Hosted aggregate snapshot logical map fence is incompatible.");
     if (recovery?.outcome === "snapshot" && map !== undefined && registryDigest !== undefined && snapshot.registryDigest !== registryDigest) {
       throw new Error("Hosted aggregate snapshot changes an existing registry topology.");
     }
     if (map === undefined) {
       // Construction occurs only after complete snapshot validation.
-      map = make_livemap_hosted_mirror_from_snapshot_internal(snapshot);
+      map = make_livemap_client_mirror_from_snapshot_internal(snapshot);
       replica.attachMap(map);
     } else {
       // Aggregate recovery validates all roots, Schemas and map-wide QUID state before this

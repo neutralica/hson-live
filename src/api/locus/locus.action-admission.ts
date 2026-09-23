@@ -13,6 +13,7 @@ import { LocusAuthorityError } from "./locus.authority.js";
 import { decode_locus_action_payload, locus_schema_error_message } from "./locus.action-validation.js";
 import { is_locus_document_action_target, resolve_locus_document_action } from "./locus.document-actions.js";
 import { is_locus_json_value } from "./locus.protocol.js";
+import { locus_client_error_message } from "./locus.client-error.js";
 import type { LocusCommitCausation, LiveTraceContext } from "./locus.trace.js";
 
 type LocusActionHandler<TMap extends LiveMapAuthority, TActions extends LocusActionPayloads> =
@@ -307,7 +308,7 @@ export async function execute_locus_action_handler<
     return Object.freeze({
       state: "failed", seq: input.authority.currentSeq(), completionRev: input.authority.headRev(),
       error: Object.freeze({
-        message: cause instanceof Error ? cause.message : "Locus action failed.",
+        message: locus_client_error_message(cause, "Locus action failed."),
         code: causeCode,
       }),
     });

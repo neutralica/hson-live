@@ -26,6 +26,7 @@ import { FakeElement, FakeText, install_fake_document } from "./helpers/fake-doc
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
 import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
+import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
 
 install_fake_document();
 
@@ -96,6 +97,7 @@ function mainFixture(_quid: string): Readonly<{ root: FakeElement; child: FakeEl
   const installed = install_locus_bootstrap(capture_locus_bootstrap(locus, "continuation:replay", "/continuation"));
   const replica = installed.map;
   if (replica.mode !== "document") throw new Error("Expected installed document bootstrap.");
+  assert.equal(replica.document.byQuid(quid), undefined);
   await locus.mutate((draft) => draft.document.attrs.set(path(0, 0), "data-recovered", "yes"));
   const pair = socketPair();
   locus.connect(pair.server);
@@ -131,14 +133,17 @@ function mainFixture(_quid: string): Readonly<{ root: FakeElement; child: FakeEl
   assert.equal(continuation.echo, echo);
   assert.equal(continuation.map, replica);
   assert.equal(continuation.tree.dom.el(), rootBefore as unknown as Element);
-  assert.equal(continuation.tree.find.byQuid(quid)?.dom.el(), childBefore as unknown as Element);
+  const echoQuid = acquire_document_identity(replica.document, path(0, 0)).snap()?.$_meta?.quid;
+  assert.equal(typeof echoQuid, "string");
+  assert.notEqual(echoQuid, quid);
+  assert.equal(continuation.tree.find.byQuid(echoQuid!)?.dom.el(), childBefore as unknown as Element);
   assert.equal(fixture.child.childNodes[0], textBefore);
   assert.equal(echo.recovery.status, "caught_up");
   assert.equal(echo.recovery.lastAppliedRev, replica.rev);
   assert.equal(continuation.reflect.sourceRevision, replica.rev);
   assert.equal(fixture.child.getAttribute("data-recovered"), "yes");
 
-  const childTree = continuation.tree.find.must.byQuid(quid);
+  const childTree = continuation.tree.find.must.byQuid(echoQuid!);
   await childTree.async.attrs.set("data-async", "accepted");
   assert.equal(authority.rev, 2);
   assert.equal(replica.rev, 2);
@@ -146,8 +151,7 @@ function mainFixture(_quid: string): Readonly<{ root: FakeElement; child: FakeEl
   assert.equal(fixture.child.getAttribute("data-async"), "accepted");
   assert.equal(pair.delivered.some((message) => message.type === "ack" && message.completionRev === 2), true);
 
-  // An Echo-authored replacement can carry foreign exact-QUID evidence while
-  // its portable lineage preserves the Locus-local subject lifetime.
+  // The portable lineage preserves each runtime's independently owned subject.
   const observedLineages: unknown[] = [];
   const stopLineages = authority.commits.observe((event) => {
     if (event.kind !== "commit") return;
@@ -156,7 +160,7 @@ function mainFixture(_quid: string): Readonly<{ root: FakeElement; child: FakeEl
     }
   });
   const foreign = "000004099";
-  const replacement = documentMap(`<p @${foreign} "changed"/>`).at([]).snap();
+  const replacement = documentMap(`<p "changed"/>`).at([]).snap();
   if (replacement === undefined) throw new Error("Expected replacement content.");
   const request = JSON.parse(JSON.stringify({
     target: path(0), index: 0, replacement,
@@ -167,14 +171,14 @@ function mainFixture(_quid: string): Readonly<{ root: FakeElement; child: FakeEl
   assert.deepEqual(observedLineages, [[{ source: [], destination: [] }]]);
   assert.equal(authority.document.byQuid(quid)?.$_tag, "p");
   assert.equal(authority.document.byQuid(foreign), undefined);
-  assert.equal(replica.document.byQuid(quid)?.$_tag, "p");
+  assert.equal(replica.document.byQuid(echoQuid!)?.$_tag, "p");
   assert.equal(continuation.reflect.sourceRevision, 3);
-  assert.equal(continuation.tree.find.byQuid(quid)?.dom.el(), childBefore as unknown as Element);
+  assert.equal(continuation.tree.find.byQuid(echoQuid!)?.dom.el(), childBefore as unknown as Element);
   assert.equal((fixture.child.childNodes[0] as FakeText | undefined)?.data, "changed");
 
   // Mirror's existing pessimistic text authoring also emits an explicit
   // empty lineage for its replacement of a structural text leaf.
-  await continuation.tree.find.must.byQuid(quid).async.text.set("via Mirror");
+  await continuation.tree.find.must.byQuid(echoQuid!).async.text.set("via Mirror");
   assert.equal(authority.rev, 4);
   assert.equal(replica.rev, 4);
   assert.equal(continuation.reflect.sourceRevision, 4);

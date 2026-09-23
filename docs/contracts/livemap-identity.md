@@ -49,10 +49,9 @@ transition stale, even when its application revision and root are unchanged.
 The generation is internal and never substitutes for `map.rev`.
 
 Replacement lineage is operation-relative path correspondence. The receiving
-runtime applies its own overlay to that lineage; no receiving-runtime QUID
-needs to be embedded in replacement graph metadata. Legacy exact-QUID
-material can still provide a consistency oracle. If explicit lineage and
-legacy evidence disagree, admission rejects atomically.
+runtime applies its own overlay to that lineage. Current hosted client effects
+carry lineage and QUID-free content. Exact-QUID evidence remains inside the
+authority history compatibility boundary and is not a second client oracle.
 
 Interaction subjects remain path-based. Ordinary graph transitions maintain
 interaction movement, replacement, and death together with application state.
@@ -82,11 +81,12 @@ out-of-band identity overlay. A detached exact view may expose QUID metadata,
 but ordinary portable capture and Transform output do not establish identity.
 
 The compatibility `preserve-metadata` capture and legacy authority persistence
-formats remain readable. Phase 4B0 does not change authority restart policy.
+formats remain readable. Phase 4C does not change authority restart policy.
 Legacy history and snapshots may contain `ensure-quid`, `$_meta.quid`, identity
 epochs, issued ledgers, and QUID witnesses. Replay validates those exact
-claims, but an ordinary new runtime identity demand produces no `ensure-quid`
-graph or authority operation. Generic authority progress still handles old
+claims internally, but an ordinary new runtime identity demand produces no
+`ensure-quid` graph or authority operation. Client snapshots contain no Locus
+identity epoch or issued ledger. Generic authority progress handles old
 identity-only revisions and any future effect-free replica revisions.
 
 ## Public surfaces

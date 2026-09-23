@@ -21,9 +21,9 @@ construction behavior. An endpoint-only Echo exposes `clientId`, `session`,
 It does not construct or expose a LiveMap and has no recovery capability.
 
 A replica-bearing Echo requires both an explicit `map` and recovery
-configuration. It exposes the same endpoint capabilities plus that exact map
+configuration. It exposes the same endpoint capabilities plus that client map
 and `recovery`. Echo claims exclusive management of the supplied map, but the
-presence of `.map` is not proof that it is caught up: exactness is established
+presence of `.map` is not proof that it is caught up: convergence is established
 by recovery state. Local-only state belongs in a separate local LiveMap.
 
 Library count is a LiveMap topology concern, not an Echo kind. Supplying a
@@ -45,8 +45,8 @@ For hosted `replace-content` authoring, Echo derives operation-relative
 source/destination path lineage from its own local replacement intent. Locus
 applies that correspondence to Locus-local identities; the generated QUIDs of
 the two runtimes do not define the portable replacement lifetime. Exact-QUID
-graph content and witnesses remain in the temporary Phase 4A stream as an
-oracle and will be removed in Phase 4C.
+graph content and witnesses are absent from the current client stream. Echo
+uses only lineage to preserve its own subject identities during replacement.
 
 Echo does not perform optimistic mutation, authorization, application policy,
 or generic data proposals. Hosted data changes continue through

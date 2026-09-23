@@ -302,6 +302,7 @@ function persistent_view(
     mutate: locus.mutate,
     dispatch_action: locus.dispatch_action,
     on_wire: locus.on_wire,
+    on_commit: locus.on_commit,
     checkpoint,
     dispose: locus.dispose,
   });

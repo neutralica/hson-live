@@ -119,7 +119,7 @@ async function assert_single_hosted_commit({ host, client, action, payload, veri
   assert.equal(published, 1);
   assert.equal(replayed, 1);
   assert.equal(clientChanges, 1);
-  assert.deepEqual(client.map.capture(), host.map.capture());
+  assert.deepEqual(client.map.capture({ identity: "strip" }), host.map.capture({ identity: "strip" }));
   verify();
   return result;
 }
@@ -238,7 +238,7 @@ await check("document.content.replace uses a path target and replays one canonic
   const client = await connected_document_client(host, element(initial));
   const replacement = {
     $_tag: "_hson_elem",
-    $_content: [documentElement(element(`<article @000000004 "new"/>`))],
+    $_content: [documentElement(element(`<article "new"/>`))],
   };
   await assert_single_hosted_commit({
     host,
@@ -246,7 +246,8 @@ await check("document.content.replace uses a path target and replays one canonic
     action: "document.content.replace",
     payload: { target: rootPath, index: 0, replacement },
     verify() {
-      assert.equal(host.map.document.byQuid("000000004")?.$_tag, "article");
+      assert.equal(documentElement(host.map).$_content[0].$_content[0].$_tag, "article");
+      assert.equal(host.map.document.byQuid("000000004"), undefined);
       assert.equal(host.map.document.byQuid("000000003"), undefined);
     },
   });
@@ -256,7 +257,7 @@ await check("document.content.insert uses a multiNodeDocument path and publishes
   const initial = `<a/> <c/>`;
   const host = hson.locus.create({ map: multiNodeDocument(initial), logicalMapId: "hosted-content-insert" });
   const client = await connected_document_client(host, multiNodeDocument(initial));
-  const content = documentElement(element(`<b @00000001c/>`));
+  const content = documentElement(element(`<b/>`));
   await assert_single_hosted_commit({
     host,
     client,
@@ -264,7 +265,7 @@ await check("document.content.insert uses a multiNodeDocument path and publishes
     payload: { target: documentRootPath, index: 1, content },
     verify() {
       assert.deepEqual(host.map.document.content().map((item) => item.$_tag), ["a", "b", "c"]);
-      assert.equal(host.map.document.byQuid("00000001c")?.$_tag, "b");
+      assert.equal(host.map.document.byQuid("00000001c"), undefined);
     },
   });
 });
@@ -346,7 +347,7 @@ await check("each hosted operation accepts its canonical path target style", asy
   const finalParagraphCluster = host.map.document.byQuid("00000000a")?.$_content[0];
   assert.equal(finalParagraphCluster?.$_tag, "_hson_elem");
   assert.equal(finalParagraphCluster?.$_content[0]?.$_tag, "i");
-  assert.deepEqual(client.map.capture(), host.map.capture());
+  assert.deepEqual(client.map.capture({ identity: "strip" }), host.map.capture({ identity: "strip" }));
 });
 
 await check("all ten names are recognized but unavailable for data-object and data-array authorities", async () => {
@@ -630,7 +631,7 @@ await check("incremental recovery after a hosted action reconstructs an identica
     lastAppliedRev: 0,
   });
   assert.equal(recovered.recovery.strategy, "replay");
-  assert.deepEqual(recovered.map.capture(), host.map.capture());
+  assert.deepEqual(recovered.map.capture({ identity: "strip" }), host.map.capture({ identity: "strip" }));
 });
 
 await check("snapshot fallback after a hosted action reconstructs an identical document", async () => {
@@ -644,8 +645,9 @@ await check("snapshot fallback after a hosted action reconstructs an identical d
     lastAppliedRev: 0,
   });
   assert.equal(recovered.recovery.strategy, "snapshot");
-  assert.deepEqual(recovered.map.capture(), host.map.capture());
-  assert.equal(recovered.map.document.byQuid("000000008")?.$_attrs?.title, "snapshot");
+  assert.deepEqual(recovered.map.capture({ identity: "strip" }), host.map.capture({ identity: "strip" }));
+  assert.equal(recovered.map.document.byQuid("000000008"), undefined);
+  assert.equal(documentElement(recovered.map).$_attrs?.title, "snapshot");
 });
 
 await check("all four bulk actions survive incremental resume in canonical order", async () => {
@@ -665,7 +667,7 @@ await check("all four bulk actions survive incremental resume in canonical order
     lastAppliedRev: 0,
   });
   assert.equal(recovered.recovery.strategy, "replay");
-  assert.deepEqual(recovered.map.capture(), host.map.capture());
+  assert.deepEqual(recovered.map.capture({ identity: "strip" }), host.map.capture({ identity: "strip" }));
   assert.equal(recovered.map.rev, 4);
   assert.equal(recovered.map.document.byQuid("000000023")?.$_tag, "main");
 });
@@ -688,19 +690,19 @@ await check("all four bulk actions survive snapshot fallback with metadata intac
     lastAppliedRev: 0,
   });
   assert.equal(recovered.recovery.strategy, "snapshot");
-  assert.deepEqual(recovered.map.capture(), host.map.capture());
+  assert.deepEqual(recovered.map.capture({ identity: "strip" }), host.map.capture({ identity: "strip" }));
   assert.equal(recovered.map.rev, 4);
-  assert.equal(recovered.map.document.byQuid("000000024")?.$_meta?.["quid"], "000000024");
+  assert.equal(recovered.map.document.byQuid("000000024"), undefined);
 });
 
-await check("incremental recovery preserves an inserted node and its QUID", async () => {
+await check("incremental recovery inserts application content without remote QUID", async () => {
   const initial = `<a/> <c/>`;
   const host = hson.locus.create({ map: multiNodeDocument(initial), logicalMapId: "hosted-structural-replay" });
   const actor = await connected_document_client(host, multiNodeDocument(initial));
   await actor.action("document.content.insert", {
     target: documentRootPath,
     index: 1,
-    content: documentElement(element(`<b @00000001f/>`)),
+    content: documentElement(element(`<b/>`)),
   });
   actor.disconnect();
   const recovered = await connected_document_client(host, multiNodeDocument(initial), {
@@ -708,11 +710,11 @@ await check("incremental recovery preserves an inserted node and its QUID", asyn
     lastAppliedRev: 0,
   });
   assert.equal(recovered.recovery.strategy, "replay");
-  assert.deepEqual(recovered.map.capture(), host.map.capture());
-  assert.equal(recovered.map.document.byQuid("00000001f")?.$_tag, "b");
+  assert.deepEqual(recovered.map.capture({ identity: "strip" }), host.map.capture({ identity: "strip" }));
+  assert.equal(recovered.map.document.byQuid("00000001f"), undefined);
 });
 
-await check("snapshot fallback preserves movement order, mode, revision and QUID", async () => {
+await check("snapshot fallback preserves movement order, mode and revision with a fresh identity epoch", async () => {
   const initial = `<a/> <b @00000001g/> <c/>`;
   const host = hson.locus.create({
     map: multiNodeDocument(initial),
@@ -729,8 +731,8 @@ await check("snapshot fallback preserves movement order, mode, revision and QUID
   assert.equal(recovered.recovery.strategy, "snapshot");
   assert.equal(recovered.map.mode, "document");
   assert.equal(recovered.map.rev, host.map.rev);
-  assert.deepEqual(recovered.map.capture(), host.map.capture());
-  assert.equal(recovered.map.document.byQuid("00000001g")?.$_tag, "b");
+  assert.deepEqual(recovered.map.capture({ identity: "strip" }), host.map.capture({ identity: "strip" }));
+  assert.equal(recovered.map.document.byQuid("00000001g"), undefined);
 });
 
 process.stdout.write(`# ${checks} hosted document action checks passed\n`);

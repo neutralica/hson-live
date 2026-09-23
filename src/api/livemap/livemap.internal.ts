@@ -77,9 +77,14 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   restoreLibraries: (snapshot: LiveMapLibrariesSnapshot) => void;
   restorePortableLibraries: (snapshot: LocalLibrariesContinuationSnapshot) => void;
   restoreHosted: (snapshot: HostedLiveMapLibrariesSnapshot) => void;
+  /** QUID-free network snapshot; installs a fresh local identity epoch. @internal */
+  restoreClientHosted: (snapshot: import("../../types/livemap.types.js").HostedClientLibrariesSnapshot) => void;
+  restoreClientHostedManaged: (owner: object, snapshot: import("../../types/livemap.types.js").HostedClientLibrariesSnapshot) => void;
   /** Apply a transport snapshot while this aggregate is client-managed. @internal */
   restoreHostedManaged: (owner: object, snapshot: HostedLiveMapLibrariesSnapshot) => void;
   replayHosted: (commit: HostedAggregateCommit) => LiveMapAggregateCommit;
+  replayClientHosted: (commit: import("./livemap.hosted.js").HostedClientCommit) => LiveMapAggregateCommit;
+  replayClientHostedManaged: (owner: object, commit: import("./livemap.hosted.js").HostedClientCommit) => LiveMapAggregateCommit;
   /** Apply a transport commit while this aggregate is client-managed. @internal */
   replayHostedManaged: (owner: object, commit: HostedAggregateCommit) => LiveMapAggregateCommit;
   /** Advance a managed replica through one effect-free authority revision. @internal */
@@ -90,6 +95,8 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     prevRev: number;
     rev: number;
   }>) => number;
+  /** Managed solo Echo authority position without a graph mutation or commit. @internal */
+  advanceSoloProgress: (prevRev: number, rev: number) => number;
   /** Authority position, including commits, progress, and snapshot installation. @internal */
   observeAuthorityPosition: (listener: (revision: number) => void) => () => void;
   target: (library: LiveMapLibraryIdentity, path: LivePath) => LiveMapStructuralTarget;

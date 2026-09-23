@@ -12,7 +12,8 @@ import { plan_browser_realization } from "./browser-realization/browser-realizat
 import { serialize_browser_realization } from "./browser-realization/browser-realization-serialize.js";
 import { DocumentSsrError } from "./document-cut.error.js";
 import { clone_hson_graph_without_quids } from "../api/livemap/livemap.document.capture.js";
-import { encode_hosted_root } from "../api/livemap/livemap.hosted.js";
+import { encode_hosted_root, make_hosted_client_snapshot } from "../api/livemap/livemap.hosted.js";
+import { project_locus_client_snapshot } from "../api/locus/locus.client-replication.js";
 import type {
   BrowserRealizationHtml,
   DocumentCut,
@@ -174,7 +175,8 @@ export function cut_hosted_libraries(
     throw new DocumentSsrError("capture", "The hosted Libraries cut could not be captured.", cause);
   }
   afterCapture?.();
-  return cut_libraries_snapshot(snapshot, document, install, decodeRoot);
+  const cut = cut_libraries_snapshot(snapshot, document, install, decodeRoot);
+  return Object.freeze({ html: cut.html, data: make_hosted_client_snapshot(snapshot), document: cut.document });
 }
 
 export function cut_hosted_snapshot(
@@ -192,7 +194,7 @@ export function cut_hosted_snapshot(
   } catch (cause) {
     throw new DocumentSsrError("bootstrap", "The captured semantic document snapshot could not be decoded.", cause);
   }
-  return Object.freeze({ html: realize(capture), data: snapshot });
+  return Object.freeze({ html: realize(capture), data: project_locus_client_snapshot(snapshot) });
 }
 
 export function cut_hosted_authority(capture: () => HostedDocumentCut): HostedDocumentCut {

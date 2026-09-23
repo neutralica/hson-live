@@ -11,6 +11,7 @@ import type {
   LiveMapDocumentAttrs,
   LiveMapDocumentContent,
   LiveMapDocumentCommitTarget,
+  LiveMapDocumentPath,
   LiveMapGraphOp,
   LiveMapReplacementLineage,
   LiveMapAnyOp,
@@ -159,6 +160,38 @@ export type LocusCanonicalCommit = Readonly<{
   ops: readonly LocusCanonicalOp[];
 }> & Partial<LiveMapStructuralJsonEnvelope>;
 
+/** Current QUID-free single-map client graph content. Exact authority history uses LocusEncodedGraphContent. */
+export type LocusClientGraphContent = Readonly<{ format: "hson-graph-portable-v1"; payload: string }>;
+export type LocusClientDocumentTarget = Readonly<{ kind: "path"; path: LiveMapDocumentPath }>;
+export type LocusClientGraphOp =
+  | Readonly<{ domain: "graph"; op: "replace-root"; mode: "document"; root: LocusClientGraphContent }>
+  | Readonly<{ domain: "graph"; op: "set-attr"; target: LocusClientDocumentTarget; name: string; value: LiveMapDocumentAttributeValue }>
+  | Readonly<{ domain: "graph"; op: "remove-attr"; target: LocusClientDocumentTarget; name: string }>
+  | Readonly<{ domain: "graph"; op: "replace-attrs"; target: LocusClientDocumentTarget; attrs: LiveMapDocumentAttrs }>
+  | Readonly<{ domain: "graph"; op: "replace-content"; target: LocusClientDocumentTarget; index: number; replacement: LocusClientGraphContent; lineage: LiveMapReplacementLineage }>
+  | Readonly<{ domain: "graph"; op: "insert-content"; target: LocusClientDocumentTarget; index: number; content: LocusClientGraphContent }>
+  | Readonly<{ domain: "graph"; op: "remove-content"; target: LocusClientDocumentTarget; index: number }>
+  | Readonly<{ domain: "graph"; op: "move-content"; target: LocusClientDocumentTarget; from: number; to: number }>;
+export type LocusClientOp =
+  | LocusCanonicalSetOp | LocusCanonicalDeleteOp | LocusCanonicalReplaceOp
+  | LocusCanonicalSpliceOp | LocusCanonicalRenameOp | LocusCanonicalMoveOp
+  | LocusClientGraphOp;
+export type LocusClientCommit = Readonly<{
+  clientFormat: "hson-locus-client-commit-v1";
+  logicalMapId: LocusLogicalMapId;
+  incarnationId: LocusIncarnationId;
+  mode: LiveMapRootMode;
+  prevRev: number;
+  rev: number;
+  ops: readonly LocusClientOp[];
+}> & Partial<LiveMapStructuralJsonEnvelope>;
+export type LocusClientProgress = Readonly<{
+  logicalMapId: LocusLogicalMapId;
+  incarnationId: LocusIncarnationId;
+  prevRev: number;
+  rev: number;
+}>;
+
 export type LocusCanonicalCommitListener = (commit: LocusCanonicalCommit) => void;
 
 export type LocusCanonicalHistoryOptions = Readonly<{
@@ -216,6 +249,12 @@ export type LocusSnapshotEnvelope = LocusSnapshotCommonFields & (
   | Readonly<{ hson: string }>
   | Readonly<{ format: "view-state"; payload: string }>
 );
+
+/** Current client bootstrap/recovery cut; payload is validated as portable state. */
+export type LocusClientSnapshotEnvelope = LocusSnapshotCommonFields & Readonly<{
+  format: "hson-client-snapshot-v1" | "view-state-client-snapshot-v1";
+  payload: string;
+}>;
 
 export type LocusSnapshotCapabilities = Readonly<{
   hson: true;

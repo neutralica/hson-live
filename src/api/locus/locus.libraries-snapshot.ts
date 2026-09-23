@@ -1,6 +1,6 @@
-import type { HostedLiveMapLibrariesSnapshot, LiveMapLibraries } from "../../types/livemap.types.js";
+import type { HostedLiveMapLibrariesSnapshot, HostedClientLibrariesSnapshot, LiveMapLibraries } from "../../types/livemap.types.js";
 import type { EchoRecoveryOptions } from "../../types/locus.types.js";
-import { make_livemap_hosted_mirror_from_snapshot_internal } from "../livemap/livemap.libraries.js";
+import { make_livemap_client_mirror_from_snapshot_internal } from "../livemap/livemap.libraries.js";
 
 type LibrariesSnapshotAuthority = Readonly<{
   capture: () => HostedLiveMapLibrariesSnapshot;
@@ -43,9 +43,9 @@ export function capture_locus_libraries_snapshot_internal(
 
 /** Install one hosted aggregate cut and its existing Echo recovery cursor. */
 export function install_locus_libraries_snapshot(
-  snapshot: HostedLiveMapLibrariesSnapshot,
+  snapshot: HostedClientLibrariesSnapshot,
 ): Readonly<{ map: LiveMapLibraries; recovery: EchoRecoveryOptions }> {
-  const map = make_livemap_hosted_mirror_from_snapshot_internal(snapshot);
+  const map = make_livemap_client_mirror_from_snapshot_internal(snapshot);
   return Object.freeze({
     map,
     recovery: Object.freeze({

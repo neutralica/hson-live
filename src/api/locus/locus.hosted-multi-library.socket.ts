@@ -5,7 +5,7 @@ import type {
   LiveMapDocumentRequestTarget,
   LiveMapGraphCommit,
   LiveMapLibraries,
-  HostedLiveMapLibrariesSnapshot,
+  HostedClientLibrariesSnapshot,
 } from "../../types/livemap.types.js";
 import type {
   LocusActionAuthorizer,
@@ -30,6 +30,8 @@ import { decode_locus_message } from "./locus.protocol.js";
 import { is_locus_json_value } from "./locus.protocol.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import { make_livemap_hosted_mirror_from_snapshot_internal } from "../livemap/livemap.libraries.js";
+import { make_hosted_client_commit, make_hosted_client_snapshot } from "../livemap/livemap.hosted.js";
+import { locus_client_error_message } from "./locus.client-error.js";
 import { validate_document_path } from "../livemap/livemap.document.path.js";
 import { make_locus_action_dedupe_store } from "./locus.actions.js";
 import { make_locus_session_manager } from "./locus.session.js";
@@ -45,13 +47,13 @@ import {
   DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES,
   LOCUS_HOSTED_AGGREGATE_WIRE_FORMAT,
   create_locus_hosted_aggregate_internal,
-  decode_locus_hosted_aggregate_envelope,
   type LocusHostedAggregate,
   type LocusHostedAggregateAction,
   type LocusHostedAggregateDocumentDraft,
   type LocusHostedAggregateDraft,
   type LocusHostedAggregateGateInput,
   type LocusHostedAggregateWireEnvelope,
+  type LocusHostedAggregateAuthorityEnvelope,
 } from "./locus.hosted-multi-library.js";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "./locus.hosted-multi-library.protocol.js";
 import {
@@ -104,7 +106,7 @@ type HostedPlanOutcome = "current" | "replay" | "snapshot" | "reject";
 type HostedSnapshotReason = "no_usable_revision" | "incarnation_mismatch" | "registry_mismatch" | "history_unavailable";
 
 type HostedHistoryEntry = Readonly<{
-  envelope: LocusHostedAggregateWireEnvelope;
+  envelope: LocusHostedAggregateAuthorityEnvelope;
   bytes: number;
 }>;
 
@@ -120,7 +122,7 @@ type HostedConnection = {
   recoveryId: string | undefined;
   recovering: boolean;
   live: boolean;
-  readonly pendingLive: LocusHostedAggregateWireEnvelope[];
+  readonly pendingLive: LocusHostedAggregateAuthorityEnvelope[];
   closed: boolean;
   releaseActivity?: LocusDisposer;
   releaseRecoveryActivity?: LocusDisposer;
@@ -265,9 +267,14 @@ export function create_locus_hosted_aggregate_socket_internal<
     return `locus-ephemeral-session-${Date.now().toString(36)}-${generatedSessionId.toString(36)}`;
   }
 
-  const stopWire = locus.on_wire((wire) => {
+  const stopWire = locus.on_commit((commit) => {
     if (disposed) return;
-    const envelope = aggregate_envelope_from_wire(wire, locus);
+    const envelope: LocusHostedAggregateAuthorityEnvelope = Object.freeze({
+      logicalMapId: locus.logicalMapId,
+      incarnationId: locus.incarnationId,
+      registryDigest: locus.registryDigest,
+      commit,
+    });
     append_history(envelope);
     for (const connection of [...connections]) {
       if (connection.closed) continue;
@@ -278,7 +285,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     }
   });
 
-  function append_history(envelope: LocusHostedAggregateWireEnvelope): void {
+  function append_history(envelope: LocusHostedAggregateAuthorityEnvelope): void {
     const commit = envelope.commit;
     const previous = history.length === 0 ? historyBaseRevision : history[history.length - 1]?.envelope.commit.rev;
     if (previous !== commit.prevRev) {
@@ -359,7 +366,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     }));
   }
 
-  function send_live_commit(connection: HostedConnection, id: string, envelope: LocusHostedAggregateWireEnvelope): void {
+  function send_live_commit(connection: HostedConnection, id: string, envelope: LocusHostedAggregateAuthorityEnvelope): void {
     const progress = derive_locus_hosted_progress_internal(envelope);
     if (progress !== undefined) {
       send(connection, Object.freeze({ type: "progress", id, progress }));
@@ -368,7 +375,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     send(connection, Object.freeze({
       type: "commit",
       id,
-      commit: envelope,
+      commit: client_envelope(envelope),
     }));
   }
 
@@ -413,7 +420,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     connection.releaseRecoveryActivity = options.internal?.acquireRecoveryActivity?.();
     let outcome: Exclude<HostedPlanOutcome, "reject">;
     let reason: HostedSnapshotReason | undefined;
-    let snapshot: HostedLiveMapLibrariesSnapshot | undefined;
+    let snapshot: HostedClientLibrariesSnapshot | undefined;
     let replay: readonly HostedHistoryEntry[] = Object.freeze([]);
     const head = locus.rev;
     if (cursor === undefined) {
@@ -439,7 +446,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     }
 
     if (outcome === "snapshot") {
-      snapshot = aggregate.captureHosted();
+      snapshot = make_hosted_client_snapshot(aggregate.captureHosted());
       if (snapshot.revision !== locus.rev) throw new Error("Hosted aggregate snapshot cut disagrees with its global revision.");
     }
     const cut = snapshot?.revision ?? head;
@@ -459,7 +466,7 @@ export function create_locus_hosted_aggregate_socket_internal<
         if (!recovery_delivery_current(connection, activeRecovery)) return;
         const progress = derive_locus_hosted_progress_internal(entry.envelope);
         send(connection, progress === undefined
-          ? Object.freeze({ type: "recovery-commit", id: request.id, phase: "body", commit: entry.envelope })
+          ? Object.freeze({ type: "recovery-commit", id: request.id, phase: "body", commit: client_envelope(entry.envelope) })
           : Object.freeze({ type: "recovery-progress", id: request.id, phase: "body", progress }));
         if (!recovery_delivery_current(connection, activeRecovery)) return;
       }
@@ -669,7 +676,7 @@ export function create_locus_hosted_aggregate_socket_internal<
         completionRev: locus.rev,
         error: Object.freeze({
           code: "LOCUS_ACTION_FAILED",
-          message: cause instanceof Error ? cause.message : "Hosted aggregate action failed.",
+          message: locus_client_error_message(cause, "Hosted aggregate action failed."),
         }),
       });
     }
@@ -807,7 +814,7 @@ export function create_locus_hosted_aggregate_socket_internal<
       return Object.freeze({
         ok: false,
         code: "LOCUS_SCHEMA_INVALID_PAYLOAD",
-        message: cause instanceof Error ? cause.message : "Locus action payload is invalid.",
+        message: locus_client_error_message(cause, "Locus action payload is invalid."),
       });
     }
     return Object.freeze({ ok: true, payload: request.payload === undefined ? undefined : admit_hson_data_input(request.payload) });
@@ -844,7 +851,7 @@ export function create_locus_hosted_aggregate_socket_internal<
       void recover(connection, request).catch((cause: unknown) => {
         if (connection.closed || connection.fenced || connection.recoveryId !== request.id) return;
         stop_recovery(connection);
-        reject(connection, "LOCUS_RECOVERY_FAILED", cause instanceof Error ? cause.message : "Hosted aggregate recovery failed.", request.id);
+        reject(connection, "LOCUS_RECOVERY_FAILED", locus_client_error_message(cause, "Hosted aggregate recovery failed."), request.id);
       });
       return;
     }
@@ -998,7 +1005,7 @@ export function create_locus_hosted_aggregate_socket_internal<
             type: "error",
             format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
             code: "LOCUS_PROTOCOL_INVALID",
-            message: cause instanceof Error ? cause.message : "Malformed hosted protocol message.",
+            message: locus_client_error_message(cause, "Malformed hosted protocol message."),
           })));
           return;
         }
@@ -1110,26 +1117,22 @@ function is_record(value: unknown): value is Readonly<Record<string, unknown>> {
 }
 
 
-function aggregate_envelope_from_wire(wire: string, locus: LocusHostedAggregate): LocusHostedAggregateWireEnvelope {
-  const parsed = JSON.parse(wire) as unknown;
-  const message = exact_record(parsed, "Hosted aggregate wire");
-  exact_keys(message, ["type", "id", "commit"], "Hosted aggregate wire");
-  if (message.type !== "commit" || message.id !== "hosted-aggregate") throw new Error("Hosted aggregate wire routing is invalid.");
-  const envelope = message.commit as LocusHostedAggregateWireEnvelope;
-  decode_locus_hosted_aggregate_envelope(envelope, Object.freeze({
-    logicalMapId: locus.logicalMapId,
-    incarnationId: locus.incarnationId,
-    registryDigest: locus.registryDigest,
-    maxWireBytes: DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES,
-  }));
-  return envelope;
+function client_envelope(authority: LocusHostedAggregateAuthorityEnvelope): LocusHostedAggregateWireEnvelope {
+  const commit = make_hosted_client_commit(authority.commit);
+  if (commit === undefined) throw new Error("Identity-only authority history must derive to progress.");
+  return Object.freeze({
+    format: LOCUS_HOSTED_AGGREGATE_WIRE_FORMAT,
+    logicalMapId: authority.logicalMapId,
+    incarnationId: authority.incarnationId,
+    registryDigest: authority.registryDigest,
+    commit,
+  });
 }
 
 /** Derive replica progress from exact authority history without rewriting that history. */
-export function derive_locus_hosted_progress_internal(envelope: LocusHostedAggregateWireEnvelope): LocusHostedAggregateProgress | undefined {
+export function derive_locus_hosted_progress_internal(envelope: LocusHostedAggregateAuthorityEnvelope): LocusHostedAggregateProgress | undefined {
   const commit = envelope.commit;
-  if (commit.operations.length === 0
-    || !commit.operations.every((entry) => "op" in entry.operation && entry.operation.op === "ensure-quid")) return undefined;
+  if (make_hosted_client_commit(commit) !== undefined) return undefined;
   return Object.freeze({
     logicalMapId: envelope.logicalMapId,
     incarnationId: envelope.incarnationId,

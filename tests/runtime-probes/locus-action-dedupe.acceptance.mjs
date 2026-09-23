@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { WebSocket, WebSocketServer } from 'ws';
-import { hson } from '../../src/index.ts';
+import { Hson, hson } from '../../src/index.ts';
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "locus.action-dedupe",
@@ -165,7 +165,7 @@ function fixture(options = {}) {
                 executions += 1;
                 entered.resolve();
                 await gate.promise;
-                const scalar = value.scalar();
+                const scalar = Hson.data.materialize(value);
                 if (typeof scalar !== 'number') throw new Error('expected numeric action data');
                 await ctx.mutate((draft) => draft.set(['value'], scalar));
                 completed.resolve();
@@ -181,7 +181,7 @@ function fixture(options = {}) {
             },
             async mutateFail(ctx, value) {
                 executions += 1;
-                const scalar = value.scalar();
+                const scalar = Hson.data.materialize(value);
                 if (typeof scalar !== 'number') throw new Error('expected numeric action data');
                 await ctx.mutate((draft) => draft.set(['value'], scalar));
                 throw new Error('after mutation');
@@ -198,7 +198,7 @@ function fixture(options = {}) {
                 executions += 1;
                 entered.resolve();
                 await gate.promise;
-                const scalar = value.scalar();
+                const scalar = Hson.data.materialize(value);
                 if (typeof scalar !== 'number') throw new Error('expected numeric action data');
                 await ctx.mutate((draft) => draft.set(['value'], scalar));
                 return value;
@@ -285,7 +285,7 @@ await check('same principal retains lineage across a new session', async () => {
     const aliceB = connect(f.host, 'owned-client', {}, principal('alice')).client;
     const status = await aliceB.actionStatus(first.request.requestId);
     assert.equal(status.state, 'succeeded');
-    assert.deepEqual({ ...status.outcome, result: status.outcome.result.materialize() }, {
+    assert.deepEqual({ ...status.outcome, result: Hson.data.materialize(status.outcome.result) }, {
         state: 'succeeded',
         seq: outcome.seq,
         completionRev: outcome.completionRev,
@@ -343,7 +343,7 @@ await check('different principal cannot inspect, join, conflict, or cache a line
 await check('anonymous lineage survives a new anonymous session and rejects principal takeover', async () => {
     const f = fixture();
     const anonymousA = connect(f.host, 'anonymous-client').client;
-    const first = anonymousA.action('echo', 'anonymous');
+    const first = anonymousA.action('echo', Hson.data.from('anonymous'));
     await first;
     const anonymousB = connect(f.host, 'anonymous-client').client;
     assert.equal((await anonymousB.actionStatus(first.request.requestId)).state, 'succeeded');
@@ -372,7 +372,7 @@ await check('anonymous caller cannot access principal lineage, including its tom
         },
     });
     const alice = connect(f.host, 'principal-client', {}, principal('alice')).client;
-    const first = alice.action('echo', 'principal');
+    const first = alice.action('echo', Hson.data.from('principal'));
     await first;
     assert.equal((await alice.actionStatus(first.request.requestId)).state, 'expired');
 
@@ -675,7 +675,7 @@ await check(
             },
         });
         const invalidClient = connect(invalidHost, 'invalid-client').client;
-        const invalid = await invalidClient.action('echo', 'not-a-number');
+        const invalid = await invalidClient.action('echo', Hson.data.from('not-a-number'));
         assert.equal(invalid.error.code, 'LOCUS_SCHEMA_INVALID_PAYLOAD');
         assert.equal(invalidHost.actionRequests.debug().executionsStarted, 0);
     },
@@ -696,9 +696,9 @@ await check(
             },
         });
         const client = connect(count.host, 'retention-client').client;
-        const first = client.action('echo', 'one');
+        const first = client.action('echo', Hson.data.from('one'));
         await first;
-        const second = client.action('echo', 'two');
+        const second = client.action('echo', Hson.data.from('two'));
         await second;
         assert.equal(
             (await client.actionStatus(first.request.requestId)).state,
@@ -725,7 +725,7 @@ await check(
             },
         });
         const byteClient = connect(bytes.host, 'byte-client').client;
-        const byteRequest = byteClient.action('echo', 'large-result');
+        const byteRequest = byteClient.action('echo', Hson.data.from('large-result'));
         await byteRequest;
         assert.equal(
             (await byteClient.actionStatus(byteRequest.request.requestId))

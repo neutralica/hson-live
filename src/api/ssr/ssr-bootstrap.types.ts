@@ -1,14 +1,14 @@
 import type {
   DocumentLiveMapCapture,
-  HostedLiveMapLibrariesSnapshot,
+  HostedClientLibrariesSnapshot,
   LiveMapLibrariesSnapshot,
   LocalLibrariesContinuationSnapshot,
 } from "../../types/livemap.types.js";
-import type { LocusSnapshotEnvelope } from "../../types/locus.representation.types.js";
+import type { LocusClientSnapshotEnvelope } from "../../types/locus.representation.types.js";
 
 declare const ENCODED_SSR_BOOTSTRAP: unique symbol;
 
-/** The four semantic families carried by the version-one SSR bootstrap wire format. */
+/** The four semantic families carried by the version-two SSR bootstrap wire format. */
 export type SsrBootstrapKind =
   | "document"
   | "hosted-document"
@@ -31,10 +31,10 @@ export type DecodedSsrBootstrap =
   | Readonly<{ kind: "document"; bootstrap: DocumentLiveMapCapture<"document"> }>
   | Readonly<{
     kind: "hosted-document";
-    bootstrap: Extract<LocusSnapshotEnvelope, { hson: string }> & Readonly<{ mode: "document" }>;
+    bootstrap: LocusClientSnapshotEnvelope & Readonly<{ mode: "document" }>;
   }>
   | Readonly<{ kind: "libraries"; bootstrap: LocalLibrariesContinuationSnapshot }>
-  | Readonly<{ kind: "hosted-libraries"; bootstrap: HostedLiveMapLibrariesSnapshot }>;
+  | Readonly<{ kind: "hosted-libraries"; bootstrap: HostedClientLibrariesSnapshot }>;
 
 /** Outer encoded-size admission for SSR bootstrap transport. */
 export type SsrBootstrapCodecOptions = Readonly<{

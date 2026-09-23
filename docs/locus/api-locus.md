@@ -159,8 +159,8 @@ adapter from `hson-live/locus/node`; transports frame the protocol but do not
 change authority, revision, or recovery semantics.
 
 Current document actions accept canonical path targets. Raw-QUID request and
-canonical commit targets reject; QUID remains continuity evidence carried only
-where the authority or protocol requires it.
+client commit targets reject. Generated QUIDs stay within each runtime;
+replacement lineage carries portable continuity.
 
 ## Canonical history and recovery
 
@@ -187,17 +187,17 @@ revision cursor.
 
 ## Bootstrap
 
-The current outer bootstrap is unversioned:
+The current client bootstrap has a versioned, QUID-free state body:
 
 ```ts
 type LocusBootstrap = Readonly<{
-  format: "hson-locus-bootstrap";
+  format: "hson-locus-bootstrap-v2";
   locusSelector: string;
   logicalMapId: string;
   incarnationId: string;
   mode: "data-object" | "data-array" | "document";
   rev: number;
-  state: { format: "hson"; payload: string };
+  state: { format: "hson-client-snapshot-v1"; payload: string };
   continuation: {
     transport: "websocket";
     endpoint: string;
@@ -206,9 +206,8 @@ type LocusBootstrap = Readonly<{
 }>;
 ```
 
-Its discriminator is `hson-locus-bootstrap` and its media type is
-`application/vnd.hson-live.locus-bootstrap+hson`. There is no outer version
-constant, version parameter, or `formatVersion` field. The selector field is
+Its discriminator is `hson-locus-bootstrap-v2` and its media type is
+`application/vnd.hson-live.locus-bootstrap-v2+hson`. The selector field is
 `locusSelector`; the old `authoritySelector` shape rejects.
 
 The Node HTTP helper is exported from `hson-live/locus/node`. Successful HTTP
@@ -224,16 +223,16 @@ single bootstrap artifact.
 `LocusBootstrapEcho` whose live endpoint property is `echo` and whose single
 continuation operation is `connectAndRecover()`.
 
-One-map document SSR uses the transport-independent semantic snapshot before
-outer bootstrap assembly. `install_locus_snapshot(snapshot)` installs that
-document-mode Hson snapshot and returns only `{ map, recovery }`, preserving
-logical map identity, incarnation, and the last-applied revision. It creates no
-socket, session, selector, or endpoint. Existing outer-bootstrap capture,
-encoding, decoding, transport metadata, and installation remain unchanged.
+One-map document SSR uses the QUID-free client snapshot before outer bootstrap
+assembly. `install_locus_snapshot(snapshot)` installs that document-mode Hson
+snapshot and returns `{ map, recovery }`, preserving logical map identity,
+incarnation, and the last-applied revision. It creates no socket, session,
+selector, or endpoint. Echo creates its own node identity epoch.
 
-Fixed Libraries authorities expose the parallel semantic
-`HostedLiveMapLibrariesSnapshot` through same-cut SSR. It is the complete
-`LiveMapLibrariesSnapshot` plus only `logicalMapId` and `incarnationId`.
+Fixed Libraries authorities expose the parallel client semantic
+`HostedClientLibrariesSnapshot` through same-cut SSR. It contains the full
+registry and application/system roots, plus `logicalMapId` and `incarnationId`,
+without authority-generated node identity.
 `install_locus_libraries_snapshot(snapshot)` restores the full aggregate mirror
 and returns `{ map, recovery }` for the existing `create_echo` aggregate path.
 The recovery cursor starts at the snapshot's one global revision. The snapshot
@@ -289,13 +288,13 @@ before installation.
 
 The authority derives lineage from its local replacement evidence. Echo sends
 the same correspondence for hosted replacement requests, and Locus transfers
-only its own local QUIDs onto mapped destinations. The exact QUID claims in
-hosted graph content remain temporarily for migration consistency checks and
-general hosted identity replication. Their removal belongs to Phase 4C.
+only its own local QUIDs onto mapped destinations. Client graph content is
+QUID-free in both directions. Exact QUID evidence remains internal to retained
+authority history and persistence until Phase 5.
 `replace-root` remains a separate whole-root identity boundary.
 
-Canonical document commit operations use a separate exact graph-content
-transport for inserted or replacement content:
+Exact authority history and persistence use a separate graph-content codec for
+inserted or replacement content:
 
 ```ts
 type LocusEncodedGraphContent = Readonly<{
@@ -307,7 +306,9 @@ const encoded = encode_locus_graph_content(content);
 const decoded = decode_locus_graph_content(encoded);
 ```
 
-The payload is deterministic compact Hson data representing one finite Hson
+The client action and replication graph-content format is
+`hson-graph-portable-v1` and rejects generated QUID metadata on ingress.
+The exact payload above is deterministic compact Hson data representing one finite Hson
 primitive or canonical Hson node. Encoding and decoding validate graph
 invariants and QUID syntax. The decoder requires an exact two-field envelope,
 rejects an unknown format or malformed/noncanonical payload, and returns

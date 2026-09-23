@@ -13,6 +13,7 @@ import type {
   LocusDisposer,
 } from "../../types/locus.types.js";
 import type { EchoMapManagementLease } from "../../internal/echo-map-capability.js";
+import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../locus/locus.hosted-multi-library.protocol.js";
 import { EchoRecoveryError } from "./echo.error.js";
 import {
   create_deferred_echo_document_authority_internal,
@@ -124,7 +125,7 @@ export function create_lazy_replica_echo_internal<
       ...(internalOptions.sessionRequestId === undefined ? {} : { sessionRequestId: internalOptions.sessionRequestId }),
     }),
     ...(aggregate ? {
-      endpointMessageFormat: "hson-locus-hosted-aggregate-message-v2",
+      endpointMessageFormat: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
       actionMessageId: "attempt" as const,
       operationLossError: (reason: "disconnect" | "fenced" | "ended") => new Error(reason === "ended"
         ? "Hosted aggregate Echo session ended before the pending operation completed."

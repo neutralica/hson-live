@@ -20,13 +20,14 @@ through the physical attachment that submitted its request.
 
 ## Ordered synchronization
 
-Synchronization begins or resumes from exact replica evidence and delivers a
+Synchronization begins or resumes from replica revision and fence evidence and delivers a
 typed recovery plan, current/replay/snapshot material, recovery tail, caught-up
 boundary, and ordered live authority publications. Each authority revision in
 the Echo client stream carries either a graph commit or generic progress with
-no graph effect. Canonical state continues to
-use the exact LiveMap/Hson graph representations; action `HsonData` is not used
-as a replacement commit format.
+no graph effect. Client commits contain portable application and system effects;
+replacement lineage expresses surviving subjects. Neither client graph content
+nor snapshots carry generated Locus QUIDs. Action `HsonData` is not used as a
+replacement commit format.
 
 Locus installs live observation before recovery transfer completes. Revisions
 accepted across that cut are retained as tail or pending-live output, so the
@@ -56,8 +57,11 @@ separate convergence boundary.
 
 Generated QUID acquisition is local to the Echo or Locus runtime. It creates
 neither an authority revision nor an application commit. Retained historical
-identity-only authority commits may be represented as generic progress in the
-client stream; exact hosted identity formats remain readable during migration.
+identity-only authority commits are represented as generic progress in the
+client stream. Incremental replay retains Echo-local identities through each
+observed effect. Snapshot fallback converges state and revision with a fresh
+Echo-local identity epoch, fencing old subject handles. Authority history and
+persistence still read exact runtime identity internally until Phase 5.
 
 ## Current scope
 

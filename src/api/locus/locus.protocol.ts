@@ -15,6 +15,9 @@ import type {
   LocusActionPayloads,
   LocusCanonicalCommit,
   LocusCanonicalOp,
+  LocusClientCommit,
+  LocusClientProgress,
+  LocusClientSnapshotEnvelope,
   LocusServerActionStatusMessage,
   LocusServerRecoveryCaughtUpMessage,
   LocusServerRecoveryErrorMessage,
@@ -59,6 +62,7 @@ import type {
 } from "./locus.document-snapshot.js";
 import {
   decode_locus_graph_content,
+  decode_locus_portable_graph_content,
   is_locus_encoded_graph_content,
 } from "./locus.graph-content-codec.js";
 import { validate_document_path } from "../livemap/livemap.document.path.js";
@@ -432,9 +436,66 @@ function decode_canonical_commit(value: unknown): LocusCanonicalCommit | undefin
   });
 }
 
-/** @internal Strict current canonical decoder; QUID-only targets are rejected. */
+/** @internal Exact authority-history decoder; path targets retain legacy identity evidence. */
 export function decode_locus_canonical_commit(value: unknown): LocusCanonicalCommit | undefined {
   return decode_canonical_commit(value);
+}
+
+function client_commit_as_canonical(value: LocusClientCommit): LocusCanonicalCommit {
+  const ops = value.ops.map((op) => {
+    if (!("domain" in op)) return op;
+    if (op.op === "replace-root") return Object.freeze({ ...op, root: { format: "hson-graph" as const, payload: op.root.payload } });
+    if (op.op === "replace-content") return Object.freeze({ ...op, replacement: { format: "hson-graph" as const, payload: op.replacement.payload } });
+    if (op.op === "insert-content") return Object.freeze({ ...op, content: { format: "hson-graph" as const, payload: op.content.payload } });
+    return op;
+  });
+  return Object.freeze({
+    logicalMapId: value.logicalMapId,
+    incarnationId: value.incarnationId,
+    mode: value.mode,
+    prevRev: value.prevRev,
+    rev: value.rev,
+    ops: Object.freeze(ops),
+    ...(value.format === undefined ? {} : { format: value.format, payload: value.payload }),
+  });
+}
+
+/** Current solo client event admission excludes identity operations, witnesses and QUID-bearing content. */
+export function decode_locus_client_commit(value: unknown): LocusClientCommit | undefined {
+  if (!is_record(value)) return undefined;
+  const transport = Object.hasOwn(value, "format") || Object.hasOwn(value, "payload");
+  if (!has_exact_keys(value, transport
+    ? ["clientFormat", "logicalMapId", "incarnationId", "mode", "prevRev", "rev", "ops", "format", "payload"]
+    : ["clientFormat", "logicalMapId", "incarnationId", "mode", "prevRev", "rev", "ops"])
+    || value.clientFormat !== "hson-locus-client-commit-v1" || !Array.isArray(value.ops) || value.ops.length === 0) return undefined;
+  for (const raw of value.ops) {
+    if (!is_record(raw)) return undefined;
+    if (raw.domain !== "graph") continue;
+    if (raw.op === "ensure-quid") return undefined;
+    if (raw.op !== "replace-root") {
+      if (!is_record(raw.target) || !has_exact_keys(raw.target, ["kind", "path"]) || raw.target.kind !== "path") return undefined;
+    }
+    const content = raw.op === "replace-root" ? raw.root : raw.op === "replace-content" ? raw.replacement : raw.op === "insert-content" ? raw.content : undefined;
+    if (content !== undefined) {
+      try { decode_locus_portable_graph_content(content); } catch { return undefined; }
+    }
+  }
+  const candidate = value as LocusClientCommit;
+  if (decode_locus_canonical_commit(client_commit_as_canonical(candidate)) === undefined) return undefined;
+  return candidate;
+}
+
+export function replay_locus_client_document_commit(map: DocumentLiveMap, commit: LocusClientCommit): LiveMapGraphCommit {
+  return replay_locus_document_commit(map, client_commit_as_canonical(commit));
+}
+
+function decode_locus_client_progress(value: unknown): LocusClientProgress | undefined {
+  if (!is_record(value) || !has_exact_keys(value, ["logicalMapId", "incarnationId", "prevRev", "rev"])) return undefined;
+  const logicalMapId = required_string(value.logicalMapId);
+  const incarnationId = required_string(value.incarnationId);
+  const prevRev = required_rev(value.prevRev);
+  if (logicalMapId === undefined || incarnationId === undefined || prevRev === undefined || value.rev !== prevRev + 1) return undefined;
+  return Object.freeze({ logicalMapId, incarnationId, prevRev, rev: value.rev });
 }
 
 /** @internal Convert an encoded document commit into detached LiveMap-domain operations. */
@@ -499,39 +560,18 @@ function decode_snapshot(value: unknown): LocusResult<LocusValidatedSnapshotEnve
     });
   }
 
-  const hasHson = Object.prototype.hasOwnProperty.call(value, "hson");
-  const hasFormat = Object.prototype.hasOwnProperty.call(value, "format");
-  const hasPayload = Object.prototype.hasOwnProperty.call(value, "payload");
-  const hasRepresentationField = hasFormat || hasPayload;
-
-  if (hasHson) {
-    if (hasRepresentationField
-      || !has_exact_keys(value, ["logicalMapId", "incarnationId", "rev", "mode", "hson"])
-      || typeof value.hson !== "string") {
-      return fail("Malformed or ambiguous Locus recovery snapshot envelope.", {
-        code: "LOCUS_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
-      });
-    }
-    return ok(Object.freeze({ logicalMapId, incarnationId, rev, mode, hson: value.hson }));
-  }
-
-  if (!hasRepresentationField) {
-    return fail("Malformed Locus recovery snapshot envelope.", {
-      code: "LOCUS_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
-    });
-  }
   if (!has_exact_keys(value, ["logicalMapId", "incarnationId", "rev", "mode", "format", "payload"])) {
-    return fail("Malformed Locus view-state snapshot envelope.", {
+    return fail("Malformed Locus client snapshot envelope.", {
       code: "LOCUS_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
     });
   }
-  if (value.format !== "view-state") {
-    return fail("Locus view-state snapshot format is unsupported.", {
+  if (value.format !== "hson-client-snapshot-v1" && value.format !== "view-state-client-snapshot-v1") {
+    return fail("Locus client snapshot format is unsupported.", {
       code: "LOCUS_RECOVERY_SNAPSHOT_FORMAT_UNSUPPORTED",
     });
   }
   if (typeof value.payload !== "string") {
-    return fail("Malformed Locus view-state snapshot envelope.", {
+    return fail("Malformed Locus client snapshot envelope.", {
       code: "LOCUS_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
     });
   }
@@ -750,7 +790,7 @@ function decode_recovery_server_message(
   if (!id) return fail("Locus recovery server message requires non-empty id.");
 
   if (value.type === "recovery-commit") {
-    const commit = decode_locus_canonical_commit(value.commit);
+    const commit = decode_locus_client_commit(value.commit);
     if (!has_exact_keys(value, ["type", "id", "phase", "commit"]) || (value.phase !== "body" && value.phase !== "tail") || !commit) {
       return fail("Malformed Locus recovery commit message.");
     }
@@ -758,10 +798,20 @@ function decode_recovery_server_message(
     return ok(message);
   }
   if (value.type === "commit") {
-    const commit = decode_locus_canonical_commit(value.commit);
+    const commit = decode_locus_client_commit(value.commit);
     if (!has_exact_keys(value, ["type", "id", "commit"]) || !commit) return fail("Malformed Locus canonical commit message.");
     const message: LocusDecodedServerCanonicalCommitMessage = { type: "commit", id, commit };
     return ok(message);
+  }
+  if (value.type === "recovery-progress" || value.type === "progress") {
+    const progress = decode_locus_client_progress(value.progress);
+    if (progress === undefined || !has_exact_keys(value, value.type === "progress"
+      ? ["type", "id", "progress"] : ["type", "id", "phase", "progress"])) return fail("Malformed Locus authority progress message.");
+    if (value.type === "recovery-progress") {
+      if (value.phase !== "body" && value.phase !== "tail") return fail("Malformed Locus recovery progress phase.");
+      return ok({ type: "recovery-progress", id, phase: value.phase, progress });
+    }
+    return ok({ type: "progress", id, progress });
   }
   if (value.type === "recovery-snapshot") {
     if (!has_exact_keys(value, ["type", "id", "snapshot"])) {
@@ -954,7 +1004,7 @@ export function decode_locus_server_message(message: string): LocusResult<LocusS
     const value = JSON.parse(message) as unknown;
     if (!is_record(value)) return fail("Locus server message must be an object.");
     if (value.type === "event") return decode_server_event_message(value);
-    if (value.type === "recovery-plan" || value.type === "recovery-commit" || value.type === "recovery-snapshot" || value.type === "recovery-caught-up" || value.type === "commit" || value.type === "recovery-error") {
+    if (value.type === "recovery-plan" || value.type === "recovery-commit" || value.type === "recovery-progress" || value.type === "recovery-snapshot" || value.type === "recovery-caught-up" || value.type === "commit" || value.type === "progress" || value.type === "recovery-error") {
       return decode_recovery_server_message(value);
     }
     if (value.type === "session-created" || value.type === "session-attached" || value.type === "session-rejected" || value.type === "session-fenced" || value.type === "session-ended") {

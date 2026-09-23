@@ -123,7 +123,7 @@ const librariesSsr: LibrariesDocumentSsr = render_document({ map: libraries });
 const librariesCut: LibrariesDocumentCut = libraries.cut();
 void librariesCut.document;
 declare const librariesAuthority: import("hson-live/locus").LocusMultiLibrary;
-declare const hostedLibrariesSnapshot: HostedLiveMapLibrariesSnapshot;
+declare const hostedLibrariesSnapshot: HostedClientLibrariesSnapshot;
 const installedHostedLibraries = install_locus_libraries_snapshot(hostedLibrariesSnapshot);
 const encodedHostedLibraries: EncodedSsrBootstrap<"hosted-libraries"> = encode_ssr_bootstrap(hostedLibrariesSnapshot);
 void encodedHostedLibraries;
@@ -440,6 +440,7 @@ import {
   type LocusMultiLibrary,
   type LocusMultiLibraryActionContext,
   type HostedLiveMapLibrariesSnapshot,
+  type HostedClientLibrariesSnapshot,
 } from "hson-live/locus";
 void (0 as unknown as LocusClientId);
 void (0 as unknown as LocusClientMessage);

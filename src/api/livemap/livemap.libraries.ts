@@ -8,6 +8,7 @@ import type {
   LiveMapDocumentLibrary,
   LiveMapLibraries,
   HostedLiveMapLibrariesSnapshot,
+  HostedClientLibrariesSnapshot,
   LiveMapLibrariesSnapshot,
   LocalLibrariesContinuationSnapshot,
   LiveMapLibrariesInput,
@@ -65,6 +66,7 @@ import {
   assert_libraries_snapshot_shape,
   assert_local_libraries_snapshot_shape,
   assert_hosted_libraries_snapshot_shape,
+  hosted_client_snapshot_as_local,
   decode_hosted_root,
 } from "./livemap.hosted.js";
 import { node_to_json_value } from "./livemap.editor.js";
@@ -212,6 +214,16 @@ export function make_livemap_hosted_mirror_from_snapshot_internal(
   assert_libraries_snapshot_bound(snapshot);
   const semantic = semantic_snapshot(snapshot);
   return make_livemap_mirror_from_snapshot_internal(semantic, snapshot);
+}
+
+/** Construct an Echo replica from QUID-free client state and its protocol fence. */
+export function make_livemap_client_mirror_from_snapshot_internal(
+  snapshot: HostedClientLibrariesSnapshot,
+): LiveMapLibraries {
+  const local = hosted_client_snapshot_as_local(snapshot);
+  const mirror = make_livemap_mirror_from_snapshot_internal(local);
+  internal_livemap_aggregate_authority(mirror).restoreClientHosted(snapshot);
+  return mirror;
 }
 
 /** Install one detached complete aggregate semantic cut into a fresh runtime domain. */

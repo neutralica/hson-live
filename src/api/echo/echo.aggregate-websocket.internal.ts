@@ -11,7 +11,7 @@ import type {
   LocusHostedAggregateSynchronizationOutput,
   LocusHostedAggregateSynchronizationRequest,
 } from "../locus/locus.hosted-multi-library.transport.internal.js";
-import type { HostedLiveMapLibrariesSnapshot } from "../../types/livemap.types.js";
+import type { HostedClientLibrariesSnapshot } from "../../types/livemap.types.js";
 import { HOSTED_MAX_SNAPSHOT_BYTES } from "../livemap/livemap.hosted.js";
 import type { EchoEndpointConnection } from "./echo.client.js";
 
@@ -80,7 +80,7 @@ export function decode_echo_hosted_aggregate_synchronization_frame_internal(raw:
     const outcome: "current" | "replay" | "snapshot" = value.outcome;
     return Object.freeze({ type: "recovery-plan", id, logicalMapId, incarnationId, registryDigest, headRev, outcome, ...(typeof value.reason === "string" ? { reason: value.reason as "no_usable_revision" | "incarnation_mismatch" | "registry_mismatch" | "history_unavailable" } : {}) });
   }
-  if (value.type === "recovery-snapshot") return Object.freeze({ type: "recovery-snapshot", id, snapshot: value.snapshot as HostedLiveMapLibrariesSnapshot });
+  if (value.type === "recovery-snapshot") return Object.freeze({ type: "recovery-snapshot", id, snapshot: value.snapshot as HostedClientLibrariesSnapshot });
   if (value.type === "recovery-commit") {
     if (value.phase !== "body" && value.phase !== "tail") throw new Error("Hosted recovery commit phase is malformed.");
     return Object.freeze({ type: "recovery-commit", id, phase: value.phase, commit: value.commit as LocusHostedAggregateWireEnvelope });

@@ -342,7 +342,7 @@ Remote clients with JavaScript enabled may participate through Echo, the corresp
 
 Echo is the hosted client counterpart to Locus.
 
-It connects a remote endpoint to a Locus authority, manages sessions and recovery, and can optionally govern an exact client-side LiveMap replica that follows the accepted canonical commit stream.
+It connects a remote endpoint to a Locus authority, manages sessions and recovery, and can optionally govern a complete client-side LiveMap replica that follows the accepted authority stream.
 
 An endpoint-only Echo can issue actions and participate in hosted sessions without maintaining local canonical state. A replica-bearing Echo additionally installs and recovers a subordinate LiveMap, allowing streamed authoritative commits to converge into local application state.
 
@@ -351,20 +351,20 @@ Locus
   ↓
 authoritative LiveMap
   ↓
-ordered accepted commits
+ordered application/system effects and progress
   ↓
 Echo
   ↓
 replica LiveMap
 ```
 
-Echo does not create competing authority or reconcile peer state. The Locus commit history remains canonical; Echo tracks and recovers toward that history.
+Echo does not create competing authority or reconcile peer state. The Locus commit history remains canonical; Echo tracks and recovers toward that history. Locus and Echo own independent generated-QUID namespaces. Current network content is QUID-free, while paths and replacement lineage carry portable continuity.
 
 Browser transports are supplied separately, allowing Echo to remain focused on hosted participation rather than network implementation.
 
 ---
 
-A hosted application can deliver an exact snapshot of authoritative state with its initial response, then continue that same state live through Echo. If the authority changes while the client is connecting or disconnected, Locus and Echo recover the missing history or replace the replica from a newer snapshot.
+A hosted application can deliver a full QUID-free snapshot of authoritative application and system state with its initial response, then continue that state live through Echo. Incremental replay preserves Echo-local identity through observed effects. Snapshot fallback establishes a fresh Echo-local identity epoch. Authority restart persistence remains internally exact until its separate migration.
 
 Together, Locus and Echo allow one server-side LiveMap to remain the canonical source of truth while remote clients maintain synchronized local replicas and live browser realizations.
 

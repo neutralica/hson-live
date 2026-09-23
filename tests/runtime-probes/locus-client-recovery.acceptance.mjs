@@ -6,7 +6,9 @@ import { decode_locus_server_message } from "../../src/api/locus/index.ts";
 import { acquire_projected_identity } from "../helpers/livemap-identity-internal.mts";
 import { create_locus_internal } from "../../src/api/locus/locus.core.ts";
 import { make_locus_canonical_commit } from "../../src/api/locus/locus.history.ts";
+import { project_locus_client_transition } from "../../src/api/locus/locus.client-replication.ts";
 import { make_canonical_livemap_projected_capture } from "../../src/api/livemap/livemap.projected.capture.ts";
+import { livemap_identity_epoch_accounting } from "../../src/api/livemap/livemap.identity-epoch.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "locus.client-recovery",
@@ -113,6 +115,7 @@ function restore_projected_revision(map, rev) {
 function canonical_set(logicalMapId, incarnationId, prevRev, rev, prev, next) {
   const structural = hson.liveMap.fromJson({ value: prev }).set(["value"], next);
   return {
+    clientFormat: "hson-locus-client-commit-v1",
     logicalMapId,
     incarnationId,
     mode: "data-object",
@@ -194,7 +197,7 @@ function recovery_events(events, requestId) {
   return events.filter((event) => event.details?.requestId === requestId && event.phase.startsWith("recovery."));
 }
 
-await check("protocol accepts string Hson without parsing snapshot syntax", () => {
+await check("protocol accepts QUID-free client snapshot envelopes without parsing payload syntax", () => {
   const decoded = decode_locus_server_message(JSON.stringify({
     type: "recovery-snapshot",
     id: "protocol-hson",
@@ -203,7 +206,8 @@ await check("protocol accepts string Hson without parsing snapshot syntax", () =
       incarnationId: "inc",
       rev: 0,
       mode: "data-object",
-      hson: `<tag "unterminated>`,
+      format: "hson-client-snapshot-v1",
+      payload: `<tag "unterminated>`,
     },
   }));
   assert.equal(decoded.ok, true);
@@ -214,12 +218,12 @@ await check("protocol rejects legacy value snapshots and malformed Hson envelope
   const base = { type: "recovery-snapshot", id: "protocol-invalid" };
   const invalidSnapshots = [
     { logicalMapId: "map", incarnationId: "inc", rev: 0, value: {} },
-    { logicalMapId: "map", incarnationId: "inc", rev: 0, hson: 123 },
-    { logicalMapId: "map", incarnationId: "inc", rev: -1, hson: "<>" },
-    { logicalMapId: "", incarnationId: "inc", rev: 0, hson: "<>" },
-    { logicalMapId: "map", incarnationId: "", rev: 0, hson: "<>" },
+    { logicalMapId: "map", incarnationId: "inc", rev: 0, format: "hson-client-snapshot-v1", payload: 123 },
+    { logicalMapId: "map", incarnationId: "inc", rev: -1, format: "hson-client-snapshot-v1", payload: "<>" },
+    { logicalMapId: "", incarnationId: "inc", rev: 0, format: "hson-client-snapshot-v1", payload: "<>" },
+    { logicalMapId: "map", incarnationId: "", rev: 0, format: "hson-client-snapshot-v1", payload: "<>" },
     { logicalMapId: "map", incarnationId: "inc", rev: 0 },
-    { logicalMapId: "map", incarnationId: "inc", rev: 0, hson: "<>", extra: true },
+    { logicalMapId: "map", incarnationId: "inc", rev: 0, format: "hson-client-snapshot-v1", payload: "<>", extra: true },
   ];
   for (const snapshot of invalidSnapshots) {
     const decoded = decode_locus_server_message(JSON.stringify({ ...base, snapshot }));
@@ -303,8 +307,9 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
   assert.equal(boundTree.text.get(), "9");
   assert.equal(bindingCalls, 3);
   const snapshotMessage = pair.serverSent.map(JSON.parse).find((message) => message.type === "recovery-snapshot");
-  assert.equal(typeof snapshotMessage.snapshot.hson, "string");
-  assert.equal(snapshotMessage.snapshot.hson.includes("\n"), false);
+  assert.equal(snapshotMessage.snapshot.format, "hson-client-snapshot-v1");
+  assert.equal(typeof snapshotMessage.snapshot.payload, "string");
+  assert.equal(snapshotMessage.snapshot.payload.includes("\n"), false);
   assert.equal("value" in snapshotMessage.snapshot, false);
   const requestId = pair.clientSent.map(JSON.parse).find((message) => message.type === "recover").id;
   const traced = recovery_events(events, requestId);
@@ -316,7 +321,7 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
   assert.equal(traced.find((event) => event.phase === "recovery.apply").details.commitCount, 1);
   assert.equal(traced.find((event) => event.phase === "recovery.complete" && event.status === "success").details.finalRev, host.stream.headRev);
   const serializedTrace = JSON.stringify(traced);
-  assert.equal(serializedTrace.includes(snapshotMessage.snapshot.hson), false);
+  assert.equal(serializedTrace.includes(snapshotMessage.snapshot.payload), false);
 
   const identityMap = hson.liveMap.fromJson({ container: [] });
   acquire_projected_identity(identityMap, ["container"]);
@@ -443,7 +448,12 @@ await check("replay applies exact commits once and current emits no body", async
   const identityMirror = hson.liveMap.fromJson({ container: {} });
   const identityPair = socket_pair();
   const identityClient = attach(identityHost, identityPair, recovery_options(identityHost, identityMirror, identityBase));
+  const localIdentityBefore = livemap_identity_epoch_accounting(identityMirror);
   assert.equal((await identityClient.recovery.recover()).strategy, "replay");
+  assert.deepEqual(livemap_identity_epoch_accounting(identityMirror), localIdentityBefore);
+  assert.equal(identityPair.serverSent.map(JSON.parse).some((message) => message.type === "recovery-progress"), true);
+  assert.equal(identityPair.serverSent.map(JSON.parse).some((message) => message.type === "recovery-commit"), false);
+  assert.equal(identityPair.serverSent.some((raw) => raw.includes("000004c11")), false);
   const identityRev = identityClient.map.rev;
   assert.equal(acquire_projected_identity(identityClient.map, ["container"]).active, true);
   assert.equal(identityClient.map.rev, identityRev);
@@ -583,7 +593,7 @@ await check("valid duplicate is ignored after full decode", async () => {
   await client.recovery.recover();
   const base = client.recovery.lastAppliedRev;
   await host.mutate((draft) => draft.set(["value"], 1));
-  const commit = host.stream.history.replayAfter(base, base + 1)[0];
+  const commit = project_locus_client_transition(host.stream.history.replayAfter(base, base + 1)[0]).commit;
   const recoverRequest = pair.clientSent.map(JSON.parse).find((message) => message.type === "recover");
   pair.push_server({ type: "commit", id: recoverRequest.id, commit });
   assert.equal(client.recovery.lastAppliedRev, base + 1);
@@ -662,7 +672,7 @@ await check("client rejects snapshot, replay, and caught-up before the recovery 
         incarnationId: "inc",
         rev: 0,
         mode: "data-object",
-        hson: compact_hson({ value: 0 }),
+        format: "hson-client-snapshot-v1", payload: compact_hson({ value: 0 }),
       },
     })],
     ["replay-before-plan", (id) => ({
@@ -695,7 +705,7 @@ await check("client rejects a second plan, duplicate snapshot, and duplicate cau
   {
     const fixture = await begin_scripted_projected_recovery("duplicate-snapshot", "new");
     fixture.pair.push_server({ type: "recovery-plan", id: fixture.id, sessionId: "s", logicalMapId: "duplicate-snapshot", incarnationId: "new", headRev: 0, outcome: "snapshot", reason: "incarnation_mismatch", snapshotEncoding: { format: "hson" } });
-    const snapshot = { type: "recovery-snapshot", id: fixture.id, snapshot: { logicalMapId: "duplicate-snapshot", incarnationId: "new", rev: 0, mode: "data-object", hson: compact_hson({ value: 1 }) } };
+    const snapshot = { type: "recovery-snapshot", id: fixture.id, snapshot: { logicalMapId: "duplicate-snapshot", incarnationId: "new", rev: 0, mode: "data-object", format: "hson-client-snapshot-v1", payload: compact_hson({ value: 1 }) } };
     fixture.pair.push_server(snapshot);
     fixture.pair.push_server(snapshot);
     await assert.rejects(fixture.promise, (error) => error.code === "LOCUS_RECOVERY_MESSAGE_OUT_OF_ORDER");
@@ -716,8 +726,8 @@ await check("client rejects a second plan, duplicate snapshot, and duplicate cau
 
 await check("client rejects mismatched snapshot formats and out-of-order replay without applying twice", async () => {
   for (const [label, snapshotEncoding, snapshot] of [
-    ["ack-hson-body-view-state", { format: "hson" }, { logicalMapId: "ack-hson-body-view-state", incarnationId: "new", rev: 0, mode: "data-object", format: "view-state", payload: "<invalid>" }],
-    ["ack-view-state-body-hson", { format: "view-state" }, { logicalMapId: "ack-view-state-body-hson", incarnationId: "new", rev: 0, mode: "data-object", hson: compact_hson({ value: 1 }) }],
+    ["ack-hson-body-view-state", { format: "hson" }, { logicalMapId: "ack-hson-body-view-state", incarnationId: "new", rev: 0, mode: "data-object", format: "view-state-client-snapshot-v1", payload: "<invalid>" }],
+    ["ack-view-state-body-hson", { format: "view-state" }, { logicalMapId: "ack-view-state-body-hson", incarnationId: "new", rev: 0, mode: "data-object", format: "hson-client-snapshot-v1", payload: compact_hson({ value: 1 }) }],
   ]) {
     const fixture = await begin_scripted_projected_recovery(label, "new");
     fixture.pair.push_server({ type: "recovery-plan", id: fixture.id, sessionId: "s", logicalMapId: label, incarnationId: "new", headRev: 0, outcome: "snapshot", reason: "incarnation_mismatch", snapshotEncoding });
@@ -733,6 +743,17 @@ await check("client rejects mismatched snapshot formats and out-of-order replay 
   await assert.rejects(fixture.promise, (error) => error.code === "LOCUS_RECOVERY_COMMIT_GAP");
   assert.deepEqual(fixture.mirror.snap(), { value: 0 });
   assert.equal(fixture.client.recovery.debug().bodyCommitsApplied, 0);
+});
+
+await check("projected client replay rejects operation claims that disagree with its structural effect", async () => {
+  const fixture = await begin_scripted_projected_recovery("mismatched-operation-evidence");
+  fixture.pair.push_server({ type: "recovery-plan", id: fixture.id, sessionId: "s", logicalMapId: "mismatched-operation-evidence", incarnationId: "inc", headRev: 1, outcome: "replay", snapshotEncoding: { format: "hson" } });
+  const valid = canonical_set("mismatched-operation-evidence", "inc", 0, 1, 0, 1);
+  const falseClaim = { ...valid, ops: [{ ...valid.ops[0], next: { present: true, value: 7 } }] };
+  fixture.pair.push_server({ type: "recovery-commit", id: fixture.id, phase: "body", commit: falseClaim });
+  await assert.rejects(fixture.promise, (error) => error.code === "LOCUS_RECOVERY_REPLAY_CONFLICT");
+  assert.deepEqual(fixture.mirror.snap(), { value: 0 });
+  assert.equal(fixture.mirror.rev, 0);
 });
 
 await check("duplicate replay revisions are ignored without duplicate application", async () => {
@@ -784,7 +805,7 @@ await check("invalid snapshot retains old mirror and cursor", async () => {
   const promise = client.recovery.recover();
   const id = (await waitForClientMessage(pair, "recover")).id;
   pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "bad-snapshot", incarnationId: "new", headRev: 5, outcome: "snapshot", reason: "incarnation_mismatch", snapshotEncoding: { format: "hson" } });
-  pair.push_server({ type: "recovery-snapshot", id, snapshot: { logicalMapId: "bad-snapshot", incarnationId: "new", rev: 6, mode: "data-object", hson: compact_hson({ value: 2 }) } });
+  pair.push_server({ type: "recovery-snapshot", id, snapshot: { logicalMapId: "bad-snapshot", incarnationId: "new", rev: 6, mode: "data-object", format: "hson-client-snapshot-v1", payload: compact_hson({ value: 2 }) } });
   await assert.rejects(promise, (error) => error.code === "LOCUS_RECOVERY_INVALID_SNAPSHOT");
   assert.equal(client.map, mirror);
   assert.equal(client.recovery.lastAppliedRev, 4);
@@ -802,7 +823,7 @@ await check("malformed snapshot Hson fails installation without advancing state"
   const promise = client.recovery.recover();
   const id = (await waitForClientMessage(pair, "recover")).id;
   pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "malformed-hson", incarnationId: "new", headRev: 5, outcome: "snapshot", reason: "incarnation_mismatch", snapshotEncoding: { format: "hson" } });
-  pair.push_server({ type: "recovery-snapshot", id, snapshot: { logicalMapId: "malformed-hson", incarnationId: "new", rev: 5, mode: "data-object", hson: `<value "unterminated>` } });
+  pair.push_server({ type: "recovery-snapshot", id, snapshot: { logicalMapId: "malformed-hson", incarnationId: "new", rev: 5, mode: "data-object", format: "hson-client-snapshot-v1", payload: `<value "unterminated>` } });
   await assert.rejects(
     promise,
     (error) => error.code === "LOCUS_RECOVERY_INVALID_SNAPSHOT" && error.cause instanceof Error,
@@ -827,7 +848,7 @@ await check("valid Hson rejected by the active schema does not replace the mirro
   const promise = client.recovery.recover();
   const id = (await waitForClientMessage(pair, "recover")).id;
   pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "schema-invalid", incarnationId: "new", headRev: 5, outcome: "snapshot", reason: "incarnation_mismatch", snapshotEncoding: { format: "hson" } });
-  pair.push_server({ type: "recovery-snapshot", id, snapshot: { logicalMapId: "schema-invalid", incarnationId: "new", rev: 5, mode: "data-object", hson: compact_hson({ value: "wrong" }) } });
+  pair.push_server({ type: "recovery-snapshot", id, snapshot: { logicalMapId: "schema-invalid", incarnationId: "new", rev: 5, mode: "data-object", format: "hson-client-snapshot-v1", payload: compact_hson({ value: "wrong" }) } });
   await assert.rejects(
     promise,
     (error) => error.code === "LOCUS_RECOVERY_INVALID_SNAPSHOT" && error.cause instanceof Error,
@@ -893,7 +914,7 @@ await check("disposal is idempotent and later messages cannot mutate", async () 
   client.recovery.dispose();
   client.recovery.dispose();
   await assert.rejects(promise, (error) => error.code === "LOCUS_RECOVERY_DISPOSED");
-  pair.push_server({ type: "recovery-snapshot", id, snapshot: { logicalMapId: "dispose-map", incarnationId: "inc", rev: 0, mode: "data-object", hson: compact_hson({ value: 9 }) } });
+  pair.push_server({ type: "recovery-snapshot", id, snapshot: { logicalMapId: "dispose-map", incarnationId: "inc", rev: 0, mode: "data-object", format: "hson-client-snapshot-v1", payload: compact_hson({ value: 9 }) } });
   assert.deepEqual(client.map.snap(), {});
   assert.equal(client.recovery.status, "disposed");
 });

@@ -34,6 +34,8 @@ import { create_test_event_emitter } from "./test-events.mjs";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
 import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
+import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
+import { set_livemap_document_quid_candidate_source_for_tests } from "../src/api/livemap/livemap.document.registration.ts";
 
 install_fake_document();
 
@@ -720,7 +722,13 @@ await check("public Echo dispatcher preserves exact payload through configured L
   await activate_echo(echo);
   assert.throws(() => add_interaction(echoMap, local("replica-write", "save")), /exclusive Locus authority/i);
   const reflection = hsonMirror(echoMap.lib("page"));
-  const subject = reflection.tree.find.must.byQuid(currentQ);
+  const page = echoMap.lib("page");
+  if (!("document" in page)) throw new Error("Expected document library.");
+  const localQ = "000009999";
+  set_livemap_document_quid_candidate_source_for_tests(page.document, () => localQ);
+  acquire_document_identity(page.document, { kind: "path", path: validate_document_path([0, 0, 0]) });
+  assert.equal(page.document.byQuid(currentQ), undefined);
+  const subject = reflection.tree.find.must.byQuid(localQ);
   const target = new Target(); link_node_to_el(subject.node, target as unknown as Element);
   let localCalls = 0;
   const dispose = activate_interactions({

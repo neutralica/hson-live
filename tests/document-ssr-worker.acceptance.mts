@@ -13,7 +13,8 @@ const largeBootstrap = Object.freeze({
   incarnationId: "worker-large-incarnation",
   rev: 0,
   mode: "document" as const,
-  hson: "worker-large:" + "x".repeat(2 * 1_024 * 1_024),
+  format: "hson-client-snapshot-v1" as const,
+  payload: `<main "worker-large:${"x".repeat(2 * 1_024 * 1_024)}"/>`,
 });
 const worker = await new Promise<Readonly<{
   html: string;

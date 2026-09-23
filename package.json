@@ -230,6 +230,7 @@
     "test:locus-hosted-multi-library-h3": "node --import=tsx tests/locus-hosted-multi-library-h3.acceptance.mts",
     "test:locus-hosted-multi-library-h4": "node --import=tsx tests/locus-hosted-multi-library-h4.acceptance.mts",
     "test:locus-hosted-multi-library-h5": "node --import=tsx tests/locus-hosted-multi-library-h5.acceptance.mts",
+    "test:phase4c-hosted-identity": "node --import=tsx tests/phase4c-hosted-identity.acceptance.mjs",
     "test:locus-hosted-multi-library-action-pipeline": "node --import=tsx tests/locus-hosted-multi-library-action-pipeline.acceptance.mts",
     "test:locus-hosted-multi-library-recovery-fencing": "node --import=tsx tests/locus-hosted-multi-library-recovery-fencing.acceptance.mts",
     "test:locus-hosted-multi-library-session-activity": "node --import=tsx tests/locus-hosted-multi-library-session-activity.acceptance.mts",

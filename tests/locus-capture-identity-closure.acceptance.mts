@@ -180,14 +180,16 @@ check("Hson Locus snapshots close over the exact empty document state", () => {
   assert.deepEqual(decoded.root, { $_tag: "_hson_root", $_content: [] });
 });
 
-check("Locus bootstrap installs metadata into a new mirror epoch", () => {
+check("Locus bootstrap omits authority metadata and gives Echo a new identity epoch", () => {
   const source = element(`<main @${Q1}/>`);
   const host = hson.locus.create({ map: source, logicalMapId: "unit7-bootstrap" });
   const bootstrap = capture_locus_bootstrap(host, "unit7:bootstrap", "/unit7");
   const installed = install_locus_bootstrap(bootstrap);
   assert.equal(installed.map.mode, "document");
   if (installed.map.mode !== "document") throw new Error("Expected element bootstrap mirror");
-  assert.equal(installed.map.document.byQuid(Q1)?.$_tag, "main");
+  assert.equal(installed.map.document.byQuid(Q1), undefined);
+  assert.equal(bootstrap.state.payload.includes(Q1), false);
+  assert.equal(installed.map.capture({ identity: "strip" }).root.$_content.length, 1);
 });
 
 check("bootstrap logical identity is not same-epoch node provenance", () => {

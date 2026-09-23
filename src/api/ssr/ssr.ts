@@ -4,16 +4,15 @@ import type {
 } from "../../types/livemap.types.js";
 import type { LocusMultiLibrary } from "../../types/locus.types.js";
 import {
-  install_locus_snapshot,
+  install_locus_authority_snapshot_internal,
   with_locus_bootstrap_snapshot,
   type LocusBootstrapAuthority,
 } from "../locus/locus.bootstrap.js";
 import {
   capture_locus_libraries_snapshot_internal,
-  install_locus_libraries_snapshot,
   is_locus_libraries_snapshot_authority_internal,
 } from "../locus/locus.libraries-snapshot.js";
-import { install_libraries_snapshot, is_public_multi_library_livemap } from "../livemap/livemap.libraries.js";
+import { install_libraries_snapshot, is_public_multi_library_livemap, make_livemap_hosted_mirror_from_snapshot_internal } from "../livemap/livemap.libraries.js";
 import { decode_hosted_root } from "../livemap/livemap.hosted.js";
 import { DocumentSsrError } from "./ssr.error.js";
 import { cut_local_document, cut_local_libraries, cut_hosted_libraries, cut_hosted_snapshot, cut_hosted_authority } from "../../internal/document-cut.js";
@@ -91,7 +90,7 @@ export function render_hosted_document(
   const authority = options.authority;
   if (is_locus_libraries_snapshot_authority_internal(authority)) {
     const cut = cut_hosted_libraries(() => capture_locus_libraries_snapshot_internal(authority),
-      options.document, install_locus_libraries_snapshot, decode_hosted_root,
+      options.document, make_livemap_hosted_mirror_from_snapshot_internal, decode_hosted_root,
       () => testHook?.("hosted-libraries-after-snapshot"));
     return Object.freeze({ html: cut.html, bootstrap: cut.data, document: cut.document });
   }
@@ -110,7 +109,7 @@ export function render_hosted_document(
   }
 
   const cut = cut_hosted_authority(() => with_locus_bootstrap_snapshot(soloAuthority, (snapshot) =>
-    cut_hosted_snapshot(snapshot, install_locus_snapshot,
+    cut_hosted_snapshot(snapshot, install_locus_authority_snapshot_internal,
       () => testHook?.("hosted-after-snapshot"))));
   return Object.freeze({ html: cut.html, bootstrap: cut.data });
 }

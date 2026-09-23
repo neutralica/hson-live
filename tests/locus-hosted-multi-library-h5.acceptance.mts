@@ -17,7 +17,7 @@ import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts
 import { create_test_event_emitter } from "./test-events.mjs";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { read_locus_retained_action_status_internal } from "../src/api/locus/locus.action-status.internal.ts";
-import { encode_locus_graph_content } from "../src/api/locus/locus.graph-content-codec.ts";
+import { encode_locus_portable_graph_content } from "../src/api/locus/locus.graph-content-codec.ts";
 
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <theme "string" count <number <int true min 0>>>>`;
 const ColorsSchema: HsonSchema = Hson.schema`<type "data" content <theme "string" accent "string">>`;
@@ -175,6 +175,15 @@ function remove_item() {
   };
 }
 
+function page_item(map: ReturnType<typeof make_map>): import("../src/core/types.js").HsonNode | undefined {
+  const main = map.lib("page").root().$_content[0];
+  if (typeof main !== "object" || main === null) return undefined;
+  const wrapper = main.$_content[0];
+  if (typeof wrapper !== "object" || wrapper === null) return undefined;
+  const item = wrapper.$_content[0];
+  return typeof item === "object" && item !== null ? item : undefined;
+}
+
 await check("the public Locus and Echo paths bootstrap one typed aggregate mirror and replay atomic named-library actions", async () => {
   install_fake_document();
   const serverMap = make_map();
@@ -255,7 +264,8 @@ await check("the public Locus and Echo paths bootstrap one typed aggregate mirro
   assert.deepEqual([serverMap.rev, clientMap.rev], [1, 1]);
   assert.equal(clientMap.lib("state").snap(["theme"]), "dark");
   assert.equal(clientMap.lib("colors").snap(["theme"]), "blue");
-  assert.equal(page.document.byQuid(QUID)?.$_tag, "item");
+  assert.equal(page.document.byQuid(QUID), undefined);
+  assert.equal(page_item(clientMap)?.$_tag, "item");
   assert.equal(reflection.sourceRevision, 1);
   assert.equal(reflection.diagnostics().updatesApplied, 1);
   assert.deepEqual(stateValues.at(-1), ["dark", 1]);
@@ -265,6 +275,7 @@ await check("the public Locus and Echo paths bootstrap one typed aggregate mirro
     .find((message) => message.type === "commit") as Record<string, any> | undefined;
   assert.deepEqual(published?.commit?.commit?.operations?.map((operation: { library: string }) => operation.library), ["state", "colors", "page"]);
   assert.deepEqual([published?.commit?.commit?.prevRev, published?.commit?.commit?.rev], [0, 1]);
+  assert.equal(JSON.stringify(published).includes(QUID), false);
   const stateOnlyStarted = performance.now();
   await client.action("state.only");
   const stateOnlyMs = performance.now() - stateOnlyStarted;
@@ -279,20 +290,19 @@ await check("the public Locus and Echo paths bootstrap one typed aggregate mirro
   assert.equal(serverMap.lib("page").document.attrs.get({ kind: "path", path: [0] }, "title"), "echoed");
   assert.equal(reflectedMain.attrs.get("title"), "echoed");
   assert.equal(reflection.sourceRevision, 3);
-  const foreign = "000008299";
   const replacementRequest = JSON.parse(JSON.stringify({
     library: "page",
     target: { kind: "path", path: [0, 0] },
     index: 0,
-    replacement: encode_locus_graph_content({ $_tag: "item", $_attrs: { title: "lineage" }, $_meta: { quid: foreign }, $_content: [] }),
+    replacement: encode_locus_portable_graph_content({ $_tag: "item", $_attrs: { title: "lineage" }, $_content: [] }),
     lineage: [{ source: [], destination: [] }],
   }));
   const replacementResult = await client.action("document.content.replace", replacementRequest);
   assert.equal(replacementResult.type, "ack", JSON.stringify(replacementResult));
   await wait_for_aggregate_revision(clientMap, 4);
   assert.equal(serverMap.lib("page").document.byQuid(QUID)?.$_attrs?.title, "lineage");
-  assert.equal(clientMap.lib("page").document.byQuid(QUID)?.$_attrs?.title, "lineage");
-  assert.equal(serverMap.lib("page").document.byQuid(foreign), undefined);
+  assert.equal(clientMap.lib("page").document.byQuid(QUID), undefined);
+  assert.equal(page_item(clientMap)?.$_attrs?.title, "lineage");
   assert.equal(reflection.sourceRevision, 4);
   stopState();
   stopColors();
@@ -411,7 +421,8 @@ await check("public recovery replays retained history and replaces one complete 
   const snapshotReplacementMs = performance.now() - snapshotStarted;
   assert.equal(snapshotClient.map, staleMap);
   assert.equal(stateHandle.snap(), "dark");
-  assert.equal(staleMap.lib("page").document.byQuid(RECOVERY_QUID)?.$_tag, "item");
+  assert.equal(staleMap.lib("page").document.byQuid(RECOVERY_QUID), undefined);
+  assert.equal(page_item(staleMap)?.$_tag, "item");
   assert.equal(reflection.sourceRevision, 1);
   const restoredMain = reflected_document_element(reflection);
   const restoredItem = restoredMain.content.mustOnly({ warn: false });
@@ -439,7 +450,8 @@ await check("public recovery replays retained history and replaces one complete 
   assert.equal((await replayClient.recovery.recover()).strategy, "replay");
   const retainedReplayMs = performance.now() - replayStarted;
   assert.deepEqual([staleMap.rev, stateHandle.snap(), reflection.sourceRevision], [2, "dark", 2]);
-  assert.equal(staleMap.lib("page").document.byQuid(RECOVERY_NEXT_QUID)?.$_tag, "item");
+  assert.equal(staleMap.lib("page").document.byQuid(RECOVERY_NEXT_QUID), undefined);
+  assert.equal(page_item(staleMap)?.$_tag, "item");
   assert.equal(reflected_document_element(reflection).node, restoredMain.node);
   assert.equal(staleItem.isDisposed, true);
   assert.equal((await replayClient.recovery.recover()).strategy, "current");
@@ -594,7 +606,8 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   await recovered.action("state.page");
   const continuedStatePageMs = performance.now() - continuedStatePageStarted;
   assert.deepEqual([restored.rev, clientMap.rev, clientMap.lib("state").snap(["count"])], [3, 3, 3]);
-  assert.equal(clientMap.lib("page").document.byQuid(PERSISTED_NEXT_QUID)?.$_tag, "item");
+  assert.equal(clientMap.lib("page").document.byQuid(PERSISTED_NEXT_QUID), undefined);
+  assert.equal(page_item(clientMap)?.$_tag, "item");
   assert.equal(reflection.sourceRevision, 3);
   process.stdout.write(`# telemetry ${JSON.stringify({ checkpointMs, restartLoadMs, reconnectMs, continuedStatePageMs })}\n`);
   recovered.dispose();

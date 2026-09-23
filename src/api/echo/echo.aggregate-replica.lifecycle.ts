@@ -3,15 +3,16 @@ import type { LocusDisposer } from "../../types/locus.types.js";
 import type { EchoMapManagementLease } from "../../internal/echo-map-capability.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import type { HostedLiveMapLibrariesSnapshot } from "../../types/livemap.types.js";
-import type { HostedAggregateCommit } from "../livemap/livemap.hosted.js";
+import type { HostedClientLibrariesSnapshot } from "../../types/livemap.types.js";
+import type { HostedClientCommit } from "../livemap/livemap.hosted.js";
 import type { EchoReplicaCapability } from "./echo.replica.js";
 
 /** @internal Aggregate exact-replica management and terminal lifetime. */
 export type EchoAggregateReplicaCapability = EchoReplicaCapability<LiveMapLibraries | undefined> & Readonly<{
   attachMap: (map: LiveMapLibraries) => void;
   captureHosted: () => HostedLiveMapLibrariesSnapshot;
-  restoreHosted: (snapshot: HostedLiveMapLibrariesSnapshot) => void;
-  replayHosted: (commit: HostedAggregateCommit) => number;
+  restoreHosted: (snapshot: HostedClientLibrariesSnapshot) => void;
+  replayHosted: (commit: HostedClientCommit) => number;
   advanceHostedProgress: (progress: Readonly<{
     logicalMapId: string;
     incarnationId: string;
@@ -59,11 +60,11 @@ export function create_echo_aggregate_replica_capability_internal(
     },
     restoreHosted(snapshot): void {
       if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");
-      internal_livemap_aggregate_authority(map).restoreHostedManaged(owner, snapshot);
+      internal_livemap_aggregate_authority(map).restoreClientHostedManaged(owner, snapshot);
     },
     replayHosted(commit): number {
       if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");
-      return internal_livemap_aggregate_authority(map).replayHostedManaged(owner, commit).rev;
+      return internal_livemap_aggregate_authority(map).replayClientHostedManaged(owner, commit).rev;
     },
     advanceHostedProgress(progress): number {
       if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");

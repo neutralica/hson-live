@@ -6,7 +6,7 @@ import type { LocusDecodedServerMessage } from "../locus/locus.document-snapshot
 
 /** @internal Typed recovery transfer and ordered canonical publication. */
 export type EchoSynchronizationOutput = Extract<LocusDecodedServerMessage, {
-  type: "recovery-plan" | "recovery-commit" | "recovery-snapshot" | "recovery-caught-up" | "recovery-error" | "commit";
+  type: "recovery-plan" | "recovery-commit" | "recovery-progress" | "recovery-snapshot" | "recovery-caught-up" | "recovery-error" | "commit" | "progress";
 }> | Readonly<{
   type: "synchronization-failure";
   error: Readonly<{ code?: string; message: string; cause?: unknown }>;

@@ -8,7 +8,8 @@ import type {
   LiveMapDocumentContent,
   LiveMapGraphCommit,
 } from "../../types/livemap.types.js";
-import type { LiveMapProjectedGraphEnsureQuidOp } from "../livemap/livemap.identity.types.js";
+import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
+import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 import { parse_hson_exact_runtime } from "../../internal/exact-runtime-hson-codec.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
 import { derive_replacement_lineage_for_action } from "../livemap/livemap.document.lineage.js";
@@ -23,6 +24,8 @@ import {
 import type {
   LocusActionPayloads,
   LocusCanonicalCommit,
+  LocusClientCommit,
+  LocusClientProgress,
   Echo,
   LocusClientActionResult,
   LocusDocumentActionFn,
@@ -56,16 +59,18 @@ import { create_echo_solo_replica_capability_internal } from "./echo.solo-replic
 import {
   decode_locus_server_message,
   encode_locus_client_message,
-  replay_locus_document_commit,
+  replay_locus_client_document_commit,
   is_locus_json_value,
 } from "../locus/locus.protocol.js";
 import { ExactDataCarrier, admit_hson_data_input, hson_data_text } from "../data/hson-data.js";
+import { make_locus_canonical_commit } from "../locus/locus.history.js";
+import { decode_livemap_replay_payload, materialize_livemap_projected_op } from "../livemap/livemap.transport.js";
 import {
-  encode_locus_graph_content,
+  encode_locus_portable_graph_content,
 } from "../locus/locus.graph-content-codec.js";
 import { create_live_trace_context, type LiveTraceContext } from "../locus/locus.trace.js";
 import {
-  decode_locus_document_snapshot,
+  decode_locus_client_document_snapshot,
   LocusDocumentSnapshotDecodeError,
   type LocusDecodedServerMessage,
   type LocusValidatedSnapshotEnvelope,
@@ -90,6 +95,20 @@ function recovery_trace_strategy(strategy: EchoRecoveryStrategy | undefined): st
   return strategy ?? "unavailable";
 }
 
+function same_client_semantics(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (typeof left !== "object" || left === null || typeof right !== "object" || right === null) return false;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) && Array.isArray(right)
+      && left.length === right.length
+      && left.every((entry, index) => same_client_semantics(entry, right[index]));
+  }
+  const entries = Object.entries(left);
+  return entries.length === Object.keys(right).length
+    && entries.every(([key, value]) => Object.hasOwn(right, key)
+      && same_client_semantics(value, Reflect.get(right, key)));
+}
+
 function encode_client_message<TActions extends LocusActionPayloads>(message: LocusClientMessage<TActions>): string {
   if (message.type !== "action" || message.payload === undefined) return encode_locus_client_message(message);
   if (message.name !== "document.content.insert" && message.name !== "document.content.replace") {
@@ -103,11 +122,11 @@ function encode_client_message<TActions extends LocusActionPayloads>(message: Lo
   if (!Object.prototype.hasOwnProperty.call(payload, field)) return encode_locus_client_message(message);
   let encodedContent;
   try {
-    encodedContent = encode_locus_graph_content(payload[field] as LiveMapDocumentContent);
+    encodedContent = encode_locus_portable_graph_content(payload[field] as LiveMapDocumentContent);
   } catch {
     // Preserve the established asynchronous structured action rejection path
     // without ever falling back to a raw node-shaped wire payload.
-    encodedContent = { format: "hson-graph", payload: "" } as const;
+    encodedContent = { format: "hson-graph-portable-v1", payload: "" } as const;
   }
   return encode_locus_client_message({
     ...message,
@@ -147,31 +166,6 @@ type ClientRecoveryLifecycle =
   }>
   | Readonly<{ phase: "caught-up"; requestId: LocusRecoveryId }>;
 
-
-function projected_identity_replay(
-  commit: LocusCanonicalCommit,
-  prevRev: number,
-): LiveMapGraphCommit<LiveMapProjectedGraphEnsureQuidOp> | undefined {
-  const operations: LiveMapProjectedGraphEnsureQuidOp[] = [];
-  for (const op of commit.ops) {
-    if (!("domain" in op)
-      || op.op !== "ensure-quid"
-      || !("projected" in op.target)
-      || op.target.projected !== true) return undefined;
-    operations.push(Object.freeze({
-      domain: "graph",
-      op: "ensure-quid",
-      target: Object.freeze({ kind: "path", path: Object.freeze([...op.target.path]), projected: true }),
-      quid: op.quid,
-    }));
-  }
-  return Object.freeze({
-    changed: true,
-    prevRev,
-    rev: prevRev + 1,
-    ops: Object.freeze(operations),
-  });
-}
 
 export function create_solo_echo_internal<
   TMap extends LiveMapAuthority,
@@ -393,7 +387,7 @@ export function create_solo_echo_internal<
     return true;
   }
 
-  function apply_commit(commit: LocusCanonicalCommit, phase: "body" | "tail" | "live"): void {
+  function apply_commit(commit: LocusClientCommit, phase: "body" | "tail" | "live"): void {
     if (recoveryStatus === "failed" || recoveryStatus === "disposed") return;
     const logicalMapId = options.recovery.logicalMapId;
     if (!logicalMapId || commit.logicalMapId !== logicalMapId || commit.incarnationId !== incarnationId) {
@@ -428,12 +422,36 @@ export function create_solo_echo_internal<
       return;
     }
 
+    // Projected replay uses its structural payload. Check that the advertised
+    // path/value operations describe that exact effect before mutating Echo.
+    if (commit.mode !== "document") {
+      try {
+        if (commit.format !== "structural-json" || typeof commit.payload !== "string") {
+          throw new Error("Client data commit has no structural replay payload.");
+        }
+        const decoded = decode_livemap_replay_payload(commit.payload).map(materialize_livemap_projected_op);
+        const expected = make_locus_canonical_commit(options.map, Object.freeze({
+          changed: true,
+          prevRev: commit.prevRev,
+          rev: commit.rev,
+          ops: Object.freeze(decoded),
+          format: commit.format,
+          payload: commit.payload,
+        }), commit.logicalMapId, commit.incarnationId, commit.prevRev);
+        if (!same_client_semantics(expected.ops, commit.ops)) {
+          throw new Error("Client data commit operations disagree with structural replay evidence.");
+        }
+      } catch (cause) {
+        replayConflicts += 1;
+        fail_recovery("LOCUS_RECOVERY_REPLAY_CONFLICT", "Canonical data commit operations disagree with its replay payload.", cause);
+        return;
+      }
+    }
+
     const localRevBefore = map.rev;
     try {
       const applied = run_echo_owned(() => map.mode === "document"
-        ? replay_locus_document_commit(map, commit)
-        : projected_identity_replay(commit, localRevBefore) !== undefined
-          ? map.replay(projected_identity_replay(commit, localRevBefore)!)
+        ? replay_locus_client_document_commit(map, commit)
         : commit.format === "structural-json"
           && typeof commit.payload === "string"
           ? map.replay({
@@ -469,6 +487,20 @@ export function create_solo_echo_internal<
     if (phase === "live") liveCommitsApplied += 1;
   }
 
+  function apply_progress(progress: LocusClientProgress): void {
+    if (progress.logicalMapId !== options.recovery.logicalMapId || progress.incarnationId !== incarnationId
+      || progress.prevRev !== lastAppliedRev || progress.rev !== progress.prevRev + 1) {
+      fail_recovery("LOCUS_RECOVERY_STREAM_MISMATCH", "Authority progress is incompatible with the Echo recovery cursor.");
+      return;
+    }
+    try {
+      run_echo_owned(() => internal_livemap_aggregate_authority(map).advanceSoloProgress(progress.prevRev, progress.rev));
+      lastAppliedRev = progress.rev;
+    } catch (cause) {
+      fail_recovery("LOCUS_RECOVERY_REPLAY_CONFLICT", "Authority progress conflicts with the Echo replica.", cause);
+    }
+  }
+
   function install_snapshot(messageId: string, snapshot: LocusValidatedSnapshotEnvelope): void {
     const plan = require_plan(messageId);
     if (!plan || plan.outcome !== "snapshot") return;
@@ -476,7 +508,7 @@ export function create_solo_echo_internal<
       fail_recovery("LOCUS_RECOVERY_INVALID_SNAPSHOT", "Snapshot identity or revision does not match its recovery plan.");
       return;
     }
-    const snapshotFormat = "hson" in snapshot ? "hson" : "view-state";
+    const snapshotFormat = snapshot.format === "hson-client-snapshot-v1" ? "hson" : "view-state";
     if (negotiatedSnapshotEncoding?.format !== snapshotFormat) {
       fail_recovery(
         "LOCUS_SNAPSHOT_NEGOTIATION_MISMATCH",
@@ -486,13 +518,15 @@ export function create_solo_echo_internal<
     }
     try {
       if (is_projected_live_map(map)) {
-        if (!("hson" in snapshot)) {
+        if (snapshot.format !== "hson-client-snapshot-v1") {
           throw new LocusDocumentSnapshotDecodeError(
             "LOCUS_RECOVERY_SNAPSHOT_MODE_MISMATCH",
             "Canonical document snapshot cannot restore a data mirror.",
           );
         }
-        const staged = make_classified_livemap(parse_hson_exact_runtime(snapshot.hson));
+        const root = parse_hson_exact_runtime(snapshot.payload);
+        admit_portable_hson_node(root, "Locus client snapshot");
+        const staged = make_classified_livemap(root);
         if (staged.mode !== snapshot.mode || staged.mode !== map.mode || !is_projected_live_map(staged)) {
           throw new Error(`Recovery snapshot mode ${snapshot.mode} does not match mirror mode ${map.mode}.`);
         }
@@ -503,17 +537,17 @@ export function create_solo_echo_internal<
           capture.format,
           capture.payload,
           capture.root,
-        )));
+        ), { identity: "strip" }));
         if (schema) run_echo_owned(() => map.schema.use(schema));
       } else if (is_document_live_map(map)) {
-        const capture = decode_locus_document_snapshot(snapshot);
+        const capture = decode_locus_client_document_snapshot(snapshot);
         if (capture.mode !== map.mode) {
           throw new LocusDocumentSnapshotDecodeError(
             "LOCUS_RECOVERY_SNAPSHOT_MODE_MISMATCH",
             "Locus document snapshot mode does not match the mirror mode.",
           );
         }
-        run_echo_owned(() => map.restore(capture, { identity: "preserve-metadata" }));
+        run_echo_owned(() => map.restore(capture, { identity: "strip" }));
       } else {
         throw new Error("Recovery snapshot reconstructed an incompatible map mode.");
       }
@@ -534,7 +568,7 @@ export function create_solo_echo_internal<
   }
 
   function handle_recovery_message(message: LocusDecodedServerMessage): boolean {
-    if (message.type !== "recovery-plan" && message.type !== "recovery-commit" && message.type !== "recovery-snapshot" && message.type !== "recovery-caught-up" && message.type !== "commit" && message.type !== "recovery-error") return false;
+    if (message.type !== "recovery-plan" && message.type !== "recovery-commit" && message.type !== "recovery-progress" && message.type !== "recovery-snapshot" && message.type !== "recovery-caught-up" && message.type !== "commit" && message.type !== "progress" && message.type !== "recovery-error") return false;
     if (recoveryStatus === "failed" || recoveryStatus === "disposed") return true;
     const activeRequestId = recoveryLifecycle.phase === "awaiting-plan"
       || recoveryLifecycle.phase === "consuming"
@@ -584,8 +618,9 @@ export function create_solo_echo_internal<
       return true;
     }
     if (recoveryLifecycle.phase === "caught-up") {
-      if (message.type === "commit") {
-        apply_commit(message.commit, "live");
+      if (message.type === "commit" || message.type === "progress") {
+        if (message.type === "commit") apply_commit(message.commit, "live");
+        else apply_progress(message.progress);
         return true;
       }
       fail_recovery("LOCUS_RECOVERY_MESSAGE_OUT_OF_ORDER", "Locus recovery material arrived after caught-up.");
@@ -601,7 +636,7 @@ export function create_solo_echo_internal<
       install_snapshot(message.id, message.snapshot);
       return true;
     }
-    if (message.type === "recovery-commit") {
+    if (message.type === "recovery-commit" || message.type === "recovery-progress") {
       if (message.phase === "body") {
         if (plan.outcome !== "replay" || recoveryLifecycle.tailStarted) {
           fail_recovery("LOCUS_RECOVERY_MESSAGE_OUT_OF_ORDER", "Locus recovery body commit order is invalid.");
@@ -616,10 +651,11 @@ export function create_solo_echo_internal<
           recoveryLifecycle = Object.freeze({ ...recoveryLifecycle, tailStarted: true });
         }
       }
-      apply_commit(message.commit, message.phase);
+      if (message.type === "recovery-commit") apply_commit(message.commit, message.phase);
+      else apply_progress(message.progress);
       return true;
     }
-    if (message.type === "commit") {
+    if (message.type === "commit" || message.type === "progress") {
       fail_recovery("LOCUS_RECOVERY_MESSAGE_OUT_OF_ORDER", "Locus live commit arrived before caught-up.");
       return true;
     }
@@ -635,7 +671,7 @@ export function create_solo_echo_internal<
       || incarnationId !== caught.incarnationId
       || map.rev !== lastAppliedRev
       || lastAppliedRev !== caught.throughRev) {
-      fail_recovery("LOCUS_RECOVERY_CAUGHT_UP_MISMATCH", "Caught-up boundary does not match the installed mirror cursor.");
+      fail_recovery("LOCUS_RECOVERY_CAUGHT_UP_MISMATCH", `Caught-up boundary does not match the installed mirror cursor (local ${map.rev}, applied ${lastAppliedRev}, through ${caught.throughRev}).`);
       return true;
     }
     recoveryStatus = "caught_up";
@@ -698,9 +734,11 @@ export function create_solo_echo_internal<
   ): message is Exclude<EchoSynchronizationOutput, { type: "synchronization-failure" }> {
     return message.type === "recovery-plan"
       || message.type === "recovery-commit"
+      || message.type === "recovery-progress"
       || message.type === "recovery-snapshot"
       || message.type === "recovery-caught-up"
       || message.type === "commit"
+      || message.type === "progress"
       || message.type === "recovery-error";
   }
 

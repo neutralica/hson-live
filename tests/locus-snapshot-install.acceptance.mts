@@ -29,7 +29,7 @@ const transport = install_locus_bootstrap(capture_locus_bootstrap(locus, "snapsh
 
 assert.equal(semantic.map.mode, "document");
 assert.equal(semantic.map.rev, ssr.bootstrap.rev);
-assert.deepEqual(semantic.map.capture(), authority.capture());
+assert.deepEqual(semantic.map.capture({ identity: "strip" }), authority.capture({ identity: "strip" }));
 assert.deepEqual(semantic.map.capture(), transport.map.capture());
 assert.deepEqual(semantic.recovery, transport.recovery);
 assert.deepEqual(semantic.recovery, {
@@ -59,6 +59,7 @@ const emptyBootstrap = capture_locus_bootstrap(
   "snapshot:install:empty",
   "/empty-socket",
 );
+assert.equal(emptyBootstrap.state.format, "hson-client-snapshot-v1");
 assert.equal(emptyBootstrap.state.payload, "");
 const installedEmpty = install_locus_bootstrap(emptyBootstrap);
 assert.equal(installedEmpty.map.mode, "document");

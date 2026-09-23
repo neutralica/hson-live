@@ -1,7 +1,8 @@
 /**
- * Temporary identity-bearing Hson compatibility codec for hosted recovery.
- * Ordinary Transform never uses this path; same-runtime capture keeps graphs
- * and provenance directly. Remove this with the hosted identity migration.
+ * Identity-bearing Hson compatibility codec for exact authority history and
+ * persistence until Phase 5. Current client replication projects QUID-free
+ * content before crossing the Locus/Echo boundary. Ordinary Transform never
+ * admits generated runtime identity from this format.
  * @internal
  */
 export {

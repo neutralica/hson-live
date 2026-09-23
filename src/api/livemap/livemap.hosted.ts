@@ -18,6 +18,7 @@ import type {
   LiveMapGraphOp,
   LiveMapRootMode,
   HostedLiveMapLibrariesSnapshot,
+  HostedClientLibrariesSnapshot,
   LiveMapLibrariesSnapshot,
   LocalLibrariesContinuationSnapshot,
   LivePath,
@@ -41,11 +42,16 @@ import type { LiveMapLibraryIdentity } from "./livemap.library.js";
 import type { LiveMapSystemIdentity } from "./livemap.system.js";
 import { validate_document_path } from "./livemap.document.path.js";
 import { normalize_replacement_lineage } from "./livemap.document.lineage.js";
+import { clone_hson_graph_without_quids } from "./livemap.document.capture.js";
+import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 
 export const HOSTED_REGISTRY_FORMAT = "hson-hosted-registry" as const;
 export const HOSTED_COMMIT_FORMAT = "hson-hosted-commit" as const;
 export const LIVEMAP_LIBRARIES_SNAPSHOT_FORMAT = "hson-livemap-libraries-snapshot" as const;
 export const HOSTED_GRAPH_OP_FORMAT = "hson-hosted-graph-op-v2" as const;
+export const HOSTED_CLIENT_GRAPH_OP_FORMAT = "hson-hosted-client-graph-op-v1" as const;
+export const HOSTED_CLIENT_COMMIT_FORMAT = "hson-hosted-client-commit-v1" as const;
+export const HOSTED_CLIENT_SNAPSHOT_FORMAT = "hson-livemap-client-snapshot-v1" as const;
 export const HOSTED_ROOT_FORMAT = "hson-exact-value" as const;
 
 export const HOSTED_MAX_LIBRARIES = 1_024;
@@ -108,6 +114,32 @@ export type HostedAggregateCommit = Readonly<{
   rev: number;
   operations: readonly HostedSemanticOperation[];
   replay: Readonly<{ operations: readonly HostedReplayOperation[] }>;
+}>;
+
+/** Replica-relevant effects at one authority revision, with no runtime QUID evidence. */
+export type HostedClientOperation =
+  | Readonly<{
+    library: string;
+    domain: "data";
+    kind: LiveMapDataOp["kind"];
+    format: "structural-json";
+    payload: string;
+  }>
+  | Readonly<{
+    library: string;
+    domain: "graph";
+    kind: Exclude<LiveMapGraphOp["op"], "ensure-quid">;
+    format: typeof HOSTED_CLIENT_GRAPH_OP_FORMAT;
+    payload: string;
+  }>;
+
+export type HostedClientCommit = Readonly<{
+  format: typeof HOSTED_CLIENT_COMMIT_FORMAT;
+  authority: HostedAuthorityFence;
+  registryDigest: string;
+  prevRev: number;
+  rev: number;
+  operations: readonly HostedClientOperation[];
 }>;
 
 export type DecodedHostedOperation = Readonly<{
@@ -282,6 +314,143 @@ export function decode_hosted_commit(
   }));
 }
 
+/** Derive a client event from an exact authority transition without changing durable history. */
+export function make_hosted_client_commit(authority: HostedAggregateCommit): HostedClientCommit | undefined {
+  const operations: HostedClientCommit["operations"][number][] = [];
+  for (let index = 0; index < authority.operations.length; index += 1) {
+    const entry = authority.operations[index];
+    const evidence = authority.replay.operations[index];
+    if (entry === undefined || evidence === undefined || entry.library !== evidence.library) {
+      throw new HostedAggregateRepresentationError("Authority history operation evidence is incomplete.");
+    }
+    const operation = entry.operation;
+    if ("domain" in operation && operation.op === "ensure-quid") continue;
+    if (evidence.domain === "data") {
+      if ("domain" in operation) throw new HostedAggregateRepresentationError("Authority history operation domains disagree.");
+      operations.push(Object.freeze({ library: entry.library, domain: "data", kind: operation.kind, format: "structural-json", payload: evidence.payload }));
+      continue;
+    }
+    if (!("domain" in operation) || evidence.domain !== "graph") {
+      throw new HostedAggregateRepresentationError("Authority history operation domains disagree.");
+    }
+    operations.push(Object.freeze({
+      library: entry.library,
+      domain: "graph",
+      kind: operation.op,
+      format: HOSTED_CLIENT_GRAPH_OP_FORMAT,
+      payload: encode_hosted_graph_operation(operation, true),
+    }));
+  }
+  if (operations.length === 0) return undefined;
+  const commit: HostedClientCommit = Object.freeze({
+    format: HOSTED_CLIENT_COMMIT_FORMAT,
+    authority: authority.authority,
+    registryDigest: authority.registryDigest,
+    prevRev: authority.prevRev,
+    rev: authority.rev,
+    operations: Object.freeze(operations),
+  });
+  assert_encoded_bound(commit, HOSTED_MAX_COMMIT_BYTES, "Hosted client commit");
+  return commit;
+}
+
+/** Strictly admit one current client event before local semantic replay. */
+export function decode_hosted_client_commit(
+  input: HostedClientCommit,
+  registry: HostedRegistry,
+  bindingsByName: ReadonlyMap<string, HostedRegistryBinding>,
+): readonly DecodedHostedOperation[] {
+  const record = exact_record(input, "Hosted client commit");
+  exact_keys(record, ["format", "authority", "registryDigest", "prevRev", "rev", "operations"], "Hosted client commit");
+  const authority = exact_record(record.authority, "Hosted client commit authority");
+  exact_keys(authority, ["logicalMapId", "incarnationId"], "Hosted client commit authority");
+  if (record.format !== HOSTED_CLIENT_COMMIT_FORMAT || record.registryDigest !== registry.digest
+    || typeof authority.logicalMapId !== "string" || !authority.logicalMapId
+    || typeof authority.incarnationId !== "string" || !authority.incarnationId
+    || !valid_revision(record.prevRev) || record.rev !== record.prevRev + 1
+    || !Array.isArray(record.operations) || record.operations.length === 0
+    || record.operations.length > HOSTED_MAX_OPERATIONS) {
+    throw new HostedAggregateRepresentationError("Hosted client commit envelope is malformed.");
+  }
+  assert_encoded_bound(input, HOSTED_MAX_COMMIT_BYTES, "Hosted client commit");
+  return Object.freeze(record.operations.map((raw, index): DecodedHostedOperation => {
+    const evidence = exact_record(raw, "Hosted client operation", index);
+    exact_keys(evidence, ["library", "domain", "kind", "format", "payload"], "Hosted client operation", index);
+    if (typeof evidence.library !== "string" || typeof evidence.payload !== "string" || typeof evidence.kind !== "string") {
+      throw new HostedAggregateRepresentationError("Hosted client operation fields are malformed.", index);
+    }
+    const binding = bindingsByName.get(evidence.library);
+    if (binding === undefined) throw new HostedAggregateRepresentationError("Hosted client operation references an unknown Library.", index);
+    if (evidence.domain === "data") {
+      if (binding.mode === "document" || evidence.format !== LIVEMAP_STRUCTURAL_JSON_FORMAT) throw incompatible_graph();
+      const projected = require_single_projected_operation(evidence.payload, index);
+      if (projected.kind !== evidence.kind || encode_livemap_replay_transport([projected]).payload !== evidence.payload) {
+        throw new HostedAggregateRepresentationError("Hosted client data operation is noncanonical.", index);
+      }
+      return Object.freeze({ library: binding, semantic: materialize_livemap_projected_op(projected), projected });
+    }
+    if (evidence.domain !== "graph" || evidence.format !== HOSTED_CLIENT_GRAPH_OP_FORMAT || binding.mode !== "document") {
+      throw incompatible_graph();
+    }
+    const graph = decode_hosted_graph_operation(evidence.payload, binding.mode, true);
+    if (graph.op === "ensure-quid" || graph.op !== evidence.kind
+      || encode_hosted_graph_operation(graph, true) !== evidence.payload) {
+      throw new HostedAggregateRepresentationError("Hosted client graph operation is noncanonical.", index);
+    }
+    return Object.freeze({ library: binding, semantic: graph, graph });
+  }));
+}
+
+/** Project exact authority capture into the full, QUID-free Echo snapshot format. */
+export function make_hosted_client_snapshot(authority: HostedLiveMapLibrariesSnapshot): HostedClientLibrariesSnapshot {
+  assert_hosted_libraries_snapshot_shape(authority);
+  const snapshot: HostedClientLibrariesSnapshot = Object.freeze({
+    format: HOSTED_CLIENT_SNAPSHOT_FORMAT,
+    revision: authority.revision,
+    registry: authority.registry,
+    registryDigest: authority.registryDigest,
+    libraries: Object.freeze(authority.libraries.map((entry) => Object.freeze({
+      ...entry,
+      root: encode_hosted_root(clone_hson_graph_without_quids(decode_hosted_root(entry.root))),
+    }))),
+    authority: authority.authority,
+  });
+  assert_hosted_client_snapshot_shape(snapshot);
+  return snapshot;
+}
+
+/** Reject all identity claims in a remote client snapshot before runtime installation. */
+export function assert_hosted_client_snapshot_shape(snapshot: HostedClientLibrariesSnapshot): void {
+  const record = exact_record(snapshot, "Hosted client snapshot");
+  exact_keys(record, ["format", "revision", "registry", "registryDigest", "libraries", "authority"], "Hosted client snapshot");
+  const authority = exact_record(record.authority, "Hosted client snapshot authority");
+  exact_keys(authority, ["logicalMapId", "incarnationId"], "Hosted client snapshot authority");
+  if (record.format !== HOSTED_CLIENT_SNAPSHOT_FORMAT || !valid_revision(record.revision)
+    || typeof authority.logicalMapId !== "string" || !authority.logicalMapId
+    || typeof authority.incarnationId !== "string" || !authority.incarnationId) {
+    throw new HostedAggregateRepresentationError("Hosted client snapshot envelope is malformed.");
+  }
+  assert_libraries_snapshot_entries(record);
+  if (snapshot.registryDigest !== snapshot.registry.digest
+    || snapshot.libraries.length !== snapshot.registry.libraries.length) {
+    throw new HostedAggregateRepresentationError("Hosted client snapshot registry is malformed.");
+  }
+  for (const entry of snapshot.libraries) admit_portable_hson_node(decode_hosted_root(entry.root), "hosted client snapshot");
+  assert_encoded_bound(snapshot, HOSTED_MAX_SNAPSHOT_BYTES, "Hosted client snapshot");
+}
+
+/** Reuse the portable local installer while retaining a distinct client wire format. */
+export function hosted_client_snapshot_as_local(snapshot: HostedClientLibrariesSnapshot): LocalLibrariesContinuationSnapshot {
+  assert_hosted_client_snapshot_shape(snapshot);
+  return Object.freeze({
+    format: LIVEMAP_LIBRARIES_SNAPSHOT_FORMAT,
+    revision: snapshot.revision,
+    registry: snapshot.registry,
+    registryDigest: snapshot.registryDigest,
+    libraries: snapshot.libraries,
+  });
+}
+
 function hosted_semantic_equal(left: unknown, right: unknown): boolean {
   if (Object.is(left, right)) return true;
   if (typeof left !== "object" || left === null || typeof right !== "object" || right === null) return false;
@@ -422,25 +591,35 @@ function projected_operation_from_semantic(op: LiveMapDataOp): LiveMapProjectedD
   return Object.freeze({ kind: op.kind, path, prev: optional_projected(op.prev), next: admit_projected_value(op.next) });
 }
 
-function encode_hosted_graph_operation(operation: LiveMapGraphOp | LiveMapProjectedGraphEnsureQuidOp): string {
+function encode_hosted_graph_operation(operation: LiveMapGraphOp | LiveMapProjectedGraphEnsureQuidOp, portable = false): string {
   let representation: Record<string, unknown>;
   if (operation.op === "replace-root") {
-    representation = { domain: "graph", op: operation.op, mode: operation.mode, root: encode_exact_hson_value(operation.root) };
+    representation = { domain: "graph", op: operation.op, mode: operation.mode, root: encode_exact_hson_value(portable ? clone_hson_graph_without_quids(operation.root) : operation.root) };
   } else {
-    const target = encode_target(operation.target);
+    const target = encode_target(operation.target, portable);
     if (operation.op === "set-attr") representation = { domain: "graph", op: operation.op, target, name: operation.name, value: encode_projected_json(operation.value as JsonValue) };
     else if (operation.op === "remove-attr") representation = { domain: "graph", op: operation.op, target, name: operation.name };
     else if (operation.op === "replace-attrs") representation = { domain: "graph", op: operation.op, target, attrs: encode_projected_json(operation.attrs as JsonValue) };
-    else if (operation.op === "ensure-quid") representation = { domain: "graph", op: operation.op, target, quid: operation.quid };
-    else if (operation.op === "replace-content") representation = { domain: "graph", op: operation.op, target, index: operation.index, replacement: encode_exact_hson_value(operation.replacement), lineage: operation.lineage };
-    else if (operation.op === "insert-content") representation = { domain: "graph", op: operation.op, target, index: operation.index, content: encode_exact_hson_value(operation.content) };
+    else if (operation.op === "ensure-quid") {
+      if (portable) throw incompatible_graph();
+      representation = { domain: "graph", op: operation.op, target, quid: operation.quid };
+    }
+    else if (operation.op === "replace-content") {
+      if (portable && operation.lineage === undefined) throw new HostedAggregateRepresentationError("Legacy replacement has no portable lineage.");
+      const content = portable && is_Node(operation.replacement) ? clone_hson_graph_without_quids(operation.replacement) : operation.replacement;
+      representation = { domain: "graph", op: operation.op, target, index: operation.index, replacement: encode_exact_hson_value(content), lineage: operation.lineage };
+    }
+    else if (operation.op === "insert-content") {
+      const content = portable && is_Node(operation.content) ? clone_hson_graph_without_quids(operation.content) : operation.content;
+      representation = { domain: "graph", op: operation.op, target, index: operation.index, content: encode_exact_hson_value(content) };
+    }
     else if (operation.op === "remove-content") representation = { domain: "graph", op: operation.op, target, index: operation.index };
     else representation = { domain: "graph", op: operation.op, target, from: operation.from, to: operation.to };
   }
   return JSON.stringify(representation);
 }
 
-function decode_hosted_graph_operation(payload: string, mode: LiveMapRootMode): LiveMapGraphOp | LiveMapProjectedGraphEnsureQuidOp {
+function decode_hosted_graph_operation(payload: string, mode: LiveMapRootMode, portable = false): LiveMapGraphOp | LiveMapProjectedGraphEnsureQuidOp {
   let value: unknown;
   try { value = JSON.parse(payload); } catch (cause) {
     throw new HostedAggregateRepresentationError("Hosted graph operation payload is malformed.", undefined, { cause });
@@ -452,9 +631,10 @@ function decode_hosted_graph_operation(payload: string, mode: LiveMapRootMode): 
     if (mode !== "document" || record.mode !== "document" || typeof record.root !== "string") throw incompatible_graph();
     const root = decode_exact_hson_value(record.root);
     if (!is_Node(root)) throw incompatible_graph();
+    if (portable) admit_portable_hson_node(root, "hosted client graph operation");
     return Object.freeze({ domain: "graph", op: "replace-root", mode: "document", root });
   }
-  const target = decode_target(record.target, mode);
+  const target = decode_target(record.target, mode, portable);
   if (record.op === "set-attr") {
     exact_keys(record, ["domain", "op", "target", "name", "value"], "Hosted graph operation");
     if (mode !== "document" || typeof record.name !== "string" || typeof record.value !== "string") throw incompatible_graph();
@@ -471,6 +651,7 @@ function decode_hosted_graph_operation(payload: string, mode: LiveMapRootMode): 
     return Object.freeze({ domain: "graph", op: record.op, target: target as LiveMapDocumentCommitTarget, attrs: decode_attrs(record.attrs) });
   }
   if (record.op === "ensure-quid") {
+    if (portable) throw incompatible_graph();
     exact_keys(record, ["domain", "op", "target", "quid"], "Hosted graph operation");
     if (typeof record.quid !== "string") throw incompatible_graph();
     return mode === "document"
@@ -484,6 +665,7 @@ function decode_hosted_graph_operation(payload: string, mode: LiveMapRootMode): 
       : ["domain", "op", "target", "index", field], "Hosted graph operation");
     if (mode !== "document" || !valid_index(record.index) || typeof record[field] !== "string") throw incompatible_graph();
     const content = decode_exact_hson_value(record[field] as string);
+    if (portable && is_Node(content)) admit_portable_hson_node(content, "hosted client graph operation");
     return record.op === "replace-content"
       ? Object.freeze({ domain: "graph", op: record.op, target: target as LiveMapDocumentCommitTarget, index: record.index, replacement: content, lineage: normalize_replacement_lineage(record.lineage) })
       : Object.freeze({ domain: "graph", op: record.op, target: target as LiveMapDocumentCommitTarget, index: record.index, content });
@@ -501,16 +683,16 @@ function decode_hosted_graph_operation(payload: string, mode: LiveMapRootMode): 
   throw incompatible_graph();
 }
 
-function encode_target(target: LiveMapDocumentCommitTarget | LiveMapProjectedIdentityCommitTarget): object {
+function encode_target(target: LiveMapDocumentCommitTarget | LiveMapProjectedIdentityCommitTarget, portable = false): object {
   return {
     kind: "path",
     path: [...must_path(target.path)],
     ...("projected" in target ? { projected: true } : {}),
-    ...(!("projected" in target) && target.witness !== undefined ? { witness: { quid: target.witness.quid } } : {}),
+    ...(!portable && !("projected" in target) && target.witness !== undefined ? { witness: { quid: target.witness.quid } } : {}),
   };
 }
 
-function decode_target(input: unknown, mode: LiveMapRootMode): LiveMapDocumentCommitTarget | LiveMapProjectedIdentityCommitTarget {
+function decode_target(input: unknown, mode: LiveMapRootMode, portable = false): LiveMapDocumentCommitTarget | LiveMapProjectedIdentityCommitTarget {
   const record = exact_record(input, "Hosted graph target");
   const path = must_path(record.path);
   if (mode !== "document") {
@@ -519,6 +701,7 @@ function decode_target(input: unknown, mode: LiveMapRootMode): LiveMapDocumentCo
     return Object.freeze({ kind: "path", path, projected: true });
   }
   if (record.kind !== "path" || Object.hasOwn(record, "projected")) throw incompatible_graph();
+  if (portable && record.witness !== undefined) throw incompatible_graph();
   if (record.witness === undefined) {
     exact_keys(record, ["kind", "path"], "Hosted document graph target");
     return Object.freeze({ kind: "path", path: must_document_path(path) });

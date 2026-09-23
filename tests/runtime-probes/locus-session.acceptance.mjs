@@ -1,7 +1,7 @@
 import { create_test_event_emitter } from "../test-events.mjs";
 import assert from "node:assert/strict";
 import { WebSocket, WebSocketServer } from "ws";
-import { EchoSessionError, hson } from "../../src/index.ts";
+import { EchoSessionError, Hson, hson } from "../../src/index.ts";
 import { make_canonical_livemap_projected_capture } from "../../src/api/livemap/livemap.projected.capture.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -99,7 +99,7 @@ function host_fixture(extra = {}) {
     history: extra.history,
     recovery: extra.recovery,
     actions: {
-      async set(ctx, value) { await ctx.mutate((draft) => draft.set(["value"], value.scalar())); },
+      async set(ctx, value) { await ctx.mutate((draft) => draft.set(["value"], Hson.data.materialize(value))); },
       async increment(ctx) { await ctx.mutate((draft) => draft.set(["value"], ctx.map.snap().value + 1)); },
     },
     sessions: {

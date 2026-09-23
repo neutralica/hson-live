@@ -18,7 +18,7 @@ import {
   decode_locus_document_target,
   is_locus_json_value,
 } from "./locus.protocol.js";
-import { decode_locus_graph_content } from "./locus.graph-content-codec.js";
+import { decode_locus_portable_graph_content } from "./locus.graph-content-codec.js";
 import { resolve_document_path, validate_document_path } from "../livemap/livemap.document.path.js";
 import { apply_replacement_lineage, normalize_replacement_lineage } from "../livemap/livemap.document.lineage.js";
 
@@ -164,7 +164,7 @@ export function resolve_locus_document_action(
     if (index === undefined) return invalid_index(name);
     let replacement;
     try {
-      replacement = decode_locus_graph_content(payload.replacement);
+      replacement = decode_locus_portable_graph_content(payload.replacement);
     } catch {
       return Object.freeze({ kind: "invalid", message: `Locus action ${name} replacement is invalid.` });
     }
@@ -199,7 +199,7 @@ export function resolve_locus_document_action(
     if (index === undefined) return invalid_index(name);
     let content;
     try {
-      content = decode_locus_graph_content(payload.content);
+      content = decode_locus_portable_graph_content(payload.content);
     } catch {
       return Object.freeze({ kind: "invalid", message: `Locus action ${name} content is invalid.` });
     }

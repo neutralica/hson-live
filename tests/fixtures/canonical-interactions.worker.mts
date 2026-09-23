@@ -17,6 +17,9 @@ import type { LocusSocketLike } from "../../src/types/locus.types.ts";
 import { link_node_to_el } from "../../src/api/livetree/utils/node-map-helpers.ts";
 import { parse_hson_exact_runtime } from "../../src/internal/exact-runtime-hson-codec.ts";
 import { admit_exact_runtime_livemap_libraries } from "../../src/internal/exact-runtime-node-admission.ts";
+import { acquire_document_identity } from "../helpers/livemap-identity-internal.mts";
+import { set_livemap_document_quid_candidate_source_for_tests } from "../../src/api/livemap/livemap.document.registration.ts";
+import { validate_document_path } from "../../src/api/livemap/livemap.document.path.ts";
 
 const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "button" content "empty">]>>`;
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number">>`;
@@ -75,7 +78,13 @@ await echo.session.create();
 await echo.recovery.recover();
 
 const reflection = hsonMirror(replicaMap.lib("page"));
-const subject = reflection.tree.find.must.byQuid(QUID);
+const page = replicaMap.lib("page");
+if (!("document" in page)) throw new Error("Expected document library.");
+const localQ = "000008398";
+set_livemap_document_quid_candidate_source_for_tests(page.document, () => localQ);
+acquire_document_identity(page.document, { kind: "path", path: validate_document_path([0, 0, 0]) });
+if (page.document.byQuid(QUID) !== undefined) throw new Error("Worker Echo inherited the Locus QUID.");
+const subject = reflection.tree.find.must.byQuid(localQ);
 const target = new EventTarget();
 link_node_to_el(subject.node, target as unknown as Element);
 const dispose = activate_interactions({

@@ -5,7 +5,7 @@ import type {
   LocusServerRecoveryCommitMessage,
   LocusServerRecoverySnapshotMessage,
 } from "../../types/locus.protocol.types.js";
-import type { LocusSnapshotEnvelope } from "../../types/locus.representation.types.js";
+import type { LocusClientSnapshotEnvelope, LocusSnapshotEnvelope } from "../../types/locus.representation.types.js";
 import {
   decode_view_state_snapshot,
   encode_view_state_snapshot,
@@ -13,6 +13,7 @@ import {
 import { ViewStateSnapshotCodecError } from "../livemap/livemap.document.view-state-codec.error.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
 import { parse_hson_exact_runtime, serialize_hson_owned_document_content_exact_runtime } from "../../internal/exact-runtime-hson-codec.js";
+import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 
 /** @internal Common outer recovery fields shared by both snapshot bodies. */
 export type LocusSnapshotCommonFields = Pick<
@@ -28,7 +29,7 @@ export type LocusViewStateSnapshotEnvelope = Extract<LocusSnapshotEnvelope, { fo
 
 /** @internal Fully validated incoming snapshot representation. */
 export type LocusValidatedSnapshotEnvelope =
-  LocusSnapshotEnvelope;
+  LocusClientSnapshotEnvelope;
 
 /** Closed Locus-side document snapshot wire selection. */
 export type LocusDocumentSnapshotEncoding =
@@ -147,7 +148,7 @@ export function encode_locus_document_snapshot(
 
 /** @internal Decode either accepted document snapshot body into one detached capture. */
 export function decode_locus_document_snapshot(
-  snapshot: LocusValidatedSnapshotEnvelope,
+  snapshot: LocusSnapshotEnvelope,
 ): DocumentLiveMapCapture {
   if ("hson" in snapshot) {
     const staged = make_classified_livemap(parse_hson_exact_runtime(
@@ -193,4 +194,47 @@ export function decode_locus_document_snapshot(
     );
   }
   return capture;
+}
+
+/** Current Echo admission is separate from legacy exact authority snapshot decoding. */
+export function decode_locus_client_document_snapshot(snapshot: LocusClientSnapshotEnvelope): DocumentLiveMapCapture {
+  if (snapshot.format === "hson-client-snapshot-v1") {
+    assert_no_hson_runtime_quid_sigil(snapshot.payload);
+    const root = parse_hson_exact_runtime(snapshot.payload, { allowTopLevelDocumentText: true });
+    admit_portable_hson_node(root, "Locus client snapshot");
+    const staged = make_classified_livemap(root);
+    if (staged.mode !== "document" || staged.mode !== snapshot.mode) {
+      throw new LocusDocumentSnapshotDecodeError("LOCUS_RECOVERY_SNAPSHOT_MODE_MISMATCH", "Locus client snapshot mode is incompatible.");
+    }
+    return Object.freeze({ ...staged.capture({ identity: "strip" }), rev: snapshot.rev });
+  }
+  let capture: DocumentLiveMapCapture;
+  try {
+    capture = decode_view_state_snapshot({ format: "view-state", payload: snapshot.payload });
+  } catch (cause) {
+    if (cause instanceof ViewStateSnapshotCodecError) {
+      throw new LocusDocumentSnapshotDecodeError("LOCUS_RECOVERY_SNAPSHOT_DECODE_FAILED", "Locus client view-state snapshot could not be decoded.", cause);
+    }
+    throw cause;
+  }
+  admit_portable_hson_node(capture.root, "Locus client snapshot");
+  if (capture.mode !== snapshot.mode) throw new LocusDocumentSnapshotDecodeError("LOCUS_RECOVERY_SNAPSHOT_MODE_MISMATCH", "Locus client snapshot mode is incompatible.");
+  if (capture.rev !== snapshot.rev) throw new LocusDocumentSnapshotDecodeError("LOCUS_RECOVERY_SNAPSHOT_REVISION_MISMATCH", "Locus client snapshot revision is incompatible.");
+  return capture;
+}
+
+/** A bounded-memory guard for the canonical Hson QUID sigil. Full graph and
+ * Schema admission still occurs when the client snapshot is installed. */
+export function assert_no_hson_runtime_quid_sigil(payload: string): void {
+  let quoted = false;
+  let escaped = false;
+  for (let index = 0; index < payload.length; index += 1) {
+    const char = payload[index];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') quoted = false;
+    } else if (char === '"') quoted = true;
+    else if (char === "@") throw new TypeError("Client snapshot contains a runtime QUID sigil.");
+  }
 }

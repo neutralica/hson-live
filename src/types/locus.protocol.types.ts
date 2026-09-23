@@ -414,13 +414,20 @@ export type LocusServerRecoveryCommitMessage = Readonly<{
   type: "recovery-commit";
   id: LocusRecoveryId;
   phase: "body" | "tail";
-  commit: LocusCanonicalCommit;
+  commit: import("./locus.representation.types.js").LocusClientCommit;
+}>;
+
+export type LocusServerRecoveryProgressMessage = Readonly<{
+  type: "recovery-progress";
+  id: LocusRecoveryId;
+  phase: "body" | "tail";
+  progress: import("./locus.representation.types.js").LocusClientProgress;
 }>;
 
 export type LocusServerRecoverySnapshotMessage = Readonly<{
   type: "recovery-snapshot";
   id: LocusRecoveryId;
-  snapshot: LocusSnapshotEnvelope;
+  snapshot: import("./locus.representation.types.js").LocusClientSnapshotEnvelope;
 }>;
 
 export type LocusServerRecoveryCaughtUpMessage = Readonly<{
@@ -432,7 +439,13 @@ export type LocusServerRecoveryCaughtUpMessage = Readonly<{
 export type LocusServerCanonicalCommitMessage = Readonly<{
   type: "commit";
   id: LocusRecoveryId;
-  commit: LocusCanonicalCommit;
+  commit: import("./locus.representation.types.js").LocusClientCommit;
+}>;
+
+export type LocusServerAuthorityProgressMessage = Readonly<{
+  type: "progress";
+  id: LocusRecoveryId;
+  progress: import("./locus.representation.types.js").LocusClientProgress;
 }>;
 
 export type LocusServerRecoveryErrorMessage = Readonly<{
@@ -499,9 +512,11 @@ export type LocusServerMessage<TState extends JsonValue | undefined = JsonValue 
   | LocusServerActionStatusMessage
   | LocusServerRecoveryPlanMessage
   | LocusServerRecoveryCommitMessage
+  | LocusServerRecoveryProgressMessage
   | LocusServerRecoverySnapshotMessage
   | LocusServerRecoveryCaughtUpMessage
   | LocusServerCanonicalCommitMessage
+  | LocusServerAuthorityProgressMessage
   | LocusServerRecoveryErrorMessage
   | LocusServerSessionCreatedMessage
   | LocusServerSessionAttachedMessage

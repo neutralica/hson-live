@@ -21,6 +21,14 @@ import { create_locus_bootstrap_echo } from "hson-live/echo";
 import { create_node_locus_socket } from "hson-live/locus/node";
 import { start_node_application_host } from "hson-live/livehost/node";
 import WebSocket from "ws";
+import { project_locus_client_transition } from "../dist/api/locus/locus.client-replication.js";
+import type { LocusCanonicalCommit } from "../dist/types/locus.representation.types.js";
+
+function client_commit(exact: LocusCanonicalCommit) {
+  const projected = project_locus_client_transition(exact);
+  if (projected.kind !== "commit") throw new Error("Expected a graph-changing client commit.");
+  return projected.commit;
+}
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "locus.bootstrap",
@@ -230,7 +238,7 @@ const established_base_bootstrap: LocusBootstrap = Object.freeze({
   incarnationId: "bootstrap-incarnation",
   mode: "data-object",
   rev: 0,
-  state: Object.freeze({ format: "hson", payload: "<value 1>" }),
+  state: Object.freeze({ format: "hson-client-snapshot-v1", payload: "<value 1>" }),
   continuation: Object.freeze({
     transport: "websocket",
     endpoint: "/live?locus=probe%3Aone",
@@ -238,15 +246,15 @@ const established_base_bootstrap: LocusBootstrap = Object.freeze({
   }),
 });
 
-const established_base_encoding = '<format "hson-locus-bootstrap" locusSelector "probe:one" logicalMapId "bootstrap-map" incarnationId "bootstrap-incarnation" mode "data-object" rev 0 state <format "hson" payload "<value 1>"> continuation <transport "websocket" endpoint "/live?locus=probe%3Aone" capabilities <hsonSnapshots true>>>';
+const established_base_encoding = '<format "hson-locus-bootstrap-v2" locusSelector "probe:one" logicalMapId "bootstrap-map" incarnationId "bootstrap-incarnation" mode "data-object" rev 0 state <format "hson-client-snapshot-v1" payload "<value 1>"> continuation <transport "websocket" endpoint "/live?locus=probe%3Aone" capabilities <hsonSnapshots true>>>';
 
 check("capture assembles the established authority cut and delivery contract exactly", () => {
   assert.deepEqual(base.bootstrap, established_base_bootstrap);
   assert.equal(encode_locus_bootstrap(base.bootstrap), established_base_encoding);
-  assert.equal(LOCUS_BOOTSTRAP_MEDIA_TYPE, "application/vnd.hson-live.locus-bootstrap+hson");
+  assert.equal(LOCUS_BOOTSTRAP_MEDIA_TYPE, "application/vnd.hson-live.locus-bootstrap-v2+hson");
 });
 
-check("capture returns one exact canonical identity, revision, mode, and state cut", () => {
+check("capture returns one fenced canonical revision, mode, and QUID-free state cut", () => {
   assert.equal(base.bootstrap.logicalMapId, base.authority.stream.logicalMapId);
   assert.equal(base.bootstrap.incarnationId, base.authority.stream.incarnationId);
   assert.equal(base.bootstrap.rev, base.authority.stream.headRev);
@@ -348,13 +356,13 @@ check("mode/state mismatch rejects before installation", () => {
 
 check("malformed graph and duplicate document QUIDs reject", () => {
   const malformed = replace_package(base.bootstrap, {
-    state: { format: "hson", payload: "<main" },
+    state: { format: "hson-client-snapshot-v1", payload: "<main" },
   });
   assert.equal(error_code(() => install_locus_bootstrap(malformed)), "LOCUS_BOOTSTRAP_STATE_INVALID");
   const duplicate = replace_package(base.bootstrap, {
     mode: "document",
     state: {
-      format: "hson",
+      format: "hson-client-snapshot-v1",
       payload: `<div @000000001/> <span @000000001/>`,
     },
   });
@@ -452,7 +460,7 @@ check("duplicate revision delivery after bootstrap recovery is ignored", async (
   await client.connectAndRecover();
   const request = pair.clientSent.map((raw) => JSON.parse(raw)).find((message) => message.type === "recover");
   assert.ok(request);
-  pair.server.send(JSON.stringify({ type: "commit", id: request.id, commit }));
+  pair.server.send(JSON.stringify({ type: "commit", id: request.id, commit: client_commit(commit) }));
   assert.equal(client.echo.recovery.debug().duplicateCommitsIgnored, 1);
   assert.deepEqual(client.map.capture(), authority.map.capture());
   client.dispose();
@@ -475,7 +483,7 @@ check("revision gap after bootstrap recovery fails through the existing client p
   await other.mutate((draft) => draft.set(["value"], 3));
   const gap = other.stream.history.replayAfter(1)?.[0];
   assert.ok(gap);
-  pair.server.send(JSON.stringify({ type: "commit", id: request.id, commit: gap }));
+  pair.server.send(JSON.stringify({ type: "commit", id: request.id, commit: client_commit(gap!) }));
   assert.equal(client.echo.recovery.status, "failed");
   assert.equal(client.echo.recovery.failure?.code, "LOCUS_RECOVERY_COMMIT_GAP");
   client.dispose();

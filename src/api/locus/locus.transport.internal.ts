@@ -26,11 +26,11 @@ export type LocusFiniteOperationOutcome = Extract<LocusServerMessage, {
 
 /** @internal Recovery establishment and recovery-transfer output. */
 export type LocusSynchronizationOutput = Extract<LocusServerMessage, {
-  type: "recovery-plan" | "recovery-commit" | "recovery-snapshot" | "recovery-caught-up" | "recovery-error";
+  type: "recovery-plan" | "recovery-commit" | "recovery-progress" | "recovery-snapshot" | "recovery-caught-up" | "recovery-error";
 }>;
 
 /** @internal Ordered canonical publication after a caught-up boundary. */
-export type LocusCanonicalPublication = Extract<LocusServerMessage, { type: "commit" }>;
+export type LocusCanonicalPublication = Extract<LocusServerMessage, { type: "commit" | "progress" }>;
 
 /** @internal Non-canonical application event output. */
 export type LocusTransientEventOutput = Extract<LocusServerMessage, { type: "event" }>;
@@ -119,7 +119,7 @@ export function deliver_locus_downstream_internal(
   sink: LocusDownstreamSink,
   message: LocusServerMessage,
 ): void {
-  if (message.type === "commit") {
+  if (message.type === "commit" || message.type === "progress") {
     sink.publication(message);
     return;
   }
@@ -129,6 +129,7 @@ export function deliver_locus_downstream_internal(
   }
   if (message.type === "recovery-plan"
     || message.type === "recovery-commit"
+    || message.type === "recovery-progress"
     || message.type === "recovery-snapshot"
     || message.type === "recovery-caught-up"
     || message.type === "recovery-error") {

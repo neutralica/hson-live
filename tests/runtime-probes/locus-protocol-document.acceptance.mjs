@@ -9,6 +9,7 @@ import {
   encode_locus_graph_content,
   encode_locus_message,
 } from "../../src/api/locus/index.ts";
+import { encode_locus_portable_graph_content } from "../../src/api/locus/locus.graph-content-codec.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "locus.protocol-document",
@@ -40,6 +41,7 @@ function check(name, fn) {
 
 function commit(mode, ops) {
   return {
+    clientFormat: "hson-locus-client-commit-v1",
     logicalMapId: "map",
     incarnationId: "inc",
     mode,
@@ -96,7 +98,7 @@ check("document commits decode only current canonical path targets", () => {
     {
       domain: "graph",
       op: "set-attr",
-      target: { kind: "path", path: [], witness: { quid: "000000001" } },
+      target: { kind: "path", path: [] },
       name: "style",
       value: { color: "red", _hover: { color: "blue" } },
     },
@@ -111,7 +113,7 @@ check("document commits decode only current canonical path targets", () => {
       op: "replace-content",
       target: { kind: "path", path: [] },
       index: 0,
-      replacement: encode_locus_graph_content({ $_tag: "span", $_meta: { quid: "000000002" }, $_content: [] }),
+      replacement: encode_locus_portable_graph_content({ $_tag: "span", $_content: [] }),
       lineage: [],
     },
     {
@@ -119,14 +121,14 @@ check("document commits decode only current canonical path targets", () => {
       op: "insert-content",
       target: { kind: "path", path: [] },
       index: 1,
-      content: encode_locus_graph_content("text"),
+      content: encode_locus_portable_graph_content("text"),
     },
     {
       domain: "graph",
       op: "insert-content",
       target: { kind: "path", path: [] },
       index: 2,
-      content: encode_locus_graph_content({ $_tag: "aside", $_meta: { quid: "000000003" }, $_content: [] }),
+      content: encode_locus_portable_graph_content({ $_tag: "aside", $_content: [] }),
     },
     {
       domain: "graph",
@@ -154,7 +156,7 @@ check("replacement commits require portable lineage even when it is empty", () =
     op: "replace-content",
     target: { kind: "path", path: [] },
     index: 0,
-    replacement: encode_locus_graph_content({ $_tag: "span", $_content: [] }),
+    replacement: encode_locus_portable_graph_content({ $_tag: "span", $_content: [] }),
   }]));
   assert.equal(withoutLineage.ok, false);
 });
@@ -175,12 +177,12 @@ check("QUID-only canonical recovery input rejects", () => {
   assert.equal(decoded.ok, false);
 });
 
-check("replace-root accepts any canonical document cardinality and validates identity", () => {
+check("replace-root accepts QUID-free document cardinality and rejects remote identity", () => {
   const valid = decode(commit("document", [{
     domain: "graph",
     op: "replace-root",
     mode: "document",
-    root: encode_locus_graph_content(element_root()),
+    root: encode_locus_portable_graph_content(element_root()),
   }]));
   assert.equal(valid.ok, true);
 
@@ -190,7 +192,7 @@ check("replace-root accepts any canonical document cardinality and validates ide
     domain: "graph",
     op: "replace-root",
     mode: "document",
-    root: encode_locus_graph_content(textDocument.capture().root),
+    root: encode_locus_portable_graph_content(textDocument.capture().root),
   }]));
   assert.equal(textReplacement.ok, true);
 
@@ -252,8 +254,8 @@ check("malformed graph targets, attributes, content, and mixed operations are re
   assert.equal(mixed.ok, false);
 });
 
-check("snapshot envelopes require one stable map mode", () => {
-  const base = { logicalMapId: "map", incarnationId: "inc", rev: 0, hson: "<>" };
+check("client snapshot envelopes require one stable map mode and format", () => {
+  const base = { logicalMapId: "map", incarnationId: "inc", rev: 0, format: "hson-client-snapshot-v1", payload: "<>" };
   const missing = decode_locus_server_message(JSON.stringify({ type: "recovery-snapshot", id: "snapshot", snapshot: base }));
   assert.equal(missing.ok, false);
   for (const mode of ["data-object", "data-array", "document"]) {
@@ -280,7 +282,7 @@ check("snapshot envelopes require one stable map mode", () => {
       incarnationId: "inc",
       rev: 0,
       mode: "document",
-      format: "view-state",
+      format: "view-state-client-snapshot-v1",
       payload: "payload",
     },
   }));

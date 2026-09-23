@@ -236,8 +236,9 @@ digests, ordered registry and digest, and one global revision. It establishes
 a fresh browser identity epoch with no inherited server QUID claims. Hidden
 canonical interaction storage remains hidden and has no side payload. Local
 installation creates fresh runtime capability objects without fabricating a
-hosted identity. Hosted installation retains the exact identity ledger and logical/incarnation fence and
-returns the ordinary aggregate Echo recovery cursor.
+hosted identity. Hosted installation retains the logical/incarnation fence and
+returns the ordinary aggregate Echo recovery cursor. Its full client snapshot
+is QUID-free; Echo creates its own identity epoch and issued ledger.
 
 ## Domain and delivery limits
 

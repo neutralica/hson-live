@@ -21,7 +21,7 @@ import {
   type EchoDocumentAuthority,
 } from "./echo.document-authority.js";
 import { create_multi_library_echo_socket_client_internal } from "./echo.multi-library.socket.js";
-import { encode_locus_graph_content } from "../locus/locus.graph-content-codec.js";
+import { encode_locus_portable_graph_content } from "../locus/locus.graph-content-codec.js";
 import type { EchoEndpointConnection } from "./echo.client.js";
 import type {
   LocusHostedAggregateCanonicalPublication,
@@ -63,9 +63,9 @@ export function create_multi_library_echo<
       const authority = make_echo_document_authority(
         async (action, expectedIdentity) => {
           const payload: JsonValue = (action.name === "document.content.insert"
-            ? Object.freeze({ ...action.payload, library: entry.name, content: encode_locus_graph_content(action.payload.content) })
+            ? Object.freeze({ ...action.payload, library: entry.name, content: encode_locus_portable_graph_content(action.payload.content) })
             : action.name === "document.content.replace"
-              ? Object.freeze({ ...action.payload, library: entry.name, replacement: encode_locus_graph_content(action.payload.replacement), lineage: derive_replacement_lineage_for_action(map.root(), "document", action.payload.target, action.payload.index, action.payload.replacement) })
+              ? Object.freeze({ ...action.payload, library: entry.name, replacement: encode_locus_portable_graph_content(action.payload.replacement), lineage: derive_replacement_lineage_for_action(map.root(), "document", action.payload.target, action.payload.index, action.payload.replacement) })
               : document_action_payload_with_library(action, entry.name)) as unknown as JsonValue;
           let pending = endpoint.action(action.name, payload);
           let result;

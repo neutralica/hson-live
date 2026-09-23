@@ -10,6 +10,7 @@ import type {
   LocusRecoveryPlanner,
   LocusSelector,
   LocusSnapshotEnvelope,
+  LocusClientSnapshotEnvelope,
 } from "../../types/locus.types.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
 import { make_canonical_livemap_projected_capture } from "../livemap/livemap.projected.capture.js";
@@ -17,18 +18,20 @@ import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { parse_json } from "../transform/parsers/parse-json.js";
 import { json_value_from_node } from "../transform/serializers/serialize-json.js";
 import { serialize_hson } from "../transform/serializers/serialize-hson.js";
-import { parse_hson_exact_runtime } from "../../internal/exact-runtime-hson-codec.js";
+import { parse_hson_exact_runtime, serialize_hson_owned_document_content_exact_runtime } from "../../internal/exact-runtime-hson-codec.js";
 import { detach_hson_root_value } from "../transform/utils/node-utils/detach-hson-root-value.js";
-import { decode_locus_document_snapshot } from "./locus.document-snapshot.js";
+import { decode_locus_document_snapshot, decode_locus_client_document_snapshot } from "./locus.document-snapshot.js";
+import { project_locus_client_snapshot } from "./locus.client-replication.js";
+import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 
-export const LOCUS_BOOTSTRAP_FORMAT = "hson-locus-bootstrap" as const;
-export const LOCUS_BOOTSTRAP_MEDIA_TYPE = "application/vnd.hson-live.locus-bootstrap+hson" as const;
+export const LOCUS_BOOTSTRAP_FORMAT = "hson-locus-bootstrap-v2" as const;
+export const LOCUS_BOOTSTRAP_MEDIA_TYPE = "application/vnd.hson-live.locus-bootstrap-v2+hson" as const;
 export const DEFAULT_LOCUS_BOOTSTRAP_MAX_BYTES = 1024 * 1024;
 export const DEFAULT_LOCUS_BOOTSTRAP_MAX_GRAPH_DEPTH = 256;
 export const DEFAULT_LOCUS_BOOTSTRAP_MAX_GRAPH_NODES = 100_000;
 
 export type LocusBootstrapState = Readonly<{
-  format: "hson";
+  format: "hson-client-snapshot-v1";
   payload: string;
 }>;
 
@@ -197,14 +200,16 @@ function validate_graph_limits(
 }
 
 type LocusBootstrapSnapshotEnvelope = Extract<LocusSnapshotEnvelope, { hson: string }>;
+type LocusClientHsonSnapshotEnvelope = LocusClientSnapshotEnvelope & Readonly<{ format: "hson-client-snapshot-v1" }>;
 
-function snapshot_from_bootstrap(bootstrap: LocusBootstrap): LocusBootstrapSnapshotEnvelope {
+function snapshot_from_bootstrap(bootstrap: LocusBootstrap): LocusClientHsonSnapshotEnvelope {
   return Object.freeze({
     logicalMapId: bootstrap.logicalMapId,
     incarnationId: bootstrap.incarnationId,
     rev: bootstrap.rev,
     mode: bootstrap.mode,
-    hson: bootstrap.state.payload,
+    format: bootstrap.state.format,
+    payload: bootstrap.state.payload,
   });
 }
 
@@ -246,6 +251,8 @@ function assemble_locus_bootstrap(
   snapshot: LocusBootstrapSnapshotEnvelope,
   routing: LocusBootstrapRoutingIngredients,
 ): LocusBootstrap {
+  const portable = project_locus_client_snapshot(snapshot);
+  if (portable.format !== "hson-client-snapshot-v1") throw new Error("Bootstrap capture requires Hson client state.");
   return Object.freeze({
     format: LOCUS_BOOTSTRAP_FORMAT,
     locusSelector: routing.locusSelector,
@@ -253,13 +260,40 @@ function assemble_locus_bootstrap(
     incarnationId: snapshot.incarnationId,
     mode: snapshot.mode,
     rev: snapshot.rev,
-    state: Object.freeze({ format: "hson", payload: snapshot.hson }),
+    state: Object.freeze({ format: portable.format, payload: portable.payload }),
     continuation: Object.freeze({
       transport: "websocket",
       endpoint: routing.websocketEndpoint,
       capabilities: Object.freeze({ hsonSnapshots: true }),
     }),
   });
+}
+
+function map_from_client_snapshot(
+  snapshot: LocusClientHsonSnapshotEnvelope,
+  options: LocusBootstrapCodecOptions,
+): ClassifiedLiveMap {
+  let root;
+  try {
+    root = parse_hson_exact_runtime(snapshot.payload, { allowTopLevelDocumentText: true });
+    admit_portable_hson_node(root, "Locus client bootstrap");
+  } catch (cause) {
+    throw new LocusBootstrapError("LOCUS_BOOTSTRAP_STATE_INVALID", "Locus client bootstrap state is invalid.", cause);
+  }
+  validate_graph_limits(root, options);
+  const map = make_classified_livemap(root);
+  if (map.mode !== snapshot.mode) throw new LocusBootstrapError("LOCUS_BOOTSTRAP_STATE_INVALID", "Locus client bootstrap mode is invalid.");
+  try {
+    if (is_data_map(map)) {
+      const capture = map.capture();
+      map.restore(make_canonical_livemap_projected_capture(snapshot.rev, capture.format, capture.payload, capture.root), { identity: "strip" });
+    } else if (is_document_map(map)) {
+      map.restore(decode_locus_client_document_snapshot(snapshot), { identity: "strip" });
+    }
+  } catch (cause) {
+    throw new LocusBootstrapError("LOCUS_BOOTSTRAP_STATE_INVALID", "Locus client bootstrap state could not be installed.", cause);
+  }
+  return map;
 }
 
 function map_from_snapshot(
@@ -404,7 +438,7 @@ function validate_package(
   }
   const state = exact_record(record.state);
   require_keys(state, ["format", "payload"]);
-  if (state.format !== "hson" || typeof state.payload !== "string") {
+  if (state.format !== "hson-client-snapshot-v1" || typeof state.payload !== "string") {
     throw new LocusBootstrapError(
       "LOCUS_BOOTSTRAP_STATE_INVALID",
       "Locus bootstrap state encoding is invalid.",
@@ -432,14 +466,14 @@ function validate_package(
     incarnationId: record.incarnationId,
     mode: record.mode,
     rev: record.rev,
-    state: Object.freeze({ format: "hson", payload: state.payload }),
+    state: Object.freeze({ format: "hson-client-snapshot-v1", payload: state.payload }),
     continuation: Object.freeze({
       transport: "websocket",
       endpoint: continuation.endpoint,
       capabilities: Object.freeze({ hsonSnapshots: true }),
     }),
   });
-  map_from_snapshot(snapshot_from_bootstrap(bootstrap), options);
+  map_from_client_snapshot(snapshot_from_bootstrap(bootstrap), options);
   return bootstrap;
 }
 
@@ -507,7 +541,7 @@ export function decode_locus_bootstrap(
   return validate_package(value, options);
 }
 
-/** Capture a single exact authority cut using the established recovery planner. */
+/** Capture an exact authority cut and project it to a QUID-free client bootstrap. */
 export function capture_locus_bootstrap(
   authority: LocusBootstrapAuthority,
   locusSelector: LocusSelector,
@@ -533,17 +567,30 @@ export function capture_locus_bootstrap(
   }
 }
 
-/** Install a validated detached mirror and its exact existing-recovery cursor. */
+/** Install a validated detached client mirror and its existing-recovery cursor. */
 export function install_locus_bootstrap(
   bootstrap: LocusBootstrap,
   options: LocusBootstrapCodecOptions = {},
 ): LocusBootstrapInstall {
   const validated = validate_package(bootstrap, options);
-  const installed = install_locus_snapshot_internal(snapshot_from_bootstrap(validated), options);
+  const installed = install_client_locus_snapshot_internal(snapshot_from_bootstrap(validated), options);
   return Object.freeze({
     bootstrap: validated,
     map: installed.map,
     recovery: installed.recovery,
+  });
+}
+
+function install_client_locus_snapshot_internal(
+  snapshot: LocusClientHsonSnapshotEnvelope,
+  options: LocusBootstrapCodecOptions,
+): Readonly<{
+  map: ClassifiedLiveMap;
+  recovery: Readonly<{ logicalMapId: string; cursor: Readonly<{ incarnationId: string; lastAppliedRev: number }> }>;
+}> {
+  return Object.freeze({
+    map: map_from_client_snapshot(snapshot, options),
+    recovery: Object.freeze({ logicalMapId: snapshot.logicalMapId, cursor: Object.freeze({ incarnationId: snapshot.incarnationId, lastAppliedRev: snapshot.rev }) }),
   });
 }
 
@@ -584,7 +631,7 @@ function install_validated_locus_snapshot(
 }
 
 /** Install a detached semantic document snapshot without transport or session metadata. */
-export function install_locus_snapshot(
+export function install_locus_authority_snapshot_internal(
   snapshot: Extract<LocusSnapshotEnvelope, { hson: string }> & Readonly<{ mode: "document" }>,
   options: LocusBootstrapCodecOptions = {},
 ): Readonly<{
@@ -612,4 +659,25 @@ export function install_locus_snapshot(
     map: installed.map,
     recovery: installed.recovery,
   });
+}
+
+/** Install only portable client state; authority exact snapshot decoding stays internal. */
+export function install_locus_snapshot(
+  snapshot: LocusClientSnapshotEnvelope & Readonly<{ mode: "document" }>,
+  options: LocusBootstrapCodecOptions = {},
+): Readonly<{
+  map: DocumentLiveMap;
+  recovery: Readonly<{
+    logicalMapId: string;
+    cursor: Readonly<{ incarnationId: string; lastAppliedRev: number }>;
+  }>;
+}> {
+  const capture = decode_locus_client_document_snapshot(snapshot);
+  return install_locus_authority_snapshot_internal(Object.freeze({
+    logicalMapId: snapshot.logicalMapId,
+    incarnationId: snapshot.incarnationId,
+    rev: snapshot.rev,
+    mode: "document",
+    hson: serialize_hson_owned_document_content_exact_runtime(capture.root, { noBreak: true }),
+  }), options);
 }

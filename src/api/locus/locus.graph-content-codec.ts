@@ -9,8 +9,17 @@ import {
   encode_exact_hson_value,
 } from "../livemap/livemap.document.view-state-codec.js";
 import { ViewStateSnapshotCodecError } from "../livemap/livemap.document.view-state-codec.error.js";
+import { clone_hson_graph_without_quids } from "../livemap/livemap.document.capture.js";
+import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 
 const FORMAT = "hson-graph" as const;
+const PORTABLE_FORMAT = "hson-graph-portable-v1" as const;
+
+/** Client action content is a document value, never a runtime identity claim. */
+export type LocusPortableGraphContent = Readonly<{
+  format: typeof PORTABLE_FORMAT;
+  payload: string;
+}>;
 
 export type LocusGraphContentCodecErrorCode =
   | "LOCUS_GRAPH_CONTENT_FORMAT_UNKNOWN"
@@ -45,6 +54,34 @@ export function encode_locus_graph_content(
       cause,
     );
   }
+}
+
+/** Encode Echo-authored content without exporting Echo-local node identities. */
+export function encode_locus_portable_graph_content(content: LiveMapDocumentContent): LocusPortableGraphContent {
+  validate_content(content);
+  const portable = is_Node(content) ? clone_hson_graph_without_quids(content) : content;
+  return Object.freeze({ format: PORTABLE_FORMAT, payload: encode_exact_hson_value(portable) });
+}
+
+/** Reject remote QUID claims before an action can enter Locus's runtime. */
+export function decode_locus_portable_graph_content(encoded: unknown): LiveMapDocumentContent {
+  const record = exact_record(encoded);
+  if (record.format !== PORTABLE_FORMAT) {
+    throw graph_error("LOCUS_GRAPH_CONTENT_FORMAT_UNKNOWN", "Locus portable graph content format is unknown.");
+  }
+  require_exact_keys(record, ["format", "payload"]);
+  if (typeof record.payload !== "string") {
+    throw graph_error("LOCUS_GRAPH_CONTENT_ENVELOPE_INVALID", "Locus portable graph content payload is malformed.");
+  }
+  let content: HsonNode | Primitive;
+  try {
+    content = decode_exact_hson_value(record.payload);
+    if (is_Node(content)) admit_portable_hson_node(content, "hosted graph content");
+    validate_content(content);
+  } catch (cause) {
+    throw graph_error("LOCUS_GRAPH_CONTENT_PAYLOAD_INVALID", "Locus portable graph content is invalid.", cause);
+  }
+  return content;
 }
 
 export function decode_locus_graph_content(

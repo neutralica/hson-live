@@ -15,14 +15,15 @@ if (mode === "--child") {
     incarnationId: "memory-incarnation",
     rev: 0,
     mode: "document" as const,
-    hson: "x".repeat(hsonBytes),
+    format: "hson-client-snapshot-v1" as const,
+    payload: `<main "${"x".repeat(hsonBytes - 10)}"/>`,
   };
   const encoded = encode_ssr_bootstrap(bootstrap);
   assert(encoded.length >= requestedEncodedBytes - 2_048 && encoded.length <= requestedEncodedBytes);
   const decoded = decode_ssr_bootstrap(encoded);
   assert.equal(decoded.kind, "hosted-document");
   if (decoded.kind !== "hosted-document") throw new Error("Memory fixture decoded as the wrong family.");
-  assert.equal(decoded.bootstrap.hson.length, hsonBytes);
+  assert.equal(decoded.bootstrap.payload.length, hsonBytes);
   assert.equal(encode_ssr_bootstrap(decoded.bootstrap), encoded);
   process.stdout.write(JSON.stringify({
     encodedBytes: encoded.length,

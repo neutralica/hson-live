@@ -102,7 +102,8 @@ const locus = hsonLocus.create({ map: hostedMap, logicalMapId: "map-</script>", 
 const hostedBootstrap = render_hosted_document({ authority: locus }).bootstrap;
 const encodedHosted = encode_ssr_bootstrap(hostedBootstrap);
 const reorderedHostedBootstrap: typeof hostedBootstrap = {
-  hson: hostedBootstrap.hson,
+  payload: hostedBootstrap.payload,
+  format: hostedBootstrap.format,
   mode: hostedBootstrap.mode,
   rev: hostedBootstrap.rev,
   incarnationId: hostedBootstrap.incarnationId,
@@ -114,21 +115,16 @@ const decodedHosted = decode_ssr_bootstrap(encodedHosted);
 assert.equal(decodedHosted.kind, "hosted-document");
 if (decodedHosted.kind !== "hosted-document") throw new Error("Wrong hosted kind.");
 assert.deepEqual(decodedHosted.bootstrap, hostedBootstrap);
-assert.deepEqual(install_locus_snapshot(decodedHosted.bootstrap).map.capture().root, hostedMap.capture().root);
+assert.deepEqual(install_locus_snapshot(decodedHosted.bootstrap).map.capture({ identity: "strip" }).root, hostedMap.capture({ identity: "strip" }).root);
 
-const hostedWirePrefix = '{"format":"hson-ssr-bootstrap","version":1,"kind":"hosted-document","payload":{"logicalMapId":"wire-map","incarnationId":"wire-incarnation","revision":0,"mode":"document","hson":"';
+const hostedWirePrefix = '{"format":"hson-ssr-bootstrap","version":2,"kind":"hosted-document","payload":{"logicalMapId":"wire-map","incarnationId":"wire-incarnation","revision":0,"mode":"document","snapshotFormat":"hson-client-snapshot-v1","snapshotPayload":"';
 const hostedWireSuffix = '"}}';
 for (const length of [0, 1, 2, 24_393, 24_394, 24_395]) {
-  const hson = "x".repeat(length);
-  const bootstrap = { logicalMapId: "wire-map", incarnationId: "wire-incarnation", rev: 0, mode: "document" as const, hson };
-  assert.equal(encode_ssr_bootstrap(bootstrap), encodeText(`${hostedWirePrefix}${hson}${hostedWireSuffix}`));
+  const payload = `<main "${"x".repeat(length)}"/>`;
+  const bootstrap = { logicalMapId: "wire-map", incarnationId: "wire-incarnation", rev: 0, mode: "document" as const, format: "hson-client-snapshot-v1" as const, payload };
+  assert.equal(encode_ssr_bootstrap(bootstrap), encodeText(`${hostedWirePrefix}${JSON.stringify(payload).slice(1, -1)}${hostedWireSuffix}`));
 }
-const quotedHson = `quote" slash\\ controls:\b\t\n\f\r nul:\0 bmp:雪 pair:😀 high:\ud800 low:\udfff separators:\u2028\u2029`;
-const quotedWireHson = `quote\\" slash\\\\ controls:\\b\\t\\n\\f\\r nul:\\u0000 bmp:雪 pair:😀 high:\\ud800 low:\\udfff separators:\u2028\u2029`;
-const quotedBootstrap = { logicalMapId: "wire-map", incarnationId: "wire-incarnation", rev: 0, mode: "document" as const, hson: quotedHson };
-assert.equal(encode_ssr_bootstrap(quotedBootstrap), encodeText(`${hostedWirePrefix}${quotedWireHson}${hostedWireSuffix}`));
-assert.equal((decode_ssr_bootstrap(encode_ssr_bootstrap(quotedBootstrap)).bootstrap as typeof quotedBootstrap).hson, quotedHson);
-const padBootstrap = { logicalMapId: "wire-map", incarnationId: "wire-incarnation", rev: 0, mode: "document" as const, hson: "pad" };
+const padBootstrap = { logicalMapId: "wire-map", incarnationId: "wire-incarnation", rev: 0, mode: "document" as const, format: "hson-client-snapshot-v1" as const, payload: '<main "pad"/>' };
 const padEncoded = encode_ssr_bootstrap(padBootstrap);
 assert(padEncoded.length % 4 === 2 || padEncoded.length % 4 === 3);
 const padLast = alphabet.indexOf(padEncoded.at(-1)!);
@@ -158,6 +154,8 @@ assert.deepEqual(decodedLibraries.bootstrap.registry.libraries.map((entry) => en
 const librariesLocus = hsonLocus.create({ map: librariesMap, logicalMapId: "aggregate-map", incarnationId: "aggregate-incarnation", sessions: {} });
 const hostedLibrariesBootstrap = render_hosted_document({ authority: librariesLocus, document: "prototype" }).bootstrap;
 const encodedHostedLibraries = encode_ssr_bootstrap(hostedLibrariesBootstrap);
+assert.equal(decodeText(encodedHostedLibraries).includes("identityEpoch"), false);
+assert.equal(decodeText(encodedHostedLibraries).includes("issuedQuids"), false);
 const decodedHostedLibraries = decode_ssr_bootstrap(encodedHostedLibraries);
 assert.equal(decodedHostedLibraries.kind, "hosted-libraries");
 if (decodedHostedLibraries.kind !== "hosted-libraries") throw new Error("Wrong hosted Libraries kind.");
@@ -171,7 +169,7 @@ const parsed = JSON.parse(canonicalJson) as Record<string, unknown>;
 expectCode(encodeText(` {${canonicalJson.slice(1)}`), "SSR_BOOTSTRAP_NON_CANONICAL");
 expectCode(encodeText(JSON.stringify({ kind: parsed.kind, format: parsed.format, version: parsed.version, payload: parsed.payload })), "SSR_BOOTSTRAP_NON_CANONICAL");
 expectCode(encodeText(canonicalJson.replace('"format"', '"\\u0066ormat"')), "SSR_BOOTSTRAP_NON_CANONICAL");
-expectCode(encodeText(canonicalJson.replace('"version":1', '"version":1e0')), "SSR_BOOTSTRAP_NON_CANONICAL");
+expectCode(encodeText(canonicalJson.replace('"version":2', '"version":2e0')), "SSR_BOOTSTRAP_NON_CANONICAL");
 expectCode(encodeText(canonicalJson.replace('{', '{"format":"duplicate",')), "SSR_BOOTSTRAP_MALFORMED");
 expectCode(encodedLocal + "=", "SSR_BOOTSTRAP_MALFORMED");
 const standardBase64 = encodedLocal.replace(/-/g, "+").replace(/_/g, "/");
@@ -184,7 +182,7 @@ expectCode(base64url(new Uint8Array([0xff])), "SSR_BOOTSTRAP_MALFORMED");
 expectCode(base64url(new Uint8Array([0xef, 0xbb, 0xbf, ...utf8.encode(canonicalJson)])), "SSR_BOOTSTRAP_NON_CANONICAL");
 expectCode(encodeText("{"), "SSR_BOOTSTRAP_MALFORMED");
 expectCode(encodeText(JSON.stringify({ ...parsed, format: "wrong" })), "SSR_BOOTSTRAP_FORMAT_UNSUPPORTED");
-expectCode(encodeText(JSON.stringify({ ...parsed, version: 2 })), "SSR_BOOTSTRAP_VERSION_UNSUPPORTED");
+expectCode(encodeText(JSON.stringify({ ...parsed, version: 3 })), "SSR_BOOTSTRAP_VERSION_UNSUPPORTED");
 expectCode(encodeText(JSON.stringify({ ...parsed, kind: "wrong" })), "SSR_BOOTSTRAP_KIND_UNSUPPORTED");
 const { payload: _missing, ...missing } = parsed;
 expectCode(encodeText(JSON.stringify(missing)), "SSR_BOOTSTRAP_PAYLOAD_INVALID");

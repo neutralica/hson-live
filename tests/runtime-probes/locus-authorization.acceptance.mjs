@@ -1,6 +1,6 @@
 import { create_test_event_emitter } from "../test-events.mjs";
 import assert from "node:assert/strict";
-import { HsonData, hson } from "../../src/index.ts";
+import { Hson, hson } from "../../src/index.ts";
 import { create_live_trace_collector } from "../../src/diagnostics/index.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -56,9 +56,9 @@ function fixture(options = {}) {
   let executions = 0, session = 0;
   const host = hson.locus.create({
     state: { value: 0 }, logicalMapId: "auth-map", incarnationId: "auth-inc", sessionId: () => `session-${++session}`,
-    schema: { actions: { set: { payload: (v) => v instanceof HsonData && typeof v.materialize().value === "number" }, gated: { payload: (v) => v instanceof HsonData && v.kind === "number" } } },
+    schema: { actions: { set: { payload: (v) => typeof v === "string" && typeof Hson.data.materialize(v).value === "number" }, gated: { payload: (v) => typeof v === "string" && typeof Hson.data.materialize(v) === "number" } } },
     actions: {
-      async set(ctx, payload) { executions += 1; await ctx.mutate((draft) => draft.set(["value"], payload.materialize().value)); return payload; },
+      async set(ctx, payload) { executions += 1; await ctx.mutate((draft) => draft.set(["value"], Hson.data.materialize(payload).value)); return payload; },
       async gated(_ctx, payload) { executions += 1; await options.gate?.promise; return payload; },
     },
     ...(options.authorizeAction ? { authorizeAction: options.authorizeAction } : {}),
@@ -82,7 +82,7 @@ await check("policy receives immutable exact data and cannot alter handler input
   let blocked = false;
   const f = fixture({ authorizeAction(ctx) { try { ctx.payload.value = 99; } catch { blocked = true; } return true; } });
   const result = await connect(f.host, "detach").client.action("set", { value: 4 });
-  assert.equal(blocked, true); assert.deepEqual(result.result.materialize(), { value: 4 }); assert.deepEqual(f.host.map.snap(), { value: 4 });
+  assert.equal(blocked, true); assert.deepEqual(Hson.data.materialize(result.result), { value: 4 }); assert.deepEqual(f.host.map.snap(), { value: 4 });
 });
 
 await check("sync and async denial are stable, uncached, and side-effect free", async () => {
@@ -232,7 +232,7 @@ await check("session-origin authorization observes a replacement policy after ho
   const options = {
     map: hson.liveMap.fromJson({ value: 0 }),
     actions: {
-      async set(context, value) { await context.mutate((draft) => draft.set(["value"], value.scalar())); },
+      async set(context, value) { await context.mutate((draft) => draft.set(["value"], Hson.data.materialize(value))); },
     },
     authorizeAction: () => false,
   };
@@ -253,7 +253,7 @@ await check("custom application handlers can use external state and emit non-can
     logicalMapId: "application-boundary",
     actions: {
       notify(context, payload, message) {
-        const materialized = payload.materialize();
+        const materialized = Hson.data.materialize(payload);
         applicationState.deliveries.push({ origin: context.origin.kind, payload: materialized, action: message.name });
         return { delivered: context.emitEvent("application.notice", materialized) };
       },
@@ -268,7 +268,7 @@ await check("custom application handlers can use external state and emit non-can
   const events = pair.serverSent.map((raw) => JSON.parse(raw)).filter((message) => message.type === "event");
 
   assert.equal(result.type, "ack");
-  assert.deepEqual(result.result.materialize(), { delivered: true });
+  assert.deepEqual(Hson.data.materialize(result.result), { delivered: true });
   assert.deepEqual(applicationState.deliveries, [{
     origin: "session",
     payload: { source: "application" },

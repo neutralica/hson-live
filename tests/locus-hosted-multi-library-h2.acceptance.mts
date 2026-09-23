@@ -4,6 +4,7 @@ import { Hson, hsonLiveMap, hsonMirror, type HsonSchema } from "../src/index.ts"
 import { validate_document_path } from "../src/api/livemap/index.ts";
 import type { LiveMapLibraries } from "../src/types/livemap.types.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
+import { make_hosted_client_snapshot } from "../src/api/livemap/livemap.hosted.ts";
 import {
   create_locus_hosted_aggregate_client_internal,
   create_locus_hosted_aggregate_internal,
@@ -104,6 +105,14 @@ function insert_item(quid = QUID) {
   };
 }
 
+function page_item(libraries: LiveMapLibraries): unknown {
+  const root = document_library(libraries, "page").root();
+  const main = root.$_content[0];
+  if (typeof main !== "object" || main === null) return undefined;
+  const wrapper = main.$_content[0];
+  return typeof wrapper === "object" && wrapper !== null ? wrapper.$_content[0] : undefined;
+}
+
 await check("one managed action stages state, colors, and page behind one gate and one revision", async () => {
   const map = make_map();
   const seed = internal_livemap_aggregate_authority(map).captureHosted();
@@ -147,19 +156,20 @@ await check("one managed action stages state, colors, and page behind one gate a
   assert.equal(publications, 1);
   assert.equal(wires.length, 1);
 
-  const client = create_locus_hosted_aggregate_client_internal(seed);
+  const client = create_locus_hosted_aggregate_client_internal(make_hosted_client_snapshot(seed));
   let observerState: unknown;
   client.map.commits.observe(() => {
     observerState = [
       data_library(client.map, "state").snap(["theme"]),
       data_library(client.map, "colors").snap(["accent"]),
-      document_library(client.map, "page").document.byQuid(QUID)?.$_tag,
+      (page_item(client.map) as { $_tag?: string } | undefined)?.$_tag,
       client.map.rev,
     ];
   });
   client.apply_wire(wires[0]!);
   assert.deepEqual(observerState, ["dark", "#fff", "item", 1]);
-  assert.deepEqual(internal_livemap_aggregate_authority(client.map).captureHosted(), internal_livemap_aggregate_authority(map).captureHosted());
+  assert.equal(document_library(client.map, "page").document.byQuid(QUID), undefined);
+  assert.deepEqual(make_hosted_client_snapshot(internal_livemap_aggregate_authority(client.map).captureHosted()), make_hosted_client_snapshot(internal_livemap_aggregate_authority(map).captureHosted()));
   server.dispose();
 });
 
@@ -208,20 +218,20 @@ await check("wire fencing, stale revisions, malformed replay evidence, and schem
     data(draft, "colors").at(["accent"]).set("#fff");
   });
   const wire = wires[0]!;
-  const client = create_locus_hosted_aggregate_client_internal(seed);
+  const client = create_locus_hosted_aggregate_client_internal(make_hosted_client_snapshot(seed));
   const before = internal_livemap_aggregate_authority(client.map).captureHosted();
   const oldAggregateFormat = JSON.parse(wire) as any;
   oldAggregateFormat.commit.format = "hson-locus-hosted-aggregate-h2";
   assert.throws(() => client.apply_wire(JSON.stringify(oldAggregateFormat)), /format|incompatible/i);
   const oldCommitFormat = JSON.parse(wire) as any;
   oldCommitFormat.commit.commit.format = "hson-hosted-commit-h1";
-  assert.throws(() => client.apply_wire(JSON.stringify(oldCommitFormat)), /format|incompatible/i);
+  assert.throws(() => client.apply_wire(JSON.stringify(oldCommitFormat)), /format|incompatible|malformed/i);
   const registryMismatch = JSON.parse(wire) as any;
   registryMismatch.commit.registryDigest = "0".repeat(64);
   assert.throws(() => client.apply_wire(JSON.stringify(registryMismatch)), /fence/i);
   assert.deepEqual(internal_livemap_aggregate_authority(client.map).captureHosted(), before);
   const malformed = JSON.parse(wire) as any;
-  malformed.commit.commit.replay.operations[1].payload = "{}";
+  malformed.commit.commit.operations[1].payload = "{}";
   assert.throws(() => client.apply_wire(JSON.stringify(malformed)), /disagree|payload|malformed/i);
   assert.deepEqual(internal_livemap_aggregate_authority(client.map).captureHosted(), before);
   client.apply_wire(wire);
@@ -237,7 +247,7 @@ await check("page Reflect receives structural work once while unrelated data onl
   const seed = internal_livemap_aggregate_authority(map).captureHosted();
   const wires: string[] = [];
   const server = create_locus_hosted_aggregate_internal({ map, send: (wire) => wires.push(wire) });
-  const client = create_locus_hosted_aggregate_client_internal(seed);
+  const client = create_locus_hosted_aggregate_client_internal(make_hosted_client_snapshot(seed));
   const binding = hsonMirror(document_library(client.map, "page"));
   await server.mutate((draft) => {
     data(draft, "state").at(["theme"]).set("dark");
@@ -246,7 +256,8 @@ await check("page Reflect receives structural work once while unrelated data onl
   client.apply_wire(wires[0]!);
   assert.equal(binding.sourceRevision, 1);
   assert.equal(binding.diagnostics().updatesApplied, 1);
-  assert.equal(document_library(client.map, "page").document.byQuid(QUID)?.$_tag, "item");
+  assert.equal(document_library(client.map, "page").document.byQuid(QUID), undefined);
+  assert.equal((page_item(client.map) as { $_tag?: string } | undefined)?.$_tag, "item");
   await server.mutate((draft) => data(draft, "colors").at(["accent"]).set("#fff"));
   client.apply_wire(wires[1]!);
   assert.equal(binding.sourceRevision, 2);
@@ -291,7 +302,7 @@ await check("hosted actions remain FIFO and report focused prepare/replay teleme
   ]);
   const serverMs = performance.now() - serverStart;
   assert.deepEqual([first?.prevRev, first?.rev, second?.prevRev, second?.rev], [0, 1, 1, 2]);
-  const client = create_locus_hosted_aggregate_client_internal(seed);
+  const client = create_locus_hosted_aggregate_client_internal(make_hosted_client_snapshot(seed));
   const replayStart = performance.now();
   for (const wire of wires) client.apply_wire(wire);
   const replayMs = performance.now() - replayStart;

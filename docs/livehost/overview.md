@@ -167,11 +167,11 @@ There is no generic `LocusId`.
 Locus supplies the authoritative snapshot and recovery cut for bootstrap.
 Application/runtime code supplies routing and delivery continuation. One
 assembler produces one `LocusBootstrap` artifact with format
-`"hson-locus-bootstrap"`, media type
-`application/vnd.hson-live.locus-bootstrap+hson`, and selector field
-`locusSelector`. The current artifact has no version field and accepts no old
-bootstrap form.
+`"hson-locus-bootstrap-v2"`, media type
+`application/vnd.hson-live.locus-bootstrap-v2+hson`, and selector field
+`locusSelector`. Its client state body is QUID-free and uses
+`hson-client-snapshot-v1`; old bootstrap forms reject.
 
-Current representations follow one evolving pre-epoch contract. Unsupported
-generations are rejected; there is no compatibility ladder unless separately
-approved.
+Current client bootstrap and socket formats use the Phase 4C hard cut.
+Unsupported client generations are rejected. Authority persistence retains
+its exact runtime representation until Phase 5.

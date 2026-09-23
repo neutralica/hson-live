@@ -6,7 +6,7 @@ import { INTERACTION_RESERVED_LIBRARY_KEY } from "../../internal/interaction-sto
 import { rewrite_interaction_subjects, validate_interaction_subjects } from "../../internal/interaction-path-maintenance.js";
 import type { HsonSchema } from "../transform/transform.types.js";
 import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
-import type { ClassifiedLiveMap, HostedLiveMapLibrariesSnapshot, LiveMap, LiveMapAnyOp, LiveMapCommit, LiveMapLibrariesSnapshot, LocalLibrariesContinuationSnapshot, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapDataOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapCaptureOptions, LiveMapApply, LiveMapGraphCommit, LiveMapGraphOp, LiveMapGraphReplaceRootOp, LiveMapRootMode, LiveMapDocumentPath } from "../../types/livemap.types.js";
+import type { ClassifiedLiveMap, HostedLiveMapLibrariesSnapshot, HostedClientLibrariesSnapshot, LiveMap, LiveMapAnyOp, LiveMapCommit, LiveMapLibrariesSnapshot, LocalLibrariesContinuationSnapshot, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapDataOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapCaptureOptions, LiveMapApply, LiveMapGraphCommit, LiveMapGraphOp, LiveMapGraphReplaceRootOp, LiveMapRootMode, LiveMapDocumentPath } from "../../types/livemap.types.js";
 import type { LiveMapProjectedGraphEnsureQuidOp } from "./livemap.identity.types.js";
 import { is_ordinary_element_node } from "../../core/node-guards.js";
 import { resolve_document_path } from "./livemap.document.path.js";
@@ -155,11 +155,15 @@ import {
   assert_local_libraries_snapshot_shape,
   assert_hosted_libraries_snapshot_shape,
   decode_hosted_commit,
+  decode_hosted_client_commit,
   decode_hosted_root,
   encode_hosted_root,
   hosted_sha256,
   make_hosted_authority_fence,
   make_hosted_commit,
+  make_hosted_client_commit,
+  hosted_client_snapshot_as_local,
+  type HostedClientCommit,
   make_hosted_registry,
   type HostedAggregateCommit,
   type HostedAuthorityFence,
@@ -2308,6 +2312,44 @@ function make_livemap_core_from_compatibility_root(
     restore_libraries_aggregate(semantic, snapshot.authority);
   }
 
+  function restore_client_hosted_aggregate(snapshot: HostedClientLibrariesSnapshot): void {
+    const portable = hosted_client_snapshot_as_local(snapshot);
+    // No authority epoch or issued ledger enters this call. Every fallback
+    // replaces Echo's local identity epoch and fences prior subject handles.
+    restore_libraries_aggregate(portable, snapshot.authority);
+  }
+
+  function replay_client_hosted_aggregate(input: HostedClientCommit): LiveMapAggregateCommit {
+    transitionController.assertPublicMutationAllowed();
+    const hosted = require_hosted_state();
+    const decoded = decode_hosted_client_commit(input, hosted.registry, hosted.byName);
+    if (input.authority.logicalMapId !== hosted.fence.logicalMapId
+      || input.authority.incarnationId !== hosted.fence.incarnationId) {
+      throw new Error("Hosted client commit authority fence is incompatible.");
+    }
+    if (input.prevRev !== mapRevision) throw new LiveMapRevError(input.prevRev, mapRevision);
+    const writes: LiveMapAggregateWrite[] = decoded.map((entry): LiveMapAggregateWrite => {
+      const path = "path" in entry.semantic ? entry.semantic.path : (
+        "target" in entry.semantic ? entry.semantic.target.path : []
+      );
+      const target = entry.library.scope === "hson-internal"
+        ? aggregate_system_target(entry.library.identity as LiveMapSystemIdentity, path)
+        : aggregate_target(entry.library.identity as LiveMapLibraryIdentity, path);
+      if (entry.projected !== undefined) return Object.freeze({ target, kind: "replay-data", operation: entry.projected });
+      if (entry.graph === undefined || entry.graph.op === "ensure-quid") {
+        throw new Error("Hosted client event contains an identity-only operation.");
+      }
+      return Object.freeze({ target, kind: "graph", operation: entry.graph });
+    });
+    const transition = prepare_authority_transition(writes);
+    const local = transition.commit.hosted;
+    if (local === undefined || JSON.stringify(make_hosted_client_commit(local)) !== JSON.stringify(input)) {
+      transitionController.discardAuthority(transition);
+      throw new Error("Hosted client replay did not reproduce its portable operation semantics.");
+    }
+    return transitionController.acceptAuthority(transition).commit;
+  }
+
   function replay_hosted_aggregate(input: HostedAggregateCommit): LiveMapAggregateCommit {
     transitionController.assertPublicMutationAllowed();
     const hosted = require_hosted_state();
@@ -2384,11 +2426,21 @@ function make_livemap_core_from_compatibility_root(
     restoreLibraries: (snapshot) => restore_libraries_aggregate(snapshot),
     restorePortableLibraries: (snapshot) => restore_libraries_aggregate(snapshot),
     restoreHosted: restore_hosted_aggregate,
+    restoreClientHosted: restore_client_hosted_aggregate,
+    restoreClientHostedManaged: (owner, snapshot) => transitionController.runManaged(
+      owner,
+      () => restore_client_hosted_aggregate(snapshot),
+    ),
     restoreHostedManaged: (owner, snapshot) => transitionController.runManaged(
       owner,
       () => restore_hosted_aggregate(snapshot),
     ),
     replayHosted: replay_hosted_aggregate,
+    replayClientHosted: replay_client_hosted_aggregate,
+    replayClientHostedManaged: (owner, commit) => transitionController.runManaged(
+      owner,
+      () => replay_client_hosted_aggregate(commit),
+    ),
     replayHostedManaged: (owner, commit) => transitionController.runManaged(
       owner,
       () => replay_hosted_aggregate(commit),
@@ -2408,6 +2460,16 @@ function make_livemap_core_from_compatibility_root(
       publishAuthorityPosition();
       return mapRevision;
     }),
+    advanceSoloProgress: (prevRev, rev) => {
+      transitionController.assertPublicMutationAllowed();
+      if (!Number.isSafeInteger(prevRev) || !Number.isSafeInteger(rev)
+        || prevRev !== mapRevision || rev !== mapRevision + 1) {
+        throw new LiveMapRevError(prevRev, mapRevision);
+      }
+      mapRevision = rev;
+      publishAuthorityPosition();
+      return mapRevision;
+    },
     observeAuthorityPosition: (listener) => {
       aggregatePositionObservers.push(listener);
       return () => {

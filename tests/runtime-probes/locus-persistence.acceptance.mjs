@@ -437,9 +437,12 @@ await check("restored authority serves Hson, view-state, and replay recovery", a
       ...(capabilities === undefined ? {} : { snapshotCapabilities: capabilities }),
     }));
     const snapshot = pair.serverSent.find((message) => message.type === "recovery-snapshot")?.snapshot;
-    if (capabilities === undefined) assert.equal(typeof snapshot.hson, "string");
+    if (capabilities === undefined) {
+      assert.equal(snapshot.format, "hson-client-snapshot-v1");
+      assert.equal(typeof snapshot.payload, "string");
+    }
     else {
-      assert.equal(snapshot.format, "view-state");
+      assert.equal(snapshot.format, "view-state-client-snapshot-v1");
       assert.equal("formatVersion" in snapshot, false);
     }
   }

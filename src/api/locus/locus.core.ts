@@ -31,7 +31,9 @@ import type {
 import { decode_locus_message, encode_locus_message } from "./locus.protocol.js";
 import { make_locus_canonical_stream_runtime } from "./locus.history.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
-import { install_locus_snapshot, with_locus_bootstrap_snapshot } from "./locus.bootstrap.js";
+import { install_locus_authority_snapshot_internal, with_locus_bootstrap_snapshot } from "./locus.bootstrap.js";
+import { project_locus_client_snapshot, project_locus_client_transition } from "./locus.client-replication.js";
+import { locus_client_error_message } from "./locus.client-error.js";
 import { cut_hosted_authority, cut_hosted_snapshot } from "../../internal/document-cut.js";
 import { is_public_multi_library_livemap } from "../livemap/livemap.libraries.js";
 import { create_multi_library_locus } from "./locus.multi-library.js";
@@ -919,7 +921,7 @@ function create_locus_for_map<
       const code = typeof cause === "object" && cause !== null && "code" in cause && typeof cause.code === "string"
         ? cause.code
         : "LOCUS_RECOVERY_TRANSPORT_FAILED";
-      const message = cause instanceof Error ? cause.message : "Locus recovery transport failed.";
+      const message = locus_client_error_message(cause, "Locus recovery transport failed.");
       trace?.emit({
         subsystem: "transport",
         phase: "recovery.transport",
@@ -1129,16 +1131,29 @@ function create_locus_for_map<
         if (plan.outcome === "snapshot") send_recovery({ ...base, outcome: "snapshot", reason: plan.reason }, message.id);
         else send_recovery({ ...base, outcome: plan.outcome }, message.id);
         const completion = plan.complete((item) => {
-          if (item.kind === "snapshot") send_recovery({ type: "recovery-snapshot", id: message.id, snapshot: item.snapshot }, message.id);
-          else send_recovery({ type: "recovery-commit", id: message.id, phase: "body", commit: item.commit }, message.id);
+          if (item.kind === "snapshot") send_recovery({ type: "recovery-snapshot", id: message.id, snapshot: project_locus_client_snapshot(item.snapshot) }, message.id);
+          else {
+            const projected = project_locus_client_transition(item.commit);
+            send_recovery(projected.kind === "commit"
+              ? { type: "recovery-commit", id: message.id, phase: "body", commit: projected.commit }
+              : { type: "recovery-progress", id: message.id, phase: "body", progress: projected.progress }, message.id);
+          }
         });
         stopLive = stream.onCommit((commit) => {
           if (!channelActive || !authoritative()) return;
           if (!liveReady) pendingLive.push(commit);
-          else send_without_record({ type: "commit", id: message.id, commit });
+          else {
+            const projected = project_locus_client_transition(commit);
+            send_without_record(projected.kind === "commit"
+              ? { type: "commit", id: message.id, commit: projected.commit }
+              : { type: "progress", id: message.id, progress: projected.progress });
+          }
         });
         for (const commit of completion.tail) {
-          send_recovery({ type: "recovery-commit", id: message.id, phase: "tail", commit }, message.id);
+          const projected = project_locus_client_transition(commit);
+          send_recovery(projected.kind === "commit"
+            ? { type: "recovery-commit", id: message.id, phase: "tail", commit: projected.commit }
+            : { type: "recovery-progress", id: message.id, phase: "tail", progress: projected.progress }, message.id);
         }
         send_recovery({ type: "recovery-caught-up", id: message.id, caughtUp: completion.caughtUp }, message.id);
         recoveryState = Object.freeze({
@@ -1149,7 +1164,12 @@ function create_locus_for_map<
         });
         while (pendingLive.length) {
           const commit = pendingLive.shift();
-          if (commit) send_without_record({ type: "commit", id: message.id, commit });
+          if (commit) {
+            const projected = project_locus_client_transition(commit);
+            send_without_record(projected.kind === "commit"
+              ? { type: "commit", id: message.id, commit: projected.commit }
+              : { type: "progress", id: message.id, progress: projected.progress });
+          }
         }
         liveReady = true;
         const bodyCommitCount = plan.outcome === "replay" ? plan.body.length : 0;
@@ -1372,7 +1392,7 @@ function create_locus_for_map<
     recovery,
     ...(map.mode === "document" ? {
       cut: () => cut_hosted_authority(() => with_locus_bootstrap_snapshot({ stream, recovery },
-        (snapshot) => cut_hosted_snapshot(snapshot, install_locus_snapshot))),
+        (snapshot) => cut_hosted_snapshot(snapshot, install_locus_authority_snapshot_internal))),
     } : {}),
     sessions: Object.freeze({ debug: sessions.debug, onChange: sessions.onChange, dispose: sessions.dispose }),
     actionRequests: Object.freeze({ debug: actionRequests.debug, dispose: actionRequests.dispose }),
