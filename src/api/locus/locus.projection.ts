@@ -165,16 +165,26 @@ function materialize_effective_projection(
   const writable = Object.freeze(included.filter((entry) => entry.mode === "document" && allowedWritable.has(entry.name)).map((entry) => entry.name));
   const authority = Object.freeze({ ...policy.authority });
   // The canonical digest input has no root, revision, policy, or excluded registry topology.
-  const canonical = JSON.stringify({ format: "locus-effective-projection-v1", authority,
-    libraries: included.map((entry) => ({ name: entry.name, mode: entry.mode, schemaDigest: entry.schemaDigest, rootCodec: entry.rootCodec })),
-    htmlDocument: requested.htmlDocument ?? null, systemFeatures: features,
-    writableDocuments: writable,
-  });
+  const digest = locus_projection_contract_digest(authority, included, requested.htmlDocument ?? null, features, writable);
   return Object.freeze({ authority, libraries: Object.freeze(included),
     ...(requested.htmlDocument === undefined ? {} : { htmlDocument: requested.htmlDocument }),
-    systemFeatures: features, writableDocuments: writable, digest: hosted_sha256(canonical),
+    systemFeatures: features, writableDocuments: writable, digest,
     includesLibrary: (name: string) => includedNames.has(name),
     canAuthorDocument: (name: string) => writable.includes(name),
     hasSystemFeature: (feature: LocusProjectionSystemFeature) => features.includes(feature),
   });
+}
+
+/** The Step 6A digest definition, also used to admit a decoded Step 6B contract. @internal */
+export function locus_projection_contract_digest(
+  authority: HostedAuthorityFence,
+  libraries: readonly LocusProjectedLibraryContract[],
+  htmlDocument: string | null,
+  systemFeatures: readonly LocusProjectionSystemFeature[],
+  writableDocuments: readonly string[],
+): string {
+  return hosted_sha256(JSON.stringify({ format: "locus-effective-projection-v1", authority,
+    libraries: libraries.map((entry) => ({ name: entry.name, mode: entry.mode, schemaDigest: entry.schemaDigest, rootCodec: entry.rootCodec })),
+    htmlDocument, systemFeatures, writableDocuments,
+  }));
 }

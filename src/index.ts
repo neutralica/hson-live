@@ -6,6 +6,7 @@
  */
 
 export { Hson } from "./hson-authoring.js";
+export type { AuthorityProjectionSnapshot } from "./types/locus.projection.types.js";
 export type { HsonCanonical, HsonData, HsonDocument, HsonSchemaData, SchemaType } from "./api/transform/transform.types.js";
 export {
   hson,

@@ -11,6 +11,26 @@ export type LocusExposureEntry = Readonly<{
 
 export type LocusProjectionSystemFeature = "interactions";
 
+/** Portable authority half of a composed client LiveMap; local libraries are separate. */
+export type AuthorityProjectionSnapshot = Readonly<{
+  format: "hson-authority-projection-snapshot-v1";
+  authority: Readonly<{ logicalMapId: string; incarnationId: string }>;
+  revision: number;
+  projectionDigest: string;
+  libraries: readonly Readonly<{
+    name: string;
+    mode: "data-object" | "data-array" | "document";
+    schema: import("../api/transform/transform.types.js").HsonSchemaData;
+    schemaDigest: string;
+    rootCodec: "hson-exact-value";
+    root: Readonly<{ format: "hson-exact-value"; payload: string }>;
+  }>[];
+  htmlDocument: string | null;
+  systemFeatures: readonly LocusProjectionSystemFeature[];
+  writableDocuments: readonly string[];
+  system: Readonly<{ interactions: Readonly<{ format: "hson-exact-value"; payload: string }> }> | null;
+}>;
+
 /** An explicit request; selecting an HTML document also requests that library. */
 export type LocusRequestedProjection = Readonly<{
   libraries: readonly string[];

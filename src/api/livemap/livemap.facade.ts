@@ -9,8 +9,10 @@ import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { make_classified_livemap } from "./livemap.core.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 import { make_livemap_libraries } from "./livemap.libraries.js";
-import type { HostedClientLibrariesSnapshot, LiveMapLibraries, LiveMapLibrariesInput } from "../../types/livemap.types.js";
+import type { LiveMapLibraries, LiveMapLibrariesInput } from "../../types/livemap.types.js";
 import { make_livemap_client_mirror_from_snapshot_internal } from "./livemap.libraries.js";
+import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
+import { authority_projection_as_client_composition_internal } from "../locus/locus.authority-projection-snapshot.js";
 
 export interface HsonLiveMapFacade {
   readonly fromJson: typeof fromJson;
@@ -75,7 +77,7 @@ function fromLibraries<const TLibraries extends LiveMapLibrariesInput>(
 
 /** Compose one fixed client registry from visible authority state and client-owned declarations. */
 function fromClientSnapshot(input: Readonly<{
-  authority: HostedClientLibrariesSnapshot;
+  authority: AuthorityProjectionSnapshot;
   localLibraries: LiveMapLibrariesInput;
 }>): LiveMapLibraries {
   if (typeof input !== "object" || input === null) throw new TypeError("Client LiveMap configuration is required.");
@@ -84,7 +86,8 @@ function fromClientSnapshot(input: Readonly<{
       admit_portable_hson_node(definition.document, `LiveMap.fromClientSnapshot(${name})`);
     }
   }
-  return make_livemap_client_mirror_from_snapshot_internal(input.authority, input.localLibraries);
+  return make_livemap_client_mirror_from_snapshot_internal(
+    authority_projection_as_client_composition_internal(input.authority), input.localLibraries);
 }
 
 /** Canonical DOM-free LiveMap construction facade. */

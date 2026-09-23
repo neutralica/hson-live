@@ -104,12 +104,9 @@ function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketL
   const pair = socket_pair();
   locus.connect(pair.server);
   const snapshot = make_hosted_client_snapshot(internal_livemap_aggregate_authority(server).captureHosted());
-  const client = hsonLiveMap.fromClientSnapshot({
-    authority: snapshot,
-    localLibraries: {
-      ui: { data: { value: 0 }, schema: DataSchema },
-      panel: { document: "<aside/>", schema: LocalSchema },
-    },
+  const client = make_livemap_client_mirror_from_snapshot_internal(snapshot, {
+    ui: { data: { value: 0 }, schema: DataSchema },
+    panel: { document: "<aside/>", schema: LocalSchema },
   });
   const ui = client.lib("ui");
   const panel = client.lib("panel");
