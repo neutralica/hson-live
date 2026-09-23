@@ -25,6 +25,7 @@ type CaptureProvenance = Readonly<{
   rev: number;
   root: HsonNode;
   overlay: LiveMapDocumentIdentityOverlay;
+  continuity?: object;
 }>;
 
 export type LiveMapDocumentIdentityEpochController = LiveMapIdentityEpochController;
@@ -48,6 +49,7 @@ export function capture_livemap_document<TMode extends DocumentLiveMapMode>(
   root: HsonNode,
   overlay: LiveMapDocumentIdentityOverlay,
   options?: DocumentLiveMapCaptureOptions,
+  continuity?: () => object | undefined,
 ): DocumentLiveMapCapture<TMode> {
   const category = capture_category(options);
   const captureRoot = clone_hson_graph_without_quids(root);
@@ -59,6 +61,7 @@ export function capture_livemap_document<TMode extends DocumentLiveMapMode>(
   });
 
   if (category === "same-epoch") {
+    const continuityToken = continuity?.();
     captureProvenance.set(capture, Object.freeze({
       owner: controller.owner,
       epoch: controller.current(),
@@ -67,6 +70,7 @@ export function capture_livemap_document<TMode extends DocumentLiveMapMode>(
       rev,
       root: clone_live_root(captureRoot),
       overlay,
+      ...(continuityToken === undefined ? {} : { continuity: continuityToken }),
     }));
   }
   return capture;
@@ -85,6 +89,7 @@ export function validate_livemap_document_admission(
   controller: LiveMapDocumentIdentityEpochController,
   capture: DocumentLiveMapCapture,
   identity: unknown,
+  continuity?: () => object | undefined,
 ): DocumentLiveMapInstallIdentity {
   const policy = install_identity(identity);
   if (policy !== "same-epoch") return policy;
@@ -112,6 +117,12 @@ export function validate_livemap_document_admission(
     throw provenance_error(
       "STALE_IDENTITY_EPOCH",
       "The same-epoch capture belongs to an identity epoch that has been replaced.",
+    );
+  }
+  if (provenance.continuity !== undefined && provenance.continuity !== continuity?.()) {
+    throw provenance_error(
+      "STALE_IDENTITY_EPOCH",
+      "Projected document exact capture belongs to an earlier recovery continuity boundary.",
     );
   }
   if (capture.mode !== provenance.mode

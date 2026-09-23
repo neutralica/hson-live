@@ -72,6 +72,14 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   /** Fix public names and exact Schema sources before hosted capture/replay. @internal */
   configureHostedRegistry: (bindings: readonly HostedRegistryBinding[]) => HostedRegistry;
   hostedRegistry: () => HostedRegistry;
+  /** Bind a fixed authority-projected subset of this client map. @internal */
+  configureClientComposition: (snapshot: import("../../types/livemap.types.js").HostedClientLibrariesSnapshot) => void;
+  clientProjection: () => Readonly<{
+    authority: import("./livemap.hosted.js").HostedAuthorityFence;
+    registry: HostedRegistry;
+    revision: number;
+    libraries: readonly string[];
+  }> | undefined;
   captureLibraries: () => LiveMapLibrariesSnapshot;
   captureHosted: () => HostedLiveMapLibrariesSnapshot;
   restoreLibraries: (snapshot: LiveMapLibrariesSnapshot) => void;
@@ -86,7 +94,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   replayClientHosted: (commit: import("./livemap.hosted.js").HostedClientCommit) => LiveMapAggregateCommit;
   /** Replay durable portable effects, including a revision whose effects collapse after identity reset. @internal */
   replayDurableHosted: (commit: import("./livemap.hosted.js").HostedClientCommit) => void;
-  replayClientHostedManaged: (owner: object, commit: import("./livemap.hosted.js").HostedClientCommit) => LiveMapAggregateCommit;
+  replayClientHostedManaged: (owner: object, commit: import("./livemap.hosted.js").HostedClientCommit, authorityRev?: number) => LiveMapAggregateCommit;
   /** Apply a transport commit while this aggregate is client-managed. @internal */
   replayHostedManaged: (owner: object, commit: HostedAggregateCommit) => LiveMapAggregateCommit;
   /** Advance a managed replica through one effect-free authority revision. @internal */
@@ -104,6 +112,8 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   target: (library: LiveMapLibraryIdentity, path: LivePath) => LiveMapStructuralTarget;
   root: (library: LiveMapLibraryIdentity) => HsonNode;
   documentOverlay: (library: LiveMapLibraryIdentity) => LiveMapDocumentIdentityOverlay;
+  /** Exact-capture continuity proof for a projected document Library. @internal */
+  documentCaptureContinuity: (library: LiveMapLibraryIdentity) => object | undefined;
   identityEpoch: () => LiveMapIdentityEpochController;
   acquireLocalDocumentIdentity: (
     library: LiveMapLibraryIdentity,

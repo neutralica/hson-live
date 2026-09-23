@@ -65,6 +65,7 @@ import {
   assert_libraries_snapshot_bound,
   assert_libraries_snapshot_shape,
   assert_hosted_libraries_snapshot_shape,
+  assert_hosted_client_snapshot_shape,
   hosted_client_snapshot_as_local,
   make_hosted_client_snapshot,
   decode_hosted_root,
@@ -81,6 +82,12 @@ type NamedLibrary = Readonly<{
 }>;
 
 const PUBLIC_MULTI_LIBRARY_MAPS = new WeakSet<object>();
+const CLIENT_LIBRARY_SOURCES = new WeakMap<object, "authority-projected" | "client-local">();
+
+/** Internal ownership evidence for write-propagating link admission. */
+export function client_library_source_internal(value: object): "authority-projected" | "client-local" | undefined {
+  return CLIENT_LIBRARY_SOURCES.get(value);
+}
 
 /** True only for the dedicated local multi-library public facade. @internal */
 export function is_public_multi_library_livemap(value: unknown): value is object {
@@ -94,6 +101,7 @@ export function is_public_multi_library_livemap(value: unknown): value is object
 export function make_livemap_libraries<const TLibraries extends LiveMapLibrariesInput>(
   inputs: TLibraries,
   systems: readonly InitialSystemState[] = [],
+  clientSnapshot?: HostedClientLibrariesSnapshot,
 ): LiveMapLibraries<TLibraries> {
   const entries = Object.entries(inputs);
   if (entries.length === 0) throw new Error("LiveMap fromLibraries requires at least one named Library.");
@@ -137,6 +145,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapLibraries
       schema: entry.input.schema,
     });
   }));
+  if (clientSnapshot !== undefined) aggregate.configureClientComposition(clientSnapshot);
 
   const public_commit = (commit: LiveMapAggregateCommit): LiveMapMultiLibraryCommit => Object.freeze({
     kind: "multi-library" as const,
@@ -159,6 +168,8 @@ export function make_livemap_libraries<const TLibraries extends LiveMapLibraries
     const facade = "data" in library.input
       ? make_data_library(library, aggregate, public_commit)
       : make_document_library(library, aggregate, public_commit);
+    if (clientSnapshot !== undefined) CLIENT_LIBRARY_SOURCES.set(facade,
+      clientSnapshot.registry.libraries.some((entry) => entry.name === name) ? "authority-projected" : "client-local");
     selectedFacades.set(name, facade);
     return facade;
   };
@@ -179,18 +190,20 @@ export function make_livemap_libraries<const TLibraries extends LiveMapLibraries
     topology: "aggregate" as const,
     revision: () => aggregate.inspect().revision,
     documentMaps: () => Object.freeze([...named.values()]
-      .filter((entry) => "document" in entry.input)
+      .filter((entry) => "document" in entry.input
+        && (clientSnapshot === undefined || clientSnapshot.registry.libraries.some((projected) => projected.name === entry.name)))
       .map((entry) => selected(entry.name))),
     acquire(owner: object) {
       aggregate.claimManagement(owner);
       try {
-        const snapshot = aggregate.captureHosted();
+        const projection = aggregate.clientProjection();
+        const snapshot = projection === undefined ? aggregate.captureHosted() : undefined;
         return Object.freeze({
           runManaged: <T>(operation: () => T): T => operation(),
           release: (): void => aggregate.releaseManagement(owner),
           initialRecovery: Object.freeze({
-            incarnationId: snapshot.authority.incarnationId,
-            lastAppliedRev: snapshot.revision,
+            incarnationId: projection?.authority.incarnationId ?? snapshot?.authority.incarnationId,
+            lastAppliedRev: projection?.revision ?? snapshot?.revision,
           }),
         });
       } catch (cause) {
@@ -218,7 +231,41 @@ export function make_livemap_hosted_mirror_from_snapshot_internal(
 /** Construct an Echo replica from QUID-free client state and its protocol fence. */
 export function make_livemap_client_mirror_from_snapshot_internal(
   snapshot: HostedClientLibrariesSnapshot,
+  localLibraries?: LiveMapLibrariesInput,
 ): LiveMapLibraries {
+  if (localLibraries !== undefined) {
+    assert_hosted_client_snapshot_shape(snapshot);
+    const inputs: Record<string, LiveMapLibraryInput> = Object.create(null);
+    const systems: InitialSystemState[] = [];
+    for (let index = 0; index < snapshot.registry.libraries.length; index += 1) {
+      const entry = snapshot.registry.libraries[index];
+      const encoded = snapshot.libraries[index];
+      if (entry === undefined || encoded === undefined || entry.name !== encoded.name
+        || entry.mode !== encoded.mode || entry.schema !== encoded.schema) {
+        throw new Error("Client projection Library metadata is malformed.");
+      }
+      const root = decode_hosted_root(encoded.root);
+      admit_portable_hson_node(root, "Client projection root");
+      const schema = HsonSchemaHandle.fromHson(entry.schema);
+      if (entry.scope === "hson-internal") {
+        systems.push(Object.freeze({ key: entry.name, transportName: entry.name, root, hsonSchema: schema }));
+      } else {
+        inputs[entry.name] = entry.mode === "document"
+          ? { document: root, schema }
+          : { data: node_to_json_value(root), schema };
+      }
+    }
+    for (const [name, definition] of Object.entries(localLibraries)) {
+      if (Object.hasOwn(inputs, name) || snapshot.registry.libraries.some((entry) => entry.name === name)) {
+        throw new Error(`Client-local Library ${JSON.stringify(name)} collides with the authority projection.`);
+      }
+      inputs[name] = definition;
+    }
+    if (Object.keys(inputs).length === 0) {
+      throw new Error("An action-only client session has no LiveMap; use endpoint-only Echo.");
+    }
+    return make_livemap_libraries(inputs, systems, snapshot);
+  }
   const local = hosted_client_snapshot_as_local(snapshot);
   const mirror = make_livemap_mirror_from_snapshot_internal(local);
   internal_livemap_aggregate_authority(mirror).restoreClientHosted(snapshot);
@@ -653,6 +700,7 @@ function make_document_library(
     root(),
     controller.overlay(),
     options,
+    () => aggregate.documentCaptureContinuity(library.identity),
   );
   const facade: LiveMapDocumentLibrary = {
     mode: "document" as const,

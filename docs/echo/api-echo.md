@@ -22,14 +22,15 @@ It does not construct or expose a LiveMap and has no recovery capability.
 
 A replica-bearing Echo requires both an explicit `map` and recovery
 configuration. It exposes the same endpoint capabilities plus that client map
-and `recovery`. Echo claims exclusive management of the supplied map, but the
+and `recovery`. In a composed fixed-library map, Echo manages only
+authority-projected targets; client-local targets remain locally mutable. The
 presence of `.map` is not proof that it is caught up: convergence is established
-by recovery state. Local-only state belongs in a separate local LiveMap.
+by recovery state.
 
 Library count is a LiveMap topology concern, not an Echo kind. Supplying a
 fixed-library map preserves its exact library and Schema types through the
-same `Echo` family and reproduces the complete authoritative registry under
-one global revision.
+same `Echo` family. A composed map holds the authority projection alongside
+client application Libraries. Echo orders authority effects with its own cursor.
 
 ```text
 LiveTree ⇅ Mirror ⇅ replica LiveMap ⇅ Echo ⇅ Locus ⇅ Locus LiveMap
@@ -74,8 +75,9 @@ settlement, interpreted with the current session's `logicalMapId` and
 `incarnationId`. Receipt of that result does not claim local replica or Mirror
 convergence. Echo processes one ordered authority stream: a graph commit applies
 an application effect, while generic progress advances the processed authority
-position without graph or DOM work. `map.rev` is the processed authority
-position. A completion waiter settles only after Echo has processed every
+position without graph or DOM work. For a composed map, `map.rev` is the local
+graph revision and Echo's `lastAppliedRev` is the authority position. A
+completion waiter settles only after Echo has processed every authority
 revision through `completionRev`, including progress-only revisions.
 
 Configured actions preserve full canonical Hson data fidelity in both

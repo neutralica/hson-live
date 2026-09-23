@@ -304,12 +304,12 @@ Commits created during snapshot serialization must not be lost or folded into th
 
 ## 10. Client authoritative cursor
 
-For the managed aggregate Echo replica, `map.rev` is the processed authority
-position. Snapshot installation, graph replay, and generic progress all advance
-that same position. There is no secondary `lastAppliedRev` counter for this
-replica. Progress carries no graph effect, application commit, or DOM work.
-The following separate-cursor description applies to the older solo recovery
-path.
+For a composed fixed-library Echo replica, `map.rev` counts local graph
+transitions, including client-local mutations and accepted authority graph
+effects. Echo separately owns `lastAppliedRev`, the highest contiguous authority
+revision processed. A progress-only event advances that cursor without changing
+`map.rev`, publishing an application commit, or producing DOM work. The older
+solo recovery path also has a separate authority cursor.
 
 The client tracks an explicit authoritative cursor:
 
@@ -329,9 +329,10 @@ Locus validates canonical wire continuity using the authoritative cursor, not th
 ## 11. Client commit application
 
 Managed aggregate Echo applies commit and progress events contiguously under
-the same logical map, incarnation, registry, and revision fences. A progress
-event advances only `map.rev`; it is never a fabricated graph commit. The
-duplicate and gap rules below describe the older solo recovery path.
+the same logical map, incarnation, registry, and authority-revision fences. In a
+composed map, progress advances only Echo's authority cursor; it is never a
+fabricated graph commit. The duplicate and gap rules below describe the older
+solo recovery path.
 
 For a commit from the current incarnation:
 

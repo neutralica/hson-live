@@ -98,6 +98,8 @@ export type LiveMapTransitionController = Readonly<{
   discardAuthority: (transition: PreparedLiveMapAuthorityTransition) => void;
   invalidate: () => void;
   assertPublicMutationAllowed: () => void;
+  /** The owner currently executing a privileged transition, if any. @internal */
+  managedExecutionOwner: () => object | undefined;
   claimManagement: (owner: object, schedule: LiveMapManagedMutationScheduler<object>) => void;
   releaseManagement: (owner: object) => void;
   /** Run a preparation owned by the current exclusive manager. @internal */
@@ -307,6 +309,7 @@ export function make_livemap_transition_controller(
         "LiveMap mutation is controlled by an exclusive Locus authority.",
       );
     },
+    managedExecutionOwner: () => managedExecutionOwner,
     claimManagement(owner, schedule): void {
       if (management !== undefined && management.owner !== owner) {
         throw new LiveMapTransitionError(

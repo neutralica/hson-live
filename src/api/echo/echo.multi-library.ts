@@ -30,7 +30,7 @@ import type {
 } from "../locus/locus.hosted-multi-library.transport.internal.js";
 import { configure_echo_hosted_aggregate_websocket_internal } from "./echo.aggregate-websocket.internal.js";
 
-/** Create one complete exact-topology Echo replica. */
+/** Bind Echo authority to the projected portion of one fixed client registry. */
 export function create_multi_library_echo<
   TMap extends LiveMapLibraries,
   TActions extends LocusActionPayloads = LocusActionPayloads,
@@ -56,7 +56,8 @@ export function create_multi_library_echo<
   const documentAuthorities: ReadonlyArray<Readonly<{
     map: object;
     authority: EchoDocumentAuthority;
-  }>> = internal_livemap_aggregate_authority(options.map).hostedRegistry().libraries
+  }>> = (internal_livemap_aggregate_authority(options.map).clientProjection()?.registry
+    ?? internal_livemap_aggregate_authority(options.map).hostedRegistry()).libraries
     .filter((entry) => entry.mode === "document")
     .map((entry) => {
       const map = options.map.lib(entry.name);
@@ -89,8 +90,8 @@ export function create_multi_library_echo<
             ...(result.type === "error" ? { error: result.error } : {}),
           });
         },
-        () => options.map.rev,
-        (listener) => internal_livemap_aggregate_authority(options.map).observeAuthorityPosition(listener),
+        () => endpoint.lastAppliedRev ?? 0,
+        (listener) => endpoint.observeAuthorityPosition(listener),
         () => endpoint.replica.ready,
         endpoint.replica.onDispose,
         endpoint.replica.waitUntilReady,

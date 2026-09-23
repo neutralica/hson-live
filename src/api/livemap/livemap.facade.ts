@@ -9,7 +9,8 @@ import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { make_classified_livemap } from "./livemap.core.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 import { make_livemap_libraries } from "./livemap.libraries.js";
-import type { LiveMapLibraries, LiveMapLibrariesInput } from "../../types/livemap.types.js";
+import type { HostedClientLibrariesSnapshot, LiveMapLibraries, LiveMapLibrariesInput } from "../../types/livemap.types.js";
+import { make_livemap_client_mirror_from_snapshot_internal } from "./livemap.libraries.js";
 
 export interface HsonLiveMapFacade {
   readonly fromJson: typeof fromJson;
@@ -18,6 +19,7 @@ export interface HsonLiveMapFacade {
   readonly fromDocument: typeof fromDocument;
   readonly fromNode: typeof fromNode;
   readonly fromLibraries: typeof fromLibraries;
+  readonly fromClientSnapshot: typeof fromClientSnapshot;
 }
 
 function must_data_livemap(map: ClassifiedLiveMap): LiveMap {
@@ -71,6 +73,20 @@ function fromLibraries<const TLibraries extends LiveMapLibrariesInput>(
   return make_livemap_libraries(libraries);
 }
 
+/** Compose one fixed client registry from visible authority state and client-owned declarations. */
+function fromClientSnapshot(input: Readonly<{
+  authority: HostedClientLibrariesSnapshot;
+  localLibraries: LiveMapLibrariesInput;
+}>): LiveMapLibraries {
+  if (typeof input !== "object" || input === null) throw new TypeError("Client LiveMap configuration is required.");
+  for (const [name, definition] of Object.entries(input.localLibraries)) {
+    if ("document" in definition && definition.document !== undefined && typeof definition.document !== "string") {
+      admit_portable_hson_node(definition.document, `LiveMap.fromClientSnapshot(${name})`);
+    }
+  }
+  return make_livemap_client_mirror_from_snapshot_internal(input.authority, input.localLibraries);
+}
+
 /** Canonical DOM-free LiveMap construction facade. */
 export const hsonLiveMap: HsonLiveMapFacade = Object.freeze({
   fromJson,
@@ -79,4 +95,5 @@ export const hsonLiveMap: HsonLiveMapFacade = Object.freeze({
   fromDocument,
   fromNode,
   fromLibraries,
+  fromClientSnapshot,
 });

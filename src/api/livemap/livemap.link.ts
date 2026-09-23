@@ -3,6 +3,7 @@
 import type { JsonValue } from "../../core/types.js";
 import type { LiveMapCore, LiveMapDisposer, LiveMapFeedEvent, LiveMapLinkOptions, LivePath } from "../../types/livemap.types.js";
 import { schedule_livemap_managed_mutation } from "./livemap.authority.js";
+import { client_library_source_internal } from "./livemap.libraries.js";
 import { path_is_prefix } from "./livemap.path.js";
 import {
   livemap_projected_propagation,
@@ -33,6 +34,11 @@ import { ordered_projected_value_equal } from "../../core/ordered-projected-valu
  * a linked source scope because feeds report the current scoped `event.value`.
  */
 export function link_livemap(source: LiveMapCore, target: LiveMapCore, options: LiveMapLinkOptions): LiveMapDisposer {
+  const sourceOwner = client_library_source_internal(source);
+  const targetOwner = client_library_source_internal(target);
+  if (sourceOwner !== targetOwner && (sourceOwner !== undefined || targetOwner !== undefined)) {
+    throw new Error("Automatic LiveMap links cannot cross client library ownership.");
+  }
   const linkPath = link_source_path(options);
   const sourceProjected = livemap_projected_propagation(source);
   const targetProjected = livemap_projected_propagation(target);

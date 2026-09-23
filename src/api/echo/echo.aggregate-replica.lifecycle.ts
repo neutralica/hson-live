@@ -5,14 +5,16 @@ import { internal_livemap_aggregate_authority } from "../livemap/livemap.interna
 import type { HostedLiveMapLibrariesSnapshot } from "../../types/livemap.types.js";
 import type { HostedClientLibrariesSnapshot } from "../../types/livemap.types.js";
 import type { HostedClientCommit } from "../livemap/livemap.hosted.js";
+import type { HostedAuthorityFence, HostedRegistry } from "../livemap/livemap.hosted.js";
 import type { EchoReplicaCapability } from "./echo.replica.js";
 
 /** @internal Aggregate exact-replica management and terminal lifetime. */
 export type EchoAggregateReplicaCapability = EchoReplicaCapability<LiveMapLibraries | undefined> & Readonly<{
   attachMap: (map: LiveMapLibraries) => void;
   captureHosted: () => HostedLiveMapLibrariesSnapshot;
+  clientProjection: () => Readonly<{ authority: HostedAuthorityFence; registry: HostedRegistry; revision: number; libraries: readonly string[] }> | undefined;
   restoreHosted: (snapshot: HostedClientLibrariesSnapshot) => void;
-  replayHosted: (commit: HostedClientCommit) => number;
+  replayHosted: (commit: HostedClientCommit, authorityRev: number) => number;
   advanceHostedProgress: (progress: Readonly<{
     logicalMapId: string;
     incarnationId: string;
@@ -58,13 +60,16 @@ export function create_echo_aggregate_replica_capability_internal(
       if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");
       return internal_livemap_aggregate_authority(map).captureHosted();
     },
+    clientProjection() {
+      return map === undefined ? undefined : internal_livemap_aggregate_authority(map).clientProjection();
+    },
     restoreHosted(snapshot): void {
       if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");
       internal_livemap_aggregate_authority(map).restoreClientHostedManaged(owner, snapshot);
     },
-    replayHosted(commit): number {
+    replayHosted(commit, authorityRev): number {
       if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");
-      return internal_livemap_aggregate_authority(map).replayClientHostedManaged(owner, commit).rev;
+      return internal_livemap_aggregate_authority(map).replayClientHostedManaged(owner, commit, authorityRev).rev;
     },
     advanceHostedProgress(progress): number {
       if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");

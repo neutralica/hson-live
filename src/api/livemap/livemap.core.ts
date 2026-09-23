@@ -165,6 +165,7 @@ import {
   assert_libraries_snapshot_bound,
   assert_libraries_snapshot_shape,
   assert_hosted_libraries_snapshot_shape,
+  assert_hosted_client_snapshot_shape,
   decode_hosted_commit,
   decode_hosted_client_commit,
   decode_hosted_root,
@@ -1144,6 +1145,15 @@ function make_livemap_core_from_compatibility_root(
   let hostedFence: HostedAuthorityFence | undefined;
   let hostedBindingsByIdentity: ReadonlyMap<object, HostedRegistryBinding> | undefined;
   let hostedBindingsByName: ReadonlyMap<string, HostedRegistryBinding> | undefined;
+  let clientComposition: Readonly<{
+    authority: HostedAuthorityFence;
+    registry: HostedRegistry;
+    revision: number;
+    projected: ReadonlySet<LiveMapLibraryIdentity>;
+    bindings: ReadonlyMap<string, HostedRegistryBinding>;
+  }> | undefined;
+  let clientManagementOwner: object | undefined;
+  const projectedCaptureContinuity = new Map<LiveMapLibraryIdentity, object>();
   const systemIdentity = make_livemap_system_identity();
   let systemState: LiveMapSystemState | undefined;
 
@@ -1196,7 +1206,7 @@ function make_livemap_core_from_compatibility_root(
     rev: number,
     operations: readonly LiveMapAggregateOperation[],
   ): Readonly<{ hosted?: HostedAggregateCommit }> {
-    if (hostedRegistry === undefined || hostedFence === undefined || hostedBindingsByIdentity === undefined) return {};
+    if (clientComposition !== undefined || hostedRegistry === undefined || hostedFence === undefined || hostedBindingsByIdentity === undefined) return {};
     const hosted = make_hosted_commit(hostedFence, hostedRegistry, hostedBindingsByIdentity, {
       changed,
       prevRev,
@@ -1460,7 +1470,24 @@ function make_livemap_core_from_compatibility_root(
       continuity?: "same-epoch" | "new-epoch";
     }>[] = [],
   ): import("./livemap.authority.js").PreparedLiveMapAuthorityTransition {
-    transitionController.assertPublicMutationAllowed();
+    if (clientComposition === undefined) transitionController.assertPublicMutationAllowed();
+    else {
+      const executing = transitionController.managedExecutionOwner();
+      if (executing !== undefined && executing !== clientManagementOwner) {
+        throw new Error("Client LiveMap transition belongs to another manager.");
+      }
+      const managed = executing !== undefined;
+      const touched = [
+        ...writes.map((write) => write.target),
+        ...preparedDocuments.map((entry) => aggregate_target(entry.library, [])),
+      ];
+      for (const target of touched) {
+        const projected = target.domain === "system" || clientComposition.projected.has(target.library);
+        if (managed !== projected) {
+          throw new Error("Client LiveMap transition crosses its library mutation authority.");
+        }
+      }
+    }
     const prevRev = mapRevision;
     const preparedIdentityGeneration = identityGeneration;
     const candidates = new Map<LiveMapLibraryIdentity, AggregateCandidate>();
@@ -1505,7 +1532,8 @@ function make_livemap_core_from_compatibility_root(
       afterOverlay: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay,
       operation: LiveMapGraphOp,
     ): void => {
-      if (replayingSystem || systemState?.key !== INTERACTION_RESERVED_LIBRARY_KEY) return;
+      if (replayingSystem || systemState?.key !== INTERACTION_RESERVED_LIBRARY_KEY
+        || (clientComposition !== undefined && !clientComposition.projected.has(library.identity))) return;
       const name = hostedBindingsByIdentity?.get(library.identity)?.name;
       if (name === undefined) throw new Error("Interaction document Library name is unavailable.");
       const current = systemCandidate?.value ?? systemState.projectedValue;
@@ -2095,6 +2123,50 @@ function make_livemap_core_from_compatibility_root(
     return install_hosted_registry([...bindings, ...systemBinding]);
   }
 
+  function configure_client_composition(snapshot: HostedClientLibrariesSnapshot): void {
+    if (clientComposition !== undefined || clientManagementOwner !== undefined || mapRevision !== 0) {
+      throw new Error("Client LiveMap ownership must be fixed before its first transition.");
+    }
+    assert_hosted_client_snapshot_shape(snapshot);
+    const hosted = require_hosted_state();
+    const projected = new Set<LiveMapLibraryIdentity>();
+    const bindings = new Map<string, HostedRegistryBinding>();
+    for (let index = 0; index < snapshot.registry.libraries.length; index += 1) {
+      const entry = snapshot.registry.libraries[index];
+      const root = snapshot.libraries[index];
+      if (entry === undefined || root === undefined || entry.name !== root.name) {
+        throw new Error("Client projection registry and roots disagree.");
+      }
+      const binding = hosted.byName.get(entry.name);
+      const fullEntry = hosted.registry.libraries.find((candidate) => candidate.name === entry.name);
+      if (binding === undefined || binding.mode !== entry.mode
+        || binding.scope !== entry.scope || binding.schema.toHson() !== entry.schema
+        || fullEntry?.schemaDigest !== entry.schemaDigest || fullEntry.rootCodec !== entry.rootCodec) {
+        throw new Error("Client projection contract disagrees with the composed registry.");
+      }
+      const current = binding.scope === "hson-internal"
+        ? systemState?.root
+        : require_library(binding.identity as LiveMapLibraryIdentity).root;
+      if (current === undefined || !canonical_graph_equal(current, decode_hosted_root(root.root))) {
+        throw new Error("Client projection initial root disagrees with the composed registry.");
+      }
+      bindings.set(entry.name, binding);
+      if (binding.scope !== "hson-internal") {
+        const identity = binding.identity as LiveMapLibraryIdentity;
+        projected.add(identity);
+        projectedCaptureContinuity.set(identity, Object.freeze({}));
+      }
+    }
+    clientComposition = Object.freeze({
+      authority: Object.freeze({ ...snapshot.authority }),
+      registry: snapshot.registry,
+      revision: snapshot.revision,
+      projected,
+      bindings,
+    });
+    hostedFence = clientComposition.authority;
+  }
+
   function install_hosted_registry(bindingsInput: readonly HostedRegistryBinding[]): HostedRegistry {
     const byIdentity = new Map<object, HostedRegistryBinding>();
     const byName = new Map<string, HostedRegistryBinding>();
@@ -2366,21 +2438,120 @@ function make_livemap_core_from_compatibility_root(
   }
 
   function restore_client_hosted_aggregate(snapshot: HostedClientLibrariesSnapshot): void {
+    if (clientComposition !== undefined) {
+      restore_client_projection(snapshot);
+      return;
+    }
     const portable = hosted_client_snapshot_as_local(snapshot);
-    // No authority epoch or issued ledger enters this call. Every fallback
-    // replaces Echo's local identity epoch and fences prior subject handles.
+    // Legacy full-registry fallback has no client-local ownership partition.
+    // It replaces Echo's local identity epoch and fences prior subject handles.
     restore_libraries_aggregate(portable, snapshot.authority);
   }
 
-  function replay_portable_hosted_aggregate(input: HostedClientCommit, durable: boolean): LiveMapAggregateCommit | undefined {
-    transitionController.assertPublicMutationAllowed();
+  function restore_client_projection(snapshot: HostedClientLibrariesSnapshot): void {
+    const composition = clientComposition;
+    if (composition === undefined) throw new Error("Client projection is not configured.");
+    if (clientManagementOwner === undefined
+      || transitionController.managedExecutionOwner() !== clientManagementOwner) {
+      throw new Error("Client projection restore requires Echo management.");
+    }
+    assert_hosted_client_snapshot_shape(snapshot);
+    if (snapshot.authority.logicalMapId !== composition.authority.logicalMapId
+      || snapshot.registryDigest !== composition.registry.digest
+      || JSON.stringify(snapshot.registry) !== JSON.stringify(composition.registry)) {
+      throw new Error("Client projection snapshot has an incompatible authority or registry.");
+    }
+    const candidates: Array<Readonly<{
+      library: LiveMapLibraryState;
+      root: HsonNode;
+      documentOverlay?: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay;
+      projectedOverlay?: LiveMapProjectedIdentityOverlay;
+      projectedValue?: OrderedProjectedValue;
+    }>> = [];
+    let systemCandidate: Readonly<{ root: HsonNode; value: OrderedProjectedValue }> | undefined;
+    for (let index = 0; index < snapshot.registry.libraries.length; index += 1) {
+      const entry = snapshot.registry.libraries[index];
+      const encoded = snapshot.libraries[index];
+      if (entry === undefined || encoded === undefined || entry.name !== encoded.name
+        || entry.mode !== encoded.mode || entry.schema !== encoded.schema
+        || entry.schemaDigest !== encoded.schemaDigest) {
+        throw new Error("Client projection snapshot Library metadata is incompatible.");
+      }
+      const binding = composition.bindings.get(entry.name);
+      if (binding === undefined) throw new Error("Client projection snapshot contains an unknown Library.");
+      const root = decode_hosted_root(encoded.root);
+      admit_portable_hson_node(root, "Client projection snapshot");
+      const prepared = prepare_livemap_root(root);
+      if (prepared.mode !== binding.mode) throw new Error("Client projection snapshot root mode is incompatible.");
+      must_hson_schema_root(binding.schema, prepared.root);
+      if (binding.scope === "hson-internal") {
+        if (systemState === undefined || systemState.identity !== binding.identity) {
+          throw new Error("Client projection system state is unavailable.");
+        }
+        systemCandidate = Object.freeze({ root: prepared.root, value: must_projected_root_value(prepared.root) });
+      } else {
+        const library = require_library(binding.identity as LiveMapLibraryIdentity);
+        candidates.push(Object.freeze({
+          library,
+          root: prepared.root,
+          ...(prepared.documentOverlay === undefined ? {} : { documentOverlay: prepared.documentOverlay }),
+          ...(prepared.projectedOverlay === undefined ? {} : {
+            projectedOverlay: prepared.projectedOverlay,
+            projectedValue: must_projected_root_value(prepared.root),
+          }),
+        }));
+      }
+    }
+    const previousRevision = mapRevision;
+    const changedLibraries = Object.freeze(candidates
+      .filter((candidate) => !canonical_graph_equal(candidate.library.root, candidate.root))
+      .map((candidate) => candidate.library.identity));
+    // Keep the one runtime epoch and its monotonic issued ledger. Removed
+    // projected overlays retire their claims; no old claim can be minted again.
+    for (const candidate of candidates) Object.assign(candidate.library, {
+      root: candidate.root,
+      documentOverlay: candidate.documentOverlay,
+      projectedOverlay: candidate.projectedOverlay,
+      projectedValue: candidate.projectedValue,
+    });
+    for (const candidate of candidates) projectedCaptureContinuity.set(candidate.library.identity, Object.freeze({}));
+    if (systemCandidate !== undefined && systemState !== undefined) {
+      systemState.root = systemCandidate.root;
+      systemState.projectedValue = systemCandidate.value;
+    }
+    if (candidates.length > 0 || systemCandidate !== undefined) mapRevision += 1;
+    hostedFence = Object.freeze({ ...snapshot.authority });
+    clientComposition = Object.freeze({ ...composition, authority: hostedFence, revision: snapshot.revision });
+    transitionController.invalidate();
+    const event = Object.freeze({
+      previousRevision,
+      revision: mapRevision,
+      libraries: Object.freeze(candidates.map((candidate) => candidate.library.identity)),
+      changedLibraries,
+      continuity: "new-epoch" as const,
+    });
+    enqueuePublication(() => {
+      for (const observer of [...aggregateRestoreObservers]) observer(event);
+      publishAuthorityPosition();
+    });
+  }
+
+  function replay_portable_hosted_aggregate(input: HostedClientCommit, durable: boolean, authorityRev?: number): LiveMapAggregateCommit | undefined {
+    if (clientComposition === undefined) transitionController.assertPublicMutationAllowed();
     const hosted = require_hosted_state();
-    const decoded = decode_hosted_client_commit(input, hosted.registry, hosted.byName);
+    const composition = clientComposition;
+    const decoded = decode_hosted_client_commit(input,
+      composition?.registry ?? hosted.registry,
+      composition?.bindings ?? hosted.byName);
     if (input.authority.logicalMapId !== hosted.fence.logicalMapId
       || input.authority.incarnationId !== hosted.fence.incarnationId) {
       throw new Error("Hosted client commit authority fence is incompatible.");
     }
-    if (input.prevRev !== mapRevision) throw new LiveMapRevError(input.prevRev, mapRevision);
+    if (composition !== undefined) {
+      if (authorityRev === undefined || input.prevRev !== authorityRev) {
+        throw new LiveMapRevError(input.prevRev, authorityRev ?? -1);
+      }
+    } else if (input.prevRev !== mapRevision) throw new LiveMapRevError(input.prevRev, mapRevision);
     const writes: LiveMapAggregateWrite[] = decoded.map((entry): LiveMapAggregateWrite => {
       const path = "path" in entry.semantic ? entry.semantic.path : (
         "target" in entry.semantic ? entry.semantic.target.path : []
@@ -2395,6 +2566,7 @@ function make_livemap_core_from_compatibility_root(
       return Object.freeze({ target, kind: "graph", operation: entry.graph });
     });
     const transition = prepare_authority_transition(writes);
+    if (composition !== undefined) return transitionController.acceptAuthority(transition).commit;
     const local = transition.commit.hosted;
     if (durable && !transition.commit.changed) {
       // The old runtime may have distinguished equal-content subjects only
@@ -2434,8 +2606,8 @@ function make_livemap_core_from_compatibility_root(
     return transitionController.acceptAuthority(transition).commit;
   }
 
-  function replay_client_hosted_aggregate(input: HostedClientCommit): LiveMapAggregateCommit {
-    const replayed = replay_portable_hosted_aggregate(input, false);
+  function replay_client_hosted_aggregate(input: HostedClientCommit, authorityRev?: number): LiveMapAggregateCommit {
+    const replayed = replay_portable_hosted_aggregate(input, false, authorityRev);
     if (replayed === undefined) throw new Error("Hosted client replay made no authority progress.");
     return replayed;
   }
@@ -2520,6 +2692,13 @@ function make_livemap_core_from_compatibility_root(
     systemTarget: aggregate_system_target,
     configureHostedRegistry: configure_hosted_registry,
     hostedRegistry: () => require_hosted_state().registry,
+    configureClientComposition: configure_client_composition,
+    clientProjection: () => clientComposition === undefined ? undefined : Object.freeze({
+      authority: clientComposition.authority,
+      registry: clientComposition.registry,
+      revision: clientComposition.revision,
+      libraries: Object.freeze([...clientComposition.bindings.keys()]),
+    }),
     captureLibraries: capture_libraries_aggregate,
     captureHosted: capture_hosted_aggregate,
     restoreLibraries: (snapshot) => restore_libraries_aggregate(snapshot),
@@ -2537,9 +2716,9 @@ function make_livemap_core_from_compatibility_root(
     replayHosted: replay_hosted_aggregate,
     replayClientHosted: replay_client_hosted_aggregate,
     replayDurableHosted: replay_durable_hosted_aggregate,
-    replayClientHostedManaged: (owner, commit) => transitionController.runManaged(
+    replayClientHostedManaged: (owner, commit, authorityRev) => transitionController.runManaged(
       owner,
-      () => replay_client_hosted_aggregate(commit),
+      () => replay_client_hosted_aggregate(commit, authorityRev),
     ),
     replayHostedManaged: (owner, commit) => transitionController.runManaged(
       owner,
@@ -2547,10 +2726,17 @@ function make_livemap_core_from_compatibility_root(
     ),
     advanceHostedProgressManaged: (owner, progress) => transitionController.runManaged(owner, () => {
       const hosted = require_hosted_state();
+      const composition = clientComposition;
       if (progress.logicalMapId !== hosted.fence.logicalMapId
         || progress.incarnationId !== hosted.fence.incarnationId
-        || progress.registryDigest !== hosted.registry.digest) {
+        || progress.registryDigest !== (composition?.registry.digest ?? hosted.registry.digest)) {
         throw new Error("Hosted authority progress fence is incompatible.");
+      }
+      if (composition !== undefined) {
+        if (!Number.isSafeInteger(progress.prevRev) || progress.rev !== progress.prevRev + 1) {
+          throw new LiveMapRevError(progress.prevRev, progress.rev);
+        }
+        return progress.rev;
       }
       if (!Number.isSafeInteger(progress.prevRev) || !Number.isSafeInteger(progress.rev)
         || progress.prevRev !== mapRevision || progress.rev !== mapRevision + 1) {
@@ -2584,6 +2770,7 @@ function make_livemap_core_from_compatibility_root(
       if (overlay === undefined) throw new Error("Selected LiveMap library is not a document library.");
       return overlay;
     },
+    documentCaptureContinuity: (library) => projectedCaptureContinuity.get(require_library(library).identity),
     identityEpoch: () => mapIdentityEpoch,
     acquireLocalDocumentIdentity: acquire_local_document_identity,
     acquireLocalProjectedIdentity: acquire_local_projected_identity,
@@ -2597,14 +2784,17 @@ function make_livemap_core_from_compatibility_root(
     ),
     accept: transitionController.acceptAuthority,
     discard: transitionController.discardAuthority,
-    claimManagement: (owner) => transitionController.claimManagement(
-      owner,
-      () => Promise.reject(new LiveMapTransitionError(
+    claimManagement: (owner) => {
+      transitionController.claimManagement(owner, () => Promise.reject(new LiveMapTransitionError(
         "LIVEMAP_MANAGED_MUTATION_REJECTED",
         "Aggregate LiveMap mutation is controlled by an exclusive Locus authority.",
-      )),
-    ),
-    releaseManagement: transitionController.releaseManagement,
+      )));
+      if (clientComposition !== undefined) clientManagementOwner = owner;
+    },
+    releaseManagement: (owner) => {
+      transitionController.releaseManagement(owner);
+      if (clientManagementOwner === owner) clientManagementOwner = undefined;
+    },
     commit: (writes) => transitionController.acceptAuthority(prepare_authority_transition(writes)).commit,
     commitDocumentMutation: commit_aggregate_document_mutation,
     documentCommitFor: (library, commit) => documentCommitByAggregate.get(commit)?.get(library),
