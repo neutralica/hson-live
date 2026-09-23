@@ -13,6 +13,8 @@ import { admit_locus_remote_action_internal } from "../../src/api/locus/locus.re
 import { parse_hson_exact_runtime } from "../../src/internal/exact-runtime-hson-codec.ts";
 import { admit_exact_runtime_livemap_node } from "../../src/internal/exact-runtime-node-admission.ts";
 import { read_locus_retained_action_status_internal } from "../../src/api/locus/locus.action-status.internal.ts";
+import { acquire_document_identity } from "../helpers/livemap-identity-internal.mts";
+import { set_livemap_document_quid_candidate_source_for_tests } from "../../src/api/livemap/livemap.document.registration.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "locus.persistence",
@@ -347,9 +349,10 @@ await check("persistent store unload and checkpoint-plus-tail reload preserve ex
   await host.mutate((draft) => draft.document.content.insert(root, 0, inserted));
   const persistedTail = adapter.state("persistent-reload").commits[0];
   assert.equal(JSON.stringify(persistedTail).includes("$_tag"), false);
-  assert.equal(persistedTail.commit.ops[0].content.format, "hson-graph");
+  assert.equal(persistedTail.commit.ops[0].content.format, "hson-graph-portable-v1");
+  assert.equal(JSON.stringify(adapter.state("persistent-reload")).includes("000001011"), false);
   inserted.$_tag = "caller-mutated";
-  const expected = map.capture();
+  const expected = map.capture({ identity: "strip" });
   const incarnation = host.stream.incarnationId;
   assert.equal(await store.unload("persistent-reload"), true);
   const loaded = await store.load("persistent-reload");
@@ -359,13 +362,62 @@ await check("persistent store unload and checkpoint-plus-tail reload preserve ex
   assert.equal(adapter.loadCalls.at(-1), restored.stream.logicalMapId);
   assert.equal(restored.stream.incarnationId, incarnation);
   assert.equal(restored.map.rev, expected.rev);
-  assert.equal(canonical_hson_graph_equal(restored.map.capture().root, expected.root), true);
-  assert.equal(restored.map.document.byQuid("000001011")?.$_tag, "section");
+  assert.equal(canonical_hson_graph_equal(restored.map.capture({ identity: "strip" }).root, expected.root), true);
+  assert.equal(restored.map.document.byQuid("000001011"), undefined);
   assert.deepEqual(restored.stream.history.replayAfter(1)?.map((commit) => commit.rev), [2]);
   assert.throws(() => restored.map.document.attrs.set(root, "direct", true));
   assert.equal((await restored.mutate((draft) => draft.document.attrs.set(root, "continued", true))).rev, 3);
   assert.equal(restored.stream.incarnationId, incarnation);
   await store.unload("persistent-reload");
+});
+
+await check("solo durable checkpoint and tail ignore local QUID demand and restart with fresh identity", async () => {
+  const adapter = new MemoryPersistenceAdapter();
+  const store = create_livehost_persistent_store(adapter);
+  const created = await store.create("solo-fresh-identity", { map: element("<main/>") });
+  assert.equal(created.ok, true);
+  const host = created.value;
+  const before = adapter.state("solo-fresh-identity");
+  const rev = host.map.rev;
+  set_livemap_document_quid_candidate_source_for_tests(host.map.document, () => "000001091");
+  const oldHandle = acquire_document_identity(host.map.document, root);
+  assert.equal(oldHandle.snap()?.$_meta?.quid, "000001091");
+  assert.equal(host.map.rev, rev);
+  assert.deepEqual(adapter.state("solo-fresh-identity"), before);
+  await host.checkpoint();
+  assert.deepEqual(adapter.state("solo-fresh-identity"), before);
+  assert.equal(JSON.stringify(before).includes("000001091"), false);
+  assert.equal(JSON.stringify(before).includes("issuedQuids"), false);
+  assert.equal(await store.unload("solo-fresh-identity"), true);
+  const loaded = await store.load("solo-fresh-identity");
+  assert.equal(loaded.ok, true);
+  const restored = loaded.value;
+  assert.equal(restored.map.rev, rev);
+  assert.equal(restored.stream.logicalMapId, host.stream.logicalMapId);
+  assert.equal(restored.stream.incarnationId, host.stream.incarnationId);
+  assert.equal(restored.map.document.byQuid("000001091"), undefined);
+  assert.equal(oldHandle.snap()?.$_meta?.quid, "000001091");
+  set_livemap_document_quid_candidate_source_for_tests(restored.map.document, () => "000001092");
+  const freshHandle = acquire_document_identity(restored.map.document, root);
+  assert.equal(freshHandle.snap()?.$_meta?.quid, "000001092");
+  assert.equal(restored.map.rev, rev);
+  assert.deepEqual(adapter.state("solo-fresh-identity"), before);
+  await store.unload("solo-fresh-identity");
+});
+
+await check("solo legacy exact checkpoint is explicitly unsupported", async () => {
+  const adapter = new MemoryPersistenceAdapter();
+  const store = create_livehost_persistent_store(adapter);
+  const created = await store.create("solo-legacy", { map: element("<main/>") });
+  assert.equal(created.ok, true);
+  const old = adapter.state("solo-legacy");
+  delete old.checkpoint.format;
+  await store.unload("solo-legacy");
+  adapter.loadOverride = old;
+  const loaded = await store.load("solo-legacy");
+  assert.equal(loaded.ok, false);
+  assert.equal(loaded.error.code, "LOCUS_PERSISTED_STATE_INVALID");
+  assert.match(loaded.error.message, /unsupported legacy document checkpoint format/i);
 });
 
 await check("simultaneous loads coalesce and a failed coalesced load can retry", async () => {

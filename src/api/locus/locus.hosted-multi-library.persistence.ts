@@ -1,13 +1,13 @@
-import type { HostedLiveMapLibrariesSnapshot, LiveMapLibraries } from "../../types/livemap.types.js";
+import type { HostedClientLibrariesSnapshot, HostedLiveMapLibrariesSnapshot, LiveMapLibraries } from "../../types/livemap.types.js";
 import type {
   HostedAggregateCommit,
+  HostedClientCommit,
 } from "../livemap/livemap.hosted.js";
+import { make_hosted_client_commit, make_hosted_client_snapshot } from "../livemap/livemap.hosted.js";
 import {
   internal_livemap_aggregate_authority,
 } from "../livemap/livemap.internal.js";
-import {
-  make_livemap_hosted_mirror_from_snapshot_internal,
-} from "../livemap/livemap.libraries.js";
+import { make_livemap_client_mirror_from_snapshot_internal } from "../livemap/livemap.libraries.js";
 import {
   create_locus_hosted_aggregate_internal,
   type LocusHostedAggregate,
@@ -15,23 +15,33 @@ import {
 } from "./locus.hosted-multi-library.js";
 import { LocusPersistenceError } from "./locus.persistence.error.js";
 
-/** Internal storage wrapper around one exact aggregate capture. */
+export type LocusDurableAggregateSnapshot = Readonly<Omit<HostedClientLibrariesSnapshot, "format"> & {
+  format: "hson-livemap-durable-snapshot-v1";
+}>;
+
+export type LocusDurableAggregateCommit = Readonly<Omit<HostedClientCommit, "format"> & {
+  format: "hson-livemap-durable-commit-v1";
+}>;
+
+/** Internal storage wrapper around one QUID-free aggregate cut. */
 export type LocusHostedAggregatePersistedCheckpoint = Readonly<{
+  format: "hson-locus-durable-aggregate-checkpoint-v1";
   logicalMapId: string;
   incarnationId: string;
   mapKind: "hosted-aggregate";
   registryDigest: string;
   rev: number;
-  snapshot: HostedLiveMapLibrariesSnapshot;
+  snapshot: LocusDurableAggregateSnapshot;
 }>;
 
-/** Internal storage wrapper around one exact aggregate commit. */
+/** Internal storage wrapper around one QUID-free semantic transition. */
 export type LocusHostedAggregatePersistedCommit = Readonly<{
+  format: "hson-locus-durable-aggregate-record-v1";
   logicalMapId: string;
   incarnationId: string;
   mapKind: "hosted-aggregate";
   registryDigest: string;
-  commit: HostedAggregateCommit;
+  commit: LocusDurableAggregateCommit;
 }>;
 
 /** Internal adapter port; it stores opaque authoritative aggregate records. */
@@ -109,24 +119,48 @@ function persistence_failure(
 }
 
 function hosted_checkpoint(snapshot: HostedLiveMapLibrariesSnapshot): LocusHostedAggregatePersistedCheckpoint {
+  const { format: _clientFormat, ...semantic } = make_hosted_client_snapshot(snapshot);
   return Object.freeze({
+    format: "hson-locus-durable-aggregate-checkpoint-v1",
     logicalMapId: snapshot.authority.logicalMapId,
     incarnationId: snapshot.authority.incarnationId,
     mapKind: "hosted-aggregate",
     registryDigest: snapshot.registryDigest,
     rev: snapshot.revision,
-    snapshot,
+    snapshot: Object.freeze({ ...semantic, format: "hson-livemap-durable-snapshot-v1" }),
   });
 }
 
 function hosted_commit(commit: HostedAggregateCommit): LocusHostedAggregatePersistedCommit {
+  const projected = make_hosted_client_commit(commit);
+  if (projected === undefined) throw new Error("Runtime-local identity demand cannot become durable authority history.");
+  const { format: _clientFormat, ...semantic } = projected;
   return Object.freeze({
+    format: "hson-locus-durable-aggregate-record-v1",
     logicalMapId: commit.authority.logicalMapId,
     incarnationId: commit.authority.incarnationId,
     mapKind: "hosted-aggregate",
     registryDigest: commit.registryDigest,
-    commit,
+    commit: Object.freeze({ ...semantic, format: "hson-livemap-durable-commit-v1" }),
   });
+}
+
+export function durable_aggregate_checkpoint(snapshot: HostedLiveMapLibrariesSnapshot): LocusHostedAggregatePersistedCheckpoint {
+  return hosted_checkpoint(snapshot);
+}
+
+export function durable_aggregate_commit(commit: HostedAggregateCommit): LocusHostedAggregatePersistedCommit {
+  return hosted_commit(commit);
+}
+
+export function durable_aggregate_snapshot_as_client(snapshot: LocusDurableAggregateSnapshot): HostedClientLibrariesSnapshot {
+  const { format: _format, ...semantic } = snapshot;
+  return Object.freeze({ ...semantic, format: "hson-livemap-client-snapshot-v1" });
+}
+
+function durable_aggregate_commit_as_client(commit: LocusDurableAggregateCommit): HostedClientCommit {
+  const { format: _format, ...semantic } = commit;
+  return Object.freeze({ format: "hson-hosted-client-commit-v1", ...semantic });
 }
 
 function assert_checkpoint_fence(
@@ -134,8 +168,9 @@ function assert_checkpoint_fence(
   requestedLogicalMapId: string,
 ): LocusHostedAggregatePersistedCheckpoint {
   if (!exact_keys(checkpoint, [
-    "logicalMapId", "incarnationId", "mapKind", "registryDigest", "rev", "snapshot",
+    "format", "logicalMapId", "incarnationId", "mapKind", "registryDigest", "rev", "snapshot",
   ])
+    || checkpoint.format !== "hson-locus-durable-aggregate-checkpoint-v1"
     || checkpoint.logicalMapId !== requestedLogicalMapId
     || typeof checkpoint.logicalMapId !== "string"
     || typeof checkpoint.incarnationId !== "string"
@@ -151,8 +186,10 @@ function assert_checkpoint_fence(
 
 function assert_snapshot_fence(
   checkpoint: LocusHostedAggregatePersistedCheckpoint,
-): HostedLiveMapLibrariesSnapshot {
+): LocusDurableAggregateSnapshot {
   const snapshot = checkpoint.snapshot;
+  if (!exact_keys(snapshot, ["format", "revision", "registry", "registryDigest", "libraries", "authority"])
+    || snapshot.format !== "hson-livemap-durable-snapshot-v1") throw invalid_state();
   const authority = record(snapshot.authority);
   const registry = record(snapshot.registry);
   if (authority === undefined
@@ -173,11 +210,12 @@ function assert_commit_fence(
   value: unknown,
   checkpoint: LocusHostedAggregatePersistedCheckpoint,
   expectedPrevRev: number,
-): HostedAggregateCommit {
+): LocusDurableAggregateCommit {
   const persisted = record(value);
   if (persisted === undefined || !exact_keys(persisted, [
-    "logicalMapId", "incarnationId", "mapKind", "registryDigest", "commit",
+    "format", "logicalMapId", "incarnationId", "mapKind", "registryDigest", "commit",
   ])
+    || persisted.format !== "hson-locus-durable-aggregate-record-v1"
     || persisted.logicalMapId !== checkpoint.logicalMapId
     || persisted.incarnationId !== checkpoint.incarnationId
     || persisted.mapKind !== "hosted-aggregate"
@@ -186,6 +224,8 @@ function assert_commit_fence(
   }
   const commitRecord = record(persisted.commit);
   if (commitRecord === undefined) throw invalid_state();
+  if (!exact_keys(commitRecord, ["format", "authority", "registryDigest", "prevRev", "rev", "operations"])
+    || commitRecord.format !== "hson-livemap-durable-commit-v1") throw invalid_state();
   const authority = record(commitRecord.authority);
   if (authority === undefined
     || authority.logicalMapId !== checkpoint.logicalMapId
@@ -195,7 +235,7 @@ function assert_commit_fence(
     || commitRecord.rev !== expectedPrevRev + 1) {
     throw invalid_state();
   }
-  return persisted.commit as HostedAggregateCommit;
+  return persisted.commit as LocusDurableAggregateCommit;
 }
 
 function exact_representation_equal(left: unknown, right: unknown): boolean {
@@ -211,23 +251,27 @@ function validate_hosted_aggregate_state(
     if (state === undefined || !exact_keys(state, ["checkpoint", "commits"])) throw invalid_state();
     const checkpointValue = record(state.checkpoint);
     if (checkpointValue === undefined) throw invalid_state();
+    if (checkpointValue.format === undefined && exact_keys(checkpointValue, [
+      "logicalMapId", "incarnationId", "mapKind", "registryDigest", "rev", "snapshot",
+    ])) {
+      throw new LocusPersistenceError("LOCUS_PERSISTED_STATE_INVALID", "Unsupported legacy aggregate checkpoint format.");
+    }
     const checkpoint = assert_checkpoint_fence(checkpointValue, requestedLogicalMapId);
     const snapshot = assert_snapshot_fence(checkpoint);
     if (!Array.isArray(state.commits)) throw invalid_state();
 
-    // Aggregate reconstruction compiles each exact Schema source,
-    // validates every decoded root, hydrates the complete issued ledger, and
-    // rebuilds all derivable overlays before this map is admitted.
-    const map = make_livemap_hosted_mirror_from_snapshot_internal(snapshot);
+    // The client installer already admits portable roots, compiles Schemas,
+    // validates registry and system state, and creates a fresh identity owner.
+    const map = make_livemap_client_mirror_from_snapshot_internal(durable_aggregate_snapshot_as_client(snapshot));
     const aggregate = internal_livemap_aggregate_authority(map);
-    if (!exact_representation_equal(aggregate.captureHosted(), snapshot)) throw invalid_state();
+    if (!exact_representation_equal(hosted_checkpoint(aggregate.captureHosted()).snapshot, snapshot)) throw invalid_state();
 
     let expectedPrevRev = checkpoint.rev;
     for (const item of state.commits) {
       const commit = assert_commit_fence(item, checkpoint, expectedPrevRev);
-      // Aggregate replay validates semantic/replay agreement, the registry fence, every
-      // library Schema, global QUID ownership, and atomic installation.
-      aggregate.replayHosted(commit);
+      // Durable replay validates portable operation semantics, the registry
+      // fence, every library Schema, and atomic installation.
+      aggregate.replayDurableHosted(durable_aggregate_commit_as_client(commit));
       expectedPrevRev += 1;
     }
     if (map.rev !== expectedPrevRev) throw invalid_state();
@@ -263,6 +307,7 @@ function make_durability_gate(
   adapter: LocusHostedAggregatePersistenceAdapter,
 ): NonNullable<LocusHostedAggregateOptions["gate"]> {
   return async ({ commit }) => {
+    if (!commit.changed) return;
     try {
       await adapter.appendCommit(hosted_commit(commit));
     } catch (cause) {
@@ -309,7 +354,7 @@ function persistent_view(
 }
 
 /**
- * Create the internal persistent hosted authority only after its one exact
+ * Create the internal persistent hosted authority only after its QUID-free
  * aggregate checkpoint has been durably installed.
  */
 export async function create_persistent_locus_hosted_aggregate_internal(
@@ -337,7 +382,7 @@ export async function create_persistent_locus_hosted_aggregate_internal(
 
 /**
  * Rebuild one aggregate authority from a fenced aggregate checkpoint and its ordered
- * exact aggregate tail. This never rewrites or checkpoints the loaded state.
+ * semantic aggregate tail. This never rewrites or checkpoints the loaded state.
  */
 export async function restore_persistent_locus_hosted_aggregate_internal(
   logicalMapId: string,

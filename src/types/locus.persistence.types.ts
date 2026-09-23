@@ -3,7 +3,7 @@
 import type { DocumentLiveMap } from "./livemap.types.js";
 import type { Locus, LocusOptions } from "./locus.core.types.js";
 import type { LocusActionPayloads } from "./locus.protocol.types.js";
-import type { LocusCanonicalCommit } from "./locus.representation.types.js";
+import type { LocusClientCommit } from "./locus.representation.types.js";
 import type { LocusIncarnationId, LocusLogicalMapId } from "./locus.shared.types.js";
 
 /** Stable persisted map-kind discriminant. Data persistence is reserved for a later codec. */
@@ -15,6 +15,7 @@ export type LocusPersistedViewState = Readonly<{
 }>;
 
 export type LocusPersistedDocumentCheckpoint = Readonly<{
+  format: "hson-locus-durable-document-checkpoint-v1";
   logicalMapId: LocusLogicalMapId;
   incarnationId: LocusIncarnationId;
   mapKind: "document";
@@ -25,12 +26,15 @@ export type LocusPersistedDocumentCheckpoint = Readonly<{
 
 export type LocusPersistedCheckpoint = LocusPersistedDocumentCheckpoint;
 
-/** Exact accepted canonical commit, keyed idempotently by map/incarnation/revision. */
+/** QUID-free semantic effect, keyed idempotently by map/incarnation/revision. */
+export type LocusDurableDocumentEffects = Readonly<Omit<LocusClientCommit, "clientFormat">>;
+
 export type LocusPersistedCommit = Readonly<{
+  format: "hson-locus-durable-document-commit-v1";
   logicalMapId: LocusLogicalMapId;
   incarnationId: LocusIncarnationId;
   mapKind: "document";
-  commit: LocusCanonicalCommit;
+  commit: LocusDurableDocumentEffects;
 }>;
 
 export type LocusPersistedMapState = Readonly<{
@@ -38,7 +42,7 @@ export type LocusPersistedMapState = Readonly<{
   commits: readonly LocusPersistedCommit[];
 }>;
 
-/** Backend port. Implementations must make exact repeated appends idempotent. */
+/** Backend port. Implementations must make repeated durable appends idempotent. */
 export interface LocusPersistenceAdapter {
   load(logicalMapId: LocusLogicalMapId): Promise<LocusPersistedMapState | undefined>;
   /** Exact repeats for map/incarnation/revision must be idempotent; conflicting repeats must reject. */

@@ -12,7 +12,7 @@ export type LiveMapIdentityEpochController = Readonly<{
   issued: () => LiveMapIssuedQuidLedger;
   install: (ledger: LiveMapIssuedQuidLedger) => void;
   replace: (activeQuids: Iterable<string>) => void;
-  /** Privileged durable restoration after all aggregate state has validated. @internal */
+  /** Privileged exact hosted restoration after aggregate validation. @internal */
   hydrate: (epoch: number, ledger: LiveMapIssuedQuidLedger) => void;
 }>;
 

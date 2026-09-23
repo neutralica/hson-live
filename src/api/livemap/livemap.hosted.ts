@@ -314,7 +314,7 @@ export function decode_hosted_commit(
   }));
 }
 
-/** Derive a client event from an exact authority transition without changing durable history. */
+/** Derive QUID-free semantic effects from a living authority transition. */
 export function make_hosted_client_commit(authority: HostedAggregateCommit): HostedClientCommit | undefined {
   const operations: HostedClientCommit["operations"][number][] = [];
   for (let index = 0; index < authority.operations.length; index += 1) {

@@ -243,7 +243,7 @@ other transport state.
 
 `create_persistent_locus` supports document maps and fixed multi-library maps. It uses a
 `LocusPersistenceAdapter`, appends each changed commit before visibility, and
-supports exact checkpoint replacement. Data persistence remains
+supports atomic checkpoint replacement. Data persistence remains
 reserved and rejects.
 
 The adapter has three asynchronous operations:
@@ -256,17 +256,27 @@ interface LocusPersistenceAdapter {
 }
 ```
 
-Document checkpoints contain `logicalMapId`, `incarnationId`,
-`mapKind: "document"`, `mode`, `rev`, and a
-`{ format: "view-state", payload }` snapshot. Neither checkpoint nor snapshot
-has a numeric version field. Exact repeated commit appends must be idempotent;
+Document checkpoints use `hson-locus-durable-document-checkpoint-v1` and contain
+`logicalMapId`, `incarnationId`, `mapKind: "document"`, `mode`, `rev`, and a
+`{ format: "view-state", payload }` snapshot with generated QUID metadata removed.
+Document tail records use `hson-locus-durable-document-commit-v1` with QUID-free,
+path-addressed semantic effects and explicit replacement lineage. Aggregate
+checkpoints and records use the corresponding `hson-locus-durable-aggregate-*v1`
+tags; their snapshot and commit bodies have separate `hson-livemap-durable-*v1`
+tags. Old unversioned exact-runtime persistence records are unsupported and
+reject on load. Repeated durable commit appends must be idempotent;
 conflicting repeats must reject. Checkpoint replacement is atomic and removes
 commits through its revision. Loaded state is validated and replayed before it
 becomes an ordinary in-memory authority.
 
 `PersistentLocus.checkpoint()` enters the same ordered authority queue,
-captures the exact current revision, replaces the durable checkpoint, and
+captures the current authority revision, replaces the durable checkpoint, and
 trims its covered tail. It does not mutate the map or publish a client commit.
+Local QUID acquisition changes neither checkpoint semantics nor durable history.
+Restart preserves durable document and system state, registry, logical map ID,
+incarnation, and revision while constructing a fresh generated-QUID runtime epoch.
+Same-runtime exact capture remains a separate local facility. Echo retains its
+independent identity namespace and uses the unchanged client replication format.
 
 For a fixed multi-library map, the adapter stores opaque aggregate records.
 Calling `create_persistent_locus({ map, logicalMapId, persistence })` again
@@ -288,12 +298,12 @@ before installation.
 
 The authority derives lineage from its local replacement evidence. Echo sends
 the same correspondence for hosted replacement requests, and Locus transfers
-only its own local QUIDs onto mapped destinations. Client graph content is
-QUID-free in both directions. Exact QUID evidence remains internal to retained
-authority history and persistence until Phase 5.
+only its own local QUIDs onto mapped destinations. Client and durable graph
+content are QUID-free. Exact QUID evidence may remain in the living runtime's
+in-memory authority history.
 `replace-root` remains a separate whole-root identity boundary.
 
-Exact authority history and persistence use a separate graph-content codec for
+Exact in-memory authority history uses a separate graph-content codec for
 inserted or replacement content:
 
 ```ts

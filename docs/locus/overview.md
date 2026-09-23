@@ -12,8 +12,9 @@ client snapshots and effects omit Locus node QUIDs, identity epochs, and issued
 ledgers; Echo owns those runtime-local identities. Paths and replacement
 lineage carry portable continuity. Retained incremental effects preserve
 Echo-local identity, while snapshot fallback starts a fresh Echo-local epoch.
-Locus durable history and restart persistence remain internally exact until
-Phase 5.
+Locus durable history and restart persistence preserve authority semantics in a
+fresh generated-QUID runtime epoch. Living in-memory history may retain local
+identity evidence.
 
 LiveHost is separate. It owns application registration, routing, HTTP/WebSocket
 runtime policy, resource limits, health, and shutdown, and may expose a bounded
@@ -139,7 +140,8 @@ Typical uses include:
 
 Data maps use the same strict hosted authority as document maps.
 
-Durable persistence for data hosts is intentionally deferred until hson-live has a stable exact data checkpoint format.
+Solo data-host persistence is deferred; fixed multi-library persistence already
+uses a QUID-free durable aggregate checkpoint.
 
 Document maps
 
@@ -177,7 +179,7 @@ This distinction allows Locus to perform asynchronous work between preparation a
 For persistent hosts, the path becomes:
 
 prepare exact transition
-→ durably append exact commit
+→ durably append semantic commit
 → accept exact transition
 → accept with isolated LiveMap notification
 → ingest Host history
@@ -291,22 +293,21 @@ or a complete reset when the client’s incarnation is incompatible.
 Document clients may negotiate supported snapshot formats. Current document recovery can use:
 
 * Hson snapshots;
-* exact `format: "view-state"` snapshots with no numeric version field;
+* `format: "view-state"` snapshots with no numeric version field;
 * ordered canonical replay after the snapshot cut.
 
-Both snapshot formats are durable structural captures. They preserve canonical
-QUID metadata where present, but no serialized snapshot, `logicalMapId`,
-`incarnationId`, or session credential proves the source map's local identity
-epoch. A receiving mirror validates the claims into a new local sparse overlay;
-old browser/runtime handles do not cross that boundary. The ordered tail remains
-path-authoritative and can replay after an explicitly identity-free checkpoint.
+Solo document client recovery retains its existing snapshot contract: a view-state
+snapshot may carry canonical QUID metadata, which the receiver validates into a
+new local sparse overlay. It does not transfer old runtime handles. Authority
+durable checkpoints and tails contain no generated QUID values, identity epochs,
+or issued ledgers. The ordered tail remains path-authoritative after restart.
 
 Persistence format and client recovery format are intentionally separate.
 
 A persistent host may store:
 
-view-state checkpoint
-+ canonical commit tail
+QUID-free durable view-state checkpoint
++ QUID-free semantic commit tail
 
 while a particular client receives:
 
@@ -333,7 +334,7 @@ const host = await create_persistent_locus({
   map,
 });
 
-Persistent construction stores an exact initial checkpoint before returning the host.
+Persistent construction stores a durable initial checkpoint before returning the host.
 
 A persistent host guarantees:
 
@@ -353,7 +354,7 @@ interface LocusPersistenceAdapter {
 
 The adapter is responsible for:
 
-* idempotent exact commit append by logical map, incarnation, and revision;
+* idempotent durable commit append by logical map, incarnation, and revision;
 * rejecting conflicting records at the same commit identity;
 * validating expected revision continuity at the storage boundary;
 * atomically replacing a checkpoint and trimming commits through that revision;
@@ -361,11 +362,11 @@ The adapter is responsible for:
 
 Locus treats all loaded persistence material as untrusted and validates identity, map kind, mode, format, revision continuity, commit envelopes, replay success, and final revision before registration.
 
-The persisted view-state checkpoint is exact durable metadata, not a persisted
-live-epoch token. Loading after process restart creates a new document-map epoch,
-admits preserved QUID strings as fresh local claims, and replays the canonical
-path tail. This preserves structural and lookup continuity without claiming that
-old process or browser objects survived.
+The persisted view-state checkpoint preserves document semantics and authority
+revision without generated identity. Loading after process restart creates a
+fresh document-map identity epoch and replays QUID-free path effects. Logical
+map and incarnation fences survive according to the persistence contract.
+Same-runtime exact capture is a separate local facility.
 
 Checkpoints
 

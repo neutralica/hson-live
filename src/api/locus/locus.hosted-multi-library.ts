@@ -51,7 +51,7 @@ export type LocusHostedAggregateWireEnvelope = Readonly<{
   commit: HostedClientCommit;
 }>;
 
-/** Complete exact authority history/persistence envelope, never a client message. */
+/** Complete exact living-authority history envelope, never a client message. */
 export type LocusHostedAggregateAuthorityEnvelope = Readonly<{
   logicalMapId: string;
   incarnationId: string;

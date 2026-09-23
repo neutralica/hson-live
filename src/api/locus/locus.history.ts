@@ -297,7 +297,7 @@ function canonical_graph_op(op: LiveMapGraphOp | LiveMapProjectedGraphEnsureQuid
   throw new Error("Locus canonical graph operation discriminant is invalid.");
 }
 
-/** @internal Construct the exact detached canonical envelope used by history and persistence. */
+/** @internal Construct the exact detached canonical envelope used by living history and durable projection. */
 export function make_locus_canonical_commit<TMap extends LiveMapAuthority>(
   map: TMap,
   commit: LiveMapCommit<LiveMapAnyOp>,

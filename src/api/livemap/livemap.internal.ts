@@ -84,6 +84,8 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   restoreHostedManaged: (owner: object, snapshot: HostedLiveMapLibrariesSnapshot) => void;
   replayHosted: (commit: HostedAggregateCommit) => LiveMapAggregateCommit;
   replayClientHosted: (commit: import("./livemap.hosted.js").HostedClientCommit) => LiveMapAggregateCommit;
+  /** Replay durable portable effects, including a revision whose effects collapse after identity reset. @internal */
+  replayDurableHosted: (commit: import("./livemap.hosted.js").HostedClientCommit) => void;
   replayClientHostedManaged: (owner: object, commit: import("./livemap.hosted.js").HostedClientCommit) => LiveMapAggregateCommit;
   /** Apply a transport commit while this aggregate is client-managed. @internal */
   replayHostedManaged: (owner: object, commit: HostedAggregateCommit) => LiveMapAggregateCommit;

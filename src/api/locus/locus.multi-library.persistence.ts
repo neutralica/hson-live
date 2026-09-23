@@ -10,6 +10,9 @@ import { internal_livemap_aggregate_authority } from "../livemap/livemap.interna
 import type { HostedAggregateCommit } from "../livemap/livemap.hosted.js";
 import { LocusPersistenceError } from "./locus.persistence.error.js";
 import {
+  durable_aggregate_checkpoint,
+  durable_aggregate_commit,
+  durable_aggregate_snapshot_as_client,
   load_persistent_locus_hosted_aggregate_internal,
   type LocusHostedAggregatePersistenceAdapter,
 } from "./locus.hosted-multi-library.persistence.js";
@@ -19,24 +22,11 @@ import { alias_locus_retained_action_status_internal } from "./locus.action-stat
 import { alias_locus_libraries_snapshot_authority_internal } from "./locus.libraries-snapshot.js";
 
 function checkpoint_record(snapshot: HostedLiveMapLibrariesSnapshot): object {
-  return Object.freeze({
-    logicalMapId: snapshot.authority.logicalMapId,
-    incarnationId: snapshot.authority.incarnationId,
-    mapKind: "hosted-aggregate",
-    registryDigest: snapshot.registryDigest,
-    rev: snapshot.revision,
-    snapshot,
-  });
+  return durable_aggregate_checkpoint(snapshot);
 }
 
 function commit_record(commit: HostedAggregateCommit): object {
-  return Object.freeze({
-    logicalMapId: commit.authority.logicalMapId,
-    incarnationId: commit.authority.incarnationId,
-    mapKind: "hosted-aggregate",
-    registryDigest: commit.registryDigest,
-    commit,
-  });
+  return durable_aggregate_commit(commit);
 }
 
 function set_initial_authority(
@@ -81,6 +71,7 @@ async function append_durable_commit(
   persistence: LocusMultiLibraryPersistenceAdapter,
   commit: HostedAggregateCommit,
 ): Promise<void> {
+  if (!commit.changed) return;
   try {
     await persistence.appendCommit(commit_record(commit));
   } catch (cause) {
@@ -153,10 +144,11 @@ export async function create_persistent_multi_library_locus<
       "Hosted multi-library persistence registry does not match the supplied static map topology.",
     );
   }
-  // The caller's public map remains the authority identity. The durable loader
-  // has already reconstructed and validated the exact state in an isolated map;
-  // install that state into the same fixed registry before Locus claims it.
-  internal_livemap_aggregate_authority(options.map).restoreHosted(restoredSnapshot);
+  // The supplied public map retains its registry but receives only the durable
+  // semantic cut. This creates a new local identity epoch and no old claims.
+  internal_livemap_aggregate_authority(options.map).restoreClientHosted(
+    durable_aggregate_snapshot_as_client(durable_aggregate_checkpoint(restoredSnapshot).snapshot),
+  );
   restored.dispose();
   return persistent_view(options, false);
 }

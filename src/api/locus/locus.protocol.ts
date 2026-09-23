@@ -441,7 +441,8 @@ export function decode_locus_canonical_commit(value: unknown): LocusCanonicalCom
   return decode_canonical_commit(value);
 }
 
-function client_commit_as_canonical(value: LocusClientCommit): LocusCanonicalCommit {
+/** @internal Retain QUID-free semantic history after durable replay. */
+export function client_commit_as_canonical(value: LocusClientCommit): LocusCanonicalCommit {
   const ops = value.ops.map((op) => {
     if (!("domain" in op)) return op;
     if (op.op === "replace-root") return Object.freeze({ ...op, root: { format: "hson-graph" as const, payload: op.root.payload } });

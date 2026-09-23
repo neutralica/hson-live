@@ -130,7 +130,7 @@ The transformation system handles cases that are commonly awkward at format boun
 - SVG and XML namespaces;
 - ordered document content;
 - canonical metadata;
-- persisted node identity.
+- runtime-local node identity.
 
 The graph produced by the transformation layer is used by LiveMap, LiveTree, and Locus.
 
@@ -364,7 +364,7 @@ Browser transports are supplied separately, allowing Echo to remain focused on h
 
 ---
 
-A hosted application can deliver a full QUID-free snapshot of authoritative application and system state with its initial response, then continue that state live through Echo. Incremental replay preserves Echo-local identity through observed effects. Snapshot fallback establishes a fresh Echo-local identity epoch. Authority restart persistence remains internally exact until its separate migration.
+A hosted application can deliver a full QUID-free snapshot of authoritative application and system state with its initial response, then continue that state live through Echo. Incremental replay preserves Echo-local identity through observed effects. Snapshot fallback establishes a fresh Echo-local identity epoch. Authority restart persistence preserves durable state and revision while establishing a fresh Locus generated-QUID epoch.
 
 Together, Locus and Echo allow one server-side LiveMap to remain the canonical source of truth while remote clients maintain synchronized local replicas and live browser realizations.
 

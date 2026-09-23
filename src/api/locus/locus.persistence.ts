@@ -26,9 +26,11 @@ import {
 } from "./locus.core.js";
 import { make_locus_canonical_commit } from "./locus.history.js";
 import {
-  decode_locus_canonical_commit,
-  replay_locus_document_commit,
+  client_commit_as_canonical,
+  decode_locus_client_commit,
+  replay_locus_client_document_commit,
 } from "./locus.protocol.js";
+import { project_locus_client_transition } from "./locus.client-replication.js";
 import { create_live_trace_context } from "./locus.trace.js";
 import {
   decode_view_state_snapshot,
@@ -36,6 +38,7 @@ import {
 } from "../livemap/livemap.document.view-state-codec.js";
 import { LocusPersistenceError } from "./locus.persistence.error.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
+import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 import { acquire_locus_internal_activity } from "./locus.activity.js";
 import { alias_locus_remote_action_admission_internal } from "./locus.remote-action.internal.js";
 import { alias_locus_retained_action_status_internal } from "./locus.action-status.internal.js";
@@ -75,8 +78,9 @@ function document_checkpoint(
   logicalMapId: string,
   incarnationId: string,
 ): LocusPersistedDocumentCheckpoint {
-  const capture = map.capture({ identity: "preserve-metadata" });
+  const capture = map.capture({ identity: "strip" });
   return Object.freeze({
+    format: "hson-locus-durable-document-checkpoint-v1",
     logicalMapId,
     incarnationId,
     mapKind: "document",
@@ -92,11 +96,19 @@ function persisted_commit(
   incarnationId: string,
   commit: LiveMapCommit<LiveMapAnyOp>,
 ): LocusPersistedCommit {
+  const projected = project_locus_client_transition(
+    make_locus_canonical_commit(map, commit, logicalMapId, incarnationId, commit.prevRev),
+  );
+  if (projected.kind !== "commit") {
+    throw new Error("Runtime-local identity demand cannot become durable authority history.");
+  }
+  const { clientFormat: _clientFormat, ...effects } = projected.commit;
   return Object.freeze({
+    format: "hson-locus-durable-document-commit-v1",
     logicalMapId,
     incarnationId,
     mapKind: "document",
-    commit: make_locus_canonical_commit(map, commit, logicalMapId, incarnationId, commit.prevRev),
+    commit: Object.freeze(effects),
   });
 }
 
@@ -195,7 +207,7 @@ function persistent_locus_view<TMap extends DocumentLiveMap, TActions extends Lo
   return locus;
 }
 
-/** Create an authority only after its exact initial checkpoint is durable. */
+/** Create an authority only after its QUID-free initial checkpoint is durable. */
 export async function create_persistent_locus<
   TMap extends import("../../types/livemap.types.js").LiveMapLibraries,
   TActions extends LocusActionPayloads = LocusActionPayloads,
@@ -316,9 +328,17 @@ function validate_persisted_state(
     const state = record(value);
     if (state === undefined || !exact_keys(state, ["checkpoint", "commits"])) throw invalid_state();
     const checkpointValue = record(state.checkpoint);
-    if (checkpointValue === undefined || !exact_keys(checkpointValue, [
+    if (checkpointValue !== undefined && checkpointValue.format === undefined && exact_keys(checkpointValue, [
       "logicalMapId", "incarnationId", "mapKind", "mode", "rev", "snapshot",
+    ])) {
+      throw new LocusPersistenceError("LOCUS_PERSISTED_STATE_INVALID", "Unsupported legacy document checkpoint format.");
+    }
+    if (checkpointValue === undefined || !exact_keys(checkpointValue, [
+      "format", "logicalMapId", "incarnationId", "mapKind", "mode", "rev", "snapshot",
     ])) throw invalid_state();
+    if (checkpointValue.format !== "hson-locus-durable-document-checkpoint-v1") {
+      throw new LocusPersistenceError("LOCUS_PERSISTED_STATE_INVALID", "Unsupported durable document checkpoint format.");
+    }
     if (checkpointValue.logicalMapId !== requestedLogicalMapId
       || typeof checkpointValue.logicalMapId !== "string"
       || typeof checkpointValue.incarnationId !== "string"
@@ -336,9 +356,10 @@ function validate_persisted_state(
     const checkpoint = checkpointValue as unknown as LocusPersistedDocumentCheckpoint;
     const capture = decode_view_state_snapshot(checkpoint.snapshot);
     if (capture.rev !== checkpoint.rev || capture.mode !== checkpoint.mode) throw invalid_state();
+    admit_portable_hson_node(capture.root, "durable document checkpoint");
     const map = make_classified_livemap(capture.root);
     if (map.mode !== capture.mode) throw invalid_state();
-    map.restore(capture, { identity: "preserve-metadata" });
+    map.restore(capture, { identity: "strip" });
 
     if (!Array.isArray(state.commits)) throw invalid_state();
     const commits: LocusPersistedCommit[] = [];
@@ -346,32 +367,33 @@ function validate_persisted_state(
     let expectedPrevRev = checkpoint.rev;
     for (const item of state.commits) {
       const persisted = record(item);
-      if (persisted === undefined || !exact_keys(persisted, ["logicalMapId", "incarnationId", "mapKind", "commit"])) {
+      if (persisted === undefined || !exact_keys(persisted, ["format", "logicalMapId", "incarnationId", "mapKind", "commit"])) {
         throw invalid_state();
       }
-      if (persisted.logicalMapId !== checkpoint.logicalMapId
+      if (persisted.format !== "hson-locus-durable-document-commit-v1"
+        || persisted.logicalMapId !== checkpoint.logicalMapId
         || persisted.incarnationId !== checkpoint.incarnationId
         || persisted.mapKind !== "document") throw invalid_state();
-      const decoded = decode_locus_canonical_commit(persisted.commit);
+      const effects = record(persisted.commit);
+      if (effects === undefined || !exact_keys(effects, [
+        "logicalMapId", "incarnationId", "mode", "prevRev", "rev", "ops",
+      ])) throw invalid_state();
+      const decoded = decode_locus_client_commit({ clientFormat: "hson-locus-client-commit-v1", ...effects });
       if (decoded === undefined
         || decoded.logicalMapId !== checkpoint.logicalMapId
         || decoded.incarnationId !== checkpoint.incarnationId
         || decoded.mode !== checkpoint.mode
         || decoded.prevRev !== expectedPrevRev
         || decoded.rev !== expectedPrevRev + 1) throw invalid_state();
-      const applied = replay_locus_document_commit(map, decoded);
-      const canonical = make_locus_canonical_commit(
-        map,
-        applied,
-        checkpoint.logicalMapId,
-        checkpoint.incarnationId,
-        expectedPrevRev,
-      );
+      replay_locus_client_document_commit(map, decoded);
+      const canonical = client_commit_as_canonical(decoded);
+      const { clientFormat: _clientFormat, ...durableEffects } = decoded;
       const persistedCommit = Object.freeze({
+        format: "hson-locus-durable-document-commit-v1" as const,
         logicalMapId: checkpoint.logicalMapId,
         incarnationId: checkpoint.incarnationId,
         mapKind: "document" as const,
-        commit: canonical,
+        commit: Object.freeze(durableEffects),
       });
       commits.push(persistedCommit);
       canonicalCommits.push(canonical);

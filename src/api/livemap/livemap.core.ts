@@ -2319,7 +2319,7 @@ function make_livemap_core_from_compatibility_root(
     restore_libraries_aggregate(portable, snapshot.authority);
   }
 
-  function replay_client_hosted_aggregate(input: HostedClientCommit): LiveMapAggregateCommit {
+  function replay_portable_hosted_aggregate(input: HostedClientCommit, durable: boolean): LiveMapAggregateCommit | undefined {
     transitionController.assertPublicMutationAllowed();
     const hosted = require_hosted_state();
     const decoded = decode_hosted_client_commit(input, hosted.registry, hosted.byName);
@@ -2343,11 +2343,31 @@ function make_livemap_core_from_compatibility_root(
     });
     const transition = prepare_authority_transition(writes);
     const local = transition.commit.hosted;
+    if (durable && !transition.commit.changed) {
+      // The old runtime may have distinguished equal-content subjects only
+      // through local identity. The decoded path effect is valid but collapses
+      // in this fresh runtime; retain its authority revision without a claim.
+      transitionController.discardAuthority(transition);
+      mapRevision = input.rev;
+      transitionController.invalidate();
+      publishAuthorityPosition();
+      return undefined;
+    }
     if (local === undefined || JSON.stringify(make_hosted_client_commit(local)) !== JSON.stringify(input)) {
       transitionController.discardAuthority(transition);
       throw new Error("Hosted client replay did not reproduce its portable operation semantics.");
     }
     return transitionController.acceptAuthority(transition).commit;
+  }
+
+  function replay_client_hosted_aggregate(input: HostedClientCommit): LiveMapAggregateCommit {
+    const replayed = replay_portable_hosted_aggregate(input, false);
+    if (replayed === undefined) throw new Error("Hosted client replay made no authority progress.");
+    return replayed;
+  }
+
+  function replay_durable_hosted_aggregate(input: HostedClientCommit): void {
+    replay_portable_hosted_aggregate(input, true);
   }
 
   function replay_hosted_aggregate(input: HostedAggregateCommit): LiveMapAggregateCommit {
@@ -2437,6 +2457,7 @@ function make_livemap_core_from_compatibility_root(
     ),
     replayHosted: replay_hosted_aggregate,
     replayClientHosted: replay_client_hosted_aggregate,
+    replayDurableHosted: replay_durable_hosted_aggregate,
     replayClientHostedManaged: (owner, commit) => transitionController.runManaged(
       owner,
       () => replay_client_hosted_aggregate(commit),

@@ -27,6 +27,8 @@ const RECOVERY_QUID = "000008207";
 const RECOVERY_NEXT_QUID = "000008208";
 const PERSISTED_QUID = "000008209";
 const PERSISTED_NEXT_QUID = "000008210";
+const LOCUS_RESTART_A_QUID = "000008211";
+const LOCUS_RESTART_B_QUID = "000008212";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "locus.hosted-multi-library-h5",
@@ -128,6 +130,8 @@ function wait_for_aggregate_revision(map: ReturnType<typeof make_map>, revision:
 class MemoryPersistence {
   private state: Readonly<{ checkpoint: unknown; commits: readonly unknown[] }> | undefined;
   failAppends = false;
+
+  snapshot(): unknown { return this.state; }
 
   async load(_logicalMapId: string): Promise<unknown | undefined> {
     return this.state;
@@ -540,6 +544,7 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   await client.session.create();
   await client.recovery.recover();
   const reflection = hsonMirror(clientMap.lib("page"));
+  const echoMainQuid = reflected_document_element(reflection).quid;
   const retainedAction = client.action("state.page");
   await retainedAction;
   const retainedStatus = read_locus_retained_action_status_internal(host, {
@@ -551,8 +556,15 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   await client.action("page.retire");
   assert.equal(clientMap.rev, 2);
   assert.equal(clientMap.lib("page").document.byQuid(PERSISTED_QUID), undefined);
+  const locusA = internal_livemap_aggregate_authority(serverMap);
+  const locusPageA = locusA.libraries()[2];
+  if (locusPageA === undefined) throw new Error("Expected page Library.");
+  locusA.acquireLocalDocumentIdentity(locusPageA, validate_document_path([0]), LOCUS_RESTART_A_QUID);
+  assert.equal(serverMap.rev, 2);
+  assert.equal(clientMap.lib("page").document.byQuid(LOCUS_RESTART_A_QUID), undefined);
   const checkpointStarted = performance.now();
   await host.checkpoint();
+  assert.equal(JSON.stringify(persistence.snapshot()).includes(LOCUS_RESTART_A_QUID), false);
   const checkpointMs = performance.now() - checkpointStarted;
   host.dispose();
   assert.throws(() => read_locus_retained_action_status_internal(host, {
@@ -574,15 +586,19 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
           draft.lib("page").graph(insert_item(PERSISTED_NEXT_QUID));
         });
       },
-      reuse: async (context) => {
-        await context.mutate((draft) => draft.lib("page").graph(insert_item(PERSISTED_QUID)));
-      },
     },
   });
   const restartLoadMs = performance.now() - restartStarted;
   assert.ok(restored);
   assert.equal(restored.map, restoredMap);
   assert.equal(restoredMap.rev, 2);
+  const locusB = internal_livemap_aggregate_authority(restoredMap);
+  const locusPageB = locusB.libraries()[2];
+  if (locusPageB === undefined) throw new Error("Expected restored page Library.");
+  assert.equal(locusB.resolveQuid(LOCUS_RESTART_A_QUID), undefined);
+  locusB.acquireLocalDocumentIdentity(locusPageB, validate_document_path([0]), LOCUS_RESTART_B_QUID);
+  assert.equal(restoredMap.rev, 2);
+  assert.equal(clientMap.lib("page").document.byQuid(LOCUS_RESTART_B_QUID), undefined);
   const restoredRetainedStatus = read_locus_retained_action_status_internal(restored, {
     clientId: client.clientId,
     requestId: retainedAction.request.requestId,
@@ -595,12 +611,29 @@ await check("the public persistence path checkpoints, reloads, recovers, and con
   recovered.connect();
   await recovered.session.create();
   assert.equal((await recovered.recovery.recover()).strategy, "current");
+  assert.equal(reflected_document_element(reflection).quid, echoMainQuid);
+  assert.equal(second.serverSent.join("\n").includes(LOCUS_RESTART_A_QUID), false);
+  assert.equal(second.serverSent.join("\n").includes(LOCUS_RESTART_B_QUID), false);
+  const fallbackPair = socket_pair();
+  restored.connect(fallbackPair.server);
+  const fallbackMap = make_map();
+  const fallback = hsonEcho.create({
+    socket: fallbackPair.client, map: fallbackMap, recovery: { logicalMapId: restored.logicalMapId },
+  });
+  fallback.connect();
+  await fallback.session.create();
+  assert.equal((await fallback.recovery.recover()).strategy, "snapshot");
+  assert.equal(fallbackMap.rev, restored.rev);
+  assert.equal(fallbackMap.lib("state").snap(["count"]), 2);
+  assert.equal(fallbackMap.lib("page").document.byQuid(LOCUS_RESTART_A_QUID), undefined);
+  assert.equal(fallbackMap.lib("page").document.byQuid(LOCUS_RESTART_B_QUID), undefined);
+  assert.equal(fallbackPair.serverSent.join("\n").includes(LOCUS_RESTART_A_QUID), false);
+  assert.equal(fallbackPair.serverSent.join("\n").includes(LOCUS_RESTART_B_QUID), false);
+  fallback.dispose();
   const reconnectMs = performance.now() - reconnectStarted;
   assert.equal(clientMap.lib("page").document.byQuid(PERSISTED_QUID), undefined);
   assert.equal(reflection.sourceRevision, 2);
-  const reuse = await recovered.action("reuse");
-  assert.equal(reuse.type, "error");
-  if (reuse.type === "error") assert.match(reuse.error.message, /QUID|reuse|identity/i);
+  assert.equal(internal_livemap_aggregate_authority(restoredMap).captureHosted().identity.issuedQuids.includes(PERSISTED_QUID), false);
   assert.equal(clientMap.rev, 2);
   const continuedStatePageStarted = performance.now();
   await recovered.action("state.page");
