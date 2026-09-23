@@ -18,11 +18,13 @@ import {
   type InteractionLocalBehaviors,
   type LocusSocketLike,
 } from "../src/index.ts";
+import type { LocusRequestedProjection } from "../src/types/locus.projection.types.ts";
 import { get_node_for_el } from "../src/api/livetree/utils/node-map-helpers.ts";
 import { default_livetree_runtime } from "../src/api/livetree/runtime/livetree-runtime.ts";
 import { capture_locus_bootstrap, install_locus_bootstrap } from "../src/api/locus/locus.bootstrap.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
-import { make_livemap_hosted_mirror_from_snapshot_internal } from "../src/api/livemap/livemap.libraries.ts";
+import { project_authority_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
+import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
 import { FakeElement, FakeText, install_fake_document } from "./helpers/fake-document.mts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
@@ -265,10 +267,9 @@ function mainFixture(_quid: string): Readonly<{ root: FakeElement; child: FakeEl
 }
 
 {
-  const quid = "000004100";
   const makeMap = () => admit_exact_runtime_livemap_libraries({
     state: { data: { count: 0 }, schema: StateSchema },
-    page: { document: parse_hson_exact_runtime(`<main <button @${quid}/>/>`, { allowTopLevelDocumentText: true }), schema: ButtonSchema },
+    page: { document: parse_hson_exact_runtime("<main <button/>/>", { allowTopLevelDocumentText: true }), schema: ButtonSchema },
   });
   const descriptor: InteractionDescriptor = Object.freeze({
     id: "authoritative-click",
@@ -288,11 +289,17 @@ function mainFixture(_quid: string): Readonly<{ root: FakeElement; child: FakeEl
   const locus = hsonLocus.create({
     map: authority,
     exposure: test_public_exposure(authority),
+    defaultProjection: { libraries: ["page"], systemFeatures: ["interactions"] },
+    authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }),
     actions: { save: (_context, payload) => { handled = payload; } },
   });
-  const replica = make_livemap_hosted_mirror_from_snapshot_internal(
-    internal_livemap_aggregate_authority(authority).captureHosted(),
-  );
+  const complete = internal_livemap_aggregate_authority(authority).captureHosted();
+  const requested: LocusRequestedProjection = { libraries: ["page"], systemFeatures: ["interactions"] };
+  const policy = make_locus_hosted_projection_policy(complete.registry, complete.authority,
+    test_public_exposure(authority), requested, () => requested);
+  const effective = normalize_locus_effective_projection(policy, requested);
+  if (effective instanceof Promise) throw new Error("Expected synchronous continuation projection.");
+  const replica = hsonLiveMap.fromClientSnapshot({ authority: project_authority_snapshot(complete, effective), localLibraries: {} });
   const pair = socketPair();
   locus.connect(pair.server);
   const echo = hsonEcho.create({ socket: pair.client, map: replica, recovery: { logicalMapId: locus.logicalMapId } });

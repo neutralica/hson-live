@@ -4,6 +4,9 @@ import { Hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
 import { create_multi_library_echo_socket_client_internal } from "../src/api/echo/echo.multi-library.socket.ts";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.hosted-multi-library.protocol.ts";
 import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.hosted-multi-library.socket.ts";
+import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
+import { project_authority_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
+import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
 import type { LocusHostedAggregateDataDraft, LocusHostedAggregateDraft } from "../src/api/locus/locus.hosted-multi-library.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -95,6 +98,19 @@ function socket_pair(): Readonly<{
 
 function make_map() {
   return hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema: StateSchema } });
+}
+
+function make_projected_map() {
+  const source = make_map();
+  const complete = internal_livemap_aggregate_authority(source).captureHosted();
+  const requested = { libraries: ["state"] };
+  const policy = make_locus_hosted_projection_policy(complete.registry, complete.authority,
+    test_public_exposure(source), requested, () => requested);
+  const effective = normalize_locus_effective_projection(policy, requested);
+  if (effective instanceof Promise) throw new Error("Expected synchronous test projection.");
+  const snapshot = project_authority_snapshot(complete, effective);
+  return { map: hsonLiveMap.fromClientSnapshot({ authority: snapshot, localLibraries: {} }),
+    projectionDigest: snapshot.projectionDigest };
 }
 
 function state(draft: LocusHostedAggregateDraft): LocusHostedAggregateDataDraft {
@@ -235,7 +251,8 @@ await check("replacement after caught-up suppresses queued live drain", async ()
 
 await check("stale recovery identity cannot settle a replacement recovery on the same client", async () => {
   const pair = socket_pair();
-  const mirror = make_map();
+  const projected = make_projected_map();
+  const mirror = projected.map;
   const client = create_multi_library_echo_socket_client_internal({ socket: pair.client, map: mirror });
   client.attachTransport();
   const created = client.session.create();
@@ -289,6 +306,7 @@ await check("stale recovery identity cannot settle a replacement recovery on the
     logicalMapId: client.logicalMapId,
     incarnationId: client.incarnationId,
     registryDigest: client.registryDigest,
+    projectionDigest: projected.projectionDigest,
     throughRev: 0,
   });
   await Promise.resolve();
@@ -300,6 +318,7 @@ await check("stale recovery identity cannot settle a replacement recovery on the
     logicalMapId: client.logicalMapId,
     incarnationId: client.incarnationId,
     registryDigest: client.registryDigest,
+    projectionDigest: projected.projectionDigest,
     headRev: 0,
     outcome: "current",
   });
@@ -310,6 +329,7 @@ await check("stale recovery identity cannot settle a replacement recovery on the
     logicalMapId: client.logicalMapId,
     incarnationId: client.incarnationId,
     registryDigest: client.registryDigest,
+    projectionDigest: projected.projectionDigest,
     throughRev: 0,
   });
   assert.equal((await recoveryB).revision, 0);
@@ -347,10 +367,10 @@ await check("physical disconnect settles active recovery and a fresh endpoint ca
 
 await check("replica recovery failure leaves the attached endpoint usable for unrelated actions", async () => {
   const pair = socket_pair();
+  const projected = make_projected_map();
   const client = create_multi_library_echo_socket_client_internal({
     socket: pair.client,
-    map: make_map(),
-    logicalMapId: "replica-failure-isolation",
+    map: projected.map,
   });
   const connecting = client.connect();
   const create = pair.clientSent.findLast((message) => message.type === "session-create");
@@ -377,6 +397,7 @@ await check("replica recovery failure leaves the attached endpoint usable for un
     logicalMapId: client.logicalMapId,
     incarnationId: client.incarnationId,
     registryDigest: "0".repeat(64),
+    projectionDigest: projected.projectionDigest,
     headRev: 0,
     outcome: "current",
   });

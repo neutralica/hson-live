@@ -1,5 +1,5 @@
 import { parentPort } from "node:worker_threads";
-import { test_public_exposure } from "../helpers/hosted-exposure.mts";
+import { test_public_projection } from "../helpers/hosted-exposure.mts";
 import {
   Hson,
   HsonData,
@@ -16,8 +16,9 @@ import {
 } from "../../src/index.ts";
 import type { LocusSocketLike } from "../../src/types/locus.types.ts";
 import { link_node_to_el } from "../../src/api/livetree/utils/node-map-helpers.ts";
-import { parse_hson_exact_runtime } from "../../src/internal/exact-runtime-hson-codec.ts";
-import { admit_exact_runtime_livemap_libraries } from "../../src/internal/exact-runtime-node-admission.ts";
+import { internal_livemap_aggregate_authority } from "../../src/api/livemap/livemap.internal.ts";
+import { project_authority_snapshot } from "../../src/api/locus/locus.authority-projection-snapshot.ts";
+import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../../src/api/locus/locus.projection.ts";
 import { acquire_document_identity } from "../helpers/livemap-identity-internal.mts";
 import { set_livemap_document_quid_candidate_source_for_tests } from "../../src/api/livemap/livemap.document.registration.ts";
 import { validate_document_path } from "../../src/api/livemap/livemap.document.path.ts";
@@ -32,9 +33,9 @@ const listener: InteractionListener = Object.freeze({
 });
 
 function make_map() {
-  return admit_exact_runtime_livemap_libraries({
+  return hsonLiveMap.fromLibraries({
     state: { data: { count: 0 }, schema: StateSchema },
-    page: { document: parse_hson_exact_runtime(`<main <button @${QUID}/>/>`, { allowTopLevelDocumentText: true }), schema: PageSchema },
+    page: { document: "<main <button/>/>", schema: PageSchema },
   });
 }
 
@@ -60,18 +61,25 @@ function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketL
 const exact = Hson.data.fromHson(Hson.canonical`<'10' -0 '2' 2 __proto__ <polluted true>>`);
 const authorityMap = make_map();
 enable_interactions(authorityMap);
+set_livemap_document_quid_candidate_source_for_tests(authorityMap.lib("page").document, () => QUID);
+acquire_document_identity(authorityMap.lib("page").document, { kind: "path", path: validate_document_path([0, 0, 0]) });
 const descriptor: InteractionDescriptor = Object.freeze({
   id: "worker", subject: Object.freeze({ library: "page", path: [0, 0, 0] }), listener, kind: "locus-authoritative", key: "save", payload: exact,
 });
 add_interaction(authorityMap, descriptor);
 let handled: HsonData | undefined;
+const configured = test_public_projection(authorityMap);
 const locus = hsonLocus.create({
   map: authorityMap,
-  exposure: test_public_exposure(authorityMap),
+  ...configured,
   actions: { save: (_context, payload) => { handled = payload; } },
 });
-const replicaMap = make_map();
-enable_interactions(replicaMap);
+const captured = internal_livemap_aggregate_authority(authorityMap).captureHosted();
+const policy = make_locus_hosted_projection_policy(captured.registry, captured.authority,
+  configured.exposure, configured.defaultProjection, configured.authorizeProjection);
+const effective = await normalize_locus_effective_projection(policy, configured.defaultProjection);
+const replicaMap = hsonLiveMap.fromClientSnapshot({ authority: project_authority_snapshot(captured, effective),
+  localLibraries: {} }) as typeof authorityMap;
 const pair = socket_pair();
 locus.connect(pair.server);
 const echo = hsonEcho.create({ socket: pair.client, map: replicaMap, recovery: { logicalMapId: locus.logicalMapId } });

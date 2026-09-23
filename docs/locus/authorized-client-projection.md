@@ -1,4 +1,8 @@
-# Hosted client projection configuration (Step 6A)
+# Hosted client projection configuration
+
+Current replication status: Step 6D projects hosted bootstrap, live publication,
+retained replay, recovery tail, and snapshot fallback under one immutable session
+projection. Hosted cut and SSR remain outside this security gate.
 
 Hosted Locus configuration classifies **every authority-owned application library** exactly once:
 
@@ -36,7 +40,7 @@ An effective projection may contain zero authority libraries. Locus stores its n
 
 A default projection is only a **default request** and still passes exposure and authorization. With no configured default, session creation without a request has an empty requested projection. A future zero-argument hosted cut must fail without an explicit default; it must never infer all authority libraries or all `client-public` libraries. No projected cut is implemented in Step 6A.
 
-**Security release gate:** Step 6A stores policy and immutable session scope, but current hosted bootstrap, commits, recovery, Echo construction, and cut/SSR output still use the complete authority representation. Do not use the current hosted client path as a private-state egress boundary. Selective client codec and publication work in later Step 6 subphases must replace every such path before `server-private` is enforced on client bytes.
+**Step 6A historical status:** This phase stored policy and immutable session scope. At that point bootstrap, publication, recovery, and hosted cut/SSR still used complete authority representations. Steps 6B–6D subsequently migrated replication; hosted cut/SSR remains open.
 
 ## Mirror authority projection snapshot (Step 6B)
 
@@ -46,7 +50,7 @@ The snapshot's `revision` is the Locus authority position for Echo's `authorityR
 
 The framework excludes hidden authority state; application-authored sensitive text placed in an included Schema, root, interaction argument, or behavior/action key is part of the permitted payload and cannot be inferred as secret by Mirror.
 
-**Security release gate remained incomplete at Step 6B.** Hosted bootstrap, live publication, replay, snapshot fallback transport, and hosted cut/SSR still used their previous complete-authority client representations. Step 6C migrates ordinary live publication below. Authority persistence and exact runtime capture remain complete and exposure-neutral.
+**Step 6B historical status:** At that point hosted bootstrap, live publication, replay, fallback, and hosted cut/SSR still used complete authority client representations. Steps 6C–6D migrated replication below. Authority persistence and exact runtime capture remain complete and exposure-neutral.
 
 ### Format and egress inventory
 
@@ -63,12 +67,66 @@ The framework excludes hidden authority state; application-authored sensitive te
 
 The live Locus publication path now projects each accepted authority revision separately for each attached session, using that session's immutable effective projection. Every revision yields exactly one event at the original authority position: a projected commit when there is a visible effect, or progress when there is none. Hidden application effects are omitted; mixed commits retain all visible effects in one atomic commit. Different sessions can therefore receive different events for the same revision. No complete registry positions, excluded names, or generated QUIDs are sent in a projected live commit. Locus checks each active session's encoded live frame against its wire bound before accepting the revision.
 
-Interaction replication uses the projected **resulting** state. Locus projects the before and after interaction roots and emits one replacement of the visible state only when they differ. A hidden descriptor change alone yields progress. The projector accepts a complete authority transition and its before and after cuts, so retained replay can reuse the same semantic boundary in a later phase. Complete authority history and durable persistence remain projection-neutral.
+Interaction replication uses the projected **resulting** state. Locus projects the before and after interaction roots and emits one replacement of the visible state only when they differ. A hidden descriptor change alone yields progress. The projector accepts a complete authority transition and its before and after cuts; Step 6D reuses that semantic boundary for retained replay. Complete authority history and durable persistence remain projection-neutral.
 
 Echo validates live commit and progress continuity against `authorityRev`. A projected commit installs one local LiveMap transition and advances `map.rev` according to local state changes. Progress advances `authorityRev` and completion waiters without graph work or a `map.rev` increment on a composed client map. Client-local mutations advance only `map.rev`; they cannot satisfy authority completion or create authority-stream gaps. Mirror follows local transitions.
 
-The new live payloads use `hson-locus-live-projected-client-commit-v2` inside `hson-locus-live-projected-client-wire-v2`. The older `hson-hosted-client-commit-v1` and `hson-locus-hosted-client-commit-v1` retain their complete-authority recovery meaning. The hosted socket envelope remains `hson-locus-hosted-aggregate-message-v3`, and Echo-to-Locus authoring/graph-op formats are unchanged. `hson-authority-projection-snapshot-v1` and SSR bootstrap version 2 are unchanged.
+The new live payloads use `hson-locus-live-projected-client-commit-v2` inside `hson-locus-live-projected-client-wire-v2`. At Step 6C, the older complete commit v1 formats still served recovery and the hosted socket envelope was v3. Step 6D retired that recovery use and bumped the envelope to v4. Echo-to-Locus authoring/graph-op formats and SSR bootstrap version 2 remain unchanged.
 
-**Security release gate remains incomplete.** Hosted bootstrap, retained-history replay, recovery tail, snapshot fallback transport, and hosted cut/SSR still use complete-authority client representations. The old QUID-bearing recovery probe is unchanged. Action results and application errors are application-controlled egress outside the replicated-state projector. Do not use the overall hosted client path as a private-state boundary until the remaining paths are migrated.
+**Step 6C historical status:** Bootstrap, recovery, and hosted cut/SSR had not yet migrated. Step 6D now projects bootstrap and recovery. Action results and application errors remain application-controlled egress outside the replicated-state projector.
 
-The old complete client snapshot is still used by hosted session bootstrap/recovery, replay fallback, and SSR. The new `fromClientSnapshot` construction seam accepts the projection-only contract; the old complete format remains inside the legacy transport machinery until those egress paths are migrated. Local `map.cut()` remains a structural API, not an authorization boundary.
+The preceding Step 6C status describes that release only. Step 6D supersedes its
+bootstrap and recovery status below. Local `map.cut()` remains a structural API,
+not an authorization boundary.
+
+## Projected bootstrap and recovery (Step 6D)
+
+The effective projection is stored on the session at creation. Bootstrap takes
+one atomic authority cut and sends `hson-authority-projection-snapshot-v1` for
+that stored projection. Echo validates the snapshot before constructing or
+restoring its composed LiveMap. Its authority cursor starts at the snapshot
+revision; the client map starts at its ordinary local revision. Client-local
+definitions, handles, QUIDs, subscriptions, and Mirror resources belong to the
+composed client map and are independent of authority state.
+
+Recovery requests carry Echo's authority cursor and the projection digest,
+along with the authority incarnation and projected registry digest. Reattachment
+reuses the session's stored projection; it does not authorize a new one. A
+projection mismatch is fenced. Every retained authority revision is passed
+through the same Step 6C projector as live publication. Visible revisions
+become projected commits at their original revision; invisible revisions become
+progress. Retained interaction replay uses the recorded before and after system
+roots, so hidden interaction changes do not appear in the wire payload.
+
+When history is insufficient, Locus sends a fresh projected snapshot under the
+same session scope. Echo installs only the authority-projected part of its
+composed map. The local map identity epoch and client-local resources survive.
+The successful install advances Echo's authority cursor to the snapshot
+revision; any later tail revisions are projected and processed in order.
+`map.rev` remains the local graph revision and may differ. Generated authority
+QUIDs never cross bootstrap or recovery transport. Completion at revision C
+becomes ready only after Echo has successfully processed authority through C.
+
+The hosted socket envelope is `hson-locus-hosted-aggregate-message-v4` because
+recovery cursor, plan, and caught-up messages now bind the projection digest.
+Projected commits retain the Step 6C v2 payload contract. The complete client
+snapshot and commit v1 formats remain in authority-internal durable restore and
+legacy SSR/cut machinery, but are no longer accepted as hosted replication
+bootstrap or recovery egress. Durable authority state remains complete,
+exposure-neutral, and QUID-free as required by its own persistence contract.
+
+Hosted cut, `render_hosted_document`, and SSR bootstrap version 2 still need the
+next security phase. Overall hosted state replication, bootstrap, and recovery
+egress are projected; hosted cut and SSR egress are not yet projection-safe.
+
+### Current format disposition
+
+| Format | Step 6D use |
+| --- | --- |
+| `hson-authority-projection-snapshot-v1` | Active bootstrap and fallback client egress. |
+| `hson-locus-live-projected-client-commit-v2` / `hson-locus-live-projected-client-wire-v2` | Active live, replay, and tail client egress. |
+| `hson-livemap-client-snapshot-v1` | Internal composition adapter and later hosted cut/SSR migration; retired from hosted replication egress. |
+| `hson-hosted-client-commit-v1` | Internal LiveMap replay adapter and durable conversion; retired from hosted replication egress. |
+| `hson-locus-hosted-client-commit-v1` | Authority-internal legacy aggregate helper; retired from hosted socket egress. |
+| `hson-locus-hosted-aggregate-message-v4` | Active hosted socket envelope. v3 is retired. |
+| `hson-ssr-bootstrap` version 2 | Later hosted cut/SSR migration. |

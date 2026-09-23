@@ -14,20 +14,10 @@ import type {
   LocusSocketLike,
 } from "../../types/locus.types.js";
 import type { EchoMapManagementLease } from "../../internal/echo-map-capability.js";
-import type { HostedClientLibrariesSnapshot } from "../../types/livemap.types.js";
+import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
 import { make_livemap_client_mirror_from_snapshot_internal } from "../livemap/livemap.libraries.js";
-import {
-  assert_libraries_snapshot_bound,
-  assert_hosted_client_snapshot_shape,
-  complete_hosted_registry_as_projected_digest_internal,
-} from "../livemap/livemap.hosted.js";
-import {
-  DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES,
-  LOCUS_HOSTED_AGGREGATE_WIRE_FORMAT,
-  decode_locus_hosted_aggregate_envelope,
-  type LocusHostedAggregateWireEnvelope,
-} from "../locus/locus.hosted-multi-library.js";
 import { decode_locus_live_projected_envelope_internal, type LocusLiveProjectedWireEnvelope } from "../locus/locus.live-projection.js";
+import { admit_authority_projection_snapshot, authority_projection_as_client_composition_internal, bind_client_projection_identity_internal, client_projection_identity_internal } from "../locus/locus.authority-projection-snapshot.js";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../locus/locus.hosted-multi-library.protocol.js";
 import {
   create_echo_endpoint_connection_internal,
@@ -145,6 +135,7 @@ function create_multi_library_echo_semantic_client_internal<
   let logicalMapId = options.logicalMapId;
   let incarnationId: string | undefined;
   let registryDigest: string | undefined;
+  let projectionDigest: string | undefined = map === undefined ? undefined : client_projection_identity_internal(map);
   let authorityRev: number | undefined;
   const authorityPositionListeners = new Set<(revision: number) => void>();
   const publishAuthorityPosition = (): void => {
@@ -175,6 +166,8 @@ function create_multi_library_echo_semantic_client_internal<
     resolve: (value: MultiLibraryEchoSocketRecovery) => void;
     reject: (reason: Error) => void;
     outcome?: Exclude<HostedPlanOutcome, "reject">;
+    projectionDigest?: string;
+    registryDigest?: string;
     snapshotReceived: boolean;
   }> | undefined;
   let liveRecovery: Readonly<{ id: string; sessionId: string; sessionEpoch: number }> | undefined;
@@ -268,6 +261,7 @@ function create_multi_library_echo_semantic_client_internal<
         incarnationId = snapshot.authority.incarnationId;
         registryDigest = snapshot.registryDigest;
       }
+      projectionDigest = client_projection_identity_internal(map);
     }
     status = "recovering";
     replica.markRecovering();
@@ -287,9 +281,9 @@ function create_multi_library_echo_semantic_client_internal<
         type: "recover",
         id,
         logicalMapId: clientLogicalMapId,
-        ...(incarnationId === undefined || registryDigest === undefined || authorityRev === undefined
+        ...(incarnationId === undefined || registryDigest === undefined || projectionDigest === undefined || authorityRev === undefined
           ? {}
-          : { cursor: Object.freeze({ incarnationId, registryDigest, lastAppliedRev: authorityRev }) }),
+          : { cursor: Object.freeze({ incarnationId, registryDigest, projectionDigest, lastAppliedRev: authorityRev }) }),
       });
       options.connection.synchronization.begin(request);
     });
@@ -319,10 +313,15 @@ function create_multi_library_echo_semantic_client_internal<
         throw new Error("Hosted recovery plan authority fence is incompatible with the attached session.");
       }
       if (message.outcome === "reject") throw new Error(message.error.message);
-      if (map !== undefined && registryDigest !== undefined && message.registryDigest !== registryDigest) {
-        throw new Error("Hosted recovery registry mismatch requires a fresh aggregate bootstrap.");
+      if (incarnationId === message.incarnationId && projectionDigest !== undefined && message.projectionDigest !== projectionDigest) {
+        throw new Error("Hosted recovery projection is incompatible.");
       }
-      if (recoveryCurrent(active)) recovery = Object.freeze({ ...active, outcome: message.outcome });
+      if (incarnationId === message.incarnationId && registryDigest !== undefined
+        && message.outcome !== "snapshot" && message.registryDigest !== registryDigest) {
+        throw new Error("Hosted recovery projected registry mismatch.");
+      }
+      if (recoveryCurrent(active)) recovery = Object.freeze({ ...active, outcome: message.outcome,
+        projectionDigest: message.projectionDigest, registryDigest: message.registryDigest });
       return;
     }
     if (message.type === "recovery-snapshot") {
@@ -337,7 +336,7 @@ function create_multi_library_echo_semantic_client_internal<
       const active = current_recovery(message.id);
       if (active === undefined) return;
       if (active.outcome !== "replay" && active.outcome !== "snapshot") throw new Error("Hosted recovery received an unexpected aggregate commit.");
-      apply_envelope(message.commit);
+      apply_live_envelope(message.commit);
       return;
     }
     if (message.type === "recovery-progress") {
@@ -351,10 +350,7 @@ function create_multi_library_echo_semantic_client_internal<
       const active = liveRecovery;
       if (status !== "live" || active === undefined || active.id !== message.id) return;
       if (endpoint.session.status !== "attached" || endpoint.session.sessionId !== active.sessionId || endpoint.session.epoch !== active.sessionEpoch) return;
-      // The old complete-authority recovery tail remains a separate, known
-      // migration path until the next Step 6 phase.
-      if (message.commit.format === LOCUS_HOSTED_AGGREGATE_WIRE_FORMAT) apply_envelope(message.commit);
-      else apply_live_envelope(message.commit);
+      apply_live_envelope(message.commit);
       return;
     }
     if (message.type === "progress") {
@@ -367,7 +363,8 @@ function create_multi_library_echo_semantic_client_internal<
     if (message.type === "recovery-caught-up") {
       const active = current_recovery(message.id);
       if (active === undefined) return;
-      if (message.logicalMapId !== clientLogicalMapId || message.incarnationId !== incarnationId || message.registryDigest !== registryDigest) {
+      if (message.logicalMapId !== clientLogicalMapId || message.incarnationId !== incarnationId
+        || message.registryDigest !== registryDigest || message.projectionDigest !== projectionDigest) {
         throw new Error("Hosted recovery caught-up fence is incompatible with this mirror.");
       }
       if (authorityRev !== message.throughRev) {
@@ -393,51 +390,39 @@ function create_multi_library_echo_semantic_client_internal<
     return active;
   }
 
-  function install_snapshot(snapshot: HostedClientLibrariesSnapshot): void {
-    assert_hosted_client_snapshot_shape(snapshot);
-    if (snapshot.authority.logicalMapId !== clientLogicalMapId) throw new Error("Hosted aggregate snapshot logical map fence is incompatible.");
-    if (recovery?.outcome === "snapshot" && map !== undefined && registryDigest !== undefined && snapshot.registryDigest !== registryDigest) {
-      throw new Error("Hosted aggregate snapshot changes an existing registry topology.");
+  function install_snapshot(input: AuthorityProjectionSnapshot): void {
+    const snapshot = admit_authority_projection_snapshot(input);
+    const active = recovery;
+    if (active?.outcome !== "snapshot" || active.projectionDigest !== snapshot.projectionDigest
+      || snapshot.authority.logicalMapId !== clientLogicalMapId
+      || snapshot.authority.incarnationId !== endpoint.session.incarnationId) {
+      throw new Error("Hosted projected snapshot fence is incompatible.");
     }
+    const composition = authority_projection_as_client_composition_internal(snapshot);
+    if (active.registryDigest !== composition.registryDigest) throw new Error("Hosted projected snapshot registry is incompatible.");
     if (map === undefined) {
-      // Construction occurs only after complete snapshot validation.
-      map = make_livemap_client_mirror_from_snapshot_internal(snapshot, options.localLibraries);
-      replica.attachMap(map);
+      if (composition.registry.libraries.length > 0 || Object.keys(options.localLibraries ?? {}).length > 0) {
+        const created = make_livemap_client_mirror_from_snapshot_internal(composition, options.localLibraries ?? {});
+        replica.attachMap(created);
+        map = created;
+      }
     } else {
-      // Aggregate recovery validates all roots, Schemas and map-wide QUID state before this
-      // single in-place install; retained library handles keep their closure.
-      replica.restoreHosted(snapshot);
+      if (replica.clientProjection() === undefined) throw new Error("Hosted projected restore requires a composed client LiveMap.");
+      replica.restoreHosted(composition);
     }
+    if (map !== undefined) bind_client_projection_identity_internal(map, snapshot);
     incarnationId = snapshot.authority.incarnationId;
-    registryDigest = snapshot.registryDigest;
+    registryDigest = composition.registryDigest;
+    projectionDigest = snapshot.projectionDigest;
     authorityRev = snapshot.revision;
     publishAuthorityPosition();
   }
 
-  function apply_envelope(envelope: LocusHostedAggregateWireEnvelope): void {
-    if (map === undefined || incarnationId === undefined || registryDigest === undefined) {
-      throw new Error("Hosted aggregate commit arrived before aggregate bootstrap.");
+  function apply_live_envelope(envelope: LocusLiveProjectedWireEnvelope): void {
+    if (incarnationId === undefined || registryDigest === undefined) {
+      throw new Error("Projected live commit requires a hosted bootstrap.");
     }
-    const commit = decode_locus_hosted_aggregate_envelope(envelope, Object.freeze({
-      logicalMapId: clientLogicalMapId,
-      incarnationId,
-      registryDigest,
-      maxWireBytes: DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES,
-    }));
-    if (authorityRev === undefined || commit.prevRev !== authorityRev) {
-      throw new Error("Hosted aggregate commit is not contiguous with the Echo authority cursor.");
-    }
-    replica.replayHosted(commit, replica.clientProjection() === undefined ? undefined : authorityRev);
-    authorityRev = commit.rev;
-    publishAuthorityPosition();
-  }
-
-  function apply_live_envelope(envelope: LocusHostedAggregateWireEnvelope | LocusLiveProjectedWireEnvelope): void {
-    if (map === undefined || incarnationId === undefined || registryDigest === undefined) {
-      throw new Error("Projected live commit requires a hosted map.");
-    }
-    const liveDigest = replica.clientProjection()?.registry.digest
-      ?? complete_hosted_registry_as_projected_digest_internal(replica.captureHosted().registry);
+    const liveDigest = replica.clientProjection()?.registry.digest ?? registryDigest;
     const admitted = decode_locus_live_projected_envelope_internal(envelope, Object.freeze({
       logicalMapId: clientLogicalMapId, incarnationId, registryDigest: liveDigest,
     }));
@@ -445,18 +430,16 @@ function create_multi_library_echo_semantic_client_internal<
       throw new Error("Projected live commit is not contiguous with the Echo authority cursor.");
     }
     const commit = Object.freeze({ ...admitted, registryDigest });
-    replica.replayHosted(commit, authorityRev);
+    if (map !== undefined) replica.replayHosted(commit, authorityRev);
     authorityRev = commit.rev;
     publishAuthorityPosition();
   }
 
   function apply_progress(progress: import("../locus/locus.hosted-multi-library.transport.internal.js").LocusHostedAggregateProgress, live: boolean): void {
-    if (map === undefined || incarnationId === undefined || registryDigest === undefined) {
+    if (incarnationId === undefined || registryDigest === undefined) {
       throw new Error("Hosted authority progress arrived before aggregate bootstrap.");
     }
-    const expectedDigest = live && replica.clientProjection() === undefined
-      ? complete_hosted_registry_as_projected_digest_internal(replica.captureHosted().registry)
-      : registryDigest;
+    const expectedDigest = registryDigest;
     if (progress.logicalMapId !== clientLogicalMapId || progress.incarnationId !== incarnationId
       || progress.registryDigest !== expectedDigest) throw new Error("Hosted authority progress fence is incompatible.");
     if (authorityRev === undefined || progress.prevRev !== authorityRev
@@ -464,7 +447,7 @@ function create_multi_library_echo_semantic_client_internal<
       || progress.rev !== progress.prevRev + 1) {
       throw new Error("Hosted progress is not contiguous with the Echo authority cursor.");
     }
-    if (!live || replica.clientProjection() !== undefined) replica.advanceHostedProgress(progress);
+    if (map !== undefined) replica.advanceHostedProgress(progress);
     authorityRev = progress.rev;
     publishAuthorityPosition();
   }

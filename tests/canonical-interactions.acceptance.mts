@@ -1,4 +1,4 @@
-import { test_public_exposure } from "./helpers/hosted-exposure.mts";
+import { test_public_exposure, test_public_projection } from "./helpers/hosted-exposure.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import {
@@ -21,6 +21,8 @@ import {
 } from "../src/index.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
+import { project_authority_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
+import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
 import { validate_document_path } from "../src/api/livemap/index.ts";
 import {
   set_interaction_activation_initialization_hook_for_tests,
@@ -712,24 +714,33 @@ await check("invocation rejection is isolated and disposal leaves imperative lis
 
 await check("public Echo dispatcher preserves exact payload through configured Locus authority", async () => {
   const exact = Hson.data.fromHson(Hson.canonical`<'10' -0 '2' <__proto__ <constructor 1 prototype 2>> __proto__ <polluted true>>`);
-  const authorityMap = map_fixture();
+  currentQ = "000008999";
+  const authorityMap = hsonLiveMap.fromLibraries({
+    state: { data: { count: 0 }, schema: StateSchema },
+    page: { document: "<main <button/>/>", schema: PageSchema },
+  });
+  enable_interactions(authorityMap);
+  set_livemap_document_quid_candidate_source_for_tests(authorityMap.lib("page").document, () => currentQ);
+  acquire_document_identity(authorityMap.lib("page").document, { kind: "path", path: validate_document_path([0, 0, 0]) });
   add_interaction(authorityMap, authoritative("echo", "save", exact));
   let handled: HsonData | undefined;
+  const configured = test_public_projection(authorityMap);
   const locus = hsonLocus.create({
-    exposure: test_public_exposure(authorityMap),
+    ...configured,
     map: authorityMap,
     actions: { save: (_context, payload) => { handled = payload; } },
   });
-  const echoMap = admit_exact_runtime_livemap_libraries({
-    state: { data: { count: 0 }, schema: StateSchema },
-    page: { document: parse_hson_exact_runtime(`<main <button @${currentQ}/>/>`, { allowTopLevelDocumentText: true }), schema: PageSchema },
-  });
-  enable_interactions(echoMap);
+  const captured = internal_livemap_aggregate_authority(authorityMap).captureHosted();
+  const policy = make_locus_hosted_projection_policy(captured.registry, captured.authority,
+    configured.exposure, configured.defaultProjection, configured.authorizeProjection);
+  const effective = await normalize_locus_effective_projection(policy, configured.defaultProjection);
+  const echoMap = hsonLiveMap.fromClientSnapshot({ authority: project_authority_snapshot(captured, effective),
+    localLibraries: {} }) as typeof authorityMap;
   const pair = socket_pair();
   locus.connect(pair.server);
   const echo = hsonEcho.create({ socket: pair.client, map: echoMap, recovery: { logicalMapId: locus.logicalMapId } });
   await activate_echo(echo);
-  assert.throws(() => add_interaction(echoMap, local("replica-write", "save")), /exclusive Locus authority/i);
+  assert.throws(() => add_interaction(echoMap, local("replica-write", "save")), /library mutation authority/i);
   const reflection = hsonMirror(echoMap.lib("page"));
   const page = echoMap.lib("page");
   if (!("document" in page)) throw new Error("Expected document library.");

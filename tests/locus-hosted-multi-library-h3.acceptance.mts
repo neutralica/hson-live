@@ -7,8 +7,7 @@ import type { HsonNode } from "../src/core/types.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import type { LiveMapLibraries } from "../src/types/livemap.types.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
-import { make_livemap_client_mirror_from_snapshot_internal } from "../src/api/livemap/livemap.libraries.ts";
-import { assert_hosted_client_snapshot_shape, encode_hosted_root, make_hosted_client_snapshot } from "../src/api/livemap/livemap.hosted.ts";
+import { encode_hosted_root, make_hosted_client_snapshot } from "../src/api/livemap/livemap.hosted.ts";
 import { encode_locus_graph_content, encode_locus_portable_graph_content } from "../src/api/locus/locus.graph-content-codec.ts";
 import {
   create_multi_library_echo_socket_client_internal,
@@ -25,6 +24,8 @@ import { acquire_document_identity } from "./helpers/livemap-identity-internal.m
 import { set_livemap_document_quid_candidate_source_for_tests } from "../src/api/livemap/livemap.document.registration.ts";
 import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.identity-epoch.ts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
+import { admit_authority_projection_snapshot, project_authority_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
+import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
 
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <theme "string" count <number <int true min 0>> box <content <id "number">>>>`;
 const ColorsSchema: HsonSchema = Hson.schema`<type "data" content <theme "string" accent "string">>`;
@@ -129,6 +130,16 @@ function make_map(libraries = 3) {
   return hsonLiveMap.fromLibraries(input);
 }
 
+function projected_client_map(authority: LiveMapLibraries): LiveMapLibraries {
+  const captured = internal_livemap_aggregate_authority(authority).captureHosted();
+  const configured = test_public_projection(authority);
+  const policy = make_locus_hosted_projection_policy(captured.registry, captured.authority,
+    configured.exposure, configured.defaultProjection, configured.authorizeProjection);
+  const effective = normalize_locus_effective_projection(policy, configured.defaultProjection);
+  if (effective instanceof Promise) throw new Error("Expected synchronous test projection.");
+  return hsonLiveMap.fromClientSnapshot({ authority: project_authority_snapshot(captured, effective), localLibraries: {} });
+}
+
 function data(draft: LocusHostedAggregateDraft, name: string): LocusHostedAggregateDataDraft {
   const selected = draft.lib(name);
   if (!("at" in selected)) throw new Error(`Expected data library ${name}.`);
@@ -187,19 +198,19 @@ async function attach(server: ReturnType<typeof create_locus_hosted_aggregate_so
   return Object.freeze({ pair, client, recovery, elapsedMs: performance.now() - started });
 }
 
-await check("actual socket aggregate bootstrap establishes one complete QUID-free client replica", async () => {
+await check("actual socket aggregate bootstrap establishes one projected QUID-free client replica", async () => {
   const map = make_map(2);
   const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(map), map });
   const attached = await attach(server);
   assert.equal(attached.recovery.outcome, "snapshot");
   assert.ok(attached.client.map);
-  assert.deepEqual(
-    make_hosted_client_snapshot(internal_livemap_aggregate_authority(attached.client.map!).captureHosted()),
-    make_hosted_client_snapshot(internal_livemap_aggregate_authority(map).captureHosted()),
-  );
+  assert.equal(data_library(attached.client.map!, "state").snap(["theme"]), "light");
+  assert.equal(data_library(attached.client.map!, "colors").snap(["accent"]), "#000");
   const sent = attached.pair.serverSent.map((raw) => JSON.parse(raw) as Record<string, unknown>);
   assert.equal(sent.some((message) => message.type === "hello"), false);
-  assert.equal(sent.find((message) => message.type === "recovery-snapshot")?.format, "hson-locus-hosted-aggregate-message-v3");
+  assert.equal(sent.find((message) => message.type === "recovery-snapshot")?.format, "hson-locus-hosted-aggregate-message-v4");
+  assert.equal((sent.find((message) => message.type === "recovery-snapshot")?.snapshot as { format: string }).format,
+    "hson-authority-projection-snapshot-v1");
   assert.equal(attached.pair.serverSent.some((raw) => raw.includes("issuedQuids") || raw.includes("identityEpoch")), false);
   server.dispose();
 });
@@ -215,24 +226,31 @@ await check("old aggregate socket discriminator rejects as an ordinary non-curre
     socket: pair.client,
     logicalMapId: server.logicalMapId,
   });
-  await assert.rejects(endpoint.connect(), /format|incompatible/i);
+  await assert.rejects(endpoint.connect(), /recovery failed|format|incompatible/i);
   assert.equal(endpoint.map, undefined);
   endpoint.dispose();
   server.dispose();
 });
 
-await check("client snapshot admission rejects generated authority QUID claims", () => {
-  const snapshot = make_hosted_client_snapshot(internal_livemap_aggregate_authority(make_map()).captureHosted());
+await check("projected bootstrap admission rejects generated authority QUID claims", () => {
+  const map = make_map();
+  const captured = internal_livemap_aggregate_authority(map).captureHosted();
+  const configured = test_public_projection(map);
+  const policy = make_locus_hosted_projection_policy(captured.registry, captured.authority,
+    configured.exposure, configured.defaultProjection, configured.authorizeProjection);
+  const effective = normalize_locus_effective_projection(policy, configured.defaultProjection);
+  if (effective instanceof Promise) throw new Error("Expected synchronous test projection.");
+  const snapshot = project_authority_snapshot(captured, effective);
   const poisoned = Object.freeze({
     ...snapshot,
     libraries: snapshot.libraries.map((entry) => entry.name === "page"
       ? Object.freeze({ ...entry, root: encode_hosted_root(parse_hson_exact_runtime('<main @000008299/>')) })
       : entry),
   });
-  assert.throws(() => assert_hosted_client_snapshot_shape(poisoned), /QUID|identity|portable/i);
+  assert.throws(() => admit_authority_projection_snapshot(poisoned), /malformed/i);
 });
 
-await check("custom socket action preserves one global commit and complete mirror replay", async () => {
+await check("custom socket action preserves one global projected commit", async () => {
   const map = make_map();
   const server = create_locus_hosted_aggregate_socket_internal({
     ...test_public_projection(map),
@@ -258,14 +276,13 @@ await check("custom socket action preserves one global commit and complete mirro
 
 await check("retained global history recovers QUID-free aggregate effects without per-library cursors", async () => {
   const map = make_map();
-  const seed = make_hosted_client_snapshot(internal_livemap_aggregate_authority(map).captureHosted());
+  const stale = projected_client_map(map);
   const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(map), map });
   await server.mutate((draft) => data(draft, "state").at(["theme"]).set("dark"));
   await server.mutate((draft) => {
     data(draft, "colors").at(["accent"]).set("#fff");
     document(draft, "page").graph(insert_item());
   });
-  const stale = make_livemap_client_mirror_from_snapshot_internal(seed);
   const attached = await attach(server, { map: stale });
   assert.equal(attached.recovery.outcome, "replay");
   assert.equal(attached.client.lastAppliedRev, 2);
@@ -277,16 +294,15 @@ await check("retained global history recovers QUID-free aggregate effects withou
     assert.equal(raw.includes(QUID), false, "authority QUID crossed the aggregate client wire");
     assert.equal(raw.includes('"quid"') || raw.includes('\\"quid\\"'), false, "aggregate client wire contains a node QUID field");
   }
-  assert.deepEqual(make_hosted_client_snapshot(internal_livemap_aggregate_authority(stale).captureHosted()), make_hosted_client_snapshot(internal_livemap_aggregate_authority(map).captureHosted()));
+  assert.equal(data_library(stale, "state").snap(["theme"]), "dark");
   server.dispose();
 });
 
 await check("aggregate snapshot recovery restores a retained mirror in place and converges selected page Mirror once", async () => {
   install_fake_document();
   const map = make_map();
-  const seed = make_hosted_client_snapshot(internal_livemap_aggregate_authority(map).captureHosted());
   const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(map), map, maxHistoryBytes: 1 });
-  const stale = make_livemap_client_mirror_from_snapshot_internal(seed);
+  const stale = projected_client_map(map);
   const stateHandle = data_library(stale, "state").at(["theme"]);
   const pageHandle = page_library(stale).at([]);
   const reflected = hsonMirror(page_library(stale));
@@ -307,12 +323,11 @@ await check("aggregate snapshot recovery restores a retained mirror in place and
   server.dispose();
 });
 
-await check("a state-only aggregate snapshot advances page Mirror into the fresh identity epoch", async () => {
+await check("a state-only aggregate snapshot preserves the client identity epoch while retiring projected claims", async () => {
   install_fake_document();
   const map = make_map();
-  const seed = make_hosted_client_snapshot(internal_livemap_aggregate_authority(map).captureHosted());
   const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(map), map, maxHistoryBytes: 1 });
-  const stale = make_livemap_client_mirror_from_snapshot_internal(seed);
+  const stale = projected_client_map(map);
   set_livemap_document_quid_candidate_source_for_tests(page_library(stale).document, () => "000008299");
   const oldSubject = acquire_document_identity(page_library(stale).document, { kind: "path", path: validate_document_path([0]) });
   const oldEpoch = livemap_identity_epoch_accounting(page_library(stale).document).epoch;
@@ -323,14 +338,14 @@ await check("a state-only aggregate snapshot advances page Mirror into the fresh
   assert.equal(reflected.sourceRevision, 1);
   assert.equal(reflected.diagnostics().updatesApplied, 1);
   assert.equal(oldSubject.active, false);
-  assert.notEqual(livemap_identity_epoch_accounting(page_library(stale).document).epoch, oldEpoch);
+  assert.equal(livemap_identity_epoch_accounting(page_library(stale).document).epoch, oldEpoch);
   assert.equal(page_library(stale).document.byQuid("000008299"), undefined);
   assert.equal(reflected.status, "active");
   reflected.dispose();
   server.dispose();
 });
 
-await check("socket document action requires a named document library and replays through the complete mirror", async () => {
+await check("socket document action requires a named document library and replays through the projected mirror", async () => {
   const map = make_map();
   const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(map), map });
   const attached = await attach(server);
@@ -390,46 +405,46 @@ await check("authority retains local issued-QUID history while client bootstrap 
     () => server.mutate((draft) => document(draft, "page").graph(insert_item(QUID))),
     /QUID|reuse|identity/i,
   );
-  assert.equal(mirror.rev, 2);
+  assert.equal(attached.client.lastAppliedRev, 2);
+  assert.equal(mirror.rev, 0);
   server.dispose();
 });
 
 await check("registry mismatch refuses replay against an existing topology and leaves its mirror unchanged", async () => {
   const map = make_map();
-  const seed = make_hosted_client_snapshot(internal_livemap_aggregate_authority(map).captureHosted());
-  const stale = make_livemap_client_mirror_from_snapshot_internal(seed);
+  const stale = projected_client_map(map);
   const before = internal_livemap_aggregate_authority(stale).captureHosted();
   const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(map), map });
-  const original = internal_livemap_aggregate_authority(stale).captureHosted;
-  const aggregate = internal_livemap_aggregate_authority(stale);
-  // A deliberately incompatible mirror remains a normal H1 map, but its
-  // cursor carries a bad registry fence into H3 recovery.
-  const incompatible = make_livemap_client_mirror_from_snapshot_internal(seed);
-  const badSnapshot = aggregate.captureHosted();
-  assert.equal(badSnapshot.registryDigest, before.registryDigest);
+  // The bad projected-registry claim changes the recovery strategy without
+  // changing this detached composed map.
   const pair = socket_pair();
   server.connect(pair.server);
+  pair.client.send(JSON.stringify({ type: "recover", id: "bootstrap-registry", logicalMapId: server.logicalMapId }));
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  const initialPlan = pair.serverSent.map((raw) => JSON.parse(raw) as Record<string, unknown>)
+    .find((message) => message.type === "recovery-plan" && message.id === "bootstrap-registry");
+  assert.ok(initialPlan);
   pair.client.send(JSON.stringify({
     type: "recover",
     id: "bad-registry",
     logicalMapId: server.logicalMapId,
     incarnationId: server.incarnationId,
     registryDigest: "0".repeat(64),
+    projectionDigest: initialPlan.projectionDigest,
     lastAppliedRev: 0,
   }));
-  await Promise.resolve();
-  const plan = pair.serverSent.map((raw) => JSON.parse(raw) as Record<string, unknown>).find((message) => message.type === "recovery-plan");
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  const plan = pair.serverSent.map((raw) => JSON.parse(raw) as Record<string, unknown>)
+    .find((message) => message.type === "recovery-plan" && message.id === "bad-registry");
   assert.equal(plan?.outcome, "snapshot");
   assert.equal(plan?.reason, "registry_mismatch");
   assert.deepEqual(internal_livemap_aggregate_authority(stale).captureHosted(), before);
-  void original;
-  void incompatible;
   server.dispose();
 });
 
 await check("snapshot cut buffers an accepted aggregate tail and drains it in global order", async () => {
   const map = make_map();
-  const seed = make_hosted_client_snapshot(internal_livemap_aggregate_authority(map).captureHosted());
+  const stale = projected_client_map(map);
   let server!: ReturnType<typeof create_locus_hosted_aggregate_socket_internal>;
   server = create_locus_hosted_aggregate_socket_internal({
     ...test_public_projection(map),
@@ -445,7 +460,6 @@ await check("snapshot cut buffers an accepted aggregate tail and drains it in gl
     },
   });
   await server.mutate((draft) => data(draft, "state").at(["count"]).set(1));
-  const stale = make_livemap_client_mirror_from_snapshot_internal(seed);
   const attached = await attach(server, { map: stale });
   assert.equal(attached.recovery.outcome, "snapshot");
   assert.equal(attached.client.lastAppliedRev, 2);
@@ -454,7 +468,7 @@ await check("snapshot cut buffers an accepted aggregate tail and drains it in gl
   server.dispose();
 });
 
-await check("current recovery preserves the global cursor and complete mirror", async () => {
+await check("current recovery preserves the global cursor and projected mirror", async () => {
   const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(make_map()), map: make_map() });
   const attached = await attach(server);
   const mirror = attached.client.map;

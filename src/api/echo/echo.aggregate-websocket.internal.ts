@@ -2,7 +2,6 @@ import type { LocusActionPayloads, LocusClientMessage } from "../../types/locus.
 import { encode_locus_client_message } from "../locus/locus.protocol.js";
 import {
   DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES,
-  type LocusHostedAggregateWireEnvelope,
 } from "../locus/locus.hosted-multi-library.js";
 import type { LocusLiveProjectedWireEnvelope } from "../locus/locus.live-projection.js";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../locus/locus.hosted-multi-library.protocol.js";
@@ -12,7 +11,7 @@ import type {
   LocusHostedAggregateSynchronizationOutput,
   LocusHostedAggregateSynchronizationRequest,
 } from "../locus/locus.hosted-multi-library.transport.internal.js";
-import type { HostedClientLibrariesSnapshot } from "../../types/livemap.types.js";
+import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
 import { HOSTED_MAX_SNAPSHOT_BYTES } from "../livemap/livemap.hosted.js";
 import type { EchoEndpointConnection } from "./echo.client.js";
 
@@ -69,22 +68,23 @@ export function decode_echo_hosted_aggregate_synchronization_frame_internal(raw:
     const logicalMapId = required_string(value.logicalMapId);
     const incarnationId = required_string(value.incarnationId);
     const registryDigest = required_digest(value.registryDigest);
+    const projectionDigest = required_digest(value.projectionDigest);
     const headRev = required_revision(value.headRev);
-    if (logicalMapId === undefined || incarnationId === undefined || registryDigest === undefined || headRev === undefined) throw new Error("Hosted recovery plan is malformed.");
+    if (logicalMapId === undefined || incarnationId === undefined || registryDigest === undefined || projectionDigest === undefined || headRev === undefined) throw new Error("Hosted recovery plan is malformed.");
     if (value.outcome === "reject") {
       const error = exact_record(value.error, "Hosted recovery rejection");
       const message = required_string(error.message);
       if (message === undefined) throw new Error("Hosted recovery rejection is malformed.");
-      return Object.freeze({ type: "recovery-plan", id, logicalMapId, incarnationId, registryDigest, headRev, outcome: "reject", error: Object.freeze({ ...(typeof error.code === "string" ? { code: error.code } : {}), message }) });
+      return Object.freeze({ type: "recovery-plan", id, logicalMapId, incarnationId, registryDigest, projectionDigest, headRev, outcome: "reject", error: Object.freeze({ ...(typeof error.code === "string" ? { code: error.code } : {}), message }) });
     }
     if (value.outcome !== "current" && value.outcome !== "replay" && value.outcome !== "snapshot") throw new Error("Hosted recovery plan outcome is invalid.");
     const outcome: "current" | "replay" | "snapshot" = value.outcome;
-    return Object.freeze({ type: "recovery-plan", id, logicalMapId, incarnationId, registryDigest, headRev, outcome, ...(typeof value.reason === "string" ? { reason: value.reason as "no_usable_revision" | "incarnation_mismatch" | "registry_mismatch" | "history_unavailable" } : {}) });
+    return Object.freeze({ type: "recovery-plan", id, logicalMapId, incarnationId, registryDigest, projectionDigest, headRev, outcome, ...(typeof value.reason === "string" ? { reason: value.reason as "no_usable_revision" | "incarnation_mismatch" | "registry_mismatch" | "history_unavailable" } : {}) });
   }
-  if (value.type === "recovery-snapshot") return Object.freeze({ type: "recovery-snapshot", id, snapshot: value.snapshot as HostedClientLibrariesSnapshot });
+  if (value.type === "recovery-snapshot") return Object.freeze({ type: "recovery-snapshot", id, snapshot: value.snapshot as AuthorityProjectionSnapshot });
   if (value.type === "recovery-commit") {
     if (value.phase !== "body" && value.phase !== "tail") throw new Error("Hosted recovery commit phase is malformed.");
-    return Object.freeze({ type: "recovery-commit", id, phase: value.phase, commit: value.commit as LocusHostedAggregateWireEnvelope });
+    return Object.freeze({ type: "recovery-commit", id, phase: value.phase, commit: value.commit as LocusLiveProjectedWireEnvelope });
   }
   if (value.type === "recovery-progress") {
     if (value.phase !== "body" && value.phase !== "tail") throw new Error("Hosted recovery progress phase is malformed.");
@@ -96,9 +96,10 @@ export function decode_echo_hosted_aggregate_synchronization_frame_internal(raw:
     const logicalMapId = required_string(value.logicalMapId);
     const incarnationId = required_string(value.incarnationId);
     const registryDigest = required_digest(value.registryDigest);
+    const projectionDigest = required_digest(value.projectionDigest);
     const throughRev = required_revision(value.throughRev);
-    if (logicalMapId === undefined || incarnationId === undefined || registryDigest === undefined || throughRev === undefined) throw new Error("Hosted recovery caught-up is malformed.");
-    return Object.freeze({ type: "recovery-caught-up", id, logicalMapId, incarnationId, registryDigest, throughRev });
+    if (logicalMapId === undefined || incarnationId === undefined || registryDigest === undefined || projectionDigest === undefined || throughRev === undefined) throw new Error("Hosted recovery caught-up is malformed.");
+    return Object.freeze({ type: "recovery-caught-up", id, logicalMapId, incarnationId, registryDigest, projectionDigest, throughRev });
   }
   throw new Error("Hosted aggregate server message type is unknown.");
 }

@@ -1,11 +1,10 @@
-import type { JsonValue } from "../../core/types.js";
+import type { HsonNode, JsonValue } from "../../core/types.js";
 import { ExactDataCarrier, admit_hson_data_input, hson_data_text, encode_hson_data_internal } from "../data/hson-data.js";
 import type {
   LiveMapDocumentCommitTarget,
   LiveMapDocumentRequestTarget,
   LiveMapGraphCommit,
   LiveMapLibraries,
-  HostedClientLibrariesSnapshot,
 } from "../../types/livemap.types.js";
 import type {
   LocusActionAuthorizer,
@@ -29,13 +28,15 @@ import { decode_locus_message } from "./locus.protocol.js";
 import { is_locus_json_value } from "./locus.protocol.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import { make_livemap_hosted_mirror_from_snapshot_internal } from "../livemap/livemap.libraries.js";
-import { make_hosted_client_commit, make_hosted_client_snapshot } from "../livemap/livemap.hosted.js";
+import { decode_hosted_root, encode_hosted_root, make_hosted_client_commit } from "../livemap/livemap.hosted.js";
 import { locus_client_error_message } from "./locus.client-error.js";
 import { validate_document_path } from "../livemap/livemap.document.path.js";
 import { make_locus_action_dedupe_store } from "./locus.actions.js";
 import { make_locus_session_manager } from "./locus.session.js";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection, type LocusEffectiveProjection } from "./locus.projection.js";
 import { LOCUS_LIVE_PROJECTED_WIRE_FORMAT, project_locus_live_transition_internal, type LocusLiveProjectedEvent } from "./locus.live-projection.js";
+import { capture_locus_session_authority_projection_snapshot, authority_projection_as_client_composition_internal } from "./locus.authority-projection-snapshot.js";
+import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
 import { INTERACTION_RESERVED_LIBRARY_KEY } from "../../internal/interaction-storage.js";
 import { decode_locus_action_payload, locus_schema_error_message } from "./locus.action-validation.js";
 import {
@@ -47,14 +48,12 @@ import {
 } from "../livemap/livemap.hosted.js";
 import {
   DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES,
-  LOCUS_HOSTED_AGGREGATE_WIRE_FORMAT,
   create_locus_hosted_aggregate_internal,
   type LocusHostedAggregate,
   type LocusHostedAggregateAction,
   type LocusHostedAggregateDocumentDraft,
   type LocusHostedAggregateDraft,
   type LocusHostedAggregateGateInput,
-  type LocusHostedAggregateWireEnvelope,
   type LocusHostedAggregateAuthorityEnvelope,
 } from "./locus.hosted-multi-library.js";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "./locus.hosted-multi-library.protocol.js";
@@ -84,6 +83,7 @@ export const DEFAULT_LOCUS_HOSTED_AGGREGATE_HISTORY_BYTES = 4 * 1_024 * 1_024;
 type HostedCursor = Readonly<{
   incarnationId: string;
   registryDigest: string;
+  projectionDigest: string;
   lastAppliedRev: number;
 }>;
 
@@ -109,6 +109,8 @@ type HostedSnapshotReason = "no_usable_revision" | "incarnation_mismatch" | "reg
 
 type HostedHistoryEntry = Readonly<{
   envelope: LocusHostedAggregateAuthorityEnvelope;
+  beforeSystem?: HsonNode;
+  afterSystem?: HsonNode;
   bytes: number;
 }>;
 
@@ -247,6 +249,7 @@ export function create_locus_hosted_aggregate_socket_internal<
   const history: HostedHistoryEntry[] = [];
   const connections = new Set<HostedConnection>();
   const preparedLiveEvents = new WeakMap<object, ReadonlyMap<HostedConnection, LocusLiveProjectedEvent>>();
+  const preparedSystemRoots = new WeakMap<object, Readonly<{ before?: HsonNode; after?: HsonNode }>>();
   const locus = create_locus_hosted_aggregate_internal({
     map: options.map,
     ...(options.actions === undefined ? {} : { actions: options.actions }),
@@ -255,6 +258,10 @@ export function create_locus_hosted_aggregate_socket_internal<
       const system = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
       const beforeSystem = system === undefined ? undefined : aggregate.systemRoot(system);
       const afterSystem = aggregate.preparedSystemRoot(transition);
+      preparedSystemRoots.set(commit, Object.freeze({
+        ...(beforeSystem === undefined ? {} : { before: decode_hosted_root(encode_hosted_root(beforeSystem)) }),
+        ...(afterSystem === undefined ? {} : { after: decode_hosted_root(encode_hosted_root(afterSystem)) }),
+      }));
       const events = new Map<HostedConnection, LocusLiveProjectedEvent>();
       for (const connection of connections) {
         if (connection.closed || !connection.live || connection.recovering) continue;
@@ -300,7 +307,7 @@ export function create_locus_hosted_aggregate_socket_internal<
       registryDigest: locus.registryDigest,
       commit,
     });
-    append_history(envelope);
+    append_history(envelope, preparedSystemRoots.get(commit));
     const events = preparedLiveEvents.get(commit);
     for (const connection of [...connections]) {
       if (connection.closed) continue;
@@ -345,20 +352,22 @@ export function create_locus_hosted_aggregate_socket_internal<
     try { connection.onClose?.(); } catch { /* Transport cleanup is isolated. */ }
   }
 
-  function append_history(envelope: LocusHostedAggregateAuthorityEnvelope): void {
+  function append_history(envelope: LocusHostedAggregateAuthorityEnvelope, roots?: Readonly<{ before?: HsonNode; after?: HsonNode }>): void {
     const commit = envelope.commit;
     const previous = history.length === 0 ? historyBaseRevision : history[history.length - 1]?.envelope.commit.rev;
     if (previous !== commit.prevRev) {
       throw new Error("Hosted aggregate history lost global revision continuity.");
     }
-    const bytes = encoded_bytes(envelope);
+    const bytes = encoded_bytes(envelope) + encoded_bytes(roots ?? {});
     if (bytes > maxHistoryBytes) {
       history.length = 0;
       retainedBytes = 0;
       historyBaseRevision = commit.rev;
       return;
     }
-    history.push(Object.freeze({ envelope, bytes }));
+    history.push(Object.freeze({ envelope,
+      ...(roots?.before === undefined ? {} : { beforeSystem: roots.before }),
+      ...(roots?.after === undefined ? {} : { afterSystem: roots.after }), bytes }));
     retainedBytes += bytes;
     while (retainedBytes > maxHistoryBytes) {
       const removed = history.shift();
@@ -426,18 +435,15 @@ export function create_locus_hosted_aggregate_socket_internal<
     }));
   }
 
-  /** Complete-authority recovery tail; later Step 6 migration must project this path. */
-  function send_legacy_recovery_tail_event(connection: HostedConnection, id: string, envelope: LocusHostedAggregateAuthorityEnvelope): void {
-    const progress = derive_locus_hosted_progress_internal(envelope);
-    if (progress !== undefined) {
-      send(connection, Object.freeze({ type: "progress", id, progress }));
-      return;
-    }
-    send(connection, Object.freeze({
-      type: "commit",
-      id,
-      commit: client_envelope(envelope),
-    }));
+  function projected_history_event(entry: HostedHistoryEntry, effective: LocusEffectiveProjection): LocusLiveProjectedEvent {
+    return project_locus_live_transition_internal(entry.envelope.commit, effective, entry.beforeSystem, entry.afterSystem);
+  }
+
+  function send_projected_recovery_event(connection: HostedConnection, id: string, phase: "body" | "tail", event: LocusLiveProjectedEvent, effective: LocusEffectiveProjection): void {
+    const live = projected_live_output(connection, event, effective);
+    send(connection, live.type === "progress"
+      ? Object.freeze({ type: "recovery-progress", id, phase, progress: live.progress })
+      : Object.freeze({ type: "recovery-commit", id, phase, commit: live.commit }));
   }
 
   async function recover(connection: HostedConnection, request: Extract<HostedRequest, { type: "recover" }>): Promise<void> {
@@ -447,28 +453,30 @@ export function create_locus_hosted_aggregate_socket_internal<
       return;
     }
     if (request.logicalMapId !== locus.logicalMapId) {
-      send(connection, recovery_plan(request.id, "reject", locus.rev, {
-        code: "LOCUS_RECOVERY_INVALID_TARGET",
-        message: `Unknown hosted logical map ID: ${request.logicalMapId}`,
-      }));
+      reject(connection, "LOCUS_RECOVERY_INVALID_TARGET", "Hosted recovery target is incompatible.", request.id);
       return;
     }
     const cursor = request.cursor;
     const sameIncarnation = cursor?.incarnationId === locus.incarnationId;
-    const sameRegistry = cursor?.registryDigest === registry.digest;
-    if (cursor !== undefined && cursor.lastAppliedRev > locus.rev && sameIncarnation && sameRegistry) {
-      send(connection, recovery_plan(request.id, "reject", locus.rev, {
-        code: "REVISION_AHEAD_OF_AUTHORITY",
-        message: `Client revision ${cursor.lastAppliedRev} is ahead of authoritative revision ${locus.rev}.`,
-      }));
-      return;
-    }
     if (connection.recovering) {
       reject(connection, "LOCUS_RECOVERY_IN_PROGRESS", "Hosted aggregate recovery is already in progress.", request.id);
       return;
     }
 
     if (connection.sessionId === undefined || connection.sessionEpoch === undefined) return;
+    const effective = sessions.projection(connection.sessionId);
+    if (effective === undefined || effective !== connection.effectiveProjection) {
+      reject(connection, "LOCUS_PROJECTION_UNAVAILABLE", "Hosted recovery projection is unavailable.", request.id);
+      return;
+    }
+    if (cursor !== undefined && sameIncarnation && cursor.projectionDigest !== effective.digest) {
+      reject(connection, "LOCUS_PROJECTION_UNAVAILABLE", "Hosted recovery projection is incompatible.", request.id);
+      return;
+    }
+    if (cursor !== undefined && cursor.lastAppliedRev > locus.rev && sameIncarnation) {
+      reject(connection, "REVISION_AHEAD_OF_AUTHORITY", "Hosted recovery cursor is ahead of authority.", request.id);
+      return;
+    }
     const activeRecovery: HostedRecoveryAttachment = Object.freeze({
       id: request.id,
       sessionId: connection.sessionId,
@@ -482,13 +490,16 @@ export function create_locus_hosted_aggregate_socket_internal<
     connection.releaseRecoveryActivity = options.internal?.acquireRecoveryActivity?.();
     let outcome: Exclude<HostedPlanOutcome, "reject">;
     let reason: HostedSnapshotReason | undefined;
-    let snapshot: HostedClientLibrariesSnapshot | undefined;
+    let snapshot: AuthorityProjectionSnapshot | undefined;
     let replay: readonly HostedHistoryEntry[] = Object.freeze([]);
-    const head = locus.rev;
+    const headSnapshot = capture_locus_session_authority_projection_snapshot(options.map, sessions, connection.sessionId);
+    const head = headSnapshot.revision;
+    const projectedRegistryDigest = authority_projection_as_client_composition_internal(headSnapshot).registryDigest;
+    const sameProjectedRegistry = cursor?.registryDigest === projectedRegistryDigest;
     if (cursor === undefined) {
       outcome = "snapshot";
       reason = "no_usable_revision";
-    } else if (!sameRegistry) {
+    } else if (!sameProjectedRegistry) {
       outcome = "snapshot";
       reason = "registry_mismatch";
     } else if (!sameIncarnation) {
@@ -508,13 +519,13 @@ export function create_locus_hosted_aggregate_socket_internal<
     }
 
     if (outcome === "snapshot") {
-      snapshot = make_hosted_client_snapshot(aggregate.captureHosted());
+      snapshot = headSnapshot;
       if (snapshot.revision !== locus.rev) throw new Error("Hosted aggregate snapshot cut disagrees with its global revision.");
     }
     const cut = snapshot?.revision ?? head;
     await options.internal?.afterRecoveryCut?.();
     if (!recovery_delivery_current(connection, activeRecovery)) return;
-    send(connection, recovery_plan(request.id, outcome, cut, reason === undefined ? undefined : { reason }));
+    send(connection, recovery_plan(request.id, outcome, cut, effective.digest, projectedRegistryDigest, reason === undefined ? undefined : { reason }));
     if (!recovery_delivery_current(connection, activeRecovery)) return;
     if (snapshot !== undefined) {
       send(connection, Object.freeze({
@@ -526,10 +537,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     } else {
       for (const entry of replay) {
         if (!recovery_delivery_current(connection, activeRecovery)) return;
-        const progress = derive_locus_hosted_progress_internal(entry.envelope);
-        send(connection, progress === undefined
-          ? Object.freeze({ type: "recovery-commit", id: request.id, phase: "body", commit: client_envelope(entry.envelope) })
-          : Object.freeze({ type: "recovery-progress", id: request.id, phase: "body", progress }));
+        send_projected_recovery_event(connection, request.id, "body", projected_history_event(entry, effective), effective);
         if (!recovery_delivery_current(connection, activeRecovery)) return;
       }
     }
@@ -540,22 +548,25 @@ export function create_locus_hosted_aggregate_socket_internal<
       id: request.id,
       logicalMapId: locus.logicalMapId,
       incarnationId: locus.incarnationId,
-      registryDigest: registry.digest,
+      registryDigest: projectedRegistryDigest,
+      projectionDigest: effective.digest,
       throughRev: cut,
     }));
     if (!recovery_delivery_current(connection, activeRecovery)) return;
     await options.internal?.afterRecoveryCaughtUp?.();
     if (!recovery_delivery_current(connection, activeRecovery)) return;
-    connection.recovering = false;
-    connection.live = true;
     while (connection.pendingLive.length > 0) {
-      if (!recovery_attachment_current(connection, activeRecovery) || !connection.live) return;
+      if (!recovery_delivery_current(connection, activeRecovery)) return;
       const pending = connection.pendingLive.shift();
       if (pending === undefined) continue;
       if (pending.commit.prevRev < cut) continue;
-      send_legacy_recovery_tail_event(connection, request.id, pending);
-      if (!recovery_attachment_current(connection, activeRecovery) || !connection.live) return;
+      const roots = preparedSystemRoots.get(pending.commit);
+      const event = project_locus_live_transition_internal(pending.commit, effective, roots?.before, roots?.after);
+      send(connection, projected_live_output(connection, event, effective));
+      if (!recovery_delivery_current(connection, activeRecovery)) return;
     }
+    connection.recovering = false;
+    connection.live = true;
     connection.releaseRecoveryActivity?.();
     connection.releaseRecoveryActivity = undefined;
   }
@@ -577,6 +588,8 @@ export function create_locus_hosted_aggregate_socket_internal<
     id: string,
     outcome: HostedPlanOutcome,
     headRev: number,
+    projectionDigest: string,
+    registryDigest: string,
     detail?: Readonly<{ reason: HostedSnapshotReason }> | Readonly<{ code: string; message: string }>,
   ): object {
     const base = {
@@ -584,7 +597,8 @@ export function create_locus_hosted_aggregate_socket_internal<
       id,
       logicalMapId: locus.logicalMapId,
       incarnationId: locus.incarnationId,
-      registryDigest: registry.digest,
+      registryDigest,
+      projectionDigest,
       headRev,
       outcome,
     };
@@ -992,10 +1006,10 @@ export function create_locus_hosted_aggregate_socket_internal<
 
   function dispatch_request(connection: HostedConnection, request: HostedRequest): void | Promise<void> {
     if (request.type === "recover") {
-      void recover(connection, request).catch((cause: unknown) => {
+      void recover(connection, request).catch(() => {
         if (connection.closed || connection.fenced || connection.recoveryId !== request.id) return;
         stop_recovery(connection);
-        reject(connection, "LOCUS_RECOVERY_FAILED", locus_client_error_message(cause, "Hosted aggregate recovery failed."), request.id);
+        reject(connection, "LOCUS_RECOVERY_FAILED", "Hosted aggregate recovery failed.", request.id);
       });
       return;
     }
@@ -1240,18 +1254,6 @@ function is_record(value: unknown): value is Readonly<Record<string, unknown>> {
 }
 
 
-function client_envelope(authority: LocusHostedAggregateAuthorityEnvelope): LocusHostedAggregateWireEnvelope {
-  const commit = make_hosted_client_commit(authority.commit);
-  if (commit === undefined) throw new Error("Identity-only authority history must derive to progress.");
-  return Object.freeze({
-    format: LOCUS_HOSTED_AGGREGATE_WIRE_FORMAT,
-    logicalMapId: authority.logicalMapId,
-    incarnationId: authority.incarnationId,
-    registryDigest: authority.registryDigest,
-    commit,
-  });
-}
-
 /** Derive replica progress from exact authority history without rewriting that history. */
 export function derive_locus_hosted_progress_internal(envelope: LocusHostedAggregateAuthorityEnvelope): LocusHostedAggregateProgress | undefined {
   const commit = envelope.commit;
@@ -1269,9 +1271,9 @@ function decode_request(raw: string, maxWireBytes: number): HostedRequest {
   if (typeof raw !== "string" || utf8_bytes(raw) > maxWireBytes) throw new Error("Hosted aggregate request is malformed or exceeds its byte limit.");
   const value = exact_record(JSON.parse(raw), "Hosted aggregate request");
   if (value.type === "recover") {
-    const hasCursor = Object.hasOwn(value, "incarnationId") || Object.hasOwn(value, "registryDigest") || Object.hasOwn(value, "lastAppliedRev");
+    const hasCursor = Object.hasOwn(value, "incarnationId") || Object.hasOwn(value, "registryDigest") || Object.hasOwn(value, "projectionDigest") || Object.hasOwn(value, "lastAppliedRev");
     exact_keys(value, hasCursor
-      ? ["type", "id", "logicalMapId", "incarnationId", "registryDigest", "lastAppliedRev"]
+      ? ["type", "id", "logicalMapId", "incarnationId", "registryDigest", "projectionDigest", "lastAppliedRev"]
       : ["type", "id", "logicalMapId"], "Hosted recovery request");
     const id = required_string(value.id);
     const logicalMapId = required_string(value.logicalMapId);
@@ -1279,9 +1281,10 @@ function decode_request(raw: string, maxWireBytes: number): HostedRequest {
     if (!hasCursor) return Object.freeze({ type: "recover", id, logicalMapId });
     const incarnationId = required_string(value.incarnationId);
     const registryDigest = required_digest(value.registryDigest);
+    const projectionDigest = required_digest(value.projectionDigest);
     const lastAppliedRev = required_revision(value.lastAppliedRev);
-    if (incarnationId === undefined || registryDigest === undefined || lastAppliedRev === undefined) throw new Error("Hosted recovery cursor is malformed.");
-    return Object.freeze({ type: "recover", id, logicalMapId, cursor: Object.freeze({ incarnationId, registryDigest, lastAppliedRev }) });
+    if (incarnationId === undefined || registryDigest === undefined || projectionDigest === undefined || lastAppliedRev === undefined) throw new Error("Hosted recovery cursor is malformed.");
+    return Object.freeze({ type: "recover", id, logicalMapId, cursor: Object.freeze({ incarnationId, registryDigest, projectionDigest, lastAppliedRev }) });
   }
   if (value.type === "session-create" || value.type === "session-goodbye") {
     const decoded = decode_locus_message(raw);

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonMirror, hsonEcho, hsonLocus, type HsonSchema } from "../src/index.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
-import { test_public_exposure } from "./helpers/hosted-exposure.mts";
+import { test_public_projection } from "./helpers/hosted-exposure.mts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { make_livemap_client_mirror_from_snapshot_internal } from "../src/api/livemap/livemap.libraries.ts";
 import { encode_hosted_root, hosted_sha256, make_hosted_client_commit, make_hosted_client_snapshot } from "../src/api/livemap/livemap.hosted.ts";
@@ -10,6 +10,8 @@ import { acquire_livemap_document_identity } from "../src/api/livemap/livemap.do
 import { validate_livemap_document_admission } from "../src/api/livemap/livemap.document.capture.ts";
 import { link_livemap } from "../src/api/livemap/livemap.link.ts";
 import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.identity-epoch.ts";
+import { project_authority_snapshot, authority_projection_as_client_composition_internal } from "../src/api/locus/locus.authority-projection-snapshot.ts";
+import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
 
 const DataSchema: HsonSchema = Hson.schema`<type "data" content <value "number">>`;
 const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content "empty">`;
@@ -100,10 +102,15 @@ function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketL
   const server = authority();
   const initialState = server.lib("state");
   initialState.at(["value"]).set(1);
-  const locus = hsonLocus.create({ map: server, exposure: test_public_exposure(server) });
+  const locus = hsonLocus.create({ map: server, ...test_public_projection(server) });
   const pair = socket_pair();
   locus.connect(pair.server);
-  const snapshot = make_hosted_client_snapshot(internal_livemap_aggregate_authority(server).captureHosted());
+  const cut = internal_livemap_aggregate_authority(server).captureHosted();
+  const requested = test_public_projection(server);
+  const policy = make_locus_hosted_projection_policy(cut.registry, cut.authority,
+    requested.exposure, requested.defaultProjection, requested.authorizeProjection);
+  const effective = await normalize_locus_effective_projection(policy, requested.defaultProjection);
+  const snapshot = authority_projection_as_client_composition_internal(project_authority_snapshot(cut, effective));
   const client = make_livemap_client_mirror_from_snapshot_internal(snapshot, {
     ui: { data: { value: 0 }, schema: DataSchema },
     panel: { document: "<aside/>", schema: LocalSchema },

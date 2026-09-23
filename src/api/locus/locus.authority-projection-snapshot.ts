@@ -15,6 +15,23 @@ import type { LocusSessionManager } from "./locus.session.js";
 import type { LiveMapLibraries } from "../../types/livemap.types.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 
+const clientProjectionIdentity = new WeakMap<LiveMapLibraries, Readonly<{ digest: string; incarnationId: string }>>();
+
+/** @internal The client contract digest is independent of its local registry. */
+export function bind_client_projection_identity_internal(map: LiveMapLibraries, snapshot: AuthorityProjectionSnapshot): void {
+  const admitted = admit_authority_projection_snapshot(snapshot);
+  const previous = clientProjectionIdentity.get(map);
+  if (previous !== undefined && previous.incarnationId === admitted.authority.incarnationId
+    && previous.digest !== admitted.projectionDigest) fail();
+  clientProjectionIdentity.set(map, Object.freeze({ digest: admitted.projectionDigest,
+    incarnationId: admitted.authority.incarnationId }));
+}
+
+/** @internal */
+export function client_projection_identity_internal(map: LiveMapLibraries): string | undefined {
+  return clientProjectionIdentity.get(map)?.digest;
+}
+
 export const AUTHORITY_PROJECTION_SNAPSHOT_FORMAT: "hson-authority-projection-snapshot-v1" = "hson-authority-projection-snapshot-v1";
 
 type Root = Readonly<{ format: "hson-exact-value"; payload: string }>;
