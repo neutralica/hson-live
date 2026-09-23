@@ -200,14 +200,18 @@ function match_node(
 }
 
 function validate_attrs(plan: BrowserRealizationElement | BrowserRealizationWrapper, element: Element): void {
-  const expected = new Map(plan.attrs.map((attr) => [attr.name, attr.value]));
+  // Generated QUID markup in older SSR output is legacy runtime metadata, not
+  // portable correspondence evidence on canonical elements. Parser-derived
+  // wrappers have no runtime subject and must not carry that metadata.
+  const ignoreLegacyQuid = plan.kind === "element";
+  const expected = new Map(plan.attrs.filter((attr) => !ignoreLegacyQuid || attr.name !== "hson:quid").map((attr) => [attr.name, attr.value]));
   for (const [name, value] of expected) {
     if (element.getAttribute(name) !== value) {
       throw new Error(`Existing <${plan.localName}> attribute ${JSON.stringify(name)} does not match its realization plan.`);
     }
   }
   for (const name of element.getAttributeNames()) {
-    if (!expected.has(name)) {
+    if ((!ignoreLegacyQuid || name !== "hson:quid") && !expected.has(name)) {
       throw new Error(`Existing <${plan.localName}> contains unplanned attribute ${JSON.stringify(name)}.`);
     }
   }

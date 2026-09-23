@@ -73,6 +73,30 @@ const rejectsSsr = (node: HsonNode, reason: RegExp): BrowserRealizationIncompati
 }
 
 {
+  const plain = element("p", [leaf("a"), leaf(""), leaf("a")]);
+  const identified = structuredClone(plain);
+  identified.$_meta = { quid: "000000601" };
+  const otherRuntime = structuredClone(plain);
+  otherRuntime.$_meta = { quid: "000000602" };
+  const markers = (node: HsonNode): string[] => {
+    const root = plan_browser_realization(node).roots[0];
+    if (root?.kind !== "element") throw new Error("Expected planned element.");
+    return root.children.filter((child) => child.kind === "marker").map((child) => child.value);
+  };
+  assert.deepEqual(markers(plain), markers(identified));
+  assert.deepEqual(markers(identified), markers(otherRuntime));
+}
+
+{
+  const plan = plan_browser_realization(element("table", [element("tr", [element("td", ["cell"])])]));
+  const table = materialize_browser_realization(plan, create_livetree_runtime(), globalThis.document, "linked") as Element;
+  const wrapper = table.childNodes[0];
+  if (wrapper?.nodeType !== 1) throw new Error("Expected derived table wrapper.");
+  (wrapper as Element).setAttribute("hson:quid", "000000603");
+  assert.throws(() => match_browser_realization_root(plan, table), /unplanned attribute/);
+}
+
+{
   const attrs = {
     checked: true,
     disabled: "disabled",

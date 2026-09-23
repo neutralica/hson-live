@@ -35,6 +35,7 @@ import {
   type SuppliedLiveTreeQuidReservation,
 } from "../livetree/quid/data-quid.js";
 import { LiveTreeQuidReuseError } from "../livetree/livetree.error.js";
+import { forget_inherited_dom_quid, matches_inherited_dom_quid } from "../livetree/quid/inherited-dom-quid.js";
 import {
   assert_node_element_link,
   get_dom_for_node,
@@ -1642,7 +1643,9 @@ function validate_registration(
     );
   }
   const projectedDomQuid = element.getAttribute(HSON_QUID_MARKUP_NAME) ?? undefined;
-  if (projectedDomQuid !== registration.persistedQuid) {
+  if (projectedDomQuid === registration.persistedQuid) {
+    forget_inherited_dom_quid(element);
+  } else if (!matches_inherited_dom_quid(element)) {
     throw new DocumentMirrorError(
       DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
       "Mounted projected element does not carry its expected persisted QUID.",

@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { WebSocketServer } from "ws";
 import { hson, hsonLocus } from "../dist/index.js";
 import { capture_locus_bootstrap } from "../dist/api/locus/index.js";
+import { admit_exact_runtime_livemap_node } from "../dist/internal/exact-runtime-node-admission.js";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
 const temporaryRoot = join(repositoryRoot, "tmp");
@@ -50,7 +51,7 @@ try {
 
   const hostedNode = hson.liveMap.fromHson(`<main id="hosted" <p "before"/>/>`).root();
   hostedNode.$_content[0].$_content[0].$_content[0].$_meta = { quid: "000000777" };
-  const authority = hson.liveMap.fromNode(hostedNode);
+  const authority = admit_exact_runtime_livemap_node(hostedNode);
   if (authority.mode !== "document") throw new Error("Hosted browser fixture requires a document map.");
   locus = hsonLocus.create({ map: authority, logicalMapId: "browser-document-continuation", sessions: {} });
   const bootstrap = capture_locus_bootstrap(locus, "browser:continuation", "/locus");

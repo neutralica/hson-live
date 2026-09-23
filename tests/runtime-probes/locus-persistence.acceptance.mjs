@@ -1,18 +1,17 @@
 import { create_test_event_emitter } from "../test-events.mjs";
 import assert from "node:assert/strict";
 import {
-  create_persistent_locus,
   hson,
-  LocusPersistenceError,
 } from "../../src/index.ts";
+import { create_persistent_locus, LocusPersistenceError } from "../../src/api/locus/index.ts";
 import { create_livehost_persistent_store } from "../../src/api/livehost/services/livehost.persistent-store.ts";
 import { canonical_hson_graph_equal } from "../../src/core/canonical-hson-equal.ts";
 import { create_persistent_locus_internal } from "../../src/api/locus/locus.persistence.ts";
 import { LocusAuthorityError } from "../../src/api/locus/locus.authority.ts";
 import { get_livemap_staged_authority } from "../../src/api/livemap/livemap.authority.ts";
 import { admit_locus_remote_action_internal } from "../../src/api/locus/locus.remote-action.internal.ts";
-import { acquire_document_identity } from "../helpers/livemap-identity-internal.mts";
-import { set_livemap_document_quid_candidate_source_for_tests } from "../../src/api/livemap/livemap.document.registration.ts";
+import { parse_hson_exact_runtime } from "../../src/internal/exact-runtime-hson-codec.ts";
+import { admit_exact_runtime_livemap_node } from "../../src/internal/exact-runtime-node-admission.ts";
 import { read_locus_retained_action_status_internal } from "../../src/api/locus/locus.action-status.internal.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -53,14 +52,8 @@ function deferred() {
 }
 
 function element(source = `<main @000001001/>`) {
-  const claims = [...source.matchAll(/ @([0-9a-hjkmnp-tv-z]{9})(?=[\s/>])/g)].map((match) => match[1]);
-  const map = hson.liveMap.fromHson(source.replace(/ @([0-9a-hjkmnp-tv-z]{9})(?=[\s/>])/g, ""));
+  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error("expected document map");
-  if (claims.length > 1) throw new Error("persistence probe fixture expects at most one local identity claim");
-  if (claims[0] !== undefined) {
-    set_livemap_document_quid_candidate_source_for_tests(map.document, () => claims[0]);
-    acquire_document_identity(map.document, root);
-  }
   return map;
 }
 
@@ -150,6 +143,7 @@ await check("initial checkpoint is durable before a persistent host is returned"
   const adapter = new MemoryPersistenceAdapter();
   const checkpoint = adapter.deferCheckpoint();
   const map = element();
+  const initialRevision = map.rev;
   let returned = false;
   const creating = create_persistent_locus({
     map,
@@ -163,7 +157,7 @@ await check("initial checkpoint is durable before a persistent host is returned"
   checkpoint.resolve();
   const host = await creating;
   const state = adapter.state("persistent-initial");
-  assert.equal(state.checkpoint.rev, 0);
+  assert.equal(state.checkpoint.rev, initialRevision);
   assert.equal(state.checkpoint.incarnationId, "persistent-initial-incarnation");
   assert.deepEqual(state.checkpoint.snapshot.format, "view-state");
   assert.deepEqual(state.commits, []);

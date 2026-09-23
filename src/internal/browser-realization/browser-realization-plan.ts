@@ -752,8 +752,7 @@ function browser_realization_fingerprint(value: HsonNode | Primitive, namespace:
 function stable_value(value: HsonNode | Primitive): string {
   if (!is_Node(value)) return stable_primitive(value);
   const attrs = Object.keys(value.$_attrs ?? {}).sort().map((key) => `${JSON.stringify(key)}=${stable_unknown(value.$_attrs?.[key])}`).join(",");
-  const quid = value.$_meta?.[HSON_META_QUID] ?? "";
-  return `n(${JSON.stringify(value.$_tag)}|q=${quid}|a=${attrs}|c=${value.$_content.map(stable_value).join(";")})`;
+  return `n(${JSON.stringify(value.$_tag)}|a=${attrs}|c=${value.$_content.map(stable_value).join(";")})`;
 }
 
 function stable_unknown(value: unknown): string {

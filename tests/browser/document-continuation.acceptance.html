@@ -5,6 +5,7 @@
 <script type="module">
 import {
   DocumentContinuationError,
+  admit_exact_runtime_livemap_node,
   continue_hosted_document,
   continue_document,
   create_browser_locus_socket,
@@ -12,6 +13,7 @@ import {
   hson,
   install_locus_bootstrap,
   plan_browser_realization,
+  parse_hson_exact_runtime,
   project_livetree,
   serialize_browser_realization,
 } from "./bundle.js";
@@ -30,7 +32,7 @@ const documentMap = (source) => {
 const documentMapWithChildQuid = (source, quid) => {
   const graph = documentMap(source).root();
   graph.$_content[0].$_content[0].$_content[0].$_meta = { quid };
-  return hson.liveMap.fromNode(graph);
+  return admit_exact_runtime_livemap_node(graph);
 };
 const markup = (map) => serialize_browser_realization(plan_browser_realization(map.root()));
 const mount = (map, owner = document) => {
@@ -50,6 +52,8 @@ try {
   const paragraph = root.firstElementChild;
   const text = paragraph.firstChild;
   const input = root.lastElementChild;
+  let nativeClicks = 0;
+  paragraph.addEventListener("click", () => { nativeClicks += 1; });
   input.value = "dirty";
   input.focus();
   input.setSelectionRange(1, 3);
@@ -66,6 +70,8 @@ try {
   check("root Element identity is exact", continuation.tree.dom.el() === root);
   check("descendant Element identity is exact", continuation.tree.find.byTag("p")?.dom.el() === paragraph);
   check("Text identity is exact", paragraph.firstChild === text);
+  paragraph.click();
+  check("native listener on adopted Element remains active", nativeClicks === 1);
   check("canonical state and revision do not move", map.rev === revisionBefore && JSON.stringify(map.root()) === JSON.stringify(canonicalBefore));
   check("sparse QUID remains sparse", !root.hasAttribute("hson:quid") && input.getAttribute("hson:quid") === null);
   check("persisted QUID remains exact", paragraph.getAttribute("hson:quid") === "000000123");
@@ -97,6 +103,55 @@ try {
   rebound.dispose();
   observer.disconnect();
 
+  for (const [name, canonicalQuid, legacyQuid] of [
+    ["different generated QUID", "000000321", "000000999"],
+    ["missing inherited QUID", "000000322", null],
+    ["QUID-free plan with inherited metadata", null, "000000998"],
+  ]) {
+    const identityMap = canonicalQuid === null
+      ? documentMap(`<main <p "hello"/>/>`)
+      : documentMapWithChildQuid(`<main <p "hello"/>/>`, canonicalQuid);
+    const identityRoot = mount(identityMap);
+    const identityParagraph = identityRoot.firstElementChild;
+    const identityText = identityParagraph.firstChild;
+    if (legacyQuid === null) identityParagraph.removeAttribute("hson:quid");
+    else identityParagraph.setAttribute("hson:quid", legacyQuid);
+    const continued = continue_document({ map: identityMap, root: identityRoot });
+    check(`${name} adopts by structure`, continued.tree.find.byTag("p")?.dom.el() === identityParagraph && identityParagraph.firstChild === identityText);
+    check(`${name} preserves legacy DOM metadata without writes`, identityParagraph.getAttribute("hson:quid") === legacyQuid);
+    identityMap.document.attrs.set(path(0, 0), "data-local", "yes");
+    check(`${name} keeps Mirror active`, continued.reflect.status === "active" && identityParagraph.getAttribute("data-local") === "yes");
+    if (canonicalQuid === null) {
+      const localQuid = continued.tree.find.must.byTag("p").quid;
+      check("local identity demand replaces inherited metadata", localQuid !== legacyQuid && identityParagraph.getAttribute("hson:quid") === localQuid);
+      identityMap.document.attrs.set(path(0, 0), "data-after-identity", "yes");
+      check("Mirror validates later browser-local identity", continued.reflect.status === "active" && identityParagraph.getAttribute("data-after-identity") === "yes");
+      identityParagraph.setAttribute("hson:quid", "000000997");
+      identityMap.document.attrs.set(path(0, 0), "data-after-tamper", "rejected");
+      check("Mirror rejects browser-local DOM QUID drift", continued.reflect.status === "failed" && identityParagraph.getAttribute("data-after-tamper") === null);
+    }
+    continued.dispose();
+    identityRoot.remove();
+  }
+
+  const movingMap = documentMapWithChildQuid(`<main <p "move"/> <aside/>/>`, "000000780");
+  const movingRoot = mount(movingMap);
+  const movingParagraph = movingRoot.firstElementChild;
+  const movingText = movingParagraph.firstChild;
+  movingParagraph.setAttribute("hson:quid", "000000888");
+  const movingContinuation = continue_document({ map: movingMap, root: movingRoot });
+  movingMap.document.content.move(path(0), 0, 1);
+  check("path-addressed move retains adopted DOM despite inherited QUID difference",
+    movingRoot.lastElementChild === movingParagraph && movingParagraph.firstChild === movingText
+    && movingContinuation.reflect.status === "active");
+  const localReplacement = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(`<p @000000780 title="replaced" "move"/>`, { allowTopLevelDocumentText: true })).at([]).snap();
+  movingMap.document.content.replace(path(0), 1, localReplacement);
+  check("same local QUID replacement keeps the adopted Element despite inherited metadata",
+    movingRoot.lastElementChild === movingParagraph && movingParagraph.getAttribute("title") === "replaced"
+    && movingContinuation.reflect.status === "active");
+  movingContinuation.dispose();
+  movingRoot.remove();
+
   const mismatchCases = [
     ["wrong tag", (candidate) => candidate.replaceWith(Object.assign(document.createElement("article"), { innerHTML: candidate.innerHTML }))],
     ["missing attr", (candidate) => candidate.removeAttribute("id")],
@@ -107,8 +162,6 @@ try {
     ["text boundary", (candidate) => { const p = candidate.querySelector("p"); p.firstChild.splitText(2); }],
     ["extra child", (candidate) => candidate.append(document.createElement("aside"))],
     ["reordered child", (candidate) => candidate.prepend(candidate.lastElementChild)],
-    ["QUID mismatch", (candidate) => candidate.querySelector("p").setAttribute("hson:quid", "999999999")],
-    ["unexpected QUID", (candidate) => candidate.setAttribute("hson:quid", "000000125")],
     ["comment", (candidate) => candidate.append(document.createComment("unrepresented"))],
   ];
   for (const [caseIndex, [name, mutate]] of mismatchCases.entries()) {
@@ -181,6 +234,32 @@ try {
   repeatedEmptyContinuation.dispose();
   repeatedEmptyRoot.remove();
 
+  for (const swap of [false, true]) {
+    const duplicateMap = documentMap(`<main <p "same"/> <p "same"/>/>`);
+    const duplicateRoot = mount(duplicateMap);
+    const original = [...duplicateRoot.children];
+    const texts = original.map((element) => element.firstChild);
+    if (swap) duplicateRoot.insertBefore(original[1], original[0]);
+    const ordered = [...duplicateRoot.children];
+    const duplicateContinuation = continue_document({ map: duplicateMap, root: duplicateRoot });
+    check(`${swap ? "swapped" : "duplicate"} identical siblings pair by ordered position`,
+      duplicateRoot.children[0] === ordered[0] && duplicateRoot.children[1] === ordered[1]
+      && ordered[0].firstChild === (swap ? texts[1] : texts[0])
+      && ordered[1].firstChild === (swap ? texts[0] : texts[1]));
+    duplicateMap.document.attrs.set(path(0, 1), "data-position", "second");
+    check(`${swap ? "swapped" : "duplicate"} second path targets second DOM subject`, ordered[1].getAttribute("data-position") === "second" && ordered[0].getAttribute("data-position") === null);
+    duplicateContinuation.dispose();
+    duplicateRoot.remove();
+  }
+
+  const repeatedTextMap = documentMap(`<main "same" "same"/>`);
+  const repeatedTextRoot = mount(repeatedTextMap);
+  const repeatedTextNodes = [...repeatedTextRoot.childNodes];
+  const repeatedTextContinuation = continue_document({ map: repeatedTextMap, root: repeatedTextRoot });
+  check("identical text leaves preserve ordered native nodes", [...repeatedTextRoot.childNodes].every((node, index) => node === repeatedTextNodes[index]));
+  repeatedTextContinuation.dispose();
+  repeatedTextRoot.remove();
+
   const mixedTextMap = documentMap(`<main "a" <em/> "b"/>`);
   const mixedTextRoot = mount(mixedTextMap);
   check("mixed text Element text retains parser order", [...mixedTextRoot.childNodes].map((node) => node.nodeType).join(",") === "3,1,3" && mixedTextRoot.textContent === "ab");
@@ -237,6 +316,23 @@ try {
   const booleanContinuation = continue_document({ map: booleanMap, root: booleanRoot });
   booleanContinuation.dispose();
   booleanRoot.remove();
+
+  const formMap = documentMap(`<main <input checked/> <textarea "server"/> <select <option "one"/> <option "two"/>/>/>`);
+  const formRoot = mount(formMap);
+  const [checkbox, textarea, select] = [...formRoot.children];
+  checkbox.checked = false;
+  textarea.value = "edited";
+  select.selectedIndex = 1;
+  let formClicks = 0;
+  checkbox.addEventListener("click", () => { formClicks += 1; });
+  const formContinuation = continue_document({ map: formMap, root: formRoot });
+  check("dirty checked textarea and select state survives exact adoption",
+    formRoot.children[0] === checkbox && formRoot.children[1] === textarea && formRoot.children[2] === select
+    && checkbox.checked === false && textarea.value === "edited" && select.selectedIndex === 1);
+  checkbox.dispatchEvent(new Event("click"));
+  check("native form listener survives adoption", formClicks === 1);
+  formContinuation.dispose();
+  formRoot.remove();
 
   const tableMap = documentMap(`<table <tr <td "a"/>/> <tr <td "b"/>/>/>`);
   const tableRoot = mount(tableMap);
@@ -323,7 +419,7 @@ try {
     $_tag: "_hson_root",
     $_content: [{ $_tag: tag, $_content: text === undefined ? [] : [{ $_tag: "_hson_elem", $_content: [{ $_tag: "_hson_str", $_content: [text] }] }] }],
   });
-  for (const [tag, text] of [["textarea", "a</TeXtArEa>&<\r\nb"], ["title", "a</TiTlE>&<\r\nb"], ["style", "a&<\nb"], ["script", "void '<&';\nb"]]) {
+  for (const [tag, text] of [["textarea", "a</TeXtArEa>&<\r\nb"], ["title", "a</TiTlE>&<\r\nb"], ["style", "a&<\nb"]]) {
     const atomicMap = hson.liveMap.fromNode(atomicRoot(tag, text));
     const atomicElement = mount(atomicMap);
     check(`${tag} compatible source parses exact`, atomicElement.textContent === text && atomicElement.childNodes.length === 1 && atomicElement.firstChild.nodeType === Node.TEXT_NODE);

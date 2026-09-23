@@ -7,6 +7,7 @@ import type { LiveTree } from "../livetree/livetree.js";
 import { is_livetree_node_disposed, observe_livetree_node_terminal } from "../livetree/livetree-state.js";
 import { release_subtree_ownership } from "../livetree/lifecycle/graph-ownership.js";
 import { preflight_livetree_quid_graph } from "../livetree/quid/data-quid.js";
+import { forget_inherited_dom_quid, record_inherited_dom_quid } from "../livetree/quid/inherited-dom-quid.js";
 import {
   bind_graph_runtime,
   claim_runtime_document_silently,
@@ -53,6 +54,7 @@ export function set_document_adoption_fault_hook_for_tests(
 
 type AdoptedRootEntry = {
   readonly tree: LiveTree;
+  readonly inheritedElements: readonly Element[];
   stopTerminalObservation: () => void;
 };
 
@@ -62,6 +64,7 @@ function evict_adopted_root(target: Element, entry: AdoptedRootEntry): void {
   if (ADOPTED_ROOTS.get(target) !== entry) return;
   ADOPTED_ROOTS.delete(target);
   entry.stopTerminalObservation();
+  for (const element of entry.inheritedElements) forget_inherited_dom_quid(element);
 }
 
 function reusable_cached_tree(target: Element, canonicalRoot: HsonNode): LiveTree | undefined {
@@ -100,9 +103,11 @@ function reusable_cached_tree(target: Element, canonicalRoot: HsonNode): LiveTre
 function cleanup_new_adoption(
   root: HsonNode,
   linkedNodes: readonly HsonNode[],
+  inheritedElements: readonly Element[],
   runtime: LiveTreeRuntime,
   claim: SilentRuntimeDocumentClaim,
 ): void {
+  for (const element of inheritedElements) forget_inherited_dom_quid(element);
   for (const node of [...linkedNodes].reverse()) unlinkNode(node);
   for (const node of collect_subtree_nodes(root, "post")) {
     const quid = runtime.nodeToQuid.get(node);
@@ -151,6 +156,7 @@ export function adopt_exact_existing_document(
   const claim = claim_runtime_document_silently(runtime, target.ownerDocument);
   let tree: LiveTree | undefined;
   const linkedNodes: HsonNode[] = [];
+  const inheritedElements: Element[] = [];
   let finished = false;
   try {
     const claims = preflight_livetree_quid_graph(projectedRoot, runtime);
@@ -158,6 +164,12 @@ export function adopt_exact_existing_document(
       if (get_dom_for_node(link.canonicalNode) !== undefined || get_node_for_dom(link.domNode) !== undefined) {
         throw new Error("Exact adoption conflicts with an active canonical-to-DOM ownership claim.");
       }
+    }
+    for (const link of match.links) {
+      if (link.domNode.nodeType !== 1) continue;
+      const element = link.domNode as Element;
+      record_inherited_dom_quid(element);
+      inheritedElements.push(element);
     }
     for (let index = 0; index < match.links.length; index += 1) {
       const link = match.links[index]!;
@@ -177,7 +189,7 @@ export function adopt_exact_existing_document(
     tree = create_linked_livetree_in_runtime(projectedRoot, runtime);
     adoptionFaultHook?.("after-tree");
   } catch (cause) {
-    cleanup_new_adoption(projectedRoot, linkedNodes, runtime, claim);
+    cleanup_new_adoption(projectedRoot, linkedNodes, inheritedElements, runtime, claim);
     throw cause;
   }
 
@@ -189,6 +201,7 @@ export function adopt_exact_existing_document(
       if (finished) return;
       const entry: AdoptedRootEntry = {
         tree: adoptedTree,
+        inheritedElements,
         stopTerminalObservation: () => {},
       };
       entry.stopTerminalObservation = observe_livetree_node_terminal(adoptedTree.node, () => {
@@ -200,7 +213,7 @@ export function adopt_exact_existing_document(
     abort(): void {
       if (finished) return;
       finished = true;
-      cleanup_new_adoption(projectedRoot, linkedNodes, runtime, claim);
+      cleanup_new_adoption(projectedRoot, linkedNodes, inheritedElements, runtime, claim);
     },
     activateRuntimeManagers(): void {
       claim.activate();

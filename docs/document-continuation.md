@@ -13,8 +13,9 @@ exposes only the semantic `{ html, bootstrap }` composition boundary.
 
 The structural names have distinct authorities: `_hson_*` names belong to
 canonical Hson and its transport representation; `hson-boundary` names derived
-browser-realization evidence; and `hson:quid` is sparse canonical identity
-evidence on eligible Elements. An Hson boundary marker is never a canonical
+browser-realization evidence; and `hson:quid` is temporary SSR output carrying
+sparse runtime identity metadata on eligible Elements. It is not portable
+adoption evidence. An Hson boundary marker is never a canonical
 node and never acquires QUID semantics.
 
 The package root exports two orchestration functions:
@@ -124,18 +125,29 @@ authority success does not imply that every later DOM realization succeeds.
 
 Before publishing any runtime links, continuation derives one immutable browser
 realization plan and verifies the canonical root,
-document mode, namespace and tag names, exact attributes, QUID
-presence/absence/value, child order, text node count and boundaries, text
+document mode, namespace and tag names, exact authored attributes,
+child order, text node count and boundaries, text
 values, virtual-node lowering, derived table wrappers, template content,
 Hson boundary markers, owner document, and runtime identity claims.
 The established existing-document `Reflect` admission then verifies the full
 canonical graph, mappings, ownership, and revision fence again.
+Canonical paths and the plan's ordered positions pair each canonical node with
+its existing DOM node. Generated QUID equality across server and browser
+runtimes is not part of this correspondence: structurally identical siblings
+are paired by current ordered position, including when their historical DOM
+subjects were swapped. The proof does not establish historical runtime
+provenance.
 
 For corresponding input, admission writes nothing anywhere in the containing
 `Document`. It preserves the
 actual `Element` and `Text` objects, attributes, text boundaries, focus,
 selection, and browser dirty form properties. It neither mints QUIDs nor writes
-`hson:quid`; nodes without canonical QUIDs remain without them. Arbitrary
+`hson:quid`. Existing server-emitted `hson:quid` attributes are temporary
+legacy metadata during this phase. Their value, presence, or absence is not
+matched against the incoming canonical graph; all other attributes remain
+exact. A later browser-local QUID may replace that metadata when local
+identity is demanded. Mirror still checks the browser-local graph and runtime
+registry and checks DOM QUID metadata once it is established locally. Arbitrary
 comments, separator whitespace, malformed or wrong-plan Hson boundary markers,
 and any other unplanned child are mismatches rather than tolerated decoration.
 
