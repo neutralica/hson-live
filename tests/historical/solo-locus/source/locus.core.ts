@@ -31,10 +31,8 @@ import type {
 import { decode_locus_message, encode_locus_message } from "./locus.protocol.js";
 import { make_locus_canonical_stream_runtime } from "./locus.history.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
-import { install_locus_authority_snapshot_internal, with_locus_bootstrap_snapshot } from "./locus.bootstrap.js";
 import { project_locus_client_snapshot, project_locus_client_transition } from "./locus.client-replication.js";
 import { locus_client_error_message } from "./locus.client-error.js";
-import { cut_hosted_authority, cut_hosted_snapshot } from "../../internal/document-cut.js";
 import { is_public_multi_library_livemap } from "../livemap/livemap.libraries.js";
 import { create_multi_library_locus } from "./locus.multi-library.js";
 import { parse_json } from "../transform/parsers/parse-json.js";
@@ -1390,10 +1388,6 @@ function create_locus_for_map<
     stream,
     activity: activity.public,
     recovery,
-    ...(map.mode === "document" ? {
-      cut: () => cut_hosted_authority(() => with_locus_bootstrap_snapshot({ stream, recovery },
-        (snapshot) => cut_hosted_snapshot(snapshot, install_locus_authority_snapshot_internal))),
-    } : {}),
     sessions: Object.freeze({ debug: sessions.debug, onChange: sessions.onChange, dispose: sessions.dispose }),
     actionRequests: Object.freeze({ debug: actionRequests.debug, dispose: actionRequests.dispose }),
     get seq() { return seq; },

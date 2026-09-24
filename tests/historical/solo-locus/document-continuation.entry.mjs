@@ -8,3 +8,4 @@ export { serialize_browser_realization } from "../../dist/internal/browser-reali
 export { project_livetree } from "../../dist/api/livetree/creation/project-live-tree.js";
 export { admit_exact_runtime_livemap_node } from "../../dist/internal/exact-runtime-node-admission.js";
 export { parse_hson_exact_runtime } from "../../dist/internal/exact-runtime-hson-codec.js";
+export { continue_hosted_document_internal as continue_legacy_hosted_document } from "../../dist/api/continuation/continue-hosted-document.js";

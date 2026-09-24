@@ -30,9 +30,7 @@ function chromeExecutable() {
 }
 
 let server;
-let socketServer;
 let librariesSocketServer;
-let locus;
 let librariesLocus;
 let chrome;
 let timeoutId;
@@ -60,15 +58,6 @@ try {
   const fullMap = hson.liveMap.fromHson(`<html <head <title "SSR"/>/> <body <main "whole"/>/>/>`);
   if (fullMap.mode !== "document") throw new Error("Full SSR fixture requires a document map.");
   const full = render_document({ map: fullMap });
-  const largeHostedBootstrap = Object.freeze({
-    logicalMapId: "browser-large-map",
-    incarnationId: "browser-large-incarnation",
-    rev: 0,
-    mode: "document",
-    format: "hson-client-snapshot-v1",
-    payload: "browser-large:" + "x".repeat(2 * 1_024 * 1_024),
-  });
-
   const LocalLibrariesStateSchema = Hson.schema`<type "data" content <count "number">>`;
   const LocalLibrariesPageSchema = Hson.schema`<type "document" tag "main" attrs <props <id "string">> content <sequence [<tag "button" content "empty">]>>`;
   const localLibrariesMap = admit_exact_runtime_livemap_libraries({
@@ -79,30 +68,12 @@ try {
   assert.doesNotMatch(localLibraries.html, /hson:quid|000005204/);
   assert.doesNotMatch(JSON.stringify(localLibraries.bootstrap), /000005204|identityEpoch|issuedQuids|"identity"|"quid"/);
 
-  const hostedMap = admit_exact_runtime_livemap_node({ $_tag: "_hson_root", $_content: [{
-    $_tag: "main", $_attrs: { id: "hosted-ssr" }, $_content: [{ $_tag: "_hson_elem", $_content: [{
-      $_tag: "p", $_meta: { quid: "000005202" }, $_content: [{ $_tag: "_hson_elem", $_content: [{
-        $_tag: "_hson_str", $_content: [`hosted </script> <script> <!-- --> < > & " ' \u2028 \u2029`],
-      }] }],
-    }] }],
-  }] });
-  if (hostedMap.mode !== "document") throw new Error("Hosted SSR fixture requires a document map.");
-  locus = hsonLocus.create({ map: hostedMap, logicalMapId: "browser-document-ssr", sessions: {} });
-  const sessionsBefore = locus.sessions.debug().sessions.length;
-  const hosted = render_hosted_document({ authority: locus });
-  assert.equal(locus.sessions.debug().sessions.length, sessionsBefore, "SSR capture must create no session");
-  await locus.mutate((draft) => draft.document.attrs.set(
-    { kind: "path", path: [0, 0, 0] },
-    "data-recovered",
-    "yes",
-  ));
-
   const StateSchema = Hson.schema`<type "data" content <count "number">>`;
   const PageSchema = Hson.schema`<type "document" tag "main" attrs <props <id "string" data-recovered <optional "string">>> content <sequence [<tag "button" attrs <props <data-async <optional "string">>> content "empty">]>>`;
   const AdminSchema = Hson.schema`<type "document" tag "aside" attrs <props <data-recovered <optional "string">>> content "empty">`;
-  const librariesMap = admit_exact_runtime_livemap_libraries({
+  const librariesMap = hson.liveMap.fromLibraries({
     state: { data: { count: 0 }, schema: StateSchema },
-    page: { document: parse_hson_exact_runtime('<main id="libraries-ssr" <button @000005203/>/>', { allowTopLevelDocumentText: true }), schema: PageSchema },
+    page: { document: '<main id="libraries-ssr" <button/>/>', schema: PageSchema },
     admin: { document: "<aside/>", schema: AdminSchema },
   });
   enable_interactions(librariesMap);
@@ -125,18 +96,34 @@ try {
   librariesLocus = hsonLocus.create({
     map: librariesMap,
     sessions: {},
+    exposure: [
+      { library: "state", exposure: "client-public" },
+      { library: "page", exposure: "client-public" },
+      { library: "admin", exposure: "client-public" },
+    ],
+    defaultProjection: { libraries: ["state", "admin"], htmlDocument: "page", systemFeatures: ["interactions"] },
+    authorizeProjection: () => ({ libraries: ["state", "page", "admin"], systemFeatures: ["interactions"], writableDocuments: ["page"] }),
     actions: {
       "state.increment": (context) => context.mutate((draft) => draft.lib("state").at(["count"]).set(2)),
       "state.interaction": (context) => context.mutate((draft) => draft.lib("state").at(["count"]).set(5)),
     },
   });
-  const libraries = render_hosted_document({ authority: librariesLocus, document: "page" });
+  const sessionSent = [];
+  let receiveSession;
+  const closeSession = librariesLocus.connect({
+    send(raw) { sessionSent.push(JSON.parse(raw)); }, close() {},
+    onMessage(listener) { receiveSession = listener; return () => { receiveSession = undefined; }; },
+    onClose() { return () => {}; },
+  });
+  receiveSession(JSON.stringify({ type: "session-create", id: "ssr" }));
+  const issued = sessionSent.find((message) => message.type === "session-created");
+  if (!issued) throw new Error("SSR session was not authorized.");
+  const libraries = render_hosted_document({ authority: librariesLocus, sessionId: issued.sessionId });
+  closeSession();
   const encoded = Object.freeze({
     local: encode_ssr_bootstrap(local.bootstrap),
     localLibraries: encode_ssr_bootstrap(localLibraries.bootstrap),
     full: encode_ssr_bootstrap(full.bootstrap),
-    largeHosted: encode_ssr_bootstrap(largeHostedBootstrap),
-    hosted: encode_ssr_bootstrap(hosted.bootstrap),
     libraries: encode_ssr_bootstrap(libraries.bootstrap),
   });
   await librariesLocus.mutate((draft) => {
@@ -144,25 +131,6 @@ try {
     draft.lib("page").attrs.set({ kind: "path", path: [0] }, "data-recovered", "page");
     draft.lib("admin").attrs.set({ kind: "path", path: [0] }, "data-recovered", "admin");
   });
-
-  socketServer = new WebSocketServer({ host: "127.0.0.1", port: 0 });
-  await new Promise((resolveListen, rejectListen) => {
-    socketServer.once("listening", resolveListen);
-    socketServer.once("error", rejectListen);
-  });
-  socketServer.on("connection", (socket) => locus.connect({
-    send(raw) { socket.send(raw); },
-    close(code, reason) { socket.close(code, reason); },
-    onMessage(listener) {
-      const handler = (data) => listener(data.toString());
-      socket.on("message", handler);
-      return () => socket.off("message", handler);
-    },
-    onClose(listener) { socket.on("close", listener); return () => socket.off("close", listener); },
-  }));
-  const socketAddress = socketServer.address();
-  if (socketAddress === null || typeof socketAddress === "string") throw new Error("Browser socket server has no TCP address.");
-  const socketUrl = `ws://127.0.0.1:${socketAddress.port}`;
 
   librariesSocketServer = new WebSocketServer({ host: "127.0.0.1", port: 0 });
   await new Promise((resolveListen, rejectListen) => {
@@ -185,7 +153,7 @@ try {
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
     if (url.pathname === "/__state") {
       response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ local, localLibraries, full, largeHostedBootstrap, hosted, socketUrl, libraries, librariesSocketUrl, encoded }));
+      response.end(JSON.stringify({ local, localLibraries, full, libraries, librariesSocketUrl, credential: issued.credential, encoded }));
       return;
     }
     if (url.pathname === "/__result") {
@@ -210,8 +178,6 @@ try {
         .replace(moduleMatch[0], `<script type="module" src="/test.js"></script>`)
         .replace("<!--LOCAL_SSR-->", local.html)
         .replace("<!--LOCAL_LIBRARIES_SSR-->", localLibraries.html)
-        .replace("<!--HOSTED_SSR-->", hosted.html)
-        .replace("<!--HOSTED_CARRIER-->", `<script type="application/vnd.hson-live.ssr-bootstrap">${encoded.hosted}</script>`)
         .replace("<!--LIBRARIES_SSR-->", libraries.html)
         .replace("</body>", `<script>
           (() => {
@@ -265,10 +231,8 @@ try {
     chrome.kill("SIGTERM");
     await closed;
   }
-  await new Promise((resolveClose) => socketServer?.close(resolveClose) ?? resolveClose());
   await new Promise((resolveClose) => librariesSocketServer?.close(resolveClose) ?? resolveClose());
   await new Promise((resolveClose) => server?.close(resolveClose) ?? resolveClose());
-  locus?.dispose();
   librariesLocus?.dispose();
   await rm(fixtureRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }

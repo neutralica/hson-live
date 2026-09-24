@@ -81,7 +81,7 @@ await check("aggregate authorization rejection retains no lineage or ephemeral s
 });
 
 await check("the internal admission capability remains bound after the normal aggregate Locus facade is created", async () => {
-  let locus!: ReturnType<typeof hsonLocus.create>;
+  let locus!: import("../src/types/locus.types.ts").LocusMultiLibrary<ReturnType<typeof make_map>, TestActions>;
   locus = hsonLocus.create({
     exposure: test_public_exposure(make_map()),
     map: make_map(),

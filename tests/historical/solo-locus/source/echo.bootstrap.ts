@@ -1,7 +1,8 @@
 import type { ClassifiedLiveMap, LiveMapAuthority } from "../../types/livemap.types.js";
 import type { Echo, EchoOptions } from "../../types/locus.types.js";
 import type { LocusBootstrap, LocusBootstrapInstall } from "../locus/locus.bootstrap.js";
-import { create_echo } from "./echo.js";
+import { create_echo_with_replica_loaders_internal } from "./echo.js";
+import { DEFAULT_ECHO_REPLICA_LOADERS } from "./echo.lazy.js";
 
 export type LocusBootstrapEcho<TMap extends LiveMapAuthority = ClassifiedLiveMap> = Readonly<{
   bootstrap: LocusBootstrap;
@@ -22,7 +23,7 @@ export function create_locus_bootstrap_echo<TMap extends LiveMapAuthority>(
   install: LocusBootstrapInstall & Readonly<{ map: TMap }>,
   options: Omit<EchoOptions<undefined>, "map" | "recovery">,
 ): LocusBootstrapEcho<TMap> {
-  const echo: Echo<TMap> = create_echo<TMap>({ ...options, map: install.map, recovery: install.recovery });
+  const echo: Echo<TMap> = create_echo_with_replica_loaders_internal({ ...options, map: install.map, recovery: install.recovery }, DEFAULT_ECHO_REPLICA_LOADERS) as Echo<TMap>;
   let disposed = false;
   let connected = false;
   let status: LocusBootstrapEcho<TMap>["status"] = "installed";

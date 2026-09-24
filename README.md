@@ -324,7 +324,7 @@ Locus provides:
 • revision-gap detection;
 • recovery after disconnect;
 • document-state persistence contracts;
-• one-map bootstrap contribution; and
+• session-projected bootstrap contribution; and
 • activity and quiescence observation.
 
 The authority itself remains transport-independent. Locus communicates through a small transport-agnostic interface, and does not depend directly on Node, browser, or Cloudflare networking APIs.

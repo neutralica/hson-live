@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { WebSocketServer } from "ws";
 import { hson, hsonLocus } from "../dist/index.js";
-import { capture_locus_bootstrap } from "../dist/api/locus/index.js";
+import { capture_locus_bootstrap } from "../dist/api/locus/locus.bootstrap.js";
 import { admit_exact_runtime_livemap_node } from "../dist/internal/exact-runtime-node-admission.js";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");

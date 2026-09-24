@@ -1,24 +1,21 @@
 import type {
   DocumentLiveMapCapture,
-  HostedClientLibrariesSnapshot,
   LiveMapLibrariesSnapshot,
   LocalLibrariesContinuationSnapshot,
   LiveMapRootMode,
 } from "../../types/livemap.types.js";
-import type { LocusClientSnapshotEnvelope } from "../../types/locus.representation.types.js";
-import { assert_no_hson_runtime_quid_sigil, decode_locus_client_document_snapshot } from "../locus/locus.document-snapshot.js";
+import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
+import { admit_authority_projection_snapshot } from "../locus/locus.authority-projection-snapshot.js";
 import type { HsonSchemaData } from "../transform/transform.types.js";
 import { is_Node } from "../../core/node-guards.js";
 import { HsonSchema as HsonSchemaHandle } from "../schema/hson-schema.js";
 import { clone_hson_graph_without_quids } from "../livemap/livemap.document.capture.js";
 import { BoundedStringWriter } from "../../core/bounded-string-writer.js";
-import { parse_ordered_json_text } from "../../core/exact-data-codec.js";
 import {
   decode_view_state_snapshot,
   encode_view_state_snapshot,
 } from "../livemap/livemap.document.view-state-codec.js";
 import {
-  assert_hosted_client_snapshot_shape,
   assert_libraries_snapshot_bound,
   assert_libraries_snapshot_shape,
   assert_local_libraries_snapshot_shape,
@@ -33,14 +30,15 @@ import type {
 } from "./ssr-bootstrap.types.js";
 
 const FORMAT = "hson-ssr-bootstrap" as const;
-const VERSION = 2 as const;
+const LOCAL_VERSION = 2 as const;
+const HOSTED_PROJECTION_VERSION = 3 as const;
 const DEFAULT_MAX_ENCODED_BYTES = 96 * 1_024 * 1_024;
 const BASE64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 const BASE64URL_INPUT_CHUNK_BYTES = 24 * 1_024;
 const encoder = new TextEncoder();
 const asciiDecoder = new TextDecoder();
+type WireSsrBootstrapKind = SsrBootstrapKind | "hosted-document" | "hosted-libraries";
 
-type HostedDocumentBootstrap = LocusClientSnapshotEnvelope & Readonly<{ mode: "document" }>;
 type WireRegistryEntry = Readonly<{
   name: string;
   scope: null | "hson-internal";
@@ -68,23 +66,19 @@ type LibrariesPayload = Readonly<{
 }>;
 
 export function encode_ssr_bootstrap(
+  bootstrap: AuthorityProjectionSnapshot,
+  options?: SsrBootstrapCodecOptions,
+): EncodedSsrBootstrap<"hosted-projection">;
+export function encode_ssr_bootstrap(
   bootstrap: DocumentLiveMapCapture<"document">,
   options?: SsrBootstrapCodecOptions,
 ): EncodedSsrBootstrap<"document">;
-export function encode_ssr_bootstrap(
-  bootstrap: HostedDocumentBootstrap,
-  options?: SsrBootstrapCodecOptions,
-): EncodedSsrBootstrap<"hosted-document">;
-export function encode_ssr_bootstrap(
-  bootstrap: HostedClientLibrariesSnapshot,
-  options?: SsrBootstrapCodecOptions,
-): EncodedSsrBootstrap<"hosted-libraries">;
 export function encode_ssr_bootstrap(
   bootstrap: LocalLibrariesContinuationSnapshot,
   options?: SsrBootstrapCodecOptions,
 ): EncodedSsrBootstrap<"libraries">;
 export function encode_ssr_bootstrap(
-  bootstrap: DocumentLiveMapCapture<"document"> | HostedDocumentBootstrap | LocalLibrariesContinuationSnapshot | HostedClientLibrariesSnapshot,
+  bootstrap: DocumentLiveMapCapture<"document"> | LocalLibrariesContinuationSnapshot | AuthorityProjectionSnapshot,
   options?: SsrBootstrapCodecOptions,
 ): EncodedSsrBootstrap {
   const maximum = max_encoded_bytes(options, "encode");
@@ -92,7 +86,7 @@ export function encode_ssr_bootstrap(
     const normalized = normalize_bootstrap(bootstrap);
     const json = canonical_json({
       format: FORMAT,
-      version: VERSION,
+      version: normalized.kind === "hosted-projection" ? HOSTED_PROJECTION_VERSION : LOCAL_VERSION,
       kind: normalized.kind,
       payload: normalized.payload,
     });
@@ -125,20 +119,25 @@ export function decode_ssr_bootstrap(
     throw error("decode", "SSR_BOOTSTRAP_MALFORMED", "Encoded SSR bootstrap is not strict unpadded base64url.");
   }
 
-  let bytes: Uint8Array;
+  let bytes: Uint8Array | undefined;
   let json: string;
   try {
     bytes = decode_base64url(encoded);
+    if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+      throw error("decode", "SSR_BOOTSTRAP_NON_CANONICAL", "SSR bootstrap encoding is not canonical.");
+    }
     json = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch (cause) {
+    if (cause instanceof SsrBootstrapCodecError) throw cause;
     throw error("decode", "SSR_BOOTSTRAP_MALFORMED", "Encoded SSR bootstrap bytes are malformed.", cause);
   }
   if (!base64url_equals(bytes, encoded)) {
     throw error("decode", "SSR_BOOTSTRAP_NON_CANONICAL", "SSR bootstrap encoding is not canonical.");
   }
+  bytes = undefined;
 
   try {
-    parse_ordered_json_text(json);
+    assert_no_duplicate_json_keys(json);
   } catch (cause) {
     throw error("decode", "SSR_BOOTSTRAP_MALFORMED", "SSR bootstrap JSON is malformed or contains duplicate fields.", cause);
   }
@@ -154,8 +153,11 @@ export function decode_ssr_bootstrap(
     throw error("decode", "SSR_BOOTSTRAP_PAYLOAD_INVALID", "SSR bootstrap envelope fields are invalid.", cause);
   }
   if (envelope.format !== FORMAT) throw error("decode", "SSR_BOOTSTRAP_FORMAT_UNSUPPORTED", "SSR bootstrap format is unsupported.");
-  if (envelope.version !== VERSION) throw error("decode", "SSR_BOOTSTRAP_VERSION_UNSUPPORTED", "SSR bootstrap version is unsupported.");
   if (!is_kind(envelope.kind)) throw error("decode", "SSR_BOOTSTRAP_KIND_UNSUPPORTED", "SSR bootstrap kind is unsupported.");
+  if (envelope.version !== (envelope.kind === "hosted-projection" ? HOSTED_PROJECTION_VERSION : LOCAL_VERSION)
+    || envelope.kind === "hosted-document" || envelope.kind === "hosted-libraries") {
+    throw error("decode", "SSR_BOOTSTRAP_VERSION_UNSUPPORTED", "SSR bootstrap version is unsupported.");
+  }
 
   let decoded: DecodedSsrBootstrap;
   try { decoded = decode_payload(envelope.kind, envelope.payload); }
@@ -165,15 +167,12 @@ export function decode_ssr_bootstrap(
   }
   let canonical: boolean;
   try {
-    const normalized = normalize_bootstrap(decoded.bootstrap);
-    const comparison = compare_canonical_json({
+    canonical = compare_canonical_json_text({
       format: FORMAT,
-      version: VERSION,
-      kind: normalized.kind,
-      payload: normalized.payload,
-    }, bytes);
-    if (base64url_length(comparison.utf8Bytes) > maximum) throw new TypeError("Canonical SSR bootstrap exceeds the encoded-size limit.");
-    canonical = comparison.equal;
+      version: decoded.kind === "hosted-projection" ? HOSTED_PROJECTION_VERSION : LOCAL_VERSION,
+      kind: decoded.kind,
+      payload: decoded.kind === "hosted-projection" ? decoded.bootstrap : normalize_bootstrap(decoded.bootstrap).payload,
+    }, json);
   }
   catch (cause) { throw error("decode", "SSR_BOOTSTRAP_PAYLOAD_INVALID", "SSR bootstrap payload is invalid.", cause); }
   if (!canonical) throw error("decode", "SSR_BOOTSTRAP_NON_CANONICAL", "SSR bootstrap encoding is not canonical.");
@@ -182,6 +181,9 @@ export function decode_ssr_bootstrap(
 
 function normalize_bootstrap(bootstrap: unknown): Readonly<{ kind: SsrBootstrapKind; payload: unknown }> {
   if (!is_record(bootstrap)) throw new TypeError("Bootstrap must be an object.");
+  if (bootstrap.format === "hson-authority-projection-snapshot-v1") {
+    return { kind: "hosted-projection", payload: admit_authority_projection_snapshot(bootstrap) };
+  }
   if (bootstrap.kind === "hson-document") {
     const capture = bootstrap as DocumentLiveMapCapture<"document">;
     const viewState = encode_view_state_snapshot(Object.freeze({
@@ -192,17 +194,7 @@ function normalize_bootstrap(bootstrap: unknown): Readonly<{ kind: SsrBootstrapK
   }
   if (bootstrap.format === "hson-livemap-libraries-snapshot" || bootstrap.format === "hson-livemap-client-snapshot-v1") {
     if (Object.hasOwn(bootstrap, "authority")) {
-      const hosted = bootstrap as HostedClientLibrariesSnapshot;
-      assert_hosted_client_snapshot_shape(hosted);
-      if (typeof hosted.authority.logicalMapId !== "string" || typeof hosted.authority.incarnationId !== "string") {
-        throw new TypeError("Hosted Libraries authority is malformed.");
-      }
-      const payload = libraries_payload(hosted);
-      return { kind: "hosted-libraries", payload: {
-        logicalMapId: hosted.authority.logicalMapId,
-        incarnationId: hosted.authority.incarnationId,
-        ...payload,
-      } };
+      throw new TypeError("Legacy complete hosted Libraries bootstrap is retired.");
     }
     const local = bootstrap as LocalLibrariesContinuationSnapshot;
     assert_local_libraries_snapshot_shape(local);
@@ -211,26 +203,12 @@ function normalize_bootstrap(bootstrap: unknown): Readonly<{ kind: SsrBootstrapK
     return { kind: "libraries", payload: libraries_payload(local) };
   }
   if (bootstrap.format === "hson-client-snapshot-v1" || bootstrap.format === "view-state-client-snapshot-v1") {
-    exact_keys(bootstrap, ["logicalMapId", "incarnationId", "rev", "mode", "format", "payload"]);
-    if (typeof bootstrap.logicalMapId !== "string" || typeof bootstrap.incarnationId !== "string"
-      || !safe_nonnegative_integer(bootstrap.rev) || bootstrap.mode !== "document" || typeof bootstrap.payload !== "string") {
-      throw new TypeError("Hosted document bootstrap is malformed.");
-    }
-    if (bootstrap.format === "hson-client-snapshot-v1") assert_no_hson_runtime_quid_sigil(bootstrap.payload);
-    else decode_locus_client_document_snapshot(bootstrap as HostedDocumentBootstrap);
-    return { kind: "hosted-document", payload: {
-      logicalMapId: bootstrap.logicalMapId,
-      incarnationId: bootstrap.incarnationId,
-      revision: bootstrap.rev,
-      mode: bootstrap.mode,
-      snapshotFormat: bootstrap.format,
-      snapshotPayload: bootstrap.payload,
-    } };
+    throw new TypeError("Legacy hosted document bootstrap is retired.");
   }
   throw new TypeError("Bootstrap family is unsupported.");
 }
 
-function libraries_payload(snapshot: HostedClientLibrariesSnapshot | LocalLibrariesContinuationSnapshot): LibrariesPayload {
+function libraries_payload(snapshot: LocalLibrariesContinuationSnapshot): LibrariesPayload {
   if ((snapshot.format !== "hson-livemap-libraries-snapshot" && snapshot.format !== "hson-livemap-client-snapshot-v1") || snapshot.registry.format !== "hson-hosted-registry"
     || !safe_nonnegative_integer(snapshot.revision)) throw new TypeError("Libraries scalar fields are malformed.");
   return {
@@ -259,6 +237,9 @@ function libraries_payload(snapshot: HostedClientLibrariesSnapshot | LocalLibrar
 }
 
 function decode_payload(kind: SsrBootstrapKind, input: unknown): DecodedSsrBootstrap {
+  if (kind === "hosted-projection") {
+    return Object.freeze({ kind, bootstrap: admit_authority_projection_snapshot(input) });
+  }
   if (kind === "document") {
     const payload = record(input); exact_keys(payload, ["viewStateFormat", "viewStatePayload"]);
     if (payload.viewStateFormat !== "view-state" || typeof payload.viewStatePayload !== "string") throw new TypeError("Document payload is malformed.");
@@ -266,26 +247,9 @@ function decode_payload(kind: SsrBootstrapKind, input: unknown): DecodedSsrBoots
     if (bootstrap.mode !== "document") throw new TypeError("Document payload mode is malformed.");
     return Object.freeze({ kind, bootstrap: bootstrap as DocumentLiveMapCapture<"document"> });
   }
-  if (kind === "hosted-document") {
-    const payload = record(input); exact_keys(payload, ["logicalMapId", "incarnationId", "revision", "mode", "snapshotFormat", "snapshotPayload"]);
-    if (typeof payload.logicalMapId !== "string" || typeof payload.incarnationId !== "string"
-      || !safe_nonnegative_integer(payload.revision) || payload.mode !== "document"
-      || (payload.snapshotFormat !== "hson-client-snapshot-v1" && payload.snapshotFormat !== "view-state-client-snapshot-v1")
-      || typeof payload.snapshotPayload !== "string") throw new TypeError("Hosted document payload is malformed.");
-    const bootstrap: HostedDocumentBootstrap = Object.freeze({
-      logicalMapId: payload.logicalMapId, incarnationId: payload.incarnationId,
-      rev: payload.revision, mode: "document", format: payload.snapshotFormat, payload: payload.snapshotPayload,
-    });
-    if (bootstrap.format === "hson-client-snapshot-v1") assert_no_hson_runtime_quid_sigil(bootstrap.payload);
-    else decode_locus_client_document_snapshot(bootstrap);
-    return Object.freeze({ kind, bootstrap });
-  }
-  const hosted = kind === "hosted-libraries";
   const payload = record(input);
-  exact_keys(payload, hosted
-    ? ["logicalMapId", "incarnationId", "snapshotFormat", "revision", "registryFormat", "registry", "registryDigest", "snapshotRegistryDigest", "libraries"]
-    : ["snapshotFormat", "revision", "registryFormat", "registry", "registryDigest", "snapshotRegistryDigest", "libraries"]);
-  if (payload.snapshotFormat !== (hosted ? "hson-livemap-client-snapshot-v1" : "hson-livemap-libraries-snapshot") || payload.registryFormat !== "hson-hosted-registry"
+  exact_keys(payload, ["snapshotFormat", "revision", "registryFormat", "registry", "registryDigest", "snapshotRegistryDigest", "libraries"]);
+  if (payload.snapshotFormat !== "hson-livemap-libraries-snapshot" || payload.registryFormat !== "hson-hosted-registry"
     || !safe_nonnegative_integer(payload.revision)
     || !Array.isArray(payload.registry) || !Array.isArray(payload.libraries)
     || typeof payload.registryDigest !== "string" || typeof payload.snapshotRegistryDigest !== "string") throw new TypeError("Libraries payload is malformed.");
@@ -296,15 +260,9 @@ function decode_payload(kind: SsrBootstrapKind, input: unknown): DecodedSsrBoots
     registry: Object.freeze({ format: "hson-hosted-registry", libraries: Object.freeze(registryEntries), digest: payload.registryDigest }),
     registryDigest: payload.snapshotRegistryDigest, libraries: Object.freeze(libraryEntries),
   });
-  if (!hosted) { assert_local_libraries_snapshot_shape(local); assert_local_libraries_roots_portable(local); return Object.freeze({ kind, bootstrap: local }); }
-  if (typeof payload.logicalMapId !== "string" || typeof payload.incarnationId !== "string") throw new TypeError("Hosted Libraries authority is malformed.");
-  const bootstrap: HostedClientLibrariesSnapshot = Object.freeze({
-    ...local,
-    format: "hson-livemap-client-snapshot-v1",
-    authority: Object.freeze({ logicalMapId: payload.logicalMapId, incarnationId: payload.incarnationId }),
-  });
-  assert_hosted_client_snapshot_shape(bootstrap);
-  return Object.freeze({ kind, bootstrap });
+  assert_local_libraries_snapshot_shape(local);
+  assert_local_libraries_roots_portable(local);
+  return Object.freeze({ kind, bootstrap: local });
 }
 
 function assert_local_libraries_roots_portable(snapshot: LocalLibrariesContinuationSnapshot): void {
@@ -446,36 +404,78 @@ function base64url_length(byteLength: number): number {
   return Math.ceil(byteLength * 4 / 3);
 }
 
-function compare_canonical_json(value: unknown, expected: Uint8Array): Readonly<{ equal: boolean; utf8Bytes: number }> {
+/** Detect duplicate object keys without materializing a second large JSON graph. */
+function assert_no_duplicate_json_keys(source: string): void {
+  let index = 0;
+  const skipWhitespace = (): void => {
+    while (index < source.length && /[ \t\r\n]/.test(source[index]!)) index += 1;
+  };
+  const stringEnd = (): number => {
+    if (source[index] !== '"') throw new SyntaxError("Expected JSON string.");
+    const start = index++;
+    while (index < source.length) {
+      const unit = source[index++]!;
+      if (unit === '"') return start;
+      if (unit === "\\") index += 1;
+    }
+    throw new SyntaxError("Unterminated JSON string.");
+  };
+  const scanValue = (): void => {
+    skipWhitespace();
+    if (source[index] === '"') { stringEnd(); return; }
+    if (source[index] === "{") {
+      index += 1;
+      skipWhitespace();
+      const keys = new Set<string>();
+      if (source[index] === "}") { index += 1; return; }
+      while (index < source.length) {
+        const start = stringEnd();
+        const key: string = JSON.parse(source.slice(start, index));
+        if (keys.has(key)) throw new SyntaxError("Duplicate JSON property.");
+        keys.add(key);
+        skipWhitespace();
+        if (source[index++] !== ":") throw new SyntaxError("Expected JSON property separator.");
+        scanValue();
+        skipWhitespace();
+        const next = source[index++];
+        if (next === "}") return;
+        if (next !== ",") throw new SyntaxError("Expected JSON object separator.");
+        skipWhitespace();
+      }
+      throw new SyntaxError("Unterminated JSON object.");
+    }
+    if (source[index] === "[") {
+      index += 1;
+      skipWhitespace();
+      if (source[index] === "]") { index += 1; return; }
+      while (index < source.length) {
+        scanValue();
+        skipWhitespace();
+        const next = source[index++];
+        if (next === "]") return;
+        if (next !== ",") throw new SyntaxError("Expected JSON array separator.");
+      }
+      throw new SyntaxError("Unterminated JSON array.");
+    }
+    const start = index;
+    while (index < source.length && !/[ \t\r\n,\]}]/.test(source[index]!)) index += 1;
+    if (index === start) throw new SyntaxError("Expected JSON value.");
+  };
+  scanValue();
+  skipWhitespace();
+  if (index !== source.length) throw new SyntaxError("Trailing JSON source.");
+}
+
+function compare_canonical_json_text(value: unknown, expected: string): boolean {
   let equal = true;
   let offset = 0;
-  const writeByte = (byte: number): void => {
-    if (equal && expected[offset] !== byte) equal = false;
-    offset += 1;
-  };
   emit_canonical_json(value, (fragment) => {
     for (let index = 0; index < fragment.length; index += 1) {
-      const code = fragment.charCodeAt(index);
-      if (code <= 0x7f) writeByte(code);
-      else if (code <= 0x7ff) {
-        writeByte(0xc0 | (code >>> 6));
-        writeByte(0x80 | (code & 0x3f));
-      } else if (code >= 0xd800 && code <= 0xdbff && index + 1 < fragment.length
-        && fragment.charCodeAt(index + 1) >= 0xdc00 && fragment.charCodeAt(index + 1) <= 0xdfff) {
-        const point = 0x10000 + ((code - 0xd800) << 10) + (fragment.charCodeAt(index + 1) - 0xdc00);
-        writeByte(0xf0 | (point >>> 18));
-        writeByte(0x80 | ((point >>> 12) & 0x3f));
-        writeByte(0x80 | ((point >>> 6) & 0x3f));
-        writeByte(0x80 | (point & 0x3f));
-        index += 1;
-      } else {
-        writeByte(0xe0 | (code >>> 12));
-        writeByte(0x80 | ((code >>> 6) & 0x3f));
-        writeByte(0x80 | (code & 0x3f));
-      }
+      if (equal && expected.charCodeAt(offset) !== fragment.charCodeAt(index)) equal = false;
+      offset += 1;
     }
   });
-  return { equal: equal && offset === expected.length, utf8Bytes: offset };
+  return equal && offset === expected.length;
 }
 
 function decode_base64url(value: string): Uint8Array {
@@ -524,7 +524,7 @@ function require_mode(value: unknown): LiveMapRootMode { if (!is_mode(value)) th
 function require_string(value: unknown): string { if (typeof value !== "string") throw new TypeError("String field is malformed."); return value; }
 function require_root_format(value: unknown): "hson-exact-value" { if (value !== "hson-exact-value") throw new TypeError("Root codec is malformed."); return value; }
 function decoded_schema(value: string): HsonSchemaData { return HsonSchemaHandle.fromHson(value).toHson(); }
-function is_kind(value: unknown): value is SsrBootstrapKind { return value === "document" || value === "hosted-document" || value === "libraries" || value === "hosted-libraries"; }
+function is_kind(value: unknown): value is WireSsrBootstrapKind { return value === "document" || value === "hosted-document" || value === "libraries" || value === "hosted-libraries" || value === "hosted-projection"; }
 function error(phase: "encode" | "decode", code: ConstructorParameters<typeof SsrBootstrapCodecError>[1], message: string, cause?: unknown): SsrBootstrapCodecError {
   return new SsrBootstrapCodecError(phase, code, message, cause);
 }

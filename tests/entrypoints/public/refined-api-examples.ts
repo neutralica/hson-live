@@ -13,7 +13,7 @@ import {
 import { create_echo, type Echo } from "hson-live/echo";
 import { Hson } from "hson-live/hson";
 import { hsonLiveMap, type DocumentLiveMap, type LiveMapLibraries } from "hson-live/livemap";
-import { create_locus, type DataLocusOptions, type LocusSocketLike } from "hson-live/locus";
+import { create_locus, type LocusSocketLike } from "hson-live/locus";
 import { reflect_document } from "hson-live/mirror";
 import { decode_ssr_bootstrap, encode_ssr_bootstrap, render_document, render_hosted_document } from "hson-live/ssr";
 import { hsonTransform, type TransformOutput } from "hson-live/transform";
@@ -21,13 +21,13 @@ import { hsonLiveTree, type ContentManager } from "hson-live/livetree";
 
 declare const userHtml: string;
 declare const documentMap: DocumentLiveMap;
-declare const replicaMap: DocumentLiveMap;
+declare const replicaMap: LiveMapLibraries;
 declare const socket: LocusSocketLike;
 declare const root: Element;
 declare const libraries: LiveMapLibraries;
 declare const tree: ReturnType<typeof hsonLiveTree.fromHson>;
-declare const echo: Echo<DocumentLiveMap>;
-declare const authority: import("hson-live/locus").LocusBootstrapAuthority;
+declare const echo: Echo<LiveMapLibraries>;
+declare const authority: unknown;
 declare const descriptor: Parameters<typeof add_interaction>[1];
 
 const transformOutput: TransformOutput = hsonTransform.fromUntrustedHtml(userHtml);
@@ -51,18 +51,20 @@ void content;
 const binding = reflect_document(documentMap);
 binding.dispose();
 
-const dataOptions: DataLocusOptions<{ count: number }> = { state: { count: 0 } };
-const hosted = create_locus({ map: documentMap, actions: {} });
+const hostedMap = hsonLiveMap.fromLibraries({ page: { document: "<main/>",
+  schema: Hson.schema`<type "document" tag "main" content <repeat <tag "p" content "empty">>>` } });
+const hosted = create_locus({ map: hostedMap, exposure: [{ library: "page", exposure: "client-public" }] });
 const replica = create_echo({ socket, map: replicaMap, recovery: { logicalMapId: "document" } });
-void [dataOptions, hosted, replica];
+void [hosted, replica];
 
 const localSsr = render_document({ map: documentMap });
 const decoded = decode_ssr_bootstrap(encode_ssr_bootstrap(localSsr.bootstrap));
 void decoded;
 void continue_document({ map: documentMap, root });
 
-const hostedSsr = render_hosted_document({ authority });
-void hostedSsr;
+// @ts-expect-error Bare recovery authority has no authorized HTML projection.
+render_hosted_document({ authority });
+// @ts-expect-error One-map hosted continuation is no longer a public client-egress path.
 void continue_hosted_document({ echo, root });
 
 add_interaction(libraries, descriptor);

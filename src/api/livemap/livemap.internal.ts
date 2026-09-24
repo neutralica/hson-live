@@ -105,7 +105,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     prevRev: number;
     rev: number;
   }>) => number;
-  /** Managed solo Echo authority position without a graph mutation or commit. @internal */
+  /** Historical single-map progress hook; not used by hosted Echo. @internal */
   advanceSoloProgress: (prevRev: number, rev: number) => number;
   /** Authority position, including commits, progress, and snapshot installation. @internal */
   observeAuthorityPosition: (listener: (revision: number) => void) => () => void;
@@ -135,7 +135,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   preparedSystemRoot: (transition: PreparedLiveMapAuthorityTransition) => HsonNode | undefined;
   accept: LiveMapTransitionController["acceptAuthority"];
   discard: LiveMapTransitionController["discardAuthority"];
-  /** Claim/release the same exclusive mutation boundary used by solo Locus. @internal */
+  /** Claim/release the exclusive aggregate mutation boundary. @internal */
   claimManagement: (owner: object) => void;
   releaseManagement: (owner: object) => void;
   commit: (writes: readonly LiveMapAggregateWrite[]) => LiveMapAggregateCommit;

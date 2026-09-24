@@ -1,6 +1,5 @@
 export { create_echo } from "./echo.js";
 export { hsonEcho } from "./echo.facade.js";
-export { create_locus_bootstrap_echo, type LocusBootstrapEcho } from "./echo.bootstrap.js";
 export type {
   Echo,
   EchoActionFn,

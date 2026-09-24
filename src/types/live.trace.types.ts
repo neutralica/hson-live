@@ -1,4 +1,4 @@
-// Generic tracing contracts; one-map payloads remain in their owning modules.
+// Generic tracing contracts; hosted payloads remain in their owning modules.
 
 /** Initial, intentionally narrow subsystem vocabulary for local Locus tracing. */
 export type LiveTraceSubsystem = "client" | "transport" | "locus" | "livemap";

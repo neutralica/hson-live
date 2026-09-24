@@ -1,7 +1,6 @@
 import type { Echo } from "../../types/locus.types.js";
 import type {
   DocumentLiveMap,
-  LiveMapAuthority,
   LiveMapDocumentLibrary,
   LiveMapLibraries,
 } from "../../types/livemap.types.js";
@@ -20,5 +19,5 @@ export type DocumentContinuation<TMap extends ContinuableDocumentMap = Continuab
 export type HostedDocumentContinuation<
   TMap extends ContinuableDocumentMap = ContinuableDocumentMap,
 > = DocumentContinuation<TMap> & Readonly<{
-  echo: Echo<LiveMapAuthority | LiveMapLibraries>;
+  echo: Echo<LiveMapLibraries>;
 }>;

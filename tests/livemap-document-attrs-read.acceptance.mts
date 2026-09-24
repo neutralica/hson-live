@@ -220,23 +220,5 @@ check("reads over absent attrs remain complete no-ops", () => {
   assert.deepEqual(map.document.byQuid("000000105"), beforeLookup);
 });
 
-check("local reads through a hosted authority create no history or publication", () => {
-  const host = hson.locus.create({
-    map: element(`<main id="local" @000000106/>`),
-  });
-  let publications = 0;
-  host.stream.onCommit(() => { publications += 1; });
-  const beforeRev = host.map.rev;
-  const beforeHistory = host.stream.history.debug().retainedCommitCount;
-  assert.equal(host.map.document.attrs.get(elementPath(), "id"), "local");
-  assert.equal(host.map.document.attrs.has(elementPath(), "id"), true);
-  assert.deepEqual(host.map.document.attrs.keys(elementPath()), ["id"]);
-  assert.equal(host.map.document.attrs.must.get(elementPath(), "id"), "local");
-  assert.equal(host.map.rev, beforeRev);
-  assert.equal(host.stream.headRev, beforeRev);
-  assert.equal(host.stream.history.debug().retainedCommitCount, beforeHistory);
-  assert.equal(publications, 0);
-});
-
 process.stdout.write(`# ${checks} Document LiveMap attrs read checks passed\n`);
 testEvents.terminal("pass");

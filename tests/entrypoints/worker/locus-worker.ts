@@ -1,26 +1,15 @@
-import {
-  create_browser_locus_socket,
-  decode_locus_bootstrap,
-  install_locus_bootstrap,
-  install_locus_snapshot,
-  decode_locus_server_message,
-  encode_locus_client_message,
-  hsonLocus,
-  type LocusClientMessage,
-  type LocusSocketLike,
-} from "hson-live/locus";
+import { create_browser_locus_socket, create_locus, hsonLocus,
+  type LocusSocketLike, type Locus } from "hson-live/locus";
+import { hsonLiveMap } from "hson-live/livemap";
+import { Hson } from "hson-live/hson";
 
-declare const socket: LocusSocketLike;
-
-void socket;
 declare const websocketUrl: string;
 declare const BrowserSocket: Parameters<typeof create_browser_locus_socket>[1];
+declare const socket: LocusSocketLike;
 void create_browser_locus_socket(websocketUrl, BrowserSocket);
-void hsonLocus;
-void decode_locus_server_message("{}");
-declare const clientMessage: LocusClientMessage;
-void encode_locus_client_message(clientMessage);
-declare const bootstrapHson: string;
-void install_locus_bootstrap(decode_locus_bootstrap(bootstrapHson));
-declare const semanticSnapshot: Parameters<typeof install_locus_snapshot>[0];
-void install_locus_snapshot(semanticSnapshot);
+void socket;
+const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: Hson.schema`<type "document" tag "main" content <repeat <tag "p" content "empty">>>` } });
+const locus: Locus<typeof map> = create_locus({ map, exposure: [{ library: "page", exposure: "client-public" }] });
+void [locus, hsonLocus];
+// @ts-expect-error A bare map cannot become a hosted Locus.
+create_locus({ map: hsonLiveMap.fromJson({ value: 1 }) });

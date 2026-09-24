@@ -13,7 +13,6 @@ import {
 } from "../src/index.ts";
 import { install_libraries_snapshot } from "../src/api/livemap/index.ts";
 import { install_locus_libraries_snapshot } from "../src/api/locus/index.ts";
-import { install_locus_snapshot } from "../src/api/locus/locus.bootstrap.ts";
 import { encode_view_state_snapshot } from "../src/api/livemap/livemap.document.view-state-codec.ts";
 import { make_classified_livemap } from "../src/api/livemap/livemap.core.ts";
 
@@ -93,44 +92,16 @@ const decodedElementWrapper = decodedRootElement.$_content[0];
 if (typeof decodedElementWrapper !== "object" || decodedElementWrapper === null) throw new Error("Decoded element wrapper is missing.");
 assert.equal((decodedElementWrapper.$_content[0] as { $_content: unknown[] }).$_content[0], "text\ud800\udc00\ud800X\udfff");
 
-const adversarial = "</script><script><!-- --> < > & \\\" ' \u2028\u2029";
-const hostedMap = hsonLiveMap.fromNode({
-  $_tag: "_hson_root",
-  $_content: [{ $_tag: "main", $_content: [{ $_tag: "_hson_elem", $_content: [{ $_tag: "_hson_str", $_content: [adversarial] }] }] }],
-});
-if (hostedMap.mode !== "document") throw new Error("Hosted fixture must be a document map.");
-const locus = hsonLocus.create({   map: hostedMap, logicalMapId: "map-</script>", incarnationId: "incarnation-雪", sessions: {} });
-const hostedBootstrap = render_hosted_document({ authority: locus }).bootstrap;
-const encodedHosted = encode_ssr_bootstrap(hostedBootstrap);
-const reorderedHostedBootstrap: typeof hostedBootstrap = {
-  payload: hostedBootstrap.payload,
-  format: hostedBootstrap.format,
-  mode: hostedBootstrap.mode,
-  rev: hostedBootstrap.rev,
-  incarnationId: hostedBootstrap.incarnationId,
-  logicalMapId: hostedBootstrap.logicalMapId,
-};
-assert.equal(encode_ssr_bootstrap(reorderedHostedBootstrap), encodedHosted);
-assert.match(encodedHosted, /^[A-Za-z0-9_-]+$/);
-const decodedHosted = decode_ssr_bootstrap(encodedHosted);
-assert.equal(decodedHosted.kind, "hosted-document");
-if (decodedHosted.kind !== "hosted-document") throw new Error("Wrong hosted kind.");
-assert.deepEqual(decodedHosted.bootstrap, hostedBootstrap);
-assert.deepEqual(install_locus_snapshot(decodedHosted.bootstrap).map.capture({ identity: "strip" }).root, hostedMap.capture({ identity: "strip" }).root);
-
-const hostedWirePrefix = '{"format":"hson-ssr-bootstrap","version":2,"kind":"hosted-document","payload":{"logicalMapId":"wire-map","incarnationId":"wire-incarnation","revision":0,"mode":"document","snapshotFormat":"hson-client-snapshot-v1","snapshotPayload":"';
-const hostedWireSuffix = '"}}';
-for (const length of [0, 1, 2, 24_393, 24_394, 24_395]) {
-  const payload = `<main "${"x".repeat(length)}"/>`;
-  const bootstrap = { logicalMapId: "wire-map", incarnationId: "wire-incarnation", rev: 0, mode: "document" as const, format: "hson-client-snapshot-v1" as const, payload };
-  assert.equal(encode_ssr_bootstrap(bootstrap), encodeText(`${hostedWirePrefix}${JSON.stringify(payload).slice(1, -1)}${hostedWireSuffix}`));
-}
-const padBootstrap = { logicalMapId: "wire-map", incarnationId: "wire-incarnation", rev: 0, mode: "document" as const, format: "hson-client-snapshot-v1" as const, payload: '<main "pad"/>' };
-const padEncoded = encode_ssr_bootstrap(padBootstrap);
-assert(padEncoded.length % 4 === 2 || padEncoded.length % 4 === 3);
-const padLast = alphabet.indexOf(padEncoded.at(-1)!);
-const alternatePadLast = padEncoded.length % 4 === 2 ? (padLast & 0x30) | 1 : (padLast & 0x3c) | 1;
-expectCode(`${padEncoded.slice(0, -1)}${alphabet[alternatePadLast]}`, "SSR_BOOTSTRAP_NON_CANONICAL");
+// The version-two hosted document family is retired; local version-two vectors remain valid.
+const legacyHosted = { logicalMapId: "wire-map", incarnationId: "wire-incarnation", rev: 0,
+  mode: "document" as const, format: "hson-client-snapshot-v1" as const, payload: '<main/>' };
+// @ts-expect-error Retired complete hosted document state is not an encoder input.
+assert.throws(() => encode_ssr_bootstrap(legacyHosted),
+  (cause) => cause instanceof SsrBootstrapCodecError && cause.code === "SSR_BOOTSTRAP_INPUT_INVALID");
+expectCode(encodeText(JSON.stringify({ format: "hson-ssr-bootstrap", version: 2, kind: "hosted-document",
+  payload: { logicalMapId: "wire-map", incarnationId: "wire-incarnation", revision: 0,
+    mode: "document", snapshotFormat: "hson-client-snapshot-v1", snapshotPayload: "<main/>" } })),
+  "SSR_BOOTSTRAP_VERSION_UNSUPPORTED");
 
 const DataSchema: HsonSchema = Hson.schema`<type "data" content <value "number">>`;
 const DocumentSchema: HsonSchema = Hson.schema`<type "document" tag "main" content "empty">`;
@@ -152,16 +123,13 @@ assert.deepEqual(decodedLibraries.bootstrap, librariesBootstrap);
 assert.deepEqual(install_libraries_snapshot(decodedLibraries.bootstrap).map.cut().data, librariesBootstrap);
 assert.deepEqual(decodedLibraries.bootstrap.registry.libraries.map((entry) => entry.name), librariesBootstrap.registry.libraries.map((entry) => entry.name));
 
-const librariesLocus = hsonLocus.create({ exposure: test_public_exposure(librariesMap), map: librariesMap, logicalMapId: "aggregate-map", incarnationId: "aggregate-incarnation", sessions: {} });
-const hostedLibrariesBootstrap = render_hosted_document({ authority: librariesLocus, document: "prototype" }).bootstrap;
-const encodedHostedLibraries = encode_ssr_bootstrap(hostedLibrariesBootstrap);
-assert.equal(decodeText(encodedHostedLibraries).includes("identityEpoch"), false);
-assert.equal(decodeText(encodedHostedLibraries).includes("issuedQuids"), false);
-const decodedHostedLibraries = decode_ssr_bootstrap(encodedHostedLibraries);
-assert.equal(decodedHostedLibraries.kind, "hosted-libraries");
-if (decodedHostedLibraries.kind !== "hosted-libraries") throw new Error("Wrong hosted Libraries kind.");
-assert.deepEqual(decodedHostedLibraries.bootstrap, hostedLibrariesBootstrap);
-assert.deepEqual(install_locus_libraries_snapshot(decodedHostedLibraries.bootstrap).map.cut().data, librariesBootstrap);
+// Legacy hosted Libraries bootstrap is likewise unavailable for encoding.
+const legacyHostedLibraries = { ...librariesBootstrap, format: "hson-livemap-client-snapshot-v1" as const,
+  authority: { logicalMapId: "aggregate-map", incarnationId: "aggregate-incarnation" } };
+// @ts-expect-error Retired complete hosted Libraries state is not an encoder input.
+assert.throws(() => encode_ssr_bootstrap(legacyHostedLibraries),
+  (cause) => cause instanceof SsrBootstrapCodecError && cause.code === "SSR_BOOTSTRAP_INPUT_INVALID");
+
 assert.equal(({} as Record<string, unknown>).polluted, undefined);
 assert.equal(Object.prototype.hasOwnProperty.call(Object.prototype, "polluted"), false);
 

@@ -6,7 +6,7 @@ import { decode_hosted_root, encode_hosted_root, hosted_sha256, make_hosted_clie
 import { encode_livemap_replay_transport } from "../livemap/livemap.transport.js";
 import { project_authority_snapshot } from "./locus.authority-projection-snapshot.js";
 import { HsonSchema } from "../schema/hson-schema.js";
-import { interaction_schema_internal, project_interaction_state_internal } from "../interactions/interactions.js";
+import { interaction_schema_internal, project_interaction_state_internal } from "../interactions/interactions.projection.js";
 import type { LocusEffectiveProjection } from "./locus.projection.js";
 
 /** Distinct from the complete-authority v1 recovery commit. */

@@ -8,14 +8,9 @@ import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-
 const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(`<main <p @000005301 "a" "" "worker"/>/>`, { allowTopLevelDocumentText: true }));
 if (map.mode !== "document") throw new Error("Node SSR fixture requires a document map.");
 const node = render_document({ map });
-const largeBootstrap = Object.freeze({
-  logicalMapId: "worker-large-map",
-  incarnationId: "worker-large-incarnation",
-  rev: 0,
-  mode: "document" as const,
-  format: "hson-client-snapshot-v1" as const,
-  payload: `<main "worker-large:${"x".repeat(2 * 1_024 * 1_024)}"/>`,
-});
+const largeMap = hsonLiveMap.fromHson(`<main "worker-large:${"x".repeat(2 * 1_024 * 1_024)}"/>`);
+if (largeMap.mode !== "document") throw new Error("Node large SSR fixture requires a document map.");
+const largeBootstrap = render_document({ map: largeMap }).bootstrap;
 const worker = await new Promise<Readonly<{
   html: string;
   bootstrap: unknown;
@@ -45,7 +40,7 @@ assert.deepEqual(worker.cut, map.cut());
 assert.equal(worker.encoded, encode_ssr_bootstrap(node.bootstrap));
 assert.deepEqual(worker.decoded, { kind: "document", bootstrap: node.bootstrap });
 assert.equal(worker.largeEncoded, encode_ssr_bootstrap(largeBootstrap));
-assert.deepEqual(worker.largeDecoded, { kind: "hosted-document", bootstrap: largeBootstrap });
+assert.deepEqual(worker.largeDecoded, { kind: "document", bootstrap: largeBootstrap });
 assert.deepEqual(worker.emptyRoot, { $_tag: "_hson_root", $_content: [] });
 assert.equal(worker.emptySsrRejected, true);
 process.stdout.write("Document SSR Worker parity acceptance passed.\n");

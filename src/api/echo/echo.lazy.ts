@@ -45,16 +45,11 @@ type ReplicaInitializer = <TMap extends EchoMap, TActions extends LocusActionPay
 
 /** @internal Injectable deferred boundary used by deterministic packaging/lifecycle proofs. */
 export type EchoReplicaLoaders = Readonly<{
-  solo: () => Promise<ReplicaInitializer>;
   aggregate: () => Promise<ReplicaInitializer>;
 }>;
 
 /** @internal Production dynamic imports; neither module belongs to the initial Echo graph. */
 export const DEFAULT_ECHO_REPLICA_LOADERS: EchoReplicaLoaders = Object.freeze({
-  async solo() {
-    const loaded = await import("./echo.solo.js");
-    return loaded.create_solo_echo_internal as ReplicaInitializer;
-  },
   async aggregate() {
     const loaded = await import("./echo.multi-library.js");
     return loaded.create_multi_library_echo as ReplicaInitializer;
@@ -98,14 +93,8 @@ export function create_lazy_replica_echo_internal<
   loaders: EchoReplicaLoaders = DEFAULT_ECHO_REPLICA_LOADERS,
   semanticConnection?: EchoEndpointConnection<TActions, any, any>,
 ): Echo<TMap, TActions> {
-  const initialCursor = options.recovery.cursor;
-  if (management.topology === "solo"
-    && initialCursor !== undefined
-    && initialCursor.lastAppliedRev !== management.revision) {
-    throw new EchoRecoveryError(
-      "LOCUS_RECOVERY_CURSOR_MISMATCH",
-      `Locus recovery cursor revision ${initialCursor.lastAppliedRev} does not match mirror revision ${management.revision}.`,
-    );
+  if (management.topology !== "aggregate") {
+    throw new TypeError("Hosted Echo replication requires an authority-projected library registry.");
   }
   const internalOptions = options as ReplicaOptions<TMap> & Readonly<{
     actionId?: () => string;
@@ -113,7 +102,6 @@ export function create_lazy_replica_echo_internal<
     actionStatusId?: () => string;
     sessionRequestId?: (kind: "create" | "reattach" | "goodbye") => string;
   }>;
-  const aggregate = management.topology === "aggregate";
   const connection = semanticConnection ?? create_echo_endpoint_connection_internal<TActions>({
     socket: options.socket,
     ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
@@ -124,7 +112,7 @@ export function create_lazy_replica_echo_internal<
       ...(internalOptions.actionStatusId === undefined ? {} : { actionStatusId: internalOptions.actionStatusId }),
       ...(internalOptions.sessionRequestId === undefined ? {} : { sessionRequestId: internalOptions.sessionRequestId }),
     }),
-    ...(aggregate ? {
+    ...({
       endpointMessageFormat: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT,
       actionMessageId: "attempt" as const,
       operationLossError: (reason: "disconnect" | "fenced" | "ended") => new Error(reason === "ended"
@@ -132,7 +120,7 @@ export function create_lazy_replica_echo_internal<
         : reason === "fenced"
           ? "Hosted aggregate session attachment was fenced."
           : "Hosted aggregate socket closed."),
-    } : {}),
+    }),
   });
   const deferredDocumentAuthorities = management.documentMaps.map((map) => {
     const deferred = create_deferred_echo_document_authority_internal();
@@ -159,7 +147,7 @@ export function create_lazy_replica_echo_internal<
   const initialize = (): Promise<ReplicaStrategy<TMap, TActions>> => {
     if (strategy !== undefined) return Promise.resolve(strategy);
     if (initialization !== undefined) return initialization;
-    const load = aggregate ? loaders.aggregate : loaders.solo;
+    const load = loaders.aggregate;
     initialization = load()
       .then((createReplica) => {
         if (disposed || recoveryDisposed) {

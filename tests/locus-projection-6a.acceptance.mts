@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonLocus, enable_interactions, type HsonSchema } from "../src/index.ts";
-import { create_persistent_locus, decode_locus_message } from "../src/api/locus/index.ts";
+import { create_persistent_locus } from "../src/api/locus/index.ts";
+import { decode_locus_message } from "../src/api/locus/locus.protocol.ts";
 import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.hosted-multi-library.socket.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection, HOSTED_PROJECTION_EGRESS_COMPLETE } from "../src/api/locus/locus.projection.ts";
@@ -49,7 +50,7 @@ function attachment(server: ReturnType<typeof create_locus_hosted_aggregate_sock
   return { attached, finite };
 }
 
-assert.equal(HOSTED_PROJECTION_EGRESS_COMPLETE, false);
+assert.equal(HOSTED_PROJECTION_EGRESS_COMPLETE, true);
 
 // Every application library requires exactly one explicit classification; system state does not.
 {

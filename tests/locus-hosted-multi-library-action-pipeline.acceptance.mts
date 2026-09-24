@@ -400,7 +400,7 @@ await check("resumable session reattachment retains one projected aggregate auth
   locus.dispose();
 });
 
-await check("retry, dedupe conflict, and action status match the one-map request contract", async () => {
+await check("retry, dedupe conflict, and action status use the hosted request contract", async () => {
   const authority = make_map();
   let executions = 0;
   const locus = hsonLocus.create({

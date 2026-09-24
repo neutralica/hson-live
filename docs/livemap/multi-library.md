@@ -43,7 +43,7 @@ attached across unrelated global revisions and recovery replacement.
 
 Multi-library mutations return `LiveMapMultiLibraryCommit`. It holds one map-wide `prevRev`/`rev` transition and one ordered `operations` array. Every operation is `{ library, operation }`; the library name is public and the engine's opaque library identity is never exposed. A hosted Locus retains one global revision and complete authority commit history. Echo receives one ordered client stream in which a revision has either a graph commit or generic progress without a graph effect.
 
-There is no default Library on a multi-map, no public topology lifecycle (`add`, `remove`, `replace`, or `rename`), and no solo-to-multi migration/export API in this release. QUID allocation remains map-wide within the underlying authority, but raw QUIDs do not route mutation requests across Libraries and identities cannot be transferred between Libraries. `root` and `snap` are selected-Library operations.
+There is no default Library on a multi-map, no public topology lifecycle (`add`, `remove`, `replace`, or `rename`), and no alternate hosted solo topology. QUID allocation remains map-wide within the underlying authority, but raw QUIDs do not route mutation requests across Libraries and identities cannot be transferred between Libraries. `root` and `snap` are selected-Library operations.
 
 `map.capture()` synchronously returns one detached `LiveMapLibrariesSnapshot`.
 It contains the complete ordered registry, QUID-free public and hidden roots,
@@ -61,6 +61,11 @@ Attach the map through the normal Locus API. No hosted-specific map constructor 
 ```ts
 const locus = hsonLocus.create({
   map,
+  exposure: [
+    { library: "state", exposure: "client-public" },
+    { library: "colors", exposure: "client-public" },
+  ],
+  authorizeProjection: () => ({ libraries: ["state", "colors"] }),
   actions: {
     async "theme.all"(context) {
       await context.mutate((draft) => {
@@ -80,8 +85,8 @@ Pass the composed map to the normal `hsonEcho.create({ map, socket, recovery })`
 
 Connect the transport, establish a semantic session, then recover. Connection loss does not destroy the composed map: client-local roots, handles, and Mirror resources remain usable while disconnected and through compatible session reattachment. Retained authority replay applies incrementally. Snapshot fallback replaces only projected roots, retires unproven projected subject identity, and preserves local roots and their runtime identity in the same map epoch. A different projection topology needs a new composed map. Client-local state currently lasts for the browser runtime; reload or runtime death initializes it again from application declarations.
 
-Actions use the same retry-safe client request identity, action status, authorization evidence, and resumable session semantics as a solo Locus. A Library name is target evidence within the validated payload; it does not scope sessions, dedupe records, status, ordering, or revision authority. Application actions and named document actions enter one FIFO and complete against the aggregate revision.
+Actions use the same retry-safe client request identity, action status, authorization evidence, and resumable session semantics for a one-library registry Locus. A Library name is target evidence within the validated payload; it does not scope sessions, dedupe records, status, ordering, or revision authority. Application actions and named document actions enter one FIFO and complete against the aggregate revision.
 
 `create_persistent_locus({ map, logicalMapId, persistence })` supports the same fixed registry. Calling that same ordinary constructor after a restart with the same `logicalMapId` reconstructs persisted application and authority state before the Locus is exposed. The new process starts a fresh generated-QUID runtime epoch. Issued-QUID nonreuse is enforced within each living epoch.
 
-Static topology is the hosted contract: dynamic Library lifecycle, a default Library, cross-Library QUID transfer, and solo-to-multi in-place migration are intentionally unsupported. Locus and Echo each own local generated QUID identity, so equal subjects may have different QUIDs. A projected named document Library may be bound through Mirror; supported hosted LiveTree authoring becomes visible only after Locus acceptance and aggregate Echo replay. A client-local document Mirror responds directly to local transitions.
+Static topology is the hosted contract: dynamic Library lifecycle, a default Library, and cross-Library QUID transfer are intentionally unsupported. Locus and Echo each own local generated QUID identity, so equal subjects may have different QUIDs. A projected named document Library may be bound through Mirror; supported hosted LiveTree authoring becomes visible only after Locus acceptance and aggregate Echo replay. A client-local document Mirror responds directly to local transitions.

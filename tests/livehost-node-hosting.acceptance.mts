@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { request as node_request } from "node:http";
 import { create_locus, type LocusSocketLike } from "hson-live/locus";
+import { hsonLiveMap } from "hson-live/livemap";
+import { Hson } from "hson-live/hson";
 import type {
   LiveHostApplication,
   LiveHostApplicationContext,
@@ -478,9 +480,17 @@ check("optional connection capability carries text and binary data", async () =>
 
 check("connection paths select applications without interpreting Locus topology", async () => {
   const selections: string[] = [];
+  const Room = Hson.schema`<type "data" content <room "string">>`;
+  const oneLibrary = (room: string, logicalMapId: string) => create_locus({
+    map: hsonLiveMap.fromLibraries({ room: { data: { room }, schema: Room } }),
+    logicalMapId,
+    exposure: [{ library: "room", exposure: "client-public" }],
+    defaultProjection: { libraries: ["room"] },
+    authorizeProjection: () => ({ libraries: ["room"] }),
+  });
   const loci = new Map([
-    ["room-a", create_locus({ state: { room: "a" }, logicalMapId: "logical-a" })],
-    ["room-b", create_locus({ state: { room: "b" }, logicalMapId: "logical-b" })],
+    ["room-a", oneLibrary("a", "logical-a")],
+    ["room-b", oneLibrary("b", "logical-b")],
   ]);
   const application: LiveHostApplication = Object.freeze({
     name: "optional-locus",
@@ -508,8 +518,8 @@ check("connection paths select applications without interpreting Locus topology"
   websocket.send(JSON.stringify({ type: "session-create", id: "host-session" }));
   assert.equal(JSON.parse((await message).toString()).type, "session-created");
   assert.deepEqual(selections, ["room-b"]);
-  assert.equal(loci.get("room-a")?.stream.logicalMapId, "logical-a");
-  assert.equal(loci.get("room-b")?.stream.logicalMapId, "logical-b");
+  assert.equal(loci.get("room-a")?.logicalMapId, "logical-a");
+  assert.equal(loci.get("room-b")?.logicalMapId, "logical-b");
   websocket.close();
   await host.dispose();
 });

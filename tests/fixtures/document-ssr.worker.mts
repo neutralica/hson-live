@@ -19,14 +19,9 @@ try {
     && /exactly one ordinary canonical document root/.test(cause.cause.message);
 }
 const encoded = encode_ssr_bootstrap(result.bootstrap);
-const largeBootstrap = Object.freeze({
-  logicalMapId: "worker-large-map",
-  incarnationId: "worker-large-incarnation",
-  rev: 0,
-  mode: "document" as const,
-  format: "hson-client-snapshot-v1" as const,
-  payload: `<main "worker-large:${"x".repeat(2 * 1_024 * 1_024)}"/>`,
-});
+const largeMap = hsonLiveMap.fromHson(`<main "worker-large:${"x".repeat(2 * 1_024 * 1_024)}"/>`);
+if (largeMap.mode !== "document") throw new Error("Worker large SSR fixture requires a document map.");
+const largeBootstrap = render_document({ map: largeMap }).bootstrap;
 const largeEncoded = encode_ssr_bootstrap(largeBootstrap);
 parentPort?.postMessage(Object.freeze({
   html: result.html,

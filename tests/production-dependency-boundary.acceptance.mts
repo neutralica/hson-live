@@ -180,7 +180,7 @@ check("public endpoint-only Echo initial browser graph excludes deferred replica
     `endpoint-only public initial browser graph exceeds the 20 KiB gzip guard: ${initialGzipBytes} bytes`,
   );
   const dynamicImports = Object.values(outputs).flatMap((output) => output.imports.filter((item) => item.kind === "dynamic-import"));
-  assert.ok(dynamicImports.length >= 2, "browser proof should retain deferred solo and aggregate chunks");
+  assert.ok(dynamicImports.length >= 1, "browser proof should retain the deferred registry replica chunk");
 });
 
 check("local document continuation tree-shakes hosted Echo and Locus machinery", () => {

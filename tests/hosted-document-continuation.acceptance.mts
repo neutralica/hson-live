@@ -21,7 +21,7 @@ import {
 import type { LocusRequestedProjection } from "../src/types/locus.projection.types.ts";
 import { get_node_for_el } from "../src/api/livetree/utils/node-map-helpers.ts";
 import { default_livetree_runtime } from "../src/api/livetree/runtime/livetree-runtime.ts";
-import { capture_locus_bootstrap, install_locus_bootstrap } from "../src/api/locus/locus.bootstrap.ts";
+import { continue_hosted_document_internal as continue_legacy_hosted_document } from "../src/api/continuation/continue-hosted-document.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { project_authority_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
@@ -87,186 +87,6 @@ function mainFixture(_quid: string): Readonly<{ root: FakeElement; child: FakeEl
 }
 
 {
-  const quid = "000004001";
-  const source = `<main <p @${quid} "hello"/>/>`;
-  const authority = documentMap(source);
-  const locus = hsonLocus.create({
-    map: authority,
-    logicalMapId: "hosted-continuation-replay",
-    sessions: {},
-    authorizeAction: (context) => context.action !== "document.attrs.set"
-      || (context.payload === undefined ? undefined : Hson.data.materialize(context.payload) as { name?: string } | undefined)?.name !== "denied",
-  });
-  const installed = install_locus_bootstrap(capture_locus_bootstrap(locus, "continuation:replay", "/continuation"));
-  const replica = installed.map;
-  if (replica.mode !== "document") throw new Error("Expected installed document bootstrap.");
-  assert.equal(replica.document.byQuid(quid), undefined);
-  await locus.mutate((draft) => draft.document.attrs.set(path(0, 0), "data-recovered", "yes"));
-  const pair = socketPair();
-  locus.connect(pair.server);
-  const echo = hsonEcho.create({
-    socket: pair.client,
-    map: replica,
-    session: {},
-    recovery: installed.recovery,
-  });
-  echo.connect();
-  await echo.session.create();
-  const fixture = mainFixture(quid);
-  const rootBefore = fixture.root;
-  const childBefore = fixture.child;
-  const textBefore = fixture.text;
-  const runtime = default_livetree_runtime();
-  let managerActivations = 0;
-  const managerListener = (): void => { managerActivations += 1; };
-  runtime.styleDocumentListeners.add(managerListener);
-  const continuation = await continue_hosted_document({ echo, root: fixture.root as unknown as Element });
-  assert.equal(managerActivations, 0);
-  await new Promise<void>((resolve) => {
-    const channel = new MessageChannel();
-    channel.port1.onmessage = (): void => {
-      channel.port1.close();
-      channel.port2.close();
-      resolve();
-    };
-    channel.port2.postMessage(undefined);
-  });
-  assert.equal(managerActivations, 1);
-  runtime.styleDocumentListeners.delete(managerListener);
-  assert.equal(continuation.echo, echo);
-  assert.equal(continuation.map, replica);
-  assert.equal(continuation.tree.dom.el(), rootBefore as unknown as Element);
-  const echoQuid = acquire_document_identity(replica.document, path(0, 0)).snap()?.$_meta?.quid;
-  assert.equal(typeof echoQuid, "string");
-  assert.notEqual(echoQuid, quid);
-  assert.equal(continuation.tree.find.byQuid(echoQuid!)?.dom.el(), childBefore as unknown as Element);
-  assert.equal(fixture.child.childNodes[0], textBefore);
-  assert.equal(echo.recovery.status, "caught_up");
-  assert.equal(echo.recovery.lastAppliedRev, replica.rev);
-  assert.equal(continuation.reflect.sourceRevision, replica.rev);
-  assert.equal(fixture.child.getAttribute("data-recovered"), "yes");
-
-  const childTree = continuation.tree.find.must.byQuid(echoQuid!);
-  await childTree.async.attrs.set("data-async", "accepted");
-  assert.equal(authority.rev, 2);
-  assert.equal(replica.rev, 2);
-  assert.equal(continuation.reflect.sourceRevision, 2);
-  assert.equal(fixture.child.getAttribute("data-async"), "accepted");
-  assert.equal(pair.delivered.some((message) => message.type === "ack" && message.completionRev === 2), true);
-
-  // The portable lineage preserves each runtime's independently owned subject.
-  const observedLineages: unknown[] = [];
-  const stopLineages = authority.commits.observe((event) => {
-    if (event.kind !== "commit") return;
-    for (const operation of event.commit.ops) {
-      if ("domain" in operation && operation.op === "replace-content") observedLineages.push(operation.lineage);
-    }
-  });
-  const foreign = "000004099";
-  const replacement = documentMap(`<p "changed"/>`).at([]).snap();
-  if (replacement === undefined) throw new Error("Expected replacement content.");
-  const request = JSON.parse(JSON.stringify({
-    target: path(0), index: 0, replacement,
-    lineage: [{ source: [], destination: [] }],
-  }));
-  const replaced = await echo.action("document.content.replace", request);
-  assert.equal(replaced.type, "ack");
-  assert.deepEqual(observedLineages, [[{ source: [], destination: [] }]]);
-  assert.equal(authority.document.byQuid(quid)?.$_tag, "p");
-  assert.equal(authority.document.byQuid(foreign), undefined);
-  assert.equal(replica.document.byQuid(echoQuid!)?.$_tag, "p");
-  assert.equal(continuation.reflect.sourceRevision, 3);
-  assert.equal(continuation.tree.find.byQuid(echoQuid!)?.dom.el(), childBefore as unknown as Element);
-  assert.equal((fixture.child.childNodes[0] as FakeText | undefined)?.data, "changed");
-
-  // Mirror's existing pessimistic text authoring also emits an explicit
-  // empty lineage for its replacement of a structural text leaf.
-  await continuation.tree.find.must.byQuid(echoQuid!).async.text.set("via Mirror");
-  assert.equal(authority.rev, 4);
-  assert.equal(replica.rev, 4);
-  assert.equal(continuation.reflect.sourceRevision, 4);
-  assert.equal((fixture.child.childNodes[0] as FakeText | undefined)?.data, "via Mirror");
-  assert.deepEqual(observedLineages, [[{ source: [], destination: [] }], []]);
-  stopLineages();
-
-  const beforeDenial = replica.rev;
-  await assert.rejects(childTree.async.attrs.set("denied", "no"));
-  assert.equal(replica.rev, beforeDenial);
-  assert.equal(fixture.child.getAttribute("denied"), null);
-
-  continuation.dispose();
-  assert.equal(echo.session.status, "attached");
-  assert.equal(echo.recovery.status, "caught_up");
-  const afterDispose = await echo.action("document.attrs.set", {
-    target: path(0, 0), name: "data-after-dispose", value: "alive",
-  });
-  assert.equal(afterDispose.type, "ack");
-  assert.equal(replica.document.attrs.get(path(0, 0), "data-after-dispose"), "alive");
-  assert.equal(fixture.child.getAttribute("data-after-dispose"), null);
-  echo.dispose();
-  locus.dispose();
-}
-
-{
-  const quid = "000004002";
-  const source = `<main <p @${quid} "hello"/>/>`;
-  const authority = documentMap(source);
-  const locus = hsonLocus.create({   map: authority, logicalMapId: "hosted-continuation-recover-failure", sessions: {} });
-  const installed = install_locus_bootstrap(capture_locus_bootstrap(locus, "continuation:failure", "/continuation"));
-  const replica = installed.map;
-  if (replica.mode !== "document") throw new Error("Expected installed document bootstrap.");
-  const pair = socketPair();
-  locus.connect(pair.server);
-  const echo = hsonEcho.create({ socket: pair.client, map: replica, session: {}, recovery: installed.recovery });
-  const fixture = mainFixture(quid);
-  await assert.rejects(
-    continue_hosted_document({ echo, root: fixture.root as unknown as Element }),
-    (cause) => cause instanceof DocumentContinuationError && cause.phase === "recover" && cause.cause !== undefined,
-  );
-  assert.equal(get_node_for_el(fixture.root as unknown as Element), undefined);
-  echo.connect();
-  await echo.session.create();
-  const retry = await continue_hosted_document({ echo, root: fixture.root as unknown as Element });
-  assert.equal(retry.reflect.status, "active");
-  retry.dispose();
-  echo.dispose();
-  locus.dispose();
-}
-
-{
-  const quid = "000004003";
-  const source = `<main <p @${quid} "hello"/>/>`;
-  const authority = documentMap(source);
-  const locus = hsonLocus.create({   map: authority, logicalMapId: "hosted-continuation-snapshot", sessions: {} });
-  const bootstrap = capture_locus_bootstrap(locus, "continuation:snapshot", "/continuation");
-  const replica = documentMap(source);
-  const pair = socketPair();
-  locus.connect(pair.server);
-  const echo = hsonEcho.create({
-    socket: pair.client,
-    map: replica,
-    session: {},
-    recovery: { logicalMapId: bootstrap.logicalMapId },
-  });
-  echo.connect();
-  await echo.session.create();
-  const fixture = mainFixture(quid);
-  await assert.rejects(
-    continue_hosted_document({ echo, root: fixture.root as unknown as Element }),
-    (cause) => cause instanceof DocumentContinuationError
-      && cause.phase === "reflect"
-      && cause.cause !== undefined,
-  );
-  assert.equal(echo.recovery.status, "caught_up");
-  assert.equal(get_node_for_el(fixture.root as unknown as Element), undefined);
-  const retry = await continue_hosted_document({ echo, root: fixture.root as unknown as Element });
-  assert.equal(retry.reflect.status, "active");
-  retry.dispose();
-  echo.dispose();
-  locus.dispose();
-}
-
-{
   const makeMap = () => admit_exact_runtime_livemap_libraries({
     state: { data: { count: 0 }, schema: StateSchema },
     page: { document: parse_hson_exact_runtime("<main <button/>/>", { allowTopLevelDocumentText: true }), schema: ButtonSchema },
@@ -289,17 +109,18 @@ function mainFixture(_quid: string): Readonly<{ root: FakeElement; child: FakeEl
   const locus = hsonLocus.create({
     map: authority,
     exposure: test_public_exposure(authority),
-    defaultProjection: { libraries: ["page"], systemFeatures: ["interactions"] },
-    authorizeProjection: () => ({ libraries: ["page"], systemFeatures: ["interactions"] }),
+    defaultProjection: { libraries: ["page"], htmlDocument: "page", systemFeatures: ["interactions"] },
+    authorizeProjection: () => ({ libraries: ["page"], htmlDocument: "page", systemFeatures: ["interactions"] }),
     actions: { save: (_context, payload) => { handled = payload; } },
   });
   const complete = internal_livemap_aggregate_authority(authority).captureHosted();
-  const requested: LocusRequestedProjection = { libraries: ["page"], systemFeatures: ["interactions"] };
+  const requested: LocusRequestedProjection = { libraries: ["page"], htmlDocument: "page", systemFeatures: ["interactions"] };
   const policy = make_locus_hosted_projection_policy(complete.registry, complete.authority,
     test_public_exposure(authority), requested, () => requested);
   const effective = normalize_locus_effective_projection(policy, requested);
   if (effective instanceof Promise) throw new Error("Expected synchronous continuation projection.");
-  const replica = hsonLiveMap.fromClientSnapshot({ authority: project_authority_snapshot(complete, effective), localLibraries: {} });
+  const projected = project_authority_snapshot(complete, effective);
+  const replica = hsonLiveMap.fromClientSnapshot({ authority: projected, localLibraries: {} });
   const pair = socketPair();
   locus.connect(pair.server);
   const echo = hsonEcho.create({ socket: pair.client, map: replica, recovery: { logicalMapId: locus.logicalMapId } });
@@ -308,9 +129,27 @@ function mainFixture(_quid: string): Readonly<{ root: FakeElement; child: FakeEl
   const root = new FakeElement("main");
   const button = new FakeElement("button");
   root.appendChild(button);
+  const otherRequest: LocusRequestedProjection = { libraries: ["page"], htmlDocument: "page" };
+  const otherPolicy = make_locus_hosted_projection_policy(complete.registry, complete.authority,
+    test_public_exposure(authority), otherRequest, () => otherRequest);
+  const otherEffective = normalize_locus_effective_projection(otherPolicy, otherRequest);
+  if (otherEffective instanceof Promise) throw new Error("Expected synchronous alternate projection.");
+  const otherProjected = project_authority_snapshot(complete, otherEffective);
+  await assert.rejects(
+    continue_hosted_document({ echo, authority: otherProjected, root: root as unknown as Element }),
+    /authority projection does not match/i,
+  );
+  assert.equal(get_node_for_el(root as unknown as Element), undefined);
+  await assert.rejects(
+    continue_hosted_document({ echo, authority: Object.freeze({ ...projected, revision: projected.revision + 1 }),
+      root: root as unknown as Element }),
+    /authority projection does not match/i,
+  );
+  assert.equal(get_node_for_el(root as unknown as Element), undefined);
   await assert.rejects(
     continue_hosted_document({
       echo,
+      authority: projected,
       root: root as unknown as Element,
       interactions: { local: null as unknown as InteractionLocalBehaviors },
     }),
@@ -321,6 +160,7 @@ function mainFixture(_quid: string): Readonly<{ root: FakeElement; child: FakeEl
   assert.equal(get_node_for_el(root as unknown as Element), undefined);
   const continuation = await continue_hosted_document({
     echo,
+    authority: projected,
     root: root as unknown as Element,
     interactions: { local: {} },
   });

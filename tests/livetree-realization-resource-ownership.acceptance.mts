@@ -340,48 +340,5 @@ await check("exact-subject terminal draining reaches a fixed point after isolate
   tree.remove();
 });
 
-await check("QUID-free hosted Reflect registration stays browser-local and submits no operation", async () => {
-  const authoritative = document(`<main/>`);
-  const host = hson.locus.create({ map: authoritative, logicalMapId: "resource-owner", sessions: {} });
-  const replica = document(`<main/>`);
-  const pair = socket_pair();
-  host.connect(pair.server);
-  const echo = hson.echo.create({
-    socket: pair.client,
-    map: replica,
-    session: {},
-    recovery: { logicalMapId: host.stream.logicalMapId },
-  });
-  echo.connect();
-  await echo.session.create();
-  await echo.recovery.recover();
-  const binding = hson.reflect(replica);
-  const node = authored_node(binding.tree.node);
-  const tree = create_livetree(node).adoptRoots(binding.tree.hostRootNode());
-  const target = attach(node);
-  const authorityRevision = authoritative.rev;
-  const clientRevision = replica.rev;
-  const sent = pair.clientSent.length;
-  let publications = 0;
-  const stop = replica.commits.observe(() => { publications += 1; });
-  let calls = 0;
-
-  const listener = tree.listen.onClick(() => { calls += 1; });
-  target.dispatch("click");
-  await Promise.resolve();
-  assert.equal(calls, 1);
-  assert.equal(node.$_meta?.quid, undefined);
-  assert.equal(authoritative.rev, authorityRevision);
-  assert.equal(replica.rev, clientRevision);
-  assert.equal(publications, 0);
-  assert.equal(pair.clientSent.length, sent);
-
-  listener.off();
-  assert.equal(target.listeners.has("click"), false);
-  stop();
-  binding.dispose();
-  echo.dispose();
-});
-
 process.stdout.write(`# ${checks} realization-local resource ownership checks passed\n`);
 testEvents.terminal("pass");

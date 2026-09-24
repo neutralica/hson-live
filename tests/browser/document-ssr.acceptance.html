@@ -4,7 +4,6 @@
 <body>
 <section id="local-shell"><!--LOCAL_SSR--></section>
 <section id="local-libraries-shell"><!--LOCAL_LIBRARIES_SSR--></section>
-<section id="hosted-shell"><!--HOSTED_SSR--><!--HOSTED_CARRIER--></section>
 <section id="libraries-shell"><!--LIBRARIES_SSR--></section>
 <div id="result"></div>
 <script type="module">
@@ -17,8 +16,6 @@ import {
   encode_ssr_bootstrap,
   hson,
   install_libraries_snapshot,
-  install_locus_snapshot,
-  install_locus_libraries_snapshot,
   render_document,
 } from "/bundle.js";
 
@@ -32,10 +29,6 @@ try {
   const state = await fetch("/__state").then((response) => response.json());
   const decodedLocalBootstrap = decode_ssr_bootstrap(state.encoded.local);
   check("browser local encoding matches Node byte-for-byte", encode_ssr_bootstrap(decodedLocalBootstrap.bootstrap) === state.encoded.local);
-  const decodedLargeBootstrap = decode_ssr_bootstrap(state.encoded.largeHosted);
-  check("browser larger encoding matches Node byte-for-byte", encode_ssr_bootstrap(state.largeHostedBootstrap) === state.encoded.largeHosted);
-  check("browser larger canonical decode is exact", decodedLargeBootstrap.kind === "hosted-document" && decodedLargeBootstrap.bootstrap.payload === state.largeHostedBootstrap.payload);
-
   const localRoot = document.querySelector("#local-ssr");
   check("application root is delivered in standards mode", document.compatMode === "CSS1Compat");
   const localParagraph = localRoot.firstElementChild;
@@ -116,72 +109,40 @@ try {
   fullObserver.disconnect();
   fullContinuation.dispose();
 
-  const hostedRoot = document.querySelector("#hosted-ssr");
-  const carriers = document.querySelectorAll('#hosted-shell > script[type="application/vnd.hson-live.ssr-bootstrap"]');
-  check("application-root shell has exactly one inert carrier sibling", carriers.length === 1 && carriers[0].previousElementSibling === hostedRoot);
-  check("carrier text is exact encoded bootstrap", carriers[0].textContent === state.encoded.hosted);
-  check("encoded carrier cannot contain parser-adversarial semantic text", !carriers[0].textContent.includes("<") && !carriers[0].textContent.includes(">") && !carriers[0].textContent.includes("&"));
-  const decodedHosted = decode_ssr_bootstrap(carriers[0].textContent);
-  check("browser hosted encoding matches Node byte-for-byte", encode_ssr_bootstrap(decodedHosted.bootstrap) === state.encoded.hosted);
-  const hostedParagraph = hostedRoot.firstElementChild;
-  const hostedText = hostedParagraph.firstChild;
-  const installed = install_locus_snapshot(decodedHosted.bootstrap);
-  check("hosted snapshot starts at N", installed.map.rev === state.hosted.bootstrap.rev && installed.map.rev === 0);
-  const browserSocket = create_browser_locus_socket(state.socketUrl);
-  await browserSocket.ready;
-  const echo = create_echo({
-    socket: browserSocket.socket,
-    map: installed.map,
-    recovery: installed.recovery,
-    session: {},
-  });
-  echo.connect();
-  await echo.session.create();
-  const hostedContinuation = await continue_hosted_document({ echo, root: hostedRoot });
-  check("hosted continuation reuses the installed client map", hostedContinuation.map === installed.map);
-  check("hosted recovery catches N up to N+1", echo.recovery.status === "caught_up" && installed.map.rev === 1);
-  check("hosted root identity survives recovery", hostedContinuation.tree.dom.el() === hostedRoot);
-  check("hosted element identity survives recovery", hostedRoot.firstElementChild === hostedParagraph);
-  check("hosted text identity survives recovery", hostedParagraph.firstChild === hostedText);
-  check("hosted N+1 mutation is reflected", hostedParagraph.getAttribute("data-recovered") === "yes");
-  const hostedParagraphTree = hostedContinuation.tree.find.must.byTag("p");
-  const hostedLocalQuid = hostedParagraphTree.quid;
-  check("hosted browser identity is acquired locally", typeof hostedLocalQuid === "string" && hostedParagraph.getAttribute("hson:quid") === hostedLocalQuid);
-  await hostedParagraphTree.async.attrs.set("data-async", "accepted");
-  check("AsyncLiveTree mutates after SSR continuation", hostedParagraph.getAttribute("data-async") === "accepted" && installed.map.rev === 2);
-  hostedContinuation.dispose();
-  echo.dispose();
-  browserSocket.dispose();
-
   const librariesRoot = document.querySelector("#libraries-ssr");
   const librariesButton = librariesRoot.firstElementChild;
   const decodedHostedLibraries = decode_ssr_bootstrap(state.encoded.libraries);
   check("browser hosted Libraries encoding matches Node byte-for-byte", encode_ssr_bootstrap(decodedHostedLibraries.bootstrap) === state.encoded.libraries);
-  const librariesInstalled = install_locus_libraries_snapshot(decodedHostedLibraries.bootstrap);
-  check("aggregate install restores exact global revision N", librariesInstalled.map.rev === state.libraries.bootstrap.revision);
-  check("aggregate install restores every public Library", librariesInstalled.map.lib("admin").mode === "document" && librariesInstalled.map.lib("state").mode !== "document");
+  check("hosted carrier is the projected v3 family", decodedHostedLibraries.kind === "hosted-projection");
+  const librariesMap = hson.liveMap.fromClientSnapshot({ authority: decodedHostedLibraries.bootstrap, localLibraries: {} });
+  check("aggregate client map starts at its local revision", librariesMap.rev === 0);
+  check("projected authority snapshot carries N", decodedHostedLibraries.bootstrap.revision === state.libraries.bootstrap.revision);
+  check("aggregate install restores included Libraries", librariesMap.lib("admin").mode === "document" && librariesMap.lib("state").mode !== "document");
   let hiddenUnavailable = false;
-  try { librariesInstalled.map.lib("@hson/canonical-interactions/v1"); } catch { hiddenUnavailable = true; }
+  try { librariesMap.lib("@hson/canonical-interactions/v1"); } catch { hiddenUnavailable = true; }
   check("hidden interaction Library remains unavailable", hiddenUnavailable);
   const librariesSocket = create_browser_locus_socket(state.librariesSocketUrl);
   await librariesSocket.ready;
   const librariesEcho = create_echo({
     socket: librariesSocket.socket,
-    map: librariesInstalled.map,
-    recovery: librariesInstalled.recovery,
-    session: {},
+    map: librariesMap,
+    recovery: { logicalMapId: decodedHostedLibraries.bootstrap.authority.logicalMapId },
+    session: { credential: state.credential },
   });
+  check("Echo cursor starts at projected authority N", librariesEcho.recovery.lastAppliedRev === decodedHostedLibraries.bootstrap.revision && librariesMap.rev === 0);
   librariesEcho.connect();
-  await librariesEcho.session.create();
+  await librariesEcho.session.reattach();
   const selected = librariesEcho.map.lib(state.libraries.document);
   let interactionCalls = 0;
   const librariesContinuation = await continue_hosted_document({
     echo: librariesEcho,
+    authority: decodedHostedLibraries.bootstrap,
     document: selected,
     root: librariesRoot,
     interactions: { local: { clicker: () => { interactionCalls += 1; } } },
   });
-  check("aggregate recovery catches complete N up to N+1", librariesEcho.recovery.status === "caught_up" && librariesInstalled.map.rev === state.libraries.bootstrap.revision + 1);
+  check("aggregate recovery catches projected N up to N+1", librariesEcho.recovery.status === "caught_up"
+    && librariesEcho.recovery.lastAppliedRev === state.libraries.bootstrap.revision + 1 && librariesMap.rev === 1);
   check("selected aggregate DOM converges", librariesRoot.getAttribute("data-recovered") === "page");
   check("other public document converges", librariesEcho.map.lib("admin").at([]).attrs.get("data-recovered") === "admin");
   check("data Library converges", librariesEcho.map.lib("state").snap(["count"]) === 1);
@@ -190,14 +151,14 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   check("canonical hidden interactions activate after aggregate continuation", interactionCalls === 1);
-  check("canonical authoritative interaction dispatches through Echo", librariesEcho.map.lib("state").snap(["count"]) === 5 && librariesInstalled.map.rev === state.libraries.bootstrap.revision + 2);
+  check("canonical authoritative interaction dispatches through Echo", librariesEcho.map.lib("state").snap(["count"]) === 5 && librariesMap.rev === 2);
   const librariesButtonTree = librariesContinuation.tree.find.must.byTag("button");
   const librariesLocalQuid = librariesButtonTree.quid;
   check("aggregate browser identity is acquired locally", typeof librariesLocalQuid === "string" && librariesButton.getAttribute("hson:quid") === librariesLocalQuid);
   await librariesButtonTree.async.attrs.set("data-async", "accepted");
-  check("aggregate AsyncLiveTree uses the global revision", librariesButton.getAttribute("data-async") === "accepted" && librariesInstalled.map.rev === state.libraries.bootstrap.revision + 3);
+  check("aggregate AsyncLiveTree uses local map revision", librariesButton.getAttribute("data-async") === "accepted" && librariesMap.rev === 3);
   const action = await librariesEcho.action("state.increment");
-  check("configured aggregate action remains operational", action.type === "ack" && librariesEcho.map.lib("state").snap(["count"]) === 2 && librariesInstalled.map.rev === state.libraries.bootstrap.revision + 4);
+  check("configured aggregate action remains operational", action.type === "ack" && librariesEcho.map.lib("state").snap(["count"]) === 2 && librariesMap.rev === 4);
   librariesContinuation.dispose();
   librariesEcho.dispose();
   librariesSocket.dispose();

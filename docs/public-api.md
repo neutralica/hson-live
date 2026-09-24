@@ -2,7 +2,7 @@
 
 `hson-live` is a set of cooperating capabilities, not a framework lifecycle.
 Use only the pieces an application needs. A standalone `LiveTree`, a local
-`LiveMap`, a `Reflect` binding, and local document continuation are all valid
+`LiveMap`, a `Mirror` binding, and local document continuation are all valid
 without a Locus, Echo, or LiveHost.
 
 The package root (`hson-live`) is the normal application and high-level
@@ -36,7 +36,7 @@ specialist capability from its owning public subpath.
   Styling is `tree.style`, `tree.css`, and `tree.css.global`; synchronization
   is automatic—there is no public `syncNow`. `tree.content` is a returned
   `ContentManager` capability, not an implementation applications construct.
-- **Reflect** binds a document LiveMap to a LiveTree. It owns its binding, not
+- **Mirror** binds a document LiveMap to a LiveTree. It owns its binding, not
   the source map; dispose it when the binding is no longer wanted.
 - **Locus and Echo** are optional hosted authority and replica/session layers.
   Locus orders and authorizes authority work; Echo carries a replica through
@@ -103,7 +103,7 @@ callbacks. They are appropriate when portable/recoverable event intent is not
 needed. Runtime coverage: LiveTree listener and CSS public-API acceptance
 tests.
 
-### 4. LiveMap + Reflect — local document projection
+### 4. LiveMap + Mirror — local document projection
 
 ```ts
 import { hsonLiveMap } from "hson-live/livemap";
@@ -118,52 +118,28 @@ if (map.mode === "document") {
 }
 ```
 
-Reflect does not dispose `map`. Its health/status concerns projection; it is
+Mirror does not dispose `map`. Its health/status concerns projection; it is
 not the same promise as Echo revision convergence.
 
-### 5. Hosted one-map document — authority, replica, recovery
+### 5. Hosted library-registry authority and replica
 
 ```ts
 import { create_locus } from "hson-live/locus";
 import { create_echo } from "hson-live/echo";
 import { hsonLiveMap } from "hson-live/livemap";
 
-const authority = create_locus({ map: documentMap, actions: { save(ctx, payload) {
-  if (payload) Hson.data.entries(payload); // exact HsonData, not a plain object
-  return ctx;
-} } });
-const echo = create_echo({ socket, map: replicaMap, recovery: { logicalMapId: "document" } });
-```
-
-`documentMap`, `replicaMap`, and `socket` are application-owned setup. A Locus
-action is registered by the application; Echo connects and recovers through
-its documented session APIs. Document acquisition is path-based; there is no
-raw-QUID request target or application-visible `ensureQuid`. `DataLocusOptions`
-is the type for state-created data authorities, and persisted data kind is
-`"data"`; neither claim adds durable persistence by itself. *Compile-only;
-runtime coverage:* Locus document/recovery and Echo acceptance tests.
-
-`LocusSocketLike` carries encoded text frames, while ordinary Echo owns client
-message encoding. Specialist protocol peers import the four directional
-codecs, including `encode_locus_client_message`, from `hson-live/locus`; exact
-action `payloadData` is not produced by the canonical `HsonData` string.
-
-### 6. Hosted Libraries — one aggregate, named targets
-
-```ts
-import { hsonLiveMap } from "hson-live/livemap";
-import { create_locus } from "hson-live/locus";
-
-const libraries = hsonLiveMap.fromLibraries({
-  page: { document: "<main/>" },
-  settings: { data: { theme: "dark" } },
+const authorityMap = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } });
+const authority = create_locus({
+  map: authorityMap,
+  exposure: [{ library: "page", exposure: "client-public" }],
+  authorizeProjection: () => ({ libraries: ["page"] }),
 });
-const authority = create_locus({ map: libraries, actions: {} });
+// The client map is composed from an authorized AuthorityProjectionSnapshot
+// and separately declared client-local libraries.
+const echo = create_echo({ socket, map: clientMap, recovery: { logicalMapId } });
 ```
 
-`draft.lib("page")` or `draft.lib("settings")` selects a named target during
-one atomic authoritative action. This is one aggregate revision and recovery
-authority. Runtime coverage: hosted multi-library acceptance tests.
+A one-library hosted application is a one-library registry. It still requires explicit exposure and an authorized session projection. `authority.cut(sessionId, document?)` creates one HTML and projection-state cut at a single authority revision. The application owns its shell and can return `cut.html` without a bootstrap carrier. Hosted Echo manages projected libraries in the composed client map; local libraries remain local. The active hosted socket envelope is `hson-locus-hosted-aggregate-message-v4`.
 
 ### 7. Local SSR — cut, deliver, restore, continue
 
@@ -210,10 +186,10 @@ lower-level functional equivalent with a `bootstrap` field.
 
 The captured cut is installed and the existing DOM is adopted before ordinary
 Echo recovery. Continuation borrows Echo—it does not disconnect or dispose it.
-Its disposer releases its Reflect/interaction arrangements while leaving the
+Its disposer releases its Mirror/interaction arrangements while leaving the
 returned tree and DOM intact. Exact admission makes no writes; later legitimate
 recovery may still change the DOM. AsyncLiveTree completion is not a blanket
-guarantee of successful DOM realization; inspect Reflect health separately.
+guarantee of successful DOM realization; inspect Mirror health separately.
 Runtime coverage: hosted continuation and SSR acceptance tests.
 
 ### 9. Canonical interactions — portable intent plus runtime behavior
@@ -251,7 +227,7 @@ HTML and continuation data must come from the same captured cut; Libraries SSR a
 returns the selected document name and it must travel with that result.
 
 For detailed contracts, see the linked subsystem references: Transform,
-LiveMap, LiveTree, Reflect, Locus, canonical interactions, SSR composition,
+LiveMap, LiveTree, Mirror, Locus, canonical interactions, SSR composition,
 and document continuation.
 
 ## LiveDemo / hson-demo2 migration checklist
@@ -260,8 +236,7 @@ and document continuation.
   specialist subpaths; keep normal composition imports at the package root.
 - Treat action payload/result values as `HsonData`: check presence, use
   `Hson.data.entries(value)` for exact semantics or `Hson.data.materialize(value)` for a detached JS view.
-- Use camelCase Locus/Echo APIs and `DataLocusOptions`; use persistence kind
-  `"data"` only where existing persistence integration is actually supplied.
+- Construct hosted Locus from a fixed library registry with explicit exposure and session projection; a one-library application uses the same path. Keep persistence server-side.
 - Replace LiveMap HTML shortcuts with explicit trusted/untrusted Transform then
   `hsonLiveMap.fromNode`; use path document requests, not raw QUID targeting.
 - Use `TransformOutput`, `SsrBootstrapCodecError`, `tree.style`/`tree.css` or

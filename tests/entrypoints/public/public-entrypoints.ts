@@ -23,11 +23,9 @@ import {
   render_hosted_document,
   type BrowserRealizationHtml,
   type DocumentSsr,
-  type HostedDocumentSsr,
   type LibrariesDocumentSsr,
   type HostedLibrariesDocumentSsr,
   type DocumentCut,
-  type HostedDocumentCut,
   type LibrariesDocumentCut,
   type HostedLibrariesDocumentCut,
   type SsrBootstrapKind,
@@ -50,7 +48,6 @@ import {
   type AuthoritativeInteractionDescriptor,
 } from "hson-live";
 
-import type { DataLocusOptions } from "hson-live/locus";
 import type { TransformOutput } from "hson-live/transform";
 // @ts-expect-error The retired projected-data options name was hard-removed.
 import type { ProjectedLocusOptions } from "hson-live/locus";
@@ -61,7 +58,6 @@ import { SsrBootstrapEncodingError as RemovedRootBootstrapError } from "hson-liv
 // @ts-expect-error The encoding-only SSR error name was hard-removed from the SSR subpath.
 import { SsrBootstrapEncodingError as RemovedSsrBootstrapError } from "hson-live/ssr";
 
-declare const dataLocusOptions: DataLocusOptions<{ count: number }>;
 declare const transformOutput: TransformOutput;
 // @ts-expect-error HTML trust is selected at ingress; Transform outputs have no universal sanitizer.
 transformOutput.sanitizeBEWARE();
@@ -69,27 +65,20 @@ transformOutput.sanitizeBEWARE();
 hson.fromNode({ $_tag: "main", $_content: [] }).sanitizeBEWARE();
 // @ts-expect-error The /transform Hson source output also omits the removed compatibility method.
 hsonTransform.fromHson(`<main/>`).sanitizeBEWARE();
-const dataPersistedMapKind: import("hson-live/locus").LocusPersistedMapKind = "data";
-// @ts-expect-error The retired persisted data discriminant is not accepted.
-const removedPersistedMapKind: import("hson-live/locus").LocusPersistedMapKind = "projected-data";
-void dataLocusOptions;
 void transformOutput;
-void dataPersistedMapKind;
-void removedPersistedMapKind;
 void RemovedRootBootstrapError;
 void RemovedSsrBootstrapError;
 
 declare const continuationMap: import("hson-live/livemap").DocumentLiveMap;
 declare const continuationRoot: Element;
+// @ts-expect-error Public Echo type no longer admits a standalone hosted document map.
 declare const continuationEcho: import("hson-live/echo").Echo<typeof continuationMap>;
 const localContinuation: DocumentContinuation<typeof continuationMap> = continue_document({
   map: continuationMap,
   root: continuationRoot,
 });
-const hostedContinuation: Promise<HostedDocumentContinuation<typeof continuationMap>> = continue_hosted_document({
-  echo: continuationEcho,
-  root: continuationRoot,
-});
+// @ts-expect-error Public hosted continuation requires a projected multi-library authority snapshot.
+const hostedContinuation: Promise<HostedDocumentContinuation<typeof continuationMap>> = continue_hosted_document({ echo: continuationEcho, root: continuationRoot });
 void localContinuation.map;
 void localContinuation.tree;
 void localContinuation.reflect;
@@ -107,14 +96,14 @@ const ssrOptions: SsrBootstrapCodecOptions = { maxEncodedBytes: 1024 };
 void ssrKind;
 void ssrOptions;
 void SsrBootstrapCodecError;
-declare const ssrAuthority: import("hson-live/locus").LocusBootstrapAuthority;
-const hostedSsr: HostedDocumentSsr = render_hosted_document({ authority: ssrAuthority });
+declare const ssrAuthority: unknown;
+// @ts-expect-error A bare authority cannot render hosted client HTML.
+render_hosted_document({ authority: ssrAuthority });
 const browserHtml: BrowserRealizationHtml = localSsr.html;
 // @ts-expect-error Arbitrary strings are not browser-realization HTML.
 const forgedBrowserHtml: BrowserRealizationHtml = "<main></main>";
 void browserHtml;
 void forgedBrowserHtml;
-void hostedSsr.bootstrap;
 void DocumentSsrError;
 declare const libraries: import("hson-live/livemap").LiveMapLibraries;
 declare const librariesSnapshot: LiveMapLibrariesSnapshot;
@@ -125,20 +114,15 @@ void librariesCut.document;
 declare const librariesAuthority: import("hson-live/locus").LocusMultiLibrary;
 declare const hostedLibrariesSnapshot: HostedClientLibrariesSnapshot;
 const installedHostedLibraries = install_locus_libraries_snapshot(hostedLibrariesSnapshot);
-const encodedHostedLibraries: EncodedSsrBootstrap<"hosted-libraries"> = encode_ssr_bootstrap(hostedLibrariesSnapshot);
+// @ts-expect-error Complete hosted Libraries state is retired from SSR encoding.
+const encodedHostedLibraries = encode_ssr_bootstrap(hostedLibrariesSnapshot);
 void encodedHostedLibraries;
-const hostedLibrariesSsr: HostedLibrariesDocumentSsr = render_hosted_document({ authority: librariesAuthority });
-const hostedLibrariesCut: HostedLibrariesDocumentCut = librariesAuthority.cut();
+const hostedLibrariesSsr: HostedLibrariesDocumentSsr = render_hosted_document({ authority: librariesAuthority, sessionId: "authorized-session" });
+const hostedLibrariesCut: HostedLibrariesDocumentCut = librariesAuthority.cut("authorized-session");
 void hostedLibrariesCut.data;
-declare const documentLocus: import("hson-live/locus").Locus<import("hson-live/livemap").DocumentLiveMap>;
-const hostedCut: HostedDocumentCut = documentLocus.cut();
-void hostedCut.html;
 const dataMap = hsonLiveMap.fromJson({ count: 0 });
 // @ts-expect-error Data LiveMaps have no browser-realizable cut.
 dataMap.cut();
-declare const dataLocus: import("hson-live/locus").Locus<import("hson-live/livemap").LiveMap>;
-// @ts-expect-error Data-only Loci have no browser-realizable cut.
-dataLocus.cut();
 void installedLibraries.map;
 void installedHostedLibraries.recovery;
 void librariesSsr.document;
@@ -434,16 +418,13 @@ import {
   type Locus,
   type LocusConnection,
   type LocusClientId,
-  type LocusClientMessage,
   type LocusAuthorityErrorCode,
-  type LocusReadonlyMap,
   type LocusMultiLibrary,
   type LocusMultiLibraryActionContext,
   type HostedLiveMapLibrariesSnapshot,
   type HostedClientLibrariesSnapshot,
 } from "hson-live/locus";
 void (0 as unknown as LocusClientId);
-void (0 as unknown as LocusClientMessage);
 declare const multiLocus: LocusMultiLibrary;
 declare const multiActionContext: LocusMultiLibraryActionContext;
 declare const soloLocus: Locus;
@@ -664,7 +645,6 @@ declare const projectedPathMap: LiveMap<ProjectedPathTruth>;
 declare const bindingTree: LiveTree;
 
 declare const mixedBindingMap: LiveMap<Readonly<{ count: number }>>;
-declare const readonlyBindingMap: LocusReadonlyMap<LiveMap<ProjectedPathTruth>>;
 declare const dynamicPath: LivePath;
 declare const dynamicObjectKey: string;
 declare const dynamicTupleIndex: number;
@@ -808,17 +788,6 @@ bindingTree.bind.paths([
   >>;
   return undefined;
 });
-bindingTree.bind.text(readonlyBindingMap.at(["required", "leaf"]), (value) => {
-  type ReadonlyBindingValue = Expect<Equal<typeof value, string>>;
-  return value;
-});
-const readonlyBindingLocation = readonlyBindingMap.at(["required", "leaf"]);
-readonlyBindingLocation.watch((next) => {
-  type ReadonlyWatchValue = Expect<Equal<typeof next, string>>;
-  return undefined;
-});
-// @ts-expect-error Forward binding does not add mutation to a readonly Host location.
-readonlyBindingLocation.set("changed");
 // @ts-expect-error LiveTree.bind hard-replaced the old map-plus-path source form.
 bindingTree.bind.text(projectedPathMap, ["required", "leaf"]);
 // @ts-expect-error Multi-source binding no longer accepts one map plus path arrays.
@@ -1133,10 +1102,6 @@ type PrimitiveDocumentLocation = Omit<PublicDocumentLocation, "snap" | "watch"> 
 declare const futurePrimitiveDocumentLocation: PrimitiveDocumentLocation;
 bindingTree.bind.text(futurePrimitiveDocumentLocation);
 bindingTree.bind.attr(futurePrimitiveDocumentLocation, "data-future");
-
-declare const readonlyDocumentMap: LocusReadonlyMap<DocumentLiveMap>;
-// @ts-expect-error Readonly Host document locations are not part of the Host surface.
-readonlyDocumentMap.at([]);
 
 declare const structurallyFabricatedProjectedLocation: Pick<LiveMapPathHandle<string>, "snap" | "watch" | "feed">;
 // TypeScript remains structural here; runtime authenticity rejects this unsupported fabrication.

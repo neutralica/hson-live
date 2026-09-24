@@ -18,7 +18,7 @@ export function create_echo<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(options: EchoOptions<TMap>): Echo<TMap, TActions>;
 export function create_echo<
-  TMap extends LiveMapAuthority | LiveMapLibraries,
+  TMap extends LiveMapLibraries,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(options: Omit<EchoOptions<undefined>, "map" | "recovery"> & Readonly<{
   map: TMap;
@@ -35,6 +35,10 @@ export function create_echo(
   if (map === undefined) return create_endpoint_echo_internal(options as EchoOptions<undefined>);
   if (recovery === undefined) throw new Error("Echo replica construction requires map and recovery together.");
   const management = acquire_echo_map_management_internal(map);
+  if (management.topology !== "aggregate") {
+    management.release();
+    throw new TypeError("Hosted Echo replication requires an authority-projected library registry.");
+  }
   try {
     const replicaOptions: Omit<EchoOptions<undefined>, "map" | "recovery"> & Readonly<{
       map: LiveMapAuthority | LiveMapLibraries;
@@ -58,9 +62,9 @@ export function create_echo_with_replica_loaders_internal(
 ): Echo<undefined>;
 /** @internal Test seam for deterministic deferred-loader lifecycle proofs. */
 export function create_echo_with_replica_loaders_internal(
-  options: EchoOptions<LiveMapAuthority> | EchoOptions<LiveMapLibraries>,
+  options: EchoOptions<LiveMapLibraries>,
   loaders: EchoReplicaLoaders,
-): Echo<LiveMapAuthority | LiveMapLibraries>;
+): Echo<LiveMapLibraries>;
 /** @internal Test seam for deterministic deferred-loader lifecycle proofs. */
 export function create_echo_with_replica_loaders_internal(
   options: EchoOptions<undefined> | EchoOptions<LiveMapAuthority> | EchoOptions<LiveMapLibraries>,
@@ -74,6 +78,10 @@ export function create_echo_with_replica_loaders_internal(
   if (map === undefined) return create_endpoint_echo_internal(options as EchoOptions<undefined>);
   if (recovery === undefined) throw new Error("Echo replica construction requires map and recovery together.");
   const management = acquire_echo_map_management_internal(map);
+  if (management.topology !== "aggregate") {
+    management.release();
+    throw new TypeError("Hosted Echo replication requires an authority-projected library registry.");
+  }
   try {
     const replicaOptions: Omit<EchoOptions<undefined>, "map" | "recovery"> & Readonly<{
       map: LiveMapAuthority | LiveMapLibraries;

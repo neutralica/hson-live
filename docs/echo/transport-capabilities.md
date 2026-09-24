@@ -1,7 +1,7 @@
 # Echo transport capabilities
 
-Hosted solo and aggregate Echo use the same internal transport-neutral model.
-Their hosted boundary separates finite authority operations from ordered
+Hosted registry Echo uses an internal transport-neutral model.
+Its hosted boundary separates finite authority operations from ordered
 downstream synchronization and binds both to one semantic authority/session.
 The currently supported public hosted adapter is WebSocket, which implements
 both capabilities through one physical connection.
@@ -34,9 +34,9 @@ accepted across that cut are retained as tail or pending-live output, so the
 internal seam does not turn recovery into a separate fetch followed by a later
 subscription.
 
-Aggregate registry digest, selected-library identity, topology evidence, and
+Projected registry digest, selected-library identity, topology evidence, and
 global recovery ordering are layered over this synchronization lifecycle. They
-do not define a second transport attachment. Aggregate WebSocket envelope
+do not define a second transport attachment. Hosted WebSocket envelope
 shape, format tags, exact `resultData` encoding, and frame byte limits remain
 adapter concerns.
 
@@ -69,7 +69,7 @@ The reusable Echo composition seam accepts finite-operation and synchronization
 capabilities independently, provided they carry the same private semantic
 binding. The capability seam is internal. It is not a transport registry, enum,
 or public plugin API. Public `EchoOptions.socket`, browser/Node socket adapters,
-and HTTP-bootstrap-plus-WebSocket-continuation behavior remain supported.
+and projected SSR bootstrap plus WebSocket continuation remain supported.
 WebSocket is still the only public hosted continuation adapter. No HTTP or
 streamed transport is implemented by this factoring, and public mixed-transport
 composition is not promised.

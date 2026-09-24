@@ -41,7 +41,6 @@ const locusRuntimeExports = [
   "LocusGraphContentCodecError",
   "LocusPersistenceError",
   "LocusRecoveryError",
-  "capture_locus_bootstrap",
   "create_browser_locus_socket",
   "create_live_trace_collector",
   "create_live_trace_console_sink",
@@ -137,11 +136,10 @@ await check("endpoint-only Echo exposes only the common semantic client surface"
   endpoint.dispose();
 });
 
-await check("the Locus Node package resolves with only one-map adapters", async () => {
+await check("the Locus Node package has no raw bootstrap egress adapter", async () => {
   const module = await import("hson-live/locus/node");
   assert.deepEqual(Object.keys(module).sort(), [
     "create_node_locus_socket",
-    "handle_node_locus_bootstrap_request",
   ]);
 });
 

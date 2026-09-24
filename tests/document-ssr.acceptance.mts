@@ -4,21 +4,11 @@ import {
   DocumentSsrError,
   encode_ssr_bootstrap,
   hsonLiveMap,
-  hsonLocus,
   render_document,
-  render_hosted_document,
   type DocumentLiveMap,
 } from "../src/index.ts";
-import type {
-  LocusRecoveryPlan,
-  LocusRecoveryPlanner,
-  LocusRecoverySnapshotPlan,
-  LocusSnapshotEnvelope,
-} from "../src/types/locus.types.ts";
-import type { LocusBootstrapAuthority } from "../src/api/locus/locus.bootstrap.ts";
 import { set_document_ssr_hook_for_tests } from "../src/api/ssr/ssr.ts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
-import { project_locus_client_snapshot } from "../src/api/locus/locus.client-replication.ts";
 import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
 
 const target = (...parts: number[]) => Object.freeze({
@@ -30,24 +20,6 @@ function document_map(source: string): DocumentLiveMap {
   const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error("Expected a document map.");
   return map;
-}
-
-function counted_authority(
-  authority: LocusBootstrapAuthority,
-  onPlan: (plan: LocusRecoveryPlan) => void,
-): LocusBootstrapAuthority {
-  const recovery: LocusRecoveryPlanner = Object.freeze({
-    plan(request, hooks) {
-      const plan = hooks === undefined
-        ? authority.recovery.plan(request)
-        : authority.recovery.plan(request, hooks);
-      onPlan(plan);
-      return plan;
-    },
-    debug: authority.recovery.debug,
-    dispose: authority.recovery.dispose,
-  });
-  return Object.freeze({ stream: authority.stream, recovery });
 }
 
 {
@@ -160,139 +132,6 @@ for (const map of [emptyDocument, document_map(`<main/> <aside/>`)]) {
   );
 }
 
-{
-  const map = document_map(`<main <p @000005003 "hosted N"/>/>`);
-  const locus = hsonLocus.create({   map, logicalMapId: "ssr-same-cut", sessions: {} });
-  let plans = 0;
-  let exactSnapshot: LocusSnapshotEnvelope | undefined;
-  const authority = counted_authority(locus, (plan) => {
-    plans += 1;
-    if (plan.outcome === "snapshot") exactSnapshot = plan.body;
-  });
-  set_document_ssr_hook_for_tests((point) => {
-    if (point === "hosted-after-snapshot") {
-      void locus.mutate((draft) => draft.document.attrs.set(
-        target(0, 0),
-        "data-authority",
-        "N+1",
-      ));
-    }
-  });
-  const result = render_hosted_document({ authority });
-  set_document_ssr_hook_for_tests(undefined);
-  assert.equal(plans, 1);
-  assert.deepEqual(result.bootstrap, project_locus_client_snapshot(exactSnapshot!));
-  assert.equal(result.bootstrap.rev, 0);
-  assert.equal(map.rev, 1);
-  assert.equal(result.bootstrap.logicalMapId, "ssr-same-cut");
-  assert.deepEqual(Object.keys(result.bootstrap).sort(), ["format", "incarnationId", "logicalMapId", "mode", "payload", "rev"]);
-  assert.equal(result.bootstrap.payload.includes("000005003"), false);
-  assert.equal("endpoint" in result.bootstrap, false);
-  assert.equal("locusSelector" in result.bootstrap, false);
-  assert.doesNotMatch(result.html, /data-authority/);
-  assert.doesNotMatch(result.html, /hson:quid|000005003/);
-  locus.dispose();
-}
-
-{
-  const map = document_map(`<main "stable"/>`);
-  const locus = hsonLocus.create({   map, logicalMapId: "ssr-deterministic", sessions: {} });
-  const first = render_hosted_document({ authority: locus });
-  const second = render_hosted_document({ authority: locus });
-  assert.equal(first.html, second.html);
-  assert.deepEqual(first.bootstrap, second.bootstrap);
-  locus.dispose();
-}
-
-{
-  const map = document_map(`<p <div "hosted direct DOM only"/>/>`);
-  const before = map.capture();
-  const locus = hsonLocus.create({   map, logicalMapId: "ssr-incompatible", sessions: {} });
-  assert.throws(
-    () => render_hosted_document({ authority: locus }),
-    (cause) => cause instanceof DocumentSsrError
-      && cause.phase === "realize"
-      && cause.cause instanceof Error
-      && cause.cause.name === "BrowserRealizationIncompatibilityError",
-  );
-  assert.deepEqual(map.capture(), before);
-  locus.dispose();
-}
-
-{
-  const data = hsonLiveMap.fromJson({ ready: true });
-  const locus = hsonLocus.create({   map: data, logicalMapId: "ssr-wrong-mode", sessions: {} });
-  assert.throws(
-    () => render_hosted_document({ authority: locus }),
-    (cause) => cause instanceof DocumentSsrError && cause.phase === "select",
-  );
-  locus.dispose();
-}
-
-{
-  const map = document_map(`<main "malformed semantic state"/>`);
-  const locus = hsonLocus.create({   map, logicalMapId: "ssr-malformed-snapshot", sessions: {} });
-  let disposed = false;
-  const recovery: LocusRecoveryPlanner = Object.freeze({
-    plan(request, hooks) {
-      const plan = hooks === undefined
-        ? locus.recovery.plan(request)
-        : locus.recovery.plan(request, hooks);
-      if (plan.outcome !== "snapshot") return plan;
-      const body: LocusSnapshotEnvelope = Object.freeze({
-        logicalMapId: plan.body.logicalMapId,
-        incarnationId: plan.body.incarnationId,
-        rev: plan.body.rev,
-        mode: "document",
-        hson: "<",
-      });
-      const corrupted: LocusRecoverySnapshotPlan = Object.freeze({
-        outcome: "snapshot",
-        reason: plan.reason,
-        body,
-        logicalMapId: plan.logicalMapId,
-        incarnationId: plan.incarnationId,
-        headRev: plan.headRev,
-        complete: plan.complete,
-        debug: plan.debug,
-        dispose() {
-          disposed = true;
-          plan.dispose();
-        },
-      });
-      return corrupted;
-    },
-    debug: locus.recovery.debug,
-    dispose: locus.recovery.dispose,
-  });
-  assert.throws(
-    () => render_hosted_document({ authority: { stream: locus.stream, recovery } }),
-    (cause) => cause instanceof DocumentSsrError
-      && cause.phase === "bootstrap"
-      && cause.cause instanceof Error,
-  );
-  assert.equal(disposed, true);
-  locus.dispose();
-}
-
-{
-  const map = document_map(`<main "hosted capture failure"/>`);
-  const locus = hsonLocus.create({   map, logicalMapId: "ssr-capture-failure", sessions: {} });
-  const recovery: LocusRecoveryPlanner = Object.freeze({
-    plan() { throw new Error("hosted-capture-fault"); },
-    debug: locus.recovery.debug,
-    dispose: locus.recovery.dispose,
-  });
-  assert.throws(
-    () => render_hosted_document({ authority: { stream: locus.stream, recovery } }),
-    (cause) => cause instanceof DocumentSsrError
-      && cause.phase === "capture"
-      && cause.cause instanceof Error
-      && cause.cause.message === "hosted-capture-fault",
-  );
-  locus.dispose();
-}
-
 assert.throws(
   () => render_document(null as unknown as Readonly<{ map: DocumentLiveMap }>),
   TypeError,
@@ -311,25 +150,6 @@ assert.throws(
   assert.equal(map.rev, 1);
   assert.doesNotMatch(cut.html, /data-cut/);
   assert.match(map.cut().html, /data-cut="after"/);
-}
-
-{
-  const map = document_map(`<main "hosted cut"/>`);
-  const locus = hsonLocus.create({   map, logicalMapId: "ssr-object-cut", sessions: {} });
-  const cut = locus.cut();
-  const functional = render_hosted_document({ authority: locus });
-  assert.deepEqual(cut, { html: functional.html, data: functional.bootstrap });
-  assert.deepEqual(Object.keys(cut).sort(), ["data", "html"]);
-  assert.equal(typeof encode_ssr_bootstrap(cut.data), "string");
-  locus.dispose();
-}
-
-{
-  const map = hsonLiveMap.fromJson({ count: 0 });
-  const locus = hsonLocus.create({   map });
-  assert.equal("cut" in map, false);
-  assert.equal("cut" in locus, false);
-  locus.dispose();
 }
 
 process.stdout.write("Document SSR acceptance passed.\n");

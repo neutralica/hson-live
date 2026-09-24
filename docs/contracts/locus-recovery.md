@@ -1,3 +1,5 @@
+> Historical design note: references to solo hosted recovery describe the retired one-map Locus protocol. The supported hosted recovery path is the session-projected library-registry Locus.
+
 # Locus Recovery Contract
 
 Status: historical implementation design record. The current public recovery

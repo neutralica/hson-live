@@ -461,7 +461,7 @@ export function client_commit_as_canonical(value: LocusClientCommit): LocusCanon
   });
 }
 
-/** Current solo client event admission excludes identity operations, witnesses and QUID-bearing content. */
+/** Historical portable commit admission; not an active hosted client socket format. */
 export function decode_locus_client_commit(value: unknown): LocusClientCommit | undefined {
   if (!is_record(value)) return undefined;
   const transport = Object.hasOwn(value, "format") || Object.hasOwn(value, "payload");

@@ -1,4 +1,4 @@
-// One-map current Locus authority, recovery, session, and client contracts.
+// Shared hosted contracts; legacy solo declarations are internal typing debt.
 // locus.types.ts
 
 import type {
@@ -754,9 +754,7 @@ export type Locus<
   dispatchAction: (message: LocusClientActionMessage<TActions>) => Promise<LocusServerMessage>;
   connect: (socket: LocusSocketLike, context?: LocusConnectionContext) => LocusConnection;
   dispose: LocusDisposer;
-}> & (TMap extends DocumentLiveMap ? Readonly<{
-  cut: () => import("../api/ssr/ssr.types.js").HostedDocumentCut;
-}> : Readonly<{}>);
+}>;
 
 /** Locus result for the normal fixed multi-library construction surface. */
 export type LocusMultiLibrary<
@@ -776,7 +774,8 @@ export type LocusMultiLibrary<
   dispatchAction: (message: LocusClientActionMessage<TActions>) => Promise<LocusServerMessage<JsonValue | undefined>>;
   connect: (socket: LocusSocketLike, context?: LocusConnectionContext) => LocusConnection;
   dispose: LocusDisposer;
-  cut: (document?: string) => import("../api/ssr/ssr.types.js").HostedLibrariesDocumentCut;
+  /** Capture HTML and projected authority state for one already-authorized session. */
+  cut: (sessionId: LocusSessionId, document?: string) => import("../api/ssr/ssr.types.js").HostedLibrariesDocumentCut;
 }>;
 
 /** Opaque durable-record port for a fixed hosted Library registry. */

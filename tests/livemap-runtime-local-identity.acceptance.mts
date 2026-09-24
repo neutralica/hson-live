@@ -10,7 +10,6 @@ import { validate_document_path } from "../src/api/livemap/livemap.document.path
 import { set_livemap_document_quid_candidate_source_for_tests } from "../src/api/livemap/livemap.document.registration.ts";
 import { set_livemap_projected_quid_candidate_source_for_tests } from "../src/api/livemap/livemap.projected.identity-handle.ts";
 import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.identity-epoch.ts";
-import { create_echo_solo_replica_capability_internal } from "../src/api/echo/echo.solo-replica.ts";
 import { register_echo_document_authority, unregister_echo_document_authority } from "../src/api/echo/echo.document-authority-registry.ts";
 import {
   _create_livetree_runtime_test_handle,
@@ -206,52 +205,6 @@ check("local Mirror demand installs one QUID in map, LiveTree, and DOM", () => {
   assert.equal(tree.quid, quid);
   assert.deepEqual(livemap_document_identity_overlay_for(map.document).pathForQuid(quid), [0, 0, 1]);
   binding.dispose();
-});
-
-check("managed Echo Mirror demand needs no authority request and accepts next graph commit", () => {
-  const runtime = _create_livetree_runtime_test_handle();
-  const map = element(`<main/>`);
-  const replica = create_echo_solo_replica_capability_internal(map, true);
-  let requests = 0;
-  const documentAuthority = Object.freeze({
-    enqueue: async () => { requests += 1; throw new Error("Unexpected authority request"); },
-    dispose() {},
-    pendingRevisionWaits: () => 0,
-  });
-  register_echo_document_authority(map, documentAuthority);
-  const binding = _reflect_document_for_runtime_test(runtime, map);
-  const quid = binding.tree.find.byTag("main")!.quid;
-  assert.equal(map.rev, 0);
-  assert.equal(requests, 0);
-  assert.equal(binding.status, "active");
-  replica.runManaged(() => map.document.attrs.set(path(), "title", "updated"));
-  assert.equal(map.rev, 1);
-  assert.equal(binding.status, "active");
-  assert.equal(map.document.byQuid(quid)?.$_attrs?.title, "updated");
-  assert.equal(requests, 0);
-  binding.dispose();
-  unregister_echo_document_authority(map, documentAuthority);
-  replica.dispose();
-});
-
-check("Locus-local identity demand creates no authority revision or history entry", () => {
-  const data = hsonLiveMap.fromJson({ child: {} });
-  const dataHost = hson.locus.create({ map: data, logicalMapId: "4b0-local-data" });
-  set_livemap_projected_quid_candidate_source_for_tests(data, () => Q1);
-  acquire_projected_identity(data, ["child"]);
-  assert.equal(data.rev, 0);
-  assert.equal(dataHost.stream.headRev, 0);
-  assert.equal(dataHost.stream.history.debug().retainedCommitCount, 0);
-  dataHost.dispose();
-
-  const document = element("<main/>");
-  const documentHost = hson.locus.create({ map: document, logicalMapId: "4b0-local-document" });
-  set_livemap_document_quid_candidate_source_for_tests(document.document, () => Q2);
-  acquire_document_identity(document.document, docTarget());
-  assert.equal(document.rev, 0);
-  assert.equal(documentHost.stream.headRev, 0);
-  assert.equal(documentHost.stream.history.debug().retainedCommitCount, 0);
-  documentHost.dispose();
 });
 
 process.stdout.write(`1..${checks}\n`);

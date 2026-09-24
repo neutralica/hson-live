@@ -1,8 +1,6 @@
 # Hosted client projection configuration
 
-Current replication status: Step 6D projects hosted bootstrap, live publication,
-retained replay, recovery tail, and snapshot fallback under one immutable session
-projection. Hosted cut and SSR remain outside this security gate.
+Current status: hosted bootstrap, live publication, retained replay, recovery tail, snapshot fallback, cut, and SSR carrier all use one immutable session projection. The historical one-map hosted socket is retired; a one-library application uses the same fixed library-registry Locus.
 
 Hosted Locus configuration classifies **every authority-owned application library** exactly once:
 
@@ -38,9 +36,9 @@ The effective session projection is the requested authority-library set intersec
 
 An effective projection may contain zero authority libraries. Locus stores its normalized, frozen client contract and digest on the session; credential reattachment reuses that scope. A different scope requires a new session. The application can revoke a session with `locus.revokeSession(sessionId)` when policy changes; revocation fences its attachment rather than changing its registry in place. The digest covers included authority-library contracts, selected HTML document, features, write grants, and authority binding. It excludes roots, revisions, excluded libraries, runtime identity, and future client-local definitions.
 
-A default projection is only a **default request** and still passes exposure and authorization. With no configured default, session creation without a request has an empty requested projection. A future zero-argument hosted cut must fail without an explicit default; it must never infer all authority libraries or all `client-public` libraries. No projected cut is implemented in Step 6A.
+A default projection is only a **default request** and still passes exposure and authorization. With no configured default, session creation without a request has an empty requested projection. The hosted cut requires a session ID, and a cut without an authorized selected HTML document fails unless a permitted document is supplied explicitly. It never infers all authority libraries or all `client-public` libraries.
 
-**Step 6A historical status:** This phase stored policy and immutable session scope. At that point bootstrap, publication, recovery, and hosted cut/SSR still used complete authority representations. Steps 6B–6D subsequently migrated replication; hosted cut/SSR remains open.
+**Step 6A historical status:** This phase stored policy and immutable session scope. Steps 6B–6E subsequently migrated all nominal hosted client egress.
 
 ## Mirror authority projection snapshot (Step 6B)
 
@@ -115,9 +113,8 @@ legacy SSR/cut machinery, but are no longer accepted as hosted replication
 bootstrap or recovery egress. Durable authority state remains complete,
 exposure-neutral, and QUID-free as required by its own persistence contract.
 
-Hosted cut, `render_hosted_document`, and SSR bootstrap version 2 still need the
-next security phase. Overall hosted state replication, bootstrap, and recovery
-egress are projected; hosted cut and SSR egress are not yet projection-safe.
+At the end of Step 6D, hosted cut and SSR were the remaining projected egress
+work. Step 6E's session cut and hosted SSR version 3 are described below.
 
 ### Current format disposition
 
@@ -129,4 +126,31 @@ egress are projected; hosted cut and SSR egress are not yet projection-safe.
 | `hson-hosted-client-commit-v1` | Internal LiveMap replay adapter and durable conversion; retired from hosted replication egress. |
 | `hson-locus-hosted-client-commit-v1` | Authority-internal legacy aggregate helper; retired from hosted socket egress. |
 | `hson-locus-hosted-aggregate-message-v4` | Active hosted socket envelope. v3 is retired. |
-| `hson-ssr-bootstrap` version 2 | Later hosted cut/SSR migration. |
+| `hson-ssr-bootstrap` version 2 | Local SSR only; hosted v2 kinds are retired. |
+
+## Session cut and projected SSR carrier (Step 6E work in progress)
+
+The multi-library `locus.cut(sessionId, document?)` uses the stored effective
+projection for that session and captures authority once. The returned
+`{ html, data, document, revision, projectionDigest }` holds authorized HTML and
+an `AuthorityProjectionSnapshot` from the same revision. The renderer receives
+only the selected projected document root. An existing cut remains stable when
+authority advances. A revoked session cannot begin another cut.
+
+`render_hosted_document({ authority: locus, sessionId })` delegates to that cut.
+Encoded projected SSR uses `hson-ssr-bootstrap` version 3 and kind
+`hosted-projection`; version 2 remains for local SSR only. The legacy complete
+hosted version-2 kinds reject during encoding and decoding. Browser
+composition installs client-local declarations separately, starts `map.rev`
+locally, and initializes Echo's authority cursor from the projected snapshot
+revision. HTML-only responses remain valid. Framework-generated browser HTML
+and portable projected state contain no server runtime QUIDs.
+
+The public raw one-map capture and Node HTTP bootstrap helper are retired.
+Multi-library `continue_hosted_document` requires the decoded projected
+snapshot and checks its digest, authority binding, selected document, and
+revision before adopting DOM. The historical one-map Locus socket protocol is
+retired. One-library hosted applications use the library-registry Locus and the
+same projected socket. The nominal framework Step 6 client-egress gate is
+closed; arbitrary application-authored Responses remain the application's
+responsibility.

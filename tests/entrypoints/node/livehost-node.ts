@@ -1,6 +1,5 @@
 import {
   create_node_locus_socket,
-  handle_node_locus_bootstrap_request,
 } from "hson-live/locus/node";
 import type { LiveHostApplication } from "hson-live/livehost";
 import {
@@ -16,7 +15,6 @@ declare const websocket: Parameters<typeof create_node_locus_socket>[0];
 
 void create_node_locus_socket(websocket);
 void start_node_application_host({ applications: [application] });
-void handle_node_locus_bootstrap_request;
 void create_node_livehost_socket;
 void misplaced_locus_socket;
 

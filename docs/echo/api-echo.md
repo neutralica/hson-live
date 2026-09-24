@@ -116,6 +116,4 @@ convergence and Mirror revision ordering.
 `EchoRecovery` has no `onChange` observation member. Echo has no topology-aware
 `subscribe`/`unsubscribe`, public `seq`, or `onEvent` surface.
 
-Bootstrap continuation is `create_locus_bootstrap_echo(...)`. Its
-`LocusBootstrapEcho.echo` owns the live continuation and
-`connectAndRecover()` connects and installs the authoritative recovery cut.
+Hosted SSR continuation decodes the version 3 `hosted-projection` carrier, composes client-local libraries separately, constructs Echo over that composed map, and calls `continue_hosted_document` with the decoded authority projection. The old one-map bootstrap Echo is retired.

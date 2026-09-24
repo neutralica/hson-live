@@ -6,7 +6,7 @@
 import {
   DocumentContinuationError,
   admit_exact_runtime_livemap_node,
-  continue_hosted_document,
+  continue_legacy_hosted_document,
   continue_document,
   create_browser_locus_socket,
   create_echo,
@@ -526,7 +526,7 @@ try {
   const echo = create_echo({ socket: browserSocket.socket, map: hostedMap, session: {}, recovery: installed.recovery });
   echo.connect();
   await echo.session.create();
-  const hostedContinuation = await continue_hosted_document({ echo, root: hostedRoot });
+  const hostedContinuation = await continue_legacy_hosted_document({ echo, root: hostedRoot });
   check("hosted continuation resolves caught up", echo.recovery.status === "caught_up");
   check("hosted Reflect resolves current", hostedContinuation.reflect.status === "active" && hostedContinuation.reflect.sourceRevision === hostedMap.rev);
   check("hosted recovery advances existing Element", hostedParagraph === hostedRoot.firstElementChild && hostedParagraph.getAttribute("data-recovered") === "yes");

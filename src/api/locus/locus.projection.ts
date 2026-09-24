@@ -10,8 +10,8 @@ import type { HostedAuthorityFence, HostedRegistry, HostedRegistryEntry } from "
 import { hosted_sha256 } from "../livemap/livemap.hosted.js";
 import { HsonSchema } from "../schema/hson-schema.js";
 
-/** Step 6A release gate: this scope is internal; hosted egress is still complete until later subphases. */
-export const HOSTED_PROJECTION_EGRESS_COMPLETE = false;
+/** Nominal hosted client egress is governed by the stored session projection. */
+export const HOSTED_PROJECTION_EGRESS_COMPLETE = true;
 
 export class LocusProjectionUnavailableError extends Error {
   readonly code = "LOCUS_PROJECTION_UNAVAILABLE";

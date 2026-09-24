@@ -5,11 +5,9 @@ export { SsrBootstrapCodecError } from "./ssr-bootstrap.error.js";
 export type {
   BrowserRealizationHtml,
   DocumentSsr,
-  HostedDocumentSsr,
   LibrariesDocumentSsr,
   HostedLibrariesDocumentSsr,
   DocumentCut,
-  HostedDocumentCut,
   LibrariesDocumentCut,
   HostedLibrariesDocumentCut,
 } from "./ssr.types.js";

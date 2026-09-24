@@ -1,12 +1,11 @@
-import { Hson } from "../../hson-authoring.js";
 import { is_Node } from "../../core/node-guards.js";
 import { ROOT_TAG } from "../../core/constants.js";
 import { validate_document_path, resolve_document_path } from "../livemap/livemap.document.path.js";
 import { wrap_in_tree } from "../livetree/creation/create-livetree.js";
-import type { HsonData, HsonSchema } from "../transform/transform.types.js";
+import type { HsonData } from "../transform/transform.types.js";
 import { hsonTransform } from "../transform/transform.facade.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
-import { projected_value_from_hson_node, projected_value_to_hson_root } from "../../core/projected-value-graph.js";
+import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
 import {
   is_ordered_projected_object,
   ordered_projected_array,
@@ -42,30 +41,8 @@ import {
   observe_livetree_realizations_internal,
 } from "../livetree/runtime/livetree-runtime.js";
 
-const INTERACTION_SCHEMA: HsonSchema = Hson.schema`<type "data" content <descriptors <array <union [
-  <content <id "string" subject <content <library "string" path <array <number <int true min 0>>>>> listener <content <event "string" target <union [<exact "element">, <union [<exact "document">, <exact "window">]>]> capture "boolean" once "boolean" passive "boolean" missingTarget <union [<exact "ignore">, <union [<exact "warn">, <exact "throw">]>]> preventDefault "boolean" stopPropagation "boolean" stopImmediatePropagation "boolean">> kind <exact "browser-local"> key "string" args "any">>,
-  <content <id "string" subject <content <library "string" path <array <number <int true min 0>>>>> listener <content <event "string" target <union [<exact "element">, <union [<exact "document">, <exact "window">]>]> capture "boolean" once "boolean" passive "boolean" missingTarget <union [<exact "ignore">, <union [<exact "warn">, <exact "throw">]>]> preventDefault "boolean" stopPropagation "boolean" stopImmediatePropagation "boolean">> kind <exact "locus-authoritative"> key "string" payload "any">>
-]>>>>`;
-
-/** Fixed framework Schema for the system slot; not an application contract. @internal */
-export function interaction_schema_internal(): HsonSchema { return INTERACTION_SCHEMA; }
-
-/** Select current descriptor state by subject document, including unresolved paths. @internal */
-export function project_interaction_state_internal(
-  root: import("../../core/types.js").HsonNode,
-  includedDocuments: ReadonlySet<string>,
-): import("../../core/types.js").HsonNode {
-  const state = require_object(projected_value_from_hson_node(root));
-  const descriptors = descriptor_array(require_member(state, "descriptors"));
-  read_descriptors(descriptors);
-  const included = descriptors.filter((descriptor) => {
-    const subject = require_object(require_member(descriptor, "subject"));
-    return includedDocuments.has(require_string(require_member(subject, "library")));
-  });
-  return projected_value_to_hson_root(ordered_projected_object([
-    ["descriptors", ordered_projected_array(included)],
-  ]));
-}
+import { interaction_schema_internal } from "./interactions.projection.js";
+const INTERACTION_SCHEMA = interaction_schema_internal();
 
 type Storage = Readonly<{
   read: () => OrderedProjectedValue;

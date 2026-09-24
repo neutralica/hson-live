@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { Hson, create_echo, create_locus } from "../src/index.ts";
+import { Hson, hsonLiveMap, create_echo, create_locus } from "../src/index.ts";
 import { create_echo_endpoint_internal } from "../src/api/echo/echo.endpoint.ts";
 import type { LocusClientMessage, LocusSocketLike } from "../src/types/locus.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -66,56 +66,8 @@ await check("untyped Echo construction rejects incomplete replica capability pai
   assert.throws(() => createUntyped({ socket: pair.client, recovery: { logicalMapId: "untyped-map" } }), /map and recovery together/i);
   assert.throws(
     () => createUntyped({ socket: pair.client, map: Object.freeze({}), recovery: { logicalMapId: "untyped-map" } }),
-    /not a LiveMap authority/i,
+    /authority-projected library registry/i,
   );
-});
-
-await check("public endpoint-only Echo uses explicit session lifecycle without replica state", async () => {
-  const pair = socket_pair();
-  const locus = create_locus({
-    state: { value: 0 },
-    logicalMapId: "endpoint-only-map",
-    incarnationId: "endpoint-only-incarnation",
-    actions: {
-      async increment(context, payload) {
-        const by = payload === undefined ? undefined : Hson.data.materialize(payload);
-        if (typeof by !== "number") throw new Error("Expected numeric action data.");
-        const value = context.map.snap(["value"]);
-        if (typeof value !== "number") throw new Error("Expected numeric authority state.");
-        await context.mutate((draft) => draft.set(["value"], value + by));
-      },
-    },
-  });
-  locus.connect(pair.server);
-  const echo = create_echo({ socket: pair.client });
-  assert.equal("map" in echo, false);
-  assert.equal("recovery" in echo, false);
-  assert.equal("seq" in echo, false);
-  assert.equal("subscribe" in echo, false);
-  assert.equal("onEvent" in echo, false);
-  echo.connect();
-  await assert.rejects(echo.action("increment", 1));
-  const established = await echo.session.create();
-  assert.deepEqual(
-    { logicalMapId: established.logicalMapId, incarnationId: established.incarnationId },
-    { logicalMapId: locus.stream.logicalMapId, incarnationId: locus.stream.incarnationId },
-  );
-  const action = echo.action("increment", 2);
-  const outcome = await action;
-  assert.equal(outcome.type, "ack");
-  assert.equal(locus.map.snap(["value"]), 2);
-  const retry = await echo.retryAction(action.request);
-  assert.equal(retry.type, "ack");
-  const status = await echo.actionStatus(action.request.requestId);
-  assert.equal(status.state, "succeeded");
-  echo.disconnect();
-  await assert.rejects(echo.action("increment", 1));
-  echo.connect();
-  assert.equal(echo.session.status, "detached");
-  assert.equal(echo.session.logicalMapId, established.logicalMapId);
-  assert.equal(echo.session.incarnationId, established.incarnationId);
-  echo.dispose();
-  locus.dispose();
 });
 
 await check("the endpoint core operates without a map, registry, or recovery capability", async () => {

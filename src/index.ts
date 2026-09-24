@@ -78,11 +78,9 @@ export type {
   DecodedSsrBootstrap,
   DocumentSsr,
   EncodedSsrBootstrap,
-  HostedDocumentSsr,
   HostedLibrariesDocumentSsr,
   LibrariesDocumentSsr,
   DocumentCut,
-  HostedDocumentCut,
   LibrariesDocumentCut,
   HostedLibrariesDocumentCut,
   SsrBootstrapCodecOptions,
@@ -148,7 +146,6 @@ export { DocumentMirrorError } from "./api/reflect/reflect.document.error.js";
 
 export { create_echo } from "./api/echo/echo.js";
 export { EchoRecoveryError, EchoSessionError } from "./api/echo/echo.error.js";
-export { create_locus_bootstrap_echo, type LocusBootstrapEcho } from "./api/echo/echo.bootstrap.js";
 export type {
   Echo,
   EchoActionFn,
@@ -164,7 +161,7 @@ export type {
   EchoSessionStatus,
 } from "./types/echo.types.js";
 
-export { create_locus } from "./api/locus/locus.core.js";
+export { create_locus } from "./api/locus/locus.public.js";
 export {
   LocusDisconnectedError,
   LocusDuplicateActionIdError,
@@ -172,28 +169,22 @@ export {
 } from "./api/locus/locus.error.js";
 export { LocusAuthorityError } from "./api/locus/locus.authority.js";
 export type {
-  DataLocusOptions,
-  Locus,
-  LocusActionContext,
-  LocusActionHandler,
   LocusActionName,
   LocusActionPayloads,
-  LocusActions,
   LocusActivity,
   LocusActivityKind,
   LocusActivitySnapshot,
   LocusActivityState,
   LocusConnection,
-  LocusEventListener,
   LocusMultiLibrary,
   LocusMultiLibraryActionContext,
   LocusMultiLibraryActionHandler,
   LocusMultiLibraryActions,
   LocusMultiLibraryOptions,
-  LocusOptions,
   LocusResult,
   LocusSocketLike,
 } from "./types/locus.types.js";
+export type { LocusMultiLibrary as Locus } from "./types/locus.types.js";
 
 export { create_livehost_locus_registry } from "./api/livehost/services/livehost.authority-registry.js";
 export type {

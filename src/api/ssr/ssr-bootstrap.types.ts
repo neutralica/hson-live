@@ -1,19 +1,16 @@
 import type {
   DocumentLiveMapCapture,
-  HostedClientLibrariesSnapshot,
-  LiveMapLibrariesSnapshot,
   LocalLibrariesContinuationSnapshot,
 } from "../../types/livemap.types.js";
-import type { LocusClientSnapshotEnvelope } from "../../types/locus.representation.types.js";
+import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
 
 declare const ENCODED_SSR_BOOTSTRAP: unique symbol;
 
-/** The four semantic families carried by the version-two SSR bootstrap wire format. */
+/** Local version-two families and the projected hosted version-three family. */
 export type SsrBootstrapKind =
   | "document"
-  | "hosted-document"
   | "libraries"
-  | "hosted-libraries";
+  | "hosted-projection";
 
 /**
  * A deterministic hson-live SSR bootstrap string for one semantic family.
@@ -29,12 +26,8 @@ export type EncodedSsrBootstrap<TKind extends SsrBootstrapKind = SsrBootstrapKin
 /** A decoded family discriminator paired with its detached semantic bootstrap. */
 export type DecodedSsrBootstrap =
   | Readonly<{ kind: "document"; bootstrap: DocumentLiveMapCapture<"document"> }>
-  | Readonly<{
-    kind: "hosted-document";
-    bootstrap: LocusClientSnapshotEnvelope & Readonly<{ mode: "document" }>;
-  }>
   | Readonly<{ kind: "libraries"; bootstrap: LocalLibrariesContinuationSnapshot }>
-  | Readonly<{ kind: "hosted-libraries"; bootstrap: HostedClientLibrariesSnapshot }>;
+  | Readonly<{ kind: "hosted-projection"; bootstrap: AuthorityProjectionSnapshot }>;
 
 /** Outer encoded-size admission for SSR bootstrap transport. */
 export type SsrBootstrapCodecOptions = Readonly<{

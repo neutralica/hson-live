@@ -1,35 +1,22 @@
 import type {
   DocumentLiveMap,
   DocumentLiveMapCapture,
-  HostedLiveMapLibrariesSnapshot,
   LiveMapLibraries,
   LiveMapLibrariesSnapshot,
   LocalLibrariesContinuationSnapshot,
 } from "../types/livemap.types.js";
-import type { LocusSnapshotEnvelope } from "../types/locus.representation.types.js";
 import type { HsonNode } from "../core/types.js";
+import type { AuthorityProjectionSnapshot } from "../types/locus.projection.types.js";
 import { plan_browser_realization } from "./browser-realization/browser-realization-plan.js";
 import { serialize_browser_realization } from "./browser-realization/browser-realization-serialize.js";
 import { DocumentSsrError } from "./document-cut.error.js";
 import { clone_hson_graph_without_quids } from "../api/livemap/livemap.document.capture.js";
-import { encode_hosted_root, make_hosted_client_snapshot } from "../api/livemap/livemap.hosted.js";
-import { project_locus_client_snapshot } from "../api/locus/locus.client-replication.js";
+import { decode_hosted_root, encode_hosted_root } from "../api/livemap/livemap.hosted.js";
 import type {
   BrowserRealizationHtml,
   DocumentCut,
-  HostedDocumentCut,
   LibrariesDocumentCut,
-  HostedLibrariesDocumentCut,
 } from "../api/ssr/ssr.types.js";
-
-type DocumentSnapshot = Extract<LocusSnapshotEnvelope, { hson: string }>
-  & Readonly<{ mode: "document" }>;
-
-function is_document_snapshot(
-  snapshot: Extract<LocusSnapshotEnvelope, { hson: string }>,
-): snapshot is DocumentSnapshot {
-  return snapshot.mode === "document";
-}
 
 function validate_capture(capture: DocumentLiveMapCapture): DocumentLiveMapCapture<"document"> {
   if (
@@ -161,47 +148,28 @@ export function cut_local_libraries(
   return Object.freeze({ html: cut.html, data, document: cut.document });
 }
 
-export function cut_hosted_libraries(
-  capture: () => HostedLiveMapLibrariesSnapshot,
-  document: unknown,
-  install: (snapshot: HostedLiveMapLibrariesSnapshot) => unknown,
-  decodeRoot: (root: unknown) => HsonNode,
-  afterCapture?: () => void,
-): HostedLibrariesDocumentCut {
-  let snapshot: HostedLiveMapLibrariesSnapshot;
+/** Hosted client egress: both siblings are derived from the admitted session snapshot. */
+export function cut_hosted_projection(
+  snapshot: AuthorityProjectionSnapshot,
+  requested?: string,
+): Readonly<{ html: BrowserRealizationHtml; data: AuthorityProjectionSnapshot; document: string; revision: number; projectionDigest: string }> {
+  const selected = requested ?? snapshot.htmlDocument;
+  if (typeof selected !== "string") {
+    throw new DocumentSsrError("select", "A session HTML document selection is required.");
+  }
+  const library = snapshot.libraries.find((entry) => entry.name === selected && entry.mode === "document");
+  if (library === undefined) {
+    throw new DocumentSsrError("select", "The requested session HTML document is unavailable.");
+  }
+  let capture: DocumentLiveMapCapture<"document">;
   try {
-    snapshot = capture();
+    capture = validate_capture(Object.freeze({
+      kind: "hson-document", mode: "document", rev: snapshot.revision,
+      root: decode_hosted_root(library.root),
+    }));
   } catch (cause) {
-    throw new DocumentSsrError("capture", "The hosted Libraries cut could not be captured.", cause);
+    throw new DocumentSsrError("bootstrap", "The session document could not be decoded.", cause);
   }
-  afterCapture?.();
-  const cut = cut_libraries_snapshot(snapshot, document, install, decodeRoot);
-  return Object.freeze({ html: cut.html, data: make_hosted_client_snapshot(snapshot), document: cut.document });
-}
-
-export function cut_hosted_snapshot(
-  snapshot: Extract<LocusSnapshotEnvelope, { hson: string }>,
-  install: (snapshot: DocumentSnapshot) => Readonly<{ map: DocumentLiveMap }>,
-  afterSnapshot?: () => void,
-): HostedDocumentCut {
-  if (!is_document_snapshot(snapshot)) {
-    throw new DocumentSsrError("select", "The selected Locus authority is not a document map.");
-  }
-  afterSnapshot?.();
-  let capture: DocumentLiveMapCapture;
-  try {
-    capture = validate_capture(install(snapshot).map.capture());
-  } catch (cause) {
-    throw new DocumentSsrError("bootstrap", "The captured semantic document snapshot could not be decoded.", cause);
-  }
-  return Object.freeze({ html: realize(capture), data: project_locus_client_snapshot(snapshot) });
-}
-
-export function cut_hosted_authority(capture: () => HostedDocumentCut): HostedDocumentCut {
-  try {
-    return capture();
-  } catch (cause) {
-    if (cause instanceof DocumentSsrError) throw cause;
-    throw new DocumentSsrError("capture", "The hosted document cut could not be captured.", cause);
-  }
+  return Object.freeze({ html: realize(capture), data: snapshot, document: selected,
+    revision: snapshot.revision, projectionDigest: snapshot.projectionDigest });
 }

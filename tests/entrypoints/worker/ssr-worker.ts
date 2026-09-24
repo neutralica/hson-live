@@ -6,29 +6,28 @@ import {
   DocumentSsrError,
   type BrowserRealizationHtml,
   type DocumentSsr,
-  type HostedDocumentSsr,
   type LibrariesDocumentSsr,
   type HostedLibrariesDocumentSsr,
 } from "hson-live/ssr";
 import type { DocumentLiveMap, LiveMapLibraries } from "hson-live/livemap";
-import type { LocusBootstrapAuthority, LocusMultiLibrary } from "hson-live/locus";
+import type { LocusMultiLibrary } from "hson-live/locus";
 
 declare const map: DocumentLiveMap;
-declare const authority: LocusBootstrapAuthority;
+declare const authority: unknown;
 const local: DocumentSsr = render_document({ map });
 void map.cut().data;
-const hosted: HostedDocumentSsr = render_hosted_document({ authority });
+// @ts-expect-error Worker hosted rendering requires a session projection too.
+render_hosted_document({ authority });
 const localEncoded = encode_ssr_bootstrap(local.bootstrap);
 void decode_ssr_bootstrap(localEncoded).bootstrap;
 const html: BrowserRealizationHtml = local.html;
 void html;
-void hosted.bootstrap;
 void DocumentSsrError;
 declare const libraries: LiveMapLibraries;
 declare const librariesAuthority: LocusMultiLibrary;
 const aggregateLocal: LibrariesDocumentSsr = render_document({ map: libraries });
-const aggregateHosted: HostedLibrariesDocumentSsr = render_hosted_document({ authority: librariesAuthority });
+const aggregateHosted: HostedLibrariesDocumentSsr = render_hosted_document({ authority: librariesAuthority, sessionId: "authorized-session" });
 void libraries.cut().data;
-void librariesAuthority.cut().data;
+void librariesAuthority.cut("authorized-session").data;
 void aggregateLocal.document;
 void aggregateHosted.document;

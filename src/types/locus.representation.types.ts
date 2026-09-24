@@ -160,7 +160,7 @@ export type LocusCanonicalCommit = Readonly<{
   ops: readonly LocusCanonicalOp[];
 }> & Partial<LiveMapStructuralJsonEnvelope>;
 
-/** Current QUID-free single-map client graph content. Exact authority history uses LocusEncodedGraphContent. */
+/** Historical portable graph content codec retained for internal compatibility tests. */
 export type LocusClientGraphContent = Readonly<{ format: "hson-graph-portable-v1"; payload: string }>;
 export type LocusClientDocumentTarget = Readonly<{ kind: "path"; path: LiveMapDocumentPath }>;
 export type LocusClientGraphOp =

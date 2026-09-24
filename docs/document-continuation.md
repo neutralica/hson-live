@@ -43,7 +43,7 @@ continuation.dispose();
 ```
 
 The local SSR bootstrap carries document state and revision, without generated
-server QUIDs. Admit the decoded solo root through ordinary portable node
+server QUIDs. Admit the decoded local document root through ordinary portable node
 admission, then restore its revision with `identity: "strip"`; this gives the
 browser a fresh runtime identity context. `map` may be a document `LiveMap`, or an aggregate public-library map. With one
 public document library the aggregate selection is inferred. With two or more,

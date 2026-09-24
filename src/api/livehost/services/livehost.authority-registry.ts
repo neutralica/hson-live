@@ -1,5 +1,5 @@
 import type {
-  Locus,
+  LocusMultiLibrary,
   LocusActivity,
   LocusActivityKind,
   LocusActivitySnapshot,
@@ -112,7 +112,7 @@ function nonnegative_finite(value: number, name: string): number {
 
 /** Application-owned, activity-aware registry for finite Locus lifetimes. */
 export function create_livehost_locus_registry<
-  TAuthority extends ManagedLocus = Locus,
+  TAuthority extends ManagedLocus = LocusMultiLibrary,
 >(
   options: LiveHostLocusRegistryOptions<TAuthority>,
 ): LiveHostLocusRegistry<TAuthority> {
@@ -121,7 +121,7 @@ export function create_livehost_locus_registry<
 
 /** @internal Deterministic runtime seam; not part of the public LiveHost contract. */
 export function create_livehost_locus_registry_internal<
-  TAuthority extends ManagedLocus = Locus,
+  TAuthority extends ManagedLocus = LocusMultiLibrary,
 >(
   options: LiveHostLocusRegistryOptions<TAuthority>,
   runtime: RegistryRuntime = {},

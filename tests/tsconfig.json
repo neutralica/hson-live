@@ -21,6 +21,7 @@
     "./fixtures/hson-schema-mvp/**/*",
     "./fixtures/hson-schema-document/**/*",
     "./entrypoints/**/*",
+    "./historical/**/*",
     "./runtime-probes/**/*"
   ]
 }

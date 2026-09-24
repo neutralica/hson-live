@@ -1,13 +1,14 @@
 import type { InteractionFailure, InteractionLocalBehaviors } from "../../types/interaction.types.js";
 import type { Echo, LocusActionPayloads } from "../../types/locus.types.js";
 import type {
-  DocumentLiveMap,
-  LiveMapAuthority,
   LiveMapDocumentLibrary,
   LiveMapLibraries,
 } from "../../types/livemap.types.js";
 import type { HsonData } from "../transform/transform.types.js";
+import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
 import { echo_document_authority_for } from "../echo/echo.document-authority.js";
+import { admit_authority_projection_snapshot, client_projection_identity_internal } from "../locus/locus.authority-projection-snapshot.js";
+import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import { activate_interactions } from "../interactions/interactions.js";
 import { runtime_for_tree } from "../livetree/runtime/livetree-runtime.js";
 import { reflect_existing_document_in_runtime } from "../reflect/reflect.document.js";
@@ -28,29 +29,26 @@ type HostedInteractions = Readonly<{
   onFailure?: (failure: InteractionFailure) => void;
 }>;
 
-type ReplicaEcho<TMap extends LiveMapAuthority | LiveMapLibraries> = Echo<TMap, LocusActionPayloads>;
+type ReplicaEcho<TMap extends LiveMapLibraries> = Echo<TMap, LocusActionPayloads>;
 
-export function continue_hosted_document<TMap extends DocumentLiveMap, TEcho extends ReplicaEcho<TMap>>(options: Readonly<{
-  echo: TEcho;
-  root: Element;
-  document?: never;
-  interactions?: HostedInteractions;
-}>): Promise<HostedDocumentContinuation<TMap> & Readonly<{ echo: TEcho }>>;
 export function continue_hosted_document<TDocument extends LiveMapDocumentLibrary, TEcho extends ReplicaEcho<LiveMapLibraries>>(options: Readonly<{
   echo: TEcho;
   root: Element;
+  authority: AuthorityProjectionSnapshot;
   document: TDocument;
   interactions?: HostedInteractions;
 }>): Promise<HostedDocumentContinuation<TDocument> & Readonly<{ echo: TEcho }>>;
 export function continue_hosted_document<TEcho extends ReplicaEcho<LiveMapLibraries>>(options: Readonly<{
   echo: TEcho;
   root: Element;
+  authority: AuthorityProjectionSnapshot;
   document?: undefined;
   interactions?: HostedInteractions;
 }>): Promise<HostedDocumentContinuation<LiveMapDocumentLibrary> & Readonly<{ echo: TEcho }>>;
 export async function continue_hosted_document(options: Readonly<{
-  echo: ReplicaEcho<LiveMapAuthority | LiveMapLibraries>;
+  echo: ReplicaEcho<LiveMapLibraries>;
   root: Element;
+  authority: AuthorityProjectionSnapshot;
   document?: LiveMapDocumentLibrary;
   interactions?: HostedInteractions;
 }>): Promise<HostedDocumentContinuation> {
@@ -59,8 +57,9 @@ export async function continue_hosted_document(options: Readonly<{
 
 /** @internal Lazy package-root composition point. */
 export async function continue_hosted_document_internal(options: Readonly<{
-  echo: ReplicaEcho<LiveMapAuthority | LiveMapLibraries>;
+  echo: ReplicaEcho<LiveMapLibraries>;
   root: Element;
+  authority: AuthorityProjectionSnapshot;
   document?: LiveMapDocumentLibrary;
   interactions?: HostedInteractions;
 }>): Promise<HostedDocumentContinuation> {
@@ -81,6 +80,27 @@ export async function continue_hosted_document_internal(options: Readonly<{
   let disposeInteractions: (() => void) | undefined;
   try {
     const resolved = resolve_continuation_document(echo.map, options.document);
+    if (resolved.aggregate === undefined) {
+      throw new TypeError("Hosted continuation requires a projected library registry.");
+    }
+    const snapshot = admit_authority_projection_snapshot(options.authority);
+    const aggregate = internal_livemap_aggregate_authority(resolved.aggregate);
+    const projection = aggregate.clientProjection();
+    const current = aggregate.captureHosted();
+    const currentLibraries = new Map(current.libraries.map((entry) => [entry.name, entry]));
+    const selectedName = continuation_document_library_name(resolved.aggregate, resolved.selected);
+    if (projection === undefined
+      || client_projection_identity_internal(resolved.aggregate) !== snapshot.projectionDigest
+      || projection.authority.logicalMapId !== snapshot.authority.logicalMapId
+      || projection.authority.incarnationId !== snapshot.authority.incarnationId
+      || echo.recovery.logicalMapId !== snapshot.authority.logicalMapId
+      || projection.revision !== snapshot.revision
+      || echo.recovery.lastAppliedRev !== snapshot.revision
+      || snapshot.libraries.some((entry) => currentLibraries.get(entry.name)?.root.payload !== entry.root.payload)
+      || !snapshot.libraries.some((entry) => entry.name === selectedName && entry.mode === "document")
+      || (options.document === undefined && snapshot.htmlDocument !== selectedName)) {
+      throw new Error("Hosted continuation authority projection does not match its selected document.");
+    }
     if (echo_document_authority_for(resolved.selected) === undefined) {
       throw new Error("Selected document is not governed by the supplied Echo replica.");
     }

@@ -53,6 +53,140 @@
       "kind": "non-typechecked-artifact",
       "authority": "npm --prefix editors/vscode-hson run test:grammar",
       "reason": "TextMate TSX injection corpus is parsed as source text and intentionally has no JSX runtime or ambient host program."
-    }
+    },
+    {
+      "file": "tests/historical/solo-locus/echo-entrypoint.legacy.ts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/README.md",
+      "reason": "Archived source evidence for the retired sessionless one-map hosted Locus and Echo contract; not part of current acceptance."
+    },
+    {
+      "file": "tests/historical/solo-locus/locus-document.types.ts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/README.md",
+      "reason": "Archived source evidence for the retired sessionless one-map hosted Locus and Echo contract; not part of current acceptance."
+    },
+    {
+      "file": "tests/historical/solo-locus/locus-proof-bearing-livemap.types.ts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/README.md",
+      "reason": "Archived source evidence for the retired sessionless one-map hosted Locus and Echo contract; not part of current acceptance."
+    },
+    {
+      "file": "tests/historical/solo-locus/root-compatibility.legacy.ts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/README.md",
+      "reason": "Archived source evidence for the retired sessionless one-map hosted Locus and Echo contract; not part of current acceptance."
+    },
+    {
+      "file": "tests/historical/solo-locus/action-data-fidelity.acceptance.mts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/README.md",
+      "reason": "Archived source evidence for the retired sessionless one-map hosted Locus and Echo contract; not part of current acceptance."
+    },
+    {
+      "file": "tests/historical/solo-locus/async-livetree.acceptance.mts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/README.md",
+      "reason": "Archived source evidence for the retired sessionless one-map hosted Locus and Echo contract; not part of current acceptance."
+    },
+    {
+      "file": "tests/historical/solo-locus/echo-endpoint-core.legacy.mts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/README.md",
+      "reason": "Archived source evidence for the retired sessionless one-map hosted Locus and Echo contract; not part of current acceptance."
+    },
+    {
+      "file": "tests/historical/solo-locus/echo-reflect-authoring.acceptance.mts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/README.md",
+      "reason": "Archived source evidence for the retired sessionless one-map hosted Locus and Echo contract; not part of current acceptance."
+    },
+    {
+      "file": "tests/historical/solo-locus/echo-transport-capabilities.legacy.mts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/README.md",
+      "reason": "Archived source evidence for the retired sessionless one-map hosted Locus and Echo contract; not part of current acceptance."
+    },
+    {
+      "file": "tests/historical/solo-locus/hosted-document-continuation.legacy.mts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/README.md",
+      "reason": "Archived source evidence for the retired sessionless one-map hosted Locus and Echo contract; not part of current acceptance."
+    },
+    {
+      "file": "tests/historical/solo-locus/hosted-document-settlement-boundaries.acceptance.mts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/README.md",
+      "reason": "Archived source evidence for the retired sessionless one-map hosted Locus and Echo contract; not part of current acceptance."
+    },
+    {
+      "file": "tests/historical/solo-locus/livehost-authority-lifecycle.acceptance.mts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/README.md",
+      "reason": "Archived source evidence for the retired sessionless one-map hosted Locus and Echo contract; not part of current acceptance."
+    },
+    {
+      "file": "tests/historical/solo-locus/livemap-document-attrs-read.legacy.mts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/README.md",
+      "reason": "Archived source evidence for the retired sessionless one-map hosted Locus and Echo contract; not part of current acceptance."
+    },
+    {
+      "file": "tests/historical/solo-locus/livemap-runtime-local-identity.legacy.mts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/README.md",
+      "reason": "Archived source evidence for the retired sessionless one-map hosted Locus and Echo contract; not part of current acceptance."
+    },
+    {
+      "file": "tests/historical/solo-locus/livetree-realization-resource-ownership.legacy.mts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/README.md",
+      "reason": "Archived source evidence for the retired sessionless one-map hosted Locus and Echo contract; not part of current acceptance."
+    },
+    {
+      "file": "tests/historical/solo-locus/locus-bootstrap.acceptance.mts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/README.md",
+      "reason": "Archived source evidence for the retired sessionless one-map hosted Locus and Echo contract; not part of current acceptance."
+    },
+    {
+      "file": "tests/historical/solo-locus/locus-capture-identity-closure.acceptance.mts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/README.md",
+      "reason": "Archived source evidence for the retired sessionless one-map hosted Locus and Echo contract; not part of current acceptance."
+    },
+    {
+      "file": "tests/historical/solo-locus/locus-client-codec-package.acceptance.mts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/README.md",
+      "reason": "Archived source evidence for the retired sessionless one-map hosted Locus and Echo contract; not part of current acceptance."
+    },
+    {
+      "file": "tests/historical/solo-locus/locus-document-request-compatibility.acceptance.mts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/README.md",
+      "reason": "Archived source evidence for the retired sessionless one-map hosted Locus and Echo contract; not part of current acceptance."
+    },
+    {
+      "file": "tests/historical/solo-locus/locus-snapshot-install.acceptance.mts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/README.md",
+      "reason": "Archived source evidence for the retired sessionless one-map hosted Locus and Echo contract; not part of current acceptance."
+    },
+    {"file": "tests/historical/solo-locus/source/echo.bootstrap.ts", "kind": "non-typechecked-artifact", "authority": "tests/historical/solo-locus/source/README.md", "reason": "Retired one-map hosted runtime source; excluded from production build and current acceptance."},
+    {"file": "tests/historical/solo-locus/source/echo.solo-replica.ts", "kind": "non-typechecked-artifact", "authority": "tests/historical/solo-locus/source/README.md", "reason": "Retired one-map hosted runtime source; excluded from production build and current acceptance."},
+    {"file": "tests/historical/solo-locus/source/echo.solo.ts", "kind": "non-typechecked-artifact", "authority": "tests/historical/solo-locus/source/README.md", "reason": "Retired one-map hosted runtime source; excluded from production build and current acceptance."},
+    {"file": "tests/historical/solo-locus/source/livehost.persistent-store.ts", "kind": "non-typechecked-artifact", "authority": "tests/historical/solo-locus/source/README.md", "reason": "Retired one-map hosted runtime source; excluded from production build and current acceptance."},
+    {"file": "tests/historical/solo-locus/source/livehost.store.ts", "kind": "non-typechecked-artifact", "authority": "tests/historical/solo-locus/source/README.md", "reason": "Retired one-map hosted runtime source; excluded from production build and current acceptance."},
+    {"file": "tests/historical/solo-locus/source/locus.bootstrap.ts", "kind": "non-typechecked-artifact", "authority": "tests/historical/solo-locus/source/README.md", "reason": "Retired one-map hosted runtime source; excluded from production build and current acceptance."},
+    {"file": "tests/historical/solo-locus/source/locus.client-replication.ts", "kind": "non-typechecked-artifact", "authority": "tests/historical/solo-locus/source/README.md", "reason": "Retired one-map hosted runtime source; excluded from production build and current acceptance."},
+    {"file": "tests/historical/solo-locus/source/locus.core.ts", "kind": "non-typechecked-artifact", "authority": "tests/historical/solo-locus/source/README.md", "reason": "Retired one-map hosted runtime source; excluded from production build and current acceptance."},
+    {"file": "tests/historical/solo-locus/source/locus.persistence.ts", "kind": "non-typechecked-artifact", "authority": "tests/historical/solo-locus/source/README.md", "reason": "Retired one-map hosted runtime source; excluded from production build and current acceptance."},
+    {"file": "tests/historical/solo-locus/echo-replica-capability.legacy.mts", "kind": "non-typechecked-artifact", "authority": "tests/historical/README.md", "reason": "Archived test of the retired sessionless hosted model; current registry acceptance replaces it."},
+    {"file": "tests/historical/solo-locus/livemap-projected-intent-propagation.legacy.mts", "kind": "non-typechecked-artifact", "authority": "tests/historical/README.md", "reason": "Archived test of the retired sessionless hosted model; current registry acceptance replaces it."},
+    {"file": "tests/historical/solo-locus/source/locus.action-admission.ts", "kind": "non-typechecked-artifact", "authority": "tests/historical/solo-locus/source/README.md", "reason": "Retired one-map hosted runtime source; excluded from production build and current acceptance."},
+    {"file": "tests/historical/solo-locus/source/locus.persistence.types.ts", "kind": "non-typechecked-artifact", "authority": "tests/historical/solo-locus/source/README.md", "reason": "Retired one-map hosted type surface; excluded from production build and current acceptance."},
+    {"file": "tests/historical/solo-locus/source/livehost.services.types.ts", "kind": "non-typechecked-artifact", "authority": "tests/historical/solo-locus/source/README.md", "reason": "Retired one-map hosted type surface; excluded from production build and current acceptance."}
   ]
 }

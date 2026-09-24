@@ -16,14 +16,14 @@ import { alias_locus_remote_action_admission_internal } from "./locus.remote-act
 import { alias_locus_retained_action_status_internal } from "./locus.action-status.internal.js";
 import { make_locus_activity_controller } from "./locus.activity.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
-import { decode_hosted_root } from "../livemap/livemap.hosted.js";
-import { make_livemap_hosted_mirror_from_snapshot_internal } from "../livemap/livemap.libraries.js";
 import {
   create_locus_hosted_aggregate_socket_internal,
 } from "./locus.hosted-multi-library.socket.js";
 import type { LocusHostedAggregateGateInput } from "./locus.hosted-multi-library.js";
-import { capture_locus_libraries_snapshot_internal, register_locus_libraries_snapshot_authority_internal } from "./locus.libraries-snapshot.js";
-import { cut_hosted_libraries } from "../../internal/document-cut.js";
+import { register_locus_libraries_snapshot_authority_internal } from "./locus.libraries-snapshot.js";
+import { cut_hosted_projection } from "../../internal/document-cut.js";
+import { project_authority_snapshot } from "./locus.authority-projection-snapshot.js";
+import { LocusProjectionUnavailableError } from "./locus.projection.js";
 import { make_locus_hosted_projection_policy } from "./locus.projection.js";
 
 function establish_authority_identity(
@@ -64,6 +64,8 @@ export function create_multi_library_locus_internal<
   options: LocusMultiLibraryOptions<TMap, TActions>,
   internal: Readonly<{
     gate?: (input: LocusHostedAggregateGateInput) => void | Promise<void>;
+    maxHistoryBytes?: number;
+    afterRecoveryCut?: () => void | Promise<void>;
   }> = {},
 ): Readonly<{
   locus: LocusMultiLibrary<TMap, TActions>;
@@ -122,12 +124,14 @@ export function create_multi_library_locus_internal<
     ...(options.authorizeProjection === undefined ? {} : { authorizeProjection: options.authorizeProjection }),
     ...(Object.keys(actions).length === 0 ? {} : { actions }),
     ...(internal.gate === undefined ? {} : { gate: internal.gate }),
+    ...(internal.maxHistoryBytes === undefined ? {} : { maxHistoryBytes: internal.maxHistoryBytes }),
     ...(options.authorizeAction === undefined ? {} : { authorizeAction: options.authorizeAction }),
     ...(options.sessionId === undefined ? {} : { sessionId: options.sessionId }),
     ...(options.sessions === undefined ? {} : { sessions: options.sessions }),
     ...(options.actionDedupe === undefined ? {} : { actionDedupe: options.actionDedupe }),
     ...(options.schema === undefined ? {} : { schema: options.schema }),
     internal: Object.freeze({
+      ...(internal.afterRecoveryCut === undefined ? {} : { afterRecoveryCut: internal.afterRecoveryCut }),
       acquireActionActivity: () => activity.acquire("action"),
       acquireSessionActivity: () => activity.acquire("session"),
       acquireConnectionActivity: () => activity.acquire("connection"),
@@ -172,9 +176,17 @@ export function create_multi_library_locus_internal<
 
   const locus = Object.freeze({
     map: options.map,
-    cut: (document?: string) => cut_hosted_libraries(
-      () => capture_locus_libraries_snapshot_internal(locus), document,
-      make_livemap_hosted_mirror_from_snapshot_internal, decode_hosted_root),
+    cut: (sessionId: string, document?: string) => {
+      if (disposed || typeof sessionId !== "string" || sessionId.length === 0) throw new LocusProjectionUnavailableError();
+      const effective = authority.sessions.projection(sessionId);
+      if (effective === undefined) throw new LocusProjectionUnavailableError();
+      const complete = internal_livemap_aggregate_authority(options.map).captureHosted();
+      const projected = project_authority_snapshot(complete, effective);
+      const cut = cut_hosted_projection(projected, document);
+      // Synchronous revocation observers can fence a cut while it is built.
+      if (authority.sessions.projection(sessionId) !== effective) throw new LocusProjectionUnavailableError();
+      return cut;
+    },
     logicalMapId: authority.logicalMapId,
     incarnationId: authority.incarnationId,
     get rev() { return authority.rev; },

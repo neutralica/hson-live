@@ -9,13 +9,14 @@ import { HsonSchema } from "../schema/hson-schema.js";
 import { classify_live_root_mode } from "../livemap/livemap.document.js";
 import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
-import { interaction_schema_internal, project_interaction_state_internal } from "../interactions/interactions.js";
+import { interaction_schema_internal, project_interaction_state_internal } from "../interactions/interactions.projection.js";
 import { INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME } from "../../internal/interaction-storage.js";
 import type { LocusSessionManager } from "./locus.session.js";
 import type { LiveMapLibraries } from "../../types/livemap.types.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 
 const clientProjectionIdentity = new WeakMap<LiveMapLibraries, Readonly<{ digest: string; incarnationId: string }>>();
+const admittedSnapshots = new WeakMap<object, AuthorityProjectionSnapshot>();
 
 /** @internal The client contract digest is independent of its local registry. */
 export function bind_client_projection_identity_internal(map: LiveMapLibraries, snapshot: AuthorityProjectionSnapshot): void {
@@ -55,6 +56,18 @@ function string(value: unknown): string {
   return value;
 }
 function array(value: unknown): readonly unknown[] { if (!Array.isArray(value)) return fail(); return value; }
+function json_utf8_bytes(value: unknown): number {
+  if (value === null) return 4;
+  if (typeof value === "string") return new TextEncoder().encode(JSON.stringify(value)).byteLength;
+  if (typeof value === "number") return String(value).length;
+  if (typeof value === "boolean") return value ? 4 : 5;
+  if (Array.isArray(value)) return 2 + Math.max(0, value.length - 1)
+    + value.reduce<number>((total, item) => total + json_utf8_bytes(item), 0);
+  if (typeof value !== "object") return fail();
+  const entries = Object.entries(value);
+  return 2 + Math.max(0, entries.length - 1)
+    + entries.reduce((total, [key, item]) => total + json_utf8_bytes(key) + 1 + json_utf8_bytes(item), 0);
+}
 function root(value: unknown, schema: HsonSchema, mode: "data-object" | "data-array" | "document"): Root {
   const raw = record(value, ["format", "payload"]);
   if (raw.format !== "hson-exact-value" || typeof raw.payload !== "string") return fail();
@@ -67,6 +80,10 @@ function root(value: unknown, schema: HsonSchema, mode: "data-object" | "data-ar
 
 /** Decode and validate the entire candidate before any client runtime is constructed. */
 export function admit_authority_projection_snapshot(input: unknown): AuthorityProjectionSnapshot {
+  if (typeof input === "object" && input !== null) {
+    const admitted = admittedSnapshots.get(input);
+    if (admitted !== undefined) return admitted;
+  }
   try {
     const value = record(input, ["format", "authority", "revision", "projectionDigest", "libraries", "htmlDocument", "systemFeatures", "writableDocuments", "system"]);
     const revision = value.revision;
@@ -119,7 +136,8 @@ export function admit_authority_projection_snapshot(input: unknown): AuthorityPr
       authority, revision, projectionDigest: digest, libraries: Object.freeze(libraries),
       htmlDocument, systemFeatures: Object.freeze(systemFeatures),
       writableDocuments: Object.freeze(writableDocuments), system });
-    if (new TextEncoder().encode(JSON.stringify(snapshot)).byteLength > HOSTED_MAX_SNAPSHOT_BYTES) return fail();
+    if (json_utf8_bytes(snapshot) > HOSTED_MAX_SNAPSHOT_BYTES) return fail();
+    admittedSnapshots.set(snapshot, snapshot);
     return snapshot;
   } catch { return fail(); }
 }

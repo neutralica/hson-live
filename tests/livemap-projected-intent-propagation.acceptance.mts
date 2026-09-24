@@ -1,7 +1,6 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
-import { create_locus } from "../src/api/locus/locus.core.ts";
 import { link_livemap } from "../src/api/livemap/livemap.link.ts";
 import { make_livemap_store_api } from "../src/api/livemap/livemap.store.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
@@ -35,12 +34,6 @@ function check(name: string, run: () => void): void {
     testEvents.terminal("fail");
     throw error;
   }
-  checks += 1;
-  process.stdout.write(`ok ${checks} - ${name}\n`);
-}
-
-async function check_async(name: string, run: () => Promise<void>): Promise<void> {
-  await run();
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -170,22 +163,6 @@ check("exact no-op move suppresses feeds and stores", () => {
   make_livemap_store_api(source).subscribeDiff(() => { stores += 1; });
   source.at(["items"]).asArray()!.move(0, 0);
   assert.deepEqual([feeds, stores], [0, 0]);
-});
-
-await check_async("Locus history retains rename intent", async () => {
-  const host = create_locus({ state: { source: 1 } });
-  await host.mutate((draft) => draft.at([]).renameKey("source", "destination"));
-  const op = host.stream.history.replayAfter(0)?.[0]?.ops[0];
-  assert.equal(op !== undefined && "kind" in op ? op.kind : undefined, "rename");
-  host.dispose();
-});
-
-await check_async("Locus history retains move intent", async () => {
-  const host = create_locus({ state: { items: [1, 2] } });
-  await host.mutate((draft) => draft.at(["items"]).move(0, 1));
-  const op = host.stream.history.replayAfter(0)?.[0]?.ops[0];
-  assert.equal(op !== undefined && "kind" in op ? op.kind : undefined, "move");
-  host.dispose();
 });
 
 check("canonical rename replay remains bounded and deterministic", () => {

@@ -1,11 +1,8 @@
 import type {
   DocumentLiveMapCapture,
-  HostedLiveMapLibrariesSnapshot,
-  HostedClientLibrariesSnapshot,
-  LiveMapLibrariesSnapshot,
   LocalLibrariesContinuationSnapshot,
 } from "../../types/livemap.types.js";
-import type { LocusClientSnapshotEnvelope, LocusSnapshotEnvelope } from "../../types/locus.representation.types.js";
+import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
 
 declare const BROWSER_REALIZATION_HTML: unique symbol;
 
@@ -25,12 +22,6 @@ export type DocumentSsr = Readonly<{
   bootstrap: DocumentLiveMapCapture<"document">;
 }>;
 
-/** One hosted semantic cut and the browser-realization HTML derived from it. */
-export type HostedDocumentSsr = Readonly<{
-  html: BrowserRealizationHtml;
-  bootstrap: LocusClientSnapshotEnvelope & Readonly<{ mode: "document" }>;
-}>;
-
 /** One selected document realization paired with its complete local Libraries cut. */
 export type LibrariesDocumentSsr = Readonly<{
   html: BrowserRealizationHtml;
@@ -41,16 +32,14 @@ export type LibrariesDocumentSsr = Readonly<{
 /** One selected document realization paired with its complete hosted Libraries cut. */
 export type HostedLibrariesDocumentSsr = Readonly<{
   html: BrowserRealizationHtml;
-  bootstrap: HostedClientLibrariesSnapshot;
+  bootstrap: AuthorityProjectionSnapshot;
   document: string;
+  revision: number;
+  projectionDigest: string;
 }>;
 
 /** Object-owned local cut; `data` is accepted by the bootstrap codec. */
 export type DocumentCut = Readonly<{ html: BrowserRealizationHtml; data: DocumentLiveMapCapture<"document"> }>;
-export type HostedDocumentCut = Readonly<{
-  html: BrowserRealizationHtml;
-  data: LocusClientSnapshotEnvelope & Readonly<{ mode: "document" }>;
-}>;
 export type LibrariesDocumentCut = Readonly<{
   html: BrowserRealizationHtml;
   data: LocalLibrariesContinuationSnapshot;
@@ -58,6 +47,8 @@ export type LibrariesDocumentCut = Readonly<{
 }>;
 export type HostedLibrariesDocumentCut = Readonly<{
   html: BrowserRealizationHtml;
-  data: HostedClientLibrariesSnapshot;
+  data: AuthorityProjectionSnapshot;
   document: string;
+  revision: number;
+  projectionDigest: string;
 }>;

@@ -77,15 +77,13 @@ async function measure(name, source) {
   if (entry === undefined) throw new Error(`Could not locate ${name} entry output.`);
   const initial = staticClosure(outputs, entry);
   const deferred = new Set(Object.keys(outputs).filter((path) => !initial.has(path)));
-  const soloRoot = Object.entries(outputs).find(([, output]) => output.entryPoint?.endsWith("/echo.solo.js"))?.[0];
   const aggregateRoot = Object.entries(outputs).find(([, output]) => output.entryPoint?.endsWith("/echo.multi-library.js"))?.[0];
-  if (soloRoot === undefined || aggregateRoot === undefined) {
-    throw new Error("Deferred solo and aggregate entry chunks were not both emitted.");
+  if (aggregateRoot === undefined) {
+    throw new Error("Deferred registry replica chunk was not emitted.");
   }
   return Object.freeze({
     initial: metrics(result, initial),
     deferredTotal: metrics(result, deferred),
-    soloDeferred: metrics(result, staticClosure(outputs, soloRoot)),
     aggregateDeferred: metrics(result, staticClosure(outputs, aggregateRoot)),
   });
 }
@@ -115,6 +113,5 @@ console.log(JSON.stringify({
   endpointOnlyInitial: endpoint.initial,
   endpointDeferredReplicaTotal: endpoint.deferredTotal,
   replicaBearingPreRecoveryInitial: replica.initial,
-  soloDeferred: replica.soloDeferred,
   aggregateDeferred: replica.aggregateDeferred,
 }, null, 2));

@@ -7,10 +7,10 @@ import {
   type DocumentLiveMap,
 } from "../src/index.ts";
 import {
-  capture_locus_bootstrap,
   install_locus_bootstrap,
   install_locus_snapshot,
 } from "../src/api/locus/index.ts";
+import { capture_locus_bootstrap } from "../src/api/locus/locus.bootstrap.ts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
 
@@ -23,20 +23,23 @@ function document_map(source: string): DocumentLiveMap {
 const authority = document_map(`<main <p @000005101 "snapshot"/>/>`);
 authority.document.attrs.set({ kind: "path", path: [0] }, "data-rev", "one");
 const locus = hsonLocus.create({   map: authority, logicalMapId: "snapshot-install", sessions: {} });
-const ssr = render_hosted_document({ authority: locus });
-const semantic = install_locus_snapshot(ssr.bootstrap);
-const transport = install_locus_bootstrap(capture_locus_bootstrap(locus, "snapshot:install", "/socket"));
+assert.throws(() => render_hosted_document({ authority: locus } as never), /authorized Locus session/i);
+const bootstrap = capture_locus_bootstrap(locus, "snapshot:install", "/socket");
+const semantic = install_locus_snapshot({ logicalMapId: bootstrap.logicalMapId,
+  incarnationId: bootstrap.incarnationId, rev: bootstrap.rev, mode: "document",
+  format: bootstrap.state.format, payload: bootstrap.state.payload });
+const transport = install_locus_bootstrap(bootstrap);
 
 assert.equal(semantic.map.mode, "document");
-assert.equal(semantic.map.rev, ssr.bootstrap.rev);
+assert.equal(semantic.map.rev, bootstrap.rev);
 assert.deepEqual(semantic.map.capture({ identity: "strip" }), authority.capture({ identity: "strip" }));
 assert.deepEqual(semantic.map.capture(), transport.map.capture());
 assert.deepEqual(semantic.recovery, transport.recovery);
 assert.deepEqual(semantic.recovery, {
-  logicalMapId: ssr.bootstrap.logicalMapId,
+  logicalMapId: bootstrap.logicalMapId,
   cursor: {
-    incarnationId: ssr.bootstrap.incarnationId,
-    lastAppliedRev: ssr.bootstrap.rev,
+    incarnationId: bootstrap.incarnationId,
+    lastAppliedRev: bootstrap.rev,
   },
 });
 assert.deepEqual(Object.keys(semantic).sort(), ["map", "recovery"]);

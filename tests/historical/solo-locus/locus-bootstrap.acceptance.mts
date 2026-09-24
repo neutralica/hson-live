@@ -8,7 +8,6 @@ import {
   LOCUS_BOOTSTRAP_FORMAT,
   LOCUS_BOOTSTRAP_MEDIA_TYPE,
   LocusBootstrapError,
-  capture_locus_bootstrap,
   create_locus,
   decode_locus_bootstrap,
   encode_locus_bootstrap,
@@ -22,6 +21,7 @@ import { create_node_locus_socket } from "hson-live/locus/node";
 import { start_node_application_host } from "hson-live/livehost/node";
 import WebSocket from "ws";
 import { project_locus_client_transition } from "../dist/api/locus/locus.client-replication.js";
+import { capture_locus_bootstrap } from "../dist/api/locus/locus.bootstrap.js";
 import type { LocusCanonicalCommit } from "../dist/types/locus.representation.types.js";
 
 function client_commit(exact: LocusCanonicalCommit) {

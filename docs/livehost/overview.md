@@ -8,9 +8,9 @@ LiveHost, and the LiveHost Node runtime.
 | Layer | Owns | Cardinality |
 |---|---|---|
 | LiveMap | Canonical graph state, revision, mutation, schema enforcement, capture/apply/replay, paths, and graph equality | May exist without a Locus |
-| Locus | Exclusive authority over one LiveMap, FIFO mutation admission, canonical history, recovery, sessions, actions, one-map persistence and synchronization, bootstrap state, and activity | Exactly one LiveMap |
-| Echo | Semantic hosted client endpoint and request/session lifecycle, optionally governing an explicit exact-replica LiveMap | Endpoint-only or one solo/fixed-library replica capability |
-| Reflect | LiveTree ↔ LiveMap bridge; delegates supported hosted authoring through Echo without owning transport policy | One binding |
+| Locus | Authority over a fixed application library registry, FIFO mutation admission, canonical history, recovery, sessions, actions, persistence, projected synchronization, bootstrap state, and activity | One registry of one or more application libraries |
+| Echo | Semantic hosted client endpoint and request/session lifecycle, optionally managing one composed projected LiveMap | Endpoint-only or one authority-projected registry replica |
+| Mirror | LiveTree ↔ LiveMap bridge; delegates supported hosted authoring through Echo without owning transport policy | One binding |
 | Application | Domain meaning, custom actions and side effects, authorization policy, event semantics, topology, acquisition-key meaning, retention policy, and cross-Locus workflows | Zero or more Loci |
 | LiveHost | Application registration and dispatch, generic application context, principal evidence, readiness/disposal, runtime adaptation boundaries, and the optional bounded Locus registry | Zero or more applications |
 | LiveHost Node | HTTP and WebSocket ingress, Web Request/Response adaptation, origin and proxy policy, limits, heartbeat/backpressure, `/healthz`, and network/process shutdown | One concrete runtime implementation |
@@ -20,8 +20,8 @@ meaning and topology. LiveHost hosts applications. LiveHost Node is the current
 concrete Node runtime for LiveHost.
 
 For hosted documents, the client path is
-`LiveTree → Reflect → Echo → Locus → authoritative LiveMap`, followed by
-`Echo replay → Reflect → LiveTree / DOM` convergence. LiveHost routes and
+`LiveTree → Mirror → Echo → Locus → authoritative library registry`, followed by
+`Echo replay → Mirror → LiveTree / DOM` convergence. LiveHost routes and
 hosts the application/Locus; it does not own Echo.
 
 ## Zero-Locus and optional-Locus applications
@@ -61,8 +61,8 @@ import { create_livehost_locus_registry } from "hson-live/livehost";
 import { start_node_application_host } from "hson-live/livehost/node";
 ```
 
-- `hson-live/locus` is the platform-neutral one-map authority API.
-- `hson-live/locus/node` contains one-Locus Node socket and bootstrap adapters.
+- `hson-live/locus` is the platform-neutral registry authority API.
+- `hson-live/locus/node` contains the Node socket adapter for session-projected Locus.
 - `hson-live/livehost` contains platform-neutral application/runtime contracts
   and the bounded registry service.
 - `hson-live/livehost/node` is the concrete Node application-host runtime and
@@ -164,14 +164,4 @@ The following identities are distinct:
 
 There is no generic `LocusId`.
 
-Locus supplies the authoritative snapshot and recovery cut for bootstrap.
-Application/runtime code supplies routing and delivery continuation. One
-assembler produces one `LocusBootstrap` artifact with format
-`"hson-locus-bootstrap-v2"`, media type
-`application/vnd.hson-live.locus-bootstrap-v2+hson`, and selector field
-`locusSelector`. Its client state body is QUID-free and uses
-`hson-client-snapshot-v1`; old bootstrap forms reject.
-
-Current client bootstrap and socket formats use the Phase 4C hard cut.
-Unsupported client generations are rejected. Authority persistence retains
-its exact runtime representation until Phase 5.
+Locus supplies a session-projected `AuthorityProjectionSnapshot` from one coherent authority cut. Application/runtime code supplies routing, HTML shell, carrier placement, and delivery. Hosted SSR uses `hson-ssr-bootstrap` version 3 with `hosted-projection`; local SSR retains the distinct version 2 contract. The active hosted socket envelope is `hson-locus-hosted-aggregate-message-v4`. All are QUID-free and bound to the session projection. Unsupported older hosted generations are rejected. Authority persistence remains complete and server-side.

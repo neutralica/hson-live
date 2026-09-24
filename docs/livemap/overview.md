@@ -13,7 +13,7 @@ LiveMap owns local state semantics: paths, mutations, schemas, commits, revision
 
 It does not require a server, transport, session, or persistent backend. A LiveMap may exist entirely within one process or browser.
 
-When remote authority, actions, connections, one-map persistence, or client
+When remote authority, actions, connections, hosted authority persistence, or client
 recovery are required, a LiveMap may be governed by a Locus. Those concerns are
 documented separately.
 
@@ -1897,7 +1897,7 @@ The maintained focused documentation is:
 
 The exact callable surface belongs in the LiveMap API reference.
 
-Remote actions, sessions, one-map persistence, and client recovery belong in the Locus documentation.
+Remote actions, sessions, hosted authority persistence, and client recovery belong in the Locus documentation.
 
 Server rendering, DOM adoption, render streams, and variable client participation belong in separate projection documentation once those systems are established.
 

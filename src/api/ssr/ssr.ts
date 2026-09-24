@@ -3,22 +3,13 @@ import type {
   LiveMapLibraries,
 } from "../../types/livemap.types.js";
 import type { LocusMultiLibrary } from "../../types/locus.types.js";
-import {
-  install_locus_authority_snapshot_internal,
-  with_locus_bootstrap_snapshot,
-  type LocusBootstrapAuthority,
-} from "../locus/locus.bootstrap.js";
-import {
-  capture_locus_libraries_snapshot_internal,
-  is_locus_libraries_snapshot_authority_internal,
-} from "../locus/locus.libraries-snapshot.js";
-import { install_libraries_snapshot, is_public_multi_library_livemap, make_livemap_hosted_mirror_from_snapshot_internal } from "../livemap/livemap.libraries.js";
+import { is_locus_libraries_snapshot_authority_internal } from "../locus/locus.libraries-snapshot.js";
+import { install_libraries_snapshot, is_public_multi_library_livemap } from "../livemap/livemap.libraries.js";
 import { decode_hosted_root } from "../livemap/livemap.hosted.js";
 import { DocumentSsrError } from "./ssr.error.js";
-import { cut_local_document, cut_local_libraries, cut_hosted_libraries, cut_hosted_snapshot, cut_hosted_authority } from "../../internal/document-cut.js";
+import { cut_local_document, cut_local_libraries } from "../../internal/document-cut.js";
 import type {
   DocumentSsr,
-  HostedDocumentSsr,
   LibrariesDocumentSsr,
   HostedLibrariesDocumentSsr,
 } from "./ssr.types.js";
@@ -73,43 +64,25 @@ export function render_document(options: Readonly<{
   return Object.freeze({ html: cut.html, bootstrap: cut.data });
 }
 
-/** Compose browser-realization HTML and semantic recovery state from one hosted cut. */
-export function render_hosted_document(
-  options: Readonly<{ authority: LocusBootstrapAuthority }>,
-): HostedDocumentSsr;
+/** Compose browser HTML and projected authority state from one authorized session cut. */
 export function render_hosted_document<TMap extends LiveMapLibraries>(
-  options: Readonly<{ authority: LocusMultiLibrary<TMap>; document?: string }>,
+  options: Readonly<{ authority: LocusMultiLibrary<TMap>; sessionId: string; document?: string }>,
 ): HostedLibrariesDocumentSsr;
 export function render_hosted_document(
   options: Readonly<{
-    authority: LocusBootstrapAuthority | object;
+    authority: LocusMultiLibrary<LiveMapLibraries>;
+    sessionId: string;
     document?: string;
   }>,
-): HostedDocumentSsr | HostedLibrariesDocumentSsr {
+): HostedLibrariesDocumentSsr {
   require_options(options, "render_hosted_document");
   const authority = options.authority;
-  if (is_locus_libraries_snapshot_authority_internal(authority)) {
-    const cut = cut_hosted_libraries(() => capture_locus_libraries_snapshot_internal(authority),
-      options.document, make_livemap_hosted_mirror_from_snapshot_internal, decode_hosted_root,
-      () => testHook?.("hosted-libraries-after-snapshot"));
-    return Object.freeze({ html: cut.html, bootstrap: cut.data, document: cut.document });
+  if (!is_locus_libraries_snapshot_authority_internal(authority) || typeof authority.cut !== "function"
+    || typeof options.sessionId !== "string" || options.sessionId.length === 0) {
+    throw new TypeError("render_hosted_document requires an authorized Locus session.");
   }
-  const soloAuthority = authority as LocusBootstrapAuthority;
-  if (
-    typeof soloAuthority !== "object"
-    || soloAuthority === null
-    || typeof soloAuthority.stream !== "object"
-    || soloAuthority.stream === null
-    || typeof soloAuthority.stream.logicalMapId !== "string"
-    || typeof soloAuthority.recovery !== "object"
-    || soloAuthority.recovery === null
-    || typeof soloAuthority.recovery.plan !== "function"
-  ) {
-    throw new TypeError("render_hosted_document requires one Locus bootstrap authority.");
-  }
-
-  const cut = cut_hosted_authority(() => with_locus_bootstrap_snapshot(soloAuthority, (snapshot) =>
-    cut_hosted_snapshot(snapshot, install_locus_authority_snapshot_internal,
-      () => testHook?.("hosted-after-snapshot"))));
-  return Object.freeze({ html: cut.html, bootstrap: cut.data });
+  const cut = authority.cut(options.sessionId, options.document);
+  testHook?.("hosted-libraries-after-snapshot");
+  return Object.freeze({ html: cut.html, bootstrap: cut.data, document: cut.document,
+    revision: cut.revision, projectionDigest: cut.projectionDigest });
 }

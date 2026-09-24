@@ -212,7 +212,6 @@ check("SSR declarations expose only the approved semantic surface", () => {
     "render_hosted_document",
     "BrowserRealizationHtml",
     "DocumentSsr",
-    "HostedDocumentSsr",
     "LibrariesDocumentSsr",
     "HostedLibrariesDocumentSsr",
     "DocumentSsrError",
@@ -244,7 +243,6 @@ check("stale public terminology is absent from maintained declarations", () => {
     "api/transform/index.d.ts",
     "types/constructor.types.d.ts",
     "types/locus.core.types.d.ts",
-    "types/locus.persistence.types.d.ts",
   ].map((path) => readFileSync(resolve(repositoryRoot, "dist", path), "utf8")).join("\n");
   for (const stale of [
     "ProjectedLocusOptions",
@@ -256,8 +254,6 @@ check("stale public terminology is absent from maintained declarations", () => {
     "sanitizeBEWARE",
   ]) assert.equal(declarations.includes(stale), false, `${stale} must be absent`);
   for (const retained of [
-    "DataLocusOptions",
-    '"data"',
     "TransformOutput",
     "SsrBootstrapCodecError",
   ]) assert.equal(declarations.includes(retained), true, `${retained} must be present`);
@@ -296,14 +292,6 @@ const directHsonDataSources = new Map<string, string>([
     const value = call.request.payload;
     if (typeof value !== "string") throw new Error("Echo HsonData conversion unavailable");
     echo.dispose();
-  `],
-  ["locus", `
-    import { decode_locus_message } from "hson-live/locus";
-    const wire = JSON.stringify({ type: "action", id: "a", name: "probe", payloadData: "{\\n  \\\"value\\\": -0,\\n  \\\"__proto__\\\": true\\n}" });
-    const decoded = decode_locus_message(wire);
-    if (!decoded.ok || decoded.value.type !== "action" || decoded.value.payload === undefined) throw new Error("Locus exact data unavailable");
-    const value = decoded.value.payload;
-    if (typeof value !== "string") throw new Error("Locus HsonData conversion unavailable");
   `],
 ]);
 

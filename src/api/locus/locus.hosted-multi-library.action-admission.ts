@@ -12,7 +12,7 @@ import type {
 } from "../../types/locus.types.js";
 import { authorize_locus_action } from "./locus.action-authorization.js";
 import type { LocusActionDedupeStore } from "./locus.actions.js";
-import { make_locus_action_response } from "./locus.action-admission.js";
+import { make_locus_action_response } from "./locus.action-response.js";
 
 export type LocusAggregateValidatedAction =
   | Readonly<{ ok: true; payload: ExactDataCarrier | undefined }>
