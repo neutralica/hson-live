@@ -9,7 +9,7 @@ export type {
   BrowserWebSocketConstructor,
   BrowserWebSocketLike,
 } from "./locus.browser-socket.js";
-export { LocusPersistenceError } from "./locus.persistence.error.js";
+export { LocusPersistenceError, LocusPersistenceAppendUncertainError } from "./locus.persistence.error.js";
 export {
   decode_locus_graph_content,
   encode_locus_graph_content,

@@ -134,6 +134,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   /** Detached resulting system root of one prepared transition, before acceptance. @internal */
   preparedSystemRoot: (transition: PreparedLiveMapAuthorityTransition) => HsonNode | undefined;
   accept: LiveMapTransitionController["acceptAuthority"];
+  reserve: LiveMapTransitionController["reserveAuthority"];
   discard: LiveMapTransitionController["discardAuthority"];
   /** Claim/release the exclusive aggregate mutation boundary. @internal */
   claimManagement: (owner: object) => void;

@@ -781,6 +781,9 @@ export type LocusMultiLibrary<
 /** Opaque durable-record port for a fixed hosted Library registry. */
 export interface LocusMultiLibraryPersistenceAdapter {
   load(logicalMapId: LocusLogicalMapId): Promise<unknown | undefined>;
+  /** Resolve only after one fenced revision is durable. Ordinary rejection
+   * guarantees no write; signal an uncertain write-then-error outcome with
+   * LocusPersistenceAppendUncertainError to fence the authority until reload. */
   appendCommit(record: unknown): Promise<void>;
   replaceCheckpoint(record: unknown): Promise<void>;
 }

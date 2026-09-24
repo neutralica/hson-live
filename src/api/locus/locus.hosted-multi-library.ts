@@ -119,13 +119,26 @@ export type LocusHostedAggregateGateInput = Readonly<{
   nextRevision: number;
 }>;
 
+export type LocusHostedAggregatePreaccept = Readonly<{
+  /** Install an already prepared retained-history decision after runtime installation. */
+  install?: () => void;
+  /** Release the session admission fence on either outcome. */
+  release?: () => void;
+}>;
+
 export type LocusHostedAggregateOptions = Readonly<{
   map: LiveMapLibraries;
   actions?: Readonly<Record<string, LocusHostedAggregateAction>>;
   /** The existing Locus pre-accept/durability boundary, at aggregate granularity. */
   gate?: (input: LocusHostedAggregateGateInput) => void | Promise<void>;
-  /** Synchronous final egress preflight after the gate and before acceptance. @internal */
-  beforeAccept?: (input: LocusHostedAggregateGateInput) => void;
+  /** Validate and retain the portable record before the session roster cut. @internal */
+  prepareGate?: (input: LocusHostedAggregateGateInput) => void;
+  /** Synchronous semantic/session/history preflight before the durable gate. @internal */
+  beforeAccept?: (input: LocusHostedAggregateGateInput) => LocusHostedAggregatePreaccept | void;
+  /** Whether a gate failure may mean the durable record was written. @internal */
+  uncertainGateFailure?: (cause: unknown) => boolean;
+  /** Notification that this authority can no longer serve safely. @internal */
+  onFault?: (cause: unknown) => void;
   /** Optional internal live transport sink. One accepted transition emits once. */
   send?: (wire: string) => void;
   maxWireBytes?: number;
@@ -170,6 +183,8 @@ export function create_locus_hosted_aggregate_internal(
   const listeners = new Set<(wire: string) => void>();
   const commitListeners = new Set<(commit: HostedAggregateCommit) => void>();
   let disposed = false;
+  let faulted = false;
+  let reservedDecision = false;
   let tail = Promise.resolve();
   const directOrigin: LocusActionOrigin = Object.freeze({ kind: "direct" });
 
@@ -179,7 +194,7 @@ export function create_locus_hosted_aggregate_internal(
     operation: (draft: LocusHostedAggregateDraft) => T | Promise<T>,
   ): Promise<Readonly<{ result: T; commit: HostedAggregateCommit | undefined }>> => {
     const run = async (): Promise<Readonly<{ result: T; commit: HostedAggregateCommit | undefined }>> => {
-      if (disposed) throw new Error("Hosted aggregate Locus authority is closed.");
+      if (disposed || faulted) throw new Error("Hosted aggregate Locus authority is closed or faulted.");
       const accumulator = make_managed_aggregate_draft(aggregate);
       let result: T;
       try {
@@ -215,30 +230,63 @@ export function create_locus_hosted_aggregate_internal(
           baseRevision: transition.baseRevision,
           nextRevision: transition.nextRevision,
         });
+      let releaseReservation: (() => void) | undefined;
+      let preaccept: LocusHostedAggregatePreaccept | void;
       try {
-        await options.gate?.(gateInput);
-        options.beforeAccept?.(gateInput);
+        options.prepareGate?.(gateInput);
+        releaseReservation = aggregate.reserve(transition);
+        reservedDecision = true;
+        preaccept = options.beforeAccept?.(gateInput);
       } catch (cause) {
         aggregate.discard(transition);
+        releaseReservation?.();
+        reservedDecision = false;
+        if (disposed && !faulted) aggregate.releaseManagement(owner);
         throw cause;
       }
-      const accepted = aggregate.accept(transition, "isolate").commit;
-      const acceptedHosted = accepted.hosted;
-      if (acceptedHosted === undefined || JSON.stringify(acceptedHosted) !== JSON.stringify(hosted)) {
-        throw new Error("Hosted aggregate acceptance disagreed with its prepared commit.");
-      }
-      // State is accepted before external publication, matching the established
-      // Locus authority sequence. Listener failures do not split the transition.
-      for (const listener of [...commitListeners]) {
-        try { listener(acceptedHosted); } catch { /* History observers are isolated. */ }
-      }
-      if (wire !== undefined) {
-        options.send?.(wire);
-        for (const listener of [...listeners]) {
-          try { listener(wire); } catch { /* Transport observers are isolated. */ }
+      let durableDecision = false;
+      try {
+        try {
+          await options.gate?.(gateInput);
+          durableDecision = true;
+        } catch (cause) {
+          if (options.uncertainGateFailure?.(cause)) {
+            faulted = true;
+            try { options.onFault?.(cause); } catch { /* The authority remains fenced. */ }
+          }
+          throw cause;
         }
+        // Reservation has already checked the complete base fence. No ordinary
+        // stale decision is permitted after the durable append succeeds.
+        const accepted = aggregate.accept(transition, "isolate", preaccept?.install).commit;
+        const acceptedHosted = accepted.hosted;
+        if (acceptedHosted === undefined) throw new Error("Accepted hosted commit is unavailable.");
+        // State and prepared history are installed before external publication.
+        // Listener failures do not split the transition.
+        for (const listener of [...commitListeners]) {
+          try { listener(acceptedHosted); } catch { /* External observers are isolated. */ }
+        }
+        if (wire !== undefined) {
+          try { options.send?.(wire); } catch { /* Transport failure is postaccept. */ }
+          for (const listener of [...listeners]) {
+            try { listener(wire); } catch { /* Transport observers are isolated. */ }
+          }
+        }
+        return Object.freeze({ result, commit: acceptedHosted });
+      } catch (cause) {
+        if (durableDecision) {
+          faulted = true;
+          try { options.onFault?.(cause); } catch { /* The authority remains fenced. */ }
+        } else {
+          aggregate.discard(transition);
+        }
+        throw cause;
+      } finally {
+        preaccept?.release?.();
+        releaseReservation?.();
+        reservedDecision = false;
+        if (disposed && !faulted) aggregate.releaseManagement(owner);
       }
-      return Object.freeze({ result, commit: acceptedHosted });
     };
     const next = tail.then(run, run);
     tail = next.then(() => undefined, () => undefined);
@@ -269,7 +317,7 @@ export function create_locus_hosted_aggregate_internal(
     },
     run_exclusive<TResult>(operation: () => TResult | Promise<TResult>): Promise<TResult> {
       const run = async (): Promise<TResult> => {
-        if (disposed) throw new Error("Hosted aggregate Locus authority is closed.");
+        if (disposed || faulted) throw new Error("Hosted aggregate Locus authority is closed or faulted.");
         return operation();
       };
       const next = tail.then(run, run);
@@ -287,7 +335,7 @@ export function create_locus_hosted_aggregate_internal(
     dispose() {
       if (disposed) return;
       disposed = true;
-      aggregate.releaseManagement(owner);
+      if (!faulted && !reservedDecision) aggregate.releaseManagement(owner);
     },
   });
 }

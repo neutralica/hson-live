@@ -92,7 +92,11 @@ export type LiveMapTransitionController = Readonly<{
   acceptAuthority: (
     transition: PreparedLiveMapAuthorityTransition,
     policy?: LiveMapTransitionNotificationPolicy,
+    afterInstall?: () => void,
   ) => LiveMapAuthorityTransitionAcceptance;
+  /** Fence all local identity and competing authority changes across an async durable decision. @internal */
+  reserveAuthority: (transition: PreparedLiveMapAuthorityTransition) => () => void;
+  assertLocalIdentityAllowed: () => void;
   discard: (transition: PreparedLiveMapTransition) => void;
   /** @internal */
   discardAuthority: (transition: PreparedLiveMapAuthorityTransition) => void;
@@ -141,6 +145,7 @@ export function make_livemap_transition_controller(
     schedule: LiveMapManagedMutationScheduler<object>;
   }> | undefined;
   let managedExecutionOwner: object | undefined;
+  let reserved: PreparedLiveMapAuthorityTransition | undefined;
 
   function authority_record_for(
     transition: PreparedLiveMapAuthorityTransition,
@@ -240,15 +245,29 @@ export function make_livemap_transition_controller(
   function acceptAuthority(
     transition: PreparedLiveMapAuthorityTransition,
     policy: LiveMapTransitionNotificationPolicy = "legacy",
+    afterInstall?: () => void,
   ): LiveMapAuthorityTransitionAcceptance {
     const record = authority_record_for(transition);
-    return accept_record(record, "LiveMap authority", policy);
+    return accept_record(record, "LiveMap authority", policy, transition, afterInstall);
+  }
+
+  function reserveAuthority(transition: PreparedLiveMapAuthorityTransition): () => void {
+    const record = authority_record_for(transition);
+    if (reserved !== undefined || record.state !== "pending"
+      || record.baseRevision !== getRevision() || record.generation !== generation
+      || !record.baseStillCurrent()) {
+      throw new LiveMapTransitionError("LIVEMAP_TRANSITION_STALE", "Prepared LiveMap authority transition cannot be reserved.");
+    }
+    reserved = transition;
+    return () => { if (reserved === transition) reserved = undefined; };
   }
 
   function accept_record<TCommit extends Readonly<{ changed: boolean }>>(
     record: AuthorityTransitionRecord<TCommit>,
     label: string,
     policy: LiveMapTransitionNotificationPolicy,
+    transition?: PreparedLiveMapAuthorityTransition,
+    afterInstall?: () => void,
   ): Readonly<{ commit: TCommit; notificationFailureCount: number }> {
     if (record.state === "accepted") {
       throw new LiveMapTransitionError("LIVEMAP_TRANSITION_ALREADY_ACCEPTED", `Prepared ${label} transition was already accepted.`);
@@ -256,8 +275,11 @@ export function make_livemap_transition_controller(
     if (record.state === "discarded") {
       throw new LiveMapTransitionError("LIVEMAP_TRANSITION_DISCARDED", `Prepared ${label} transition was discarded.`);
     }
-    if (record.baseRevision !== getRevision()
-      || record.generation !== generation || !record.baseStillCurrent()) {
+    if (reserved !== undefined && reserved !== transition) {
+      throw new LiveMapTransitionError("LIVEMAP_TRANSITION_STALE", `Prepared ${label} transition is fenced by a durable decision.`);
+    }
+    if (reserved !== transition && (record.baseRevision !== getRevision()
+      || record.generation !== generation || !record.baseStillCurrent())) {
       throw new LiveMapTransitionError("LIVEMAP_TRANSITION_STALE", `Prepared ${label} transition is stale.`);
     }
     if (record.commit.changed) {
@@ -270,6 +292,7 @@ export function make_livemap_transition_controller(
       generation += 1;
     }
     record.state = "accepted";
+    if (record.commit.changed) afterInstall?.();
     let notificationFailureCount = 0;
     if (record.commit.changed) {
       if (policy === "legacy") record.notify(record.commit);
@@ -297,9 +320,19 @@ export function make_livemap_transition_controller(
     projectAggregateCompatibility,
     accept,
     acceptAuthority,
+    reserveAuthority,
+    assertLocalIdentityAllowed(): void {
+      if (reserved !== undefined) throw new LiveMapTransitionError(
+        "LIVEMAP_MANAGED_MUTATION_REJECTED",
+        "LiveMap local identity is reserved by a pending authority decision.",
+      );
+    },
     discard,
     discardAuthority,
     invalidate(): void {
+      if (reserved !== undefined) throw new LiveMapTransitionError(
+        "LIVEMAP_MANAGED_MUTATION_REJECTED", "LiveMap authority is reserved by a pending durable decision.",
+      );
       generation += 1;
     },
     assertPublicMutationAllowed(): void {

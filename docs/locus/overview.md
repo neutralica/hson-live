@@ -10,4 +10,6 @@ Echo manages authority-projected libraries inside one composed client LiveMap; c
 
 Locus persistence and server-side authority access remain complete. The framework does not inspect arbitrary application HTML or JSON, so application code must avoid manually copying private values into a permitted document or response.
 
+For a persistent transition, Locus prepares authority semantics, retained history, and the projected live and recovery event for every resumable session before it calls the durable append. The append is the authority decision; runtime installation then completes under a reservation that fences local identity acquisition and new session creation. An ordinary rejected candidate leaves runtime, history, and durability unchanged. A clean append rejection guarantees no record was written. An adapter must signal an uncertain write-then-error outcome explicitly; Locus then stops serving that authority until it is restored. Actual transport sends occur after acceptance, and their failure detaches the connection for recovery.
+
 For the constructor and cut contract see [Locus API](./api-locus.md). For policy and format details see [authorized client projection](./authorized-client-projection.md). For deployment ownership see [LiveHost](../livehost/overview.md).

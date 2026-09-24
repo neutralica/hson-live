@@ -8,7 +8,7 @@ import type {
 } from "../../types/locus.types.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import type { HostedAggregateCommit } from "../livemap/livemap.hosted.js";
-import { LocusPersistenceError } from "./locus.persistence.error.js";
+import { LocusPersistenceAppendUncertainError, LocusPersistenceError } from "./locus.persistence.error.js";
 import {
   durable_aggregate_checkpoint,
   durable_aggregate_commit,
@@ -67,14 +67,16 @@ async function durable_checkpoint(
 
 async function append_durable_commit(
   persistence: LocusMultiLibraryPersistenceAdapter,
-  commit: HostedAggregateCommit,
+  record: object,
 ): Promise<void> {
-  if (!commit.changed) return;
   try {
-    await persistence.appendCommit(commit_record(commit));
+    await persistence.appendCommit(record);
   } catch (cause) {
+    // Adapters promise ordinary rejection means no write. They must signal
+    // uncertain write-then-error outcomes explicitly; those fence the host.
     throw new LocusPersistenceError(
-      "LOCUS_PERSISTENCE_APPEND_FAILED",
+      cause instanceof LocusPersistenceAppendUncertainError
+        ? "LOCUS_PERSISTENCE_APPEND_UNCERTAIN" : "LOCUS_PERSISTENCE_APPEND_FAILED",
       "Hosted multi-library Locus could not durably append the prepared commit.",
       { cause },
     );
@@ -110,8 +112,20 @@ async function persistent_view<
       const { logicalMapId: _logicalMapId, incarnationId: _incarnationId, ...rest } = locusOptions;
       return rest;
     })();
+  const records = new WeakMap<HostedAggregateCommit, object>();
   const runtime = create_multi_library_locus_internal(managedOptions as LocusMultiLibraryOptions<TMap, TActions>, {
-    gate: ({ commit }) => append_durable_commit(persistence, commit),
+    prepareGate: ({ commit }) => {
+      if (!commit.changed) return;
+      const record = commit_record(commit);
+      JSON.stringify(record);
+      records.set(commit, record);
+    },
+    gate: ({ commit }) => {
+      if (!commit.changed) return;
+      const record = records.get(commit);
+      if (record === undefined) throw new Error("Prepared durable aggregate record is unavailable.");
+      return append_durable_commit(persistence, record);
+    },
   });
   const checkpoint = (): Promise<void> => runtime.run_exclusive(() => durable_checkpoint(options.map, persistence));
   const locus = Object.freeze(Object.defineProperties({}, {

@@ -1297,6 +1297,7 @@ function make_livemap_core_from_compatibility_root(
     restoreOverlay: () => void,
     participant?: LiveMapRuntimeIdentityParticipant,
   ): void {
+    transitionController.assertLocalIdentityAllowed();
     if (localIdentityTransactionActive) throw new Error("A LiveMap local identity transaction is already active.");
     const before = aggregate_quid_locations(libraryRegistry.all());
     if (before.has(quid) || mapIdentityEpoch.issued().has(quid)) {
@@ -2789,6 +2790,7 @@ function make_livemap_core_from_compatibility_root(
       return preparedSystemRoots.get(transition);
     },
     accept: transitionController.acceptAuthority,
+    reserve: transitionController.reserveAuthority,
     discard: transitionController.discardAuthority,
     claimManagement: (owner) => {
       transitionController.claimManagement(owner, () => Promise.reject(new LiveMapTransitionError(

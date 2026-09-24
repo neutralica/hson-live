@@ -30,6 +30,7 @@ import { internal_livemap_aggregate_authority } from "../livemap/livemap.interna
 import { make_livemap_hosted_mirror_from_snapshot_internal } from "../livemap/livemap.libraries.js";
 import { decode_hosted_root, encode_hosted_root, make_hosted_client_commit } from "../livemap/livemap.hosted.js";
 import { locus_client_error_message } from "./locus.client-error.js";
+import { LocusPersistenceError } from "./locus.persistence.error.js";
 import { validate_document_path } from "../livemap/livemap.document.path.js";
 import { make_locus_action_dedupe_store } from "./locus.actions.js";
 import { make_locus_session_manager } from "./locus.session.js";
@@ -79,6 +80,9 @@ import type { LocusFiniteOperationRequest } from "./locus.transport.internal.js"
 
 /** The established Locus retained live-history budget. */
 export const DEFAULT_LOCUS_HOSTED_AGGREGATE_HISTORY_BYTES = 4 * 1_024 * 1_024;
+/** Recovery IDs are admitted by UTF-8 bytes; preaccept uses their maximum JSON expansion. */
+const MAX_RECOVERY_REQUEST_ID_BYTES = 1_024;
+const WORST_CASE_RECOVERY_ID = "\u0000".repeat(MAX_RECOVERY_REQUEST_ID_BYTES);
 
 type HostedCursor = Readonly<{
   incarnationId: string;
@@ -156,6 +160,7 @@ export type LocusHostedAggregateSocketOptions<
   authorizeProjection?: LocusProjectionAuthorizer;
   actions?: Readonly<Record<string, LocusHostedAggregateAction>>;
   gate?: (input: LocusHostedAggregateGateInput) => void | Promise<void>;
+  prepareGate?: (input: LocusHostedAggregateGateInput) => void;
   maxWireBytes?: number;
   maxHistoryBytes?: number;
   authorizeAction?: LocusActionAuthorizer<TActions>;
@@ -248,31 +253,60 @@ export function create_locus_hosted_aggregate_socket_internal<
   let retainedBytes = 0;
   const history: HostedHistoryEntry[] = [];
   const connections = new Set<HostedConnection>();
-  const preparedLiveEvents = new WeakMap<object, ReadonlyMap<HostedConnection, LocusLiveProjectedEvent>>();
+  const preparedLiveEvents = new WeakMap<object, ReadonlyMap<string, LocusLiveProjectedEvent>>();
   const preparedSystemRoots = new WeakMap<object, Readonly<{ before?: HsonNode; after?: HsonNode }>>();
+  let admissionBarrier: Promise<void> | undefined;
+  let releaseAdmissionBarrier: (() => void) | undefined;
   const locus = create_locus_hosted_aggregate_internal({
     map: options.map,
     ...(options.actions === undefined ? {} : { actions: options.actions }),
     ...(options.gate === undefined ? {} : { gate: options.gate }),
+    ...(options.prepareGate === undefined ? {} : { prepareGate: options.prepareGate }),
     beforeAccept({ transition, commit }) {
       const system = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
       const beforeSystem = system === undefined ? undefined : aggregate.systemRoot(system);
       const afterSystem = aggregate.preparedSystemRoot(transition);
-      preparedSystemRoots.set(commit, Object.freeze({
+      const roots = Object.freeze({
         ...(beforeSystem === undefined ? {} : { before: decode_hosted_root(encode_hosted_root(beforeSystem)) }),
         ...(afterSystem === undefined ? {} : { after: decode_hosted_root(encode_hosted_root(afterSystem)) }),
-      }));
-      const events = new Map<HostedConnection, LocusLiveProjectedEvent>();
+      });
+      const envelope: LocusHostedAggregateAuthorityEnvelope = Object.freeze({
+        logicalMapId: initial.authority.logicalMapId,
+        incarnationId: initial.authority.incarnationId,
+        registryDigest: initial.registryDigest,
+        commit,
+      });
+      const historyDecision = prepare_history(envelope, roots);
+      const events = new Map<string, LocusLiveProjectedEvent>();
+      const roster = [...sessions.resumable_projections()];
       for (const connection of connections) {
-        if (connection.closed || !connection.live || connection.recovering) continue;
-        const effective = connection.effectiveProjection;
-        if (effective === undefined) throw new Error("Live publication has no immutable session projection.");
-        const event = project_locus_live_transition_internal(commit, effective, beforeSystem, afterSystem);
-        encode_downstream_message(projected_live_output(connection, event, effective), maxWireBytes);
-        events.set(connection, event);
+        if (connection.closed || connection.sessionResumable || (!connection.live && !connection.recovering)
+          || connection.sessionId === undefined || connection.effectiveProjection === undefined) continue;
+        roster.push(Object.freeze({ sessionId: connection.sessionId, projection: connection.effectiveProjection }));
       }
+      for (const { sessionId, projection: effective } of roster) {
+        const event = project_locus_live_transition_internal(commit, effective, beforeSystem, afterSystem);
+        const live = projected_output(WORST_CASE_RECOVERY_ID, event, effective);
+        encode_downstream_message(live, maxWireBytes);
+        encode_downstream_message(live.type === "progress"
+          ? Object.freeze({ type: "recovery-progress", id: WORST_CASE_RECOVERY_ID, phase: "tail", progress: live.progress })
+          : Object.freeze({ type: "recovery-commit", id: WORST_CASE_RECOVERY_ID, phase: "tail", commit: live.commit }), maxWireBytes);
+        events.set(sessionId, event);
+      }
+      preparedSystemRoots.set(commit, roots);
       preparedLiveEvents.set(commit, events);
+      admissionBarrier = new Promise<void>((resolve) => { releaseAdmissionBarrier = resolve; });
+      return Object.freeze({
+        install: () => install_history(historyDecision),
+        release: () => {
+          releaseAdmissionBarrier?.();
+          releaseAdmissionBarrier = undefined;
+          admissionBarrier = undefined;
+        },
+      });
     },
+    onFault: () => fault_authority(),
+    uncertainGateFailure: (cause) => cause instanceof LocusPersistenceError && cause.code === "LOCUS_PERSISTENCE_APPEND_UNCERTAIN",
     maxWireBytes,
   });
   let seq = 0;
@@ -307,14 +341,14 @@ export function create_locus_hosted_aggregate_socket_internal<
       registryDigest: locus.registryDigest,
       commit,
     });
-    append_history(envelope, preparedSystemRoots.get(commit));
     const events = preparedLiveEvents.get(commit);
     for (const connection of [...connections]) {
-      if (connection.closed) continue;
+      if (connection.closed || connection.sessionId === undefined || connection.sessionEpoch === undefined
+        || !sessions.is_active(connection.sessionId, connection.sessionEpoch)) continue;
       if (connection.recovering) connection.pendingLive.push(envelope);
       else if (connection.live && connection.recoveryId !== undefined) {
         const effective = connection.effectiveProjection;
-        const event = events?.get(connection);
+        const event = events?.get(connection.sessionId);
         if (effective === undefined || event === undefined) {
           close_failed_publication(connection);
           continue;
@@ -328,6 +362,10 @@ export function create_locus_hosted_aggregate_socket_internal<
   function projected_live_output(connection: HostedConnection, event: LocusLiveProjectedEvent, effective: LocusEffectiveProjection) {
     const id = connection.recoveryId;
     if (id === undefined) throw new Error("Live publication has no recovery identity.");
+    return projected_output(id, event, effective);
+  }
+
+  function projected_output(id: string, event: LocusLiveProjectedEvent, effective: LocusEffectiveProjection) {
     return event.kind === "progress"
       ? Object.freeze({ type: "progress" as const, id, progress: event.progress })
       : Object.freeze({ type: "commit" as const, id, commit: Object.freeze({
@@ -352,29 +390,53 @@ export function create_locus_hosted_aggregate_socket_internal<
     try { connection.onClose?.(); } catch { /* Transport cleanup is isolated. */ }
   }
 
-  function append_history(envelope: LocusHostedAggregateAuthorityEnvelope, roots?: Readonly<{ before?: HsonNode; after?: HsonNode }>): void {
+  function fault_authority(): void {
+    if (disposed) return;
+    disposed = true;
+    stopWire();
+    for (const connection of [...connections]) close_failed_publication(connection);
+    actionRequests.dispose();
+    sessions.dispose();
+    // Keep LiveMap's management claim. A durable decision may exist beyond
+    // this runtime revision, so the old map must not serve new mutations.
+  }
+
+  function prepare_history(envelope: LocusHostedAggregateAuthorityEnvelope, roots: Readonly<{ before?: HsonNode; after?: HsonNode }>) {
     const commit = envelope.commit;
     const previous = history.length === 0 ? historyBaseRevision : history[history.length - 1]?.envelope.commit.rev;
     if (previous !== commit.prevRev) {
       throw new Error("Hosted aggregate history lost global revision continuity.");
     }
     const bytes = encoded_bytes(envelope) + encoded_bytes(roots ?? {});
-    if (bytes > maxHistoryBytes) {
+    const entry: HostedHistoryEntry = Object.freeze({ envelope,
+      ...(roots?.before === undefined ? {} : { beforeSystem: roots.before }),
+      ...(roots?.after === undefined ? {} : { afterSystem: roots.after }), bytes });
+    let evict = 0;
+    let remaining = retainedBytes + bytes;
+    if (bytes <= maxHistoryBytes) {
+      while (remaining > maxHistoryBytes && evict < history.length) {
+        remaining -= history[evict]!.bytes;
+        evict += 1;
+      }
+    }
+    return Object.freeze({ entry, oversized: bytes > maxHistoryBytes, evict });
+  }
+
+  function install_history(decision: ReturnType<typeof prepare_history>): void {
+    if (decision.oversized) {
       history.length = 0;
       retainedBytes = 0;
-      historyBaseRevision = commit.rev;
+      historyBaseRevision = decision.entry.envelope.commit.rev;
       return;
     }
-    history.push(Object.freeze({ envelope,
-      ...(roots?.before === undefined ? {} : { beforeSystem: roots.before }),
-      ...(roots?.after === undefined ? {} : { afterSystem: roots.after }), bytes }));
-    retainedBytes += bytes;
-    while (retainedBytes > maxHistoryBytes) {
+    for (let index = 0; index < decision.evict; index += 1) {
       const removed = history.shift();
-      if (removed === undefined) break;
+      if (removed === undefined) throw new Error("Prepared history eviction lost its entry.");
       retainedBytes -= removed.bytes;
       historyBaseRevision = removed.envelope.commit.rev;
     }
+    history.push(decision.entry);
+    retainedBytes += decision.entry.bytes;
   }
 
   function send(connection: HostedConnection, message: unknown, _limit = maxWireBytes): void {
@@ -447,6 +509,10 @@ export function create_locus_hosted_aggregate_socket_internal<
   }
 
   async function recover(connection: HostedConnection, request: Extract<HostedRequest, { type: "recover" }>): Promise<void> {
+    if (utf8_bytes(request.id) > MAX_RECOVERY_REQUEST_ID_BYTES || request.id.length === 0) {
+      reject(connection, "LOCUS_PROTOCOL_INVALID", "Hosted recovery request ID exceeds its byte limit.");
+      return;
+    }
     const binding = bind_session(connection, false);
     if (!(binding instanceof Promise ? await binding : binding)) {
       reject(connection, "LOCUS_SESSION_NOT_ATTACHED", "Hosted aggregate recovery requires an active Locus session.", request.id);
@@ -638,7 +704,8 @@ export function create_locus_hosted_aggregate_socket_internal<
       connection.establishing = false;
       return false;
     }
-    const finish = (effectiveProjection: LocusEffectiveProjection): boolean => {
+    const finish = (effectiveProjection: LocusEffectiveProjection): boolean | Promise<boolean> => {
+      if (admissionBarrier !== undefined) return admissionBarrier.then(() => finish(effectiveProjection));
       if (connection.closed || connection.fenced || connection.sessionId !== undefined) {
         connection.establishing = false;
         return false;
@@ -685,7 +752,8 @@ export function create_locus_hosted_aggregate_socket_internal<
       failProjection();
       return;
     }
-    const finish = (effectiveProjection: LocusEffectiveProjection): void => {
+    const finish = (effectiveProjection: LocusEffectiveProjection): void | Promise<void> => {
+      if (admissionBarrier !== undefined) return admissionBarrier.then(() => finish(effectiveProjection));
       if (connection.closed || connection.fenced || connection.sessionId !== undefined) {
         connection.establishing = false;
         return;
@@ -840,6 +908,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     let live = true;
     const attachment = Object.freeze({ fence: () => { live = false; } });
     const effectiveProjection = await normalize_locus_effective_projection(projectionPolicy, { libraries: [] }, connection);
+    if (admissionBarrier !== undefined) await admissionBarrier;
     const created = sessions.create(next_ephemeral_session_id(), false, attachment, () => {}, () => 0, connection, effectiveProjection);
     if (!created.ok) {
       return Object.freeze({
@@ -1278,6 +1347,7 @@ function decode_request(raw: string, maxWireBytes: number): HostedRequest {
     const id = required_string(value.id);
     const logicalMapId = required_string(value.logicalMapId);
     if (id === undefined || logicalMapId === undefined) throw new Error("Hosted recovery request requires non-empty id and logicalMapId.");
+    if (utf8_bytes(id) > MAX_RECOVERY_REQUEST_ID_BYTES) throw new Error("Hosted recovery request ID exceeds its byte limit.");
     if (!hasCursor) return Object.freeze({ type: "recover", id, logicalMapId });
     const incarnationId = required_string(value.incarnationId);
     const registryDigest = required_digest(value.registryDigest);

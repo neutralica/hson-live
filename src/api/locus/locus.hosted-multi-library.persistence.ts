@@ -13,7 +13,7 @@ import {
   type LocusHostedAggregate,
   type LocusHostedAggregateOptions,
 } from "./locus.hosted-multi-library.js";
-import { LocusPersistenceError } from "./locus.persistence.error.js";
+import { LocusPersistenceAppendUncertainError, LocusPersistenceError } from "./locus.persistence.error.js";
 
 export type LocusDurableAggregateSnapshot = Readonly<Omit<HostedClientLibrariesSnapshot, "format"> & {
   format: "hson-livemap-durable-snapshot-v1";
@@ -47,6 +47,9 @@ export type LocusHostedAggregatePersistedCommit = Readonly<{
 /** Internal adapter port; it stores opaque authoritative aggregate records. */
 export interface LocusHostedAggregatePersistenceAdapter {
   load(logicalMapId: string): Promise<LocusHostedAggregatePersistedState | undefined>;
+  /** A resolved append commits exactly this revision once. An ordinary rejection
+   * guarantees no write. Throw LocusPersistenceAppendUncertainError if a write
+   * may have happened; that fences the authority until restoration. */
   appendCommit(record: LocusHostedAggregatePersistedCommit): Promise<void>;
   /** Atomically replace the checkpoint and remove commits through its revision. */
   replaceCheckpoint(record: LocusHostedAggregatePersistedCheckpoint): Promise<void>;
@@ -111,7 +114,7 @@ function invalid_state(cause?: unknown): LocusPersistenceError {
 }
 
 function persistence_failure(
-  code: "LOCUS_PERSISTENCE_APPEND_FAILED" | "LOCUS_PERSISTENCE_CHECKPOINT_FAILED" | "LOCUS_PERSISTENCE_INITIAL_CHECKPOINT_FAILED",
+  code: "LOCUS_PERSISTENCE_APPEND_FAILED" | "LOCUS_PERSISTENCE_APPEND_UNCERTAIN" | "LOCUS_PERSISTENCE_CHECKPOINT_FAILED" | "LOCUS_PERSISTENCE_INITIAL_CHECKPOINT_FAILED",
   message: string,
   cause: unknown,
 ): LocusPersistenceError {
@@ -305,19 +308,34 @@ function set_initial_authority(
 
 function make_durability_gate(
   adapter: LocusHostedAggregatePersistenceAdapter,
-): NonNullable<LocusHostedAggregateOptions["gate"]> {
-  return async ({ commit }) => {
-    if (!commit.changed) return;
-    try {
-      await adapter.appendCommit(hosted_commit(commit));
-    } catch (cause) {
-      throw persistence_failure(
-        "LOCUS_PERSISTENCE_APPEND_FAILED",
-        "Hosted aggregate Locus could not durably append the prepared commit.",
-        cause,
-      );
-    }
-  };
+): Readonly<{
+  prepareGate: NonNullable<LocusHostedAggregateOptions["prepareGate"]>;
+  gate: NonNullable<LocusHostedAggregateOptions["gate"]>;
+}> {
+  const records = new WeakMap<HostedAggregateCommit, LocusHostedAggregatePersistedCommit>();
+  return Object.freeze({
+    prepareGate: ({ commit }) => {
+      if (!commit.changed) return;
+      const record = hosted_commit(commit);
+      JSON.stringify(record);
+      records.set(commit, record);
+    },
+    gate: async ({ commit }) => {
+      if (!commit.changed) return;
+      const record = records.get(commit);
+      if (record === undefined) throw new Error("Prepared durable aggregate record is unavailable.");
+      try {
+        await adapter.appendCommit(record);
+      } catch (cause) {
+        throw persistence_failure(
+          cause instanceof LocusPersistenceAppendUncertainError
+            ? "LOCUS_PERSISTENCE_APPEND_UNCERTAIN" : "LOCUS_PERSISTENCE_APPEND_FAILED",
+          "Hosted aggregate Locus could not durably append the prepared commit.",
+          cause,
+        );
+      }
+    },
+  });
 }
 
 function persistent_view(
@@ -362,9 +380,11 @@ export async function create_persistent_locus_hosted_aggregate_internal(
 ): Promise<PersistentLocusHostedAggregate> {
   set_initial_authority(options.map, options.logicalMapId, options.incarnationId);
   const { persistence, logicalMapId: _logicalMapId, incarnationId: _incarnationId, ...hostedOptions } = options;
+  const durability = make_durability_gate(persistence);
   const locus = create_locus_hosted_aggregate_internal({
     ...hostedOptions,
-    gate: make_durability_gate(persistence),
+    ...durability,
+    uncertainGateFailure: (cause) => cause instanceof LocusPersistenceError && cause.code === "LOCUS_PERSISTENCE_APPEND_UNCERTAIN",
   });
   const snapshot = internal_livemap_aggregate_authority(locus.map).captureHosted();
   try {
@@ -391,10 +411,12 @@ export async function restore_persistent_locus_hosted_aggregate_internal(
 ): Promise<PersistentLocusHostedAggregate> {
   const validated = validate_hosted_aggregate_state(logicalMapId, state);
   const { persistence, ...hostedOptions } = options;
+  const durability = make_durability_gate(persistence);
   const locus = create_locus_hosted_aggregate_internal({
     ...hostedOptions,
     map: validated.map,
-    gate: make_durability_gate(persistence),
+    ...durability,
+    uncertainGateFailure: (cause) => cause instanceof LocusPersistenceError && cause.code === "LOCUS_PERSISTENCE_APPEND_UNCERTAIN",
   });
   const actual = internal_livemap_aggregate_authority(locus.map).captureHosted();
   if (actual.authority.logicalMapId !== validated.checkpoint.logicalMapId

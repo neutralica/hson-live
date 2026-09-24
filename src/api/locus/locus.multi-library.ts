@@ -64,6 +64,7 @@ export function create_multi_library_locus_internal<
   options: LocusMultiLibraryOptions<TMap, TActions>,
   internal: Readonly<{
     gate?: (input: LocusHostedAggregateGateInput) => void | Promise<void>;
+    prepareGate?: (input: LocusHostedAggregateGateInput) => void;
     maxHistoryBytes?: number;
     afterRecoveryCut?: () => void | Promise<void>;
   }> = {},
@@ -124,6 +125,7 @@ export function create_multi_library_locus_internal<
     ...(options.authorizeProjection === undefined ? {} : { authorizeProjection: options.authorizeProjection }),
     ...(Object.keys(actions).length === 0 ? {} : { actions }),
     ...(internal.gate === undefined ? {} : { gate: internal.gate }),
+    ...(internal.prepareGate === undefined ? {} : { prepareGate: internal.prepareGate }),
     ...(internal.maxHistoryBytes === undefined ? {} : { maxHistoryBytes: internal.maxHistoryBytes }),
     ...(options.authorizeAction === undefined ? {} : { authorizeAction: options.authorizeAction }),
     ...(options.sessionId === undefined ? {} : { sessionId: options.sessionId }),

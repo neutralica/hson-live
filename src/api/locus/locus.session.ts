@@ -70,6 +70,8 @@ export type LocusSessionManager = Readonly<{
   release_ephemeral: (sessionId: LocusSessionId, epoch: LocusConnectionEpoch) => boolean;
   is_active: (sessionId: LocusSessionId, epoch: LocusConnectionEpoch) => boolean;
   projection: (sessionId: LocusSessionId) => LocusEffectiveProjection | undefined;
+  /** Immutable projections of all still-resumable sessions at one roster cut. */
+  resumable_projections: () => readonly Readonly<{ sessionId: LocusSessionId; projection: LocusEffectiveProjection }>[];
   debug: () => LocusSessionDiagnostics;
   onChange: (listener: (event: LocusSessionLifecycleEvent) => void) => LocusDisposer;
   dispose: LocusDisposer;
@@ -325,6 +327,16 @@ export function make_locus_session_manager(options: LocusSessionOptions = {}): L
     return record?.state === "attached" || record?.state === "disconnected" ? record.effectiveProjection : undefined;
   }
 
+  function resumable_projections(): readonly Readonly<{ sessionId: LocusSessionId; projection: LocusEffectiveProjection }>[] {
+    const result: Readonly<{ sessionId: LocusSessionId; projection: LocusEffectiveProjection }>[] = [];
+    for (const record of sessions.values()) {
+      if (!record.resumable || (record.state !== "attached" && record.state !== "disconnected")) continue;
+      if (record.effectiveProjection === undefined) continue;
+      result.push(Object.freeze({ sessionId: record.sessionId, projection: record.effectiveProjection }));
+    }
+    return Object.freeze(result);
+  }
+
   function diagnostic(record: SessionRecord): LocusSessionDiagnostic {
     return Object.freeze({
       sessionId: record.sessionId,
@@ -378,5 +390,5 @@ export function make_locus_session_manager(options: LocusSessionOptions = {}): L
     listeners.clear();
   }
 
-  return Object.freeze({ create, reattach, detach, goodbye, revoke, release_ephemeral, is_active, projection, debug, onChange, dispose });
+  return Object.freeze({ create, reattach, detach, goodbye, revoke, release_ephemeral, is_active, projection, resumable_projections, debug, onChange, dispose });
 }
