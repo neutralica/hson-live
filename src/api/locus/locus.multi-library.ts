@@ -22,7 +22,7 @@ import {
 import type { LocusHostedAggregateGateInput } from "./locus.hosted-multi-library.js";
 import { register_locus_libraries_snapshot_authority_internal } from "./locus.libraries-snapshot.js";
 import { cut_hosted_projection } from "../../internal/document-cut.js";
-import { project_authority_snapshot } from "./locus.authority-projection-snapshot.js";
+import { capture_selected_authority_projection_snapshot } from "./locus.authority-projection-snapshot.js";
 import { LocusProjectionUnavailableError } from "./locus.projection.js";
 import { make_locus_hosted_projection_policy } from "./locus.projection.js";
 
@@ -33,13 +33,13 @@ function establish_authority_identity(
 ): void {
   if (logicalMapId === undefined && incarnationId === undefined) return;
   const aggregate = internal_livemap_aggregate_authority(map);
-  const snapshot = aggregate.captureHosted();
-  if (snapshot.revision !== 0) {
+  const position = aggregate.hostedPosition();
+  if (position.revision !== 0) {
     throw new Error("A hosted multi-library Locus identity may be set only before its first transition.");
   }
-  aggregate.restoreHosted(snapshot, Object.freeze({
-    logicalMapId: logicalMapId ?? snapshot.authority.logicalMapId,
-    incarnationId: incarnationId ?? snapshot.authority.incarnationId,
+  aggregate.setInitialHostedAuthority(Object.freeze({
+    logicalMapId: logicalMapId ?? position.authority.logicalMapId,
+    incarnationId: incarnationId ?? position.authority.incarnationId,
   }));
 }
 
@@ -73,8 +73,8 @@ export function create_multi_library_locus_internal<
   run_exclusive: <TResult>(operation: () => TResult | Promise<TResult>) => Promise<TResult>;
 }> {
   const startingAuthority = internal_livemap_aggregate_authority(options.map);
-  const startingSnapshot = startingAuthority.captureHosted();
-  make_locus_hosted_projection_policy(startingAuthority.hostedRegistry(), startingSnapshot.authority,
+  const startingPosition = startingAuthority.hostedPosition();
+  make_locus_hosted_projection_policy(startingAuthority.hostedRegistry(), startingPosition.authority,
     options.exposure, options.defaultProjection, options.authorizeProjection);
   establish_authority_identity(options.map, options.logicalMapId, options.incarnationId);
   const activity = make_locus_activity_controller();
@@ -182,8 +182,7 @@ export function create_multi_library_locus_internal<
       if (disposed || typeof sessionId !== "string" || sessionId.length === 0) throw new LocusProjectionUnavailableError();
       const effective = authority.sessions.projection(sessionId);
       if (effective === undefined) throw new LocusProjectionUnavailableError();
-      const complete = internal_livemap_aggregate_authority(options.map).captureHosted();
-      const projected = project_authority_snapshot(complete, effective);
+      const projected = capture_selected_authority_projection_snapshot(options.map, effective);
       const cut = cut_hosted_projection(projected, document);
       // Synchronous revocation observers can fence a cut while it is built.
       if (authority.sessions.projection(sessionId) !== effective) throw new LocusProjectionUnavailableError();

@@ -71,7 +71,7 @@ function json_utf8_bytes(value: unknown): number {
 function root(value: unknown, schema: HsonSchema, mode: "data-object" | "data-array" | "document"): Root {
   const raw = record(value, ["format", "payload"]);
   if (raw.format !== "hson-exact-value" || typeof raw.payload !== "string") return fail();
-  const decoded = decode_hosted_root(raw);
+  const decoded = decode_hosted_root(raw, HOSTED_MAX_SNAPSHOT_BYTES);
   admit_portable_hson_node(decoded, "authority projection snapshot");
   if (classify_live_root_mode(decoded) !== mode) return fail();
   validate_hson_schema_graph(schema, decoded);
@@ -126,8 +126,8 @@ export function admit_authority_projection_snapshot(input: unknown): AuthorityPr
     if (systemFeatures.length === 1) {
       const state = record(value.system, ["interactions"]);
       const validatedRoot = root(state.interactions, interaction_schema_internal(), "data-object");
-      const projected = project_interaction_state_internal(decode_hosted_root(validatedRoot), includedDocuments);
-      if (encode_hosted_root(projected).payload !== validatedRoot.payload) return fail();
+      const projected = project_interaction_state_internal(decode_hosted_root(validatedRoot, HOSTED_MAX_SNAPSHOT_BYTES), includedDocuments);
+      if (encode_hosted_root(projected, HOSTED_MAX_SNAPSHOT_BYTES).payload !== validatedRoot.payload) return fail();
       system = Object.freeze({ interactions: validatedRoot });
     } else if (value.system !== null) return fail();
     const contract = libraries.map(({ root: _root, ...entry }) => entry);
@@ -189,6 +189,33 @@ export function project_authority_snapshot(
   } catch { return fail(); }
 }
 
+/** Capture the already-authorized subset directly from one synchronous map revision. @internal */
+export function capture_selected_authority_projection_snapshot(
+  map: LiveMapLibraries,
+  effective: LocusEffectiveProjection,
+): AuthorityProjectionSnapshot {
+  try {
+    const selected = internal_livemap_aggregate_authority(map).captureSelectedHosted(
+      effective.libraries.map((entry) => entry.name), effective.hasSystemFeature("interactions"));
+    if (selected.authority.logicalMapId !== effective.authority.logicalMapId
+      || selected.authority.incarnationId !== effective.authority.incarnationId) return fail();
+    const libraries: AuthorityProjectionLibrary[] = effective.libraries.map((contract, index) => {
+      const captured = selected.libraries[index];
+      if (captured?.name !== contract.name) return fail();
+      return Object.freeze({ ...contract, root: captured.root });
+    });
+    const includedDocuments = new Set(libraries.filter((entry) => entry.mode === "document").map((entry) => entry.name));
+    const system = selected.system === null ? null : Object.freeze({ interactions: encode_hosted_root(
+      project_interaction_state_internal(decode_hosted_root(selected.system, HOSTED_MAX_SNAPSHOT_BYTES), includedDocuments),
+      HOSTED_MAX_SNAPSHOT_BYTES) });
+    return admit_authority_projection_snapshot(Object.freeze({ format: AUTHORITY_PROJECTION_SNAPSHOT_FORMAT,
+      authority: selected.authority, revision: selected.revision, projectionDigest: effective.digest,
+      libraries, htmlDocument: effective.htmlDocument ?? null, systemFeatures: effective.systemFeatures,
+      writableDocuments: effective.writableDocuments, system,
+    }));
+  } catch { return fail(); }
+}
+
 /** Capture once, then consume the session's immutable Step 6A scope. @internal */
 export function capture_locus_session_authority_projection_snapshot(
   map: LiveMapLibraries,
@@ -198,7 +225,7 @@ export function capture_locus_session_authority_projection_snapshot(
   try {
     const effective = sessions.projection(sessionId);
     if (effective === undefined) return fail();
-    return project_authority_snapshot(internal_livemap_aggregate_authority(map).captureHosted(), effective);
+    return capture_selected_authority_projection_snapshot(map, effective);
   } catch { return fail(); }
 }
 

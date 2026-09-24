@@ -177,7 +177,7 @@ export function create_locus_hosted_aggregate_internal(
   options: LocusHostedAggregateOptions,
 ): LocusHostedAggregate {
   const aggregate = internal_livemap_aggregate_authority(options.map);
-  const snapshot = aggregate.captureHosted();
+  const snapshot = aggregate.hostedPosition();
   const owner = Object.freeze({});
   const maxWireBytes = valid_wire_bound(options.maxWireBytes);
   const listeners = new Set<(wire: string) => void>();

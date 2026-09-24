@@ -435,7 +435,8 @@ export function assert_hosted_client_snapshot_shape(snapshot: HostedClientLibrar
     || snapshot.libraries.length !== snapshot.registry.libraries.length) {
     throw new HostedAggregateRepresentationError("Hosted client snapshot registry is malformed.");
   }
-  for (const entry of snapshot.libraries) admit_portable_hson_node(decode_hosted_root(entry.root), "hosted client snapshot");
+  for (const entry of snapshot.libraries) admit_portable_hson_node(
+    decode_hosted_root(entry.root, HOSTED_MAX_SNAPSHOT_BYTES), "hosted client snapshot");
   assert_encoded_bound(snapshot, HOSTED_MAX_SNAPSHOT_BYTES, "Hosted client snapshot");
 }
 
@@ -476,17 +477,19 @@ function require_single_projected_operation(payload: string, operationIndex?: nu
   return projected;
 }
 
-export function encode_hosted_root(root: HsonNode): Readonly<{ format: typeof HOSTED_ROOT_FORMAT; payload: string }> {
-  return Object.freeze({ format: HOSTED_ROOT_FORMAT, payload: encode_exact_hson_value(root) });
+export function encode_hosted_root(root: HsonNode, maxPayloadBytes?: number): Readonly<{ format: typeof HOSTED_ROOT_FORMAT; payload: string }> {
+  return Object.freeze({ format: HOSTED_ROOT_FORMAT, payload: encode_exact_hson_value(root,
+    maxPayloadBytes === undefined ? undefined : { maxPayloadBytes }) });
 }
 
-export function decode_hosted_root(input: unknown): HsonNode {
+export function decode_hosted_root(input: unknown, maxPayloadBytes?: number): HsonNode {
   const record = exact_record(input, "Hosted root encoding");
   exact_keys(record, ["format", "payload"], "Hosted root encoding");
   if (record.format !== HOSTED_ROOT_FORMAT || typeof record.payload !== "string") {
     throw new HostedAggregateRepresentationError("Hosted root encoding is malformed.");
   }
-  const root = decode_exact_hson_value(record.payload);
+  const root = decode_exact_hson_value(record.payload,
+    maxPayloadBytes === undefined ? undefined : { maxPayloadBytes });
   if (!is_Node(root)) throw new HostedAggregateRepresentationError("Hosted root encoding does not contain a canonical root.");
   return root;
 }

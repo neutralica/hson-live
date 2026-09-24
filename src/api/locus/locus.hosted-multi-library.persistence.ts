@@ -292,18 +292,18 @@ function set_initial_authority(
 ): void {
   if (logicalMapId === undefined && incarnationId === undefined) return;
   const aggregate = internal_livemap_aggregate_authority(map);
-  const snapshot = aggregate.captureHosted();
-  if (snapshot.revision !== 0) {
+  const position = aggregate.hostedPosition();
+  if (position.revision !== 0) {
     throw new LocusPersistenceError(
       "LOCUS_PERSISTED_STATE_INVALID",
       "A hosted aggregate persistence identity may be set only before its first transition.",
     );
   }
   const authorityOverride = Object.freeze({
-    logicalMapId: logicalMapId ?? snapshot.authority.logicalMapId,
-    incarnationId: incarnationId ?? snapshot.authority.incarnationId,
+    logicalMapId: logicalMapId ?? position.authority.logicalMapId,
+    incarnationId: incarnationId ?? position.authority.incarnationId,
   });
-  aggregate.restoreHosted(snapshot, authorityOverride);
+  aggregate.setInitialHostedAuthority(authorityOverride);
 }
 
 function make_durability_gate(

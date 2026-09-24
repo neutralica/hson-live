@@ -69,6 +69,7 @@ import {
   hosted_client_snapshot_as_local,
   make_hosted_client_snapshot,
   decode_hosted_root,
+  HOSTED_MAX_SNAPSHOT_BYTES,
 } from "./livemap.hosted.js";
 import { node_to_json_value } from "./livemap.editor.js";
 import { make_livemap_array_api } from "./livemap.handle-array.js";
@@ -197,7 +198,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapLibraries
       aggregate.claimManagement(owner);
       try {
         const projection = aggregate.clientProjection();
-        const snapshot = projection === undefined ? aggregate.captureHosted() : undefined;
+        const snapshot = projection === undefined ? aggregate.hostedPosition() : undefined;
         return Object.freeze({
           runManaged: <T>(operation: () => T): T => operation(),
           release: (): void => aggregate.releaseManagement(owner),
@@ -244,7 +245,7 @@ export function make_livemap_client_mirror_from_snapshot_internal(
         || entry.mode !== encoded.mode || entry.schema !== encoded.schema) {
         throw new Error("Client projection Library metadata is malformed.");
       }
-      const root = decode_hosted_root(encoded.root);
+      const root = decode_hosted_root(encoded.root, HOSTED_MAX_SNAPSHOT_BYTES);
       admit_portable_hson_node(root, "Client projection root");
       const schema = HsonSchemaHandle.fromHson(entry.schema);
       if (entry.scope === "hson-internal") {

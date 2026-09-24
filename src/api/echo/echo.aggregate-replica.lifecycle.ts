@@ -12,6 +12,7 @@ import type { EchoReplicaCapability } from "./echo.replica.js";
 export type EchoAggregateReplicaCapability = EchoReplicaCapability<LiveMapLibraries | undefined> & Readonly<{
   attachMap: (map: LiveMapLibraries) => void;
   captureHosted: () => HostedLiveMapLibrariesSnapshot;
+  hostedPosition: () => Readonly<{ authority: HostedAuthorityFence; revision: number; registryDigest: string }>;
   clientProjection: () => Readonly<{ authority: HostedAuthorityFence; registry: HostedRegistry; revision: number; libraries: readonly string[] }> | undefined;
   restoreHosted: (snapshot: HostedClientLibrariesSnapshot) => void;
   replayHosted: (commit: HostedClientCommit, authorityRev?: number) => number;
@@ -59,6 +60,10 @@ export function create_echo_aggregate_replica_capability_internal(
     captureHosted(): HostedLiveMapLibrariesSnapshot {
       if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");
       return internal_livemap_aggregate_authority(map).captureHosted();
+    },
+    hostedPosition() {
+      if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");
+      return internal_livemap_aggregate_authority(map).hostedPosition();
     },
     clientProjection() {
       return map === undefined ? undefined : internal_livemap_aggregate_authority(map).clientProjection();

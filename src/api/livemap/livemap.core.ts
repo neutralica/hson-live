@@ -161,6 +161,7 @@ import {
 } from "./livemap.identity-epoch.js";
 import {
   HOSTED_MAX_ISSUED_QUIDS,
+  HOSTED_MAX_SNAPSHOT_BYTES,
   LIVEMAP_LIBRARIES_SNAPSHOT_FORMAT,
   assert_libraries_snapshot_bound,
   assert_libraries_snapshot_shape,
@@ -2151,7 +2152,7 @@ function make_livemap_core_from_compatibility_root(
       const current = binding.scope === "hson-internal"
         ? systemState?.root
         : require_library(binding.identity as LiveMapLibraryIdentity).root;
-      if (current === undefined || !canonical_graph_equal(current, decode_hosted_root(root.root))) {
+      if (current === undefined || !canonical_graph_equal(current, decode_hosted_root(root.root, HOSTED_MAX_SNAPSHOT_BYTES))) {
         throw new Error("Client projection initial root disagrees with the composed registry.");
       }
       bindings.set(entry.name, binding);
@@ -2221,6 +2222,30 @@ function make_livemap_core_from_compatibility_root(
     });
     assert_libraries_snapshot_bound(snapshot);
     return snapshot;
+  }
+
+  function capture_selected_hosted(names: readonly string[], includeSystem: boolean) {
+    const hosted = require_hosted_state();
+    const revision = mapRevision;
+    const authority = hosted.fence;
+    const libraries = names.map((name) => {
+      const binding = hosted.byName.get(name);
+      if (binding === undefined || binding.scope === "hson-internal") {
+        throw new Error("Selected hosted Library is unavailable.");
+      }
+      const state = require_library(binding.identity as LiveMapLibraryIdentity);
+      return Object.freeze({ name, root: encode_hosted_root(
+        clone_hson_graph_without_quids(state.root), HOSTED_MAX_SNAPSHOT_BYTES) });
+    });
+    const system = includeSystem ? (() => {
+      if (systemState === undefined) throw new Error("Selected hosted system state is unavailable.");
+      return encode_hosted_root(clone_hson_graph_without_quids(systemState.root), HOSTED_MAX_SNAPSHOT_BYTES);
+    })() : null;
+    // The synchronous structural capture admits no policy or application callbacks.
+    if (mapRevision !== revision || hostedFence !== authority) {
+      throw new Error("Selected hosted authority changed during capture.");
+    }
+    return Object.freeze({ authority, revision, libraries: Object.freeze(libraries), system });
   }
 
   function capture_hosted_aggregate(): HostedLiveMapLibrariesSnapshot {
@@ -2483,7 +2508,7 @@ function make_livemap_core_from_compatibility_root(
       }
       const binding = composition.bindings.get(entry.name);
       if (binding === undefined) throw new Error("Client projection snapshot contains an unknown Library.");
-      const root = decode_hosted_root(encoded.root);
+      const root = decode_hosted_root(encoded.root, HOSTED_MAX_SNAPSHOT_BYTES);
       admit_portable_hson_node(root, "Client projection snapshot");
       const prepared = prepare_livemap_root(root);
       if (prepared.mode !== binding.mode) throw new Error("Client projection snapshot root mode is incompatible.");
@@ -2695,6 +2720,30 @@ function make_livemap_core_from_compatibility_root(
     systemTarget: aggregate_system_target,
     configureHostedRegistry: configure_hosted_registry,
     hostedRegistry: () => require_hosted_state().registry,
+    hostedPosition: () => {
+      const hosted = require_hosted_state();
+      return Object.freeze({ authority: hosted.fence, revision: mapRevision, registryDigest: hosted.registry.digest });
+    },
+    setInitialHostedAuthority: (authority) => {
+      transitionController.assertPublicMutationAllowed();
+      const hosted = require_hosted_state();
+      if (mapRevision !== 0 || typeof authority.logicalMapId !== "string" || !authority.logicalMapId
+        || typeof authority.incarnationId !== "string" || !authority.incarnationId) {
+        throw new Error("A hosted authority identity may be set only before its first transition.");
+      }
+      hostedFence = Object.freeze({ ...authority });
+      transitionController.invalidate();
+      const continuity = hosted.fence.logicalMapId === authority.logicalMapId
+        && hosted.fence.incarnationId === authority.incarnationId ? "same-epoch" as const : "new-epoch" as const;
+      const event = Object.freeze({ previousRevision: mapRevision, revision: mapRevision,
+        libraries: Object.freeze(libraryRegistry.all().map((library) => library.identity)),
+        changedLibraries: Object.freeze([]), continuity });
+      enqueuePublication(() => {
+        for (const observer of [...aggregateRestoreObservers]) observer(event);
+        publishAuthorityPosition();
+      });
+    },
+    captureSelectedHosted: capture_selected_hosted,
     configureClientComposition: configure_client_composition,
     clientProjection: () => clientComposition === undefined ? undefined : Object.freeze({
       authority: clientComposition.authority,

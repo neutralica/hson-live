@@ -99,6 +99,13 @@ roots, so hidden interaction changes do not appear in the wire payload.
 When history is insufficient, Locus sends a fresh projected snapshot under the
 same session scope. Echo installs only the authority-projected part of its
 composed map. The local map identity epoch and client-local resources survive.
+Projected bootstrap, fallback, cut, and hosted SSR capture the session's selected
+application roots directly from one authority revision. Excluded roots are not
+encoded for these artifacts. The 64 MiB projected snapshot bound applies to the
+projected artifact itself; an included root may exceed the generic exact codec's
+4 MiB default only while that artifact stays within its bound. Complete server
+capture and persistent checkpoint/compaction still have separate monolithic
+resource limits; large persistent checkpoint support remains future work.
 The successful install advances Echo's authority cursor to the snapshot
 revision; any later tail revisions are projected and processed in order.
 `map.rev` remains the local graph revision and may differ. Generated authority

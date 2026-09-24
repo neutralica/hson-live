@@ -86,7 +86,7 @@ export async function continue_hosted_document_internal(options: Readonly<{
     const snapshot = admit_authority_projection_snapshot(options.authority);
     const aggregate = internal_livemap_aggregate_authority(resolved.aggregate);
     const projection = aggregate.clientProjection();
-    const current = aggregate.captureHosted();
+    const current = aggregate.captureSelectedHosted(snapshot.libraries.map((entry) => entry.name), false);
     const currentLibraries = new Map(current.libraries.map((entry) => [entry.name, entry]));
     const selectedName = continuation_document_library_name(resolved.aggregate, resolved.selected);
     if (projection === undefined

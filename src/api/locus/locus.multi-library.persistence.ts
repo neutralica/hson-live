@@ -37,16 +37,16 @@ function set_initial_authority(
 ): void {
   if (logicalMapId === undefined && incarnationId === undefined) return;
   const aggregate = internal_livemap_aggregate_authority(map);
-  const snapshot = aggregate.captureHosted();
-  if (snapshot.revision !== 0) {
+  const position = aggregate.hostedPosition();
+  if (position.revision !== 0) {
     throw new LocusPersistenceError(
       "LOCUS_PERSISTED_STATE_INVALID",
       "A hosted multi-library persistence identity may be set only before its first transition.",
     );
   }
-  aggregate.restoreHosted(snapshot, Object.freeze({
-    logicalMapId: logicalMapId ?? snapshot.authority.logicalMapId,
-    incarnationId: incarnationId ?? snapshot.authority.incarnationId,
+  aggregate.setInitialHostedAuthority(Object.freeze({
+    logicalMapId: logicalMapId ?? position.authority.logicalMapId,
+    incarnationId: incarnationId ?? position.authority.incarnationId,
   }));
 }
 
@@ -91,7 +91,7 @@ async function persistent_view<
   initialize: boolean,
 ): Promise<PersistentLocusMultiLibrary<TMap, TActions>> {
   const exposureAuthority = internal_livemap_aggregate_authority(options.map);
-  make_locus_hosted_projection_policy(exposureAuthority.hostedRegistry(), exposureAuthority.captureHosted().authority,
+  make_locus_hosted_projection_policy(exposureAuthority.hostedRegistry(), exposureAuthority.hostedPosition().authority,
     options.exposure, options.defaultProjection, options.authorizeProjection);
   if (initialize) {
     set_initial_authority(options.map, options.logicalMapId, options.incarnationId);
@@ -146,7 +146,7 @@ export async function create_persistent_multi_library_locus<
   options: PersistentLocusMultiLibraryOptions<TMap, TActions>,
 ): Promise<PersistentLocusMultiLibrary<TMap, TActions>> {
   const initialAuthority = internal_livemap_aggregate_authority(options.map);
-  const initial = initialAuthority.captureHosted();
+  const initial = initialAuthority.hostedPosition();
   make_locus_hosted_projection_policy(initialAuthority.hostedRegistry(), initial.authority,
     options.exposure, options.defaultProjection, options.authorizeProjection);
   const logicalMapId = options.logicalMapId ?? initial.authority.logicalMapId;

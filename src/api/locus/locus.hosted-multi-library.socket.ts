@@ -231,7 +231,7 @@ export function create_locus_hosted_aggregate_socket_internal<
   );
   const maxHistoryBytes = bounded(options.maxHistoryBytes, DEFAULT_LOCUS_HOSTED_AGGREGATE_HISTORY_BYTES, "history", HOSTED_MAX_SNAPSHOT_BYTES);
   const aggregate = internal_livemap_aggregate_authority(options.map);
-  const initial = aggregate.captureHosted();
+  const initial = aggregate.hostedPosition();
   const registry = aggregate.hostedRegistry();
   const projectionPolicy = make_locus_hosted_projection_policy(registry, initial.authority, options.exposure,
     options.defaultProjection, options.authorizeProjection);

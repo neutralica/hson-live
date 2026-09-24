@@ -144,7 +144,7 @@ function create_multi_library_echo_semantic_client_internal<
   };
   if (map !== undefined) {
     const projection = replica.clientProjection();
-    const snapshot = projection === undefined ? replica.captureHosted() : undefined;
+    const snapshot = projection === undefined ? replica.hostedPosition() : undefined;
     logicalMapId ??= projection?.authority.logicalMapId ?? snapshot?.authority.logicalMapId;
     incarnationId = projection?.authority.incarnationId ?? snapshot?.authority.incarnationId;
     registryDigest = projection?.registry.digest ?? snapshot?.registryDigest;
@@ -257,7 +257,7 @@ function create_multi_library_echo_semantic_client_internal<
         incarnationId = projection.authority.incarnationId;
         registryDigest = projection.registry.digest;
       } else {
-        const snapshot = replica.captureHosted();
+        const snapshot = replica.hostedPosition();
         incarnationId = snapshot.authority.incarnationId;
         registryDigest = snapshot.registryDigest;
       }

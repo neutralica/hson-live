@@ -72,6 +72,17 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   /** Fix public names and exact Schema sources before hosted capture/replay. @internal */
   configureHostedRegistry: (bindings: readonly HostedRegistryBinding[]) => HostedRegistry;
   hostedRegistry: () => HostedRegistry;
+  /** Read the hosted identity and revision without capturing roots. @internal */
+  hostedPosition: () => Readonly<{ authority: import("./livemap.hosted.js").HostedAuthorityFence; revision: number; registryDigest: string }>;
+  /** Set a supplied hosted identity before the first transition without recapturing roots. @internal */
+  setInitialHostedAuthority: (authority: import("./livemap.hosted.js").HostedAuthorityFence) => void;
+  /** Capture only preselected application names and the requested system root. @internal */
+  captureSelectedHosted: (names: readonly string[], includeSystem: boolean) => Readonly<{
+    authority: import("./livemap.hosted.js").HostedAuthorityFence;
+    revision: number;
+    libraries: readonly Readonly<{ name: string; root: Readonly<{ format: "hson-exact-value"; payload: string }> }>[];
+    system: Readonly<{ format: "hson-exact-value"; payload: string }> | null;
+  }>;
   /** Bind a fixed authority-projected subset of this client map. @internal */
   configureClientComposition: (snapshot: import("../../types/livemap.types.js").HostedClientLibrariesSnapshot) => void;
   clientProjection: () => Readonly<{
