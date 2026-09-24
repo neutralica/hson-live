@@ -904,7 +904,8 @@ function with_issue_range(value: HsonSchemaIssue, root: HsonNode, provenance: Hs
   const range = location.scalarValuePath === undefined ? undefined : provenance.range({ kind: "node", path: location.scalarValuePath, role: "value" });
   const fallback = provenance.range({ kind: "node", path: location.wrapperPath, role: "name" })
     ?? provenance.range({ kind: "node", path: location.valuePath, role: "coverage" });
-  return Object.freeze({ ...value, ...((range ?? fallback) === undefined ? {} : { range: range ?? fallback }) });
+  const resolved = range ?? fallback;
+  return Object.freeze({ ...value, ...(resolved === undefined ? {} : { range: resolved }) });
 }
 
 function count_recursive_sccs(graph: VerifiedCanonicalSchemaGraph): number {

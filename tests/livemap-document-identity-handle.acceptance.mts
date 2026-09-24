@@ -1,7 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
-import { element } from "./helpers/reflect-unit6.mts";
+import { element } from "./helpers/mirror-unit6.mts";
 import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
 import type { HsonNode } from "../src/core/types.ts";
 import type { DocumentLiveMap, LiveMapGraphCommit } from "../src/types/livemap.types.ts";

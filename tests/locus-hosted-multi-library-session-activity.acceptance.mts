@@ -2,7 +2,7 @@ import { test_public_exposure } from "./helpers/hosted-exposure.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonLocus, type HsonSchema } from "../src/index.ts";
 import { create_livehost_locus_registry_internal } from "../src/api/livehost/services/livehost.authority-registry.ts";
-import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.hosted-multi-library.socket.ts";
+import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.aggregate.socket.ts";
 import { make_locus_activity_controller } from "../src/api/locus/locus.activity.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
@@ -10,14 +10,14 @@ import { create_test_event_emitter } from "./test-events.mjs";
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <value <number <int true min 0>>>>`;
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
-  id: "locus.hosted-multi-library-session-activity",
+  id: "locus.aggregate-session-activity",
   title: "Hosted multi-library retained session activity",
   category: "Locus",
   runtime: "node",
   tags: Object.freeze(["locus", "livemap", "session", "activity", "eviction"]),
 });
 
-const testEvents = create_test_event_emitter("locus.hosted-multi-library-session-activity");
+const testEvents = create_test_event_emitter("locus.aggregate-session-activity");
 let checks = 0;
 
 async function check(name: string, run: () => void | Promise<void>): Promise<void> {

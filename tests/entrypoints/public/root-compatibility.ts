@@ -1,7 +1,7 @@
 import { Hson, hson, hsonLiveMap, hsonLocus, create_locus, create_echo,
   continue_document, continue_hosted_document, render_document, render_hosted_document,
   encode_ssr_bootstrap, decode_ssr_bootstrap, create_livehost_locus_registry,
-  type Locus, type LocusMultiLibrary, type LiveMapLibraries, type DocumentLiveMap } from "hson-live";
+  type Locus, type LiveMapLibraries, type DocumentLiveMap } from "hson-live";
 import { create_browser_locus_socket, type LocusSocketLike } from "hson-live/locus";
 import { create_node_locus_socket } from "hson-live/locus/node";
 import { start_node_application_host } from "hson-live/livehost/node";
@@ -12,7 +12,7 @@ declare const element: Element;
 declare const socket: LocusSocketLike;
 const registry = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: Hson.schema`<type "document" tag "main" content <repeat <tag "p" content "empty">>>` } });
 const locus = create_locus({ map: registry, exposure: [{ library: "page", exposure: "client-public" }] });
-const checked: LocusMultiLibrary<typeof registry> = locus;
+const checked: Locus<typeof registry> = locus;
 void (0 as unknown as Locus | LiveMapLibraries);
 void [hson, hsonLocus, checked, create_echo, continue_document({ map: documentMap, root: element }),
   continue_hosted_document, render_document({ map: documentMap }), render_hosted_document,

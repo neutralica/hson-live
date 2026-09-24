@@ -270,7 +270,7 @@ button.listen.onClick(() => {
 });
 ```
 
-For broader graph coordination, `hson.reflect` synchronizes a LiveTree runtime with a LiveMap document authority, turning canonical Hson document state into live, interactive, continuously synchronized web content.
+For broader graph coordination, `hson.mirror` synchronizes a LiveTree runtime with a LiveMap document authority, turning canonical Hson document state into live, interactive, continuously synchronized web content.
 
 ---
 
@@ -290,7 +290,7 @@ Applications remain responsible for their own routes, domain topology, authority
 
 The current **LiveHost Node runtime** provides HTTP and WebSocket ingress, Web `Request`/`Response` adaptation, origin and proxy policy, resource limits, heartbeat and backpressure handling, health reporting, graceful shutdown, and optional bounded Locus residency through `create_livehost_locus_registry()`.
 
-Combined with Hson SSR, Echo, Reflect, and LiveTree, a LiveHost application may render useful HTML on the server and continue it in the browser as synchronized, reactive content. Progressive enhancement follows from the same composition rather than requiring a separate client application model.
+Combined with Hson SSR, Echo, Mirror, and LiveTree, a LiveHost application may render useful HTML on the server and continue it in the browser as synchronized, reactive content. Progressive enhancement follows from the same composition rather than requiring a separate client application model.
 
 ---
 

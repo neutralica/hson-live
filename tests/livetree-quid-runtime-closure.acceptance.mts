@@ -16,7 +16,7 @@ import { assign_hson_node_quid, PERSISTED_QUID_ALPHABET, PERSISTED_QUID_LENGTH }
 import type { HsonNode } from "../src/core/types.ts";
 import { set_livemap_document_quid_candidate_source_for_tests } from "../src/api/livemap/livemap.document.registration.ts";
 import type { LifecycleResourceKind } from "../src/api/livetree/managers/lifecycle-registry.ts";
-import { element } from "./helpers/reflect-unit6.mts";
+import { element } from "./helpers/mirror-unit6.mts";
 import { FakeElement } from "./helpers/fake-document.mts";
 
 const Q1 = "000000w01";
@@ -35,7 +35,7 @@ export const HSON_LIVE_TEST_METADATA = Object.freeze({
   title: "LiveTree QUID runtime closure",
   category: "LiveTree",
   runtime: "node-synthetic-dom",
-  tags: Object.freeze(["quid", "runtime", "lifecycle", "Reflect", "externally-discoverable"]),
+  tags: Object.freeze(["quid", "runtime", "lifecycle", "Mirror", "externally-discoverable"]),
 });
 
 const testEvents = create_test_event_emitter("livetree.quid-runtime-closure");

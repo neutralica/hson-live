@@ -1,27 +1,27 @@
 import { test_public_exposure } from "./helpers/hosted-exposure.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
-import { create_multi_library_echo_socket_client_internal } from "../src/api/echo/echo.multi-library.socket.ts";
-import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.hosted-multi-library.protocol.ts";
-import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.hosted-multi-library.socket.ts";
+import { create_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
+import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.aggregate.protocol.ts";
+import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.aggregate.socket.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { project_authority_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
-import type { LocusHostedAggregateDataDraft, LocusHostedAggregateDraft } from "../src/api/locus/locus.hosted-multi-library.ts";
+import type { LocusHostedAggregateDataDraft, LocusHostedAggregateDraft } from "../src/api/locus/locus.aggregate.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <value <number <int true min 0>>>>`;
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
-  id: "locus.hosted-multi-library-recovery-fencing",
+  id: "locus.aggregate-recovery-fencing",
   title: "Hosted multi-library recovery fencing",
   category: "Locus",
   runtime: "node",
   tags: Object.freeze(["locus", "echo", "recovery", "session", "fencing"]),
 });
 
-const testEvents = create_test_event_emitter("locus.hosted-multi-library-recovery-fencing");
+const testEvents = create_test_event_emitter("locus.aggregate-recovery-fencing");
 let checks = 0;
 
 async function check(name: string, run: () => void | Promise<void>): Promise<void> {
@@ -125,7 +125,7 @@ function connect_endpoint(
 ) {
   const pair = socket_pair();
   server.connect(pair.server);
-  const client = create_multi_library_echo_socket_client_internal({
+  const client = create_echo_socket_client_internal({
     socket: pair.client,
     logicalMapId: server.logicalMapId,
     ...(credential === undefined ? {} : { session: { credential } }),
@@ -253,7 +253,7 @@ await check("stale recovery identity cannot settle a replacement recovery on the
   const pair = socket_pair();
   const projected = make_projected_map();
   const mirror = projected.map;
-  const client = create_multi_library_echo_socket_client_internal({ socket: pair.client, map: mirror });
+  const client = create_echo_socket_client_internal({ socket: pair.client, map: mirror });
   client.attachTransport();
   const created = client.session.create();
   const createRequest = pair.clientSent.findLast((message) => message.type === "session-create");
@@ -368,7 +368,7 @@ await check("physical disconnect settles active recovery and a fresh endpoint ca
 await check("replica recovery failure leaves the attached endpoint usable for unrelated actions", async () => {
   const pair = socket_pair();
   const projected = make_projected_map();
-  const client = create_multi_library_echo_socket_client_internal({
+  const client = create_echo_socket_client_internal({
     socket: pair.client,
     map: projected.map,
   });

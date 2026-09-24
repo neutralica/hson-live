@@ -1,7 +1,7 @@
 import type { JsonValue } from "../core/types.js";
 import type { LiveTree } from "../api/livetree/livetree.js";
 import type { LiveMap, LiveMapDisposer, LiveMapPathHandle, LivePath } from "./livemap.types.js";
-import type { CollectionReflectKey } from "./reflect.types.js";
+import type { CollectionMirrorKey } from "./mirror.types.js";
 import type { LiveInspectorError } from "../api/inspect/liveinspect.error.js";
 
 export type LiveInspectorSource = LiveInspectorMapSource | LiveMapPathHandle;
@@ -29,7 +29,7 @@ export type LiveInspectorArrayKeyContext = Readonly<{
 export type LiveInspectorArrayKeyResolver = (
   item: JsonValue,
   context: LiveInspectorArrayKeyContext,
-) => CollectionReflectKey | undefined;
+) => CollectionMirrorKey | undefined;
 
 /** Mutation-free source view supplied to inspector render extensions. */
 export type LiveInspectorReadHandle = Readonly<{
@@ -45,7 +45,7 @@ export type LiveInspectorSemanticContext = Readonly<{
   depth: number;
   role: LiveInspectorBranchRole;
   kind: LiveInspectorValueKind;
-  key: CollectionReflectKey | undefined;
+  key: CollectionMirrorKey | undefined;
   arrayIdentity: LiveInspectorArrayIdentity | undefined;
 }>;
 
@@ -106,7 +106,7 @@ export type LiveInspectorSelection = Readonly<{
   path: LivePath;
   role: LiveInspectorBranchRole;
   kind: LiveInspectorValueKind;
-  key: CollectionReflectKey | undefined;
+  key: CollectionMirrorKey | undefined;
   arrayIdentity: LiveInspectorArrayIdentity | undefined;
   sourceRevision: number;
   viewQuid: string;
@@ -160,7 +160,7 @@ export type LiveInspectorDiagnostics = Readonly<{
 
 export type LiveInspectorMappingSummary = Readonly<{
   path: LivePath;
-  applicationKey: CollectionReflectKey | undefined;
+  applicationKey: CollectionMirrorKey | undefined;
   viewQuid: string;
   kind: LiveInspectorValueKind;
   role: LiveInspectorBranchRole;

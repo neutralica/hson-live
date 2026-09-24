@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonLocus, add_interaction, enable_interactions, encode_ssr_bootstrap,
   decode_ssr_bootstrap, render_hosted_document, render_document, type HsonSchema } from "../src/index.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
-import { create_multi_library_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
-import { create_multi_library_locus_internal } from "../src/api/locus/locus.multi-library.ts";
+import { create_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
+import { create_registry_locus_internal } from "../src/api/locus/locus.registry.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 import { acquire_livemap_document_identity } from "../src/api/livemap/livemap.document.identity-handle.ts";
@@ -147,7 +147,7 @@ const serverSocket: LocusSocketLike = {
 };
 disconnect();
 let stopServer = locus.connect(serverSocket);
-const echoClient = create_multi_library_echo_socket_client_internal({ socket: clientSocket,
+const echoClient = create_echo_socket_client_internal({ socket: clientSocket,
   map: client, session: { credential: created.credential as string } });
 assert.equal(echoClient.lastAppliedRev, cut.revision);
 const firstRecovery = await echoClient.connect();
@@ -191,7 +191,7 @@ assert.equal(local.cut().html, render_document({ map: local }).html);
   let recoveryCuts = 0;
   let mutateTail: (() => Promise<void>) | undefined;
   const fallbackMap = hostile_map();
-  const { locus: fallbackLocus } = create_multi_library_locus_internal({ map: fallbackMap,
+  const { locus: fallbackLocus } = create_registry_locus_internal({ map: fallbackMap,
     exposure: [
       { library: "page", exposure: "client-public" },
       { library: "permittedData", exposure: "client-public" },
@@ -242,7 +242,7 @@ assert.equal(local.cut().html, render_document({ map: local }).html);
     close() {}, onMessage(listener) { toServer.add(listener); return () => { toServer.delete(listener); }; },
     onClose() { return () => {}; } };
   let stopAuthority = fallbackLocus.connect(authoritySocket);
-  const browser = create_multi_library_echo_socket_client_internal({ socket: browserSocket, map: browserMap,
+  const browser = create_echo_socket_client_internal({ socket: browserSocket, map: browserMap,
     session: { credential } });
   assert.equal(browser.lastAppliedRev, ssr.revision);
   assert.equal((await browser.connect()).outcome, "current");
@@ -326,7 +326,7 @@ assert.equal(local.cut().html, render_document({ map: local }).html);
     onMessage(listener) { onePairServer.add(listener); return () => { onePairServer.delete(listener); }; }, onClose() { return () => {}; } };
   stop();
   let stopOne = oneLocus.connect(authoritySocket);
-  const oneEcho = create_multi_library_echo_socket_client_internal({ socket: browserSocket, map: oneBrowser,
+  const oneEcho = create_echo_socket_client_internal({ socket: browserSocket, map: oneBrowser,
     session: { credential } });
   assert.equal((await oneEcho.connect()).outcome, "current");
   await oneLocus.mutate((draft) => { const page = draft.lib("page"); if ("attrs" in page) page.attrs.set({ kind: "path", path: validate_document_path([0]) }, "title", "ONE_LIBRARY_LIVE"); });

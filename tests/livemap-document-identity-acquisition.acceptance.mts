@@ -1,7 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
-import { element } from "./helpers/reflect-unit6.mts";
+import { element } from "./helpers/mirror-unit6.mts";
 import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import {

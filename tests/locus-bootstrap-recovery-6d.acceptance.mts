@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { Hson, add_interaction, enable_interactions, hsonLiveMap, hsonMirror, type HsonSchema, type LiveMapLibraries } from "../src/index.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
-import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.hosted-multi-library.socket.ts";
-import { create_multi_library_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
+import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.aggregate.socket.ts";
+import { create_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { make_echo_document_authority } from "../src/api/echo/echo.document-authority.ts";
-import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.hosted-multi-library.protocol.ts";
+import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.aggregate.protocol.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { acquire_livemap_document_identity } from "../src/api/livemap/livemap.document.identity-handle.ts";
 import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.identity-epoch.ts";
@@ -84,7 +84,7 @@ function data_library(map: LiveMapLibraries | undefined, name: string) {
   await server.mutate((draft) => { const library = draft.lib("PRIVATE_NAME_SENTINEL"); if ("at" in library) library.at(["PRIVATE_SCHEMA_SENTINEL"]).set("PRIVATE_REV_ONE"); });
   const pair = socket_pair();
   let detachServer = server.connect(pair.server);
-  const client = create_multi_library_echo_socket_client_internal({ socket: pair.client, logicalMapId: server.logicalMapId,
+  const client = create_echo_socket_client_internal({ socket: pair.client, logicalMapId: server.logicalMapId,
     localLibraries: { local: { data: { value: "LOCAL_BOOTSTRAP" }, schema: LocalSchema } } });
   const initial = await client.connect();
   assert.equal(initial.outcome, "snapshot");
@@ -141,7 +141,7 @@ function data_library(map: LiveMapLibraries | undefined, name: string) {
   };
   const pair = socket_pair();
   let detachServer = server.connect(pair.server);
-  const client = create_multi_library_echo_socket_client_internal({ socket: pair.client, logicalMapId: server.logicalMapId,
+  const client = create_echo_socket_client_internal({ socket: pair.client, logicalMapId: server.logicalMapId,
     localLibraries: { local: { data: { value: "LOCAL_FALLBACK" }, schema: LocalSchema } } });
   await client.connect();
   const sameMap = client.map;
@@ -184,7 +184,7 @@ function data_library(map: LiveMapLibraries | undefined, name: string) {
   });
   const pair = socket_pair();
   let detachServer = server.connect(pair.server);
-  const client = create_multi_library_echo_socket_client_internal({ socket: pair.client, logicalMapId: server.logicalMapId });
+  const client = create_echo_socket_client_internal({ socket: pair.client, logicalMapId: server.logicalMapId });
   await client.connect();
   assert.equal(client.map, undefined);
   assert.equal(client.lastAppliedRev, 0);
@@ -213,7 +213,7 @@ function data_library(map: LiveMapLibraries | undefined, name: string) {
     defaultProjection: { libraries: [] }, maxHistoryBytes: 1 });
   const pair = socket_pair();
   let detach = server.connect(pair.server);
-  const client = create_multi_library_echo_socket_client_internal({ socket: pair.client, logicalMapId: server.logicalMapId,
+  const client = create_echo_socket_client_internal({ socket: pair.client, logicalMapId: server.logicalMapId,
     localLibraries: { local: { data: { value: "LOCAL_ONLY_INITIAL" }, schema: LocalSchema } } });
   await client.connect();
   const sameMap = client.map;
@@ -269,7 +269,7 @@ function data_library(map: LiveMapLibraries | undefined, name: string) {
   });
   const pair = socket_pair();
   let detachServer = server.connect(pair.server);
-  const client = create_multi_library_echo_socket_client_internal({ socket: pair.client, logicalMapId: server.logicalMapId });
+  const client = create_echo_socket_client_internal({ socket: pair.client, logicalMapId: server.logicalMapId });
   await client.connect();
   client.disconnect();
   detachServer();
@@ -307,7 +307,7 @@ function data_library(map: LiveMapLibraries | undefined, name: string) {
   const { server } = fixture(4_000);
   const pairs = [socket_pair(), socket_pair(), socket_pair()];
   let detach = pairs.map((pair) => server.connect(pair.server));
-  const clients = pairs.map((pair, index) => create_multi_library_echo_socket_client_internal({
+  const clients = pairs.map((pair, index) => create_echo_socket_client_internal({
     socket: pair.client, logicalMapId: server.logicalMapId,
     localLibraries: { local: { data: { value: `LOCAL_${index}` }, schema: LocalSchema } },
   }));
@@ -370,7 +370,7 @@ function data_library(map: LiveMapLibraries | undefined, name: string) {
   });
   const pairs = [socket_pair(), socket_pair(), socket_pair()];
   const detach = pairs.map((pair) => server.connect(pair.server));
-  const clients = pairs.map((pair) => create_multi_library_echo_socket_client_internal({ socket: pair.client,
+  const clients = pairs.map((pair) => create_echo_socket_client_internal({ socket: pair.client,
     logicalMapId: server.logicalMapId }));
   await Promise.all(clients.map((client) => client.connect()));
   const [live, replay, fallback] = clients;
@@ -424,7 +424,7 @@ for (const mode of ["snapshot", "replay"] as const) {
   const { server } = fixture(mode === "snapshot" ? 1 : undefined);
   const pair = socket_pair();
   let detachServer = server.connect(pair.server);
-  const client = create_multi_library_echo_socket_client_internal({ socket: pair.client, logicalMapId: server.logicalMapId,
+  const client = create_echo_socket_client_internal({ socket: pair.client, logicalMapId: server.logicalMapId,
     localLibraries: { local: { data: { value: "LOCAL_UNCHANGED" }, schema: LocalSchema } } });
   await client.connect();
   const sameMap = client.map;
@@ -466,7 +466,7 @@ for (const mode of ["snapshot", "replay"] as const) {
   };
   const pair = socket_pair();
   let detach = server.connect(pair.server);
-  const client = create_multi_library_echo_socket_client_internal({ socket: pair.client, logicalMapId: server.logicalMapId });
+  const client = create_echo_socket_client_internal({ socket: pair.client, logicalMapId: server.logicalMapId });
   await client.connect();
   client.disconnect(); detach();
   await server.mutate((draft) => {
@@ -496,7 +496,7 @@ for (const mode of ["snapshot", "replay"] as const) {
     defaultProjection: { libraries: ["page"] }, authorizeProjection: () => ({ libraries: ["page"] }), maxHistoryBytes: 1 });
   const pair = socket_pair();
   let detach = server.connect(pair.server);
-  const client = create_multi_library_echo_socket_client_internal({ socket: pair.client,
+  const client = create_echo_socket_client_internal({ socket: pair.client,
     logicalMapId: server.logicalMapId,
     localLibraries: { panel: { document: "<aside/>", schema: PanelSchema } } });
   await client.connect();
@@ -579,7 +579,7 @@ for (const mode of ["snapshot", "replay"] as const) {
     defaultProjection: { libraries: ["page"] }, authorizeProjection: () => ({ libraries: ["page"] }) });
   const pair = socket_pair();
   let detach = server.connect(pair.server);
-  const client = create_multi_library_echo_socket_client_internal({ socket: pair.client,
+  const client = create_echo_socket_client_internal({ socket: pair.client,
     logicalMapId: server.logicalMapId,
     localLibraries: { panel: { document: "<aside/>", schema: PanelSchema } } });
   await client.connect();

@@ -1,6 +1,4 @@
-import type { HostedLiveMapLibrariesSnapshot, HostedClientLibrariesSnapshot, LiveMapLibraries } from "../../types/livemap.types.js";
-import type { EchoRecoveryOptions } from "../../types/locus.types.js";
-import { make_livemap_client_mirror_from_snapshot_internal } from "../livemap/livemap.libraries.js";
+import type { HostedLiveMapLibrariesSnapshot } from "../../types/livemap.types.js";
 
 type LibrariesSnapshotAuthority = Readonly<{
   capture: () => HostedLiveMapLibrariesSnapshot;
@@ -25,7 +23,7 @@ export function alias_locus_libraries_snapshot_authority_internal(
   if (authority !== undefined) authorities.set(alias, authority);
 }
 
-/** @internal Nominal runtime recognition for the public multi-library Locus authority. */
+/** @internal Nominal runtime recognition for the public registry Locus authority. */
 export function is_locus_libraries_snapshot_authority_internal(
   value: unknown,
 ): boolean {
@@ -37,23 +35,6 @@ export function capture_locus_libraries_snapshot_internal(
   authority: object,
 ): HostedLiveMapLibrariesSnapshot {
   const capability = authorities.get(authority);
-  if (capability === undefined) throw new TypeError("A hosted Libraries snapshot requires one LocusMultiLibrary authority.");
+  if (capability === undefined) throw new TypeError("A hosted Libraries snapshot requires one Locus authority.");
   return capability.capture();
-}
-
-/** Install one hosted aggregate cut and its existing Echo recovery cursor. */
-export function install_locus_libraries_snapshot(
-  snapshot: HostedClientLibrariesSnapshot,
-): Readonly<{ map: LiveMapLibraries; recovery: EchoRecoveryOptions }> {
-  const map = make_livemap_client_mirror_from_snapshot_internal(snapshot);
-  return Object.freeze({
-    map,
-    recovery: Object.freeze({
-      logicalMapId: snapshot.authority.logicalMapId,
-      cursor: Object.freeze({
-        incarnationId: snapshot.authority.incarnationId,
-        lastAppliedRev: snapshot.revision,
-      }),
-    }),
-  });
 }

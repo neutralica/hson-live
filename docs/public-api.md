@@ -8,7 +8,7 @@ without a Locus, Echo, or LiveHost.
 The package root (`hson-live`) is the normal application and high-level
 composition surface. Import specialist capabilities from the subpath that owns
 them: `/hson` for core graph/value types and authoring, `/transform` for
-conversion, `/livemap`, `/livetree`, `/reflect`, `/echo`, `/locus`, `/ssr`,
+conversion, `/livemap`, `/livetree`, `/mirror`, `/echo`, `/locus`, `/ssr`,
 and `/livehost` for their respective advanced APIs. `/locus/node` and
 `/livehost/node` are Node-specific. Diagnostics are intentionally on
 `/diagnostics` (and its named diagnostics entrypoints), not the root.
@@ -164,33 +164,32 @@ For a fixed Library registry, use `libraries.cut("page")`; if it contains
 exactly one public document Library, `libraries.cut()` infers its name. The
 result includes `document`, selected-document `html`, and `data` for the
 complete Libraries snapshot, including its data Libraries. Data LiveMaps and
-data-only Loci have no `cut()` method. `render_document({ map })` remains the
+data-only local maps have no browser-realizable `cut()` method. `render_document({ map })` remains the
 lower-level functional equivalent and returns the payload as `bootstrap`.
 
-### 8. Hosted SSR — adopt before recovery, then author
+### 8. Hosted SSR — authorized cut and continuation
 
 ```ts
-import { continue_hosted_document } from "hson-live";
+import { encode_ssr_bootstrap, continue_hosted_document } from "hson-live";
 
-const cut = authority.cut();
-// Install this captured bootstrap, create the replica Echo, then:
-const continuation = await continue_hosted_document({ echo, root });
+const cut = authority.cut(sessionId, "page");
+const encoded = encode_ssr_bootstrap(cut.data);
+// Deliver cut.html and encoded in the application-owned response.
+// In the browser, decode the projected bootstrap and compose Echo before continuing.
+const continuation = await continue_hosted_document({ echo, root, authority: decoded.bootstrap });
 await continuation.tree.async.attrs.set("data-ready", "yes");
 continuation.dispose();
 ```
 
-A document Locus has `cut()`; a Libraries Locus has `cut(document?)` with the
-same selection rule as local Libraries. Both return `{ html, data }` (and
-`document` for Libraries). `render_hosted_document({ authority })` remains the
-lower-level functional equivalent with a `bootstrap` field.
-
-The captured cut is installed and the existing DOM is adopted before ordinary
-Echo recovery. Continuation borrows Echo—it does not disconnect or dispose it.
-Its disposer releases its Mirror/interaction arrangements while leaving the
-returned tree and DOM intact. Exact admission makes no writes; later legitimate
-recovery may still change the DOM. AsyncLiveTree completion is not a blanket
-guarantee of successful DOM realization; inspect Mirror health separately.
-Runtime coverage: hosted continuation and SSR acceptance tests.
+`authority.cut(sessionId, document?)` requires an active authorized session.
+The selected document must belong to that session's projection. The cut's
+HTML and `AuthorityProjectionSnapshot` share one authority revision. A cut
+without a document argument uses the session's authorized `htmlDocument`.
+`render_hosted_document({ authority, sessionId })` returns the same kind of
+projected cut as a functional API. The browser composes client-local libraries
+separately. Hosted continuation adopts matching DOM, waits for Echo recovery,
+and exposes `continuation.mirror` for projection health. Its disposer releases
+its Mirror and interaction arrangements without disposing Echo.
 
 ### 9. Canonical interactions — portable intent plus runtime behavior
 

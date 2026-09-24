@@ -21,14 +21,14 @@ const OtherSchema: HsonSchema = Hson.schema`<type "data" content <value <number 
 const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content "empty">`;
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
-  id: "locus.hosted-multi-library-action-pipeline",
+  id: "locus.aggregate-action-pipeline",
   title: "Hosted multi-library action pipeline",
   category: "Locus",
   runtime: "node",
   tags: Object.freeze(["locus", "echo", "livemap", "libraries", "actions"]),
 });
 
-const testEvents = create_test_event_emitter("locus.hosted-multi-library-action-pipeline");
+const testEvents = create_test_event_emitter("locus.aggregate-action-pipeline");
 let checks = 0;
 async function check(name: string, run: () => void | Promise<void>): Promise<void> {
 

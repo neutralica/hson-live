@@ -1,45 +1,19 @@
-// One-map action and transport protocol contracts.
+// Action and session transport contracts for the fixed registry.
 // locus.types.ts
 
 import type {
-  ClassifiedLiveMap,
-  DataLiveMapMode,
-  DocumentLiveMap,
-  LiveMap,
-  LiveMapCoreSchemaApi,
   LiveMapDocumentAttributeValue,
   LiveMapDocumentAttrs,
   LiveMapDocumentContent,
   LiveMapReplacementLineage,
-  LiveMapDocumentCommitTarget,
   LiveMapDocumentRequestTarget,
-  LiveMapGraphOp,
-  LiveMapAnyOp,
-  LiveMapCommit,
-  LiveMapAuthority,
-  LiveMapDocumentApi,
-  LiveMapRootMode,
-  LiveMapPathArrayApi,
-  LiveMapPathHandle,
-  LiveMapPathObjectApi,
-  LiveMapPathValue,
-  LivePath,
-  LiveMapOp,
-  LiveMapStructuralJsonEnvelope,
 } from "./livemap.types.js";
 import type { LiveMapProjectedGraphEnsureQuidOp } from "../api/livemap/livemap.identity.types.js";
 import type { JsonValue } from "../core/types.js";
 import type { HsonData } from "../api/transform/transform.types.js";
 import type { HsonSchema } from "../api/transform/transform.types.js";
 import type {
-  LocusCanonicalCommit,
-  LocusSnapshotCapabilities,
-  LocusSnapshotEncodingSelection,
-  LocusSnapshotEnvelope,
-} from "./locus.representation.types.js";
-import type {
   LocusActionId,
-  LocusActionName,
   LocusActionRequestId,
   LocusActionStatusId,
   LocusConnectionEpoch,
@@ -48,41 +22,13 @@ import type {
   LocusClientId,
   LocusIncarnationId,
   LocusLogicalMapId,
-  LocusRecoveryId,
-  LocusResult,
   LocusSchemaDecoder,
-  LocusSchemaIssue,
   LocusSessionCredential,
   LocusSessionId,
   LocusSessionRequestId,
   LocusSeq,
   LocusValidator,
 } from "./locus.shared.types.js";
-
-export type LocusRecoveryRejection = Readonly<{
-  code: LocusRecoveryRejectCode;
-  message: string;
-  authoritativeRev: number;
-  incarnationId: LocusIncarnationId;
-}>;
-
-export type LocusRecoveryCaughtUp = Readonly<{
-  kind: "caught_up";
-  logicalMapId: LocusLogicalMapId;
-  incarnationId: LocusIncarnationId;
-  throughRev: number;
-}>;
-
-export type LocusRecoverySnapshotReason =
-  | "no_usable_revision"
-  | "incarnation_mismatch"
-  | "history_unavailable";
-
-export type LocusRecoveryRejectCode =
-  | "LOCUS_RECOVERY_INVALID_TARGET"
-  | "LOCUS_RECOVERY_INVALID_REQUEST"
-  | "REVISION_AHEAD_OF_AUTHORITY";
-
 
 /** Wire-safe representation of a data value that may be absent. */
 export type LocusActionPayloads = Readonly<Record<string, JsonValue | undefined>>;
@@ -278,15 +224,6 @@ export type LocusClientActionStatusMessage = Readonly<{
   requestId: LocusActionRequestId;
 }>;
 
-export type LocusClientRecoverMessage = Readonly<{
-  type: "recover";
-  id: LocusRecoveryId;
-  logicalMapId: LocusLogicalMapId;
-  incarnationId?: LocusIncarnationId;
-  lastAppliedRev?: number;
-  snapshotCapabilities?: LocusSnapshotCapabilities;
-}>;
-
 export type LocusClientSessionCreateMessage = Readonly<{
   type: "session-create";
   id: LocusSessionRequestId;
@@ -309,16 +246,9 @@ export type LocusClientMessage<
 > =
   | LocusClientActionMessage<TActions>
   | LocusClientActionStatusMessage
-  | LocusClientRecoverMessage
   | LocusClientSessionCreateMessage
   | LocusClientSessionAttachMessage
   | LocusClientSessionGoodbyeMessage;
-
-export type LocusServerPatchMessage = Readonly<{
-  type: "patch";
-  seq: LocusSeq;
-  ops: readonly LiveMapOp[];
-}>;
 
 export type LocusServerEventMessage = Readonly<{
   type: "event";
@@ -389,72 +319,6 @@ export type LocusServerActionStatusMessage = Readonly<{
   outcome?: LocusActionTerminalOutcome;
 }>;
 
-type LocusServerRecoveryPlanBase = Readonly<{
-  type: "recovery-plan";
-  id: LocusRecoveryId;
-  sessionId: LocusSessionId;
-  logicalMapId: LocusLogicalMapId;
-  incarnationId: LocusIncarnationId;
-  headRev: number;
-  snapshotEncoding?: LocusSnapshotEncodingSelection;
-}>;
-
-export type LocusServerRecoveryPlanMessage =
-  | LocusServerRecoveryPlanBase & Readonly<{ outcome: "current" }>
-  | LocusServerRecoveryPlanBase & Readonly<{ outcome: "replay" }>
-  | LocusServerRecoveryPlanBase & Readonly<{
-    outcome: "snapshot";
-    reason: LocusRecoverySnapshotReason;
-  }>
-  | LocusServerRecoveryPlanBase & Readonly<{
-    outcome: "reject";
-    error: LocusRecoveryRejection;
-  }>;
-
-export type LocusServerRecoveryCommitMessage = Readonly<{
-  type: "recovery-commit";
-  id: LocusRecoveryId;
-  phase: "body" | "tail";
-  commit: import("./locus.representation.types.js").LocusClientCommit;
-}>;
-
-export type LocusServerRecoveryProgressMessage = Readonly<{
-  type: "recovery-progress";
-  id: LocusRecoveryId;
-  phase: "body" | "tail";
-  progress: import("./locus.representation.types.js").LocusClientProgress;
-}>;
-
-export type LocusServerRecoverySnapshotMessage = Readonly<{
-  type: "recovery-snapshot";
-  id: LocusRecoveryId;
-  snapshot: import("./locus.representation.types.js").LocusClientSnapshotEnvelope;
-}>;
-
-export type LocusServerRecoveryCaughtUpMessage = Readonly<{
-  type: "recovery-caught-up";
-  id: LocusRecoveryId;
-  caughtUp: LocusRecoveryCaughtUp;
-}>;
-
-export type LocusServerCanonicalCommitMessage = Readonly<{
-  type: "commit";
-  id: LocusRecoveryId;
-  commit: import("./locus.representation.types.js").LocusClientCommit;
-}>;
-
-export type LocusServerAuthorityProgressMessage = Readonly<{
-  type: "progress";
-  id: LocusRecoveryId;
-  progress: import("./locus.representation.types.js").LocusClientProgress;
-}>;
-
-export type LocusServerRecoveryErrorMessage = Readonly<{
-  type: "recovery-error";
-  id: LocusRecoveryId;
-  error: LocusError;
-}>;
-
 export type LocusSessionRejectCode =
   | "LOCUS_SESSION_CREDENTIAL_MISSING"
   | "LOCUS_SESSION_CREDENTIAL_MALFORMED"
@@ -505,20 +369,11 @@ export type LocusServerSessionEndedMessage = Readonly<{
   epoch: LocusConnectionEpoch;
 }>;
 
-export type LocusServerMessage<TState extends JsonValue | undefined = JsonValue | undefined> =
+export type LocusServerMessage =
   | LocusServerEventMessage
-  | LocusServerPatchMessage
   | LocusServerAckMessage
   | LocusServerErrorMessage
   | LocusServerActionStatusMessage
-  | LocusServerRecoveryPlanMessage
-  | LocusServerRecoveryCommitMessage
-  | LocusServerRecoveryProgressMessage
-  | LocusServerRecoverySnapshotMessage
-  | LocusServerRecoveryCaughtUpMessage
-  | LocusServerCanonicalCommitMessage
-  | LocusServerAuthorityProgressMessage
-  | LocusServerRecoveryErrorMessage
   | LocusServerSessionCreatedMessage
   | LocusServerSessionAttachedMessage
   | LocusServerSessionRejectedMessage

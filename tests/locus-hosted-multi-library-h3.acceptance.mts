@@ -7,17 +7,17 @@ import type { HsonNode } from "../src/core/types.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import type { LiveMapLibraries } from "../src/types/livemap.types.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
-import { encode_hosted_root, make_hosted_client_snapshot } from "../src/api/livemap/livemap.hosted.ts";
+import { encode_hosted_root, make_portable_aggregate_snapshot } from "../src/api/livemap/livemap.hosted.ts";
 import { encode_locus_graph_content, encode_locus_portable_graph_content } from "../src/api/locus/locus.graph-content-codec.ts";
 import {
-  create_multi_library_echo_socket_client_internal,
-} from "../src/api/echo/echo.multi-library.socket.ts";
-import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.hosted-multi-library.socket.ts";
+  create_echo_socket_client_internal,
+} from "../src/api/echo/echo.aggregate-replica.ts";
+import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.aggregate.socket.ts";
 import type {
   LocusHostedAggregateDataDraft,
   LocusHostedAggregateDocumentDraft,
   LocusHostedAggregateDraft,
-} from "../src/api/locus/locus.hosted-multi-library.ts";
+} from "../src/api/locus/locus.aggregate.ts";
 import { install_fake_document } from "./helpers/fake-document.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
@@ -33,14 +33,14 @@ const PageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <
 const QUID = "000008203";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
-  id: "locus.hosted-multi-library-h3",
+  id: "locus.aggregate-h3",
   title: "Hosted multi-library H3",
   category: "Locus",
   runtime: "node",
   tags: Object.freeze(["locus", "livemap", "libraries", "hosted", "h3"]),
 });
 
-const testEvents = create_test_event_emitter("locus.hosted-multi-library-h3");
+const testEvents = create_test_event_emitter("locus.aggregate-h3");
 let checks = 0;
 async function check(name: string, run: () => void | Promise<void>): Promise<void> {
 
@@ -188,7 +188,7 @@ function insert_item(quid?: string) {
 async function attach(server: ReturnType<typeof create_locus_hosted_aggregate_socket_internal>, options: Readonly<{ map?: LiveMapLibraries }> = {}) {
   const pair = socket_pair();
   server.connect(pair.server);
-  const client = create_multi_library_echo_socket_client_internal({
+  const client = create_echo_socket_client_internal({
     socket: pair.client,
     logicalMapId: server.logicalMapId,
     ...options,
@@ -215,14 +215,14 @@ await check("actual socket aggregate bootstrap establishes one projected QUID-fr
   server.dispose();
 });
 
-await check("old aggregate socket discriminator rejects as an ordinary non-current value", async () => {
+await check("retired hosted client socket format rejects", async () => {
   const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(make_map()), map: make_map() });
   const pair = socket_pair();
   server.connect(pair.server);
   pair.before_server_delivery((message) => message.type === "recovery-snapshot"
-    ? { ...message, format: "hson-locus-hosted-aggregate-h3" }
+    ? { ...message, format: "hson-locus-hosted-client-commit-v1" }
     : message);
-  const endpoint = create_multi_library_echo_socket_client_internal({
+  const endpoint = create_echo_socket_client_internal({
     socket: pair.client,
     logicalMapId: server.logicalMapId,
   });
@@ -397,7 +397,7 @@ await check("authority retains local issued-QUID history while client bootstrap 
   await server.mutate((draft) => document(draft, "page").content.remove({ kind: "path", path: validate_document_path([0]) }, 0));
   const attached = await attach(server);
   const mirror = attached.client.map!;
-  const snapshot = make_hosted_client_snapshot(internal_livemap_aggregate_authority(mirror).captureHosted());
+  const snapshot = make_portable_aggregate_snapshot(internal_livemap_aggregate_authority(mirror).captureHosted());
   assert.equal(page_library(mirror).document.byQuid(QUID), undefined);
   assert.equal("identity" in snapshot, false);
   assert.equal(JSON.stringify(snapshot).includes(QUID), false);

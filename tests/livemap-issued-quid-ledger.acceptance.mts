@@ -6,7 +6,7 @@ import { collect_hson_node_quid_claims, PERSISTED_QUID_ALPHABET } from "../src/c
 import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.identity-epoch.ts";
 import { set_livemap_projected_quid_candidate_source_for_tests } from "../src/api/livemap/livemap.projected.identity-handle.ts";
 import { set_livemap_document_quid_candidate_source_for_tests } from "../src/api/livemap/livemap.document.registration.ts";
-import { element } from "./helpers/reflect-unit6.mts";
+import { element } from "./helpers/mirror-unit6.mts";
 import { acquire_document_identity, acquire_projected_identity } from "./helpers/livemap-identity-internal.mts";
 import type { HsonNode } from "../src/core/types.ts";
 

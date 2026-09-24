@@ -242,7 +242,7 @@ if (atomicA.kind === "commit") {
   const priorRev = clientA.rev;
   const priorValue = dataA.snap(["value"]);
   const oldVersion = JSON.parse(JSON.stringify(wire));
-  oldVersion.commit.format = "hson-hosted-client-commit-v1";
+  oldVersion.commit.format = "hson-portable-aggregate-commit-v1";
   assert.throws(() => decode_locus_live_projected_envelope_internal(oldVersion, {
     ...selectedA.authority, registryDigest: atomicA.commit.registryDigest,
   }));

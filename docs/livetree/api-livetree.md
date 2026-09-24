@@ -8,7 +8,7 @@ behavioral model, see `hson-livetree.md`. For stylesheet details, see
 `api-css-manager.md`.
 
 LiveTree is independently usable. Its constructors create or graft a LiveTree
-directly; LiveMap, Reflect, Locus, and LiveHost are optional integrations, not
+directly; LiveMap, Mirror, Locus, and LiveHost are optional integrations, not
 prerequisites. Detached construction and graph mutation work before DOM
 attachment, while DOM reads, events, canvas, and rendered CSS naturally require
 a browser document and an applicable projection.
@@ -147,11 +147,11 @@ and `replace`; flags `set`/`clear`; id `set`/`clear`; classlist `set`, `add`,
 There are no reads or DOM/runtime/listener/binding/creation APIs on this facade.
 
 Standalone settlement follows the completed local LiveTree operation. Local
-Reflect settlement follows the synchronous canonical LiveMap commit. Hosted
+Mirror settlement follows the synchronous canonical LiveMap commit. Hosted
 settlement requires authoritative success and matching Echo logical-map,
-incarnation, and `completionRev` convergence. Reflect and DOM realization are
+incarnation, and `completionRev` convergence. Mirror and DOM realization are
 not part of hosted success. Use `.sync` for projected/runtime reads and inspect
-Reflect health independently. A hosted canonical mutation attempted through
+Mirror health independently. A hosted canonical mutation attempted through
 ordinary LiveTree—including through `.async.sync`—throws synchronously before
 enqueueing any request.
 
@@ -182,7 +182,7 @@ tree.bind
   QUIDs, metadata, mappings, listeners, CSS, disposables, and current bindings.
   It returns `1` for a transition and `0` when already detached.
 - `remove()` requests terminal removal and returns `void`. Standalone and local
-  Reflect authority complete synchronously; hosted Reflect submits the request
+  Mirror authority complete synchronously; hosted Mirror submits the request
   through Echo and removal becomes visible after authoritative acceptance.
   Repeated calls remain safe. Every retained alias eventually reports
   `isDisposed === true`; meaningful APIs throw `LiveTreeDisposedError` with

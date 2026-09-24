@@ -1,20 +1,16 @@
+import type { LocusHostedAggregateSynchronizationRequest, LocusHostedAggregateSynchronizationOutput, LocusHostedAggregateCanonicalPublication } from "../locus/locus.aggregate.transport.internal.js";
 import type {
-  LocusClientRecoverMessage,
   LocusDisposer,
 } from "../../types/locus.types.js";
-import type { LocusDecodedServerMessage } from "../locus/locus.document-snapshot.js";
+import type { LocusServerMessage } from "../../types/locus.types.js";
 
 /** @internal Typed recovery transfer and ordered canonical publication. */
-export type EchoSynchronizationOutput = Extract<LocusDecodedServerMessage, {
-  type: "recovery-plan" | "recovery-commit" | "recovery-progress" | "recovery-snapshot" | "recovery-caught-up" | "recovery-error" | "commit" | "progress";
-}> | Readonly<{
-  type: "synchronization-failure";
-  error: Readonly<{ code?: string; message: string; cause?: unknown }>;
-}>;
+export type EchoSynchronizationOutput = LocusHostedAggregateSynchronizationOutput | LocusHostedAggregateCanonicalPublication;
+export type EchoSynchronizationRequest = LocusHostedAggregateSynchronizationRequest;
 
 /** @internal Ordered downstream synchronization capability. */
 export type EchoSynchronizationCapability<
-  TRequest = LocusClientRecoverMessage,
+  TRequest = EchoSynchronizationRequest,
   TOutput = EchoSynchronizationOutput,
 > = Readonly<{
   /** @internal Semantic attachment identity shared with finite operations. */
@@ -25,7 +21,7 @@ export type EchoSynchronizationCapability<
 
 /** @internal Mutable transport-adapter side of synchronization delivery. */
 export type EchoSynchronizationAdapter<
-  TRequest = LocusClientRecoverMessage,
+  TRequest = EchoSynchronizationRequest,
   TOutput = EchoSynchronizationOutput,
 > = Readonly<{
   capability: EchoSynchronizationCapability<TRequest, TOutput>;
@@ -34,7 +30,7 @@ export type EchoSynchronizationAdapter<
 }>;
 
 export function create_echo_synchronization_adapter_internal<
-  TRequest = LocusClientRecoverMessage,
+  TRequest = EchoSynchronizationRequest,
   TOutput = EchoSynchronizationOutput,
 >(
   begin: (request: TRequest) => void,

@@ -1,3 +1,4 @@
+import type { PortableAggregateSnapshot } from "./livemap.hosted.internal.types.js";
 // core.ts
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
@@ -7,7 +8,7 @@ import { rewrite_interaction_subjects, validate_interaction_subjects } from "../
 import type { HsonSchema } from "../transform/transform.types.js";
 import type { LiveMapSemanticCheckpoint } from "./livemap.internal.js";
 import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
-import type { ClassifiedLiveMap, HostedLiveMapLibrariesSnapshot, HostedClientLibrariesSnapshot, LiveMap, LiveMapAnyOp, LiveMapCommit, LiveMapLibrariesSnapshot, LocalLibrariesContinuationSnapshot, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapDataOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapCaptureOptions, LiveMapApply, LiveMapGraphCommit, LiveMapGraphOp, LiveMapGraphReplaceRootOp, LiveMapRootMode, LiveMapDocumentPath } from "../../types/livemap.types.js";
+import type { ClassifiedLiveMap, HostedLiveMapLibrariesSnapshot, LiveMap, LiveMapAnyOp, LiveMapCommit, LiveMapLibrariesSnapshot, LocalLibrariesContinuationSnapshot, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapDataOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapCaptureOptions, LiveMapApply, LiveMapGraphCommit, LiveMapGraphOp, LiveMapGraphReplaceRootOp, LiveMapRootMode, LiveMapDocumentPath } from "../../types/livemap.types.js";
 import type { LiveMapProjectedGraphEnsureQuidOp } from "./livemap.identity.types.js";
 import { is_ordinary_element_node } from "../../core/node-guards.js";
 import { resolve_document_path } from "./livemap.document.path.js";
@@ -167,17 +168,17 @@ import {
   assert_libraries_snapshot_bound,
   assert_libraries_snapshot_shape,
   assert_hosted_libraries_snapshot_shape,
-  assert_hosted_client_snapshot_shape,
+  assert_portable_aggregate_snapshot_shape,
   decode_hosted_commit,
-  decode_hosted_client_commit,
+  decode_portable_aggregate_commit,
   decode_hosted_root,
   encode_hosted_root,
   hosted_sha256,
   make_hosted_authority_fence,
   make_hosted_commit,
-  make_hosted_client_commit,
-  hosted_client_snapshot_as_local,
-  type HostedClientCommit,
+  make_portable_aggregate_commit,
+  portable_aggregate_snapshot_as_local,
+  type PortableAggregateCommit,
   make_hosted_registry,
   type HostedAggregateCommit,
   type HostedAuthorityFence,
@@ -189,7 +190,6 @@ import {
   livemap_system_target,
   make_livemap_library,
   make_livemap_library_registry,
-  reject_livemap_aggregate_legacy_lowering,
   type LiveMapAggregateCommit,
   type LiveMapAggregateOperation,
   type LiveMapAggregateWrite,
@@ -468,7 +468,7 @@ function make_livemap_core_from_compatibility_root(
     publishExisting: () => void,
   ): void => {
     // Canonical install is already complete here. Location watches publish
-    // first; ordinary observers then run in registration order. Reflection is
+    // first; ordinary observers then run in registration order. Mirror is
     // one such observer, so callbacks before its slot can observe the new
     // canonical revision while that downstream runtime projection is older.
     const documentEvidence = initialMode === "document"
@@ -1135,7 +1135,7 @@ function make_livemap_core_from_compatibility_root(
   let aggregateAcceptedTransitions = 0;
   let aggregateSchemaValidations = 0;
   // Aggregate commits retain the exact selected-document commit that supplied
-  // their graph operation.  Reflection consumes that evidence without ever
+  // their graph operation.  Mirror consumes that evidence without ever
   // inventing a document-local revision stream.
   const documentCommitByAggregate = new WeakMap<
     LiveMapAggregateCommit,
@@ -2129,11 +2129,11 @@ function make_livemap_core_from_compatibility_root(
     return install_hosted_registry([...bindings, ...systemBinding]);
   }
 
-  function configure_client_composition(snapshot: HostedClientLibrariesSnapshot): void {
+  function configure_client_composition(snapshot: PortableAggregateSnapshot): void {
     if (clientComposition !== undefined || clientManagementOwner !== undefined || mapRevision !== 0) {
       throw new Error("Client LiveMap ownership must be fixed before its first transition.");
     }
-    assert_hosted_client_snapshot_shape(snapshot);
+    assert_portable_aggregate_snapshot_shape(snapshot);
     const hosted = require_hosted_state();
     const projected = new Set<LiveMapLibraryIdentity>();
     const bindings = new Map<string, HostedRegistryBinding>();
@@ -2521,7 +2521,7 @@ function make_livemap_core_from_compatibility_root(
     transitionController.invalidate();
     // A hosted recovery snapshot is an atomic replacement boundary, not a
     // fabricated operation commit.  Selected document libraries use this to
-    // deliver their normal in-place snapshot observation to Reflect while
+    // deliver their normal in-place snapshot observation to Mirror while
     // retained data/document handles continue to resolve through the same
     // stable library records above.
     const restored = Object.freeze(libraryRegistry.all().map((library) => library.identity));
@@ -2554,25 +2554,25 @@ function make_livemap_core_from_compatibility_root(
     restore_libraries_aggregate(snapshot, authorityOverride ?? snapshot.authority);
   }
 
-  function restore_client_hosted_aggregate(snapshot: HostedClientLibrariesSnapshot): void {
+  function restore_client_hosted_aggregate(snapshot: PortableAggregateSnapshot): void {
     if (clientComposition !== undefined) {
       restore_client_projection(snapshot);
       return;
     }
-    const portable = hosted_client_snapshot_as_local(snapshot);
-    // Legacy full-registry fallback has no client-local ownership partition.
-    // It replaces Echo's local identity epoch and fences prior subject handles.
+    const portable = portable_aggregate_snapshot_as_local(snapshot);
+    // An internal complete-registry mirror has no client-local partition.
+    // Restoring it starts a fresh local identity epoch and fences prior handles.
     restore_libraries_aggregate(portable, snapshot.authority);
   }
 
-  function restore_client_projection(snapshot: HostedClientLibrariesSnapshot): void {
+  function restore_client_projection(snapshot: PortableAggregateSnapshot): void {
     const composition = clientComposition;
     if (composition === undefined) throw new Error("Client projection is not configured.");
     if (clientManagementOwner === undefined
       || transitionController.managedExecutionOwner() !== clientManagementOwner) {
       throw new Error("Client projection restore requires Echo management.");
     }
-    assert_hosted_client_snapshot_shape(snapshot);
+    assert_portable_aggregate_snapshot_shape(snapshot);
     if (snapshot.authority.logicalMapId !== composition.authority.logicalMapId
       || snapshot.registryDigest !== composition.registry.digest
       || JSON.stringify(snapshot.registry) !== JSON.stringify(composition.registry)) {
@@ -2653,11 +2653,11 @@ function make_livemap_core_from_compatibility_root(
     });
   }
 
-  function replay_portable_hosted_aggregate(input: HostedClientCommit, durable: boolean, authorityRev?: number): LiveMapAggregateCommit | undefined {
+  function replay_portable_hosted_aggregate(input: PortableAggregateCommit, durable: boolean, authorityRev?: number): LiveMapAggregateCommit | undefined {
     if (clientComposition === undefined) transitionController.assertPublicMutationAllowed();
     const hosted = require_hosted_state();
     const composition = clientComposition;
-    const decoded = decode_hosted_client_commit(input,
+    const decoded = decode_portable_aggregate_commit(input,
       composition?.registry ?? hosted.registry,
       composition?.bindings ?? hosted.byName);
     if (input.authority.logicalMapId !== hosted.fence.logicalMapId
@@ -2695,7 +2695,7 @@ function make_livemap_core_from_compatibility_root(
       publishAuthorityPosition();
       return undefined;
     }
-    const localClient = local === undefined ? undefined : make_hosted_client_commit(local);
+    const localClient = local === undefined ? undefined : make_portable_aggregate_commit(local);
     const matchesPortableEffects = localClient !== undefined
       && localClient.format === input.format
       && JSON.stringify(localClient.authority) === JSON.stringify(input.authority)
@@ -2722,13 +2722,13 @@ function make_livemap_core_from_compatibility_root(
     return transitionController.acceptAuthority(transition).commit;
   }
 
-  function replay_client_hosted_aggregate(input: HostedClientCommit, authorityRev?: number): LiveMapAggregateCommit {
+  function replay_client_hosted_aggregate(input: PortableAggregateCommit, authorityRev?: number): LiveMapAggregateCommit {
     const replayed = replay_portable_hosted_aggregate(input, false, authorityRev);
     if (replayed === undefined) throw new Error("Hosted client replay made no authority progress.");
     return replayed;
   }
 
-  function replay_durable_hosted_aggregate(input: HostedClientCommit): void {
+  function replay_durable_hosted_aggregate(input: PortableAggregateCommit): void {
     replay_portable_hosted_aggregate(input, true);
   }
 
@@ -2946,7 +2946,6 @@ function make_livemap_core_from_compatibility_root(
     commitDocumentMutation: commit_aggregate_document_mutation,
     documentCommitFor: (library, commit) => documentCommitByAggregate.get(commit)?.get(library),
     aggregateCommitForDocument: (commit) => aggregateByDocumentCommit.get(commit),
-    lowerForLegacy: reject_livemap_aggregate_legacy_lowering,
     observe: (listener) => {
       aggregateObservers.push(listener);
       return () => {

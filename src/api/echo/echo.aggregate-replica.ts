@@ -15,17 +15,17 @@ import type {
 } from "../../types/locus.types.js";
 import type { EchoMapManagementLease } from "../../internal/echo-map-capability.js";
 import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
-import { make_livemap_client_mirror_from_snapshot_internal } from "../livemap/livemap.libraries.js";
+import { make_livemap_mirror_from_portable_aggregate_internal } from "../livemap/livemap.libraries.js";
 import { decode_locus_live_projected_envelope_internal, type LocusLiveProjectedWireEnvelope } from "../locus/locus.live-projection.js";
 import { admit_authority_projection_snapshot, authority_projection_as_client_composition_internal, bind_client_projection_identity_internal, client_projection_identity_internal } from "../locus/locus.authority-projection-snapshot.js";
-import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../locus/locus.hosted-multi-library.protocol.js";
+import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../locus/locus.aggregate.protocol.js";
 import {
   create_echo_endpoint_connection_internal,
   type EchoEndpointConnection,
 } from "./echo.client.js";
 import type {
   LocusHostedAggregateSynchronizationRequest,
-} from "../locus/locus.hosted-multi-library.transport.internal.js";
+} from "../locus/locus.aggregate.transport.internal.js";
 import {
   create_echo_aggregate_replica_capability_internal,
   type EchoAggregateReplicaCapability,
@@ -40,7 +40,7 @@ type HostedPlanOutcome = "current" | "replay" | "snapshot" | "reject";
 type AggregateSynchronizationOutput = EchoHostedAggregateSynchronizationOutput;
 
 /** @internal */
-export type MultiLibraryEchoSocketClientOptions<TActions extends LocusActionPayloads = LocusActionPayloads> = Readonly<{
+export type EchoSocketClientOptions<TActions extends LocusActionPayloads = LocusActionPayloads> = Readonly<{
   socket: LocusSocketLike;
   /** Required for an unbootstrapped Echo; an existing mirror supplies it. */
   logicalMapId?: string;
@@ -60,13 +60,13 @@ export type MultiLibraryEchoSocketClientOptions<TActions extends LocusActionPayl
 }>;
 
 /** @internal */
-export type MultiLibraryEchoSocketRecovery = Readonly<{
+export type EchoSocketRecovery = Readonly<{
   outcome: Exclude<HostedPlanOutcome, "reject">;
   revision: number;
 }>;
 
 /** @internal */
-export type MultiLibraryEchoSocketClient = Readonly<{
+export type EchoSocketClient = Readonly<{
   /** Undefined until an aggregate bootstrap snapshot has passed every validation check. */
   readonly map: LiveMapLibraries | undefined;
   readonly logicalMapId: string;
@@ -78,11 +78,11 @@ export type MultiLibraryEchoSocketClient = Readonly<{
   readonly replica: EchoAggregateReplicaCapability;
   readonly clientId: string;
   readonly session: EchoSession;
-  /** @internal Legacy orchestration retained for aggregate mechanism proofs. */
-  connect: () => Promise<MultiLibraryEchoSocketRecovery>;
+  /** @internal Direct aggregate socket orchestration for mechanism proofs. */
+  connect: () => Promise<EchoSocketRecovery>;
   attachTransport: () => LocusDisposer;
   disconnect: () => void;
-  recover: () => Promise<MultiLibraryEchoSocketRecovery>;
+  recover: () => Promise<EchoSocketRecovery>;
   action: (name: string, payload?: JsonValue) => Promise<LocusClientActionResult> & Readonly<{ request: EchoActionRequest }>;
   retryAction: (request: EchoActionRequest) => Promise<LocusClientActionResult> & Readonly<{ request: EchoActionRequest }>;
   actionStatus: (requestId: string) => Promise<EchoActionStatusResult>;
@@ -95,11 +95,11 @@ export type MultiLibraryEchoSocketClient = Readonly<{
 }>;
 
 /** @internal Aggregate replica/recovery capability composed with the common endpoint. */
-export function create_multi_library_echo_socket_client_internal<
+export function create_echo_socket_client_internal<
   TActions extends LocusActionPayloads = LocusActionPayloads,
->(options: MultiLibraryEchoSocketClientOptions<TActions>): MultiLibraryEchoSocketClient {
+>(options: EchoSocketClientOptions<TActions>): EchoSocketClient {
   if (options.connection !== undefined) {
-    return create_multi_library_echo_semantic_client_internal(Object.freeze({ ...options, connection: options.connection }), false);
+    return create_registry_echo_semantic_client_internal(Object.freeze({ ...options, connection: options.connection }), false);
   }
   const connection = create_echo_endpoint_connection_internal<TActions>({
     socket: options.socket,
@@ -119,17 +119,17 @@ export function create_multi_library_echo_socket_client_internal<
         : "Hosted aggregate socket closed."),
   }) as EchoEndpointConnection<TActions, LocusHostedAggregateSynchronizationRequest, AggregateSynchronizationOutput>;
   configure_echo_hosted_aggregate_websocket_internal(connection);
-  return create_multi_library_echo_semantic_client_internal(Object.freeze({ ...options, connection }), true);
+  return create_registry_echo_semantic_client_internal(Object.freeze({ ...options, connection }), true);
 }
 
-function create_multi_library_echo_semantic_client_internal<
+function create_registry_echo_semantic_client_internal<
   TActions extends LocusActionPayloads,
 >(
-  options: MultiLibraryEchoSocketClientOptions<TActions> & Readonly<{
+  options: EchoSocketClientOptions<TActions> & Readonly<{
     connection: EchoEndpointConnection<TActions, LocusHostedAggregateSynchronizationRequest, AggregateSynchronizationOutput>;
   }>,
   ownsConnection: boolean,
-): MultiLibraryEchoSocketClient {
+): EchoSocketClient {
   let map = options.map;
   const replica = create_echo_aggregate_replica_capability_internal(map, options.management);
   let logicalMapId = options.logicalMapId;
@@ -163,7 +163,7 @@ function create_multi_library_echo_semantic_client_internal<
     id: string;
     sessionId: string;
     sessionEpoch: number;
-    resolve: (value: MultiLibraryEchoSocketRecovery) => void;
+    resolve: (value: EchoSocketRecovery) => void;
     reject: (reason: Error) => void;
     outcome?: Exclude<HostedPlanOutcome, "reject">;
     projectionDigest?: string;
@@ -241,7 +241,7 @@ function create_multi_library_echo_semantic_client_internal<
     return options.connection.echo.connect();
   }
 
-  function recover_wire(): Promise<MultiLibraryEchoSocketRecovery> {
+  function recover_wire(): Promise<EchoSocketRecovery> {
     if (status === "closed") return Promise.reject(new Error("Hosted aggregate socket Echo is closed."));
     if (!connected) return Promise.reject(new Error("Hosted aggregate recovery requires a connected transport."));
     if (recovery !== undefined) return Promise.reject(new Error("Hosted aggregate recovery is already in progress."));
@@ -268,7 +268,7 @@ function create_multi_library_echo_semantic_client_internal<
     const id = next("recover");
     const recoverySessionId = endpoint.session.sessionId;
     const recoverySessionEpoch = endpoint.session.epoch;
-    return new Promise<MultiLibraryEchoSocketRecovery>((resolve, reject) => {
+    return new Promise<EchoSocketRecovery>((resolve, reject) => {
       recovery = Object.freeze({
         id,
         sessionId: recoverySessionId,
@@ -289,7 +289,7 @@ function create_multi_library_echo_semantic_client_internal<
     });
   }
 
-  async function connect_client(): Promise<MultiLibraryEchoSocketRecovery> {
+  async function connect_client(): Promise<EchoSocketRecovery> {
     attachTransport();
     if (endpoint.session.status !== "attached") {
       if (endpoint.session.credential === undefined) await endpoint.session.create();
@@ -402,7 +402,7 @@ function create_multi_library_echo_semantic_client_internal<
     if (active.registryDigest !== composition.registryDigest) throw new Error("Hosted projected snapshot registry is incompatible.");
     if (map === undefined) {
       if (composition.registry.libraries.length > 0 || Object.keys(options.localLibraries ?? {}).length > 0) {
-        const created = make_livemap_client_mirror_from_snapshot_internal(composition, options.localLibraries ?? {});
+        const created = make_livemap_mirror_from_portable_aggregate_internal(composition, options.localLibraries ?? {});
         replica.attachMap(created);
         map = created;
       }
@@ -435,7 +435,7 @@ function create_multi_library_echo_semantic_client_internal<
     publishAuthorityPosition();
   }
 
-  function apply_progress(progress: import("../locus/locus.hosted-multi-library.transport.internal.js").LocusHostedAggregateProgress, live: boolean): void {
+  function apply_progress(progress: import("../locus/locus.aggregate.transport.internal.js").LocusHostedAggregateProgress, live: boolean): void {
     if (incarnationId === undefined || registryDigest === undefined) {
       throw new Error("Hosted authority progress arrived before aggregate bootstrap.");
     }
@@ -480,8 +480,8 @@ function create_multi_library_echo_semantic_client_internal<
     attachTransport,
     disconnect,
     recover: recover_wire,
-    action: action as MultiLibraryEchoSocketClient["action"],
-    retryAction: retryAction as MultiLibraryEchoSocketClient["retryAction"],
+    action: action as EchoSocketClient["action"],
+    retryAction: retryAction as EchoSocketClient["retryAction"],
     actionStatus,
     wait_until_ready,
     dispose: () => {

@@ -3,7 +3,7 @@ import { scan_hson_node_quids } from "../../core/hson-node-quid.js";
 import { is_Node } from "../../core/node-guards.js";
 import type { HsonNode, Primitive } from "../../core/types.js";
 import type { LiveMapDocumentContent } from "../../types/livemap.types.js";
-import type { LocusEncodedGraphContent } from "../../types/locus.types.js";
+export type LocusEncodedGraphContent = Readonly<{ format: "hson-graph"; payload: string }>;
 import {
   decode_exact_hson_value,
   encode_exact_hson_value,

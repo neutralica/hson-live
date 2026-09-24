@@ -1,4 +1,4 @@
-import type { LocusMultiLibrary, LocusActivity, LocusActivityKind } from "./locus.types.js";
+import type { Locus, LocusActivity, LocusActivityKind } from "./locus.types.js";
 
 type ManagedLocus = Readonly<{
   activity: LocusActivity;
@@ -68,7 +68,7 @@ export type LiveHostLocusRegistryResult<T> =
       }>;
     }>;
 
-export type LiveHostLocusAcquisition<TLocus extends ManagedLocus = LocusMultiLibrary> = Readonly<{
+export type LiveHostLocusAcquisition<TLocus extends ManagedLocus = Locus> = Readonly<{
   locus: TLocus;
   release(): void;
 }>;
@@ -90,7 +90,7 @@ export type LiveHostLocusEvictionResult =
       }>;
     }>;
 
-export type LiveHostLocusRegistryOptions<TLocus extends ManagedLocus = LocusMultiLibrary> = Readonly<{
+export type LiveHostLocusRegistryOptions<TLocus extends ManagedLocus = Locus> = Readonly<{
   maxLoci: number;
   idleMs: number;
   automaticSweep?: boolean;
@@ -99,7 +99,7 @@ export type LiveHostLocusRegistryOptions<TLocus extends ManagedLocus = LocusMult
   dispose?(locus: TLocus): void | Promise<void>;
 }>;
 
-export type LiveHostLocusRegistry<TLocus extends ManagedLocus = LocusMultiLibrary> = Readonly<{
+export type LiveHostLocusRegistry<TLocus extends ManagedLocus = Locus> = Readonly<{
   acquire(key: string): Promise<LiveHostLocusRegistryResult<LiveHostLocusAcquisition<TLocus>>>;
   has(key: string): boolean;
   evict(key: string): Promise<LiveHostLocusEvictionResult>;

@@ -1,3 +1,4 @@
+import type { PortableAggregateSnapshot } from "./livemap.hosted.internal.types.js";
 import { clone_node } from "../../core/clone-node.js";
 import { register_echo_map_capability_internal } from "../../internal/echo-map-capability.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
@@ -8,7 +9,6 @@ import type {
   LiveMapDocumentLibrary,
   LiveMapLibraries,
   HostedLiveMapLibrariesSnapshot,
-  HostedClientLibrariesSnapshot,
   LiveMapLibrariesSnapshot,
   LiveMapLibrariesInput,
   LiveMapLibraryInput,
@@ -65,9 +65,9 @@ import {
   assert_libraries_snapshot_bound,
   assert_libraries_snapshot_shape,
   assert_hosted_libraries_snapshot_shape,
-  assert_hosted_client_snapshot_shape,
-  hosted_client_snapshot_as_local,
-  make_hosted_client_snapshot,
+  assert_portable_aggregate_snapshot_shape,
+  portable_aggregate_snapshot_as_local,
+  make_portable_aggregate_snapshot,
   decode_hosted_root,
   HOSTED_MAX_SNAPSHOT_BYTES,
 } from "./livemap.hosted.js";
@@ -103,7 +103,7 @@ export function is_public_multi_library_livemap(value: unknown): value is object
 export function make_livemap_libraries<const TLibraries extends LiveMapLibrariesInput>(
   inputs: TLibraries,
   systems: readonly InitialSystemState[] = [],
-  clientSnapshot?: HostedClientLibrariesSnapshot,
+  clientSnapshot?: PortableAggregateSnapshot,
 ): LiveMapLibraries<TLibraries> {
   const entries = Object.entries(inputs);
   if (entries.length === 0) throw new Error("LiveMap fromLibraries requires at least one named Library.");
@@ -227,16 +227,16 @@ export function make_livemap_hosted_mirror_from_snapshot_internal(
 ): LiveMapLibraries {
   assert_hosted_libraries_snapshot_shape(snapshot);
   assert_libraries_snapshot_bound(snapshot);
-  return make_livemap_client_mirror_from_snapshot_internal(make_hosted_client_snapshot(snapshot));
+  return make_livemap_mirror_from_portable_aggregate_internal(make_portable_aggregate_snapshot(snapshot));
 }
 
 /** Construct an Echo replica from QUID-free client state and its protocol fence. */
-export function make_livemap_client_mirror_from_snapshot_internal(
-  snapshot: HostedClientLibrariesSnapshot,
+export function make_livemap_mirror_from_portable_aggregate_internal(
+  snapshot: PortableAggregateSnapshot,
   localLibraries?: LiveMapLibrariesInput,
 ): LiveMapLibraries {
   if (localLibraries !== undefined) {
-    assert_hosted_client_snapshot_shape(snapshot);
+    assert_portable_aggregate_snapshot_shape(snapshot);
     const inputs: Record<string, LiveMapLibraryInput> = Object.create(null);
     const systems: InitialSystemState[] = [];
     for (let index = 0; index < snapshot.registry.libraries.length; index += 1) {
@@ -268,7 +268,7 @@ export function make_livemap_client_mirror_from_snapshot_internal(
     }
     return make_livemap_libraries(inputs, systems, snapshot);
   }
-  const local = hosted_client_snapshot_as_local(snapshot);
+  const local = portable_aggregate_snapshot_as_local(snapshot);
   const mirror = make_livemap_mirror_from_snapshot_internal(local);
   internal_livemap_aggregate_authority(mirror).restoreClientHosted(snapshot);
   return mirror;

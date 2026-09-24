@@ -113,11 +113,11 @@ for (const point of ["after-first-link", "after-links", "after-runtime", "after-
 
 {
   const map = documentMap(source());
-  const existing = (await import("../src/api/reflect/reflect.document.ts")).reflect_document(map);
+  const existing = (await import("../src/api/mirror/mirror.document.ts")).reflect_document(map);
   const fixture = mainFixture();
   assert.throws(
     () => continue_document({ map, root: fixture.root as unknown as Element }),
-    (cause) => cause instanceof DocumentContinuationError && cause.phase === "reflect" && cause.cause !== undefined,
+    (cause) => cause instanceof DocumentContinuationError && cause.phase === "mirror" && cause.cause !== undefined,
   );
   assert.equal(get_node_for_el(fixture.root as unknown as Element), undefined);
   existing.dispose();

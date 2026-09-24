@@ -1,4 +1,5 @@
-import type { HostedClientLibrariesSnapshot, HostedLiveMapLibrariesSnapshot } from "../../types/livemap.types.js";
+import type { PortableAggregateSnapshot } from "../livemap/livemap.hosted.internal.types.js";
+import type { HostedLiveMapLibrariesSnapshot } from "../../types/livemap.types.js";
 import type { HsonSchemaData } from "../transform/transform.types.js";
 import type { AuthorityProjectionSnapshot, LocusProjectionSystemFeature } from "../../types/locus.projection.types.js";
 import type { HostedRegistry, HostedRegistryBinding } from "../livemap/livemap.hosted.js";
@@ -230,7 +231,7 @@ export function capture_locus_session_authority_projection_snapshot(
 }
 
 /** Runtime-only adapter for the existing Step 6A.5 ownership machinery. @internal */
-export function authority_projection_as_client_composition_internal(input: AuthorityProjectionSnapshot): HostedClientLibrariesSnapshot {
+export function authority_projection_as_client_composition_internal(input: AuthorityProjectionSnapshot): PortableAggregateSnapshot {
   const snapshot = admit_authority_projection_snapshot(input);
   const entries: HostedRegistryBinding[] = snapshot.libraries.map((entry) => ({ name: entry.name, mode: entry.mode, schema: HsonSchema.fromHson(entry.schema), identity: Object.freeze({}) }));
   const systemSchema = interaction_schema_internal();
@@ -253,6 +254,6 @@ export function authority_projection_as_client_composition_internal(input: Autho
     name: INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME, mode: "data-object", schema: systemSchema.toHson(),
     schemaDigest: hosted_sha256(systemSchema.toHson()), root: snapshot.system.interactions,
   }));
-  return Object.freeze({ format: "hson-livemap-client-snapshot-v1", authority: snapshot.authority,
+  return Object.freeze({ format: "hson-portable-aggregate-snapshot-v1", authority: snapshot.authority,
     revision: snapshot.revision, registry, registryDigest: registry.digest, libraries: Object.freeze(libraries) });
 }

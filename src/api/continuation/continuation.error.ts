@@ -1,4 +1,4 @@
-type DocumentContinuationPhase = "adopt" | "reflect" | "recover" | "interactions";
+type DocumentContinuationPhase = "adopt" | "mirror" | "recover" | "interactions";
 
 /** One failed construction phase; the lower-level failure remains available as `cause`. */
 export class DocumentContinuationError extends Error {

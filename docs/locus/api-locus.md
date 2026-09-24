@@ -1,6 +1,6 @@
 # Locus API
 
-`Locus` governs one fixed application library registry and separate system state. The registry may contain one library or many; its cardinality does not change the hosted protocol. A hosted client obtains an authorized session projection before receiving framework state. There is no sessionless one-map hosted socket.
+`Locus` governs one fixed application library registry and separate system state. The registry may contain one library or many; its cardinality does not change the hosted protocol. A hosted client obtains an authorized session projection before receiving framework state.
 
 ```ts
 import { create_locus } from "hson-live/locus";
@@ -28,7 +28,7 @@ Each encoded chunk is at most 1 MiB. A manifest is at most 16 MiB and describes 
 
 The adapter stores each chunk and candidate manifest durably and exactly before `activateCheckpoint` atomically compares and swaps the active checkpoint identity. It must make `load` observe one active manifest and its ordered durable tail. `appendCommit` retains its revision-fenced, once-only Z1 contract. `pruneCommitsThrough` must verify that the named manifest is active and may then delete only records through its revision. A crash before activation leaves the old checkpoint and tail authoritative. A crash after activation and before pruning leaves redundant covered records, which restore ignores after validating their fence. Later revisions accepted while chunks are written remain in the tail. Orphaned staged chunks have no effect on restore. Storage providers can enumerate their own checkpoint keys and collect chunks absent from the active manifest in bounded batches after activation; cleanup is outside the authority decision.
 
-An activation error is reconciled by reading the exact active checkpoint identity. If that read cannot establish the outcome, Locus closes the authority until reload. Missing or corrupt active chunks fail restore closed. Existing `hson-locus-durable-aggregate-checkpoint-v1` checkpoints remain readable; the next successful checkpoint writes v2 only. Durable tail records remain `hson-locus-durable-aggregate-record-v1` and carry `hson-livemap-durable-commit-v1` semantic transitions. Client projection snapshots, hosted live wire, and SSR formats are unchanged.
+An activation error is reconciled by reading the exact active checkpoint identity. If that read cannot establish the outcome, Locus closes the authority until reload. Missing or corrupt active chunks fail restore closed. Old v1 checkpoints reject as unsupported; new checkpoints write only the current chunked v2 manifest. Durable tail records remain `hson-locus-durable-aggregate-record-v1` and carry `hson-livemap-durable-commit-v1` semantic transitions. Client projection snapshots, hosted live wire, and SSR formats are unchanged.
 
 ## Hosted cut and client state
 

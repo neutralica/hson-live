@@ -1,44 +1,25 @@
-// Shared hosted contracts; legacy solo declarations are internal typing debt.
+// Shared hosted contracts for the fixed library registry.
 // locus.types.ts
 
 import type {
-  ClassifiedLiveMap,
-  DocumentLiveMap,
   LiveMap,
-  LiveMapCoreSchemaApi,
   LiveMapDocumentAttributeValue,
   LiveMapDocumentAttrs,
   LiveMapDocumentContent,
   LiveMapDocumentCommitTarget,
-  LiveMapDocumentRequestTarget,
   LiveMapDataLibraryInput,
   LiveMapGraphOp,
   LiveMapLibraries,
   LiveMapLibrariesInput,
-  LiveMapAnyOp,
-  LiveMapCommit,
   LiveMapAuthority,
-  LiveMapDocumentApi,
-  LiveMapRootMode,
-  LiveMapPathArrayApi,
-  LiveMapPathHandle,
-  LiveMapPathObjectApi,
   LiveMapPathValue,
   LiveMapSetValue,
   LiveMapWriteValue,
   LivePath,
-  LiveMapOp,
-  LiveMapStructuralJsonEnvelope,
 } from "./livemap.types.js";
 import type { LiveMapProjectedGraphEnsureQuidOp } from "../api/livemap/livemap.identity.types.js";
 import type { JsonValue } from "../core/types.js";
 import type { HsonData, SchemaType } from "../api/transform/transform.types.js";
-import type {
-  LocusCanonicalCommit,
-  LocusCanonicalHistoryOptions,
-  LocusCanonicalStream,
-  LocusSnapshotEnvelope,
-} from "./locus.representation.types.js";
 import type {
   LocusActionAuthorizer,
   LocusActionOrigin,
@@ -51,301 +32,46 @@ import type {
   LocusDocumentActionFn,
   LocusDocumentRetryActionFn,
   LocusSchema,
-  LocusServerAckMessage,
-  LocusServerErrorMessage,
   LocusServerEventMessage,
-  LocusServerMessage,
   LocusSessionRejectCode,
-  LocusRecoveryCaughtUp,
-  LocusRecoveryRejectCode,
-  LocusRecoveryRejection,
-  LocusRecoverySnapshotReason,
   LocusSocketLike,
 } from "./locus.protocol.types.js";
 import type { LocusExposureEntry, LocusProjectionAuthorizer, LocusRequestedProjection } from "./locus.projection.types.js";
 import type {
-  LocusActionId,
-  LocusActionName,
   LocusActionRequestId,
-  LocusActionStatusId,
   LocusConnectionEpoch,
   LocusDisposer,
-  LocusError,
   LocusClientId,
   LocusIncarnationId,
   LocusLogicalMapId,
-  LocusRecoveryId,
-  LocusResult,
-  LocusSchemaDecoder,
-  LocusSchemaIssue,
   LocusSessionCredential,
   LocusSessionId,
-  LocusSessionRequestId,
   LocusSeq,
-  LocusValidator,
 } from "./locus.shared.types.js";
 import type { LiveTraceSink } from "./live.trace.types.js";
 
 
-/** Wire-safe representation of a data value that may be absent. */
-export type LocusRecoveryRequest = Readonly<{
-  logicalMapId: LocusLogicalMapId;
-  incarnationId?: LocusIncarnationId;
-  lastAppliedRev?: number;
-}>;
-
-export type LocusRecoveryOptions = Readonly<{
-  maxTailCommits?: number;
-  maxTailBytes?: number;
-}>;
-
-/** Deterministic planning barriers for race-focused tests and diagnostics. */
-export type LocusRecoveryHooks = Readonly<{
-  beforeCut?: () => void;
-  duringSnapshotCapture?: () => void;
-  afterCut?: (headRev: number) => void;
-}>;
-
-export type LocusRecoveryRuntimeErrorCode =
-  | "LOCUS_RECOVERY_TAIL_OVERFLOW"
-  | "LOCUS_RECOVERY_TAIL_GAP"
-  | "LOCUS_RECOVERY_DISPOSED"
-  | "LOCUS_RECOVERY_COMPLETED"
-  | "LOCUS_RECOVERY_SNAPSHOT_FAILED"
-  | "LOCUS_RECOVERY_REPLAY_FAILED"
-  | "LOCUS_RECOVERY_OBSERVER_FAILED"
-  | "LOCUS_RECOVERY_NEGOTIATION_FAILED"
-  | "LOCUS_RECOVERY_PLANNING_FAILED";
-
-export type LocusRecoveryBodyItem =
-  | Readonly<{ kind: "commit"; commit: LocusCanonicalCommit }>
-  | Readonly<{ kind: "snapshot"; snapshot: LocusSnapshotEnvelope }>;
-
-export type LocusRecoveryBodyObserver = (item: LocusRecoveryBodyItem) => void;
-
-export type LocusRecoveryCompletion = Readonly<{
-  caughtUp: LocusRecoveryCaughtUp;
-  tail: readonly LocusCanonicalCommit[];
-}>;
-
-export type LocusRecoveryAttemptState = "active" | "completed" | "disposed" | "aborted";
-
-export type LocusRecoveryAttemptDiagnostics = Readonly<{
-  state: LocusRecoveryAttemptState;
-  outcome: "current" | "replay" | "snapshot";
-  headRev: number;
-  queuedTailCommits: number;
-  queuedTailBytes: number;
-  maxTailCommits: number;
-  maxTailBytes: number;
-  errorCode?: LocusRecoveryRuntimeErrorCode;
-}>;
-
-export type LocusRecoveryAttemptBase = Readonly<{
-  logicalMapId: LocusLogicalMapId;
-  incarnationId: LocusIncarnationId;
-  headRev: number;
-  complete: (observer?: LocusRecoveryBodyObserver) => LocusRecoveryCompletion;
-  dispose: LocusDisposer;
-  debug: () => LocusRecoveryAttemptDiagnostics;
-}>;
-
-export type LocusRecoveryCurrentPlan = LocusRecoveryAttemptBase & Readonly<{
-  outcome: "current";
-  body: readonly [];
-}>;
-
-export type LocusRecoveryReplayPlan = LocusRecoveryAttemptBase & Readonly<{
-  outcome: "replay";
-  body: readonly LocusCanonicalCommit[];
-}>;
-
-export type LocusRecoverySnapshotPlan = LocusRecoveryAttemptBase & Readonly<{
-  outcome: "snapshot";
-  reason: LocusRecoverySnapshotReason;
-  body: LocusSnapshotEnvelope;
-}>;
-
-export type LocusRecoveryRejectPlan = Readonly<{
-  outcome: "reject";
-  error: LocusRecoveryRejection;
-}>;
-
-export type LocusRecoveryPlan =
-  | LocusRecoveryCurrentPlan
-  | LocusRecoveryReplayPlan
-  | LocusRecoverySnapshotPlan
-  | LocusRecoveryRejectPlan;
-
-export type LocusRecoveryPlannerDiagnostics = Readonly<{
-  activeAttemptCount: number;
-  currentPlanCount: number;
-  replayPlanCount: number;
-  snapshotPlanCount: number;
-  rejectPlanCount: number;
-  completedAttemptCount: number;
-  disposedAttemptCount: number;
-  abortedAttemptCount: number;
-  overflowCount: number;
-}>;
-
-export type LocusRecoveryPlanner = Readonly<{
-  plan: (request: LocusRecoveryRequest, hooks?: LocusRecoveryHooks) => LocusRecoveryPlan;
-  debug: () => LocusRecoveryPlannerDiagnostics;
-  dispose: LocusDisposer;
-}>;
-
-export type LocusActionContext<
-  TMap extends LiveMapAuthority = LiveMap<JsonValue | undefined>,
-> = Readonly<{
-  map: LocusReadonlyMap<TMap>;
-  mutate: (
-    mutation: (draft: LocusMutationDraft<TMap>) => LiveMapCommit<LiveMapAnyOp>,
-  ) => Promise<LiveMapCommit<LiveMapAnyOp>>;
-  seq: LocusSeq;
-  origin: LocusActionOrigin;
-  emitEvent: (event: string, payload: JsonValue) => boolean;
-}>;
-
-type LocusDataMutationDraft<TMap extends LiveMapAuthority> = Omit<
-  TMap,
-  "commits" | "debug" | "feed" | "replay" | "restore" | "schema" | "sub"
->;
-
-type LocusDocumentMutationDraft<TMap extends DocumentLiveMap> = Omit<
-  TMap,
-  "commits" | "debug" | "replay" | "restore"
->;
-
-/** Ephemeral mutation surface used only inside Locus-owned staged callbacks. */
-export type LocusMutationDraft<TMap extends LiveMapAuthority> =
-  TMap extends DocumentLiveMap ? LocusDocumentMutationDraft<TMap>
-  : LocusDataMutationDraft<TMap>;
-
-type ReadonlyHostedDocumentApi = Readonly<{
-  root: LiveMapDocumentApi["root"];
-  byQuid: LiveMapDocumentApi["byQuid"];
-  content: () => ReturnType<LiveMapDocumentApi["content"]>;
-  attrs: Pick<LiveMapDocumentApi["attrs"], "get" | "has" | "keys" | "must">;
-}>;
-
-type LocusReadonlyPathObjectApi<TValue> = Pick<
-  LiveMapPathObjectApi<TValue>,
-  "is" | "toObject" | "pick" | "omit" | "hasKey" | "getKey" | "keys" | "isEmpty" | "size" | "values" | "entries"
->;
-
-type LocusReadonlyPathArrayApi<TValue> = Pick<
-  LiveMapPathArrayApi<TValue>,
-  "is" | "toArray" | "slice" | "take" | "drop" | "takeLast" | "dropLast" | "length" | "isEmpty" | "at" | "first" | "last" | "includes" | "indexOf"
->;
-
-type LocusReadonlyPathHandle<TValue> = Pick<
-  LiveMapPathHandle<TValue>,
-  "rev" | "path" | "snap" | "feed" | "watch"
-> & Readonly<{
+type LocusDataMutationHandle<TValue> = Readonly<{
   at: <const TPath extends LivePath>(
     path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
-  ) => LocusReadonlyPathHandle<LiveMapPathValue<TValue, TPath>>;
-  array: LocusReadonlyPathArrayApi<TValue>;
-  object: LocusReadonlyPathObjectApi<TValue>;
-}>;
-
-type LocusReadonlyDataMap<TValue, TMap extends LiveMap<TValue>> = Pick<
-  TMap,
-  "mode" | "rev" | "root" | "snap" | "capture" | "commits" | "feed" | "sub"
-> & Readonly<{
-  schema: Pick<LiveMapCoreSchemaApi<TValue>, "get">;
-  at: <const TPath extends LivePath>(
-    path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
-  ) => LocusReadonlyPathHandle<LiveMapPathValue<TValue, TPath>>;
-}>;
-
-/** Read and observation surface exposed by a hosted authority. */
-export type LocusReadonlyMap<TMap extends LiveMapAuthority> =
-  TMap extends LiveMap<infer TValue>
-    ? LocusReadonlyDataMap<TValue, TMap>
-    : TMap extends DocumentLiveMap
-      ? Pick<TMap, "mode" | "rev" | "root" | "capture" | "commits"> & Readonly<{ document: ReadonlyHostedDocumentApi }>
-      : Pick<TMap, "mode" | "rev" | "root" | "capture" | "commits">;
-
-export type LocusActionHandler<
-  TPayload extends JsonValue | undefined = JsonValue | undefined,
-  TMap extends LiveMapAuthority = LiveMap<JsonValue | undefined>,
-  TActions extends LocusActionPayloads = LocusActionPayloads,
-> = (
-  ctx: LocusActionContext<TMap>,
-  payload: HsonData | undefined,
-  message: LocusClientActionMessage<TActions>,
-) => unknown | void | Promise<unknown | void>;
-
-export type LocusActions<
-  TActions extends LocusActionPayloads = LocusActionPayloads,
-  TMap extends LiveMapAuthority = LiveMap<JsonValue | undefined>,
-> = Readonly<{
-  [TName in keyof TActions & string]: LocusActionHandler<TActions[TName], TMap, TActions>;
-}>;
-
-export type LocusMapValue<TMap extends LiveMapAuthority> =
-  TMap extends LiveMap<infer TValue>
-  ? TValue
-  : TMap extends DocumentLiveMap
-  ? undefined
-  : never;
-
-type LocusSharedOptions<
-  TMap extends LiveMapAuthority,
-  TActions extends LocusActionPayloads,
-> = Readonly<{
-  actions?: Partial<LocusActions<TActions, TMap>>;
-  schema?: LocusSchema<LocusMapValue<TMap>, TActions>;
-  sessionId?: LocusSessionId | (() => LocusSessionId);
-  logicalMapId?: LocusLogicalMapId;
-  incarnationId?: LocusIncarnationId;
-  history?: LocusCanonicalHistoryOptions;
-  recovery?: LocusRecoveryOptions;
-  sessions?: LocusSessionOptions;
-  actionDedupe?: LocusActionDedupeOptions;
-  authorizeAction?: LocusActionAuthorizer<TActions>;
-  trace?: LiveTraceSink;
-}>;
-
-export type DataLocusOptions<
-  TState extends JsonValue | undefined = JsonValue | undefined,
-  TActions extends LocusActionPayloads = LocusActionPayloads,
-> = LocusSharedOptions<LiveMap<TState>, TActions> & Readonly<{
-  state?: TState;
-  map?: never;
-}>;
-
-export type LocusOptions<
-  TMap extends LiveMapAuthority,
-  TActions extends LocusActionPayloads = LocusActionPayloads,
-> = LocusSharedOptions<TMap, TActions> & Readonly<{
-  map: TMap;
-  state?: never;
-}>;
-
-type MultiLibraryDataMutationHandle<TValue> = Readonly<{
-  at: <const TPath extends LivePath>(
-    path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
-  ) => MultiLibraryDataMutationHandle<LiveMapPathValue<TValue, TPath>>;
+  ) => LocusDataMutationHandle<LiveMapPathValue<TValue, TPath>>;
   set: (value: LiveMapSetValue<TValue>) => void;
   replace: (value: LiveMapWriteValue<TValue>) => void;
   delete: () => void;
 }>;
 
-type MultiLibraryDataMutationDraft<TValue> = Readonly<{
+type LocusDataMutationDraft<TValue> = Readonly<{
   at: <const TPath extends LivePath>(
     path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
-  ) => MultiLibraryDataMutationHandle<LiveMapPathValue<TValue, TPath>>;
+  ) => LocusDataMutationHandle<LiveMapPathValue<TValue, TPath>>;
 }>;
 
-type MultiLibraryDataMutationDraftForInput<TInput> =
+type LocusDataMutationDraftForInput<TInput> =
   TInput extends LiveMapDataLibraryInput<infer TSchema>
-    ? MultiLibraryDataMutationDraft<SchemaType<TSchema>>
+    ? LocusDataMutationDraft<SchemaType<TSchema>>
     : never;
 
-type MultiLibraryBroadDataMutationDraft = Readonly<{
+type LocusBroadDataMutationDraft = Readonly<{
   at: (path: LivePath) => Readonly<{
     set: (value: JsonValue) => void;
     replace: (value: JsonValue) => void;
@@ -353,10 +79,10 @@ type MultiLibraryBroadDataMutationDraft = Readonly<{
   }>;
 }>;
 
-type MultiLibraryDocumentGraphMutation = Exclude<LiveMapGraphOp, Readonly<{ op: "ensure-quid" }>>;
+type LocusDocumentGraphMutation = Exclude<LiveMapGraphOp, Readonly<{ op: "ensure-quid" }>>;
 
-type MultiLibraryDocumentMutationDraft = Readonly<{
-  graph: (operation: MultiLibraryDocumentGraphMutation) => void;
+type LocusDocumentMutationDraft = Readonly<{
+  graph: (operation: LocusDocumentGraphMutation) => void;
   attrs: Readonly<{
     set: (target: LiveMapDocumentCommitTarget, name: string, value: LiveMapDocumentAttributeValue) => void;
     drop: (target: LiveMapDocumentCommitTarget, name: string) => void;
@@ -370,53 +96,53 @@ type MultiLibraryDocumentMutationDraft = Readonly<{
   }>;
 }>;
 
-type MultiLibraryMutationDraftForInput<TInput> =
+type LocusMutationDraftForInput<TInput> =
   TInput extends LiveMapDataLibraryInput
-    ? MultiLibraryDataMutationDraftForInput<TInput>
+    ? LocusDataMutationDraftForInput<TInput>
     : TInput extends Readonly<{ document: string | import("../core/types.js").HsonNode }>
-      ? MultiLibraryDocumentMutationDraft
-      : MultiLibraryBroadDataMutationDraft | MultiLibraryDocumentMutationDraft;
+      ? LocusDocumentMutationDraft
+      : LocusBroadDataMutationDraft | LocusDocumentMutationDraft;
 
-/** Inferred only inside a multi-library Locus mutation callback. */
-type MultiLibraryMutationDraft<TLibraries extends LiveMapLibrariesInput> = Readonly<{
+/** Inferred only inside a Locus registry mutation callback. */
+type LocusMutationDraft<TLibraries extends LiveMapLibrariesInput> = Readonly<{
   lib: <TLibrary extends Extract<keyof TLibraries, string>>(
     name: TLibrary,
-  ) => MultiLibraryMutationDraftForInput<TLibraries[TLibrary]>;
+  ) => LocusMutationDraftForInput<TLibraries[TLibrary]>;
 }>;
 
-type MultiLibraryInputs<TMap extends LiveMapLibraries> =
+type LocusInputs<TMap extends LiveMapLibraries> =
   TMap extends LiveMapLibraries<infer TLibraries> ? TLibraries : LiveMapLibrariesInput;
 
-/** Ordinary Locus action context for one fixed multi-library LiveMap. */
-export type LocusMultiLibraryActionContext<
+/** Ordinary Locus action context for one fixed library-registry LiveMap. */
+export type LocusActionContext<
   TMap extends LiveMapLibraries = LiveMapLibraries,
 > = Readonly<{
   map: TMap;
-  mutate: (mutation: (draft: MultiLibraryMutationDraft<MultiLibraryInputs<TMap>>) => void) => Promise<void>;
+  mutate: (mutation: (draft: LocusMutationDraft<LocusInputs<TMap>>) => void) => Promise<void>;
   seq: LocusSeq;
   origin: LocusActionOrigin;
   emitEvent: (event: string, payload: JsonValue) => boolean;
 }>;
 
-export type LocusMultiLibraryActionHandler<
+export type LocusActionHandler<
   TPayload extends JsonValue | undefined = JsonValue | undefined,
   TMap extends LiveMapLibraries = LiveMapLibraries,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = (
-  ctx: LocusMultiLibraryActionContext<TMap>,
+  ctx: LocusActionContext<TMap>,
   payload: HsonData | undefined,
   message: LocusClientActionMessage<TActions>,
 ) => unknown | void | Promise<unknown | void>;
 
-export type LocusMultiLibraryActions<
+export type LocusActions<
   TMap extends LiveMapLibraries = LiveMapLibraries,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = Readonly<{
-  [TName in keyof TActions & string]: LocusMultiLibraryActionHandler<TActions[TName], TMap, TActions>;
+  [TName in keyof TActions & string]: LocusActionHandler<TActions[TName], TMap, TActions>;
 }>;
 
 /** Existing Locus construction options when `map` is a fixed public Library registry. */
-export type LocusMultiLibraryOptions<
+export type LocusOptions<
   TMap extends LiveMapLibraries,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = Readonly<{
@@ -428,7 +154,7 @@ export type LocusMultiLibraryOptions<
   /** Absent authorizer grants no read, system-feature, or built-in write scope. */
   authorizeProjection?: LocusProjectionAuthorizer;
   state?: never;
-  actions?: Partial<LocusMultiLibraryActions<NoInfer<TMap>, TActions>>;
+  actions?: Partial<LocusActions<NoInfer<TMap>, TActions>>;
   logicalMapId?: LocusLogicalMapId;
   incarnationId?: LocusIncarnationId;
   sessionId?: LocusSessionId | (() => LocusSessionId);
@@ -736,28 +462,8 @@ export type Echo<
   recovery: EchoRecovery<TMap>;
 }> : Readonly<{}>);
 
+/** Locus result for the fixed library-registry construction surface. */
 export type Locus<
-  TMap extends LiveMapAuthority = LiveMap<JsonValue | undefined>,
-  TActions extends LocusActionPayloads = LocusActionPayloads,
-> = Readonly<{
-  map: LocusReadonlyMap<TMap>;
-  stream: LocusCanonicalStream<TMap>;
-  activity: LocusActivity;
-  recovery: LocusRecoveryPlanner;
-  sessions: LocusSessionInspector;
-  actionRequests: LocusActionDedupeInspector;
-  seq: LocusSeq;
-  schema?: LocusSchema<LocusMapValue<TMap>, TActions>;
-  mutate: (
-    mutation: (draft: LocusMutationDraft<TMap>) => LiveMapCommit<LiveMapAnyOp>,
-  ) => Promise<LiveMapCommit<LiveMapAnyOp>>;
-  dispatchAction: (message: LocusClientActionMessage<TActions>) => Promise<LocusServerMessage>;
-  connect: (socket: LocusSocketLike, context?: LocusConnectionContext) => LocusConnection;
-  dispose: LocusDisposer;
-}>;
-
-/** Locus result for the normal fixed multi-library construction surface. */
-export type LocusMultiLibrary<
   TMap extends LiveMapLibraries = LiveMapLibraries,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = Readonly<{
@@ -768,10 +474,10 @@ export type LocusMultiLibrary<
   activity: LocusActivity;
   sessions: LocusSessionInspector;
   actionRequests: LocusActionDedupeInspector;
-  mutate: (mutation: (draft: MultiLibraryMutationDraft<MultiLibraryInputs<TMap>>) => void | Promise<void>) => Promise<void>;
+  mutate: (mutation: (draft: LocusMutationDraft<LocusInputs<TMap>>) => void | Promise<void>) => Promise<void>;
   /** Fence and revoke an existing session when its read policy is withdrawn. */
   revokeSession: (sessionId: LocusSessionId) => boolean;
-  dispatchAction: (message: LocusClientActionMessage<TActions>) => Promise<LocusServerMessage<JsonValue | undefined>>;
+  dispatchAction: (message: LocusClientActionMessage<TActions>) => Promise<LocusClientActionResult>;
   connect: (socket: LocusSocketLike, context?: LocusConnectionContext) => LocusConnection;
   dispose: LocusDisposer;
   /** Capture HTML and projected authority state for one already-authorized session. */
@@ -779,7 +485,7 @@ export type LocusMultiLibrary<
 }>;
 
 /** Opaque durable-record port for a fixed hosted Library registry. */
-export interface LocusMultiLibraryPersistenceAdapter {
+export interface LocusPersistenceAdapter {
   load(logicalMapId: LocusLogicalMapId): Promise<unknown | undefined>;
   /** Resolve only after one fenced revision is durable. Ordinary rejection
    * guarantees no write; signal an uncertain write-then-error outcome with
@@ -796,17 +502,17 @@ export interface LocusMultiLibraryPersistenceAdapter {
   pruneCommitsThrough(logicalMapId: string, checkpointId: string, rev: number): Promise<void>;
 }
 
-export type PersistentLocusMultiLibraryOptions<
+export type PersistentLocusOptions<
   TMap extends LiveMapLibraries,
   TActions extends LocusActionPayloads = LocusActionPayloads,
-> = LocusMultiLibraryOptions<TMap, TActions> & Readonly<{
-  persistence: LocusMultiLibraryPersistenceAdapter;
+> = LocusOptions<TMap, TActions> & Readonly<{
+  persistence: LocusPersistenceAdapter;
 }>;
 
-export type PersistentLocusMultiLibrary<
+export type PersistentLocus<
   TMap extends LiveMapLibraries = LiveMapLibraries,
   TActions extends LocusActionPayloads = LocusActionPayloads,
-> = LocusMultiLibrary<TMap, TActions> & Readonly<{
+> = Locus<TMap, TActions> & Readonly<{
   checkpoint: () => Promise<void>;
 }>;
 

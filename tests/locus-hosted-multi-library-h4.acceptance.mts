@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { Hson, hson, hsonLiveMap, enable_interactions, add_interaction, type HsonSchema, type InteractionDescriptor } from "../src/index.ts";
+import { Hson, hsonLiveMap, enable_interactions, add_interaction, type HsonSchema, type InteractionDescriptor } from "../src/index.ts";
 import { validate_document_path } from "../src/api/livemap/index.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import { is_Node } from "../src/core/node-guards.ts";
@@ -8,18 +8,16 @@ import { materialize_projected_value } from "../src/core/projected-value-materia
 import type { LiveMapGraphOp } from "../src/types/livemap.types.ts";
 import { LocusPersistenceError } from "../src/api/locus/locus.persistence.error.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
-import { encode_hosted_root } from "../src/api/livemap/livemap.hosted.ts";
 import {
   create_persistent_locus_hosted_aggregate_internal,
   load_persistent_locus_hosted_aggregate_internal,
   restore_persistent_locus_hosted_aggregate_internal,
-  durable_aggregate_checkpoint,
-} from "../src/api/locus/locus.hosted-multi-library.persistence.ts";
+} from "../src/api/locus/locus.aggregate.persistence.ts";
 import type {
   LocusHostedAggregateDataDraft,
   LocusHostedAggregateDocumentDraft,
   LocusHostedAggregateDraft,
-} from "../src/api/locus/locus.hosted-multi-library.ts";
+} from "../src/api/locus/locus.aggregate.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
 
@@ -35,14 +33,14 @@ const RESTART_DOCUMENT_QUID = "000008305";
 const RESTART_DATA_QUID = "000008306";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
-  id: "locus.hosted-multi-library-h4",
+  id: "locus.aggregate-h4",
   title: "Hosted multi-library H4",
   category: "Locus",
   runtime: "node",
   tags: Object.freeze(["locus", "livemap", "libraries", "hosted", "h4"]),
 });
 
-const testEvents = create_test_event_emitter("locus.hosted-multi-library-h4");
+const testEvents = create_test_event_emitter("locus.aggregate-h4");
 let checks = 0;
 async function check(name: string, run: () => void | Promise<void>): Promise<void> {
 
@@ -185,8 +183,8 @@ await check("append failure and an invalid later library leave the entire aggreg
   const map = make_map();
   const host = await create_persistent_locus_hosted_aggregate_internal({ map, persistence: adapter });
   const before = internal_livemap_aggregate_authority(map).captureHosted();
-  const wires: string[] = [];
-  host.on_wire((wire) => wires.push(wire));
+  const accepted: unknown[] = [];
+  host.on_commit((commit) => accepted.push(commit));
   adapter.failAppend = new Error("durability unavailable");
   await assert.rejects(
     () => host.mutate((draft) => document(draft, "page").graph(insert_item())),
@@ -194,7 +192,7 @@ await check("append failure and an invalid later library leave the entire aggreg
   );
   assert.deepEqual(internal_livemap_aggregate_authority(map).captureHosted(), before);
   assert.equal(adapter.state(host.logicalMapId)?.commits.length, 0);
-  assert.deepEqual(wires, []);
+  assert.deepEqual(accepted, []);
 
   await assert.rejects(
     () => host.mutate((draft) => {
@@ -325,13 +323,11 @@ await check("legacy exact aggregate checkpoint rejects before runtime constructi
   const host = await create_persistent_locus_hosted_aggregate_internal({ map, persistence: adapter, logicalMapId: "h4-legacy" });
   const current = adapter.state("h4-legacy")!;
   const old = structuredClone(current) as any;
-  old.checkpoint = { ...durable_aggregate_checkpoint(internal_livemap_aggregate_authority(map).captureHosted()) };
-  delete old.checkpoint.format;
-  old.checkpoint.snapshot = internal_livemap_aggregate_authority(map).captureHosted();
+  old.checkpoint.format = "hson-locus-durable-aggregate-checkpoint-v1";
   host.dispose();
   await assert.rejects(
     () => restore_persistent_locus_hosted_aggregate_internal("h4-legacy", old, { persistence: adapter }),
-    /unsupported legacy aggregate checkpoint format/i,
+    /invalid/i,
   );
 });
 
@@ -467,13 +463,10 @@ await check("digest and authority mismatches in checkpoint or tail reject before
     (error: unknown) => error instanceof LocusPersistenceError && error.code === "LOCUS_PERSISTED_STATE_INVALID",
   );
 
-  const badSchemaRoot = structuredClone(valid) as any;
-  badSchemaRoot.checkpoint = structuredClone(durable_aggregate_checkpoint(internal_livemap_aggregate_authority(map).captureHosted()));
-  badSchemaRoot.checkpoint.snapshot.libraries[0].root = encode_hosted_root(
-    hson.fromJson({ theme: 1, count: 0 }).toNode(),
-  );
+  const badChunk = structuredClone(valid) as any;
+  badChunk.checkpoint.chunks[0].sha256 = "0".repeat(64);
   await assert.rejects(
-    () => restore_persistent_locus_hosted_aggregate_internal("h4-fences", badSchemaRoot, { persistence: adapter }),
+    () => restore_persistent_locus_hosted_aggregate_internal("h4-fences", badChunk, { persistence: adapter }),
     (error: unknown) => error instanceof LocusPersistenceError && error.code === "LOCUS_PERSISTED_STATE_INVALID",
   );
 

@@ -21,15 +21,15 @@ import type {
   LiveInspectorStatus,
   LiveInspectorValueKind,
 } from "../../types/liveinspect.types.js";
-import type { CollectionReflect, CollectionReflectChange, CollectionReflectKey } from "../../types/reflect.types.js";
+import type { CollectionMirror, CollectionMirrorChange, CollectionMirrorKey } from "../../types/mirror.types.js";
 import { LiveTree } from "../livetree/livetree.js";
 import { serialize_html } from "../transform/serializers/serialize-html.js";
 import { make_detached_livetree_create } from "../livetree/creation/make-detached-livetree.js";
 import { own_disposable_for_subject } from "../livetree/managers/lifecycle-registry.js";
 import { format_live_path, path_is_prefix, paths_overlap, relative_live_path } from "../livemap/livemap.path.js";
 import { internal_livemap_node } from "../livemap/livemap.internal.js";
-import { reflect_collection } from "../reflect/reflect.collection.js";
-import { CollectionReflectError, COLLECTION_REFLECT_DUPLICATE_KEY_ERROR_CODE } from "../reflect/reflect.collection.error.js";
+import { reflect_collection } from "../mirror/mirror.collection.js";
+import { CollectionMirrorError, COLLECTION_MIRROR_DUPLICATE_KEY_ERROR_CODE } from "../mirror/mirror.collection.error.js";
 import { construct_source_1 } from "../transform/constructors/construct-source-1.js";
 import { record_livetree_materialization } from "../livetree/debug/materialization-profile.js";
 import { runtime_for_tree } from "../livetree/runtime/livetree-runtime.js";
@@ -122,13 +122,13 @@ class InspectorController {
   private readonly inspectorRoot: LiveTree;
   private readonly treeRegion: LiveTree;
   private readonly detailRegion: LiveTree;
-  private rootProjection: CollectionReflect<JsonValue>;
+  private rootProjection: CollectionMirror<JsonValue>;
   private rootProjectionOff: (() => void) | undefined;
   private rootBranch: BranchController | undefined;
   private selected: BranchController | undefined;
   private readonly branchesById = new Map<string, BranchController>();
   private readonly branchesByPath = new Map<string, BranchController>();
-  private readonly reflectors = new Set<CollectionReflect<JsonValue>>();
+  private readonly reflectors = new Set<CollectionMirror<JsonValue>>();
   private readonly listeners = new Set<LiveInspectorListener>();
   private readonly initialDepth: number;
   private readonly longStringLimit: number;
@@ -138,7 +138,7 @@ class InspectorController {
   private readonly hsonMode: LiveInspectorHsonMode;
   private readonly specializations: readonly LiveInspectorSpecialization[];
   private readonly renderers: NonNullable<LiveInspectorOptions["renderers"]>;
-  private activeChange: CollectionReflectChange | undefined;
+  private activeChange: CollectionMirrorChange | undefined;
   private currentStatus: LiveInspectorStatus = "initializing";
   private currentFailure: LiveInspectorError | undefined;
   private firstFailure: LiveInspectorError | undefined;
@@ -290,7 +290,7 @@ class InspectorController {
     source: LiveMapPathHandle<JsonValue>,
     input: Readonly<{
       role: LiveInspectorBranchRole;
-      key: CollectionReflectKey | undefined;
+      key: CollectionMirrorKey | undefined;
       depth: number;
       parent: BranchController | undefined;
       own: (cleanup: () => void) => () => void;
@@ -321,7 +321,7 @@ class InspectorController {
     }
   }
 
-  public createChildReflector(branch: BranchController): CollectionReflect<JsonValue> {
+  public createChildReflector(branch: BranchController): CollectionMirror<JsonValue> {
     const value = branch.source.snap();
     if (is_json_object(value)) {
       this.counts.objectReflectors += 1;
@@ -372,7 +372,7 @@ class InspectorController {
     );
   }
 
-  public replaceChildReflector(branch: BranchController, reflector: CollectionReflect<JsonValue>): void {
+  public replaceChildReflector(branch: BranchController, reflector: CollectionMirror<JsonValue>): void {
     const value = branch.source.snap();
     if (is_json_object(value)) {
       reflector.replaceSource(make_object_collection_handle(branch.source));
@@ -385,7 +385,7 @@ class InspectorController {
     }
   }
 
-  public unregisterReflector(reflector: CollectionReflect<JsonValue>): void {
+  public unregisterReflector(reflector: CollectionMirror<JsonValue>): void {
     if (!this.reflectors.delete(reflector)) return;
     const diagnostics = reflector.diagnostics();
     this.absorbedProjectionCounts.created += diagnostics.recordsCreated;
@@ -396,19 +396,19 @@ class InspectorController {
     this.absorbedProjectionCounts.batchRows += diagnostics.recordsBatchAttached;
   }
 
-  private recordMaterialization(reflector: CollectionReflect<JsonValue>, started: number): void {
+  private recordMaterialization(reflector: CollectionMirror<JsonValue>, started: number): void {
     this.counts.materializationPasses += 1;
     this.counts.rowsMaterialized += reflector.itemCount;
     this.counts.largestMaterialization = Math.max(this.counts.largestMaterialization, reflector.itemCount);
     this.counts.materializationDurationMs += materializationNow() - started;
   }
 
-  public disposeReflector(reflector: CollectionReflect<JsonValue>): void {
+  public disposeReflector(reflector: CollectionMirror<JsonValue>): void {
     reflector.dispose();
     this.unregisterReflector(reflector);
   }
 
-  private registerReflector(reflector: CollectionReflect<JsonValue>): CollectionReflect<JsonValue> {
+  private registerReflector(reflector: CollectionMirror<JsonValue>): CollectionMirror<JsonValue> {
     this.reflectors.add(reflector);
     return reflector;
   }
@@ -439,7 +439,7 @@ class InspectorController {
     branch: BranchController,
     index: number,
     itemPath: LivePath,
-  ): CollectionReflectKey {
+  ): CollectionMirrorKey {
     if (branch.arrayIdentity !== "application-key") return index;
     const key = this.arrayKey?.(item, {
       arrayPath: Object.freeze([...branch.source.path()]),
@@ -461,7 +461,7 @@ class InspectorController {
     return ops.some((op) => paths_overlap(path, op.path));
   }
 
-  private withChange<T>(change: CollectionReflectChange, run: () => T): T {
+  private withChange<T>(change: CollectionMirrorChange, run: () => T): T {
     const previous = this.activeChange;
     if (previous === undefined) this.activeChange = change;
     try { return run(); }
@@ -672,7 +672,7 @@ class InspectorController {
       if (Array.isArray(item)) {
         const identity = this.arrayIdentity(item, itemPath);
         if (identity === "application-key") {
-          const keys = new Set<CollectionReflectKey>();
+          const keys = new Set<CollectionMirrorKey>();
           for (let index = 0; index < item.length; index += 1) {
             const key = this.arrayKey?.(item[index] as JsonValue, {
               arrayPath: itemPath,
@@ -1039,7 +1039,7 @@ class InspectorController {
 
   private translateProjectionError(error: unknown, message: string): LiveInspectorError {
     if (error instanceof LiveInspectorError) return error;
-    if (hasProjectionCode(error, COLLECTION_REFLECT_DUPLICATE_KEY_ERROR_CODE)) {
+    if (hasProjectionCode(error, COLLECTION_MIRROR_DUPLICATE_KEY_ERROR_CODE)) {
       return new LiveInspectorError(LIVE_INSPECTOR_DUPLICATE_ARRAY_KEY_ERROR_CODE, "Live inspector array contains duplicate application keys.", error);
     }
     return new LiveInspectorError(LIVE_INSPECTOR_PROJECTION_ERROR_CODE, message, error);
@@ -1070,14 +1070,14 @@ class InspectorController {
 
 type LiveInspectorRendererResultForProjection = Readonly<{
   tree: LiveTree;
-  update: (source: LiveMapPathHandle<JsonValue>, change: CollectionReflectChange) => void;
+  update: (source: LiveMapPathHandle<JsonValue>, change: CollectionMirrorChange) => void;
 }>;
 
 class BranchController {
   public readonly tree: LiveTree;
   public readonly childrenRegion: LiveTree;
   public readonly role: LiveInspectorBranchRole;
-  public readonly key: CollectionReflectKey | undefined;
+  public readonly key: CollectionMirrorKey | undefined;
   public readonly depth: number;
   public readonly parent: BranchController | undefined;
   public readonly id: string;
@@ -1089,7 +1089,7 @@ class BranchController {
   public materialized = false;
   public disposed = false;
   public specializationName: string | undefined;
-  private childReflector: CollectionReflect<JsonValue> | undefined;
+  private childReflector: CollectionMirror<JsonValue> | undefined;
   private auxiliary: AuxiliaryRenderer | undefined;
   private readonly disclosure: LiveTree;
   private readonly selectionControl: LiveTree;
@@ -1101,7 +1101,7 @@ class BranchController {
     private readonly inspector: InspectorController,
     source: LiveMapPathHandle<JsonValue>,
     role: LiveInspectorBranchRole,
-    key: CollectionReflectKey | undefined,
+    key: CollectionMirrorKey | undefined,
     depth: number,
     parent: BranchController | undefined,
   ) {
@@ -1437,7 +1437,7 @@ function hasProjectionCode(error: unknown, code: string): boolean {
   const seen = new Set<object>();
   while (cursor instanceof Error && !seen.has(cursor)) {
     seen.add(cursor);
-    if (cursor instanceof CollectionReflectError && cursor.code === code) return true;
+    if (cursor instanceof CollectionMirrorError && cursor.code === code) return true;
     cursor = (cursor as Error & { cause?: unknown }).cause;
   }
   return false;

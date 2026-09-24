@@ -163,6 +163,12 @@
       "reason": "Archived source evidence for the retired sessionless one-map hosted Locus and Echo contract; not part of current acceptance."
     },
     {
+      "file": "tests/historical/solo-locus/locus-hosted-multi-library-h2.acceptance.mts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/README.md",
+      "reason": "Archived test of the retired complete-registry hosted socket contract; current projected acceptance replaces it."
+    },
+    {
       "file": "tests/historical/solo-locus/locus-document-request-compatibility.acceptance.mts",
       "kind": "non-typechecked-artifact",
       "authority": "tests/historical/README.md",
@@ -187,6 +193,13 @@
     {"file": "tests/historical/solo-locus/livemap-projected-intent-propagation.legacy.mts", "kind": "non-typechecked-artifact", "authority": "tests/historical/README.md", "reason": "Archived test of the retired sessionless hosted model; current registry acceptance replaces it."},
     {"file": "tests/historical/solo-locus/source/locus.action-admission.ts", "kind": "non-typechecked-artifact", "authority": "tests/historical/solo-locus/source/README.md", "reason": "Retired one-map hosted runtime source; excluded from production build and current acceptance."},
     {"file": "tests/historical/solo-locus/source/locus.persistence.types.ts", "kind": "non-typechecked-artifact", "authority": "tests/historical/solo-locus/source/README.md", "reason": "Retired one-map hosted type surface; excluded from production build and current acceptance."},
-    {"file": "tests/historical/solo-locus/source/livehost.services.types.ts", "kind": "non-typechecked-artifact", "authority": "tests/historical/solo-locus/source/README.md", "reason": "Retired one-map hosted type surface; excluded from production build and current acceptance."}
+    {"file": "tests/historical/solo-locus/source/livehost.services.types.ts", "kind": "non-typechecked-artifact", "authority": "tests/historical/solo-locus/source/README.md", "reason": "Retired one-map hosted type surface; excluded from production build and current acceptance."},
+    {"file": "tests/historical/solo-locus/source/solo-locus-document-snapshot.ts", "kind": "non-typechecked-artifact", "authority": "tests/historical/solo-locus/source/README.md", "reason": "Retired one-map hosted helper; excluded from production build and current acceptance."},
+    {"file": "tests/historical/solo-locus/source/solo-locus-history.ts", "kind": "non-typechecked-artifact", "authority": "tests/historical/solo-locus/source/README.md", "reason": "Retired one-map hosted helper; excluded from production build and current acceptance."},
+    {"file": "tests/historical/solo-locus/source/solo-locus-protocol.ts", "kind": "non-typechecked-artifact", "authority": "tests/historical/solo-locus/source/README.md", "reason": "Retired one-map hosted helper; excluded from production build and current acceptance."},
+    {"file": "tests/historical/solo-locus/source/solo-locus-protocol.types.ts", "kind": "non-typechecked-artifact", "authority": "tests/historical/solo-locus/source/README.md", "reason": "Retired one-map hosted helper; excluded from production build and current acceptance."},
+    {"file": "tests/historical/solo-locus/source/solo-locus-recovery.ts", "kind": "non-typechecked-artifact", "authority": "tests/historical/solo-locus/source/README.md", "reason": "Retired one-map hosted helper; excluded from production build and current acceptance."},
+    {"file": "tests/historical/solo-locus/source/solo-locus-recovery.types.ts", "kind": "non-typechecked-artifact", "authority": "tests/historical/solo-locus/source/README.md", "reason": "Retired one-map hosted helper; excluded from production build and current acceptance."},
+    {"file": "tests/historical/solo-locus/source/solo-locus-representation.types.ts", "kind": "non-typechecked-artifact", "authority": "tests/historical/solo-locus/source/README.md", "reason": "Retired one-map hosted helper; excluded from production build and current acceptance."}
   ]
 }

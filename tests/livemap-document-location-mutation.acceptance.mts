@@ -10,7 +10,7 @@ import {
 import { LiveMapDocumentMutationError } from "../src/api/livemap/livemap.error.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import type { HsonNode } from "../src/core/types.ts";
-import { element as reflectedElement, raw_node } from "./helpers/reflect-unit6.mts";
+import { element as reflectedElement, raw_node } from "./helpers/mirror-unit6.mts";
 import type {
   DocumentLiveMap,
   LiveMapDocumentRequestTarget,

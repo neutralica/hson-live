@@ -4,7 +4,7 @@ import { hson } from "../src/index.ts";
 import { echo_document_authority_for } from "../src/api/echo/echo.document-authority.ts";
 import {
   DOCUMENT_REFLECT_STRUCTURAL_UPDATE_FAILED_ERROR_CODE,
-} from "../src/api/reflect/reflect.document.error.ts";
+} from "../src/api/reflect/mirror.document.error.ts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import type { DocumentLiveMap } from "../src/types/livemap.types.ts";

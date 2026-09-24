@@ -1,6 +1,6 @@
 import type { EchoDocumentAction } from "./echo.document-authority.js";
 
-/** @internal Minimal registry shape shared with Reflect without loading recovery implementation. */
+/** @internal Minimal registry shape shared with Mirror without loading recovery implementation. */
 export type EchoDocumentAuthority = Readonly<{
   enqueue: (lower: () => EchoDocumentAction | undefined) => Promise<void>;
   dispose: () => void;

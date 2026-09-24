@@ -1,7 +1,5 @@
 export { hsonLocus } from "./locus.facade.js";
 export { create_locus, create_persistent_locus } from "./locus.public.js";
-export { install_locus_libraries_snapshot } from "./locus.libraries-snapshot.js";
-export type { HostedLiveMapLibrariesSnapshot, HostedClientLibrariesSnapshot } from "../../types/livemap.types.js";
 export { create_browser_locus_socket } from "./locus.browser-socket.js";
 export type {
   BrowserLocusSocket,
@@ -19,7 +17,6 @@ export {
 export {
   LocusDisconnectedError,
   LocusDuplicateActionIdError,
-  LocusRecoveryError,
 } from "./locus.error.js";
 export { create_live_trace_collector } from "./locus.trace.collector.js";
 export { create_live_trace_console_sink } from "./locus.trace.console.js";
@@ -34,10 +31,10 @@ export type * from "../../types/live.trace.types.js";
 export type * from "../../types/locus.projection.types.js";
 export type { LocusSocketLike, LocusActionPayloads, LocusClientActionMessage } from "../../types/locus.protocol.types.js";
 export type {
-  LocusMultiLibraryActionContext,
-  LocusMultiLibraryActionHandler,
-  LocusMultiLibraryActions,
-  LocusMultiLibraryOptions,
+  LocusActionContext,
+  LocusActionHandler,
+  LocusActions,
+  LocusOptions,
   LocusActionDedupeSchedule,
   LocusActionDedupeOptions,
   LocusActionDedupeDiagnostics,
@@ -50,13 +47,12 @@ export type {
   LocusSessionLifecycleEvent,
   LocusSessionInspector,
   LocusConnection,
-  LocusMultiLibrary,
-  LocusMultiLibraryPersistenceAdapter,
-  PersistentLocusMultiLibraryOptions,
-  PersistentLocusMultiLibrary,
+  Locus,
+  LocusPersistenceAdapter,
+  PersistentLocusOptions,
+  PersistentLocus,
   LocusActivityKind,
   LocusActivityState,
   LocusActivitySnapshot,
   LocusActivity,
 } from "../../types/locus.core.types.js";
-export type { LocusMultiLibrary as Locus } from "../../types/locus.core.types.js";

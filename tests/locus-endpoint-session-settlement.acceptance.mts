@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { hsonEcho } from "../src/index.ts";
-import { create_multi_library_echo_socket_client_internal } from "../src/api/echo/echo.multi-library.socket.ts";
-import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.hosted-multi-library.protocol.ts";
+import { create_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
+import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.aggregate.protocol.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -104,7 +104,7 @@ await check("solo fencing rejects and clears a pending session waiter while stal
 
 await check("aggregate fencing rejects and clears a pending session waiter while stale completion stays inert", async () => {
   const pair = controlled_socket();
-  const echo = create_multi_library_echo_socket_client_internal({ socket: pair.socket, logicalMapId: "aggregate-fence" });
+  const echo = create_echo_socket_client_internal({ socket: pair.socket, logicalMapId: "aggregate-fence" });
   echo.attachTransport();
   const created = echo.session.create();
   const createRequest = last_sent(pair, "session-create");
@@ -141,7 +141,7 @@ await check("aggregate fencing rejects and clears a pending session waiter while
 
 await check("aggregate session disposal rejects pending work and stale responses cannot resurrect it", async () => {
   const pair = controlled_socket();
-  const echo = create_multi_library_echo_socket_client_internal({ socket: pair.socket, logicalMapId: "aggregate-dispose" });
+  const echo = create_echo_socket_client_internal({ socket: pair.socket, logicalMapId: "aggregate-dispose" });
   echo.attachTransport();
   const pending = echo.session.create();
   const request = last_sent(pair, "session-create");
@@ -165,7 +165,7 @@ await check("aggregate session disposal rejects pending work and stale responses
 
 await check("aggregate session ending settles goodbye, action, and status while preserving retry lineage", async () => {
   const pair = controlled_socket();
-  const echo = create_multi_library_echo_socket_client_internal({ socket: pair.socket, logicalMapId: "aggregate-ended" });
+  const echo = create_echo_socket_client_internal({ socket: pair.socket, logicalMapId: "aggregate-ended" });
   echo.attachTransport();
   const created = echo.session.create();
   const createRequest = last_sent(pair, "session-create");

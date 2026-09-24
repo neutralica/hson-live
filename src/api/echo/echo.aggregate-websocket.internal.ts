@@ -2,15 +2,15 @@ import type { LocusActionPayloads, LocusClientMessage } from "../../types/locus.
 import { encode_locus_client_message } from "../locus/locus.protocol.js";
 import {
   DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES,
-} from "../locus/locus.hosted-multi-library.js";
+} from "../locus/locus.aggregate.js";
 import type { LocusLiveProjectedWireEnvelope } from "../locus/locus.live-projection.js";
-import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../locus/locus.hosted-multi-library.protocol.js";
+import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../locus/locus.aggregate.protocol.js";
 import type {
   LocusHostedAggregateCanonicalPublication,
   LocusHostedAggregateProgress,
   LocusHostedAggregateSynchronizationOutput,
   LocusHostedAggregateSynchronizationRequest,
-} from "../locus/locus.hosted-multi-library.transport.internal.js";
+} from "../locus/locus.aggregate.transport.internal.js";
 import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
 import { HOSTED_MAX_SNAPSHOT_BYTES } from "../livemap/livemap.hosted.js";
 import type { EchoEndpointConnection } from "./echo.client.js";

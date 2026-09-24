@@ -2,13 +2,13 @@ import { test_public_exposure } from "./helpers/hosted-exposure.mts";
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonLocus, type HsonSchema } from "../src/index.ts";
 import type { LocusClientActionMessage } from "../src/types/locus.types.ts";
-import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.hosted-multi-library.socket.ts";
+import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.aggregate.socket.ts";
 import { admit_locus_remote_action_internal } from "../src/api/locus/locus.remote-action.internal.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 const ValueSchema: HsonSchema = Hson.schema`<type "data" content <value <number <int true min 0>>>>`;
-export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "locus.hosted-multi-library-admission", title: "Hosted multi-library external admission", category: "Locus", runtime: "node", tags: Object.freeze(["locus", "livemap", "libraries", "actions", "admission"]) });
-const testEvents = create_test_event_emitter("locus.hosted-multi-library-admission");
+export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "locus.aggregate-admission", title: "Hosted multi-library external admission", category: "Locus", runtime: "node", tags: Object.freeze(["locus", "livemap", "libraries", "actions", "admission"]) });
+const testEvents = create_test_event_emitter("locus.aggregate-admission");
 let checks = 0;
 async function check(name: string, run: () => void | Promise<void>): Promise<void> {
   testEvents.case_begin(name, name);
@@ -81,7 +81,7 @@ await check("aggregate authorization rejection retains no lineage or ephemeral s
 });
 
 await check("the internal admission capability remains bound after the normal aggregate Locus facade is created", async () => {
-  let locus!: import("../src/types/locus.types.ts").LocusMultiLibrary<ReturnType<typeof make_map>, TestActions>;
+  let locus!: import("../src/types/locus.types.ts").Locus<ReturnType<typeof make_map>, TestActions>;
   locus = hsonLocus.create({
     exposure: test_public_exposure(make_map()),
     map: make_map(),

@@ -16,7 +16,7 @@ import {
   _create_livetree_runtime_test_handle,
   _reflect_document_for_runtime_test,
 } from "../src/_tests/diagnostics-internal.ts";
-import { element, path, projected_element, raw_node } from "./helpers/reflect-unit6.mts";
+import { element, path, projected_element, raw_node } from "./helpers/mirror-unit6.mts";
 import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -198,7 +198,7 @@ await check("detach, reinsertion, and aliases preserve exact ownership", () => {
   assert.equal(secondTarget.listeners.has("click"), false);
 });
 
-await check("QUID-free local Reflect registration leaves graph, revision, publication, and overlay unchanged", () => {
+await check("QUID-free local Mirror registration leaves graph, revision, publication, and overlay unchanged", () => {
   const runtime = _create_livetree_runtime_test_handle();
   const map = element(`<main/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
@@ -258,7 +258,7 @@ await check("distinct QUID-free reflected subjects keep independent resources", 
   binding.dispose();
 });
 
-await check("compatible Reflect reuse preserves resources on the same exact subject", () => {
+await check("compatible Mirror reuse preserves resources on the same exact subject", () => {
   const runtime = _create_livetree_runtime_test_handle();
   const map = element(`<main <a/>/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);

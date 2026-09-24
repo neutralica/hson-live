@@ -2,7 +2,7 @@ import type {
   DocumentLiveMap,
   LiveMapLibraries,
 } from "../../types/livemap.types.js";
-import type { LocusMultiLibrary } from "../../types/locus.types.js";
+import type { Locus } from "../../types/locus.types.js";
 import { is_locus_libraries_snapshot_authority_internal } from "../locus/locus.libraries-snapshot.js";
 import { install_libraries_snapshot, is_public_multi_library_livemap } from "../livemap/livemap.libraries.js";
 import { decode_hosted_root } from "../livemap/livemap.hosted.js";
@@ -66,11 +66,11 @@ export function render_document(options: Readonly<{
 
 /** Compose browser HTML and projected authority state from one authorized session cut. */
 export function render_hosted_document<TMap extends LiveMapLibraries>(
-  options: Readonly<{ authority: LocusMultiLibrary<TMap>; sessionId: string; document?: string }>,
+  options: Readonly<{ authority: Locus<TMap>; sessionId: string; document?: string }>,
 ): HostedLibrariesDocumentSsr;
 export function render_hosted_document(
   options: Readonly<{
-    authority: LocusMultiLibrary<LiveMapLibraries>;
+    authority: Locus<LiveMapLibraries>;
     sessionId: string;
     document?: string;
   }>,

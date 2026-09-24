@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { Hson, activate_interactions, add_interaction, enable_interactions, hsonLiveMap, hsonMirror, type InteractionDescriptor } from "../src/index.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
-import { make_hosted_client_commit } from "../src/api/livemap/livemap.hosted.ts";
+import { make_portable_aggregate_commit } from "../src/api/livemap/livemap.hosted.ts";
 import { make_livemap_hosted_mirror_from_snapshot_internal } from "../src/api/livemap/livemap.libraries.ts";
 import { resolve_document_path, validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 import { project_livetree } from "../src/api/livetree/creation/project-live-tree.ts";
@@ -143,7 +143,7 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
     }),
   }]).hosted;
   if (hosted === undefined) throw new Error("Expected hosted interaction transition.");
-  const portable = make_hosted_client_commit(hosted);
+  const portable = make_portable_aggregate_commit(hosted);
   if (portable === undefined) throw new Error("Expected portable interaction transition.");
   internal_livemap_aggregate_authority(replica).replayClientHosted(portable);
   assert.deepEqual(paths(replica), { recovered: [0, 0, 0] });

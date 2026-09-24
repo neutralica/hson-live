@@ -7,8 +7,6 @@ import { link_livemap } from "../src/api/livemap/livemap.link.ts";
 import { make_livemap_store_api } from "../src/api/livemap/livemap.store.ts";
 import { livemap_projected_propagation } from "../src/api/livemap/livemap.projected-propagation.ts";
 import { decode_projected_value_payload } from "../src/api/livemap/livemap.transport.ts";
-import { make_locus_canonical_stream } from "../src/api/locus/locus.history.ts";
-import { make_locus_recovery_planner } from "../src/api/locus/locus.recovery.ts";
 import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
 import {
   is_ordered_projected_object,
@@ -23,7 +21,6 @@ import {
 } from "../src/core/projected-value-graph.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import type { JsonValue } from "../src/core/types.ts";
-import type { LocusCanonicalCommit } from "../src/types/locus.types.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livemap.exact-propagation",
@@ -274,28 +271,10 @@ check("store listener mutation cannot affect dangerous-key state", () => {
   assert.deepEqual(keys(capability(valueMap).read(["value"])), ["__proto__", "constructor", "prototype"]);
 });
 
-check("Locus canonical commits retain exact payloads", () => {
-  const valueMap = map(object([["value", object([])]]));
-  const stream = make_locus_canonical_stream(valueMap, { logicalMapId: "map", incarnationId: "inc" });
-  let canonical: LocusCanonicalCommit | undefined;
-  stream.onCommit((commit) => { canonical = commit; });
-  capability(valueMap).commit([{ kind: "replace", path: ["value"], value: ordered }]);
-  assert.equal(canonical?.format, "structural-json");
-  assert.equal(typeof canonical?.payload, "string");
-});
 
-check("Locus recovery uses exact projected transport", () => {
-  const valueMap = map(object([["value", ordered]]));
-  const stream = make_locus_canonical_stream(valueMap, { logicalMapId: "recovery-map", incarnationId: "recovery-inc" });
-  const recovery = make_locus_recovery_planner(valueMap, stream);
-  const plan = recovery.plan({ logicalMapId: stream.logicalMapId });
-  assert.equal(plan.outcome, "snapshot");
-  if (plan.outcome !== "snapshot" || !("hson" in plan.body)) throw new Error("Expected Hson snapshot.");
-  const restored = make_livemap_core(parse_hson(plan.body.hson));
-  assert.deepEqual(keys(capability(restored).read(["value"])), ["10", "2", "1"]);
-  plan.dispose();
-});
 
-assert.equal(checks, 25);
+
+
+assert.equal(checks, 23);
 process.stdout.write(`# ${checks} exact LiveMap propagation checks passed\n`);
 testEvents.terminal("pass");

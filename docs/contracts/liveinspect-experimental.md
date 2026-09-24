@@ -10,7 +10,7 @@
 
 `hsonInspect.fromJson({ value, host })` and `hsonInspect.fromHson({ value, host })` explicitly create an inspector-owned `LiveMap`. Plain values are not silently copied by `create`.
 
-The inspector is layered on `hson.reflect.collection`. Object properties are keyed by property name. Arrays use an explicit `arrayKey` result only when every item has one; otherwise an entirely unkeyed array uses honest positional identity. Mixed key coverage and duplicate keys fail with classified errors. Positional rows represent positions and do not promise logical continuity when values move.
+The inspector is layered on `hson.mirror.collection`. Object properties are keyed by property name. Arrays use an explicit `arrayKey` result only when every item has one; otherwise an entirely unkeyed array uses honest positional identity. Mixed key coverage and duplicate keys fail with classified errors. Positional rows represent positions and do not promise logical continuity when values move.
 
 The inspector keeps no second authoritative source graph, serialized mirror, hash-key table, mutation adapter, or transport state. Nested adapters are thin source views consumed by the Patch 7A engine.
 

@@ -10,7 +10,7 @@ import {
   type HostedLibrariesDocumentSsr,
 } from "hson-live/ssr";
 import type { DocumentLiveMap, LiveMapLibraries } from "hson-live/livemap";
-import type { LocusMultiLibrary } from "hson-live/locus";
+import type { Locus } from "hson-live/locus";
 
 declare const map: DocumentLiveMap;
 declare const authority: unknown;
@@ -24,7 +24,7 @@ const html: BrowserRealizationHtml = local.html;
 void html;
 void DocumentSsrError;
 declare const libraries: LiveMapLibraries;
-declare const librariesAuthority: LocusMultiLibrary;
+declare const librariesAuthority: Locus;
 const aggregateLocal: LibrariesDocumentSsr = render_document({ map: libraries });
 const aggregateHosted: HostedLibrariesDocumentSsr = render_hosted_document({ authority: librariesAuthority, sessionId: "authorized-session" });
 void libraries.cut().data;

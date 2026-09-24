@@ -2,14 +2,14 @@ import type { HostedLiveMapLibrariesSnapshot } from "../../types/livemap.types.j
 import type { HsonNode } from "../../core/types.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
 import { INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME } from "../../internal/interaction-storage.js";
-import { decode_hosted_root, encode_hosted_root, hosted_sha256, make_hosted_client_commit, make_hosted_registry, type HostedAggregateCommit, type HostedClientCommit, type HostedClientOperation, type HostedRegistryBinding } from "../livemap/livemap.hosted.js";
+import { decode_hosted_root, encode_hosted_root, hosted_sha256, make_portable_aggregate_commit, make_hosted_registry, type HostedAggregateCommit, type PortableAggregateCommit, type PortableAggregateOperation, type HostedRegistryBinding } from "../livemap/livemap.hosted.js";
 import { encode_livemap_replay_transport } from "../livemap/livemap.transport.js";
 import { project_authority_snapshot } from "./locus.authority-projection-snapshot.js";
 import { HsonSchema } from "../schema/hson-schema.js";
 import { interaction_schema_internal, project_interaction_state_internal } from "../interactions/interactions.projection.js";
 import type { LocusEffectiveProjection } from "./locus.projection.js";
 
-/** Distinct from the complete-authority v1 recovery commit. */
+/** Session-projected commit contract for visible authority effects. */
 export const LOCUS_LIVE_PROJECTED_COMMIT_FORMAT = "hson-locus-live-projected-client-commit-v2" as const;
 export const LOCUS_LIVE_PROJECTED_WIRE_FORMAT = "hson-locus-live-projected-client-wire-v2" as const;
 
@@ -19,7 +19,7 @@ export type LocusLiveProjectedCommit = Readonly<{
   registryDigest: string;
   prevRev: number;
   rev: number;
-  operations: readonly HostedClientOperation[];
+  operations: readonly PortableAggregateOperation[];
 }>;
 
 export type LocusLiveProjectedEvent =
@@ -55,7 +55,7 @@ function exact_record(value: unknown, keys: readonly string[]): Record<string, u
 export function decode_locus_live_projected_envelope_internal(
   input: unknown,
   expected: Readonly<{ logicalMapId: string; incarnationId: string; registryDigest: string }>,
-): HostedClientCommit {
+): PortableAggregateCommit {
   const envelope = exact_record(input, ["format", "logicalMapId", "incarnationId", "registryDigest", "commit"]);
   if (envelope.format !== LOCUS_LIVE_PROJECTED_WIRE_FORMAT
     || envelope.logicalMapId !== expected.logicalMapId
@@ -67,7 +67,7 @@ export function decode_locus_live_projected_envelope_internal(
     || authority.logicalMapId !== envelope.logicalMapId
     || authority.incarnationId !== envelope.incarnationId
     || commit.registryDigest !== envelope.registryDigest) throw new Error("Projected live commit fence is incompatible.");
-  return Object.freeze({ ...commit, format: "hson-hosted-client-commit-v1" }) as HostedClientCommit;
+  return Object.freeze({ ...commit, format: "hson-portable-aggregate-commit-v1" }) as PortableAggregateCommit;
 }
 
 /** Pure per-revision projection. Later replay can supply the same before/after cuts. */
@@ -121,8 +121,8 @@ export function project_locus_live_transition_internal(
     throw new Error("Live projection authority transition is incompatible.");
   }
   const registryDigest = projected_registry_digest(effective);
-  const complete = make_hosted_client_commit(authority);
-  const operations: HostedClientOperation[] = complete?.operations.filter((entry) =>
+  const complete = make_portable_aggregate_commit(authority);
+  const operations: PortableAggregateOperation[] = complete?.operations.filter((entry) =>
     entry.library !== INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME && effective.includesLibrary(entry.library)) ?? [];
   if (effective.hasSystemFeature("interactions")) {
     if (beforeSystemRoot === undefined || afterSystemRoot === undefined) throw new Error("Projected interaction state is unavailable.");

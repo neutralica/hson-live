@@ -4,7 +4,7 @@ import { hson } from "../src/hson.ts";
 import { _create_livetree_runtime_test_handle, _reflect_document_for_runtime_test } from "../src/_tests/diagnostics-internal.ts";
 import { LiveMapDocumentAttributeNotFoundError, LiveMapDocumentMutationError } from "../src/api/livemap/livemap.error.ts";
 import type { DocumentLiveMap, LiveMapDocumentRequestTarget } from "../src/types/livemap.types.ts";
-import { element as reflectedElement } from "./helpers/reflect-unit6.mts";
+import { element as reflectedElement } from "./helpers/mirror-unit6.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({

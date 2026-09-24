@@ -11,7 +11,7 @@ import { admit_authority_projection_snapshot, client_projection_identity_interna
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import { activate_interactions } from "../interactions/interactions.js";
 import { runtime_for_tree } from "../livetree/runtime/livetree-runtime.js";
-import { reflect_existing_document_in_runtime } from "../reflect/reflect.document.js";
+import { reflect_existing_document_in_runtime } from "../mirror/mirror.document.js";
 import { adopt_exact_existing_document, type ExactDocumentAdoption } from "./continuation.adopt.js";
 import {
   reserve_continuation_root,
@@ -131,7 +131,7 @@ export async function continue_hosted_document_internal(options: Readonly<{
         throw new Error("Mirror did not establish exact correspondence at the captured revision.");
       }
     } catch (cause) {
-      throw new DocumentContinuationError("reflect", cause);
+      throw new DocumentContinuationError("mirror", cause);
     }
     try {
       if (echo.recovery.status !== "caught_up") await echo.recovery.recover();
@@ -148,7 +148,7 @@ export async function continue_hosted_document_internal(options: Readonly<{
         throw reflect.failure ?? new Error("Mirror is not current after Echo recovery.");
       }
     } catch (cause) {
-      throw new DocumentContinuationError("reflect", cause);
+      throw new DocumentContinuationError("mirror", cause);
     }
     if (options.interactions !== undefined) {
       try {
@@ -182,7 +182,7 @@ export async function continue_hosted_document_internal(options: Readonly<{
       echo,
       map: resolved.selected,
       tree: adoption.tree,
-      reflect,
+      mirror: reflect,
       dispose(): void {
         if (disposed) return;
         disposed = true;

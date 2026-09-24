@@ -32,7 +32,7 @@ export function project_livetree(
   return project_with_authority(node, parentNs, runtime, ownerDocument, identityAuthority);
 }
 
-/** Project one Reflection-owned subtree without minting missing QUIDs. @internal */
+/** Project one Mirror-owned subtree without minting missing QUIDs. @internal */
 export function project_linked_livetree(
   node: HsonNode | Primitive,
   parentNs: BrowserNamespace,

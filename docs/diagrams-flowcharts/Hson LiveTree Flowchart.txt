@@ -1,6 +1,6 @@
 flowchart TB
     App["Application / user code"]
-    Reflect["Reflect"]
+    Mirror["Mirror"]
     Graph["Hson semantic graph"]
 
     subgraph LT["LiveTree"]
@@ -19,8 +19,8 @@ flowchart TB
 
     App -->|"semantic operations"| Handles
 
-    Reflect -->|"accepted state convergence"| Graph
-    Handles -->|"bound semantic intent"| Reflect
+    Mirror -->|"accepted state convergence"| Graph
+    Handles -->|"bound semantic intent"| Mirror
 
     Handles -->|"standalone semantic mutation"| Graph
     Graph -->|"accepted graph state"| Planner

@@ -13,7 +13,7 @@ import type {
   LocusDisposer,
 } from "../../types/locus.types.js";
 import type { EchoMapManagementLease } from "../../internal/echo-map-capability.js";
-import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../locus/locus.hosted-multi-library.protocol.js";
+import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../locus/locus.aggregate.protocol.js";
 import { EchoRecoveryError } from "./echo.error.js";
 import {
   create_deferred_echo_document_authority_internal,
@@ -51,8 +51,8 @@ export type EchoReplicaLoaders = Readonly<{
 /** @internal Production dynamic imports; neither module belongs to the initial Echo graph. */
 export const DEFAULT_ECHO_REPLICA_LOADERS: EchoReplicaLoaders = Object.freeze({
   async aggregate() {
-    const loaded = await import("./echo.multi-library.js");
-    return loaded.create_multi_library_echo as ReplicaInitializer;
+    const loaded = await import("./echo.registry.js");
+    return loaded.create_registry_echo as ReplicaInitializer;
   },
 });
 

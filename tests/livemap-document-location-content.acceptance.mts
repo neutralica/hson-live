@@ -5,7 +5,7 @@ import { _create_livetree_runtime_test_handle, _reflect_document_for_runtime_tes
 import { LiveMapDocumentMutationError } from "../src/api/livemap/livemap.error.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import type { DocumentLiveMap, LiveMapDocumentRequestTarget } from "../src/types/livemap.types.ts";
-import { element as reflectedElement, raw_node } from "./helpers/reflect-unit6.mts";
+import { element as reflectedElement, raw_node } from "./helpers/mirror-unit6.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({

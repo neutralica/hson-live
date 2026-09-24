@@ -83,7 +83,7 @@ check("production runtime modules do not import test-only modules", () => {
   );
 });
 
-check("endpoint-only Echo has no replica, LiveMap, Reflect, or LiveTree runtime dependency", () => {
+check("endpoint-only Echo has no replica, LiveMap, Mirror, or LiveTree runtime dependency", () => {
   const endpointClient = readFileSync(resolve(sourceRoot, "api", "echo", "echo.client.ts"), "utf8");
   const specifiers = [...endpointClient.matchAll(importSpecifierPattern)]
     .map((match) => match[1])

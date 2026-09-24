@@ -136,13 +136,13 @@ export type {
   LiveMapLibraryInput,
 } from "./types/livemap.types.js";
 
-export type { Reflect } from "./api/reflect/reflect.facade.js";
+export type { Mirror } from "./api/mirror/mirror.facade.js";
 export {
   reflect_document,
   type DocumentMirror,
   type DocumentMirrorStatus,
-} from "./api/reflect/reflect.document.js";
-export { DocumentMirrorError } from "./api/reflect/reflect.document.error.js";
+} from "./api/mirror/mirror.document.js";
+export { DocumentMirrorError } from "./api/mirror/mirror.document.error.js";
 
 export { create_echo } from "./api/echo/echo.js";
 export { EchoRecoveryError, EchoSessionError } from "./api/echo/echo.error.js";
@@ -165,7 +165,6 @@ export { create_locus } from "./api/locus/locus.public.js";
 export {
   LocusDisconnectedError,
   LocusDuplicateActionIdError,
-  LocusRecoveryError,
 } from "./api/locus/locus.error.js";
 export { LocusAuthorityError } from "./api/locus/locus.authority.js";
 export type {
@@ -176,15 +175,14 @@ export type {
   LocusActivitySnapshot,
   LocusActivityState,
   LocusConnection,
-  LocusMultiLibrary,
-  LocusMultiLibraryActionContext,
-  LocusMultiLibraryActionHandler,
-  LocusMultiLibraryActions,
-  LocusMultiLibraryOptions,
+  Locus,
+  LocusActionContext,
+  LocusActionHandler,
+  LocusActions,
+  LocusOptions,
   LocusResult,
   LocusSocketLike,
 } from "./types/locus.types.js";
-export type { LocusMultiLibrary as Locus } from "./types/locus.types.js";
 
 export { create_livehost_locus_registry } from "./api/livehost/services/livehost.authority-registry.js";
 export type {

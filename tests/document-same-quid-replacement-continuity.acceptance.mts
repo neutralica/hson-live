@@ -7,7 +7,7 @@ import {
   path,
   projected_element,
   raw_node,
-} from "./helpers/reflect-unit6.mts";
+} from "./helpers/mirror-unit6.mts";
 import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
 import { set_livemap_document_quid_candidate_source_for_tests } from "../src/api/livemap/livemap.document.registration.ts";
 import { clone_hson_graph_without_quids } from "../src/api/livemap/livemap.document.capture.ts";
@@ -30,14 +30,14 @@ import { get_el_for_node } from "../src/api/livetree/utils/node-map-helpers.ts";
 import type { HsonNode } from "../src/core/types.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
-  id: "reflect.document-same-quid-replacement-continuity",
+  id: "mirror.document-same-quid-replacement-continuity",
   title: "Document same-QUID replacement continuity",
-  category: "Reflect",
+  category: "Mirror",
   runtime: "node-synthetic-dom",
   tags: Object.freeze(["document", "binding", "quid", "continuity", "replay", "lifecycle", "externally-discoverable"]),
 });
 
-const testEvents = create_test_event_emitter("reflect.document-same-quid-replacement-continuity");
+const testEvents = create_test_event_emitter("mirror.document-same-quid-replacement-continuity");
 let checks = 0;
 function check(name: string, run: () => void): void {
 

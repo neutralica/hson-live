@@ -1,23 +1,9 @@
-import type { LocusRecoveryRuntimeErrorCode } from "../../types/locus.types.js";
-
 export class LocusDisconnectedError extends Error {
   readonly code = "LOCUS_DISCONNECTED" as const;
 
   constructor() {
     super("Locus client disconnected before the action completed.");
     this.name = "LocusDisconnectedError";
-  }
-}
-
-export class LocusRecoveryError extends Error {
-  readonly code: LocusRecoveryRuntimeErrorCode;
-  readonly cause?: unknown;
-
-  constructor(code: LocusRecoveryRuntimeErrorCode, message: string, cause?: unknown) {
-    super(message);
-    this.name = "LocusRecoveryError";
-    this.code = code;
-    if (cause !== undefined) this.cause = cause;
   }
 }
 

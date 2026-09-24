@@ -3,7 +3,7 @@ import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts
 import { Hson, hsonLiveMap, hsonLocus, enable_interactions, type HsonSchema } from "../src/index.ts";
 import { create_persistent_locus } from "../src/api/locus/index.ts";
 import { decode_locus_message } from "../src/api/locus/locus.protocol.ts";
-import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.hosted-multi-library.socket.ts";
+import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.aggregate.socket.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection, HOSTED_PROJECTION_EGRESS_COMPLETE } from "../src/api/locus/locus.projection.ts";
 import type { LocusExposureEntry, LocusProjectionAuthorization } from "../src/types/locus.types.ts";

@@ -13,7 +13,7 @@ LiveHost = hosting/runtime/application dispatch boundary
 * Locus = authoritative mutation/order/recovery boundary
 LiveMap = canonical graph state and reduction
 * Echo = client-side replica/authority connector
-Reflect = LiveMap ↔ LiveTree bridge
+Mirror = LiveMap ↔ LiveTree bridge
 LiveTree = runtime/browser realization
 
 * = new

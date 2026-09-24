@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import { Hson, add_interaction, enable_interactions, hsonLiveMap, hsonLocus, type HsonSchema } from "../src/index.ts";
 import { encode_locus_client_message } from "../src/api/locus/locus.protocol.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
-import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.hosted-multi-library.protocol.ts";
-import { DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES, encode_locus_hosted_aggregate_wire, type LocusHostedAggregateDraft } from "../src/api/locus/locus.hosted-multi-library.ts";
-import { create_multi_library_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
+import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.aggregate.protocol.ts";
+import { DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES, type LocusHostedAggregateDraft } from "../src/api/locus/locus.aggregate.ts";
+import { create_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
 import { project_locus_live_transition_internal, LOCUS_LIVE_PROJECTED_WIRE_FORMAT } from "../src/api/locus/locus.live-projection.ts";
-import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.hosted-multi-library.socket.ts";
+import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.aggregate.socket.ts";
 
 const Schema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
 const map = hsonLiveMap.fromLibraries({
@@ -100,7 +100,7 @@ for (const connection of [a, b]) {
 }
 const echoPair = pair();
 server.connect(echoPair.socket);
-const echo = create_multi_library_echo_socket_client_internal({ socket: echoPair.client, logicalMapId: server.logicalMapId });
+const echo = create_echo_socket_client_internal({ socket: echoPair.client, logicalMapId: server.logicalMapId });
 assert.equal((await echo.connect()).revision, 2);
 assert.equal(echo.lastAppliedRev, 2);
 assert.equal(echo.map?.rev, 0);
@@ -114,7 +114,7 @@ const privateCommit = await server.mutate((draft) => {
 assert.ok(privateCommit);
 assert.equal(privateCommit.rev, 3);
 assert.ok(JSON.stringify(privateCommit).includes("PRIVATE_OVERSIZE_WIRE_SENTINEL"));
-assert.throws(() => encode_locus_hosted_aggregate_wire(privateCommit), /live wire byte limit/i);
+assert.ok(new TextEncoder().encode(JSON.stringify(privateCommit)).byteLength > wireLimit);
 assert.equal(map.rev, 3);
 for (const connection of [a, b, echoPair]) {
   const raw = live(connection)[connection === echoPair ? 0 : 2]!;
@@ -139,7 +139,7 @@ const mixedCommit = await server.mutate((draft) => {
 assert.ok(mixedCommit);
 assert.equal(mixedCommit.rev, 4);
 assert.ok(JSON.stringify(mixedCommit).includes("PRIVATE_OVERSIZE_WIRE_SENTINEL"));
-assert.throws(() => encode_locus_hosted_aggregate_wire(mixedCommit), /live wire byte limit/i);
+assert.ok(new TextEncoder().encode(JSON.stringify(mixedCommit)).byteLength > wireLimit);
 assert.equal(map.rev, 4);
 for (const [connection, index, visible, other] of [
   [a, 3, "SMALL_A_MIXED_SENTINEL", "SMALL_B_MIXED_SENTINEL"],
@@ -204,7 +204,7 @@ const probePolicy = make_locus_hosted_projection_policy(probeInitial.registry, p
 const probeEffective = await normalize_locus_effective_projection(probePolicy, { libraries: ["A"] });
 const probeCommit = probe.commit([{ target: probe.target(probe.libraries()[0]!, ["value"]), kind: "set", value: "A1" }]).hosted;
 assert.ok(probeCommit);
-const oldBytes = new TextEncoder().encode(encode_locus_hosted_aggregate_wire(probeCommit)).byteLength;
+const oldBytes = new TextEncoder().encode(JSON.stringify(probeCommit)).byteLength;
 const projected = project_locus_live_transition_internal(probeCommit, probeEffective);
 assert.equal(projected.kind, "commit");
 if (projected.kind !== "commit") throw new Error("Expected visible probe.");

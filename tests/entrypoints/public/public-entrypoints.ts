@@ -81,7 +81,7 @@ const localContinuation: DocumentContinuation<typeof continuationMap> = continue
 const hostedContinuation: Promise<HostedDocumentContinuation<typeof continuationMap>> = continue_hosted_document({ echo: continuationEcho, root: continuationRoot });
 void localContinuation.map;
 void localContinuation.tree;
-void localContinuation.reflect;
+void localContinuation.mirror;
 localContinuation.dispose();
 void hostedContinuation;
 void DocumentContinuationError;
@@ -111,9 +111,8 @@ const installedLibraries = install_libraries_snapshot(librariesSnapshot);
 const librariesSsr: LibrariesDocumentSsr = render_document({ map: libraries });
 const librariesCut: LibrariesDocumentCut = libraries.cut();
 void librariesCut.document;
-declare const librariesAuthority: import("hson-live/locus").LocusMultiLibrary;
-declare const hostedLibrariesSnapshot: HostedClientLibrariesSnapshot;
-const installedHostedLibraries = install_locus_libraries_snapshot(hostedLibrariesSnapshot);
+declare const librariesAuthority: import("hson-live/locus").Locus;
+declare const hostedLibrariesSnapshot: { format: "hson-livemap-client-snapshot-v1" };
 // @ts-expect-error Complete hosted Libraries state is retired from SSR encoding.
 const encodedHostedLibraries = encode_ssr_bootstrap(hostedLibrariesSnapshot);
 void encodedHostedLibraries;
@@ -124,7 +123,6 @@ const dataMap = hsonLiveMap.fromJson({ count: 0 });
 // @ts-expect-error Data LiveMaps have no browser-realizable cut.
 dataMap.cut();
 void installedLibraries.map;
-void installedHostedLibraries.recovery;
 void librariesSsr.document;
 void hostedLibrariesSsr.document;
 // @ts-expect-error Continuation requires an explicit Element, never a selector.
@@ -412,21 +410,17 @@ import type { LocusClientUnsubscribeMessage } from "hson-live/locus";
 // @ts-expect-error DocumentBindingSource is intentionally not a public export.
 import type { DocumentBindingSource } from "hson-live/livetree";
 import {
-  install_locus_libraries_snapshot,
   LocusAuthorityError,
   hsonLocus as hostSubpath,
-  type Locus,
   type LocusConnection,
   type LocusClientId,
   type LocusAuthorityErrorCode,
-  type LocusMultiLibrary,
-  type LocusMultiLibraryActionContext,
-  type HostedLiveMapLibrariesSnapshot,
-  type HostedClientLibrariesSnapshot,
+  type Locus,
+  type LocusActionContext,
 } from "hson-live/locus";
 void (0 as unknown as LocusClientId);
-declare const multiLocus: LocusMultiLibrary;
-declare const multiActionContext: LocusMultiLibraryActionContext;
+declare const multiLocus: Locus;
+declare const multiActionContext: LocusActionContext;
 declare const soloLocus: Locus;
 declare const soloConnection: LocusConnection;
 declare const librariesConnection: LocusConnection;
@@ -477,16 +471,24 @@ import type {
 import {
   DocumentMirrorError,
   hsonMirror as mirrorSubpath,
-  type CollectionReflect,
+  type CollectionMirror,
   type DocumentMirror,
   type DocumentMirrorErrorCode,
   type DocumentMirrorStatus,
-  type Reflect as ReflectFacade,
+  type Mirror as MirrorFacade,
 } from "hson-live/mirror";
 // @ts-expect-error Pre-epoch Mirror rename removed the old error class.
 import { DocumentReflectError as RemovedDocumentReflectError } from "hson-live/mirror";
 // @ts-expect-error Pre-epoch Mirror rename removed the old status type.
 import type { DocumentReflectStatus as RemovedDocumentReflectStatus } from "hson-live/mirror";
+// @ts-expect-error The old proper subsystem type is absent.
+import type { Reflect as RemovedReflectFacade } from "hson-live/mirror";
+// @ts-expect-error The retired hosted qualifier is absent.
+import type { LocusMultiLibraryOptions as RemovedLocusMultiLibraryOptions } from "hson-live/locus";
+// @ts-expect-error Complete-registry hosted installation is internal, not public.
+import { install_locus_libraries_snapshot as RemovedHostedInstaller } from "hson-live/locus";
+// @ts-expect-error Aggregate composition snapshots are internal.
+import type { PortableAggregateSnapshot as RemovedPortableAggregateSnapshot } from "hson-live/livemap";
 // @ts-expect-error LiveMap path-handle pseudo-QUID helpers were removed.
 import { get_livemap_quid } from "hson-live";
 // @ts-expect-error LiveMap path-handle pseudo-QUID helpers were removed.
@@ -597,20 +599,26 @@ if (publicElementCandidate.mode === "document") {
   void sameSchema;
 }
 
-const reflectFacade: ReflectFacade = mirrorSubpath;
-const umbrellaReflect: ReflectFacade = hson.reflect;
-declare const documentReflect: DocumentMirror;
+const mirrorFacade: MirrorFacade = mirrorSubpath;
+const umbrellaMirror: MirrorFacade = hson.mirror;
+declare const documentMirror: DocumentMirror;
 declare const documentMirrorStatus: DocumentMirrorStatus;
 declare const documentMirrorErrorCode: DocumentMirrorErrorCode;
-declare const collectionReflect: CollectionReflect;
-void reflectFacade;
-void umbrellaReflect;
-void documentReflect;
+declare const collectionMirror: CollectionMirror;
+void mirrorFacade;
+void umbrellaMirror;
+void documentMirror;
 void documentMirrorStatus;
 void documentMirrorErrorCode;
-void collectionReflect;
+void collectionMirror;
 void RemovedDocumentReflectError;
 void (0 as unknown as RemovedDocumentReflectStatus);
+void (0 as unknown as RemovedReflectFacade);
+void (0 as unknown as RemovedLocusMultiLibraryOptions);
+void RemovedHostedInstaller;
+void (0 as unknown as RemovedPortableAggregateSnapshot);
+// @ts-expect-error The umbrella namespace exposes mirror only.
+void hson.reflect;
 
 type Equal<Left, Right> =
   (<Value>() => Value extends Left ? 1 : 2) extends

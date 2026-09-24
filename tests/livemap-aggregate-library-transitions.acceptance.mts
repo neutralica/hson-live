@@ -124,7 +124,7 @@ check("one aggregate commit preserves total library-qualified order and advances
   assert.deepEqual(colorsWatched, ["green"]);
   assert.equal(dataFeeds.length, 1);
   assert.equal(colorsFeeds.length, 1);
-  assert.throws(() => aggregate.lowerForLegacy(accepted.commit), /legacy single-root/i);
+  assert.equal(Reflect.has(aggregate, "lowerForLegacy"), false);
 
   aggregate.commit([{ target: aggregate.target(data, ["value"]), kind: "set", value: 4 }]);
   assert.deepEqual(dataWatched, [3, 4]);

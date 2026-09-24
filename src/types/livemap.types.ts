@@ -71,12 +71,6 @@ export type HostedLiveMapLibrariesSnapshot = LiveMapLibrariesSnapshot & Readonly
   authority: Readonly<{ logicalMapId: string; incarnationId: string }>;
 }>;
 
-/** Complete QUID-free client replica cut; durable authority encoding has separate version tags. */
-export type HostedClientLibrariesSnapshot = Readonly<Omit<LiveMapLibrariesSnapshot, "format"> & {
-  format: "hson-livemap-client-snapshot-v1";
-  authority: Readonly<{ logicalMapId: string; incarnationId: string }>;
-}>;
-
 /**
  * Runtime Proxy surface for ergonomic projected-path access.
  *
@@ -1727,7 +1721,7 @@ export type LiveMapDocumentLibrary<
     attrs: LiveMapLibraryDocumentAttrsApi<TLibrary>;
     flags: LiveMapLibraryDocumentFlagsApi<TLibrary>;
   }>;
-  /** Global-revision selected-document observations used by one Reflect binding. */
+  /** Global-revision selected-document observations used by one Mirror binding. */
   commits: LiveMapCommitObserverApi;
   schema: Readonly<{ get: () => TSchema }>;
 }>;

@@ -12,7 +12,6 @@ import {
   type HsonSchema,
 } from "../src/index.ts";
 import { install_libraries_snapshot } from "../src/api/livemap/index.ts";
-import { install_locus_libraries_snapshot } from "../src/api/locus/index.ts";
 import { encode_view_state_snapshot } from "../src/api/livemap/livemap.document.view-state-codec.ts";
 import { make_classified_livemap } from "../src/api/livemap/livemap.core.ts";
 
@@ -101,7 +100,7 @@ assert.throws(() => encode_ssr_bootstrap(legacyHosted),
 expectCode(encodeText(JSON.stringify({ format: "hson-ssr-bootstrap", version: 2, kind: "hosted-document",
   payload: { logicalMapId: "wire-map", incarnationId: "wire-incarnation", revision: 0,
     mode: "document", snapshotFormat: "hson-client-snapshot-v1", snapshotPayload: "<main/>" } })),
-  "SSR_BOOTSTRAP_VERSION_UNSUPPORTED");
+  "SSR_BOOTSTRAP_KIND_UNSUPPORTED");
 
 const DataSchema: HsonSchema = Hson.schema`<type "data" content <value "number">>`;
 const DocumentSchema: HsonSchema = Hson.schema`<type "document" tag "main" content "empty">`;
@@ -124,7 +123,7 @@ assert.deepEqual(install_libraries_snapshot(decodedLibraries.bootstrap).map.cut(
 assert.deepEqual(decodedLibraries.bootstrap.registry.libraries.map((entry) => entry.name), librariesBootstrap.registry.libraries.map((entry) => entry.name));
 
 // Legacy hosted Libraries bootstrap is likewise unavailable for encoding.
-const legacyHostedLibraries = { ...librariesBootstrap, format: "hson-livemap-client-snapshot-v1" as const,
+const legacyHostedLibraries = { ...librariesBootstrap, format: "hson-portable-aggregate-snapshot-v1" as const,
   authority: { logicalMapId: "aggregate-map", incarnationId: "aggregate-incarnation" } };
 // @ts-expect-error Retired complete hosted Libraries state is not an encoder input.
 assert.throws(() => encode_ssr_bootstrap(legacyHostedLibraries),

@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
-import { create_persistent_multi_library_locus } from "../src/api/locus/locus.multi-library.persistence.ts";
-import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.hosted-multi-library.socket.ts";
-import type { LocusHostedAggregateDraft } from "../src/api/locus/locus.hosted-multi-library.ts";
-import { create_persistent_locus_hosted_aggregate_internal } from "../src/api/locus/locus.hosted-multi-library.persistence.ts";
+import { create_persistent_registry_locus } from "../src/api/locus/locus.registry.persistence.ts";
+import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.aggregate.socket.ts";
+import type { LocusHostedAggregateDraft } from "../src/api/locus/locus.aggregate.ts";
+import { create_persistent_locus_hosted_aggregate_internal } from "../src/api/locus/locus.aggregate.persistence.ts";
 import { LocusPersistenceAppendUncertainError } from "../src/api/locus/locus.persistence.error.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { encode_locus_client_message } from "../src/api/locus/locus.protocol.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
-import type { LocusHostedAggregatePersistedCommit } from "../src/api/locus/locus.hosted-multi-library.persistence.ts";
+import type { LocusHostedAggregatePersistedCommit } from "../src/api/locus/locus.aggregate.persistence.ts";
 
 const schema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
 function make_map() {
@@ -99,7 +99,7 @@ async function session(server: { connect: (socket: LocusSocketLike) => () => voi
 {
   const persistence = new MemoryPersistence();
   const map = make_map();
-  const host = await create_persistent_multi_library_locus({ map, exposure,
+  const host = await create_persistent_registry_locus({ map, exposure,
     defaultProjection: { libraries: ["A"] }, authorizeProjection: ({ requested }) => requested,
     logicalMapId: "z1z2-persistent-rejection", persistence });
   let installed = 0;
@@ -131,7 +131,7 @@ async function session(server: { connect: (socket: LocusSocketLike) => () => voi
   assert.equal(messages(b, "commit").length, 1);
   host.dispose();
   const restoredMap = make_map();
-  const restored = await create_persistent_multi_library_locus({ map: restoredMap, exposure,
+  const restored = await create_persistent_registry_locus({ map: restoredMap, exposure,
     logicalMapId: "z1z2-persistent-rejection", persistence });
   assert.equal(restored.rev, 1);
   assert.equal(restoredMap.lib("A").snap(["value"]), "A-small");
@@ -144,7 +144,7 @@ async function session(server: { connect: (socket: LocusSocketLike) => () => voi
 {
   const persistence = new MemoryPersistence();
   const map = make_map();
-  const host = await create_persistent_multi_library_locus({ map, exposure,
+  const host = await create_persistent_registry_locus({ map, exposure,
     logicalMapId: "z1z2-clean-append", persistence });
   persistence.mode = "clean";
   await assert.rejects(host.mutate((draft) => draft.lib("A").at(["value"]).set("A1")), /durably append/i);
@@ -161,7 +161,7 @@ async function session(server: { connect: (socket: LocusSocketLike) => () => voi
 {
   const persistence = new MemoryPersistence();
   const map = make_map();
-  const host = await create_persistent_multi_library_locus({ map, exposure,
+  const host = await create_persistent_registry_locus({ map, exposure,
     logicalMapId: "z1z2-uncertain-append", persistence });
   persistence.mode = "uncertain";
   await assert.rejects(host.mutate((draft) => draft.lib("A").at(["value"]).set("A1")), /durably append/i);
@@ -170,7 +170,7 @@ async function session(server: { connect: (socket: LocusSocketLike) => () => voi
   await assert.rejects(host.mutate((draft) => draft.lib("A").at(["value"]).set("A2")), /faulted/i);
   assert.equal(persistence.appendCalls.length, 1);
   host.dispose();
-  const restored = await create_persistent_multi_library_locus({ map: make_map(), exposure,
+  const restored = await create_persistent_registry_locus({ map: make_map(), exposure,
     logicalMapId: "z1z2-uncertain-append", persistence });
   assert.equal(restored.rev, 1);
   assert.equal(restored.map.lib("A").snap(["value"]), "A1");
@@ -262,7 +262,7 @@ async function session(server: { connect: (socket: LocusSocketLike) => () => voi
   const persistence = new MemoryPersistence();
   const map = make_map();
   const authorization = deferred();
-  const host = await create_persistent_multi_library_locus({ map, exposure,
+  const host = await create_persistent_registry_locus({ map, exposure,
     logicalMapId: "z1z2-reservation", persistence,
     authorizeProjection: async ({ requested }) => { await authorization.promise; return requested; } });
   const pending = persistence.deferNextAppend();
@@ -304,7 +304,7 @@ async function session(server: { connect: (socket: LocusSocketLike) => () => voi
   assert.equal(persistence.state("z1z2-postinstall-fault")?.commits.length, 1);
   await assert.rejects(host.mutate((draft) => set_value(draft, "A", "A2")), /faulted/i);
   host.dispose();
-  const restored = await create_persistent_multi_library_locus({ map: make_map(), exposure,
+  const restored = await create_persistent_registry_locus({ map: make_map(), exposure,
     logicalMapId: "z1z2-postinstall-fault", persistence });
   assert.equal(restored.rev, 1);
   restored.dispose();

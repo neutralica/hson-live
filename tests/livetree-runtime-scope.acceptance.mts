@@ -33,7 +33,7 @@ export const HSON_LIVE_TEST_METADATA = Object.freeze({
   title: "LiveTree runtime scope isolation",
   category: "LiveTree",
   runtime: "node-synthetic-dom",
-  tags: Object.freeze(["quid", "runtime", "lifecycle", "css", "Reflect", "externally-discoverable"]),
+  tags: Object.freeze(["quid", "runtime", "lifecycle", "css", "Mirror", "externally-discoverable"]),
 });
 
 const testEvents = create_test_event_emitter("livetree.runtime-scope");
@@ -711,7 +711,7 @@ check("creation, handles, append, batch, detach, reinsert, clone, restoration, a
   assert.equal(rootElement.getAttribute("hson:quid"), null);
 });
 
-check("Reflect document and collection synchronization preserve clean projection markup", () => {
+check("Mirror document and collection synchronization preserve clean projection markup", () => {
   const document = new StyleDocument();
   const runtime = _create_livetree_runtime_test_handle();
   const map = elementMap("<main <span/>/>");
@@ -737,7 +737,7 @@ check("Reflect document and collection synchronization preserve clean projection
   const source = hson.liveMap.fromJson({
     items: [{ id: "a" }, { id: "b" }],
   });
-  const projection = hson.reflect.collection<{ id: string }>({
+  const projection = hson.mirror.collection<{ id: string }>({
     source: source.at(["items"]) as never,
     host,
     key: (item) => item.id,
@@ -752,7 +752,7 @@ check("Reflect document and collection synchronization preserve clean projection
   host.remove();
 });
 
-check("Reflect projects equal persisted QUIDs in separate runtimes", () => {
+check("Mirror projects equal persisted QUIDs in separate runtimes", () => {
   const left = _create_livetree_runtime_test_handle();
   const right = _create_livetree_runtime_test_handle();
   const leftMap = elementMap(`<main @${SAME_QUID}/>`);
@@ -774,7 +774,7 @@ check("Reflect projects equal persisted QUIDs in separate runtimes", () => {
   rightBinding.tree.remove();
 });
 
-check("Reflect same-runtime duplicate projection still rejects", () => {
+check("Mirror same-runtime duplicate projection still rejects", () => {
   const runtime = _create_livetree_runtime_test_handle();
   const left = elementMap(`<main @${SAME_QUID}/>`);
   const right = elementMap(`<main @${SAME_QUID}/>`);
@@ -787,7 +787,7 @@ check("Reflect same-runtime duplicate projection still rejects", () => {
   binding.tree.remove();
 });
 
-check("failed initial Reflect publication terminally unwinds its private tree", () => {
+check("failed initial Mirror publication terminally unwinds its private tree", () => {
   const runtime = _create_livetree_runtime_test_handle();
   const source = elementMap(`<main @000000rt8/>`);
   const failing = {

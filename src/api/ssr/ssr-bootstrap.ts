@@ -37,7 +37,6 @@ const BASE64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz012345678
 const BASE64URL_INPUT_CHUNK_BYTES = 24 * 1_024;
 const encoder = new TextEncoder();
 const asciiDecoder = new TextDecoder();
-type WireSsrBootstrapKind = SsrBootstrapKind | "hosted-document" | "hosted-libraries";
 
 type WireRegistryEntry = Readonly<{
   name: string;
@@ -56,7 +55,7 @@ type WireLibrary = Readonly<{
   rootPayload: string;
 }>;
 type LibrariesPayload = Readonly<{
-  snapshotFormat: "hson-livemap-libraries-snapshot" | "hson-livemap-client-snapshot-v1";
+  snapshotFormat: "hson-livemap-libraries-snapshot";
   revision: number;
   registryFormat: "hson-hosted-registry";
   registry: readonly WireRegistryEntry[];
@@ -154,8 +153,7 @@ export function decode_ssr_bootstrap(
   }
   if (envelope.format !== FORMAT) throw error("decode", "SSR_BOOTSTRAP_FORMAT_UNSUPPORTED", "SSR bootstrap format is unsupported.");
   if (!is_kind(envelope.kind)) throw error("decode", "SSR_BOOTSTRAP_KIND_UNSUPPORTED", "SSR bootstrap kind is unsupported.");
-  if (envelope.version !== (envelope.kind === "hosted-projection" ? HOSTED_PROJECTION_VERSION : LOCAL_VERSION)
-    || envelope.kind === "hosted-document" || envelope.kind === "hosted-libraries") {
+  if (envelope.version !== (envelope.kind === "hosted-projection" ? HOSTED_PROJECTION_VERSION : LOCAL_VERSION)) {
     throw error("decode", "SSR_BOOTSTRAP_VERSION_UNSUPPORTED", "SSR bootstrap version is unsupported.");
   }
 
@@ -192,7 +190,7 @@ function normalize_bootstrap(bootstrap: unknown): Readonly<{ kind: SsrBootstrapK
     }));
     return { kind: "document", payload: { viewStateFormat: viewState.format, viewStatePayload: viewState.payload } };
   }
-  if (bootstrap.format === "hson-livemap-libraries-snapshot" || bootstrap.format === "hson-livemap-client-snapshot-v1") {
+  if (bootstrap.format === "hson-livemap-libraries-snapshot") {
     if (Object.hasOwn(bootstrap, "authority")) {
       throw new TypeError("Legacy complete hosted Libraries bootstrap is retired.");
     }
@@ -202,14 +200,11 @@ function normalize_bootstrap(bootstrap: unknown): Readonly<{ kind: SsrBootstrapK
     assert_libraries_snapshot_bound(local);
     return { kind: "libraries", payload: libraries_payload(local) };
   }
-  if (bootstrap.format === "hson-client-snapshot-v1" || bootstrap.format === "view-state-client-snapshot-v1") {
-    throw new TypeError("Legacy hosted document bootstrap is retired.");
-  }
   throw new TypeError("Bootstrap family is unsupported.");
 }
 
 function libraries_payload(snapshot: LocalLibrariesContinuationSnapshot): LibrariesPayload {
-  if ((snapshot.format !== "hson-livemap-libraries-snapshot" && snapshot.format !== "hson-livemap-client-snapshot-v1") || snapshot.registry.format !== "hson-hosted-registry"
+  if (snapshot.format !== "hson-livemap-libraries-snapshot" || snapshot.registry.format !== "hson-hosted-registry"
     || !safe_nonnegative_integer(snapshot.revision)) throw new TypeError("Libraries scalar fields are malformed.");
   return {
     snapshotFormat: snapshot.format,
@@ -524,7 +519,7 @@ function require_mode(value: unknown): LiveMapRootMode { if (!is_mode(value)) th
 function require_string(value: unknown): string { if (typeof value !== "string") throw new TypeError("String field is malformed."); return value; }
 function require_root_format(value: unknown): "hson-exact-value" { if (value !== "hson-exact-value") throw new TypeError("Root codec is malformed."); return value; }
 function decoded_schema(value: string): HsonSchemaData { return HsonSchemaHandle.fromHson(value).toHson(); }
-function is_kind(value: unknown): value is WireSsrBootstrapKind { return value === "document" || value === "hosted-document" || value === "libraries" || value === "hosted-libraries" || value === "hosted-projection"; }
+function is_kind(value: unknown): value is SsrBootstrapKind { return value === "document" || value === "libraries" || value === "hosted-projection"; }
 function error(phase: "encode" | "decode", code: ConstructorParameters<typeof SsrBootstrapCodecError>[1], message: string, cause?: unknown): SsrBootstrapCodecError {
   return new SsrBootstrapCodecError(phase, code, message, cause);
 }

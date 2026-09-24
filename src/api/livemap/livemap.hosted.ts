@@ -1,3 +1,4 @@
+import type { PortableAggregateSnapshot } from "./livemap.hosted.internal.types.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { is_Node } from "../../core/node-guards.js";
 import {
@@ -18,7 +19,6 @@ import type {
   LiveMapGraphOp,
   LiveMapRootMode,
   HostedLiveMapLibrariesSnapshot,
-  HostedClientLibrariesSnapshot,
   LiveMapLibrariesSnapshot,
   LocalLibrariesContinuationSnapshot,
   LivePath,
@@ -50,8 +50,8 @@ export const HOSTED_COMMIT_FORMAT = "hson-hosted-commit" as const;
 export const LIVEMAP_LIBRARIES_SNAPSHOT_FORMAT = "hson-livemap-libraries-snapshot" as const;
 export const HOSTED_GRAPH_OP_FORMAT = "hson-hosted-graph-op-v2" as const;
 export const HOSTED_CLIENT_GRAPH_OP_FORMAT = "hson-hosted-client-graph-op-v1" as const;
-export const HOSTED_CLIENT_COMMIT_FORMAT = "hson-hosted-client-commit-v1" as const;
-export const HOSTED_CLIENT_SNAPSHOT_FORMAT = "hson-livemap-client-snapshot-v1" as const;
+export const PORTABLE_AGGREGATE_COMMIT_FORMAT = "hson-portable-aggregate-commit-v1" as const;
+export const PORTABLE_AGGREGATE_SNAPSHOT_FORMAT = "hson-portable-aggregate-snapshot-v1" as const;
 export const HOSTED_ROOT_FORMAT = "hson-exact-value" as const;
 
 export const HOSTED_MAX_LIBRARIES = 1_024;
@@ -117,7 +117,7 @@ export type HostedAggregateCommit = Readonly<{
 }>;
 
 /** Replica-relevant effects at one authority revision, with no runtime QUID evidence. */
-export type HostedClientOperation =
+export type PortableAggregateOperation =
   | Readonly<{
     library: string;
     domain: "data";
@@ -133,13 +133,13 @@ export type HostedClientOperation =
     payload: string;
   }>;
 
-export type HostedClientCommit = Readonly<{
-  format: typeof HOSTED_CLIENT_COMMIT_FORMAT;
+export type PortableAggregateCommit = Readonly<{
+  format: typeof PORTABLE_AGGREGATE_COMMIT_FORMAT;
   authority: HostedAuthorityFence;
   registryDigest: string;
   prevRev: number;
   rev: number;
-  operations: readonly HostedClientOperation[];
+  operations: readonly PortableAggregateOperation[];
 }>;
 
 export type DecodedHostedOperation = Readonly<{
@@ -315,8 +315,8 @@ export function decode_hosted_commit(
 }
 
 /** Derive QUID-free semantic effects from a living authority transition. */
-export function make_hosted_client_commit(authority: HostedAggregateCommit): HostedClientCommit | undefined {
-  const operations: HostedClientCommit["operations"][number][] = [];
+export function make_portable_aggregate_commit(authority: HostedAggregateCommit): PortableAggregateCommit | undefined {
+  const operations: PortableAggregateCommit["operations"][number][] = [];
   for (let index = 0; index < authority.operations.length; index += 1) {
     const entry = authority.operations[index];
     const evidence = authority.replay.operations[index];
@@ -342,8 +342,8 @@ export function make_hosted_client_commit(authority: HostedAggregateCommit): Hos
     }));
   }
   if (operations.length === 0) return undefined;
-  const commit: HostedClientCommit = Object.freeze({
-    format: HOSTED_CLIENT_COMMIT_FORMAT,
+  const commit: PortableAggregateCommit = Object.freeze({
+    format: PORTABLE_AGGREGATE_COMMIT_FORMAT,
     authority: authority.authority,
     registryDigest: authority.registryDigest,
     prevRev: authority.prevRev,
@@ -355,8 +355,8 @@ export function make_hosted_client_commit(authority: HostedAggregateCommit): Hos
 }
 
 /** Strictly admit one current client event before local semantic replay. */
-export function decode_hosted_client_commit(
-  input: HostedClientCommit,
+export function decode_portable_aggregate_commit(
+  input: PortableAggregateCommit,
   registry: HostedRegistry,
   bindingsByName: ReadonlyMap<string, HostedRegistryBinding>,
 ): readonly DecodedHostedOperation[] {
@@ -364,7 +364,7 @@ export function decode_hosted_client_commit(
   exact_keys(record, ["format", "authority", "registryDigest", "prevRev", "rev", "operations"], "Hosted client commit");
   const authority = exact_record(record.authority, "Hosted client commit authority");
   exact_keys(authority, ["logicalMapId", "incarnationId"], "Hosted client commit authority");
-  if (record.format !== HOSTED_CLIENT_COMMIT_FORMAT || record.registryDigest !== registry.digest
+  if (record.format !== PORTABLE_AGGREGATE_COMMIT_FORMAT || record.registryDigest !== registry.digest
     || typeof authority.logicalMapId !== "string" || !authority.logicalMapId
     || typeof authority.incarnationId !== "string" || !authority.incarnationId
     || !valid_revision(record.prevRev) || record.rev !== record.prevRev + 1
@@ -402,10 +402,10 @@ export function decode_hosted_client_commit(
 }
 
 /** Project exact authority capture into the full, QUID-free Echo snapshot format. */
-export function make_hosted_client_snapshot(authority: HostedLiveMapLibrariesSnapshot): HostedClientLibrariesSnapshot {
+export function make_portable_aggregate_snapshot(authority: HostedLiveMapLibrariesSnapshot): PortableAggregateSnapshot {
   assert_hosted_libraries_snapshot_shape(authority);
-  const snapshot: HostedClientLibrariesSnapshot = Object.freeze({
-    format: HOSTED_CLIENT_SNAPSHOT_FORMAT,
+  const snapshot: PortableAggregateSnapshot = Object.freeze({
+    format: PORTABLE_AGGREGATE_SNAPSHOT_FORMAT,
     revision: authority.revision,
     registry: authority.registry,
     registryDigest: authority.registryDigest,
@@ -415,17 +415,17 @@ export function make_hosted_client_snapshot(authority: HostedLiveMapLibrariesSna
     }))),
     authority: authority.authority,
   });
-  assert_hosted_client_snapshot_shape(snapshot);
+  assert_portable_aggregate_snapshot_shape(snapshot);
   return snapshot;
 }
 
 /** Reject all identity claims in a remote client snapshot before runtime installation. */
-export function assert_hosted_client_snapshot_shape(snapshot: HostedClientLibrariesSnapshot): void {
+export function assert_portable_aggregate_snapshot_shape(snapshot: PortableAggregateSnapshot): void {
   const record = exact_record(snapshot, "Hosted client snapshot");
   exact_keys(record, ["format", "revision", "registry", "registryDigest", "libraries", "authority"], "Hosted client snapshot");
   const authority = exact_record(record.authority, "Hosted client snapshot authority");
   exact_keys(authority, ["logicalMapId", "incarnationId"], "Hosted client snapshot authority");
-  if (record.format !== HOSTED_CLIENT_SNAPSHOT_FORMAT || !valid_revision(record.revision)
+  if (record.format !== PORTABLE_AGGREGATE_SNAPSHOT_FORMAT || !valid_revision(record.revision)
     || typeof authority.logicalMapId !== "string" || !authority.logicalMapId
     || typeof authority.incarnationId !== "string" || !authority.incarnationId) {
     throw new HostedAggregateRepresentationError("Hosted client snapshot envelope is malformed.");
@@ -441,8 +441,8 @@ export function assert_hosted_client_snapshot_shape(snapshot: HostedClientLibrar
 }
 
 /** Reuse the portable local installer while retaining a distinct client wire format. */
-export function hosted_client_snapshot_as_local(snapshot: HostedClientLibrariesSnapshot): LocalLibrariesContinuationSnapshot {
-  assert_hosted_client_snapshot_shape(snapshot);
+export function portable_aggregate_snapshot_as_local(snapshot: PortableAggregateSnapshot): LocalLibrariesContinuationSnapshot {
+  assert_portable_aggregate_snapshot_shape(snapshot);
   return Object.freeze({
     format: LIVEMAP_LIBRARIES_SNAPSHOT_FORMAT,
     revision: snapshot.revision,
@@ -605,7 +605,7 @@ function encode_hosted_graph_operation(operation: LiveMapGraphOp | LiveMapProjec
       representation = { domain: "graph", op: operation.op, target, quid: operation.quid };
     }
     else if (operation.op === "replace-content") {
-      if (portable && operation.lineage === undefined) throw new HostedAggregateRepresentationError("Legacy replacement has no portable lineage.");
+      if (portable && operation.lineage === undefined) throw new HostedAggregateRepresentationError("Portable replacement requires lineage.");
       const content = portable && is_Node(operation.replacement) ? clone_hson_graph_without_quids(operation.replacement) : operation.replacement;
       representation = { domain: "graph", op: operation.op, target, index: operation.index, replacement: encode_exact_hson_value(content), lineage: operation.lineage };
     }
@@ -757,13 +757,6 @@ function registry_canonical_text(entries: readonly HostedRegistryEntry[]): strin
       rootCodec: entry.rootCodec,
     })),
   });
-}
-
-/** Complete-topology legacy bootstrap can verify only an all-included live projection. @internal */
-export function complete_hosted_registry_as_projected_digest_internal(registry: HostedRegistry): string {
-  const application = registry.libraries.filter((entry) => entry.scope === undefined).sort((a, b) => a.name.localeCompare(b.name));
-  const system = registry.libraries.filter((entry) => entry.scope === "hson-internal");
-  return hosted_sha256(registry_canonical_text([...application, ...system]));
 }
 
 function must_library_name(name: string): void {

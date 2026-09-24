@@ -5,14 +5,14 @@ import type {
   LiveMapLibraries,
 } from "../../types/livemap.types.js";
 import type { LiveTree } from "../livetree/livetree.js";
-import type { DocumentMirror } from "../reflect/reflect.document.js";
+import type { DocumentMirror } from "../mirror/mirror.document.js";
 
 type ContinuableDocumentMap = DocumentLiveMap | LiveMapDocumentLibrary;
 
 export type DocumentContinuation<TMap extends ContinuableDocumentMap = ContinuableDocumentMap> = Readonly<{
   map: TMap;
   tree: LiveTree;
-  reflect: DocumentMirror;
+  mirror: DocumentMirror;
   dispose: () => void;
 }>;
 

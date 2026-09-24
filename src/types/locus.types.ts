@@ -3,7 +3,6 @@
 
 export type * from "./locus.shared.types.js";
 export type * from "./live.trace.types.js";
-export type * from "./locus.representation.types.js";
 export type * from "./locus.protocol.types.js";
 export type * from "./locus.projection.types.js";
 export type * from "./locus.core.types.js";

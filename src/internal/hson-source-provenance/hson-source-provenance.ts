@@ -97,7 +97,7 @@ export class HsonSourceProvenanceBuilder implements HsonSourceLexicalCollector {
     const value = evidence?.roles.value ?? evidence?.roles.coverage;
     this.drafts.set(node, {
       roles: value === undefined ? {} : { coverage: value },
-      scalar: value,
+      ...(value === undefined ? {} : { scalar: value }),
     });
   }
 

@@ -7,11 +7,11 @@ import { create_echo_endpoint_internal } from "../src/api/echo/echo.endpoint.ts"
 import { create_echo_semantic_connection_internal } from "../src/api/echo/echo.client.ts";
 import { create_echo_finite_operation_adapter_internal } from "../src/api/echo/echo.operation.internal.ts";
 import { create_echo_synchronization_adapter_internal } from "../src/api/echo/echo.synchronization.internal.ts";
-import { create_multi_library_echo_socket_client_internal } from "../src/api/echo/echo.multi-library.socket.ts";
+import { create_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import type {
   EchoHostedAggregateSynchronizationOutput,
 } from "../src/api/echo/echo.aggregate-websocket.internal.ts";
-import type { LocusHostedAggregateSynchronizationRequest } from "../src/api/locus/locus.hosted-multi-library.transport.internal.ts";
+import type { LocusHostedAggregateSynchronizationRequest } from "../src/api/locus/locus.aggregate.transport.internal.ts";
 import {
   attach_locus_semantic_transport_internal,
   type LocusCanonicalPublication,
@@ -20,11 +20,11 @@ import {
 } from "../src/api/locus/locus.transport.internal.ts";
 import {
   create_locus_hosted_aggregate_socket_internal,
-} from "../src/api/locus/locus.hosted-multi-library.socket.ts";
+} from "../src/api/locus/locus.aggregate.socket.ts";
 import type {
   LocusHostedAggregateCanonicalPublication,
   LocusHostedAggregateSynchronizationOutput,
-} from "../src/api/locus/locus.hosted-multi-library.transport.internal.ts";
+} from "../src/api/locus/locus.aggregate.transport.internal.ts";
 import type { LocusActionPayloads } from "../src/types/locus.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -247,7 +247,7 @@ await check("aggregate result and publication ingress remain independently order
     clientId: "aggregate-composed-client",
   });
   const unusedSocket = Object.freeze({ send: () => {}, close: () => {}, onMessage: () => () => {}, onClose: () => () => {} });
-  const client = create_multi_library_echo_socket_client_internal({
+  const client = create_echo_socket_client_internal({
     socket: unusedSocket,
     logicalMapId: server.logicalMapId,
     connection,

@@ -8,7 +8,7 @@ import { project_livetree } from "../api/livetree/creation/project-live-tree.js"
 import {
   reflect_document_in_runtime,
   type DocumentMirror,
-} from "../api/reflect/reflect.document.js";
+} from "../api/mirror/mirror.document.js";
 import { CssRuntimeManager } from "../api/livetree/managers/css-manager.js";
 import {
   lifecycle_resource_counts_for_owner,

@@ -77,7 +77,7 @@ async function measure(name, source) {
   if (entry === undefined) throw new Error(`Could not locate ${name} entry output.`);
   const initial = staticClosure(outputs, entry);
   const deferred = new Set(Object.keys(outputs).filter((path) => !initial.has(path)));
-  const aggregateRoot = Object.entries(outputs).find(([, output]) => output.entryPoint?.endsWith("/echo.multi-library.js"))?.[0];
+  const aggregateRoot = Object.entries(outputs).find(([, output]) => output.entryPoint?.endsWith("/echo.registry.js"))?.[0];
   if (aggregateRoot === undefined) {
     throw new Error("Deferred registry replica chunk was not emitted.");
   }

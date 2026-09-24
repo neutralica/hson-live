@@ -545,7 +545,7 @@ function serialize_hson_with_ownership(
     try {
       return serialize_canonical_hson_data(
         projected_value_from_hson_node(root),
-        { noBreak: inputOptions.noBreak },
+        inputOptions.noBreak === undefined ? {} : { noBreak: inputOptions.noBreak },
       ) as HsonCanonical;
     } catch {
       // Malformed projected-looking graphs continue through ordinary serializer diagnostics.

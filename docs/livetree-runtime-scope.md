@@ -30,7 +30,7 @@ The process-global registry is implemented by
   clone node.
 - disposal, detach cleanup, and lifecycle helpers call `get_quid()`,
   `drop_quid()`, or `destroy_subtree_quids()`.
-- Reflect structural planning calls `get_node_by_quid()` directly.
+- Mirror structural planning calls `get_node_by_quid()` directly.
 - diagnostics re-export mint, ensure, lookup, destroy, and reset seams.
 
 ### QUID-keyed lifecycle and style resources
@@ -59,9 +59,9 @@ The process-global registry is implemented by
 - Descendants: `wrap_in_tree()`, every `ContentManager` selection,
   `find()` / `findAll()`, DOM reverse lookup, DOM point lookup, and creation
   helpers.
-- Reflect document projection: `reflect_document()` captures a cloned
+- Mirror document projection: `reflect_document()` captures a cloned
   map node and calls `create_livetree()`.
-- Reflect keyed projection: renderers return LiveTrees; records detach,
+- Mirror keyed projection: renderers return LiveTrees; records detach,
   append, reuse, or terminally remove those returned trees.
 
 Every descendant-return path listed above must inherit the source handle’s
@@ -103,7 +103,7 @@ namespace state is `O(I)`, and a QUID-free runtime has `Q = I = 0`.
 `src/api/livetree/methods/remove-self.ts` is not imported by any production or
 test module. Its partial root-only QUID release is not the public removal path.
 
-### Reflect paths
+### Mirror paths
 
 - Document binding owns one weak active-binding guard plus binding-local path,
   persisted-QUID, registration, mounted-element, observation, and diagnostic
@@ -117,7 +117,7 @@ test module. Its partial root-only QUID release is not the public removal path.
 - Collection reflection treats application keys as synchronization keys and attaches
   renderer cleanup to each rendered tree’s QUID.
 
-Reflect therefore borrows LiveMap authority and a LiveTree runtime. Binding
+Mirror therefore borrows LiveMap authority and a LiveTree runtime. Binding
 disposal releases only bridge-owned state; terminal tree lifecycle remains a
 separate caller decision.
 
@@ -127,7 +127,7 @@ separate caller decision.
   creation.
 - graft uses ambient `document` for its fragment even when the host belongs to a
   different document.
-- Reflect structural DOM insertion uses ambient `document` for text nodes.
+- Mirror structural DOM insertion uses ambient `document` for text nodes.
 - `CssManager` is one singleton bound to the current ambient document; a
   document swap clears all rule and manager state.
 - QUID selectors are unqualified `[hson\:quid="…"]` selectors.
@@ -155,7 +155,7 @@ Immutable lookup sets are included for completeness.
 | Owner disposable/kind maps | `livetree/managers/lifecycle-registry.ts` | Move into the same runtime as the QUID claim. |
 | `CssManager` singleton, QUID rules, owned keyframes, scheduling, document binding | `livetree/managers/css-manager.ts` | One manager per runtime; style elements tracked in runtime-owned documents without cross-document reset. |
 | `GlobalCss` singleton/listeners/pending state when used by tree CSS selector rules | `livetree/managers/global-css.ts` | Instance state per runtime manager; static API remains the compatibility-default facade. |
-| Ambient projection document creation | LiveTree creation, graft, Reflect structure | Resolve from the target owner document or runtime projection call. |
+| Ambient projection document creation | LiveTree creation, graft, Mirror structure | Resolve from the target owner document or runtime projection call. |
 | Document ownership for projected/runtime CSS | `livetree/runtime/livetree-runtime.ts` | Weakly enforce one active LiveTree runtime per exact `Document`; reflect no ownership token into DOM. |
 | Ambient animation lookup | `css-manager.ts` | Query only documents owned by the runtime, using ordinary QUID selectors. |
 | Ambient listener targets for a mounted tree | `listener-builder.ts` | Resolve document/window from the tree’s mapped element when available. |
@@ -257,7 +257,7 @@ transforms and LiveMap installation do not mint or acquire a runtime.
 
 All generated-candidate collision checks and all operational QUID lookups use
 the selected runtime. `find.byQuid()`, descendant wrapping, DOM reverse lookup,
-content selection, append preflight, lifecycle cleanup, and Reflect
+content selection, append preflight, lifecycle cleanup, and Mirror
 structural synchronization inherit or receive that runtime explicitly.
 
 ## Resource and style ownership
@@ -324,7 +324,7 @@ their established destruction semantics.
 - Clone is structural-only: fresh eligible-node QUIDs in the source runtime,
   with no CSS, listener, event, observer, binding, or other resource copying.
   The stale CSS-copy comment and unused QUID-map CSS-copy helper were removed.
-- Reflect document bindings borrow both LiveMap authority and the LiveTree
+- Mirror document bindings borrow both LiveMap authority and the LiveTree
   projection runtime. `dispose()` releases only bridge observations and
   correspondence. Disposing first leaves the tree active. Destroying the
   borrowed root first stops the bridge and then performs normal runtime

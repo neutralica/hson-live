@@ -6,9 +6,7 @@ import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts"
 import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.identity-epoch.ts";
 import { set_livemap_projected_quid_candidate_source_for_tests } from "../src/api/livemap/livemap.projected.identity-handle.ts";
 import { set_livemap_document_quid_candidate_source_for_tests } from "../src/api/livemap/livemap.document.registration.ts";
-import { make_locus_canonical_stream } from "../src/api/locus/locus.history.ts";
-import { decode_locus_canonical_commit } from "../src/api/locus/locus.protocol.ts";
-import { element } from "./helpers/reflect-unit6.mts";
+import { element } from "./helpers/mirror-unit6.mts";
 import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 import { acquire_document_identity, acquire_projected_identity } from "./helpers/livemap-identity-internal.mts";
 
@@ -68,9 +66,9 @@ check("same-epoch ledger retains QUIDs issued after capture time", () => { const
 check("post-capture bytes remain allocator-occupied after same-epoch restore", () => { const m = map({ a: {}, b: {} }); set_livemap_projected_quid_candidate_source_for_tests(m, () => Q1); acquire_projected_identity(m, ["a"]); const capture = m.capture({ identity: "same-epoch" }); set_livemap_projected_quid_candidate_source_for_tests(m, () => Q2); acquire_projected_identity(m, ["b"]); m.restore(capture, { identity: "same-epoch" }); let calls = 0; set_livemap_projected_quid_candidate_source_for_tests(m, () => ++calls === 1 ? Q2 : Q3); acquire_projected_identity(m, ["b"]); assert.equal(calls, 2); });
 check("identity stripping crosses a durable new-epoch boundary", () => { const m = map({ x: {} }); acquire_projected_identity(m, ["x"]); m.restore(m.capture({ identity: "strip" }), { identity: "strip" }); assert.deepEqual(livemap_identity_epoch_accounting(m), { epoch: 1, issued: 0 }); });
 check("durable capture does not serialize retired issued ledger entries", () => { const m = map({ x: {} }); set_livemap_projected_quid_candidate_source_for_tests(m, () => Q1); acquire_projected_identity(m, ["x"]); m.delete(["x"]); const serialized = JSON.stringify(m.capture()); assert.equal(serialized.includes(Q1), false); assert.equal(serialized.includes("issued"), false); });
-check("Locus history carries operations but not issued-ledger state", () => { const m = map({ x: {} }); const stream = make_locus_canonical_stream(m, { logicalMapId: "unit-12p", incarnationId: "ledger" }); set_livemap_projected_quid_candidate_source_for_tests(m, () => Q1); acquire_projected_identity(m, ["x"]); m.delete(["x"]); const history = stream.history.replayAfter(0) ?? []; assert.equal(JSON.stringify(history).includes("issued"), false); assert.equal(livemap_identity_epoch_accounting(m).issued, 1); });
-check("local QUID demand produces no canonical transport envelope", () => { const m = map({ x: {} }); const stream = make_locus_canonical_stream(m, { logicalMapId: "unit-12p", incarnationId: "wire" }); set_livemap_projected_quid_candidate_source_for_tests(m, () => Q1); acquire_projected_identity(m, ["x"]); assert.equal(stream.history.replayAfter(0)?.length ?? 0, 0); m.at([]).asObject()!.setKey("value", 1); const wire = structuredClone(stream.history.replayAfter(0)?.[0]); const decoded = decode_locus_canonical_commit(wire); assert.deepEqual(decoded, wire); assert.equal(Reflect.get(wire as object, "formatVersion"), undefined); });
-check("independent Locus map epochs may carry equal QUID bytes", () => { const a = map({ x: {} }); const b = map({ x: {} }); set_livemap_projected_quid_candidate_source_for_tests(a, () => Q1); set_livemap_projected_quid_candidate_source_for_tests(b, () => Q1); acquire_projected_identity(a, ["x"]); acquire_projected_identity(b, ["x"]); assert.equal(livemap_identity_epoch_accounting(a).issued, 1); assert.equal(livemap_identity_epoch_accounting(b).issued, 1); });
+
+
+check("independent LiveMap epochs may carry equal QUID bytes", () => { const a = map({ x: {} }); const b = map({ x: {} }); set_livemap_projected_quid_candidate_source_for_tests(a, () => Q1); set_livemap_projected_quid_candidate_source_for_tests(b, () => Q1); acquire_projected_identity(a, ["x"]); acquire_projected_identity(b, ["x"]); assert.equal(livemap_identity_epoch_accounting(a).issued, 1); assert.equal(livemap_identity_epoch_accounting(b).issued, 1); });
 
 process.stdout.write(`1..${checks}\n`);
 testEvents.terminal("pass");

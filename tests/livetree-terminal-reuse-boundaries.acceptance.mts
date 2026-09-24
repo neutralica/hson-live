@@ -15,7 +15,7 @@ import {
 } from "../src/_tests/diagnostics-internal.ts";
 import { assign_hson_node_quid } from "../src/core/hson-node-quid.ts";
 import type { HsonNode } from "../src/core/types.ts";
-import { element } from "./helpers/reflect-unit6.mts";
+import { element } from "./helpers/mirror-unit6.mts";
 
 const Q1 = "000000v01";
 const Q2 = "000000v02";

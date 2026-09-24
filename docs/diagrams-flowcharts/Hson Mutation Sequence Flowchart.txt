@@ -3,7 +3,7 @@ sequenceDiagram
     participant DOM as Browser DOM
     participant App as Application
     participant LT as LiveTree
-    participant R as Reflect
+    participant R as Mirror
     participant E as Echo
     participant L as Locus
     participant A as Authoritative LiveMap

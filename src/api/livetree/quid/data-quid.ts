@@ -194,7 +194,7 @@ export function preflight_livetree_quid_lineage_transfer(
   });
 }
 
-/** Validate a fresh Reflection projection before crossing one canonical owner-epoch boundary. @internal */
+/** Validate a fresh Mirror projection before crossing one canonical owner-epoch boundary. @internal */
 export function preflight_livetree_quid_epoch_replacement(
   incomingRoot: HsonNode,
   outgoingRoot: HsonNode,
@@ -223,7 +223,7 @@ export function preflight_livetree_quid_epoch_replacement(
   }
 }
 
-/** Close one Reflection-owned runtime identity epoch after all of its active nodes are disposed. @internal */
+/** Close one Mirror-owned runtime identity epoch after all of its active nodes are disposed. @internal */
 export function reset_livetree_quid_epoch(
   quids: ReadonlySet<string>,
   runtime: LiveTreeRuntime,
@@ -369,7 +369,7 @@ export function admit_livetree_quid_graph(
  * Admit only QUIDs supplied by an authority-owned graph.
  *
  * Unlike standalone admission, this path never mints and preserves an absent
- * root claim. It is used by LiveMap-linked Reflection.
+ * root claim. It is used by LiveMap-linked Mirror.
  */
 export function admit_livetree_quid_graph_preserving_absence(
   root: HsonNode,

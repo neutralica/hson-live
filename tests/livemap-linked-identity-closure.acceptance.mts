@@ -1,7 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
-import { element, mount, path, raw_node } from "./helpers/reflect-unit6.mts";
+import { element, mount, path, raw_node } from "./helpers/mirror-unit6.mts";
 import {
   begin_livetree_materialization_profile,
   _create_livetree_for_runtime_test,
@@ -15,10 +15,6 @@ import {
   set_livemap_document_quid_candidate_source_for_tests,
 } from "../src/api/livemap/livemap.document.registration.ts";
 import { livemap_document_identity_overlay_for } from "../src/api/livemap/livemap.document.identity.ts";
-import {
-  decode_locus_canonical_commit,
-  decode_locus_document_commit,
-} from "../src/api/locus/locus.protocol.ts";
 import { PERSISTED_QUID_ALPHABET, PERSISTED_QUID_LENGTH } from "../src/core/hson-node-quid.ts";
 import type { LiveMapAnyOp, LiveMapCommit } from "../src/types/livemap.types.ts";
 import { FakeElement } from "./helpers/fake-document.mts";
@@ -102,57 +98,13 @@ check("public identity replay rejects before consulting the allocator", () => {
   assert.equal(map.rev, 0);
 });
 
-check("legacy Locus decoder can inspect old path and recorded QUID", () => {
-  const decoded = decode_locus_canonical_commit({
-    logicalMapId: "identity-map", incarnationId: "identity-incarnation", mode: "document",
-    prevRev: 0, rev: 1,
-    ops: [{ domain: "graph", op: "ensure-quid", target: path(), quid: Q1 }],
-  });
-  assert.deepEqual(decoded?.ops[0], { domain: "graph", op: "ensure-quid", target: path(), quid: Q1 });
-});
 
-check("bounded legacy Locus decoder accepts old ensure-quid transport", () => {
-  const encoded = {
-    logicalMapId: "identity-map",
-    incarnationId: "identity-incarnation",
-    mode: "document",
-    prevRev: 0,
-    rev: 1,
-    ops: [{ domain: "graph", op: "ensure-quid", target: path(), quid: Q1 }],
-  };
-  assert.equal(Reflect.get(decode_locus_canonical_commit(encoded)!.ops[0]!, "quid"), Q1);
-});
 
-check("Locus decoder rejects malformed registration QUID", () => {
-  const encoded = {
-    logicalMapId: "identity-map",
-    incarnationId: "identity-incarnation",
-    mode: "document",
-    prevRev: 0,
-    rev: 1,
-    ops: [{ domain: "graph", op: "ensure-quid", target: path(), quid: "bad" }],
-  };
-  assert.equal(decode_locus_canonical_commit(encoded), undefined);
-  assert.equal(decode_locus_canonical_commit({
-    ...encoded,
-    ops: [{ domain: "graph", op: "ensure-quid", target: path(), quid: "0000000000000001" }],
-  }), undefined);
-});
 
-check("decoded legacy registration cannot replay through the public document API", () => {
-  const encoded = decode_locus_canonical_commit({
-    logicalMapId: "identity-map",
-    incarnationId: "identity-incarnation",
-    mode: "document",
-    prevRev: 0,
-    rev: 1,
-    ops: [{ domain: "graph", op: "ensure-quid", target: path(), quid: Q1 }],
-  })!;
-  const mirror = element(`<main/>`);
-  assert.throws(() => Reflect.apply(mirror.replay, mirror, [decode_locus_document_commit(encoded)]));
-  assert.equal(mirror.document.byQuid(Q1), undefined);
-  assert.equal(mirror.rev, 0);
-});
+
+
+
+
 
 check("new registration publishes no authoritative observation", () => {
   const { map, binding } = reflected(`<main/>`);

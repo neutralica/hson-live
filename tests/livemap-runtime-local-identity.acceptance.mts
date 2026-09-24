@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { hson, hsonLiveMap } from "../src/index.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { acquire_document_identity, acquire_projected_identity } from "./helpers/livemap-identity-internal.mts";
-import { element, mount, path } from "./helpers/reflect-unit6.mts";
+import { element, mount, path } from "./helpers/mirror-unit6.mts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { livemap_document_identity_overlay_for } from "../src/api/livemap/livemap.document.identity.ts";
 import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";

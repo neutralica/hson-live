@@ -187,7 +187,7 @@ check("named document locations keep relative content operations in their select
   assert.deepEqual([capture.rev, capture.root.$_tag], [1, "_hson_root"]);
 });
 
-check("Reflect binds one selected document Library and advances through unrelated global revisions", () => {
+check("Mirror binds one selected document Library and advances through unrelated global revisions", () => {
   const map = create_map();
   const page = map.lib("page");
   const binding = hsonMirror(page);
@@ -204,7 +204,7 @@ check("Reflect binds one selected document Library and advances through unrelate
   binding.dispose();
 });
 
-check("one aggregate page plus data commit advances Reflect once and applies only page structure", () => {
+check("one aggregate page plus data commit advances Mirror once and applies only page structure", () => {
   const map = create_map();
   const page = map.lib("page");
   const binding = hsonMirror(page);

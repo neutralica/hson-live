@@ -199,7 +199,7 @@ class HsonScanner {
       if (cursor !== undefined && cursor >= boundary && cursor <= this.index) {
         this.editorCheckpoint({ kind, path: [...this.editorPath], existing: [...this.editorExisting],
           range: start === undefined ? { start: cursor, end: cursor } : { start: boundary, end: this.index },
-          openContainers: [...this.editorContainers], rootType: this.editorRootType });
+          openContainers: [...this.editorContainers], ...(this.editorRootType === undefined ? {} : { rootType: this.editorRootType }) });
       }
     }
     if (this.collector?.completionSlot === undefined) return;
@@ -234,7 +234,7 @@ class HsonScanner {
       } else if (ch === `"`) {
         const pos = this.position();
         const value = this.scanContentString();
-        const token = this.emit({ ...CREATE_TEXT_TOKEN(value.raw, true, pos), directValue: value.directValue });
+        const token = this.emit({ ...CREATE_TEXT_TOKEN(value.raw, true, pos), ...(value.directValue === undefined ? {} : { directValue: value.directValue }) });
         if (this.collector !== undefined) this.recordToken(token, {
           roles: { coverage: { start: pos.index, end: this.index }, value: { start: pos.index, end: this.index } },
         });
@@ -514,7 +514,7 @@ class HsonScanner {
           if (parsed === "data" || parsed === "document") this.editorRootType = parsed;
         } catch { /* Invalid strings are handled by the scanner. */ }
       }
-      const token = this.emit({ ...CREATE_TEXT_TOKEN(value.raw, true, pos), directValue: value.directValue });
+      const token = this.emit({ ...CREATE_TEXT_TOKEN(value.raw, true, pos), ...(value.directValue === undefined ? {} : { directValue: value.directValue }) });
       if (this.collector !== undefined) this.recordToken(token, {
         roles: { coverage: { start: pos.index, end: this.index }, value: { start: pos.index, end: this.index } },
       });
@@ -742,7 +742,7 @@ class HsonScanner {
         contentStarted = true;
         emitOpen();
         const value = this.scanContentString();
-        const token = this.emit({ ...CREATE_TEXT_TOKEN(value.raw, true, valuePos), directValue: value.directValue });
+        const token = this.emit({ ...CREATE_TEXT_TOKEN(value.raw, true, valuePos), ...(value.directValue === undefined ? {} : { directValue: value.directValue }) });
         if (this.collector !== undefined) this.recordToken(token, {
           roles: { coverage: { start: valuePos.index, end: this.index }, value: { start: valuePos.index, end: this.index } },
         });
@@ -924,7 +924,7 @@ class HsonScanner {
     if (ch === `"`) {
       const pos = this.position();
       const value = this.scanContentString();
-      const token = this.emit({ ...CREATE_TEXT_TOKEN(value.raw, true, pos), directValue: value.directValue });
+      const token = this.emit({ ...CREATE_TEXT_TOKEN(value.raw, true, pos), ...(value.directValue === undefined ? {} : { directValue: value.directValue }) });
       if (this.collector !== undefined) this.recordToken(token, {
         roles: { coverage: { start: pos.index, end: this.index }, value: { start: pos.index, end: this.index } },
       });
@@ -982,7 +982,7 @@ class HsonScanner {
     if (this.peek() === `"`) {
       const valueStart = this.position();
       const { text, end, direct } = this.scanAttributeString(name);
-      const attr = { name, value: { text, quoted: true, direct }, start, end };
+      const attr = { name, value: { text, quoted: true, ...(direct === undefined ? {} : { direct }) }, start, end };
       this.collector?.recordAttribute(attr, {
         coverage: { start: start.index, end: end.index + 1 },
         name: { start: start.index, end: start.index + name.length },

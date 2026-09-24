@@ -1,7 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
-import { element, mount, path, projected_element, raw_node } from "./helpers/reflect-unit6.mts";
+import { element, mount, path, projected_element, raw_node } from "./helpers/mirror-unit6.mts";
 import {
   _create_livetree_for_runtime_test,
   _create_livetree_runtime_test_handle,
@@ -145,7 +145,7 @@ check("DOM preflight failure leaves canonical state unchanged", () => {
   const dom = mount(root.node);
   dom.setAttribute("hson:quid", Q1);
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q2);
-  assert.throws(() => root.quid, (cause: unknown) => Reflect.get(cause as object, "code") === "DOCUMENT_REFLECT_QUID_MISMATCH");
+  assert.throws(() => root.quid, (cause: unknown) => Reflect.get(cause as object, "code") === "DOCUMENT_MIRROR_QUID_MISMATCH");
   assert.equal(map.rev, 0);
   assert.equal(map.document.byQuid(Q2), undefined);
   close(binding);
@@ -156,7 +156,7 @@ check("private projected metadata inconsistency fails before commit", () => {
   const root = authoredRoot(binding);
   root.node.$_meta = { quid: Q1 };
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q2);
-  assert.throws(() => root.quid, (cause: unknown) => Reflect.get(cause as object, "code") === "DOCUMENT_REFLECT_QUID_MISMATCH");
+  assert.throws(() => root.quid, (cause: unknown) => Reflect.get(cause as object, "code") === "DOCUMENT_MIRROR_QUID_MISMATCH");
   assert.equal(map.rev, 0);
   close(binding);
 });

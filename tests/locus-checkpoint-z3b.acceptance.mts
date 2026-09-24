@@ -8,11 +8,10 @@ import type { HsonNode } from "../src/core/types.ts";
 import { capture_selected_authority_projection_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
 import {
-  durable_aggregate_checkpoint,
   create_persistent_locus_hosted_aggregate_internal,
   load_persistent_locus_hosted_aggregate_internal,
   type LocusHostedAggregatePersistedManifest,
-} from "../src/api/locus/locus.hosted-multi-library.persistence.ts";
+} from "../src/api/locus/locus.aggregate.persistence.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
 
@@ -58,23 +57,16 @@ async function case_(name: string, run: () => Promise<void>) {
   process.stdout.write(`ok - ${name}\n`);
 }
 
-await case_("v1 restore migrates on its first checkpoint and writes v2 only", async () => {
+await case_("v1 checkpoint rejects as unsupported", async () => {
   const adapter = new MemoryCheckpointAdapter();
   const map = make_map();
   const authority = internal_livemap_aggregate_authority(map);
   authority.setInitialHostedAuthority({ logicalMapId: "z3b-v1", incarnationId: "z3b-v1-inc" });
-  const v1 = durable_aggregate_checkpoint(authority.captureHosted());
-  adapter.seed("z3b-v1", { checkpoint: v1, commits: [] });
-  const restored = await host(adapter, "z3b-v1");
-  assert.equal(restored.rev, 0);
-  await restored.mutate((draft) => { draft.lib("private").at(["value"]).set("changed"); });
-  await restored.checkpoint();
-  assert.equal(active(adapter, "z3b-v1").rev, 1);
-  restored.dispose();
-  const again = await host(adapter, "z3b-v1");
-  assert.equal(again.map.lib("private").snap(["value"]), "changed");
-  assert.equal(again.rev, 1);
-  again.dispose();
+  const old = { format: "hson-locus-durable-aggregate-checkpoint-v1", logicalMapId: "z3b-v1",
+    incarnationId: "z3b-v1-inc", mapKind: "hosted-aggregate", registryDigest: authority.captureHosted().registryDigest,
+    rev: 0, snapshot: authority.captureHosted() };
+  adapter.seed("z3b-v1", { checkpoint: old, commits: [] } as unknown as import("../src/api/locus/locus.aggregate.persistence.ts").LocusHostedAggregatePersistedState);
+  await assert.rejects(() => host(adapter, "z3b-v1"), /invalid/i);
 });
 
 await case_("checkpoint chunks exclude runtime QUID identity and restore fresh identity", async () => {

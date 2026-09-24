@@ -108,7 +108,7 @@ check("root facade exports preserve subsystem identities", () => {
   assert.equal(root.hsonLiveTree, hsonLiveTree);
   assert.equal(root.hsonLocus, root.hson.locus);
   assert.equal(root.hsonLocus, hsonLocus);
-  assert.equal(root.hsonMirror, root.hson.reflect);
+  assert.equal(root.hsonMirror, root.hson.mirror);
   assert.equal(root.hsonMirror, hsonMirror);
 });
 

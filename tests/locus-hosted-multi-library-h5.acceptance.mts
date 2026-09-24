@@ -21,9 +21,9 @@ import { read_locus_retained_action_status_internal } from "../src/api/locus/loc
 import { encode_locus_portable_graph_content } from "../src/api/locus/locus.graph-content-codec.ts";
 import { project_authority_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
-import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.hosted-multi-library.socket.ts";
+import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.aggregate.socket.ts";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
-import type { LocusHostedAggregatePersistedCommit } from "../src/api/locus/locus.hosted-multi-library.persistence.ts";
+import type { LocusHostedAggregatePersistedCommit } from "../src/api/locus/locus.aggregate.persistence.ts";
 
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <theme "string" count <number <int true min 0>>>>`;
 const ColorsSchema: HsonSchema = Hson.schema`<type "data" content <theme "string" accent "string">>`;
@@ -37,14 +37,14 @@ const LOCUS_RESTART_A_QUID = "000008211";
 const LOCUS_RESTART_B_QUID = "000008212";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
-  id: "locus.hosted-multi-library-h5",
+  id: "locus.aggregate-h5",
   title: "Hosted multi-library H5",
   category: "Locus",
   runtime: "node",
   tags: Object.freeze(["locus", "echo", "livemap", "libraries", "hosted", "h5"]),
 });
 
-const testEvents = create_test_event_emitter("locus.hosted-multi-library-h5");
+const testEvents = create_test_event_emitter("locus.aggregate-h5");
 let checks = 0;
 async function check(name: string, run: () => void | Promise<void>): Promise<void> {
 

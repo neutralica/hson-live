@@ -7,29 +7,29 @@ import {
   path,
   projected_element,
   raw_node,
-} from "./helpers/reflect-unit6.mts";
+} from "./helpers/mirror-unit6.mts";
 import {
   _create_livetree_runtime_test_handle,
   _lookup_livetree_runtime_test_node,
   _reflect_document_for_runtime_test,
 } from "../src/_tests/diagnostics-internal.ts";
-import { hsonMirror } from "../src/api/reflect/reflect.facade.ts";
+import { hsonMirror } from "../src/api/mirror/mirror.facade.ts";
 import {
-  DOCUMENT_REFLECT_STRUCTURAL_UPDATE_FAILED_ERROR_CODE,
-} from "../src/api/reflect/reflect.document.error.ts";
+  DOCUMENT_MIRROR_STRUCTURAL_UPDATE_FAILED_ERROR_CODE,
+} from "../src/api/mirror/mirror.document.error.ts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import { hson } from "../src/hson.ts";
 import { FakeElement } from "./helpers/fake-document.mts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
-  id: "reflect.livemap-publication-order",
+  id: "mirror.livemap-publication-order",
   title: "LiveMap and Reflection publication ordering",
-  category: "Reflect",
+  category: "Mirror",
   runtime: "node-synthetic-dom",
   tags: Object.freeze(["document", "binding", "publication", "observer", "reentrancy", "failure", "externally-discoverable"]),
 });
 
-const testEvents = create_test_event_emitter("reflect.livemap-publication-order");
+const testEvents = create_test_event_emitter("mirror.livemap-publication-order");
 let checks = 0;
 function check(name: string, run: () => void): void {
 
@@ -404,7 +404,7 @@ check("Reflection application failure is isolated and later observers still exec
   assert.equal(commit.changed, true);
   assert.equal(map.rev, 1);
   assert.equal(binding.status, "failed");
-  assert.equal(binding.failure?.code, DOCUMENT_REFLECT_STRUCTURAL_UPDATE_FAILED_ERROR_CODE);
+  assert.equal(binding.failure?.code, DOCUMENT_MIRROR_STRUCTURAL_UPDATE_FAILED_ERROR_CODE);
   assert.equal(binding.sourceRevision, 0);
   assert.equal(later, 1);
   binding.dispose();

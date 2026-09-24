@@ -43,9 +43,9 @@ LiveTreeLinkedIdentityRequiredError LiveTreeProtectedRootError LiveTreeQuidReuse
 LocalInteractionDescriptor Locus LocusActionName LocusActionPayloads
 LocusActivity LocusActivityKind LocusActivitySnapshot LocusActivityState LocusAuthorityError
 LocusConnection LocusDisconnectedError LocusDuplicateActionIdError
-LocusMultiLibrary LocusMultiLibraryActionContext LocusMultiLibraryActionHandler LocusMultiLibraryActions
-LocusMultiLibraryOptions LocusRecoveryError LocusResult LocusSocketLike
-read_transform_error_details Reflect reflect_document remove_interaction render_document
+LocusActionContext LocusActionHandler LocusActions
+LocusOptions LocusResult LocusSocketLike
+read_transform_error_details Mirror reflect_document remove_interaction render_document
 render_hosted_document replace_interaction SsrBootstrapCodecError SsrBootstrapCodecOptions SsrBootstrapKind
 TransformBinarySerialize TransformError TransformErrorDetails TransformErrorRelated TransformErrorSource
 TreeSelector
@@ -99,7 +99,7 @@ const declarationFiles = [
   "dist/number.d.ts",
   "dist/api/livemap/index.d.ts",
   "dist/api/livetree/index.d.ts",
-  "dist/api/reflect/index.d.ts",
+  "dist/api/mirror/index.d.ts",
   "dist/api/echo/index.d.ts",
   "dist/api/locus/index.d.ts",
   "dist/api/locus/node/index.d.ts",
@@ -185,9 +185,9 @@ const ownerProofs = Object.freeze({
   "dist/hson-authoring.d.ts": ["HsonDocument", "HsonNode", "HsonAttrs", "HsonMeta", "NodeContent", "JsonValue", "Primitive"],
   "dist/api/livetree/index.d.ts": ["make_tree_selector", "LiveTreeAttributeErrorCode", "LIVETREE_DISPOSED_ERROR_CODE"],
   "dist/api/livemap/index.d.ts": ["make_livemap_core", "make_livemap_store_api", "LiveMapCapture", "LiveMapReplay", "LiveMapCommitObserver", "snap_live_path"],
-  "dist/api/reflect/index.d.ts": ["reflect_collection", "CollectionReflect", "CollectionReflectErrorCode", "DocumentMirrorErrorCode", "DOCUMENT_REFLECT_DISPOSED_ERROR_CODE"],
+  "dist/api/mirror/index.d.ts": ["reflect_collection", "CollectionMirror", "CollectionMirrorErrorCode", "DocumentMirrorErrorCode", "DOCUMENT_MIRROR_DISPOSED_ERROR_CODE"],
   "dist/api/echo/index.d.ts": ["EchoRecovery", "EchoRecoveryCursor", "EchoRecoveryOptions", "EchoRecoveryStrategy"],
-  "dist/api/locus/index.d.ts": ["create_persistent_locus", "PersistentLocusMultiLibraryOptions"],
+  "dist/api/locus/index.d.ts": ["create_persistent_locus", "PersistentLocusOptions"],
   "dist/api/locus/node/index.d.ts": ["create_node_locus_socket", "NodeLocusSocketOptions"],
   "dist/api/ssr/index.d.ts": ["render_document", "DocumentSsr"],
   "dist/api/livehost/index.d.ts": ["create_livehost_locus_registry", "LiveHost"],
@@ -292,7 +292,7 @@ await check("all retained overlapping runtime values preserve strict identity", 
     livemap: ["hsonLiveMap", "link_livemap", "LiveMapDocumentAttributeNotFoundError", "LiveMapDocumentIdentityProvenanceError", "LiveMapDocumentIdentityRegistrationError", "LiveMapDocumentInstallError", "LiveMapDocumentMutationError", "LiveMapDocumentStagingError"],
     mirror: ["hsonMirror", "reflect_document", "DocumentMirrorError"],
     echo: ["hsonEcho", "create_echo", "EchoRecoveryError", "EchoSessionError"],
-    locus: ["hsonLocus", "create_locus", "LocusDisconnectedError", "LocusDuplicateActionIdError", "LocusRecoveryError", "LocusAuthorityError"],
+    locus: ["hsonLocus", "create_locus", "LocusDisconnectedError", "LocusDuplicateActionIdError", "LocusAuthorityError"],
     ssr: ["decode_ssr_bootstrap", "DocumentSsrError", "encode_ssr_bootstrap", "render_document", "render_hosted_document", "SsrBootstrapCodecError"],
     livehost: ["create_livehost_locus_registry"],
   } as const;

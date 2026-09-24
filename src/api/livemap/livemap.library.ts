@@ -45,9 +45,8 @@ export type LiveMapAggregateOperation = Readonly<{
 /**
  * The authoritative internal commit shape for one map-global transition.
  *
- * It deliberately has no legacy transport payload. The existing public/Locus
- * envelope remains a single-library lowering boundary and must reject this
- * shape rather than silently dropping library coordinates.
+ * Its operations carry library coordinates. Portable projections and durable
+ * records encode those coordinates explicitly.
  * @internal
  */
 export type LiveMapAggregateCommit = Readonly<{
@@ -101,15 +100,6 @@ export type LiveMapAggregateWrite =
     kind: "replay-data";
     operation: import("./livemap.transport.js").LiveMapProjectedDataOp;
   }>;
-
-/** Reject accidental lowering of an aggregate commit into the path-only legacy envelope. @internal */
-export function reject_livemap_aggregate_legacy_lowering(
-  _commit: LiveMapAggregateCommit,
-): never {
-  throw new Error(
-    "LiveMap aggregate commit cannot be serialized through the legacy single-root commit boundary.",
-  );
-}
 
 /**
  * State owned by one canonical graph under a LiveMap.

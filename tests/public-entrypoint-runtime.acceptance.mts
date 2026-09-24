@@ -236,8 +236,8 @@ check("SSR declarations expose only the approved semantic surface", () => {
 check("stale public terminology is absent from maintained declarations", () => {
   const declarations = [
     "index.d.ts",
-    "api/reflect/reflect.document.d.ts",
-    "api/reflect/reflect.document.error.d.ts",
+    "api/mirror/mirror.document.d.ts",
+    "api/mirror/mirror.document.error.d.ts",
     "api/locus/index.d.ts",
     "api/ssr/index.d.ts",
     "api/transform/index.d.ts",

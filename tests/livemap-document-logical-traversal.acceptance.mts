@@ -4,7 +4,7 @@ import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import * as publicApi from "../src/index.ts";
-import { hsonMirror } from "../src/api/reflect/reflect.facade.ts";
+import { hsonMirror } from "../src/api/mirror/mirror.facade.ts";
 import { project_livetree } from "../src/api/livetree/creation/project-live-tree.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import {

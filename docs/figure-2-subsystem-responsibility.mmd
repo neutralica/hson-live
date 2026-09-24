@@ -3,7 +3,7 @@ flowchart TB
 
     LiveMap["LiveMap"] -->|owns| LiveMapResponsibilities["Canonical graph state<br/>Revisioned mutation<br/>Authoritative graph-change emission"]
 
-    Reflection["Reflection"] -->|coordinates| ReflectionResponsibilities["Canonical-change-to-runtime projection<br/>Authoritative-state-to-runtime correspondence"]
+    Mirror["Reflection"] -->|coordinates| MirrorResponsibilities["Canonical-change-to-runtime projection<br/>Authoritative-state-to-runtime correspondence"]
 
     LiveTree["LiveTree"] -->|owns| LiveTreeResponsibilities["Graph-state realization<br/>DOM, CSS, events, and runtime projection"]
 

@@ -1,7 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
-import { element, mount, path, raw_node } from "./helpers/reflect-unit6.mts";
+import { element, mount, path, raw_node } from "./helpers/mirror-unit6.mts";
 import {
   _create_livetree_for_runtime_test,
   _create_livetree_runtime_test_handle,

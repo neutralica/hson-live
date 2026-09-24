@@ -27,6 +27,7 @@ import {
   create_echo_synchronization_adapter_internal,
   type EchoSynchronizationCapability,
   type EchoSynchronizationOutput,
+  type EchoSynchronizationRequest,
 } from "./echo.synchronization.internal.js";
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
@@ -47,7 +48,7 @@ function hasExactKeys(value: Readonly<Record<string, unknown>>, keys: readonly s
   return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
 }
 
-function encodeEndpointMessage(message: LocusClientMessage): string {
+function encodeEndpointMessage(message: LocusClientMessage | EchoSynchronizationRequest): string {
   if (message.type !== "action") return JSON.stringify(message);
   const { payload, ...rest } = message;
   return JSON.stringify({
@@ -200,7 +201,7 @@ export type EchoEndpointConnectionOptions<TActions extends LocusActionPayloads =
 /** @internal Shared transport/session shell used by endpoint-only and deferred-replica Echo. */
 export type EchoEndpointConnection<
   TActions extends LocusActionPayloads = LocusActionPayloads,
-  TSynchronizationRequest = import("../../types/locus.types.js").LocusClientRecoverMessage,
+  TSynchronizationRequest = EchoSynchronizationRequest,
   TSynchronizationOutput = EchoSynchronizationOutput,
 > = Readonly<{
   endpoint: EchoEndpoint<TActions>;
@@ -215,7 +216,7 @@ export type EchoEndpointConnection<
     decoder: (raw: string) => TSynchronizationOutput | undefined,
   ) => LocusDisposer;
   /** @internal Present only on the current WebSocket adapter. */
-  setMessageEncoder?: (encoder: (message: LocusClientMessage<TActions>) => string) => LocusDisposer;
+  setMessageEncoder?: (encoder: (message: LocusClientMessage<TActions> | EchoSynchronizationRequest) => string) => LocusDisposer;
 }>;
 
 /** @internal Transport lifecycle supplied independently of semantic capabilities. */
@@ -226,7 +227,7 @@ export type EchoSemanticAttachmentLifecycle = Readonly<{
 /** @internal Smallest reusable Echo composition boundary below public transport options. */
 export type EchoSemanticConnectionOptions<
   TActions extends LocusActionPayloads = LocusActionPayloads,
-  TSynchronizationRequest = import("../../types/locus.types.js").LocusClientRecoverMessage,
+  TSynchronizationRequest = EchoSynchronizationRequest,
   TSynchronizationOutput = EchoSynchronizationOutput,
 > = Readonly<{
   operations: EchoFiniteOperationCapability<TActions>;
@@ -242,7 +243,7 @@ export type EchoSemanticConnectionOptions<
 /** @internal Compose semantic Echo from independently supplied capabilities. */
 export function create_echo_semantic_connection_internal<
   TActions extends LocusActionPayloads = LocusActionPayloads,
-  TSynchronizationRequest = import("../../types/locus.types.js").LocusClientRecoverMessage,
+  TSynchronizationRequest = EchoSynchronizationRequest,
   TSynchronizationOutput = EchoSynchronizationOutput,
 >(options: EchoSemanticConnectionOptions<TActions, TSynchronizationRequest, TSynchronizationOutput>): EchoEndpointConnection<TActions, TSynchronizationRequest, TSynchronizationOutput> {
   if (options.operations.binding === undefined
@@ -338,7 +339,7 @@ export function create_echo_semantic_connection_internal<
 export function create_echo_endpoint_connection_internal<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(options: EchoEndpointConnectionOptions<TActions>): EchoEndpointConnection<TActions> {
-  let encodeMessage = (message: LocusClientMessage<TActions>): string => encodeEndpointMessage(message);
+  let encodeMessage = (message: LocusClientMessage<TActions> | EchoSynchronizationRequest): string => encodeEndpointMessage(message);
   let decodeSynchronization: ((raw: string) => EchoSynchronizationOutput | undefined) | undefined;
   let disposed = false;
   const binding = Object.freeze({});

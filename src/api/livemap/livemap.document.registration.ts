@@ -32,7 +32,7 @@ export type LiveMapDocumentIdentityAppliedClaim = Readonly<{
   quid: string;
 }>;
 
-/** Opaque commit-scoped local Reflection reservation. */
+/** Opaque commit-scoped local Mirror reservation. */
 export type LiveMapDocumentIdentityCommitReservation = Readonly<{
   readonly applied: boolean;
   apply: () => readonly LiveMapDocumentIdentityAppliedClaim[];
@@ -76,7 +76,7 @@ export function register_livemap_document_identity_authority(
   reservedForAuthority.set(controller, new Set());
 }
 
-/** Attach the sole active local Reflection participant. */
+/** Attach the sole active local Mirror participant. */
 export function register_livemap_document_identity_participant(
   owner: object,
   participant: LiveMapDocumentIdentityParticipant,
@@ -132,7 +132,7 @@ function acquire_livemap_document_canonical_identity(
   if (requireParticipant && participant === undefined) {
     throw new LiveMapDocumentIdentityRegistrationError(
       "LIVEMAP_IDENTITY_PARTICIPANT_REQUIRED",
-      "Linked identity acquisition requires one active local Reflection participant.",
+      "Linked identity acquisition requires one active local Mirror participant.",
     );
   }
   const endpoint = resolve_document_path(authority.root(), authority.mode, target.path);
@@ -219,7 +219,7 @@ export function preflight_livemap_document_identity_replay(
   return reservation;
 }
 
-/** Resolve the exact preflight evidence for Reflection's synchronous observer. */
+/** Resolve the exact preflight evidence for Mirror's synchronous observer. */
 export function livemap_document_identity_reservation_for(
   commit: LiveMapGraphCommit<LiveMapGraphOp>,
 ): LiveMapDocumentIdentityCommitReservation | undefined {

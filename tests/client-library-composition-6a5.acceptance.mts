@@ -3,8 +3,8 @@ import { Hson, hsonLiveMap, hsonMirror, hsonEcho, hsonLocus, type HsonSchema } f
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import { test_public_projection } from "./helpers/hosted-exposure.mts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
-import { make_livemap_client_mirror_from_snapshot_internal } from "../src/api/livemap/livemap.libraries.ts";
-import { encode_hosted_root, hosted_sha256, make_hosted_client_commit, make_hosted_client_snapshot } from "../src/api/livemap/livemap.hosted.ts";
+import { make_livemap_mirror_from_portable_aggregate_internal } from "../src/api/livemap/livemap.libraries.ts";
+import { encode_hosted_root, hosted_sha256, make_portable_aggregate_commit, make_portable_aggregate_snapshot } from "../src/api/livemap/livemap.hosted.ts";
 import { create_echo_aggregate_replica_capability_internal } from "../src/api/echo/echo.aggregate-replica.lifecycle.ts";
 import { acquire_livemap_document_identity } from "../src/api/livemap/livemap.document.identity-handle.ts";
 import { validate_livemap_document_admission } from "../src/api/livemap/livemap.document.capture.ts";
@@ -26,8 +26,8 @@ function authority() {
 
 function setup() {
   const server = authority();
-  const snapshot = make_hosted_client_snapshot(internal_livemap_aggregate_authority(server).captureHosted());
-  const client = make_livemap_client_mirror_from_snapshot_internal(snapshot, {
+  const snapshot = make_portable_aggregate_snapshot(internal_livemap_aggregate_authority(server).captureHosted());
+  const client = make_livemap_mirror_from_portable_aggregate_internal(snapshot, {
     ui: { data: { value: 0 }, schema: DataSchema },
     panel: { document: "<aside/>", schema: LocalSchema },
   });
@@ -62,7 +62,7 @@ function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketL
 
 {
   const { snapshot, replica } = setup();
-  assert.throws(() => make_livemap_client_mirror_from_snapshot_internal(snapshot, {
+  assert.throws(() => make_livemap_mirror_from_portable_aggregate_internal(snapshot, {
     state: { data: { value: 1 }, schema: DataSchema },
   }), /collides/i);
   replica.dispose();
@@ -89,7 +89,7 @@ function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketL
   state.at(["value"]).set(1);
   stop();
   if (hosted === undefined) throw new Error("Missing authority effect.");
-  const effect = make_hosted_client_commit(hosted);
+  const effect = make_portable_aggregate_commit(hosted);
   if (effect === undefined) throw new Error("Missing projected effect.");
   replica.replayHosted(effect, 0);
   assert.equal(client.rev, 1);
@@ -111,7 +111,7 @@ function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketL
     requested.exposure, requested.defaultProjection, requested.authorizeProjection);
   const effective = await normalize_locus_effective_projection(policy, requested.defaultProjection);
   const snapshot = authority_projection_as_client_composition_internal(project_authority_snapshot(cut, effective));
-  const client = make_livemap_client_mirror_from_snapshot_internal(snapshot, {
+  const client = make_livemap_mirror_from_portable_aggregate_internal(snapshot, {
     ui: { data: { value: 0 }, schema: DataSchema },
     panel: { document: "<aside/>", schema: LocalSchema },
   });
@@ -210,7 +210,7 @@ function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketL
   serverState.at(["value"]).set(1);
   stop();
   if (hosted === undefined) throw new Error("Missing hosted commit.");
-  const portable = make_hosted_client_commit(hosted);
+  const portable = make_portable_aggregate_commit(hosted);
   if (portable === undefined) throw new Error("Missing client effect.");
   replica.replayHosted(portable, 0);
   assert.equal(client.rev, 3);
@@ -226,7 +226,7 @@ function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketL
   serverPage.document.attrs.set({ kind: "path", path: [0] }, "title", "replayed");
   stopPage();
   if (hostedPage === undefined) throw new Error("Missing projected document effect.");
-  const pageEffect = make_hosted_client_commit(hostedPage);
+  const pageEffect = make_portable_aggregate_commit(hostedPage);
   if (pageEffect === undefined) throw new Error("Missing projected document replay.");
   replica.replayHosted(pageEffect, 1);
   assert.equal(client.rev, 4);
@@ -250,7 +250,7 @@ function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketL
   assert.equal(client.rev, 5);
 
   serverPage.document.attrs.set({ kind: "path", path: [0] }, "title", "authority");
-  const fallbackBase = make_hosted_client_snapshot(internal_livemap_aggregate_authority(server).captureHosted());
+  const fallbackBase = make_portable_aggregate_snapshot(internal_livemap_aggregate_authority(server).captureHosted());
   const fallback = Object.freeze({ ...fallbackBase, revision: 4 });
   const malformed = Object.freeze({ ...fallback, libraries: Object.freeze([
     Object.freeze({ ...fallback.libraries[0]!, root: encode_hosted_root(hsonLiveMap.fromJson({ value: "wrong" }).root()) }),
@@ -286,12 +286,12 @@ function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketL
 // An action-only session has no map; a local-only session uses a real local registry.
 {
   const server = authority();
-  const base = make_hosted_client_snapshot(internal_livemap_aggregate_authority(server).captureHosted());
+  const base = make_portable_aggregate_snapshot(internal_livemap_aggregate_authority(server).captureHosted());
   const registry = Object.freeze({ ...base.registry, libraries: Object.freeze([]),
     digest: hosted_sha256(JSON.stringify({ format: base.registry.format, libraries: [] })) });
   const snapshot = Object.freeze({ ...base, registry, registryDigest: registry.digest,
     libraries: Object.freeze([]) });
-  const local = make_livemap_client_mirror_from_snapshot_internal(snapshot, {
+  const local = make_livemap_mirror_from_portable_aggregate_internal(snapshot, {
     ui: { data: { value: 0 }, schema: DataSchema },
   });
   const replica = create_echo_aggregate_replica_capability_internal(local);
@@ -305,7 +305,7 @@ function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketL
   assert.equal(local.rev, 1);
   assert.equal(ui.at(["value"]).snap(), 1);
   replica.dispose();
-  assert.throws(() => make_livemap_client_mirror_from_snapshot_internal(snapshot, {}), /no LiveMap/i);
+  assert.throws(() => make_livemap_mirror_from_portable_aggregate_internal(snapshot, {}), /no LiveMap/i);
 }
 
 process.stdout.write("ok - client library composition 6A.5\n");

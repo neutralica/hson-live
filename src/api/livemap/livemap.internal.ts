@@ -1,3 +1,4 @@
+import type { PortableAggregateSnapshot } from "./livemap.hosted.internal.types.js";
 import type { HsonNode, JsonValue } from "../../core/types.js";
 import type { HsonSchema } from "../transform/transform.types.js";
 import type { HostedLiveMapLibrariesSnapshot, LiveMapGraphCommit, LiveMapGraphOp, LiveMapLibrariesSnapshot, LocalLibrariesContinuationSnapshot, LivePath } from "../../types/livemap.types.js";
@@ -93,7 +94,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     system: Readonly<{ format: "hson-exact-value"; payload: string }> | null;
   }>;
   /** Bind a fixed authority-projected subset of this client map. @internal */
-  configureClientComposition: (snapshot: import("../../types/livemap.types.js").HostedClientLibrariesSnapshot) => void;
+  configureClientComposition: (snapshot: import("./livemap.hosted.internal.types.js").PortableAggregateSnapshot) => void;
   clientProjection: () => Readonly<{
     authority: import("./livemap.hosted.js").HostedAuthorityFence;
     registry: HostedRegistry;
@@ -108,15 +109,15 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   restorePortableLibraries: (snapshot: LocalLibrariesContinuationSnapshot) => void;
   restoreHosted: (snapshot: HostedLiveMapLibrariesSnapshot, authorityOverride?: import("./livemap.hosted.js").HostedAuthorityFence) => void;
   /** QUID-free network snapshot; installs a fresh local identity epoch. @internal */
-  restoreClientHosted: (snapshot: import("../../types/livemap.types.js").HostedClientLibrariesSnapshot) => void;
-  restoreClientHostedManaged: (owner: object, snapshot: import("../../types/livemap.types.js").HostedClientLibrariesSnapshot) => void;
+  restoreClientHosted: (snapshot: import("./livemap.hosted.internal.types.js").PortableAggregateSnapshot) => void;
+  restoreClientHostedManaged: (owner: object, snapshot: import("./livemap.hosted.internal.types.js").PortableAggregateSnapshot) => void;
   /** Apply a transport snapshot while this aggregate is client-managed. @internal */
   restoreHostedManaged: (owner: object, snapshot: HostedLiveMapLibrariesSnapshot) => void;
   replayHosted: (commit: HostedAggregateCommit) => LiveMapAggregateCommit;
-  replayClientHosted: (commit: import("./livemap.hosted.js").HostedClientCommit) => LiveMapAggregateCommit;
+  replayClientHosted: (commit: import("./livemap.hosted.js").PortableAggregateCommit) => LiveMapAggregateCommit;
   /** Replay durable portable effects, including a revision whose effects collapse after identity reset. @internal */
-  replayDurableHosted: (commit: import("./livemap.hosted.js").HostedClientCommit) => void;
-  replayClientHostedManaged: (owner: object, commit: import("./livemap.hosted.js").HostedClientCommit, authorityRev?: number) => LiveMapAggregateCommit;
+  replayDurableHosted: (commit: import("./livemap.hosted.js").PortableAggregateCommit) => void;
+  replayClientHostedManaged: (owner: object, commit: import("./livemap.hosted.js").PortableAggregateCommit, authorityRev?: number) => LiveMapAggregateCommit;
   /** Apply a transport commit while this aggregate is client-managed. @internal */
   replayHostedManaged: (owner: object, commit: HostedAggregateCommit) => LiveMapAggregateCommit;
   /** Advance a managed replica through one effect-free authority revision. @internal */
@@ -174,7 +175,6 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   ) => LiveMapGraphCommit | undefined;
   /** Recover the aggregate envelope that accepted one selected-document commit. */
   aggregateCommitForDocument: (commit: LiveMapGraphCommit) => LiveMapAggregateCommit | undefined;
-  lowerForLegacy: (commit: LiveMapAggregateCommit) => never;
   observe: (listener: (commit: LiveMapAggregateCommit) => void) => () => void;
   /**
    * Observe one atomic hosted aggregate replacement.  This is deliberately a
@@ -205,7 +205,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
       value: JsonValue | undefined;
     }>) => void,
   ) => () => void;
-  /** Detached application-registry evidence. Solo capture/root remain compatibility-facade concerns. */
+  /** Detached application-registry evidence. Local document/data captures remain separate facade concerns. */
   inspect: () => Readonly<{
     revision: number;
     libraries: readonly Readonly<{

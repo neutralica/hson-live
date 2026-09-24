@@ -1,9 +1,13 @@
+import type {
+  LocusHostedAggregateCanonicalPublication,
+  LocusHostedAggregateSynchronizationOutput,
+  LocusHostedAggregateSynchronizationRequest,
+} from "./locus.aggregate.transport.internal.js";
 import type { JsonValue } from "../../core/types.js";
 import type {
   LocusActionPayloads,
   LocusClientActionMessage,
   LocusClientMessage,
-  LocusClientRecoverMessage,
   LocusConnectionContext,
   LocusDisposer,
   LocusIncarnationId,
@@ -25,12 +29,10 @@ export type LocusFiniteOperationOutcome = Extract<LocusServerMessage, {
 }>;
 
 /** @internal Recovery establishment and recovery-transfer output. */
-export type LocusSynchronizationOutput = Extract<LocusServerMessage, {
-  type: "recovery-plan" | "recovery-commit" | "recovery-progress" | "recovery-snapshot" | "recovery-caught-up" | "recovery-error";
-}>;
+export type LocusSynchronizationOutput = LocusHostedAggregateSynchronizationOutput;
 
 /** @internal Ordered canonical publication after a caught-up boundary. */
-export type LocusCanonicalPublication = Extract<LocusServerMessage, { type: "commit" | "progress" }>;
+export type LocusCanonicalPublication = LocusHostedAggregateCanonicalPublication;
 
 /** @internal Non-canonical application event output. */
 export type LocusTransientEventOutput = Extract<LocusServerMessage, { type: "event" }>;
@@ -66,7 +68,7 @@ export type LocusAuthoritySessionBinding = Readonly<{
  */
 export type LocusSemanticAttachment<
   TActions extends LocusActionPayloads = LocusActionPayloads,
-  TSynchronizationRequest = LocusClientRecoverMessage,
+  TSynchronizationRequest = LocusHostedAggregateSynchronizationRequest,
 > = Readonly<{
   binding: LocusAuthoritySessionBinding;
   operations: Readonly<{
@@ -112,41 +114,6 @@ export function attach_locus_semantic_transport_internal<
   const factory = semanticAttachmentFactories.get(locus);
   if (factory === undefined) throw new Error("Locus semantic attachment authority is unavailable.");
   return factory(options) as LocusSemanticAttachment<TActions>;
-}
-
-/** Deliver one typed server output to its semantic downstream capability. */
-export function deliver_locus_downstream_internal(
-  sink: LocusDownstreamSink,
-  message: LocusServerMessage,
-): void {
-  if (message.type === "commit" || message.type === "progress") {
-    sink.publication(message);
-    return;
-  }
-  if (message.type === "event") {
-    sink.event(message);
-    return;
-  }
-  if (message.type === "recovery-plan"
-    || message.type === "recovery-commit"
-    || message.type === "recovery-progress"
-    || message.type === "recovery-snapshot"
-    || message.type === "recovery-caught-up"
-    || message.type === "recovery-error") {
-    sink.synchronization(message);
-    return;
-  }
-  if (message.type === "patch") {
-    throw new Error("Legacy patch messages are not finite operation outcomes.");
-  }
-  sink.finite(message);
-}
-
-/** @internal Transport adapters classify decoded client input at this boundary. */
-export function is_locus_synchronization_request_internal<
-  TActions extends LocusActionPayloads,
->(message: LocusClientMessage<TActions>): message is LocusClientRecoverMessage {
-  return message.type === "recover";
 }
 
 /** @internal No-op attachment returned by unavailable authority runtimes. */

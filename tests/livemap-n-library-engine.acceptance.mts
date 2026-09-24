@@ -137,7 +137,7 @@ check("one map-wide order accepts A, B, A+B, and C with exactly one revision and
   assert.equal(aggregate.snap(data, ["value"]), 3);
   assert.equal(aggregate.snap(colors, ["value"]), "red");
   assert.equal(aggregate.snap(view, ["value"]), true);
-  assert.throws(() => aggregate.lowerForLegacy(commits[2]!), /legacy single-root/i);
+  assert.equal(Reflect.has(aggregate, "lowerForLegacy"), false);
 });
 
 check("each affected candidate uses its own HsonSchema and one invalid library rejects the whole aggregate", () => {

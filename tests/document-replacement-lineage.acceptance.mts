@@ -7,7 +7,7 @@ import { is_Node } from "../src/core/node-guards.ts";
 import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.identity-epoch.ts";
 import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 import { _create_livetree_runtime_test_handle, _reflect_document_for_runtime_test } from "../src/_tests/diagnostics-internal.ts";
-import { mount, raw_node } from "./helpers/reflect-unit6.mts";
+import { mount, raw_node } from "./helpers/mirror-unit6.mts";
 import { get_el_for_node } from "../src/api/livetree/utils/node-map-helpers.ts";
 import { set_livemap_document_quid_candidate_source_for_tests } from "../src/api/livemap/livemap.document.registration.ts";
 import type { HsonNode } from "../src/core/types.ts";

@@ -50,7 +50,7 @@ public document library the aggregate selection is inferred. With two or more,
 pass its stable public document-library handle as `document`. Hidden canonical
 interaction storage is not a selectable document library. The returned `map`
 is always the selected document-facing map/library to which `tree` and
-`reflect` correspond, not the aggregate.
+`mirror` correspond, not the aggregate.
 
 After aggregate SSR installation, resolve the stable public name returned with
 the atomic SSR triple before continuation:
@@ -81,15 +81,16 @@ Continuation calls `activate_interactions`; it does not call
 
 ## Hosted continuation
 
-For hosted Libraries, install with `install_locus_libraries_snapshot`, pass the
-returned complete map and recovery cursor to the existing `create_echo`, then
-resolve `echo.map.lib(ssr.document)` as the continuation's `document`. Recovery
-converges the whole aggregate even though continuation realizes only that one
-selected document.
+For hosted continuation, decode the session's projected SSR bootstrap and
+compose the Echo map with `hsonLiveMap.fromClientSnapshot({ authority,
+localLibraries })`. Pass that Echo, the decoded projected bootstrap, and the
+existing root Element to `continue_hosted_document`. Echo recovery converges
+the selected authority projection while client-local libraries stay local.
 
 ```ts
 const continuation = await continue_hosted_document({
   echo,
+  authority: decoded.bootstrap,
   root: document.querySelector("main")!,
 });
 
@@ -121,7 +122,7 @@ const continuation = await continue_hosted_document({
 
 The ordinary `continuation.tree.async` remains the hosted authoring interface.
 Its existing pessimistic authority, completion-revision, and convergence
-semantics are unchanged. `continuation.reflect` remains visible because
+semantics are unchanged. `continuation.mirror` remains visible because
 authority success does not imply that every later DOM realization succeeds.
 
 ## Exact admission and ownership

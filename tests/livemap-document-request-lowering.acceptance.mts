@@ -4,7 +4,6 @@ import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-
 import assert from "node:assert/strict";
 import { hson } from "../src/index.ts";
 import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
-import { decode_locus_canonical_commit } from "../src/api/locus/locus.protocol.ts";
 import { prepare_document_graph_operation } from "../src/api/livemap/livemap.document.mutation.ts";
 import {
   canonicalize_document_request_target,
@@ -60,20 +59,6 @@ function rawReplay(map: DocumentLiveMap, ops: readonly unknown[]): unknown {
   }]);
 }
 
-function canonicalEnvelope(target: unknown): unknown {
-  return {
-    logicalMapId: "unit-5",
-    incarnationId: "request-lowering",
-    mode: "document",
-    prevRev: 0,
-    rev: 1,
-    ops: [{ domain: "graph", op: "set-attr", target, name: "id", value: "x" }],
-  };
-}
-
-function field(value: unknown, name: string): unknown {
-  return typeof value === "object" && value !== null ? Reflect.get(value, name) : undefined;
-}
 
 check("path request remains a detached canonical path target", () => {
   const input = [0, 0, 0];
@@ -242,14 +227,9 @@ check("canonical target normalizer rejects the request union QUID branch", () =>
   );
 });
 
-check("current Locus canonical decoder rejects QUID-only targets", () => {
-  assert.equal(decode_locus_canonical_commit(canonicalEnvelope({ kind: "quid", quid: Q1 })), undefined);
-});
 
-check("current Locus canonical decoder accepts path targets", () => {
-  const decoded = decode_locus_canonical_commit(canonicalEnvelope({ kind: "path", path: [] }));
-  assert.equal(field(decoded?.ops[0], "domain"), "graph");
-});
+
+
 
 check("direct lowering remains path-authoritative beside a sparse overlay", () => {
   const map = element(`<main <a @${Q1}/>/>`);

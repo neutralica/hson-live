@@ -1,10 +1,10 @@
+import type { PortableAggregateSnapshot } from "../livemap/livemap.hosted.internal.types.js";
 import type { LiveMapLibraries } from "../../types/livemap.types.js";
 import type { LocusDisposer } from "../../types/locus.types.js";
 import type { EchoMapManagementLease } from "../../internal/echo-map-capability.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import type { HostedLiveMapLibrariesSnapshot } from "../../types/livemap.types.js";
-import type { HostedClientLibrariesSnapshot } from "../../types/livemap.types.js";
-import type { HostedClientCommit } from "../livemap/livemap.hosted.js";
+import type { PortableAggregateCommit } from "../livemap/livemap.hosted.js";
 import type { HostedAuthorityFence, HostedRegistry } from "../livemap/livemap.hosted.js";
 import type { EchoReplicaCapability } from "./echo.replica.js";
 
@@ -14,8 +14,8 @@ export type EchoAggregateReplicaCapability = EchoReplicaCapability<LiveMapLibrar
   captureHosted: () => HostedLiveMapLibrariesSnapshot;
   hostedPosition: () => Readonly<{ authority: HostedAuthorityFence; revision: number; registryDigest: string }>;
   clientProjection: () => Readonly<{ authority: HostedAuthorityFence; registry: HostedRegistry; revision: number; libraries: readonly string[] }> | undefined;
-  restoreHosted: (snapshot: HostedClientLibrariesSnapshot) => void;
-  replayHosted: (commit: HostedClientCommit, authorityRev?: number) => number;
+  restoreHosted: (snapshot: PortableAggregateSnapshot) => void;
+  replayHosted: (commit: PortableAggregateCommit, authorityRev?: number) => number;
   advanceHostedProgress: (progress: Readonly<{
     logicalMapId: string;
     incarnationId: string;

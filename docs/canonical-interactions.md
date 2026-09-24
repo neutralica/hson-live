@@ -118,6 +118,6 @@ Activation construction is exception-safe. Input capture and validation happen b
 
 Hosted capture and recovery include the hidden Library atomically. Restored current descriptors become reconciliation truth: stale listeners disappear and current descriptors materialize once against the compatible active tree. Runtime records are never replayed and are reconstructable from canonical state, fixed application capabilities, and the active tree.
 
-The activation disposer is idempotent. It stops observation and removes only listeners owned by that activation. Canonical descriptors, the `LiveTree`, Reflect, and unrelated imperative listeners remain intact. Reflect and interaction activation have independent lifecycles.
+The activation disposer is idempotent. It stops observation and removes only listeners owned by that activation. Canonical descriptors, the `LiveTree`, Mirror, and unrelated imperative listeners remain intact. Mirror and interaction activation have independent lifecycles.
 
 Canonical interactions do not infer forms, routes, HTTP requests, redirects, or other no-JavaScript behavior. They also do not describe exact document mutations. Browser ingress and native server ingress may converge on the same configured domain action, but that application relationship is outside the listener descriptor.

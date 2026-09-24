@@ -10,7 +10,7 @@ import { make_classified_livemap } from "./livemap.core.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 import { make_livemap_libraries } from "./livemap.libraries.js";
 import type { LiveMapLibraries, LiveMapLibrariesInput } from "../../types/livemap.types.js";
-import { make_livemap_client_mirror_from_snapshot_internal } from "./livemap.libraries.js";
+import { make_livemap_mirror_from_portable_aggregate_internal } from "./livemap.libraries.js";
 import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
 import { authority_projection_as_client_composition_internal, bind_client_projection_identity_internal } from "../locus/locus.authority-projection-snapshot.js";
 
@@ -86,7 +86,7 @@ function fromClientSnapshot(input: Readonly<{
       admit_portable_hson_node(definition.document, `LiveMap.fromClientSnapshot(${name})`);
     }
   }
-  const map = make_livemap_client_mirror_from_snapshot_internal(
+  const map = make_livemap_mirror_from_portable_aggregate_internal(
     authority_projection_as_client_composition_internal(input.authority), input.localLibraries);
   bind_client_projection_identity_internal(map, input.authority);
   return map;

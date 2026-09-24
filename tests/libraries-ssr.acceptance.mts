@@ -13,9 +13,8 @@ import {
   render_hosted_document,
   type HsonSchema,
 } from "../src/index.ts";
-import type { LocusSocketLike, LocusMultiLibrary } from "../src/types/locus.types.ts";
+import type { LocusSocketLike, Locus } from "../src/types/locus.types.ts";
 import { install_libraries_snapshot, type LiveMapLibrariesSnapshot } from "../src/api/livemap/index.ts";
-import { install_locus_libraries_snapshot } from "../src/api/locus/index.ts";
 import { set_document_ssr_hook_for_tests } from "../src/api/ssr/ssr.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { INTERACTION_RESERVED_LIBRARY_KEY } from "../src/internal/interaction-storage.ts";
@@ -69,7 +68,7 @@ function document(map: ReturnType<typeof install_libraries_snapshot>["map"], nam
   return selected;
 }
 
-function authorized_session<TMap extends import("../src/types/livemap.types.ts").LiveMapLibraries>(locus: LocusMultiLibrary<TMap>, libraries: string[], htmlDocument?: string) {
+function authorized_session<TMap extends import("../src/types/livemap.types.ts").LiveMapLibraries>(locus: Locus<TMap>, libraries: string[], htmlDocument?: string) {
   let receive: ((raw: string) => void) | undefined;
   let sessionId: string | undefined;
   const socket: LocusSocketLike = {

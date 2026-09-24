@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
 import { Hson, hsonLiveMap, render_hosted_document, type HsonSchema } from "../src/index.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
-import { create_multi_library_locus_internal } from "../src/api/locus/locus.multi-library.ts";
-import { create_multi_library_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
+import { create_registry_locus_internal } from "../src/api/locus/locus.registry.ts";
+import { create_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { capture_selected_authority_projection_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
@@ -24,7 +24,7 @@ const exposure = [{ library: "page", exposure: "client-public" as const },
   { library: "PRIVATE_NAME_SENTINEL", exposure: "server-private" as const },
   { library: "privateSignal", exposure: "server-private" as const }];
 assert.throws(() => aggregate.captureHosted(), /bound|limit|size|payload/i);
-const { locus } = create_multi_library_locus_internal({ map, exposure,
+const { locus } = create_registry_locus_internal({ map, exposure,
   defaultProjection: { libraries: ["page"], htmlDocument: "page" },
   authorizeProjection: () => ({ libraries: ["page"] }),
 }, { maxHistoryBytes: 1 });
@@ -43,7 +43,7 @@ const serverSocket: LocusSocketLike = {
   onClose() { return () => {}; },
 };
 let detach = locus.connect(serverSocket);
-const echo = create_multi_library_echo_socket_client_internal({ socket: clientSocket, logicalMapId: locus.logicalMapId,
+const echo = create_echo_socket_client_internal({ socket: clientSocket, logicalMapId: locus.logicalMapId,
   localLibraries: { local: { data: { value: "LOCAL_SENTINEL" }, schema: Data } } });
 const initial = await echo.connect();
 assert.equal(initial.outcome, "snapshot");
@@ -97,11 +97,11 @@ echo.dispose();
 detach();
 locus.dispose();
 
-const { locus: zeroLocus } = create_multi_library_locus_internal({ map, exposure,
+const { locus: zeroLocus } = create_registry_locus_internal({ map, exposure,
   defaultProjection: { libraries: [] }, authorizeProjection: () => ({ libraries: [] }),
 }, { maxHistoryBytes: 1 });
 let detachZero = zeroLocus.connect(serverSocket);
-const endpoint = create_multi_library_echo_socket_client_internal({ socket: clientSocket, logicalMapId: zeroLocus.logicalMapId });
+const endpoint = create_echo_socket_client_internal({ socket: clientSocket, logicalMapId: zeroLocus.logicalMapId });
 const zeroInitial = await endpoint.connect();
 assert.equal(zeroInitial.outcome, "snapshot");
 assert.equal(endpoint.map, undefined);

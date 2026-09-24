@@ -49,9 +49,9 @@ check("canonical facade runtime identities remain stable", () => {
   assert.equal(hson.liveTree, hsonLiveTree);
   assert.equal(Object.isFrozen(hsonLiveTree), true);
   assert.equal(Object.isFrozen(hson.liveTree), true);
-  assert.equal(hson.reflect, hsonMirror);
+  assert.equal(hson.mirror, hsonMirror);
   assert.equal(typeof hsonMirror, "function");
-  assert.equal(hsonMirror.collection, hson.reflect.collection);
+  assert.equal(hsonMirror.collection, hson.mirror.collection);
   const removedReflectAlias = ["live", "Project"].join("");
   assert.equal(removedReflectAlias in hson, false);
 

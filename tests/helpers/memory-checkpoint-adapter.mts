@@ -3,8 +3,8 @@ import type {
   LocusHostedAggregatePersistedManifest,
   LocusHostedAggregatePersistedState,
   LocusHostedAggregatePersistenceAdapter,
-} from "../../src/api/locus/locus.hosted-multi-library.persistence.ts";
-import { active_checkpoint_id, assert_checkpoint_manifest } from "../../src/api/locus/locus.hosted-multi-library.persistence.ts";
+} from "../../src/api/locus/locus.aggregate.persistence.ts";
+import { active_checkpoint_id, assert_checkpoint_manifest } from "../../src/api/locus/locus.aggregate.persistence.ts";
 import { validate_checkpoint_chunk, type CheckpointChunk } from "../../src/api/locus/locus.checkpoint-chunks.ts";
 
 export function deferred() {
