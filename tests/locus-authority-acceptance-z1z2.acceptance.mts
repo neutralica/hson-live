@@ -4,11 +4,12 @@ import { create_persistent_multi_library_locus } from "../src/api/locus/locus.mu
 import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.hosted-multi-library.socket.ts";
 import type { LocusHostedAggregateDraft } from "../src/api/locus/locus.hosted-multi-library.ts";
 import { create_persistent_locus_hosted_aggregate_internal } from "../src/api/locus/locus.hosted-multi-library.persistence.ts";
-import type { LocusHostedAggregatePersistedState, LocusHostedAggregatePersistenceAdapter } from "../src/api/locus/locus.hosted-multi-library.persistence.ts";
 import { LocusPersistenceAppendUncertainError } from "../src/api/locus/locus.persistence.error.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { encode_locus_client_message } from "../src/api/locus/locus.protocol.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
+import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
+import type { LocusHostedAggregatePersistedCommit } from "../src/api/locus/locus.hosted-multi-library.persistence.ts";
 
 const schema: HsonSchema = Hson.schema`<type "data" content <value "string">>`;
 function make_map() {
@@ -31,9 +32,7 @@ function deferred() {
   const promise = new Promise<void>((done) => { resolve = done; });
   return { promise, resolve };
 }
-class MemoryPersistence {
-  private state: { checkpoint: unknown; commits: unknown[] } | undefined;
-  readonly appendCalls: unknown[] = [];
+class MemoryPersistence extends MemoryCheckpointAdapter {
   mode: "normal" | "clean" | "uncertain" = "normal";
   pendingAppend: ReturnType<typeof deferred> | undefined;
   enteredAppend: ReturnType<typeof deferred> | undefined;
@@ -45,37 +44,20 @@ class MemoryPersistence {
     this.pendingAppend = release;
     return { entered: entered.promise, release: release.resolve };
   }
-  async load(_logicalMapId: string): Promise<unknown | undefined> {
-    return this.state === undefined ? undefined : structuredClone(this.state);
-  }
-  async replaceCheckpoint(record: unknown): Promise<void> {
-    const revision = (record as { rev: number }).rev;
-    this.state = {
-      checkpoint: structuredClone(record),
-      commits: (this.state?.commits ?? []).filter((item) => (item as { commit: { rev: number } }).commit.rev > revision),
-    };
-  }
-  async appendCommit(record: unknown): Promise<void> {
-    this.appendCalls.push(structuredClone(record));
+  override async appendCommit(record: LocusHostedAggregatePersistedCommit): Promise<void> {
     this.enteredAppend?.resolve();
     const pending = this.pendingAppend;
     this.pendingAppend = undefined;
     this.enteredAppend = undefined;
     if (pending) await pending.promise;
     if (this.mode === "clean") { this.mode = "normal"; throw new Error("clean append rejection"); }
-    if (this.state === undefined) throw new Error("Missing durable checkpoint.");
-    const expected = this.state.commits.at(-1) === undefined
-      ? (this.state.checkpoint as { rev: number }).rev
-      : (this.state.commits.at(-1) as { commit: { rev: number } }).commit.rev;
-    const next = record as { commit: { prevRev: number; rev: number } };
-    assert.equal(next.commit.prevRev, expected);
-    this.state.commits.push(structuredClone(record));
+    await super.appendCommit(record);
     if (this.mode === "uncertain") {
       this.mode = "normal";
       throw new LocusPersistenceAppendUncertainError();
     }
   }
-  get commits(): readonly unknown[] { return this.state?.commits ?? []; }
+  get commits(): readonly unknown[] { return this.states.values().next().value?.commits ?? []; }
 }
 function pair() {
   const toServer = new Set<(raw: string) => void>();
@@ -312,22 +294,14 @@ async function session(server: { connect: (socket: LocusSocketLike) => () => voi
 // Failure in mandatory postinstall history work is fatal after append. The
 // existing internal preaccept installer supplies the fault injection seam.
 {
-  let state: LocusHostedAggregatePersistedState | undefined;
-  const persistence: LocusHostedAggregatePersistenceAdapter = {
-    async load() { return state; },
-    async appendCommit(record) {
-      if (state === undefined) throw new Error("Missing durable checkpoint.");
-      state = Object.freeze({ checkpoint: state.checkpoint, commits: Object.freeze([...state.commits, record]) });
-    },
-    async replaceCheckpoint(record) { state = Object.freeze({ checkpoint: record, commits: Object.freeze([]) }); },
-  };
+  const persistence = new MemoryCheckpointAdapter();
   const map = make_map();
   const host = await create_persistent_locus_hosted_aggregate_internal({ map, persistence,
     logicalMapId: "z1z2-postinstall-fault",
     beforeAccept: () => ({ install: () => { throw new Error("injected postinstall fault"); } }),
   });
   await assert.rejects(host.mutate((draft) => set_value(draft, "A", "A1")), /injected postinstall fault/i);
-  assert.equal(state?.commits.length, 1);
+  assert.equal(persistence.state("z1z2-postinstall-fault")?.commits.length, 1);
   await assert.rejects(host.mutate((draft) => set_value(draft, "A", "A2")), /faulted/i);
   host.dispose();
   const restored = await create_persistent_multi_library_locus({ map: make_map(), exposure,

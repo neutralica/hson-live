@@ -785,7 +785,15 @@ export interface LocusMultiLibraryPersistenceAdapter {
    * guarantees no write; signal an uncertain write-then-error outcome with
    * LocusPersistenceAppendUncertainError to fence the authority until reload. */
   appendCommit(record: unknown): Promise<void>;
-  replaceCheckpoint(record: unknown): Promise<void>;
+  /** Staging writes are exact and durable; they do not alter the active checkpoint or tail. */
+  putCheckpointChunk(chunk: unknown): Promise<void>;
+  /** Resolve only when the candidate and all referenced chunks are durable and valid. */
+  putCheckpointManifest(manifest: unknown): Promise<void>;
+  /** Atomic compare-and-swap of one still-valid complete candidate. */
+  activateCheckpoint(logicalMapId: string, expectedCheckpointId: string | undefined, checkpointId: string): Promise<void>;
+  readCheckpointChunk(id: string): Promise<unknown | undefined>;
+  /** The adapter must verify checkpointId is active before pruning revisions through rev. */
+  pruneCommitsThrough(logicalMapId: string, checkpointId: string, rev: number): Promise<void>;
 }
 
 export type PersistentLocusMultiLibraryOptions<

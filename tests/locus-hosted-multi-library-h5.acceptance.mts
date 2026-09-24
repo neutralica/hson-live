@@ -22,6 +22,8 @@ import { encode_locus_portable_graph_content } from "../src/api/locus/locus.grap
 import { project_authority_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
 import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.hosted-multi-library.socket.ts";
+import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
+import type { LocusHostedAggregatePersistedCommit } from "../src/api/locus/locus.hosted-multi-library.persistence.ts";
 
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <theme "string" count <number <int true min 0>>>>`;
 const ColorsSchema: HsonSchema = Hson.schema`<type "data" content <theme "string" accent "string">>`;
@@ -141,33 +143,19 @@ function wait_for_aggregate_revision(map: ReturnType<typeof make_map>, revision:
   });
 }
 
-class MemoryPersistence {
-  private state: Readonly<{ checkpoint: unknown; commits: readonly unknown[] }> | undefined;
+class MemoryPersistence extends MemoryCheckpointAdapter {
   failAppends = false;
 
-  snapshot(): unknown { return this.state; }
+  snapshot(): unknown { return this.states.values().next().value; }
 
-  async load(_logicalMapId: string): Promise<unknown | undefined> {
-    return this.state;
-  }
-
-  async appendCommit(record: unknown): Promise<void> {
+  override async appendCommit(record: LocusHostedAggregatePersistedCommit): Promise<void> {
     if (this.failAppends) throw new Error("append rejected");
-    if (this.state === undefined) throw new Error("missing checkpoint");
-    this.state = Object.freeze({ ...this.state, commits: Object.freeze([...this.state.commits, record]) });
-  }
-
-  async replaceCheckpoint(record: unknown): Promise<void> {
-    const revision = (record as { rev: number }).rev;
-    const prior = this.state?.commits ?? [];
-    this.state = Object.freeze({
-      checkpoint: record,
-      commits: Object.freeze(prior.filter((item) => (item as { commit: { rev: number } }).commit.rev > revision)),
-    });
+    await super.appendCommit(record);
   }
 
   corrupt(): void {
-    this.state = Object.freeze({ checkpoint: Object.freeze({}), commits: Object.freeze([]) });
+    const key = this.states.keys().next().value;
+    if (key !== undefined) this.states.set(key, Object.freeze({ checkpoint: Object.freeze({}) as never, commits: Object.freeze([]) }));
   }
 }
 

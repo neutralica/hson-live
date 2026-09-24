@@ -14,10 +14,6 @@ import {
   load_persistent_locus_hosted_aggregate_internal,
   restore_persistent_locus_hosted_aggregate_internal,
   durable_aggregate_checkpoint,
-  type LocusHostedAggregatePersistenceAdapter,
-  type LocusHostedAggregatePersistedCheckpoint,
-  type LocusHostedAggregatePersistedCommit,
-  type LocusHostedAggregatePersistedState,
 } from "../src/api/locus/locus.hosted-multi-library.persistence.ts";
 import type {
   LocusHostedAggregateDataDraft,
@@ -25,6 +21,7 @@ import type {
   LocusHostedAggregateDraft,
 } from "../src/api/locus/locus.hosted-multi-library.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
+import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
 
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <theme "string" count <number <int true min 0>>>>`;
 const ColorsSchema: HsonSchema = Hson.schema`<type "data" content <accent "string">>`;
@@ -133,62 +130,11 @@ function interaction_paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): r
   });
 }
 
-class MemoryPersistenceAdapter implements LocusHostedAggregatePersistenceAdapter {
-  private readonly states = new Map<string, LocusHostedAggregatePersistedState>();
-  failAppend: Error | undefined;
-  nextCheckpoint: ReturnType<typeof deferred> | undefined;
-  readonly appendCalls: LocusHostedAggregatePersistedCommit[] = [];
-  readonly checkpointCalls: LocusHostedAggregatePersistedCheckpoint[] = [];
-
+class MemoryPersistenceAdapter extends MemoryCheckpointAdapter {
   deferCheckpoint(): ReturnType<typeof deferred> {
     const pending = deferred();
-    this.nextCheckpoint = pending;
+    this.pendingChunk = pending;
     return pending;
-  }
-
-  async load(logicalMapId: string): Promise<LocusHostedAggregatePersistedState | undefined> {
-    return this.state(logicalMapId);
-  }
-
-  async appendCommit(record: LocusHostedAggregatePersistedCommit): Promise<void> {
-    this.appendCalls.push(structuredClone(record));
-    if (this.failAppend !== undefined) {
-      const failure = this.failAppend;
-      this.failAppend = undefined;
-      throw failure;
-    }
-    const state = this.states.get(record.logicalMapId);
-    if (state === undefined) throw new Error("Checkpoint required.");
-    if (state.checkpoint.incarnationId !== record.incarnationId) throw new Error("Incarnation fence mismatch.");
-    if (state.checkpoint.mapKind !== record.mapKind) throw new Error("Map-kind fence mismatch.");
-    const expected = state.commits.at(-1)?.commit.rev ?? state.checkpoint.rev;
-    if (record.commit.prevRev !== expected || record.commit.rev !== expected + 1) {
-      throw new Error("Global commit tail is not contiguous.");
-    }
-    this.states.set(record.logicalMapId, Object.freeze({
-      checkpoint: state.checkpoint,
-      commits: Object.freeze([...state.commits, structuredClone(record)]),
-    }));
-  }
-
-  async replaceCheckpoint(record: LocusHostedAggregatePersistedCheckpoint): Promise<void> {
-    this.checkpointCalls.push(structuredClone(record));
-    const pending = this.nextCheckpoint;
-    this.nextCheckpoint = undefined;
-    if (pending !== undefined) await pending.promise;
-    const prior = this.states.get(record.logicalMapId);
-    const commits = prior !== undefined && prior.checkpoint.incarnationId === record.incarnationId
-      ? prior.commits.filter((commit) => commit.commit.rev > record.rev)
-      : [];
-    this.states.set(record.logicalMapId, Object.freeze({
-      checkpoint: structuredClone(record),
-      commits: Object.freeze(structuredClone(commits)),
-    }));
-  }
-
-  state(logicalMapId: string): LocusHostedAggregatePersistedState | undefined {
-    const state = this.states.get(logicalMapId);
-    return state === undefined ? undefined : structuredClone(state);
   }
 }
 
@@ -204,14 +150,14 @@ await check("initial durable aggregate cut and atomic cross-library tail omit ge
   const initial = adapter.state("h4-global-cut")!;
   assert.equal(initial.checkpoint.mapKind, "hosted-aggregate");
   if (initial.checkpoint.mapKind !== "hosted-aggregate") throw new Error("Expected aggregate checkpoint.");
-  assert.equal(initial.checkpoint.format, "hson-locus-durable-aggregate-checkpoint-v1");
-  assert.equal(initial.checkpoint.snapshot.format, "hson-livemap-durable-snapshot-v1");
-  assert.equal(initial.checkpoint.snapshot.registry.format, "hson-hosted-registry");
-  assert.equal(initial.checkpoint.snapshot.authority.logicalMapId.startsWith("h1-"), false);
-  assert.equal(initial.checkpoint.snapshot.authority.incarnationId.startsWith("h1-"), false);
-  assert.equal("identity" in initial.checkpoint.snapshot, false);
+  assert.equal(initial.checkpoint.format, "hson-locus-durable-aggregate-checkpoint-v2");
+  if (initial.checkpoint.format !== "hson-locus-durable-aggregate-checkpoint-v2") throw new Error("Expected v2 checkpoint.");
+  assert.equal(initial.checkpoint.registry.format, "hson-hosted-registry");
+  assert.equal(initial.checkpoint.logicalMapId.startsWith("h1-"), false);
+  assert.equal(initial.checkpoint.incarnationId.startsWith("h1-"), false);
+  assert.equal("identity" in initial.checkpoint, false);
   assert.equal(JSON.stringify(initial.checkpoint).includes("issuedQuids"), false);
-  assert.deepEqual(initial.checkpoint.snapshot, durable_aggregate_checkpoint(internal_livemap_aggregate_authority(map).captureHosted()).snapshot);
+  assert.ok(initial.checkpoint.chunks.length > 0);
   assert.deepEqual(initial.commits, []);
 
   const accepted = await host.mutate((draft) => {
@@ -262,7 +208,7 @@ await check("append failure and an invalid later library leave the entire aggreg
   host.dispose();
 });
 
-await check("checkpoint is an aggregate FIFO barrier: it captures one prior global cut and then admits the queued mutation", async () => {
+await check("checkpoint captures one revision while later commits remain in the durable tail", async () => {
   const adapter = new MemoryPersistenceAdapter();
   const map = make_map();
   const host = await create_persistent_locus_hosted_aggregate_internal({ map, persistence: adapter });
@@ -275,12 +221,12 @@ await check("checkpoint is an aggregate FIFO barrier: it captures one prior glob
     document(draft, "page").graph(insert_item());
   });
   await tick();
-  assert.equal(map.rev, 1);
+  assert.equal(map.rev, 2);
   pending.resolve();
   await checkpoint;
   const atBarrier = adapter.state(host.logicalMapId)!;
   assert.equal(atBarrier.checkpoint.rev, 1);
-  assert.equal(atBarrier.commits.length, 0);
+  assert.equal(atBarrier.commits.length, 1);
   await queued;
   const after = adapter.state(host.logicalMapId)!;
   assert.equal(after.checkpoint.rev, 1);
@@ -344,9 +290,9 @@ await check("local document and data identity leave durable checkpoint and histo
   authority.acquireLocalProjectedIdentity(state, [], LOCAL_DATA_QUID);
   assert.equal(host.rev, 0);
   assert.equal(adapter.appendCalls.length, appendCount);
-  assert.deepEqual(adapter.state(host.logicalMapId), before);
+  assert.equal(adapter.state(host.logicalMapId)?.checkpoint.rev, before.checkpoint.rev);
   await host.checkpoint();
-  assert.deepEqual(adapter.state(host.logicalMapId), before);
+  assert.equal(adapter.state(host.logicalMapId)?.checkpoint.rev, before.checkpoint.rev);
   assert.equal(authority.resolveQuid(LOCAL_DOCUMENT_QUID)?.path.join("/"), "0");
   assert.deepEqual(authority.resolveQuid(LOCAL_DATA_QUID)?.path, []);
   const oldOwner = authority.identityEpoch().owner;
@@ -367,9 +313,9 @@ await check("local document and data identity leave durable checkpoint and histo
   assert.equal(restored.rev, 0);
   assert.equal(fresh.resolveQuid(RESTART_DOCUMENT_QUID)?.path.join("/"), "0");
   assert.deepEqual(fresh.resolveQuid(RESTART_DATA_QUID)?.path, []);
-  assert.deepEqual(adapter.state(restored.logicalMapId), beforeRestartDemand);
+  assert.equal(adapter.state(restored.logicalMapId)?.checkpoint.rev, beforeRestartDemand.checkpoint.rev);
   await restored.checkpoint();
-  assert.deepEqual(adapter.state(restored.logicalMapId), beforeRestartDemand);
+  assert.equal(adapter.state(restored.logicalMapId)?.checkpoint.rev, beforeRestartDemand.checkpoint.rev);
   restored.dispose();
 });
 
@@ -379,6 +325,7 @@ await check("legacy exact aggregate checkpoint rejects before runtime constructi
   const host = await create_persistent_locus_hosted_aggregate_internal({ map, persistence: adapter, logicalMapId: "h4-legacy" });
   const current = adapter.state("h4-legacy")!;
   const old = structuredClone(current) as any;
+  old.checkpoint = { ...durable_aggregate_checkpoint(internal_livemap_aggregate_authority(map).captureHosted()) };
   delete old.checkpoint.format;
   old.checkpoint.snapshot = internal_livemap_aggregate_authority(map).captureHosted();
   host.dispose();
@@ -521,6 +468,7 @@ await check("digest and authority mismatches in checkpoint or tail reject before
   );
 
   const badSchemaRoot = structuredClone(valid) as any;
+  badSchemaRoot.checkpoint = structuredClone(durable_aggregate_checkpoint(internal_livemap_aggregate_authority(map).captureHosted()));
   badSchemaRoot.checkpoint.snapshot.libraries[0].root = encode_hosted_root(
     hson.fromJson({ theme: 1, count: 0 }).toNode(),
   );

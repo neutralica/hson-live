@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
 import { Hson, hsonLiveMap, render_hosted_document, type HsonSchema } from "../src/index.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import { create_multi_library_locus_internal } from "../src/api/locus/locus.multi-library.ts";
@@ -141,14 +142,7 @@ const oversizedPolicy = make_locus_hosted_projection_policy(oversizedAuthority.h
 const oversizedEffective = await normalize_locus_effective_projection(oversizedPolicy, { libraries: ["selected"] });
 assert.throws(() => capture_selected_authority_projection_snapshot(oversized, oversizedEffective), /malformed/i);
 
-// Z3B remains open: durable append can accept a private growth commit while
-// explicit complete checkpoint still uses the old monolithic root codec.
-let durableAppends = 0;
-const persistence = {
-  async load() { return undefined; },
-  async appendCommit() { durableAppends += 1; },
-  async replaceCheckpoint() {},
-};
+const persistence = new MemoryCheckpointAdapter();
 const persistentMap = hsonLiveMap.fromLibraries({
   page: { document: '<main <p "PERSISTENT_PUBLIC"/>/>', schema: Page },
   privateSignal: { data: { value: "small" }, schema: Data },
@@ -160,7 +154,7 @@ const persistent = await create_persistent_locus({ map: persistentMap, persisten
 });
 await persistent.mutate((draft) => { const privateLib = draft.lib("privateSignal");
   if ("at" in privateLib) privateLib.at(["value"]).set("p".repeat(5 * 1024 * 1024)); });
-assert.equal(durableAppends, 1);
-await assert.rejects(persistent.checkpoint(), /checkpoint|bound|limit|payload/i);
+assert.equal(persistence.appendCalls.length, 1);
+await persistent.checkpoint();
 persistent.dispose();
 process.stdout.write("Z3A selected capture acceptance passed.\n");

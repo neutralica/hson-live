@@ -5,6 +5,7 @@ import { register_echo_map_capability_internal } from "../../internal/echo-map-c
 import { INTERACTION_RESERVED_LIBRARY_KEY } from "../../internal/interaction-storage.js";
 import { rewrite_interaction_subjects, validate_interaction_subjects } from "../../internal/interaction-path-maintenance.js";
 import type { HsonSchema } from "../transform/transform.types.js";
+import type { LiveMapSemanticCheckpoint } from "./livemap.internal.js";
 import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
 import type { ClassifiedLiveMap, HostedLiveMapLibrariesSnapshot, HostedClientLibrariesSnapshot, LiveMap, LiveMapAnyOp, LiveMapCommit, LiveMapLibrariesSnapshot, LocalLibrariesContinuationSnapshot, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapDataOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapCaptureOptions, LiveMapApply, LiveMapGraphCommit, LiveMapGraphOp, LiveMapGraphReplaceRootOp, LiveMapRootMode, LiveMapDocumentPath } from "../../types/livemap.types.js";
 import type { LiveMapProjectedGraphEnsureQuidOp } from "./livemap.identity.types.js";
@@ -2293,6 +2294,93 @@ function make_livemap_core_from_compatibility_root(
     return snapshot;
   }
 
+  function capture_semantic_checkpoint(): LiveMapSemanticCheckpoint {
+    const hosted = require_hosted_state();
+    const revision = mapRevision;
+    const authority = hosted.fence;
+    const libraries = hosted.registry.libraries.map((entry) => {
+      const binding = hosted.byName.get(entry.name);
+      if (binding === undefined) throw new Error("Checkpoint Library binding is unavailable.");
+      const state = binding.scope === "hson-internal"
+        ? systemState : require_library(binding.identity as LiveMapLibraryIdentity);
+      if (state === undefined) throw new Error("Checkpoint system state is unavailable.");
+      return Object.freeze({ name: entry.name, root: clone_hson_graph_without_quids(state.root) });
+    });
+    if (mapRevision !== revision || hostedFence !== authority) {
+      throw new Error("Authority changed during checkpoint capture.");
+    }
+    return Object.freeze({ authority, revision, registry: hosted.registry, libraries: Object.freeze(libraries) });
+  }
+
+  function install_semantic_checkpoint(checkpoint: LiveMapSemanticCheckpoint): void {
+    transitionController.assertPublicMutationAllowed();
+    const hosted = require_hosted_state();
+    if (!Number.isSafeInteger(checkpoint.revision) || checkpoint.revision < 0
+      || checkpoint.registry.digest !== hosted.registry.digest
+      || JSON.stringify(checkpoint.registry) !== JSON.stringify(hosted.registry)
+      || checkpoint.libraries.length !== hosted.registry.libraries.length
+      || typeof checkpoint.authority.logicalMapId !== "string" || !checkpoint.authority.logicalMapId
+      || typeof checkpoint.authority.incarnationId !== "string" || !checkpoint.authority.incarnationId) {
+      throw new Error("Semantic checkpoint is incompatible with this authority.");
+    }
+    const candidates = checkpoint.libraries.map((item, index) => {
+      const entry = hosted.registry.libraries[index];
+      if (entry === undefined || item.name !== entry.name) throw new Error("Checkpoint Library order is invalid.");
+      const binding = hosted.byName.get(entry.name);
+      if (binding === undefined) throw new Error("Checkpoint Library binding is unavailable.");
+      admit_portable_hson_node(item.root, "Semantic checkpoint root");
+      const prepared = prepare_livemap_root(item.root);
+      if (prepared.mode !== entry.mode) throw new Error("Checkpoint root mode disagrees with registry.");
+      must_hson_schema_root(binding.schema, prepared.root);
+      if (entry.scope === "hson-internal") {
+        if (systemState === undefined || binding.identity !== systemState.identity || prepared.mode === "document") {
+          throw new Error("Checkpoint system state is incompatible.");
+        }
+        return Object.freeze({ kind: "system" as const, state: systemState, prepared,
+          projectedValue: must_projected_root_value(prepared.root) });
+      }
+      const state = require_library(binding.identity as LiveMapLibraryIdentity);
+      return Object.freeze({ kind: "application" as const, state, prepared,
+        changed: !canonical_graph_equal(state.root, prepared.root),
+        projectedValue: prepared.projectedOverlay === undefined
+          ? undefined : must_projected_root_value(prepared.root) });
+    });
+    if (systemState !== undefined && !candidates.some((candidate) => candidate.kind === "system")) {
+      throw new Error("Checkpoint omitted system state.");
+    }
+    const changedLibraries = candidates.flatMap((candidate) =>
+      candidate.kind === "application" && candidate.changed ? [candidate.state.identity] : []);
+    for (const candidate of candidates) {
+      if (candidate.kind === "system") {
+        candidate.state.root = candidate.prepared.root;
+        candidate.state.projectedValue = candidate.projectedValue;
+      } else {
+        Object.assign(candidate.state, {
+          root: candidate.prepared.root,
+          documentOverlay: candidate.prepared.documentOverlay,
+          projectedOverlay: candidate.prepared.projectedOverlay,
+          projectedValue: candidate.projectedValue,
+        });
+      }
+    }
+    const previousRevision = mapRevision;
+    mapIdentityEpoch.replace([]);
+    mapRevision = checkpoint.revision;
+    hostedFence = Object.freeze({ ...checkpoint.authority });
+    transitionController.invalidate();
+    const event = Object.freeze({
+      previousRevision,
+      revision: checkpoint.revision,
+      libraries: Object.freeze(libraryRegistry.all().map((library) => library.identity)),
+      changedLibraries: Object.freeze(changedLibraries),
+      continuity: "new-epoch" as const,
+    });
+    enqueuePublication(() => {
+      for (const observer of [...aggregateRestoreObservers]) observer(event);
+      publishAuthorityPosition();
+    });
+  }
+
   function restore_libraries_aggregate(
     snapshot: LiveMapLibrariesSnapshot | HostedLiveMapLibrariesSnapshot,
     authority?: HostedAuthorityFence,
@@ -2753,6 +2841,8 @@ function make_livemap_core_from_compatibility_root(
     }),
     captureLibraries: capture_libraries_aggregate,
     captureHosted: capture_hosted_aggregate,
+    captureSemanticCheckpoint: capture_semantic_checkpoint,
+    installSemanticCheckpoint: install_semantic_checkpoint,
     restoreLibraries: (snapshot) => restore_libraries_aggregate(snapshot),
     restorePortableLibraries: (snapshot) => restore_libraries_aggregate(snapshot),
     restoreHosted: restore_hosted_aggregate,

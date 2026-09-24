@@ -1,4 +1,4 @@
-import type { HostedLiveMapLibrariesSnapshot, LiveMapLibraries } from "../../types/livemap.types.js";
+import type { LiveMapLibraries } from "../../types/livemap.types.js";
 import type {
   LocusActionPayloads,
   LocusMultiLibraryOptions,
@@ -10,10 +10,9 @@ import { internal_livemap_aggregate_authority } from "../livemap/livemap.interna
 import type { HostedAggregateCommit } from "../livemap/livemap.hosted.js";
 import { LocusPersistenceAppendUncertainError, LocusPersistenceError } from "./locus.persistence.error.js";
 import {
-  durable_aggregate_checkpoint,
   durable_aggregate_commit,
-  durable_aggregate_snapshot_as_client,
   load_persistent_locus_hosted_aggregate_internal,
+  write_semantic_checkpoint,
   type LocusHostedAggregatePersistenceAdapter,
 } from "./locus.hosted-multi-library.persistence.js";
 import { create_multi_library_locus_internal } from "./locus.multi-library.js";
@@ -21,10 +20,6 @@ import { alias_locus_remote_action_admission_internal } from "./locus.remote-act
 import { alias_locus_retained_action_status_internal } from "./locus.action-status.internal.js";
 import { alias_locus_libraries_snapshot_authority_internal } from "./locus.libraries-snapshot.js";
 import { make_locus_hosted_projection_policy } from "./locus.projection.js";
-
-function checkpoint_record(snapshot: HostedLiveMapLibrariesSnapshot): object {
-  return durable_aggregate_checkpoint(snapshot);
-}
 
 function commit_record(commit: HostedAggregateCommit): object {
   return durable_aggregate_commit(commit);
@@ -48,21 +43,6 @@ function set_initial_authority(
     logicalMapId: logicalMapId ?? position.authority.logicalMapId,
     incarnationId: incarnationId ?? position.authority.incarnationId,
   }));
-}
-
-async function durable_checkpoint(
-  map: LiveMapLibraries,
-  persistence: LocusMultiLibraryPersistenceAdapter,
-): Promise<void> {
-  try {
-    await persistence.replaceCheckpoint(checkpoint_record(internal_livemap_aggregate_authority(map).captureHosted()));
-  } catch (cause) {
-    throw new LocusPersistenceError(
-      "LOCUS_PERSISTENCE_CHECKPOINT_FAILED",
-      "Hosted multi-library Locus could not replace its persisted checkpoint.",
-      { cause },
-    );
-  }
 }
 
 async function append_durable_commit(
@@ -96,7 +76,8 @@ async function persistent_view<
   if (initialize) {
     set_initial_authority(options.map, options.logicalMapId, options.incarnationId);
     try {
-      await options.persistence.replaceCheckpoint(checkpoint_record(internal_livemap_aggregate_authority(options.map).captureHosted()));
+      await write_semantic_checkpoint(internal_livemap_aggregate_authority(options.map).captureSemanticCheckpoint(),
+        options.persistence as LocusHostedAggregatePersistenceAdapter);
     } catch (cause) {
       throw new LocusPersistenceError(
         "LOCUS_PERSISTENCE_INITIAL_CHECKPOINT_FAILED",
@@ -127,7 +108,21 @@ async function persistent_view<
       return append_durable_commit(persistence, record);
     },
   });
-  const checkpoint = (): Promise<void> => runtime.run_exclusive(() => durable_checkpoint(options.map, persistence));
+  let checkpointTail = Promise.resolve();
+  const checkpoint = (): Promise<void> => {
+    const run = checkpointTail.then(async () => {
+      const captured = await runtime.run_exclusive(() => internal_livemap_aggregate_authority(options.map).captureSemanticCheckpoint());
+      try { await write_semantic_checkpoint(captured, persistence as LocusHostedAggregatePersistenceAdapter); }
+      catch (cause) {
+        const uncertain = cause instanceof LocusPersistenceError && cause.code === "LOCUS_PERSISTENCE_CHECKPOINT_UNCERTAIN";
+        if (uncertain) runtime.locus.dispose();
+        throw new LocusPersistenceError(uncertain ? "LOCUS_PERSISTENCE_CHECKPOINT_UNCERTAIN" : "LOCUS_PERSISTENCE_CHECKPOINT_FAILED",
+          "Hosted multi-library Locus could not activate its persisted checkpoint.", { cause });
+      }
+    });
+    checkpointTail = run.catch(() => {});
+    return run;
+  };
   const locus = Object.freeze(Object.defineProperties({}, {
     ...Object.getOwnPropertyDescriptors(runtime.locus),
     checkpoint: Object.freeze({ value: checkpoint, enumerable: true }),
@@ -154,8 +149,8 @@ export async function create_persistent_multi_library_locus<
     persistence: options.persistence as LocusHostedAggregatePersistenceAdapter,
   });
   if (restored === undefined) return persistent_view(options, true);
-  const restoredSnapshot = internal_livemap_aggregate_authority(restored.map).captureHosted();
-  if (restoredSnapshot.registryDigest !== initial.registryDigest) {
+  const restoredCheckpoint = internal_livemap_aggregate_authority(restored.map).captureSemanticCheckpoint();
+  if (restoredCheckpoint.registry.digest !== initial.registryDigest) {
     restored.dispose();
     throw new LocusPersistenceError(
       "LOCUS_PERSISTED_STATE_INVALID",
@@ -164,9 +159,7 @@ export async function create_persistent_multi_library_locus<
   }
   // The supplied public map retains its registry but receives only the durable
   // semantic cut. This creates a new local identity epoch and no old claims.
-  internal_livemap_aggregate_authority(options.map).restoreClientHosted(
-    durable_aggregate_snapshot_as_client(durable_aggregate_checkpoint(restoredSnapshot).snapshot),
-  );
+  internal_livemap_aggregate_authority(options.map).installSemanticCheckpoint(restoredCheckpoint);
   restored.dispose();
   return persistent_view(options, false);
 }

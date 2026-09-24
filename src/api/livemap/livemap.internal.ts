@@ -23,7 +23,16 @@ import type {
   HostedAggregateCommit,
   HostedRegistry,
   HostedRegistryBinding,
+  HostedAuthorityFence,
 } from "./livemap.hosted.js";
+
+/** Detached, complete, QUID-free semantic authority at one revision. @internal */
+export type LiveMapSemanticCheckpoint = Readonly<{
+  authority: HostedAuthorityFence;
+  revision: number;
+  registry: HostedRegistry;
+  libraries: readonly Readonly<{ name: string; root: HsonNode }>[];
+}>;
 
 type InternalLiveMapOwner = Readonly<{
   root: () => HsonNode;
@@ -93,6 +102,8 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   }> | undefined;
   captureLibraries: () => LiveMapLibrariesSnapshot;
   captureHosted: () => HostedLiveMapLibrariesSnapshot;
+  captureSemanticCheckpoint: () => LiveMapSemanticCheckpoint;
+  installSemanticCheckpoint: (checkpoint: LiveMapSemanticCheckpoint) => void;
   restoreLibraries: (snapshot: LiveMapLibrariesSnapshot) => void;
   restorePortableLibraries: (snapshot: LocalLibrariesContinuationSnapshot) => void;
   restoreHosted: (snapshot: HostedLiveMapLibrariesSnapshot, authorityOverride?: import("./livemap.hosted.js").HostedAuthorityFence) => void;

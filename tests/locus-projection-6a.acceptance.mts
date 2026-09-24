@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { MemoryCheckpointAdapter } from "./helpers/memory-checkpoint-adapter.mts";
 import { Hson, hsonLiveMap, hsonLocus, enable_interactions, type HsonSchema } from "../src/index.ts";
 import { create_persistent_locus } from "../src/api/locus/index.ts";
 import { decode_locus_message } from "../src/api/locus/locus.protocol.ts";
@@ -249,14 +250,10 @@ assert.equal(HOSTED_PROJECTION_EGRESS_COMPLETE, true);
 
 // The deployment supplies exposure again on restart; durable authority records contain no exposure classification.
 {
-  let checkpoint: unknown;
-  const adapter = {
-    async load() { return checkpoint === undefined ? undefined : { checkpoint, commits: [] }; },
-    async appendCommit(_record: unknown) {},
-    async replaceCheckpoint(record: unknown) { checkpoint = record; },
-  };
+  const adapter = new MemoryCheckpointAdapter();
   const first = await create_persistent_locus({ map: map(), exposure: EXPOSURE, logicalMapId: "projection-persist", persistence: adapter });
   await first.checkpoint();
+  const checkpoint = adapter.state("projection-persist")?.checkpoint;
   assert.equal(JSON.stringify(checkpoint).includes("server-private"), false);
   assert.equal(JSON.stringify(checkpoint).includes("client-public"), false);
   first.dispose();

@@ -75,6 +75,7 @@ import { node_to_json_value } from "./livemap.editor.js";
 import { make_livemap_array_api } from "./livemap.handle-array.js";
 import { make_livemap_object_api } from "./livemap.handle-object.js";
 import type { LiveMapProjectedPropagation } from "./livemap.projected-propagation.js";
+import type { LiveMapSemanticCheckpoint } from "./livemap.internal.js";
 
 type NamedLibrary = Readonly<{
   name: string;
@@ -278,6 +279,37 @@ export function install_libraries_snapshot(
   snapshot: LiveMapLibrariesSnapshot,
 ): Readonly<{ map: LiveMapLibraries }> {
   return Object.freeze({ map: make_livemap_mirror_from_snapshot_internal(snapshot) });
+}
+
+/** Install complete semantic state without passing through a snapshot artifact. @internal */
+export function make_livemap_mirror_from_semantic_checkpoint_internal(
+  checkpoint: LiveMapSemanticCheckpoint,
+): LiveMapLibraries {
+  if (checkpoint.registry.libraries.length !== checkpoint.libraries.length) {
+    throw new Error("Semantic checkpoint registry is incomplete.");
+  }
+  const inputs: Record<string, LiveMapLibraryInput> = Object.create(null);
+  const systems: InitialSystemState[] = [];
+  for (let index = 0; index < checkpoint.registry.libraries.length; index += 1) {
+    const entry = checkpoint.registry.libraries[index];
+    const library = checkpoint.libraries[index];
+    if (entry === undefined || library === undefined || entry.name !== library.name) {
+      throw new Error("Semantic checkpoint Library order is invalid.");
+    }
+    admit_portable_hson_node(library.root, "Semantic checkpoint root");
+    const schema = HsonSchemaHandle.fromHson(entry.schema);
+    if (entry.scope === "hson-internal") {
+      systems.push(Object.freeze({ key: entry.name, transportName: entry.name,
+        root: library.root, hsonSchema: schema }));
+    } else {
+      inputs[entry.name] = entry.mode === "document"
+        ? { document: library.root, schema }
+        : { data: node_to_json_value(library.root), schema };
+    }
+  }
+  const map = make_livemap_libraries(inputs, systems);
+  internal_livemap_aggregate_authority(map).installSemanticCheckpoint(checkpoint);
+  return map;
 }
 
 /** @internal Shared exact aggregate decoder/installer used by local and hosted installation. */
