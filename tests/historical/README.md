@@ -10,3 +10,5 @@ and hosted continuation suites cover bootstrap, live updates, recovery, SSR, and
 DOM adoption. These archived files are evidence of the former contract only.
 
 The archived `phase4c-hosted-identity.legacy.mjs`, `echo-replica-capability.legacy.mts`, and `livemap-projected-intent-propagation.legacy.mts` files retain old solo cases. Current portable identity, registry capability, projection, recovery, and hosted cut suites replace their supported behavior. The retired runtime source is catalogued in `tests/historical/solo-locus/source/README.md` and is excluded from the production build.
+
+`livetree-graft-continuation.legacy.html` preserves the former browser graft/borrowed-Reflect fixture. Its setup fed generated QUID metadata through public `LiveMap.fromNode`, used inline script content now rejected by the document contract, and assumed pre-boundary text positions and old nested-graft errors. The current graft, browser realization, and existing-document suites cover the supported pieces. This archived HTML is not a current browser gate.

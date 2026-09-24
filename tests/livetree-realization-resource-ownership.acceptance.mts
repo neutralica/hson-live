@@ -17,6 +17,7 @@ import {
   _reflect_document_for_runtime_test,
 } from "../src/_tests/diagnostics-internal.ts";
 import { element, path, projected_element, raw_node } from "./helpers/reflect-unit6.mts";
+import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -259,16 +260,20 @@ await check("distinct QUID-free reflected subjects keep independent resources", 
 
 await check("compatible Reflect reuse preserves resources on the same exact subject", () => {
   const runtime = _create_livetree_runtime_test_handle();
-  const map = element(`<main <a @000000r01/>/>`);
+  const map = element(`<main <a/>/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
   const original = raw_node(binding.tree.node, [0, 0]);
   const tree = _create_livetree_for_runtime_test(runtime, original).adoptRoots(binding.tree.hostRootNode());
+  const acquired = tree.quid;
   const target = attach(original);
   let calls = 0;
   tree.listen.onClick(() => { calls += 1; });
 
-  map.document.content.replace(path(0), 0, projected_element(`<a @000000r01 title="same"/>`));
+  map.document.content.replace(path(0), 0, projected_element(`<a title="same"/>`), [
+    { source: validate_document_path([]), destination: validate_document_path([]) },
+  ]);
   assert.equal(raw_node(binding.tree.node, [0, 0]), original);
+  assert.equal(typeof acquired, "string");
   assert.equal(get_el_for_node(original), target);
   target.dispatch("click");
   assert.equal(calls, 1);
@@ -276,12 +281,13 @@ await check("compatible Reflect reuse preserves resources on the same exact subj
   binding.dispose();
 });
 
-await check("incompatible same-QUID replacement cleans the outgoing subject without transfer", () => {
+await check("incompatible path-lineage replacement cleans the outgoing subject without transfer", () => {
   const runtime = _create_livetree_runtime_test_handle();
-  const map = element(`<main <a @000000r02/>/>`);
+  const map = element(`<main <a/>/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
   const original = raw_node(binding.tree.node, [0, 0]);
   const tree = _create_livetree_for_runtime_test(runtime, original).adoptRoots(binding.tree.hostRootNode());
+  assert.equal(typeof tree.quid, "string");
   const outgoingEvents = tree.events;
   let calls = 0;
   const off = outgoingEvents.on("probe", () => { calls += 1; });
@@ -289,7 +295,9 @@ await check("incompatible same-QUID replacement cleans the outgoing subject with
   outgoingEvents.emit("probe");
   assert.equal(calls, 1);
 
-  map.document.content.replace(path(0), 0, projected_element(`<i @000000r02/>`));
+  map.document.content.replace(path(0), 0, projected_element(`<i/>`), [
+    { source: validate_document_path([]), destination: validate_document_path([]) },
+  ]);
   const replacement = raw_node(binding.tree.node, [0, 0]);
   assert.notEqual(replacement, original);
   assert.equal(lifecycle_resource_counts_for_subject(original, runtime_for_tree(tree)).treeEvent, 0);

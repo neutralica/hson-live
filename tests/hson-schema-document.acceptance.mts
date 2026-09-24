@@ -217,7 +217,7 @@ check("runtime certification selects document context before empty-source detach
   assert.throws(() => nonemptyRequiring.certify(emptyCanonical));
   assert.throws(
     () => dataSchema.certify(emptyCanonical),
-    (cause) => cause instanceof TransformError && cause.code === "HSON_SOURCE_EMPTY",
+    (cause) => cause instanceof TypeError && /HsonData\.fromHson.*data-mode Hson/.test(cause.message),
   );
 });
 

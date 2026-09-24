@@ -66,7 +66,11 @@ await check("untyped Echo construction rejects incomplete replica capability pai
   assert.throws(() => createUntyped({ socket: pair.client, recovery: { logicalMapId: "untyped-map" } }), /map and recovery together/i);
   assert.throws(
     () => createUntyped({ socket: pair.client, map: Object.freeze({}), recovery: { logicalMapId: "untyped-map" } }),
-    /authority-projected library registry/i,
+    (cause) => cause instanceof Error && /LiveMap authority/.test(cause.message),
+  );
+  assert.throws(
+    () => createUntyped({ socket: pair.client, map: hsonLiveMap.fromJson({}), recovery: { logicalMapId: "solo-map" } }),
+    (cause) => cause instanceof TypeError && /library registry/.test(cause.message),
   );
 });
 

@@ -50,6 +50,11 @@ function canonicalize(source: string): string {
   return hson.fromHson(source).toHson().serialize();
 }
 
+function tag_unknown(value: unknown): unknown {
+  const strings = ((parts: TemplateStringsArray, _value: number) => parts)`<main ${0}/>`;
+  return Reflect.apply(Hson.canonical, Hson, [strings, value]);
+}
+
 check("ordinary JavaScript delimiters admit identical Hson source", () => {
   assert.equal(canonicalize("37"), "37");
   assert.equal(canonicalize('37'), canonicalize("37"));
@@ -69,12 +74,10 @@ check("ordinary bare strings and single-quoted values remain invalid Hson source
   assert.throws(() => canonicalize("'single quotes wrong'"), /use double quotes only/);
 });
 
-check("ordinary calls reject strings and primitive values defensively", () => {
+check("Hson is a noncallable namespace", () => {
+  assert.equal(typeof Hson, "object");
   for (const value of ["37", "<foo/>", 37, true, null, {}]) {
-    const error = captureTransformError(() => (Hson as any)(value));
-    assert.equal(error.operation, "Hson");
-    assert.equal(error.code, "HSON_TAGGED_TEMPLATE_REQUIRED");
-    assert.equal(error.stage, "template-admission");
+    assert.throws(() => Reflect.apply(Hson as unknown as Function, undefined, [value]), TypeError);
   }
 });
 
@@ -185,7 +188,7 @@ check("unsupported substitutions fail with one structured template error", () =>
     { $_tag: "main", $_content: [] },
   ];
   for (const value of values) {
-    const error = captureTransformError(() => (Hson as any)`<main ${value}/>`);
+    const error = captureTransformError(() => tag_unknown(value));
     assert.equal(error.operation, "Hson");
     assert.equal(error.code, "HSON_TEMPLATE_SUBSTITUTION_TYPE_REQUIRED");
     assert.equal(error.stage, "template-admission");
@@ -195,7 +198,8 @@ check("unsupported substitutions fail with one structured template error", () =>
 check("unsupported objects are not stringified", () => {
   let stringified = false;
   const hostile = { toString(): string { stringified = true; return "<foo/>"; } };
-  captureTransformError(() => (Hson as any)`${hostile}`);
+  const strings = ((parts: TemplateStringsArray, _value: number) => parts)`${0}`;
+  captureTransformError(() => Reflect.apply(Hson.canonical, Hson, [strings, hostile]));
   assert.equal(stringified, false);
 });
 

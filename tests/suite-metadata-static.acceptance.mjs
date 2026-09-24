@@ -11,7 +11,7 @@ function read_metadata(source) {
   if (parsed === null) throw new Error("Suite metadata must use the exact static literal grammar.");
   const [, id, title, category, runtime] = parsed;
   if (!id || !title || !category) throw new Error("Suite metadata requires id, title, and category.");
-  if (!new Set(["node", "node-synthetic-dom", "node-real-websocket", "node-real-websocket-process"]).has(runtime)) throw new Error("Invalid suite runtime.");
+  if (!new Set(["node", "node-synthetic-dom", "node-real-websocket", "node-real-websocket-process", "node-real-http2"]).has(runtime)) throw new Error("Invalid suite runtime.");
   return id;
 }
 
@@ -30,7 +30,7 @@ async function acceptance_sources(directory) {
   const sources = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const path = resolve(directory, entry.name);
-    if (entry.isDirectory()) sources.push(...await acceptance_sources(path));
+    if (entry.isDirectory() && entry.name !== "historical") sources.push(...await acceptance_sources(path));
     else if (entry.isFile() && /\.acceptance\.(?:mjs|mts)$/.test(entry.name)) sources.push(path);
   }
   return sources;
