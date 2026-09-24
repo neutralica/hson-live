@@ -198,7 +198,13 @@ export function create_locus_hosted_aggregate_internal(
       }
       let wire: string | undefined;
       try {
-        if (make_hosted_client_commit(hosted) !== undefined) wire = encode_locus_hosted_aggregate_wire(hosted, maxWireBytes);
+        // The legacy complete wire is only an actual egress artifact for this
+        // internal adapter when it has a sink. Hosted sessions use the
+        // per-session projected event preflight in beforeAccept instead.
+        if ((options.send !== undefined || listeners.size > 0)
+          && make_hosted_client_commit(hosted) !== undefined) {
+          wire = encode_locus_hosted_aggregate_wire(hosted, maxWireBytes);
+        }
       } catch (cause) {
         aggregate.discard(transition);
         throw cause;

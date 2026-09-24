@@ -276,7 +276,7 @@ await check("supplied QUID content and oversized live envelopes reject before ag
     kind: "ensure-quid" as const,
     quid: QUID,
   })]);
-  const server = create_locus_hosted_aggregate_internal({ map, maxWireBytes: 512 });
+  const server = create_locus_hosted_aggregate_internal({ map, maxWireBytes: 512, send: () => {} });
   const before = authority.captureHosted();
   await assert.rejects(() => server.mutate((draft) => {
     document(draft, "page").graph(insert_item(QUID));

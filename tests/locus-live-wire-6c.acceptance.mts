@@ -3,7 +3,8 @@ import { Hson, add_interaction, enable_interactions, hsonLiveMap, hsonLocus, typ
 import { encode_locus_client_message } from "../src/api/locus/locus.protocol.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.hosted-multi-library.protocol.ts";
-import { encode_locus_hosted_aggregate_wire } from "../src/api/locus/locus.hosted-multi-library.ts";
+import { DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES, encode_locus_hosted_aggregate_wire, type LocusHostedAggregateDraft } from "../src/api/locus/locus.hosted-multi-library.ts";
+import { create_multi_library_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
 import { project_locus_live_transition_internal, LOCUS_LIVE_PROJECTED_WIRE_FORMAT } from "../src/api/locus/locus.live-projection.ts";
@@ -16,12 +17,17 @@ const map = hsonLiveMap.fromLibraries({
   PRIVATE_NAME_SENTINEL: { data: { value: "PRIVATE_ROOT_SENTINEL" }, schema: Schema },
   UNSELECTED_NAME_SENTINEL: { data: { value: "UNSELECTED_ROOT_SENTINEL" }, schema: Schema },
 });
-const server = hsonLocus.create({ map, exposure: [
+const server = create_locus_hosted_aggregate_socket_internal({ map, exposure: [
   { library: "A", exposure: "client-public" },
   { library: "B", exposure: "client-public" },
   { library: "PRIVATE_NAME_SENTINEL", exposure: "server-private" },
   { library: "UNSELECTED_NAME_SENTINEL", exposure: "client-public" },
-], authorizeProjection: () => ({ libraries: ["A", "B"] }) });
+], defaultProjection: { libraries: ["A"] }, authorizeProjection: () => ({ libraries: ["A", "B"] }) });
+function data(draft: LocusHostedAggregateDraft, name: string) {
+  const library = draft.lib(name);
+  if (!("at" in library)) throw new Error("Expected data library.");
+  return library;
+}
 function pair() {
   const toServer = new Set<(raw: string) => void>();
   const toClient = new Set<(raw: string) => void>();
@@ -60,10 +66,10 @@ function live(connection: Awaited<ReturnType<typeof session>>) {
   });
 }
 await server.mutate((draft) => {
-  draft.lib("A").at(["value"]).set("VISIBLE_A_SENTINEL");
-  draft.lib("B").at(["value"]).set("VISIBLE_B_SENTINEL");
-  draft.lib("PRIVATE_NAME_SENTINEL").at(["value"]).set("PRIVATE_SENTINEL");
-  draft.lib("UNSELECTED_NAME_SENTINEL").at(["value"]).set("UNSELECTED_SENTINEL");
+  data(draft, "A").at(["value"]).set("VISIBLE_A_SENTINEL");
+  data(draft, "B").at(["value"]).set("VISIBLE_B_SENTINEL");
+  data(draft, "PRIVATE_NAME_SENTINEL").at(["value"]).set("PRIVATE_SENTINEL");
+  data(draft, "UNSELECTED_NAME_SENTINEL").at(["value"]).set("UNSELECTED_SENTINEL");
 });
 assert.equal(live(a).length, 1);
 assert.equal(live(b).length, 1);
@@ -80,7 +86,7 @@ for (const text of [firstA, firstB]) {
 assert.equal(firstA.includes("VISIBLE_B_SENTINEL"), false);
 assert.equal(firstB.includes("VISIBLE_A_SENTINEL"), false);
 assert.equal(JSON.parse(firstA).commit.commit.rev, JSON.parse(firstB).commit.commit.rev);
-await server.mutate((draft) => draft.lib("PRIVATE_NAME_SENTINEL").at(["value"]).set("PRIVATE_SENTINEL_2"));
+await server.mutate((draft) => data(draft, "PRIVATE_NAME_SENTINEL").at(["value"]).set("PRIVATE_SENTINEL_2"));
 assert.equal(live(a).length, 2);
 assert.equal(live(b).length, 2);
 for (const connection of [a, b]) {
@@ -92,6 +98,101 @@ for (const connection of [a, b]) {
   assert.deepEqual(Object.keys(event.progress).sort(), ["incarnationId", "logicalMapId", "prevRev", "registryDigest", "rev"]);
   assert.equal(raw.includes("PRIVATE"), false);
 }
+const echoPair = pair();
+server.connect(echoPair.socket);
+const echo = create_multi_library_echo_socket_client_internal({ socket: echoPair.client, logicalMapId: server.logicalMapId });
+assert.equal((await echo.connect()).revision, 2);
+assert.equal(echo.lastAppliedRev, 2);
+assert.equal(echo.map?.rev, 0);
+
+const wireLimit = DEFAULT_LOCUS_HOSTED_AGGREGATE_MAX_WIRE_BYTES;
+const privatePayload = `PRIVATE_OVERSIZE_WIRE_SENTINEL_${"x".repeat(4_500_000)}`;
+assert.ok(new TextEncoder().encode(privatePayload).byteLength > wireLimit);
+const privateCommit = await server.mutate((draft) => {
+  data(draft, "PRIVATE_NAME_SENTINEL").at(["value"]).set(privatePayload);
+});
+assert.ok(privateCommit);
+assert.equal(privateCommit.rev, 3);
+assert.ok(JSON.stringify(privateCommit).includes("PRIVATE_OVERSIZE_WIRE_SENTINEL"));
+assert.throws(() => encode_locus_hosted_aggregate_wire(privateCommit), /live wire byte limit/i);
+assert.equal(map.rev, 3);
+for (const connection of [a, b, echoPair]) {
+  const raw = live(connection)[connection === echoPair ? 0 : 2]!;
+  const event = JSON.parse(raw);
+  assert.equal(event.type, "progress");
+  assert.equal(event.progress.prevRev, 2);
+  assert.equal(event.progress.rev, 3);
+  assert.ok(new TextEncoder().encode(raw).byteLength < wireLimit);
+  assert.deepEqual(Object.keys(event.progress).sort(), ["incarnationId", "logicalMapId", "prevRev", "registryDigest", "rev"]);
+  assert.equal(raw.includes("PRIVATE_OVERSIZE_WIRE_SENTINEL"), false);
+  assert.equal(raw.includes(privatePayload), false);
+  assert.equal(raw.includes("PRIVATE_NAME_SENTINEL"), false);
+}
+assert.equal(echo.lastAppliedRev, 3);
+assert.equal(echo.map?.rev, 0);
+
+const mixedCommit = await server.mutate((draft) => {
+  data(draft, "PRIVATE_NAME_SENTINEL").at(["value"]).set("PRIVATE_AFTER_MIXED");
+  data(draft, "A").at(["value"]).set("SMALL_A_MIXED_SENTINEL");
+  data(draft, "B").at(["value"]).set("SMALL_B_MIXED_SENTINEL");
+});
+assert.ok(mixedCommit);
+assert.equal(mixedCommit.rev, 4);
+assert.ok(JSON.stringify(mixedCommit).includes("PRIVATE_OVERSIZE_WIRE_SENTINEL"));
+assert.throws(() => encode_locus_hosted_aggregate_wire(mixedCommit), /live wire byte limit/i);
+assert.equal(map.rev, 4);
+for (const [connection, index, visible, other] of [
+  [a, 3, "SMALL_A_MIXED_SENTINEL", "SMALL_B_MIXED_SENTINEL"],
+  [b, 3, "SMALL_B_MIXED_SENTINEL", "SMALL_A_MIXED_SENTINEL"],
+  [echoPair, 1, "SMALL_A_MIXED_SENTINEL", "SMALL_B_MIXED_SENTINEL"],
+] as const) {
+  const raw = live(connection)[index]!;
+  const event = JSON.parse(raw);
+  assert.equal(event.type, "commit");
+  assert.equal(event.commit.commit.prevRev, 3);
+  assert.equal(event.commit.commit.rev, 4);
+  assert.ok(new TextEncoder().encode(raw).byteLength < wireLimit);
+  assert.ok(raw.includes(visible));
+  assert.equal(raw.includes(other), false);
+  assert.equal(raw.includes("PRIVATE_OVERSIZE_WIRE_SENTINEL"), false);
+  assert.equal(raw.includes("PRIVATE_AFTER_MIXED"), false);
+  assert.equal(raw.includes("PRIVATE_NAME_SENTINEL"), false);
+}
+assert.equal(echo.lastAppliedRev, 4);
+assert.equal(echo.map?.rev, 1);
+const echoA = echo.map?.lib("A");
+if (echoA === undefined || echoA.mode === "document") throw new Error("Expected projected A data library.");
+assert.equal(echoA.snap(["value"]), "SMALL_A_MIXED_SENTINEL");
+
+const oversizedVisible = `VISIBLE_OVERSIZE_WIRE_SENTINEL_${"y".repeat(4_500_000)}`;
+const beforeRejected = live(a).length;
+const beforeRejectedB = live(b).length;
+const beforeRejectedEcho = live(echoPair).length;
+await assert.rejects(() => server.mutate((draft) => {
+  data(draft, "A").at(["value"]).set(oversizedVisible);
+  data(draft, "B").at(["value"]).set("SMALL_B_REJECTED_SENTINEL");
+}), /Hosted aggregate socket message exceeds its configured byte limit/);
+assert.equal(server.rev, 4);
+assert.equal(map.rev, 4);
+assert.equal(echo.lastAppliedRev, 4);
+assert.equal(echo.map.rev, 1);
+assert.equal(echoA.snap(["value"]), "SMALL_A_MIXED_SENTINEL");
+assert.equal(live(a).length, beforeRejected);
+assert.equal(live(b).length, beforeRejectedB);
+assert.equal(live(echoPair).length, beforeRejectedEcho);
+const authorityB = map.lib("B");
+if (!("snap" in authorityB)) throw new Error("Expected B data library.");
+assert.equal(authorityB.snap(["value"]), "SMALL_B_MIXED_SENTINEL");
+
+const ordinary = await server.mutate((draft) => data(draft, "A").at(["value"]).set("SMALL_A_AFTER_REJECTION"));
+assert.equal(ordinary?.prevRev, 4);
+assert.equal(ordinary.rev, 5);
+assert.equal(JSON.parse(live(a)[4]!).commit.commit.rev, 5);
+assert.equal(JSON.parse(live(b)[4]!).progress.rev, 5);
+assert.equal(echo.lastAppliedRev, 5);
+assert.equal(echo.map.rev, 2);
+assert.equal(echoA.snap(["value"]), "SMALL_A_AFTER_REJECTION");
+echo.dispose();
 server.dispose();
 
 // A versioned projected frame is checked before accepting the authority write.
