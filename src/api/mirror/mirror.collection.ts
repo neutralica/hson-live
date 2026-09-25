@@ -8,7 +8,7 @@ import { runtime_for_tree } from "../livetree/runtime/livetree-runtime.js";
 import { get_el_for_node } from "../livetree/utils/node-map-helpers.js";
 import { path_is_prefix, paths_equal, relative_live_path } from "../livemap/livemap.path.js";
 import type {
-  LiveMapCommit,
+  LiveMapCoreCommit,
   LiveMapFeedEvent,
   LiveMapOp,
   LiveMapPathHandle,
@@ -234,7 +234,7 @@ class CollectionMirroror<TItem extends JsonValue> {
     }
   }
 
-  private applyNested(commit: LiveMapCommit, ops: readonly LiveMapOp[]): void {
+  private applyNested(commit: LiveMapCoreCommit, ops: readonly LiveMapOp[]): void {
     const basePath = this.source.path();
     const affected = new Map<number, LiveMapOp[]>();
     for (const op of ops) {
@@ -286,7 +286,7 @@ class CollectionMirroror<TItem extends JsonValue> {
   private update(
     nextSource: LiveMapPathHandle<readonly TItem[]>,
     kind: UpdateKind,
-    commit: LiveMapCommit | undefined,
+    commit: LiveMapCoreCommit | undefined,
     countFull: boolean,
   ): void {
     const readStarted = materialization_now();
@@ -803,7 +803,7 @@ function isStructuralOp(sourcePath: LivePath, op: LiveMapOp): boolean {
 }
 
 /** Skip unchanged survivors before/after one exact semantic splice. */
-function shouldUpdateSurvivor(commit: LiveMapCommit | undefined, sourcePath: LivePath, ordinal: number): boolean {
+function shouldUpdateSurvivor(commit: LiveMapCoreCommit | undefined, sourcePath: LivePath, ordinal: number): boolean {
   if (commit === undefined || commit.ops.length !== 1) return true;
   const op = commit.ops[0];
   if (op?.kind !== "splice" || !paths_equal(op.path, sourcePath)) return true;

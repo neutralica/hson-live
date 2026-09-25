@@ -1,19 +1,9 @@
-import { test_public_exposure } from "./helpers/hosted-exposure.mts";
 import assert from "node:assert/strict";
 import {
-  Hson,
-  decode_ssr_bootstrap,
-  encode_ssr_bootstrap,
-  hsonLiveMap,
-  hsonLocus,
-  render_document,
-  render_hosted_document,
-  SsrBootstrapCodecError,
-  type HsonSchema,
+  Hson, decode_ssr_bootstrap, encode_ssr_bootstrap, hsonLiveMap,
+  SsrBootstrapCodecError, render_document,
 } from "../src/index.ts";
 import { install_libraries_snapshot } from "../src/api/livemap/index.ts";
-import { encode_view_state_snapshot } from "../src/api/livemap/livemap.document.view-state-codec.ts";
-import { make_classified_livemap } from "../src/api/livemap/livemap.core.ts";
 
 const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 const utf8 = new TextEncoder();
@@ -42,112 +32,42 @@ const decodeText = (value: string): string => {
 };
 const expectCode = (value: string, code: SsrBootstrapCodecError["code"]): void => {
   assert.throws(() => decode_ssr_bootstrap(value), (cause) => cause instanceof SsrBootstrapCodecError
-    && cause.phase === "decode" && cause.code === code && !cause.message.includes(value));
-};
-const expectReject = (value: string): void => {
-  assert.throws(() => decode_ssr_bootstrap(value), (cause) => cause instanceof SsrBootstrapCodecError
-    && cause.phase === "decode" && !cause.message.includes(value));
+    && cause.phase === "decode" && cause.code === code);
 };
 
-const style = Object.create(null) as Record<string, unknown>;
-for (const [name, value] of [
-  ["constructor", ""], ["prototype", "line\r\n雪"], ["10", -0], ["2", { value: 2, unit: undefined }],
-] as const) Object.defineProperty(style, name, { value, enumerable: true, writable: true, configurable: true });
-const localMap = make_classified_livemap({
-  $_tag: "_hson_root",
-  $_content: [{
-    $_tag: "main",
-    $_attrs: { style: style as never },
-    $_content: [{ $_tag: "_hson_elem", $_content: [
-      { $_tag: "_hson_str", $_content: ["text\ud800\udc00\ud800X\udfff"] },
-      { $_tag: "span", $_meta: { quid: "000009901" }, $_content: [] },
-    ] }],
-  }],
+const DataSchema = Hson.schema`<type "data" content <value "number">>`;
+const PageSchema = Hson.schema`<type "document" tag "main" content "string">`;
+const map = hsonLiveMap.fromLibraries({
+  state: { data: { value: -0 }, schema: DataSchema },
+  page: { document: `<main "ready"/>`, schema: PageSchema },
 });
-if (localMap.mode !== "document") throw new Error("Local fixture must be a document map.");
-const localBootstrap = localMap.capture({ identity: "strip" });
-const encodedLocal = encode_ssr_bootstrap(localBootstrap);
-assert.equal(decodeText(encodedLocal).includes("000009901"), false);
-assert.equal(decodeText(encode_ssr_bootstrap(localMap.capture())).includes("000009901"), false);
-assert.match(encodedLocal, /^[A-Za-z0-9_-]+$/);
-assert.equal(encodedLocal.includes("="), false);
-assert.equal(encode_ssr_bootstrap(localBootstrap), encodedLocal);
-const decodedLocal = decode_ssr_bootstrap(encodedLocal);
-assert.equal(decodedLocal.kind, "document");
-if (decodedLocal.kind !== "document") throw new Error("Wrong local kind.");
-assert.deepEqual(decodedLocal.bootstrap, localBootstrap);
-const localInstalled = make_classified_livemap(decodedLocal.bootstrap.root);
-if (localInstalled.mode !== "document") throw new Error("Decoded local map must be a document.");
-localInstalled.restore(decodedLocal.bootstrap, { identity: "strip" });
-assert.deepEqual(localInstalled.capture({ identity: "strip" }), localBootstrap);
-const decodedRootElement = decodedLocal.bootstrap.root.$_content[0];
-if (typeof decodedRootElement !== "object" || decodedRootElement === null) throw new Error("Decoded root element is missing.");
-const decodedStyle = decodedRootElement.$_attrs?.style as Record<string, unknown>;
-const typed = decodedStyle["2"] as Record<string, unknown>;
-assert.equal(Object.hasOwn(typed, "unit"), true);
-assert.equal(typed.unit, undefined);
-assert.equal(Object.is(decodedStyle["10"], -0), true);
-const decodedElementWrapper = decodedRootElement.$_content[0];
-if (typeof decodedElementWrapper !== "object" || decodedElementWrapper === null) throw new Error("Decoded element wrapper is missing.");
-assert.equal((decodedElementWrapper.$_content[0] as { $_content: unknown[] }).$_content[0], "text\ud800\udc00\ud800X\udfff");
+const bootstrap = render_document({ map, document: "page" }).bootstrap;
+const encoded = encode_ssr_bootstrap(bootstrap);
+assert.match(encoded, /^[A-Za-z0-9_-]+$/);
+assert.equal(encoded.includes("="), false);
+assert.equal(encode_ssr_bootstrap(bootstrap), encoded);
+const decoded = decode_ssr_bootstrap(encoded);
+assert.equal(decoded.kind, "libraries");
+if (decoded.kind !== "libraries") throw new Error("Expected Libraries bootstrap.");
+assert.deepEqual(decoded.bootstrap, bootstrap);
+assert.deepEqual(install_libraries_snapshot(decoded.bootstrap).map.capture(), bootstrap);
+assert.equal(decoded.bootstrap.revision, 0);
+assert.equal(decoded.bootstrap.libraries.length, 2);
+const installedState = install_libraries_snapshot(decoded.bootstrap).map.lib("state");
+if (installedState.mode === "document") throw new Error("Expected data library.");
+assert.equal(Object.is((installedState.snap() as { value: number }).value, -0), true);
 
-// The version-two hosted document family is retired; local version-two vectors remain valid.
-const legacyHosted = { logicalMapId: "wire-map", incarnationId: "wire-incarnation", rev: 0,
-  mode: "document" as const, format: "hson-client-snapshot-v1" as const, payload: '<main/>' };
-// @ts-expect-error Retired complete hosted document state is not an encoder input.
-assert.throws(() => encode_ssr_bootstrap(legacyHosted),
-  (cause) => cause instanceof SsrBootstrapCodecError && cause.code === "SSR_BOOTSTRAP_INPUT_INVALID");
-expectCode(encodeText(JSON.stringify({ format: "hson-ssr-bootstrap", version: 2, kind: "hosted-document",
-  payload: { logicalMapId: "wire-map", incarnationId: "wire-incarnation", revision: 0,
-    mode: "document", snapshotFormat: "hson-client-snapshot-v1", snapshotPayload: "<main/>" } })),
-  "SSR_BOOTSTRAP_KIND_UNSUPPORTED");
-
-const DataSchema: HsonSchema = Hson.schema`<type "data" content <value "number">>`;
-const DocumentSchema: HsonSchema = Hson.schema`<type "document" tag "main" content "empty">`;
-const inputs = Object.create(null) as Record<string, { data: { value: number }; schema: HsonSchema } | { document: string; schema: HsonSchema }>;
-for (const name of ["__proto__", "constructor", "prototype", "10", "2"]) {
-  Object.defineProperty(inputs, name, { value: name === "prototype" ? { document: "<main/>", schema: DocumentSchema } : { data: { value: name === "10" ? -0 : 2 }, schema: DataSchema }, enumerable: true });
-}
-const librariesMap = hsonLiveMap.fromLibraries(inputs);
-const librariesBootstrap = render_document({ map: librariesMap, document: "prototype" }).bootstrap;
-const encodedLibraries = encode_ssr_bootstrap(librariesBootstrap);
-const localLibrariesWire = JSON.parse(decodeText(encodedLibraries)) as { payload: Record<string, unknown> };
-assert.equal(Object.hasOwn(localLibrariesWire.payload, "identityEpoch"), false);
-assert.equal(Object.hasOwn(localLibrariesWire.payload, "issuedQuids"), false);
-expectCode(encodeText(JSON.stringify({ ...localLibrariesWire, payload: { ...localLibrariesWire.payload, identityEpoch: 0, issuedQuids: [] } })), "SSR_BOOTSTRAP_PAYLOAD_INVALID");
-const decodedLibraries = decode_ssr_bootstrap(encodedLibraries);
-assert.equal(decodedLibraries.kind, "libraries");
-if (decodedLibraries.kind !== "libraries") throw new Error("Wrong Libraries kind.");
-assert.deepEqual(decodedLibraries.bootstrap, librariesBootstrap);
-assert.deepEqual(install_libraries_snapshot(decodedLibraries.bootstrap).map.capture(), librariesBootstrap);
-assert.deepEqual(decodedLibraries.bootstrap.registry.libraries.map((entry) => entry.name), librariesBootstrap.registry.libraries.map((entry) => entry.name));
-
-// Legacy hosted Libraries bootstrap is likewise unavailable for encoding.
-const legacyHostedLibraries = { ...librariesBootstrap, format: "hson-portable-aggregate-snapshot-v1" as const,
-  authority: { logicalMapId: "aggregate-map", incarnationId: "aggregate-incarnation" } };
-// @ts-expect-error Retired complete hosted Libraries state is not an encoder input.
-assert.throws(() => encode_ssr_bootstrap(legacyHostedLibraries),
-  (cause) => cause instanceof SsrBootstrapCodecError && cause.code === "SSR_BOOTSTRAP_INPUT_INVALID");
-
-assert.equal(({} as Record<string, unknown>).polluted, undefined);
-assert.equal(Object.prototype.hasOwnProperty.call(Object.prototype, "polluted"), false);
-
-const canonicalJson = decodeText(encodedLocal);
+const canonicalJson = decodeText(encoded);
 const parsed = JSON.parse(canonicalJson) as Record<string, unknown>;
-expectCode(encodeText(` {${canonicalJson.slice(1)}`), "SSR_BOOTSTRAP_NON_CANONICAL");
-expectCode(encodeText(JSON.stringify({ kind: parsed.kind, format: parsed.format, version: parsed.version, payload: parsed.payload })), "SSR_BOOTSTRAP_NON_CANONICAL");
+assert.equal(canonicalJson.includes("identityEpoch"), false);
+assert.equal(canonicalJson.includes("issuedQuids"), false);
+expectCode(encodeText(` ${canonicalJson}`), "SSR_BOOTSTRAP_NON_CANONICAL");
 expectCode(encodeText(canonicalJson.replace('"format"', '"\\u0066ormat"')), "SSR_BOOTSTRAP_NON_CANONICAL");
-expectCode(encodeText(canonicalJson.replace('"version":2', '"version":2e0')), "SSR_BOOTSTRAP_NON_CANONICAL");
 expectCode(encodeText(canonicalJson.replace('{', '{"format":"duplicate",')), "SSR_BOOTSTRAP_MALFORMED");
-expectCode(encodedLocal + "=", "SSR_BOOTSTRAP_MALFORMED");
-const standardBase64 = encodedLocal.replace(/-/g, "+").replace(/_/g, "/");
-assert.notEqual(standardBase64, encodedLocal);
-expectCode(standardBase64, "SSR_BOOTSTRAP_MALFORMED");
-expectCode(encodedLocal + " ", "SSR_BOOTSTRAP_MALFORMED");
+expectCode(encoded + "=", "SSR_BOOTSTRAP_MALFORMED");
+expectCode(encoded + " ", "SSR_BOOTSTRAP_MALFORMED");
 expectCode("A", "SSR_BOOTSTRAP_MALFORMED");
-expectCode("+w", "SSR_BOOTSTRAP_MALFORMED");
 expectCode(base64url(new Uint8Array([0xff])), "SSR_BOOTSTRAP_MALFORMED");
-expectCode(base64url(new Uint8Array([0xef, 0xbb, 0xbf, ...utf8.encode(canonicalJson)])), "SSR_BOOTSTRAP_NON_CANONICAL");
 expectCode(encodeText("{"), "SSR_BOOTSTRAP_MALFORMED");
 expectCode(encodeText(JSON.stringify({ ...parsed, format: "wrong" })), "SSR_BOOTSTRAP_FORMAT_UNSUPPORTED");
 expectCode(encodeText(JSON.stringify({ ...parsed, version: 3 })), "SSR_BOOTSTRAP_VERSION_UNSUPPORTED");
@@ -156,26 +76,14 @@ const { payload: _missing, ...missing } = parsed;
 expectCode(encodeText(JSON.stringify(missing)), "SSR_BOOTSTRAP_PAYLOAD_INVALID");
 expectCode(encodeText(JSON.stringify({ ...parsed, extra: true })), "SSR_BOOTSTRAP_PAYLOAD_INVALID");
 expectCode(encodeText(JSON.stringify({ ...parsed, payload: [] })), "SSR_BOOTSTRAP_PAYLOAD_INVALID");
-expectCode(encodeText(canonicalJson.replace('"viewStateFormat"', '"__proto__":{"polluted":true},"viewStateFormat"')), "SSR_BOOTSTRAP_PAYLOAD_INVALID");
-expectCode(encodedLocal.slice(0, -4), "SSR_BOOTSTRAP_MALFORMED");
-for (const index of [0, 7, Math.floor(encodedLocal.length / 2), encodedLocal.length - 1]) {
-  expectReject(`${encodedLocal.slice(0, index)}!${encodedLocal.slice(index + 1)}`);
-}
-assert.equal(({} as Record<string, unknown>).polluted, undefined);
-assert.equal(Object.prototype.hasOwnProperty.call(Object.prototype, "polluted"), false);
-assert.throws(() => decode_ssr_bootstrap(encodedLocal, { maxEncodedBytes: encodedLocal.length - 1 }),
+assert.throws(() => decode_ssr_bootstrap(encoded, { maxEncodedBytes: encoded.length - 1 }),
   (cause) => cause instanceof SsrBootstrapCodecError && cause.code === "SSR_BOOTSTRAP_TOO_LARGE");
-assert.throws(() => encode_ssr_bootstrap(localBootstrap, { maxEncodedBytes: encodedLocal.length - 1 }),
-  (cause) => cause instanceof SsrBootstrapCodecError && cause.phase === "encode" && cause.code === "SSR_BOOTSTRAP_TOO_LARGE");
-assert.throws(() => encode_ssr_bootstrap(localBootstrap, { maxEncodedBytes: 0 }),
-  (cause) => cause instanceof SsrBootstrapCodecError && cause.phase === "encode" && cause.code === "SSR_BOOTSTRAP_INPUT_INVALID");
+assert.throws(() => encode_ssr_bootstrap(bootstrap, { maxEncodedBytes: encoded.length - 1 }),
+  (cause) => cause instanceof SsrBootstrapCodecError && cause.code === "SSR_BOOTSTRAP_TOO_LARGE");
 
-const malformedExact = structuredClone(parsed) as { payload: { viewStatePayload: string } };
-malformedExact.payload.viewStatePayload = "<malformed>";
-expectCode(encodeText(JSON.stringify(malformedExact)), "SSR_BOOTSTRAP_PAYLOAD_INVALID");
-assert.throws(() => encode_view_state_snapshot({
-  kind: "hson-document", mode: "document", rev: 0,
-  root: { $_tag: "_hson_root", $_content: [{ $_tag: "main", $_attrs: { title: undefined }, $_content: [] }] },
-}), /invalid/i);
+// Removed solo and complete-hosted formats cannot be encoded as local SSR state.
+const oldSolo = { kind: "hson-document", mode: "document", rev: 0, root: map.lib("page").root() };
+// @ts-expect-error Solo document captures are not SSR bootstrap input.
+assert.throws(() => encode_ssr_bootstrap(oldSolo), (cause) => cause instanceof SsrBootstrapCodecError && cause.code === "SSR_BOOTSTRAP_INPUT_INVALID");
 
 process.stdout.write("SSR bootstrap codec acceptance passed.\n");

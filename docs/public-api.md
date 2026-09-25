@@ -73,13 +73,15 @@ trust-ingress acceptance tests.
 
 ```ts
 import { hsonLiveMap } from "hson-live/livemap";
+import { Hson } from "hson-live/hson";
 
-const map = hsonLiveMap.fromJson({ count: 0 });
-map.set(["count"], 1);
-const count = map.snap(["count"]);
+const StateSchema = Hson.schema`<type "data" content <count "number">>`;
+const map = hsonLiveMap.fromLibraries({ state: { data: { count: 0 }, schema: StateSchema } });
+map.lib("state").at(["count"]).set(1);
+const count = map.lib("state").at(["count"]).snap();
 ```
 
-For exact data rather than a materialized object, use `map.data(path?)`; action
+For exact data rather than a materialized object, use `map.lib("state").data()`; action
 handlers receive `HsonData | undefined`, so inspect it or call
 `payload === undefined ? undefined : Hson.data.materialize(payload)` instead of assuming application properties are on the
 payload object. Runtime coverage: LiveMap mutation and HsonData acceptance
@@ -109,13 +111,14 @@ tests.
 import { hsonLiveMap } from "hson-live/livemap";
 import { reflect_document } from "hson-live/mirror";
 import { hsonTransform } from "hson-live/transform";
+import { Hson } from "hson-live/hson";
 
-const map = hsonLiveMap.fromNode(hsonTransform.fromTrustedHtml("<main/>").toNode());
-if (map.mode === "document") {
-  const binding = reflect_document(map);
-  // Mutate through the document-map API, then later release only this binding.
-  binding.dispose();
-}
+const PageSchema = Hson.schema`<type "document" tag "main" content "empty">`;
+const map = hsonLiveMap.fromLibraries({
+  page: { document: hsonTransform.fromTrustedHtml("<main/>").toNode(), schema: PageSchema },
+});
+const binding = reflect_document(map.lib("page"));
+binding.dispose();
 ```
 
 Mirror does not dispose `map`. Its health/status concerns projection; it is
@@ -127,8 +130,10 @@ not the same promise as Echo revision convergence.
 import { create_locus } from "hson-live/locus";
 import { create_echo } from "hson-live/echo";
 import { hsonLiveMap } from "hson-live/livemap";
+import { Hson } from "hson-live";
 
-const authorityMap = hsonLiveMap.fromLibraries({ page: { document: "<main/>" } });
+const PageSchema = Hson.schema`<type "document" tag "main" content "empty">`;
+const authorityMap = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: PageSchema } });
 const authority = create_locus({
   map: authorityMap,
   exposure: [{ library: "page", exposure: "client-public" }],
@@ -236,8 +241,8 @@ and document continuation.
 - Treat action payload/result values as `HsonData`: check presence, use
   `Hson.data.entries(value)` for exact semantics or `Hson.data.materialize(value)` for a detached JS view.
 - Construct hosted Locus from a fixed library registry with explicit exposure and session projection; a one-library application uses the same path. Keep persistence server-side.
-- Replace LiveMap HTML shortcuts with explicit trusted/untrusted Transform then
-  `hsonLiveMap.fromNode`; use path document requests, not raw QUID targeting.
+- Admit documents through `hsonLiveMap.fromLibraries({ page: { document, schema } })`;
+  use `map.render("page")` for local HTML and path document requests for mutation.
 - Use `TransformOutput`, `SsrBootstrapCodecError`, `tree.style`/`tree.css` or
   `tree.css.global` and `tree.css.snapshot()`. Remove `sanitizeBEWARE`, `ensureQuid`, `syncNow`, and
   independent `ContentManager` construction assumptions.

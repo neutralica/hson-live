@@ -194,38 +194,37 @@ LiveTree's CSS remains recognizably CSS. Dynamic property values can be created 
 
 LiveMap provides mutable, revisioned application state over canonical Hson graphs. It supports both data and document state, including multiple named data/document libraries coordinated under one LiveMap controlling atomic mutation, observation, Schema governance, capture/recovery, and canonical commit history.
 
-For data maps, ordinary state can be created from JSON and addressed directly:
+Every library enters LiveMap with a name and Schema. Select a data library to read or change its state:
 
 ```ts
-const map = hson.liveMap.fromJson({
-  count: 0,
-  items: ["one", "two"],
+const StateSchema = Hson.schema`<type "data" content <count "number" items <array "string">>>`;
+const map = hson.liveMap.fromLibraries({
+  state: {
+    data: { count: 0, items: ["one", "two"] },
+    schema: StateSchema,
+  },
 });
+const state = map.lib("state");
 
-map.at(["count"]).update(
+state.at(["count"]).update(
   value => Number(value) + 1,
 );
 
-map.at(["items"]).array.push("three");
+state.at(["items"]).asArray()?.push("three");
 
-console.log(map.snap());
+console.log(state.snap());
 ```
 
-For document maps, paths traverse ordered authored content and expose document-specific content and attribute operations:
+Document libraries provide document paths and operations. LiveMap owns local rendering:
 
 ```ts
-const document = hson.liveMap.fromHson(
-  `<main <section <p "hello"/>/>/>`,
-);
-
-if (document.mode === "document") {
-  const paragraph = document.at([0, 0]);
-
-  console.log(paragraph.snap());
-
-  paragraph.attrs.set("class", "intro");
-  paragraph.text.set("Hello");
-}
+const PageSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "p" content "string">>>`;
+const map = hson.liveMap.fromLibraries({
+  page: { document: `<main <p "hello"/>/>`, schema: PageSchema },
+});
+const paragraph = map.lib("page").at([0]);
+console.log(paragraph.snap());
+const html = map.render(); // one document library makes selection unambiguous
 ```
 
 Path handles are fixed logical coordinates that re-resolve against the current map revision. They support detached snapshots, observation, feeds, subscriptions, and mutation without exposing mutable references into the graph itself. Data locations additionally expose object and array capabilities; document locations expose authored content, attributes, text, and item operations.
@@ -234,11 +233,11 @@ LiveMap validates changes against TypeScript-compatible HsonSchema. Candidate mu
 
 Validated changes are applied atomically. Individual or batched mutations advance the map by one revision and publish one canonical commit.
 
-State can be captured, restored, replayed, and recovered through revision-aware primitives used by both local and hosted compositions.
+The complete library registry can be captured and restored at one map revision. Hosted recovery uses registry-aware authority primitives.
 
 LiveMap coordinates logical path addressing with QUID registration to preserve identity continuity across structural graph changes.
 
-An optional proxy surface provides the same underlying capabilities through structural property/index traversal; `map.at(...)` remains the explicit path-oriented form.
+Selected data libraries expose explicit path handles for structural property and index traversal.
 
 ---
 
@@ -248,9 +247,11 @@ An optional proxy surface provides the same underlying capabilities through stru
 LiveTree bindings connect document presentation to LiveMap state.
 
 ```ts
-const state = hson.liveMap.fromJson({
-  count: 0,
+const StateSchema = Hson.schema`<type "data" content <count "number">>`;
+const map = hson.liveMap.fromLibraries({
+  state: { data: { count: 0 }, schema: StateSchema },
 });
+const state = map.lib("state");
 
 const body = hson.liveTree.queryBody().graft();
 
@@ -458,7 +459,7 @@ const dynamic = CounterSchema.certify(data);
 const portableDefinition = CounterSchema.toHson(); // HsonSchemaData string
 ```
 
-The `hson-schema` CLI generates Schema-specific evidence and validates direct authored assignments such as `proved`. Ordinary TypeScript alone keeps a tag's result unproved. Use `Hson.document.fromNode` and `Hson.document.toNode` to cross the exact document graph boundary. Use `hsonLiveMap.fromData` or `fromDocument` when the mode is known.
+The `hson-schema` CLI generates Schema-specific evidence and validates direct authored assignments such as `proved`. Ordinary TypeScript alone keeps a tag's result unproved. Use `Hson.document.fromNode` and `Hson.document.toNode` to cross the exact document graph boundary. Admit application state with `hsonLiveMap.fromLibraries({ name: { data, schema } })` or `{ name: { document, schema } }`.
 
 ```sh
 hson-schema generate --project tsconfig.json

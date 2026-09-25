@@ -28,68 +28,63 @@ const check = (name: string, run: () => void): void => {
 const PersonSchema: HsonSchema = Hson.schema`<type "data" content <name "string" age "number">>`;
 const OtherSchema: HsonSchema = Hson.schema`<type "data" content <name "string">>`;
 
-check("HsonSchema governs a data LiveMap and use returns the identical map", () => {
-  const map = hsonLiveMap.fromJson({ name: "Ada", age: 37 });
-  const governed = map.schema.use(PersonSchema);
-  assert.equal(governed, map);
-  assert.equal(map.schema.get(), PersonSchema);
-  assert.equal(map.schema.use(PersonSchema), map);
+check("HsonSchema governs a named data library from admission", () => {
+  const map = hsonLiveMap.fromLibraries({ person: { data: { name: "Ada", age: 37 }, schema: PersonSchema } });
+  assert.equal(map.lib("person").schema.get(), PersonSchema);
+  assert.equal(map.lib("person"), map.lib("person"));
 });
 
 check("HsonSchema rejects invalid mutation before changing state", () => {
-  const map = hsonLiveMap.fromJson({ name: "Ada", age: 37 }).schema.use(PersonSchema);
-  assert.throws(() => map.set(["age"], "wrong"));
-  assert.deepEqual(map.snap(), { name: "Ada", age: 37 });
+  const map = hsonLiveMap.fromLibraries({ person: { data: { name: "Ada", age: 37 }, schema: PersonSchema } });
+  assert.throws(() => map.lib("person").at(["age"]).set("wrong" as never));
+  assert.deepEqual(map.lib("person").snap(), { name: "Ada", age: 37 });
 });
 
 check("alphabet refinement governs LiveMap admission and mutation through the shared evaluator", () => {
   const schema: HsonSchema = Hson.schema`<type "data" content <key <string <len 3 alphabet "abc">>>>`;
-  const map = hsonLiveMap.fromJson({ key: "abc" }).schema.use(schema);
-  map.set(["key"], "cba");
-  assert.deepEqual(map.snap(), { key: "cba" });
-  assert.throws(() => map.set(["key"], "abd"));
-  assert.deepEqual(map.snap(), { key: "cba" });
-  assert.throws(() => hsonLiveMap.fromJson({ key: "ab" }).schema.use(schema));
+  const map = hsonLiveMap.fromLibraries({ state: { data: { key: "abc" }, schema } });
+  map.lib("state").at(["key"]).set("cba");
+  assert.deepEqual(map.lib("state").snap(), { key: "cba" });
+  assert.throws(() => map.lib("state").at(["key"]).set("abd"));
+  assert.deepEqual(map.lib("state").snap(), { key: "cba" });
+  assert.throws(() => hsonLiveMap.fromLibraries({ state: { data: { key: "ab" }, schema } }));
 });
 
 check("any governs canonical data while preserving negative zero and object order", () => {
   const schema: HsonSchema = Hson.schema`<type "data" content <args "any" payload "any">>`;
-  const map = hsonLiveMap.fromJson({ args: -0, payload: { z: 1, a: [true, null, {}] } }).schema.use(schema);
-  assert.equal(Object.is(map.snap(["args"]), -0), true);
-  assert.deepEqual(Object.keys(map.snap(["payload"]) as object), ["z", "a"]);
-  map.replace(["payload"], { second: [], first: { nested: "ok" } });
-  assert.deepEqual(Object.keys(map.snap(["payload"]) as object), ["second", "first"]);
-  assert.throws(() => map.set(["args"], (() => "runtime capability") as never));
-  assert.equal(Object.is(map.snap(["args"]), -0), true);
+  const map = hsonLiveMap.fromLibraries({ state: { data: { args: -0, payload: { z: 1, a: [true, null, {}] } }, schema } });
+  const state = map.lib("state");
+  assert.equal(Object.is(state.snap(["args"]), -0), true);
+  assert.deepEqual(Object.keys(state.snap(["payload"]) as object), ["z", "a"]);
+  state.at(["payload"]).replace({ second: [], first: { nested: "ok" } });
+  assert.deepEqual(Object.keys(state.snap(["payload"]) as object), ["second", "first"]);
+  assert.throws(() => state.at(["args"]).set((() => "runtime capability") as never));
+  assert.equal(Object.is(state.snap(["args"]), -0), true);
 });
 
 check("primitive union branches govern null values", () => {
   const schema: HsonSchema = Hson.schema`<type "data" content <value <union ["string", "null"]>>>`;
-  const map = hsonLiveMap.fromJson({ value: null }).schema.use(schema);
-  assert.deepEqual(map.snap(), { value: null });
-  map.set(["value"], "ready");
-  assert.throws(() => map.set(["value"], 1));
+  const map = hsonLiveMap.fromLibraries({ state: { data: { value: null }, schema } });
+  assert.deepEqual(map.lib("state").snap(), { value: null });
+  map.lib("state").at(["value"]).set("ready");
+  assert.throws(() => map.lib("state").at(["value"]).set(1 as never));
 });
 
-check("one owner cannot switch Schema while independent owners can reuse it", () => {
-  const first = hsonLiveMap.fromJson({ name: "Ada", age: 37 });
-  const second = hsonLiveMap.fromJson({ name: "Grace", age: 40 });
-  first.schema.use(PersonSchema);
-  assert.throws(() => first.schema.use(OtherSchema), /already attached/);
-  assert.equal(second.schema.use(PersonSchema), second);
+check("one library has a fixed Schema while independent registries can reuse it", () => {
+  const first = hsonLiveMap.fromLibraries({ person: { data: { name: "Ada", age: 37 }, schema: PersonSchema } });
+  const second = hsonLiveMap.fromLibraries({ person: { data: { name: "Grace", age: 40 }, schema: PersonSchema } });
+  assert.equal(first.lib("person").schema.get(), PersonSchema);
+  assert.equal(second.lib("person").schema.get(), PersonSchema);
+  assert.notEqual(first.lib("person"), second.lib("person"));
+  assert.throws(() => hsonLiveMap.fromLibraries({ person: { data: { name: "Ada", age: 37 }, schema: OtherSchema } }));
 });
 
-check("document LiveMap governance consumes HsonSchema", () => {
+check("document library admission consumes HsonSchema", () => {
   const schema: HsonSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "section" content "string">]>>`;
-  const map = hsonLiveMap.fromHson('<main <section "body"/>/>');
-  assert.equal(map.mode, "document");
-  if (map.mode !== "document") throw new Error("expected element map");
-  assert.equal(map.schema.use(schema), map);
-  assert.equal(map.schema.get(), schema);
-  const invalid = hsonLiveMap.fromHson("<aside/>");
-  assert.equal(invalid.mode, "document");
-  if (invalid.mode !== "document") throw new Error("expected element map");
-  assert.throws(() => invalid.schema.use(schema));
+  const map = hsonLiveMap.fromLibraries({ page: { document: '<main <section "body"/>/>', schema } });
+  assert.equal(map.lib("page").mode, "document");
+  assert.equal(map.lib("page").schema.get(), schema);
+  assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: "<aside/>", schema } }));
 });
 
 check("duplicate LiveMap namespace certification is retired", () => {

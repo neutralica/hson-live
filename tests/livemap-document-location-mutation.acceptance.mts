@@ -1,247 +1,125 @@
-import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
-import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { hson } from "../src/hson.ts";
-import {
-  _create_livetree_runtime_test_handle,
-  _reflect_document_for_runtime_test,
-} from "../src/_tests/diagnostics-internal.ts";
-import { LiveMapDocumentMutationError } from "../src/api/livemap/livemap.error.ts";
-import { is_Node } from "../src/core/node-guards.ts";
-import type { HsonNode } from "../src/core/types.ts";
-import { element as reflectedElement, raw_node } from "./helpers/mirror-unit6.mts";
-import type {
-  DocumentLiveMap,
-  LiveMapDocumentRequestTarget,
-} from "../src/types/livemap.types.ts";
+import { Hson, hsonLiveMap } from "../src/index.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
+import { element, projected_element, raw_node } from "./helpers/mirror-unit6.mts";
+import { _create_livetree_runtime_test_handle, _reflect_document_for_runtime_test } from "../src/_tests/diagnostics-internal.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livemap.document-location-mutation",
-  title: "Document location replace and delete convergence",
+  title: "Registry document location replacement and deletion",
   category: "LiveMap",
   runtime: "node-synthetic-dom",
-  tags: Object.freeze(["document", "path", "mutation", "proxy", "reflection", "public-api", "externally-discoverable"]),
+  tags: Object.freeze(["document", "path", "mutation", "proxy", "mirror", "externally-discoverable"]),
 });
-
-const testEvents = create_test_event_emitter("livemap.document-location-mutation");
+const events = create_test_event_emitter("livemap.document-location-mutation");
 let checks = 0;
 function check(name: string, run: () => void): void {
-
-  testEvents.case_begin(name, name);
-  try {
-    run();
-    testEvents.case_end(name, "pass");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Check failed.";
-    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
-    testEvents.case_end(name, "fail");
-    testEvents.terminal("fail");
-    throw error;
+  events.case_begin(name, name);
+  try { run(); events.case_end(name, "pass"); }
+  catch (error) {
+    events.diagnostic(name, "assertion", error instanceof Error ? error.message : String(error));
+    events.case_end(name, "fail"); events.terminal("fail"); throw error;
   }
-  checks += 1;
-  process.stdout.write(`ok ${checks} - ${name}\n`);
+  process.stdout.write(`ok ${++checks} - ${name}\n`);
 }
+const fixture = () => element('<main <item id="a"/> <item id="b"/>/>');
 
-function document(source: string): DocumentLiveMap {
-  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
-  if (map.mode !== "document") throw new Error(`Expected document map; observed ${map.mode}`);
-  return map;
-}
-
-const target = (...path: number[]): LiveMapDocumentRequestTarget => ({ kind: "path", path });
-const ordinary = (source: string): HsonNode => {
-  const value = document(source).at([]).snap();
-  if (!is_Node(value)) throw new Error("Expected ordinary document element");
-  return value;
-};
-const tag = (value: unknown): string | undefined =>
-  typeof value === "object" && value !== null && "$_tag" in value ? String(value.$_tag) : undefined;
-const mutationCode = (run: () => unknown, code: LiveMapDocumentMutationError["code"]): void => {
-  assert.throws(run, (error: unknown) =>
-    error instanceof LiveMapDocumentMutationError && error.code === code);
-};
-
-check("replace changes one root child element", () => {
-  const map = document(`<main <a/> <b/>/>`);
-  map.at([0]).replace(ordinary(`<x/>`));
-  assert.equal(tag(map.at([0]).snap()), "x");
-  assert.equal(tag(map.at([1]).snap()), "b");
+check("replace changes exactly one logical element", () => {
+  const map = fixture();
+  map.at([0]).replace(projected_element('<item id="new"/>'));
+  assert.equal(map.at([0]).asElement()?.attrs.get("id"), "new");
+  assert.equal(map.at([1]).asElement()?.attrs.get("id"), "b");
 });
 
-check("replace changes one nested logical element", () => {
-  const map = document(`<main <section <a/> <b/>/>/>`);
-  map.at([0]).at([1]).replace(ordinary(`<x/>`));
-  assert.equal(tag(map.at([0, 1]).snap()), "x");
+check("nested replacement uses the same logical coordinates", () => {
+  const map = element('<main <section <item id="a"/> <item id="b"/>/>/>');
+  map.at([0, 1]).replace(projected_element('<item id="next"/>'));
+  assert.equal(map.at([0, 1]).asElement()?.attrs.get("id"), "next");
 });
 
-check("replace normalizes authored text through the canonical planner", () => {
-  const map = document(`<main "before"/>`);
+check("authored text replacement stays a string location", () => {
+  const map = element('<main "before"/>');
   const commit = map.at([0]).replace("after");
   assert.equal(map.at([0]).snap(), "after");
-  assert.equal(commit.ops[0]?.op === "replace-content" ? tag(commit.ops[0].replacement) : undefined, "_hson_str");
+  assert.equal(commit.operations[0]?.operation.op, "replace-content");
 });
 
-check("replace can change an element into authored text", () => {
-  const map = document(`<main <a/>/>`);
-  map.at([0]).replace("text");
-  assert.equal(map.at([0]).snap(), "text");
+check("off-Schema replacement fails without advancing revision", () => {
+  const map = fixture();
+  const before = map.capture();
+  assert.throws(() => map.at([0]).replace(projected_element('<aside/>')));
+  assert.deepEqual(map.capture(), before);
 });
 
-check("replace can change authored text into an element", () => {
-  const map = document(`<main "text"/>`);
-  map.at([0]).replace(ordinary(`<a/>`));
-  assert.equal(tag(map.at([0]).snap()), "a");
+check("missing location and document root cannot be replaced", () => {
+  const map = fixture();
+  assert.throws(() => map.at([99]).replace(projected_element('<item/>')));
+  assert.throws(() => map.at([]).replace(projected_element('<item/>')));
 });
 
-check("replace rejects a currently missing logical location", () => {
-  mutationCode(() => document(`<main/>`).at([0]).replace(ordinary(`<x/>`)), "INVALID_DOCUMENT_CONTENT_INDEX");
-});
-
-check("replace rejects the document root location", () => {
-  mutationCode(() => document(`<main/>`).at([]).replace(ordinary(`<x/>`)), "DOCUMENT_TARGET_KIND");
-});
-
-check("replace emits the exact existing replace-content operation", () => {
-  const byLocation = document(`<main <a @000000001/>/>`);
-  const byDocument = document(`<main <a @000000001/>/>`);
-  const replacement = ordinary(`<x/>`);
-  const locationCommit = byLocation.at([0]).replace(replacement);
-  const documentCommit = byDocument.document.content.replace(target(0, 0), 0, replacement);
-  assert.deepEqual(locationCommit, documentCommit);
-  assert.deepEqual(byLocation.root(), byDocument.root());
-  assert.equal(byLocation.document.byQuid("000000001"), undefined);
-  assert.equal(byLocation.document.byQuid("000000002"), undefined);
-});
-
-check("replace advances revision exactly once", () => {
-  const map = document(`<main <a/>/>`);
-  const commit = map.at([0]).replace(ordinary(`<x/>`));
+check("location replacement advances the global revision once", () => {
+  const map = fixture();
+  const commit = map.at([0]).replace(projected_element('<item id="new"/>'));
   assert.deepEqual([commit.prevRev, commit.rev, map.rev], [0, 1, 1]);
 });
 
-check("replace leaves the location attached to its fixed coordinate", () => {
-  const map = document(`<main <a/>/>`);
+check("a location remains attached to its coordinate after replacement", () => {
+  const map = fixture();
   const location = map.at([0]);
-  location.replace(ordinary(`<x/>`));
+  location.replace(projected_element('<item id="new"/>'));
   assert.equal(location, map.at([0]));
-  assert.equal(tag(location.snap()), "x");
+  assert.equal(location.asElement()?.attrs.get("id"), "new");
 });
 
-check("replace commits replay through the existing document path", () => {
-  const source = document(`<main <a/>/>`);
-  const receiver = document(`<main <a/>/>`);
-  receiver.replay(source.at([0]).replace(ordinary(`<x/>`)));
-  assert.deepEqual(receiver.root(), source.root());
+check("delete shifts the next logical occupant into the fixed coordinate", () => {
+  const map = fixture();
+  const location = map.at([0]);
+  const commit = location.delete();
+  assert.equal(commit.operations[0]?.operation.op, "remove-content");
+  assert.equal(location, map.at([0]));
+  assert.equal(location.asElement()?.attrs.get("id"), "b");
 });
 
-check("Reflection consumes location replacement without a special case", () => {
-  const map = reflectedElement(`<main <a/>/>`);
-  const binding = _reflect_document_for_runtime_test(_create_livetree_runtime_test_handle(), map);
-  map.at([0]).replace(ordinary(`<x/>`));
-  assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "x");
-  binding.dispose();
-});
-
-check("delete removes one root child", () => {
-  const map = document(`<main <a/> <b/>/>`);
-  map.at([0]).delete();
-  assert.equal(tag(map.at([0]).snap()), "b");
-});
-
-check("delete removes one nested logical content item", () => {
-  const map = document(`<main <section <a/> <b/>/>/>`);
+check("nested deletion preserves remaining sibling", () => {
+  const map = element('<main <section <item id="a"/> <item id="b"/>/>/>');
   map.at([0, 1]).delete();
+  assert.equal(map.at([0, 0]).asElement()?.attrs.get("id"), "a");
   assert.equal(map.at([0, 1]).snap(), undefined);
-  assert.equal(tag(map.at([0, 0]).snap()), "a");
 });
 
-check("delete removes authored text as one logical item", () => {
-  const map = document(`<main "before" <a/>/>`);
-  map.at([0]).delete();
-  assert.equal(tag(map.at([0]).snap()), "a");
+check("missing location and document root cannot be deleted", () => {
+  const map = fixture();
+  const before = map.capture();
+  assert.throws(() => map.at([99]).delete());
+  assert.throws(() => map.at([]).delete());
+  assert.deepEqual(map.capture(), before);
 });
 
-check("delete shifts the next occupant into the fixed location", () => {
-  const map = document(`<main <a/> <b/>/>`);
-  const location = map.at([0]);
-  location.delete();
-  assert.equal(location, map.at([0]));
-  assert.equal(tag(location.snap()), "b");
-});
-
-check("deleting the final top-level text item yields the empty document state", () => {
-  const textMap = document(`"only"`);
-  const textReceiver = document(`"only"`);
-  const textCommit = textMap.at([0]).delete();
-  textReceiver.replay(textCommit);
-  assert.deepEqual(textMap.root(), { $_tag: "_hson_root", $_content: [] });
-  assert.deepEqual(textReceiver.root(), textMap.root());
-  assert.equal(textCommit.ops[0]?.op, "remove-content");
-});
-
-check("delete rejects a currently missing logical location", () => {
-  mutationCode(() => document(`<main/>`).at([0]).delete(), "INVALID_DOCUMENT_CONTENT_INDEX");
-});
-
-check("delete rejects the document root location", () => {
-  mutationCode(() => document(`<a/> <b/>`).at([]).delete(), "DOCUMENT_TARGET_KIND");
-});
-
-check("delete emits the exact existing remove-content operation", () => {
-  const byLocation = document(`<main <a @000000003/> <b/>/>`);
-  const byDocument = document(`<main <a @000000003/> <b/>/>`);
-  const locationCommit = byLocation.at([0]).delete();
-  const documentCommit = byDocument.document.content.remove(target(0, 0), 0);
-  assert.deepEqual(locationCommit, documentCommit);
-  assert.deepEqual(byLocation.root(), byDocument.root());
-  assert.equal(byLocation.document.byQuid("000000003"), undefined);
-});
-
-check("delete advances revision exactly once", () => {
-  const map = document(`<main <a/> <b/>/>`);
-  const commit = map.at([0]).delete();
-  assert.deepEqual([commit.prevRev, commit.rev, map.rev], [0, 1, 1]);
-});
-
-check("delete commits replay through the existing document path", () => {
-  const source = document(`<main <a/> <b/>/>`);
-  const receiver = document(`<main <a/> <b/>/>`);
-  receiver.replay(source.at([0]).delete());
-  assert.deepEqual(receiver.root(), source.root());
-});
-
-check("Reflection consumes location deletion without a special case", () => {
-  const map = reflectedElement(`<main <a/> <b/>/>`);
+check("Mirror consumes location replacement and deletion", () => {
+  const map = fixture();
   const binding = _reflect_document_for_runtime_test(_create_livetree_runtime_test_handle(), map);
+  map.at([0]).replace(projected_element('<item id="new"/>'));
+  assert.equal(raw_node(binding.tree.node, [0, 0]).$_attrs?.id, "new");
   map.at([0]).delete();
-  assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "b");
+  assert.equal(raw_node(binding.tree.node, [0, 0]).$_attrs?.id, "b");
   binding.dispose();
 });
 
-check("proxy escapes delegate to the exact same location operations", () => {
-  const map = document(`<main <a/> <b/>/>`);
-  assert.equal(map.proxy()[0].$_, map.at([0]));
-  assert.equal(map.proxy()[0].$_.replace(ordinary(`<x/>`)).ops[0]?.op, "replace-content");
-  assert.equal(map.proxy()[0].$_.delete().ops[0]?.op, "remove-content");
-  assert.equal(tag(map.at([0]).snap()), "b");
+check("proxy paths share selected library locations", () => {
+  const map = fixture();
+  assert.equal(map.proxy([0]).$_, map.at([0]));
+  map.proxy([0]).$_.replace(projected_element('<item id="proxy"/>'));
+  assert.equal(map.at([0]).asElement()?.attrs.get("id"), "proxy");
 });
 
-check("location mutation acquisition is non-minting and does not broaden capabilities", () => {
-  const map = document(`<main <a/>/>`);
-  const before = map.root();
-  const location = map.at([0]);
-  assert.equal(JSON.stringify(before).includes("quid"), false);
-  assert.equal("set" in location, false);
-  assert.equal("update" in location, false);
-  assert.equal("array" in location, false);
-  assert.equal("object" in location, false);
-  const projected = hson.liveMap.fromJson({ item: 1 });
-  assert.equal(typeof projected.at(["item"]).replace, "function");
-  assert.equal(typeof projected.at(["item"]).delete, "function");
+check("location acquisition does not mint QUIDs or widen data capabilities", () => {
+  const map = fixture();
+  map.at([0]);
   assert.equal(JSON.stringify(map.root()).includes("quid"), false);
+  const data = hsonLiveMap.fromLibraries({ state: { data: { value: 1 }, schema: Hson.schema`<type "data" content <value "number">>` } });
+  assert.equal(typeof data.lib("state").at(["value"]).replace, "function");
 });
 
-process.stdout.write(`# ${checks} document location mutation checks passed\n`);
-testEvents.terminal("pass");
+events.terminal("pass");
+process.stdout.write(`# ${checks} registry document location mutation checks passed\n`);

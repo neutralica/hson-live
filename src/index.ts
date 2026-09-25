@@ -76,7 +76,6 @@ export {
 export type {
   BrowserRealizationHtml,
   DecodedSsrBootstrap,
-  DocumentSsr,
   EncodedSsrBootstrap,
   HostedLibrariesDocumentSsr,
   LibrariesDocumentSsr,
@@ -110,7 +109,6 @@ export type {
   LiveTreeLifecycleResult,
 } from "./types/lifecycle.types.js";
 
-export { link_livemap } from "./api/livemap/livemap.link.js";
 export {
   LiveMapDocumentAttributeNotFoundError,
   LiveMapDocumentIdentityProvenanceError,
@@ -120,17 +118,14 @@ export {
   LiveMapDocumentStagingError,
 } from "./api/livemap/livemap.error.js";
 export type {
-  ClassifiedLiveMap,
   DataLiveMapMode,
-  DocumentLiveMap,
-  DocumentLiveMapMode,
+  LiveMapDocumentMode,
   LiveMap,
   LiveMapDataLibrary,
   LiveMapDataLibraryInput,
   LiveMapDocumentLibrary,
   LiveMapDocumentLibraryInput,
-  LiveMapLibraries,
-  LiveMapLibrariesInput,
+  LiveMapInput,
   LiveMapLibraryInput,
 } from "./types/livemap.types.js";
 

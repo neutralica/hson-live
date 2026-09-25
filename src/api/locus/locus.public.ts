@@ -1,4 +1,4 @@
-import type { LiveMapLibraries } from "../../types/livemap.types.js";
+import type { LiveMap } from "../../types/livemap.types.js";
 import type { LocusActionPayloads, Locus, LocusOptions } from "../../types/locus.types.js";
 import type { PersistentLocus, PersistentLocusOptions } from "../../types/locus.types.js";
 import { is_public_multi_library_livemap } from "../livemap/livemap.libraries.js";
@@ -7,7 +7,7 @@ import { create_persistent_registry_locus } from "./locus.registry.persistence.j
 
 /** Construct the sole hosted Locus model: a fixed application library registry. */
 export function create_locus<
-  TMap extends LiveMapLibraries,
+  TMap extends LiveMap,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(options: LocusOptions<TMap, TActions>): Locus<TMap, TActions> {
   if (typeof options !== "object" || options === null || !is_public_multi_library_livemap(options.map)) {
@@ -18,7 +18,7 @@ export function create_locus<
 
 /** Durable authority uses the same fixed registry and projection policy. */
 export async function create_persistent_locus<
-  TMap extends LiveMapLibraries,
+  TMap extends LiveMap,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(options: PersistentLocusOptions<TMap, TActions>): Promise<PersistentLocus<TMap, TActions>> {
   if (typeof options !== "object" || options === null || !is_public_multi_library_livemap(options.map)) {

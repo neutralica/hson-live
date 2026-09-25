@@ -68,10 +68,6 @@ await check("untyped Echo construction rejects incomplete replica capability pai
     () => createUntyped({ socket: pair.client, map: Object.freeze({}), recovery: { logicalMapId: "untyped-map" } }),
     (cause) => cause instanceof Error && /LiveMap authority/.test(cause.message),
   );
-  assert.throws(
-    () => createUntyped({ socket: pair.client, map: hsonLiveMap.fromJson({}), recovery: { logicalMapId: "solo-map" } }),
-    (cause) => cause instanceof TypeError && /library registry/.test(cause.message),
-  );
 });
 
 await check("the endpoint core operates without a map, registry, or recovery capability", async () => {

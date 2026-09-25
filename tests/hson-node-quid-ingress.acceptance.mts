@@ -6,6 +6,7 @@ import { hson } from "../src/hson.ts";
 import { hsonTransform } from "../src/api/transform/index.ts";
 import { UNSAFE_TRANSFORM_SOURCE } from "../src/api/transform/transform.browser.ts";
 import { hsonLiveMap } from "../src/api/livemap/livemap.facade.ts";
+import { Hson } from "../src/index.ts";
 import { hsonLiveTree } from "../src/api/livetree/livetree.facade.ts";
 import { make_branch_from_node } from "../src/api/livetree/creation/create-branch.ts";
 import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
@@ -28,7 +29,14 @@ import { is_persisted_quid } from "../src/core/persisted-quid.ts";
 import { construct_exact_runtime_livetree, LiveTree } from "../src/api/livetree/livetree.ts";
 import { begin_livetree_materialization_profile } from "../src/api/livetree/debug/materialization-profile.ts";
 import { read_transform_error_details } from "../src/core/errors.ts";
-import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
+import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
+
+const MainEmpty = Hson.schema`<type "document" tag "main" content "empty">`;
+const MainParagraph = Hson.schema`<type "document" tag "main" content <sequence [<tag "p" content "empty">]>>`;
+const MainAside = Hson.schema`<type "document" tag "main" content <sequence [<tag "aside" content "empty">]>>`;
+const SharedEmpty = Hson.schema`<type "document" tag "shared" content "empty">`;
+const SectionEmpty = Hson.schema`<type "document" tag "section" content "empty">`;
+const exactMap = (document: HsonNode, schema = MainEmpty) => admit_exact_runtime_livemap_libraries({ page: { document, schema } });
 
 const Q1 = "000000001";
 const Q2 = "000000002";
@@ -455,7 +463,7 @@ check("all portable graph facades reject serialized identity including raw nodes
   const local = document_root(element("main", Q1));
   assert.equal(read_hson_node_quid(must_tag(local, "main")), Q1);
   assert_portable_node_reject(() => hsonTransform.fromNode(local));
-  assert_portable_node_reject(() => hsonLiveMap.fromNode(local));
+  assert_portable_node_reject(() => hsonLiveMap.fromLibraries({ page: { document: local, schema: MainEmpty } }));
   assert_portable_node_reject(() => hsonLiveTree.fromNode(local));
   assert_portable_node_reject(() => hsonTransform.fromNode(document_root(element("main", "bad"))));
 });
@@ -808,12 +816,12 @@ check("VSN QUID eligibility has no projected-container exception", () => {
 check("internal exact LiveMap installation remains cold while public raw admission rejects", () => {
   const valid = document_root(element("main", Q1, [element("p", Q2)]));
   const before = structuredClone(valid);
-  assert_portable_node_reject(() => hsonLiveMap.fromNode(valid));
-  const map = admit_exact_runtime_livemap_node(valid);
+  assert_portable_node_reject(() => hsonLiveMap.fromLibraries({ page: { document: valid, schema: MainParagraph } }));
+  const map = exactMap(valid, MainParagraph);
   assert.deepEqual(valid, before);
-  assert.equal(map.mode, "document");
-  assert.equal(map.document.byQuid(Q1)?.$_tag, "main");
-  assert.equal(map.document.byQuid(Q2)?.$_tag, "p");
+  assert.equal(map.lib("page").mode, "document");
+  assert.equal(map.lib("page").document.byQuid(Q1)?.$_tag, "main");
+  assert.equal(map.lib("page").document.byQuid(Q2)?.$_tag, "p");
   assert.equal(get_node_by_quid(Q1), undefined);
   assert.equal(get_node_by_quid(Q2), undefined);
 
@@ -821,48 +829,36 @@ check("internal exact LiveMap installation remains cold while public raw admissi
   assert.equal(read_hson_node_quid(must_tag(duplicateCold, "main")), Q1);
   assert.equal(read_hson_node_quid(must_tag(duplicateCold, "aside")), Q1);
   assert.throws(
-    () => admit_exact_runtime_livemap_node(duplicateCold),
+    () => exactMap(duplicateCold, MainAside),
     (error) => error instanceof Error
       && (validation_cause(error)?.code === "DUPLICATE_QUID" || /duplicate quid/i.test(error.message)),
   );
   const invalidVsn = document_root(element("main", Q3));
   must_tag(invalidVsn, "_hson_elem").$_meta = { [HSON_META_QUID]: Q1 };
   assert.throws(
-    () => admit_exact_runtime_livemap_node(invalidVsn),
+    () => exactMap(invalidVsn),
     (error) => error instanceof Error
       && (validation_cause(error)?.code === "INELIGIBLE_QUID"
         || /quid must be a canonical persisted QUID on an eligible standard tag/.test(error.message)),
   );
 
   const crossMapSource = document_root(element("shared", Q6));
-  const firstMap = admit_exact_runtime_livemap_node(crossMapSource);
-  const secondMap = admit_exact_runtime_livemap_node(crossMapSource);
-  assert.equal(firstMap.mode, "document");
-  assert.equal(secondMap.mode, "document");
-  assert.equal(firstMap.document.byQuid(Q6)?.$_tag, "shared");
-  assert.equal(secondMap.document.byQuid(Q6)?.$_tag, "shared");
+  const firstMap = exactMap(crossMapSource, SharedEmpty);
+  const secondMap = exactMap(crossMapSource, SharedEmpty);
+  assert.equal(firstMap.lib("page").mode, "document");
+  assert.equal(secondMap.lib("page").mode, "document");
+  assert.equal(firstMap.lib("page").document.byQuid(Q6)?.$_tag, "shared");
+  assert.equal(secondMap.lib("page").document.byQuid(Q6)?.$_tag, "shared");
   assert.equal(get_node_by_quid(Q6), undefined);
 });
 
-check("failed document capture installation is atomic", () => {
-  const target = admit_exact_runtime_livemap_node(document_root(element("main", Q1)));
-  if (target.mode !== "document") throw new Error("expected element LiveMap");
-  const source = admit_exact_runtime_livemap_node(document_root(element("section", Q2)));
-  if (source.mode !== "document") throw new Error("expected element LiveMap");
-  const invalidCapture = structuredClone(source.capture());
-  const section = must_tag(invalidCapture.root, "section");
-  section.$_content = [{
-    $_tag: "_hson_elem",
-    $_content: [element("aside", Q2)],
-  }];
+check("incompatible registry capture restoration is atomic", () => {
+  const target = exactMap(document_root(element("main", Q1)));
+  const source = exactMap(document_root(element("section", Q2)), SectionEmpty);
   const before = target.capture();
-  assert.throws(
-    () => target.install(invalidCapture),
-    (error) => error instanceof Error
-      && "reasonCode" in error && error.reasonCode === "IDENTITY_POLICY_MISMATCH",
-  );
+  assert.throws(() => target.restore(source.capture()));
   assert.deepEqual(target.capture(), before);
-  assert.equal(target.rev, before.rev);
+  assert.equal(target.rev, before.revision);
 });
 
 process.stdout.write(`# ${checks} HsonNode QUID ingress checks passed\n`);

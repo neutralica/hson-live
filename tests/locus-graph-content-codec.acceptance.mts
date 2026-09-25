@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
-import { hson } from "../src/hson.ts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
@@ -72,11 +71,9 @@ check("canonical primitives round-trip without JSON-node projection", () => {
 
 check("multiNodeDocument and empty-multiNodeDocument roots retain exact structure", () => {
   for (const source of [`"before" <em "middle"/> "after"`, ``]) {
-    const map = source === ""
-      ? hson.liveMap.fromNode({ $_tag: "_hson_root", $_content: [] })
-      : hson.liveMap.fromHson(source);
-    if (map.mode !== "document") throw new Error("Expected document map");
-    const root = map.capture().root;
+    const root = source === ""
+      ? { $_tag: "_hson_root", $_content: [] }
+      : parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true });
     const decoded = decode_locus_graph_content(encode_locus_graph_content(root));
     assert.equal(is_Node(decoded), true);
     if (!is_Node(decoded)) throw new Error("Expected node");

@@ -1,10 +1,18 @@
 import type { OrderedProjectedValue } from "../../core/ordered-projected-value.js";
-import type { LiveMapCommit, LiveMapDisposer, LivePath } from "../../types/livemap.types.js";
+import type { LiveMapCoreCommit, LiveMapDisposer, LivePath } from "../../types/livemap.types.js";
 import type { LiveMapProjectedDataOp } from "./livemap.transport.js";
 
 export type LiveMapProjectedSetWrite = Readonly<{
   kind: "set";
   path: LivePath;
+  value: OrderedProjectedValue;
+}>;
+
+/** Add or replace one member of an existing object without replacing its siblings. */
+export type LiveMapProjectedSetKeyWrite = Readonly<{
+  kind: "set-key";
+  path: LivePath;
+  key: string;
   value: OrderedProjectedValue;
 }>;
 
@@ -43,6 +51,7 @@ export type LiveMapProjectedMoveWrite = Readonly<{
 
 export type LiveMapProjectedPropagationWrite =
   | LiveMapProjectedSetWrite
+  | LiveMapProjectedSetKeyWrite
   | LiveMapProjectedReplaceWrite
   | LiveMapProjectedDeleteWrite
   | LiveMapProjectedSpliceWrite
@@ -50,13 +59,13 @@ export type LiveMapProjectedPropagationWrite =
   | LiveMapProjectedMoveWrite;
 
 export type LiveMapProjectedFeedEvent = Readonly<{
-  commit: LiveMapCommit;
+  commit: LiveMapCoreCommit;
   path: LivePath;
   value: OrderedProjectedValue | undefined;
   ops: readonly LiveMapProjectedDataOp[];
 }>;
 
-export type LiveMapProjectedPropagation<TCommit = LiveMapCommit> = Readonly<{
+export type LiveMapProjectedPropagation<TCommit = LiveMapCoreCommit> = Readonly<{
   read: (path: LivePath) => OrderedProjectedValue | undefined;
   feed: (
     path: LivePath,

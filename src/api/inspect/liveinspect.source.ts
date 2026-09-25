@@ -205,8 +205,7 @@ function is_livemap(value: unknown): value is LiveInspectorMapSource {
 
   return typeof candidate.root === "function"
     && typeof candidate.at === "function"
-    && typeof candidate.snap === "function"
-    && typeof candidate.feed === "function";
+    && typeof candidate.snap === "function";
 }
 
 function is_path_handle(value: unknown): value is LiveMapPathHandle {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { Hson, hsonLiveMap, hsonMirror, hsonEcho, hsonLocus, type HsonSchema } from "../src/index.ts";
+import { Hson, hsonLiveMap, hsonMirror, hsonEcho, hsonLocus, hsonTransform, type HsonSchema } from "../src/index.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import { test_public_projection } from "./helpers/hosted-exposure.mts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
@@ -253,7 +253,7 @@ function socket_pair(): Readonly<{ client: LocusSocketLike; server: LocusSocketL
   const fallbackBase = make_portable_aggregate_snapshot(internal_livemap_aggregate_authority(server).captureHosted());
   const fallback = Object.freeze({ ...fallbackBase, revision: 4 });
   const malformed = Object.freeze({ ...fallback, libraries: Object.freeze([
-    Object.freeze({ ...fallback.libraries[0]!, root: encode_hosted_root(hsonLiveMap.fromJson({ value: "wrong" }).root()) }),
+    Object.freeze({ ...fallback.libraries[0]!, root: encode_hosted_root(hsonTransform.fromJson({ value: "wrong" }).toNode()) }),
     ...fallback.libraries.slice(1),
   ]) });
   assert.throws(() => replica.restoreHosted(malformed), /Schema|schema/);

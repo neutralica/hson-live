@@ -3,7 +3,7 @@
 import type { JsonValue } from "../../core/types.js";
 import type {
   LiveMapArrayPathHandle,
-  LiveMapCommit,
+  LiveMapCoreCommit,
   LiveMapCore,
   LiveMapDisposer,
   LiveMapObjectPathHandle,
@@ -16,7 +16,6 @@ import { must_json_value, must_live_path } from "./livemap.guard.js";
 import { make_livemap_array_api } from "./livemap.handle-array.js";
 import { make_livemap_object_api } from "./livemap.handle-object.js";
 import { clone_live_path, format_live_path, parent_live_path, path_is_prefix } from "./livemap.path.js";
-import { schedule_livemap_managed_mutation } from "./livemap.authority.js";
 import {
   livemap_projected_propagation,
   type LiveMapProjectedPropagationWrite,
@@ -220,17 +219,12 @@ function commit_projected_handle_link(
   writes: readonly LiveMapProjectedPropagationWrite[],
   allowMissingChild = false,
 ): void {
-  const run = (candidate: object): LiveMapCommit => {
+  const run = (candidate: object): LiveMapCoreCommit => {
     const projected = livemap_projected_propagation(candidate);
     if (projected === undefined) throw new Error("LiveMap handle link target has no projected propagation capability.");
     if (allowMissingChild) must_handle_link_target(projected, target.path);
     return projected.commit(writes);
   };
-  const scheduled = schedule_livemap_managed_mutation(target.core, (draft) => run(draft));
-  if (scheduled !== undefined) {
-    void scheduled.catch(() => undefined);
-    return;
-  }
   run(target.core);
 }
 
@@ -261,12 +255,6 @@ function write_link_target(target: LiveMapPathHandle, value: JsonValue, mode: "r
     return;
   }
 
-  const scheduled = schedule_livemap_managed_mutation(internals.core, (draft) =>
-    write_link_core(draft as LiveMapPathHandleCore, internals.path, value, mode));
-  if (scheduled !== undefined) {
-    void scheduled.catch(() => undefined);
-    return;
-  }
   write_link_core(internals.core, internals.path, value, mode);
 }
 
@@ -275,7 +263,7 @@ function write_link_core(
   targetPath: LivePath,
   value: JsonValue,
   mode: "replace" | "set",
-): LiveMapCommit {
+): LiveMapCoreCommit {
 
   if (targetPath.length === 0 || core.snap(targetPath) !== undefined) {
     return mode === "replace" ? core.replace(targetPath, value) : core.set(targetPath, value);
@@ -316,18 +304,6 @@ function propagate_delete_link(
 ): void {
   const internals = pathHandleInternals.get(target);
   if (internals !== undefined) {
-    const scheduled = schedule_livemap_managed_mutation(internals.core, (draft) =>
-      propagate_delete_core(
-        draft as LiveMapPathHandleCore,
-        internals.path,
-        sourcePath,
-        deletePath,
-        sourceValue,
-      ));
-    if (scheduled !== undefined) {
-      void scheduled.catch(() => undefined);
-      return;
-    }
     propagate_delete_core(internals.core, internals.path, sourcePath, deletePath, sourceValue);
     return;
   }
@@ -347,7 +323,7 @@ function propagate_delete_core(
   sourcePath: LivePath,
   deletePath: LivePath,
   sourceValue: JsonValue | undefined,
-): LiveMapCommit {
+): LiveMapCoreCommit {
   if (path_is_prefix(deletePath, sourcePath)) return core.delete(targetPath);
   if (path_is_prefix(sourcePath, deletePath) && sourceValue !== undefined) {
     return core.replace(targetPath, sourceValue);

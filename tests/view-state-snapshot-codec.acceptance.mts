@@ -1,9 +1,10 @@
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
+import { Hson } from "../src/hson-authoring.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import type { HsonAttrs, HsonMeta, HsonNode, JsonValue } from "../src/core/types.ts";
-import type { DocumentLiveMapCapture, DocumentLiveMapMode } from "../src/types/livemap.types.ts";
+import type { LiveMapDocumentCapture, LiveMapDocumentMode } from "../src/types/livemap.types.ts";
 import {
   decode_view_state_snapshot,
   encode_view_state_snapshot,
@@ -60,7 +61,7 @@ function element_capture(
   rev = 7,
   rootMeta?: HsonMeta,
   clusterMeta?: HsonMeta,
-): DocumentLiveMapCapture<"document"> {
+): LiveMapDocumentCapture<"document"> {
   return {
     kind: "hson-document",
     mode: "document",
@@ -74,7 +75,7 @@ function multiNodeDocument_capture(
   rev = 9,
   rootMeta?: HsonMeta,
   clusterMeta?: HsonMeta,
-): DocumentLiveMapCapture<"document"> {
+): LiveMapDocumentCapture<"document"> {
   return {
     kind: "hson-document",
     mode: "document",
@@ -83,7 +84,7 @@ function multiNodeDocument_capture(
   };
 }
 
-function empty_multiNodeDocument_capture(rev = 3): DocumentLiveMapCapture<"document"> {
+function empty_multiNodeDocument_capture(rev = 3): LiveMapDocumentCapture<"document"> {
   return {
     kind: "hson-document",
     mode: "document",
@@ -92,9 +93,9 @@ function empty_multiNodeDocument_capture(rev = 3): DocumentLiveMapCapture<"docum
   };
 }
 
-function round_trip<TMode extends DocumentLiveMapMode>(
-  capture: DocumentLiveMapCapture<TMode>,
-): Readonly<{ encoded: ViewStateSnapshotEncoding; decoded: DocumentLiveMapCapture }> {
+function round_trip<TMode extends LiveMapDocumentMode>(
+  capture: LiveMapDocumentCapture<TMode>,
+): Readonly<{ encoded: ViewStateSnapshotEncoding; decoded: LiveMapDocumentCapture }> {
   const encoded = encode_view_state_snapshot(capture);
   const decoded = decode_view_state_snapshot(encoded);
   assert.equal(decoded.mode, capture.mode);
@@ -239,11 +240,11 @@ check("exact codec round-trips nested identity but public restore rejects those 
   assert.equal(Object.hasOwn(encoded, "formatVersion"), false);
   assert.notEqual(decoded.root.$_content[0], capture.root.$_content[0]);
 
-  const target = hson.liveMap.fromNode(element_capture(node("aside"), 0).root);
-  if (target.mode !== "document") throw new Error("Expected element map.");
-  assert.throws(() => target.restore(decoded));
+  const schema = Hson.schema`<type "document" tag "aside" content "empty">`;
+  const target = hson.liveMap.fromLibraries({ page: { document: element_capture(node("aside"), 0).root, schema } });
+  assert.throws(() => hson.liveMap.fromLibraries({ page: { document: decoded.root, schema } }));
   assert.equal(target.rev, 0);
-  assert.equal(target.document.byQuid("000000001"), undefined);
+  assert.equal(target.lib("page").document.byQuid("000000001"), undefined);
 });
 
 check("nontrivial multiNodeDocument capture round-trips in order", () => {
@@ -454,7 +455,7 @@ check("view-state requires canonical empty bags and canonicalizes legacy empty m
   );
   const admittedMetaRoot = hson.fromNode(emptyMetaCandidate.root).toNode();
   const emptyMeta = round_trip({ ...emptyMetaCandidate, root: admittedMetaRoot }).decoded;
-  const rootOf = (capture: DocumentLiveMapCapture): HsonNode => {
+  const rootOf = (capture: LiveMapDocumentCapture): HsonNode => {
     const cluster = capture.root.$_content[0];
     if (typeof cluster !== "object" || cluster === null) throw new Error("Expected cluster.");
     const root = cluster.$_content[0];

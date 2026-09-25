@@ -7,6 +7,7 @@ import {
   path,
   projected_element,
   raw_node,
+  registry_for_document_library,
 } from "./helpers/mirror-unit6.mts";
 import {
   begin_livetree_materialization_profile,
@@ -179,20 +180,20 @@ check("delegated attributes retain the canonical claim", () => {
 });
 
 check("QUID-free insertion permits local descendant identity demand", () => {
-  const { map, binding } = reflected(`<main @${Q1} "kept"/>`);
+  const { map, binding } = reflected(`<main @${Q1} <span/>/>`);
   mount(binding.tree.node);
   map.document.content.insert(path(0), 1, projected_element(`<span/>`));
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q3);
   assert.equal(binding.tree.find.byTag("span")?.quid, Q3);
-  const inserted = raw_node(binding.tree.node, [0, 1]);
-  assert.equal(_lookup_livetree_runtime_test_node(runtime, Q3), inserted);
-  assert.equal(get_el_for_node(inserted)?.getAttribute("hson:quid"), Q3);
+  const acquired = raw_node(binding.tree.node, [0, 0]);
+  assert.equal(_lookup_livetree_runtime_test_node(runtime, Q3), acquired);
+  assert.equal(get_el_for_node(acquired)?.getAttribute("hson:quid"), Q3);
   close(binding);
 });
 
 check("mixed insertion preserves existing identity and QUID absence", () => {
   const { map, binding } = reflected(`<main @${Q1} <a/>/>`);
-  map.document.content.insert(path(0), 1, projected_element(`<b/>`));
+  map.document.content.insert(path(0), 1, projected_element(`<a/>`));
   assert.equal(raw_node(binding.tree.node, [0, 0]).$_meta?.quid, undefined);
   assert.equal(raw_node(binding.tree.node, [0, 1]).$_meta?.quid, undefined);
   assert.equal(_livetree_runtime_test_claim_count(runtime), 1);
@@ -234,16 +235,16 @@ check("equal canonical QUIDs admit independently in separate runtimes", () => {
 
 check("portable capture excludes supplied local QUID metadata", () => {
   const source = element(`<main @${Q1} <span @${Q2}/>/>`);
-  const restored = element(`<main/>`);
-  restored.restore(source.capture());
+  const restored = element(`<main <span/>/>`);
+  registry_for_document_library(restored).restore(registry_for_document_library(source).capture());
   assert.equal((restored.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, undefined);
   assert.equal(raw_node(restored.root(), [0, 0]).$_meta?.quid, undefined);
 });
 
 check("portable restored state projects without source QUIDs", () => {
   const source = element(`<main @${Q1} <span @${Q2}/>/>`);
-  const restored = element(`<main/>`);
-  restored.restore(source.capture());
+  const restored = element(`<main <span/>/>`);
+  registry_for_document_library(restored).restore(registry_for_document_library(source).capture());
   const profile = begin_livetree_materialization_profile();
   const binding = _reflect_document_for_runtime_test(runtime, restored);
   const result = profile.stop();
@@ -254,8 +255,8 @@ check("portable restored state projects without source QUIDs", () => {
 
 check("identity-stripped capture projects with no supplied claims", () => {
   const source = element(`<main @${Q1} <span @${Q2}/>/>`);
-  const stripped = element(`<main/>`);
-  stripped.restore(source.capture({ identity: "strip" }));
+  const stripped = element(`<main <span/>/>`);
+  registry_for_document_library(stripped).restore(registry_for_document_library(source).capture());
   const binding = _reflect_document_for_runtime_test(runtime, stripped);
   assert.equal(authoredRoot(binding).node.$_meta?.quid, undefined);
   assert.equal(raw_node(binding.tree.node, [0, 0]).$_meta?.quid, undefined);

@@ -1,6 +1,5 @@
 import type {
-  DocumentLiveMapCapture,
-  LiveMapLibrariesSnapshot,
+  LiveMapSnapshot,
   LocalLibrariesContinuationSnapshot,
   LiveMapRootMode,
 } from "../../types/livemap.types.js";
@@ -9,12 +8,7 @@ import { admit_authority_projection_snapshot } from "../locus/locus.authority-pr
 import type { HsonSchemaData } from "../transform/transform.types.js";
 import { is_Node } from "../../core/node-guards.js";
 import { HsonSchema as HsonSchemaHandle } from "../schema/hson-schema.js";
-import { clone_hson_graph_without_quids } from "../livemap/livemap.document.capture.js";
 import { BoundedStringWriter } from "../../core/bounded-string-writer.js";
-import {
-  decode_view_state_snapshot,
-  encode_view_state_snapshot,
-} from "../livemap/livemap.document.view-state-codec.js";
 import {
   assert_libraries_snapshot_bound,
   assert_libraries_snapshot_shape,
@@ -69,15 +63,11 @@ export function encode_ssr_bootstrap(
   options?: SsrBootstrapCodecOptions,
 ): EncodedSsrBootstrap<"hosted-projection">;
 export function encode_ssr_bootstrap(
-  bootstrap: DocumentLiveMapCapture<"document">,
-  options?: SsrBootstrapCodecOptions,
-): EncodedSsrBootstrap<"document">;
-export function encode_ssr_bootstrap(
   bootstrap: LocalLibrariesContinuationSnapshot,
   options?: SsrBootstrapCodecOptions,
 ): EncodedSsrBootstrap<"libraries">;
 export function encode_ssr_bootstrap(
-  bootstrap: DocumentLiveMapCapture<"document"> | LocalLibrariesContinuationSnapshot | AuthorityProjectionSnapshot,
+  bootstrap: LocalLibrariesContinuationSnapshot | AuthorityProjectionSnapshot,
   options?: SsrBootstrapCodecOptions,
 ): EncodedSsrBootstrap {
   const maximum = max_encoded_bytes(options, "encode");
@@ -182,14 +172,6 @@ function normalize_bootstrap(bootstrap: unknown): Readonly<{ kind: SsrBootstrapK
   if (bootstrap.format === "hson-authority-projection-snapshot-v1") {
     return { kind: "hosted-projection", payload: admit_authority_projection_snapshot(bootstrap) };
   }
-  if (bootstrap.kind === "hson-document") {
-    const capture = bootstrap as DocumentLiveMapCapture<"document">;
-    const viewState = encode_view_state_snapshot(Object.freeze({
-      ...capture,
-      root: clone_hson_graph_without_quids(capture.root),
-    }));
-    return { kind: "document", payload: { viewStateFormat: viewState.format, viewStatePayload: viewState.payload } };
-  }
   if (bootstrap.format === "hson-livemap-libraries-snapshot") {
     if (Object.hasOwn(bootstrap, "authority")) {
       throw new TypeError("Legacy complete hosted Libraries bootstrap is retired.");
@@ -235,13 +217,6 @@ function decode_payload(kind: SsrBootstrapKind, input: unknown): DecodedSsrBoots
   if (kind === "hosted-projection") {
     return Object.freeze({ kind, bootstrap: admit_authority_projection_snapshot(input) });
   }
-  if (kind === "document") {
-    const payload = record(input); exact_keys(payload, ["viewStateFormat", "viewStatePayload"]);
-    if (payload.viewStateFormat !== "view-state" || typeof payload.viewStatePayload !== "string") throw new TypeError("Document payload is malformed.");
-    const bootstrap = decode_view_state_snapshot({ format: "view-state", payload: payload.viewStatePayload });
-    if (bootstrap.mode !== "document") throw new TypeError("Document payload mode is malformed.");
-    return Object.freeze({ kind, bootstrap: bootstrap as DocumentLiveMapCapture<"document"> });
-  }
   const payload = record(input);
   exact_keys(payload, ["snapshotFormat", "revision", "registryFormat", "registry", "registryDigest", "snapshotRegistryDigest", "libraries"]);
   if (payload.snapshotFormat !== "hson-livemap-libraries-snapshot" || payload.registryFormat !== "hson-hosted-registry"
@@ -274,7 +249,7 @@ function assert_local_libraries_roots_portable(snapshot: LocalLibrariesContinuat
   }
 }
 
-function decode_registry_entry(input: unknown): LiveMapLibrariesSnapshot["registry"]["libraries"][number] {
+function decode_registry_entry(input: unknown): LiveMapSnapshot["registry"]["libraries"][number] {
   const entry = record(input); exact_keys(entry, ["name", "scope", "mode", "schema", "schemaDigest", "rootCodec"]);
   if (typeof entry.name !== "string" || (entry.scope !== null && entry.scope !== "hson-internal")
     || !is_mode(entry.mode) || typeof entry.schema !== "string" || typeof entry.schemaDigest !== "string"
@@ -284,7 +259,7 @@ function decode_registry_entry(input: unknown): LiveMapLibrariesSnapshot["regist
     : { name: entry.name, scope: entry.scope, mode: entry.mode, schema: decoded_schema(entry.schema), schemaDigest: entry.schemaDigest, rootCodec: entry.rootCodec });
 }
 
-function decode_library_entry(input: unknown): LiveMapLibrariesSnapshot["libraries"][number] {
+function decode_library_entry(input: unknown): LiveMapSnapshot["libraries"][number] {
   const entry = record(input); exact_keys(entry, ["name", "mode", "schema", "schemaDigest", "rootFormat", "rootPayload"]);
   if (typeof entry.name !== "string" || !is_mode(entry.mode) || typeof entry.schema !== "string"
     || typeof entry.schemaDigest !== "string" || entry.rootFormat !== "hson-exact-value" || typeof entry.rootPayload !== "string") throw new TypeError("Library entry is malformed.");
@@ -519,7 +494,7 @@ function require_mode(value: unknown): LiveMapRootMode { if (!is_mode(value)) th
 function require_string(value: unknown): string { if (typeof value !== "string") throw new TypeError("String field is malformed."); return value; }
 function require_root_format(value: unknown): "hson-exact-value" { if (value !== "hson-exact-value") throw new TypeError("Root codec is malformed."); return value; }
 function decoded_schema(value: string): HsonSchemaData { return HsonSchemaHandle.fromHson(value).toHson(); }
-function is_kind(value: unknown): value is SsrBootstrapKind { return value === "document" || value === "libraries" || value === "hosted-projection"; }
+function is_kind(value: unknown): value is SsrBootstrapKind { return value === "libraries" || value === "hosted-projection"; }
 function error(phase: "encode" | "decode", code: ConstructorParameters<typeof SsrBootstrapCodecError>[1], message: string, cause?: unknown): SsrBootstrapCodecError {
   return new SsrBootstrapCodecError(phase, code, message, cause);
 }

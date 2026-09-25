@@ -1,69 +1,132 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { hson } from "../src/hson.ts";
+import { Hson, hsonLiveMap } from "../src/index.ts";
 import { _create_livetree_runtime_test_handle, _reflect_document_for_runtime_test } from "../src/_tests/diagnostics-internal.ts";
 import { LiveMapDocumentMutationError } from "../src/api/livemap/livemap.error.ts";
 import type { HsonNode } from "../src/core/types.ts";
-import type { DocumentLiveMap, LiveMapDocumentRequestTarget } from "../src/types/livemap.types.ts";
-import { element as reflectedElement, raw_node } from "./helpers/mirror-unit6.mts";
+import type { LiveMapDocumentRequestTarget } from "../src/types/livemap.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
-  id: "livemap.document-location-content",
-  title: "Document location ordered-content convergence",
-  category: "LiveMap",
-  runtime: "node-synthetic-dom",
+  id: "livemap.document-location-content", title: "Named document location content convergence",
+  category: "LiveMap", runtime: "node-synthetic-dom",
   tags: Object.freeze(["document", "path", "mutation", "proxy", "reflection", "public-api", "externally-discoverable"]),
 });
-
-const testEvents = create_test_event_emitter("livemap.document-location-content");
+const events = create_test_event_emitter("livemap.document-location-content");
 let checks = 0;
-const check = (name: string, run: () => void): void => {
-  testEvents.case_begin(name, name);
-  try {
-    run();
-    testEvents.case_end(name, "pass");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Check failed.";
-    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
-    testEvents.case_end(name, "fail");
-    testEvents.terminal("fail");
-    throw error;
-  } checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); };
-const element = (source: string): DocumentLiveMap => { const map = hson.liveMap.fromHson(source); if (map.mode !== "document") throw new Error("Expected element map"); return map; };
-const multiNodeDocument = (source: string): DocumentLiveMap => { const map = hson.liveMap.fromHson(source); if (map.mode !== "document") throw new Error("Expected multiNodeDocument map"); return map; };
-const emptyDocumentSequence = (): DocumentLiveMap => { const map = hson.liveMap.fromNode({ $_tag: "_hson_root", $_content: [] }); if (map.mode !== "document") throw new Error("Expected multiNodeDocument map"); return map; };
-const ordinary = (source: string): HsonNode => {
-  const only = element(source).root().$_content[0];
-  if (typeof only !== "object" || only === null) throw new Error("Expected one ordinary document element");
-  return only;
-};
+function check(name: string, run: () => void): void {
+  events.case_begin(name, name);
+  try { run(); events.case_end(name, "pass"); }
+  catch (error) {
+    events.diagnostic(name, "assertion", error instanceof Error ? error.message : String(error));
+    events.case_end(name, "fail"); events.terminal("fail"); throw error;
+  }
+  process.stdout.write(`ok ${++checks} - ${name}\n`);
+}
+const Items = Hson.schema`<type "document" tag "main" content <repeat <tag "item" attrs <props <id "string">> content "empty">>>`;
+const Sections = Hson.schema`<type "document" tag "main" content <sequence [<tag "section" content <repeat <tag "item" attrs <props <id "string">> content "empty">>>]>>`;
+const MultiItems = Hson.schema`<type "document" content <repeat <tag "item" attrs <props <id "string">> content "empty">>>`;
+const Text = Hson.schema`<type "document" tag "main" content "string">`;
+const registry = (document: string, schema = Items) => hsonLiveMap.fromLibraries({ page: { document, schema } });
+const item = (id: string): HsonNode => ({ $_tag: "item", $_attrs: { id }, $_content: [] });
 const target = (...path: number[]): LiveMapDocumentRequestTarget => ({ kind: "path", path });
-const tag = (value: unknown): string | undefined => typeof value === "object" && value !== null && "$_tag" in value ? String(value.$_tag) : undefined;
-const code = (run: () => unknown, expected: LiveMapDocumentMutationError["code"]): void => assert.throws(run, (error: unknown) => error instanceof LiveMapDocumentMutationError && error.code === expected);
+const ids = (root: HsonNode): string[] => {
+  const found: string[] = [];
+  const visit = (node: HsonNode): void => {
+    if (node.$_tag === "item") { found.push(String(node.$_attrs?.id)); return; }
+    for (const child of node.$_content) if (typeof child === "object" && child !== null) visit(child);
+  };
+  visit(root);
+  return found;
+};
+const code = (run: () => unknown, expected: LiveMapDocumentMutationError["code"]): void =>
+  assert.throws(run, (error: unknown) => error instanceof LiveMapDocumentMutationError && error.code === expected);
 
-check("element-root insert owns root authored content", () => { const map = element(`<main <b/>/>`); map.at([]).insert(0, ordinary(`<a/>`)); assert.deepEqual([tag(map.at([0]).snap()), tag(map.at([1]).snap())], ["a", "b"]); });
-check("nested-element insert owns nested authored content", () => { const map = element(`<main <section <b/>/>/>`); map.at([0]).insert(0, ordinary(`<a/>`)); assert.deepEqual([tag(map.at([0, 0]).snap()), tag(map.at([0, 1]).snap())], ["a", "b"]); });
-check("first empty-element insert reuses carrier materialization", () => { const map = element(`<main/>`); const commit = map.at([]).insert(0, ordinary(`<a/>`)); assert.equal(commit.ops[0]?.op, "insert-content"); assert.equal(tag(map.at([0]).snap()), "a"); });
-check("multiNodeDocument-root insert owns top-level content", () => { const map = multiNodeDocument(`<a/> <c/>`); map.at([]).insert(1, ordinary(`<b/>`)); assert.deepEqual([0, 1, 2].map((i) => tag(map.at([i]).snap())), ["a", "b", "c"]); });
-check("first empty-multiNodeDocument text insert reuses canonical materialization", () => { const map = emptyDocumentSequence(); const equivalent = emptyDocumentSequence(); const receiver = emptyDocumentSequence(); const commit = map.at([]).insert(0, "first"); assert.equal(commit.ops[0]?.op, "insert-content"); assert.deepEqual(commit, equivalent.document.content.insert(target(), 0, "first")); receiver.replay(commit); assert.deepEqual(map.root(), equivalent.root()); assert.deepEqual(receiver.root(), map.root()); assert.equal(map.at([0]).snap(), "first"); });
-check("string insert uses established authored normalization", () => { const map = element(`<main/>`); const commit = map.at([]).insert(0, "text"); assert.equal(commit.ops[0]?.op === "insert-content" ? tag(commit.ops[0].content) : undefined, "_hson_elem"); assert.equal(map.at([0]).snap(), "text"); });
-check("invalid insert index rejects exactly", () => { code(() => element(`<main/>`).at([]).insert(1, "x"), "INVALID_DOCUMENT_CONTENT_INDEX"); });
-check("insert on primitive endpoint rejects", () => { code(() => element(`<main "x"/>`).at([0]).insert(0, "y"), "DOCUMENT_TARGET_KIND"); });
-check("element-root move uses final indexes", () => { const map = element(`<main <a/> <b/> <c/>/>`); map.at([]).move(0, 2); assert.deepEqual([0, 1, 2].map((i) => tag(map.at([i]).snap())), ["b", "c", "a"]); });
-check("nested move owns only nested content", () => { const map = element(`<main <section <a/> <b/>/> <aside/>/>`); map.at([0]).move(1, 0); assert.deepEqual([tag(map.at([0, 0]).snap()), tag(map.at([0, 1]).snap()), tag(map.at([1]).snap())], ["b", "a", "aside"]); });
-check("multiNodeDocument move owns top-level content", () => { const map = multiNodeDocument(`<a/> <b/> <c/>`); map.at([]).move(2, 0); assert.deepEqual([0, 1, 2].map((i) => tag(map.at([i]).snap())), ["c", "a", "b"]); });
-check("move to is the canonical final position", () => { const map = element(`<main <a/> <b/> <c/> <d/>/>`); map.at([]).move(1, 3); assert.deepEqual([0, 1, 2, 3].map((i) => tag(map.at([i]).snap())), ["a", "c", "d", "b"]); });
-check("move on non-container rejects", () => { code(() => element(`<main "x"/>`).at([0]).move(0, 0), "DOCUMENT_TARGET_KIND"); });
-check("child location remains fixed after movement", () => { const map = element(`<main <a/> <b/>/>`); const first = map.at([0]); map.at([]).move(0, 1); assert.equal(first, map.at([0])); assert.equal(tag(first.snap()), "b"); });
-check("proxy escape delegates insert", () => { const map = element(`<main <section/>/>`); assert.equal(map.proxy()[0].$_, map.at([0])); assert.equal(map.proxy()[0].$_.insert(0, ordinary(`<a/>`)).ops[0]?.op, "insert-content"); });
-check("proxy escape delegates move", () => { const map = element(`<main <a/> <b/>/>`); assert.equal(map.proxy().$_.move(0, 1).ops[0]?.op, "move-content"); assert.equal(tag(map.at([0]).snap()), "b"); });
-check("insert commit exactly equals document API", () => { const left = element(`<main <a/>/>`); const right = element(`<main <a/>/>`); const value = ordinary(`<b/>`); assert.deepEqual(left.at([]).insert(1, value), right.document.content.insert(target(0, 0), 1, value)); assert.deepEqual(left.root(), right.root()); });
-check("move commit exactly equals document API", () => { const left = element(`<main <a/> <b/>/>`); const right = element(`<main <a/> <b/>/>`); assert.deepEqual(left.at([]).move(0, 1), right.document.content.move(target(0, 0), 0, 1)); assert.deepEqual(left.root(), right.root()); });
-check("location content commits replay without special cases", () => { const source = element(`<main <a/> <b/>/>`); const receiver = element(`<main <a/> <b/>/>`); receiver.replay(source.at([]).move(0, 1)); assert.deepEqual(receiver.root(), source.root()); });
-check("Reflection consumes location content commits", () => { const map = reflectedElement(`<main <a/>/>`); const binding = _reflect_document_for_runtime_test(_create_livetree_runtime_test_handle(), map); map.at([]).insert(1, ordinary(`<b/>`)); assert.equal(raw_node(binding.tree.node, [0, 1]).$_tag, "b"); binding.dispose(); });
-check("capability acquisition never mints QUIDs", () => { const map = element(`<main <a/>/>`); const location = map.at([]); void location.insert; void location.move; assert.equal(JSON.stringify(map.root()).includes("quid"), false); assert.equal(map.rev, 0); });
-check("document locations stay semantic while array paths expose direct sequence operators", () => { const location = element(`<main/>`).at([]); assert.equal("remove" in location, false); assert.equal("set" in location, false); assert.equal("update" in location, false); const projected = hson.liveMap.fromJson([1]); assert.equal("insert" in projected.at([]), true); assert.equal("move" in projected.at([]), true); });
-
-process.stdout.write(`# ${checks} document location ordered-content checks passed\n`);
-testEvents.terminal("pass");
+check("element insert owns ordered authored content", () => {
+  const map = registry('<main <item id="b"/>/>');
+  map.lib("page").at([]).asElement()!.insert(0, item("a"));
+  assert.deepEqual(ids(map.lib("page").at([]).snap() as HsonNode), ["a", "b"]);
+});
+check("first insert materializes an empty element's content", () => {
+  const map = registry("<main/>");
+  const commit = map.lib("page").at([]).asElement()!.insert(0, item("a"));
+  assert.equal(commit.operations[0]?.operation.op, "insert-content");
+  assert.deepEqual(ids(map.lib("page").at([]).snap() as HsonNode), ["a"]);
+});
+check("nested insert owns only selected section content", () => {
+  const map = registry('<main <section <item id="b"/>/>/>', Sections);
+  map.lib("page").at([0]).asElement()!.insert(0, item("a"));
+  assert.deepEqual(ids(map.lib("page").at([0]).snap() as HsonNode), ["a", "b"]);
+});
+check("document root insert owns top-level content", () => {
+  const map = registry('<item id="a"/> <item id="c"/>', MultiItems);
+  map.lib("page").at([]).asRoot()!.insert(1, item("b"));
+  assert.deepEqual(ids(map.lib("page").root()), ["a", "b", "c"]);
+});
+check("invalid insert index rejects exactly", () => {
+  code(() => registry("<main/>").lib("page").at([]).asElement()!.insert(1, item("a")), "INVALID_DOCUMENT_CONTENT_INDEX");
+});
+check("primitive endpoint has no element insertion capability", () => {
+  const page = registry('<main "text"/>', Text).lib("page");
+  assert.equal(page.at([0]).asElement(), undefined);
+});
+check("move uses final indexes and retains item identity", () => {
+  const map = registry('<main <item id="a"/> <item id="b"/> <item id="c"/>/>');
+  map.lib("page").at([]).asElement()!.move(0, 2);
+  assert.deepEqual(ids(map.lib("page").at([]).snap() as HsonNode), ["b", "c", "a"]);
+});
+check("nested move leaves other content in place", () => {
+  const map = registry('<main <section <item id="a"/> <item id="b"/>/>/>', Sections);
+  map.lib("page").at([0]).asElement()!.move(1, 0);
+  assert.deepEqual(ids(map.lib("page").at([0]).snap() as HsonNode), ["b", "a"]);
+});
+check("document root move operates on top-level content", () => {
+  const map = registry('<item id="a"/> <item id="b"/> <item id="c"/>', MultiItems);
+  map.lib("page").at([]).asRoot()!.move(2, 0);
+  assert.deepEqual(ids(map.lib("page").root()), ["c", "a", "b"]);
+});
+check("child location remains fixed after movement", () => {
+  const page = registry('<main <item id="a"/> <item id="b"/>/>').lib("page");
+  const first = page.at([0]);
+  page.at([]).asElement()!.move(0, 1);
+  assert.equal(first, page.at([0]));
+  assert.equal((first.snap() as HsonNode).$_attrs?.id, "b");
+});
+check("proxy escape uses the selected library content capability", () => {
+  const page = registry('<main <item id="a"/> <item id="b"/>/>').lib("page");
+  assert.equal(page.proxy().$_, page.at([]));
+  const commit = page.proxy().$_.asElement()!.move(0, 1);
+  assert.equal(commit.operations[0]?.operation.op, "move-content");
+});
+check("location insert matches document API and registry commit", () => {
+  const left = registry('<main <item id="a"/>/>');
+  const right = registry('<main <item id="a"/>/>');
+  const first = left.lib("page").at([]).asElement()!.insert(1, item("b"));
+  const second = right.lib("page").document.content.insert(target(0, 0), 1, item("b"));
+  assert.deepEqual(first, second);
+  assert.deepEqual(left.capture(), right.capture());
+});
+check("location move restores without special cases", () => {
+  const source = registry('<main <item id="a"/> <item id="b"/>/>');
+  const receiver = registry('<main <item id="a"/> <item id="b"/>/>');
+  source.lib("page").at([]).asElement()!.move(0, 1);
+  receiver.restore(source.capture());
+  assert.deepEqual(receiver.lib("page").root(), source.lib("page").root());
+});
+check("Mirror consumes selected document location commits", () => {
+  const map = registry('<main <item id="a"/>/>');
+  const page = map.lib("page");
+  const binding = _reflect_document_for_runtime_test(_create_livetree_runtime_test_handle(), page);
+  page.at([]).asElement()!.insert(1, item("b"));
+  assert.deepEqual(ids(binding.tree.node), ["a", "b"]);
+  binding.dispose();
+});
+check("acquiring content capabilities does not mint QUIDs", () => {
+  const map = registry('<main <item id="a"/>/>');
+  const location = map.lib("page").at([]).asElement()!;
+  void location.insert; void location.move;
+  assert.equal(JSON.stringify(map.lib("page").root()).includes("quid"), false);
+  assert.equal(map.rev, 0);
+});
+process.stdout.write(`# ${checks} named document location content checks passed\n`);
+events.terminal("pass");

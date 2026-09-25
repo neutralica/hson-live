@@ -5,7 +5,6 @@ import { discover_schema_validation_sources } from "../src/internal/trusted-sche
 import { create_test_event_emitter } from "./test-events.mjs";
 import { resolve } from "node:path";
 import { Hson } from "../src/hson-authoring.ts";
-import { create_trusted_schema_source_lifecycle } from "../src/internal/trusted-schema-diagnostics/source-lifecycle.ts";
 import { instrument_trusted_schema_map_sources } from "../src/internal/trusted-schema-diagnostics/instrument-map-sources.ts";
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "hson-completion-context",
@@ -76,13 +75,9 @@ check("Schema-owned certification follows local and imported Schema bindings", (
   const fake = 'import { Hson } from "hson-live"; const someObject={certify(_value: unknown){}}; const value=Hson.canonical`1`; someObject.certify(value);';
   assert.equal(discover_schema_validation_sources('/tmp/fake-certify.ts', fake).length, 0);
 });
-check("canonical lifecycle instrumentation uses exact tag identity", () => {
-  const lifecycle = create_trusted_schema_source_lifecycle([]);
-  assert.equal(lifecycle.tag('candidate', Hson.canonical)`<a 1>`, Hson.canonical`<a 1>`);
-  assert.throws(() => lifecycle.tag('candidate', Hson.data), /Unsupported authored tag runtime identity/);
-  assert.throws(() => lifecycle.tag('candidate', String.raw), /Unsupported authored tag runtime identity/);
-  const source = 'import { Hson } from "hson-live/hson"; import { hsonLiveMap } from "hson-live/livemap"; const S=Hson.schema`<type "data" content <a "number">>`; const value=Hson.canonical`<a 1>`; const map=hsonLiveMap.fromHson(value); map.schema.use(S);';
-  assert.match(instrument_trusted_schema_map_sources('/tmp/lifecycle.ts', source, 'file:///tmp/lifecycle-helper.ts'), /\.tag\(/);
+check("canonical interpolation instrumentation follows registry admission", () => {
+  const source = 'import { Hson, hsonLiveMap } from "hson-live"; const S=Hson.schema`<type "data" content <a "number">>`; const x=1; const value=Hson.canonical`<a ${x}>`; const map=hsonLiveMap.fromLibraries({state:{data:value,schema:S}});';
+  assert.match(instrument_trusted_schema_map_sources('/tmp/lifecycle.ts', source, 'file:///tmp/lifecycle-helper.ts'), /\.interpolation\(/);
 });
 check("analysis never edits source", () => { const source = '<a >'; completion_context(source, 3); assert.equal(source, '<a >'); });
 testEvents.terminal("pass");

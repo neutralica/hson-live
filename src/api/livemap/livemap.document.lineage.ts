@@ -6,7 +6,7 @@ import {
 } from "../../core/hson-node-quid.js";
 import type { HsonNode, Primitive } from "../../core/types.js";
 import type {
-  DocumentLiveMapMode,
+  LiveMapDocumentMode,
   LiveMapDocumentContent,
   LiveMapDocumentPath,
   LiveMapDocumentRequestTarget,
@@ -75,7 +75,7 @@ export function derive_replacement_lineage(
 /** Derive an Echo-authored request from Echo's own pre-state. */
 export function derive_replacement_lineage_for_action(
   root: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   target: LiveMapDocumentRequestTarget,
   index: number,
   replacement: LiveMapDocumentContent,
@@ -100,7 +100,7 @@ export function apply_replacement_lineage(
   const mapped = new Map(lineage.map(({ source, destination }) => [encode_document_path(source), encode_document_path(destination)]));
   for (const entry of oracle) {
     if (mapped.get(encode_document_path(entry.source)) !== encode_document_path(entry.destination)) {
-      throw new TypeError("Replacement lineage disagrees with legacy exact-QUID evidence.");
+      throw new TypeError("Replacement lineage disagrees with existing exact-QUID evidence.");
     }
   }
   if (oracle.length > 0 && !incomingClaimsAreForeign) {
@@ -110,7 +110,7 @@ export function apply_replacement_lineage(
       if (!is_Node(old) || !is_Node(next)) continue;
       const localQuid = read_hson_node_quid(old);
       if (localQuid !== undefined && read_hson_node_quid(next) !== localQuid) {
-        throw new TypeError("Replacement lineage adds survival absent from legacy exact-QUID evidence.");
+        throw new TypeError("Replacement lineage adds survival absent from existing exact-QUID evidence.");
       }
     }
   }

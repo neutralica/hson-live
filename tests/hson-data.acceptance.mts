@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import * as publicApi from "../src/index.ts";
 import { Hson, hson, type HsonData } from "../src/index.ts";
 import { serialize_hson_owned_document_content } from "../src/api/transform/serializers/serialize-hson.ts";
+import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 
 let checks = 0;
 function check(name: string, run: () => void): void {
@@ -101,7 +102,6 @@ check("every representative admitted value closes through canonical Hson", () =>
 check("forged noncanonical data brands reject at dynamic boundaries", () => {
   const forged = "<a  1>" as HsonData;
   assert.throws(() => Hson.data.fromHson(forged), /canonical/);
-  assert.throws(() => hson.liveMap.fromData(forged), /canonical/);
 });
 
 check("document Hson rejects the data-only boundary", () => {
@@ -112,11 +112,13 @@ check("document Hson rejects the data-only boundary", () => {
   assert.throws(() => Hson.data.fromHson("<a 1b 2>" as Parameters<typeof Hson.data.fromHson>[0]), /data-mode Hson/);
 });
 
-check("LiveMap exact data reads preserve Hson-authored identity", () => {
-  const authored = Hson.data`<value <'10' -0 '2' <__proto__ true> tail [1,<constructor 2 prototype 3>]>>`;
-  const map = hson.liveMap.fromData(authored);
-  const exact = map.data();
-  const nested = map.at(["value"]).data()!;
+check("named data library exact reads preserve source order and values", () => {
+  const map = hson.liveMap.fromLibraries({ state: {
+    data: '{"value":{"10":-0,"2":{"__proto__":true},"tail":[1,{"constructor":2,"prototype":3}]}}',
+    schema: Hson.schema`<type "data" content <value "any">>`,
+  } });
+  const exact = map.lib("state").at([]).data();
+  const nested = map.lib("state").at(["value"]).data()!;
   assert.equal(typeof exact, "string");
   assert.equal(typeof nested, "string");
   assert.deepEqual(entries(nested).map(([name]) => name), ["10", "2", "tail"]);
@@ -124,20 +126,28 @@ check("LiveMap exact data reads preserve Hson-authored identity", () => {
   assert.equal(Object.hasOwn(Hson.data.materialize(entries(nested)[1]![1]) as object, "__proto__"), true);
 });
 
-check("LiveMap rejects reserved names before state, revision, or publication", () => {
-  assert.throws(() => hson.liveMap.fromJson({ _hson_root: 1 }));
-  const map = hson.liveMap.fromJson({ nested: { value: 1 } });
+check("named data library rejects reserved names before state, revision, or publication", () => {
+  const schema = Hson.schema`<type "data" content <nested "any">>`;
+  assert.throws(() => hson.liveMap.fromLibraries({ state: { data: { _hson_root: 1 }, schema } }));
+  const map = hson.liveMap.fromLibraries({ state: { data: { nested: { value: 1 } }, schema } });
+  const state = map.lib("state");
   let publications = 0;
-  const stop = map.feed([], () => { publications += 1; });
-  const before = map.snap();
-  assert.throws(() => map.setMany([], { _hson_root: 1 }), /Reserved Hson prefix/);
-  assert.throws(() => map.replace(["nested"], { _hson_obj: 1 }), /Reserved Hson prefix/);
-  assert.throws(() => map.setMany(["nested"], { _hson_arr: 1 }), /Reserved Hson prefix/);
-  assert.throws(() => map.batch((draft) => { draft.setMany(["nested"], { safe: 2, _hson_batch: 3 }); }), /Reserved Hson prefix/);
+  const stop = map.commits.observe(() => { publications += 1; });
+  const before = state.snap();
+  assert.throws(() => state.at([]).asObject()!.setMany({ _hson_root: 1 }), /Reserved Hson prefix/);
+  assert.throws(() => state.at(["nested"]).replace({ _hson_obj: 1 }), /Reserved Hson prefix/);
+  assert.throws(() => state.at(["nested"]).asObject()!.setMany({ _hson_arr: 1 }), /Reserved Hson prefix/);
+  const aggregate = internal_livemap_aggregate_authority(map);
+  const library = aggregate.libraries()[0];
+  if (library === undefined) throw new Error("Expected state library.");
+  assert.throws(() => aggregate.commit([
+    { target: aggregate.target(library, ["nested"]), kind: "set-key", key: "safe", value: 2 },
+    { target: aggregate.target(library, ["nested"]), kind: "set-key", key: "_hson_batch", value: 3 },
+  ]), /Reserved Hson prefix/);
   assert.equal(map.rev, 0);
-  assert.deepEqual(map.snap(), before);
+  assert.deepEqual(state.snap(), before);
   assert.equal(publications, 0);
-  assert.equal(map.data(), Hson.data`<nested <value 1>>`);
+  assert.equal(state.at([]).data(), Hson.data`<nested <value 1>>`);
   stop();
 });
 

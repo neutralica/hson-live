@@ -10,7 +10,7 @@ import {
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import type {
   LiveMapCore,
-  LiveMapCommit,
+  LiveMapCoreCommit,
   LiveMapObjectEntry,
   LiveMapObjectKey,
   LiveMapObjectSetManyValues,
@@ -34,7 +34,7 @@ type LiveMapObjectHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" |
 /** Object-scoped helpers backed by the canonical ordered carrier. */
 export function make_livemap_object_api<
   TValue = JsonValue | undefined,
-  TCommit = LiveMapCommit,
+  TCommit = LiveMapCoreCommit,
 >(
   core: LiveMapObjectHandleCore,
   handlePath: LivePath,
@@ -73,8 +73,9 @@ export function make_livemap_object_api<
       const objectKey = must_object_key(key, handlePath);
       read();
       return projected.commit([{
-        kind: "set",
-        path: [...handlePath, objectKey],
+        kind: "set-key",
+        path: handlePath,
+        key: objectKey,
         value: must_ordered_projected_value(value, [...handlePath, objectKey]),
       }]);
     },
@@ -82,8 +83,9 @@ export function make_livemap_object_api<
       read();
       const admitted = must_ordered_projected_object(values, handlePath);
       return projected.commit(admitted.entries.map(([key, value]) => ({
-        kind: "set" as const,
-        path: [...handlePath, key],
+        kind: "set-key" as const,
+        path: handlePath,
+        key,
         value,
       })));
     },

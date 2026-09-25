@@ -1,14 +1,14 @@
 /** Public Echo endpoint type boundary. */
-import type { LiveMapLibraries } from "./livemap.types.js";
+import type { LiveMap } from "./livemap.types.js";
 import type {
   Echo as CoreEcho,
   EchoOptions as CoreEchoOptions,
 } from "./locus.core.types.js";
 import type { LocusActionPayloads } from "./locus.protocol.types.js";
 
-export type EchoOptions<TMap extends LiveMapLibraries | undefined = undefined> = CoreEchoOptions<TMap>;
+export type EchoOptions<TMap extends LiveMap | undefined = undefined> = CoreEchoOptions<TMap>;
 export type Echo<
-  TMap extends LiveMapLibraries | undefined = undefined,
+  TMap extends LiveMap | undefined = undefined,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = CoreEcho<TMap, TActions>;
 

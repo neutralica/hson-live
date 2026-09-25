@@ -4,9 +4,8 @@ import type {
   InteractionLocalBehaviors,
 } from "../../types/interaction.types.js";
 import type {
-  DocumentLiveMap,
   LiveMapDocumentLibrary,
-  LiveMapLibraries,
+  LiveMap,
 } from "../../types/livemap.types.js";
 import { activate_interactions } from "../interactions/interactions.js";
 import { reflect_existing_document_in_runtime } from "../mirror/mirror.document.js";
@@ -29,26 +28,20 @@ type LocalInteractions = Readonly<{
   onFailure?: (failure: InteractionFailure) => void;
 }>;
 
-export function continue_document<TMap extends DocumentLiveMap>(options: Readonly<{
-  map: TMap;
-  root: Element;
-  document?: never;
-  interactions?: LocalInteractions;
-}>): DocumentContinuation<TMap>;
 export function continue_document<TDocument extends LiveMapDocumentLibrary>(options: Readonly<{
-  map: LiveMapLibraries;
+  map: LiveMap;
   root: Element;
   document: TDocument;
   interactions?: LocalInteractions;
 }>): DocumentContinuation<TDocument>;
 export function continue_document(options: Readonly<{
-  map: LiveMapLibraries;
+  map: LiveMap;
   root: Element;
   document?: undefined;
   interactions?: LocalInteractions;
 }>): DocumentContinuation<LiveMapDocumentLibrary>;
 export function continue_document(options: Readonly<{
-  map: DocumentLiveMap | LiveMapLibraries;
+  map: LiveMap;
   root: Element;
   document?: LiveMapDocumentLibrary;
   interactions?: LocalInteractions;
@@ -90,9 +83,6 @@ export function continue_document(options: Readonly<{
     }
     if (options.interactions !== undefined) {
       try {
-        if (resolved.aggregate === undefined) {
-          throw new Error("Canonical interactions require a multi-library map with enabled interaction storage.");
-        }
         disposeInteractions = activate_interactions({
           map: resolved.aggregate,
           tree: adoption.tree,

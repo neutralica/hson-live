@@ -32,16 +32,16 @@ const collectionBinding = hsonMirror.collection(options);
 const sameCollectionBinding = reflect_collection(options);
 ```
 
-The callable facade accepts a `DocumentLiveMap`, not a data map.
+The callable facade accepts a selected document library.
 The `.collection(...)` member accepts a keyed array projection configuration.
 
 ## Document reflection
 
 ```ts
-const map = hson.liveMap.fromHson(`<main <p "hello"/>/>`);
-
-if (map.mode === "document") {
-  const reflected = hson.mirror(map);
+const PageSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "p" content "string">]>>`;
+const map = hson.liveMap.fromLibraries({ page: { document: `<main <p "hello"/>/>`, schema: PageSchema } });
+{
+  const reflected = hson.mirror(map.lib("page"));
   reflected.tree;           // LiveTree projection
   reflected.status;         // "active"
   reflected.sourceRevision; // map revision already applied

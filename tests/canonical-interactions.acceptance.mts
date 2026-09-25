@@ -35,7 +35,6 @@ import { reflect_document_in_runtime } from "../src/api/mirror/mirror.document.t
 import { install_fake_document } from "./helpers/fake-document.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
-import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
 import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
 import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
 import { set_livemap_document_quid_candidate_source_for_tests } from "../src/api/livemap/livemap.document.registration.ts";
@@ -382,8 +381,9 @@ await check("activation snapshots every caller-owned runtime option and cannot i
   const subject = reflection.tree.find.must.byQuid(currentQ);
   const firstTarget = new Target(); link_node_to_el(subject.node, firstTarget as unknown as Element);
 
-  const alternatePage = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(`<main <button @${currentQ}/>/>`, { allowTopLevelDocumentText: true }));
-  if (alternatePage.mode !== "document") throw new Error("Expected alternate document LiveMap.");
+  const alternatePage = admit_exact_runtime_livemap_libraries({ page: {
+    document: parse_hson_exact_runtime(`<main <button @${currentQ}/>/>`, { allowTopLevelDocumentText: true }), schema: PageSchema,
+  } }).lib("page");
   const alternateReflection = reflect_document_in_runtime(alternatePage, create_livetree_runtime());
   const alternateSubject = alternateReflection.tree.find.must.byQuid(currentQ);
   const alternateTarget = new Target(); link_node_to_el(alternateSubject.node, alternateTarget as unknown as Element);
@@ -610,8 +610,9 @@ await check("exact subject replacement disposes A and materializes once on B", (
   add_interaction(map, local("replace-subject", "run"));
   const localQ = "000009001";
   assert.notEqual(currentQ, localQ);
-  const page = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(`<main <button @${localQ}/>/>`, { allowTopLevelDocumentText: true }));
-  if (page.mode !== "document") throw new Error("Expected document LiveMap.");
+  const page = admit_exact_runtime_livemap_libraries({ page: {
+    document: parse_hson_exact_runtime(`<main <button @${localQ}/>/>`, { allowTopLevelDocumentText: true }), schema: PageSchema,
+  } }).lib("page");
   const reflection = hsonMirror(page);
   project_livetree(reflection.tree.node);
   const first = reflection.tree.find.must.byQuid(localQ);
@@ -620,14 +621,11 @@ await check("exact subject replacement disposes A and materializes once on B", (
   let calls = 0;
   const dispose = activate_interactions({ map, tree: reflection.tree, local: { run: () => { calls += 1; } } });
   assert.equal(firstElement.listeners.get("click")?.size, 1);
-  const replacementMap = admit_exact_runtime_livemap_node(parse_hson_exact_runtime("<i/>", { allowTopLevelDocumentText: true }));
-  if (replacementMap.mode !== "document") throw new Error("Expected replacement document LiveMap.");
-  const replacement = replacementMap.at([]).snap();
-  if (typeof replacement !== "object" || replacement === null || !("$_tag" in replacement)) throw new Error("Expected replacement node.");
+  const replacement = { $_tag: "button", $_content: [] };
   page.at([0]).replace(replacement);
   assert.equal(reflection.tree.find.byQuid(localQ), undefined);
   project_livetree(reflection.tree.node);
-  const second = reflection.tree.find.must.byTag("i");
+  const second = reflection.tree.find.must.byTag("button");
   const secondQuid = second.quid;
   assert.notEqual(secondQuid, localQ);
   project_livetree(second.node);

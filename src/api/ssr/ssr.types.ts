@@ -1,7 +1,4 @@
-import type {
-  DocumentLiveMapCapture,
-  LocalLibrariesContinuationSnapshot,
-} from "../../types/livemap.types.js";
+import type { LocalLibrariesContinuationSnapshot } from "../../types/livemap.types.js";
 import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
 
 declare const BROWSER_REALIZATION_HTML: unique symbol;
@@ -14,12 +11,6 @@ declare const BROWSER_REALIZATION_HTML: unique symbol;
  */
 export type BrowserRealizationHtml = string & Readonly<{
   [BROWSER_REALIZATION_HTML]: true;
-}>;
-
-/** Browser-realization HTML and a document bootstrap from one local capture. */
-export type DocumentSsr = Readonly<{
-  html: BrowserRealizationHtml;
-  bootstrap: DocumentLiveMapCapture<"document">;
 }>;
 
 /** One selected document realization paired with its complete local Libraries snapshot. */

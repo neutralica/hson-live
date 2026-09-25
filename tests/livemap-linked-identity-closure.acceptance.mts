@@ -1,7 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
-import { element, mount, path, raw_node } from "./helpers/mirror-unit6.mts";
+import { element, mount, path, raw_node, registry_for_document_library } from "./helpers/mirror-unit6.mts";
 import {
   begin_livetree_materialization_profile,
   _create_livetree_for_runtime_test,
@@ -11,12 +11,8 @@ import {
   _lookup_livetree_runtime_test_node,
   _reflect_document_for_runtime_test,
 } from "../src/_tests/diagnostics-internal.ts";
-import {
-  set_livemap_document_quid_candidate_source_for_tests,
-} from "../src/api/livemap/livemap.document.registration.ts";
 import { livemap_document_identity_overlay_for } from "../src/api/livemap/livemap.document.identity.ts";
 import { PERSISTED_QUID_ALPHABET, PERSISTED_QUID_LENGTH } from "../src/core/hson-node-quid.ts";
-import type { LiveMapAnyOp, LiveMapCommit } from "../src/types/livemap.types.ts";
 import { FakeElement } from "./helpers/fake-document.mts";
 
 const syntheticHead = new FakeElement("head");
@@ -70,32 +66,20 @@ function authoredRoot(binding: ReturnType<typeof reflected>["binding"]) {
   return _create_livetree_for_runtime_test(runtime, node).adoptRoots(binding.tree.hostRootNode());
 }
 
-check("owner-proven exact capture preserves local identity without a registration commit", () => {
+check("registry capture keeps linked identity local without a registration commit", () => {
   const { map, binding } = reflected(`<main/>`);
-  let commit: LiveMapCommit<LiveMapAnyOp> | undefined;
-  map.commits.observe((observation) => { if (observation.kind === "commit") commit = observation.commit; });
+  const registry = registry_for_document_library(map);
+  let commits = 0;
+  registry.commits.observe(() => { commits += 1; });
   const quid = authoredRoot(binding).quid;
-  const exact = map.capture({ identity: "same-epoch" });
-  map.restore(exact, { identity: "same-epoch" });
-  assert.equal(commit, undefined);
-  assert.equal(map.document.byQuid(quid)?.$_tag, "main");
+  const exact = registry.capture();
+  registry.restore(exact);
+  assert.equal(commits, 0);
+  assert.equal(map.document.byQuid(quid), undefined);
   const mirror = element(`<main/>`);
-  mirror.restore(map.capture());
+  registry_for_document_library(mirror).restore(registry.capture());
   assert.equal(mirror.document.byQuid(quid), undefined);
   close(binding);
-});
-
-check("public identity replay rejects before consulting the allocator", () => {
-  const map = element(`<main/>`);
-  set_livemap_document_quid_candidate_source_for_tests(map.document, () => { throw new Error("allocator called"); });
-  assert.throws(() => map.replay({
-    changed: true,
-    prevRev: 0,
-    rev: 1,
-    ops: [{ domain: "graph", op: "ensure-quid", target: path(), quid: Q1 }],
-  }));
-  assert.equal((map.root().$_content[0] as { $_meta?: { quid?: string } }).$_meta?.quid, undefined);
-  assert.equal(map.rev, 0);
 });
 
 
@@ -220,7 +204,7 @@ check("document.byQuid resolves through the canonical sparse overlay", () => {
 });
 
 check("move retains runtime claim and updates canonical lookup", () => {
-  const { map, binding } = reflected(`<main <a/> <b/>/>`);
+  const { map, binding } = reflected(`<main <a/> <a/>/>`);
   const child = binding.tree.find.byTag("a")!;
   const quid = child.quid;
   const node = child.node;
@@ -232,7 +216,7 @@ check("move retains runtime claim and updates canonical lookup", () => {
 });
 
 check("canonical removal releases acquired runtime ownership", () => {
-  const { map, binding } = reflected(`<main <span/> <i/>/>`);
+  const { map, binding } = reflected(`<main <span/> <span/>/>`);
   const quid = binding.tree.find.byTag("span")!.quid;
   map.document.content.remove(path(0), 0);
   assert.equal(_lookup_livetree_runtime_test_node(runtime, quid), undefined);

@@ -1,24 +1,20 @@
 import { inspect_echo_map_capability_internal } from "../../internal/echo-map-capability.js";
 import type {
-  DocumentLiveMap,
-  LiveMapAuthority,
   LiveMapDocumentLibrary,
-  LiveMapLibraries,
+  LiveMap,
 } from "../../types/livemap.types.js";
-
-type ContinuableDocumentMap = DocumentLiveMap | LiveMapDocumentLibrary;
 
 const ACTIVE_CONTINUATION_ROOTS = new WeakSet<Element>();
 
 export type ResolvedContinuationDocument = Readonly<{
-  selected: ContinuableDocumentMap;
-  aggregate: LiveMapLibraries | undefined;
+  selected: LiveMapDocumentLibrary;
+  aggregate: LiveMap;
 }>;
 
 /** Select the public registry name of the exact continuation document. */
 export function continuation_document_library_name(
-  map: LiveMapLibraries,
-  selected: ContinuableDocumentMap,
+  map: LiveMap,
+  selected: LiveMapDocumentLibrary,
 ): string {
   for (const entry of map.capture().libraries) {
     if (entry.mode === "document" && map.lib(entry.name) === selected) return entry.name;
@@ -48,9 +44,9 @@ export function reserve_continuation_root(root: Element): () => void {
   };
 }
 
-function is_document_map(value: unknown): value is ContinuableDocumentMap {
+function is_document_library(value: unknown): value is LiveMapDocumentLibrary {
   if (typeof value !== "object" || value === null) return false;
-  const candidate = value as Partial<ContinuableDocumentMap>;
+  const candidate = value as Partial<LiveMapDocumentLibrary>;
   return candidate.mode === "document"
     && typeof candidate.root === "function"
     && typeof candidate.rev === "number"
@@ -58,7 +54,7 @@ function is_document_map(value: unknown): value is ContinuableDocumentMap {
     && candidate.document !== null;
 }
 
-function is_libraries_map(value: unknown): value is LiveMapLibraries {
+function is_libraries_map(value: unknown): value is LiveMap {
   return typeof value === "object" && value !== null
     && typeof (value as { lib?: unknown }).lib === "function"
     && typeof (value as { rev?: unknown }).rev === "number";
@@ -66,23 +62,15 @@ function is_libraries_map(value: unknown): value is LiveMapLibraries {
 
 /** Resolve only public document facades registered by the supplied canonical map. */
 export function resolve_continuation_document(
-  map: LiveMapAuthority | LiveMapLibraries,
+  map: LiveMap,
   explicit: LiveMapDocumentLibrary | undefined,
 ): ResolvedContinuationDocument {
-  if (is_document_map(map)) {
-    if (explicit !== undefined) throw new Error("Explicit document selection is only valid for an aggregate map.");
-    return Object.freeze({ selected: map, aggregate: undefined });
-  }
-
   if (!is_libraries_map(map)) {
-    throw new Error("Document continuation requires a document map or public multi-library map.");
+    throw new Error("Document continuation requires a LiveMap registry.");
   }
 
   const capability = inspect_echo_map_capability_internal(map);
-  if (capability.topology !== "aggregate") {
-    throw new Error("Document continuation requires a document map or public multi-library map.");
-  }
-  const documents = capability.documentMaps.filter(is_document_map);
+  const documents = capability.documentMaps.filter(is_document_library);
   if (explicit !== undefined) {
     if (!documents.includes(explicit)) {
       throw new Error("Explicit document selection does not belong to the supplied aggregate map.");

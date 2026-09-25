@@ -2,7 +2,7 @@
 
 import { is_Node } from "../../../core/node-guards.js";
 import type { HsonNode } from "../../../core/types.js";
-import type { DocumentLiveMap, LiveMapPathHandle } from "../../../types/livemap.types.js";
+import type { LiveMapDocumentLibrary, LiveMapLibraryPathHandle } from "../../../types/livemap.types.js";
 import { is_livemap_document_location } from "../../livemap/livemap.document.location.js";
 import { is_livemap_projected_location } from "../../livemap/livemap.handle.js";
 import type { LiveTree } from "../livetree.js";
@@ -237,8 +237,8 @@ type BindingCapability<TValue = unknown> = Readonly<{
   snap(): TValue;
   watch(listener: (next: TValue) => void): LiveMapDisposer;
 }>;
-type ProjectedBindingSource<TValue = unknown> = Pick<LiveMapPathHandle<TValue>, "snap" | "watch" | "feed">;
-type DocumentBindingSource = ReturnType<DocumentLiveMap["at"]>;
+type ProjectedBindingSource<TValue = unknown> = Pick<LiveMapLibraryPathHandle<TValue>, "snap" | "watch" | "feed">;
+type DocumentBindingSource = ReturnType<LiveMapDocumentLibrary["at"]>;
 type BindingSource = ProjectedBindingSource | DocumentBindingSource;
 type BindingValue<TSource extends BindingSource> = ReturnType<TSource["snap"]>;
 type BindingValues<TSources extends readonly BindingSource[]> = {

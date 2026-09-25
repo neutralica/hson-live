@@ -7,25 +7,27 @@ import type { HsonNode, JsonValue, Primitive } from "../../core/types.js";
 import type {
   LiveMapDataLibrary,
   LiveMapDocumentLibrary,
-  LiveMapLibraries,
-  HostedLiveMapLibrariesSnapshot,
-  LiveMapLibrariesSnapshot,
-  LiveMapLibrariesInput,
+  LiveMap,
+  HostedLiveMapSnapshot,
+  LiveMapSnapshot,
+  LiveMapInput,
   LiveMapLibraryInput,
   LiveMapLibraryOperation,
   LiveMapLibraryPathHandle,
   LiveMapDataOp,
+  LiveMapLibraryFeedEvent,
   LiveMapCommitObservation,
   LiveMapDocumentApi,
   LiveMapDocumentAttributeValue,
   LiveMapDocumentAttrs,
-  DocumentLiveMapCaptureOptions,
+  LiveMapDocumentCaptureOptions,
   LiveMapDocumentRequestTarget,
   LiveMapDocumentCommitTarget,
   LiveMapDocumentContent,
+  LiveMapReplacementLineage,
   LiveMapGraphCommit,
   LiveMapGraphOp,
-  LiveMapMultiLibraryCommit,
+  LiveMapCommit,
   LiveMapSetValue,
   LiveMapWriteValue,
   LivePath,
@@ -47,6 +49,7 @@ import {
 } from "./livemap.internal.js";
 import type { LiveMapAggregateCommit, LiveMapLibraryIdentity } from "./livemap.library.js";
 import { make_livemap_registry_authority, type InitialSystemState } from "./livemap.core.js";
+import { render_local_libraries_html } from "../../internal/document-cut.js";
 import { make_livemap_document_mutation_api } from "./livemap.document.mutation.js";
 import { make_livemap_document_attrs_read_api, make_livemap_document_flags_read_api } from "./livemap.document.attrs.js";
 import { make_livemap_document_location_factory, read_livemap_document_logical_location } from "./livemap.document.location.js";
@@ -60,6 +63,7 @@ import {
 import { clone_livemap_document_exact_view, register_livemap_document_identity_overlay } from "./livemap.document.identity.js";
 import { register_livemap_document_identity_authority } from "./livemap.document.registration.js";
 import { register_livemap_identity_epoch_owner } from "./livemap.identity-epoch.js";
+import { make_livemap_projected_identity_api, register_livemap_projected_identity_api } from "./livemap.projected.identity-handle.js";
 import {
   assert_libraries_snapshot_bound,
   assert_libraries_snapshot_shape,
@@ -99,11 +103,11 @@ export function is_public_multi_library_livemap(value: unknown): value is object
  * Admit the complete named registry before constructing its map-global authority.
  * Names remain at this public facade; the engine uses opaque map-local identities.
  */
-export function make_livemap_libraries<const TLibraries extends LiveMapLibrariesInput>(
+export function make_livemap_libraries<const TLibraries extends LiveMapInput>(
   inputs: TLibraries,
   systems: readonly InitialSystemState[] = [],
   clientSnapshot?: PortableAggregateSnapshot,
-): LiveMapLibraries<TLibraries> {
+): LiveMap<TLibraries> {
   const entries = Object.entries(inputs);
   if (entries.length === 0) throw new Error("LiveMap fromLibraries requires at least one named Library.");
 
@@ -148,8 +152,8 @@ export function make_livemap_libraries<const TLibraries extends LiveMapLibraries
   }));
   if (clientSnapshot !== undefined) aggregate.configureClientComposition(clientSnapshot);
 
-  const public_commit = (commit: LiveMapAggregateCommit): LiveMapMultiLibraryCommit => Object.freeze({
-    kind: "multi-library" as const,
+  const public_commit = (commit: LiveMapAggregateCommit): LiveMapCommit => Object.freeze({
+    kind: "map" as const,
     changed: commit.changed,
     prevRev: commit.prevRev,
     rev: commit.rev,
@@ -179,14 +183,17 @@ export function make_livemap_libraries<const TLibraries extends LiveMapLibraries
     get rev() { return aggregate.inspect().revision; },
     lib: (name: string) => selected(name),
     capture: () => aggregate.captureLibraries(),
+    restore: (snapshot: LiveMapSnapshot) => aggregate.restoreLibraries(snapshot),
+    render: (document?: string) => render_local_libraries_html(
+      libraries as LiveMap, document, install_libraries_snapshot, decode_hosted_root,
+    ),
     commits: Object.freeze({
-      observe: (listener: (commit: LiveMapMultiLibraryCommit) => void) =>
+      observe: (listener: (commit: LiveMapCommit) => void) =>
         aggregate.observe((commit) => listener(public_commit(commit))),
     }),
   });
   register_internal_livemap_aggregate_owner(libraries, aggregate);
   register_echo_map_capability_internal(libraries, Object.freeze({
-    topology: "aggregate" as const,
     revision: () => aggregate.inspect().revision,
     documentMaps: () => Object.freeze([...named.values()]
       .filter((entry) => "document" in entry.input
@@ -212,7 +219,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapLibraries
     },
   }));
   PUBLIC_MULTI_LIBRARY_MAPS.add(libraries);
-  return libraries as unknown as LiveMapLibraries<TLibraries>;
+  return libraries as unknown as LiveMap<TLibraries>;
 }
 
 /**
@@ -220,8 +227,8 @@ export function make_livemap_libraries<const TLibraries extends LiveMapLibraries
  * snapshot. The Locus client owns recovery/bootstrap protocol exposure.
  */
 export function make_livemap_hosted_mirror_from_snapshot_internal(
-  snapshot: HostedLiveMapLibrariesSnapshot,
-): LiveMapLibraries {
+  snapshot: HostedLiveMapSnapshot,
+): LiveMap {
   assert_hosted_libraries_snapshot_shape(snapshot);
   assert_libraries_snapshot_bound(snapshot);
   return make_livemap_mirror_from_portable_aggregate_internal(make_portable_aggregate_snapshot(snapshot));
@@ -230,8 +237,8 @@ export function make_livemap_hosted_mirror_from_snapshot_internal(
 /** Construct an Echo replica from QUID-free client state and its protocol fence. */
 export function make_livemap_mirror_from_portable_aggregate_internal(
   snapshot: PortableAggregateSnapshot,
-  localLibraries?: LiveMapLibrariesInput,
-): LiveMapLibraries {
+  localLibraries?: LiveMapInput,
+): LiveMap {
   if (localLibraries !== undefined) {
     assert_portable_aggregate_snapshot_shape(snapshot);
     const inputs: Record<string, LiveMapLibraryInput> = Object.create(null);
@@ -273,15 +280,15 @@ export function make_livemap_mirror_from_portable_aggregate_internal(
 
 /** Install one detached complete aggregate snapshot into a fresh runtime domain. */
 export function install_libraries_snapshot(
-  snapshot: LiveMapLibrariesSnapshot,
-): Readonly<{ map: LiveMapLibraries }> {
+  snapshot: LiveMapSnapshot,
+): Readonly<{ map: LiveMap }> {
   return Object.freeze({ map: make_livemap_mirror_from_snapshot_internal(snapshot) });
 }
 
 /** Install complete semantic state without passing through a snapshot artifact. @internal */
 export function make_livemap_mirror_from_semantic_checkpoint_internal(
   checkpoint: LiveMapSemanticCheckpoint,
-): LiveMapLibraries {
+): LiveMap {
   if (checkpoint.registry.libraries.length !== checkpoint.libraries.length) {
     throw new Error("Semantic checkpoint registry is incomplete.");
   }
@@ -311,8 +318,8 @@ export function make_livemap_mirror_from_semantic_checkpoint_internal(
 
 /** @internal Shared exact aggregate decoder/installer used by local and hosted installation. */
 export function make_livemap_mirror_from_snapshot_internal(
-  snapshot: LiveMapLibrariesSnapshot,
-): LiveMapLibraries {
+  snapshot: LiveMapSnapshot,
+): LiveMap {
   assert_libraries_snapshot_shape(snapshot);
   assert_libraries_snapshot_bound(snapshot);
   if (snapshot.registryDigest !== snapshot.registry.digest
@@ -357,18 +364,18 @@ export function make_livemap_mirror_from_snapshot_internal(
 function make_data_library(
   library: NamedLibrary,
   aggregate: ReturnType<typeof internal_livemap_aggregate_authority>,
-  public_commit: (commit: LiveMapAggregateCommit) => LiveMapMultiLibraryCommit,
+  public_commit: (commit: LiveMapAggregateCommit) => LiveMapCommit,
 ): LiveMapDataLibrary {
   const inspected = aggregate.inspect().libraries.find((entry) => entry.identity === library.identity);
   if (inspected === undefined || (inspected.mode !== "data-object" && inspected.mode !== "data-array")) {
     throw new Error(`LiveMap Library ${JSON.stringify(library.name)} is not a data Library.`);
   }
   const snap = (path: LivePath = []): JsonValue | undefined => aggregate.snap(library.identity, path);
-  const public_data_commit = (commit: LiveMapAggregateCommit): LiveMapMultiLibraryCommit<string, LiveMapDataOp> =>
-    public_commit(commit) as LiveMapMultiLibraryCommit<string, LiveMapDataOp>;
+  const public_data_commit = (commit: LiveMapAggregateCommit): LiveMapCommit<string, LiveMapDataOp> =>
+    public_commit(commit) as LiveMapCommit<string, LiveMapDataOp>;
   const handle = <TValue = JsonValue | undefined>(path: LivePath): LiveMapLibraryPathHandle<TValue> => {
     const stablePath = clone_live_path(must_live_path(path));
-    type DataCommit = LiveMapMultiLibraryCommit<string, LiveMapDataOp>;
+    type DataCommit = LiveMapCommit<string, LiveMapDataOp>;
     const projectedRead = (targetPath: LivePath): OrderedProjectedValue | undefined => ordered_projected_value_at(
       projected_value_from_hson_node(aggregate.root(library.identity)),
       targetPath,
@@ -398,6 +405,24 @@ function make_data_library(
         return value === undefined ? undefined : hson_data_text_from_value(value);
       },
       at: ((child: LivePath) => handle([...stablePath, ...must_live_path(child)])) as unknown as LiveMapLibraryPathHandle<TValue>["at"],
+      watch: (listener: (next: TValue) => void) => {
+        const stopWatch = aggregate.watch(library.identity, stablePath, (next) => listener(next as TValue));
+        const stopRestore = aggregate.observeRestore((event) => {
+          if (event.libraries.includes(library.identity)) listener(snap(stablePath) as TValue);
+        });
+        return () => { stopWatch(); stopRestore(); };
+      },
+      feed: (listener: (event: LiveMapLibraryFeedEvent) => void) => aggregate.feed(
+        library.identity, stablePath, (event) => {
+          const ops = event.operations.map((entry) => entry.operation).filter(
+            (operation): operation is LiveMapDataOp => !("domain" in operation),
+          );
+          if (ops.length === 0) return;
+          const commit = public_data_commit(event.commit);
+          listener(Object.freeze({ op: ops[0]!, ops: Object.freeze(ops),
+            path: clone_live_path(stablePath), value: event.value, commit }));
+        },
+      ),
       set: (value: LiveMapSetValue<TValue>) => public_data_commit(aggregate.commit([{
         target: aggregate.target(library.identity, stablePath),
         kind: "set",
@@ -448,6 +473,16 @@ function make_data_library(
     schema: Object.freeze({ get: () => library.input.schema }),
   };
   const selected = Object.freeze(facade);
+  register_livemap_projected_identity_api(selected, make_livemap_projected_identity_api(
+    () => selected,
+    Object.freeze({
+      root: () => aggregate.root(library.identity),
+      overlay: () => aggregate.projectedOverlay(library.identity),
+      identityEpoch: aggregate.identityEpoch(),
+      acquireLocalIdentity: (path, quid) => aggregate.acquireLocalProjectedIdentity(library.identity, path, quid),
+    }),
+  ));
+  register_livemap_identity_epoch_owner(selected, aggregate.identityEpoch());
   register_internal_authority_position_observer(selected, aggregate.observeAuthorityPosition);
   return selected;
 }
@@ -476,7 +511,7 @@ function omit_array_collisions<TValue, TCommit>(
 function make_document_library(
   library: NamedLibrary,
   aggregate: ReturnType<typeof internal_livemap_aggregate_authority>,
-  public_commit: (commit: LiveMapAggregateCommit) => LiveMapMultiLibraryCommit,
+  public_commit: (commit: LiveMapAggregateCommit) => LiveMapCommit,
 ): LiveMapDocumentLibrary {
   const inspected = aggregate.inspect().libraries.find((entry) => entry.identity === library.identity);
   if (inspected === undefined || inspected.mode !== "document") {
@@ -506,7 +541,7 @@ function make_document_library(
         register_livemap_document_observation_evidence(observation, Object.freeze({
           mode: "document" as const,
           revision: aggregateCommit.rev,
-          root: root(),
+          root: aggregate.documentRootFor(library.identity, aggregateCommit) ?? root(),
           continuity: "same-epoch" as const,
         }));
         listener(observation);
@@ -580,11 +615,11 @@ function make_document_library(
     ...mutation.flags,
   });
 
-  const multi_commit = <TOp extends LiveMapGraphOp>(commit: LiveMapGraphCommit<TOp>): LiveMapMultiLibraryCommit<string, TOp> => {
+  const multi_commit = <TOp extends LiveMapGraphOp>(commit: LiveMapGraphCommit<TOp>): LiveMapCommit<string, TOp> => {
     const aggregateCommit = aggregate.aggregateCommitForDocument(commit);
-    if (aggregateCommit !== undefined) return public_commit(aggregateCommit) as LiveMapMultiLibraryCommit<string, TOp>;
+    if (aggregateCommit !== undefined) return public_commit(aggregateCommit) as LiveMapCommit<string, TOp>;
     return Object.freeze({
-      kind: "multi-library" as const,
+      kind: "map" as const,
       changed: commit.changed,
       prevRev: commit.prevRev,
       rev: commit.rev,
@@ -700,7 +735,8 @@ function make_document_library(
     content: Object.freeze(Object.assign(
       () => clone_node(root()).$_content.slice(),
       {
-        replace: (target: LiveMapDocumentRequestTarget, index: number, replacement: LiveMapDocumentContent) => multi_commit(mutation.replaceContent(target, index, replacement)),
+        replace: (target: LiveMapDocumentRequestTarget, index: number, replacement: LiveMapDocumentContent, lineage?: LiveMapReplacementLineage) =>
+          multi_commit(mutation.replaceContent(target, index, replacement, lineage)),
         insert: (target: LiveMapDocumentRequestTarget, index: number, content: LiveMapDocumentContent) => multi_commit(mutation.insertContent(target, index, content)),
         remove: (target: LiveMapDocumentRequestTarget, index: number) => multi_commit(mutation.removeContent(target, index)),
         move: (target: LiveMapDocumentRequestTarget, from: number, to: number) => multi_commit(mutation.moveContent(target, from, to)),
@@ -723,7 +759,7 @@ function make_document_library(
   register_livemap_document_identity_authority(documentApi, controller);
   register_livemap_identity_epoch_owner(documentApi, controller.identityEpoch);
 
-  const capture: LiveMapDocumentLibrary["capture"] = (options?: DocumentLiveMapCaptureOptions) => capture_livemap_document(
+  const capture: LiveMapDocumentLibrary["capture"] = (options?: LiveMapDocumentCaptureOptions) => capture_livemap_document(
     controller.identityEpoch,
     "document",
     aggregate.inspect().revision,

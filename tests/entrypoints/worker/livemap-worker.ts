@@ -1,127 +1,63 @@
+import { Hson } from "hson-live/hson";
 import {
   hsonLiveMap,
   LiveMapDocumentIdentityProvenanceError,
   LiveMapProjectedIdentityError,
   LiveMapProjectedMutationError,
-  type DocumentLiveMapCaptureIdentity,
-  type DocumentLiveMapInstallIdentity,
+  type LiveMapSnapshot,
   type LiveMapDocumentIdentityProvenanceErrorCode,
   type LiveMapDocumentInstallFailureCode,
-  type LiveMapMoveOp,
-  type LiveMap,
-  type LiveMapCapture,
   type LiveMapProjectedIdentityErrorCode,
   type LiveMapProjectedMutationErrorCode,
-  type LiveMapRenameOp,
 } from "hson-live/livemap";
-// @ts-expect-error Projected identity handles are package-internal continuity machinery.
-import type { LiveMapProjectedIdentityHandle } from "hson-live/livemap";
-// @ts-expect-error Identity registration operations are not application-authored LiveMap types.
-import type { LiveMapProjectedGraphEnsureQuidOp } from "hson-live/livemap";
-// @ts-expect-error Projected identity commit targets are package-internal.
-import type { LiveMapProjectedIdentityCommitTarget } from "hson-live/livemap";
-// @ts-expect-error Internal write intent is not exported from the public LiveMap entrypoint.
-import type { LiveMapWriteOp } from "hson-live/livemap";
-import type { HsonSchema } from "hson-live/hson";
 
-const map = hsonLiveMap.fromJson({ ready: true });
-void map.snap();
-const projectedAcquisitionIsPublic: "ensureIdentity" extends keyof typeof map ? true : false = false;
-const projectedCapture: LiveMapCapture = map.capture();
+const map = hsonLiveMap.fromLibraries({
+  state: {
+    data: { ready: true, items: [1, 2] },
+    schema: Hson.schema`<type "data" content <ready "boolean" items <array "number">>>`,
+  },
+});
+const state = map.lib("state");
+void state.snap();
+const projectedAcquisitionIsPublic: "ensureIdentity" extends keyof typeof state ? true : false = false;
+const capture: LiveMapSnapshot = map.capture();
 void projectedAcquisitionIsPublic;
-void projectedCapture.root;
-void hsonLiveMap.fromHson(`<worker <ready true>>`);
-const emptyDocumentMap = hsonLiveMap.fromHson("");
-if (emptyDocumentMap.mode === "document") void emptyDocumentMap.root();
-void hsonLiveMap.fromNode(map.root());
-declare const workerSchema: HsonSchema;
-void map.schema.use(workerSchema);
+void capture.libraries;
 
-declare const optionalProjectedMap: LiveMap<Readonly<{ user?: Readonly<{ name: string }> }>>;
-const optionalProjectedName: string | undefined = optionalProjectedMap.proxy().user.name.$_.snap();
-void optionalProjectedName;
-
-const documentMap = hsonLiveMap.fromHson(`<main/>`);
-if (documentMap.mode === "document") {
-  const documentLocation = documentMap.at([0]);
-  const documentEndpoint = documentLocation.at([1]).snap();
-  documentLocation.watch((next) => { void next; });
-  documentMap.proxy()[0].$_.watch((next) => { void next; });
-  const logicalPath: readonly number[] = documentLocation.path();
-  void documentEndpoint;
+const documentMap = hsonLiveMap.fromLibraries({
+  page: { document: `<main <button "Save" id "target">>`, schema: Hson.schema`<type "document" content <main <button string id string>>>` },
+});
+const page = documentMap.lib("page");
+if (page.mode === "document") {
+  const location = page.at([0]);
+  location.watch((next) => { void next; });
+  const logicalPath: readonly number[] = location.path();
   void logicalPath;
-  void documentLocation.rev;
-  const documentProxy = documentMap.proxy();
-  const documentProxyLocation = documentProxy[0][1].$_;
-  const rootedDocumentProxyLocation = documentMap.proxy([0])[1].$_;
-  const discoveredDocumentLocation = documentMap.at([]).id("target");
-  const proxyDiscoveredDocumentLocation = documentMap.proxy().$_.id("target");
-  const replacementCommit = documentLocation.replace(documentMap.root());
-  const deletionCommit = documentProxyLocation.delete();
-  const insertionCommit = documentMap.at([]).insert(0, documentMap.root());
-  const movementCommit = documentMap.proxy().$_.move(0, 1);
-  const attrValue = documentLocation.attrs.get("id");
-  const attrCommit = documentProxyLocation.attrs.set("title", "worker");
-  // @ts-expect-error a missing read does not make undefined valid replacement content
-  documentLocation.replace(undefined);
-  void documentProxyLocation.snap();
-  void rootedDocumentProxyLocation.path();
-  void discoveredDocumentLocation?.snap();
-  void proxyDiscoveredDocumentLocation?.path();
-  void replacementCommit.ops;
-  void deletionCommit.ops;
-  void insertionCommit.ops;
-  void movementCommit.ops;
-  void attrValue;
-  void attrCommit.ops;
-  // @ts-expect-error document proxies expose numeric structural traversal only
-  documentProxy.attrs;
-  // @ts-expect-error document proxy escapes omit data mutation capabilities
-  documentProxyLocation.set(documentMap.root());
-  // @ts-expect-error logical document paths do not accept data string keys
-  documentMap.at(["content"]);
-  // @ts-expect-error document locations intentionally omit data mutation helpers
-  documentLocation.set(documentMap.root());
-  // @ts-expect-error document locations do not gain projected update semantics
-  documentLocation.update(() => documentMap.root());
-  // @ts-expect-error document-specific namespaces do not duplicate passive traversal
-  documentMap.document.at([0]);
-  // @ts-expect-error canonical ID discovery belongs to locations, not the document façade
-  documentMap.document.id("target");
-  const captureIdentity: DocumentLiveMapCaptureIdentity = "same-epoch";
-  const installIdentity: DocumentLiveMapInstallIdentity = "same-epoch";
-  const capture = documentMap.capture({ identity: captureIdentity });
-  documentMap.install(capture, { identity: installIdentity });
-  const documentAcquisitionIsPublic: "ensureIdentity" extends keyof typeof documentMap.document ? true : false = false;
+  void location.rev;
+  const discovered = page.at([]).id("target");
+  void discovered?.snap();
+  const documentCapture = page.capture();
+  void documentCapture;
+  const documentAcquisitionIsPublic: "ensureIdentity" extends keyof typeof page.document ? true : false = false;
   void documentAcquisitionIsPublic;
-  // @ts-expect-error Raw QUIDs are observations, not document request targets.
-  documentMap.document.attrs.set({ kind: "quid", quid: "000000v01" }, "title", "worker");
+  // @ts-expect-error Data mutation is not a document location operation.
+  location.set(page.root());
+  // @ts-expect-error Document locations use numeric paths.
+  page.at(["content"]);
+  // @ts-expect-error Rendering is owned by the registry.
+  page.render();
 }
+void documentMap.render();
 
-void (0 as unknown as LiveMapProjectedIdentityHandle);
-void (0 as unknown as LiveMapProjectedGraphEnsureQuidOp);
-void (0 as unknown as LiveMapProjectedIdentityCommitTarget);
-void (0 as unknown as LiveMapWriteOp);
-
-// @ts-expect-error projected locations do not expose HTML ID discovery
-map.at([]).id("target");
-// @ts-expect-error projected proxy escapes remain data path handles
-map.proxy().$_.id("target");
-// @ts-expect-error projected locations do not expose document content ownership
-map.at([]).insert(0, true);
-// @ts-expect-error projected proxy escapes do not expose document attrs
-map.proxy().$_.attrs.get("id");
+// @ts-expect-error Data locations do not provide HTML ID discovery.
+state.at([]).id("target");
+// @ts-expect-error Data locations do not own document content.
+state.at([]).insert(0, true);
 
 const provenanceCode: LiveMapDocumentIdentityProvenanceErrorCode = "FOREIGN_IDENTITY_EPOCH";
 const installCode: LiveMapDocumentInstallFailureCode = "DUPLICATE_PRESERVED_CLAIMS";
 void new LiveMapDocumentIdentityProvenanceError(provenanceCode, installCode);
-
-const renameOp: LiveMapRenameOp | undefined = map.at([]).asObject()!.renameKey("ready", "renamed").ops[0] as LiveMapRenameOp;
-const moveMap = hsonLiveMap.fromJson({ items: [1, 2] });
-const moveOp: LiveMapMoveOp | undefined = moveMap.at(["items"]).asArray()!.move(0, 1).ops[0] as LiveMapMoveOp;
 const mutationCode: LiveMapProjectedMutationErrorCode = "OBJECT_RENAME_SOURCE_NOT_FOUND";
 const identityCode: LiveMapProjectedIdentityErrorCode = "PROJECTED_IDENTITY_INELIGIBLE";
-void renameOp;
-void moveOp;
 void new LiveMapProjectedMutationError(mutationCode, "rename", [], "proof");
 void new LiveMapProjectedIdentityError(identityCode, [], "proof");

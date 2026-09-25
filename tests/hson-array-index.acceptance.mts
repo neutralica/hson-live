@@ -2,6 +2,7 @@ import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { parseDocument } from "htmlparser2";
 import { hson } from "../src/hson.ts";
+import { Hson, type HsonSchema } from "../src/index.ts";
 import { hsonTransform } from "../src/api/transform/index.ts";
 import { parse_html } from "../src/api/transform/parsers/parse-html.ts";
 import { node_from_svg, SVG_NS } from "../src/api/transform/utils/node-utils/node-from-svg.ts";
@@ -326,25 +327,35 @@ check("canonical equality is strict while array admission owns physical index re
 });
 
 check("LiveMap projection and every numeric path follow canonical physical order", () => {
-  const map = hson.liveMap.fromNode(array_root([
+  const schema: HsonSchema = Hson.schema`<type "data" defs <Root <array "string">> content <ref "Root">>`;
+  const source = array_root([
     scalar_item("1", "b"),
     scalar_item("0", "a"),
-  ]));
-  assert.equal(map.mode, "data-array");
-  if (map.mode !== "data-array") throw new Error("Expected data array");
-  assert.deepEqual(map.snap(), ["a", "b"]);
-  assert.equal(map.at([0]).snap(), "a");
-  assert.equal(map.at([1]).snap(), "b");
-  assert.equal(map.at([2]).snap(), undefined);
-  assert.deepEqual(indexes(map.root()), ["0", "1"]);
+  ]);
+  const map = hson.liveMap.fromLibraries({ data: {
+    data: hsonTransform.fromNode(source).toJson().serialize(),
+    schema,
+  } });
+  const data = map.lib("data");
+  assert.equal(data.mode, "data-array");
+  assert.deepEqual(data.snap(), ["a", "b"]);
+  assert.equal(data.at([0]).snap(), "a");
+  assert.equal(data.at([1]).snap(), "b");
+  assert.equal(data.at([2]).snap(), undefined);
+  assert.deepEqual(indexes(data.root()), ["0", "1"]);
 });
 
 check("LiveMap splice and move regenerate dense indexes and preserve addressability", () => {
-  const map = hson.liveMap.fromJson({ items: ["a", "b", "c"] });
-  map.splice(["items"], 1, 1, "x", "y");
-  map.at(["items"]).asArray()!.move(3, 0);
-  assert.deepEqual(map.snap(), { items: ["c", "a", "x", "y"] });
-  const root = map.root();
+  const schema: HsonSchema = Hson.schema`<type "data" content <items <array "string">>>`;
+  const map = hson.liveMap.fromLibraries({ data: {
+    data: { items: ["a", "b", "c"] },
+    schema,
+  } });
+  const data = map.lib("data");
+  data.at(["items"]).asArray()!.splice(1, 1, "x", "y");
+  data.at(["items"]).asArray()!.move(3, 0);
+  assert.deepEqual(data.snap(), { items: ["c", "a", "x", "y"] });
+  const root = data.root();
   const nestedArray = (() => {
     const arrays: HsonNode[] = [];
     const visit = (node: HsonNode): void => {
@@ -357,7 +368,7 @@ check("LiveMap splice and move regenerate dense indexes and preserve addressabil
   assert.ok(nestedArray);
   assert.deepEqual(indexes(nestedArray), ["0", "1", "2", "3"]);
   for (let position = 0; position < 4; position += 1) {
-    assert.notEqual(map.at(["items", position]).snap(), undefined);
+    assert.notEqual(data.at(["items", position]).snap(), undefined);
   }
 });
 

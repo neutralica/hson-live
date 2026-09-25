@@ -296,8 +296,6 @@ assert.match(render_document({ map: local }).html, /LOCAL_CUT/);
 // recovery machinery. It gains no implicit exposure, projection, or document.
 {
   const oneMap = hsonLiveMap.fromLibraries({ page: { document: '<main <p "ONE_LIBRARY_HTML"/>/>', schema: Page } });
-  assert.throws(() => Reflect.apply(hsonLocus.create, undefined, [{ map: hsonLiveMap.fromJson({ value: 1 }),
-    exposure: [{ library: "page", exposure: "client-public" }] }]), /library registry/i);
   assert.throws(() => hsonLocus.create({ map: oneMap, exposure: [] }), /exposure configuration/i);
   const oneLocus = hsonLocus.create({ map: oneMap, exposure: [{ library: "page", exposure: "client-public" }],
     authorizeProjection: () => ({ libraries: ["page"] }) });

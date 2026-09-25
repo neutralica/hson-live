@@ -15,13 +15,6 @@ export type TrustedSchemaBindingRegistration = Readonly<{
   schemaId: string;
   binding: TrustedSchemaSourceBinding;
 }>;
-export type TrustedSchemaMapFlow = Readonly<{
-  moduleUrl: string;
-  contextRevision: string;
-  templateId: string;
-  constructionId: string;
-  callId: string;
-}>;
 export type TrustedSchemaDirectSource = Readonly<{
   interpolation?: Readonly<{ templateId: string; sourceRevision: string; evaluationId: string }>;
   templateId: string;
@@ -29,14 +22,12 @@ export type TrustedSchemaDirectSource = Readonly<{
   documentRevision: number;
   templateRevision: number;
   associationRevision: number;
-  mapFlow?: TrustedSchemaMapFlow;
   binding: TrustedSchemaSourceBinding;
 }>;
 
 export type TrustedSchemaRootMode = "projected" | "document";
 export type TrustedSchemaAssociationEvidence = Readonly<{
   evaluationId?: string;
-  mapFlow?: TrustedSchemaMapFlow;
   binding?: TrustedSchemaSourceBinding;
   validationAttempted?: boolean;
   associationId: string;
@@ -110,7 +101,6 @@ export type TrustedSchemaRequest =
       runtimeGeneration: number;
       associationId: string;
       schemaId: string;
-      lifecycleId?: string;
       directSource: TrustedSchemaDirectSource;
     }>
   | Readonly<{

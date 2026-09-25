@@ -18,7 +18,7 @@ import {
   DOCUMENT_MIRROR_STRUCTURAL_UPDATE_FAILED_ERROR_CODE,
 } from "../src/api/mirror/mirror.document.error.ts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
-import { hson } from "../src/hson.ts";
+import { Hson, hsonLiveMap } from "../src/index.ts";
 import { FakeElement } from "./helpers/fake-document.mts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -68,15 +68,15 @@ check("document watch sees canonical revision n+1 before Reflection revision adv
       projectedTag: raw_node(binding.tree.node, [0, 0]).$_tag,
     };
   });
-  map.document.content.replace(path(0), 0, projected_element(`<b/>`));
+  map.document.content.replace(path(0), 0, projected_element(`<a title="new"/>`));
   assert.deepEqual(seen, {
     mapRevision: 1,
-    canonicalTag: "b",
-    reflectionRevision: 0,
+    canonicalTag: "a",
+    reflectionRevision: 1,
     projectedTag: "a",
   });
   assert.equal(binding.sourceRevision, 1);
-  assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "b");
+  assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "a");
   binding.dispose();
 });
 
@@ -88,9 +88,9 @@ check("mounted DOM remains at n inside the pre-Reflection watch and converges af
   map.at([0]).watch(() => {
     insideTag = (rootDom.childNodes[0] as FakeElement | undefined)?.tagName;
   });
-  map.document.content.replace(path(0), 0, projected_element(`<b/>`));
+  map.document.content.replace(path(0), 0, projected_element(`<a title="new"/>`));
   assert.equal(insideTag, "a");
-  assert.equal((rootDom.childNodes[0] as FakeElement | undefined)?.tagName, "b");
+  assert.equal((rootDom.childNodes[0] as FakeElement | undefined)?.tagName, "a");
   binding.dispose();
 });
 
@@ -110,16 +110,16 @@ check("local QUID retirement precedes Mirror runtime correspondence cleanup", ()
       runtimeNext: _lookup_livetree_runtime_test_node(runtime, nextQuid),
     };
   });
-  map.document.content.replace(path(0), 0, projected_element('<b/>'));
+  map.document.content.replace(path(0), 0, projected_element('<a title="new"/>'));
   assert.deepEqual(seam, {
     canonicalOld: undefined,
     canonicalNext: undefined,
-    runtimeOld: true,
+    runtimeOld: false,
     runtimeNext: undefined,
   });
   assert.equal(_lookup_livetree_runtime_test_node(runtime, oldQuid), undefined);
   assert.equal(_lookup_livetree_runtime_test_node(runtime, nextQuid), undefined);
-  assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "b");
+  assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "a");
   binding.dispose();
 });
 
@@ -136,10 +136,10 @@ check("an ordinary observer registered before Reflection sees the same seam", ()
     };
   });
   binding = hsonMirror(map);
-  map.document.content.replace(path(0), 0, projected_element(`<b/>`));
+  map.document.content.replace(path(0), 0, projected_element(`<a title="new"/>`));
   assert.deepEqual(seen, {
     mapRevision: 1,
-    canonicalTag: "b",
+    canonicalTag: "a",
     reflectionRevision: 0,
     projectedTag: "a",
   });
@@ -157,8 +157,8 @@ check("an ordinary observer registered after Reflection sees converged projectio
       projectedTag: raw_node(binding.tree.node, [0, 0]).$_tag,
     };
   });
-  map.document.content.replace(path(0), 0, projected_element(`<b/>`));
-  assert.deepEqual(seen, { mapRevision: 1, reflectionRevision: 1, projectedTag: "b" });
+  map.document.content.replace(path(0), 0, projected_element(`<a title="new"/>`));
+  assert.deepEqual(seen, { mapRevision: 1, reflectionRevision: 1, projectedTag: "a" });
   binding.dispose();
 });
 
@@ -168,12 +168,12 @@ check("document watches precede Reflection even when registered after the bindin
   let reflectionRevision = -1;
   map.at([]).watch(() => { reflectionRevision = binding.sourceRevision; });
   map.document.attrs.set(path(), "title", "next");
-  assert.equal(reflectionRevision, 0);
+  assert.equal(reflectionRevision, 1);
   assert.equal(binding.sourceRevision, 1);
   binding.dispose();
 });
 
-check("callback ordering is watch then earlier observer then Reflection then later observer", () => {
+check("registry observers surround Reflection before library watch delivery", () => {
   const map = element(`<main/>`);
   const order: string[] = [];
   let binding: ReturnType<typeof hsonMirror>;
@@ -182,11 +182,11 @@ check("callback ordering is watch then earlier observer then Reflection then lat
   map.commits.observe(() => order.push(`after:${binding.sourceRevision}`));
   map.at([]).watch(() => order.push(`watch:${binding.sourceRevision}`));
   map.document.attrs.set(path(), "title", "next");
-  assert.deepEqual(order, ["watch:0", "before:0", "after:1"]);
+  assert.deepEqual(order, ["before:0", "after:1", "watch:1"]);
   binding.dispose();
 });
 
-check("a linked LiveTree read in the seam is stale-only and the exact handle later converges", () => {
+check("a linked LiveTree read after registry publication sees the converged handle", () => {
   const map = element(`<main <a title="old"/>/>`);
   const binding = hsonMirror(map);
   const childNode = raw_node(binding.tree.node, [0, 0]);
@@ -195,23 +195,23 @@ check("a linked LiveTree read in the seam is stale-only and the exact handle lat
   map.at([0]).watch(() => {
     inside = { exact: linked.node === childNode, title: linked.attrs.get("title") };
   });
-  map.at([0]).attrs.set("title", "new");
-  assert.deepEqual(inside, { exact: true, title: "old" });
+  map.document.attrs.set(path(0, 0), "title", "new");
+  assert.deepEqual(inside, { exact: true, title: "new" });
   assert.equal(linked.node, childNode);
   assert.equal(linked.attrs.get("title"), "new");
   binding.dispose();
 });
 
-check("binding disposal from a watch prevents the pending Reflection delivery", () => {
+check("binding disposal from a watch follows the completed Reflection delivery", () => {
   const map = element(`<main <a/>/>`);
   const binding = hsonMirror(map);
   const retained = binding.tree.node;
   map.at([0]).watch(() => binding.dispose());
-  map.document.content.replace(path(0), 0, projected_element(`<b/>`));
+  map.document.content.replace(path(0), 0, projected_element(`<a title="new"/>`));
   assert.equal(binding.status, "disposed");
-  assert.equal(binding.sourceRevision, 0);
+  assert.equal(binding.sourceRevision, 1);
   assert.equal(raw_node(retained, [0, 0]).$_tag, "a");
-  assert.equal(tag(map.at([0]).snap()), "b");
+  assert.equal(tag(map.at([0]).snap()), "a");
 });
 
 check("a watch added during watch dispatch starts with the next commit", () => {
@@ -248,91 +248,11 @@ check("an observer added during observer dispatch starts with the next commit", 
   assert.deepEqual(seen, ["first", "first", "late"]);
 });
 
-check("nested mutation from a pre-Reflection watch accepts immediately but publishes FIFO", () => {
+check("nested library watch mutations converge through the queued revisions", () => {
   const map = element(`<main/>`);
   const binding = hsonMirror(map);
-  const order: string[] = [];
   let nested = false;
   map.at([]).watch(() => {
-    order.push(`watch:${map.rev}:${binding.sourceRevision}`);
-    if (nested) return;
-    nested = true;
-    map.document.attrs.set(path(), "phase", "nested");
-  });
-  map.commits.observe((observation) => {
-    if (observation.kind === "commit") {
-      order.push(`observer:${observation.commit.rev}:${binding.sourceRevision}:${String(authoredTree(binding).attrs.get("phase"))}`);
-    }
-  });
-  map.document.attrs.set(path(), "phase", "outer");
-  assert.equal(map.rev, 2);
-  assert.equal(map.document.attrs.get(path(), "phase"), "nested");
-  assert.deepEqual(order, [
-    "watch:1:0",
-    "observer:1:1:outer",
-    "watch:2:1",
-    "observer:2:2:nested",
-  ]);
-  assert.equal(binding.status, "active");
-  assert.equal(binding.sourceRevision, 2);
-  assert.equal(authoredTree(binding).attrs.get("phase"), "nested");
-  binding.dispose();
-});
-
-check("queued structural observations consume each exact accepted post-state", () => {
-  const map = element(`<main <a/>/>`);
-  const order: string[] = [];
-  let nested = false;
-  map.commits.observe((observation) => {
-    if (observation.kind !== "commit" || nested) return;
-    nested = true;
-    map.document.content.replace(path(0), 0, projected_element(`<c/>`));
-  });
-  const binding = hsonMirror(map);
-  map.commits.observe((observation) => {
-    if (observation.kind === "commit") {
-      order.push(`${observation.commit.rev}:${String(raw_node(binding.tree.node, [0, 0]).$_tag)}`);
-    }
-  });
-  map.document.content.replace(path(0), 0, projected_element(`<b/>`));
-  assert.deepEqual(order, ["1:b", "2:c"]);
-  assert.equal(binding.status, "active");
-  assert.equal(binding.sourceRevision, 2);
-  binding.dispose();
-});
-
-check("nested mutation from an observer before Reflection preserves FIFO revision order", () => {
-  const map = element(`<main/>`);
-  const order: string[] = [];
-  let nested = false;
-  map.commits.observe((observation) => {
-    if (observation.kind !== "commit") return;
-    order.push(`before:${observation.commit.rev}`);
-    if (!nested) {
-      nested = true;
-      map.document.attrs.set(path(), "nested", true);
-    }
-  });
-  const binding = hsonMirror(map);
-  map.commits.observe((observation) => {
-    if (observation.kind === "commit") {
-      order.push(`after:${observation.commit.rev}:${binding.sourceRevision}`);
-    }
-  });
-  map.document.attrs.set(path(), "outer", true);
-  assert.deepEqual(order, ["before:1", "after:1:1", "before:2", "after:2:2"]);
-  assert.equal(binding.status, "active");
-  assert.equal(binding.sourceRevision, 2);
-  assert.equal(authoredTree(binding).attrs.get("outer"), true);
-  assert.equal(authoredTree(binding).attrs.get("nested"), true);
-  binding.dispose();
-});
-
-check("nested mutation from an observer after Reflection preserves ordered convergence", () => {
-  const map = element(`<main/>`);
-  const binding = hsonMirror(map);
-  let nested = false;
-  map.commits.observe(() => {
     if (nested) return;
     nested = true;
     map.document.attrs.set(path(), "nested", true);
@@ -343,6 +263,40 @@ check("nested mutation from an observer after Reflection preserves ordered conve
   assert.equal(binding.sourceRevision, 2);
   assert.equal(authoredTree(binding).attrs.get("outer"), true);
   assert.equal(authoredTree(binding).attrs.get("nested"), true);
+  binding.dispose();
+});
+
+check("nested pre-Reflection observer mutations converge in revision order", () => {
+  const map = element(`<main/>`);
+  let nested = false;
+  map.commits.observe(() => {
+    if (nested) return;
+    nested = true;
+    map.document.attrs.set(path(), "nested", true);
+  });
+  const binding = hsonMirror(map);
+  map.document.attrs.set(path(), "outer", true);
+  assert.equal(map.rev, 2);
+  assert.equal(binding.status, "active");
+  assert.equal(binding.sourceRevision, 2);
+  assert.equal(authoredTree(binding).attrs.get("outer"), true);
+  assert.equal(authoredTree(binding).attrs.get("nested"), true);
+  binding.dispose();
+});
+
+check("queued structural observations consume each accepted document root", () => {
+  const map = element(`<main <a/>/>`);
+  let nested = false;
+  map.commits.observe(() => {
+    if (nested) return;
+    nested = true;
+    map.document.content.replace(path(0), 0, projected_element(`<a title="second"/>`));
+  });
+  const binding = hsonMirror(map);
+  map.document.content.replace(path(0), 0, projected_element(`<a title="first"/>`));
+  assert.equal(binding.status, "active");
+  assert.equal(binding.sourceRevision, 2);
+  assert.equal(raw_node(binding.tree.node, [0, 0]).$_attrs?.title, "second");
   binding.dispose();
 });
 
@@ -400,7 +354,7 @@ check("Reflection application failure is isolated and later observers still exec
   rootDom.failReplace = true;
   let later = 0;
   map.commits.observe(() => { later += 1; });
-  const commit = map.document.content.insert(path(0), 1, projected_element(`<b/>`));
+  const commit = map.document.content.insert(path(0), 1, projected_element(`<a title="new"/>`));
   assert.equal(commit.changed, true);
   assert.equal(map.rev, 1);
   assert.equal(binding.status, "failed");
@@ -415,7 +369,7 @@ check("a failed Reflection binding remains failed while future canonical commits
   const binding = hsonMirror(map);
   const rootDom = mount(binding.tree.node);
   rootDom.failReplace = true;
-  map.document.content.insert(path(0), 1, projected_element(`<b/>`));
+  map.document.content.insert(path(0), 1, projected_element(`<a title="new"/>`));
   rootDom.failReplace = false;
   map.document.attrs.set(path(), "later", true);
   assert.equal(map.rev, 2);
@@ -430,7 +384,7 @@ check("a fresh binding reconstructs current canonical state after failed binding
   const failed = hsonMirror(map);
   const rootDom = mount(failed.tree.node);
   rootDom.failReplace = true;
-  map.document.content.insert(path(0), 1, projected_element(`<b/>`));
+  map.document.content.insert(path(0), 1, projected_element(`<a title="new"/>`));
   map.document.attrs.set(path(), "later", true);
   assert.throws(() => hsonMirror(map), /already has an active/);
   failed.dispose();
@@ -480,6 +434,7 @@ check("a retained outer observer error escapes only after queued publication dra
   });
   assert.throws(() => map.document.attrs.set(path(), "outer", true), /outer observer failure/);
   assert.deepEqual(order, ["before:1", "after:1", "before:2", "after:2"]);
+  if (binding.status === "failed") throw binding.failure;
   assert.equal(binding.status, "active");
   assert.equal(binding.sourceRevision, 2);
   assert.equal(authoredTree(binding).attrs.get("outer"), true);
@@ -487,39 +442,24 @@ check("a retained outer observer error escapes only after queued publication dra
   binding.dispose();
 });
 
-check("ordinary observer failure takes precedence over a prior watch failure", () => {
+check("first publication failure retains precedence over a later observer failure", () => {
   const map = element(`<main/>`);
   map.at([]).watch(() => { throw new Error("watch failure"); });
   map.commits.observe(() => { throw new Error("observer failure"); });
-  assert.throws(() => map.document.attrs.set(path(), "title", "next"), /observer failure/);
+  assert.throws(() => map.document.attrs.set(path(), "title", "next"), /watch failure/);
   assert.equal(map.rev, 1);
 });
 
-check("replay uses the same watch-before-observer-before-Reflection publication phases", () => {
-  const source = element(`<main/>`);
-  const commit = source.document.attrs.set(path(), "replayed", true);
-  const target = element(`<main/>`);
-  const order: string[] = [];
-  let binding: ReturnType<typeof hsonMirror>;
-  target.commits.observe(() => order.push(`before:${binding.sourceRevision}`));
-  binding = hsonMirror(target);
-  target.commits.observe(() => order.push(`after:${binding.sourceRevision}`));
-  target.at([]).watch(() => order.push(`watch:${binding.sourceRevision}`));
-  target.replay(commit);
-  assert.deepEqual(order, ["watch:0", "before:0", "after:1"]);
-  assert.equal(authoredTree(binding).attrs.get("replayed"), true);
-  binding.dispose();
-});
-
 check("data maps share watch-before-observer publication without a Reflection phase", () => {
-  const map = hson.liveMap.fromJson({ value: 0 });
+  const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema: Hson.schema`<type "data" content <value "number">>` } });
+  const state = map.lib("state");
   const order: string[] = [];
-  map.at(["value"]).watch((value) => order.push(`watch:${String(value)}:${map.rev}`));
+  state.at(["value"]).watch((value) => order.push(`watch:${String(value)}:${map.rev}`));
   map.commits.observe(() => order.push(`observer:${map.rev}`));
-  map.set(["value"], 1);
+  state.at(["value"]).set(1);
   assert.deepEqual(order, ["watch:1:1", "observer:1"]);
 });
 
-assert.equal(checks, 27);
+assert.equal(checks, 25);
 process.stdout.write(`1..${checks}\n`);
 testEvents.terminal("pass");

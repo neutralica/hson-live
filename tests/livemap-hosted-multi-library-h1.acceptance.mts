@@ -6,7 +6,7 @@ import {
   hsonLiveMap,
   type HsonSchema,
 } from "../src/index.ts";
-import { validate_document_path, type HostedLiveMapLibrariesSnapshot } from "../src/api/livemap/index.ts";
+import { validate_document_path, type HostedLiveMapSnapshot } from "../src/api/livemap/index.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import {
   encode_hosted_root,
@@ -332,7 +332,7 @@ check("focused capture, codec, ledger hydration, and replay telemetry stays boun
   const snapshot = authority.captureHosted();
   const captureFourMs = performance.now() - captureFourStart;
   const codecStart = performance.now();
-  const cloned = structuredClone(snapshot) as HostedLiveMapLibrariesSnapshot;
+  const cloned = structuredClone(snapshot) as HostedLiveMapSnapshot;
   const codecMs = performance.now() - codecStart;
   const one = authority.commit([{ target: authority.target(alpha, ["count"]), kind: "set", value: 1 }]).hosted!;
   const aggregateCommit = authority.commit([

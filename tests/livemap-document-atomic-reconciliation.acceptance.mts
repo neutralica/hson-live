@@ -1,291 +1,120 @@
-import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
-import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { hson } from "../src/hson.ts";
-import type { HsonNode } from "../src/core/types.ts";
-import type { DocumentLiveMap, LiveMapCommitObservation, LiveMapGraphOp } from "../src/types/livemap.types.ts";
-import {
-  livemap_document_identity_accounting,
-  livemap_document_identity_overlay_for,
-} from "../src/api/livemap/livemap.document.identity.ts";
-import { LiveMapDocumentStagingError, LiveMapRevError } from "../src/api/livemap/livemap.error.ts";
-import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
+import { element, path, projected_element, commit_document_operations, registry_for_document_library } from "./helpers/mirror-unit6.mts";
+import { livemap_document_identity_overlay_for } from "../src/api/livemap/livemap.document.identity.ts";
+import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
+import type { LiveMapSnapshot } from "../src/types/livemap.types.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livemap.document-atomic-reconciliation",
-  title: "Atomic document identity reconciliation",
+  title: "Registry document atomic reconciliation",
   category: "LiveMap",
   runtime: "node",
-  tags: Object.freeze(["document", "quid", "path", "atomicity", "rollback", "externally-discoverable"]),
+  tags: Object.freeze(["document", "identity", "atomicity", "registry", "externally-discoverable"]),
 });
-
-const testEvents = create_test_event_emitter("livemap.document-atomic-reconciliation");
+const events = create_test_event_emitter("livemap.document-atomic-reconciliation");
 let checks = 0;
 function check(name: string, run: () => void): void {
-
-  testEvents.case_begin(name, name);
-  try {
-    run();
-    testEvents.case_end(name, "pass");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Check failed.";
-    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
-    testEvents.case_end(name, "fail");
-    testEvents.terminal("fail");
-    throw error;
+  events.case_begin(name, name);
+  try { run(); events.case_end(name, "pass"); }
+  catch (error) {
+    events.diagnostic(name, "assertion", error instanceof Error ? error.message : String(error));
+    events.case_end(name, "fail"); events.terminal("fail"); throw error;
   }
-  checks += 1;
-  process.stdout.write(`ok ${checks} - ${name}\n`);
+  process.stdout.write(`ok ${++checks} - ${name}\n`);
 }
+const Q1 = "000006b01";
+const fixture = () => element(`<main <item @${Q1}/> <item/>/>`);
+const overlay = (map: ReturnType<typeof element>) => livemap_document_identity_overlay_for(map.document);
 
-const Q1 = "000000501";
-const Q2 = "000000502";
-const Q3 = "000000503";
-const path = (...parts: number[]) => validate_document_path(parts);
-const documentTarget = (...parts: number[]) => Object.freeze({ kind: "path" as const, path: path(...parts) });
-const target = (...parts: number[]) => documentTarget(0, ...parts);
-
-function element(source: string): DocumentLiveMap {
-  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
-  if (map.mode !== "document") throw new Error("Expected element map");
-  return map;
-}
-
-function multiNodeDocument(source: string): DocumentLiveMap {
-  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
-  if (map.mode !== "document") throw new Error("Expected multiNodeDocument map");
-  return map;
-}
-
-function ordinary(tag: string, quid?: string, child?: HsonNode): HsonNode {
-  return {
-    $_tag: tag,
-    $_content: child === undefined ? [] : [{ $_tag: "_hson_elem", $_content: [child] }],
-    ...(quid === undefined ? {} : { $_meta: { quid } }),
-  };
-}
-
-function branch(tag: string, quid?: string, child?: HsonNode): HsonNode {
-  return { $_tag: "_hson_elem", $_content: [ordinary(tag, quid, child)] };
-}
-
-function replay(map: DocumentLiveMap, ops: readonly LiveMapGraphOp[]): void {
-  Reflect.apply(map.replay, map, [{ changed: true, prevRev: map.rev, rev: map.rev + 1, ops }]);
-}
-
-function state(map: DocumentLiveMap) {
-  return {
-    root: map.root(),
-    rev: map.rev,
-    overlay: livemap_document_identity_overlay_for(map),
-  };
-}
-
-function assertState(map: DocumentLiveMap, before: ReturnType<typeof state>): void {
-  assert.deepEqual(map.root(), before.root);
-  assert.equal(map.rev, before.rev);
-  assert.equal(livemap_document_identity_overlay_for(map), before.overlay);
-}
-
-check("malformed incoming QUID rejects before publication", () => {
-  const map = element(`<main @${Q1}/>`);
-  const before = state(map);
-  assert.throws(() => map.document.content.insert(target(), 0, branch("span", "short")));
-  assertState(map, before);
+check("supplied incoming QUID rejects before graph and revision publication", () => {
+  const map = fixture();
+  const before = map.capture();
+  assert.throws(() => map.document.content.insert(path(0), 1, projected_element('<item @000006b02/>')));
+  assert.deepEqual(map.capture(), before);
+  assert.equal(overlay(map).size, 1);
 });
 
-check("QUIDs inside an incoming subtree reject atomically", () => {
-  const map = element(`<main @${Q1}/>`);
-  const before = state(map);
-  const incoming = branch("section", Q2, ordinary("b", Q2));
-  assert.throws(() => map.document.content.insert(target(), 0, incoming), /runtime QUID|identity/i);
-  assertState(map, before);
+check("incoming collision with an active claim rejects atomically", () => {
+  const map = fixture();
+  const before = map.capture();
+  assert.throws(() => map.document.content.replace(path(0), 1, projected_element(`<item @${Q1}/>`)));
+  assert.deepEqual(map.capture(), before);
 });
 
-check("incoming collision with a surviving graph claim rejects atomically", () => {
-  const map = element(`<main @${Q1}/>`);
-  const before = state(map);
-  assert.throws(() => map.document.content.insert(target(), 0, branch("span", Q1)), /runtime QUID|identity/i);
-  assertState(map, before);
+check("explicit same-runtime lineage may preserve displaced local identity", () => {
+  const map = fixture();
+  map.document.content.replace(path(0), 0, projected_element('<item title="retained"/>'), [
+    { source: validate_document_path([]), destination: validate_document_path([]) },
+  ]);
+  assert.equal(map.document.byQuid(Q1)?.$_attrs?.title, "retained");
 });
 
-check("replacement lineage may preserve the displaced local QUID", () => {
-  const map = element(`<main <i @${Q2}/>/` + `>`);
-  map.document.content.replace(target(0), 0, ordinary("b"), [{ source: path(), destination: path() }]);
-  assert.equal(map.document.byQuid(Q2)?.$_tag, "b");
-  assert.equal(map.rev, 1);
+check("invalid request path cannot route through an existing QUID", () => {
+  const map = fixture();
+  const before = map.capture();
+  assert.throws(() => map.document.attrs.set({ kind: "path", path: [99] }, "bad", true));
+  assert.deepEqual(map.capture(), before);
+  assert.deepEqual(overlay(map).pathForQuid(Q1), [0, 0, 0]);
 });
 
-check("active different witness rejects without rerouting", () => {
-  const map = element(`<main @${Q1}/>`);
-  const before = state(map);
-  assert.throws(() => replay(map, [{
-    domain: "graph", op: "set-attr",
-    target: { kind: "path", path: path(0), witness: { quid: Q2 } },
-    name: "id", value: "bad",
-  }]), /witness/i);
-  assertState(map, before);
-});
-
-check("invalid path never reroutes to a matching QUID", () => {
-  const map = element(`<main @${Q1}/>`);
-  const before = state(map);
-  assert.throws(() => replay(map, [{
-    domain: "graph", op: "set-attr",
-    target: { kind: "path", path: path(9), witness: { quid: Q1 } },
-    name: "id", value: "bad",
-  }]), /witness/i);
-  assertState(map, before);
-});
-
-check("failed operation retains the exact overlay object", () => {
-  const map = element(`<main @${Q1}/>`);
-  const overlay = livemap_document_identity_overlay_for(map);
-  assert.throws(() => map.document.content.insert(target(), 0, branch("span", Q1)));
-  assert.equal(livemap_document_identity_overlay_for(map), overlay);
-});
-
-check("failed operation retains revision zero", () => {
-  const map = element(`<main @${Q1}/>`);
-  assert.throws(() => map.document.content.insert(target(), 0, branch("span", Q1)));
-  assert.equal(map.rev, 0);
-});
-
-check("failed operation publishes no commit", () => {
-  const map = element(`<main @${Q1}/>`);
-  const events: LiveMapCommitObservation[] = [];
-  map.commits.observe((event) => events.push(event));
-  assert.throws(() => map.document.content.insert(target(), 0, branch("span", Q1)));
-  assert.deepEqual(events, []);
-});
-
-check("later staged path failure rolls back every earlier graph and overlay change", () => {
-  const map = element(`<main @${Q1} <a @${Q2}/> <b @${Q3}/>/` + `>`);
-  const before = state(map);
-  assert.throws(() => replay(map, [
-    { domain: "graph", op: "remove-content", target: target(0), index: 0 },
-    { domain: "graph", op: "set-attr", target: target(0, 9), name: "id", value: "bad" },
-  ]), (error: unknown) => error instanceof LiveMapDocumentStagingError && error.opIndex === 1);
-  assertState(map, before);
-});
-
-check("failed staged commit publishes no partial observation", () => {
-  const map = element(`<main <a @${Q2}/> <b @${Q3}/>/` + `>`);
-  const events: LiveMapCommitObservation[] = [];
-  map.commits.observe((event) => events.push(event));
-  assert.throws(() => replay(map, [
-    { domain: "graph", op: "move-content", target: target(0), from: 0, to: 1 },
-    { domain: "graph", op: "remove-content", target: target(0), index: 9 },
+check("failed staged operation rolls back earlier graph and overlay effects", () => {
+  const map = fixture();
+  const before = map.root();
+  const identity = overlay(map);
+  const revision = map.rev;
+  assert.throws(() => commit_document_operations(map, [
+    { domain: "graph", op: "move-content", target: { kind: "path", path: validate_document_path([0, 0]) }, from: 0, to: 1 },
+    { domain: "graph", op: "set-attr", target: { kind: "path", path: validate_document_path([0, 0, 99]) }, name: "bad", value: true },
   ]));
-  assert.deepEqual(events, []);
+  assert.deepEqual(map.root(), before);
+  assert.equal(map.rev, revision);
+  assert.equal(overlay(map), identity);
 });
 
-check("observer failure occurs after root revision and portable graph installation", () => {
-  const map = element(`<main @${Q1}/>`);
-  map.commits.observe(() => { throw new Error("observer-failure"); });
-  assert.throws(() => map.document.content.insert(target(), 0, branch("span")), /observer-failure/);
-  assert.equal(map.rev, 1);
-  assert.equal(map.document.byQuid(Q2), undefined);
-  assert.equal(map.document.content().length, 1);
+check("failed operation publishes no partial observation", () => {
+  const map = fixture();
+  let publications = 0;
+  map.commits.observe(() => { publications += 1; });
+  assert.throws(() => map.document.content.insert(path(0), 1, projected_element('<item @000006b02/>')));
+  assert.equal(publications, 0);
 });
 
-check("replay revision conflict is atomic", () => {
-  const map = element(`<main @${Q1}/>`);
-  const before = state(map);
-  assert.throws(() => Reflect.apply(map.replay, map, [{
-    changed: true, prevRev: 4, rev: 5,
-    ops: [{ domain: "graph", op: "set-attr", target: target(), name: "id", value: "bad" }],
-  }]), (error: unknown) => error instanceof LiveMapRevError);
-  assertState(map, before);
+check("protected metadata mutation leaves canonical state intact", () => {
+  const map = fixture();
+  const before = map.capture();
+  assert.throws(() => map.document.attrs.set(path(), "hson:quid", "bad"));
+  assert.deepEqual(map.capture(), before);
 });
 
-check("failed incoming admission retains no partial introduced claim", () => {
-  const map = element(`<main @${Q1}/>`);
-  assert.throws(() => map.document.content.insert(target(), 0, branch("section", Q2, ordinary("b", Q1))));
-  assert.equal(map.document.byQuid(Q2), undefined);
-  assert.equal(map.document.byQuid(Q1)?.$_tag, "main");
+check("same-position move is an atomic no-op", () => {
+  const map = fixture();
+  const before = map.capture();
+  const result = map.document.content.move(path(0), 0, 0);
+  assert.equal(result.changed, false);
+  assert.deepEqual(map.capture(), before);
 });
 
-check("multi-node document root removal is an ordinary rooted-content mutation", () => {
-  const map = multiNodeDocument(`<a @${Q1}/> <b @${Q2}/>`);
-  map.document.content.remove(documentTarget(), 1);
-  assert.equal(map.document.byQuid(Q1)?.$_tag, "a");
-  assert.equal(map.document.byQuid(Q2), undefined);
-  assert.equal(map.rev, 1);
-});
-
-check("protected metadata mutation is inert", () => {
-  const map = element(`<main @${Q1}/>`);
-  const before = state(map);
-  assert.throws(() => map.document.attrs.set(target(), "hson:quid", Q2));
-  assertState(map, before);
-});
-
-check("malformed replacement graph is inert", () => {
-  const map = element(`<main <i @${Q2}/>/` + `>`);
-  const before = state(map);
-  assert.throws(() => map.document.content.replace(target(0), 0, ordinary("b", "short")));
-  assertState(map, before);
-});
-
-check("exact attr no-op advances neither revision nor publication", () => {
-  const map = element(`<main @${Q1} id="same"/>`);
-  const events: LiveMapCommitObservation[] = [];
-  map.commits.observe((event) => events.push(event));
-  const overlay = livemap_document_identity_overlay_for(map);
-  const commit = map.document.attrs.set(target(), "id", "same");
-  assert.equal(commit.changed, false);
+check("exact attribute no-op consumes no revision or publication", () => {
+  const map = fixture();
+  let publications = 0;
+  map.commits.observe(() => { publications += 1; });
+  map.document.attrs.drop(path(), "absent");
   assert.equal(map.rev, 0);
-  assert.equal(livemap_document_identity_overlay_for(map), overlay);
-  assert.deepEqual(events, []);
+  assert.equal(publications, 0);
 });
 
-check("same-position move is a complete atomic no-op", () => {
-  const map = element(`<main <a @${Q2}/> <b/>/>`);
-  const before = state(map);
-  const commit = map.document.content.move(target(0), 0, 0);
-  assert.equal(commit.changed, false);
-  assertState(map, before);
+check("malformed portable registry restore leaves root and overlay intact", () => {
+  const map = fixture();
+  const owner = registry_for_document_library(map);
+  const before = owner.capture();
+  const identity = overlay(map);
+  const invalid: LiveMapSnapshot = { ...before, registryDigest: "wrong" };
+  assert.throws(() => owner.restore(invalid));
+  assert.deepEqual(owner.capture(), before);
+  assert.equal(overlay(map), identity);
 });
 
-check("exact content replacement is a complete no-op", () => {
-  const map = element('<main <a/>/>');
-  const content = map.root().$_content[0];
-  if (typeof content !== "object") throw new Error("Expected canonical branch");
-  const before = state(map);
-  const commit = map.document.content.replace(documentTarget(), 0, content);
-  assert.equal(commit.changed, false);
-  assertState(map, before);
-});
-
-check("rejected raw-QUID request performs no reconciliation", () => {
-  const map = element(`<main @${Q1}/>`);
-  const before = livemap_document_identity_accounting();
-  assert.throws(() => map.document.attrs.set({ kind: "quid", quid: Q2 } as never, "id", "bad"));
-  const after = livemap_document_identity_accounting();
-  assert.equal(after.reconciliations, before.reconciliations);
-});
-
-check("duplicate whole-root install remains atomic", () => {
-  const map = element(`<main @${Q1}/>`);
-  const before = state(map);
-  const duplicate: HsonNode = {
-    $_tag: "_hson_root",
-    $_content: [ordinary("main", Q2, ordinary("b", Q2))],
-  };
-  assert.throws(() => Reflect.apply(map.install, map, [{ kind: "hson-document", mode: "document", rev: 0, root: duplicate }]));
-  assertState(map, before);
-});
-
-check("malformed whole-root restore remains atomic", () => {
-  const map = element(`<main @${Q1}/>`);
-  const before = state(map);
-  const malformed: HsonNode = { $_tag: "_hson_root", $_content: [ordinary("main", "short")] };
-  assert.throws(() => Reflect.apply(map.restore, map, [{ kind: "hson-document", mode: "document", rev: 7, root: malformed }]));
-  assertState(map, before);
-});
-
-process.stdout.write(`1..${checks}\n`);
-testEvents.terminal("pass");
+events.terminal("pass");
+process.stdout.write(`# ${checks} registry atomic reconciliation checks passed\n`);

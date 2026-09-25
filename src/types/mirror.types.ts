@@ -1,7 +1,7 @@
 import type { JsonValue } from "../core/types.js";
 import type { LiveTree } from "../api/livetree/livetree.js";
 import type {
-  LiveMapCommit,
+  LiveMapCoreCommit,
   LiveMapDisposer,
   LiveMapOp,
   LiveMapPathHandle,
@@ -28,7 +28,7 @@ export type CollectionMirrorChangeKind =
 /** Commit context delivered to a surviving item's renderer update hook. */
 export type CollectionMirrorChange = Readonly<{
   kind: CollectionMirrorChangeKind;
-  commit?: LiveMapCommit;
+  commit?: LiveMapCoreCommit;
   ops: readonly LiveMapOp[];
 }>;
 

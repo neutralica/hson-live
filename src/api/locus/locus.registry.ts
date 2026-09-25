@@ -1,7 +1,7 @@
 import type { JsonValue } from "../../core/types.js";
 import { hson_data_text, type ExactDataCarrier } from "../data/hson-data.js";
 import type {
-  LiveMapLibraries,
+  LiveMap,
 } from "../../types/livemap.types.js";
 import type {
   LocusActionPayloads,
@@ -27,7 +27,7 @@ import { LocusProjectionUnavailableError } from "./locus.projection.js";
 import { make_locus_hosted_projection_policy } from "./locus.projection.js";
 
 function establish_authority_identity(
-  map: LiveMapLibraries,
+  map: LiveMap,
   logicalMapId: string | undefined,
   incarnationId: string | undefined,
 ): void {
@@ -48,7 +48,7 @@ function establish_authority_identity(
  * preserving the ordinary Locus construction and action callback shape.
  */
 export function create_registry_locus<
-  TMap extends LiveMapLibraries,
+  TMap extends LiveMap,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(
   options: LocusOptions<TMap, TActions>,
@@ -58,7 +58,7 @@ export function create_registry_locus<
 
 /** Shared in-package composition point for the ordinary and durable Locus views. */
 export function create_registry_locus_internal<
-  TMap extends LiveMapLibraries,
+  TMap extends LiveMap,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(
   options: LocusOptions<TMap, TActions>,
@@ -91,7 +91,7 @@ export function create_registry_locus_internal<
     actions[name] = async (context, payload, actionMessage) => {
       actionSequence += 1;
       const aggregateContext = context as Readonly<{
-        map: LiveMapLibraries;
+        map: LiveMap;
         origin: LocusActionContext<TMap>["origin"];
         mutate: (mutation: (draft: unknown) => void) => Promise<void>;
       }>;

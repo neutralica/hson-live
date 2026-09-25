@@ -29,7 +29,7 @@ try {
     [hson, ["Hson", "HsonData", "HsonDocument", "TransformError"]],
     [transform, ["HsonData", "hsonTransform", "TransformError"]],
     [livetree, ["hsonLiveTree", "LiveTree", "TreeSelector", "LiveTreeDisposedError"]],
-    [livemap, ["hsonLiveMap", "link_livemap", "LiveMapDocumentInstallError"]],
+    [livemap, ["hsonLiveMap", "LiveMapDocumentInstallError"]],
     [reflect, ["hsonMirror", "reflect_document", "DocumentMirrorError"]],
     [echo, ["hsonEcho", "create_echo", "EchoSessionError"]],
     [locus, ["hsonLocus", "create_locus", "LocusAuthorityError"]],

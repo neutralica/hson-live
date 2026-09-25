@@ -4,7 +4,7 @@ import type {
   LiveMapDocumentCommitTarget,
   LiveMapDocumentRequestTarget,
   LiveMapGraphCommit,
-  LiveMapLibraries,
+  LiveMap,
 } from "../../types/livemap.types.js";
 import type {
   LocusActionAuthorizer,
@@ -154,7 +154,7 @@ function is_hosted_aggregate_downstream_output(value: unknown): value is Readonl
 export type LocusHostedAggregateSocketOptions<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = Readonly<{
-  map: LiveMapLibraries;
+  map: LiveMap;
   exposure: readonly LocusExposureEntry[];
   defaultProjection?: LocusRequestedProjection;
   authorizeProjection?: LocusProjectionAuthorizer;
@@ -183,7 +183,7 @@ export type LocusHostedAggregateSocketOptions<
 export type LocusHostedAggregateSocketServer<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = Readonly<{
-  map: LiveMapLibraries;
+  map: LiveMap;
   readonly logicalMapId: string;
   readonly incarnationId: string;
   readonly registryDigest: string;

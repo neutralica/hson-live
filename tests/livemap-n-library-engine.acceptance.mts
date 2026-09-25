@@ -263,9 +263,9 @@ check("aggregate capture preserves the complete fixed application registry", () 
 });
 
 check("performance telemetry clones and validates only touched libraries", () => {
-  const single = hson.liveMap.fromJson({ value: 1 });
+  const single = hsonLiveMap.fromLibraries({ data: { data: { value: 1 }, schema: DataSchema } });
   const singleStart = performance.now();
-  single.set(["value"], 2);
+  single.lib("data").at(["value"]).set(2);
   const singleMs = performance.now() - singleStart;
   const { map, aggregate, data, colors, view } = triple();
   const before = aggregate.telemetry();

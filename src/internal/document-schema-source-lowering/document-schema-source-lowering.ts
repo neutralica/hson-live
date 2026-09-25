@@ -8,7 +8,7 @@ import {
   type InternalDocumentPhysicalAssociation,
 } from "../../api/livemap/livemap.document.logical.js";
 import type { HsonSchemaIssue } from "../../api/livemap/livemap.error.js";
-import type { DocumentLiveMapMode, LivePath } from "../../types/livemap.types.js";
+import type { LiveMapDocumentMode, LivePath } from "../../types/livemap.types.js";
 import type {
   HsonAttributeSourceRole,
   HsonNodeSourceRole,
@@ -46,7 +46,7 @@ type DocumentSchemaSourceIssue = Pick<HsonSchemaIssue, "code" | "path" | "attrib
  */
 export function resolve_document_schema_issue_source(
   root: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   provenance: HsonSourceProvenance,
   issue: DocumentSchemaSourceIssue,
 ): DocumentSchemaSourceResolution {
@@ -78,7 +78,7 @@ export function resolve_document_schema_issue_source(
 
 function resolve_attribute_issue(
   root: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   provenance: HsonSourceProvenance,
   issue: DocumentSchemaSourceIssue,
   numericPath: readonly number[],
@@ -119,7 +119,7 @@ function resolve_attribute_issue(
 
 function resolve_missing_anchor(
   root: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   provenance: HsonSourceProvenance,
   issue: DocumentSchemaSourceIssue,
   numericPath: readonly number[],
@@ -157,7 +157,7 @@ function anchor_to_node(
 
 function resolve_logical(
   root: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   path: readonly number[],
 ): InternalDocumentLogicalResolution | undefined {
   const edges: InternalDocumentLogicalEdge[] = path.map((index) => ({ kind: "content", index }));
@@ -170,7 +170,7 @@ function resolve_logical(
 }
 
 function provenance_path(
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   physical: InternalDocumentPhysicalAssociation,
 ): HsonSourcePath | undefined {
   const path = physical.kind === "direct" || physical.kind === "carrier"

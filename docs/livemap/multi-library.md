@@ -1,6 +1,6 @@
-# Multi-library LiveMap
+# LiveMap registries
 
-`hsonLiveMap.fromLibraries(...)` creates one LiveMap authority with a fixed, statically named set of Libraries. It is intentionally distinct from `fromJson`, `fromHson`, and `fromNode`, so ordinary object-shaped application data is never mistaken for a registry. The same map can remain local or attach directly to the ordinary Locus path.
+`hsonLiveMap.fromLibraries(...)` creates one LiveMap authority with a fixed, statically named set of libraries. A one-library LiveMap uses the same API. The same map can remain local or attach to Locus.
 
 ```ts
 const map = hsonLiveMap.fromLibraries({
@@ -15,8 +15,8 @@ map.lib("state").at([]).setKey("ready", true);
 
 Each entry has exactly one ingress field:
 
-- `data` accepts the existing `fromJson` material: a JSON value or JSON source text.
-- `document` accepts existing `fromHson`/`fromNode` material: Hson source text or a canonical Hson node.
+- `data` accepts a JSON value or JSON source text.
+- `document` accepts Hson source text or a canonical Hson node.
 
 Every Library requires `schema`. Initial material is validated during construction. The Hson Schema generator augments each Schema declaration with private evidence, so `SchemaType<typeof ColorsSchema>` supplies the selected data and handle types; callers do not pass a duplicate type parameter.
 
@@ -45,7 +45,7 @@ Multi-library mutations return `LiveMapMultiLibraryCommit`. It holds one map-wid
 
 There is no default Library on a multi-map, no public topology lifecycle (`add`, `remove`, `replace`, or `rename`), and no alternate hosted solo topology. QUID allocation remains map-wide within the underlying authority, but raw QUIDs do not route mutation requests across Libraries and identities cannot be transferred between Libraries. `root` and `snap` are selected-Library operations.
 
-`map.capture()` synchronously returns one detached `LiveMapLibrariesSnapshot`.
+`map.capture()` synchronously returns one detached `LiveMapSnapshot`.
 It contains the complete ordered registry, QUID-free public and hidden roots,
 exact Schema sources and digests, root codecs, registry digest, and one global
 revision. It contains no generated identity epoch or issued-QUID ledger.

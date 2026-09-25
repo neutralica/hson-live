@@ -1,10 +1,10 @@
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
-import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
+import { document_from_node, commit_document_operations, registry_for_document_library } from "./helpers/mirror-unit6.mts";
 import { validate_document_path } from "../src/api/livemap/index.ts";
 import type { HsonNode } from "../src/core/types.ts";
-import type { DocumentLiveMap, LiveMapCommitObservation } from "../src/types/livemap.types.ts";
+import type { LiveMapDocumentLibrary, LiveMapCommitObservation } from "../src/types/livemap.types.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import { link_node_to_el } from "../src/api/livetree/utils/node-map-helpers.ts";
@@ -75,9 +75,9 @@ class AttributeProjection {
   }
 }
 
-function element(source: string): DocumentLiveMap {
-  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
-  if (map.mode !== "document") throw new Error("Expected DocumentLiveMap");
+function element(source: string): LiveMapDocumentLibrary {
+  const map = document_from_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
+  if (map.mode !== "document") throw new Error("Expected LiveMapDocumentLibrary");
   return map;
 }
 
@@ -225,16 +225,11 @@ check("multi-operation attrs replay is one projection transaction", () => {
   const map = element(`<main @000000306/>`);
   const binding = hsonMirror(map);
   mount(document_element(binding.tree.node));
-  const replayed = map.replay({
-    changed: true,
-    prevRev: 0,
-    rev: 1,
-    ops: [
+  commit_document_operations(map, [
       { domain: "graph", op: "set-attr", target: path(), name: "a", value: 1 },
       { domain: "graph", op: "set-attr", target: path(), name: "b", value: 2 },
-    ],
-  });
-  assert.equal(replayed.rev, 1);
+  ]);
+  assert.equal(map.rev, 1);
   assert.deepEqual(document_element(binding.tree.node).$_attrs, { a: 1, b: 2 });
   assert.equal(binding.diagnostics().updatesApplied, 1);
   binding.dispose();
@@ -244,13 +239,12 @@ check("new-epoch root replacement reconstructs and remains canonically delegated
   const map = element(`<main @000000307 "before"/>`);
   const binding = hsonMirror(map);
   const before = binding.tree;
-  const replacement = element(`<article @000000316/>`);
-  const commit = map.install(replacement.capture());
-  assert.equal(commit.changed, true);
-  assert.equal(document_element(map.root()).$_tag, "article");
+  const replacement = element(`<main @000000316 "after"/>`);
+  registry_for_document_library(map).restore(registry_for_document_library(replacement).capture());
+  assert.equal(document_element(map.root()).$_tag, "main");
   assert.notEqual(binding.tree, before);
   assert.equal(before.isDisposed, true);
-  assert.equal(document_element(binding.tree.node).$_tag, "article");
+  assert.equal(document_element(binding.tree.node).$_tag, "main");
   assert.equal(binding.status, "active");
   const articleTree = document_element_tree(binding);
   articleTree.attrs.set("id", "delegated");

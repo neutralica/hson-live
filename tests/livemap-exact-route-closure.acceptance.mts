@@ -1,196 +1,133 @@
-import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
-
 import assert from "node:assert/strict";
-import { hson } from "../src/hson.ts";
-import { make_livemap_core } from "../src/api/livemap/livemap.core.ts";
-import { make_canonical_livemap_projected_capture } from "../src/api/livemap/livemap.projected.capture.ts";
-import { link_livemap } from "../src/api/livemap/livemap.link.ts";
-import { livemap_projected_propagation } from "../src/api/livemap/livemap.projected-propagation.ts";
-import { make_livemap_store_api } from "../src/api/livemap/livemap.store.ts";
-import { decode_livemap_replay_payload, decode_projected_value_payload } from "../src/api/livemap/livemap.transport.ts";
-import { parse_json } from "../src/api/transform/parsers/parse-json.ts";
-import { assert_invariants } from "../src/core/assert-invariants.ts";
+import { Hson, hsonLiveMap } from "../src/index.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
+import { assert_invariants } from "../src/core/assert-invariants.ts";
 import { canonical_public_attrs_equal, decode_public_attrs } from "../src/core/public-attrs.ts";
-import { admit_projected_value } from "../src/core/projected-value-admission.ts";
-import {
-  is_ordered_projected_object,
-  ordered_projected_array,
-  ordered_projected_object,
-  ordered_projected_value_equal,
-  type OrderedProjectedObject,
-  type OrderedProjectedValue,
-} from "../src/core/ordered-projected-value.ts";
-import { projected_value_from_hson_node, projected_value_to_hson_root } from "../src/core/projected-value-graph.ts";
+import { create_test_event_emitter } from "./test-events.mjs";
 import type { JsonValue } from "../src/core/types.ts";
-import type { LiveMapCore } from "../src/types/livemap.types.ts";
+import type { LiveMapDataLibrary } from "../src/types/livemap.types.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
-  id: "livemap.exact-route-closure",
-  title: "LiveMap exact multi-route closure",
-  category: "LiveMap",
-  runtime: "node",
-  tags: Object.freeze(["projected-value", "capture", "replay", "propagation", "closure", "externally-discoverable"]),
+  id: "livemap.exact-route-closure", title: "Registry exact multi-route closure",
+  category: "LiveMap", runtime: "node",
+  tags: Object.freeze(["projected-value", "capture", "restore", "closure", "externally-discoverable"]),
 });
-
 const testEvents = create_test_event_emitter("livemap.exact-route-closure");
 let checks = 0;
 function check(name: string, run: () => void): void {
   testEvents.case_begin(name, name);
-  try {
-    run();
-    testEvents.case_end(name, "pass");
-  } catch (error) {
+  try { run(); testEvents.case_end(name, "pass"); }
+  catch (error) {
     const message = error instanceof Error ? error.message : "Check failed.";
     testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
-    testEvents.case_end(name, "fail");
-    testEvents.terminal("fail");
-    throw error;
-  } checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); }
-const object = (entries: readonly (readonly [string, OrderedProjectedValue])[]): OrderedProjectedObject => ordered_projected_object(entries);
-const map = (value: OrderedProjectedValue) => make_livemap_core(projected_value_to_hson_root(value));
-const carrier = (valueMap: ReturnType<typeof map>) => projected_value_from_hson_node(valueMap.root());
-const capability = (valueMap: ReturnType<typeof map>) => {
-  const projected = livemap_projected_propagation(valueMap);
-  if (projected === undefined) throw new Error("Expected carrier propagation.");
-  return projected;
+    testEvents.case_end(name, "fail"); testEvents.terminal("fail"); throw error;
+  }
+  checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`);
+}
+
+const WideSchema = Hson.schema`<type "data" content <
+  value <optional "any"> items <optional "any"> nested <optional "any">
+  a <optional "any"> other <optional "any"> left <optional "any"> right <optional "any">
+  '10' <optional "any"> '2' <optional "any"> '1' <optional "any">
+  '__proto__' <optional "any"> constructor <optional "any"> prototype <optional "any">
+>>`;
+const registry = (data: string | Record<string, unknown>) => hsonLiveMap.fromLibraries({ state: { data: data as JsonValue, schema: WideSchema } });
+const dataLibrary = (map: ReturnType<typeof registry>): LiveMapDataLibrary<unknown> => map.lib("state");
+const root = (map: ReturnType<typeof registry>) => dataLibrary(map).root();
+const payload = (map: ReturnType<typeof registry>) => map.capture().libraries[0]!.root.payload;
+const same = (left: ReturnType<typeof registry>, right: ReturnType<typeof registry>) => {
+  assert.equal(canonical_hson_graph_equal(root(left), root(right)), true);
+  assert_invariants(root(left), "registry exact route closure");
 };
-function keys(value: OrderedProjectedValue | undefined): readonly string[] {
-  if (!is_ordered_projected_object(value)) throw new Error("Expected object carrier.");
-  return value.entries.map(([key]) => key);
-}
-function own_data(entries: readonly (readonly [string, JsonValue])[]): Record<string, JsonValue> {
-  const value: Record<string, JsonValue> = {};
-  for (const [key, child] of entries) Object.defineProperty(value, key, { value: child, enumerable: true, writable: true, configurable: true });
-  return value;
-}
-function assert_same_graph(left: ReturnType<typeof map>, right: ReturnType<typeof map>): void {
-  assert.equal(canonical_hson_graph_equal(left.root(), right.root()), true);
-  assert_invariants(left.root(), "Unit F exact route closure");
-}
-const ordered = object([["10", 10], ["2", 2], ["1", 1], ["tail", -0]]);
-const dangerous = object([["__proto__", "data"], ["constructor", -0], ["prototype", "\ud800"]]);
-const nested = object([["value", object([["ordered", ordered], ["dangerous", dangerous], ["items", ordered_projected_array([ordered, dangerous, -0])]])]]);
 
-check("exact capture restores to the strict original graph", () => {
-  const source = map(nested); const target = map(object([["old", true]])); target.restore(source.capture()); assert_same_graph(source, target);
+check("capture restores an exact ordered graph", () => {
+  const source = registry('{"value":{"10":10,"2":2,"1":1,"tail":-0}}');
+  const target = registry('{"value":{"old":true}}');
+  target.restore(source.capture());
+  same(source, target);
+  assert.equal(payload(source), payload(target));
 });
-check("internal recovery captures have the canonical public descriptor contract", () => {
-  const source = map(nested); const publicCapture = source.capture();
-  const recoveryCapture = make_canonical_livemap_projected_capture(9, publicCapture.format, publicCapture.payload, publicCapture.root);
-  assert.deepEqual(Object.keys(recoveryCapture), ["rev", "format", "payload"]);
-  assert.equal(Object.hasOwn(recoveryCapture, "root"), true);
-  assert.equal(Object.getOwnPropertyDescriptor(recoveryCapture, "root")?.enumerable, false);
-  assert.equal(Object.isFrozen(recoveryCapture), true);
-  const target = map(object([["old", true]])); target.restore(recoveryCapture); assert.equal(target.rev, 9); assert_same_graph(source, target);
+check("repeated complete captures are byte-stable", () => {
+  const map = registry('{"value":{"10":10,"2":2,"1":1}}');
+  assert.deepEqual(map.capture(), map.capture());
+  assert.equal(map.rev, 0);
 });
-check("an equivalent enumerable-root capture remains rejected", () => {
-  const source = map(nested); const capture = source.capture();
-  const enumerableRoot = Object.freeze({ rev: 9, format: capture.format, payload: capture.payload, root: capture.root });
-  assert.equal(Object.getOwnPropertyDescriptor(enumerableRoot, "root")?.enumerable, true);
-  const target = map(object([["old", true]]));
-  assert.throws(() => target.restore(enumerableRoot), /capture is not the canonical structural representation/);
+check("invalid capture shape rejects atomically", () => {
+  const map = registry('{"value":1}');
+  const before = map.capture();
+  assert.throws(() => map.restore({ ...before, format: "wrong" } as never));
+  assert.deepEqual(map.capture(), before);
 });
-check("exact apply reconstructs the strict original graph", () => {
-  const source = map(nested); const target = map(object([["old", true]])); const capture = source.capture();
-  target.apply({ prevRev: 0, format: capture.format, payload: capture.payload }); assert_same_graph(source, target);
+check("integer-like order remains exact across registry capture", () => {
+  const source = registry('{"10":"ten","2":"two","1":"one"}');
+  const target = registry('{}');
+  target.restore(source.capture());
+  same(source, target);
+  assert.deepEqual(source.lib("state").at([]).asObject()!.keys(), ["10", "2", "1"]);
 });
-check("exact replay closes a mutation commit", () => {
-  const initial = object([["value", object([])]]); const source = map(initial); const target = map(initial);
-  target.replay(source.replace(["value"], own_data([["a", -0], ["nested", [1, 2]]]))); assert_same_graph(source, target);
+check("dangerous names retain ordinary data semantics", () => {
+  const source = registry('{"__proto__":"data","constructor":-0,"prototype":true}');
+  const target = registry('{}'); target.restore(source.capture());
+  same(source, target);
+  const value = target.lib("state").snap() as Record<string, unknown>;
+  assert.equal(Object.hasOwn(value, "__proto__"), true);
+  assert.equal(Object.is(value.constructor, -0), true);
 });
-check("capture restore replay tail and link form one closed chain", () => {
-  const initial = object([["value", object([["old", true]])]]);
-  const source = map(initial); source.replace(["value"], own_data([["10", 10], ["2", 2], ["1", 1]]));
-  const restored = map(initial); restored.restore(source.capture());
-  restored.replay(source.setMany(["value"], { tail: -0 }));
-  const target = map(initial); target.restore(restored.capture()); link_livemap(restored, target, { path: ["value"] });
-  restored.setMany(["value"], { final: "\ud800" }); assert_same_graph(restored, target); assert.equal(restored.capture().payload, target.capture().payload);
+check("nested arrays, unusual strings, and negative zero remain exact", () => {
+  const source = registry({ nested: { items: [1, -0, { value: "\ud800x\udfff" }] } });
+  const target = registry('{}'); target.restore(source.capture());
+  same(source, target);
+  const value = target.lib("state").snap() as { nested: { items: [number, number, { value: string }] } };
+  assert.equal(Object.is(value.nested.items[1], -0), true);
+  assert.equal(value.nested.items[2].value, "\ud800x\udfff");
 });
-check("repeated exact captures are byte stable", () => { const valueMap = map(nested); assert.equal(valueMap.capture().payload, valueMap.capture().payload); });
-check("exact transport retains integer-like order", () => { assert.deepEqual(keys(decode_projected_value_payload(map(ordered).capture().payload)), ["10", "2", "1", "tail"]); });
-check("exact transport retains mixed key classes", () => {
-  const mixed = object([["a", 1], ["10", 10], ["2", 2], ["01", 1], ["4294967294", 4], ["4294967295", 5], ["-1", -1], ["b", 2]]);
-  assert.deepEqual(keys(decode_projected_value_payload(map(mixed).capture().payload)), keys(mixed));
+check("repeated source references are detached structural occurrences", () => {
+  const child = { value: 1 };
+  const source = registry({ left: child, right: child });
+  const target = registry('{}'); target.restore(source.capture());
+  child.value = 9;
+  same(source, target);
+  assert.deepEqual(target.lib("state").snap(), { left: { value: 1 }, right: { value: 1 } });
 });
-check("exact transport retains dangerous own names", () => { assert.deepEqual(keys(decode_projected_value_payload(map(dangerous).capture().payload)), ["__proto__", "constructor", "prototype"]); });
-check("exact transport retains negative zero", () => {
-  const value = decode_projected_value_payload(map(object([["value", -0]])).capture().payload);
-  assert.equal(Object.is(is_ordered_projected_object(value) ? value.entries[0]?.[1] : undefined, -0), true);
+check("null-prototype input remains exact", () => {
+  const input = Object.create(null) as Record<string, unknown>;
+  Object.defineProperty(input, "value", { value: -0, enumerable: true });
+  const source = registry(input); const target = registry('{}');
+  target.restore(source.capture()); same(source, target);
 });
-check("exact transport retains unusual string code units", () => {
-  const value = decode_projected_value_payload(map(object([["value", "\ud800x\udfff"]])).capture().payload);
-  assert.equal(is_ordered_projected_object(value) ? value.entries[0]?.[1] : undefined, "\ud800x\udfff");
+check("feed values are detached while canonical order remains exact", () => {
+  const map = registry('{"value":{}}');
+  let observed: unknown;
+  map.lib("state").at(["value"]).feed((event) => {
+    observed = event.value;
+    (event.value as Record<string, unknown>).tail = 99;
+  });
+  map.lib("state").at(["value"]).replace({ "10": 10, "2": 2, "1": 1, tail: -0 });
+  assert.deepEqual(Object.keys(observed as object), ["1", "2", "10", "tail"]);
+  assert.equal((map.lib("state").snap() as { value: { tail: number } }).value.tail, -0);
 });
-check("objects inside arrays remain exact", () => {
-  const value = object([["items", ordered_projected_array([ordered])]]); const target = map(object([])); target.restore(map(value).capture());
-  assert.equal(ordered_projected_value_equal(carrier(target), value), true);
+check("detached root mutation cannot bypass commits", () => {
+  const map = registry({ a: { value: 1 } });
+  let commits = 0;
+  map.commits.observe(() => { commits += 1; });
+  const detached = root(map); detached.$_content.length = 0;
+  assert.deepEqual(map.lib("state").snap(), { a: { value: 1 } });
+  assert.equal(map.rev, 0); assert.equal(commits, 0);
 });
-check("arrays inside objects remain exact", () => {
-  const value = object([["nested", object([["items", ordered_projected_array([1, -0, dangerous])]])]]); const target = map(object([])); target.restore(map(value).capture());
-  assert.equal(ordered_projected_value_equal(carrier(target), value), true);
+check("plain object materialization can lose integer-key order", () => {
+  const source = registry('{"10":10,"2":2,"1":1}');
+  const target = registry(source.lib("state").snap() as Record<string, unknown>);
+  assert.deepEqual(source.lib("state").at([]).asObject()!.keys(), ["10", "2", "1"]);
+  assert.deepEqual(target.lib("state").at([]).asObject()!.keys(), ["1", "2", "10"]);
+  assert.equal(canonical_hson_graph_equal(root(source), root(target)), false);
 });
-check("repeated source references become detached structural occurrences", () => {
-  const child = { value: 1 }; const admitted = admit_projected_value({ left: child, right: child }); const valueMap = map(admitted);
-  const restored = map(object([])); restored.restore(valueMap.capture()); assert_same_graph(valueMap, restored); child.value = 9; assert.equal(valueMap.snap(["left", "value"]), 1);
-});
-check("null-prototype ingress remains exact through capture", () => {
-  const input = Object.create(null) as Record<string, JsonValue>; Object.defineProperty(input, "value", { value: -0, enumerable: true });
-  const source = hson.liveMap.fromJson(input); const target = map(object([])); target.restore(source.capture()); assert.equal(canonical_hson_graph_equal(source.root(), target.root()), true);
-});
-check("public feeds observe detached values while canonical state remains exact", () => {
-  const source = map(object([["value", object([])]])); let observed: unknown;
-  source.feed(["value"], (event) => { observed = event.value; (event.value as Record<string, JsonValue>).tail = 99; });
-  capability(source).commit([{ kind: "replace", path: ["value"], value: ordered }]);
-  assert.deepEqual(Object.keys(observed as object), ["1", "2", "10", "tail"]); assert.deepEqual(keys(capability(source).read(["value"])), ["10", "2", "1", "tail"]);
-});
-check("links propagate the exact carrier graph", () => {
-  const source = map(object([["value", object([])]])); const target = map(object([["value", object([])]])); link_livemap(source, target, { path: ["value"] });
-  capability(source).commit([{ kind: "replace", path: ["value"], value: ordered }]); assert_same_graph(source, target);
-});
-check("store publication preserves SameValue and detached reads", () => {
-  const valueMap = map(object([["value", 0]])); const store = make_livemap_store_api(valueMap); let observed: unknown;
-  store.subscribePath(["value"], (next) => { observed = next; }); capability(valueMap).commit([{ kind: "set", path: ["value"], value: -0 }]); assert.equal(Object.is(observed, -0), true);
-});
-check("carrier-native commits remain authoritative and mocks do not define them", () => {
-  const valueMap = map(object([["value", object([])]])); capability(valueMap).commit([{ kind: "replace", path: ["value"], value: dangerous }]);
-  assert.deepEqual(keys(capability(valueMap).read(["value"])), ["__proto__", "constructor", "prototype"]);
-  const mock = { snap: () => ({}) } as unknown as LiveMapCore<JsonValue | undefined>;
-  assert.equal(livemap_projected_propagation(mock), undefined);
+check("document attribute equality is unordered by name", () => {
+  const left = decode_public_attrs({ a: 1, b: "two" });
+  const right = decode_public_attrs({ b: "two", a: 1 });
+  if (left === undefined || right === undefined) throw new Error("Expected attrs.");
+  assert.equal(canonical_public_attrs_equal(left, right), true);
 });
 
-check("legacy capture input is rejected", () => {
-  const source = hson.liveMap.fromJson('{"10":10,"2":2,"1":1}'); const legacy = { rev: source.rev, value: source.snap() as JsonValue };
-  const target = map(object([])); assert.throws(() => target.restore(legacy as never)); assert.deepEqual(keys(carrier(target)), []);
-});
-check("custom selector-result equality remains a separate detached domain", () => {
-  const valueMap = hson.liveMap.fromJson({ value: 0, other: 0 }); let calls = 0; let equalityCalls = 0;
-  valueMap.sub.sel((state) => (state as Record<string, JsonValue>).value, () => { calls += 1; }, { equal: (left, right) => { equalityCalls += 1; return Object.is(left, right); } });
-  valueMap.set(["other"], 1); valueMap.set(["value"], -0); assert.equal(calls, 0); assert.equal(equalityCalls, 2);
-});
-check("document attribute equality remains unordered by name and value", () => {
-  const left = decode_public_attrs({ a: 1, b: "two" }); const right = decode_public_attrs({ b: "two", a: 1 });
-  if (left === undefined || right === undefined) throw new Error("Expected attrs."); assert.equal(canonical_public_attrs_equal(left, right), true);
-});
-check("detached root mutation cannot bypass the commit stream", () => {
-  const valueMap = hson.liveMap.fromNode(hson.fromJson({ a: { b: 1 } }).toNode());
-  if (valueMap.mode !== "data-object") throw new Error(`Expected data-object, observed ${valueMap.mode}.`);
-  const beforeRev = valueMap.rev; let commits = 0; let feeds = 0;
-  valueMap.commits.observe(() => { commits += 1; }); valueMap.feed([], () => { feeds += 1; });
-  const detached = valueMap.root(); detached.$_content.length = 0;
-  assert.equal(valueMap.snap(["a", "b"]), 1); assert.equal(valueMap.rev, beforeRev); assert.equal(commits, 0); assert.equal(feeds, 0);
-});
-check("ordinary public snapshots can re-enter without semantic loss", () => {
-  const source = hson.liveMap.fromJson({ a: 1, nested: { b: -0 }, items: [true, null] }); const target = hson.liveMap.fromJson(source.snap() as JsonValue);
-  assert.equal(canonical_hson_graph_equal(source.root(), target.root()), true);
-});
-check("integer-like public snapshots are explicitly lossy ordered transport", () => {
-  const source = hson.liveMap.fromJson('{"10":10,"2":2,"1":1}'); const target = hson.liveMap.fromJson(source.snap() as JsonValue);
-  assert.deepEqual(keys(projected_value_from_hson_node(source.root())), ["10", "2", "1"]); assert.deepEqual(keys(projected_value_from_hson_node(target.root())), ["1", "2", "10"]);
-  assert.equal(canonical_hson_graph_equal(source.root(), target.root()), false); assert.equal(source.capture().payload, source.capture().payload);
-});
-
-assert.equal(checks, 26);
-process.stdout.write(`# ${checks} exact multi-route closure checks passed\n`);
+process.stdout.write(`# ${checks} exact registry closure checks passed\n`);
 testEvents.terminal("pass");

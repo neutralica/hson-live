@@ -1,269 +1,108 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { hson } from "../src/hson.ts";
-import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
-import { is_ordinary_element_node } from "../src/core/node-guards.ts";
-import type { HsonNode } from "../src/core/types.ts";
-import type {
-  DocumentLiveMapCapture,
-  DocumentLiveMap,
-  LiveMapCommitObservation,
-} from "../src/types/livemap.types.ts";
-import {
-  decode_view_state_snapshot,
-  encode_view_state_snapshot,
-} from "../src/api/livemap/livemap.document.view-state-codec.ts";
-import { get_livemap_staged_authority } from "../src/api/livemap/livemap.authority.ts";
+import { Hson } from "../src/index.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
-import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
+import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
+import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
+import type { LiveMapSnapshot } from "../src/types/livemap.types.ts";
 
-const Q1 = "000000v81";
-const Q2 = "000000v82";
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livemap.capture-provenance",
-  title: "Document capture epoch provenance",
+  title: "Portable registry capture provenance",
   category: "LiveMap",
   runtime: "node",
-  tags: Object.freeze(["document", "quid", "capture", "provenance", "atomicity", "externally-discoverable"]),
+  tags: Object.freeze(["capture", "restore", "identity", "registry", "externally-discoverable"]),
 });
 
-const testEvents = create_test_event_emitter("livemap.capture-provenance");
+const events = create_test_event_emitter("livemap.capture-provenance");
 let checks = 0;
-
 function check(name: string, run: () => void): void {
-
-  testEvents.case_begin(name, name);
-  try {
-    run();
-    testEvents.case_end(name, "pass");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Check failed.";
-    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
-    testEvents.case_end(name, "fail");
-    testEvents.terminal("fail");
-    throw error;
+  events.case_begin(name, name);
+  try { run(); events.case_end(name, "pass"); }
+  catch (error) {
+    events.diagnostic(name, "assertion", error instanceof Error ? error.message : String(error));
+    events.case_end(name, "fail"); events.terminal("fail"); throw error;
   }
-  checks += 1;
-  process.stdout.write(`ok ${checks} - ${name}\n`);
+  process.stdout.write(`ok ${++checks} - ${name}\n`);
 }
 
-function element(source: string): DocumentLiveMap {
-  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
-  if (map.mode !== "document") throw new Error("Expected element LiveMap");
-  return map;
+const PageSchema = Hson.schema`<type "document" tag "main" content <repeat <tag "item" content "empty">>>`;
+function registry(source: string) {
+  return admit_exact_runtime_livemap_libraries({ page: {
+    document: parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }), schema: PageSchema,
+  } });
 }
+const rootTarget = { kind: "path" as const, path: [0] };
 
-function multiNodeDocument(source: string): DocumentLiveMap {
-  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
-  if (map.mode !== "document") throw new Error("Expected multiNodeDocument LiveMap");
-  return map;
-}
-
-function ordinaryNodes(root: HsonNode): HsonNode[] {
-  const found: HsonNode[] = [];
-  const stack = [root];
-  while (stack.length > 0) {
-    const node = stack.pop();
-    if (node === undefined) continue;
-    if (is_ordinary_element_node(node)) found.push(node);
-    for (const item of node.$_content) if (typeof item === "object" && item !== null) stack.push(item);
-  }
-  return found;
-}
-
-function duplicateCapture(): DocumentLiveMapCapture<"document"> {
-  const source = multiNodeDocument(`<a @${Q1}/><b @${Q2}/>`);
-  const capture = { ...source.capture(), root: source.root() };
-  const nodes = ordinaryNodes(capture.root);
-  const second = nodes.find((node) => node.$_meta?.quid === Q2);
-  if (nodes.length !== 2 || second?.$_meta === undefined) throw new Error("Duplicate fixture shape changed");
-  second.$_meta.quid = Q1;
-  return capture;
-}
-
-function errorCode(code: string): (error: unknown) => boolean {
-  return (error) => typeof error === "object" && error !== null && "code" in error && error.code === code;
-}
-
-check("an exact current-epoch capability installs on its owner", () => {
-  const map = element(`<main @${Q1}/>`);
-  const capture = map.capture({ identity: "same-epoch" });
-  map.document.attrs.set({ kind: "path", path: [0] }, "data-next", 1);
-  map.install(capture, { identity: "same-epoch" });
-  assert.equal(map.root().$_attrs?.["data-next"], undefined);
+check("ordinary capture carries the complete named registry and no local proof", () => {
+  const source = registry('<main <item/>/>');
+  const snapshot = source.capture();
+  assert.equal(snapshot.libraries[0]?.name, "page");
+  assert.equal(Reflect.get(snapshot, "identity"), undefined);
+  assert.equal(JSON.stringify(snapshot).includes("issuedQuids"), false);
 });
 
-check("same-epoch restore preserves the captured revision", () => {
-  const map = element(`<main @${Q1}/>`);
-  map.document.attrs.set({ kind: "path", path: [0] }, "data-v", 1);
-  const capture = map.capture({ identity: "same-epoch" });
-  map.document.attrs.set({ kind: "path", path: [0] }, "data-v", 2);
-  map.restore(capture, { identity: "same-epoch" });
-  assert.equal(map.rev, capture.rev);
+check("portable capture omits supplied and acquired QUID metadata", () => {
+  const source = registry('<main @000000111 <item @000000112/>/>');
+  acquire_document_identity(source.lib("page").document, rootTarget);
+  const bytes = JSON.stringify(source.capture());
+  assert.equal(bytes.includes('"quid"'), false);
+  assert.equal(source.lib("page").document.byQuid("000000111")?.$_tag, "main");
 });
 
-check("a copied capture cannot claim same-epoch admission", () => {
-  const map = element(`<main @${Q1}/>`);
-  const copied = Object.freeze({ ...map.capture({ identity: "same-epoch" }) });
-  assert.throws(() => map.install(copied, { identity: "same-epoch" }), errorCode("SAME_EPOCH_PROVENANCE_REQUIRED"));
+check("structured cloning does not confer local identity authority", () => {
+  const source = registry('<main @000000113 <item/>/>');
+  const target = registry('<main <item/>/>');
+  target.restore(structuredClone(source.capture()));
+  assert.equal(target.lib("page").document.byQuid("000000113"), undefined);
+  assert.equal(target.render(), source.render());
 });
 
-check("serialized and decoded capture bytes cannot claim same-epoch admission", () => {
-  const map = element(`<main @${Q1}/>`);
-  const decoded = decode_view_state_snapshot(encode_view_state_snapshot(map.capture({ identity: "same-epoch" })));
-  assert.throws(() => map.restore(decoded, { identity: "same-epoch" }), errorCode("SAME_EPOCH_PROVENANCE_REQUIRED"));
+check("JSON serialization retains portable state but no runtime epoch", () => {
+  const source = registry('<main <item/>/>');
+  source.lib("page").at([]).asElement()!.attrs.set("state", "ready");
+  const snapshot = JSON.parse(JSON.stringify(source.capture())) as LiveMapSnapshot;
+  const target = registry('<main <item/>/>');
+  target.restore(snapshot);
+  assert.equal(target.rev, source.rev);
+  assert.match(target.render(), /state="ready"/);
 });
 
-check("an exact capability is foreign to another map", () => {
-  const source = element(`<main @${Q1}/>`);
-  const target = element(`<main/>`);
-  assert.throws(
-    () => target.install(source.capture({ identity: "same-epoch" }), { identity: "same-epoch" }),
-    errorCode("FOREIGN_IDENTITY_EPOCH"),
-  );
+check("capture graph is detached from later source mutations", () => {
+  const source = registry('<main <item/>/>');
+  const snapshot = source.capture();
+  source.lib("page").at([]).asElement()!.attrs.set("later", true);
+  const target = registry('<main <item/>/>');
+  target.restore(snapshot);
+  assert.doesNotMatch(target.render(), /later/);
 });
 
-check("durable restore replaces the local epoch and stales prior capabilities", () => {
-  const map = element(`<main @${Q1}/>`);
-  const stale = map.capture({ identity: "same-epoch" });
-  map.restore(element(`<main @${Q2}/>`).capture());
-  assert.throws(() => map.restore(stale, { identity: "same-epoch" }), errorCode("STALE_IDENTITY_EPOCH"));
-});
-
-check("changed durable install replaces the local epoch", () => {
-  const map = element(`<main @${Q1}/>`);
-  const stale = map.capture({ identity: "same-epoch" });
-  map.install(element(`<main @${Q2}/>`).capture());
-  assert.throws(() => map.install(stale, { identity: "same-epoch" }), errorCode("STALE_IDENTITY_EPOCH"));
-});
-
-check("an exact-equal durable install does not replace an unchanged epoch", () => {
-  const map = element(`<main/>`);
-  const capability = map.capture({ identity: "same-epoch" });
-  const commit = map.install(map.capture());
-  assert.equal(commit.changed, false);
-  assert.doesNotThrow(() => map.install(capability, { identity: "same-epoch" }));
-});
-
-check("portable capture never imports a source QUID into a new map", () => {
-  const source = element(`<main @${Q1}/>`);
-  const target = element(`<main/>`);
-  target.restore(source.capture());
-  assert.equal(target.document.byQuid(Q1), undefined);
-  assert.equal(JSON.stringify(target.root()).includes(Q1), false);
-});
-
-check("fresh metadata admission does not make a foreign capability local", () => {
-  const source = element(`<main @${Q1}/>`);
-  const target = element(`<main/>`);
-  const capability = source.capture({ identity: "same-epoch" });
-  target.restore(source.capture());
-  assert.throws(() => target.install(capability, { identity: "same-epoch" }), errorCode("FOREIGN_IDENTITY_EPOCH"));
-});
-
-check("mutating a capability graph invalidates its same-epoch proof", () => {
-  const map = element(`<main @${Q1}/>`);
-  const capture = map.capture({ identity: "same-epoch" });
-  const node = ordinaryNodes(capture.root)[0];
-  if (node === undefined) throw new Error("Missing fixture node");
-  node.$_attrs = { changed: true };
-  assert.throws(() => map.install(capture, { identity: "same-epoch" }), errorCode("IDENTITY_POLICY_MISMATCH"));
-});
-
-check("portable captures cannot be promoted to same-epoch", () => {
-  const map = element(`<main @${Q1}/>`);
-  const capture = map.capture();
-  assert.throws(() => map.install(capture, { identity: "same-epoch" }), errorCode("SAME_EPOCH_PROVENANCE_REQUIRED"));
-});
-
-check("identity-free captures cannot be promoted to same-epoch", () => {
-  const map = element(`<main @${Q1}/>`);
-  const capture = map.capture({ identity: "strip" });
-  assert.throws(() => map.install(capture, { identity: "same-epoch" }), errorCode("SAME_EPOCH_PROVENANCE_REQUIRED"));
-});
-
-check("QUID-bearing captures have a stable admission failure", () => {
-  const target = multiNodeDocument(`<c/><d/>`);
-  assert.throws(
-    () => target.install(duplicateCapture()),
-    (error: unknown) => typeof error === "object" && error !== null
-      && "reasonCode" in error && error.reasonCode === "IDENTITY_POLICY_MISMATCH",
-  );
-});
-
-check("explicit strip admission also rejects supplied identity", () => {
-  const target = multiNodeDocument(`<c/><d/>`);
-  assert.throws(() => target.install(duplicateCapture(), { identity: "strip" }));
-  assert.equal(target.document.byQuid(Q1), undefined);
-});
-
-check("duplicate rejection is atomic across graph revision overlay and observations", () => {
-  const target = multiNodeDocument(`<c @${Q2}/><d/>`);
+check("malformed portable capture rejects atomically", () => {
+  const target = registry('<main <item/>/>');
   const before = target.capture();
-  const observations: LiveMapCommitObservation[] = [];
-  target.commits.observe((event) => observations.push(event));
-  assert.throws(() => target.install(duplicateCapture()));
-  assert.equal(canonical_hson_graph_equal(target.capture().root, before.root), true);
-  assert.equal(target.rev, before.rev);
-  assert.equal(target.document.byQuid(Q2)?.$_tag, "c");
-  assert.equal(observations.length, 0);
+  const invalid: LiveMapSnapshot = { ...before, registryDigest: "forged" };
+  assert.throws(() => target.restore(invalid));
+  assert.deepEqual(target.capture(), before);
 });
 
-check("strict rejection is atomic", () => {
-  const target = element(`<main @${Q2}/>`);
-  const before = target.capture();
-  const source = element(`<main @${Q1}/>`);
-  assert.throws(() => target.install({ ...source.capture(), root: source.root() }, { identity: "reject" }));
-  assert.equal(canonical_hson_graph_equal(target.capture().root, before.root), true);
-  assert.equal(target.rev, before.rev);
+check("portable restore retires prior local identity handles", () => {
+  const target = registry('<main <item/>/>');
+  const handle = acquire_document_identity(target.lib("page").document, rootTarget);
+  const source = registry('<main <item/>/>');
+  target.restore(source.capture());
+  assert.equal(handle.active, false);
 });
 
-check("a stale expected revision does not consume a valid capability", () => {
-  const map = element(`<main @${Q1}/>`);
-  const capability = map.capture({ identity: "same-epoch" });
-  assert.throws(() => map.install(capability, { expectedRev: 9, identity: "same-epoch" }));
-  assert.doesNotThrow(() => map.install(capability, { identity: "same-epoch" }));
+check("independent registries can restore equal portable bytes", () => {
+  const source = registry('<main <item/>/>');
+  const bytes = JSON.stringify(source.capture());
+  const left = registry('<main <item/>/>');
+  const right = registry('<main <item/>/>');
+  left.restore(JSON.parse(bytes) as LiveMapSnapshot);
+  right.restore(JSON.parse(bytes) as LiveMapSnapshot);
+  assert.equal(left.render(), right.render());
 });
 
-check("same-epoch provenance adds no enumerable capture fields", () => {
-  const capture = element(`<main @${Q1}/>`).capture({ identity: "same-epoch" });
-  assert.deepEqual(Object.keys(capture), ["kind", "mode", "rev", "root"]);
-});
-
-check("same-epoch provenance is absent from JSON serialization", () => {
-  const capture = element(`<main @${Q1}/>`).capture({ identity: "same-epoch" });
-  const json = JSON.stringify(capture);
-  assert.equal(json.includes("same-epoch"), false);
-  assert.equal(json.includes("epoch"), false);
-});
-
-check("malformed capture envelopes retain a stable install failure", () => {
-  const map = element(`<main/>`);
-  assert.throws(
-    () => map.install({ ...map.capture(), version: 99 } as never),
-    (error: unknown) => typeof error === "object" && error !== null
-      && "reasonCode" in error && error.reasonCode === "MALFORMED_CAPTURE_ENVELOPE",
-  );
-});
-
-check("ordinary portable captures remain detached, serializable, and identity-free", () => {
-  const source = element(`<main @${Q1}/>`);
-  const decoded = JSON.parse(JSON.stringify(source.capture())) as DocumentLiveMapCapture<"document">;
-  const target = element(`<main/>`);
-  target.restore(decoded);
-  assert.equal(target.document.byQuid(Q1), undefined);
-  assert.equal(JSON.stringify(decoded).includes(Q1), false);
-});
-
-check("staged durable installation replaces the accepted map epoch", () => {
-  const map = element(`<main @${Q1}/>`);
-  const stale = map.capture({ identity: "same-epoch" });
-  const authority = get_livemap_staged_authority(map);
-  const replacement = element(`<main @${Q2}/>`).capture();
-  authority.accept(authority.prepare((draft) => draft.install(replacement)));
-  assert.throws(() => map.install(stale, { identity: "same-epoch" }), errorCode("STALE_IDENTITY_EPOCH"));
-});
-
-process.stdout.write(`# ${checks} LiveMap capture-provenance checks passed\n`);
-testEvents.terminal("pass");
+events.terminal("pass");
+process.stdout.write(`# ${checks} registry capture provenance checks passed\n`);

@@ -118,13 +118,11 @@ exposes mutable records or source values.
 ## Example
 
 ```ts
-const schema = hson.liveMap.schema.define((s) => s.object.exact({
-  items: s.array(s.object.exact({ id: s.string, label: s.string })),
-}));
-
-const state = hson.liveMap
-  .fromJson({ items: [{ id: "a", label: "Alpha" }] })
-  .schema.use(schema);
+const schema = Hson.schema`<type "data" content <items <array <id "string" label "string">>>>`;
+const map = hson.liveMap.fromLibraries({
+  state: { data: { items: [{ id: "a", label: "Alpha" }] }, schema },
+});
+const state = map.lib("state");
 
 const host = hson.liveTree.queryDom("#items").graft();
 
@@ -146,7 +144,7 @@ const reflector = hson.mirror.collection({
 });
 
 // Later, including after a Locus snapshot installs a fresh mirror:
-reflector.replaceSource(nextMirror.at(["items"]));
+reflector.replaceSource(nextMirror.lib("state").at(["items"]));
 reflector.dispose();
 ```
 

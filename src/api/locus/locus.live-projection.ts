@@ -1,4 +1,4 @@
-import type { HostedLiveMapLibrariesSnapshot } from "../../types/livemap.types.js";
+import type { HostedLiveMapSnapshot } from "../../types/livemap.types.js";
 import type { HsonNode } from "../../core/types.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
 import { INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME } from "../../internal/interaction-storage.js";
@@ -73,8 +73,8 @@ export function decode_locus_live_projected_envelope_internal(
 /** Pure per-revision projection. Later replay can supply the same before/after cuts. */
 export function project_locus_live_revision_internal(
   authority: HostedAggregateCommit,
-  before: HostedLiveMapLibrariesSnapshot,
-  after: HostedLiveMapLibrariesSnapshot,
+  before: HostedLiveMapSnapshot,
+  after: HostedLiveMapSnapshot,
   effective: LocusEffectiveProjection,
 ): LocusLiveProjectedEvent {
   if (before.revision !== authority.prevRev || after.revision !== authority.rev

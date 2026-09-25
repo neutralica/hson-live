@@ -5,7 +5,6 @@ import { canonical_public_attrs_equal, decode_public_attrs } from "../../core/pu
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import type { CanonicalPublicAttrs, HsonNode, Primitive } from "../../core/types.js";
 import type {
-  DocumentLiveMap,
   LiveMapDocumentLibrary,
   LiveMapCommitObservation,
   LiveMapDisposer,
@@ -148,11 +147,11 @@ type ProjectedRegistration = Omit<DocumentBindingNodeRegistration, "canonicalTar
   node: HsonNode;
 }>;
 
-type ReflectableDocumentMap = DocumentLiveMap | LiveMapDocumentLibrary;
+type ReflectableDocumentMap = LiveMapDocumentLibrary;
 
 const ACTIVE_DOCUMENT_BINDINGS = new WeakSet<object>();
 
-/** Internal attribute-only proof that projects one DocumentLiveMap into one LiveTree. */
+/** Internal attribute-only proof that projects one LiveMapDocument into one LiveTree. */
 export function reflect_document(
   map: ReflectableDocumentMap,
 ): DocumentMirror {
@@ -184,7 +183,7 @@ function reflect_document_binding_in_runtime(
   if (ACTIVE_DOCUMENT_BINDINGS.has(map)) {
     throw new DocumentMirrorError(
       DOCUMENT_MIRROR_ALREADY_BOUND_ERROR_CODE,
-      "DocumentLiveMap already has an active document projection binding.",
+      "LiveMapDocument already has an active document projection binding.",
     );
   }
   ACTIVE_DOCUMENT_BINDINGS.add(map);
@@ -1201,7 +1200,7 @@ function reflect_document_binding_in_runtime(
     if (evidence === undefined || evidence.mode !== "document") {
       throw new DocumentMirrorError(
         DOCUMENT_MIRROR_UPDATE_FAILED_ERROR_CODE,
-        "DocumentLiveMap observation reached Mirror without exact accepted-state evidence.",
+        "Document Library observation reached Mirror without exact accepted-state evidence.",
       );
     }
     if (observation.kind === "snapshot") {
@@ -1233,7 +1232,7 @@ function reflect_document_binding_in_runtime(
     if (commit.prevRev !== currentRevision) {
       throw new DocumentMirrorError(
         DOCUMENT_MIRROR_REVISION_GAP_ERROR_CODE,
-        `Document binding expected revision ${currentRevision}, but commit began at ${commit.prevRev}.`,
+        `Document binding expected revision ${currentRevision}, but commit ${commit.rev} began at ${commit.prevRev}.`,
       );
     }
     // A selected document binding observes the map-wide revision stream.  A
@@ -1395,7 +1394,7 @@ function reflect_document_binding_in_runtime(
     if (map.rev !== capturedRevision) {
       throw new DocumentMirrorError(
         DOCUMENT_MIRROR_REVISION_GAP_ERROR_CODE,
-        "DocumentLiveMap revision changed during document binding initialization.",
+        "LiveMapDocument revision changed during document binding initialization.",
       );
     }
     currentStatus = "active";

@@ -15,7 +15,7 @@ import { validate_document_path } from "../src/api/livemap/livemap.document.path
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../src/api/locus/locus.aggregate.protocol.ts";
 import { create_locus_hosted_aggregate_socket_internal, derive_locus_hosted_progress_internal } from "../src/api/locus/locus.aggregate.socket.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
-import type { LiveMapLibraries } from "../src/types/livemap.types.ts";
+import type { LiveMap } from "../src/types/livemap.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -49,7 +49,7 @@ function make_map() {
   });
 }
 
-function effective_for(source: LiveMapLibraries) {
+function effective_for(source: LiveMap) {
   const snapshot = internal_livemap_aggregate_authority(source).captureHosted();
   const configured = test_public_projection(source);
   const policy = make_locus_hosted_projection_policy(snapshot.registry, snapshot.authority,
@@ -59,7 +59,7 @@ function effective_for(source: LiveMapLibraries) {
   return effective;
 }
 
-function projected_client_map(source: LiveMapLibraries): LiveMapLibraries {
+function projected_client_map(source: LiveMap): LiveMap {
   return hsonLiveMap.fromClientSnapshot({ authority: project_authority_snapshot(
     internal_livemap_aggregate_authority(source).captureHosted(), effective_for(source)), localLibraries: {} });
 }
@@ -147,11 +147,11 @@ await check("progress requires the owner, contiguous revision, and exact authori
   replica.dispose();
 });
 
-await check("ordinary local LiveMap cannot advance authority position", () => {
-  const map = hsonLiveMap.fromJson({ value: 0 });
+await check("ordinary local registry LiveMap cannot advance authority position", () => {
+  const map = hsonLiveMap.fromLibraries({ state: { data: { value: 0 }, schema: DataSchema } });
   assert.equal(Reflect.has(map, "advanceHostedProgress"), false);
   assert.equal(map.rev, 0);
-  map.set(["value"], 1);
+  map.lib("state").at(["value"]).set(1);
   assert.equal(map.rev, 1);
 });
 
@@ -192,7 +192,7 @@ function socket_pair(): Readonly<{
   });
 }
 
-function live_committed_value(source: LiveMapLibraries, value: number) {
+function live_committed_value(source: LiveMap, value: number) {
   const aggregate = internal_livemap_aggregate_authority(source);
   const library = aggregate.libraries()[0]!;
   const commit = aggregate.commit([{ target: aggregate.target(library, ["value"]), kind: "set", value }]).hosted;

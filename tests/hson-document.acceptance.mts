@@ -6,6 +6,10 @@ import type { HsonCanonical } from "../src/api/transform/transform.types.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
+const HtmlPageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content <sequence [<tag "style" content "string">]>>, <tag "body" content "empty">]>>`;
+const ScriptSchema = Hson.schema`<type "document" tag "script" attrs <props <src "string">> content "empty">`;
+const StyleSchema = Hson.schema`<type "document" tag "style" content "string">`;
+
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "hson.hson-document",
   title: "Exact HsonDocument semantic value",
@@ -315,10 +319,8 @@ check("single raw-text substitutions preserve ordinary and complete managed CSS"
     const transport = hsonTransform.fromHson(page).toHtml().serialize();
     assert.equal(hsonTransform.fromTrustedHtml(transport).toHson().serialize(), page);
     assert.doesNotMatch(transport, /<\/?_hson_(?:elem|str)(?=[\s>])/);
-    const map = hsonLiveMap.fromHson(page);
-    assert.equal(map.mode, "document");
-    if (map.mode !== "document") continue;
-    const browserHtml = render_document({ map }).html;
+    const map = hsonLiveMap.fromLibraries({ page: { document: page, schema: HtmlPageSchema } });
+    const browserHtml = map.render();
     assert.ok(browserHtml.includes(`<style>${cssText}</style>`));
     assert.doesNotMatch(browserHtml, /hson-raw:/);
   }
@@ -328,21 +330,18 @@ check("single raw-text substitutions preserve ordinary and complete managed CSS"
 check("external script admits, inline script rejects, and unsafe style closes reject browser realization", () => {
   const script = Hson.document`<script src="/app.js"/>`;
   assert.equal(hsonTransform.fromHson(script).toHtml().serialize(), '<script src="/app.js"></script>');
-  assert.equal(render_document({ map: hsonLiveMap.fromDocument(script) }).html, '<script src="/app.js"></script>');
+  assert.equal(hsonLiveMap.fromLibraries({ page: { document: script, schema: ScriptSchema } }).render(), '<script src="/app.js"></script>');
   assert.throws(() => Hson.document`<script "go()"/>`, /requires src and no content/);
   assert.throws(() => Hson.document`<script src="/app.js" "go()"/>`, /requires src and no content/);
 
   const unsafe = Hson.document`<style "${"a{} </style> body{}"}"/>`;
-  const map = hsonLiveMap.fromHson(unsafe);
-  assert.equal(map.mode, "document");
-  if (map.mode === "document") {
-    assert.throws(
-      () => render_document({ map }),
-      (error: unknown) => error instanceof Error
-        && error.cause instanceof Error
-        && /closing sentinel/.test(error.cause.message),
-    );
-  }
+  const map = hsonLiveMap.fromLibraries({ page: { document: unsafe, schema: StyleSchema } });
+  assert.throws(
+    () => map.render(),
+    (error: unknown) => error instanceof Error
+      && error.cause instanceof Error
+      && /closing sentinel/.test(error.cause.message),
+  );
 });
 
 check("single style leaf uses exact RAWTEXT lexical transport", () => {
@@ -375,7 +374,7 @@ check("document style and script semantic admission rejects invalid bodies", () 
     const graph = hsonTransform.fromHson(source).toNode();
     assert.throws(() => Hson.document.fromNode(graph), /Document <(?:style|script)>/);
     assert.throws(() => Hson.document.fromHson(hsonTransform.fromHson(source).toHson().serialize()), /Document <(?:style|script)>/);
-    assert.throws(() => hsonLiveMap.fromHson(source), /Document <(?:style|script)>/);
+    assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: source, schema: source.includes("script") ? ScriptSchema : StyleSchema } }), /Document <(?:style|script)>/);
   }
   for (const tag of ["style", "script"]) {
     for (const payload of [

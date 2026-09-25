@@ -1,6 +1,6 @@
 import type { JsonValue } from "../../core/types.js";
 import type { EchoMapManagementLease } from "../../internal/echo-map-capability.js";
-import type { LiveMapLibraries } from "../../types/livemap.types.js";
+import type { LiveMap } from "../../types/livemap.types.js";
 import type {
   Echo,
   EchoRecoveryDiagnostics,
@@ -32,7 +32,7 @@ import { configure_echo_hosted_aggregate_websocket_internal } from "./echo.aggre
 
 /** Bind Echo authority to the projected portion of one fixed client registry. */
 export function create_registry_echo<
-  TMap extends LiveMapLibraries,
+  TMap extends LiveMap,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(
   options: EchoOptions<TMap> & Readonly<{ map: TMap; recovery: EchoRecoveryOptions }>,

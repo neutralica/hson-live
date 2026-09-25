@@ -5,7 +5,7 @@ import {
   type HostSourceRange,
 } from "./embedded-hson-source.js";
 
-export type StaticHsonBoundary = "transform" | "livemap" | "livetree";
+export type StaticHsonBoundary = "transform" | "livetree";
 
 export type RuntimeHostSpan = Readonly<{
   runtimeRange: HostSourceRange;

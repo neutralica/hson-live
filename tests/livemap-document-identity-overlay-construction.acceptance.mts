@@ -1,8 +1,7 @@
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
-import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
+import { document_from_node } from "./helpers/mirror-unit6.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { hson } from "../src/hson.ts";
 import { HSON_META_QUID } from "../src/core/constants.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import {
@@ -45,13 +44,13 @@ const Q2 = "000000002";
 const Q3 = "000000003";
 
 function element(source: string) {
-  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
+  const map = document_from_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error("Expected element map");
   return map;
 }
 
 function multiNodeDocument(source: string) {
-  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
+  const map = document_from_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error("Expected multiNodeDocument map");
   return map;
 }
@@ -67,7 +66,7 @@ check("empty element documents retain an empty overlay", () => {
 });
 
 check("empty multiNodeDocuments retain an empty overlay", () => {
-  const map = hson.liveMap.fromNode({ $_tag: "_hson_root", $_content: [] });
+  const map = document_from_node({ $_tag: "_hson_root", $_content: [] });
   if (map.mode !== "document") throw new Error("Expected empty multiNodeDocument map");
   assert.equal(livemap_document_identity_overlay_for(map).size, 0);
 });
@@ -105,9 +104,9 @@ check("sparse forward paths are exact at root and nested locations", () => {
 });
 
 check("sparse reverse lookup agrees at every retained path", () => {
-  const overlay = livemap_document_identity_overlay_for(multiNodeDocument(`<a @${Q1}/> "x" <b @${Q2}/>`));
+  const overlay = livemap_document_identity_overlay_for(multiNodeDocument(`<a @${Q1}/> <b @${Q2}/>`));
   assert.equal(overlay.quidAtPath(validate_document_path([0])), Q1);
-  assert.equal(overlay.quidAtPath(validate_document_path([2])), Q2);
+  assert.equal(overlay.quidAtPath(validate_document_path([1])), Q2);
 });
 
 check("moderate QUID-free fixtures remain storage-constant", () => {
@@ -161,20 +160,12 @@ check("unquidded paths have no reverse overlay entry", () => {
   assert.equal(overlay.quidAtPath(validate_document_path([0, 0, 0])), undefined);
 });
 
-check("overlay construction never invokes QUID minting", () => {
-  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "crypto");
-  let calls = 0;
-  Object.defineProperty(globalThis, "crypto", {
-    configurable: true,
-    value: { getRandomValues<T extends ArrayBufferView | null>(value: T): T { calls += 1; return value; } },
-  });
-  try {
-    element(`<main @${Q1} <span/>/>`);
-    assert.equal(calls, 0);
-  } finally {
-    if (descriptor === undefined) Reflect.deleteProperty(globalThis, "crypto");
-    else Object.defineProperty(globalThis, "crypto", descriptor);
-  }
+check("registry construction retains only supplied document QUIDs", () => {
+  const map = element(`<main @${Q1} <span/>/>`);
+  const overlay = livemap_document_identity_overlay_for(map);
+  assert.equal(overlay.size, 1);
+  assert.deepEqual(overlay.pathForQuid(Q1), [0]);
+  assert.equal(overlay.quidAtPath(validate_document_path([0, 0, 0])), undefined);
 });
 
 check("direct scanner construction never invokes QUID minting", () => {

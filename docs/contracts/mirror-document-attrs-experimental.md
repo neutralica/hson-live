@@ -1,4 +1,4 @@
-# Experimental Document LiveMap → LiveTree binding
+# Experimental document library → LiveTree binding
 
 ```ts
 import {
@@ -11,8 +11,8 @@ const reflect: Mirror = hsonMirror;
 const documentReflect: DocumentMirror = reflect(documentMap);
 ```
 
-`DocumentMirror` binds one `DocumentLiveMap` to one separately owned, detached
-`LiveTree`. The Document LiveMap remains the only canonical document
+`DocumentMirror` binds one selected LiveMap document library to one separately owned, detached
+`LiveTree`. The registry LiveMap remains the canonical document
 authority. Canonical attribute and raw structural-content commits update
 synchronously into the LiveTree graph and its mounted DOM; public attribute
 mutations on registered projected nodes delegate back to the map before

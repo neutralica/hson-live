@@ -1,5 +1,7 @@
 # Hson authoring diagnostic language review catalog
 
+> Historical copy-review snapshot. Examples of `map.schema.use`, solo LiveMap construction, and D3/D5 diagnostics below describe retired behavior. The current LiveMap API constructs named libraries with Schemas in `hsonLiveMap.fromLibraries(...)`; current editor Schema association uses `schema.certify(...)`.
+
 This is the copy-review surface, not a proposed language redesign. Edit prose in [the editor bank](../editors/vscode-hson/src/diagnostic-messages.ts), then consciously update its exact tests and this catalog. Core/runtime-owned strings stay at their listed owners. No public API, protocol, provenance, validation rule, code action, or color styling is changed by this pass.
 
 Each `bank.*` ID is the exact exported formatter/constant name. Each entry gives the trigger, range and limitation from its immediately preceding source comment, plus authoring/Schema context and fix classification. Rendered text blocks preserve capitalization, punctuation and leading spaces. Fragments are not standalone diagnostic sentences. Missing-evidence probes do not claim that current validators emit those combinations.

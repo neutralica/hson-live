@@ -1,263 +1,125 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
-import { element } from "./helpers/mirror-unit6.mts";
+import { element, path, projected_element, registry_for_document_library } from "./helpers/mirror-unit6.mts";
 import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
-import type { HsonNode } from "../src/core/types.ts";
-import type { DocumentLiveMap, LiveMapGraphCommit } from "../src/types/livemap.types.ts";
 import { set_livemap_document_quid_candidate_source_for_tests } from "../src/api/livemap/livemap.document.registration.ts";
 import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 
-const Q1 = "000002b01";
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livemap.document-identity-handle",
-  title: "Active-epoch document identity handle lifecycle",
+  title: "Registry document identity handles",
   category: "LiveMap",
   runtime: "node",
-  tags: Object.freeze(["document", "quid", "identity-handle", "lifecycle", "provenance", "externally-discoverable"]),
+  tags: Object.freeze(["document", "identity", "path", "lifecycle", "externally-discoverable"]),
 });
-
-const testEvents = create_test_event_emitter("livemap.document-identity-handle");
+const events = create_test_event_emitter("livemap.document-identity-handle");
 let checks = 0;
-
 function check(name: string, run: () => void): void {
-
-  testEvents.case_begin(name, name);
-  try {
-    run();
-    testEvents.case_end(name, "pass");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Check failed.";
-    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
-    testEvents.case_end(name, "fail");
-    testEvents.terminal("fail");
-    throw error;
+  events.case_begin(name, name);
+  try { run(); events.case_end(name, "pass"); }
+  catch (error) {
+    events.diagnostic(name, "assertion", error instanceof Error ? error.message : String(error));
+    events.case_end(name, "fail"); events.terminal("fail"); throw error;
   }
-  checks += 1;
-  process.stdout.write(`ok ${checks} - ${name}\n`);
+  process.stdout.write(`ok ${++checks} - ${name}\n`);
 }
+const Q1 = "000003a01";
+const fixture = () => element('<main <item/> <item/>/>');
+const target = (index: number) => ({ kind: "path" as const, path: validate_document_path([0, 0, index]) });
 
-const target = (...path: number[]) => Object.freeze({ kind: "path" as const, path: Object.freeze([0, ...path]) });
-
-function ordinary(tag: string): HsonNode {
-  return { $_tag: tag, $_content: [] };
-}
-
-function identified(source: string, ...path: number[]) {
-  const map = element(source);
-  const handle = acquire_document_identity(map.document, target(...path));
-  return { map, handle };
-}
-
-function fixedIdentity(map: DocumentLiveMap): void {
+check("new handle resolves one current canonical path", () => {
+  const map = fixture();
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
-}
-
-check("a new handle resolves its initial canonical path", () => {
-  const { handle } = identified(`<main <a/> <b/>/>`, 0, 1);
-  assert.deepEqual(handle.path(), [0, 0, 1]);
-  assert.equal(Object.isFrozen(handle.path()), true);
-});
-
-check("path results are detached immutable values", () => {
-  const { handle } = identified(`<main <a/>/>`, 0, 0);
-  const first = handle.path();
-  const second = handle.path();
-  assert.notEqual(first, second);
-  assert.deepEqual(first, second);
-});
-
-check("snap returns the current identified ordinary element", () => {
-  const { handle } = identified(`<main <a id="one"/>/>`, 0, 0);
-  assert.equal(handle.snap()?.$_attrs?.id, "one");
-});
-
-check("snap results do not expose the owned graph by reference", () => {
-  const { map, handle } = identified(`<main <a/>/>`, 0, 0);
-  const snapshot = handle.snap();
-  if (snapshot === undefined) throw new Error("missing snapshot");
-  snapshot.$_attrs = { changed: true };
-  const content = map.document.content()[0];
-  assert.equal(
-    typeof content === "object" && content !== null && content.$_attrs?.changed === true,
-    false,
-  );
-});
-
-check("ordinary attribute mutation preserves handle activity", () => {
-  const { map, handle } = identified(`<main/>`);
-  map.document.attrs.set(target(), "title", "next");
+  const handle = acquire_document_identity(map.document, target(0));
   assert.equal(handle.active, true);
-  assert.equal(handle.snap()?.$_attrs?.title, "next");
+  assert.deepEqual(handle.path(), [0, 0, 0]);
+  assert.equal(handle.snap()?.$_tag, "item");
+});
+
+check("path and snapshot results are detached inspection values", () => {
+  const map = fixture();
+  const handle = acquire_document_identity(map.document, target(0));
+  const address = handle.path();
+  assert.equal(Object.isFrozen(address), true);
+  const snapshot = handle.snap();
+  if (snapshot === undefined) throw new Error("Missing identity snapshot");
+  snapshot.$_tag = "changed";
+  assert.equal(handle.snap()?.$_tag, "item");
+});
+
+check("attribute mutation preserves handle activity", () => {
+  const map = fixture();
+  const handle = acquire_document_identity(map.document, target(0));
+  map.document.attrs.set(target(0), "title", "ready");
+  assert.equal(handle.active, true);
+  assert.equal(handle.snap()?.$_attrs?.title, "ready");
 });
 
 check("insertion before an identified node shifts its resolved path", () => {
-  const { map, handle } = identified(`<main <a/> <b/>/>`, 0, 1);
-  map.document.content.insert(target(0), 0, ordinary("i"));
+  const map = fixture();
+  const handle = acquire_document_identity(map.document, target(1));
+  map.document.content.insert(path(0), 0, projected_element('<item/>'));
   assert.deepEqual(handle.path(), [0, 0, 2]);
-  assert.equal(handle.snap()?.$_tag, "b");
 });
 
-check("forward move follows the same identified node", () => {
-  const { map, handle } = identified(`<main <a/> <b/> <c/>/>`, 0, 0);
-  map.document.content.move(target(0), 0, 2);
-  assert.deepEqual(handle.path(), [0, 0, 2]);
-  assert.equal(handle.snap()?.$_tag, "a");
-});
-
-check("backward move follows the same identified node", () => {
-  const { map, handle } = identified(`<main <a/> <b/> <c/>/>`, 0, 2);
-  map.document.content.move(target(0), 2, 0);
+check("forward and backward movement follow one identified node", () => {
+  const map = fixture();
+  const handle = acquire_document_identity(map.document, target(0));
+  map.document.content.move(path(0), 0, 1);
+  assert.deepEqual(handle.path(), [0, 0, 1]);
+  map.document.content.move(path(0), 1, 0);
   assert.deepEqual(handle.path(), [0, 0, 0]);
 });
 
-check("removal retires the handle", () => {
-  const { map, handle } = identified(`<main <a/> <b/>/>`, 0, 1);
-  map.document.content.remove(target(0), 1);
+check("removal retires a document identity handle", () => {
+  const map = fixture();
+  const handle = acquire_document_identity(map.document, target(0));
+  map.document.content.remove(path(0), 0);
   assert.equal(handle.active, false);
-  assert.equal(handle.path(), undefined);
   assert.equal(handle.snap(), undefined);
 });
 
-check("replacement with a fresh node retires the old handle", () => {
-  const { map, handle } = identified(`<main <a/>/>`, 0, 0);
-  map.document.content.replace(target(0), 0, ordinary("b"));
+check("replacement without lineage retires an old handle", () => {
+  const map = fixture();
+  const handle = acquire_document_identity(map.document, target(0));
+  map.document.content.replace(path(0), 0, projected_element('<item title="new"/>'));
   assert.equal(handle.active, false);
 });
 
-check("structurally equal replacement without identity still retires", () => {
-  const { map, handle } = identified(`<main <a/>/>`, 0, 0);
-  const equalShape = handle.snap();
-  if (equalShape === undefined) throw new Error("missing equal-shape fixture");
-  delete equalShape.$_meta;
-  map.document.content.replace(target(0), 0, equalShape);
+check("explicit local lineage preserves an identified replacement", () => {
+  const map = fixture();
+  const handle = acquire_document_identity(map.document, target(0));
+  map.document.content.replace(path(0), 0, projected_element('<item title="same"/>'), [
+    { source: validate_document_path([]), destination: validate_document_path([]) },
+  ]);
+  assert.equal(handle.active, true);
+  assert.equal(handle.snap()?.$_attrs?.title, "same");
+});
+
+check("portable registry restoration invalidates prior identity handles", () => {
+  const map = fixture();
+  const handle = acquire_document_identity(map.document, target(0));
+  const owner = registry_for_document_library(map);
+  owner.restore(owner.capture());
   assert.equal(handle.active, false);
 });
 
-check("explicit path lineage preserves the local handle through replacement", () => {
-  const { map, handle } = identified(`<main <a/>/>`, 0, 0);
-  const replacement = handle.snap();
-  if (replacement === undefined) throw new Error("missing replacement fixture");
-  replacement.$_attrs = { replaced: true };
-  delete replacement.$_meta;
-  map.document.content.replace(target(0), 0, replacement, [{
-    source: validate_document_path([]), destination: validate_document_path([]),
-  }]);
-  assert.equal(handle.active, true);
-  assert.equal(handle.snap()?.$_attrs?.replaced, true);
-});
-
-check("changed durable install replaces the owner epoch", () => {
-  const map = element(`<main/>`);
-  fixedIdentity(map);
-  const handle = acquire_document_identity(map.document, target());
-  map.install(element(`<article @${Q1}/>`).capture());
-  assert.equal(handle.active, false);
-});
-
-check("durable restore replaces the owner epoch even with the same bytes", () => {
-  const map = element(`<main/>`);
-  fixedIdentity(map);
-  const handle = acquire_document_identity(map.document, target());
-  map.restore(element(`<main @${Q1}/>`).capture());
-  assert.equal(handle.active, false);
-});
-
-check("same-epoch install preserves a present identity", () => {
-  const { map, handle } = identified(`<main/>`);
-  const capture = map.capture({ identity: "same-epoch" });
-  map.document.attrs.set(target(), "changed", true);
-  map.install(capture, { identity: "same-epoch" });
-  assert.equal(handle.active, true);
-  assert.equal(handle.snap()?.$_attrs?.changed, undefined);
-});
-
-check("same-epoch restore preserves a present identity", () => {
-  const { map, handle } = identified(`<main/>`);
-  const capture = map.capture({ identity: "same-epoch" });
-  map.document.attrs.set(target(), "changed", true);
-  map.restore(capture, { identity: "same-epoch" });
-  assert.equal(handle.active, true);
-});
-
-check("copied capture bytes cannot claim handle continuity", () => {
-  const { map, handle } = identified(`<main/>`);
-  const copied = Object.freeze({ ...map.capture({ identity: "same-epoch" }) });
-  assert.throws(() => map.install(copied, { identity: "same-epoch" }));
-  assert.equal(handle.active, true);
-});
-
-check("another map carrying the same QUID cannot satisfy this handle", () => {
-  const map = element(`<main/>`);
-  fixedIdentity(map);
-  const handle = acquire_document_identity(map.document, target());
-  const foreign = element(`<article @${Q1}/>`);
-  assert.equal(foreign.document.byQuid(Q1)?.$_tag, "article");
-  assert.equal(handle.snap()?.$_tag, "main");
-});
-
-check("multiple handles may refer to one canonical identity", () => {
-  const map = element(`<main/>`);
-  const first = acquire_document_identity(map.document, target());
-  const second = acquire_document_identity(map.document, target());
-  assert.equal(first.active, true);
-  assert.equal(second.active, true);
-  assert.equal(first.snap()?.$_meta?.quid, second.snap()?.$_meta?.quid);
-});
-
-check("disposing one handle leaves another handle active", () => {
-  const map = element(`<main/>`);
-  const first = acquire_document_identity(map.document, target());
-  const second = acquire_document_identity(map.document, target());
+check("two handles share a claim but dispose independently", () => {
+  const map = fixture();
+  const first = acquire_document_identity(map.document, target(0));
+  const second = acquire_document_identity(map.document, target(0));
   first.dispose();
   assert.equal(first.active, false);
   assert.equal(second.active, true);
 });
 
-check("handle disposal does not remove the local QUID claim", () => {
-  const map = element(`<main/>`);
-  const handle = acquire_document_identity(map.document, target());
-  const quid = handle.snap()?.$_meta?.quid;
-  handle.dispose();
-  assert.equal(map.document.byQuid(quid!)?.$_tag, "main");
-  assert.equal(map.rev, 0);
-});
-
-check("disposed handles remain inactive after later map changes", () => {
-  const { map, handle } = identified(`<main/>`);
-  handle.dispose();
-  map.document.attrs.set(target(), "title", "later");
-  assert.equal(handle.active, false);
-  assert.equal(handle.snap(), undefined);
-});
-
-check("the handle surface exposes no raw QUID", () => {
-  const { handle } = identified(`<main/>`);
-  assert.deepEqual(Object.keys(handle), ["active", "path", "snap", "dispose"]);
+check("identity handles expose no raw QUID authority", () => {
+  const map = fixture();
+  const handle = acquire_document_identity(map.document, target(0));
   assert.equal(Reflect.get(handle, "quid"), undefined);
+  assert.equal(Reflect.get(handle, "fromQuid"), undefined);
 });
 
-check("replayed root replacement invalidates the prior owner epoch", () => {
-  const source = element(`<main/>`);
-  fixedIdentity(source);
-  acquire_document_identity(source.document, target());
-  let replacement: LiveMapGraphCommit | undefined;
-  source.commits.observe((observation) => {
-    if (observation.kind === "commit") {
-      const operation = observation.commit.ops[0];
-      if (operation !== undefined && "domain" in operation && operation.op === "replace-root") {
-        replacement = observation.commit as LiveMapGraphCommit;
-      }
-    }
-  });
-  source.install(element(`<article @${Q1}/>`).capture());
-
-  const mirror = element(`<main/>`);
-  fixedIdentity(mirror);
-  const handle = acquire_document_identity(mirror.document, target());
-  mirror.replay(replacement!);
-  assert.equal(handle.active, false);
-});
-
-process.stdout.write(`1..${checks}\n`);
-testEvents.terminal("pass");
+events.terminal("pass");
+process.stdout.write(`# ${checks} registry document identity handle checks passed\n`);

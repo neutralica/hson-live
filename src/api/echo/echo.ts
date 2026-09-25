@@ -1,4 +1,4 @@
-import type { LiveMapAuthority, LiveMapLibraries } from "../../types/livemap.types.js";
+import type { LiveMap } from "../../types/livemap.types.js";
 import type {
   Echo,
   EchoOptions,
@@ -18,14 +18,14 @@ export function create_echo<
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(options: EchoOptions<TMap>): Echo<TMap, TActions>;
 export function create_echo<
-  TMap extends LiveMapLibraries,
+  TMap extends LiveMap,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(options: Omit<EchoOptions<undefined>, "map" | "recovery"> & Readonly<{
   map: TMap;
   recovery: EchoRecoveryOptions;
 }>): Echo<TMap, TActions>;
 export function create_echo(
-  options: EchoOptions<undefined> | EchoOptions<LiveMapAuthority> | EchoOptions<LiveMapLibraries>,
+  options: EchoOptions<undefined> | EchoOptions<LiveMap>,
 ): unknown {
   const map = options.map;
   const recovery = options.recovery;
@@ -35,16 +35,12 @@ export function create_echo(
   if (map === undefined) return create_endpoint_echo_internal(options as EchoOptions<undefined>);
   if (recovery === undefined) throw new Error("Echo replica construction requires map and recovery together.");
   const management = acquire_echo_map_management_internal(map);
-  if (management.topology !== "aggregate") {
-    management.release();
-    throw new TypeError("Hosted Echo replication requires an authority-projected library registry.");
-  }
   try {
     const replicaOptions: Omit<EchoOptions<undefined>, "map" | "recovery"> & Readonly<{
-      map: LiveMapAuthority | LiveMapLibraries;
+      map: LiveMap;
       recovery: EchoRecoveryOptions;
     }> = { ...options, map, recovery };
-    return create_lazy_replica_echo_internal<LiveMapAuthority | LiveMapLibraries>(
+    return create_lazy_replica_echo_internal<LiveMap>(
       replicaOptions,
       management,
       DEFAULT_ECHO_REPLICA_LOADERS,
@@ -62,14 +58,14 @@ export function create_echo_with_replica_loaders_internal(
 ): Echo<undefined>;
 /** @internal Test seam for deterministic deferred-loader lifecycle proofs. */
 export function create_echo_with_replica_loaders_internal(
-  options: EchoOptions<LiveMapLibraries>,
+  options: EchoOptions<LiveMap>,
   loaders: EchoReplicaLoaders,
-): Echo<LiveMapLibraries>;
+): Echo<LiveMap>;
 /** @internal Test seam for deterministic deferred-loader lifecycle proofs. */
 export function create_echo_with_replica_loaders_internal(
-  options: EchoOptions<undefined> | EchoOptions<LiveMapAuthority> | EchoOptions<LiveMapLibraries>,
+  options: EchoOptions<undefined> | EchoOptions<LiveMap>,
   loaders: EchoReplicaLoaders,
-): Echo<undefined> | Echo<LiveMapAuthority | LiveMapLibraries> {
+): Echo<undefined> | Echo<LiveMap> {
   const map = options.map;
   const recovery = options.recovery;
   if ((map === undefined) !== (recovery === undefined)) {
@@ -78,16 +74,12 @@ export function create_echo_with_replica_loaders_internal(
   if (map === undefined) return create_endpoint_echo_internal(options as EchoOptions<undefined>);
   if (recovery === undefined) throw new Error("Echo replica construction requires map and recovery together.");
   const management = acquire_echo_map_management_internal(map);
-  if (management.topology !== "aggregate") {
-    management.release();
-    throw new TypeError("Hosted Echo replication requires an authority-projected library registry.");
-  }
   try {
     const replicaOptions: Omit<EchoOptions<undefined>, "map" | "recovery"> & Readonly<{
-      map: LiveMapAuthority | LiveMapLibraries;
+      map: LiveMap;
       recovery: EchoRecoveryOptions;
     }> = { ...options, map, recovery };
-    return create_lazy_replica_echo_internal<LiveMapAuthority | LiveMapLibraries>(
+    return create_lazy_replica_echo_internal<LiveMap>(
       replicaOptions,
       management,
       loaders,

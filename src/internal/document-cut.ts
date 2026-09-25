@@ -1,8 +1,7 @@
 import type {
-  DocumentLiveMap,
-  DocumentLiveMapCapture,
-  LiveMapLibraries,
-  LiveMapLibrariesSnapshot,
+  LiveMapDocumentCapture,
+  LiveMap,
+  LiveMapSnapshot,
   LocalLibrariesContinuationSnapshot,
 } from "../types/livemap.types.js";
 import type { HsonNode } from "../core/types.js";
@@ -14,11 +13,10 @@ import { clone_hson_graph_without_quids } from "../api/livemap/livemap.document.
 import { decode_hosted_root, encode_hosted_root } from "../api/livemap/livemap.hosted.js";
 import type {
   BrowserRealizationHtml,
-  DocumentSsr,
   LibrariesDocumentSsr,
 } from "../api/ssr/ssr.types.js";
 
-function validate_capture(capture: DocumentLiveMapCapture): DocumentLiveMapCapture<"document"> {
+function validate_capture(capture: LiveMapDocumentCapture): LiveMapDocumentCapture<"document"> {
   if (
     typeof capture !== "object" || capture === null
     || capture.kind !== "hson-document" || capture.mode !== "document"
@@ -30,7 +28,7 @@ function validate_capture(capture: DocumentLiveMapCapture): DocumentLiveMapCaptu
   return capture;
 }
 
-function realize(capture: DocumentLiveMapCapture<"document">): BrowserRealizationHtml {
+function realize(capture: LiveMapDocumentCapture<"document">): BrowserRealizationHtml {
   try {
     const plan = plan_browser_realization(capture.root);
     if (plan.roots.length !== 1 || plan.roots[0]?.kind !== "element") {
@@ -46,31 +44,7 @@ function realize(capture: DocumentLiveMapCapture<"document">): BrowserRealizatio
   }
 }
 
-function render_document_capture(capture: DocumentLiveMapCapture): DocumentSsr {
-  const validated = validate_capture(capture);
-  const bootstrap: DocumentLiveMapCapture<"document"> = Object.freeze({
-    ...validated,
-    root: clone_hson_graph_without_quids(validated.root),
-  });
-  return Object.freeze({ html: realize(bootstrap), bootstrap });
-}
-
-export function render_local_document(
-  map: DocumentLiveMap,
-  afterCapture?: () => void,
-): DocumentSsr {
-  let capture: DocumentLiveMapCapture;
-  try {
-    capture = validate_capture(map.capture({ identity: "strip" }));
-  } catch (cause) {
-    if (cause instanceof DocumentSsrError) throw cause;
-    throw new DocumentSsrError("capture", "The document could not be captured for rendering.", cause);
-  }
-  afterCapture?.();
-  return render_document_capture(capture);
-}
-
-function selected_document(snapshot: LiveMapLibrariesSnapshot, requested: unknown): string {
+function selected_document(snapshot: LiveMapSnapshot, requested: unknown): string {
   if (requested !== undefined && typeof requested !== "string") {
     throw new TypeError("Aggregate document selection must be a public Library name string.");
   }
@@ -93,14 +67,14 @@ function selected_document(snapshot: LiveMapLibrariesSnapshot, requested: unknow
   return requested;
 }
 
-function render_libraries_snapshot<TSnapshot extends LiveMapLibrariesSnapshot>(
+function render_libraries_snapshot<TSnapshot extends LiveMapSnapshot>(
   snapshot: TSnapshot,
   document: unknown,
   install: (snapshot: TSnapshot) => unknown,
   decodeRoot: (root: unknown) => HsonNode,
 ): Readonly<{ html: BrowserRealizationHtml; document: string }> {
   const selected = selected_document(snapshot, document);
-  let capture: DocumentLiveMapCapture<"document">;
+  let capture: LiveMapDocumentCapture<"document">;
   try {
     install(snapshot);
     const library = snapshot.libraries.find((entry) => entry.name === selected);
@@ -121,13 +95,13 @@ function render_libraries_snapshot<TSnapshot extends LiveMapLibrariesSnapshot>(
 }
 
 export function render_local_libraries(
-  map: LiveMapLibraries,
+  map: LiveMap,
   document: unknown,
-  install: (snapshot: LiveMapLibrariesSnapshot) => unknown,
+  install: (snapshot: LiveMapSnapshot) => unknown,
   decodeRoot: (root: unknown) => HsonNode,
   afterCapture?: () => void,
 ): LibrariesDocumentSsr {
-  let snapshot: LiveMapLibrariesSnapshot;
+  let snapshot: LiveMapSnapshot;
   try {
     snapshot = map.capture();
   } catch (cause) {
@@ -148,6 +122,22 @@ export function render_local_libraries(
   return Object.freeze({ html: rendered.html, bootstrap, document: rendered.document });
 }
 
+/** Render one local registry document without producing a continuation bootstrap. */
+export function render_local_libraries_html(
+  map: LiveMap,
+  document: unknown,
+  install: (snapshot: LiveMapSnapshot) => unknown,
+  decodeRoot: (root: unknown) => HsonNode,
+): BrowserRealizationHtml {
+  let snapshot: LiveMapSnapshot;
+  try {
+    snapshot = map.capture();
+  } catch (cause) {
+    throw new DocumentSsrError("capture", "The complete LiveMap snapshot could not be captured for rendering.", cause);
+  }
+  return render_libraries_snapshot(snapshot, document, install, decodeRoot).html;
+}
+
 /** Hosted client egress: both siblings are derived from the admitted session snapshot. */
 export function cut_hosted_projection(
   snapshot: AuthorityProjectionSnapshot,
@@ -161,7 +151,7 @@ export function cut_hosted_projection(
   if (library === undefined) {
     throw new DocumentSsrError("select", "The requested session HTML document is unavailable.");
   }
-  let capture: DocumentLiveMapCapture<"document">;
+  let capture: LiveMapDocumentCapture<"document">;
   try {
     capture = validate_capture(Object.freeze({
       kind: "hson-document", mode: "document", rev: snapshot.revision,

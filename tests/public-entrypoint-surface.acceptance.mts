@@ -17,38 +17,24 @@ const testEvents = create_test_event_emitter("core.public-entrypoint-surface");
 const repositoryRoot = resolve(import.meta.dirname, "..");
 
 const ROOT_EXPORTS = `
-activate_interactions add_interaction AsyncLiveTree AsyncLiveTreeAttrs AsyncLiveTreeClasslist
-AsyncLiveTreeFlags AsyncLiveTreeForm AsyncLiveTreeId AsyncLiveTreeText
-AuthoritativeInteractionDescriptor AuthorityProjectionSnapshot BinaryDecodeOptions BrowserRealizationHtml ClassifiedLiveMap
-continue_document continue_hosted_document create_echo create_livehost_locus_registry create_locus
-DataLiveMapMode decode_ssr_bootstrap DecodedSsrBootstrap
-DetachedLiveContent DocumentContinuation DocumentContinuationError DocumentLiveMap DocumentLiveMapMode
-DocumentMirror DocumentMirrorError DocumentMirrorStatus DocumentSsr DocumentSsrError Echo EchoActionFn
-EchoActionPromise EchoActionRequest EchoActionStatusResult EchoOptions EchoRecoveryError EchoRetryActionFn
-EchoSession EchoSessionError EchoSessionFailure EchoSessionOptions EchoSessionResult EchoSessionStatus
-enable_interactions encode_ssr_bootstrap EncodedSsrBootstrap HostedDocumentContinuation
-HostedLibrariesDocumentCut HostedLibrariesDocumentSsr hson Hson hsonCalc HsonCanonical HsonData HsonDocument hsonEcho HsonFacade hsonLiveMap hsonLiveTree
-hsonLocus HsonNumber hsonMirror HsonSchema HsonSchemaData HsonSchemaMutationCandidate hsonTransform SchemaType
-InteractionActionDispatcher InteractionActivationOptions InteractionDescriptor InteractionFailure
-InteractionListener InteractionLocalBehavior InteractionLocalBehaviors is_transform_error LibrariesDocumentSsr
-link_livemap LiveHost LiveHostApplication LiveHostApplicationContext LiveHostConnection
-LiveHostConnectionRoute LiveHostLocusAcquisition LiveHostLocusEvictionResult LiveHostLocusRegistry
-LiveHostLocusRegistryOptions LiveHostLocusRegistryResult LiveHostPrincipal LiveHostRequestRoute LiveMap
-LiveMapDataLibrary LiveMapDataLibraryInput LiveMapDocumentAttributeNotFoundError
-LiveMapDocumentIdentityProvenanceError LiveMapDocumentIdentityRegistrationError LiveMapDocumentInstallError
-LiveMapDocumentLibrary LiveMapDocumentLibraryInput LiveMapDocumentMutationError LiveMapDocumentStagingError
-LiveMapLibraries LiveMapLibrariesInput LiveMapLibraryInput LiveTree LiveTreeAlreadyAttachedError
-LiveTreeAttributeError LiveTreeBatchError LiveTreeDisposedError LiveTreeLifecycleResult
-LiveTreeLinkedIdentityRequiredError LiveTreeProtectedRootError LiveTreeQuidReuseError
-LocalInteractionDescriptor Locus LocusActionName LocusActionPayloads
-LocusActivity LocusActivityKind LocusActivitySnapshot LocusActivityState LocusAuthorityError
-LocusConnection LocusDisconnectedError LocusDuplicateActionIdError
-LocusActionContext LocusActionHandler LocusActions
-LocusOptions LocusResult LocusSocketLike
-read_transform_error_details Mirror reflect_document remove_interaction render_document
-render_hosted_document replace_interaction SsrBootstrapCodecError SsrBootstrapCodecOptions SsrBootstrapKind
-TransformBinarySerialize TransformError TransformErrorDetails TransformErrorRelated TransformErrorSource
-TreeSelector
+AsyncLiveTree AsyncLiveTreeAttrs AsyncLiveTreeClasslist AsyncLiveTreeFlags AsyncLiveTreeForm AsyncLiveTreeId AsyncLiveTreeText AuthoritativeInteractionDescriptor
+AuthorityProjectionSnapshot BinaryDecodeOptions BrowserRealizationHtml DataLiveMapMode DecodedSsrBootstrap DetachedLiveContent DocumentContinuation DocumentContinuationError
+DocumentMirror DocumentMirrorError DocumentMirrorStatus DocumentSsrError Echo EchoActionFn EchoActionPromise EchoActionRequest
+EchoActionStatusResult EchoOptions EchoRecoveryError EchoRetryActionFn EchoSession EchoSessionError EchoSessionFailure EchoSessionOptions
+EchoSessionResult EchoSessionStatus EncodedSsrBootstrap HostedDocumentContinuation HostedLibrariesDocumentCut HostedLibrariesDocumentSsr Hson HsonCanonical
+HsonData HsonDocument HsonFacade HsonNumber HsonSchema HsonSchemaData HsonSchemaMutationCandidate InteractionActionDispatcher
+InteractionActivationOptions InteractionDescriptor InteractionFailure InteractionListener InteractionLocalBehavior InteractionLocalBehaviors LibrariesDocumentSsr LiveHost
+LiveHostApplication LiveHostApplicationContext LiveHostConnection LiveHostConnectionRoute LiveHostLocusAcquisition LiveHostLocusEvictionResult LiveHostLocusRegistry LiveHostLocusRegistryOptions
+LiveHostLocusRegistryResult LiveHostPrincipal LiveHostRequestRoute LiveMap LiveMapDataLibrary LiveMapDataLibraryInput LiveMapDocumentAttributeNotFoundError LiveMapDocumentIdentityProvenanceError
+LiveMapDocumentIdentityRegistrationError LiveMapDocumentInstallError LiveMapDocumentLibrary LiveMapDocumentLibraryInput LiveMapDocumentMode LiveMapDocumentMutationError LiveMapDocumentStagingError LiveMapInput
+LiveMapLibraryInput LiveTree LiveTreeAlreadyAttachedError LiveTreeAttributeError LiveTreeBatchError LiveTreeDisposedError LiveTreeLifecycleResult LiveTreeLinkedIdentityRequiredError
+LiveTreeProtectedRootError LiveTreeQuidReuseError LocalInteractionDescriptor Locus LocusActionContext LocusActionHandler LocusActionName LocusActionPayloads
+LocusActions LocusActivity LocusActivityKind LocusActivitySnapshot LocusActivityState LocusAuthorityError LocusConnection LocusDisconnectedError
+LocusDuplicateActionIdError LocusOptions LocusResult LocusSocketLike Mirror SchemaType SsrBootstrapCodecError SsrBootstrapCodecOptions
+SsrBootstrapKind TransformBinarySerialize TransformError TransformErrorDetails TransformErrorRelated TransformErrorSource TreeSelector activate_interactions
+add_interaction continue_document continue_hosted_document create_echo create_livehost_locus_registry create_locus decode_ssr_bootstrap enable_interactions
+encode_ssr_bootstrap hson hsonCalc hsonEcho hsonLiveMap hsonLiveTree hsonLocus hsonMirror
+hsonTransform is_transform_error read_transform_error_details reflect_document remove_interaction render_document render_hosted_document replace_interaction
 `.trim().split(/\s+/).sort();
 
 const DIAGNOSTICS_EXPORTS = `
@@ -184,12 +170,12 @@ await check("LiveTree declarations expose styling capabilities without runtime m
 const ownerProofs = Object.freeze({
   "dist/hson-authoring.d.ts": ["HsonDocument", "HsonNode", "HsonAttrs", "HsonMeta", "NodeContent", "JsonValue", "Primitive"],
   "dist/api/livetree/index.d.ts": ["make_tree_selector", "LiveTreeAttributeErrorCode", "LIVETREE_DISPOSED_ERROR_CODE"],
-  "dist/api/livemap/index.d.ts": ["make_livemap_core", "make_livemap_store_api", "LiveMapCapture", "LiveMapReplay", "LiveMapCommitObserver", "snap_live_path"],
+  "dist/api/livemap/index.d.ts": ["LiveMapDocumentCapture", "LiveMapGraphCommit", "LiveMapRegistryCommitObserverApi", "LiveMapSnapshot", "snap_live_path"],
   "dist/api/mirror/index.d.ts": ["reflect_collection", "CollectionMirror", "CollectionMirrorErrorCode", "DocumentMirrorErrorCode", "DOCUMENT_MIRROR_DISPOSED_ERROR_CODE"],
   "dist/api/echo/index.d.ts": ["EchoRecovery", "EchoRecoveryCursor", "EchoRecoveryOptions", "EchoRecoveryStrategy"],
   "dist/api/locus/index.d.ts": ["create_persistent_locus", "PersistentLocusOptions"],
   "dist/api/locus/node/index.d.ts": ["create_node_locus_socket", "NodeLocusSocketOptions"],
-  "dist/api/ssr/index.d.ts": ["render_document", "DocumentSsr"],
+  "dist/api/ssr/index.d.ts": ["render_document", "LibrariesDocumentSsr"],
   "dist/api/livehost/index.d.ts": ["create_livehost_locus_registry", "LiveHost"],
   "dist/api/livehost/node/index.d.ts": ["start_node_application_host", "NodeApplicationHostOptions"],
   "dist/diagnostics/index.d.ts": ["hsonInspect", "create_live_inspector", "LiveInspector", "create_live_trace_collector"],
@@ -201,7 +187,7 @@ await check("specialist contracts remain available from owning entrypoints", () 
     const actual = new Set(declaration_exports(file));
     for (const name of expected) {
       assert.equal(actual.has(name), true, `${name} must remain exported by ${file}`);
-      if (!["HsonDocument", "render_document", "DocumentSsr", "create_livehost_locus_registry", "LiveHost"].includes(name)) {
+      if (!["HsonDocument", "render_document", "LibrariesDocumentSsr", "create_livehost_locus_registry", "LiveHost"].includes(name)) {
         assert.equal(root.has(name), false, `${name} must not leak back into the root`);
       }
     }
@@ -289,7 +275,7 @@ await check("all retained overlapping runtime values preserve strict identity", 
     transform: ["hsonTransform", "TransformError", "is_transform_error", "read_transform_error_details"],
     number: ["hsonCalc"],
     livetree: ["hsonLiveTree", "LiveTree", "TreeSelector", "LiveTreeAlreadyAttachedError", "LiveTreeAttributeError", "LiveTreeBatchError", "LiveTreeDisposedError", "LiveTreeProtectedRootError", "LiveTreeQuidReuseError", "LiveTreeLinkedIdentityRequiredError"],
-    livemap: ["hsonLiveMap", "link_livemap", "LiveMapDocumentAttributeNotFoundError", "LiveMapDocumentIdentityProvenanceError", "LiveMapDocumentIdentityRegistrationError", "LiveMapDocumentInstallError", "LiveMapDocumentMutationError", "LiveMapDocumentStagingError"],
+    livemap: ["hsonLiveMap", "LiveMapDocumentAttributeNotFoundError", "LiveMapDocumentIdentityProvenanceError", "LiveMapDocumentIdentityRegistrationError", "LiveMapDocumentInstallError", "LiveMapDocumentMutationError", "LiveMapDocumentStagingError"],
     mirror: ["hsonMirror", "reflect_document", "DocumentMirrorError"],
     echo: ["hsonEcho", "create_echo", "EchoRecoveryError", "EchoSessionError"],
     locus: ["hsonLocus", "create_locus", "LocusDisconnectedError", "LocusDuplicateActionIdError", "LocusAuthorityError"],

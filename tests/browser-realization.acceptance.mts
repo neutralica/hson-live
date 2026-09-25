@@ -6,7 +6,7 @@ import { serialize_browser_realization } from "../src/internal/browser-realizati
 import { materialize_browser_realization, match_browser_realization_root } from "../src/internal/browser-realization/browser-realization-dom.ts";
 import { create_livetree_runtime } from "../src/api/livetree/runtime/livetree-runtime.ts";
 import { project_livetree } from "../src/api/livetree/creation/project-live-tree.ts";
-import { hsonLiveMap } from "../src/api/livemap/index.ts";
+import { hsonTransform } from "../src/api/transform/index.ts";
 import { get_dom_for_node } from "../src/api/livetree/utils/node-map-helpers.ts";
 import { FakeElement, install_fake_document } from "./helpers/fake-document.mts";
 
@@ -122,9 +122,7 @@ for (const [label, value, reason] of [
 ] as const) {
   for (const tag of ["main", "svg"] as const) {
     const canonical: HsonNode = { $_tag: "_hson_root", $_content: [element(tag, [], { "data-value": value })] };
-    const map = hsonLiveMap.fromNode(canonical);
-    assert.equal(map.mode, "document", `${label} ${tag} canonical admission`);
-    const admitted = map.root();
+    const admitted = hsonTransform.fromNode(canonical).toNode();
     const domPlan = plan_browser_realization(admitted, { capability: "dom" });
     assert.equal(domPlan.parserClosure, "not-required", `${label} ${tag} direct-DOM capability`);
     const projected = materialize_browser_realization(
@@ -263,10 +261,9 @@ for (const supported of [
 {
   const parserUnstable = element("p", [element("div", [leaf("direct")])]);
   const canonical = { $_tag: "_hson_root", $_content: [structuredClone(parserUnstable)] };
-  const map = hsonLiveMap.fromNode(canonical);
-  assert.equal(map.mode, "document");
-  assert.deepEqual(map.root(), canonical);
-  rejectsSsr(map.root(), /implicitly close.*<p>/);
+  const admitted = hsonTransform.fromNode(canonical).toNode();
+  assert.deepEqual(admitted, canonical);
+  rejectsSsr(admitted, /implicitly close.*<p>/);
   const projected = project_livetree(structuredClone(parserUnstable), "html", create_livetree_runtime(), globalThis.document) as unknown as FakeElement;
   assert.equal(projected.localName, "p");
   assert.equal((projected.childNodes[0] as FakeElement | undefined)?.localName, "div");

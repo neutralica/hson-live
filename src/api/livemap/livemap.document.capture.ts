@@ -3,11 +3,11 @@ import { canonical_hson_graph_equal } from "../../core/canonical-hson-equal.js";
 import { is_Node } from "../../core/node-guards.js";
 import type { HsonNode } from "../../core/types.js";
 import type {
-  DocumentLiveMapCapture,
-  DocumentLiveMapCaptureIdentity,
-  DocumentLiveMapCaptureOptions,
-  DocumentLiveMapInstallIdentity,
-  DocumentLiveMapMode,
+  LiveMapDocumentCapture,
+  LiveMapDocumentCaptureIdentity,
+  LiveMapDocumentCaptureOptions,
+  LiveMapDocumentInstallIdentity,
+  LiveMapDocumentMode,
   LiveMapCommitObservation,
 } from "../../types/livemap.types.js";
 import { clone_live_root } from "./livemap.editor.js";
@@ -15,13 +15,13 @@ import { LiveMapDocumentIdentityProvenanceError } from "./livemap.error.js";
 import type { LiveMapIdentityEpochController } from "./livemap.identity-epoch.js";
 import type { LiveMapDocumentIdentityOverlay } from "./livemap.document.identity.js";
 
-type CaptureCategory = DocumentLiveMapCaptureIdentity | "default";
+type CaptureCategory = LiveMapDocumentCaptureIdentity | "default";
 
 type CaptureProvenance = Readonly<{
   owner: object;
   epoch: number;
   category: CaptureCategory;
-  mode: DocumentLiveMapMode;
+  mode: LiveMapDocumentMode;
   rev: number;
   root: HsonNode;
   overlay: LiveMapDocumentIdentityOverlay;
@@ -30,30 +30,30 @@ type CaptureProvenance = Readonly<{
 
 export type LiveMapDocumentIdentityEpochController = LiveMapIdentityEpochController;
 
-const captureProvenance = new WeakMap<DocumentLiveMapCapture, CaptureProvenance>();
+const captureProvenance = new WeakMap<LiveMapDocumentCapture, CaptureProvenance>();
 const commitContinuity = new WeakMap<object, "same-epoch" | "new-epoch">();
 const observationEvidence = new WeakMap<object, LiveMapDocumentObservationEvidence>();
 
 export type LiveMapDocumentObservationEvidence = Readonly<{
-  mode: DocumentLiveMapMode;
+  mode: LiveMapDocumentMode;
   revision: number;
   root: HsonNode;
   continuity: "same-epoch" | "new-epoch";
 }>;
 
 /** Capture portable state, with optional owner-proven same-epoch identity. */
-export function capture_livemap_document<TMode extends DocumentLiveMapMode>(
+export function capture_livemap_document<TMode extends LiveMapDocumentMode>(
   controller: LiveMapDocumentIdentityEpochController,
   mode: TMode,
   rev: number,
   root: HsonNode,
   overlay: LiveMapDocumentIdentityOverlay,
-  options?: DocumentLiveMapCaptureOptions,
+  options?: LiveMapDocumentCaptureOptions,
   continuity?: () => object | undefined,
-): DocumentLiveMapCapture<TMode> {
+): LiveMapDocumentCapture<TMode> {
   const category = capture_category(options);
   const captureRoot = clone_hson_graph_without_quids(root);
-  const capture: DocumentLiveMapCapture<TMode> = Object.freeze({
+  const capture: LiveMapDocumentCapture<TMode> = Object.freeze({
     kind: "hson-document",
     mode,
     rev,
@@ -78,7 +78,7 @@ export function capture_livemap_document<TMode extends DocumentLiveMapMode>(
 
 /** Exact-object local identity evidence, never admitted from a copied capture. */
 export function same_epoch_livemap_document_overlay(
-  capture: DocumentLiveMapCapture,
+  capture: LiveMapDocumentCapture,
 ): LiveMapDocumentIdentityOverlay | undefined {
   const provenance = captureProvenance.get(capture);
   return provenance?.category === "same-epoch" ? provenance.overlay : undefined;
@@ -87,10 +87,10 @@ export function same_epoch_livemap_document_overlay(
 /** Resolve and validate one install policy before any candidate is published. */
 export function validate_livemap_document_admission(
   controller: LiveMapDocumentIdentityEpochController,
-  capture: DocumentLiveMapCapture,
+  capture: LiveMapDocumentCapture,
   identity: unknown,
   continuity?: () => object | undefined,
-): DocumentLiveMapInstallIdentity {
+): LiveMapDocumentInstallIdentity {
   const policy = install_identity(identity);
   if (policy !== "same-epoch") return policy;
 
@@ -187,7 +187,7 @@ export function clone_hson_graph_without_quids(root: HsonNode): HsonNode {
   return clone;
 }
 
-function capture_category(options: DocumentLiveMapCaptureOptions | undefined): CaptureCategory {
+function capture_category(options: LiveMapDocumentCaptureOptions | undefined): CaptureCategory {
   if (options === undefined) return "default";
   if (typeof options !== "object" || options === null || Array.isArray(options)) {
     throw provenance_error(
@@ -205,7 +205,7 @@ function capture_category(options: DocumentLiveMapCaptureOptions | undefined): C
   );
 }
 
-function install_identity(identity: unknown): DocumentLiveMapInstallIdentity {
+function install_identity(identity: unknown): LiveMapDocumentInstallIdentity {
   if (identity === undefined) return "reject";
   if (identity === "same-epoch"
     || identity === "strip"

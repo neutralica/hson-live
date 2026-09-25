@@ -2,8 +2,8 @@
 
 The primary LiveMap access path is `map.lib(name).at(path)`. Library selection
 establishes data or document semantics; path resolution then determines the
-handle capabilities. One-library maps retain `map.at(path)` as a compatibility
-facade over the same implementation. `proxy(path?)` remains optional
+handle capabilities. A one-library map uses the same `map.lib(name)` selection.
+`proxy(path?)` remains optional
 property/index syntax for building a path. None of these surfaces owns a second
 copy of state.
 
@@ -13,9 +13,10 @@ A data path is a readonly array of string object keys and numeric array
 indexes:
 
 ```ts
-map.snap(["users", 0, "name"]);
-map.set(["users", 0, "name"], "Alice");
-map.delete(["users", 0, "name"]);
+const users = map.lib("state");
+users.at(["users", 0, "name"]).snap();
+users.at(["users", 0, "name"]).set("Alice");
+users.at(["users", 0, "name"]).delete();
 ```
 
 The empty path is the data root. `snap()` reads that root, while

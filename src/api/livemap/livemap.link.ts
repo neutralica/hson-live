@@ -2,7 +2,6 @@
 
 import type { JsonValue } from "../../core/types.js";
 import type { LiveMapCore, LiveMapDisposer, LiveMapFeedEvent, LiveMapLinkOptions, LivePath } from "../../types/livemap.types.js";
-import { schedule_livemap_managed_mutation } from "./livemap.authority.js";
 import { client_library_source_internal } from "./livemap.libraries.js";
 import { path_is_prefix } from "./livemap.path.js";
 import {
@@ -131,15 +130,6 @@ function commit_projected_link(
   target: LiveMapCore,
   writes: readonly LiveMapProjectedPropagationWrite[],
 ): void {
-  const scheduled = schedule_livemap_managed_mutation(target, (draft) => {
-    const projected = livemap_projected_propagation(draft);
-    if (projected === undefined) throw new Error("Managed LiveMap draft has no projected propagation capability.");
-    return projected.commit(writes);
-  });
-  if (scheduled !== undefined) {
-    void scheduled.catch(() => undefined);
-    return;
-  }
   const projected = livemap_projected_propagation(target);
   if (projected === undefined) throw new Error("LiveMap target has no projected propagation capability.");
   projected.commit(writes);

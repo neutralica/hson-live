@@ -2,7 +2,7 @@ import * as messages from "./diagnostic-messages.js";
 import { performance } from "node:perf_hooks";
 import { TrustedSchemaNodeSupervisor, type TrustedSchemaSupervisorOptions } from "../../../src/internal/trusted-schema-diagnostics/node-supervisor.js";
 import type { TrustedSchemaBindingRegistration, TrustedSchemaDirectSource, TrustedSchemaResponse, TrustedSchemaTiming } from "../../../src/internal/trusted-schema-diagnostics/protocol.js";
-import { same_schema_source_binding, same_map_flow } from "../../../src/internal/trusted-schema-diagnostics/source-binding.js";
+import { same_schema_source_binding } from "../../../src/internal/trusted-schema-diagnostics/source-binding.js";
 import { discover_schema_validation_sources } from "../../../src/internal/trusted-schema-diagnostics/discover-validation-sources.js";
 import { read_authored_hson_source } from "../../../src/internal/embedded-hson/authored-hson-source.js";
 import { present_schema_diagnostic } from "./schema-presentation.js";
@@ -82,8 +82,7 @@ export class TrustedSchemaClient {
       const runtimeCaptures = observed?.captures ?? [];
       const bindings: readonly TrustedSchemaBindingRegistration[] = loaded.bindings ?? [];
       this.#bindings = bindings;
-      this.#lifecycleModules = (loaded.associations ?? []).flatMap(record => record.mapFlow === undefined ? [] : [record.mapFlow.moduleUrl]);
-      this.#lifecycleModules = [...this.#lifecycleModules, ...(loaded.captures ?? []).map(c => c.site.moduleUrl), ...runtimeCaptures.map(c => c.site.moduleUrl)];
+      this.#lifecycleModules = [...(loaded.captures ?? []).map(c => c.site.moduleUrl), ...runtimeCaptures.map(c => c.site.moduleUrl)];
       for (const template of templates) {
         const matches = runtimeCaptures.filter(c => c.site.templateId === template.templateId && c.site.sourceRevision === template.sourceRevision);
         if (matches.length !== 1) { status = matches.length > 1 ? "ambiguous" : "waiting"; continue; }
@@ -107,28 +106,16 @@ export class TrustedSchemaClient {
         if (capture?.failure !== undefined) continue;
         let registration = bindings.find(record => same_schema_source_binding(record.binding, association.binding));
         if (registration === undefined) { if (status !== "ambiguous" && status !== "runtime-failed") status = "unavailable"; continue; }
-        const lookupStarted = performance.now();
-        const lifecycleMatches = association.mapFlow === undefined ? [] : (loaded.associations ?? []).filter(record =>
-          same_map_flow(record.mapFlow, association.mapFlow) && record.binding !== undefined && same_schema_source_binding(record.binding, association.binding)
-          && record.correspondence === "direct" && record.validationAttempted === true);
-        lifecycleMs += performance.now() - lookupStarted;
-        if (association.mapFlow !== undefined && lifecycleMatches.length !== 1) {
-          if (lifecycleMatches.length > 1) status = "ambiguous";
-          continue;
-        }
-        const lifecycle = lifecycleMatches[0];
-        if (lifecycle !== undefined) registration = bindings.find(record => record.schemaId === lifecycle.schemaId && same_schema_source_binding(record.binding, association.binding));
         if (registration === undefined) { status = "unavailable"; continue; }
         const associationRevision = ++this.#revision;
         const associationId = `${association.callId}@${document.version}:${associationRevision}`;
         const directSource: TrustedSchemaDirectSource = {
           interpolation: capture === undefined ? undefined : { templateId: capture.site.templateId, sourceRevision: capture.site.sourceRevision, evaluationId: capture.evaluationId },
-          mapFlow: association.mapFlow,
           templateId: association.templateId, callId: association.callId, binding: association.binding,
           documentRevision: document.version, templateRevision: document.version, associationRevision,
         };
         const requestStarted = performance.now();
-        const associated = await this.supervisor.request({ type: "associate-source", associationId, lifecycleId: lifecycle?.associationId, schemaId: registration.schemaId, directSource });
+        const associated = await this.supervisor.request({ type: "associate-source", associationId, schemaId: registration.schemaId, directSource });
         try {
           if (!current() || generation !== this.supervisor.activeGeneration) return { status: "stale", diagnostics: [] };
           if (associated.type !== "associated") {

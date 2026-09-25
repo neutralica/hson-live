@@ -5,7 +5,6 @@ import { hson } from "../src/hson.ts";
 import { hsonTransform } from "../src/api/transform/transform.facade.ts";
 import { UNSAFE_TRANSFORM_SOURCE } from "../src/api/transform/transform.browser.ts";
 import { hsonLiveMap } from "../src/api/livemap/livemap.facade.ts";
-import { make_classified_livemap, make_livemap_core } from "../src/api/livemap/index.ts";
 import { hsonLiveTree } from "../src/api/livetree/livetree.facade.ts";
 import { LiveTree } from "../src/api/livetree/livetree.ts";
 import { default_livetree_runtime } from "../src/api/livetree/runtime/livetree-runtime.ts";
@@ -38,9 +37,7 @@ forbidden(() => hsonTransform.fromNode(reconstructed));
 forbidden(() => UNSAFE_TRANSFORM_SOURCE.fromNode(reconstructed));
 forbidden(() => hsonLiveTree.fromNode(reconstructed));
 forbidden(() => new LiveTree(reconstructed));
-forbidden(() => hsonLiveMap.fromNode({ $_tag: "_hson_root", $_content: [reconstructed] }));
-forbidden(() => make_classified_livemap({ $_tag: "_hson_root", $_content: [reconstructed] }));
-forbidden(() => make_livemap_core({ $_tag: "_hson_root", $_content: [reconstructed] }));
+forbidden(() => hsonLiveMap.fromLibraries({ page: { document: { $_tag: "_hson_root", $_content: [reconstructed] }, schema } }));
 forbidden(() => Hson.document.fromNode({ $_tag: "_hson_root", $_content: [reconstructed] }));
 forbidden(() => hsonLiveMap.fromLibraries({ page: {
   document: { $_tag: "_hson_root", $_content: [reconstructed] }, schema,
@@ -50,7 +47,7 @@ assert.deepEqual(reconstructed, reconstructedBefore);
 const handAuthored: HsonNode = { $_tag: "main", $_content: [], $_meta: { quid: "000000001" } };
 forbidden(() => hsonTransform.fromNode(handAuthored));
 forbidden(() => hsonLiveTree.fromNode(handAuthored));
-forbidden(() => hsonLiveMap.fromNode({ $_tag: "_hson_root", $_content: [handAuthored] }));
+forbidden(() => hsonLiveMap.fromLibraries({ page: { document: { $_tag: "_hson_root", $_content: [handAuthored] }, schema } }));
 
 // Other metadata remains admitted, and a fresh runtime can acquire its own QUID.
 // Index evidence is valid only on an indexed structural node, so use an array
@@ -60,9 +57,7 @@ assert.deepEqual(hsonTransform.fromNode(indexed).toNode(), indexed);
 assert.equal(hsonTransform.fromNode({ $_tag: "main", $_content: [] }).toHson().serialize(), "<main/>");
 const admittedTree = hsonLiveTree.fromNode({ $_tag: "main", $_content: [] }, { isolated: true });
 assert.notEqual(admittedTree.quid, localQuid);
-assert.equal(hsonLiveMap.fromNode(authored).mode, "document");
-assert.equal(make_classified_livemap(authored).mode, "document");
-assert.equal(make_livemap_core(authored).snap() !== undefined, true);
+assert.equal(hsonLiveMap.fromLibraries({ page: { document: authored, schema } }).lib("page").mode, "document");
 
 // All four portable carriers omit the active claim and do not inherit it.
 const hsonWire = source.toHson().serialize();

@@ -11,10 +11,7 @@ import {
   _lookup_livetree_runtime_test_node,
   _reflect_document_for_runtime_test,
 } from "../src/_tests/diagnostics-internal.ts";
-import {
-  LiveMapDocumentIdentityRegistrationError,
-  LiveMapReplayInputError,
-} from "../src/api/livemap/livemap.error.ts";
+import { LiveMapDocumentIdentityRegistrationError } from "../src/api/livemap/livemap.error.ts";
 import {
   LIVEMAP_DOCUMENT_QUID_MINT_RETRY_LIMIT,
   set_livemap_document_quid_candidate_source_for_tests,
@@ -23,7 +20,6 @@ import {
   LIVETREE_LINKED_IDENTITY_REQUIRED_ERROR_CODE,
   unregister_document_binding_node,
 } from "../src/api/livetree/lifecycle/document-binding-state.ts";
-import type { LiveMapGraphCommit } from "../src/types/livemap.types.ts";
 import { FakeElement } from "./helpers/fake-document.mts";
 
 const syntheticHead = new FakeElement("head");
@@ -86,12 +82,6 @@ function authoredRoot(binding: ReturnType<typeof reflected>["binding"]) {
 function source(...values: string[]): () => string {
   let index = 0;
   return () => values[Math.min(index++, values.length - 1)]!;
-}
-function replay(rev: number, ops: readonly unknown[]): LiveMapGraphCommit {
-  return { changed: true, prevRev: rev, rev: rev + 1, ops } as LiveMapGraphCommit;
-}
-function ensure(target: ReturnType<typeof path>, quid: string): unknown {
-  return { domain: "graph", op: "ensure-quid", target, quid };
 }
 
 check("runtime candidate collision retries inside map authority", () => {
@@ -175,24 +165,11 @@ check("missing exact correspondence rejects a stale linked handle", () => {
   binding.tree.remove();
 });
 
-check("public replay rejects identity overwrite atomically", () => {
-  const map = element(`<main @${Q1}/>`);
-  const before = map.capture();
-  assert.throws(() => map.replay(replay(0, [ensure(path(), Q2)])), LiveMapReplayInputError);
-  assert.deepEqual(map.capture(), before);
-});
 
-check("malformed public identity replay rejects atomically", () => {
-  const map = element(`<main/>`);
-  assert.throws(() => map.replay(replay(0, [ensure(path(), "bad")])), LiveMapReplayInputError);
-  assert.equal(map.rev, 0);
-});
 
-check("public replay rejects identity collision atomically", () => {
-  const map = element(`<main <a @${Q1}/> <b/>/>`);
-  assert.throws(() => map.replay(replay(0, [ensure(path(0, 1), Q1)])), LiveMapReplayInputError);
-  assert.equal(raw_node(map.root(), [0, 1]).$_meta?.quid, undefined);
-});
+
+
+
 
 check("two local acquisitions remain distinct without a replay commit", () => {
   const { map, binding } = reflected(`<main <a/> <b/>/>`);
@@ -206,7 +183,7 @@ check("two local acquisitions remain distinct without a replay commit", () => {
 });
 
 check("local acquisition followed by move maps QUID to the final path", () => {
-  const { map, binding } = reflected(`<main <a/> <b/>/>`);
+  const { map, binding } = reflected(`<main <a/> <a/>/>`);
   const moved = raw_node(binding.tree.node, [0, 0]);
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
   assert.equal(binding.tree.find.byTag("a")!.quid, Q1);
@@ -217,18 +194,18 @@ check("local acquisition followed by move maps QUID to the final path", () => {
 });
 
 check("move followed by local acquisition resolves the moved path", () => {
-  const { map, binding } = reflected(`<main <a/> <b/>/>`);
+  const { map, binding } = reflected(`<main <a/> <a/>/>`);
   const moved = raw_node(binding.tree.node, [0, 0]);
   map.document.content.move(path(0), 0, 1);
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
-  assert.equal(binding.tree.find.byTag("a")!.quid, Q1);
+  assert.equal(_create_livetree_for_runtime_test(runtime, moved).adoptRoots(binding.tree.hostRootNode()).quid, Q1);
   assert.equal(_lookup_livetree_runtime_test_node(runtime, Q1), moved);
-  assert.equal(raw_node(binding.tree.node, [0, 1]).$_meta?.quid, Q1);
+  assert.equal(map.document.byQuid(Q1)?.$_tag, "a");
   close(binding);
 });
 
 check("local acquisition followed by removal publishes no retired runtime claim", () => {
-  const { map, binding } = reflected(`<main <a/> <b/>/>`);
+  const { map, binding } = reflected(`<main <a/> <a/>/>`);
   const removed = raw_node(binding.tree.node, [0, 0]);
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
   assert.equal(binding.tree.find.byTag("a")!.quid, Q1);
@@ -239,17 +216,7 @@ check("local acquisition followed by removal publishes no retired runtime claim"
   close(binding);
 });
 
-check("failed later staged operation preserves batch atomicity", () => {
-  const { map, binding } = reflected(`<main <a/>/>`);
-  const before = map.capture();
-  assert.throws(() => map.replay(replay(0, [
-    ensure(path(0, 0), Q1),
-    { domain: "graph", op: "remove-content", target: path(0), index: 99 },
-  ])), LiveMapReplayInputError);
-  assert.deepEqual(map.capture(), before);
-  assert.equal(_livetree_runtime_test_claim_count(runtime), 0);
-  close(binding);
-});
+
 
 check("root preflight retains exact projected and DOM objects", () => {
   const { map, binding } = reflected(`<main/>`);
@@ -273,23 +240,9 @@ check("descendant preflight retains exact projected node", () => {
   close(binding);
 });
 
-check("same candidate can be used after a failed canonical transition", () => {
-  const map = element(`<main/>`);
-  assert.throws(() => map.replay(replay(0, [ensure(path(), Q1), ensure(path(), Q2)])), LiveMapReplayInputError);
-  const binding = _reflect_document_for_runtime_test(runtime, map);
-  set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
-  assert.equal(authoredRoot(binding).quid, Q1);
-  close(binding);
-});
 
-check("public replay rejects a different QUID before the identity reducer", () => {
-  const map = element(`<main @${Q1}/>`);
-  assert.throws(
-    () => map.replay(replay(0, [ensure(path(), Q2)])),
-    (cause: unknown) => cause instanceof LiveMapReplayInputError
-      && cause.reasonCode === "INVALID_REPLAY_ENVELOPE",
-  );
-});
+
+
 
 process.stdout.write(`LiveMap linked identity atomicity acceptance: ${checks}/${checks}\n`);
 testEvents.terminal("pass");

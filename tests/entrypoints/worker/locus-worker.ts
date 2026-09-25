@@ -12,4 +12,4 @@ const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: Hso
 const locus: Locus<typeof map> = create_locus({ map, exposure: [{ library: "page", exposure: "client-public" }] });
 void [locus, hsonLocus];
 // @ts-expect-error A bare map cannot become a hosted Locus.
-create_locus({ map: hsonLiveMap.fromJson({ value: 1 }) });
+create_locus({ map: hsonLiveMap.fromLibraries({ state: { data: { value: 1 }, schema: Hson.schema`<type "data" content <value "number">>` } }) });

@@ -1,6 +1,7 @@
 import type { SchemaType } from "hson-live";
 import assert from "node:assert/strict";
-import { Hson, hsonLiveMap } from "hson-live";
+import { Hson, hsonLiveMap, hsonTransform } from "hson-live";
+import { encode_hosted_root } from "../src/api/livemap/livemap.hosted.ts";
 import { TreeSchema, UserSchema } from "./fixtures/hson-schema-mvp/producer.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
@@ -53,17 +54,18 @@ function user(age = 37) {
 }
 
 check("schema association supplies certified reads and ordinary typed mutation candidates", () => {
-  const map = hsonLiveMap.fromJson(user()).schema.use(UserSchema);
-  const age = map.at(["age"]);
-  const flags = map.at(["flags"]);
-  const pair = map.at(["pair"]);
-  const account = map.at(["account"]);
-  const phase = map.at(["phase"]);
-  const turn = map.at(["turn"]);
-  const signedZeroChoice = map.at(["signedZeroChoice"]);
-  const key = map.at(["key"]);
+  const map = hsonLiveMap.fromLibraries({ state: { data: user(), schema: UserSchema } });
+  const state = map.lib("state");
+  const age = state.at(["age"]);
+  const flags = state.at(["flags"]);
+  const pair = state.at(["pair"]);
+  const account = state.at(["account"]);
+  const phase = state.at(["phase"]);
+  const turn = state.at(["turn"]);
+  const signedZeroChoice = state.at(["signedZeroChoice"]);
+  const key = state.at(["key"]);
 
-  const governed: SchemaType<typeof UserSchema> = map.snap();
+  const governed: SchemaType<typeof UserSchema> = state.snap();
   const governedAge: SchemaType<typeof UserSchema>["age"] = age.snap();
   const governedFlags: SchemaType<typeof UserSchema>["flags"] = flags.snap();
   const governedPair: SchemaType<typeof UserSchema>["pair"] = pair.snap();
@@ -86,7 +88,7 @@ check("schema association supplies certified reads and ordinary typed mutation c
   key.set("cba");
   assert.throws(() => key.set("abd"));
   assert.equal(key.snap(), "cba");
-  map.at(["nickname"]).set("grace");
+  state.at(["nickname"]).set("grace");
 
   const libraries = hsonLiveMap.fromLibraries({
     state: { data: user(), schema: UserSchema },
@@ -98,8 +100,6 @@ check("schema association supplies certified reads and ordinary typed mutation c
   assert.equal(libraries.rev, 1);
 
   if (false) {
-    // @ts-expect-error Schema, not a caller-selected generic, controls the governed map type.
-    hsonLiveMap.fromJson(user()).schema.use<SchemaType<typeof UserSchema>>(UserSchema);
     // @ts-expect-error Candidate domain follows the generated leaf domain.
     age.set("38");
     // @ts-expect-error Named Library handles retain the same candidate domain.
@@ -109,7 +109,7 @@ check("schema association supplies certified reads and ordinary typed mutation c
     // @ts-expect-error One Schema's numeric proof is not another Schema's proof.
     const crossSchemaProof: SchemaType<typeof TreeSchema>["age"] = age.snap();
     // @ts-expect-error Exact literals remain statically precise in candidates.
-    map.at(["status"]).set("other");
+    state.at(["status"]).set("other");
     // @ts-expect-error Finite exact literal domains reject outsiders.
     phase.set("paused");
     // @ts-expect-error Exact string-or-null domains reject outsiders.
@@ -121,7 +121,7 @@ check("schema association supplies certified reads and ordinary typed mutation c
     // @ts-expect-error Object candidates retain required members.
     account.replace({ kind: "user" });
     // @ts-expect-error Whole-root candidates retain required object structure.
-    map.replace({ name: "Ada" });
+    state.at([]).replace({ name: "Ada" });
     void fabricatedAge;
     void crossSchemaProof;
   }
@@ -135,37 +135,39 @@ check("schema association supplies certified reads and ordinary typed mutation c
 });
 
 check("refinement and composite failures reject before revision or publication", () => {
-  const map = hsonLiveMap.fromJson(user()).schema.use(UserSchema);
+  const map = hsonLiveMap.fromLibraries({ state: { data: user(), schema: UserSchema } });
+  const state = map.lib("state");
   const publications: unknown[] = [];
   map.commits.observe((event) => publications.push(event));
   const before = map.rev;
-  const root = map.snap();
+  const root = state.snap();
 
-  assert.throws(() => map.at(["age"]).set(37.5));
-  assert.throws(() => map.at(["age"]).set(-1));
-  assert.throws(() => map.at(["age"]).set(130));
-  assert.throws(() => map.at(["code"]).set("bad"));
-  assert.throws(() => map.at(["flags"]).replace([true, true]));
-  assert.deepEqual(map.snap(), root);
+  assert.throws(() => state.at(["age"]).set(37.5));
+  assert.throws(() => state.at(["age"]).set(-1));
+  assert.throws(() => state.at(["age"]).set(130));
+  assert.throws(() => state.at(["code"]).set("bad"));
+  assert.throws(() => state.at(["flags"]).replace([true, true]));
+  assert.deepEqual(state.snap(), root);
   assert.equal(map.rev, before);
   assert.equal(publications.length, 0);
 
-  map.at(["age"]).set(38);
-  map.at(["code"]).set("ID-7");
-  map.at(["flags"]).replace([true]);
-  map.at(["pair"]).replace(["pair", 3]);
-  map.at(["account"]).replace({ kind: "admin", level: 4 });
+  state.at(["age"]).set(38);
+  state.at(["code"]).set("ID-7");
+  state.at(["flags"]).replace([true]);
+  state.at(["pair"]).replace(["pair", 3]);
+  state.at(["account"]).replace({ kind: "admin", level: 4 });
   assert.equal(map.rev, before + 4);
-  assert.equal(map.at(["age"]).snap(), 38);
+  assert.equal(state.at(["age"]).snap(), 38);
 });
 
 check("nested recursive handles preserve governed reads while accepting ordinary candidates", () => {
-  const map = hsonLiveMap.fromJson({
+  const map = hsonLiveMap.fromLibraries({ tree: { data: {
     value: "root",
     age: 1,
     children: [{ value: "leaf", age: 0, children: [] }],
-  }).schema.use(TreeSchema);
-  const age = map.at(["children", 0, "age"]);
+  }, schema: TreeSchema } });
+  const state = map.lib("tree");
+  const age = state.at(["children", 0, "age"]);
   const before = map.rev;
   age.set(4);
   const governedAge: SchemaType<typeof TreeSchema>["age"] | undefined = age.snap();
@@ -175,19 +177,19 @@ check("nested recursive handles preserve governed reads while accepting ordinary
   void governedAge;
 });
 
-check("construction, restore, and replay cannot install invalid governed data", () => {
+check("construction and restore cannot install invalid governed data", () => {
   assert.throws(() => hsonLiveMap.fromLibraries({ state: { data: user(-1), schema: UserSchema } }));
 
-  const map = hsonLiveMap.fromJson(user()).schema.use(UserSchema);
-  const beforeRoot = map.snap();
+  const map = hsonLiveMap.fromLibraries({ state: { data: user(), schema: UserSchema } });
+  const state = map.lib("state");
+  const beforeRoot = state.snap();
   const beforeRev = map.rev;
-  const invalidCapture = hsonLiveMap.fromJson(user(-1)).capture();
+  const capture = map.capture();
+  const entry = capture.libraries[0];
+  if (entry === undefined) throw new Error("Expected state library capture.");
+  const invalidCapture = { ...capture, libraries: [{ ...entry, root: encode_hosted_root(hsonTransform.fromJson(user(-1)).toNode()) }] };
   assert.throws(() => map.restore(invalidCapture));
-  assert.throws(() => map.replay({
-    prevRev: map.rev,
-    ops: [{ kind: "set", path: ["age"], prev: 37, next: 37.5 }],
-  } as never));
-  assert.deepEqual(map.snap(), beforeRoot);
+  assert.deepEqual(state.snap(), beforeRoot);
   assert.equal(map.rev, beforeRev);
 });
 

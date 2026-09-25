@@ -1,5 +1,5 @@
 import type { HsonNode } from "../core/types.js";
-import type { DocumentLiveMap } from "../types/livemap.types.js";
+import type { LiveMapDocumentLibrary } from "../types/livemap.types.js";
 import type { LiveTree } from "../api/livetree/livetree.js";
 import {
   create_livetree_in_runtime,
@@ -153,7 +153,7 @@ export function livetree_runtime_test_owns_document(
 
 export function reflect_document_for_runtime_test(
   handle: LiveTreeRuntimeTestHandle,
-  map: DocumentLiveMap,
+  map: LiveMapDocumentLibrary,
 ): DocumentMirror {
   return reflect_document_in_runtime(map, runtime_for_handle(handle));
 }

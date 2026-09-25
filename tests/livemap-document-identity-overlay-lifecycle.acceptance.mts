@@ -1,276 +1,122 @@
-import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
-import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { hson } from "../src/hson.ts";
-import type { HsonNode } from "../src/core/types.ts";
-import type { DocumentLiveMap, LiveMapCommitObservation } from "../src/types/livemap.types.ts";
-import {
-  livemap_document_identity_accounting,
-  livemap_document_identity_overlay_build_count,
-  livemap_document_identity_overlay_for,
-} from "../src/api/livemap/livemap.document.identity.ts";
-import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
+import { element, path, projected_element, registry_for_document_library } from "./helpers/mirror-unit6.mts";
+import { livemap_document_identity_accounting, livemap_document_identity_overlay_for } from "../src/api/livemap/livemap.document.identity.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livemap.document-identity-overlay-lifecycle",
-  title: "Document identity overlay lifecycle and atomic installation",
+  title: "Registry document identity overlay lifecycle",
   category: "LiveMap",
   runtime: "node",
-  tags: Object.freeze(["document", "quid", "path", "lifecycle", "atomicity", "externally-discoverable"]),
+  tags: Object.freeze(["document", "quid", "identity", "overlay", "externally-discoverable"]),
 });
-
-const testEvents = create_test_event_emitter("livemap.document-identity-overlay-lifecycle");
+const events = create_test_event_emitter("livemap.document-identity-overlay-lifecycle");
 let checks = 0;
 function check(name: string, run: () => void): void {
-
-  testEvents.case_begin(name, name);
-  try {
-    run();
-    testEvents.case_end(name, "pass");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Check failed.";
-    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
-    testEvents.case_end(name, "fail");
-    testEvents.terminal("fail");
-    throw error;
+  events.case_begin(name, name);
+  try { run(); events.case_end(name, "pass"); }
+  catch (error) {
+    events.diagnostic(name, "assertion", error instanceof Error ? error.message : String(error));
+    events.case_end(name, "fail"); events.terminal("fail"); throw error;
   }
-  checks += 1;
-  process.stdout.write(`ok ${checks} - ${name}\n`);
+  process.stdout.write(`ok ${++checks} - ${name}\n`);
 }
+const Q1 = "000000901";
+const Q2 = "000000902";
+const fixture = () => element(`<main <item @${Q1}/> <item @${Q2}/>/` + `>`);
+const overlay = (map: ReturnType<typeof element>) => livemap_document_identity_overlay_for(map.document);
 
-const Q1 = "000000201";
-const Q2 = "000000202";
-const Q3 = "000000203";
-const rootTarget = { kind: "path", path: [0] } as const;
-
-function element(source: string): DocumentLiveMap {
-  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
-  if (map.mode !== "document") throw new Error("Expected element map");
-  return map;
-}
-
-function graph(tag: string, quid: string, child?: Readonly<{ tag: string; quid: string }>): HsonNode {
-  const content: HsonNode[] = child === undefined
-    ? []
-    : [{ $_tag: "_hson_elem", $_content: [{ $_tag: child.tag, $_content: [], $_meta: { quid: child.quid } }] }];
-  return {
-    $_tag: "_hson_root",
-    $_content: [{ $_tag: tag, $_content: content, $_meta: { quid } }],
-  };
-}
-
-function invalidCapture(root: HsonNode): unknown {
-  return { kind: "hson-document", mode: "document", rev: 0, root };
-}
-
-check("construction completes exactly one overlay build", () => {
-  const before = livemap_document_identity_overlay_build_count();
-  const map = element(`<main @${Q1}/>`);
-  assert.equal(livemap_document_identity_overlay_build_count(), before + 1);
-  assert.equal(livemap_document_identity_overlay_for(map).size, 1);
+check("construction builds a sparse overlay for admitted QUIDs", () => {
+  const before = livemap_document_identity_accounting();
+  const map = fixture();
+  const after = livemap_document_identity_accounting();
+  assert.equal(after.fullBuilds, before.fullBuilds + 1);
+  assert.equal(overlay(map).size, 2);
 });
 
-check("accepted attr mutation reconciles without a full overlay rebuild", () => {
-  const map = element(`<main @${Q1}/>`);
+check("attribute mutation reconciles without a full overlay rebuild", () => {
+  const map = fixture();
   const before = livemap_document_identity_accounting();
-  map.document.attrs.set(rootTarget, "id", "changed");
+  map.document.attrs.set(path(0, 0), "title", "ready");
   const after = livemap_document_identity_accounting();
   assert.equal(after.fullBuilds, before.fullBuilds);
-  assert.equal(after.reconciliations, before.reconciliations + 1);
+  assert.ok(after.reconciliations > before.reconciliations);
+  assert.deepEqual(overlay(map).pathForQuid(Q1), [0, 0, 0]);
 });
 
-check("accepted attr mutation atomically retains the exact overlay with the new root", () => {
-  const map = element(`<main @${Q1}/>`);
-  const before = livemap_document_identity_overlay_for(map);
-  map.document.attrs.set(rootTarget, "id", "changed");
-  const after = livemap_document_identity_overlay_for(map);
-  assert.equal(after, before);
-  assert.equal(after.quidAtPath(validate_document_path([0])), Q1);
+check("byQuid reads preserve the overlay without reconciliation", () => {
+  const map = fixture();
+  const before = livemap_document_identity_accounting();
+  for (let index = 0; index < 5; index += 1) assert.equal(map.document.byQuid(Q2)?.$_tag, "item");
+  assert.deepEqual(livemap_document_identity_accounting(), before);
 });
 
-check("portable capture serializes neither graph identity nor derived overlay", () => {
-  const map = element(`<main @${Q1}/>`);
-  const before = livemap_document_identity_overlay_build_count();
-  const capture = map.capture();
-  assert.deepEqual(Object.keys(capture).sort(), ["kind", "mode", "rev", "root"]);
-  assert.equal(JSON.stringify(capture.root).includes(Q1), false);
-  assert.equal(livemap_document_identity_overlay_build_count(), before);
+check("portable capture omits graph identity and derived overlay", () => {
+  const map = fixture();
+  const bytes = JSON.stringify(registry_for_document_library(map).capture());
+  assert.equal(bytes.includes('"quid"'), false);
+  assert.equal(bytes.includes("overlay"), false);
+  assert.equal(overlay(map).size, 2);
 });
 
-check("document.byQuid lifecycle reads never rebuild the overlay", () => {
-  const map = element(`<main @${Q1}/>`);
-  const before = livemap_document_identity_overlay_build_count();
-  map.document.byQuid(Q1);
-  map.document.byQuid(Q2);
-  assert.equal(livemap_document_identity_overlay_build_count(), before);
+check("removal retires only the removed sparse identity", () => {
+  const map = fixture();
+  map.document.content.remove(path(0), 0);
+  assert.equal(overlay(map).pathForQuid(Q1), undefined);
+  assert.deepEqual(overlay(map).pathForQuid(Q2), [0, 0, 0]);
+  assert.equal(overlay(map).size, 1);
 });
 
-check("install builds its candidate overlay once before publication", () => {
-  const source = element(`<article @${Q2}/>`);
-  const target = element(`<main @${Q1}/>`);
-  const before = livemap_document_identity_overlay_build_count();
-  target.install(source.capture());
-  assert.equal(livemap_document_identity_overlay_build_count(), before + 1);
-  assert.equal(target.document.byQuid(Q2), undefined);
+check("rejected supplied QUID insertion leaves root, revision, and overlay intact", () => {
+  const map = fixture();
+  const before = map.root();
+  const revision = map.rev;
+  assert.throws(() => map.document.content.insert(path(0), 1, projected_element('<item @000000903/>')));
+  assert.deepEqual(map.root(), before);
+  assert.equal(map.rev, revision);
+  assert.equal(overlay(map).size, 2);
 });
 
-check("restore builds its candidate overlay once and installs the exact revision", () => {
-  const source = element(`<article @${Q2}/>`);
-  source.document.attrs.set(rootTarget, "id", "one");
-  source.document.attrs.set(rootTarget, "id", "two");
-  const target = element(`<main @${Q1}/>`);
-  const before = livemap_document_identity_overlay_build_count();
-  target.restore(source.capture());
-  assert.equal(livemap_document_identity_overlay_build_count(), before + 1);
-  assert.equal(target.rev, 2);
-  assert.equal(target.document.byQuid(Q2), undefined);
-  assert.equal(target.document.attrs.get(rootTarget, "id"), "two");
+check("failed raw-QUID request publishes no candidate overlay", () => {
+  const map = fixture();
+  const before = livemap_document_identity_accounting();
+  assert.throws(() => map.document.attrs.set({ kind: "quid", quid: Q1 } as never, "bad", true));
+  assert.deepEqual(livemap_document_identity_accounting(), before);
 });
 
-check("single-operation replay reconciles without a full overlay rebuild", () => {
-  const source = element(`<main @${Q1}/>`);
-  const commit = source.document.attrs.set(rootTarget, "id", "replayed");
-  const target = element(`<main @${Q1}/>`);
-  const before = livemap_document_identity_overlay_build_count();
-  target.replay(commit);
-  assert.equal(livemap_document_identity_overlay_build_count(), before);
-  assert.equal(target.document.byQuid(Q1)?.$_attrs?.id, "replayed");
-});
-
-check("replace-root replay builds and installs one candidate overlay", () => {
-  const source = element(`<article @${Q2}/>`);
-  const producer = element(`<main @${Q1}/>`);
-  const commit = producer.install(source.capture());
-  const target = element(`<main @${Q1}/>`);
-  const before = livemap_document_identity_overlay_build_count();
-  target.replay(commit);
-  assert.equal(livemap_document_identity_overlay_build_count(), before + 1);
-  assert.equal(target.document.byQuid(Q2), undefined);
-});
-
-check("duplicate install candidates reject before any overlay publication", () => {
-  const target = element(`<main @${Q1}/>`);
-  const duplicate = graph("main", Q2, { tag: "span", quid: Q2 });
-  const before = livemap_document_identity_overlay_build_count();
-  assert.throws(() => Reflect.apply(target.install, target, [invalidCapture(duplicate)]));
-  assert.equal(livemap_document_identity_overlay_build_count(), before);
-});
-
-check("duplicate candidate failure leaves root unchanged", () => {
-  const target = element(`<main @${Q1}/>`);
-  const before = target.root();
-  assert.throws(() => Reflect.apply(target.install, target, [invalidCapture(graph("main", Q2, { tag: "span", quid: Q2 }))]));
-  assert.deepEqual(target.root(), before);
-});
-
-check("duplicate candidate failure leaves revision unchanged", () => {
-  const target = element(`<main @${Q1}/>`);
-  assert.throws(() => Reflect.apply(target.install, target, [invalidCapture(graph("main", Q2, { tag: "span", quid: Q2 }))]));
-  assert.equal(target.rev, 0);
-});
-
-check("duplicate candidate failure leaves the exact overlay installed", () => {
-  const target = element(`<main @${Q1}/>`);
-  const before = livemap_document_identity_overlay_for(target);
-  assert.throws(() => Reflect.apply(target.install, target, [invalidCapture(graph("main", Q2, { tag: "span", quid: Q2 }))]));
-  assert.equal(livemap_document_identity_overlay_for(target), before);
-  assert.deepEqual(before.pathForQuid(Q1), [0]);
-});
-
-check("duplicate candidate failure publishes no commit or snapshot", () => {
-  const target = element(`<main @${Q1}/>`);
-  const events: LiveMapCommitObservation[] = [];
-  target.commits.observe((event) => events.push(event));
-  assert.throws(() => Reflect.apply(target.install, target, [invalidCapture(graph("main", Q2, { tag: "span", quid: Q2 }))]));
-  assert.deepEqual(events, []);
-});
-
-check("malformed candidate failure preserves root revision overlay and publication", () => {
-  const target = element(`<main @${Q1}/>`);
-  const rootBefore = target.root();
-  const overlayBefore = livemap_document_identity_overlay_for(target);
-  const events: LiveMapCommitObservation[] = [];
-  target.commits.observe((event) => events.push(event));
-  assert.throws(() => Reflect.apply(target.restore, target, [invalidCapture(graph("bad", "short"))]));
-  assert.deepEqual(target.root(), rootBefore);
-  assert.equal(target.rev, 0);
-  assert.equal(livemap_document_identity_overlay_for(target), overlayBefore);
-  assert.deepEqual(events, []);
-});
-
-check("rejected raw-QUID request performs no candidate overlay build", () => {
-  const target = element(`<main @${Q1}/>`);
-  const before = livemap_document_identity_overlay_build_count();
-  assert.throws(() => target.document.attrs.set({ kind: "quid", quid: Q2 } as never, "id", "bad"));
-  assert.equal(livemap_document_identity_overlay_build_count(), before);
-  assert.equal(target.rev, 0);
-});
-
-check("QUID-free accepted transitions retain an empty overlay without rebuilding", () => {
-  const target = element(`<main/>`);
-  const overlayBefore = livemap_document_identity_overlay_for(target);
-  const before = livemap_document_identity_overlay_build_count();
-  target.document.attrs.set(rootTarget, "id", "clean");
-  assert.equal(livemap_document_identity_overlay_build_count(), before);
-  assert.equal(livemap_document_identity_overlay_for(target), overlayBefore);
-  assert.equal(livemap_document_identity_overlay_for(target).size, 0);
-});
-
-check("supplied sparse QUIDs reject atomically at insertion", () => {
-  const target = element(`<main @${Q1}/>`);
-  assert.throws(() => target.document.content.insert(rootTarget, 0, {
-    $_tag: "_hson_elem",
-    $_content: [{ $_tag: "span", $_content: [], $_meta: { quid: Q2 } }],
-  }));
-  const overlay = livemap_document_identity_overlay_for(target);
-  assert.equal(overlay.size, 1);
-  assert.deepEqual(overlay.pathForQuid(Q1), [0]);
-  assert.equal(overlay.pathForQuid(Q2), undefined);
-  assert.equal(target.rev, 0);
-});
-
-check("removal retires only removed sparse identity", () => {
-  const target = element(`<main @${Q1} <span @${Q2}/> <b @${Q3}/>/>`);
-  target.document.content.remove({ kind: "path", path: [0, 0] }, 0);
-  const overlay = livemap_document_identity_overlay_for(target);
-  assert.equal(overlay.size, 2);
-  assert.equal(overlay.pathForQuid(Q2), undefined);
-  assert.deepEqual(overlay.pathForQuid(Q3), [0, 0, 0]);
-});
-
-check("commit observers see the already-installed root and overlay", () => {
-  const target = element(`<main @${Q1}/>`);
-  let witnessed: string | undefined;
-  target.commits.observe((event) => {
-    if (event.kind === "commit") witnessed = (target.root().$_content[0] as { $_tag?: string }).$_tag;
+check("commit observers see the accepted root and overlay", () => {
+  const map = fixture();
+  let publications = 0;
+  map.commits.observe((event) => {
+    if (event.kind !== "commit") return;
+    publications += 1;
+    assert.equal(map.document.attrs.get(path(0, 0), "ready"), true);
+    assert.deepEqual(overlay(map).pathForQuid(Q1), [0, 0, 0]);
   });
-  target.install(element(`<article @${Q2}/>`).capture());
-  assert.equal(witnessed, "article");
-  assert.equal(target.document.byQuid(Q1), undefined);
+  map.document.attrs.set(path(0, 0), "ready", true);
+  assert.equal(publications, 1);
 });
 
-check("canonical no-op candidates reconcile without rebuild revision or publication", () => {
-  const target = element(`<main @${Q1} id="same"/>`);
-  const events: LiveMapCommitObservation[] = [];
-  target.commits.observe((event) => events.push(event));
-  const before = livemap_document_identity_overlay_build_count();
-  const commit = target.document.attrs.set(rootTarget, "id", "same");
-  assert.equal(livemap_document_identity_overlay_build_count(), before);
-  assert.equal(commit.changed, false);
-  assert.equal(target.rev, 0);
-  assert.deepEqual(events, []);
+check("canonical no-op does not publish or rebuild", () => {
+  const map = fixture();
+  const before = livemap_document_identity_accounting();
+  let publications = 0;
+  map.commits.observe(() => { publications += 1; });
+  map.document.attrs.drop(path(), "absent");
+  assert.equal(map.rev, 0);
+  assert.equal(publications, 0);
+  assert.equal(livemap_document_identity_accounting().fullBuilds, before.fullBuilds);
 });
 
-check("portable capture and restore leave all source QUIDs behind", () => {
-  const source = element(`<main @${Q1} <span @${Q2}/>/` + `>`);
-  const target = element(`<aside @${Q3}/>`);
-  target.restore(source.capture());
+check("portable registry restore starts a new identity epoch", () => {
+  const source = fixture();
+  const target = fixture();
+  registry_for_document_library(target).restore(registry_for_document_library(source).capture());
+  assert.equal(overlay(target).size, 0);
   assert.equal(target.document.byQuid(Q1), undefined);
   assert.equal(target.document.byQuid(Q2), undefined);
-  assert.equal(target.document.byQuid(Q3), undefined);
 });
 
-process.stdout.write(`1..${checks}\n`);
-testEvents.terminal("pass");
+events.terminal("pass");
+process.stdout.write(`# ${checks} registry identity overlay lifecycle checks passed\n`);

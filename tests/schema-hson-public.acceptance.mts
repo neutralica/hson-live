@@ -47,11 +47,15 @@ check("published LiveMap facade has no builder or duplicate validation namespace
   assert.doesNotMatch(declaration, /LiveMapSchema/);
 });
 
-check("published map.schema governance constrains mode and preserves Schema evidence", () => {
+check("named library Schemas are fixed at construction and retain type evidence", () => {
   const declaration = readFileSync(new URL("../dist/types/livemap.types.d.ts", import.meta.url), "utf8");
-  assert.match(declaration, /use: <const TSchema extends HsonSchema>\(schema: TSchema, \.\.\.wrongMode: \[NoInfer<TSchema>\] extends \[HsonSchema<unknown, "document">\] \? \[never\] : \[\]\) => LiveMap<SchemaType<NoInfer<TSchema>>>;/);
-  assert.match(declaration, /use: <const TSchema extends HsonSchema>\(schema: TSchema, \.\.\.wrongMode: \[NoInfer<TSchema>\] extends \[HsonSchema<unknown, "data">\] \? \[never\] : \[\]\) => DocumentLiveMapForEvidence<TMode, SchemaType<NoInfer<TSchema>>>;/);
-  assert.match(declaration, /get: \(\) => HsonSchema \| undefined/);
+  assert.match(declaration, /export type LiveMapDataLibraryInput<.*schema: TSchema;/s);
+  assert.match(declaration, /export type LiveMapDocumentLibraryInput<.*schema: TSchema;/s);
+  assert.match(declaration, /schema: Readonly<\{\s*get: \(\) => TSchema;\s*\}>;/);
+  const schema = root.Hson.schema`<type "data" content <age "number">>`;
+  const registry = root.hsonLiveMap.fromLibraries({ state: { data: { age: 37 }, schema } });
+  assert.equal(registry.lib("state").schema.get(), schema);
+  assert.equal("use" in registry.lib("state").schema, false);
 });
 
 check("Schema object owns certification and portable Schema data", () => {

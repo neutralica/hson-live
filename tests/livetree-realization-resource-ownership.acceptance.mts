@@ -1,8 +1,6 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { hson } from "../src/index.ts";
 import type { HsonNode } from "../src/core/types.ts";
-import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
 import { create_linked_livetree_in_runtime, create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import { get_el_for_node, link_node_to_el } from "../src/api/livetree/utils/node-map-helpers.ts";
 import {
@@ -107,12 +105,6 @@ function attach(node: HsonNode): RuntimeElement {
   const target = new RuntimeElement();
   link_node_to_el(node, target as unknown as Element);
   return target;
-}
-
-function document(source: string): DocumentLiveMap {
-  const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "document") throw new Error("Expected a document LiveMap.");
-  return map;
 }
 
 function authored_node(root: HsonNode): HsonNode {
@@ -295,9 +287,7 @@ await check("incompatible path-lineage replacement cleans the outgoing subject w
   outgoingEvents.emit("probe");
   assert.equal(calls, 1);
 
-  map.document.content.replace(path(0), 0, projected_element(`<i/>`), [
-    { source: validate_document_path([]), destination: validate_document_path([]) },
-  ]);
+  map.document.content.replace(path(0), 0, projected_element(`<a title="different"/>`));
   const replacement = raw_node(binding.tree.node, [0, 0]);
   assert.notEqual(replacement, original);
   assert.equal(lifecycle_resource_counts_for_subject(original, runtime_for_tree(tree)).treeEvent, 0);

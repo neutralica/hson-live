@@ -1,5 +1,4 @@
-import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
-import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
+import { element } from "./helpers/mirror-unit6.mts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import {
@@ -8,10 +7,9 @@ import {
   LiveMapDocumentMutationError,
 } from "../src/index.ts";
 import type {
-  DocumentLiveMap,
+  LiveMapDocumentLibrary,
   LiveMapDocumentRequestTarget,
 } from "../src/types/livemap.types.ts";
-import { internal_livemap_root } from "../src/api/livemap/livemap.internal.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -41,23 +39,13 @@ function check(name: string, fn: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-function element(source: string): DocumentLiveMap {
-  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
-  if (map.mode !== "document") throw new Error(`expected element, observed ${map.mode}`);
-  return map;
-}
-
-function multiNodeDocument(source: string): DocumentLiveMap {
-  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
-  if (map.mode !== "document") throw new Error(`expected multiNodeDocument, observed ${map.mode}`);
-  return map;
-}
+const multiNodeDocument = element;
 
 const path = (...segments: number[]): LiveMapDocumentRequestTarget =>
   Object.freeze({ kind: "path", path: Object.freeze(segments) });
 const elementPath = (...segments: number[]): LiveMapDocumentRequestTarget => path(0, ...segments);
 
-function ordinaryRoot(map: DocumentLiveMap) {
+function ordinaryRoot(map: LiveMapDocumentLibrary) {
   const candidate = map.root().$_content[0];
   if (!is_Node(candidate)) throw new Error("Expected one ordinary document root element");
   return candidate;
@@ -69,15 +57,15 @@ function errorCode(fn: () => unknown, code: string, operation?: string): void {
     && (operation === undefined || cause.operation === operation));
 }
 
-function assertNoReadEffects(map: DocumentLiveMap, fn: () => void): void {
+function assertNoReadEffects(map: LiveMapDocumentLibrary, fn: () => void): void {
   const before = map.capture();
-  const beforeRoot = internal_livemap_root(map);
+  const beforeRoot = map.root();
   const observations: unknown[] = [];
   map.commits.observe((event) => observations.push(event));
   fn();
   assert.equal(map.rev, before.rev);
   assert.deepEqual(map.capture(), before);
-  assert.equal(internal_livemap_root(map), beforeRoot);
+  assert.deepEqual(map.root(), beforeRoot);
   assert.deepEqual(observations, []);
 }
 

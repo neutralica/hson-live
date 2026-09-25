@@ -19,7 +19,7 @@ import {
   hson_data_value,
   ExactDataCarrier,
 } from "../data/hson-data.js";
-import type { LiveMapLibraries } from "../../types/livemap.types.js";
+import type { LiveMap } from "../../types/livemap.types.js";
 import type { LiveTree } from "../livetree/livetree.js";
 import type { ListenerBuilder, ListenerSub } from "../../types/listen.types.js";
 import { resolve_livetree_listener_targets_internal } from "../livetree/managers/listener-builder.js";
@@ -62,7 +62,7 @@ type RuntimeAuthoritativeDescriptor = Omit<AuthoritativeInteractionDescriptor, "
 type RuntimeDescriptor = RuntimeLocalDescriptor | RuntimeAuthoritativeDescriptor;
 
 type ActivationSnapshot = Readonly<{
-  map: LiveMapLibraries;
+  map: LiveMap;
   tree: LiveTree;
   document: string;
   local: ReadonlyMap<string, InteractionLocalBehavior>;
@@ -88,7 +88,7 @@ export function set_interaction_activation_initialization_materialization_hook_f
 }
 
 /** Opt one fixed multi-library LiveMap into transactional Hson interaction state. */
-export function enable_interactions(map: LiveMapLibraries): void {
+export function enable_interactions(map: LiveMap): void {
   const aggregate = internal_livemap_aggregate_authority(map);
   if (aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY) !== undefined) return;
   aggregate.configureSystemState(

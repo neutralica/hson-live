@@ -64,7 +64,6 @@ export function discover_static_from_hson_sources(fileName: string, hostText: st
   const checker = program.getTypeChecker();
   const roots = read_supported_hson_import_symbols(file, checker, diagnostics, "hson");
   const transforms = read_supported_hson_import_symbols(file, checker, diagnostics, "hsonTransform");
-  const maps = read_supported_hson_import_symbols(file, checker, diagnostics, "hsonLiveMap");
   const trees = read_supported_hson_import_symbols(file, checker, diagnostics, "hsonLiveTree");
   const property = (expression: ts.Expression, name: string): ts.Expression | undefined => {
     const node = strip(expression);
@@ -84,7 +83,6 @@ export function discover_static_from_hson_sources(fileName: string, hostText: st
     const owner = property(expression, "fromHson");
     if (owner === undefined) return undefined;
     if (imported(owner, transforms) || imported(owner, roots) || rootMember(owner, "transform")) return "transform";
-    if (imported(owner, maps) || rootMember(owner, "liveMap")) return "livemap";
     if (imported(owner, trees) || rootMember(owner, "liveTree")) return "livetree";
     return undefined;
   };

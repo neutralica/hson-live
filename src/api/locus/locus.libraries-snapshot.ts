@@ -1,7 +1,7 @@
-import type { HostedLiveMapLibrariesSnapshot } from "../../types/livemap.types.js";
+import type { HostedLiveMapSnapshot } from "../../types/livemap.types.js";
 
 type LibrariesSnapshotAuthority = Readonly<{
-  capture: () => HostedLiveMapLibrariesSnapshot;
+  capture: () => HostedLiveMapSnapshot;
 }>;
 
 const authorities = new WeakMap<object, LibrariesSnapshotAuthority>();
@@ -33,7 +33,7 @@ export function is_locus_libraries_snapshot_authority_internal(
 /** @internal Capture one hosted aggregate semantic cut through its bound authority. */
 export function capture_locus_libraries_snapshot_internal(
   authority: object,
-): HostedLiveMapLibrariesSnapshot {
+): HostedLiveMapSnapshot {
   const capability = authorities.get(authority);
   if (capability === undefined) throw new TypeError("A hosted Libraries snapshot requires one Locus authority.");
   return capability.capture();

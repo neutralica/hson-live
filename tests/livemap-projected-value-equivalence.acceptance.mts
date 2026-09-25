@@ -2,7 +2,8 @@ import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 
 import assert from "node:assert/strict";
-import { make_livemap_core } from "../src/api/livemap/livemap.core.ts";
+import { Hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
+import type { LiveMapDataLibrary } from "../src/types/livemap.types.ts";
 import { set_live_path } from "../src/api/livemap/livemap.editor.ts";
 import { parse_json } from "../src/api/transform/parsers/parse-json.ts";
 import { assert_invariants } from "../src/core/assert-invariants.ts";
@@ -129,11 +130,12 @@ function transform_value(value: JsonValue): HsonNode {
 
 function assert_mutation_equivalence(
   initial: JsonValue,
-  mutate: (map: ReturnType<typeof make_livemap_core>) => void,
+  mutate: (state: LiveMapDataLibrary<unknown>) => void,
   expected: JsonValue,
 ): HsonNode {
-  const first = make_livemap_core(transform_value(initial));
-  const second = make_livemap_core(transform_value(initial));
+  const schema: HsonSchema = Hson.schema`<type "data" content <value <optional "any"> left <optional "any"> kept <optional "any"> added <optional "any"> before <optional "any"> next <optional "any"> nested <optional "any"> items <optional "any">>>`;
+  const first = hsonLiveMap.fromLibraries({ state: { data: initial, schema } }).lib("state");
+  const second = hsonLiveMap.fromLibraries({ state: { data: initial, schema } }).lib("state");
   mutate(first);
   mutate(second);
 
@@ -340,7 +342,7 @@ check("generic editor set of a missing scalar property appends canonical Transfo
 check("generic replace of an existing scalar property uses canonical Transform shape", () => {
   const root = assert_mutation_equivalence(
     { value: "before" },
-    (map) => { map.replace(["value"], false); },
+    (state) => { state.at(["value"]).replace(false); },
     { value: false },
   );
   assert.equal(((object_property(root, "value").$_content[0] as HsonNode).$_content[0] as HsonNode).$_tag, "_hson_val");
@@ -349,7 +351,7 @@ check("generic replace of an existing scalar property uses canonical Transform s
 check("generic setMany constructs every scalar relationship canonically", () => {
   assert_mutation_equivalence(
     { left: 1, kept: true },
-    (map) => { map.setMany([], { left: -2, added: "new" }); },
+    (state) => { state.at([]).asObject()!.setMany({ left: -2, added: "new" }); },
     { left: -2, kept: true, added: "new" },
   );
 });
@@ -358,7 +360,7 @@ check("generic whole-root replacement uses the canonical Transform root carrier"
   const replacement = { next: "value", nested: [1, { ok: true }] };
   assert_mutation_equivalence(
     { before: true },
-    (map) => { map.replace(replacement); },
+    (state) => { state.at([]).replace(replacement); },
     replacement,
   );
 });
@@ -366,7 +368,7 @@ check("generic whole-root replacement uses the canonical Transform root carrier"
 check("generic array-item replacement uses the canonical indexed relationship", () => {
   const root = assert_mutation_equivalence(
     { items: [1, 2] },
-    (map) => { map.replace(["items", 1], -0); },
+    (state) => { state.at(["items", 1]).replace(-0); },
     { items: [1, -0] },
   );
   const array = object_property(root, "items").$_content[0] as HsonNode;

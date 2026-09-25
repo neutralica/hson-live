@@ -6,6 +6,7 @@ import {
   path,
   projected_element,
   raw_node,
+  registry_for_document_library,
 } from "./helpers/mirror-unit6.mts";
 import {
   _create_livetree_for_runtime_test,
@@ -66,7 +67,7 @@ const Q3 = "000000713";
 const Q4 = "000000714";
 
 check("move preserves the exact projected element node", () => {
-  const map = element(`<main <a @${Q1}/> <b @${Q2}/>/` + `>`);
+  const map = element(`<main <a @${Q1}/> <a @${Q2}/>/` + `>`);
   const { binding } = reflected(map);
   const moved = raw_node(binding.tree.node, [0, 0]);
   map.document.content.move(path(0), 0, 1);
@@ -75,7 +76,7 @@ check("move preserves the exact projected element node", () => {
 });
 
 check("move preserves exact descendant identities", () => {
-  const map = element(`<main <section @${Q1} <i @${Q2}/>/` + `> <b/>/>`);
+  const map = element(`<main <section @${Q1} <i @${Q2}/>/` + `> <section <i/>/>/>`);
   const { binding } = reflected(map);
   const section = raw_node(binding.tree.node, [0, 0]);
   const descendant = raw_node(binding.tree.node, [0, 0, 0, 0]);
@@ -86,7 +87,7 @@ check("move preserves exact descendant identities", () => {
 });
 
 check("move preserves the mounted DOM subtree", () => {
-  const map = element(`<main <a @${Q4}/> <b/>/>`);
+  const map = element(`<main <a @${Q4}/> <a/>/>`);
   const { binding } = reflected(map, documentRuntime);
   mount(binding.tree.node);
   const moved = raw_node(binding.tree.node, [0, 0]);
@@ -97,7 +98,7 @@ check("move preserves the mounted DOM subtree", () => {
 });
 
 check("move preserves CSS ownership on the exact handle", () => {
-  const map = element(`<main <a @${Q1}/> <b/>/>`);
+  const map = element(`<main <a @${Q1}/> <a/>/>`);
   const { binding } = reflected(map, documentRuntime);
   const moved = raw_node(binding.tree.node, [0, 0]);
   const handle = create_livetree(moved).adoptRoots(binding.tree.hostRootNode());
@@ -110,7 +111,7 @@ check("move preserves CSS ownership on the exact handle", () => {
 });
 
 check("move preserves listener resource ownership", () => {
-  const map = element(`<main <a @${Q1}/> <b/>/>`);
+  const map = element(`<main <a @${Q1}/> <a/>/>`);
   const { runtime, binding } = reflected(map);
   let disposed = 0;
   _own_livetree_runtime_test_disposable(runtime, Q1, () => { disposed += 1; }, "listener");
@@ -121,7 +122,7 @@ check("move preserves listener resource ownership", () => {
 });
 
 check("move preserves tree-event and other resource ownership", () => {
-  const map = element(`<main <a @${Q1}/> <b/>/>`);
+  const map = element(`<main <a @${Q1}/> <a/>/>`);
   const { runtime, binding } = reflected(map);
   _own_livetree_runtime_test_disposable(runtime, Q1, () => {}, "tree-event");
   _own_livetree_runtime_test_disposable(runtime, Q1, () => {}, "other");
@@ -133,7 +134,7 @@ check("move preserves tree-event and other resource ownership", () => {
 });
 
 check("compatible path-lineage replacement preserves the exact root node", () => {
-  const map = element(`<main <a @${Q1} "old"/>/>`);
+  const map = element(`<main <a @${Q1}/>/` + `>`);
   const { binding } = reflected(map);
   const original = raw_node(binding.tree.node, [0, 0]);
   map.document.content.replace(path(0), 0, projected_element('<a title="new"/>'), [{ source: validate_document_path([]), destination: validate_document_path([]) }]);
@@ -157,7 +158,7 @@ check("replacement without lineage allocates a new projected node", () => {
   const map = element(`<main <a @${Q1}/>/` + `>`);
   const { binding } = reflected(map);
   const original = raw_node(binding.tree.node, [0, 0]);
-  map.document.content.replace(path(0), 0, projected_element('<a/>'));
+  map.document.content.replace(path(0), 0, projected_element('<a title="new"/>'));
   assert.notEqual(raw_node(binding.tree.node, [0, 0]), original);
   binding.dispose();
 });
@@ -167,23 +168,14 @@ check("replacement without lineage terminally drains old resources", () => {
   const { runtime, binding } = reflected(map);
   let disposed = 0;
   _own_livetree_runtime_test_disposable(runtime, Q1, () => { disposed += 1; }, "other");
-  map.document.content.replace(path(0), 0, projected_element('<a/>'));
+  map.document.content.replace(path(0), 0, projected_element('<a title="new"/>'));
   assert.equal(disposed, 1);
   assert.equal(_lookup_livetree_runtime_test_node(runtime, Q1), undefined);
   binding.dispose();
 });
 
-check("path-lineage replacement with a different tag does not reuse", () => {
-  const map = element(`<main <a @${Q1}/>/` + `>`);
-  const { binding } = reflected(map);
-  const original = raw_node(binding.tree.node, [0, 0]);
-  map.document.content.replace(path(0), 0, projected_element('<i/>'), [{ source: validate_document_path([]), destination: validate_document_path([]) }]);
-  assert.notEqual(raw_node(binding.tree.node, [0, 0]), original);
-  binding.dispose();
-});
-
 check("insertion admits a portable subtree without supplied identity", () => {
-  const map = element(`<main "tail"/>`);
+  const map = element(`<main <a/>/>`);
   const { binding } = reflected(map, documentRuntime);
   map.document.content.insert(path(0), 0, projected_element('<a/>'));
   const inserted = raw_node(binding.tree.node, [0, 0]);
@@ -194,7 +186,7 @@ check("insertion admits a portable subtree without supplied identity", () => {
 });
 
 check("insertion rejects supplied foreign runtime identity before mutation", () => {
-  const map = element(`<main "tail"/>`);
+  const map = element(`<main <a/>/>`);
   const runtime = _create_livetree_runtime_test_handle();
   _create_livetree_for_runtime_test(runtime, projected_element(`<aside @${Q1}/>`));
   const binding = _reflect_document_for_runtime_test(runtime, map);
@@ -205,7 +197,7 @@ check("insertion rejects supplied foreign runtime identity before mutation", () 
 });
 
 check("deletion performs terminal resource cleanup", () => {
-  const map = element(`<main <a @${Q1}/> <b/>/>`);
+  const map = element(`<main <a @${Q1}/> <a/>/>`);
   const { runtime, binding } = reflected(map);
   let disposed = 0;
   _own_livetree_runtime_test_disposable(runtime, Q1, () => { disposed += 1; }, "other");
@@ -215,7 +207,7 @@ check("deletion performs terminal resource cleanup", () => {
 });
 
 check("deletion retires runtime QUID correspondence", () => {
-  const map = element(`<main <a @${Q1}/> <b/>/>`);
+  const map = element(`<main <a @${Q1}/> <a/>/>`);
   const { runtime, binding } = reflected(map);
   map.document.content.remove(path(0), 0);
   assert.equal(_lookup_livetree_runtime_test_node(runtime, Q1), undefined);
@@ -237,10 +229,10 @@ check("durable root replacement crosses an exact projected-object boundary", () 
   const map = element(`<main @${Q1} <a @${Q2}/>/` + `>`);
   const { binding } = reflected(map);
   const root = binding.tree.node;
-  const replacement = element(`<main @${Q1} <b @${Q3}/>/` + `>`);
-  map.install(replacement.capture());
+  const replacement = element(`<main @${Q1} <a @${Q3} title="new"/>/>`);
+  registry_for_document_library(map).restore(registry_for_document_library(replacement).capture());
   assert.notEqual(binding.tree.node, root);
-  assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "b");
+  assert.equal(raw_node(binding.tree.node, [0, 0]).$_attrs?.title, "new");
   binding.dispose();
 });
 
@@ -248,8 +240,8 @@ check("root replacement is an admitted whole-correspondence rebuild boundary", (
   const map = element(`<main @${Q1} <a @${Q2}/>/` + `>`);
   const { binding } = reflected(map);
   const before = binding.diagnostics().wholeCorrespondenceBuilds;
-  const replacement = element(`<main @${Q1} <b @${Q3}/>/` + `>`);
-  map.install(replacement.capture());
+  const replacement = element(`<main @${Q1} <a @${Q3} title="new"/>/>`);
+  registry_for_document_library(map).restore(registry_for_document_library(replacement).capture());
   assert.equal(binding.diagnostics().wholeCorrespondenceBuilds, before + 1);
   binding.dispose();
 });

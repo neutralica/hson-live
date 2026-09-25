@@ -1,4 +1,4 @@
-import type { LiveMapAuthority, LiveMapLibraries } from "../../types/livemap.types.js";
+import type { LiveMap } from "../../types/livemap.types.js";
 import type {
   Echo,
   EchoOptions,
@@ -25,7 +25,7 @@ import {
   type EchoEndpointConnection,
 } from "./echo.client.js";
 
-type EchoMap = LiveMapAuthority | LiveMapLibraries;
+type EchoMap = LiveMap;
 type ReplicaOptions<TMap extends EchoMap> = Omit<EchoOptions<undefined>, "map" | "recovery"> & Readonly<{
   map: TMap;
   recovery: EchoRecoveryOptions;
@@ -93,9 +93,6 @@ export function create_lazy_replica_echo_internal<
   loaders: EchoReplicaLoaders = DEFAULT_ECHO_REPLICA_LOADERS,
   semanticConnection?: EchoEndpointConnection<TActions, any, any>,
 ): Echo<TMap, TActions> {
-  if (management.topology !== "aggregate") {
-    throw new TypeError("Hosted Echo replication requires an authority-projected library registry.");
-  }
   const internalOptions = options as ReplicaOptions<TMap> & Readonly<{
     actionId?: () => string;
     actionAttemptId?: () => string;

@@ -1,10 +1,10 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
-import { element, mount } from "./helpers/mirror-unit6.mts";
+import { element, mount, registry_for_document_library } from "./helpers/mirror-unit6.mts";
 import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
-import { internal_livemap_node } from "../src/api/livemap/livemap.internal.ts";
-import { hson } from "../src/hson.ts";
+import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
+import { Hson, hsonLiveMap } from "../src/index.ts";
 import {
   _create_livetree_runtime_test_handle,
   _dispose_livetree_runtime_test_handle,
@@ -50,6 +50,14 @@ function check(name: string, run: () => void): void {
 
 const documentTarget = (...path: number[]) => Object.freeze({ kind: "path" as const, path: Object.freeze(path) });
 const target = (...path: number[]) => documentTarget(0, ...path);
+function canonical_main_meta(map: ReturnType<typeof element>) {
+  const authority = internal_livemap_aggregate_authority(registry_for_document_library(map));
+  const library = authority.libraries()[0];
+  if (library === undefined) throw new Error("Missing document library");
+  const main = authority.root(library).$_content[0];
+  if (typeof main !== "object" || main === null) throw new Error("Missing document root element");
+  return main.$_meta;
+}
 const errorCode = (code: string) => (error: unknown) =>
   typeof error === "object" && error !== null && "code" in error && error.code === code;
 
@@ -121,7 +129,7 @@ check("existing registration publishes no feed event", () => {
 });
 
 check("multiNodeDocument ordinary elements support the same sparse API", () => {
-  const map = hson.liveMap.fromHson(`<a/><b/>`);
+  const map = element(`<a/><b/>`);
   if (map.mode !== "document") throw new Error("expected multiNodeDocument fixture");
   const handle = acquire_document_identity(map.document, documentTarget(1));
   assert.equal(handle.snap()?.$_tag, "b");
@@ -129,19 +137,19 @@ check("multiNodeDocument ordinary elements support the same sparse API", () => {
 });
 
 check("multiNodeDocument structural roots remain ineligible", () => {
-  const map = hson.liveMap.fromHson(`<a/><b/>`);
+  const map = element(`<a/><b/>`);
   if (map.mode !== "document") throw new Error("expected multiNodeDocument fixture");
   assert.throws(() => acquire_document_identity(map.document, documentTarget()), errorCode("DOCUMENT_IDENTITY_INELIGIBLE"));
 });
 
 check("data object maps expose no document identity surface", () => {
-  const map = hson.liveMap.fromJson({ value: 1 });
-  assert.equal(Reflect.get(map, "document"), undefined);
+  const map = hsonLiveMap.fromLibraries({ state: { data: { value: 1 }, schema: Hson.schema`<type "data" content <value "number">>` } });
+  assert.equal(Reflect.get(map.lib("state"), "document"), undefined);
 });
 
-check("data array maps expose no document identity surface", () => {
-  const map = hson.liveMap.fromJson([1, 2, 3]);
-  assert.equal(Reflect.get(map, "document"), undefined);
+check("data libraries with arrays expose no document identity surface", () => {
+  const map = hsonLiveMap.fromLibraries({ state: { data: { values: [1, 2, 3] }, schema: Hson.schema`<type "data" content <values "any">>` } });
+  assert.equal(Reflect.get(map.lib("state"), "document"), undefined);
 });
 
 check("a large QUID-free document retains an empty sparse overlay", () => {
@@ -163,7 +171,7 @@ check("one acquisition adds only one sparse overlay entry", () => {
 check("local overlay remains authoritative when legacy node metadata disappears", () => {
   const map = element(`<main @${Q1}/>`);
   const handle = acquire_document_identity(map.document, target());
-  const meta = internal_livemap_node(map, ["main"])?.$_meta;
+  const meta = canonical_main_meta(map);
   if (meta === undefined) throw new Error("missing unsafe metadata fixture");
   delete meta.quid;
   assert.equal(map.rev, 0);
@@ -173,7 +181,7 @@ check("local overlay remains authoritative when legacy node metadata disappears"
 
 check("supported acquisition rejects an internally-created graph-overlay disagreement", () => {
   const map = element(`<main @${Q1}/>`);
-  const meta = internal_livemap_node(map, ["main"])?.$_meta;
+  const meta = canonical_main_meta(map);
   if (meta === undefined) throw new Error("missing unsafe metadata fixture");
   meta.quid = Q2;
   assert.throws(() => acquire_document_identity(map.document, target()), errorCode("INVALID_DOCUMENT_IDENTITY"));
@@ -187,7 +195,7 @@ check("identity-free capture output strips acquired metadata intentionally", () 
     undefined,
   );
   const restored = element(`<main/>`);
-  restored.restore(map.capture({ identity: "strip" }));
+  registry_for_document_library(restored).restore(registry_for_document_library(map).capture());
   assert.equal(livemap_document_identity_overlay_for(restored).size, 0);
 });
 
@@ -195,7 +203,7 @@ check("durable epoch replacement fences stale raw bytes from old handles", () =>
   const map = element(`<main/>`);
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
   const handle = acquire_document_identity(map.document, target());
-  map.restore(element(`<article @${Q1}/>`).capture());
+  registry_for_document_library(map).restore(registry_for_document_library(element(`<main @${Q1}/>`)).capture());
   assert.equal(map.document.byQuid(Q1), undefined);
   assert.equal(handle.active, false);
 });

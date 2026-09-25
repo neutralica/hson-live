@@ -1,15 +1,7 @@
-import type { LiveMapAnyOp, LiveMapCommit, LiveMapRootMode } from "../../types/livemap.types.js";
+import type { LiveMapAnyOp, LiveMapCoreCommit, LiveMapRootMode } from "../../types/livemap.types.js";
 import type { LiveMapAggregateCommit } from "./livemap.library.js";
 
-export type LiveMapTransitionNotificationPolicy = "legacy" | "isolate";
-
-/** Opaque, detached view of one prepared but unapplied LiveMap transition. */
-export type PreparedLiveMapTransition = Readonly<{
-  readonly commit: LiveMapCommit<LiveMapAnyOp>;
-  readonly baseRevision: number;
-  readonly nextRevision: number;
-  readonly mode: LiveMapRootMode;
-}>;
+export type LiveMapTransitionNotificationPolicy = "propagate" | "isolate";
 
 /** Opaque prepared map-authority transition. @internal */
 export type PreparedLiveMapAuthorityTransition = Readonly<{
@@ -18,11 +10,6 @@ export type PreparedLiveMapAuthorityTransition = Readonly<{
   readonly baseRevision: number;
   readonly nextRevision: number;
   readonly libraryModes: readonly LiveMapRootMode[];
-}>;
-
-export type LiveMapTransitionAcceptance = Readonly<{
-  commit: LiveMapCommit<LiveMapAnyOp>;
-  notificationFailureCount: number;
 }>;
 
 /** Internal acceptance result retaining the non-serializable aggregate commit. @internal */
@@ -78,16 +65,6 @@ export type LiveMapTransitionController = Readonly<{
   prepareAuthority: (
     preparation: LiveMapAuthorityTransitionPreparation,
   ) => PreparedLiveMapAuthorityTransition;
-  /** Present one aggregate authority transition through the temporary solo token contract. @internal */
-  projectAggregateCompatibility: (
-    transition: PreparedLiveMapAuthorityTransition,
-    commit: LiveMapCommit<LiveMapAnyOp>,
-    mode: LiveMapRootMode,
-  ) => PreparedLiveMapTransition;
-  accept: (
-    transition: PreparedLiveMapTransition,
-    policy?: LiveMapTransitionNotificationPolicy,
-  ) => LiveMapTransitionAcceptance;
   /** @internal */
   acceptAuthority: (
     transition: PreparedLiveMapAuthorityTransition,
@@ -97,7 +74,6 @@ export type LiveMapTransitionController = Readonly<{
   /** Fence all local identity and competing authority changes across an async durable decision. @internal */
   reserveAuthority: (transition: PreparedLiveMapAuthorityTransition) => () => void;
   assertLocalIdentityAllowed: () => void;
-  discard: (transition: PreparedLiveMapTransition) => void;
   /** @internal */
   discardAuthority: (transition: PreparedLiveMapAuthorityTransition) => void;
   invalidate: () => void;
@@ -109,36 +85,20 @@ export type LiveMapTransitionController = Readonly<{
   /** Run a preparation owned by the current exclusive manager. @internal */
   runManaged: <T>(owner: object, operation: () => T) => T;
   scheduleManaged: (
-    mutation: (draft: object) => LiveMapCommit<LiveMapAnyOp>,
-  ) => Promise<LiveMapCommit<LiveMapAnyOp>> | undefined;
+    mutation: (draft: object) => LiveMapCoreCommit<LiveMapAnyOp>,
+  ) => Promise<LiveMapCoreCommit<LiveMapAnyOp>> | undefined;
   readonly generation: number;
 }>;
 
 export type LiveMapManagedMutationScheduler<TMap extends object> = (
-  mutation: (draft: TMap) => LiveMapCommit<LiveMapAnyOp>,
-) => Promise<LiveMapCommit<LiveMapAnyOp>>;
-
-export type LiveMapStagedAuthority<TMap extends object = object> = Readonly<{
-  prepare: (mutation: (draft: TMap) => LiveMapCommit<LiveMapAnyOp>) => PreparedLiveMapTransition;
-  accept: LiveMapTransitionController["accept"];
-  discard: LiveMapTransitionController["discard"];
-  claimManagement: (owner: object, schedule: LiveMapManagedMutationScheduler<TMap>) => void;
-  releaseManagement: (owner: object) => void;
-  runManaged: <T>(owner: object, operation: () => T) => T;
-  scheduleManaged: (mutation: (draft: TMap) => LiveMapCommit<LiveMapAnyOp>) => Promise<LiveMapCommit<LiveMapAnyOp>> | undefined;
-}>;
-
-const authorities = new WeakMap<object, LiveMapStagedAuthority<object>>();
+  mutation: (draft: TMap) => LiveMapCoreCommit<LiveMapAnyOp>,
+) => Promise<LiveMapCoreCommit<LiveMapAnyOp>>;
 
 /** Construct one closure-local transition controller for a single LiveMap authority. */
 export function make_livemap_transition_controller(
   getRevision: () => number,
 ): LiveMapTransitionController {
   const authorityRecords = new WeakMap<PreparedLiveMapAuthorityTransition, MapAuthorityTransitionRecord>();
-  const aggregateCompatibility = new WeakMap<PreparedLiveMapTransition, Readonly<{
-    transition: PreparedLiveMapAuthorityTransition;
-    commit: LiveMapCommit<LiveMapAnyOp>;
-  }>>();
   let generation = 0;
   let management: Readonly<{
     owner: object;
@@ -189,62 +149,9 @@ export function make_livemap_transition_controller(
     return token;
   }
 
-  function projectAggregateCompatibility(
-    transition: PreparedLiveMapAuthorityTransition,
-    commit: LiveMapCommit<LiveMapAnyOp>,
-    compatibilityMode: LiveMapRootMode,
-  ): PreparedLiveMapTransition {
-    authority_record_for(transition);
-    if (commit.prevRev !== transition.baseRevision || commit.rev !== transition.nextRevision
-      || commit.changed !== transition.commit.changed) {
-      throw new LiveMapTransitionError(
-        "LIVEMAP_TRANSITION_INVALID",
-        "Solo compatibility commit disagrees with its map authority transition.",
-      );
-    }
-    const token: PreparedLiveMapTransition = Object.freeze({
-      commit,
-      baseRevision: transition.baseRevision,
-      nextRevision: transition.nextRevision,
-      mode: compatibilityMode,
-    });
-    aggregateCompatibility.set(token, Object.freeze({ transition, commit }));
-    return token;
-  }
-
-  function accept(
-    transition: PreparedLiveMapTransition,
-    policy: LiveMapTransitionNotificationPolicy = "legacy",
-  ): LiveMapTransitionAcceptance {
-    const compatibility = aggregateCompatibility.get(transition);
-    if (compatibility !== undefined) {
-      const accepted = acceptAuthority(compatibility.transition, policy);
-      return Object.freeze({
-        commit: compatibility.commit,
-        notificationFailureCount: accepted.notificationFailureCount,
-      });
-    }
-    throw new LiveMapTransitionError(
-      "LIVEMAP_TRANSITION_FOREIGN",
-      "Prepared LiveMap transition belongs to another authority.",
-    );
-  }
-
-  function discard(transition: PreparedLiveMapTransition): void {
-    const compatibility = aggregateCompatibility.get(transition);
-    if (compatibility !== undefined) {
-      discardAuthority(compatibility.transition);
-      return;
-    }
-    throw new LiveMapTransitionError(
-      "LIVEMAP_TRANSITION_FOREIGN",
-      "Prepared LiveMap transition belongs to another authority.",
-    );
-  }
-
   function acceptAuthority(
     transition: PreparedLiveMapAuthorityTransition,
-    policy: LiveMapTransitionNotificationPolicy = "legacy",
+    policy: LiveMapTransitionNotificationPolicy = "propagate",
     afterInstall?: () => void,
   ): LiveMapAuthorityTransitionAcceptance {
     const record = authority_record_for(transition);
@@ -295,7 +202,7 @@ export function make_livemap_transition_controller(
     if (record.commit.changed) afterInstall?.();
     let notificationFailureCount = 0;
     if (record.commit.changed) {
-      if (policy === "legacy") record.notify(record.commit);
+      if (policy === "propagate") record.notify(record.commit);
       else {
         try { record.notify(record.commit); }
         catch { notificationFailureCount = 1; }
@@ -317,8 +224,6 @@ export function make_livemap_transition_controller(
 
   return Object.freeze({
     prepareAuthority,
-    projectAggregateCompatibility,
-    accept,
     acceptAuthority,
     reserveAuthority,
     assertLocalIdentityAllowed(): void {
@@ -327,7 +232,6 @@ export function make_livemap_transition_controller(
         "LiveMap local identity is reserved by a pending authority decision.",
       );
     },
-    discard,
     discardAuthority,
     invalidate(): void {
       if (reserved !== undefined) throw new LiveMapTransitionError(
@@ -377,32 +281,4 @@ export function make_livemap_transition_controller(
       return generation;
     },
   });
-}
-
-export function register_livemap_staged_authority<TMap extends object>(
-  map: TMap,
-  authority: LiveMapStagedAuthority<TMap>,
-): void {
-  authorities.set(map, authority as unknown as LiveMapStagedAuthority<object>);
-}
-
-/** Package-internal accessor used by the later hosted-authority layer and focused tests. */
-export function get_livemap_staged_authority<TMap extends object>(
-  map: TMap,
-): LiveMapStagedAuthority<TMap> {
-  const authority = authorities.get(map);
-  if (authority !== undefined) return authority as unknown as LiveMapStagedAuthority<TMap>;
-  throw new LiveMapTransitionError(
-    "LIVEMAP_TRANSITION_INVALID",
-    "LiveMap has no staged authority controller.",
-  );
-}
-
-/** Route a managed link-target mutation without importing Locus into LiveMap. */
-export function schedule_livemap_managed_mutation<TMap extends object>(
-  map: TMap,
-  mutation: (draft: TMap) => LiveMapCommit<LiveMapAnyOp>,
-): Promise<LiveMapCommit<LiveMapAnyOp>> | undefined {
-  const authority = authorities.get(map);
-  return authority?.scheduleManaged(mutation as (draft: object) => LiveMapCommit<LiveMapAnyOp>);
 }

@@ -1,9 +1,9 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { hson, hsonLiveMap } from "../src/index.ts";
+import { Hson, hsonLiveMap } from "../src/index.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { acquire_document_identity, acquire_projected_identity } from "./helpers/livemap-identity-internal.mts";
-import { element, mount, path } from "./helpers/mirror-unit6.mts";
+import { element, mount, path, registry_for_document_library } from "./helpers/mirror-unit6.mts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { livemap_document_identity_overlay_for } from "../src/api/livemap/livemap.document.identity.ts";
 import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
@@ -42,6 +42,7 @@ function check(name: string, run: () => void): void {
 const docTarget = (...segments: number[]) => Object.freeze({ kind: "path" as const, path: validate_document_path([0, ...segments]) });
 const Q1 = "00004b001";
 const Q2 = "00004b002";
+const DataSchema = Hson.schema`<type "data" content <child <optional "any"> value <optional "any"> first <optional "any"> second <optional "any"> moved <optional "any">>>`;
 
 check("document identity changes only runtime overlay and issued ledger", () => {
   const map = element(`<main/>`);
@@ -61,11 +62,12 @@ check("document identity changes only runtime overlay and issued ledger", () => 
 });
 
 check("projected identity changes no value, graph, revision, or commit", () => {
-  const map = hsonLiveMap.fromJson({ child: {} });
+  const registry = hsonLiveMap.fromLibraries({ state: { data: { child: {} }, schema: DataSchema } });
+  const map = registry.lib("state");
   const before = map.root();
   const value = map.snap();
   let commits = 0;
-  map.commits.observe((event) => { if (event.kind === "commit") commits += 1; });
+  registry.commits.observe(() => { commits += 1; });
   set_livemap_projected_quid_candidate_source_for_tests(map, () => Q1);
   const handle = acquire_projected_identity(map, ["child"]);
   assert.equal(handle.active, true);
@@ -73,12 +75,13 @@ check("projected identity changes no value, graph, revision, or commit", () => {
   assert.equal(commits, 0);
   assert.deepEqual(map.snap(), value);
   assert.equal(canonical_hson_graph_equal(before, map.root()), true);
-  assert.deepEqual(internal_livemap_aggregate_authority(map).resolveQuid(Q1)?.path, ["child"]);
+  assert.deepEqual(internal_livemap_aggregate_authority(registry).resolveQuid(Q1)?.path, ["child"]);
 });
 
 check("prepared graph transition rejects identity-generation drift", () => {
-  const map = hsonLiveMap.fromJson({ child: {}, value: 0 });
-  const authority = internal_livemap_aggregate_authority(map);
+  const registry = hsonLiveMap.fromLibraries({ state: { data: { child: {}, value: 0 }, schema: DataSchema } });
+  const map = registry.lib("state");
+  const authority = internal_livemap_aggregate_authority(registry);
   const library = authority.libraries()[0]!;
   const prepared = authority.prepare([{ target: authority.target(library, ["value"]), kind: "set", value: 1 }]);
   set_livemap_projected_quid_candidate_source_for_tests(map, () => Q1);
@@ -94,7 +97,7 @@ check("prepared graph transition rejects identity-generation drift", () => {
 
 check("prepared document transition rejects an intervening local identity claim", () => {
   const map = element("<main <a/>/>");
-  const authority = internal_livemap_aggregate_authority(map);
+  const authority = internal_livemap_aggregate_authority(registry_for_document_library(map));
   const library = authority.libraries()[0]!;
   const write = Object.freeze({
     target: authority.target(library, [0]),
@@ -114,7 +117,7 @@ check("prepared document transition rejects an intervening local identity claim"
 });
 
 check("failed local candidates leave map revision, overlay, and issued ledger unchanged", () => {
-  const map = element("<main <a/> <b/>/>");
+  const map = element("<main <a/> <a/>/>");
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
   acquire_document_identity(map.document, docTarget(0, 0));
   const issued = livemap_identity_epoch_accounting(map).issued;
@@ -129,13 +132,13 @@ check("failed local candidates leave map revision, overlay, and issued ledger un
   assert.equal(livemap_document_identity_overlay_for(map.document).quidAtPath(docTarget(0, 1).path), undefined);
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q2);
   acquire_document_identity(map.document, docTarget(0, 1));
-  assert.equal(map.document.byQuid(Q2)?.$_tag, "b");
+  assert.equal(map.document.byQuid(Q2)?.$_tag, "a");
   assert.equal(map.rev, 0);
 });
 
 check("participant realization failure rolls back the local claim and ledger", () => {
   const map = element("<main/>");
-  const authority = internal_livemap_aggregate_authority(map);
+  const authority = internal_livemap_aggregate_authority(registry_for_document_library(map));
   const library = authority.libraries()[0]!;
   let claimed = false;
   let released = false;
@@ -159,34 +162,36 @@ check("participant realization failure rolls back the local claim and ledger", (
   assert.equal(map.rev, 0);
 });
 
-check("same-runtime document capture restores an overlay-only acquired QUID", () => {
+check("portable registry capture restores without an overlay-only acquired QUID", () => {
   const map = element("<main/>");
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
   acquire_document_identity(map.document, docTarget());
-  const capture = map.capture({ identity: "same-epoch" });
-  assert.equal(JSON.stringify(capture.root).includes('"quid"'), false);
+  const owner = registry_for_document_library(map);
+  const capture = owner.capture();
+  assert.equal(JSON.stringify(capture).includes('"quid"'), false);
   map.document.attrs.set(path(), "title", "changed");
   assert.equal(map.rev, 1);
-  map.restore(capture, { identity: "same-epoch" });
+  owner.restore(capture);
   assert.equal(map.rev, 0);
-  assert.equal(map.document.byQuid(Q1)?.$_tag, "main");
-  assert.equal(livemap_identity_epoch_accounting(map).issued, 1);
+  assert.equal(map.document.byQuid(Q1), undefined);
+  assert.equal(livemap_identity_epoch_accounting(map).issued, 0);
 });
 
 check("graph transition before demand resolves the new current path", () => {
-  const map = hsonLiveMap.fromJson({ first: {}, second: {} });
+  const registry = hsonLiveMap.fromLibraries({ state: { data: { first: {}, second: {} }, schema: DataSchema } });
+  const map = registry.lib("state");
   map.at([]).asObject()!.renameKey("first", "moved");
   assert.equal(map.rev, 1);
   set_livemap_projected_quid_candidate_source_for_tests(map, () => Q2);
   assert.throws(() => acquire_projected_identity(map, ["first"]));
   acquire_projected_identity(map, ["moved"]);
   assert.equal(map.rev, 1);
-  assert.deepEqual(internal_livemap_aggregate_authority(map).resolveQuid(Q2)?.path, ["moved"]);
+  assert.deepEqual(internal_livemap_aggregate_authority(registry).resolveQuid(Q2)?.path, ["moved"]);
 });
 
 check("local Mirror demand installs one QUID in map, LiveTree, and DOM", () => {
   const runtime = _create_livetree_runtime_test_handle();
-  const map = element(`<main <a/> <b/>/>`);
+  const map = element(`<main <a/> <a/>/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
   mount(binding.tree.node);
   let commits = 0;

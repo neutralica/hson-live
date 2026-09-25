@@ -1,8 +1,5 @@
 import type {
-  DocumentLiveMap,
   LiveMapDocumentApi,
-  LiveMapAuthority,
-  LiveMapGraphCommit,
   LiveMapReplacementLineage,
 } from "../../types/livemap.types.js";
 import type { JsonValue } from "../../core/types.js";
@@ -25,25 +22,25 @@ export type LocusDocumentActionResolution =
   | Readonly<{ kind: "not-document-action" }>
   | Readonly<{ kind: "unavailable"; message: string }>
   | Readonly<{ kind: "invalid"; message: string }>
-  | Readonly<{ kind: "ready"; payload: JsonValue; execute: (targetMap?: LocusDocumentActionTarget) => LiveMapGraphCommit }>;
+  | Readonly<{ kind: "ready"; payload: JsonValue; execute: (targetMap?: LocusDocumentActionTarget) => unknown }>;
 
-/** Minimal document mutation target shared by solo maps and selected aggregate drafts. */
+/** Minimal selected document mutation target for aggregate drafts. */
 export type LocusDocumentActionTarget = Readonly<{
   mode: "document";
   document: Readonly<{
     attrs: Readonly<{
-      set: (...args: Parameters<LiveMapDocumentApi["attrs"]["set"]>) => LiveMapGraphCommit;
-      drop: (...args: Parameters<LiveMapDocumentApi["attrs"]["drop"]>) => LiveMapGraphCommit;
-      setMany: (...args: Parameters<LiveMapDocumentApi["attrs"]["setMany"]>) => LiveMapGraphCommit;
-      dropMany: (...args: Parameters<LiveMapDocumentApi["attrs"]["dropMany"]>) => LiveMapGraphCommit;
-      clear: (...args: Parameters<LiveMapDocumentApi["attrs"]["clear"]>) => LiveMapGraphCommit;
-      replace: (...args: Parameters<LiveMapDocumentApi["attrs"]["replace"]>) => LiveMapGraphCommit;
+      set: (...args: Parameters<LiveMapDocumentApi["attrs"]["set"]>) => unknown;
+      drop: (...args: Parameters<LiveMapDocumentApi["attrs"]["drop"]>) => unknown;
+      setMany: (...args: Parameters<LiveMapDocumentApi["attrs"]["setMany"]>) => unknown;
+      dropMany: (...args: Parameters<LiveMapDocumentApi["attrs"]["dropMany"]>) => unknown;
+      clear: (...args: Parameters<LiveMapDocumentApi["attrs"]["clear"]>) => unknown;
+      replace: (...args: Parameters<LiveMapDocumentApi["attrs"]["replace"]>) => unknown;
     }>;
     content: Readonly<{
-      replace: (target: Parameters<LiveMapDocumentApi["content"]["replace"]>[0], index: number, replacement: Parameters<LiveMapDocumentApi["content"]["replace"]>[2], lineage?: LiveMapReplacementLineage) => LiveMapGraphCommit;
-      insert: (...args: Parameters<LiveMapDocumentApi["content"]["insert"]>) => LiveMapGraphCommit;
-      remove: (...args: Parameters<LiveMapDocumentApi["content"]["remove"]>) => LiveMapGraphCommit;
-      move: (...args: Parameters<LiveMapDocumentApi["content"]["move"]>) => LiveMapGraphCommit;
+      replace: (target: Parameters<LiveMapDocumentApi["content"]["replace"]>[0], index: number, replacement: Parameters<LiveMapDocumentApi["content"]["replace"]>[2], lineage?: LiveMapReplacementLineage) => unknown;
+      insert: (...args: Parameters<LiveMapDocumentApi["content"]["insert"]>) => unknown;
+      remove: (...args: Parameters<LiveMapDocumentApi["content"]["remove"]>) => unknown;
+      move: (...args: Parameters<LiveMapDocumentApi["content"]["move"]>) => unknown;
     }>;
   }>;
 }>;
@@ -67,17 +64,11 @@ const DOCUMENT_ACTION_NAMES: ReadonlySet<string> = new Set<LocusDocumentActionNa
 
 /** Resolve one reserved built-in without mutating. Execution remains in the normal action pipeline. */
 export function resolve_locus_document_action(
-  map: LiveMapAuthority | LocusDocumentActionTarget,
+  map: LocusDocumentActionTarget,
   name: string,
   payload: JsonValue | undefined,
 ): LocusDocumentActionResolution {
   if (!is_document_action_name(name)) return Object.freeze({ kind: "not-document-action" });
-  if (!is_document_live_map(map)) {
-    return Object.freeze({
-      kind: "unavailable",
-      message: `Locus action ${name} is unavailable for projected authorities.`,
-    });
-  }
   if (!is_record(payload)) {
     return Object.freeze({ kind: "invalid", message: `Locus action ${name} requires an object payload.` });
   }
@@ -261,17 +252,8 @@ function decoded_action_payload(value: unknown): JsonValue {
   throw new Error("Decoded Locus document action payload is not canonical JSON.");
 }
 
-function is_document_live_map(map: LiveMapAuthority | LocusDocumentActionTarget): map is DocumentLiveMap | LocusDocumentActionTarget {
-  return (map.mode === "document") && "document" in map;
-}
-
-function document_api(map: DocumentLiveMap | LocusDocumentActionTarget): LocusDocumentActionTarget["document"] {
+function document_api_for(map: LocusDocumentActionTarget): LocusDocumentActionTarget["document"] {
   return map.document;
-}
-
-function document_api_for(map: LiveMapAuthority | LocusDocumentActionTarget): LocusDocumentActionTarget["document"] {
-  if (is_document_live_map(map)) return document_api(map);
-  throw new Error("Locus document action draft mode is unavailable.");
 }
 
 function is_record(value: unknown): value is Readonly<Record<string, JsonValue>> {

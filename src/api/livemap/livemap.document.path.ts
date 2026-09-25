@@ -2,7 +2,7 @@ import { ROOT_TAG } from "../../core/constants.js";
 import { is_Node } from "../../core/node-guards.js";
 import type { HsonNode, Primitive } from "../../core/types.js";
 import type {
-  DocumentLiveMapMode,
+  LiveMapDocumentMode,
   LiveMapDocumentPath,
   LiveMapGraphOp,
 } from "../../types/livemap.types.js";
@@ -115,7 +115,7 @@ export function encode_document_path(path: LiveMapDocumentPath): string {
 /** Resolve one validated path through canonical `$_content` ownership. */
 export function resolve_document_path(
   root: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   path: LiveMapDocumentPath,
 ): HsonNode | Primitive {
   let endpoint: HsonNode | Primitive = document_path_base(root, mode);
@@ -153,7 +153,7 @@ export function resolve_document_path(
 /** Find the canonical path of one exact node inside the selected document root. */
 export function find_document_node_path(
   root: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   target: HsonNode,
 ): LiveMapDocumentPath | undefined {
   const base = document_path_base(root, mode);
@@ -279,7 +279,7 @@ export function transform_document_path(
   return Object.freeze({ kind: "unchanged", path });
 }
 
-function document_path_base(root: HsonNode, mode: DocumentLiveMapMode): HsonNode {
+function document_path_base(root: HsonNode, mode: LiveMapDocumentMode): HsonNode {
   if (mode !== "document" || root.$_tag !== ROOT_TAG) {
     throw new LiveMapDocumentPathError("DOCUMENT_ROOT_UNAVAILABLE", "the owned internal document root is unavailable");
   }

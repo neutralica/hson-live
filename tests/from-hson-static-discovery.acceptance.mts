@@ -34,9 +34,9 @@ check("aggregate Transform shortcut", root + 'hson.fromHson("<a/>");', 1, "trans
 check("aggregate Transform namespace", root + 'hson.transform.fromHson("<a/>");', 1, "transform");
 check("root narrow Transform facade", root + 'hsonTransform.fromHson("<a/>");', 1, "transform");
 check("Transform subpath renamed import", 'import { hsonTransform as convert } from "hson-live/transform"; convert.fromHson("<a/>");', 1, "transform");
-check("aggregate LiveMap facade", root + 'hson.liveMap.fromHson("<a/>");', 1, "livemap");
-check("root narrow LiveMap facade", root + 'hsonLiveMap.fromHson("<a/>");', 1, "livemap");
-check("LiveMap subpath renamed import", 'import { hsonLiveMap as maps } from "hson-live/livemap"; maps.fromHson("<a/>");', 1, "livemap");
+check("retired aggregate LiveMap constructor is not discovered", root + 'hson.liveMap.fromHson("<a/>");', 0);
+check("retired root LiveMap constructor is not discovered", root + 'hsonLiveMap.fromHson("<a/>");', 0);
+check("retired LiveMap subpath constructor is not discovered", 'import { hsonLiveMap as maps } from "hson-live/livemap"; maps.fromHson("<a/>");', 0);
 check("aggregate LiveTree facade", root + 'hson.liveTree.fromHson("<a/>");', 1, "livetree");
 check("root narrow LiveTree facade", root + 'hsonLiveTree.fromHson("<a/>");', 1, "livetree");
 check("LiveTree subpath renamed import", 'import { hsonLiveTree as trees } from "hson-live/livetree"; trees.fromHson("<a/>");', 1, "livetree");
@@ -52,17 +52,17 @@ check("mutable let source rejected", root + 'let source = `<a/>`; hson.fromHson(
 check("mutable var source rejected", root + 'var source = `<a/>`; hson.fromHson(source);', 0);
 check("interpolated ordinary template deferred", root + 'hson.fromHson(`<a ${value}>`);', 0);
 {
-  const text = root + 'hson.liveMap.fromHson(`<p "${value}"/>`);';
+  const text = root + 'hson.liveTree.fromHson(`<p "${value}"/>`);';
   const found = discover_static_from_hson_sources("/project/source.ts", text);
   assert.equal(found.sources.length, 0);
   assert.equal(found.interpolated.length, 1);
-  assert.equal(found.interpolated[0]?.boundary, "livemap");
+  assert.equal(found.interpolated[0]?.boundary, "livetree");
   assert.equal(text.slice(found.interpolated[0]!.bodyRange.start, found.interpolated[0]!.bodyRange.end), '<p "${value}"/>');
   assert.deepEqual(found.interpolated[0]?.substitutionRanges.map(range => text.slice(range.start, range.end)), ["${value}"]);
   console.log(`ok ${++checks} - interpolated ordinary template retains highlighting-only ranges`);
 }
 {
-  const text = root + 'hson.liveMap.fromHson(`<p "\\n${value}"/>`);';
+  const text = root + 'hson.liveTree.fromHson(`<p "\\n${value}"/>`);';
   const found = discover_static_from_hson_sources("/project/source.ts", text);
   assert.equal(found.sources.length, 0);
   assert.equal(found.interpolated.length, 0);

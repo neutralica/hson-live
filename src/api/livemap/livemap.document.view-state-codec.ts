@@ -11,7 +11,7 @@ import { parse_json } from "../transform/parsers/parse-json.js";
 import { json_value_from_node } from "../transform/serializers/serialize-json.js";
 import { serialize_hson } from "../transform/serializers/serialize-hson.js";
 import { detach_hson_root_value } from "../transform/utils/node-utils/detach-hson-root-value.js";
-import type { DocumentLiveMapCapture, DocumentLiveMapMode } from "../../types/livemap.types.js";
+import type { LiveMapDocumentCapture, LiveMapDocumentMode } from "../../types/livemap.types.js";
 import { classify_live_root_mode } from "./livemap.document.js";
 import { is_typed_css_value } from "../../core/inline-style.js";
 import {
@@ -71,7 +71,7 @@ type CodecValue =
 
 type CodecPayload = Readonly<{
   captureKind: typeof CAPTURE_KIND;
-  mode: DocumentLiveMapMode;
+  mode: LiveMapDocumentMode;
   revision: number;
   root: CodecValue;
 }>;
@@ -87,7 +87,7 @@ type Budget = {
 
 /** @internal Encode one validated document capture as deterministic compact Hson data. */
 export function encode_view_state_snapshot(
-  capture: DocumentLiveMapCapture,
+  capture: LiveMapDocumentCapture,
   options?: ViewStateSnapshotCodecOptions,
 ): ViewStateSnapshotEncoding {
   validate_capture_header(capture);
@@ -100,7 +100,7 @@ export function encode_view_state_snapshot(
 }
 
 function encode_view_state_payload(
-  capture: DocumentLiveMapCapture,
+  capture: LiveMapDocumentCapture,
   limits: CodecLimits,
   preserveEmptyMetadata = false,
 ): string {
@@ -133,7 +133,7 @@ function encode_view_state_payload(
 export function decode_view_state_snapshot(
   encoded: ViewStateSnapshotEncoding,
   options?: ViewStateSnapshotCodecOptions,
-): DocumentLiveMapCapture {
+): LiveMapDocumentCapture {
   validate_encoding_wrapper(encoded);
   const limits = codec_limits(options);
   assert_payload_size(encoded.payload, limits);
@@ -161,7 +161,7 @@ export function decode_view_state_snapshot(
   }
 
   const payload = decode_payload(representation, limits);
-  const decodedInput: DocumentLiveMapCapture = {
+  const decodedInput: LiveMapDocumentCapture = {
     kind: CAPTURE_KIND,
     mode: payload.mode,
     rev: payload.revision,
@@ -191,7 +191,7 @@ export function decode_view_state_snapshot(
       cause,
     );
   }
-  const capture: DocumentLiveMapCapture = Object.freeze({
+  const capture: LiveMapDocumentCapture = Object.freeze({
     kind: CAPTURE_KIND,
     mode: payload.mode,
     rev: payload.revision,
@@ -375,7 +375,7 @@ function encode_entries(
 }
 
 function decode_payload(value: JsonValue, limits: CodecLimits): Readonly<{
-  mode: DocumentLiveMapMode;
+  mode: LiveMapDocumentMode;
   revision: number;
   root: HsonNode;
 }> {
@@ -552,7 +552,7 @@ function decode_meta(value: Record<string, unknown>): HsonMeta {
   return meta;
 }
 
-function validate_capture_header(capture: DocumentLiveMapCapture): void {
+function validate_capture_header(capture: LiveMapDocumentCapture): void {
   if (!is_plain_record(capture)
     || capture.kind !== CAPTURE_KIND
     || Object.keys(capture).length !== 4
@@ -571,7 +571,7 @@ function validate_capture_header(capture: DocumentLiveMapCapture): void {
   }
 }
 
-function validate_canonical_document(root: HsonNode, expectedMode: DocumentLiveMapMode): void {
+function validate_canonical_document(root: HsonNode, expectedMode: LiveMapDocumentMode): void {
   try {
     assert_invariants(root, "view-state snapshot codec");
   } catch (cause) {
@@ -619,7 +619,7 @@ function validate_encoding_wrapper(encoded: ViewStateSnapshotEncoding): void {
   if (typeof encoded.payload !== "string") throw invalid_representation();
 }
 
-function decode_mode(value: unknown): DocumentLiveMapMode {
+function decode_mode(value: unknown): LiveMapDocumentMode {
   if (value === "document") return value;
   throw codec_error(
     "VIEW_STATE_SNAPSHOT_MODE_MISMATCH",

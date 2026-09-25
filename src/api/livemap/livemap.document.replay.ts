@@ -1,6 +1,6 @@
 import type { HsonNode } from "../../core/types.js";
 import type {
-  DocumentLiveMapMode,
+  LiveMapDocumentMode,
   LiveMapGraphCommit,
   LiveMapGraphOp,
   LiveMapGraphReplaceRootOp,
@@ -41,7 +41,7 @@ export type PreparedDocumentReplay = Readonly<{
 }>;
 
 export type LiveMapDocumentReplayController = Readonly<{
-  mode: DocumentLiveMapMode;
+  mode: LiveMapDocumentMode;
   rev: () => number;
   root: () => HsonNode;
   overlay: () => PreparedDocumentInstall["overlay"];

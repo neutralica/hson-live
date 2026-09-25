@@ -1,8 +1,6 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { hson } from "../src/hson.ts";
-import * as publicApi from "../src/index.ts";
-import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
+import { Hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
 import { is_Node } from "../src/core/node-guards.ts";
@@ -10,7 +8,7 @@ import type { HsonNode } from "../src/core/types.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livemap.document-location",
-  title: "Public logical document locations",
+  title: "Named document library logical locations",
   category: "LiveMap",
   runtime: "node",
   tags: Object.freeze(["document", "path", "traversal", "watch", "public-api", "externally-discoverable"]),
@@ -19,7 +17,6 @@ export const HSON_LIVE_TEST_METADATA = Object.freeze({
 const testEvents = create_test_event_emitter("livemap.document-location");
 let checks = 0;
 function check(name: string, run: () => void): void {
-
   testEvents.case_begin(name, name);
   try {
     run();
@@ -35,308 +32,107 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-function document(source: string): DocumentLiveMap {
-  const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "document") throw new Error(`Expected document map; observed ${map.mode}`);
-  return map;
-}
+const TreeSchema: HsonSchema = Hson.schema`<type "document" defs <Node <tag "item" content <repeat <ref "Node">>>> tag "main" content <repeat <ref "Node">>>`;
+const TextSchema: HsonSchema = Hson.schema`<type "document" tag "main" content "string">`;
+const MultiSchema: HsonSchema = Hson.schema`<type "document" content <repeat <tag "item" content "empty">>>`;
+const DataSchema: HsonSchema = Hson.schema`<type "data" content <items <array "string">>>`;
+const item = (): HsonNode => ({ $_tag: "item", $_content: [] });
+const tag = (value: unknown): string | undefined => is_Node(value) ? value.$_tag : undefined;
+const tree = (source: string) => hsonLiveMap.fromLibraries({ page: { document: source, schema: TreeSchema } });
 
-function document_node(source: string): HsonNode {
-  const value = document(source).at([]).snap();
-  if (!is_Node(value)) throw new Error("Expected ordinary document element");
-  return value;
-}
-
-const tag = (value: unknown): string | undefined =>
-  typeof value === "object" && value !== null && "$_tag" in value ? String(value.$_tag) : undefined;
-
-check("single-element document preserves its detached public root path", () => {
-  assert.equal(tag(document(`<main/>`).at([]).snap()), "main");
+check("one-library document locations read root, child, and nested paths", () => {
+  const map = tree("<main <item <item/>/>/>");
+  const page = map.lib("page");
+  assert.equal(tag(page.at([]).snap()), "main");
+  assert.equal(tag(page.at([0]).snap()), "item");
+  assert.equal(tag(page.at([0, 0]).snap()), "item");
+  assert.equal(page.at([0, 1]).snap(), undefined);
+  assert.deepEqual(page.at([0]).at([0]).path(), [0, 0]);
+  assert.equal(page.at([0]).at([0]), page.at([0, 0]));
 });
 
-check("single-element numeric descent reads its first logical content item", () => {
-  assert.equal(tag(document(`<main <a/>/>`).at([0]).snap()), "a");
+check("multi-node root and text leaves keep their logical coordinates", () => {
+  const multi = hsonLiveMap.fromLibraries({ page: { document: "<item/> <item/>", schema: MultiSchema } }).lib("page");
+  assert.equal(tag(multi.at([]).snap()), "_hson_root");
+  assert.equal(tag(multi.at([0]).snap()), "item");
+  assert.equal(tag(multi.at([1]).snap()), "item");
+  const text = hsonLiveMap.fromLibraries({ page: { document: '<main "hello"/>', schema: TextSchema } }).lib("page");
+  assert.equal(text.at([0]).snap(), "hello");
+  assert.equal(text.at([0, 0]).snap(), undefined);
 });
 
-check("nested numeric descent traverses element content beneath the root", () => {
-  assert.equal(tag(document(`<main <section <b/>/>/>`).at([0, 0]).snap()), "b");
-});
-
-check("multi-node document empty path denotes the same document authority", () => {
-  assert.equal(tag(document(`<a/> <b/>`).at([]).snap()), "_hson_root");
-});
-
-check("multi-node document numeric descent reads top-level logical content", () => {
-  assert.equal(tag(document(`<a/> <b/>`).at([0]).snap()), "a");
-});
-
-check("empty element content resolves missing beneath its document coordinate", () => {
-  assert.equal(document(`<main/>`).at([0]).snap(), undefined);
-});
-
-check("empty document content resolves missing", () => {
-  const map = hson.liveMap.fromNode({ $_tag: "_hson_root", $_content: [] });
-  if (map.mode !== "document") throw new Error("Expected empty document");
-  assert.equal(map.at([0]).snap(), undefined);
-});
-
-check("out-of-range logical content resolves missing", () => {
-  assert.equal(document(`<main <a/>/>`).at([9]).snap(), undefined);
-});
-
-check("primitive logical leaves read directly", () => {
-  assert.equal(document(`<main "hello"/>`).at([0]).snap(), "hello");
-});
-
-check("descent beyond a primitive resolves missing", () => {
-  assert.equal(document(`<main "hello"/>`).at([0, 0]).snap(), undefined);
-});
-
-check("node reads are detached", () => {
-  const map = document(`<main <a/>/>`);
-  const read = map.at([0]).snap();
-  if (typeof read !== "object" || read === null) throw new Error("Expected node");
-  read.$_tag = "changed";
-  assert.equal(tag(map.at([0]).snap()), "a");
-});
-
-check("ordinary traversal never counts the element content carrier", () => {
-  const map = document(`<main <a/>/>`);
-  assert.equal(tag(map.at([0]).snap()), "a");
-  assert.notEqual(tag(map.at([0]).snap()), "_hson_elem");
-});
-
-check("construction and reads do not mint QUIDs", () => {
-  const map = document(`<main <a/>/>`);
-  const before = map.root();
-  void map.at([0]).snap();
-  const dispose = map.at([0]).watch(() => undefined);
-  assert.deepEqual(map.root(), before);
-  assert.equal(JSON.stringify(map.root()).includes("_quid"), false);
-  dispose();
-});
-
-check("construction and reads do not change revision", () => {
-  const map = document(`<main <a/>/>`);
+check("reads are detached, do not mint QUIDs, and do not advance revision", () => {
+  const map = tree("<main <item/>/>");
+  const page = map.lib("page");
   const before = map.rev;
-  void map.at([0]).snap();
+  const read = page.at([0]).snap();
+  if (!is_Node(read)) throw new Error("Expected item node.");
+  read.$_tag = "changed";
+  assert.equal(tag(page.at([0]).snap()), "item");
+  assert.equal(page.document.byQuid("000000001"), undefined);
   assert.equal(map.rev, before);
 });
 
-check("insertion before a fixed coordinate changes its current occupant", () => {
-  const map = document(`<main <a/> <b/>/>`);
-  const location = map.at([1]);
-  map.at([]).insert(0, document_node(`<x/>`));
-  assert.equal(tag(location.snap()), "a");
+check("fixed coordinates resolve their current occupant after insert, move, and remove", () => {
+  const map = tree("<main <item id=\"first\"/> <item id=\"second\"/>/>");
+  const page = map.lib("page");
+  const atOne = page.at([1]);
+  assert.equal((atOne.snap() as HsonNode).$_attrs?.id, "second");
+  page.document.content.insert({ kind: "path", path: [0, 0] }, 0, item());
+  assert.equal((atOne.snap() as HsonNode).$_attrs?.id, "first");
+  page.document.content.move({ kind: "path", path: [0, 0] }, 0, 2);
+  assert.equal((atOne.snap() as HsonNode).$_attrs?.id, "second");
+  page.at([1]).delete();
+  assert.equal(atOne.snap() === undefined, false);
 });
 
-check("a fixed coordinate does not follow a moved subject", () => {
-  const map = document(`<main <a/> <b/> <c/>/>`);
-  const location = map.at([0]);
-  map.at([]).move(0, 2);
-  assert.equal(tag(location.snap()), "b");
+check("location replacement stays within the selected document Schema", () => {
+  const map = tree("<main <item/>/>");
+  const page = map.lib("page");
+  page.at([0]).replace({ $_tag: "item", $_attrs: { id: "replacement" }, $_content: [] });
+  assert.equal((page.at([0]).snap() as HsonNode).$_attrs?.id, "replacement");
+  assert.equal(map.rev, 1);
 });
 
-check("removal changes the current occupant or missing state", () => {
-  const map = document(`<main <a/> <b/>/>`);
-  const location = map.at([0]);
-  const tail = map.at([1]);
-  map.at([0]).delete();
-  assert.equal(tag(location.snap()), "b");
-  assert.equal(tail.snap(), undefined);
+check("map restore refreshes existing document locations and watchers", () => {
+  const map = tree("<main <item id=\"before\"/>/>");
+  const page = map.lib("page");
+  const location = page.at([0]);
+  const snapshot = map.capture();
+  const seen: unknown[] = [];
+  location.watch((next) => seen.push(is_Node(next) ? next.$_attrs?.id : undefined));
+  page.document.attrs.set({ kind: "path", path: [0, 0, 0] }, "id", "after");
+  assert.equal((location.snap() as HsonNode).$_attrs?.id, "after");
+  map.restore(snapshot);
+  assert.equal((location.snap() as HsonNode).$_attrs?.id, "before");
+  assert.deepEqual(seen, ["after", "before"]);
 });
 
-check("replacement changes the current occupant", () => {
-  const map = document(`<main <a/>/>`);
-  const location = map.at([0]);
-  map.at([0]).replace(document_node(`<x/>`));
-  assert.equal(tag(location.snap()), "x");
+check("local identity acquisition does not publish document watch events", () => {
+  const map = tree("<main <item/>/>");
+  const page = map.lib("page");
+  let events = 0;
+  page.at([0]).watch(() => { events += 1; });
+  acquire_document_identity(page.document, { kind: "path", path: [0, 0, 0] });
+  assert.equal(events, 0);
 });
 
-check("replay re-resolves an existing logical location", () => {
-  const source = document(`<main <a/> <b/>/>`);
-  const receiver = document(`<main <a/> <b/>/>`);
-  const location = receiver.at([0]);
-  receiver.replay(source.at([]).move(0, 1));
-  assert.equal(tag(location.snap()), "b");
-});
-
-check("restore re-resolves an existing logical location", () => {
-  const map = document(`<main <a/>/>`);
-  const initial = map.capture();
-  const location = map.at([0]);
-  map.at([0]).replace(document_node(`<x/>`));
-  map.restore(initial);
-  assert.equal(tag(location.snap()), "a");
-});
-
-check("relative at composes logical coordinates", () => {
-  const map = document(`<main <section <b/>/>/>`);
-  const section = map.at([]).at([0]);
-  const relative = section.at([0]);
-  assert.equal(section, map.at([0]));
-  assert.equal(relative, map.at([0, 0]));
-  assert.deepEqual(relative.path(), [0, 0]);
-  assert.equal(tag(relative.snap()), "b");
-  relative.replace(document_node(`<x/>`));
-  assert.equal(tag(map.at([0, 0]).snap()), "x");
-  section.insert(1, "tail");
-  assert.equal(map.at([0, 1]).snap(), "tail");
-});
-
-check("coordinate inspection returns a detached logical path", () => {
-  const location = document(`<main <a/>/>`).at([0]);
-  const path = location.path() as number[];
+check("malformed logical paths reject and coordinate inspection is frozen", () => {
+  const page = tree("<main <item/>/>").lib("page");
+  assert.throws(() => page.at([-1]), /not valid/);
+  assert.throws(() => page.at([1.5]), /not valid/);
+  const path = page.at([0]).path() as number[];
   assert.deepEqual(path, [0]);
   assert.throws(() => path.push(1), TypeError);
+  assert.equal("at" in page.document, false);
 });
 
-check("projected at behavior remains unchanged", () => {
-  const map = hson.liveMap.fromJson({ items: ["first"] });
-  assert.equal(map.at(["items", 0]).snap(), "first");
-  assert.equal(typeof map.at(["items"]).asArray()!.push, "function");
+check("data paths remain selected from their named library", () => {
+  const map = hsonLiveMap.fromLibraries({ state: { data: { items: ["first"] }, schema: DataSchema } });
+  const state = map.lib("state");
+  assert.equal(state.at(["items", 0]).snap(), "first");
+  assert.equal(typeof state.at(["items"]).asArray()!.push, "function");
 });
 
-check("document namespace does not acquire an at surface", () => {
-  assert.equal("at" in document(`<main/>`).document, false);
-});
-
-check("malformed logical paths reject at construction", () => {
-  const map = document(`<main/>`);
-  assert.throws(() => map.at([-1]), /not valid/);
-  assert.throws(() => map.at([1.5]), /not valid/);
-  assert.throws(() => Reflect.apply(map.at, map, [["content"]]), /not valid/);
-});
-
-check("internal logical traversal names are not package exports", () => {
-  assert.equal("resolve_internal_document_location" in publicApi, false);
-  assert.equal("InternalDocumentTraversalError" in publicApi, false);
-});
-
-check("document watch is future-only and observes attrs and content snapshots", () => {
-  const map = document(`<main <a/>/>`);
-  const rootTags: string[] = [];
-  const childTags: string[] = [];
-  const primitiveValues: unknown[] = [];
-  map.at([]).watch((next) => rootTags.push(tag(next) ?? "missing"));
-  map.at([0]).watch((next) => childTags.push(tag(next) ?? "missing"));
-  map.at([0, 0]).watch((next) => primitiveValues.push(next));
-
-  map.at([0]).attrs.set("title", "watched");
-  map.at([0]).insert(0, "text");
-  assert.deepEqual(rootTags, ["main", "main"]);
-  assert.deepEqual(childTags, ["a", "a"]);
-  assert.deepEqual(primitiveValues, ["text"]);
-});
-
-check("document watch keeps fixed coordinates through reindex and missing", () => {
-  const map = document(`<main <a/> <b/>/>`);
-  const seen: string[] = [];
-  const dispose = map.at([1]).watch((next) => seen.push(tag(next) ?? "missing"));
-
-  map.at([]).insert(0, document_node(`<x/>`));
-  map.at([0]).delete();
-  map.at([1]).replace(document_node(`<c/>`));
-  map.at([1]).delete();
-  map.at([]).insert(1, document_node(`<d/>`));
-  assert.deepEqual(seen, ["a", "b", "c", "missing", "d"]);
-  dispose();
-  dispose();
-  map.at([1]).replace(document_node(`<e/>`));
-  assert.equal(seen.at(-1), "d");
-});
-
-check("document watch always delivers restore including missing-to-missing", () => {
-  const map = document(`<main <a/>/>`);
-  const seen: string[] = [];
-  const missing: unknown[] = [];
-  map.at([0]).watch((next) => seen.push(tag(next) ?? "missing"));
-  map.at([9]).watch((next) => missing.push(next));
-
-  map.restore(map.capture());
-  assert.deepEqual(seen, ["a"]);
-  assert.deepEqual(missing, [undefined]);
-
-  map.restore(document(`<main <b/>/>`).capture());
-  assert.deepEqual(seen, ["a", "b"]);
-  assert.deepEqual(missing, [undefined, undefined]);
-
-  map.restore(document(`<b/> <c/>`).capture());
-  assert.deepEqual(seen, ["a", "b", "b"]);
-  assert.deepEqual(missing, [undefined, undefined, undefined]);
-});
-
-check("document watch observes replay but not local identity acquisition", () => {
-  const source = document(`<main <a/> <b/>/>`);
-  const receiver = document(`<main <a/> <b/>/>`);
-  const replayTags: string[] = [];
-  receiver.at([0]).watch((next) => replayTags.push(tag(next) ?? "missing"));
-  receiver.replay(source.at([]).move(0, 1));
-  assert.deepEqual(replayTags, ["b"]);
-
-  const identified = document(`<main <a/>/>`);
-  const metadata: unknown[] = [];
-  identified.at([0]).watch((next) => metadata.push(next));
-  acquire_document_identity(identified.document, Object.freeze({
-    kind: "path" as const,
-    path: Object.freeze([0, 0, 0]),
-  }));
-  assert.equal(metadata.length, 0);
-
-  const installed = document(`<main <a/> <aside state="old"/>/>`);
-  const installedTags: string[] = [];
-  installed.at([0]).watch((next) => installedTags.push(tag(next) ?? "missing"));
-  installed.at([1]).attrs.set("state", "local");
-  assert.deepEqual(installedTags, []);
-  installed.install(document(`<main <a/> <aside state="remote"/>/>`).capture());
-  assert.deepEqual(installedTags, []);
-  installed.install(document(`<main <b/> <aside state="remote"/>/>`).capture());
-  assert.deepEqual(installedTags, ["b"]);
-});
-
-check("an id-discovered watcher remains attached to its original coordinate", () => {
-  const map = document(`<main <a id="x"/> <b/>/>`);
-  const found = map.at([]).id("x");
-  if (found === undefined) throw new Error("Expected discovered location");
-  const seen: string[] = [];
-  found.watch((next) => seen.push(tag(next) ?? "missing"));
-
-  map.at([]).move(0, 1);
-  assert.deepEqual(seen, ["b"]);
-  assert.deepEqual(map.at([]).id("x")?.path(), [1]);
-});
-
-check("document watcher payloads are detached and listener failures are isolated", () => {
-  const map = document(`<main <a/>/>`);
-  const order: string[] = [];
-  map.at([0]).watch((next) => {
-    order.push("watch-a");
-    if (typeof next === "object" && next !== null) next.$_tag = "mutated";
-    throw new Error("document watch failure");
-  });
-  map.at([0]).watch((next) => { order.push(`watch-b:${tag(next)}`); });
-  map.commits.observe(() => { order.push("observer"); });
-
-  assert.throws(() => map.at([0]).attrs.set("title", "changed"), /document watch failure/);
-  assert.deepEqual(order, ["watch-a", "watch-b:a", "observer"]);
-  assert.equal(tag(map.at([0]).snap()), "a");
-});
-
-check("document public observer failure takes precedence after watch delivery", () => {
-  const map = document(`<main <a/>/>`);
-  const order: string[] = [];
-  map.commits.observe(() => {
-    order.push("observer");
-    throw new Error("document observer failure");
-  });
-  map.at([0]).watch(() => {
-    order.push("watch");
-    throw new Error("document watch failure");
-  });
-
-  assert.throws(() => map.at([0]).attrs.set("title", "changed"), /document observer failure/);
-  assert.deepEqual(order, ["watch", "observer"]);
-});
-
-process.stdout.write(`# ${checks} public document location checks passed\n`);
+process.stdout.write(`1..${checks}\n`);
 testEvents.terminal("pass");

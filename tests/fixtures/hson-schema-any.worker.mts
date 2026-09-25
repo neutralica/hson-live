@@ -5,8 +5,9 @@ const schema: HsonSchema = Hson.schema`<type "data" content <args "any" payload 
 const canonical = Hson.canonical`<args [null, true, -0] payload <z 1 a <nested []>>>`;
 const certified = schema.certify(canonical);
 const exact = Hson.data.fromHson(Hson.canonical`<'10' -0 '2' <__proto__ true>>`);
-const map = hsonLiveMap.fromJson({ args: -0, payload: { z: 1, a: [] } }).schema.use(schema);
-map.replace(["payload"], { second: [], first: { nested: true } });
+const map = hsonLiveMap.fromLibraries({ state: { data: { args: -0, payload: { z: 1, a: [] } }, schema } });
+const state = map.lib("state");
+state.at(["payload"]).replace({ second: [], first: { nested: true } });
 const relational: HsonSchema = Hson.schema`<type "data" content <items <array <content <content <kind "string">> unique <by "kind" cases [["wide", ["A", "B"]], ["single-b", ["B"]], ["single-c", ["C"]]]>>>>>`;
 const relationalAccepted = relational.certify(Hson.canonical`<items [<kind "wide">, <kind "single-c">]>`);
 let relationalRejected = false;
@@ -15,8 +16,8 @@ catch { relationalRejected = true; }
 
 parentPort?.postMessage({
   certified: certified === canonical,
-  negativeZero: Object.is(map.snap(["args"]), -0),
-  order: Object.keys(map.snap(["payload"]) as object),
+  negativeZero: Object.is(state.snap(["args"]), -0),
+  order: Object.keys(state.snap(["payload"]) as object),
   exactOrder: Hson.data.entries(exact)?.map(([name]) => name),
   exactNegativeZero: Object.is(Hson.data.materialize(Hson.data.entries(exact)?.[0]?.[1]!), -0),
   safeProto: Object.hasOwn(Hson.data.materialize(Hson.data.entries(exact)?.[1]?.[1]!) as object, "__proto__"),

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { Hson, add_interaction, enable_interactions, hsonLiveMap, hsonMirror, type HsonSchema, type LiveMapLibraries } from "../src/index.ts";
+import { Hson, add_interaction, enable_interactions, hsonLiveMap, hsonMirror, type HsonSchema, type LiveMap } from "../src/index.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
 import { create_locus_hosted_aggregate_socket_internal } from "../src/api/locus/locus.aggregate.socket.ts";
 import { create_echo_socket_client_internal } from "../src/api/echo/echo.aggregate-replica.ts";
@@ -73,7 +73,7 @@ function hidden_absent(raw: string) {
   assert.equal(raw.includes("issuedQuids"), false);
   assert.equal(raw.includes("identityEpoch"), false);
 }
-function data_library(map: LiveMapLibraries | undefined, name: string) {
+function data_library(map: LiveMap | undefined, name: string) {
   const library = map?.lib(name);
   if (library === undefined || library.mode === "document") throw new Error("Expected data Library.");
   return library;

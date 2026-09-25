@@ -1,6 +1,6 @@
 import type { JsonObj, JsonValue } from "../core/types.js";
 import type { HsonData } from "../api/transform/transform.types.js";
-import type { LiveMapDocumentPathInput, LiveMapLibraries } from "./livemap.types.js";
+import type { LiveMapDocumentPathInput, LiveMap } from "./livemap.types.js";
 import type { LiveTree } from "../api/livetree/livetree.js";
 import type { MissingPolicy } from "./listen.types.js";
 
@@ -73,7 +73,7 @@ export type InteractionFailure = Readonly<{
 }>;
 
 export type InteractionActivationOptions = Readonly<{
-  map: LiveMapLibraries;
+  map: LiveMap;
   tree: LiveTree;
   /** Name of the selected document Library; inferred only for a single document Library. */
   document?: string;

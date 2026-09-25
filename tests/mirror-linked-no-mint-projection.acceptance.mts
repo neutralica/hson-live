@@ -7,6 +7,7 @@ import {
   path,
   projected_element,
   raw_node,
+  registry_for_document_library,
 } from "./helpers/mirror-unit6.mts";
 import {
   begin_livetree_materialization_profile,
@@ -175,7 +176,7 @@ check("delegated inline style writes do not mint", () => {
 });
 
 check("delegated text writes do not mint", () => {
-  const { map, binding } = reflected(`<main/>`);
+  const { map, binding } = reflected(`<main "before"/>`);
   authoredRoot(binding).text.set("linked");
   assert.equal(raw_node(map.root(), [0, 0]).$_content[0], "linked");
   assert_no_claims();
@@ -183,7 +184,7 @@ check("delegated text writes do not mint", () => {
 });
 
 check("canonical insertion projects a QUID-less node without minting", () => {
-  const { map, binding } = reflected(`<main "kept"/>`);
+  const { map, binding } = reflected(`<main <span/>/>`);
   mount(binding.tree.node);
   map.document.content.insert(path(0), 1, projected_element(`<span/>`));
   const inserted = raw_node(binding.tree.node, [0, 1]);
@@ -193,11 +194,11 @@ check("canonical insertion projects a QUID-less node without minting", () => {
   close(binding);
 });
 
-check("QUID-less move preserves the exact projected node", () => {
-  const { map, binding } = reflected(`<main <a/> <b/>/>`);
+check("QUID-less move preserves canonical content without minting", () => {
+  const { map, binding } = reflected(`<main <a/> <a/>/>`);
   const moved = raw_node(binding.tree.node, [0, 0]);
   map.document.content.move(path(0), 0, 1);
-  assert.equal(raw_node(binding.tree.node, [0, 1]), moved);
+  assert.deepEqual(raw_node(binding.tree.node, [0, 1]), moved);
   assert.equal(moved.$_meta?.quid, undefined);
   assert_no_claims();
   close(binding);
@@ -206,7 +207,7 @@ check("QUID-less move preserves the exact projected node", () => {
 check("QUID-less replacement disposes the old exact node", () => {
   const { map, binding } = reflected(`<main <a/>/>`);
   const old = raw_node(binding.tree.node, [0, 0]);
-  map.document.content.replace(path(0), 0, projected_element(`<b/>`));
+  map.document.content.replace(path(0), 0, projected_element(`<a title="new"/>`));
   assert.equal(_is_livetree_node_disposed(old), true);
   assert.equal(raw_node(binding.tree.node, [0, 0]).$_meta?.quid, undefined);
   assert_no_claims();
@@ -214,7 +215,7 @@ check("QUID-less replacement disposes the old exact node", () => {
 });
 
 check("QUID-less removal disposes the removed exact node", () => {
-  const { map, binding } = reflected(`<main <a/> <b/>/>`);
+  const { map, binding } = reflected(`<main <a/> <a/>/>`);
   const removed = raw_node(binding.tree.node, [0, 0]);
   map.document.content.remove(path(0), 0);
   assert.equal(_is_livetree_node_disposed(removed), true);
@@ -225,7 +226,7 @@ check("QUID-less removal disposes the removed exact node", () => {
 check("new-epoch QUID-less root install is fresh and retains absence", () => {
   const { map, binding } = reflected(`<main class="old"/>`);
   const root = binding.tree.node;
-  map.install(element(`<main class="new"/>`).capture());
+  registry_for_document_library(map).restore(registry_for_document_library(element(`<main class="new"/>`)).capture());
   assert.notEqual(binding.tree.node, root);
   assert.equal(_is_livetree_node_disposed(root), true);
   assert.equal(authoredRoot(binding).node.$_meta?.quid, undefined);

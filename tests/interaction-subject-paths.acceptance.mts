@@ -12,7 +12,7 @@ import { materialize_projected_value } from "../src/core/projected-value-materia
 import { is_Node } from "../src/core/node-guards.ts";
 import { install_fake_document } from "./helpers/fake-document.mts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
-import { admit_exact_runtime_livemap_libraries, admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
+import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
 
 install_fake_document();
 
@@ -26,8 +26,9 @@ const subject = (path: readonly number[]) => Object.freeze({ library: "page", pa
 const descriptor = (id: string, path: readonly number[]): InteractionDescriptor =>
   Object.freeze({ id, subject: subject(path), listener, kind: "browser-local", key: "run", args: null });
 const button = () => {
-  const root = hsonLiveMap.fromHson("<button/>").root();
-  const node = root.$_content[0];
+  const root = parse_hson_exact_runtime("<button/>", { allowTopLevelDocumentText: true });
+  const bucket = root.$_content[0];
+  const node = typeof bucket === "object" && bucket !== null && "$_content" in bucket ? bucket.$_content[0] : undefined;
   if (typeof node !== "object" || node === null) throw new Error("Expected button node.");
   return node;
 };
@@ -198,9 +199,9 @@ function paths(map: ReturnType<typeof hsonLiveMap.fromLibraries>): Record<string
   enable_interactions(map);
   add_interaction(map, descriptor("survivor", [0, 0, 0, 0, 0]));
   add_interaction(map, descriptor("terminated", [0, 0, 0, 0, 1]));
-  const replacementMap = admit_exact_runtime_livemap_node(parse_hson_exact_runtime("<section <button/> <button/> <button/>/>", { allowTopLevelDocumentText: true }));
-  if (replacementMap.mode !== "document") throw new Error("Expected document replacement.");
-  const replacement = replacementMap.at([]).snap();
+  const replacementRoot = parse_hson_exact_runtime("<section <button/> <button/> <button/>/>", { allowTopLevelDocumentText: true });
+  const replacementBucket = replacementRoot.$_content[0];
+  const replacement = typeof replacementBucket === "object" && replacementBucket !== null && "$_content" in replacementBucket ? replacementBucket.$_content[0] : undefined;
   if (!is_Node(replacement)) throw new Error("Expected replacement section.");
   const authority = internal_livemap_aggregate_authority(map);
   authority.commit([{

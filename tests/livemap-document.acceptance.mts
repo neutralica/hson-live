@@ -1,8 +1,9 @@
 import { create_test_event_emitter } from "./test-events.mjs";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
-import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
+import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
 import assert from "node:assert/strict";
 import { hson, hsonLiveMap, hsonTransform } from "../src/hson.ts";
+import { Hson } from "../src/index.ts";
 import type { HsonNode, NodeContent, Primitive } from "../src/core/types.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -96,297 +97,113 @@ function mutate_content(content: readonly NodeContent[number][]): void {
   mutable.push({ $_tag: "changed-content", $_content: [] });
 }
 
-check("document construction stays canonical and DOM-free", () => {
-  assert.equal("fromTrustedHtml" in hson.liveMap, false);
-  assert.equal("fromUntrustedHtml" in hson.liveMap, false);
-  assert.equal(typeof hson.liveMap.fromNode, "function");
-  assert.equal("element" in hson.liveMap, false);
-  assert.equal("fragment" in hson.liveMap, false);
+const MainText = Hson.schema`<type "document" tag "main" content "string">`;
+const MainP = Hson.schema`<type "document" tag "main" content <sequence [<tag "p" content "string">]>>`;
+const MainTwoP = Hson.schema`<type "document" tag "main" content <repeat <tag "p" content "string"> count 2>>`;
+const EmptyDocument = Hson.schema`<type "document" content <sequence []>>`;
+const TextDocument = Hson.schema`<type "document" content "string">`;
+const NumberData = Hson.schema`<type "data" content <value "number">>`;
+const NumberArray = Hson.schema`<type "data" defs <Root <array "number">> content <ref "Root">>`;
 
-  const trusted = hsonLiveMap.fromNode(
-    hsonTransform.fromTrustedHtml("<main></main>").toNode(),
-  );
-  const untrusted = hsonLiveMap.fromNode(
-    hsonTransform.fromUntrustedHtml("<main onclick='unsafe()'></main>").toNode(),
-  );
-  assert.equal(trusted.mode, "document");
-  assert.equal(untrusted.mode, "document");
-  assert.equal(find_nodes(untrusted.root(), "main")[0]?.$_attrs?.onclick, undefined);
-});
-
-check("canonical roots classify as data-object, data-array, element, and multiNodeDocument", () => {
-  assert.equal(hson.liveMap.fromHson(`<user <name "Ada">>`).mode, "data-object");
-  assert.equal(hson.liveMap.fromHson(`«1,true,null»`).mode, "data-array");
-  assert.equal(hson.liveMap.fromHson(`<button "Save"/>`).mode, "document");
-  assert.equal(hson.liveMap.fromHson(`<section <p "One"/> <p "Two"/>/>`).mode, "document");
-  assert.equal(hson.liveMap.fromHson(`"text only"`).mode, "document");
-  assert.equal(hson.liveMap.fromHson(`<div "One"/> <div "Two"/>`).mode, "document");
-  assert.equal(hson.liveMap.fromHson(`"before" <em "middle"/> "after"`).mode, "document");
-  assert.equal(hson.liveMap.fromNode({ $_tag: "_hson_root", $_content: [] }).mode, "document");
-});
-
-check("zero-length source constructs the empty document without conflating quoted empty text", () => {
-  const empty = hsonLiveMap.fromHson("");
-  const quotedEmpty = hsonLiveMap.fromHson(`""`);
-  assert.equal(empty.mode, "document");
-  assert.deepEqual(empty.root(), { $_tag: "_hson_root", $_content: [] });
-  assert.equal(quotedEmpty.mode, "document");
-  assert.equal(quotedEmpty.root().$_content.length, 1);
-  assert.notDeepEqual(quotedEmpty.root(), empty.root());
-});
-
-check("malformed and unsupported canonical roots are rejected with causes", () => {
-  assert.throws(
-    () => hson.liveMap.fromNode({ $_tag: "_hson_root", $_content: [1] }),
-    (error) => error instanceof Error
-      && Reflect.get(error, "code") === "HSON_CANONICAL_INVARIANT_VIOLATION"
-      && /primitive\/null outside _hson_str/.test(error.message),
-  );
-  assert.throws(
-    () => hson.liveMap.fromNode({ $_tag: "button", $_content: [] }),
-    /canonical root must be <_hson_root>/,
-  );
-});
-
-check("fromNode takes detached ownership of the complete canonical graph", () => {
-  const source = parse_hson_exact_runtime(
-    `<main id="original" style="color: red" data-user="kept" <p "x"/>/>`,
-    { allowTopLevelDocumentText: true },
-  );
-  const sourceMain = find_nodes(source, "main")[0];
-  if (sourceMain !== undefined) {
-    sourceMain.$_attrs = {
-      ...sourceMain.$_attrs,
-      style: { color: "red", width: { value: 2, unit: "px" } },
-    };
+check("registry construction stays canonical and DOM-free", () => {
+  for (const removed of ["fromNode", "fromHson", "fromJson", "fromData", "fromDocument", "fromTrustedHtml", "fromUntrustedHtml"]) {
+    assert.equal(removed in hson.liveMap, false);
   }
-  const sourceBefore = structuredClone(source);
-  const map = hson.liveMap.fromNode(source);
-  assert.equal(map.mode, "document");
-  const ownedBefore = map.root();
-  assert.deepEqual(source, sourceBefore);
-  const ownedMain = find_nodes(ownedBefore, "main")[0];
-  assert.notEqual(sourceMain, ownedMain);
-  assert.deepEqual(sourceMain, ownedMain);
-
-  mutate_graph(source);
-  assert.deepEqual(map.root(), ownedBefore);
-  assert.equal(map.rev, 0);
+  const trusted = hsonLiveMap.fromLibraries({ page: { document: hsonTransform.fromTrustedHtml("<main>ready</main>").toNode(), schema: MainText } });
+  const untrusted = hsonLiveMap.fromLibraries({ page: { document: hsonTransform.fromUntrustedHtml("<main onclick='unsafe()'>ready</main>").toNode(), schema: MainText } });
+  assert.equal(trusted.lib("page").mode, "document");
+  assert.equal(untrusted.lib("page").mode, "document");
+  assert.equal(find_nodes(untrusted.lib("page").root(), "main")[0]?.$_attrs?.onclick, undefined);
 });
 
-check("data fromNode construction also takes detached ownership", () => {
-  const source = hson.fromJson({ user: { name: "Ada" }, values: [1, 2] }).toNode();
-  const map = hson.liveMap.fromNode(source);
-  assert.equal(map.mode, "data-object");
-  const baseline = map.root();
-  source.$_tag = "changed";
-  source.$_content.length = 0;
-  source.$_attrs = { style: { color: "red" } };
-  source.$_meta = { quid: "000000012" };
-  assert.deepEqual(map.root(), baseline);
-  assert.deepEqual(map.snap(), { user: { name: "Ada" }, values: [1, 2] });
+check("one-library registries classify data and document roots", () => {
+  const object = hsonLiveMap.fromLibraries({ state: { data: { value: 1 }, schema: NumberData } });
+  const array = hsonLiveMap.fromLibraries({ state: { data: [1, 2], schema: NumberArray } });
+  const document = hsonLiveMap.fromLibraries({ page: { document: '<main "text"/>', schema: MainText } });
+  const empty = hsonLiveMap.fromLibraries({ page: { document: "", schema: EmptyDocument } });
+  assert.deepEqual([object.lib("state").mode, array.lib("state").mode, document.lib("page").mode, empty.lib("page").mode], ["data-object", "data-array", "document", "document"]);
+  assert.deepEqual(empty.lib("page").root(), { $_tag: "_hson_root", $_content: [] });
 });
 
-check("element reads and captures are recursively detached", () => {
-  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(
-    `<main id="original" style="color: red" @000000001 <p @000000002 "x"/>/>`,
-    { allowTopLevelDocumentText: true },
-  ));
-  assert.equal(map.mode, "document");
-  const baseline = map.root();
-  const beforeRev = map.rev;
-  const rootCopy = map.root();
-  const capture = map.capture();
-  const element = map.root();
-  const content = map.document.content();
+check("empty document and quoted empty text remain distinct", () => {
+  const empty = hsonLiveMap.fromLibraries({ page: { document: "", schema: EmptyDocument } }).lib("page");
+  const quoted = hsonLiveMap.fromLibraries({ page: { document: '""', schema: TextDocument } }).lib("page");
+  assert.equal(quoted.root().$_content.length, 1);
+  assert.notDeepEqual(quoted.root(), empty.root());
+});
 
+check("malformed canonical roots and generated QUID claims reject at admission", () => {
+  assert.throws(() => admit_exact_runtime_livemap_libraries({ page: { document: { $_tag: "_hson_root", $_content: [1] }, schema: EmptyDocument } }));
+  assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: { $_tag: "main", $_content: [], $_meta: { quid: "000000001" } }, schema: MainText } }));
+  assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: '<aside/>', schema: MainText } }));
+});
+
+check("document input and detached reads do not share graph ownership", () => {
+  const source = parse_hson_exact_runtime('<main id="original" <p "x"/>/>', { allowTopLevelDocumentText: true });
+  const map = admit_exact_runtime_livemap_libraries({ page: { document: source, schema: MainP } });
+  const page = map.lib("page");
+  const baseline = page.root();
+  assert.notEqual(source, baseline);
+  const capture = page.capture();
   assert.equal(capture.kind, "hson-document");
-  assert.equal(Object.hasOwn(capture, "version"), false);
-  assert.equal(capture.mode, "document");
-  assert.equal(capture.rev, beforeRev);
-  assert_fully_detached(rootCopy, map.root());
-  assert_fully_detached(capture.root, map.capture().root);
-  assert.equal(JSON.stringify(capture.root).includes('"quid"'), false);
-  mutate_graph(rootCopy);
+  assert_fully_detached(page.root(), page.root());
+  assert_fully_detached(capture.root, page.capture().root);
+  mutate_graph(source);
   mutate_graph(capture.root);
-  element.$_tag = "changed-element";
+  const content = page.document.content();
   mutate_content(content);
-
-  assert.deepEqual(map.root(), baseline);
-  assert.equal(map.rev, beforeRev);
-});
-
-check("multiNodeDocument reads preserve repeated siblings and mixed content in order", () => {
-  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(
-    `"before" <div id="a" @000000003 "one"/> <div id="b" @000000004 "two"/> "after"`,
-    { allowTopLevelDocumentText: true },
-  ));
-  assert.equal(map.mode, "document");
-  const baseline = map.root();
-  const content = map.document.content();
-  assert.equal(content.length, 4);
-  assert.deepEqual(content.map((item) => is_node(item) ? item.$_tag : item), [
-    "_hson_str", "div", "div", "_hson_str",
-  ]);
-  const divs = content.filter((item): item is HsonNode => is_node(item) && item.$_tag === "div");
-  assert.deepEqual(divs.map((node) => node.$_attrs?.id), ["a", "b"]);
-  assert.deepEqual(divs.map((node) => node.$_meta?.["quid"]), ["000000003", "000000004"]);
-
-  mutate_content(content);
-  assert.deepEqual(map.root(), baseline);
+  assert.deepEqual(page.root(), baseline);
   assert.equal(map.rev, 0);
 });
 
-check("local document identity is sparse while default capture omits it", () => {
-  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(
-    `<main @000000001 <p "one"/> <p @000000005 "two"/>/>`,
-    { allowTopLevelDocumentText: true },
-  ));
-  assert.equal(map.mode, "document");
-  const first = map.root();
-  const second = map.root();
-  const main = find_nodes(first, "main")[0];
-  const paragraphs = find_nodes(first, "p");
-  assert.equal(main?.$_meta?.["quid"], "000000001");
-  assert.equal(paragraphs[1]?.$_meta?.["quid"], "000000005");
-  assert.equal(paragraphs[0]?.$_meta?.["quid"], undefined);
-  assert.deepEqual(second, first);
-  const portable = map.capture().root;
-  assert.equal(find_nodes(portable, "main")[0]?.$_meta?.quid, undefined);
-  assert.equal(find_nodes(portable, "p")[1]?.$_meta?.quid, undefined);
-  assert.equal(map.document.byQuid("000000001")?.$_tag, "main");
-  assert.equal(map.document.byQuid("000000005")?.$_tag, "p");
-  assert.equal(map.document.byQuid("unknown"), undefined);
+check("ordinary data input is detached and selected library reads remain exact", () => {
+  const input = { value: 1 };
+  const map = hsonLiveMap.fromLibraries({ state: { data: input, schema: NumberData } });
+  input.value = 2;
+  assert.deepEqual(map.lib("state").snap(), { value: 1 });
+  assert.equal(map.lib("state").at(["value"]).snap(), 1);
   assert.equal(map.rev, 0);
 });
 
-check("unquidded construction and every detached read preserve identity absence", () => {
-  const source = hson.fromHson(`<main <p "one"/> <p "two"/>/>`).toNode();
-  const sourceBefore = structuredClone(source);
-  const map = hson.liveMap.fromNode(source);
-  assert.equal(map.mode, "document");
-  const reads = [map.root(), map.capture().root, map.root(), ...map.document.content().filter(is_node)];
-  for (const root of reads) {
-    for (const node of find_nodes(root, "main").concat(find_nodes(root, "p"))) {
-      assert.equal(node.$_meta?.["quid"], undefined);
-    }
-  }
-  assert.deepEqual(source, sourceBefore);
-  assert.equal(map.document.byQuid("anything"), undefined);
-  assert.equal(map.rev, 0);
-
-  const multiNodeDocument = hson.liveMap.fromHson(`"before" <div <span "one"/>/> <div "two"/> "after"`);
-  assert.equal(multiNodeDocument.mode, "document");
-  for (const read of [multiNodeDocument.root(), multiNodeDocument.capture().root, ...multiNodeDocument.document.content().filter(is_node)]) {
-    for (const tag of ["div", "span"]) {
-      for (const node of find_nodes(read, tag)) assert.equal(node.$_meta?.["quid"], undefined);
-    }
-  }
-  assert.equal(multiNodeDocument.rev, 0);
+check("local QUID identity is sparse and portable capture omits it", () => {
+  const source = parse_hson_exact_runtime('<main @000000001 <p "one"/> <p @000000005 "two"/>/>', { allowTopLevelDocumentText: true });
+  const map = admit_exact_runtime_livemap_libraries({ page: { document: source, schema: MainTwoP } });
+  const page = map.lib("page");
+  const root = page.root();
+  assert.equal(find_nodes(root, "main")[0]?.$_meta?.quid, "000000001");
+  assert.equal(find_nodes(root, "p")[0]?.$_meta?.quid, undefined);
+  assert.equal(find_nodes(root, "p")[1]?.$_meta?.quid, "000000005");
+  assert.equal(page.document.byQuid("000000005")?.$_tag, "p");
+  assert.equal(page.document.byQuid("unknown"), undefined);
+  assert.equal(JSON.stringify(page.capture()).includes('"quid"'), false);
+  assert.equal(JSON.stringify(map.capture()).includes('"quid"'), false);
 });
 
-check("duplicate and malformed persisted document QUIDs are rejected", () => {
-  assert.throws(
-    () => admit_exact_runtime_livemap_node(parse_hson_exact_runtime(`<div @000000006/> <span @000000006/>`, { allowTopLevelDocumentText: true })),
-    /duplicate quid "000000006"/,
-  );
-  assert.throws(
-    () => hson.liveMap.fromHson(`<div @/>`),
-    /missing persisted QUID value after "@"/,
-  );
-  const malformed = hson.fromHson(`<div/>`).toNode();
-  const div = find_nodes(malformed, "div")[0];
-  if (div !== undefined) div.$_meta = { quid: 42 as unknown as string };
-  assert.throws(
-    () => hson.liveMap.fromNode(malformed),
-    /runtime QUID metadata is invalid in portable node input/,
-  );
+check("duplicate and malformed document QUIDs reject before registry construction", () => {
+  assert.throws(() => admit_exact_runtime_livemap_libraries({ page: { document: parse_hson_exact_runtime('<main <p @000000006 "a"/> <p @000000006 "b"/>/>', { allowTopLevelDocumentText: true }), schema: MainTwoP } }), /duplicate quid/);
+  assert.throws(() => hsonLiveMap.fromLibraries({ page: { document: '<main @/>', schema: MainText } }));
 });
 
-check("document runtime façade omits data data APIs", () => {
-  const element = hson.liveMap.fromHson(`<button "Save"/>`);
-  const multiNodeDocument = hson.liveMap.fromHson(`<button/> <button/>`);
-  for (const map of [element, multiNodeDocument]) {
-    if (!("document" in map)) throw new Error("expected document map");
-    for (const key of ["snap", "set", "setMany", "splice", "replace", "delete", "batch", "apply", "feed", "sub"]) {
-      assert.equal(key in map, false, `${key} should not be exposed by a document façade`);
-    }
-    assert.deepEqual(Object.keys(map.schema), ["get", "use"]);
-    assert.equal(map.schema.get(), undefined);
-    assert.equal(typeof map.at, "function");
-    assert.equal(typeof map.proxy, "function");
-    assert.equal(typeof map.replay, "function");
-    assert.equal(typeof map.restore, "function");
-    assert.equal(typeof map.commits.observe, "function");
-    assert.equal("debug" in map, false);
-    assert.equal(typeof map.document.attrs.set, "function");
-    assert.equal(typeof map.document.content, "function");
-  }
-  if (element.mode !== "document" || multiNodeDocument.mode !== "document") throw new Error("expected document modes");
-  assert.equal("element" in element, false);
-  assert.equal("fragment" in multiNodeDocument, false);
+check("selected document library has document operations and no data writes", () => {
+  const map = hsonLiveMap.fromLibraries({ page: { document: '<main "Save"/>', schema: MainText } });
+  const page = map.lib("page");
+  assert.equal(page.schema.get(), MainText);
+  assert.equal("set" in page, false);
+  assert.equal("replay" in page, false);
+  assert.equal(typeof page.document.attrs.set, "function");
+  assert.equal(typeof page.document.content, "function");
+  assert.equal(typeof map.render, "function");
+  assert.equal(typeof map.restore, "function");
 });
 
-check("data maps preserve their APIs and all normal constructors begin at revision zero", () => {
-  const objectMap = hson.liveMap.fromJson({ a: 1 });
-  const arrayMap = hson.liveMap.fromJson([1, 2]);
-  assert.equal(objectMap.mode, "data-object");
-  assert.equal(arrayMap.mode, "data-array");
-  assert.equal(objectMap.rev, 0);
-  assert.equal(arrayMap.rev, 0);
-  assert.equal(objectMap.capture().rev, 0);
-  assert.equal(arrayMap.capture().rev, 0);
-  assert.deepEqual(objectMap.snap(), { a: 1 });
-  assert.deepEqual(arrayMap.snap(), [1, 2]);
-  for (const map of [objectMap, arrayMap]) {
-    assert.equal(typeof map.proxy, "function");
-    assert.equal(typeof map.set, "function");
-    assert.equal(typeof map.apply, "function");
-    assert.equal(typeof map.replay, "function");
-  }
-
-  const classified = [
-    hson.liveMap.fromHson(`<user <name "Ada">>`),
-    hson.liveMap.fromHson(`«1,2»`),
-    hson.liveMap.fromNode(hson.fromJson({ a: 1 }).toNode()),
-    hson.liveMap.fromNode(hson.fromJson([1, 2]).toNode()),
-    hson.liveMap.fromHson(`<main "trusted"/>`),
-    hson.liveMap.fromHson(`"before" <em "mixed"/> "after"`),
-    hson.liveMap.fromNode({ $_tag: "_hson_root", $_content: [] }),
-  ];
-  for (const map of classified) {
-    assert.equal(map.rev, 0, `expected ${map.mode} construction at revision zero`);
-    assert.equal(map.capture().rev, 0);
-  }
+check("first data and document writes advance one map revision", () => {
+  const data = hsonLiveMap.fromLibraries({ state: { data: { value: 1 }, schema: NumberData } });
+  const dataCommit = data.lib("state").at(["value"]).set(2);
+  assert.deepEqual([dataCommit.prevRev, dataCommit.rev, data.rev], [0, 1, 1]);
+  const document = hsonLiveMap.fromLibraries({ page: { document: '<main "new"/>', schema: MainText } });
+  const documentCommit = document.lib("page").document.attrs.set({ kind: "path", path: [0] }, "id", "main");
+  assert.deepEqual([documentCommit.prevRev, documentCommit.rev, document.rev], [0, 1, 1]);
 });
 
-check("first changed operations advance from zero to one exactly once", () => {
-  const objectMap = hson.liveMap.fromJson({ value: 1 });
-  const objectCommit = objectMap.set(["value"], 2);
-  assert.deepEqual([objectCommit.prevRev, objectCommit.rev, objectMap.rev], [0, 1, 1]);
-
-  const arrayMap = hson.liveMap.fromJson([1]);
-  const arrayCommit = arrayMap.replace([1, 2]);
-  assert.deepEqual([arrayCommit.prevRev, arrayCommit.rev, arrayMap.rev], [0, 1, 1]);
-
-  const source = hson.liveMap.fromHson(`<main "new"/>`);
-  const target = hson.liveMap.fromHson(`<aside "old"/>`);
-  if (source.mode !== "document" || target.mode !== "document") throw new Error("expected element document maps");
-  const documentCommit = target.install(source.capture());
-  assert.deepEqual([documentCommit.prevRev, documentCommit.rev, target.rev], [0, 1, 1]);
-});
-
-check("document root observation is detached from canonical ownership", () => {
-  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(`<main @000000001 "x"/>`, { allowTopLevelDocumentText: true }));
-  assert.equal(map.mode, "document");
-  const beforeRev = map.rev;
-  const detached = map.root();
-  const main = find_nodes(detached, "main")[0];
-  if (main === undefined) throw new Error("expected detached main node");
-  main.$_attrs = { ...main.$_attrs, class: "detached" };
-  assert.equal(find_nodes(map.root(), "main")[0]?.$_attrs?.class, undefined);
-  assert.equal(map.rev, beforeRev);
-});
-
-process.stdout.write(`# ${checks} document LiveMap checks passed\n`);
+process.stdout.write(`# ${checks} registry document checks passed\n`);
 testEvents.terminal("pass");

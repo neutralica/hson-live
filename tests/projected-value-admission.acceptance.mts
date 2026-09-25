@@ -3,6 +3,7 @@ import { create_test_event_emitter } from "./test-events.mjs";
 
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
+import { Hson } from "../src/hson-authoring.ts";
 import {
   admit_projected_value,
   ProjectedValueAdmissionError,
@@ -291,7 +292,8 @@ check("materialization returns fresh dense arrays, nested objects and repeated c
 });
 
 check("public LiveMap snapshots are prototype-safe, detached and truthful about integer-key enumeration", () => {
-  const map = hson.liveMap.fromJson('{"10":"ten","2":"two","1":"one","__proto__":{"nested":1}}');
+  const registry = hson.liveMap.fromLibraries({ state: { data: '{"10":"ten","2":"two","1":"one","__proto__":{"nested":1}}', schema: Hson.schema`<type "data" content <'10' "string" '2' "string" '1' "string" '__proto__' <content <nested "number">>>>` } });
+  const map = registry.lib("state");
   const first = map.snap() as Record<string, JsonValue>;
   assert.equal(Object.getPrototypeOf(first), Object.prototype);
   assert.equal(Object.hasOwn(first, "__proto__"), true);
@@ -308,21 +310,22 @@ check("public LiveMap snapshots are prototype-safe, detached and truthful about 
 });
 
 check("accessor TOCTOU and throwing proxy admission failures are atomic", () => {
-  const map = hson.liveMap.fromJson({ value: 0 });
+  const registry = hson.liveMap.fromLibraries({ state: { data: { value: 0 }, schema: Hson.schema`<type "data" content <value "any">>` } });
+  const map = registry.lib("state");
   let getterCalls = 0;
   let feedCalls = 0;
-  map.feed([], () => { feedCalls += 1; });
+  map.at([]).feed(() => { feedCalls += 1; });
   const candidate = {};
   Object.defineProperty(candidate, "unstable", {
     get() { getterCalls += 1; return getterCalls === 1 ? 1 : () => 2; },
     enumerable: true,
   });
   assert.equal(
-    livemap_reason(() => map.replace(["value"], candidate as unknown as JsonValue)),
+    livemap_reason(() => map.at(["value"]).replace(candidate as unknown as JsonValue)),
     "ACCESSOR_PROPERTY",
   );
   assert.equal(getterCalls, 0);
-  assert.equal(map.rev, 0);
+  assert.equal(registry.rev, 0);
   assert.equal(feedCalls, 0);
   assert.deepEqual(map.snap(), { value: 0 });
 
@@ -330,10 +333,10 @@ check("accessor TOCTOU and throwing proxy admission failures are atomic", () => 
     getPrototypeOf() { throw new Error("proxy trap"); },
   });
   assert.equal(
-    livemap_reason(() => map.replace(["value"], proxy as JsonValue)),
+    livemap_reason(() => map.at(["value"]).replace(proxy as JsonValue)),
     "REFLECTION_FAILED",
   );
-  assert.equal(map.rev, 0);
+  assert.equal(registry.rev, 0);
   assert.equal(feedCalls, 0);
   assert.deepEqual(map.snap(), { value: 0 });
 });

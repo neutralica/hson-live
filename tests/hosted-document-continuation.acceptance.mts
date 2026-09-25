@@ -8,11 +8,9 @@ import {
   add_interaction,
   continue_hosted_document,
   enable_interactions,
-  hson,
   hsonEcho,
   hsonLiveMap,
   hsonLocus,
-  type DocumentLiveMap,
   type HsonSchema,
   type InteractionDescriptor,
   type InteractionLocalBehaviors,
@@ -20,28 +18,17 @@ import {
 } from "../src/index.ts";
 import type { LocusRequestedProjection } from "../src/types/locus.projection.types.ts";
 import { get_node_for_el } from "../src/api/livetree/utils/node-map-helpers.ts";
-import { default_livetree_runtime } from "../src/api/livetree/runtime/livetree-runtime.ts";
-import { continue_hosted_document_internal as continue_legacy_hosted_document } from "../src/api/continuation/continue-hosted-document.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { project_authority_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
 import { make_locus_hosted_projection_policy, normalize_locus_effective_projection } from "../src/api/locus/locus.projection.ts";
-import { FakeElement, FakeText, install_fake_document } from "./helpers/fake-document.mts";
+import { FakeElement, install_fake_document } from "./helpers/fake-document.mts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
-import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
 import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
-import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
 
 install_fake_document();
 
-const path = (...parts: number[]) => Object.freeze({ kind: "path" as const, path: Object.freeze([0, ...parts]) });
 const ButtonSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "button" content "empty">]>>`;
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number">>`;
-
-function documentMap(source: string): DocumentLiveMap {
-  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
-  if (map.mode !== "document") throw new Error("Expected document map.");
-  return map;
-}
 
 function socketPair(): Readonly<{
   client: LocusSocketLike;
@@ -75,15 +62,6 @@ function socketPair(): Readonly<{
     }),
     delivered,
   });
-}
-
-function mainFixture(_quid: string): Readonly<{ root: FakeElement; child: FakeElement; text: FakeText }> {
-  const root = new FakeElement("main");
-  const child = new FakeElement("p");
-  const text = new FakeText("hello");
-  child.appendChild(text);
-  root.appendChild(child);
-  return { root, child, text };
 }
 
 {

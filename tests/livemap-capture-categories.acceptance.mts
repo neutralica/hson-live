@@ -1,215 +1,99 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { hson } from "../src/hson.ts";
-import { serialize_hson } from "../src/api/transform/serializers/serialize-hson.ts";
+import { Hson, hsonLiveMap } from "../src/index.ts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
-import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
+import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
-import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
-import type { HsonNode } from "../src/core/types.ts";
 
 const Q1 = "000000v71";
 const Q2 = "000000v72";
+const Empty = Hson.schema`<type "document" tag "main" content "empty">`;
+const Nested = Hson.schema`<type "document" tag "main" content <sequence [<tag "i" content "empty">]>>`;
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
-  id: "livemap.capture-categories",
-  title: "Document capture identity categories",
-  category: "LiveMap",
-  runtime: "node",
+  id: "livemap.capture-categories", title: "Registry document capture identity boundary",
+  category: "LiveMap", runtime: "node",
   tags: Object.freeze(["document", "quid", "capture", "admission", "externally-discoverable"]),
 });
-
-const testEvents = create_test_event_emitter("livemap.capture-categories");
+const events = create_test_event_emitter("livemap.capture-categories");
 let checks = 0;
-
 function check(name: string, run: () => void): void {
-
-  testEvents.case_begin(name, name);
-  try {
-    run();
-    testEvents.case_end(name, "pass");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Check failed.";
-    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
-    testEvents.case_end(name, "fail");
-    testEvents.terminal("fail");
-    throw error;
+  events.case_begin(name, name);
+  try { run(); events.case_end(name, "pass"); }
+  catch (error) {
+    events.diagnostic(name, "assertion", error instanceof Error ? error.message : String(error));
+    events.case_end(name, "fail"); events.terminal("fail"); throw error;
   }
-  checks += 1;
-  process.stdout.write(`ok ${checks} - ${name}\n`);
+  process.stdout.write(`ok ${++checks} - ${name}\n`);
 }
+const exact = (source: string) => admit_exact_runtime_livemap_libraries({
+  page: { document: parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }), schema: source.includes("<i ") ? Nested : Empty },
+});
+const ordinary = (source: string) => hsonLiveMap.fromLibraries({ page: { document: source, schema: Empty } });
 
-function element(source: string): DocumentLiveMap {
-  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
-  if (map.mode !== "document") throw new Error("Expected element LiveMap");
-  return map;
-}
-
-function multiNodeDocument(source: string): DocumentLiveMap {
-  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
-  if (map.mode !== "document") throw new Error("Expected multiNodeDocument LiveMap");
-  return map;
-}
-
-function isNode(value: HsonNode["$_content"][number]): value is HsonNode {
-  return typeof value === "object" && value !== null && "$_tag" in value;
-}
-
-function captureText(map: DocumentLiveMap): string {
-  const semanticRoot = map.document.content()[0];
-  if (semanticRoot === undefined || !isNode(semanticRoot)) throw new Error("Expected node document content.");
-  return serialize_hson(semanticRoot);
-}
-
-check("default capture is portable and QUID-free", () => {
-  const capture = element(`<main @${Q1}/>`).capture();
+check("registry capture is portable and QUID-free", () => {
+  const capture = exact(`<main @${Q1}/>`).capture();
+  assert.equal(capture.format, "hson-livemap-libraries-snapshot");
   assert.equal(JSON.stringify(capture).includes(Q1), false);
 });
-
-check("retired preserve-metadata capture category is rejected", () => {
-  assert.throws(() => element(`<main @${Q1}/>`).capture({ identity: "preserve-metadata" } as never));
-});
-
-check("same-epoch capture carries QUID identity out of band", () => {
-  const capture = element(`<main @${Q1}/>`).capture({ identity: "same-epoch" });
-  assert.equal(JSON.stringify(capture).includes(Q1), false);
-});
-
-check("identity-free capture strips every QUID", () => {
-  const capture = element(`<main @${Q1} <i @${Q2}/>/>`).capture({ identity: "strip" });
+check("capture strips every generated QUID in nested content", () => {
+  const capture = exact(`<main @${Q1} <i @${Q2}/>/>`).capture();
   assert.equal(JSON.stringify(capture).includes(Q1), false);
   assert.equal(JSON.stringify(capture).includes(Q2), false);
 });
-
-check("identity-free capture does not mutate the source", () => {
-  const map = element(`<main @${Q1}/>`);
-  map.capture({ identity: "strip" });
-  assert.equal(map.document.byQuid(Q1)?.$_tag, "main");
-});
-
-check("identity-free capture preserves the exact revision", () => {
-  const map = element(`<main @${Q1}/>`);
-  map.document.attrs.set({ kind: "path", path: [0] }, "data-v", 1);
-  assert.equal(map.capture({ identity: "strip" }).rev, 1);
-});
-
-check("default and explicit portable captures agree when QUIDs were removed", () => {
-  const map = element(`<main @${Q1}/>`);
-  assert.equal(canonical_hson_graph_equal(map.capture().root, map.capture({ identity: "strip" }).root), true);
-});
-
-check("QUID-free capture categories remain canonically equal", () => {
-  const map = element(`<main/>`);
-  assert.equal(canonical_hson_graph_equal(map.capture().root, map.capture({ identity: "strip" }).root), true);
-});
-
-check("capture roots are detached from the owned graph", () => {
-  const map = element(`<main @${Q1}/>`);
-  const capture = map.capture();
-  capture.root.$_content.length = 0;
-  assert.equal(map.document.byQuid(Q1)?.$_tag, "main");
-});
-
-check("identity-free capture roots are detached", () => {
-  const map = element(`<main @${Q1}/>`);
-  const capture = map.capture({ identity: "strip" });
-  capture.root.$_content.length = 0;
-  assert.equal(map.root().$_tag, "_hson_root");
-  const semanticRoot = map.document.content()[0];
-  assert.equal(isNode(semanticRoot) ? semanticRoot.$_tag : undefined, "main");
-});
-
-check("capture categories never mint into a QUID-free source", () => {
-  const map = element(`<main <i/>/>`);
+check("capture does not mutate source identity", () => {
+  const map = exact(`<main @${Q1}/>`);
   map.capture();
-  map.capture({ identity: "same-epoch" });
-  assert.throws(() => map.capture({ identity: "preserve-metadata" } as never));
-  map.capture({ identity: "strip" });
-  assert.equal(JSON.stringify(map.root()).includes("quid"), false);
+  assert.equal(map.lib("page").document.byQuid(Q1)?.$_tag, "main");
 });
-
-check("default install transfers state without source identity", () => {
-  const target = element(`<main/>`);
-  target.install(element(`<main @${Q1}/>`).capture());
-  assert.equal(target.document.byQuid(Q1), undefined);
-  const content = target.document.content()[0];
-  assert.equal(content !== undefined && isNode(content) ? content.$_tag : undefined, "main");
+check("capture carries the exact registry revision", () => {
+  const map = exact(`<main @${Q1}/>`);
+  map.lib("page").document.attrs.set({ kind: "path", path: [0] }, "data-v", 1);
+  assert.equal(map.capture().revision, 1);
 });
-
-check("retired preserve-metadata install category is rejected", () => {
-  const target = element(`<main/>`);
-  assert.throws(() => target.install(element(`<main @${Q1}/>`).capture(), { identity: "preserve-metadata" } as never));
+check("repeated captures are stable and detached", () => {
+  const map = ordinary("<main/>");
+  const first = map.capture();
+  const second = map.capture();
+  assert.deepEqual(first, second);
+  assert.equal(first.libraries[0]?.name, "page");
+  assert.equal(first.registryDigest, second.registryDigest);
 });
-
-check("identity-free install publishes a QUID-free graph", () => {
-  const target = element(`<main @${Q2}/>`);
-  target.install(element(`<main @${Q1}/>`).capture(), { identity: "strip" });
-  assert.equal(target.document.byQuid(Q1), undefined);
-  assert.equal(target.document.byQuid(Q2), undefined);
+check("capture of a QUID-free source does not mint identity", () => {
+  const map = ordinary("<main/>");
+  map.capture();
+  assert.equal(JSON.stringify(map.lib("page").root()).includes("quid"), false);
+  assert.equal(map.rev, 0);
 });
-
-check("identity-free restore preserves revision but no prior identity", () => {
-  const source = element(`<main @${Q1}/>`);
-  const target = element(`<main @${Q2}/>`);
-  target.restore(Object.freeze({ ...source.capture(), rev: 9 }), { identity: "strip" });
-  assert.equal(target.rev, 9);
-  assert.equal(target.document.byQuid(Q1), undefined);
+check("restore transfers semantic state without source identity", () => {
+  const source = exact(`<main @${Q1}/>`);
+  source.lib("page").document.attrs.set({ kind: "path", path: [0] }, "title", "source");
+  const target = ordinary("<main/>");
+  target.restore(source.capture());
+  assert.equal(target.lib("page").document.byQuid(Q1), undefined);
+  assert.equal(target.lib("page").document.attrs.get({ kind: "path", path: [0] }, "title"), "source");
 });
-
-check("strict external rejection accepts QUID-free captures", () => {
-  const target = element(`<main @${Q2}/>`);
-  target.install(element(`<main/>`).capture(), { identity: "reject" });
-  assert.equal(target.document.byQuid(Q2), undefined);
+check("restore of same registry captures exact canonical state", () => {
+  const source = ordinary("<main/>");
+  source.lib("page").document.attrs.set({ kind: "path", path: [0] }, "title", "source");
+  const target = ordinary("<main/>");
+  target.restore(source.capture());
+  assert.equal(canonical_hson_graph_equal(source.lib("page").root(), target.lib("page").root()), true);
+  assert.equal(target.rev, source.rev);
 });
-
-check("strict external rejection refuses QUID-bearing captures", () => {
-  const target = element(`<main/>`);
-  assert.throws(
-    () => target.install({ ...element(`<main @${Q1}/>`).capture(), root: element(`<main @${Q1}/>`).root() }, { identity: "reject" }),
-    (error: unknown) => typeof error === "object" && error !== null
-      && "reasonCode" in error && error.reasonCode === "IDENTITY_POLICY_MISMATCH",
-  );
+check("incompatible registry snapshot is rejected atomically", () => {
+  const target = ordinary("<main/>");
+  const before = target.capture();
+  const other = hsonLiveMap.fromLibraries({ other: { document: "<main/>", schema: Empty } });
+  assert.throws(() => target.restore(other.capture()));
+  assert.deepEqual(target.capture(), before);
 });
-
-check("unsupported capture categories fail structurally", () => {
-  const map = element(`<main/>`);
-  assert.throws(
-    () => map.capture({ identity: "future" } as never),
-    (error: unknown) => typeof error === "object" && error !== null
-      && "code" in error && error.code === "UNSUPPORTED_CAPTURE_CATEGORY",
-  );
+check("local registry exposes no solo capture or install category", () => {
+  const map = ordinary("<main/>");
+  assert.equal("install" in map, false);
+  assert.equal("replay" in map, false);
+  assert.equal("cut" in map, false);
+  assert.equal("capture" in map.lib("page"), true);
 });
-
-check("unsupported admission categories fail structurally", () => {
-  const map = element(`<main/>`);
-  assert.throws(
-    () => map.install(map.capture(), { identity: "future" } as never),
-    (error: unknown) => typeof error === "object" && error !== null
-      && "code" in error && error.code === "UNSUPPORTED_CAPTURE_CATEGORY",
-  );
-});
-
-check("ordinary Hson omits generated identity metadata", () => {
-  const source = element(`<main @${Q1}/>`);
-  assert.equal(canonical_hson_graph_equal(element(captureText(source)).root(), source.root()), false);
-});
-
-check("portable Hson remains an identity-free projection", () => {
-  const source = element(`<main @${Q1}/>`);
-  const semanticRoot = source.document.content()[0];
-  if (semanticRoot === undefined || !isNode(semanticRoot)) throw new Error("Expected node document content.");
-  const wire = serialize_hson(semanticRoot);
-  const reparsed = element(wire);
-  assert.equal(reparsed.document.byQuid(Q1), undefined);
-  assert.equal(canonical_hson_graph_equal(reparsed.root(), source.root()), false);
-});
-
-check("multiNodeDocument capture categories preserve mode and strip identity", () => {
-  const map = multiNodeDocument(`<a @${Q1}/><b @${Q2}/>`);
-  const capture = map.capture({ identity: "strip" });
-  assert.equal(capture.mode, "document");
-  assert.equal(JSON.stringify(capture.root).includes("quid"), false);
-});
-
-process.stdout.write(`# ${checks} LiveMap capture-category checks passed\n`);
-testEvents.terminal("pass");
+process.stdout.write(`# ${checks} registry document capture checks passed\n`);
+events.terminal("pass");

@@ -1,7 +1,8 @@
 import { create_test_event_emitter } from "./test-events.mjs";
 import assert from "node:assert/strict";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
-import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
+import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
+import { Hson } from "../src/hson-authoring.ts";
 import {
   hson,
   hsonLocus,
@@ -73,8 +74,8 @@ check("public construction facade capability tables reject mutation", () => {
   const treeKeys = Object.keys(hsonLiveTree);
 
   assert.equal(Reflect.set(hsonLiveMap, "replacement", null), false);
-  assert.equal(Reflect.deleteProperty(hsonLiveMap, "fromJson"), false);
-  assert.equal(Reflect.defineProperty(hsonLiveMap, "fromJson", { value: null }), false);
+  assert.equal(Reflect.deleteProperty(hsonLiveMap, "fromLibraries"), false);
+  assert.equal(Reflect.defineProperty(hsonLiveMap, "fromLibraries", { value: null }), false);
   assert.deepEqual(Object.keys(hsonLiveMap), mapKeys);
 
   assert.equal(Reflect.set(hsonLiveTree, "replacement", null), false);
@@ -177,13 +178,14 @@ check("LiveMap exposes only detached canonical root copies", () => {
     `<button id="primary" data-user="kept" @000000001 "hello"/>`,
     { allowTopLevelDocumentText: true },
   );
-  const map = admit_exact_runtime_livemap_node(node);
+  const map = admit_exact_runtime_livemap_libraries({ page: { document: node, schema: Hson.schema`<type "document" tag "button" attrs <props <id "string" data-user "string">> content "string">` } });
+  const page = map.lib("page");
 
   assert.equal("node" in map, false);
   assert.equal("debug" in map, false);
 
-  const owned = map.root();
-  const copy = map.root();
+  const owned = page.root();
+  const copy = page.root();
   const before = map.capture();
   const beforeRev = map.rev;
   assert_detached_graph(copy, owned);
@@ -198,52 +200,39 @@ check("LiveMap exposes only detached canonical root copies", () => {
 
   assert.deepEqual(map.capture(), before);
   assert.equal(map.rev, beforeRev);
-  assert.deepEqual(map.root(), owned);
+  assert.deepEqual(page.root(), owned);
 });
 
 check("detached public observations cannot mutate canonical ownership", () => {
-  const map = hson.liveMap.fromNode(hson.fromJson({ a: { b: 1 } }).toNode());
-  if (map.mode !== "data-object") throw new Error(`expected data-object, observed ${map.mode}`);
-  const baseline = map.snap();
+  const map = hson.liveMap.fromLibraries({ state: { data: { a: { b: 1 } }, schema: Hson.schema`<type "data" content <a <content <b "number">>>>` } });
+  const state = map.lib("state");
+  const baseline = state.snap();
   const beforeRev = map.rev;
-  const root = map.root();
+  const root = state.root();
   assert.equal(replace_first_primitive(root, 2), true);
-  const snapshot = map.snap() as { a: { b: number } };
+  const snapshot = state.snap() as { a: { b: number } };
   snapshot.a.b = 3;
 
-  assert.deepEqual(map.snap(), baseline);
+  assert.deepEqual(state.snap(), baseline);
   assert.equal(map.rev, beforeRev);
   assert.equal("debug" in map, false);
 });
 
-check("document install is present only on document runtime façades", () => {
-  const document = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(`<main @000000003/>`, { allowTopLevelDocumentText: true }));
-  if (document.mode !== "document") throw new Error(`expected element, observed ${document.mode}`);
-  assert.equal("install" in document, true);
-  assert.equal(typeof document.install, "function");
-  assert.equal("install" in hson.liveMap.fromJson({}), false);
-  assert.equal("install" in hson.liveMap.fromJson([]), false);
-  for (const name of ["applyGraph", "replayGraph", "installGraph"]) {
-    assert.equal(name in document, false);
-  }
-  for (const name of ["get", "has", "keys", "setMany", "dropMany", "clear", "replace"]) {
-    assert.equal(typeof Reflect.get(document.document.attrs, name), "function");
-  }
-  assert.equal(typeof document.document.attrs.must.get, "function");
-  assert.equal(document.document.attrs.must, document.document.attrs.must);
-  assert.equal(Object.isFrozen(document.document.attrs.must), true);
-  for (const name of ["getMany", "values", "entries", "all"]) {
-    assert.equal(name in document.document.attrs, false);
-  }
-  const location = document.at([]);
-  assert.equal(typeof location.insert, "function");
-  assert.equal(typeof location.move, "function");
-  assert.equal(document.proxy().$_, location);
-  for (const name of ["get", "has", "keys", "set", "setMany", "drop", "dropMany", "replace", "clear"]) {
-    assert.equal(typeof Reflect.get(location.attrs, name), "function");
-  }
-  for (const name of ["remove", "set", "update"]) assert.equal(name in location, false);
-  assert.equal("attrs" in hson.liveMap.fromJson({}).at([]), false);
+check("document operations stay on the named library while restore stays on the registry", () => {
+  const map = admit_exact_runtime_livemap_libraries({ page: { document: parse_hson_exact_runtime(`<main @000000003/>`, { allowTopLevelDocumentText: true }), schema: Hson.schema`<type "document" tag "main" content "empty">` } });
+  const page = map.lib("page");
+  assert.equal(page.mode, "document");
+  assert.equal(typeof map.restore, "function");
+  assert.equal("install" in page, false);
+  assert.equal("install" in map, false);
+  assert.equal(typeof page.document.attrs.get, "function");
+  assert.equal(typeof page.document.attrs.set, "function");
+  assert.equal(typeof page.document.attrs.must.get, "function");
+  assert.equal(Object.isFrozen(page.document.attrs.must), true);
+  assert.equal(typeof page.document.content.insert, "function");
+  assert.equal(typeof page.document.content.move, "function");
+  const data = hson.liveMap.fromLibraries({ state: { data: { value: 1 }, schema: Hson.schema`<type "data" content <value "number">>` } }).lib("state");
+  assert.equal("attrs" in data.at([]), false);
 });
 
 process.stdout.write(`# ${checks} public boundary checks passed\n`);

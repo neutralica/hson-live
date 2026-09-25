@@ -1,5 +1,5 @@
 import type { HsonNode } from "../../core/types.js";
-import type { LiveMapLibraries } from "../../types/livemap.types.js";
+import type { LiveMap } from "../../types/livemap.types.js";
 import type {
   HostedAggregateCommit,
   PortableAggregateCommit,
@@ -99,7 +99,7 @@ export type RestorePersistentLocusHostedAggregateOptions = Omit<
 
 type ValidatedHostedAggregateState = Readonly<{
   checkpoint: AnyCheckpoint;
-  map: LiveMapLibraries;
+  map: LiveMap;
 }>;
 
 function exact_keys(value: Record<string, unknown>, keys: readonly string[]): boolean {
@@ -265,7 +265,7 @@ export function assert_checkpoint_manifest(value: Record<string, unknown>, reque
 async function restore_manifest(
   manifest: LocusHostedAggregatePersistedManifest,
   adapter: LocusHostedAggregatePersistenceAdapter,
-): Promise<LiveMapLibraries> {
+): Promise<LiveMap> {
   const libraries: Array<Readonly<{ name: string; root: HsonNode }>> = [];
   const registryEntries: HostedRegistryEntry[] = [];
   let position = 0;
@@ -406,7 +406,7 @@ async function validate_hosted_aggregate_state(
 }
 
 function set_initial_authority(
-  map: LiveMapLibraries,
+  map: LiveMap,
   logicalMapId: string | undefined,
   incarnationId: string | undefined,
 ): void {

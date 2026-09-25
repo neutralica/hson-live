@@ -1,6 +1,6 @@
 import type {
   LiveMapAnyOp,
-  LiveMapCommit,
+  LiveMapCoreCommit,
   LiveMapCommitObserver,
   LiveMapDisposer,
 } from "../../types/livemap.types.js";
@@ -64,7 +64,7 @@ function emit_isolated<TOp extends LiveMapAnyOp>(
 
 export type LiveMapCommitObserverHub<TOp extends LiveMapAnyOp> = Readonly<{
   observe: (observer: LiveMapCommitObserver<TOp>) => LiveMapDisposer;
-  emitCommit: (commit: LiveMapCommit<TOp>, origin: "authoritative" | "replay") => void;
+  emitCommit: (commit: LiveMapCoreCommit<TOp>, origin: "authoritative" | "replay") => void;
   emitSnapshot: (revision: number) => void;
   prepareObservation: (
     prepare: (observation: Parameters<LiveMapCommitObserver<TOp>>[0]) => void,

@@ -146,7 +146,7 @@ check("HsonDocument is a primitive semantic string across root and Hson entrypoi
 
 check("construction facades preserve root and subpath identity and immutability", () => {
   const source = `
-    import { hson, hsonTransform, hsonLiveMap as rootMap, hsonLiveTree as rootTree } from "hson-live";
+    import { Hson, hson, hsonTransform, hsonLiveMap as rootMap, hsonLiveTree as rootTree } from "hson-live";
     import { hsonLiveMap as subpathMap } from "hson-live/livemap";
     import { hsonLiveTree as subpathTree } from "hson-live/livetree";
     if (hson.liveMap !== rootMap || rootMap !== subpathMap) throw new Error("LiveMap facade identity diverged");
@@ -154,10 +154,9 @@ check("construction facades preserve root and subpath identity and immutability"
     if (!Object.isFrozen(rootMap) || !Object.isFrozen(hson.liveMap)) throw new Error("LiveMap facade is mutable");
     if (!Object.isFrozen(rootTree) || !Object.isFrozen(hson.liveTree)) throw new Error("LiveTree facade is mutable");
     if ("fromTrustedHtml" in hson.liveMap || "fromUntrustedHtml" in hson.liveMap) throw new Error("browser compatibility shape remains");
-    const emptyDocument = rootMap.fromHson("");
-    if (emptyDocument.mode !== "document" || emptyDocument.root().$_content.length !== 0) throw new Error("empty document source did not close");
-    const quotedEmptyDocument = subpathMap.fromHson('""');
-    if (quotedEmptyDocument.mode !== "document" || quotedEmptyDocument.root().$_content.length !== 1) throw new Error("quoted empty text was conflated with an empty document");
+    const registry = rootMap.fromLibraries({ page: { document: "<main/>", schema: Hson.schema\`<type "document" tag "main" content "empty">\` } });
+    if (registry.lib("page").mode !== "document" || registry.lib("page").root().$_content.length !== 1) throw new Error("named document registry did not close");
+    if (subpathMap.fromLibraries !== rootMap.fromLibraries) throw new Error("registry constructor identity diverged");
     let genericEmptyRejected = false;
     try { hson.fromHson("").toNode(); } catch { genericEmptyRejected = true; }
     if (!genericEmptyRejected) throw new Error("generic Transform admitted empty source");
@@ -276,11 +275,13 @@ const directHsonDataSources = new Map<string, string>([
     if (Hson.data.fromHson(value) !== value) throw new Error("Transform round trip failed");
   `],
   ["livemap", `
+    import { Hson } from "hson-live/hson";
     import { hsonLiveMap } from "hson-live/livemap";
-    const value = hsonLiveMap.fromJson({ value: -0, nested: { constructor: true } }).data();
-    if (value === undefined) throw new Error("LiveMap exact data unavailable");
-    const roundTrip = hsonLiveMap.fromData(value).data();
-    if (roundTrip !== value) throw new Error("LiveMap round trip failed");
+    const schema = Hson.schema\`<type "data" content <value "number">>\`;
+    const map = hsonLiveMap.fromLibraries({ state: { data: { value: -0 }, schema } });
+    const value = Hson.data.from(map.lib("state").snap());
+    const roundTrip = hsonLiveMap.fromLibraries({ state: { data: Hson.data.materialize(value), schema } });
+    if (!Object.is(roundTrip.lib("state").snap(["value"]), -0)) throw new Error("LiveMap round trip failed");
   `],
   ["echo", `
     import { create_echo } from "hson-live/echo";
@@ -310,8 +311,9 @@ for (const order of [
     ${order.map((specifier) => `modules.push(await import(${JSON.stringify(specifier)}));`).join("\n")}
     if (modules.some((module) => Object.hasOwn(module, "HsonData"))) throw new Error("retired public constructor returned");
     const { hsonLiveMap } = await import("hson-live/livemap");
-    const value = hsonLiveMap.fromJson({ value: -0 }).data();
-    if (typeof value !== "string") throw new Error("conversion changed by import order");
+    const { Hson } = await import("hson-live/hson");
+    const map = hsonLiveMap.fromLibraries({ state: { data: { value: -0 }, schema: Hson.schema\`<type "data" content <value "number">>\` } });
+    if (!Object.is(map.lib("state").snap(["value"]), -0)) throw new Error("conversion changed by import order");
   `);
 }
 

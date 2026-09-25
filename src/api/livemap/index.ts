@@ -1,23 +1,4 @@
 export { hsonLiveMap } from "./livemap.facade.js";
-import type { HsonNode } from "../../core/types.js";
-import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
-import {
-  make_classified_livemap as make_classified_livemap_internal,
-  make_livemap_core as make_livemap_core_internal,
-} from "./livemap.core.js";
-
-/** Admit an application graph through the public LiveMap subpath. */
-export function make_classified_livemap(node: HsonNode): ReturnType<typeof make_classified_livemap_internal> {
-  admit_portable_hson_node(node, "make_classified_livemap");
-  return make_classified_livemap_internal(node);
-}
-
-/** Admit an application graph through the public LiveMap subpath. */
-export function make_livemap_core(node: HsonNode): ReturnType<typeof make_livemap_core_internal> {
-  admit_portable_hson_node(node, "make_livemap_core");
-  return make_livemap_core_internal(node);
-}
-export { make_livemap_store_api } from "./livemap.store.js";
 export { install_libraries_snapshot } from "./livemap.libraries.js";
 export {
   LiveMapDocumentAttributeNotFoundError,
@@ -48,18 +29,7 @@ export {
   LiveMapDocumentPathError,
   validate_document_path,
 } from "./livemap.document.path.js";
-export { link_livemap } from "./livemap.link.js";
-export { make_livemap_feed_hub } from "./livemap.feed.js";
-export { make_livemap_proxy } from "./livemap.proxy.js";
 export { snap_live_path } from "./livemap.editor.js";
-export {
-  bind_path,
-  bind_paths,
-  derive_from_paths,
-  make_microtask_scheduler,
-  stop_all,
-  subscribe_paths,
-} from "./livemap-helpers.js";
 export type {
   LiveMapDocumentIdentityProvenanceErrorCode,
   LiveMapDocumentIdentityRegistrationErrorCode,
@@ -69,7 +39,50 @@ export type {
   LiveMapProjectedIdentityErrorCode,
 } from "./livemap.error.js";
 export type { LiveMapDocumentPathFailureCode } from "./livemap.document.path.js";
-export type * from "../../types/livemap.types.js";
+export type {
+  LivePath,
+  LivePathPart,
+  DataLiveMapMode,
+  LiveMapDocumentMode,
+  LiveMapSnapshot,
+  LocalLibrariesContinuationSnapshot,
+  HostedLiveMapSnapshot,
+  LiveMapPathValue,
+  LiveMapWriteValue,
+  LiveMapSetValue,
+  LiveMapDocumentPath,
+  LiveMapDocumentPathInput,
+  LiveMapDocumentRequestTarget,
+  LiveMapDocumentTargetWitness,
+  LiveMapDocumentCommitTarget,
+  LiveMapDocumentAttributeValue,
+  LiveMapDocumentAttrs,
+  LiveMapDocumentContent,
+  LiveMapDocumentCapture,
+  LiveMapDocumentCaptureOptions,
+  LiveMapDocumentAttrsReadApi,
+  LiveMapDocumentFlagsReadApi,
+  LiveMapDataLibraryInput,
+  LiveMapDocumentLibraryInput,
+  LiveMapLibraryInput,
+  LiveMapInput,
+  LiveMapLibraryOperation,
+  LiveMapCommit,
+  LiveMapLibraryPathHandle,
+  LiveMapLibraryFeedEvent,
+  LiveMapLibraryObjectPathHandle,
+  LiveMapLibraryArrayPathHandle,
+  LiveMapLibraryScalarPathHandle,
+  LiveMapDataLibrary,
+  LiveMapDocumentLibrary,
+  LiveMapRegistryCommitObserverApi,
+  LiveMap,
+  LiveMapDataOp,
+  LiveMapGraphOp,
+  LiveMapGraphCommit,
+  LiveMapReplacementLineage,
+  LiveMapDisposer,
+} from "../../types/livemap.types.js";
 export type {
   ProjectedValueAdmissionCode,
   ProjectedValuePath,

@@ -12,7 +12,7 @@ import {
 } from "hson-live";
 import { create_echo, type Echo } from "hson-live/echo";
 import { Hson } from "hson-live/hson";
-import { hsonLiveMap, type DocumentLiveMap, type LiveMapLibraries } from "hson-live/livemap";
+import { hsonLiveMap, type LiveMap, type LiveMapDocumentLibrary } from "hson-live/livemap";
 import { create_locus, type LocusSocketLike } from "hson-live/locus";
 import { reflect_document } from "hson-live/mirror";
 import { decode_ssr_bootstrap, encode_ssr_bootstrap, render_document, render_hosted_document } from "hson-live/ssr";
@@ -20,13 +20,13 @@ import { hsonTransform, type TransformOutput } from "hson-live/transform";
 import { hsonLiveTree, type ContentManager } from "hson-live/livetree";
 
 declare const userHtml: string;
-declare const documentMap: DocumentLiveMap;
-declare const replicaMap: LiveMapLibraries;
+declare const documentMap: LiveMapDocumentLibrary;
+declare const replicaMap: LiveMap;
 declare const socket: LocusSocketLike;
 declare const root: Element;
-declare const libraries: LiveMapLibraries;
+declare const libraries: LiveMap;
 declare const tree: ReturnType<typeof hsonLiveTree.fromHson>;
-declare const echo: Echo<LiveMapLibraries>;
+declare const echo: Echo<LiveMap>;
 declare const authority: unknown;
 declare const descriptor: Parameters<typeof add_interaction>[1];
 
@@ -37,9 +37,9 @@ const authored = Hson.canonical`<main/>`;
 const exactDocument = Hson.document.fromHson(authored);
 void [html, authored, Hson.document.toNode(exactDocument)];
 
-const dataMap = hsonLiveMap.fromJson({ count: 0 });
-dataMap.set(["count"], 1);
-const exactData: HsonData | undefined = dataMap.data();
+const dataMap = hsonLiveMap.fromLibraries({ state: { data: { count: 0 }, schema: Hson.schema`<type "data" content <count "number">>` } });
+dataMap.lib("state").at(["count"]).set(1);
+const exactData: HsonData | undefined = dataMap.lib("state").at([]).data();
 void (exactData === undefined ? undefined : Hson.data.entries(exactData));
 
 const standalone = hsonLiveTree.fromNode(hsonTransform.fromTrustedHtml("<main/>").toNode());
@@ -57,10 +57,10 @@ const hosted = create_locus({ map: hostedMap, exposure: [{ library: "page", expo
 const replica = create_echo({ socket, map: replicaMap, recovery: { logicalMapId: "document" } });
 void [hosted, replica];
 
-const localSsr = render_document({ map: documentMap });
+const localSsr = render_document({ map: libraries });
 const decoded = decode_ssr_bootstrap(encode_ssr_bootstrap(localSsr.bootstrap));
 void decoded;
-void continue_document({ map: documentMap, root });
+void continue_document({ map: hostedMap, document: hostedMap.lib("page"), root });
 
 // @ts-expect-error Bare recovery authority has no authorized HTML projection.
 render_hosted_document({ authority });

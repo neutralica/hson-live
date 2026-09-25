@@ -6,9 +6,9 @@
 
 ## Sources and ownership
 
-`hsonInspect.create({ source, host })` accepts a `LiveMap` or `LiveMapPathHandle`. The `host` must be active, dedicated, and empty. The caller owns an externally supplied source; the inspector owns its projection, scoped CSS, delegated interaction, renderer-local resources, and selection/expansion state.
+`hsonInspect.create({ source, host })` accepts a selected data library or its path handle. The `host` must be active, dedicated, and empty. The caller owns an externally supplied source; the inspector owns its projection, scoped CSS, delegated interaction, renderer-local resources, and selection/expansion state.
 
-`hsonInspect.fromJson({ value, host })` and `hsonInspect.fromHson({ value, host })` explicitly create an inspector-owned `LiveMap`. Plain values are not silently copied by `create`.
+`hsonInspect.fromJson({ value, host })` and `hsonInspect.fromHson({ value, host })` explicitly create inspector-owned canonical state. Plain values are not silently copied by `create`.
 
 The inspector is layered on `hson.mirror.collection`. Object properties are keyed by property name. Arrays use an explicit `arrayKey` result only when every item has one; otherwise an entirely unkeyed array uses honest positional identity. Mixed key coverage and duplicate keys fail with classified errors. Positional rows represent positions and do not promise logical continuity when values move.
 
@@ -53,20 +53,21 @@ import { hsonInspect } from "hson-live/diagnostics";
 
 const raw = hsonInspect.fromJson({ value: { ok: true }, host });
 
-const map = hson.liveMap.fromJson({ users: [{ id: "ada", name: "Ada" }] });
+const UsersSchema = Hson.schema`<type "data" content <users <array <content <id "string" name "string">>>>>`;
+const map = hson.liveMap.fromLibraries({ state: { data: { users: [{ id: "ada", name: "Ada" }] }, schema: UsersSchema } });
 const direct = hsonInspect.create({
-  source: map,
+  source: map.lib("state"),
   host,
   arrayKey: (item) => typeof item === "object" && item !== null && !Array.isArray(item)
     ? item.id as string | undefined
     : undefined,
 });
 
-const subtree = hsonInspect.create({ source: map.at(["users"]), host });
+const subtree = hsonInspect.create({ source: map.lib("state").at(["users"]), host });
 
 // A Locus client mirror is still only a LiveMap to the inspector.
-const mirrorView = hsonInspect.create({ source: client.map, host });
-clientRecovery.onSnapshot((replacementMap) => mirrorView.replaceSource(replacementMap));
+const mirrorView = hsonInspect.create({ source: client.map.lib("state"), host });
+clientRecovery.onSnapshot((replacementMap) => mirrorView.replaceSource(replacementMap.lib("state")));
 
 const canonical = hsonInspect.fromHson({ value: serializedHson, host, hsonMode: "canonical" });
 ```
@@ -75,7 +76,7 @@ const canonical = hsonInspect.fromHson({ value: serializedHson, host, hsonMode: 
 
 - Only finite JSON-shaped values are accepted; cycles, class instances, DOM nodes, functions, symbols, bigints, `NaN`, and infinities are rejected.
 - Unkeyed arrays provide positional continuity only.
-- Schema and canonical Hson-node inspection require a full `LiveMap`, not an isolated path handle.
+- Schema and canonical Hson-node inspection require a selected data library, not an isolated path handle.
 - This experimental surface has no clipboard contract, editing controls, custom elements, Shadow DOM, drag/drop, transport logic, or Locus action submission.
 - Materialization is synchronous and non-virtualized; very large visible collections can block the calling thread. There is no cancellation API because no work remains scheduled after a call returns.
 - Hosted jsdom timings are reproducible development evidence, not a browser latency guarantee. Browser-specific measurements are not yet part of CI.

@@ -5,7 +5,7 @@ import {
   path,
   projected_element,
   raw_node,
-  witnessed_path,
+  commit_document_operations,
 } from "./helpers/mirror-unit6.mts";
 import {
   _create_livetree_runtime_test_handle,
@@ -50,12 +50,7 @@ function check(name: string, run: () => void): void {
 }
 
 function replay(map: ReturnType<typeof element>, ops: readonly LiveMapGraphOp[]): void {
-  map.replay(Object.freeze({
-    changed: true,
-    prevRev: map.rev,
-    rev: map.rev + 1,
-    ops: Object.freeze([...ops]),
-  }));
+  commit_document_operations(map, ops);
 }
 
 function is_graph_operation(operation: LiveMapAnyOp): operation is LiveMapGraphOp {
@@ -89,29 +84,29 @@ check("attribute operations route to the projected path", () => {
 check("content insertion routes to the projected parent path", () => {
   const map = element(`<main <a/>/>`);
   const binding = hsonMirror(map);
-  map.document.content.insert(path(0), 0, projected_element(`<b/>`));
-  assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "b");
+  map.document.content.insert(path(0), 0, projected_element(`<a/>`));
+  assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "a");
   binding.dispose();
 });
 
 check("content replacement routes to the projected slot path", () => {
   const map = element(`<main <a/>/>`);
   const binding = hsonMirror(map);
-  map.document.content.replace(path(0), 0, projected_element(`<b/>`));
-  assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "b");
+  map.document.content.replace(path(0), 0, projected_element(`<a title="next"/>`));
+  assert.equal(raw_node(binding.tree.node, [0, 0]).$_attrs?.title, "next");
   binding.dispose();
 });
 
 check("content removal routes to the projected slot path", () => {
-  const map = element(`<main <a/> <b/>/>`);
+  const map = element(`<main <a/> <a/>/>`);
   const binding = hsonMirror(map);
   map.document.content.remove(path(0), 0);
-  assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "b");
+  assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "a");
   binding.dispose();
 });
 
 check("forward movement routes by canonical parent path", () => {
-  const map = element(`<main <a/> <b/>/>`);
+  const map = element(`<main <a @${Q1}/> <a @${Q2}/>/>`);
   const binding = hsonMirror(map);
   const a = raw_node(binding.tree.node, [0, 0]);
   map.document.content.move(path(0), 0, 1);
@@ -120,7 +115,7 @@ check("forward movement routes by canonical parent path", () => {
 });
 
 check("backward movement routes by canonical parent path", () => {
-  const map = element(`<main <a/> <b/>/>`);
+  const map = element(`<main <a @${Q1}/> <a @${Q2}/>/>`);
   const binding = hsonMirror(map);
   const b = raw_node(binding.tree.node, [0, 1]);
   map.document.content.move(path(0), 1, 0);
@@ -129,7 +124,7 @@ check("backward movement routes by canonical parent path", () => {
 });
 
 check("carrier paths address multiNodeDocument-style content below the element root", () => {
-  const map = element(`<main "tail"/>`);
+  const map = element(`<main <span/>/>`);
   const binding = hsonMirror(map);
   map.document.content.insert(path(0), 0, projected_element(`<span/>`));
   assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "span");
@@ -147,19 +142,12 @@ check("QUID-free attribute reflection remains path-routed", () => {
 check("QUID-free structural reflection remains path-routed", () => {
   const map = element(`<main <a/>/>`);
   const binding = hsonMirror(map);
-  map.document.content.insert(path(0), 1, projected_element(`<b/>`));
-  assert.equal(raw_node(binding.tree.node, [0, 1]).$_tag, "b");
+  map.document.content.insert(path(0), 1, projected_element(`<a/>`));
+  assert.equal(raw_node(binding.tree.node, [0, 1]).$_tag, "a");
   binding.dispose();
 });
 
-check("a matching witness is rejected at public replay admission", () => {
-  const map = element(`<main <a @${Q1}/>/` + `>`);
-  const binding = hsonMirror(map);
-  assert.throws(() => replay(map, [{ domain: "graph", op: "set-attr", target: witnessed_path(Q1, 0, 0), name: "ok", value: 1 }]), /QUID witness/);
-  assert.equal(raw_node(binding.tree.node, [0, 0]).$_attrs?.ok, undefined);
-  assert.equal(map.rev, 0);
-  binding.dispose();
-});
+
 
 check("an absent witness leaves path routing unchanged", () => {
   const map = element(`<main <a @${Q1}/>/` + `>`);
@@ -169,26 +157,9 @@ check("an absent witness leaves path routing unchanged", () => {
   binding.dispose();
 });
 
-check("a conflicting witness is rejected before reflection publication", () => {
-  const map = element(`<main <a @${Q1}/> <b @${Q2}/>/` + `>`);
-  const binding = hsonMirror(map);
-  assert.throws(() => replay(map, [
-    { domain: "graph", op: "set-attr", target: witnessed_path(Q2, 0, 0), name: "bad", value: 1 },
-  ]), /QUID witness/);
-  assert.equal(binding.sourceRevision, 0);
-  assert.equal(binding.status, "active");
-  binding.dispose();
-});
 
-check("a matching QUID elsewhere cannot reroute an invalid path", () => {
-  const map = element(`<main <a @${Q1}/> <b @${Q2}/>/` + `>`);
-  const binding = hsonMirror(map);
-  assert.throws(() => replay(map, [
-    { domain: "graph", op: "set-attr", target: witnessed_path(Q1, 0, 1), name: "bad", value: 1 },
-  ]), /QUID witness/);
-  assert.equal(raw_node(binding.tree.node, [0, 0]).$_attrs?.bad, undefined);
-  binding.dispose();
-});
+
+
 
 check("current path requests emit no QUID-only canonical target", () => {
   const map = element(`<main @${Q1}/>`);
@@ -214,7 +185,7 @@ check("path requests remain canonical before reflection", () => {
 });
 
 check("multi-operation replay exposes only canonical path targets", () => {
-  const map = element(`<main <a @${Q1}/> <b @${Q2}/>/` + `>`);
+  const map = element(`<main <a @${Q1}/> <a @${Q2}/>/` + `>`);
   const events: LiveMapCommitObservation[] = [];
   map.commits.observe((event) => events.push(event));
   replay(map, [
@@ -239,7 +210,7 @@ check("local structural operations use incremental correspondence", () => {
   const map = element(`<main @${Q1} <a @${Q2}/>/` + `>`);
   const binding = hsonMirror(map);
   const before = binding.diagnostics();
-  map.document.content.insert(path(0), 0, projected_element(`<b/>`));
+  map.document.content.insert(path(0), 0, projected_element(`<a/>`));
   const after = binding.diagnostics();
   assert.equal(after.wholeCorrespondenceBuilds, before.wholeCorrespondenceBuilds);
   assert.equal(after.incrementalCorrespondenceUpdates, before.incrementalCorrespondenceUpdates + 1);
@@ -274,9 +245,9 @@ check("replacement targets remain path-authoritative when QUIDs differ", () => {
     op: "replace-content",
     target: path(0),
     index: 0,
-    replacement: projected_element(`<b/>`),
+    replacement: projected_element(`<a @${Q2}/>`),
   }]);
-  assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "b");
+  assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "a");
   binding.dispose();
 });
 

@@ -3,7 +3,7 @@
 import type { JsonValue } from "../../core/types.js";
 import type { OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
-import type { LiveMapCommit, LiveMapDisposer, LiveMapFeedEvent, LiveMapFeedListener, LivePath } from "../../types/livemap.types.js";
+import type { LiveMapCoreCommit, LiveMapDisposer, LiveMapFeedEvent, LiveMapFeedListener, LivePath } from "../../types/livemap.types.js";
 import { paths_overlap } from "./livemap.path.js";
 import type { LiveMapProjectedFeedEvent } from "./livemap.projected-propagation.js";
 import {
@@ -159,9 +159,9 @@ export function make_livemap_feed_hub(): LiveMapFeedHub {
 }
 
 function detached_public_commit(
-  commit: LiveMapCommit,
+  commit: LiveMapCoreCommit,
   ops: readonly LiveMapProjectedDataOp[],
-): LiveMapCommit {
+): LiveMapCoreCommit {
   return Object.freeze({
     changed: commit.changed,
     prevRev: commit.prevRev,
@@ -184,9 +184,9 @@ export type LiveMapFeedHub = Readonly<{
     path: LivePath,
     listener: (event: LiveMapProjectedFeedEvent) => void,
   ) => LiveMapDisposer;
-  emit: (commit: LiveMapCommit, snap: LiveMapSnapFn) => void;
+  emit: (commit: LiveMapCoreCommit, snap: LiveMapSnapFn) => void;
   emitProjected: (
-    commit: LiveMapCommit,
+    commit: LiveMapCoreCommit,
     read: (path: LivePath) => OrderedProjectedValue | undefined,
   ) => void;
 }>;

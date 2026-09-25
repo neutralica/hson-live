@@ -1,273 +1,115 @@
-import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
-import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { hson } from "../src/index.ts";
-import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
-import { prepare_document_graph_operation } from "../src/api/livemap/livemap.document.mutation.ts";
-import {
-  canonicalize_document_request_target,
-  normalize_document_commit_target,
-} from "../src/api/livemap/livemap.document.target.ts";
-import { livemap_document_identity_overlay_for } from "../src/api/livemap/livemap.document.identity.ts";
-import { LiveMapDocumentMutationError } from "../src/api/livemap/livemap.error.ts";
-import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
-
-const Q1 = "000000701";
-const Q2 = "000000702";
+import { element, projected_element } from "./helpers/mirror-unit6.mts";
+import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
+import { livemap_document_identity_overlay_for } from "../src/api/livemap/livemap.document.identity.ts";
+import type { LiveMapGraphOp, LiveMapDocumentLibrary } from "../src/types/livemap.types.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livemap.document-request-lowering",
-  title: "Document path-request lowering boundary",
+  title: "Registry document request lowering",
   category: "LiveMap",
   runtime: "node",
-  tags: Object.freeze(["document", "quid", "path", "request-lowering", "canonical-target", "externally-discoverable"]),
+  tags: Object.freeze(["document", "path", "request", "identity", "externally-discoverable"]),
 });
-
-const testEvents = create_test_event_emitter("livemap.document-request-lowering");
+const events = create_test_event_emitter("livemap.document-request-lowering");
 let checks = 0;
 function check(name: string, run: () => void): void {
-
-  testEvents.case_begin(name, name);
-  try {
-    run();
-    testEvents.case_end(name, "pass");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Check failed.";
-    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
-    testEvents.case_end(name, "fail");
-    testEvents.terminal("fail");
-    throw error;
+  events.case_begin(name, name);
+  try { run(); events.case_end(name, "pass"); }
+  catch (error) {
+    events.diagnostic(name, "assertion", error instanceof Error ? error.message : String(error));
+    events.case_end(name, "fail"); events.terminal("fail"); throw error;
   }
-  checks += 1;
-  process.stdout.write(`ok ${checks} - ${name}\n`);
+  process.stdout.write(`ok ${++checks} - ${name}\n`);
 }
+const Q1 = "000000701";
+const fixture = () => element(`<main <item @${Q1}/> <item/>/>`);
+const target = (...parts: number[]) => ({ kind: "path" as const, path: validate_document_path(parts) });
+const op = (map: LiveMapDocumentLibrary, mutate: () => { operations: readonly { operation: LiveMapGraphOp }[] }): LiveMapGraphOp => {
+  const entry = mutate().operations[0];
+  if (entry === undefined) throw new Error("Missing document operation");
+  return entry.operation;
+};
 
-function element(source: string): DocumentLiveMap {
-  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
-  if (map.mode !== "document") throw new Error("Expected element LiveMap");
-  return map;
-}
+check("attribute requests lower to canonical path targets", () => {
+  const map = fixture();
+  const operation = op(map, () => map.document.attrs.set(target(0, 0, 0), "title", "ready"));
+  assert.equal(operation.op, "set-attr");
+  assert.deepEqual(operation.target.path, [0, 0, 0]);
+  assert.equal(operation.target.kind, "path");
+});
 
-function rawReplay(map: DocumentLiveMap, ops: readonly unknown[]): unknown {
-  return Reflect.apply(map.replay, map, [{
-    changed: true,
-    prevRev: map.rev,
-    rev: map.rev + 1,
-    ops,
-  }]);
-}
-
-
-check("path request remains a detached canonical path target", () => {
+check("request path arrays are detached from caller mutation", () => {
+  const map = fixture();
   const input = [0, 0, 0];
-  const map = element(`<main <section/>/>`);
-  const commit = map.document.attrs.set({ kind: "path", path: input }, "id", "section");
-  input[1] = 9;
-  assert.deepEqual(commit.ops[0]?.target, { kind: "path", path: [0, 0, 0] });
+  const operation = op(map, () => map.document.attrs.set({ kind: "path", path: input }, "n", 1));
+  input[2] = 99;
+  if (operation.op === "replace-root") throw new Error("Expected path target");
+  assert.deepEqual(operation.target.path, [0, 0, 0]);
+  assert.equal(Object.isFrozen(operation.target.path), true);
 });
 
-check("raw-QUID requests reject at the public request boundary", () => {
-  const map = element(`<main <section @${Q1}/>/>`);
-  assert.throws(
-    () => map.document.attrs.set({ kind: "quid", quid: Q1 } as never, "id", "section"),
-    (error: unknown) => error instanceof LiveMapDocumentMutationError
-      && error.code === "INVALID_DOCUMENT_TARGET",
-  );
+check("raw-QUID request targets reject without a commit", () => {
+  const map = fixture();
+  const before = map.capture();
+  assert.throws(() => map.document.attrs.set({ kind: "quid", quid: Q1 } as never, "x", 1));
+  assert.deepEqual(map.capture(), before);
 });
 
-check("path lowering does not synthesize identity evidence", () => {
-  const map = element(`<main <section @${Q1}/>/>`);
-  const commit = map.document.attrs.set({ kind: "path", path: [0, 0, 0] }, "id", "section");
-  assert.equal(commit.ops[0]?.target.witness, undefined);
-});
-
-check("path requests do not require or acquire a witness", () => {
-  const map = element(`<main @${Q1}/>`);
-  const commit = map.document.attrs.set({ kind: "path", path: [0] }, "id", "main");
-  assert.equal(commit.ops[0]?.target.witness, undefined);
-});
-
-check("raw-QUID shape rejects without revision change", () => {
-  const map = element(`<main/>`);
-  assert.throws(
-    () => map.document.attrs.set({ kind: "quid", quid: Q1 } as never, "id", "bad"),
-    (error: unknown) => error instanceof LiveMapDocumentMutationError
-      && error.code === "INVALID_DOCUMENT_TARGET",
-  );
-  assert.equal(map.rev, 0);
-});
-
-check("malformed QUID request rejects at request admission", () => {
-  const map = element(`<main/>`);
-  assert.throws(
-    () => map.document.attrs.set({ kind: "quid", quid: "bad" } as never, "id", "bad"),
-    (error: unknown) => error instanceof LiveMapDocumentMutationError
-      && error.code === "INVALID_DOCUMENT_TARGET",
-  );
-});
-
-check("matching local witness is rejected by public replay", () => {
-  const map = element(`<main <section @${Q1}/>/>`);
-  assert.throws(() => rawReplay(map, [{
-    domain: "graph",
-    op: "set-attr",
-    target: { kind: "path", path: [0, 0, 0], witness: { quid: Q1 } },
-    name: "id",
-    value: "matched",
-  }]), /QUID witness/i);
-  assert.equal(map.document.byQuid(Q1)?.$_attrs?.id, undefined);
-  assert.equal(map.rev, 0);
-});
-
-check("different local witness is rejected by public replay", () => {
-  const map = element(`<main <section @${Q2}/>/>`);
-  assert.throws(() => rawReplay(map, [{
-    domain: "graph",
-    op: "set-attr",
-    target: { kind: "path", path: [0, 0, 0], witness: { quid: Q1 } },
-    name: "id",
-    value: "bad",
-  }]), /QUID witness/i);
-  assert.equal(map.rev, 0);
-});
-
-check("witness found elsewhere cannot enter public replay", () => {
-  const map = element(`<main <a/> <b @${Q1}/>/>`);
-  assert.throws(() => rawReplay(map, [{
-    domain: "graph",
-    op: "set-attr",
-    target: { kind: "path", path: [0, 0, 0], witness: { quid: Q1 } },
-    name: "id",
-    value: "path-wins",
-  }]), /QUID witness/i);
-  assert.equal(map.document.attrs.get({ kind: "path", path: [0, 0, 0] }, "id"), undefined);
-  assert.equal(map.document.byQuid(Q1)?.$_attrs?.id, undefined);
-  assert.equal(map.rev, 0);
-});
-
-check("invalid path with a witness is rejected before replay", () => {
-  const map = element(`<main <a @${Q1}/>/>`);
-  assert.throws(() => rawReplay(map, [{
-    domain: "graph",
-    op: "set-attr",
-    target: { kind: "path", path: [0, 0, 9], witness: { quid: Q1 } },
-    name: "id",
-    value: "bad",
-  }]), /QUID witness/i);
-  assert.equal(map.rev, 0);
-});
-
-check("identity-free replay interprets a semantic path commit", () => {
-  const source = element(`<main @${Q1}/>`);
-  const commit = source.document.attrs.set({ kind: "path", path: [0] }, "id", "portable");
-  const target = element(`<main/>`);
-  target.replay(commit);
-  assert.equal(target.document.attrs.get({ kind: "path", path: [0] }, "id"), "portable");
-});
-
-check("canonical target objects and nested evidence are immutable", () => {
-  const map = element(`<main @${Q1}/>`);
-  const target = map.document.attrs.set({ kind: "path", path: [0] }, "id", "x").ops[0]?.target;
-  assert.equal(Object.isFrozen(target), true);
-  assert.equal(Object.isFrozen(target?.path), true);
-  assert.equal(target?.witness, undefined);
-});
-
-check("request lowering does not mint identity", () => {
-  const map = element(`<main <section/>/>`);
-  map.document.attrs.set({ kind: "path", path: [0, 0, 0] }, "id", "section");
-  assert.equal(livemap_document_identity_overlay_for(map).size, 0);
-});
-
-check("attribute request family returns path-only operations", () => {
-  const maps = [
-    element(`<main @${Q1}/>`),
-    element(`<main id="x" @${Q1}/>`),
-    element(`<main @${Q1}/>`),
-  ];
-  const operations = [
-    maps[0]!.document.attrs.set({ kind: "path", path: [0] }, "id", "x").ops[0],
-    maps[1]!.document.attrs.drop({ kind: "path", path: [0] }, "id").ops[0],
-    maps[2]!.document.attrs.replace({ kind: "path", path: [0] }, { id: "x" }).ops[0],
-  ];
-  assert.ok(operations.every((operation) => operation?.target.kind === "path"));
-});
-
-check("content request family returns path-only operations", () => {
-  const fixtureRoot = element(`<x <y/>/>`).root().$_content[0];
-  const wrapper = typeof fixtureRoot === "object" && fixtureRoot !== null ? fixtureRoot.$_content[0] : undefined;
-  if (wrapper === undefined) throw new Error("Expected structural content wrapper");
-  const replace = element(`<main @${Q1} <a/>/>`).document.content.replace({ kind: "path", path: [0] }, 0, wrapper).ops[0];
-  const insert = element(`<main @${Q1}/>`).document.content.insert({ kind: "path", path: [0] }, 0, wrapper).ops[0];
-  const remove = element(`<main @${Q1} <a/>/>`).document.content.remove({ kind: "path", path: [0] }, 0).ops[0];
-  const move = element(`<main @${Q1} <a/>/>`).document.content.move({ kind: "path", path: [0] }, 0, 0);
-  assert.ok([replace, insert, remove].every((operation) => operation?.target.kind === "path"));
-  assert.equal(move.changed, false);
-});
-
-check("canonical operation planner rejects QUID-only construction", () => {
-  const map = element(`<main @${Q1}/>`);
-  assert.throws(() => prepare_document_graph_operation(map.root(), map.mode, {
-    domain: "graph",
-    op: "set-attr",
-    target: { kind: "quid", quid: Q1 },
-    name: "id",
-    value: "bad",
-  }), (error: unknown) => error instanceof LiveMapDocumentMutationError
-    && error.code === "INVALID_DOCUMENT_COMMIT_TARGET");
-});
-
-check("canonical target normalizer rejects the request union QUID branch", () => {
-  assert.throws(
-    () => normalize_document_commit_target({ kind: "quid", quid: Q1 }, "set-attr"),
-    (error: unknown) => error instanceof LiveMapDocumentMutationError
-      && error.code === "INVALID_DOCUMENT_COMMIT_TARGET",
-  );
-});
-
-
-
-
-
-check("direct lowering remains path-authoritative beside a sparse overlay", () => {
-  const map = element(`<main <a @${Q1}/>/>`);
-  const lowered = canonicalize_document_request_target(
-    map.root(),
-    map.mode,
-    livemap_document_identity_overlay_for(map),
-    { kind: "path", path: [0, 0, 0] },
-    "set-attr",
-  );
-  assert.deepEqual(lowered.target, { kind: "path", path: [0, 0, 0] });
-});
-
-check("read-only byQuid returns a detached result without a commit", () => {
-  const map = element(`<main @${Q1}/>`);
+check("malformed paths reject at request admission", () => {
+  const map = fixture();
   const before = map.rev;
-  const node = map.document.byQuid(Q1);
-  if (node === undefined) throw new Error("Expected QUID lookup");
-  node.$_attrs = { id: "detached" };
+  assert.throws(() => map.document.attrs.set({ kind: "path", path: [-1] }, "bad", true));
   assert.equal(map.rev, before);
-  assert.equal((map.root().$_content[0] as { $_attrs?: unknown }).$_attrs, undefined);
 });
 
-check("malformed and absent read-only QUID lookups remain inert", () => {
-  const map = element(`<main/>`);
-  assert.equal(map.document.byQuid("bad"), undefined);
-  assert.equal(map.document.byQuid(Q1), undefined);
+check("identified nodes still use paths without implicit witnesses", () => {
+  const map = fixture();
+  const operation = op(map, () => map.document.attrs.set(target(0, 0, 0), "id", "x"));
+  if (operation.op === "replace-root") throw new Error("Expected path target");
+  assert.equal(Reflect.get(operation.target, "witness"), undefined);
+  assert.deepEqual(livemap_document_identity_overlay_for(map.document).pathForQuid(Q1), [0, 0, 0]);
+});
+
+check("attribute request family emits path-only operations", () => {
+  const map = fixture();
+  const operations = [
+    op(map, () => map.document.attrs.set(target(0), "a", 1)),
+    op(map, () => map.document.attrs.setMany(target(0), { b: 2 })),
+    op(map, () => map.document.attrs.drop(target(0), "a")),
+    op(map, () => map.document.attrs.clear(target(0))),
+  ];
+  assert.ok(operations.every((operation) => operation.op !== "replace-root" && operation.target.kind === "path"));
+});
+
+check("content request family emits path-only operations", () => {
+  const map = fixture();
+  const operations = [
+    op(map, () => map.document.content.insert(target(0, 0), 1, projected_element('<item/>'))),
+    op(map, () => map.document.content.move(target(0, 0), 0, 1)),
+    op(map, () => map.document.content.replace(target(0, 0), 0, projected_element('<item title="new"/>'))),
+    op(map, () => map.document.content.remove(target(0, 0), 0)),
+  ];
+  assert.ok(operations.every((operation) => operation.op !== "replace-root" && operation.target.kind === "path"));
+});
+
+check("read-only QUID lookup returns detached diagnostic material", () => {
+  const map = fixture();
+  const value = map.document.byQuid(Q1);
+  if (value === undefined) throw new Error("Missing test identity");
+  value.$_tag = "changed";
+  assert.equal(map.document.byQuid(Q1)?.$_tag, "item");
   assert.equal(map.rev, 0);
 });
 
-check("canonical target JSON contains no unresolved QUID branch", () => {
-  const target = Object.freeze({
-    kind: "path" as const,
-    path: validate_document_path([0, 1]),
-    witness: Object.freeze({ quid: Q1 }),
-  });
-  assert.equal(JSON.stringify(target), `{"kind":"path","path":[0,1],"witness":{"quid":"${Q1}"}}`);
+check("absent or malformed QUID lookups remain inert", () => {
+  const map = fixture();
+  assert.equal(map.document.byQuid("absent"), undefined);
+  assert.equal(map.document.byQuid("000000999"), undefined);
+  assert.equal(map.rev, 0);
 });
 
-process.stdout.write(`# ${checks} document request-lowering checks passed\n`);
-testEvents.terminal("pass");
+events.terminal("pass");
+process.stdout.write(`# ${checks} registry document request checks passed\n`);

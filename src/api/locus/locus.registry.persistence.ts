@@ -1,4 +1,4 @@
-import type { LiveMapLibraries } from "../../types/livemap.types.js";
+import type { LiveMap } from "../../types/livemap.types.js";
 import type {
   LocusActionPayloads,
   LocusOptions,
@@ -26,7 +26,7 @@ function commit_record(commit: HostedAggregateCommit): object {
 }
 
 function set_initial_authority(
-  map: LiveMapLibraries,
+  map: LiveMap,
   logicalMapId: string | undefined,
   incarnationId: string | undefined,
 ): void {
@@ -64,7 +64,7 @@ async function append_durable_commit(
 }
 
 async function persistent_view<
-  TMap extends LiveMapLibraries,
+  TMap extends LiveMap,
   TActions extends LocusActionPayloads,
 >(
   options: PersistentLocusOptions<TMap, TActions>,
@@ -135,7 +135,7 @@ async function persistent_view<
 
 /** Create a durable fixed-registry Locus through the ordinary persistence entry point. */
 export async function create_persistent_registry_locus<
-  TMap extends LiveMapLibraries,
+  TMap extends LiveMap,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 >(
   options: PersistentLocusOptions<TMap, TActions>,

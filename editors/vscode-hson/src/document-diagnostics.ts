@@ -156,10 +156,7 @@ function validateEmbedded(input: DocumentDiagnosticInput): readonly DocumentDiag
   const staticSources = discover_static_from_hson_sources(input.fileName, input.text).sources;
   for (const source of staticSources) {
     try {
-      // Boundary identity selects the parser contract. LiveMap alone admits a
-      // top-level document text; Transform and LiveTree use the
-      // ordinary parser-root contract.
-      parse_hson(source.runtimeText, source.boundary === "livemap" ? { allowTopLevelDocumentText: true } : {});
+      parse_hson(source.runtimeText);
     } catch (error) {
       const details = read_transform_error_details(error);
       if (details === undefined) throw error;

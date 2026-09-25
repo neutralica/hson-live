@@ -1,7 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
-import { element, path, projected_element, raw_node } from "./helpers/mirror-unit6.mts";
+import { element, path, projected_element, raw_node, registry_for_document_library } from "./helpers/mirror-unit6.mts";
 import { create_livetree_in_runtime } from "../src/api/livetree/creation/create-livetree.ts";
 import { project_livetree } from "../src/api/livetree/creation/project-live-tree.ts";
 import { create_livetree_runtime } from "../src/api/livetree/runtime/livetree-runtime.ts";
@@ -21,7 +21,7 @@ import {
   DOCUMENT_MIRROR_UPDATE_FAILED_ERROR_CODE,
   DocumentMirrorError,
 } from "../src/api/mirror/mirror.document.error.ts";
-import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
+import type { LiveMapDocumentLibrary } from "../src/types/livemap.types.ts";
 import type { LiveTree } from "../src/api/livetree/livetree.ts";
 import { FakeElement } from "./helpers/fake-document.mts";
 
@@ -59,7 +59,7 @@ function source(rootAttrs = "", sectionAttrs = "", text = "hello"): string {
   return `<main @${rootQuid} ${rootAttrs} <section @${sectionQuid} ${sectionAttrs} "${text}"/>/>`;
 }
 
-function admitted(sourceText: string): { map: DocumentLiveMap; tree: LiveTree; root: FakeElement; section: FakeElement } {
+function admitted(sourceText: string): { map: LiveMapDocumentLibrary; tree: LiveTree; root: FakeElement; section: FakeElement } {
   const map = element(sourceText);
   const tree = create_livetree_in_runtime(projected_element(sourceText), runtime);
   const root = project_livetree(tree.node, "html", runtime, globalThis.document) as unknown as FakeElement;
@@ -200,11 +200,11 @@ check("revision change during observe activation rolls back without touching bor
   const rootBefore = structuredClone(fixture.tree.node);
   const attrsBefore = new Map(fixture.section.attrs);
   let injectRevision = true;
-  const racing: DocumentLiveMap = {
+  const racing: LiveMapDocumentLibrary = {
     ...fixture.map,
     get rev() { return fixture.map.rev; },
     commits: Object.freeze({
-      observe(observer: Parameters<DocumentLiveMap["commits"]["observe"]>[0]) {
+      observe(observer: Parameters<LiveMapDocumentLibrary["commits"]["observe"]>[0]) {
         const off = fixture.map.commits.observe(observer);
         if (injectRevision) {
           injectRevision = false;
@@ -232,7 +232,7 @@ check("borrowed root identity epoch replacement fails closed", () => {
   const binding = reflect_existing_document_in_runtime(fixture.map, fixture.tree, runtime);
   const rootBefore = fixture.tree.node;
   const elementBefore = fixture.root;
-  fixture.map.restore(element(source()).capture());
+  registry_for_document_library(fixture.map).restore(registry_for_document_library(element(source())).capture());
   assert.equal(binding.status, "failed");
   assert.equal(binding.failure?.code, DOCUMENT_MIRROR_UNSUPPORTED_OPERATION_ERROR_CODE);
   assert.equal(binding.tree.node, rootBefore);

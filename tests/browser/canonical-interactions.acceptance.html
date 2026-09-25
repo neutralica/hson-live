@@ -18,7 +18,7 @@
     const QUID = "000008398";
     const PageSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "button" content "empty">]>>`;
     const StateSchema = Hson.schema`<type "data" content <count "number">>`;
-    const page = hsonLiveMap.fromHson("<main <button/>/>").root();
+    const page = hsonLiveMap.fromLibraries({ page: { document: "<main <button/>/>", schema: PageSchema } }).lib("page").root();
     page.$_content[0].$_content[0].$_content[0].$_meta = { quid: QUID };
     const map = admit_exact_runtime_livemap_libraries({
       state: { data: { count: 0 }, schema: StateSchema },

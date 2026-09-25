@@ -1,6 +1,6 @@
 import type { JsonValue } from "../../core/types.js";
 import type {
-  LiveMapLibraries,
+  LiveMap,
 } from "../../types/livemap.types.js";
 import type {
   LocusActionTerminalOutcome,
@@ -45,9 +45,9 @@ export type EchoSocketClientOptions<TActions extends LocusActionPayloads = Locus
   /** Required for an unbootstrapped Echo; an existing mirror supplies it. */
   logicalMapId?: string;
   /** An existing aggregate mirror is restored in place during snapshot recovery. */
-  map?: LiveMapLibraries;
+  map?: LiveMap;
   /** Client-owned definitions composed with the received authority snapshot. @internal */
-  localLibraries?: import("../../types/livemap.types.js").LiveMapLibrariesInput;
+  localLibraries?: import("../../types/livemap.types.js").LiveMapInput;
   clientId?: string;
   actionId?: () => string;
   actionAttemptId?: () => string;
@@ -68,7 +68,7 @@ export type EchoSocketRecovery = Readonly<{
 /** @internal */
 export type EchoSocketClient = Readonly<{
   /** Undefined until an aggregate bootstrap snapshot has passed every validation check. */
-  readonly map: LiveMapLibraries | undefined;
+  readonly map: LiveMap | undefined;
   readonly logicalMapId: string;
   readonly incarnationId: string | undefined;
   readonly registryDigest: string | undefined;

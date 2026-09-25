@@ -3,7 +3,7 @@ import { Hson, hsonLiveMap } from "hson-live";
 import type { HsonSchemaValue } from "hson-live";
 import type {
   HsonCanonical, HsonData, HsonDocument, HsonSchemaData, SchemaType,
-  DocumentLiveMap, LiveMap,
+  LiveMapDocumentLibrary, LiveMapDataLibrary,
   HsonSchema,
 } from "hson-live";
 import { SameShapeOneSchema, SameShapeTwoSchema, UserSchema } from "./fixtures/hson-schema-mvp/producer.js";
@@ -65,14 +65,14 @@ unproved.toHson();
 void neutralAsData; void dataAsDocument; void documentAsData; void unprovedAsProved;
 void crossIdentity; void dataAsSchema; void sliced; void appended;
 
-const dataMap = hsonLiveMap.fromData(Hson.data`<name "Ada">`);
-const governedData: LiveMap<SchemaType<typeof SameShapeOneSchema>> = dataMap.schema.use(SameShapeOneSchema);
-const documentMap = hsonLiveMap.fromDocument(Hson.document`<main id=hero <header/> <section "body"/>/>`);
-const governedDocument: DocumentLiveMap<SchemaType<typeof PageSchema>> = documentMap.schema.use(PageSchema);
+const dataMap = hsonLiveMap.fromLibraries({ state: { data: Hson.data`<name "Ada">`, schema: SameShapeOneSchema } });
+const governedData: LiveMapDataLibrary<SchemaType<typeof SameShapeOneSchema>> = dataMap.lib("state");
+const documentMap = hsonLiveMap.fromLibraries({ page: { document: Hson.document`<main id=hero <header/> <section "body"/>/>`, schema: PageSchema } });
+const governedDocument: LiveMapDocumentLibrary<SchemaType<typeof PageSchema>> = documentMap.lib("page");
 // @ts-expect-error A document Schema cannot govern a data map.
-dataMap.schema.use(PageSchema);
+dataMap.lib("state").schema.use(PageSchema);
 // @ts-expect-error A data Schema cannot govern a document map.
-documentMap.schema.use(SameShapeOneSchema);
+documentMap.lib("page").schema.use(SameShapeOneSchema);
 // @ts-expect-error Same-shaped Schemas do not share governed value proof.
-const wrongDataEvidence: LiveMap<SchemaType<typeof SameShapeTwoSchema>> = governedData;
+const wrongDataEvidence: LiveMapDataLibrary<SchemaType<typeof SameShapeTwoSchema>> = governedData;
 void governedDocument; void wrongDataEvidence;

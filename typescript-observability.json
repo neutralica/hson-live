@@ -25,6 +25,48 @@
   ],
   "exemptions": [
     {
+      "file": "tests/historical/schema-authoring-d3-d5/schema-d3-cases.mts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/schema-authoring-d3-d5/README.md",
+      "reason": "Archived fixture for the retired solo LiveMap Schema association workflow."
+    },
+    {
+      "file": "tests/historical/schema-authoring-d3-d5/schema-d3-runtime.fixture.mts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/schema-authoring-d3-d5/README.md",
+      "reason": "Archived fixture for the retired solo LiveMap Schema association workflow."
+    },
+    {
+      "file": "tests/historical/schema-authoring-d3-d5/schema-d3-schemas.fixture.mts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/schema-authoring-d3-d5/README.md",
+      "reason": "Archived fixture for the retired solo LiveMap Schema association workflow."
+    },
+    {
+      "file": "tests/historical/schema-authoring-d3-d5/schema-d5-cases.mts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/schema-authoring-d3-d5/README.md",
+      "reason": "Archived fixture for the retired solo LiveMap Schema association workflow."
+    },
+    {
+      "file": "tests/historical/schema-authoring-d3-d5/schema-d5-runtime.fixture.mts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/schema-authoring-d3-d5/README.md",
+      "reason": "Archived fixture for the retired solo LiveMap Schema association workflow."
+    },
+    {
+      "file": "tests/historical/schema-authoring-d3-d5/schema-d5-schemas.fixture.mts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/schema-authoring-d3-d5/README.md",
+      "reason": "Archived fixture for the retired solo LiveMap Schema association workflow."
+    },
+    {
+      "file": "tests/historical/schema-authoring-d3-d5/schema-d5-uncaught.fixture.mts",
+      "kind": "non-typechecked-artifact",
+      "authority": "tests/historical/schema-authoring-d3-d5/README.md",
+      "reason": "Archived fixture for the retired solo LiveMap Schema association workflow."
+    },
+    {
       "file": "editors/vscode-hson/tests/fixtures/declarative-schema/candidate.ts",
       "kind": "negative-compile-fixture",
       "authority": "npm --prefix editors/vscode-hson run test:integration",

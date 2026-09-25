@@ -7,7 +7,7 @@ import {
   hsonLiveMap,
   hsonLocus,
   type HsonSchema,
-  type LiveMapLibraries,
+  type LiveMap,
 } from "../src/index.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { project_authority_snapshot } from "../src/api/locus/locus.authority-projection-snapshot.ts";
@@ -55,7 +55,7 @@ function make_map() {
   });
 }
 
-function make_projected_map(source: LiveMapLibraries): LiveMapLibraries {
+function make_projected_map(source: LiveMap): LiveMap {
   const complete = internal_livemap_aggregate_authority(source).captureHosted();
   const configured = test_public_projection(source);
   const policy = make_locus_hosted_projection_policy(complete.registry, complete.authority,

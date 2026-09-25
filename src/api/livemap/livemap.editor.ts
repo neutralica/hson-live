@@ -427,7 +427,7 @@ function delete_object_property(parent: HsonNode, key: string): void {
  *
  * This is the data-map JSON projection, not a canonical document snapshot.
  * Unknown/user element nodes retain the historical object fallback for data
- * compatibility, but document LiveMaps do not expose this lossy reader.
+ * compatibility, but document libraries do not expose this lossy reader.
  */
 export function node_to_json_value(node: HsonNode): JsonValue {
   if (is_projected_value_hson_node(node)) {

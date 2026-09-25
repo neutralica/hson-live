@@ -63,6 +63,12 @@ export type LiveMapAggregateCommit = Readonly<{
 export type LiveMapAggregateWrite =
   | Readonly<{
     target: LiveMapAuthorityTarget;
+    kind: "set-key";
+    key: string;
+    value: OrderedProjectedValue;
+  }>
+  | Readonly<{
+    target: LiveMapAuthorityTarget;
     kind: "set" | "replace" | "delete";
     value?: unknown;
   }>

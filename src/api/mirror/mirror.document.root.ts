@@ -1,7 +1,7 @@
 import { HSON_META_QUID, ROOT_TAG } from "../../core/constants.js";
 import { is_ordinary_element_node } from "../../core/node-guards.js";
 import type { HsonNode } from "../../core/types.js";
-import type { DocumentLiveMapMode } from "../../types/livemap.types.js";
+import type { LiveMapDocumentMode } from "../../types/livemap.types.js";
 import { canonical_graph_equal } from "../livemap/livemap.document.install.js";
 import { SVG_NS } from "../transform/utils/node-utils/node-from-svg.js";
 import { get_el_for_node } from "../livetree/utils/node-map-helpers.js";
@@ -21,7 +21,7 @@ import {
 type PersistedQuidLookup = (node: HsonNode) => string | undefined;
 
 export type DocumentRootMaterial = Readonly<{
-  mode: DocumentLiveMapMode;
+  mode: LiveMapDocumentMode;
   root: HsonNode;
 }>;
 

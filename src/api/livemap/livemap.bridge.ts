@@ -11,7 +11,7 @@
 
 import type { JsonValue } from "../../core/types.js";
 import { bind_livetree_input_checked, bind_livetree_schema_enum_input, bind_livetree_schema_number_input, bind_livetree_input_value, value_to_text } from "./livemap.bridge-bindings.js";
-import type { LiveMap, LivePath } from "../../types/livemap.types.js";
+import type { LiveMapDataLibrary, LivePath } from "../../types/livemap.types.js";
 import type { LiveTextBridgeTarget, LiveSnapViewBridgeTarget, LiveControlViewBridgeTarget, LiveMapBridgeBindingGroup, LiveMapBridgeBinding, LiveMapControlSpec, BridgePathParts, LiveMapControlNode, LiveAttrBridgeTarget } from "../../types/bridge.types.js";
 
 // PROPOSED FILE GROUP: bridge.ts
@@ -22,17 +22,17 @@ import type { LiveTextBridgeTarget, LiveSnapViewBridgeTarget, LiveControlViewBri
 
 // Static rendering entry points
 
-export function render_livemap_snap(map: LiveMap, tree: LiveTextBridgeTarget, path: LivePath = []): void {
+export function render_livemap_snap(map: LiveMapDataLibrary, tree: LiveTextBridgeTarget, path: LivePath = []): void {
   tree.text.set(value_to_text(map.snap(path)));
 }
 
-export function render_livemap_snap_view(map: LiveMap, tree: LiveSnapViewBridgeTarget, path: LivePath = []): void {
+export function render_livemap_snap_view(map: LiveMapDataLibrary, tree: LiveSnapViewBridgeTarget, path: LivePath = []): void {
   tree.text.overwrite("");
   render_snap_value(tree, map.snap(path), snap_path_parts(path));
 }
 
 export function render_livemap_controls_snap(
-  map: LiveMap,
+  map: LiveMapDataLibrary,
   tree: LiveControlViewBridgeTarget,
   path: LivePath = [],
 ): LiveMapBridgeBindingGroup {
@@ -55,7 +55,7 @@ export function render_livemap_controls_snap(
  * enum/select controls, and validation feedback for generated primitive inputs.
  */
 export function render_livemap_schema_controls_snap(
-  map: LiveMap,
+  map: LiveMapDataLibrary,
   tree: LiveControlViewBridgeTarget,
   schema: LiveMapControlSpec,
   path: LivePath = [],
@@ -157,7 +157,7 @@ function render_snap_array(tree: LiveSnapViewBridgeTarget, value: readonly JsonV
 
 // Generated-control internals
 function render_control_value(
-  map: LiveMap,
+  map: LiveMapDataLibrary,
   tree: LiveControlViewBridgeTarget,
   value: JsonValue | undefined,
   path: readonly string[],
@@ -182,7 +182,7 @@ function render_control_value(
 }
 
 function render_control_object(
-  map: LiveMap,
+  map: LiveMapDataLibrary,
   tree: LiveControlViewBridgeTarget,
   value: Readonly<Record<string, JsonValue>>,
   path: readonly string[],
@@ -203,7 +203,7 @@ function render_control_object(
 }
 
 function render_control_array(
-  map: LiveMap,
+  map: LiveMapDataLibrary,
   tree: LiveControlViewBridgeTarget,
   value: readonly JsonValue[],
   path: readonly string[],
@@ -231,7 +231,7 @@ function render_control_array(
 
 // Schema-generated-control internals
 function render_schema_control_value(
-  map: LiveMap,
+  map: LiveMapDataLibrary,
   tree: LiveControlViewBridgeTarget,
   value: JsonValue | undefined,
   path: readonly string[],
@@ -280,7 +280,7 @@ function render_schema_control_value(
 }
 
 function render_schema_control_primitive(
-  map: LiveMap,
+  map: LiveMapDataLibrary,
   tree: LiveControlViewBridgeTarget,
   value: JsonValue | undefined,
   path: readonly string[],
@@ -320,7 +320,7 @@ function render_schema_control_primitive(
 }
 
 function render_schema_enum_control(
-  map: LiveMap,
+  map: LiveMapDataLibrary,
   tree: LiveControlViewBridgeTarget,
   value: JsonValue | undefined,
   path: readonly string[],
@@ -385,7 +385,7 @@ function schema_control_node_for_path(
 }
 
 function render_control_primitive(
-  map: LiveMap,
+  map: LiveMapDataLibrary,
   tree: LiveControlViewBridgeTarget,
   value: JsonValue | undefined,
   path: readonly string[],

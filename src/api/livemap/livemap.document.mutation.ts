@@ -20,9 +20,9 @@ import {
 } from "../../core/hson-node-quid.js";
 import type { HsonAttrs, HsonNode, Primitive } from "../../core/types.js";
 import type {
-  DocumentLiveMapAttrsMutationApi,
-  DocumentLiveMapFlagsMutationApi,
-  DocumentLiveMapMode,
+  LiveMapDocumentAttrsMutationApi,
+  LiveMapDocumentFlagsMutationApi,
+  LiveMapDocumentMode,
   LiveMapDocumentAttributeValue,
   LiveMapDocumentAttrs,
   LiveMapDocumentContent,
@@ -92,7 +92,7 @@ export type PreparedDocumentMutation<TOp extends LiveMapGraphOp = LiveMapGraphOp
 
 /** Internal state boundary implemented by the shared LiveMap Core. */
 export type LiveMapDocumentMutationController = Readonly<{
-  mode: DocumentLiveMapMode;
+  mode: LiveMapDocumentMode;
   rev: () => number;
   root: () => HsonNode;
   overlay: () => LiveMapDocumentIdentityOverlay;
@@ -110,8 +110,8 @@ export type LiveMapDocumentMutationController = Readonly<{
 export function make_livemap_document_mutation_api(
   controller: LiveMapDocumentMutationController,
 ): Readonly<{
-  attrs: DocumentLiveMapAttrsMutationApi;
-  flags: DocumentLiveMapFlagsMutationApi;
+  attrs: LiveMapDocumentAttrsMutationApi;
+  flags: LiveMapDocumentFlagsMutationApi;
   /** Internal atomic substrate shared by every public bulk attrs method. */
   replaceAttrs: (
     target: LiveMapDocumentRequestTarget,
@@ -138,7 +138,7 @@ export function make_livemap_document_mutation_api(
     to: number,
   ) => LiveMapGraphCommit<LiveMapGraphMoveContentOp>;
 }> {
-  const attrs: DocumentLiveMapAttrsMutationApi = Object.freeze({
+  const attrs: LiveMapDocumentAttrsMutationApi = Object.freeze({
     set: (target, name, value) => set_document_attr(controller, target, name, value),
     drop: (target, name) => remove_document_attr(controller, target, name),
     setMany: (target, values) => set_many_document_attrs(controller, target, values),
@@ -146,7 +146,7 @@ export function make_livemap_document_mutation_api(
     clear: (target) => replace_document_attrs(controller, target, plan_public_attrs_clear()),
     replace: (target, values) => replace_document_attrs(controller, target, values),
   });
-  const flags: DocumentLiveMapFlagsMutationApi = Object.freeze({
+  const flags: LiveMapDocumentFlagsMutationApi = Object.freeze({
     set: (target, ...names) => set_document_flags(controller, target, names),
     clear: (target, ...names) => clear_document_flags(controller, target, names),
   });
@@ -286,7 +286,7 @@ function set_document_attr(
 
 function prepare_set_document_attr(
   inputRoot: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   overlay: LiveMapDocumentIdentityOverlay,
   targetInput: unknown,
   nameInput: unknown,
@@ -325,7 +325,7 @@ function remove_document_attr(
 
 function prepare_remove_document_attr(
   inputRoot: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   overlay: LiveMapDocumentIdentityOverlay,
   targetInput: unknown,
   nameInput: unknown,
@@ -353,7 +353,7 @@ function prepare_remove_document_attr(
 
 function prepare_replace_document_attrs(
   inputRoot: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   overlay: LiveMapDocumentIdentityOverlay,
   targetInput: unknown,
   attrsInput: unknown,
@@ -400,7 +400,7 @@ function replace_document_content(
 
 function prepare_replace_document_content(
   inputRoot: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   overlay: LiveMapDocumentIdentityOverlay,
   targetInput: unknown,
   indexInput: unknown,
@@ -468,7 +468,7 @@ function insert_document_content(
 
 function prepare_insert_document_content(
   inputRoot: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   overlay: LiveMapDocumentIdentityOverlay,
   targetInput: unknown,
   indexInput: unknown,
@@ -514,7 +514,7 @@ function remove_document_content(
 
 function prepare_remove_document_content(
   inputRoot: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   overlay: LiveMapDocumentIdentityOverlay,
   targetInput: unknown,
   indexInput: unknown,
@@ -550,7 +550,7 @@ function move_document_content(
 
 function prepare_move_document_content(
   inputRoot: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   overlay: LiveMapDocumentIdentityOverlay,
   targetInput: unknown,
   fromInput: unknown,
@@ -591,7 +591,7 @@ function finish_mutation<TOp extends LiveMapGraphOp>(
 }
 
 function prepare_finished_mutation<TOp extends LiveMapGraphOp>(
-  expectedMode: DocumentLiveMapMode,
+  expectedMode: LiveMapDocumentMode,
   root: HsonNode,
   currentOverlay: LiveMapDocumentIdentityOverlay,
   operation: TOp,
@@ -640,7 +640,7 @@ function prepare_finished_mutation<TOp extends LiveMapGraphOp>(
 /** Plan one recorded ensure-if-absent registration; allocation is owned elsewhere. @internal */
 export function prepare_ensure_document_quid(
   inputRoot: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   overlay: LiveMapDocumentIdentityOverlay,
   targetInput: unknown,
   quidInput: unknown,
@@ -778,7 +778,7 @@ export function admit_public_document_graph_operation(operation: LiveMapGraphOp)
 /** Validate and plan one graph operation against a detached candidate root. */
 export function prepare_document_graph_operation(
   root: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   input: unknown,
   overlay: LiveMapDocumentIdentityOverlay = build_livemap_document_identity_overlay(root, mode),
 ): PreparedDocumentMutation {
@@ -787,7 +787,7 @@ export function prepare_document_graph_operation(
 
 function prepare_graph_operation(
   root: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   overlay: LiveMapDocumentIdentityOverlay,
   input: unknown,
   targetAuthority: PreparedTargetAuthority,
@@ -834,7 +834,7 @@ function prepare_graph_operation(
 
 function prepare_target(
   root: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   overlay: LiveMapDocumentIdentityOverlay,
   input: unknown,
   operation: DocumentOperation,

@@ -1,7 +1,8 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
-import { hson } from "../src/index.ts";
+import { Hson, hson } from "../src/index.ts";
+import type { JsonValue } from "../src/core/types.ts";
 import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.identity-epoch.ts";
 import { acquire_projected_identity } from "./helpers/livemap-identity-internal.mts";
 
@@ -27,51 +28,51 @@ const check = (name: string, run: () => void) => {
     testEvents.terminal("fail");
     throw error;
   } checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); };
-const map = (value: unknown) => hson.liveMap.fromJson(value as never);
+const ObjectSchema = Hson.schema`<type "data" content <a <optional "any"> b <optional "any"> z <optional "any"> y <optional "any">>>`;
+const ArraySchema = Hson.schema`<type "data" defs <Root <array "any">> content <ref "Root">>`;
+const map = (value: JsonValue) => hson.liveMap.fromLibraries({ state: { data: value, schema: Array.isArray(value) ? ArraySchema : ObjectSchema } });
 
-check("nested scalar mutation preserves container identity", () => { const m = map({ a: { x: 1 } }); const h = acquire_projected_identity(m, ["a"]); m.set(["a", "x"], 2); assert.deepEqual(h.snap(), { x: 2 }); });
-check("unrelated property insertion preserves identity", () => { const m = map({ a: {} }); const h = acquire_projected_identity(m, ["a"]); m.at([]).asObject()!.setKey("b", 1); assert.deepEqual(h.path(), ["a"]); });
-check("object rename follows exact source identity", () => { const m = map({ a: { x: 1 } }); const h = acquire_projected_identity(m, ["a"]); m.at([]).asObject()!.renameKey("a", "b"); assert.deepEqual(h.path(), ["b"]); });
-check("rename retains source position semantics", () => { const m = map({ z: 0, a: {}, y: 2 }); const h = acquire_projected_identity(m, ["a"]); m.at([]).asObject()!.renameKey("a", "b"); assert.deepEqual(Object.keys(m.snap() as object), ["z", "b", "y"]); assert.deepEqual(h.path(), ["b"]); });
-check("rename retires replaced destination identity", () => { const m = map({ a: {}, b: {} }); const source = acquire_projected_identity(m, ["a"]); const destination = acquire_projected_identity(m, ["b"]); m.at([]).asObject()!.renameKey("a", "b"); assert.equal(source.active, true); assert.equal(destination.active, false); });
-check("descendant identity follows rename", () => { const m = map({ a: { child: {} } }); const h = acquire_projected_identity(m, ["a", "child"]); m.at([]).asObject()!.renameKey("a", "b"); assert.deepEqual(h.path(), ["b", "child"]); });
-check("same-name rename is an identity no-op", () => { const m = map({ a: {} }); const h = acquire_projected_identity(m, ["a"]); const rev = m.rev; m.at([]).asObject()!.renameKey("a", "a"); assert.equal(m.rev, rev); assert.equal(h.active, true); });
-check("array forward move follows final index", () => { const m = map([{ a: 1 }, { b: 2 }, { c: 3 }]); const h = acquire_projected_identity(m, [0]); m.at([]).asArray()!.move(0, 2); assert.deepEqual(h.path(), [2]); });
-check("array backward move follows final index", () => { const m = map([{ a: 1 }, { b: 2 }, { c: 3 }]); const h = acquire_projected_identity(m, [2]); m.at([]).asArray()!.move(2, 0); assert.deepEqual(h.path(), [0]); });
-check("intervening siblings shift exactly once", () => { const m = map([{}, {}, {}]); const h = acquire_projected_identity(m, [1]); m.at([]).asArray()!.move(0, 2); assert.deepEqual(h.path(), [0]); });
-check("descendant identity follows array move", () => { const m = map([{ child: {} }, {}]); const h = acquire_projected_identity(m, [0, "child"]); m.at([]).asArray()!.move(0, 1); assert.deepEqual(h.path(), [1, "child"]); });
-check("insert before retained item shifts its path", () => { const m = map([{}, {}]); const h = acquire_projected_identity(m, [1]); m.at([]).asArray()!.insert(0, {}); assert.deepEqual(h.path(), [2]); });
-check("splice before retained item shifts its path", () => { const m = map([{}, {}, {}]); const h = acquire_projected_identity(m, [2]); m.splice([], 0, 1, {}, {}); assert.deepEqual(h.path(), [3]); });
-check("splice deletion invalidates removed identity", () => { const m = map([{}, {}]); const h = acquire_projected_identity(m, [0]); m.splice([], 0, 1); assert.equal(h.active, false); });
-check("direct object deletion invalidates", () => { const m = map({ a: {} }); const h = acquire_projected_identity(m, ["a"]); m.delete(["a"]); assert.equal(h.active, false); });
-check("structurally equal replacement invalidates", () => { const m = map({ a: { x: 1 } }); const h = acquire_projected_identity(m, ["a"]); m.replace(["a"], { x: 1 }); assert.equal(h.active, false); });
-check("ancestor replacement invalidates descendants", () => { const m = map({ a: { b: {} } }); const h = acquire_projected_identity(m, ["a", "b"]); m.replace(["a"], { b: {} }); assert.equal(h.active, false); });
-check("ancestor rename follows descendants", () => { const m = map({ a: { b: [] } }); const h = acquire_projected_identity(m, ["a", "b"]); m.at([]).asObject()!.renameKey("a", "z"); assert.deepEqual(h.path(), ["z", "b"]); });
-check("ancestor array move follows descendants", () => { const m = map([{ b: {} }, {}]); const h = acquire_projected_identity(m, [0, "b"]); m.at([]).asArray()!.move(0, 1); assert.deepEqual(h.path(), [1, "b"]); });
-check("whole-root replacement fences the identity epoch", () => { const m = map({ a: {} }); const h = acquire_projected_identity(m, ["a"]); m.replace({ a: {} }); assert.equal(h.active, false); });
-check("durable restore fences old handles", () => { const m = map({ a: {} }); const h = acquire_projected_identity(m, ["a"]); m.restore(m.capture()); assert.equal(h.active, false); });
-check("exact same-epoch restore preserves continuity", () => { const m = map({ a: {} }); const h = acquire_projected_identity(m, ["a"]); const c = m.capture({ identity: "same-epoch" }); m.restore(c, { identity: "same-epoch" }); assert.equal(h.active, true); });
-check("copied same-epoch capture cannot preserve continuity", () => { const m = map({ a: {} }); acquire_projected_identity(m, ["a"]); const c = m.capture({ identity: "same-epoch" }); assert.throws(() => m.restore({ ...c }, { identity: "same-epoch" })); });
-check("foreign projected capture cannot install its overlay", () => {
+check("nested scalar mutation preserves container identity", () => { const m = map({ a: { x: 1 } }); const h = acquire_projected_identity(m.lib("state"), ["a"]); m.lib("state").at(["a", "x"]).set(2); assert.deepEqual(h.snap(), { x: 2 }); });
+check("unrelated property insertion preserves identity", () => { const m = map({ a: {} }); const h = acquire_projected_identity(m.lib("state"), ["a"]); m.lib("state").at([]).asObject()!.setKey("b", 1); assert.deepEqual(h.path(), ["a"]); });
+check("object rename follows exact source identity", () => { const m = map({ a: { x: 1 } }); const h = acquire_projected_identity(m.lib("state"), ["a"]); m.lib("state").at([]).asObject()!.renameKey("a", "b"); assert.deepEqual(h.path(), ["b"]); });
+check("rename retains source position semantics", () => { const m = map({ z: 0, a: {}, y: 2 }); const h = acquire_projected_identity(m.lib("state"), ["a"]); m.lib("state").at([]).asObject()!.renameKey("a", "b"); assert.deepEqual(Object.keys(m.lib("state").snap() as object), ["z", "b", "y"]); assert.deepEqual(h.path(), ["b"]); });
+check("rename retires replaced destination identity", () => { const m = map({ a: {}, b: {} }); const source = acquire_projected_identity(m.lib("state"), ["a"]); const destination = acquire_projected_identity(m.lib("state"), ["b"]); m.lib("state").at([]).asObject()!.renameKey("a", "b"); assert.equal(source.active, true); assert.equal(destination.active, false); });
+check("descendant identity follows rename", () => { const m = map({ a: { child: {} } }); const h = acquire_projected_identity(m.lib("state"), ["a", "child"]); m.lib("state").at([]).asObject()!.renameKey("a", "b"); assert.deepEqual(h.path(), ["b", "child"]); });
+check("same-name rename is an identity no-op", () => { const m = map({ a: {} }); const h = acquire_projected_identity(m.lib("state"), ["a"]); const rev = m.rev; m.lib("state").at([]).asObject()!.renameKey("a", "a"); assert.equal(m.rev, rev); assert.equal(h.active, true); });
+check("array forward move follows final index", () => { const m = map([{ a: 1 }, { b: 2 }, { c: 3 }]); const h = acquire_projected_identity(m.lib("state"), [0]); m.lib("state").at([]).asArray()!.move(0, 2); assert.deepEqual(h.path(), [2]); });
+check("array backward move follows final index", () => { const m = map([{ a: 1 }, { b: 2 }, { c: 3 }]); const h = acquire_projected_identity(m.lib("state"), [2]); m.lib("state").at([]).asArray()!.move(2, 0); assert.deepEqual(h.path(), [0]); });
+check("intervening siblings shift exactly once", () => { const m = map([{}, {}, {}]); const h = acquire_projected_identity(m.lib("state"), [1]); m.lib("state").at([]).asArray()!.move(0, 2); assert.deepEqual(h.path(), [0]); });
+check("descendant identity follows array move", () => { const m = map([{ child: {} }, {}]); const h = acquire_projected_identity(m.lib("state"), [0, "child"]); m.lib("state").at([]).asArray()!.move(0, 1); assert.deepEqual(h.path(), [1, "child"]); });
+check("insert before retained item shifts its path", () => { const m = map([{}, {}]); const h = acquire_projected_identity(m.lib("state"), [1]); m.lib("state").at([]).asArray()!.insert(0, {}); assert.deepEqual(h.path(), [2]); });
+check("splice before retained item shifts its path", () => { const m = map([{}, {}, {}]); const h = acquire_projected_identity(m.lib("state"), [2]); m.lib("state").at([]).asArray()!.splice( 0, 1, {}, {}); assert.deepEqual(h.path(), [3]); });
+check("splice deletion invalidates removed identity", () => { const m = map([{}, {}]); const h = acquire_projected_identity(m.lib("state"), [0]); m.lib("state").at([]).asArray()!.splice( 0, 1); assert.equal(h.active, false); });
+check("direct object deletion invalidates", () => { const m = map({ a: {} }); const h = acquire_projected_identity(m.lib("state"), ["a"]); m.lib("state").at(["a"]).delete(); assert.equal(h.active, false); });
+check("structurally equal replacement invalidates", () => { const m = map({ a: { x: 1 } }); const h = acquire_projected_identity(m.lib("state"), ["a"]); m.lib("state").at(["a"]).replace( { x: 1 }); assert.equal(h.active, false); });
+check("ancestor replacement invalidates descendants", () => { const m = map({ a: { b: {} } }); const h = acquire_projected_identity(m.lib("state"), ["a", "b"]); m.lib("state").at(["a"]).replace( { b: {} }); assert.equal(h.active, false); });
+check("ancestor rename follows descendants", () => { const m = map({ a: { b: [] } }); const h = acquire_projected_identity(m.lib("state"), ["a", "b"]); m.lib("state").at([]).asObject()!.renameKey("a", "z"); assert.deepEqual(h.path(), ["z", "b"]); });
+check("ancestor array move follows descendants", () => { const m = map([{ b: {} }, {}]); const h = acquire_projected_identity(m.lib("state"), [0, "b"]); m.lib("state").at([]).asArray()!.move(0, 1); assert.deepEqual(h.path(), [1, "b"]); });
+check("whole-root replacement fences the identity epoch", () => { const m = map({ a: {} }); const h = acquire_projected_identity(m.lib("state"), ["a"]); m.lib("state").at([]).replace({ a: {} }); assert.equal(h.active, false); });
+check("durable restore fences old handles", () => { const m = map({ a: {} }); const h = acquire_projected_identity(m.lib("state"), ["a"]); m.restore(m.capture()); assert.equal(h.active, false); });
+check("incompatible registry capture cannot replace one-library state", () => {
   const source = map({ a: { value: 1 } });
-  acquire_projected_identity(source, ["a"]);
-  const exact = source.capture({ identity: "same-epoch" });
+  acquire_projected_identity(source.lib("state"), ["a"]);
+  const incompatible = hson.liveMap.fromLibraries({ other: { data: { a: { value: 1 } }, schema: ObjectSchema } }).capture();
   const target = map({ a: { value: 0 } });
   const before = target.capture();
-  assert.throws(() => target.restore(exact, { identity: "same-epoch" }));
+  assert.throws(() => target.restore(incompatible));
   assert.deepEqual(target.capture(), before);
-  assert.equal(livemap_identity_epoch_accounting(target).issued, 0);
+  assert.equal(livemap_identity_epoch_accounting(target.lib("state")).issued, 0);
 });
 check("portable projected capture transfers state without overlay or ledger", () => {
   const source = map({ a: { value: 1 } });
-  acquire_projected_identity(source, ["a"]);
+  acquire_projected_identity(source.lib("state"), ["a"]);
   const portable = source.capture();
   assert.equal(JSON.stringify(portable).includes("quid"), false);
   const target = map({ a: { value: 0 } });
   target.restore(portable);
-  assert.deepEqual(target.snap(), source.snap());
+  assert.deepEqual(target.lib("state").snap(), source.lib("state").snap());
   assert.equal(target.rev, source.rev);
-  assert.equal(livemap_identity_epoch_accounting(target).issued, 0);
+  assert.equal(livemap_identity_epoch_accounting(target.lib("state")).issued, 0);
 });
 
 process.stdout.write(`1..${checks}\n`);

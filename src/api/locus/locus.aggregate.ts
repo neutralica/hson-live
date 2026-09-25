@@ -6,7 +6,7 @@ import type {
   LiveMapDocumentCommitTarget,
   LiveMapDocumentContent,
   LiveMapGraphOp,
-  LiveMapLibraries,
+  LiveMap,
   LivePath,
 } from "../../types/livemap.types.js";
 import type { LocusActionOrigin, LocusClientActionMessage } from "../../types/locus.types.js";
@@ -75,7 +75,7 @@ export type LocusHostedAggregateDraft = Readonly<{
 }>;
 
 export type LocusHostedAggregateActionContext = Readonly<{
-  map: LiveMapLibraries;
+  map: LiveMap;
   origin: LocusActionOrigin;
   /**
    * Add work to this action's one aggregate candidate. Nothing becomes visible
@@ -105,7 +105,7 @@ export type LocusHostedAggregatePreaccept = Readonly<{
 }>;
 
 export type LocusHostedAggregateOptions = Readonly<{
-  map: LiveMapLibraries;
+  map: LiveMap;
   actions?: Readonly<Record<string, LocusHostedAggregateAction>>;
   /** The existing Locus pre-accept/durability boundary, at aggregate granularity. */
   gate?: (input: LocusHostedAggregateGateInput) => void | Promise<void>;
@@ -120,7 +120,7 @@ export type LocusHostedAggregateOptions = Readonly<{
 }>;
 
 export type LocusHostedAggregate = Readonly<{
-  map: LiveMapLibraries;
+  map: LiveMap;
   readonly logicalMapId: string;
   readonly incarnationId: string;
   readonly registryDigest: string;

@@ -1,5 +1,5 @@
 import type { PortableAggregateSnapshot } from "../livemap/livemap.hosted.internal.types.js";
-import type { HostedLiveMapLibrariesSnapshot } from "../../types/livemap.types.js";
+import type { HostedLiveMapSnapshot } from "../../types/livemap.types.js";
 import type { HsonSchemaData } from "../transform/transform.types.js";
 import type { AuthorityProjectionSnapshot, LocusProjectionSystemFeature } from "../../types/locus.projection.types.js";
 import type { HostedRegistry, HostedRegistryBinding } from "../livemap/livemap.hosted.js";
@@ -13,14 +13,14 @@ import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ing
 import { interaction_schema_internal, project_interaction_state_internal } from "../interactions/interactions.projection.js";
 import { INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME } from "../../internal/interaction-storage.js";
 import type { LocusSessionManager } from "./locus.session.js";
-import type { LiveMapLibraries } from "../../types/livemap.types.js";
+import type { LiveMap } from "../../types/livemap.types.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 
-const clientProjectionIdentity = new WeakMap<LiveMapLibraries, Readonly<{ digest: string; incarnationId: string }>>();
+const clientProjectionIdentity = new WeakMap<LiveMap, Readonly<{ digest: string; incarnationId: string }>>();
 const admittedSnapshots = new WeakMap<object, AuthorityProjectionSnapshot>();
 
 /** @internal The client contract digest is independent of its local registry. */
-export function bind_client_projection_identity_internal(map: LiveMapLibraries, snapshot: AuthorityProjectionSnapshot): void {
+export function bind_client_projection_identity_internal(map: LiveMap, snapshot: AuthorityProjectionSnapshot): void {
   const admitted = admit_authority_projection_snapshot(snapshot);
   const previous = clientProjectionIdentity.get(map);
   if (previous !== undefined && previous.incarnationId === admitted.authority.incarnationId
@@ -30,7 +30,7 @@ export function bind_client_projection_identity_internal(map: LiveMapLibraries, 
 }
 
 /** @internal */
-export function client_projection_identity_internal(map: LiveMapLibraries): string | undefined {
+export function client_projection_identity_internal(map: LiveMap): string | undefined {
   return clientProjectionIdentity.get(map)?.digest;
 }
 
@@ -158,7 +158,7 @@ export function decode_authority_projection_snapshot(encoded: string): Authority
 
 /** Pure projection of one atomic authority cut under an already-normalized session scope. */
 export function project_authority_snapshot(
-  complete: HostedLiveMapLibrariesSnapshot,
+  complete: HostedLiveMapSnapshot,
   effective: LocusEffectiveProjection,
 ): AuthorityProjectionSnapshot {
   try {
@@ -192,7 +192,7 @@ export function project_authority_snapshot(
 
 /** Capture the already-authorized subset directly from one synchronous map revision. @internal */
 export function capture_selected_authority_projection_snapshot(
-  map: LiveMapLibraries,
+  map: LiveMap,
   effective: LocusEffectiveProjection,
 ): AuthorityProjectionSnapshot {
   try {
@@ -219,7 +219,7 @@ export function capture_selected_authority_projection_snapshot(
 
 /** Capture once, then consume the session's immutable Step 6A scope. @internal */
 export function capture_locus_session_authority_projection_snapshot(
-  map: LiveMapLibraries,
+  map: LiveMap,
   sessions: LocusSessionManager,
   sessionId: string,
 ): AuthorityProjectionSnapshot {

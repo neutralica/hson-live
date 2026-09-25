@@ -1,10 +1,11 @@
 import type { PortableAggregateSnapshot } from "./livemap.hosted.internal.types.js";
 import type { HsonNode, JsonValue } from "../../core/types.js";
 import type { HsonSchema } from "../transform/transform.types.js";
-import type { HostedLiveMapLibrariesSnapshot, LiveMapGraphCommit, LiveMapGraphOp, LiveMapLibrariesSnapshot, LocalLibrariesContinuationSnapshot, LivePath } from "../../types/livemap.types.js";
+import type { HostedLiveMapSnapshot, LiveMapGraphCommit, LiveMapGraphOp, LiveMapSnapshot, LocalLibrariesContinuationSnapshot, LivePath } from "../../types/livemap.types.js";
 import { resolveLiveMapNode } from "./livemap.node.js";
 import type { LiveMapIdentityEpochController } from "./livemap.identity-epoch.js";
 import type { LiveMapDocumentIdentityOverlay } from "./livemap.document.identity.js";
+import type { LiveMapProjectedIdentityOverlay } from "./livemap.projected.identity.js";
 import type {
   LiveMapAggregateCommit,
   LiveMapAggregateWrite,
@@ -41,13 +42,6 @@ type InternalLiveMapOwner = Readonly<{
 
 const INTERNAL_OWNERS = new WeakMap<object, InternalLiveMapOwner>();
 
-type InternalLiveMapLibraryOwner = Readonly<{
-  library: () => LiveMapLibraryState;
-  revision: () => number;
-  identityEpoch: LiveMapIdentityEpochController;
-}>;
-
-const INTERNAL_LIBRARY_OWNERS = new WeakMap<object, InternalLiveMapLibraryOwner>();
 const INTERNAL_AUTHORITY_POSITION_OBSERVERS = new WeakMap<object, (listener: (revision: number) => void) => () => void>();
 
 /** Selected managed libraries can follow map-wide authority position without a mutation event. @internal */
@@ -101,18 +95,18 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     revision: number;
     libraries: readonly string[];
   }> | undefined;
-  captureLibraries: () => LiveMapLibrariesSnapshot;
-  captureHosted: () => HostedLiveMapLibrariesSnapshot;
+  captureLibraries: () => LiveMapSnapshot;
+  captureHosted: () => HostedLiveMapSnapshot;
   captureSemanticCheckpoint: () => LiveMapSemanticCheckpoint;
   installSemanticCheckpoint: (checkpoint: LiveMapSemanticCheckpoint) => void;
-  restoreLibraries: (snapshot: LiveMapLibrariesSnapshot) => void;
+  restoreLibraries: (snapshot: LiveMapSnapshot) => void;
   restorePortableLibraries: (snapshot: LocalLibrariesContinuationSnapshot) => void;
-  restoreHosted: (snapshot: HostedLiveMapLibrariesSnapshot, authorityOverride?: import("./livemap.hosted.js").HostedAuthorityFence) => void;
+  restoreHosted: (snapshot: HostedLiveMapSnapshot, authorityOverride?: import("./livemap.hosted.js").HostedAuthorityFence) => void;
   /** QUID-free network snapshot; installs a fresh local identity epoch. @internal */
   restoreClientHosted: (snapshot: import("./livemap.hosted.internal.types.js").PortableAggregateSnapshot) => void;
   restoreClientHostedManaged: (owner: object, snapshot: import("./livemap.hosted.internal.types.js").PortableAggregateSnapshot) => void;
   /** Apply a transport snapshot while this aggregate is client-managed. @internal */
-  restoreHostedManaged: (owner: object, snapshot: HostedLiveMapLibrariesSnapshot) => void;
+  restoreHostedManaged: (owner: object, snapshot: HostedLiveMapSnapshot) => void;
   replayHosted: (commit: HostedAggregateCommit) => LiveMapAggregateCommit;
   replayClientHosted: (commit: import("./livemap.hosted.js").PortableAggregateCommit) => LiveMapAggregateCommit;
   /** Replay durable portable effects, including a revision whose effects collapse after identity reset. @internal */
@@ -128,13 +122,12 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     prevRev: number;
     rev: number;
   }>) => number;
-  /** Historical single-map progress hook; not used by hosted Echo. @internal */
-  advanceSoloProgress: (prevRev: number, rev: number) => number;
   /** Authority position, including commits, progress, and snapshot installation. @internal */
   observeAuthorityPosition: (listener: (revision: number) => void) => () => void;
   target: (library: LiveMapLibraryIdentity, path: LivePath) => LiveMapStructuralTarget;
   root: (library: LiveMapLibraryIdentity) => HsonNode;
   documentOverlay: (library: LiveMapLibraryIdentity) => LiveMapDocumentIdentityOverlay;
+  projectedOverlay: (library: LiveMapLibraryIdentity) => LiveMapProjectedIdentityOverlay;
   /** Exact-capture continuity proof for a projected document Library. @internal */
   documentCaptureContinuity: (library: LiveMapLibraryIdentity) => object | undefined;
   identityEpoch: () => LiveMapIdentityEpochController;
@@ -173,6 +166,8 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     library: LiveMapLibraryIdentity,
     commit: LiveMapAggregateCommit,
   ) => LiveMapGraphCommit | undefined;
+  /** The accepted document root at this commit, even if later revisions were accepted during publication. */
+  documentRootFor: (library: LiveMapLibraryIdentity, commit: LiveMapAggregateCommit) => HsonNode | undefined;
   /** Recover the aggregate envelope that accepted one selected-document commit. */
   aggregateCommitForDocument: (commit: LiveMapGraphCommit) => LiveMapAggregateCommit | undefined;
   observe: (listener: (commit: LiveMapAggregateCommit) => void) => () => void;
@@ -237,16 +232,6 @@ export function register_internal_livemap_owner(owner: object, root: () => HsonN
   INTERNAL_OWNERS.set(owner, Object.freeze({ root }));
 }
 
-/** Register non-public ownership evidence for architecture regression tests. */
-export function register_internal_livemap_library_owner(
-  owner: object,
-  library: () => LiveMapLibraryState,
-  revision: () => number,
-  identityEpoch: LiveMapIdentityEpochController,
-): void {
-  INTERNAL_LIBRARY_OWNERS.set(owner, Object.freeze({ library, revision, identityEpoch }));
-}
-
 /** Register the hidden multi-library transition seam; it is intentionally not a package API. */
 export function register_internal_livemap_aggregate_owner(
   owner: object,
@@ -260,30 +245,6 @@ export function internal_livemap_aggregate_authority(owner: object): InternalLiv
   const authority = INTERNAL_AGGREGATE_OWNERS.get(owner);
   if (authority === undefined) throw new Error("LiveMap internal aggregate authority is unavailable.");
   return authority;
-}
-
-/** Inspect ownership without publishing a library-selection API. @internal */
-export function internal_livemap_library_ownership(owner: object): Readonly<{
-  library: object;
-  mode: LiveMapLibraryState["mode"];
-  root: HsonNode;
-  hsonSchemaAttached: boolean;
-  revision: number;
-  quidEpoch: number;
-  issuedQuids: number;
-}> {
-  const registered = INTERNAL_LIBRARY_OWNERS.get(owner);
-  if (registered === undefined) throw new Error("LiveMap internal library owner is unavailable.");
-  const library = registered.library();
-  return Object.freeze({
-    library: library.identity,
-    mode: library.mode,
-    root: library.root,
-    hsonSchemaAttached: library.hsonSchema !== undefined,
-    revision: registered.revision(),
-    quidEpoch: registered.identityEpoch.current(),
-    issuedQuids: registered.identityEpoch.issued().size,
-  });
 }
 
 /** In-package inspection and low-level test seam. Never exported publicly. */

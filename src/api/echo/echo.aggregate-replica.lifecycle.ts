@@ -1,17 +1,17 @@
 import type { PortableAggregateSnapshot } from "../livemap/livemap.hosted.internal.types.js";
-import type { LiveMapLibraries } from "../../types/livemap.types.js";
+import type { LiveMap } from "../../types/livemap.types.js";
 import type { LocusDisposer } from "../../types/locus.types.js";
 import type { EchoMapManagementLease } from "../../internal/echo-map-capability.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
-import type { HostedLiveMapLibrariesSnapshot } from "../../types/livemap.types.js";
+import type { HostedLiveMapSnapshot } from "../../types/livemap.types.js";
 import type { PortableAggregateCommit } from "../livemap/livemap.hosted.js";
 import type { HostedAuthorityFence, HostedRegistry } from "../livemap/livemap.hosted.js";
 import type { EchoReplicaCapability } from "./echo.replica.js";
 
 /** @internal Aggregate exact-replica management and terminal lifetime. */
-export type EchoAggregateReplicaCapability = EchoReplicaCapability<LiveMapLibraries | undefined> & Readonly<{
-  attachMap: (map: LiveMapLibraries) => void;
-  captureHosted: () => HostedLiveMapLibrariesSnapshot;
+export type EchoAggregateReplicaCapability = EchoReplicaCapability<LiveMap | undefined> & Readonly<{
+  attachMap: (map: LiveMap) => void;
+  captureHosted: () => HostedLiveMapSnapshot;
   hostedPosition: () => Readonly<{ authority: HostedAuthorityFence; revision: number; registryDigest: string }>;
   clientProjection: () => Readonly<{ authority: HostedAuthorityFence; registry: HostedRegistry; revision: number; libraries: readonly string[] }> | undefined;
   restoreHosted: (snapshot: PortableAggregateSnapshot) => void;
@@ -27,12 +27,9 @@ export type EchoAggregateReplicaCapability = EchoReplicaCapability<LiveMapLibrar
 
 /** @internal Construct an aggregate replica independently of endpoint/session mechanics. */
 export function create_echo_aggregate_replica_capability_internal(
-  initialMap?: LiveMapLibraries,
+  initialMap?: LiveMap,
   management?: EchoMapManagementLease,
 ): EchoAggregateReplicaCapability {
-  if (management !== undefined && management.topology !== "aggregate") {
-    throw new Error("Echo aggregate replica received incompatible map management.");
-  }
   const owner = management?.owner ?? Object.freeze({});
   const readyWaiters = new Set<Readonly<{ resolve: () => void; reject: (reason: Error) => void }>>();
   const disposeListeners = new Set<(reason: Error) => void>();
@@ -57,7 +54,7 @@ export function create_echo_aggregate_replica_capability_internal(
       internal_livemap_aggregate_authority(next).claimManagement(owner);
       map = next;
     },
-    captureHosted(): HostedLiveMapLibrariesSnapshot {
+    captureHosted(): HostedLiveMapSnapshot {
       if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");
       return internal_livemap_aggregate_authority(map).captureHosted();
     },

@@ -7,7 +7,7 @@ import {
   hsonLocus,
   type HsonSchema,
 } from "../src/index.ts";
-import { install_libraries_snapshot, validate_document_path, type LiveMapMultiLibraryCommit } from "../src/api/livemap/index.ts";
+import { install_libraries_snapshot, validate_document_path, type LiveMapCommit } from "../src/api/livemap/index.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.identity-epoch.ts";
 import { decode_hosted_root, encode_hosted_root } from "../src/api/livemap/livemap.hosted.ts";
@@ -140,9 +140,9 @@ check("named registry construction preserves selection and atomic commits in eit
   }
 });
 
-check("one-library data and document constructors seed the same registry authority", () => {
-  const data = hsonLiveMap.fromData(Hson.data.from({ count: 1 }));
-  const document = hsonLiveMap.fromDocument(Hson.document.fromHson(Hson.canonical`<main/>`));
+check("one named library seeds the ordinary registry authority", () => {
+  const data = hsonLiveMap.fromLibraries({ state: { data: { count: 1, nested: { value: 2 } }, schema: StateSchema } });
+  const document = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: PageSchema } });
   for (const [map, mode] of [[data, "data-object"], [document, "document"]] as const) {
     const authority = internal_livemap_aggregate_authority(map);
     assert.equal(authority.libraries().length, 1);
@@ -163,7 +163,7 @@ check("named document Library mutations retain their selected authority and glob
   const map = create_map();
   const page = map.lib("page");
   const commit = page.at([]).asElement()!.attrs.set("title", "selected");
-  assert.equal(commit.kind, "multi-library");
+  assert.equal(commit.kind, "map");
   assert.deepEqual([commit.prevRev, commit.rev], [0, 1]);
   assert.deepEqual(commit.operations.map((entry) => entry.library), ["page"]);
   assert.equal(page.at([]).asElement()!.attrs.get("title"), "selected");
@@ -338,12 +338,12 @@ check("aggregate document writes reject accidental cross-library QUID transfer",
 
 check("named Handles stay library-relative and return one truthful global commit", () => {
   const map = create_map();
-  const seen: LiveMapMultiLibraryCommit[] = [];
+  const seen: LiveMapCommit[] = [];
   map.commits.observe((commit) => seen.push(commit));
   const handle = map.lib("state").at(["nested"]);
   const commit = handle.at(["value"]).set(3);
 
-  assert.equal(commit.kind, "multi-library");
+  assert.equal(commit.kind, "map");
   assert.deepEqual([commit.prevRev, commit.rev], [0, 1]);
   assert.deepEqual(commit.operations.map((entry) => entry.library), ["state"]);
   assert.equal("target" in commit.operations[0]!, false);
@@ -361,8 +361,8 @@ check("each named Library validates its initial graph before the registry is ret
 });
 
 check("the public commit family preserves future cross-library operation order", () => {
-  const proof: LiveMapMultiLibraryCommit<"state" | "colors"> = {
-    kind: "multi-library",
+  const proof: LiveMapCommit<"state" | "colors"> = {
+    kind: "map",
     changed: true,
     prevRev: 7,
     rev: 8,
@@ -375,7 +375,7 @@ check("the public commit family preserves future cross-library operation order",
   assert.deepEqual(proof.operations.map((entry) => entry.library), ["state", "colors", "state"]);
 });
 
-check("ordinary Locus accepts and exclusively manages a public multi-library map", () => {
+check("ordinary Locus accepts and exclusively manages a public registry map", () => {
   const map = create_map();
   const locus = hsonLocus.create({ exposure: test_public_exposure(map), map });
   assert.equal(locus.map, map);

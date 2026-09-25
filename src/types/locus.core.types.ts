@@ -9,9 +9,7 @@ import type {
   LiveMapDocumentCommitTarget,
   LiveMapDataLibraryInput,
   LiveMapGraphOp,
-  LiveMapLibraries,
-  LiveMapLibrariesInput,
-  LiveMapAuthority,
+  LiveMapInput,
   LiveMapPathValue,
   LiveMapSetValue,
   LiveMapWriteValue,
@@ -104,18 +102,18 @@ type LocusMutationDraftForInput<TInput> =
       : LocusBroadDataMutationDraft | LocusDocumentMutationDraft;
 
 /** Inferred only inside a Locus registry mutation callback. */
-type LocusMutationDraft<TLibraries extends LiveMapLibrariesInput> = Readonly<{
+type LocusMutationDraft<TLibraries extends LiveMapInput> = Readonly<{
   lib: <TLibrary extends Extract<keyof TLibraries, string>>(
     name: TLibrary,
   ) => LocusMutationDraftForInput<TLibraries[TLibrary]>;
 }>;
 
-type LocusInputs<TMap extends LiveMapLibraries> =
-  TMap extends LiveMapLibraries<infer TLibraries> ? TLibraries : LiveMapLibrariesInput;
+type LocusInputs<TMap extends LiveMap> =
+  TMap extends LiveMap<infer TLibraries> ? TLibraries : LiveMapInput;
 
 /** Ordinary Locus action context for one fixed library-registry LiveMap. */
 export type LocusActionContext<
-  TMap extends LiveMapLibraries = LiveMapLibraries,
+  TMap extends LiveMap = LiveMap,
 > = Readonly<{
   map: TMap;
   mutate: (mutation: (draft: LocusMutationDraft<LocusInputs<TMap>>) => void) => Promise<void>;
@@ -126,7 +124,7 @@ export type LocusActionContext<
 
 export type LocusActionHandler<
   TPayload extends JsonValue | undefined = JsonValue | undefined,
-  TMap extends LiveMapLibraries = LiveMapLibraries,
+  TMap extends LiveMap = LiveMap,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = (
   ctx: LocusActionContext<TMap>,
@@ -135,7 +133,7 @@ export type LocusActionHandler<
 ) => unknown | void | Promise<unknown | void>;
 
 export type LocusActions<
-  TMap extends LiveMapLibraries = LiveMapLibraries,
+  TMap extends LiveMap = LiveMap,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = Readonly<{
   [TName in keyof TActions & string]: LocusActionHandler<TActions[TName], TMap, TActions>;
@@ -143,7 +141,7 @@ export type LocusActions<
 
 /** Existing Locus construction options when `map` is a fixed public Library registry. */
 export type LocusOptions<
-  TMap extends LiveMapLibraries,
+  TMap extends LiveMap,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = Readonly<{
   map: TMap;
@@ -365,7 +363,7 @@ export type EchoRecoveryDiagnostics = Readonly<{
 }>;
 
 export type EchoRecovery<
-  TMap extends LiveMapAuthority | LiveMapLibraries = LiveMap<JsonValue | undefined>,
+  TMap extends LiveMap = LiveMap,
 > = Readonly<{
   readonly status: EchoRecoveryStatus;
   readonly logicalMapId: LocusLogicalMapId | undefined;
@@ -424,7 +422,7 @@ export type EchoSessionOptions = Readonly<{
   credential?: LocusSessionCredential;
 }>;
 
-type EchoMap = LiveMapAuthority | LiveMapLibraries;
+type EchoMap = LiveMap;
 
 type EchoCommonOptions = Readonly<{
   socket: LocusSocketLike;
@@ -464,7 +462,7 @@ export type Echo<
 
 /** Locus result for the fixed library-registry construction surface. */
 export type Locus<
-  TMap extends LiveMapLibraries = LiveMapLibraries,
+  TMap extends LiveMap = LiveMap,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = Readonly<{
   map: TMap;
@@ -503,14 +501,14 @@ export interface LocusPersistenceAdapter {
 }
 
 export type PersistentLocusOptions<
-  TMap extends LiveMapLibraries,
+  TMap extends LiveMap,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = LocusOptions<TMap, TActions> & Readonly<{
   persistence: LocusPersistenceAdapter;
 }>;
 
 export type PersistentLocus<
-  TMap extends LiveMapLibraries = LiveMapLibraries,
+  TMap extends LiveMap = LiveMap,
   TActions extends LocusActionPayloads = LocusActionPayloads,
 > = Locus<TMap, TActions> & Readonly<{
   checkpoint: () => Promise<void>;

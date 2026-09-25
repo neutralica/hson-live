@@ -1,4 +1,4 @@
-import type { TrustedSchemaSourceBinding, TrustedSchemaDirectSource, TrustedSchemaMapFlow } from "./protocol.js";
+import type { TrustedSchemaSourceBinding, TrustedSchemaDirectSource } from "./protocol.js";
 
 export function same_schema_source_binding(a: TrustedSchemaSourceBinding, b: TrustedSchemaSourceBinding): boolean {
   return a.moduleUrl === b.moduleUrl && a.exportName === b.exportName
@@ -9,7 +9,6 @@ export function same_direct_source(a: TrustedSchemaDirectSource, b: TrustedSchem
     && a.interpolation?.templateId === b.interpolation?.templateId && a.interpolation?.sourceRevision === b.interpolation?.sourceRevision
     && a.interpolation?.evaluationId === b.interpolation?.evaluationId
     && a.documentRevision === b.documentRevision && a.templateRevision === b.templateRevision
-    && same_map_flow(a.mapFlow, b.mapFlow)
     && a.associationRevision === b.associationRevision && same_schema_source_binding(a.binding, b.binding);
 }
 export function valid_schema_source_binding(value: unknown): value is TrustedSchemaSourceBinding {
@@ -18,9 +17,4 @@ export function valid_schema_source_binding(value: unknown): value is TrustedSch
   if ("exportName" in value) return typeof value.exportName === "string" && value.exportName.length > 0 && !("localName" in value) && !("declarationStart" in value);
   return "localName" in value && typeof value.localName === "string" && value.localName.length > 0
     && "declarationStart" in value && typeof value.declarationStart === "number" && Number.isSafeInteger(value.declarationStart) && value.declarationStart >= 0;
-}
-
-export function same_map_flow(a: TrustedSchemaMapFlow | undefined, b: TrustedSchemaMapFlow | undefined): boolean {
-  return a === undefined || b === undefined ? a === b : a.moduleUrl === b.moduleUrl && a.contextRevision === b.contextRevision
-    && a.templateId === b.templateId && a.constructionId === b.constructionId && a.callId === b.callId;
 }

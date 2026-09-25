@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { WebSocketServer } from "ws";
 import { Hson, add_interaction, enable_interactions, encode_ssr_bootstrap, hson, hsonLocus, render_document, render_hosted_document } from "../dist/index.js";
 import { parse_hson_exact_runtime } from "../dist/internal/exact-runtime-hson-codec.js";
-import { admit_exact_runtime_livemap_node, admit_exact_runtime_livemap_libraries } from "../dist/internal/exact-runtime-node-admission.js";
+import { admit_exact_runtime_livemap_libraries } from "../dist/internal/exact-runtime-node-admission.js";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
 const temporaryRoot = join(repositoryRoot, "tmp");
@@ -49,14 +49,16 @@ try {
   ], { encoding: "utf8" });
   if (bundle.status !== 0) throw new Error(bundle.stderr || "Document SSR browser bundle failed.");
 
-  const localMap = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(`<main id="local-ssr" <p @000005201 "a" "" "b"/>/>`, { allowTopLevelDocumentText: true }));
-  if (localMap.mode !== "document") throw new Error("Local SSR fixture requires a document map.");
-  localMap.document.attrs.set({ kind: "path", path: [0] }, "data-revision", "N");
+  const LocalPageSchema = Hson.schema`<type "document" tag "main" attrs <props <id "string" data-revision <optional "string">>> content <sequence [<tag "p" content "string">]>>`;
+  const localMap = admit_exact_runtime_livemap_libraries({
+    page: { document: parse_hson_exact_runtime(`<main id="local-ssr" <p @000005201 "ab"/>/>`, { allowTopLevelDocumentText: true }), schema: LocalPageSchema },
+  });
+  localMap.lib("page").document.attrs.set({ kind: "path", path: [0] }, "data-revision", "N");
   const local = render_document({ map: localMap });
   assert.doesNotMatch(local.html, /hson:quid|000005201/);
   assert.doesNotMatch(JSON.stringify(local.bootstrap), /000005201|"quid"/);
-  const fullMap = hson.liveMap.fromHson(`<html <head <title "SSR"/>/> <body <main "whole"/>/>/>`);
-  if (fullMap.mode !== "document") throw new Error("Full SSR fixture requires a document map.");
+  const FullPageSchema = Hson.schema`<type "document" tag "html" content <sequence [<tag "head" content <sequence [<tag "title" content "string">]>>, <tag "body" content <sequence [<tag "main" content "string">]>>]>>`;
+  const fullMap = hson.liveMap.fromLibraries({ page: { document: `<html <head <title "SSR"/>/> <body <main "whole"/>/>/>`, schema: FullPageSchema } });
   const full = render_document({ map: fullMap });
   const LocalLibrariesStateSchema = Hson.schema`<type "data" content <count "number">>`;
   const LocalLibrariesPageSchema = Hson.schema`<type "document" tag "main" attrs <props <id "string">> content <sequence [<tag "button" content "empty">]>>`;

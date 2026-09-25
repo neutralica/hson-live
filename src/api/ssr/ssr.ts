@@ -1,15 +1,13 @@
 import type {
-  DocumentLiveMap,
-  LiveMapLibraries,
+  LiveMap,
 } from "../../types/livemap.types.js";
 import type { Locus } from "../../types/locus.types.js";
 import { is_locus_libraries_snapshot_authority_internal } from "../locus/locus.libraries-snapshot.js";
-import { install_libraries_snapshot, is_public_multi_library_livemap } from "../livemap/livemap.libraries.js";
+import { install_libraries_snapshot } from "../livemap/livemap.libraries.js";
 import { decode_hosted_root } from "../livemap/livemap.hosted.js";
 import { DocumentSsrError } from "./ssr.error.js";
-import { render_local_document, render_local_libraries } from "../../internal/document-cut.js";
+import { render_local_libraries } from "../../internal/document-cut.js";
 import type {
-  DocumentSsr,
   LibrariesDocumentSsr,
   HostedLibrariesDocumentSsr,
 } from "./ssr.types.js";
@@ -37,38 +35,27 @@ function require_options(value: unknown, name: string): Readonly<Record<string, 
 }
 
 /** Compose browser-realization HTML and exact bootstrap state from one local capture. */
-export function render_document(options: Readonly<{ map: DocumentLiveMap }>): DocumentSsr;
 export function render_document(options: Readonly<{
-  map: LiveMapLibraries;
+  map: LiveMap;
   document?: string;
 }>): LibrariesDocumentSsr;
 export function render_document(options: Readonly<{
-  map: DocumentLiveMap | LiveMapLibraries;
+  map: LiveMap;
   document?: string;
-}>): DocumentSsr | LibrariesDocumentSsr {
+}>): LibrariesDocumentSsr {
   require_options(options, "render_document");
-  const map = options.map;
-  if (is_public_multi_library_livemap(map)) {
-    return render_local_libraries(map as LiveMapLibraries, options.document,
-      install_libraries_snapshot, decode_hosted_root,
-      () => testHook?.("local-libraries-after-capture"));
-  }
-  const documentMap = map as DocumentLiveMap;
-  if (typeof documentMap !== "object" || documentMap === null
-    || documentMap.mode !== "document" || typeof documentMap.capture !== "function") {
-    throw new TypeError("render_document requires one DocumentLiveMap.");
-  }
-
-  return render_local_document(documentMap, () => testHook?.("local-after-capture"));
+  return render_local_libraries(options.map, options.document,
+    install_libraries_snapshot, decode_hosted_root,
+    () => testHook?.("local-libraries-after-capture"));
 }
 
 /** Compose browser HTML and projected authority state from one authorized session cut. */
-export function render_hosted_document<TMap extends LiveMapLibraries>(
+export function render_hosted_document<TMap extends LiveMap>(
   options: Readonly<{ authority: Locus<TMap>; sessionId: string; document?: string }>,
 ): HostedLibrariesDocumentSsr;
 export function render_hosted_document(
   options: Readonly<{
-    authority: Locus<LiveMapLibraries>;
+    authority: Locus<LiveMap>;
     sessionId: string;
     document?: string;
   }>,

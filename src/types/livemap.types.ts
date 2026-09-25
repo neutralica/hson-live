@@ -32,12 +32,12 @@ export type LivePathPart = string | number;
 export type LivePath = readonly LivePathPart[];
 
 /** Canonical root shape owned by one LiveMap instance. */
-export type LiveMapRootMode = DataLiveMapMode | DocumentLiveMapMode;
+export type LiveMapRootMode = DataLiveMapMode | LiveMapDocumentMode;
 export type DataLiveMapMode = "data-object" | "data-array";
-export type DocumentLiveMapMode = "document";
+export type LiveMapDocumentMode = "document";
 
 /** One detached semantic snapshot of a complete fixed LiveMap Libraries registry. */
-export type LiveMapLibrariesSnapshot = Readonly<{
+export type LiveMapSnapshot = Readonly<{
   format: "hson-livemap-libraries-snapshot";
   revision: number;
   registry: Readonly<{
@@ -63,10 +63,10 @@ export type LiveMapLibrariesSnapshot = Readonly<{
 }>;
 
 /** Complete local continuation snapshot with portable roots and no server runtime identity. */
-export type LocalLibrariesContinuationSnapshot = LiveMapLibrariesSnapshot;
+export type LocalLibrariesContinuationSnapshot = LiveMapSnapshot;
 
 /** Internal owner-local exact cut plus its hosted authority fence. */
-export type HostedLiveMapLibrariesSnapshot = LiveMapLibrariesSnapshot & Readonly<{
+export type HostedLiveMapSnapshot = LiveMapSnapshot & Readonly<{
   identity: Readonly<{ epoch: number; issuedQuids: readonly string[] }>;
   authority: Readonly<{ logicalMapId: string; incarnationId: string }>;
 }>;
@@ -151,7 +151,7 @@ export type LiveMapCaptureIdentity = "same-epoch" | "strip";
 export type LiveMapCaptureOptions = Readonly<{ identity: LiveMapCaptureIdentity }>;
 export type LiveMapRestoreOptions = Readonly<{ identity?: LiveMapCaptureIdentity | "reject" }>;
 
-export type LiveMapCoreReplay = (input: LiveMapReplay) => LiveMapCommit<LiveMapDataOp>;
+export type LiveMapCoreReplay = (input: LiveMapReplay) => LiveMapCoreCommit<LiveMapDataOp>;
 
 declare const LIVEMAP_INVALID_STATIC_PATH: unique symbol;
 type LiveMapInvalidStaticPath = Readonly<{ [LIVEMAP_INVALID_STATIC_PATH]: true }>;
@@ -280,11 +280,11 @@ export type LiveMapPathSetManyValues<TValue, TPath extends LivePath> =
   LiveMapObjectSetManyValues<LiveMapPathValue<TValue, TPath>>;
 
 export type LiveMapReplaceFn<TValue = JsonValue | undefined> = {
-  (value: NoInfer<LiveMapWriteValue<TValue>>): LiveMapCommit<LiveMapDataOp>;
+  (value: NoInfer<LiveMapWriteValue<TValue>>): LiveMapCoreCommit<LiveMapDataOp>;
   <const TPath extends LivePath>(
     path: TPath,
     value: NoInfer<LiveMapPathWriteValue<TValue, TPath>>,
-  ): LiveMapCommit<LiveMapDataOp>;
+  ): LiveMapCoreCommit<LiveMapDataOp>;
 };
 
 export type LiveMapBatchReplaceFn<TValue = JsonValue | undefined> = {
@@ -321,20 +321,6 @@ export type LiveMapBatchTx<TValue = JsonValue | undefined> = Readonly<{
   delete: (path: LivePath) => LiveMapBatchTx<TValue>;
 }>;
 
-/**
- * Schema attachment surface for a LiveMap.
- *
- * `schema.use(schema)` validates the current canonical root and returns the same
- * runtime map object. HsonSchema is the sole public Schema authority.
- *
- * The first successful attachment permanently governs that owner. Reusing the
- * same schema object is idempotent; any distinct schema object rejects.
- */
-export type LiveMapCoreSchemaApi<TValue = JsonValue | undefined> = Readonly<{
-  get: () => HsonSchema | undefined;
-  use: <const TSchema extends HsonSchema>(schema: TSchema, ...wrongMode: [NoInfer<TSchema>] extends [HsonSchema<unknown, "document">] ? [never] : []) => LiveMap<SchemaType<NoInfer<TSchema>>>;
-}>;
-
 export type LiveMapCore<
   TValue = JsonValue | undefined,
   TMode extends LiveMapRootMode = LiveMapRootMode,
@@ -346,24 +332,23 @@ export type LiveMapCore<
   snap: LiveMapCoreSnap<TValue>;
   /** Read exact canonical data without ordinary-JavaScript materialization. */
   data: (path?: LivePath) => HsonData | undefined;
-  schema: LiveMapCoreSchemaApi<TValue>;
   at: <const TPath extends LivePath>(
     path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
   ) => LiveMapPathHandle<LiveMapPathValue<TValue, TPath>>;
   proxy: <const TPath extends LivePath = []>(path?: TPath) => LiveMapProxy<TValue, TPath>;
   /** Set a resolved data path; plain objects expand into shallow child sets. */
-  set: <const TPath extends LivePath>(path: TPath, value: NoInfer<LiveMapPathSetValue<TValue, TPath>>) => LiveMapCommit<LiveMapDataOp>;
+  set: <const TPath extends LivePath>(path: TPath, value: NoInfer<LiveMapPathSetValue<TValue, TPath>>) => LiveMapCoreCommit<LiveMapDataOp>;
   /** Shallow object set that expands values into child-path sets and preserves unspecified siblings. */
   setMany: <const TPath extends LivePath>(
     path: TPath,
     values: NoInfer<LiveMapPathSetManyValues<TValue, TPath>>,
-  ) => LiveMapCommit<LiveMapDataOp>;
-  splice: (path: LivePath, start: number, deleteCount: number, ...items: readonly JsonValue[]) => LiveMapCommit<LiveMapDataOp>;
+  ) => LiveMapCoreCommit<LiveMapDataOp>;
+  splice: (path: LivePath, start: number, deleteCount: number, ...items: readonly JsonValue[]) => LiveMapCoreCommit<LiveMapDataOp>;
   /** Exact root replacement, or exact endpoint replacement at a data path; `set([])` remains invalid. */
   replace: LiveMapReplaceFn<TValue>;
-  delete: (path: LivePath) => LiveMapCommit<LiveMapDataOp>;
+  delete: (path: LivePath) => LiveMapCoreCommit<LiveMapDataOp>;
   /** Explicit synchronous transaction grouping for one commit. */
-  batch: (fn: (tx: LiveMapBatchTx<TValue>) => void) => LiveMapCommit<LiveMapDataOp>;
+  batch: (fn: (tx: LiveMapBatchTx<TValue>) => void) => LiveMapCoreCommit<LiveMapDataOp>;
   feed: (path: LivePath, listener: LiveMapFeedListener) => LiveMapDisposer;
   commits: LiveMapCommitObserverApi;
   sub: LiveMapSubApi<TValue>;
@@ -376,27 +361,14 @@ export type LiveMapCore<
   /** Atomically restore one canonical structural-JSON capture. */
   restore: (capture: LiveMapCapture, options?: LiveMapRestoreOptions) => void;
   /** Apply canonical structural-JSON state at one base revision. */
-  apply: (input: LiveMapApply) => LiveMapCommit<LiveMapDataOp>;
+  apply: (input: LiveMapApply) => LiveMapCoreCommit<LiveMapDataOp>;
   /** Replay one canonical structural-JSON operation envelope. */
   replay: LiveMapCoreReplay;
 }>;
 
-/**
- * Public LiveMap surface.
- *
- * `TValue` is the current data root value type. A map created without a
- * schema starts as `LiveMap<JsonValue | undefined>`. HsonSchema governance is
- * attached with `map.schema.use(schema)`.
- */
-export type LiveMap<TValue = JsonValue | undefined> = Readonly<
-  Omit<LiveMapCore<TValue, LiveMapRootMode>, "mode"> & {
-    readonly mode: DataLiveMapMode;
-  }
->;
-
 /** Detached document state; only an owner-proven same-epoch capability retains identity. */
-export type DocumentLiveMapCapture<
-  TMode extends DocumentLiveMapMode = DocumentLiveMapMode,
+export type LiveMapDocumentCapture<
+  TMode extends LiveMapDocumentMode = LiveMapDocumentMode,
 > = Readonly<{
   kind: "hson-document";
   mode: TMode;
@@ -405,32 +377,32 @@ export type DocumentLiveMapCapture<
 }>;
 
 /** Explicit identity treatment for one detached document capture. */
-export type DocumentLiveMapCaptureIdentity =
+export type LiveMapDocumentCaptureIdentity =
   | "same-epoch"
   | "strip";
 
 /** Capture policy. Omission produces portable, QUID-free state. */
-export type DocumentLiveMapCaptureOptions = Readonly<{
-  identity: DocumentLiveMapCaptureIdentity;
+export type LiveMapDocumentCaptureOptions = Readonly<{
+  identity: LiveMapDocumentCaptureIdentity;
 }>;
 
 /** Explicit identity treatment at a complete document admission boundary. */
-export type DocumentLiveMapInstallIdentity =
-  | DocumentLiveMapCaptureIdentity
+export type LiveMapDocumentInstallIdentity =
+  | LiveMapDocumentCaptureIdentity
   | "reject";
 
 /** Callable capture surface with an additive identity-category selector. */
-export type DocumentLiveMapCaptureApi<
-  TMode extends DocumentLiveMapMode = DocumentLiveMapMode,
+export type LiveMapDocumentCaptureApi<
+  TMode extends LiveMapDocumentMode = LiveMapDocumentMode,
 > = {
-  (): DocumentLiveMapCapture<TMode>;
-  (options: DocumentLiveMapCaptureOptions): DocumentLiveMapCapture<TMode>;
+  (): LiveMapDocumentCapture<TMode>;
+  (options: LiveMapDocumentCaptureOptions): LiveMapDocumentCapture<TMode>;
 };
 
 /** Optimistic revision guard plus explicit complete-root identity admission policy. */
-export type DocumentLiveMapInstallOptions = Readonly<{
+export type LiveMapDocumentInstallOptions = Readonly<{
   expectedRev?: number;
-  identity?: DocumentLiveMapInstallIdentity;
+  identity?: LiveMapDocumentInstallIdentity;
 }>;
 
 declare const LIVEMAP_DOCUMENT_PATH_BRAND: unique symbol;
@@ -471,14 +443,14 @@ export type LiveMapDocumentAttrs = CanonicalPublicAttrs;
 /** One legal candidate value for a canonical Hson `$_content` slot. */
 export type LiveMapDocumentContent = NodeContent[number];
 
-export type DocumentLiveMapAttrsMustApi = Readonly<{
+export type LiveMapDocumentAttrsMustApi = Readonly<{
   get: (
     target: LiveMapDocumentRequestTarget,
     name: string,
   ) => LiveMapDocumentAttributeValue;
 }>;
 
-export type DocumentLiveMapAttrsReadApi = Readonly<{
+export type LiveMapDocumentAttrsReadApi = Readonly<{
   get: (
     target: LiveMapDocumentRequestTarget,
     name: string,
@@ -490,10 +462,10 @@ export type DocumentLiveMapAttrsReadApi = Readonly<{
   keys: (
     target: LiveMapDocumentRequestTarget,
   ) => readonly string[];
-  must: DocumentLiveMapAttrsMustApi;
+  must: LiveMapDocumentAttrsMustApi;
 }>;
 
-export type DocumentLiveMapAttrsMutationApi = Readonly<{
+export type LiveMapDocumentAttrsMutationApi = Readonly<{
   set: (
     target: LiveMapDocumentRequestTarget,
     name: string,
@@ -521,10 +493,10 @@ export type DocumentLiveMapAttrsMutationApi = Readonly<{
 }>;
 
 /** Canonical ordinary-attribute read and mutation namespace. */
-export type DocumentLiveMapAttrsApi = DocumentLiveMapAttrsReadApi & DocumentLiveMapAttrsMutationApi;
+export type LiveMapDocumentAttrsApi = LiveMapDocumentAttrsReadApi & LiveMapDocumentAttrsMutationApi;
 
 /** Presence-oriented reads over same-name canonical flag-form attributes. */
-export type DocumentLiveMapFlagsReadApi = Readonly<{
+export type LiveMapDocumentFlagsReadApi = Readonly<{
   has: (
     target: LiveMapDocumentRequestTarget,
     name: string,
@@ -532,7 +504,7 @@ export type DocumentLiveMapFlagsReadApi = Readonly<{
 }>;
 
 /** Atomic semantic flag transitions over the complete canonical attrs bag. */
-export type DocumentLiveMapFlagsMutationApi = Readonly<{
+export type LiveMapDocumentFlagsMutationApi = Readonly<{
   set: (
     target: LiveMapDocumentRequestTarget,
     ...names: string[]
@@ -543,10 +515,10 @@ export type DocumentLiveMapFlagsMutationApi = Readonly<{
   ) => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
 }>;
 
-export type DocumentLiveMapFlagsApi = DocumentLiveMapFlagsReadApi & DocumentLiveMapFlagsMutationApi;
+export type LiveMapDocumentFlagsApi = LiveMapDocumentFlagsReadApi & LiveMapDocumentFlagsMutationApi;
 
 /** Detached content reader plus atomic single-slot structural mutations. */
-export type DocumentLiveMapContentApi = (() => readonly NodeContent[number][]) & Readonly<{
+export type LiveMapDocumentContentApi = (() => readonly NodeContent[number][]) & Readonly<{
   replace: (
     target: LiveMapDocumentRequestTarget,
     index: number,
@@ -574,25 +546,13 @@ export type LiveMapDocumentApi = Readonly<{
   /** Return a detached clone of the complete canonical root. */
   root: () => HsonNode;
   /** Return detached top-level document content in canonical order. */
-  content: DocumentLiveMapContentApi;
+  content: LiveMapDocumentContentApi;
   /** Resolve a QUID in the current owned graph to a detached element clone. */
   byQuid: (quid: string) => HsonNode | undefined;
   /** Canonical ordinary-attribute mutation namespace. */
-  attrs: DocumentLiveMapAttrsApi;
+  attrs: LiveMapDocumentAttrsApi;
   /** Semantic same-name flag operations over canonical attrs. */
-  flags: DocumentLiveMapFlagsApi;
-}>;
-
-type DocumentLiveMapForEvidence<
-  TMode extends DocumentLiveMapMode,
-  TEvidence,
-> = DocumentLiveMap<TEvidence>;
-
-type DocumentLiveMapGovernanceApi<
-  TMode extends DocumentLiveMapMode,
-> = Readonly<{
-  get: () => HsonSchema | undefined;
-  use: <const TSchema extends HsonSchema>(schema: TSchema, ...wrongMode: [NoInfer<TSchema>] extends [HsonSchema<unknown, "data">] ? [never] : []) => DocumentLiveMapForEvidence<TMode, SchemaType<NoInfer<TSchema>>>;
+  flags: LiveMapDocumentFlagsApi;
 }>;
 
 declare const LIVEMAP_DOCUMENT_INVALID_STATIC_PATH: unique symbol;
@@ -1206,213 +1166,11 @@ type InternalLocationFlagsApi<TDescriptor> =
       }>
     : never;
 
-type DocumentLiveMapShared<
-  TMode extends DocumentLiveMapMode,
-  TEvidence = unknown,
-> = Readonly<{
-  readonly mode: TMode;
-  readonly rev: number;
-  root: () => HsonNode;
-  /** Create a passive location at one logical ordered-content coordinate. */
-  at<const TPath extends readonly number[]>(
-    path: TPath & ([InternalDocumentLogicalPathEndpoint<TEvidence, TPath>] extends [never]
-      ? never
-      : unknown),
-  ): LiveMapDocumentLocation<
-    InternalDocumentLogicalPathEndpoint<TEvidence, TPath>,
-    InternalDocumentLogicalPathDescriptor<TEvidence, TPath>
-  >;
-  /** Create a passive numeric proxy over logical ordered document content. */
-  proxy: <const TPath extends readonly number[] = []>(
-    path?: TPath & ([InternalDocumentLogicalPathEndpoint<TEvidence, TPath>] extends [never]
-      ? never
-      : unknown),
-  ) => LiveMapDocumentProxy<
-    InternalDocumentLogicalPathDescriptor<TEvidence, TPath>
-  >;
-  capture: DocumentLiveMapCaptureApi<TMode>;
-  /** Atomically replace this document with a canonical same-mode capture. */
-  install: (
-    capture: DocumentLiveMapCapture,
-    options?: DocumentLiveMapInstallOptions,
-  ) => LiveMapGraphCommit<LiveMapGraphReplaceRootOp>;
-  /** Restore one same-mode canonical snapshot at its exact captured revision. */
-  restore: (
-    capture: DocumentLiveMapCapture,
-    options?: DocumentLiveMapInstallOptions,
-  ) => void;
-  /** Replay portable graph effects; exact identity evidence is owner-local. */
-  replay: (commit: LiveMapGraphCommit) => LiveMapGraphCommit;
-  /** Observe successful canonical graph commits without data path coercion. */
-  commits: LiveMapCommitObserverApi;
-  /** Permanent owner-level document schema attachment. */
-  schema: DocumentLiveMapGovernanceApi<TMode>;
-}>;
-
-/** Structural return type for document `at(...)`; intentionally not exported. */
-type LiveMapDocumentLocation<
-  TValue = InternalDocumentLegacyEndpoint,
-  TDescriptor = unknown,
-> = Readonly<{
-  /** Current revision of the owning document map. */
-  readonly rev: number;
-  /** Return a detached copy of this logical authoring coordinate. */
-  path: () => readonly number[];
-  /** Read the detached current occupant, or `undefined` when absent. */
-  snap: () => TValue;
-  /** Observe future canonical value changes and explicit snapshot replacement. */
-  watch: (
-    listener: (next: TValue) => void,
-  ) => LiveMapDisposer;
-  /** Create a child location relative to this logical coordinate. */
-  at<const TPath extends readonly number[]>(
-    path: TPath & ([InternalDocumentDescriptorEndpoint<
-      InternalDocumentResolveDescriptorPath<TDescriptor, TPath>
-    >] extends [never]
-      ? never
-      : unknown),
-  ): LiveMapDocumentLocation<
-    InternalDocumentDescriptorEndpoint<
-      InternalDocumentResolveDescriptorPath<TDescriptor, TPath>
-    >,
-    InternalDocumentResolveDescriptorPath<TDescriptor, TPath>
-  >;
-  /** Discover the first exact canonical ID match in this logical subtree. */
-  id: (value: string) => LiveMapDocumentLocation | undefined;
-  /** Replace the current logical content item through canonical document mutation. */
-  replace(
-    value: InternalDocumentWritableItem<TDescriptor>,
-  ): LiveMapGraphCommit<LiveMapGraphReplaceContentOp>;
-  /** Remove the current logical content item through canonical document mutation. */
-  delete: () => LiveMapGraphCommit<LiveMapGraphRemoveContentOp>;
-  /** Insert authored content into the ordered content owned by this location. */
-  insert(
-    index: number,
-    value: InternalDocumentInsertItem<TDescriptor>,
-  ): LiveMapGraphCommit<LiveMapGraphInsertContentOp>;
-  /** Move one owned content item to its final index. */
-  move: (from: number, to: number) => LiveMapGraphCommit<LiveMapGraphMoveContentOp>;
-  /** Ordinary-attribute operations for the element currently at this location. */
-  attrs: InternalLocationAttrsApi<TDescriptor>;
-  /** Semantic same-name flag operations for this element location. */
-  flags: InternalLocationFlagsApi<TDescriptor>;
-}>;
-
-type InternalDocumentTupleNumericKey<TKey> =
-  TKey extends `${infer TIndex extends number}` ? TIndex : never;
-
-type InternalDocumentCountedStaticKeys<
-  TCount extends number,
-  TCursor extends readonly unknown[] = readonly [],
-  TKeys extends number = never,
-> = number extends TCount
-  ? never
-  : TCursor["length"] extends TCount
-    ? TKeys
-    : InternalDocumentCountedStaticKeys<
-      TCount,
-      readonly [...TCursor, unknown],
-      TKeys | TCursor["length"]
-    >;
-
-type InternalDocumentCountedStaticKeyBranches<TCount extends number> =
-  TCount extends unknown ? InternalDocumentCountedStaticKeys<TCount> : never;
-
-type InternalDocumentProxyContentStaticKeys<TContent> =
-  TContent extends Readonly<{
-    kind: "sequence";
-    items: infer TItems extends readonly unknown[];
-  }>
-    ? InternalDocumentTupleNumericKey<keyof TItems>
-    : TContent extends Readonly<{
-      kind: "counted-repeat";
-      count: infer TCount extends number;
-    }>
-      ? InternalDocumentCountedStaticKeyBranches<TCount>
-    : TContent extends Readonly<{
-      kind: "pick";
-      choices: infer TChoices extends readonly unknown[];
-    }>
-      ? InternalDocumentProxyContentStaticKeys<TChoices[number]>
-      : never;
-
-type InternalDocumentProxyRootStaticKeys<TEvidence> =
-  TEvidence extends Readonly<{
-    kind: "document";
-    content: infer TContent;
-  }>
-    ? InternalDocumentProxyContentStaticKeys<TContent>
-    : never;
-
-type InternalDocumentProxyStaticKeys<TDescriptor> =
-  TDescriptor extends InternalDocumentRootDescriptor<infer TEvidence>
-    ? InternalDocumentProxyRootStaticKeys<TEvidence>
-    : TDescriptor extends Readonly<{
-      kind: "element";
-      content: infer TContent;
-    }>
-      ? TContent extends "broad"
-        ? never
-        : InternalDocumentProxyContentStaticKeys<TContent>
-      : TDescriptor extends Readonly<{
-        kind: "pick";
-        choices: infer TChoices extends readonly unknown[];
-      }>
-        ? InternalDocumentProxyStaticKeys<TChoices[number]>
-        : never;
-
-type InternalDocumentProxyExactChildren<TDescriptor> = Readonly<{
-  [TIndex in InternalDocumentProxyStaticKeys<TDescriptor>]:
-    LiveMapDocumentProxy<
-      InternalDocumentResolveDescriptorPath<TDescriptor, readonly [TIndex]>
-    >;
-}>;
-
-type InternalDocumentProxyDynamicChildren<TDescriptor> =
-  [InternalDocumentDescriptorEndpoint<
-    InternalDocumentResolveDescriptorPath<TDescriptor, readonly [number]>
-  >] extends [never]
-    ? Readonly<Record<never, never>>
-    : Readonly<{
-      readonly [index: number]: LiveMapDocumentProxy<
-        InternalDocumentResolveDescriptorPath<TDescriptor, readonly [number]>
-      >;
-    }>;
-
-/** Structural document proxy return type; intentionally not exported. */
-type LiveMapDocumentProxy<
-  TDescriptor = InternalDocumentUnschematized,
-> = Readonly<{
-  readonly $_: LiveMapDocumentLocation<
-    InternalDocumentDescriptorEndpoint<TDescriptor>,
-    TDescriptor
-  >;
-}> & InternalDocumentProxyExactChildren<TDescriptor>
-  & InternalDocumentProxyDynamicChildren<TDescriptor>;
-
-/** One rooted document authority whose ordered content may contain zero, one, or many nodes. */
-export type DocumentLiveMap<TEvidence = unknown> = DocumentLiveMapShared<"document", TEvidence> & Readonly<{
-  readonly document: LiveMapDocumentApi;
-}>;
-
-/** Mode-neutral authority boundary shared by schema-narrowed data and document maps. */
-export type LiveMapAuthority = Readonly<{
-  readonly mode: LiveMapRootMode;
-  readonly rev: number;
-  root: () => HsonNode;
-  /** Mode-specific captures share an atomic authoritative revision. */
-  capture: () => Readonly<{ rev: number }>;
-  commits: LiveMapCommitObserverApi;
-}>;
-
-/** Result of Hson/node construction after canonical root classification. */
-export type ClassifiedLiveMap = LiveMap | DocumentLiveMap;
-
 /** One explicit initial library input for a public multi-library LiveMap. */
 export type LiveMapDataLibraryInput<
   TSchema extends HsonSchema<unknown, HsonSchemaMode> = HsonSchema<unknown, HsonSchemaMode>,
 > = Readonly<{
-  /** Existing `fromJson` input: a JSON value or JSON source text. */
+  /** A JSON value or JSON source text for this named data library. */
   data: JsonValue | string;
   schema: TSchema;
   document?: never;
@@ -1422,7 +1180,7 @@ export type LiveMapDataLibraryInput<
 export type LiveMapDocumentLibraryInput<
   TSchema extends HsonSchema<unknown, HsonSchemaMode> = HsonSchema<unknown, HsonSchemaMode>,
 > = Readonly<{
-  /** Existing `fromHson`/`fromNode` material: Hson source text or a canonical node. */
+  /** Hson source text or a canonical node for this named document library. */
   document: string | HsonNode;
   schema: TSchema;
   data?: never;
@@ -1434,7 +1192,8 @@ export type LiveMapLibraryInput =
   | LiveMapDocumentLibraryInput;
 
 /** The complete static registry accepted by `hsonLiveMap.fromLibraries(...)`. */
-export type LiveMapLibrariesInput = Readonly<Record<string, LiveMapLibraryInput>>;
+export type LiveMapInput = Readonly<Record<string, LiveMapLibraryInput>>;
+
 
 /** One publicly named operation in the map-wide ordered commit stream. */
 export type LiveMapLibraryOperation<
@@ -1450,11 +1209,11 @@ export type LiveMapLibraryOperation<
  * it may contain one or several library names and always advances one map-wide
  * revision.
  */
-export type LiveMapMultiLibraryCommit<
+export type LiveMapCommit<
   TLibrary extends string = string,
   TOperation extends LiveMapAnyOp = LiveMapAnyOp,
 > = Readonly<{
-  kind: "multi-library";
+  kind: "map";
   changed: boolean;
   prevRev: number;
   rev: number;
@@ -1467,9 +1226,18 @@ export type LiveMapLibraryPathHandle<
   TLibrary extends string = string,
 > = LiveMapLibraryPathHandleBase<TValue, TLibrary> & LiveMapPathCapabilities<
   TValue,
-  LiveMapMultiLibraryCommit<TLibrary, LiveMapDataOp>,
+  LiveMapCommit<TLibrary, LiveMapDataOp>,
   LiveMapLibraryPathHandleBase<TValue, TLibrary>
 >;
+
+/** A library-local data change carried by the ordinary map commit stream. */
+export type LiveMapLibraryFeedEvent<TLibrary extends string = string> = Readonly<{
+  op: LiveMapDataOp;
+  ops: readonly LiveMapDataOp[];
+  path: LivePath;
+  value: JsonValue | undefined;
+  commit: LiveMapCommit<TLibrary, LiveMapDataOp>;
+}>;
 
 type LiveMapLibraryPathHandleBase<
   TValue,
@@ -1483,10 +1251,12 @@ type LiveMapLibraryPathHandleBase<
   at: <const TPath extends LivePath>(
     path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
   ) => LiveMapLibraryPathHandle<LiveMapPathValue<TValue, TPath>, TLibrary>;
-  set: (value: LiveMapSetValue<TValue>) => LiveMapMultiLibraryCommit<TLibrary, LiveMapDataOp>;
-  replace: (value: LiveMapWriteValue<TValue>) => LiveMapMultiLibraryCommit<TLibrary, LiveMapDataOp>;
-  delete: () => LiveMapMultiLibraryCommit<TLibrary, LiveMapDataOp>;
-  update: (updater: (value: TValue) => LiveMapSetValue<TValue>) => LiveMapMultiLibraryCommit<TLibrary, LiveMapDataOp>;
+  set: (value: LiveMapSetValue<TValue>) => LiveMapCommit<TLibrary, LiveMapDataOp>;
+  replace: (value: LiveMapWriteValue<TValue>) => LiveMapCommit<TLibrary, LiveMapDataOp>;
+  delete: () => LiveMapCommit<TLibrary, LiveMapDataOp>;
+  update: (updater: (value: TValue) => LiveMapSetValue<TValue>) => LiveMapCommit<TLibrary, LiveMapDataOp>;
+  feed: (listener: (event: LiveMapLibraryFeedEvent<TLibrary>) => void) => LiveMapDisposer;
+  watch: (listener: (next: TValue) => void) => LiveMapDisposer;
   /** Observe the current runtime endpoint category. This is not permanent proof. */
   kind: () => LiveMapPathKind;
   /** Refine a currently present endpoint. Every acquired capability revalidates before use. */
@@ -1498,11 +1268,11 @@ type LiveMapLibraryPathHandleBase<
 
 export type LiveMapLibraryObjectPathHandle<TValue, TLibrary extends string> =
   LiveMapLibraryPathHandleBase<TValue, TLibrary>
-  & LiveMapPathObjectCapabilities<TValue, LiveMapMultiLibraryCommit<TLibrary, LiveMapDataOp>>;
+  & LiveMapPathObjectCapabilities<TValue, LiveMapCommit<TLibrary, LiveMapDataOp>>;
 
 export type LiveMapLibraryArrayPathHandle<TValue, TLibrary extends string> =
   LiveMapLibraryPathHandleBase<TValue, TLibrary>
-  & LiveMapPathArrayCapabilities<TValue, LiveMapMultiLibraryCommit<TLibrary, LiveMapDataOp>>;
+  & LiveMapPathArrayCapabilities<TValue, LiveMapCommit<TLibrary, LiveMapDataOp>>;
 
 export type LiveMapLibraryScalarPathHandle<TValue, TLibrary extends string> =
   LiveMapLibraryPathHandleBase<TValue, TLibrary>;
@@ -1531,9 +1301,9 @@ export type LiveMapDataLibrary<
 type LiveMapLibraryDocumentCommit<
   TLibrary extends string,
   TOperation extends LiveMapGraphOp = LiveMapGraphOp,
-> = LiveMapMultiLibraryCommit<TLibrary, TOperation>;
+> = LiveMapCommit<TLibrary, TOperation>;
 
-type LiveMapLibraryDocumentAttrsApi<TLibrary extends string> = DocumentLiveMapAttrsReadApi & Readonly<{
+type LiveMapLibraryDocumentAttrsApi<TLibrary extends string> = LiveMapDocumentAttrsReadApi & Readonly<{
   set: (target: LiveMapDocumentRequestTarget, name: string, value: LiveMapDocumentAttributeValue) =>
     LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphSetAttrOp>;
   drop: (target: LiveMapDocumentRequestTarget, name: string) =>
@@ -1548,7 +1318,7 @@ type LiveMapLibraryDocumentAttrsApi<TLibrary extends string> = DocumentLiveMapAt
     LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceAttrsOp>;
 }>;
 
-type LiveMapLibraryDocumentFlagsApi<TLibrary extends string> = DocumentLiveMapFlagsReadApi & Readonly<{
+type LiveMapLibraryDocumentFlagsApi<TLibrary extends string> = LiveMapDocumentFlagsReadApi & Readonly<{
   set: (target: LiveMapDocumentRequestTarget, ...names: string[]) =>
     LiveMapLibraryDocumentCommit<TLibrary, LiveMapGraphReplaceAttrsOp>;
   clear: (target: LiveMapDocumentRequestTarget, ...names: string[]) =>
@@ -1679,7 +1449,7 @@ export type LiveMapDocumentLibrary<
   TLibrary extends string = string,
   TSchema extends HsonSchema = HsonSchema,
 > = Readonly<{
-  readonly mode: DocumentLiveMapMode;
+  readonly mode: LiveMapDocumentMode;
   readonly rev: number;
   root: () => HsonNode;
   at<const TPath extends readonly number[]>(
@@ -1702,7 +1472,7 @@ export type LiveMapDocumentLibrary<
       InternalDocumentLogicalPathDescriptor<TEvidence, TPath>
     >;
   }>;
-  capture: DocumentLiveMapCaptureApi<"document">;
+  capture: LiveMapDocumentCaptureApi<"document">;
   document: Readonly<{
     root: () => HsonNode;
     content: (() => readonly NodeContent[number][]) & Readonly<{
@@ -1732,8 +1502,8 @@ type LiveMapLibraryFacadeForInput<TInput, TLibrary extends string> =
       : never;
 
 /** The single global observer surface for a local multi-library LiveMap. */
-export type LiveMapMultiLibraryCommitObserverApi<TLibrary extends string = string> = Readonly<{
-  observe: (listener: (commit: LiveMapMultiLibraryCommit<TLibrary>) => void) => LiveMapDisposer;
+export type LiveMapRegistryCommitObserverApi<TLibrary extends string = string> = Readonly<{
+  observe: (listener: (commit: LiveMapCommit<TLibrary>) => void) => LiveMapDisposer;
 }>;
 
 declare const liveMapLibrariesType: unique symbol;
@@ -1743,7 +1513,7 @@ declare const liveMapLibrariesType: unique symbol;
  * default root and intentionally exposes neither topology mutation nor Locus
  * authority in this first local release.
  */
-export type LiveMapLibraries<TLibraries extends LiveMapLibrariesInput = LiveMapLibrariesInput> = Readonly<{
+export type LiveMap<TLibraries extends LiveMapInput = LiveMapInput> = Readonly<{
   /** Private type evidence; it has no runtime property or public selector. */
   readonly [liveMapLibrariesType]: TLibraries;
   readonly rev: number;
@@ -1751,8 +1521,12 @@ export type LiveMapLibraries<TLibraries extends LiveMapLibrariesInput = LiveMapL
     name: TLibrary,
   ) => LiveMapLibraryFacadeForInput<TLibraries[TLibrary], TLibrary>;
   /** Capture one detached semantic snapshot of the complete public and hidden registry. */
-  capture: () => LiveMapLibrariesSnapshot;
-  commits: LiveMapMultiLibraryCommitObserverApi<Extract<keyof TLibraries, string>>;
+  capture: () => LiveMapSnapshot;
+  /** Restore a complete compatible registry snapshot at its captured revision. */
+  restore: (snapshot: LiveMapSnapshot) => void;
+  /** Render one selected document as browser-compatible HTML. */
+  render: (document?: string) => import("../api/ssr/ssr.types.js").BrowserRealizationHtml;
+  commits: LiveMapRegistryCommitObserverApi<Extract<keyof TLibraries, string>>;
 }>;
 
 /**
@@ -1831,7 +1605,7 @@ export type LiveMapDataOp =
 export type LiveMapGraphReplaceRootOp = Readonly<{
   domain: "graph";
   op: "replace-root";
-  mode: DocumentLiveMapMode;
+  mode: LiveMapDocumentMode;
   root: HsonNode;
 }>;
 
@@ -1940,7 +1714,7 @@ type LiveMapCommitFields<TOp extends LiveMapObservedOp> = Readonly<{
   ops: readonly TOp[];
 }>;
 
-export type LiveMapCommit<TOp extends LiveMapObservedOp = LiveMapDataOp> = LiveMapCommitFields<TOp> & ([TOp] extends [LiveMapDataOp]
+export type LiveMapCoreCommit<TOp extends LiveMapObservedOp = LiveMapDataOp> = LiveMapCommitFields<TOp> & ([TOp] extends [LiveMapDataOp]
   ? LiveMapStructuralJsonEnvelope
   : Partial<LiveMapStructuralJsonEnvelope>);
 
@@ -1955,7 +1729,7 @@ export type LiveMapCommitOrigin = "authoritative" | "replay";
 export type LiveMapCommitObservation<TOp extends LiveMapObservedOp = LiveMapObservedOp> =
   | Readonly<{
     kind: "commit";
-    commit: LiveMapCommit<TOp>;
+    commit: LiveMapCoreCommit<TOp>;
     origin: "authoritative" | "replay";
   }>
   | Readonly<{
@@ -1984,7 +1758,7 @@ export type LiveMapFeedEvent = Readonly<{
   path: LivePath;
   value: JsonValue | undefined;
   ops: readonly LiveMapDataOp[];
-  commit: LiveMapCommit<LiveMapDataOp>;
+  commit: LiveMapCoreCommit<LiveMapDataOp>;
 }>;
 
 /** Listener called when a feed receives an overlapping operation. */
@@ -2103,12 +1877,12 @@ interface LiveMapPathHandleBase<TValue = JsonValue | undefined> {
     path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
   ) => LiveMapPathHandle<LiveMapPathValue<TValue, TPath>>;
   /** Set this resolved handle path; plain objects expand into shallow child sets. */
-  set: (value: LiveMapSetValue<TValue>) => LiveMapCommit<LiveMapDataOp>;
+  set: (value: LiveMapSetValue<TValue>) => LiveMapCoreCommit<LiveMapDataOp>;
   /** Exact replacement at this handle path using replace-shaped commit ops. */
-  replace: (value: LiveMapWriteValue<TValue>) => LiveMapCommit<LiveMapDataOp>;
+  replace: (value: LiveMapWriteValue<TValue>) => LiveMapCoreCommit<LiveMapDataOp>;
   /** Delete this handle path. */
-  delete: () => LiveMapCommit<LiveMapDataOp>;
-  update: (updater: (value: TValue) => LiveMapSetValue<TValue>) => LiveMapCommit<LiveMapDataOp>;
+  delete: () => LiveMapCoreCommit<LiveMapDataOp>;
+  update: (updater: (value: TValue) => LiveMapSetValue<TValue>) => LiveMapCoreCommit<LiveMapDataOp>;
   /** Observe the current runtime endpoint category. This is not permanent proof. */
   kind: () => LiveMapPathKind;
   /** Refine a currently present endpoint. Every acquired capability revalidates before use. */
@@ -2150,12 +1924,12 @@ type LiveMapPathCapabilities<TValue, TCommit, TBase> =
       ? LiveMapPathArrayCapabilities<TValue, TCommit>
       : TBase;
 
-export type LiveMapPathObjectCapabilities<TValue, TCommit = LiveMapCommit<LiveMapDataOp>> = Omit<
+export type LiveMapPathObjectCapabilities<TValue, TCommit = LiveMapCoreCommit<LiveMapDataOp>> = Omit<
   LiveMapPathObjectApi<TValue, TCommit>,
   "is"
 >;
 
-export type LiveMapPathArrayCapabilities<TValue, TCommit = LiveMapCommit<LiveMapDataOp>> = Omit<
+export type LiveMapPathArrayCapabilities<TValue, TCommit = LiveMapCoreCommit<LiveMapDataOp>> = Omit<
   LiveMapPathArrayApi<TValue, TCommit>,
   "is" | "at" | "replace"
 >;
@@ -2170,12 +1944,12 @@ export type LiveMapScalarPathHandle<TValue = Primitive> = LiveMapPathHandleBase<
 
 export type LiveMapPathHandle<TValue = JsonValue | undefined> = Readonly<
   LiveMapPathHandleBase<TValue>
-  & LiveMapPathCapabilities<TValue, LiveMapCommit<LiveMapDataOp>, LiveMapPathHandleBase<TValue>>
+  & LiveMapPathCapabilities<TValue, LiveMapCoreCommit<LiveMapDataOp>, LiveMapPathHandleBase<TValue>>
 >;
 
 export type LiveMapPathObjectApi<
   TValue = JsonValue | undefined,
-  TCommit = LiveMapCommit<LiveMapDataOp>,
+  TCommit = LiveMapCoreCommit<LiveMapDataOp>,
 > = Readonly<{
   is: () => boolean;
   toObject: () => LiveMapObjectShape<TValue>;
@@ -2205,7 +1979,7 @@ export type LiveMapPathObjectApi<
  */
 export type LiveMapPathArrayApi<
   TValue = JsonValue | undefined,
-  TCommit = LiveMapCommit<LiveMapDataOp>,
+  TCommit = LiveMapCoreCommit<LiveMapDataOp>,
 > = Readonly<{
   is: () => boolean;
   toArray: () => LiveMapArrayShape<TValue>;

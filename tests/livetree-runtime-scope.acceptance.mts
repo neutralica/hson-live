@@ -1,11 +1,11 @@
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
-import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
+import { document_from_node } from "./helpers/mirror-unit6.mts";
 import { construct_exact_runtime_livetree } from "../src/api/livetree/livetree.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { is_Node } from "../src/core/node-guards.ts";
-import { hson } from "../src/index.ts";
+import { hson, Hson, hsonLiveMap } from "../src/index.ts";
 import {
   _reflect_document_for_runtime_test,
   _append_livetree_branches_atomic,
@@ -26,7 +26,7 @@ import {
 import { assign_hson_node_quid } from "../src/core/hson-node-quid.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import type { LiveTree } from "../src/api/livetree/livetree.ts";
-import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
+import type { LiveMapDocumentLibrary } from "../src/types/livemap.types.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livetree.runtime-scope",
@@ -92,8 +92,8 @@ function assertCleanProjection(root: StyleNode, authoredAttrs: readonly string[]
   }
 }
 
-function elementMap(source: string): DocumentLiveMap {
-  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
+function elementMap(source: string): LiveMapDocumentLibrary {
+  const map = document_from_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error("Expected an element LiveMap.");
   return map;
 }
@@ -722,21 +722,22 @@ check("Mirror document and collection synchronization preserve clean projection 
   map.document.content.insert(
     Object.freeze({ kind: "path", path: Object.freeze([0, 0]) }),
     1,
-    node("em"),
+    node("span"),
   );
   assertCleanProjection(documentRoot);
   assert.deepEqual(
     documentRoot.walk().filter((item) => !item.tagName.startsWith("#")).map((item) => item.tagName),
-    ["span", "em"],
+    ["span", "span"],
   );
   binding.dispose();
   binding.tree.remove();
 
   const host = runtimeTree(runtime, node("ul"));
   const hostElement = projectInto(runtime, host, document);
-  const source = hson.liveMap.fromJson({
-    items: [{ id: "a" }, { id: "b" }],
-  });
+  const source = hsonLiveMap.fromLibraries({ state: {
+    data: { items: [{ id: "a" }, { id: "b" }] },
+    schema: Hson.schema`<type "data" content <items "any">>`,
+  } }).lib("state");
   const projection = hson.mirror.collection<{ id: string }>({
     source: source.at(["items"]) as never,
     host,
@@ -796,7 +797,7 @@ check("failed initial Mirror publication terminally unwinds its private tree", (
       ...source.commits,
       observe: (): never => { throw new Error("forced initial observer failure"); },
     },
-  } as DocumentLiveMap;
+  } as LiveMapDocumentLibrary;
   const before = _livetree_runtime_test_claim_count(runtime);
   assert.throws(
     () => _reflect_document_for_runtime_test(runtime, failing),

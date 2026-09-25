@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap, hsonTransform, type HsonSchema } from "../src/index.ts";
 import { HsonSchemaError } from "../src/api/livemap/livemap.error.ts";
-import { get_livemap_staged_authority } from "../src/api/livemap/livemap.authority.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
+import { encode_hosted_root } from "../src/api/livemap/livemap.hosted.ts";
 import { compile_hson_schema, HSON_SCHEMA_MVP_COMPATIBILITY_VERSION } from "../src/internal/hson-schema/compiler.ts";
 import { generate_hson_schema_types } from "../src/internal/hson-schema/generate-types.ts";
 import { decode_canonical_schema_graph_hson, encode_canonical_schema_graph_hson } from "../src/internal/canonical-schema/encode-hson.ts";
@@ -196,36 +196,40 @@ check("case-row order is canonical identity but cannot change acceptance", () =>
   if (a.ok && b.ok) assert.notDeepEqual(a.value.graph, b.value.graph);
 });
 
-check("LiveMap initial admission, mutation, staging, restore, replay, and aggregate commits converge", () => {
+check("registry admission, mutation, staging, restore, and aggregate commits converge", () => {
   const initial = { cells: [{ position: "top-right", body: "a" }, { position: "bottom-left", body: "b" }] };
-  const map = hsonLiveMap.fromJson(initial).schema.use(DecksSchema);
-  map.set(["cells", 1, "position"], "bottom-half");
-  assert.equal(map.rev, 1);
-  const before = map.snap(); const beforeRev = map.rev;
-  assert.throws(() => map.set(["cells", 1, "position"], "top-half"));
-  assert.deepEqual(map.snap(), before); assert.equal(map.rev, beforeRev);
-  assert.throws(() => map.set(["cells", 1, "position"], "top-right"));
-  assert.deepEqual(map.snap(), before); assert.equal(map.rev, beforeRev);
-
-  const staged = get_livemap_staged_authority(map);
-  const valid = staged.prepare((draft) => draft.batch((tx) => { tx.set(["cells", 0, "position"], "top-left"); tx.set(["cells", 1, "position"], "bottom-right"); }));
-  staged.accept(valid);
-  assert.deepEqual(map.snap(["cells"]), [{ position: "top-left", body: "a" }, { position: "bottom-right", body: "b" }]);
-  const stagedRev = map.rev;
-  assert.throws(() => staged.prepare((draft) => draft.batch((tx) => { tx.set(["cells", 0, "position"], "top-half"); tx.set(["cells", 1, "position"], "left-half"); })));
-  assert.equal(map.rev, stagedRev);
-
-  const invalidSource = hsonLiveMap.fromJson({ cells: [{ position: "top-right", body: "a" }, { position: "top-half", body: "b" }] });
-  assert.throws(() => map.restore(invalidSource.capture()));
-  assert.equal(map.rev, stagedRev);
-  const replaySource = hsonLiveMap.fromJson({ cells: [{ position: "top-left", body: "a" }, { position: "bottom-right", body: "b" }] });
-  const invalidCommit = replaySource.set(["cells", 1, "position"], "left-half");
-  assert.throws(() => map.replay(invalidCommit));
-  assert.equal(map.rev, stagedRev);
-
+  const map = hsonLiveMap.fromLibraries({ state: { data: initial, schema: DecksSchema } });
+  const state = map.lib("state");
   const aggregate = internal_livemap_aggregate_authority(map);
   const library = aggregate.libraries()[0];
   if (library === undefined) throw new Error("Expected one application Library.");
+  state.at(["cells", 1, "position"]).set("bottom-half");
+  assert.equal(map.rev, 1);
+  const before = state.snap(); const beforeRev = map.rev;
+  assert.throws(() => state.at(["cells", 1, "position"]).set("top-half"));
+  assert.deepEqual(state.snap(), before); assert.equal(map.rev, beforeRev);
+  assert.throws(() => state.at(["cells", 1, "position"]).set("top-right"));
+  assert.deepEqual(state.snap(), before); assert.equal(map.rev, beforeRev);
+
+  const valid = aggregate.prepare([
+    { target: aggregate.target(library, ["cells", 0, "position"]), kind: "set", value: "top-left" },
+    { target: aggregate.target(library, ["cells", 1, "position"]), kind: "set", value: "bottom-right" },
+  ]);
+  aggregate.accept(valid);
+  assert.deepEqual(state.snap(["cells"]), [{ position: "top-left", body: "a" }, { position: "bottom-right", body: "b" }]);
+  const stagedRev = map.rev;
+  assert.throws(() => aggregate.prepare([
+    { target: aggregate.target(library, ["cells", 0, "position"]), kind: "set", value: "top-half" },
+    { target: aggregate.target(library, ["cells", 1, "position"]), kind: "set", value: "left-half" },
+  ]));
+  assert.equal(map.rev, stagedRev);
+
+  const capture = map.capture();
+  const entry = capture.libraries[0];
+  if (entry === undefined) throw new Error("Expected state capture.");
+  const invalid = { ...capture, libraries: [{ ...entry, root: encode_hosted_root(hsonTransform.fromJson({ cells: [{ position: "top-right", body: "a" }, { position: "top-half", body: "b" }] }).toNode()) }] };
+  assert.throws(() => map.restore(invalid));
+  assert.equal(map.rev, stagedRev);
   assert.throws(() => aggregate.commit([{ target: aggregate.target(library, ["cells", 1, "position"]), kind: "set", value: "left-half" }]));
   assert.equal(map.rev, stagedRev);
 });

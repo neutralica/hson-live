@@ -1,39 +1,22 @@
-import { discover_schema_validation_sources } from "./discover-validation-sources.js";
-import { is_static_hson_source } from "../embedded-hson/authored-hson-source.js";
 import { discover_hson_tagged_templates } from "../embedded-hson/discover-hson-tagged-templates.js";
 import { interpolation_site } from "./interpolation-source.js";
 import { pathToFileURL } from "node:url";
 
-/** Explicit trusted-provider build step, never applied to an editor buffer or
- * installed as a project loader. Only the diagnostic copy is instrumented.
- * Ordinary application output is unchanged. No Schema definitions are rewritten.
+/** Instrument only Hson interpolation capture in the diagnostic copy.
+ * Schema is admitted with a named library, so there is no later map attachment
+ * lifecycle to instrument.
  */
 export function instrument_trusted_schema_map_sources(fileName: string, text: string, helperModuleUrl: string): string {
-  const associations = discover_schema_validation_sources(fileName, text).filter(site => site.mapFlow !== undefined);
   const interpolated = discover_hson_tagged_templates(fileName, text).interpolated;
-  if (associations.length === 0 && interpolated.length === 0) return text;
+  if (interpolated.length === 0) return text;
   let name = "__hsonTrustedLifecycle";
   while (text.includes(name)) name += "_";
-  const edits = new Map<number, { end: number; text: string }>();
-  for (const [index, site] of associations.entries()) {
-    const boundary = site.constructionCalleeRange!;
-    if (!is_static_hson_source(site.source) && site.interpolation === undefined) edits.set(site.source.tagRange.start, { end: site.source.tagRange.end,
-      text: `${name}.tag(${JSON.stringify(site.templateId)}, ${text.slice(site.source.tagRange.start, site.source.tagRange.end)})` });
-    // Replace only the callee, leaving nested inline authored templates intact.
-    edits.set(boundary.start, { end: boundary.end,
-      text: `${name}.${is_static_hson_source(site.source) ? "constructStatic" : "construct"}(${JSON.stringify(site.templateId)}, ${JSON.stringify(site.mapFlow!.constructionId)}, ${text.slice(boundary.start, boundary.end)})` });
-    // Discovery supplies the receiver and argument ranges; no spelling guesses.
-    edits.set(site.useCalleeRange!.start, { end: site.useCalleeRange!.end,
-      text: `${name}.use(${index}, ${text.slice(site.mapRange!.start, site.mapRange!.end)})` });
-  }
-  for (const source of interpolated) {
-    const descriptor = interpolation_site(source, pathToFileURL(fileName).href);
-    const aliases = [...new Set(associations.filter(site => site.interpolation?.templateId === descriptor.templateId).map(site => site.templateId))];
-    edits.set(source.tagRange.start, { end: source.tagRange.end,
-      text: `${name}.interpolation(${JSON.stringify(descriptor)}, ${JSON.stringify(aliases)}, ${text.slice(source.tagRange.start, source.tagRange.end)})` });
-  }
   let result = text;
-  for (const [start, edit] of [...edits].sort(([a], [b]) => b - a)) result = result.slice(0, start) + edit.text + result.slice(edit.end);
-  const descriptors = associations.map(site => ({ mapFlow: site.mapFlow, binding: site.binding }));
-  return `import { create_trusted_schema_source_lifecycle as ${name}Factory } from ${JSON.stringify(helperModuleUrl)};\nconst ${name} = ${name}Factory(${JSON.stringify(descriptors)});\n${result}`;
+  for (const source of [...interpolated].sort((a, b) => b.tagRange.start - a.tagRange.start)) {
+    const descriptor = interpolation_site(source, pathToFileURL(fileName).href);
+    result = result.slice(0, source.tagRange.start)
+      + `${name}.interpolation(${JSON.stringify(descriptor)}, [], ${text.slice(source.tagRange.start, source.tagRange.end)})`
+      + result.slice(source.tagRange.end);
+  }
+  return `import { create_trusted_schema_source_lifecycle as ${name}Factory } from ${JSON.stringify(helperModuleUrl)};\nconst ${name} = ${name}Factory();\n${result}`;
 }

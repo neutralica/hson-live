@@ -1,9 +1,9 @@
 import type { HsonNode, Primitive } from "../../core/types.js";
 import { STR_TAG } from "../../core/constants.js";
 import type {
-  DocumentLiveMapAttrsApi,
-  DocumentLiveMapFlagsApi,
-  DocumentLiveMapMode,
+  LiveMapDocumentAttrsApi,
+  LiveMapDocumentFlagsApi,
+  LiveMapDocumentMode,
   LiveMapDocumentContent,
   LiveMapDocumentRequestTarget,
   LiveMapDisposer,
@@ -32,8 +32,8 @@ type DocumentLocationOwner = Readonly<{
 }>;
 
 type DocumentLocationMutations = Readonly<{
-  attrs: DocumentLiveMapAttrsApi;
-  flags: DocumentLiveMapFlagsApi;
+  attrs: LiveMapDocumentAttrsApi;
+  flags: LiveMapDocumentFlagsApi;
   replace: (
     target: LiveMapDocumentRequestTarget,
     index: number,
@@ -61,22 +61,22 @@ type DocumentLocationWatch = (
 ) => LiveMapDisposer;
 
 type LocationAttrs = Readonly<{
-  get: (name: string) => ReturnType<DocumentLiveMapAttrsApi["get"]>;
+  get: (name: string) => ReturnType<LiveMapDocumentAttrsApi["get"]>;
   has: (name: string) => boolean;
   keys: () => readonly string[];
-  must: Readonly<{ get: (name: string) => ReturnType<DocumentLiveMapAttrsApi["must"]["get"]> }>;
-  set: (name: string, value: Parameters<DocumentLiveMapAttrsApi["set"]>[2]) => ReturnType<DocumentLiveMapAttrsApi["set"]>;
-  drop: (name: string) => ReturnType<DocumentLiveMapAttrsApi["drop"]>;
-  setMany: (values: Parameters<DocumentLiveMapAttrsApi["setMany"]>[1]) => ReturnType<DocumentLiveMapAttrsApi["setMany"]>;
-  dropMany: (names: readonly string[]) => ReturnType<DocumentLiveMapAttrsApi["dropMany"]>;
-  clear: () => ReturnType<DocumentLiveMapAttrsApi["clear"]>;
-  replace: (values: Parameters<DocumentLiveMapAttrsApi["replace"]>[1]) => ReturnType<DocumentLiveMapAttrsApi["replace"]>;
+  must: Readonly<{ get: (name: string) => ReturnType<LiveMapDocumentAttrsApi["must"]["get"]> }>;
+  set: (name: string, value: Parameters<LiveMapDocumentAttrsApi["set"]>[2]) => ReturnType<LiveMapDocumentAttrsApi["set"]>;
+  drop: (name: string) => ReturnType<LiveMapDocumentAttrsApi["drop"]>;
+  setMany: (values: Parameters<LiveMapDocumentAttrsApi["setMany"]>[1]) => ReturnType<LiveMapDocumentAttrsApi["setMany"]>;
+  dropMany: (names: readonly string[]) => ReturnType<LiveMapDocumentAttrsApi["dropMany"]>;
+  clear: () => ReturnType<LiveMapDocumentAttrsApi["clear"]>;
+  replace: (values: Parameters<LiveMapDocumentAttrsApi["replace"]>[1]) => ReturnType<LiveMapDocumentAttrsApi["replace"]>;
 }>;
 
 type LocationFlags = Readonly<{
   has: (name: string) => boolean;
-  set: (...names: string[]) => ReturnType<DocumentLiveMapFlagsApi["set"]>;
-  clear: (...names: string[]) => ReturnType<DocumentLiveMapFlagsApi["clear"]>;
+  set: (...names: string[]) => ReturnType<LiveMapDocumentFlagsApi["set"]>;
+  clear: (...names: string[]) => ReturnType<LiveMapDocumentFlagsApi["clear"]>;
 }>;
 
 type DocumentLocation = Readonly<{
@@ -105,13 +105,13 @@ export function is_livemap_document_location(value: unknown): boolean {
 /** Build passive, fixed-coordinate locations over logical document content. */
 export function make_livemap_document_location_factory(
   owner: DocumentLocationOwner,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   mutations: DocumentLocationMutations,
   watch: DocumentLocationWatch,
 ): (path: readonly number[]) => DocumentLocation {
   const locations = new Map<string, DocumentLocation>();
   let discoveryMap: Readonly<{
-    mode: DocumentLiveMapMode;
+    mode: LiveMapDocumentMode;
     root: () => HsonNode;
     at: (path: readonly number[]) => DocumentLocation;
   }>;
@@ -152,7 +152,7 @@ export function make_livemap_document_location_factory(
 
 function make_location_flags(
   owner: DocumentLocationOwner,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   mutations: DocumentLocationMutations,
   path: readonly number[],
 ): LocationFlags {
@@ -175,7 +175,7 @@ function make_location_flags(
 
 function resolve_document_content_owner(
   owner: DocumentLocationOwner,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   path: readonly number[],
 ) {
   const edges: InternalDocumentLogicalEdge[] = path.map((index) => ({ kind: "content", index }));
@@ -188,7 +188,7 @@ function resolve_document_content_owner(
 
 function insert_document_location(
   owner: DocumentLocationOwner,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   mutations: DocumentLocationMutations,
   path: readonly number[],
   index: number,
@@ -215,7 +215,7 @@ function insert_document_location(
 
 function move_document_location(
   owner: DocumentLocationOwner,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   mutations: DocumentLocationMutations,
   path: readonly number[],
   from: number,
@@ -234,7 +234,7 @@ function move_document_location(
 
 function make_location_attrs(
   owner: DocumentLocationOwner,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   mutations: DocumentLocationMutations,
   path: readonly number[],
 ): LocationAttrs {
@@ -265,7 +265,7 @@ function make_location_attrs(
 
 function replace_document_location(
   owner: DocumentLocationOwner,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   mutations: DocumentLocationMutations,
   path: readonly number[],
   replacement: LiveMapDocumentContent,
@@ -282,7 +282,7 @@ function replace_document_location(
 
 function delete_document_location(
   owner: DocumentLocationOwner,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   mutations: DocumentLocationMutations,
   path: readonly number[],
 ): LiveMapGraphCommit<LiveMapGraphRemoveContentOp> {
@@ -318,7 +318,7 @@ function delete_document_location(
 
 function resolve_mutable_document_location(
   root: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   path: readonly number[],
   operation: "replace-content" | "remove-content",
 ) {
@@ -378,7 +378,7 @@ function must_document_logical_path(path: unknown): readonly number[] {
 
 export function read_livemap_document_logical_location(
   root: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   path: readonly number[],
 ): HsonNode | Primitive | undefined {
   const edges: readonly InternalDocumentLogicalEdge[] = path.map((index) => ({ kind: "content", index }));

@@ -27,7 +27,7 @@ import { serialize_html } from "../transform/serializers/serialize-html.js";
 import { make_detached_livetree_create } from "../livetree/creation/make-detached-livetree.js";
 import { own_disposable_for_subject } from "../livetree/managers/lifecycle-registry.js";
 import { format_live_path, path_is_prefix, paths_overlap, relative_live_path } from "../livemap/livemap.path.js";
-import { internal_livemap_node } from "../livemap/livemap.internal.js";
+import { resolveLiveMapNode } from "../livemap/livemap.node.js";
 import { reflect_collection } from "../mirror/mirror.collection.js";
 import { CollectionMirrorError, COLLECTION_MIRROR_DUPLICATE_KEY_ERROR_CODE } from "../mirror/mirror.collection.error.js";
 import { construct_source_1 } from "../transform/constructors/construct-source-1.js";
@@ -833,7 +833,7 @@ class InspectorController {
 
   private canonicalNode(path: LivePath): HsonNode | undefined {
     const map = this.currentSource().map;
-    return map === undefined ? undefined : internal_livemap_node(map, path);
+    return map === undefined ? undefined : resolveLiveMapNode(map.root(), path);
   }
 
   private renderDetails(): void {

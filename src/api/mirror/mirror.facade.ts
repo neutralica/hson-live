@@ -1,5 +1,5 @@
 import type { JsonValue } from "../../core/types.js";
-import type { DocumentLiveMap, LiveMapDocumentLibrary } from "../../types/livemap.types.js";
+import type { LiveMapDocumentLibrary } from "../../types/livemap.types.js";
 import type {
   CollectionMirror,
   CollectionMirrorOptions,
@@ -14,13 +14,13 @@ import {
 
 /** Canonical LiveMap-authoritative Mirror facade. */
 export interface Mirror {
-  (map: DocumentLiveMap | LiveMapDocumentLibrary): DocumentMirror;
+  (map: LiveMapDocumentLibrary): DocumentMirror;
   collection: <TItem extends JsonValue>(
     options: CollectionMirrorOptions<TItem>,
   ) => CollectionMirror<TItem>;
 }
 
-const reflectDocument = (map: DocumentLiveMap | LiveMapDocumentLibrary): DocumentMirror =>
+const reflectDocument = (map: LiveMapDocumentLibrary): DocumentMirror =>
   reflect_document(map);
 
 export const hsonMirror: Mirror = Object.freeze(Object.assign(

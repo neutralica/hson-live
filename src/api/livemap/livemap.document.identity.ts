@@ -7,7 +7,7 @@ import {
 import type { HsonNode, Primitive } from "../../core/types.js";
 import { clone_live_root } from "./livemap.editor.js";
 import type {
-  DocumentLiveMapMode,
+  LiveMapDocumentMode,
   LiveMapGraphCommit,
   LiveMapDocumentPath,
 } from "../../types/livemap.types.js";
@@ -78,7 +78,7 @@ export class LiveMapDocumentIdentityError extends Error {
  */
 export function build_livemap_document_identity_overlay(
   root: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
 ): LiveMapDocumentIdentityOverlay {
   const quidToPath = new Map<string, LiveMapDocumentPath>();
   const pathToQuid = new Map<string, string>();
@@ -297,7 +297,7 @@ export function replace_livemap_document_identity_overlay_effects(
 /** Prove both overlay directions agree with a fresh scan of the supplied root. */
 export function assert_livemap_document_identity_overlay(
   root: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   overlay: LiveMapDocumentIdentityOverlay,
 ): void {
   const expected = build_livemap_document_identity_overlay(root, mode);
@@ -368,7 +368,7 @@ export function livemap_document_identity_overlay_equal(
 /** Detached same-runtime view; the canonical document graph remains QUID-free. */
 export function clone_livemap_document_exact_view(
   root: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   overlay: LiveMapDocumentIdentityOverlay,
 ): HsonNode {
   const view = clone_live_root(root);

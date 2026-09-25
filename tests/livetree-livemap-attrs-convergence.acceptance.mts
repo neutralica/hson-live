@@ -1,9 +1,9 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { hson } from "../src/index.ts";
+import { Hson, hson } from "../src/index.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import type { LiveTree } from "../src/api/livetree/livetree.ts";
-import type { DocumentLiveMap } from "../src/types/livemap.types.ts";
+import type { LiveMapDocumentLibrary } from "../src/types/livemap.types.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -33,31 +33,31 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-function owners(source = `<main a="one" b="two" selected/>`): { tree: LiveTree; map: DocumentLiveMap } {
+const MainSchema = Hson.schema`<type "document" tag "main" content "empty">`;
+function owners(source = `<main a="one" b="two" selected/>`): { tree: LiveTree; map: LiveMapDocumentLibrary } {
   const tree = hson.liveTree.fromHson(source);
-  const map = hson.liveMap.fromHson(source);
-  if (map.mode !== "document") throw new Error("Expected DocumentLiveMap");
+  const map = hson.liveMap.fromLibraries({ page: { document: source, schema: MainSchema } }).lib("page");
   return { tree, map };
 }
 
-function assertAttrsEqual(tree: LiveTree, map: DocumentLiveMap): void {
+function assertAttrsEqual(tree: LiveTree, map: LiveMapDocumentLibrary): void {
   const ordinaryRoot = map.root().$_content[0];
   if (!is_Node(ordinaryRoot)) throw new Error("Expected one ordinary document root element");
   assert.deepEqual(tree.node.$_attrs, ordinaryRoot.$_attrs);
-  assert.deepEqual(tree.attrs.keys(), map.at([]).attrs.keys());
+  assert.deepEqual(tree.attrs.keys(), map.at([]).asElement()!.attrs.keys());
 }
 
 check("attrs.set converges", () => {
   const { tree, map } = owners();
   tree.attrs.set("a", false);
-  map.at([]).attrs.set("a", false);
+  map.at([]).asElement()!.attrs.set("a", false);
   assertAttrsEqual(tree, map);
 });
 
 check("attrs.setMany converges as a complete-bag PATCH", () => {
   const { tree, map } = owners();
   tree.attrs.setMany({ a: "next", count: 2 });
-  map.at([]).attrs.setMany({ a: "next", count: 2 });
+  map.at([]).asElement()!.attrs.setMany({ a: "next", count: 2 });
   assertAttrsEqual(tree, map);
   assert.equal(tree.attrs.get("b"), "two");
   assert.equal(tree.flags.has("selected"), true);
@@ -66,28 +66,28 @@ check("attrs.setMany converges as a complete-bag PATCH", () => {
 check("attrs.drop removes flag-form values under both owners", () => {
   const { tree, map } = owners();
   tree.attrs.drop("selected");
-  map.at([]).attrs.drop("selected");
+  map.at([]).asElement()!.attrs.drop("selected");
   assertAttrsEqual(tree, map);
 });
 
 check("attrs.dropMany converges atomically", () => {
   const { tree, map } = owners();
   tree.attrs.dropMany(["a", "selected", "missing", "a"]);
-  map.at([]).attrs.dropMany(["a", "selected", "missing", "a"]);
+  map.at([]).asElement()!.attrs.dropMany(["a", "selected", "missing", "a"]);
   assertAttrsEqual(tree, map);
 });
 
 check("attrs.replace converges as exact complete-bag replacement", () => {
   const { tree, map } = owners();
   tree.attrs.replace({ only: null, style: { color: "red" } });
-  map.at([]).attrs.replace({ only: null, style: { color: "red" } });
+  map.at([]).asElement()!.attrs.replace({ only: null, style: { color: "red" } });
   assertAttrsEqual(tree, map);
 });
 
 check("attrs.clear converges on canonical absence", () => {
   const { tree, map } = owners();
   tree.attrs.clear();
-  map.at([]).attrs.clear();
+  map.at([]).asElement()!.attrs.clear();
   assertAttrsEqual(tree, map);
   assert.equal(tree.node.$_attrs, undefined);
 });
@@ -95,15 +95,15 @@ check("attrs.clear converges on canonical absence", () => {
 check("flags.set converges and overwrites ordinary values", () => {
   const { tree, map } = owners(`<main selected="other"/>`);
   tree.flags.set("selected", "active", "selected");
-  map.at([]).flags.set("selected", "active", "selected");
+  map.at([]).asElement()!.flags.set("selected", "active", "selected");
   assertAttrsEqual(tree, map);
-  assert.equal(tree.flags.has("selected"), map.at([]).flags.has("selected"));
+  assert.equal(tree.flags.has("selected"), map.at([]).asElement()!.flags.has("selected"));
 });
 
 check("flags.clear converges and preserves nonflag values", () => {
   const { tree, map } = owners(`<main selected ordinary="value"/>`);
   tree.flags.clear("selected", "ordinary", "missing");
-  map.at([]).flags.clear("selected", "ordinary", "missing");
+  map.at([]).asElement()!.flags.clear("selected", "ordinary", "missing");
   assertAttrsEqual(tree, map);
   assert.equal(tree.attrs.get("ordinary"), "value");
 });
@@ -111,7 +111,7 @@ check("flags.clear converges and preserves nonflag values", () => {
 check("same-name attrs and flags have identical reconstructed semantics", () => {
   const { tree, map } = owners(`<main/>`);
   tree.attrs.set("selected", "selected");
-  map.at([]).flags.set("selected");
+  map.at([]).asElement()!.flags.set("selected");
   assertAttrsEqual(tree, map);
   const ordinaryRoot = map.root().$_content[0];
   if (!is_Node(ordinaryRoot)) throw new Error("Expected one ordinary document root element");

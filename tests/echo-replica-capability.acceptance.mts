@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { Hson, hsonLiveMap } from "../src/index.ts";
-import { create_echo } from "../src/api/echo/echo.ts";
 import { create_echo_aggregate_replica_capability_internal } from "../src/api/echo/echo.aggregate-replica.lifecycle.ts";
 import { create_echo_with_replica_loaders_internal } from "../src/api/echo/echo.ts";
 import type { EchoReplicaLoaders } from "../src/api/echo/echo.lazy.ts";
@@ -51,14 +50,4 @@ const socket = Object.freeze({
   assert.doesNotThrow(() => map.lib("state").at(["value"]).set(2));
 }
 
-{
-  const soloMap = hsonLiveMap.fromJson({ value: 0 });
-  assert.throws(() => Reflect.apply(create_echo, undefined, [{
-    socket,
-    map: soloMap,
-    recovery: { logicalMapId: "retired-solo" },
-  }]), /library registry/i);
-  assert.doesNotThrow(() => soloMap.set(["value"], 1));
-}
-
-process.stdout.write("Echo registry capability and solo retirement acceptance passed.\n");
+process.stdout.write("Echo registry capability acceptance passed.\n");

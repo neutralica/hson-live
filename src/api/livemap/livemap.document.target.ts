@@ -2,7 +2,7 @@ import { is_ordinary_element_node } from "../../core/node-guards.js";
 import { is_persisted_quid } from "../../core/persisted-quid.js";
 import type { HsonNode, Primitive } from "../../core/types.js";
 import type {
-  DocumentLiveMapMode,
+  LiveMapDocumentMode,
   LiveMapDocumentCommitTarget,
   LiveMapDocumentRequestTarget,
 } from "../../types/livemap.types.js";
@@ -53,7 +53,7 @@ export function normalize_document_commit_target(
 /** Resolve a live request without changing its compatibility semantics. */
 export function resolve_document_target(
   root: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   overlay: LiveMapDocumentIdentityOverlay,
   target: LiveMapDocumentRequestTarget,
   operation: LiveMapDocumentOperation,
@@ -68,7 +68,7 @@ export function resolve_document_target(
  */
 export function canonicalize_document_request_target(
   root: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   overlay: LiveMapDocumentIdentityOverlay,
   input: unknown,
   operation: LiveMapDocumentOperation,
@@ -88,7 +88,7 @@ export function canonicalize_document_request_target(
 /** Resolve only the path and treat an optional witness as non-routing evidence. */
 export function resolve_document_commit_target(
   root: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   overlay: LiveMapDocumentIdentityOverlay,
   input: unknown,
   operation: LiveMapDocumentOperation,
@@ -123,7 +123,7 @@ export function require_document_attr_element(
 
 function resolve_path(
   root: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   path: ReturnType<typeof validate_document_path>,
   operation: LiveMapDocumentOperation,
 ): HsonNode | Primitive {

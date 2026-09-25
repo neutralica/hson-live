@@ -7,7 +7,7 @@ import {
   type OrderedProjectedValue,
 } from "../../core/ordered-projected-value.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
-import type { LiveMapArrayItem, LiveMapArrayShape, LiveMapCommit, LiveMapCore, LiveMapPathArrayApi, LivePath } from "../../types/livemap.types.js";
+import type { LiveMapArrayItem, LiveMapArrayShape, LiveMapCoreCommit, LiveMapCore, LiveMapPathArrayApi, LivePath } from "../../types/livemap.types.js";
 import { array_index_error, must_ordered_projected_value, path_kind_error } from "./livemap.guard.js";
 import { livemap_projected_propagation, type LiveMapProjectedPropagation } from "./livemap.projected-propagation.js";
 import { LiveMapProjectedMutationError } from "./livemap.error.js";
@@ -16,7 +16,7 @@ type LiveMapArrayHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | 
 
 export function make_livemap_array_api<
   TValue = JsonValue | undefined,
-  TCommit = LiveMapCommit,
+  TCommit = LiveMapCoreCommit,
 >(
   core: LiveMapArrayHandleCore,
   handlePath: LivePath,

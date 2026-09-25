@@ -1,5 +1,5 @@
 import type { HsonNode } from "../../core/types.js";
-import type { DocumentLiveMapMode } from "../../types/livemap.types.js";
+import type { LiveMapDocumentMode } from "../../types/livemap.types.js";
 import {
   find_internal_document_id_path,
   InternalDocumentTraversalError,
@@ -11,7 +11,7 @@ type InternalDocumentLocation = Readonly<{
 }>;
 
 type InternalDocumentLocationMap<TLocation extends InternalDocumentLocation> = Readonly<{
-  mode: DocumentLiveMapMode;
+  mode: LiveMapDocumentMode;
   root: () => HsonNode;
   at: (path: readonly number[]) => TLocation;
 }>;

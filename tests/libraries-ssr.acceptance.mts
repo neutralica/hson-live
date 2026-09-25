@@ -14,12 +14,12 @@ import {
   type HsonSchema,
 } from "../src/index.ts";
 import type { LocusSocketLike, Locus } from "../src/types/locus.types.ts";
-import { install_libraries_snapshot, type LiveMapLibrariesSnapshot } from "../src/api/livemap/index.ts";
+import { install_libraries_snapshot } from "../src/api/livemap/index.ts";
 import { set_document_ssr_hook_for_tests } from "../src/api/ssr/ssr.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { INTERACTION_RESERVED_LIBRARY_KEY } from "../src/internal/interaction-storage.ts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
-import { admit_exact_runtime_livemap_libraries, admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
+import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 const StateSchema: HsonSchema = Hson.schema`<type "data" content <count "number">>`;
@@ -68,7 +68,7 @@ function document(map: ReturnType<typeof install_libraries_snapshot>["map"], nam
   return selected;
 }
 
-function authorized_session<TMap extends import("../src/types/livemap.types.ts").LiveMapLibraries>(locus: Locus<TMap>, libraries: string[], htmlDocument?: string) {
+function authorized_session<TMap extends import("../src/types/livemap.types.ts").LiveMap>(locus: Locus<TMap>, libraries: string[], htmlDocument?: string) {
   let receive: ((raw: string) => void) | undefined;
   let sessionId: string | undefined;
   const socket: LocusSocketLike = {

@@ -3,7 +3,11 @@
 
 import type { JsonValue } from "../../core/types.js";
 import type { LiveTextBridgeTarget, LiveMapBridgeBinding, LiveAttrBridgeTarget, LiveInputBridgeTarget, LiveMapControlNode } from "../../types/bridge.types.js";
-import type { LiveMapPathHandle } from "../../types/livemap.types.js";
+type BridgeDataLocation = Readonly<{
+  snap: () => JsonValue | undefined;
+  watch: (listener: (next: JsonValue | undefined) => void) => () => void;
+  set: (value: JsonValue) => unknown;
+}>;
 import { LiveTree } from "../livetree/livetree.js";
 import { own_disposable_for_subject } from "../livetree/managers/lifecycle-registry.js";
 import { runtime_for_tree } from "../livetree/runtime/livetree-runtime.js";
@@ -29,7 +33,7 @@ export function coerce_input_value(value: JsonValue | undefined, current: JsonVa
   return value ?? "";
 }
 
-export function bind_livetree_text(location: LiveMapPathHandle, tree: LiveTextBridgeTarget): LiveMapBridgeBinding {
+export function bind_livetree_text(location: BridgeDataLocation, tree: LiveTextBridgeTarget): LiveMapBridgeBinding {
   const sync = (value: JsonValue | undefined) => {
     tree.text.set(value_to_text(value));
   };
@@ -41,7 +45,7 @@ export function bind_livetree_text(location: LiveMapPathHandle, tree: LiveTextBr
 }
 
 export function bind_livetree_attr(
-  location: LiveMapPathHandle,
+  location: BridgeDataLocation,
   tree: LiveAttrBridgeTarget,
   name: string
 ): LiveMapBridgeBinding {
@@ -62,7 +66,7 @@ export function bind_livetree_attr(
 
 export function bind_livetree_input_value(
   tree: LiveInputBridgeTarget,
-  location: LiveMapPathHandle,
+  location: BridgeDataLocation,
 ): LiveMapBridgeBinding {
   let isSyncingFromMap = false;
 
@@ -95,7 +99,7 @@ export function bind_livetree_input_value(
 
 export function bind_livetree_input_checked(
   tree: LiveInputBridgeTarget,
-  location: LiveMapPathHandle,
+  location: BridgeDataLocation,
 ): LiveMapBridgeBinding {
   if (tree.form.getChecked === undefined || tree.form.setChecked === undefined) {
     return bind_livetree_input_value(tree, location);
@@ -132,7 +136,7 @@ export function bind_livetree_input_checked(
 
 export function bind_livetree_schema_number_input(
   tree: LiveInputBridgeTarget & LiveAttrBridgeTarget,
-  location: LiveMapPathHandle,
+  location: BridgeDataLocation,
   schema: LiveMapControlNode | undefined
 ): LiveMapBridgeBinding {
   let isSyncingFromMap = false;
@@ -194,7 +198,7 @@ export function bind_livetree_schema_number_input(
 
 export function bind_livetree_schema_enum_input(
   tree: LiveInputBridgeTarget & LiveAttrBridgeTarget,
-  location: LiveMapPathHandle,
+  location: BridgeDataLocation,
   schema: LiveMapControlNode | undefined
 ): LiveMapBridgeBinding {
   let isSyncingFromMap = false;
@@ -260,7 +264,7 @@ function owned_bridge_binding(target: object, dispose: () => void): LiveMapBridg
 }
 
 function subscribe_location(
-  location: LiveMapPathHandle,
+  location: BridgeDataLocation,
   sync: (value: JsonValue | undefined) => void,
 ): () => void {
   return location.watch(sync);

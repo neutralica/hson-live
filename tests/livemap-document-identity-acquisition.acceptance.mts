@@ -1,7 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { create_test_event_emitter } from "./test-events.mjs";
-import { element } from "./helpers/mirror-unit6.mts";
+import { element, document_from_node, registry_for_document_library } from "./helpers/mirror-unit6.mts";
 import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import {
@@ -18,7 +18,6 @@ import {
   encode_view_state_snapshot,
 } from "../src/api/livemap/livemap.document.view-state-codec.ts";
 import type { LiveMapGraphCommit } from "../src/types/livemap.types.ts";
-import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
 
 const Q1 = "000002a01";
 const Q2 = "000002a02";
@@ -137,31 +136,16 @@ check("portable capture leaves acquired identity in the source runtime", () => {
   const map = element(`<main/>`);
   const quid = acquire_document_identity(map.document, target()).snap()?.$_meta?.quid;
   const restored = element(`<main/>`);
-  restored.restore(map.capture());
+  registry_for_document_library(restored).restore(registry_for_document_library(map).capture());
   assert.equal(restored.document.byQuid(quid!), undefined);
   assert.equal(map.document.byQuid(quid!)?.$_tag, "main");
-});
-
-check("public replay rejects legacy recorded registration without minting", () => {
-  const commit: LiveMapGraphCommit = {
-    changed: true, prevRev: 0, rev: 1,
-    ops: [{ domain: "graph", op: "ensure-quid", target: { kind: "path", path: validate_document_path([0]) }, quid: Q1 }],
-  };
-  const mirror = element(`<main/>`);
-  set_livemap_document_quid_candidate_source_for_tests(mirror.document, () => {
-    throw new Error("replay minted");
-  });
-  assert.throws(() => mirror.replay(commit));
-  assert.equal(mirror.document.byQuid(Q1), undefined);
-  assert.equal(mirror.rev, 0);
 });
 
 check("view-state persistence excludes acquired runtime metadata", () => {
   const map = element(`<main/>`);
   const quid = acquire_document_identity(map.document, target()).snap()?.$_meta?.quid;
   const decoded = decode_view_state_snapshot(encode_view_state_snapshot(map.capture()));
-  const restored = element(`<main/>`);
-  restored.restore(decoded);
+  const restored = document_from_node(decoded.root);
   assert.equal(restored.document.byQuid(quid!), undefined);
 });
 

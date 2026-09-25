@@ -1,10 +1,10 @@
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
-import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
+import { document_from_node } from "./helpers/mirror-unit6.mts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import type { HsonNode } from "../src/core/types.ts";
-import type { DocumentLiveMap, LiveMapGraphOp } from "../src/types/livemap.types.ts";
+import type { LiveMapDocumentLibrary, LiveMapGraphOp } from "../src/types/livemap.types.ts";
 import {
   livemap_document_identity_overlay_build_count,
   livemap_document_identity_overlay_for,
@@ -50,8 +50,8 @@ const Q4 = "000000404";
 const path = (...parts: number[]) => validate_document_path(parts);
 const target = (...parts: number[]) => Object.freeze({ kind: "path" as const, path: path(0, ...parts) });
 
-function element(source: string): DocumentLiveMap {
-  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
+function element(source: string): LiveMapDocumentLibrary {
+  const map = document_from_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
   if (map.mode !== "document") throw new Error("Expected element map");
   return map;
 }
@@ -68,7 +68,7 @@ function branch(tag: string, quid?: string, child?: HsonNode): HsonNode {
   return { $_tag: "_hson_elem", $_content: [ordinary(tag, quid, child)] };
 }
 
-function prepare(map: DocumentLiveMap, operation: LiveMapGraphOp) {
+function prepare(map: LiveMapDocumentLibrary, operation: LiveMapGraphOp) {
   return prepare_document_graph_operation(
     map.root(),
     map.mode,
@@ -202,7 +202,7 @@ check("same-position move retains the exact overlay and derives no effects", () 
 check("QUID-free structural changes retain the empty overlay", () => {
   const map = element(`<main <a/>/>`);
   const overlay = livemap_document_identity_overlay_for(map);
-  map.document.content.insert(target(0), 1, ordinary("b"));
+  map.document.content.insert(target(0), 1, ordinary("a"));
   assert.equal(livemap_document_identity_overlay_for(map), overlay);
 });
 
@@ -222,7 +222,7 @@ check("ordinary operation sequence performs no full overlay reconstruction", () 
   const map = element(`<main @${Q1} <a @${Q2}/>/>`);
   const before = livemap_document_identity_overlay_build_count();
   map.document.attrs.set(target(), "id", "x");
-  map.document.content.insert(target(0), 0, ordinary("b"));
+  map.document.content.insert(target(0), 0, ordinary("a"));
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q3);
   acquire_document_identity(map.document, target(0, 0));
   map.document.content.move(target(0), 0, 1);
@@ -232,7 +232,7 @@ check("ordinary operation sequence performs no full overlay reconstruction", () 
 
 check("incremental candidate overlay agrees with a fresh diagnostic scan", () => {
   const map = element(`<main @${Q1} <a @${Q2}/>/>`);
-  map.document.content.insert(target(0), 0, ordinary("b"));
+  map.document.content.insert(target(0), 0, ordinary("a"));
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q3);
   acquire_document_identity(map.document, target(0, 0));
   const overlay = livemap_document_identity_overlay_for(map);

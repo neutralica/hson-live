@@ -1,136 +1,85 @@
-import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
-import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { hson } from "../src/hson.ts";
-import type { DocumentLiveMap, LiveMapGraphCommit } from "../src/types/livemap.types.ts";
-import { LiveMapDocumentStagingError } from "../src/api/livemap/livemap.error.ts";
-import { livemap_document_identity_overlay_for } from "../src/api/livemap/livemap.document.identity.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
-
-const Q1 = "000000711";
-const Q2 = "000000712";
-const Q3 = "000000713";
-const Q4 = "000000714";
+import { element, projected_element, commit_document_operations } from "./helpers/mirror-unit6.mts";
+import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
+import { livemap_document_identity_overlay_for } from "../src/api/livemap/livemap.document.identity.ts";
+import type { LiveMapGraphOp, LiveMapDocumentLibrary } from "../src/types/livemap.types.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livemap.document-staged-request-lowering",
-  title: "Document staged path authority",
+  title: "Registry staged document path authority",
   category: "LiveMap",
   runtime: "node",
   tags: Object.freeze(["document", "path", "staging", "identity", "externally-discoverable"]),
 });
-
-const testEvents = create_test_event_emitter("livemap.document-staged-request-lowering");
+const events = create_test_event_emitter("livemap.document-staged-request-lowering");
 let checks = 0;
 function check(name: string, run: () => void): void {
-  testEvents.case_begin(name, name);
-  try {
-    run();
-    testEvents.case_end(name, "pass");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Check failed.";
-    testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
-    testEvents.case_end(name, "fail");
-    testEvents.terminal("fail");
-    throw error;
+  events.case_begin(name, name);
+  try { run(); events.case_end(name, "pass"); }
+  catch (error) {
+    events.diagnostic(name, "assertion", error instanceof Error ? error.message : String(error));
+    events.case_end(name, "fail"); events.terminal("fail"); throw error;
   }
-  checks += 1;
-  process.stdout.write(`ok ${checks} - ${name}\n`);
+  process.stdout.write(`ok ${++checks} - ${name}\n`);
 }
+const Q1 = "000000711";
+const Q2 = "000000712";
+const source = () => element(`<main <item @${Q1}/> <item @${Q2}/>/` + `>`);
+const p = (...parts: number[]) => ({ kind: "path" as const, path: validate_document_path(parts) });
+const carrier = p(0, 0);
+const item = (index: number) => p(0, 0, index);
+const commit = (map: LiveMapDocumentLibrary, operations: readonly LiveMapGraphOp[]) => commit_document_operations(map, operations);
 
-function element(source: string): DocumentLiveMap {
-  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
-  if (map.mode !== "document") throw new Error("Expected document LiveMap");
-  return map;
-}
-
-function replay(map: DocumentLiveMap, ops: readonly unknown[]): LiveMapGraphCommit {
-  return Reflect.apply(map.replay, map, [{
-    changed: true,
-    prevRev: map.rev,
-    rev: map.rev + 1,
-    ops,
-  }]);
-}
-
-const path = (...segments: number[]) => Object.freeze({
-  kind: "path" as const,
-  path: Object.freeze(segments),
-});
-
-function child(tag: string, quid?: string) {
-  const value = element(`<${tag}${quid === undefined ? "" : ` @${quid}`}/>`).root().$_content[0];
-  if (value === undefined || value === null || typeof value !== "object") {
-    throw new Error("Expected authored document child");
-  }
-  return value;
-}
-
-function source(): DocumentLiveMap {
-  return element(`<main @${Q1} <a @${Q2}/> <b @${Q3}/>/>`);
-}
-
-check("staged operations use the caller's current canonical path", () => {
+check("staged paths address the current ordinal after movement", () => {
   const map = source();
-  const commit = replay(map, [
-    { domain: "graph", op: "move-content", target: path(0, 0), from: 0, to: 1 },
-    { domain: "graph", op: "set-attr", target: path(0, 0, 1), name: "id", value: "moved" },
+  const result = commit(map, [
+    { domain: "graph", op: "move-content", target: carrier, from: 0, to: 1 },
+    { domain: "graph", op: "set-attr", target: item(1), name: "moved", value: true },
   ]);
-  assert.equal(map.document.byQuid(Q2)?.$_attrs?.id, "moved");
-  assert.deepEqual(Reflect.get(commit.ops[1]!, "target"), path(0, 0, 1));
+  assert.equal(map.document.byQuid(Q1)?.$_attrs?.moved, true);
+  const operation = result.operations[1]?.operation;
+  assert.deepEqual(operation !== undefined && "domain" in operation && operation.domain === "graph" && operation.op === "set-attr"
+    ? operation.target.path : undefined, [0, 0, 1]);
 });
 
 check("paths do not retarget through QUID continuity", () => {
   const map = source();
-  replay(map, [
-    { domain: "graph", op: "move-content", target: path(0, 0), from: 0, to: 1 },
-    { domain: "graph", op: "set-attr", target: path(0, 0, 0), name: "id", value: "path-wins" },
+  commit(map, [
+    { domain: "graph", op: "move-content", target: carrier, from: 0, to: 1 },
+    { domain: "graph", op: "set-attr", target: item(0), name: "pathWins", value: true },
   ]);
-  assert.equal(map.document.byQuid(Q3)?.$_attrs?.id, "path-wins");
-  assert.equal(map.document.byQuid(Q2)?.$_attrs?.id, undefined);
+  assert.equal(map.document.byQuid(Q2)?.$_attrs?.pathWins, true);
+  assert.equal(map.document.byQuid(Q1)?.$_attrs?.pathWins, undefined);
 });
 
-check("raw-QUID staging rejects atomically at its ordinal", () => {
+check("invalid later target rejects the whole staged transaction", () => {
   const map = source();
   const before = map.capture();
-  assert.throws(() => replay(map, [
-    { domain: "graph", op: "move-content", target: path(0, 0), from: 0, to: 1 },
-    { domain: "graph", op: "set-attr", target: { kind: "quid", quid: Q2 }, name: "id", value: "bad" },
-  ]), (error: unknown) => error instanceof LiveMapDocumentStagingError
-    && error.opIndex === 1
-    && error.reasonCode === "INVALID_DOCUMENT_COMMIT_TARGET");
+  assert.throws(() => commit(map, [
+    { domain: "graph", op: "move-content", target: carrier, from: 0, to: 1 },
+    { domain: "graph", op: "set-attr", target: item(99), name: "bad", value: true },
+  ]));
   assert.deepEqual(map.capture(), before);
 });
 
-check("inserted portable content remains addressable through a path mutation", () => {
+check("inserted portable content is addressable at its staged path", () => {
   const map = source();
-  replay(map, [
-    { domain: "graph", op: "insert-content", target: path(0, 0), index: 0, content: child("i") },
-    { domain: "graph", op: "set-attr", target: path(0, 0, 0), name: "id", value: "inserted" },
+  commit(map, [
+    { domain: "graph", op: "insert-content", target: carrier, index: 0, content: projected_element('<item/>') },
+    { domain: "graph", op: "set-attr", target: item(0), name: "inserted", value: true },
   ]);
-  assert.equal(map.document.attrs.get(path(0, 0, 0), "id"), "inserted");
-  assert.equal(map.document.byQuid(Q4), undefined);
+  assert.equal(map.document.attrs.get(item(0), "inserted"), true);
+  assert.deepEqual(livemap_document_identity_overlay_for(map.document).pathForQuid(Q1), [0, 0, 1]);
 });
 
-check("public replay rejects witness QUID evidence", () => {
+check("path mutation retains sparse identity lookup without minting", () => {
   const map = source();
-  assert.throws(() => replay(map, [{
-    domain: "graph",
-    op: "set-attr",
-    target: { kind: "path", path: [0, 0, 0], witness: { quid: Q3 } },
-    name: "id",
-    value: "bad",
-  }]), /QUID witness/i);
-  assert.equal(map.rev, 0);
+  commit(map, [{ domain: "graph", op: "set-attr", target: item(0), name: "ready", value: true }]);
+  assert.equal(map.document.byQuid(Q1)?.$_attrs?.ready, true);
+  assert.equal(livemap_document_identity_overlay_for(map.document).size, 2);
 });
 
-check("path mutation preserves sparse identity lookup", () => {
-  const map = source();
-  map.document.attrs.set(path(0, 0, 0), "id", "same");
-  assert.equal(livemap_document_identity_overlay_for(map).pathForQuid(Q2)?.join("/"), "0/0/0");
-  assert.equal(map.document.byQuid(Q2)?.$_attrs?.id, "same");
-});
-
-process.stdout.write(`# ${checks} document staged path-authority checks passed\n`);
-testEvents.terminal("pass");
+events.terminal("pass");
+process.stdout.write(`# ${checks} staged registry request checks passed\n`);

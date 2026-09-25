@@ -3,7 +3,7 @@ import { create_test_event_emitter } from "./test-events.mjs";
 
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
-import { make_livemap_core } from "../src/api/livemap/livemap.core.ts";
+import { Hson } from "../src/hson-authoring.ts";
 import { parse_json } from "../src/api/transform/parsers/parse-json.ts";
 import { assert_invariants } from "../src/core/assert-invariants.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
@@ -70,16 +70,7 @@ function assert_javascript_equivalence(value: unknown, transformValue: JsonValue
     ? parse_json(JSON.stringify(transformValue))
     : parse_json(transformValue);
   assert_closed_graph(carrierGraph, transformGraph, "Transform–carrier equivalence");
-  if (firstCarrier === null || typeof firstCarrier !== "object") {
-    const mapCarrier = ordered_projected_object([["value", firstCarrier]]);
-    const valueMap = make_livemap_core(projected_value_to_hson_root(mapCarrier));
-    const mapExpected = projected_value_to_hson_root(mapCarrier);
-    assert_closed_graph(valueMap.root(), mapExpected, "LiveMap scalar-property equivalence");
-  } else {
-    const valueMap = make_livemap_core(carrierGraph);
-    assert_closed_graph(valueMap.root(), transformGraph, "Transform–LiveMap equivalence");
-    assert.equal(ordered_projected_value_equal(projected_value_from_hson_node(valueMap.root()), firstCarrier), true);
-  }
+  assert.equal(ordered_projected_value_equal(projected_value_from_hson_node(carrierGraph), firstCarrier), true);
   return firstCarrier;
 }
 
@@ -133,7 +124,7 @@ check("ordinary mixed key order closes identically", () => {
 check("structural JSON text preserves authored integer-like order", () => {
   const text = '{"10":"ten","2":"two","1":"one"}';
   const transformGraph = parse_json(text);
-  const liveMapGraph = hson.liveMap.fromJson(text).root();
+  const liveMapGraph = hson.liveMap.fromLibraries({ state: { data: text, schema: Hson.schema`<type "data" content <'10' "string" '2' "string" '1' "string">>` } }).lib("state").root();
   const carrierGraph = projected_value_to_hson_root(ordered_projected_object([["10", "ten"], ["2", "two"], ["1", "one"]]));
   assert_closed_graph(liveMapGraph, transformGraph, "structural JSON LiveMap closure");
   assert_closed_graph(carrierGraph, transformGraph, "structural JSON carrier closure");
@@ -142,7 +133,7 @@ check("structural JSON text preserves authored integer-like order", () => {
 check("structural JSON text preserves mixed key classes", () => {
   const text = '{"a":1,"10":10,"2":2,"01":1,"4294967294":4,"4294967295":5,"-1":-1,"b":2}';
   const transformGraph = parse_json(text);
-  const liveMapGraph = hson.liveMap.fromJson(text).root();
+  const liveMapGraph = hson.liveMap.fromLibraries({ state: { data: text, schema: Hson.schema`<type "data" content <a "number" '10' "number" '2' "number" '01' "number" '4294967294' "number" '4294967295' "number" '-1' "number" b "number">>` } }).lib("state").root();
   assert_closed_graph(liveMapGraph, transformGraph, "mixed structural JSON closure");
   assert.deepEqual(graph_object_keys(liveMapGraph), ["a", "10", "2", "01", "4294967294", "4294967295", "-1", "b"]);
 });
@@ -170,14 +161,14 @@ check("repeated acyclic references copy structurally", () => {
   assert.equal(Object.is((carrier.entries[0]?.[1] as { entries: readonly (readonly [string, OrderedProjectedValue])[] }).entries[0]?.[1], -0), true);
 });
 check("scalar object wrappers close through a LiveMap set", () => {
-  const map = make_livemap_core(parse_json({ value: 0 }));
-  map.set(["value"], -0);
-  assert_closed_graph(map.root(), parse_json({ value: -0 }), "scalar wrapper set closure");
+  const map = hson.liveMap.fromLibraries({ state: { data: { value: 0 }, schema: Hson.schema`<type "data" content <value "number">>` } });
+  map.lib("state").at(["value"]).set(-0);
+  assert_closed_graph(map.lib("state").root(), parse_json({ value: -0 }), "scalar wrapper set closure");
 });
 check("array index wrappers close through a LiveMap splice", () => {
-  const map = make_livemap_core(parse_json({ items: [0] }));
-  map.splice(["items"], 0, 1, -0, own_data([["__proto__", "data"]]) as JsonValue);
-  assert_closed_graph(map.root(), parse_json({ items: [-0, own_data([["__proto__", "data"]]) as JsonValue] }), "array index closure");
+  const map = hson.liveMap.fromLibraries({ state: { data: { items: [0] }, schema: Hson.schema`<type "data" content <items <array "any">>>` } });
+  map.lib("state").at(["items"]).asArray()!.splice(0, 1, -0, own_data([["__proto__", "data"]]) as JsonValue);
+  assert_closed_graph(map.lib("state").root(), parse_json({ items: [-0, own_data([["__proto__", "data"]]) as JsonValue] }), "array index closure");
 });
 
 assert.equal(checks, 24);

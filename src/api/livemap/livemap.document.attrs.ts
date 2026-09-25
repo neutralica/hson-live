@@ -8,9 +8,9 @@ import {
   is_public_attr_name,
 } from "../../core/public-attrs.js";
 import type {
-  DocumentLiveMapAttrsReadApi,
-  DocumentLiveMapFlagsReadApi,
-  DocumentLiveMapMode,
+  LiveMapDocumentAttrsReadApi,
+  LiveMapDocumentFlagsReadApi,
+  LiveMapDocumentMode,
   LiveMapDocumentAttributeValue,
   LiveMapDocumentAttrs,
   LiveMapDocumentRequestTarget,
@@ -43,7 +43,7 @@ export function decode_document_attrs(value: unknown): LiveMapDocumentAttrs | un
 }
 
 export type LiveMapDocumentAttrsReadController = Readonly<{
-  mode: DocumentLiveMapMode;
+  mode: LiveMapDocumentMode;
   root: () => HsonNode;
   overlay: () => LiveMapDocumentIdentityOverlay;
 }>;
@@ -51,7 +51,7 @@ export type LiveMapDocumentAttrsReadController = Readonly<{
 /** Build canonical graph-facing reads without entering the mutation planner. */
 export function make_livemap_document_attrs_read_api(
   controller: LiveMapDocumentAttrsReadController,
-): DocumentLiveMapAttrsReadApi {
+): LiveMapDocumentAttrsReadApi {
   const get = (
     targetInput: LiveMapDocumentRequestTarget,
     nameInput: string,
@@ -99,7 +99,7 @@ export function make_livemap_document_attrs_read_api(
 /** Build semantic flag reads over the same canonical attribute bag. */
 export function make_livemap_document_flags_read_api(
   controller: LiveMapDocumentAttrsReadController,
-): DocumentLiveMapFlagsReadApi {
+): LiveMapDocumentFlagsReadApi {
   return Object.freeze({
     has: (targetInput, nameInput) => {
       const operation = "has-attr";

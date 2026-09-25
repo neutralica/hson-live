@@ -1,6 +1,6 @@
 import type {
   LiveMapAnyOp,
-  LiveMapCommit,
+  LiveMapCoreCommit,
   LiveMapDisposer,
 } from "../../types/livemap.types.js";
 import type { HsonNode, Primitive } from "../../core/types.js";
@@ -50,7 +50,7 @@ type LiveMapWatchHubOptions<TPath extends readonly unknown[], TValue, TPublicVal
   read: (path: TPath) => TValue;
   equal: (left: TValue, right: TValue) => boolean;
   detach: (value: TValue) => TPublicValue;
-  relevant: (commit: LiveMapCommit<LiveMapAnyOp>, path: TPath) => boolean;
+  relevant: (commit: LiveMapCoreCommit<LiveMapAnyOp>, path: TPath) => boolean;
 }>;
 
 /** Dedicated map-owned value publication for passive logical locations. */
@@ -83,7 +83,7 @@ export function make_livemap_watch_hub<
   };
 
   const emitCommit = (
-    commit: LiveMapCommit<LiveMapAnyOp>,
+    commit: LiveMapCoreCommit<LiveMapAnyOp>,
   ): LiveMapWatchPublicationFailure | undefined => {
     if (!commit.changed) return undefined;
     return publish((entry) => {
@@ -134,6 +134,6 @@ export type LiveMapWatchHub<
   TPublicValue,
 > = Readonly<{
   add: (path: TPath, listener: (next: TPublicValue) => void) => LiveMapDisposer;
-  emitCommit: (commit: LiveMapCommit<LiveMapAnyOp>) => LiveMapWatchPublicationFailure | undefined;
+  emitCommit: (commit: LiveMapCoreCommit<LiveMapAnyOp>) => LiveMapWatchPublicationFailure | undefined;
   emitSnapshot: () => LiveMapWatchPublicationFailure | undefined;
 }>;

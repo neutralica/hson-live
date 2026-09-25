@@ -8,7 +8,6 @@ import {
   continue_document,
   enable_interactions,
   hsonLiveMap,
-  type DocumentLiveMap,
   type HsonSchema,
   type InteractionDescriptor,
 } from "../src/index.ts";
@@ -17,19 +16,19 @@ import { set_document_adoption_fault_hook_for_tests } from "../src/api/continuat
 import { get_node_for_el, unlinkElement } from "../src/api/livetree/utils/node-map-helpers.ts";
 import { FakeElement, FakeText, install_fake_document } from "./helpers/fake-document.mts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
-import { admit_exact_runtime_livemap_node } from "../src/internal/exact-runtime-node-admission.ts";
 import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
 
 install_fake_document();
 
 const EmptyPageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content "empty">`;
 const ButtonPageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "button" content "empty">]>>`;
+const ParagraphPageSchema: HsonSchema = Hson.schema`<type "document" tag "main" content <sequence [<tag "p" content "string">]>>`;
 const path = (...parts: number[]) => Object.freeze({ kind: "path" as const, path: Object.freeze([0, ...parts]) });
 
-function documentMap(source: string): DocumentLiveMap {
-  const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }));
-  if (map.mode !== "document") throw new Error("Expected document map.");
-  return map;
+function documentMap(source: string) {
+  return admit_exact_runtime_livemap_libraries({
+    page: { document: parse_hson_exact_runtime(source, { allowTopLevelDocumentText: true }), schema: ParagraphPageSchema },
+  });
 }
 
 function mainFixture(_quid?: string): Readonly<{ root: FakeElement; child: FakeElement; text: FakeText }> {
@@ -49,23 +48,23 @@ function source(quid?: string): string {
   const quid = "000003001";
   const map = documentMap(source(quid));
   const fixture = mainFixture(quid);
-  const before = structuredClone(map.root());
+  const before = structuredClone(map.lib("page").root());
   const profile = begin_livetree_materialization_profile();
   const continuation = continue_document({ map, root: fixture.root as unknown as Element });
   const materialization = profile.stop();
-  assert.equal(continuation.map, map);
+  assert.equal(continuation.map, map.lib("page"));
   assert.equal(continuation.tree.dom.el(), fixture.root as unknown as Element);
   assert.equal(continuation.tree.find.byTag("p")?.dom.el(), fixture.child as unknown as Element);
   assert.equal(fixture.child.childNodes[0], fixture.text);
-  assert.deepEqual(map.root(), before);
+  assert.deepEqual(map.lib("page").root(), before);
   assert.equal(map.rev, 0);
   assert.equal(materialization.quidEnsureCalls, 0);
   assert.equal(fixture.root.getAttribute("hson:quid"), null);
   assert.equal(fixture.child.getAttribute("hson:quid"), null);
-  map.document.attrs.set(path(0, 0), "title", "continued");
+  map.lib("page").document.attrs.set(path(0, 0), "title", "continued");
   assert.equal(fixture.child.getAttribute("title"), "continued");
   continuation.dispose();
-  map.document.attrs.set(path(0, 0), "title", "detached");
+  map.lib("page").document.attrs.set(path(0, 0), "title", "detached");
   assert.equal(fixture.child.getAttribute("title"), "continued");
   continuation.tree.find.byTag("p")?.attrs.set("title", "detached");
   const rebound = continue_document({ map, root: fixture.root as unknown as Element });
@@ -97,7 +96,7 @@ for (const point of ["after-first-link", "after-links", "after-runtime", "after-
   const map = documentMap(source());
   const fixture = mainFixture();
   set_document_adoption_fault_hook_for_tests((point) => {
-    if (point === "after-tree") map.document.attrs.set(path(0, 0), "data-race", "moved");
+    if (point === "after-tree") map.lib("page").document.attrs.set(path(0, 0), "data-race", "moved");
   });
   assert.throws(
     () => continue_document({ map, root: fixture.root as unknown as Element }),
@@ -113,7 +112,7 @@ for (const point of ["after-first-link", "after-links", "after-runtime", "after-
 
 {
   const map = documentMap(source());
-  const existing = (await import("../src/api/mirror/mirror.document.ts")).reflect_document(map);
+  const existing = (await import("../src/api/mirror/mirror.document.ts")).reflect_document(map.lib("page"));
   const fixture = mainFixture();
   assert.throws(
     () => continue_document({ map, root: fixture.root as unknown as Element }),

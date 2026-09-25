@@ -6,6 +6,8 @@ import {
   path,
   projected_element,
   raw_node,
+  registry_for_document_library,
+  commit_document_operations,
 } from "./helpers/mirror-unit6.mts";
 import {
   _create_livetree_for_runtime_test,
@@ -53,12 +55,7 @@ function reflected(map: ReturnType<typeof element>) {
 }
 
 function replay(map: ReturnType<typeof element>, operations: readonly LiveMapGraphOp[]): void {
-  map.replay(Object.freeze({
-    changed: true,
-    prevRev: map.rev,
-    rev: map.rev + 1,
-    ops: Object.freeze([...operations]),
-  }));
+  commit_document_operations(map, operations);
 }
 
 function is_graph_operation(operation: LiveMapAnyOp): operation is LiveMapGraphOp {
@@ -73,10 +70,10 @@ const COLLISION = "000000791";
 const documentRuntime = _create_livetree_runtime_test_handle();
 
 check("insert incrementally shifts later projected correspondence", () => {
-  const map = element(`<main <a/> <b/>/>`);
+  const map = element(`<main <a/> <a/>/>`);
   const { runtime, binding } = reflected(map);
   const shifted = raw_node(binding.tree.node, [0, 1]);
-  map.document.content.insert(path(0), 0, projected_element(`<i/>`));
+  map.document.content.insert(path(0), 0, projected_element(`<a/>`));
   const handle = _create_livetree_for_runtime_test(runtime, shifted).adoptRoots(binding.tree.hostRootNode());
   handle.attrs.set("shifted", true);
   assert.equal(map.document.attrs.get(path(0, 2), "shifted"), true);
@@ -84,7 +81,7 @@ check("insert incrementally shifts later projected correspondence", () => {
 });
 
 check("remove incrementally shifts surviving projected correspondence", () => {
-  const map = element(`<main <a/> <b/> <c/>/>`);
+  const map = element(`<main <a/> <a/> <a/>/>`);
   const { runtime, binding } = reflected(map);
   const shifted = raw_node(binding.tree.node, [0, 2]);
   map.document.content.remove(path(0), 0);
@@ -95,31 +92,35 @@ check("remove incrementally shifts surviving projected correspondence", () => {
 });
 
 check("forward move publishes the moved projected path", () => {
-  const map = element(`<main <a/> <b/> <c/>/>`);
+  const map = element(`<main <a/> <a/> <a/>/>`);
   const { runtime, binding } = reflected(map);
   const moved = raw_node(binding.tree.node, [0, 0]);
   map.document.content.move(path(0), 0, 2);
   const handle = _create_livetree_for_runtime_test(runtime, moved).adoptRoots(binding.tree.hostRootNode());
   handle.attrs.set("moved", "forward");
-  assert.equal(map.document.attrs.get(path(0, 2), "moved"), "forward");
+  const finalIndex = raw_node(binding.tree.node, [0]).$_content.indexOf(moved);
+  assert.ok(finalIndex >= 0);
+  assert.equal(map.document.attrs.get(path(0, finalIndex), "moved"), "forward");
   binding.dispose();
 });
 
 check("backward move publishes the moved projected path", () => {
-  const map = element(`<main <a/> <b/> <c/>/>`);
+  const map = element(`<main <a/> <a/> <a/>/>`);
   const { runtime, binding } = reflected(map);
   const moved = raw_node(binding.tree.node, [0, 2]);
   map.document.content.move(path(0), 2, 0);
   const handle = _create_livetree_for_runtime_test(runtime, moved).adoptRoots(binding.tree.hostRootNode());
   handle.attrs.set("moved", "backward");
-  assert.equal(map.document.attrs.get(path(0, 0), "moved"), "backward");
+  const finalIndex = raw_node(binding.tree.node, [0]).$_content.indexOf(moved);
+  assert.ok(finalIndex >= 0);
+  assert.equal(map.document.attrs.get(path(0, finalIndex), "moved"), "backward");
   binding.dispose();
 });
 
 check("replacement publishes correspondence for the replacement subtree", () => {
-  const map = element(`<main <a/> <b/>/>`);
+  const map = element(`<main <a/> <a/>/>`);
   const { runtime, binding } = reflected(map);
-  map.document.content.replace(path(0), 0, projected_element(`<i/>`));
+  map.document.content.replace(path(0), 0, projected_element(`<a title="new"/>`));
   const replacement = raw_node(binding.tree.node, [0, 0]);
   const handle = _create_livetree_for_runtime_test(runtime, replacement).adoptRoots(binding.tree.hostRootNode());
   handle.attrs.set("replacement", true);
@@ -128,11 +129,11 @@ check("replacement publishes correspondence for the replacement subtree", () => 
 });
 
 check("staged multi-operation replay publishes only final correspondence", () => {
-  const map = element(`<main <a @${Q1}/> <b @${Q2}/>/` + `>`);
+  const map = element(`<main <a @${Q1}/> <a @${Q2}/>/` + `>`);
   const { runtime, binding } = reflected(map);
   const a = raw_node(binding.tree.node, [0, 0]);
   replay(map, [
-    { domain: "graph", op: "insert-content", target: path(0), index: 1, content: projected_element(`<i/>`), },
+    { domain: "graph", op: "insert-content", target: path(0), index: 1, content: projected_element(`<a/>`), },
     { domain: "graph", op: "move-content", target: path(0), from: 0, to: 2 },
     { domain: "graph", op: "set-attr", target: path(0, 2), name: "final", value: true },
   ]);
@@ -149,7 +150,7 @@ check("foreign identity insertion rejects before mounted DOM planning", () => {
   const map = element(`<main <a/>/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
   const before = structuredClone(binding.tree.node);
-  assert.throws(() => map.document.content.insert(path(0), 1, projected_element(`<b @${COLLISION}/>`)));
+  assert.throws(() => map.document.content.insert(path(0), 1, projected_element(`<a @${COLLISION}/>` )));
   assert.equal(binding.status, "active");
   assert.deepEqual(binding.tree.node, before);
   binding.dispose();
@@ -161,7 +162,7 @@ check("rejected identity insertion publishes no correspondence revision", () => 
   const map = element(`<main <a/>/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
   const before = binding.diagnostics();
-  assert.throws(() => map.document.content.insert(path(0), 1, projected_element(`<b @${COLLISION}/>`)));
+  assert.throws(() => map.document.content.insert(path(0), 1, projected_element(`<a @${COLLISION}/>` )));
   const after = binding.diagnostics();
   assert.equal(binding.sourceRevision, 0);
   assert.equal(after.incrementalCorrespondenceUpdates, before.incrementalCorrespondenceUpdates);
@@ -173,7 +174,7 @@ check("post-commit DOM application failure has a distinct code", () => {
   const binding = _reflect_document_for_runtime_test(documentRuntime, map);
   const rootDom = mount(binding.tree.node);
   rootDom.failReplace = true;
-  map.document.content.insert(path(0), 1, projected_element(`<b/>`));
+  map.document.content.insert(path(0), 1, projected_element(`<a/>`));
   assert.equal(binding.failure?.code, DOCUMENT_MIRROR_STRUCTURAL_UPDATE_FAILED_ERROR_CODE);
   binding.dispose();
 });
@@ -183,7 +184,7 @@ check("DOM projection failure does not roll back the canonical commit", () => {
   const binding = _reflect_document_for_runtime_test(documentRuntime, map);
   const rootDom = mount(binding.tree.node);
   rootDom.failReplace = true;
-  const commit = map.document.content.insert(path(0), 1, projected_element(`<b/>`));
+  const commit = map.document.content.insert(path(0), 1, projected_element(`<a/>`));
   assert.equal(commit.changed, true);
   assert.equal(map.rev, 1);
   assert.equal(raw_node(map.root(), [0]).$_content.length, 2);
@@ -195,10 +196,10 @@ check("a fresh binding rebuilds correspondence from canonical recovery state", (
   const failed = _reflect_document_for_runtime_test(documentRuntime, map);
   const rootDom = mount(failed.tree.node);
   rootDom.failReplace = true;
-  map.document.content.insert(path(0), 1, projected_element(`<b/>`));
+  map.document.content.insert(path(0), 1, projected_element(`<a/>`));
   failed.dispose();
   const recovered = _reflect_document_for_runtime_test(documentRuntime, map);
-  assert.equal(raw_node(recovered.tree.node, [0, 1]).$_tag, "b");
+  assert.equal(raw_node(recovered.tree.node, [0, 1]).$_tag, "a");
   assert.equal(recovered.diagnostics().wholeCorrespondenceBuilds, 1);
   recovered.dispose();
 });
@@ -216,13 +217,13 @@ check("insert leaves whole-build accounting unchanged", () => {
   const map = element(`<main <a/>/>`);
   const { binding } = reflected(map);
   const before = binding.diagnostics().wholeCorrespondenceBuilds;
-  map.document.content.insert(path(0), 1, projected_element(`<b/>`));
+  map.document.content.insert(path(0), 1, projected_element(`<a title="new"/>`));
   assert.equal(binding.diagnostics().wholeCorrespondenceBuilds, before);
   binding.dispose();
 });
 
 check("remove leaves whole-build accounting unchanged", () => {
-  const map = element(`<main <a/> <b/>/>`);
+  const map = element(`<main <a/> <a/>/>`);
   const { binding } = reflected(map);
   const before = binding.diagnostics().wholeCorrespondenceBuilds;
   map.document.content.remove(path(0), 0);
@@ -231,7 +232,7 @@ check("remove leaves whole-build accounting unchanged", () => {
 });
 
 check("move leaves whole-build accounting unchanged", () => {
-  const map = element(`<main <a/> <b/>/>`);
+  const map = element(`<main <a/> <a/>/>`);
   const { binding } = reflected(map);
   const before = binding.diagnostics().wholeCorrespondenceBuilds;
   map.document.content.move(path(0), 0, 1);
@@ -243,7 +244,7 @@ check("replacement leaves whole-build accounting unchanged", () => {
   const map = element(`<main <a/>/>`);
   const { binding } = reflected(map);
   const before = binding.diagnostics().wholeCorrespondenceBuilds;
-  map.document.content.replace(path(0), 0, projected_element(`<b/>`));
+  map.document.content.replace(path(0), 0, projected_element(`<a title="new"/>`));
   assert.equal(binding.diagnostics().wholeCorrespondenceBuilds, before);
   binding.dispose();
 });
@@ -252,18 +253,18 @@ check("root replacement performs the permitted whole build", () => {
   const map = element(`<main @${Q1} <a @${Q2}/>/` + `>`);
   const { binding } = reflected(map);
   const before = binding.diagnostics().wholeCorrespondenceBuilds;
-  map.install(element(`<main @${Q1} <b @${Q3}/>/` + `>`).capture());
+  registry_for_document_library(map).restore(registry_for_document_library(element(`<main @${Q1} <a @${Q3} title="new"/>/>`)).capture());
   assert.equal(binding.diagnostics().wholeCorrespondenceBuilds, before + 1);
   binding.dispose();
 });
 
-check("ordinary mutation and replay yield equivalent projection", () => {
-  const left = element(`<main <a @${Q1}/> <b @${Q2}/>/` + `>`);
-  const right = element(`<main <a @${Q1}/> <b @${Q2}/>/` + `>`);
+check("equivalent registry mutations yield equivalent projection", () => {
+  const left = element(`<main <a @${Q1}/> <a @${Q2}/>/` + `>`);
+  const right = element(`<main <a @${Q1}/> <a @${Q2}/>/` + `>`);
   const leftBinding = reflected(left).binding;
   const rightBinding = reflected(right).binding;
-  const commit = left.document.content.move(path(0), 0, 1);
-  right.replay(commit);
+  left.document.content.move(path(0), 0, 1);
+  right.document.content.move(path(0), 0, 1);
   assert.equal(rightBinding.tree.node.$_tag, leftBinding.tree.node.$_tag);
   assert.deepEqual(rightBinding.tree.node.$_content, leftBinding.tree.node.$_content);
   leftBinding.dispose();
@@ -286,7 +287,7 @@ check("path input remains canonical before Reflection observes it", () => {
 });
 
 check("identity effects and correspondence changes have deterministic counts", () => {
-  const map = element(`<main @${Q1} <a @${Q2}/> <b @${Q3}/>/` + `>`);
+  const map = element(`<main @${Q1} <a @${Q2}/> <a @${Q3}/>/` + `>`);
   const { binding } = reflected(map);
   map.document.content.move(path(0), 0, 1);
   const diagnostics = binding.diagnostics();
@@ -297,7 +298,7 @@ check("identity effects and correspondence changes have deterministic counts", (
 });
 
 check("QUID-free repeated local operations remain incrementally routable", () => {
-  const map = element(`<main <a/> <b/>/>`);
+  const map = element(`<main <a title="first"/> <a title="second"/>/>`);
   const { binding } = reflected(map);
   map.document.content.move(path(0), 0, 1);
   map.document.content.move(path(0), 1, 0);

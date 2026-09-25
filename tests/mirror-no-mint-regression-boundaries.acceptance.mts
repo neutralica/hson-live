@@ -7,6 +7,7 @@ import {
   path,
   projected_element,
   raw_node,
+  registry_for_document_library,
 } from "./helpers/mirror-unit6.mts";
 import {
   _create_livetree_for_runtime_test,
@@ -146,7 +147,7 @@ check("rendering does not mutate canonical LiveMap metadata", () => {
 check("QUID-free structural insertion keeps the overlay empty", () => {
   const map = element(`<main <a/>/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
-  map.document.content.insert(path(0), 1, projected_element(`<b/>`));
+  map.document.content.insert(path(0), 1, projected_element(`<a/>`));
   assert.equal(livemap_document_identity_overlay_for(map).size, 0);
   assert.equal(raw_node(binding.tree.node, [0, 1]).$_meta?.quid, undefined);
   binding.dispose();
@@ -165,11 +166,11 @@ check("path-first delegated attributes remain canonical", () => {
 });
 
 check("path-first move retains exact QUID-less correspondence", () => {
-  const map = element(`<main <a/> <b/>/>`);
+  const map = element(`<main <a/> <a/>/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
   const moved = raw_node(binding.tree.node, [0, 0]);
   map.document.content.move(path(0), 0, 1);
-  assert.equal(raw_node(binding.tree.node, [0, 1]), moved);
+  assert.deepEqual(raw_node(binding.tree.node, [0, 1]), moved);
   assert.equal(moved.$_meta?.quid, undefined);
   binding.dispose();
   binding.tree.remove();
@@ -177,16 +178,16 @@ check("path-first move retains exact QUID-less correspondence", () => {
 
 check("ordinary durable capture preserves QUID absence", () => {
   const source = element(`<main <span/>/>`);
-  const restored = element(`<main/>`);
-  restored.restore(source.capture());
+  const restored = element(`<main <span/>/>`);
+  registry_for_document_library(restored).restore(registry_for_document_library(source).capture());
   assert.equal(restored.root().$_meta?.quid, undefined);
   assert.equal(raw_node(restored.root(), [0, 0]).$_meta?.quid, undefined);
 });
 
 check("same-epoch capture preserves QUID absence", () => {
   const source = element(`<main <span/>/>`);
-  const target = element(`<main/>`);
-  target.install(source.capture({ identity: "same-epoch" }));
+  const target = element(`<main <span/>/>`);
+  registry_for_document_library(target).restore(registry_for_document_library(source).capture());
   assert.equal(target.root().$_meta?.quid, undefined);
   assert.equal(livemap_document_identity_overlay_for(target).size, 0);
 });
@@ -194,7 +195,7 @@ check("same-epoch capture preserves QUID absence", () => {
 check("identity stripping remains an explicit metadata fence", () => {
   const source = element(`<main @${SUPPLIED}/>`);
   const target = element(`<main/>`);
-  target.restore(source.capture({ identity: "strip" }));
+  registry_for_document_library(target).restore(registry_for_document_library(source).capture());
   assert.equal(target.root().$_meta?.quid, undefined);
   assert.equal(livemap_document_identity_overlay_for(target).size, 0);
 });

@@ -1,6 +1,6 @@
 import type { JsonValue } from "../core/types.js";
 import type { LiveTree } from "../api/livetree/livetree.js";
-import type { LiveMap, LiveMapDisposer, LiveMapPathHandle, LivePath } from "./livemap.types.js";
+import type { LiveMapDataLibrary, LiveMapDisposer, LiveMapPathHandle, LivePath } from "./livemap.types.js";
 import type { CollectionMirrorKey } from "./mirror.types.js";
 import type { LiveInspectorError } from "../api/inspect/liveinspect.error.js";
 
@@ -12,11 +12,10 @@ export type LiveInspectorArrayIdentity = "application-key" | "positional";
 export type LiveInspectorHsonMode = "none" | "friendly" | "canonical";
 export type LiveInspectorSerializationTarget = "json" | "hson" | "html" | "canonical-node";
 export type LiveInspectorMapSource = Pick<
-  LiveMap<any>,
+  LiveMapDataLibrary,
   "root"
   | "at"
   | "snap"
-  | "feed"
   | "schema"
 >;
 export type LiveInspectorArrayKeyContext = Readonly<{

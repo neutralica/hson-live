@@ -22,7 +22,6 @@ import {
   render_document,
   render_hosted_document,
   type BrowserRealizationHtml,
-  type DocumentSsr,
   type LibrariesDocumentSsr,
   type HostedLibrariesDocumentSsr,
   type HostedLibrariesDocumentCut,
@@ -67,27 +66,26 @@ void transformOutput;
 void RemovedRootBootstrapError;
 void RemovedSsrBootstrapError;
 
-declare const continuationMap: import("hson-live/livemap").DocumentLiveMap;
+declare const continuationRegistry: import("hson-live/livemap").LiveMap;
 declare const continuationRoot: Element;
-// @ts-expect-error Public Echo type no longer admits a standalone hosted document map.
-declare const continuationEcho: import("hson-live/echo").Echo<typeof continuationMap>;
-const localContinuation: DocumentContinuation<typeof continuationMap> = continue_document({
-  map: continuationMap,
+declare const continuationEcho: import("hson-live/echo").Echo<typeof continuationRegistry>;
+const localContinuation: DocumentContinuation = continue_document({
+  map: continuationRegistry,
   root: continuationRoot,
 });
-// @ts-expect-error Public hosted continuation requires a projected multi-library authority snapshot.
-const hostedContinuation: Promise<HostedDocumentContinuation<typeof continuationMap>> = continue_hosted_document({ echo: continuationEcho, root: continuationRoot });
+declare const continuationAuthority: import("hson-live").AuthorityProjectionSnapshot;
+const hostedContinuation: Promise<HostedDocumentContinuation> = continue_hosted_document({ echo: continuationEcho, root: continuationRoot, authority: continuationAuthority });
 void localContinuation.map;
 void localContinuation.tree;
 void localContinuation.mirror;
 localContinuation.dispose();
 void hostedContinuation;
 void DocumentContinuationError;
-const localSsr: DocumentSsr = render_document({ map: continuationMap });
+const localSsr: LibrariesDocumentSsr = render_document({ map: continuationRegistry, document: "page" });
 // @ts-expect-error Local document maps do not expose hosted cuts.
-continuationMap.cut();
-const encodedSsr: EncodedSsrBootstrap<"document"> = encode_ssr_bootstrap(localSsr.bootstrap);
-const decodedSsr: Extract<DecodedSsrBootstrap, { kind: "document" }> = decode_ssr_bootstrap(encodedSsr);
+continuationRegistry.cut();
+const encodedSsr: EncodedSsrBootstrap<"libraries"> = encode_ssr_bootstrap(localSsr.bootstrap);
+const decodedSsr: Extract<DecodedSsrBootstrap, { kind: "libraries" }> = decode_ssr_bootstrap(encodedSsr);
 const ssrKind: SsrBootstrapKind = decodedSsr.kind;
 const ssrOptions: SsrBootstrapCodecOptions = { maxEncodedBytes: 1024 };
 void ssrKind;
@@ -102,10 +100,10 @@ const forgedBrowserHtml: BrowserRealizationHtml = "<main></main>";
 void browserHtml;
 void forgedBrowserHtml;
 void DocumentSsrError;
-declare const libraries: import("hson-live/livemap").LiveMapLibraries;
-declare const librariesSnapshot: LiveMapLibrariesSnapshot;
+declare const libraries: import("hson-live/livemap").LiveMap;
+declare const librariesSnapshot: LiveMapSnapshot;
 const installedLibraries = install_libraries_snapshot(librariesSnapshot);
-const librariesSsr: LibrariesDocumentSsr = render_document({ map: libraries });
+const librariesSsr: LibrariesDocumentSsr = render_document({ map: libraries, document: "page" });
 // @ts-expect-error Local Libraries registries do not expose hosted cuts.
 libraries.cut();
 declare const librariesAuthority: import("hson-live/locus").Locus;
@@ -116,14 +114,14 @@ void encodedHostedLibraries;
 const hostedLibrariesSsr: HostedLibrariesDocumentSsr = render_hosted_document({ authority: librariesAuthority, sessionId: "authorized-session" });
 const hostedLibrariesCut: HostedLibrariesDocumentCut = librariesAuthority.cut("authorized-session");
 void hostedLibrariesCut.data;
-const dataMap = hsonLiveMap.fromJson({ count: 0 });
-// @ts-expect-error Data LiveMaps have no browser-realizable cut.
+const dataMap = hsonLiveMap.fromLibraries({ state: { data: { count: 0 }, schema: Hson.schema`<type "data" content <count "number">>` } });
+// @ts-expect-error Local registries have no authorized hosted cut.
 dataMap.cut();
 void installedLibraries.map;
 void librariesSsr.document;
 void hostedLibrariesSsr.document;
 // @ts-expect-error Continuation requires an explicit Element, never a selector.
-continue_document({ map: continuationMap, root: "main" });
+continue_document({ map: continuationRegistry, root: "main" });
 // @ts-expect-error Hosted authoritative dispatch is derived from Echo.
 continue_hosted_document({ echo: continuationEcho, root: continuationRoot, interactions: { local: {}, dispatch: async () => {} } });
 
@@ -347,12 +345,12 @@ import {
   LiveMapReplayInputError,
   LiveMapRevError,
   hsonLiveMap as mapSubpath,
-  make_livemap_core,
   type LiveMap,
   type LiveMapCommit,
-  type LiveMapLibrariesSnapshot,
-  type DocumentLiveMap,
-  type LiveMapPathHandle,
+  type LiveMapSnapshot,
+  type LiveMapDocumentLibrary,
+  type LiveMapDataLibrary,
+  type LiveMapLibraryPathHandle,
   type LivePath,
   type ProjectedValueAdmissionCode,
   type ProjectedValuePath,
@@ -574,7 +572,6 @@ void publicRegistryOptions;
 void privateClockRegistryOptions;
 void bodylessRequestRoute;
 void binaryConnection;
-void make_livemap_core;
 void get_livemap_quid;
 void ensure_livemap_quid;
 void construct_tree;
@@ -583,11 +580,11 @@ void (0 as unknown as LiveMapDocumentSchema);
 // @ts-expect-error LiveMap exposes governance through each map, not a second authoring facade.
 hson.liveMap.schema;
 declare const publicElementSchema: HsonSchema;
-const publicElementCandidate = hson.liveMap.fromHson(`<button "Save"/>`);
-if (publicElementCandidate.mode === "document") {
-  const schemaBound = publicElementCandidate.schema.use(publicElementSchema);
-  const sameSchema = schemaBound.schema.get();
-  const exactSchema: HsonSchema | undefined = sameSchema;
+const publicElementCandidate = hson.liveMap.fromLibraries({ page: { document: `<button "Save"/>`, schema: publicElementSchema } });
+{
+  const schemaBound = publicElementCandidate.lib("page");
+  const sameSchema = schemaBound.schema;
+  const exactSchema: HsonSchema = sameSchema.get();
   // @ts-expect-error Schema detachment is not a governance operation.
   schemaBound.schema.use(undefined);
   // @ts-expect-error LiveMap governance accepts only HsonSchema.
@@ -646,10 +643,10 @@ type ProjectedPathTruth = Readonly<{
   }>;
 }>;
 
-declare const projectedPathMap: LiveMap<ProjectedPathTruth>;
+declare const projectedPathMap: LiveMapDataLibrary<ProjectedPathTruth>;
 declare const bindingTree: LiveTree;
 
-declare const mixedBindingMap: LiveMap<Readonly<{ count: number }>>;
+declare const mixedBindingMap: LiveMapDataLibrary<Readonly<{ count: number }>>;
 declare const dynamicPath: LivePath;
 declare const dynamicObjectKey: string;
 declare const dynamicTupleIndex: number;
@@ -683,27 +680,6 @@ projectedPathMap.at(["required", "leaf"]).watch((next) => {
   type ProjectedWatchValue = Expect<Equal<typeof next, string>>;
   return undefined;
 });
-projectedPathMap.proxy().required.leaf.$_.watch((next) => {
-  type ProjectedProxyWatchValue = Expect<Equal<typeof next, string>>;
-  return undefined;
-});
-projectedPathMap.sub.path(["required"], (next, prev) => {
-  type RequiredPathSubscriberNext = Expect<Equal<typeof next, Readonly<{ leaf: string }>>>;
-  type RequiredPathSubscriberPrev = Expect<Equal<typeof prev, Readonly<{ leaf: string }>>>;
-  return undefined;
-});
-projectedPathMap.sub.path(["dictionary"], (next, prev) => {
-  type IndexedPathSubscriberNext = Expect<Equal<
-    typeof next,
-    Readonly<Record<string, Readonly<{ value: number }>>>
-  >>;
-  type IndexedPathSubscriberPrev = Expect<Equal<
-    typeof prev,
-    Readonly<Record<string, Readonly<{ value: number }>>>
-  >>;
-  return undefined;
-});
-
 type RequiredObjectLeaf = Expect<Equal<typeof requiredObjectLeaf, string>>;
 type OptionalObjectEndpoint = Expect<Equal<typeof optionalObjectEndpoint, Readonly<{ name: string }> | undefined>>;
 type OptionalObjectLeaf = Expect<Equal<typeof optionalObjectLeaf, string | undefined>>;
@@ -848,14 +824,14 @@ declare const publicDeclarationClosure:
 void publicDeclarationClosure;
 
 declare const governanceSchema: HsonSchema;
-const schemaBoundMap = mapSubpath.fromJson({}).schema.use(governanceSchema);
+const schemaBoundMap = mapSubpath.fromLibraries({ state: { data: {}, schema: governanceSchema } }).lib("state");
 // @ts-expect-error LiveMap exposes no public live canonical-node debug escape.
 schemaBoundMap.debug.node([]);
 // @ts-expect-error Schema detachment through undefined is not part of the owner contract.
 schemaBoundMap.schema.use(undefined);
 // @ts-expect-error Schema owner contracts expose no reset operation.
 schemaBoundMap.schema.reset();
-const attachedSchema: HsonSchema | undefined = schemaBoundMap.schema.get();
+const attachedSchema: HsonSchema = schemaBoundMap.schema.get();
 void attachedSchema;
 
 declare const node: HsonNode;
@@ -1047,18 +1023,18 @@ void removedNarrowHsonNumber;
 declare const rootHsonCanonical: RootHsonCanonical;
 void rootHsonCanonical;
 
-type PublicTypes = LiveTreeLifecycleResult | LiveMapCommit | LiveMapPathHandle;
+type PublicTypes = LiveTreeLifecycleResult | LiveMapCommit | LiveMapLibraryPathHandle;
 declare const publicTypes: PublicTypes;
 void publicTypes;
 void (0 as unknown as LiveMapDocumentIdentityHandle);
 void (0 as unknown as LiveMapGraphEnsureQuidOp);
 
-declare const pathHandle: LiveMapPathHandle;
+declare const pathHandle: LiveMapLibraryPathHandle;
 // @ts-expect-error LiveMap path handles have no public QUID identity.
 void pathHandle.quid;
 
-const publicDocumentMap = mapSubpath.fromHson(`<main/>`);
-if (publicDocumentMap.mode === "document") {
+const publicDocumentMap = mapSubpath.fromLibraries({ page: { document: `<main/>`, schema: Hson.schema`<type "document" content <main>>` } }).lib("page");
+{
   // @ts-expect-error Document LiveMaps expose no public live canonical-node debug escape.
   publicDocumentMap.debug.node([]);
   const documentAcquisitionIsPublic: "ensureIdentity" extends keyof typeof publicDocumentMap.document ? true : false = false;
@@ -1095,11 +1071,11 @@ if (publicDocumentMap.mode === "document") {
   void documentAcquisitionIsPublic;
 }
 
-const projectedHsonLookalike = mapSubpath.fromJson({ value: { $_tag: "projected", $_content: [] } });
+const projectedHsonLookalike = mapSubpath.fromLibraries({ state: { data: { value: { $_tag: "projected", $_content: [] } }, schema: Hson.schema`<type "data" content <value "any">>` } }).lib("state");
 bindingTree.bind.text(projectedHsonLookalike.at(["value"]));
 bindingTree.bind.attr(projectedHsonLookalike.at(["value"]), "data-projected");
 
-type PublicDocumentLocation = ReturnType<DocumentLiveMap["at"]>;
+type PublicDocumentLocation = ReturnType<LiveMapDocumentLibrary["at"]>;
 type PrimitiveDocumentLocation = Omit<PublicDocumentLocation, "snap" | "watch"> & Readonly<{
   snap: () => string | undefined;
   watch: (listener: (next: string | undefined) => void) => () => void;
@@ -1108,7 +1084,7 @@ declare const futurePrimitiveDocumentLocation: PrimitiveDocumentLocation;
 bindingTree.bind.text(futurePrimitiveDocumentLocation);
 bindingTree.bind.attr(futurePrimitiveDocumentLocation, "data-future");
 
-declare const structurallyFabricatedProjectedLocation: Pick<LiveMapPathHandle<string>, "snap" | "watch" | "feed">;
+declare const structurallyFabricatedProjectedLocation: Pick<LiveMapLibraryPathHandle<string>, "snap" | "watch" | "feed">;
 // TypeScript remains structural here; runtime authenticity rejects this unsupported fabrication.
 bindingTree.bind.path(structurallyFabricatedProjectedLocation, () => undefined);
 

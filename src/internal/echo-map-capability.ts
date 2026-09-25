@@ -1,9 +1,6 @@
 /** @internal Minimal type-erased boundary between public Echo construction and LiveMap. */
-export type EchoMapTopology = "solo" | "aggregate";
-
 /** @internal Synchronously-held exclusive management lease for a supplied Echo map. */
 export type EchoMapManagementLease = Readonly<{
-  topology: EchoMapTopology;
   owner: object;
   revision: number;
   runManaged: <T>(operation: () => T) => T;
@@ -13,7 +10,6 @@ export type EchoMapManagementLease = Readonly<{
 }>;
 
 type EchoMapCapability = Readonly<{
-  topology: EchoMapTopology;
   revision: () => number;
   documentMaps?: () => readonly object[];
   acquire: (owner: object) => Readonly<{
@@ -27,7 +23,6 @@ const capabilities = new WeakMap<object, EchoMapCapability>();
 
 /** @internal Read-only topology evidence for orchestration that must not acquire map management. */
 export function inspect_echo_map_capability_internal(value: unknown): Readonly<{
-  topology: EchoMapTopology;
   revision: number;
   documentMaps: readonly object[];
 }> {
@@ -37,7 +32,6 @@ export function inspect_echo_map_capability_internal(value: unknown): Readonly<{
   const capability = capabilities.get(value);
   if (capability === undefined) throw new Error("LiveMap value is not a canonical map authority.");
   return Object.freeze({
-    topology: capability.topology,
     revision: capability.revision(),
     documentMaps: Object.freeze([...(capability.documentMaps?.() ?? [])]),
   });
@@ -59,7 +53,6 @@ export function acquire_echo_map_management_internal(value: unknown): EchoMapMan
   const acquired = capability.acquire(owner);
   let released = false;
   return Object.freeze({
-    topology: capability.topology,
     owner,
     revision: capability.revision(),
     runManaged: acquired.runManaged,

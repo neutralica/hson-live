@@ -18,8 +18,8 @@ import type {
   LiveMapDocumentCommitTarget,
   LiveMapGraphOp,
   LiveMapRootMode,
-  HostedLiveMapLibrariesSnapshot,
-  LiveMapLibrariesSnapshot,
+  HostedLiveMapSnapshot,
+  LiveMapSnapshot,
   LocalLibrariesContinuationSnapshot,
   LivePath,
 } from "../../types/livemap.types.js";
@@ -402,7 +402,7 @@ export function decode_portable_aggregate_commit(
 }
 
 /** Project exact authority capture into the full, QUID-free Echo snapshot format. */
-export function make_portable_aggregate_snapshot(authority: HostedLiveMapLibrariesSnapshot): PortableAggregateSnapshot {
+export function make_portable_aggregate_snapshot(authority: HostedLiveMapSnapshot): PortableAggregateSnapshot {
   assert_hosted_libraries_snapshot_shape(authority);
   const snapshot: PortableAggregateSnapshot = Object.freeze({
     format: PORTABLE_AGGREGATE_SNAPSHOT_FORMAT,
@@ -494,11 +494,11 @@ export function decode_hosted_root(input: unknown, maxPayloadBytes?: number): Hs
   return root;
 }
 
-export function assert_libraries_snapshot_bound(snapshot: LiveMapLibrariesSnapshot | LocalLibrariesContinuationSnapshot): void {
+export function assert_libraries_snapshot_bound(snapshot: LiveMapSnapshot | LocalLibrariesContinuationSnapshot): void {
   assert_encoded_bound(snapshot, HOSTED_MAX_SNAPSHOT_BYTES, "Hosted aggregate snapshot");
 }
 
-export function assert_libraries_snapshot_shape(snapshot: LiveMapLibrariesSnapshot): void {
+export function assert_libraries_snapshot_shape(snapshot: LiveMapSnapshot): void {
   const record = exact_record(snapshot, "Hosted aggregate snapshot");
   exact_keys(record, ["format", "revision", "registry", "registryDigest", "libraries"], "Hosted aggregate snapshot");
   assert_libraries_snapshot_entries(record);
@@ -530,7 +530,7 @@ function assert_libraries_snapshot_entries(record: Readonly<Record<string, unkno
   }
 }
 
-export function assert_hosted_libraries_snapshot_shape(snapshot: HostedLiveMapLibrariesSnapshot): void {
+export function assert_hosted_libraries_snapshot_shape(snapshot: HostedLiveMapSnapshot): void {
   const record = exact_record(snapshot, "Hosted aggregate snapshot");
   exact_keys(record, ["format", "revision", "registry", "registryDigest", "libraries", "identity", "authority"], "Hosted aggregate snapshot");
   const authority = exact_record(record.authority, "Hosted snapshot authority");

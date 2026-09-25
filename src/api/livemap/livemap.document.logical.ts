@@ -10,7 +10,7 @@ import type {
   Primitive,
 } from "../../core/types.js";
 import type {
-  DocumentLiveMapMode,
+  LiveMapDocumentMode,
   LiveMapDocumentContent,
   LiveMapDocumentPath,
   LiveMapDocumentRequestTarget,
@@ -173,7 +173,7 @@ type TraversalCursor = NodeCursor | PrimitiveCursor | ContentCursor | FacetCurso
  */
 export function resolve_internal_document_location(
   root: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   edges: readonly InternalDocumentLogicalEdge[],
 ): InternalDocumentLogicalResolution {
   return materialize_resolution(resolve_internal_document_cursor(root, mode, edges));
@@ -181,7 +181,7 @@ export function resolve_internal_document_location(
 
 function resolve_internal_document_cursor(
   root: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   edges: readonly InternalDocumentLogicalEdge[],
 ): TraversalCursor {
   let cursor = document_root_cursor(root, mode);
@@ -217,7 +217,7 @@ function resolve_internal_document_cursor(
 /** Internal one-shot canonical preorder search specialized to exact string IDs. */
 export function find_internal_document_id_path(
   root: HsonNode,
-  mode: DocumentLiveMapMode,
+  mode: LiveMapDocumentMode,
   scopeEdges: readonly InternalDocumentLogicalEdge[],
   scopePath: readonly number[],
   id: string,
@@ -383,7 +383,7 @@ export function lower_internal_document_content_remove(
   });
 }
 
-function document_root_cursor(root: HsonNode, mode: DocumentLiveMapMode): TraversalCursor {
+function document_root_cursor(root: HsonNode, mode: LiveMapDocumentMode): TraversalCursor {
   try {
     const observed = classify_live_root_mode(root);
     if (observed !== mode) {

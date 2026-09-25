@@ -5,16 +5,15 @@ import {
   decode_ssr_bootstrap,
   DocumentSsrError,
   type BrowserRealizationHtml,
-  type DocumentSsr,
   type LibrariesDocumentSsr,
   type HostedLibrariesDocumentSsr,
 } from "hson-live/ssr";
-import type { DocumentLiveMap, LiveMapLibraries } from "hson-live/livemap";
+import type { LiveMap } from "hson-live/livemap";
 import type { Locus } from "hson-live/locus";
 
-declare const map: DocumentLiveMap;
+declare const map: LiveMap;
 declare const authority: unknown;
-const local: DocumentSsr = render_document({ map });
+const local: LibrariesDocumentSsr = render_document({ map });
 void local.bootstrap;
 // @ts-expect-error Local document maps do not expose hosted cuts.
 map.cut();
@@ -25,7 +24,7 @@ void decode_ssr_bootstrap(localEncoded).bootstrap;
 const html: BrowserRealizationHtml = local.html;
 void html;
 void DocumentSsrError;
-declare const libraries: LiveMapLibraries;
+declare const libraries: LiveMap;
 declare const librariesAuthority: Locus;
 const aggregateLocal: LibrariesDocumentSsr = render_document({ map: libraries });
 const aggregateHosted: HostedLibrariesDocumentSsr = render_hosted_document({ authority: librariesAuthority, sessionId: "authorized-session" });

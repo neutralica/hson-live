@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
-import { Hson, hson } from "../src/index.ts";
+import { Hson, hsonLiveMap } from "../src/index.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
-import { internal_livemap_library_ownership } from "../src/api/livemap/livemap.internal.ts";
+import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { acquire_projected_identity } from "./helpers/livemap-identity-internal.mts";
 
 const DataSchema = Hson.schema`<type "data" content <name "string" age "number">>`;
+const ItemSchema = Hson.schema`<type "data" content <item <optional "any">>>`;
+const PageSchema = Hson.schema`<type "document" tag "main" content "empty">`;
+
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livemap.library-ownership",
   title: "LiveMap library ownership",
@@ -16,75 +19,56 @@ export const HSON_LIVE_TEST_METADATA = Object.freeze({
 const testEvents = create_test_event_emitter("livemap.library-ownership");
 let checks = 0;
 const check = (name: string, run: () => void): void => {
-
   testEvents.case_begin(name, name);
-  try {
-    run();
-    testEvents.case_end(name, "pass");
-  } catch (error) {
+  try { run(); testEvents.case_end(name, "pass"); }
+  catch (error) {
     const message = error instanceof Error ? error.message : "Check failed.";
     testEvents.diagnostic(name, "assertion", message.slice(0, 1_000));
-    testEvents.case_end(name, "fail");
-    testEvents.terminal("fail");
-    throw error;
+    testEvents.case_end(name, "fail"); testEvents.terminal("fail"); throw error;
   }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 };
 
-check("one stable solo compatibility record owns the projected graph and mode", () => {
-  const map = hson.liveMap.fromJson({ name: "Ada", age: 37 });
-  const before = internal_livemap_library_ownership(map);
+check("one named data library retains its state identity across graph changes", () => {
+  const map = hsonLiveMap.fromLibraries({ state: { data: { name: "Ada", age: 37 }, schema: DataSchema } });
+  const state = map.lib("state");
+  const authority = internal_livemap_aggregate_authority(map);
+  const before = authority.inspect().libraries[0]!;
   assert.equal(before.mode, "data-object");
-  assert.equal(before.revision, 0);
-  assert.equal(before.hsonSchemaAttached, false);
-  map.set(["age"], 38);
-  const after = internal_livemap_library_ownership(map);
-  assert.equal(after.library, before.library);
-  assert.equal(after.root, before.root);
-  assert.equal(after.revision, 1);
-  assert.equal(after.quidEpoch, before.quidEpoch);
+  assert.equal(map.rev, 0);
+  assert.equal(before.hsonSchemaAttached, true);
+  state.at(["age"]).set(38);
+  const after = authority.inspect().libraries[0]!;
+  assert.equal(after.identity, before.identity);
+  assert.notEqual(after.root, before.root);
+  assert.equal(map.rev, 1);
+  assert.equal(authority.identityEpoch().current(), 0);
 });
 
-check("Schema attaches to the solo compatibility record while map revision remains global", () => {
-  const map = hson.liveMap.fromJson({ name: "Ada", age: 37 });
-  const before = internal_livemap_library_ownership(map);
-  map.schema.use(DataSchema);
-  const afterSchema = internal_livemap_library_ownership(map);
-  assert.equal(afterSchema.library, before.library);
-  assert.equal(afterSchema.hsonSchemaAttached, true);
-  assert.equal(afterSchema.revision, 0);
-  map.set(["age"], 38);
-  assert.equal(internal_livemap_library_ownership(map).revision, 1);
+check("one registry ledger survives library-local graph changes", () => {
+  const map = hsonLiveMap.fromLibraries({ state: { data: { item: {} }, schema: ItemSchema } });
+  const state = map.lib("state");
+  const authority = internal_livemap_aggregate_authority(map);
+  const before = authority.inspect().libraries[0]!;
+  acquire_projected_identity(state, ["item"]);
+  const acquired = authority.inspect().libraries[0]!;
+  assert.equal(acquired.identity, before.identity);
+  assert.equal(authority.identityEpoch().issued().size, 1);
+  state.at(["item"]).delete();
+  const retired = authority.inspect().libraries[0]!;
+  assert.equal(retired.identity, before.identity);
+  assert.equal(authority.identityEpoch().issued().size, 1);
+  assert.equal(map.rev, 1);
 });
 
-check("the single map-wide QUID ledger survives library-local graph changes", () => {
-  const map = hson.liveMap.fromJson({ item: {} });
-  const before = internal_livemap_library_ownership(map);
-  acquire_projected_identity(map, ["item"]);
-  const acquired = internal_livemap_library_ownership(map);
-  assert.equal(acquired.library, before.library);
-  assert.equal(acquired.issuedQuids, 1);
-  map.delete(["item"]);
-  const retired = internal_livemap_library_ownership(map);
-  assert.equal(retired.library, before.library);
-  assert.equal(retired.issuedQuids, 1);
-  assert.equal(retired.revision, 1);
-});
-
-check("projected restore cannot bypass solo HsonSchema admission", () => {
-  const governed = hson.liveMap.fromJson({ name: "Ada", age: 37 }).schema.use(DataSchema);
-  const invalid = hson.liveMap.fromJson({ name: "Ada" }).capture();
-  assert.throws(() => governed.restore(invalid));
-  assert.deepEqual(governed.snap(), { name: "Ada", age: 37 });
-});
-
-check("document maps retain a library-local mode without a public library selector", () => {
-  const map = hson.liveMap.fromHson("<main/>");
-  const ownership = internal_livemap_library_ownership(map);
+check("one named document library retains its mode under the registry", () => {
+  const map = hsonLiveMap.fromLibraries({ page: { document: "<main/>", schema: PageSchema } });
+  const page = map.lib("page");
+  const ownership = internal_livemap_aggregate_authority(map).inspect().libraries[0]!;
   assert.equal(ownership.mode, "document");
-  assert.equal("library" in map, false);
-  assert.equal("lib" in map, false);
+  assert.equal(map.lib("page"), page);
+  assert.equal("lib" in map, true);
 });
 
 process.stdout.write(`1..${checks}\n`);

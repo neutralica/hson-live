@@ -5,7 +5,7 @@ import { Hson, hsonLiveMap, hsonMirror, type HsonSchema } from "../src/index.ts"
 import { validate_document_path } from "../src/api/livemap/index.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import type { LocusSocketLike } from "../src/types/locus.types.ts";
-import type { LiveMapLibraries } from "../src/types/livemap.types.ts";
+import type { LiveMap } from "../src/types/livemap.types.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { encode_hosted_root, make_portable_aggregate_snapshot } from "../src/api/livemap/livemap.hosted.ts";
 import { encode_locus_graph_content, encode_locus_portable_graph_content } from "../src/api/locus/locus.graph-content-codec.ts";
@@ -130,7 +130,7 @@ function make_map(libraries = 3) {
   return hsonLiveMap.fromLibraries(input);
 }
 
-function projected_client_map(authority: LiveMapLibraries): LiveMapLibraries {
+function projected_client_map(authority: LiveMap): LiveMap {
   const captured = internal_livemap_aggregate_authority(authority).captureHosted();
   const configured = test_public_projection(authority);
   const policy = make_locus_hosted_projection_policy(captured.registry, captured.authority,
@@ -152,19 +152,19 @@ function document(draft: LocusHostedAggregateDraft, name: string): LocusHostedAg
   return selected;
 }
 
-function data_library(map: LiveMapLibraries, name: string) {
+function data_library(map: LiveMap, name: string) {
   const selected = map.lib(name);
   if (!("snap" in selected)) throw new Error(`Expected data library ${name}.`);
   return selected;
 }
 
-function page_library(map: LiveMapLibraries) {
+function page_library(map: LiveMap) {
   const selected = map.lib("page");
   if (!("document" in selected)) throw new Error("Expected page document library.");
   return selected;
 }
 
-function page_item(map: LiveMapLibraries): HsonNode | undefined {
+function page_item(map: LiveMap): HsonNode | undefined {
   const main = page_library(map).root().$_content[0];
   if (typeof main !== "object" || main === null) return undefined;
   const wrapper = main.$_content[0];
@@ -185,7 +185,7 @@ function insert_item(quid?: string) {
   });
 }
 
-async function attach(server: ReturnType<typeof create_locus_hosted_aggregate_socket_internal>, options: Readonly<{ map?: LiveMapLibraries }> = {}) {
+async function attach(server: ReturnType<typeof create_locus_hosted_aggregate_socket_internal>, options: Readonly<{ map?: LiveMap }> = {}) {
   const pair = socket_pair();
   server.connect(pair.server);
   const client = create_echo_socket_client_internal({

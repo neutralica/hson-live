@@ -3,9 +3,9 @@ import { collect_hson_node_quid_claims } from "../../core/hson-node-quid.js";
 import type { HsonNode } from "../../core/types.js";
 export { canonical_hson_graph_equal as canonical_graph_equal } from "../../core/canonical-hson-equal.js";
 import type {
-  DocumentLiveMapCapture,
-  DocumentLiveMapInstallOptions,
-  DocumentLiveMapMode,
+  LiveMapDocumentCapture,
+  LiveMapDocumentInstallOptions,
+  LiveMapDocumentMode,
   LiveMapGraphCommit,
   LiveMapGraphReplaceRootOp,
 } from "../../types/livemap.types.js";
@@ -25,14 +25,14 @@ import {
 import { normalize_hson_array_index_order } from "../../core/hson-array-indexes.js";
 
 export type PreparedDocumentInstall = Readonly<{
-  mode: DocumentLiveMapMode;
+  mode: LiveMapDocumentMode;
   root: HsonNode;
   overlay: LiveMapDocumentIdentityOverlay;
 }>;
 
 /** Internal bridge that keeps the public document façade narrower than Core. */
 export type LiveMapDocumentInstallController = Readonly<{
-  mode: DocumentLiveMapMode;
+  mode: LiveMapDocumentMode;
   rev: () => number;
   overlay: () => LiveMapDocumentIdentityOverlay;
   identityEpoch: LiveMapDocumentIdentityEpochController;
@@ -50,8 +50,8 @@ export type LiveMapDocumentInstallController = Readonly<{
 /** Validate an exact canonical capture with optional sparse QUID metadata, then apply it. */
 export function install_livemap_document_capture(
   controller: LiveMapDocumentInstallController,
-  capture: DocumentLiveMapCapture,
-  options?: DocumentLiveMapInstallOptions,
+  capture: LiveMapDocumentCapture,
+  options?: LiveMapDocumentInstallOptions,
 ): LiveMapGraphCommit<LiveMapGraphReplaceRootOp> {
   assert_install_options(options, controller.rev());
   assert_capture_object(capture);
@@ -67,8 +67,8 @@ export function install_livemap_document_capture(
 /** Restore a canonical capture and its revision without creating a local revision. */
 export function restore_livemap_document_capture(
   controller: LiveMapDocumentInstallController,
-  capture: DocumentLiveMapCapture,
-  options?: DocumentLiveMapInstallOptions,
+  capture: LiveMapDocumentCapture,
+  options?: LiveMapDocumentInstallOptions,
 ): void {
   assert_install_options(options, controller.rev());
   assert_capture_object(capture);
@@ -86,7 +86,7 @@ export function restore_livemap_document_capture(
 }
 
 function assert_install_options(
-  options: DocumentLiveMapInstallOptions | undefined,
+  options: LiveMapDocumentInstallOptions | undefined,
   actualRev: number,
 ): void {
   if (options === undefined) return;
@@ -105,9 +105,9 @@ function assert_install_options(
 }
 
 export function prepare_document_install(
-  capture: DocumentLiveMapCapture,
-  targetMode: DocumentLiveMapMode,
-  identity: DocumentLiveMapInstallOptions["identity"] = "reject",
+  capture: LiveMapDocumentCapture,
+  targetMode: LiveMapDocumentMode,
+  identity: LiveMapDocumentInstallOptions["identity"] = "reject",
 ): PreparedDocumentInstall {
   assert_capture_object(capture);
   if (capture.kind !== "hson-document") {
@@ -182,7 +182,7 @@ export function prepare_document_install(
   }
 }
 
-function assert_capture_object(capture: DocumentLiveMapCapture): void {
+function assert_capture_object(capture: LiveMapDocumentCapture): void {
   if (typeof capture !== "object" || capture === null || Array.isArray(capture)) {
     throw new LiveMapDocumentInstallError("capture must be an object");
   }

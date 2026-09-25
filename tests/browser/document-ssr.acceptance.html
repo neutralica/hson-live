@@ -33,23 +33,22 @@ try {
   check("application root is delivered in standards mode", document.compatMode === "CSS1Compat");
   const localParagraph = localRoot.firstElementChild;
   const localText = localParagraph.firstChild;
-  const localMap = hson.liveMap.fromNode(decodedLocalBootstrap.bootstrap.root);
-  if (localMap.mode !== "document") throw new Error("local SSR bootstrap must be a document");
-  localMap.restore(decodedLocalBootstrap.bootstrap, { identity: "strip" });
+  const localMap = install_libraries_snapshot(decodedLocalBootstrap.bootstrap).map;
+  const localPage = localMap.lib(state.local.document);
   const observer = new MutationObserver(() => {});
   observer.observe(localRoot, { subtree: true, childList: true, attributes: true, characterData: true });
-  const localContinuation = continue_document({ map: localMap, root: localRoot });
+  const localContinuation = continue_document({ map: localMap, document: localPage, root: localRoot });
   check("local root identity survives continuation", localContinuation.tree.dom.el() === localRoot);
   check("local element identity survives continuation", localRoot.firstElementChild === localParagraph);
   check("local text identity survives continuation", localParagraph.firstChild === localText);
   check("local continuation writes nothing", observer.takeRecords().length === 0);
-  check("local revision is exact N", localMap.rev === state.local.bootstrap.rev && localMap.rev === 1);
-  check("local canonical capture has no server QUID", JSON.stringify(localMap.capture({ identity: "strip" })) === JSON.stringify(state.local.bootstrap)
+  check("local revision is exact N", localMap.rev === state.local.bootstrap.revision && localMap.rev === 1);
+  check("local canonical capture has no server QUID", JSON.stringify(localMap.capture()) === JSON.stringify(state.local.bootstrap)
     && !JSON.stringify(localMap.capture()).includes("000005201"));
   check("local subject begins without inherited QUID", localParagraph.getAttribute("hson:quid") === null
     && !JSON.stringify(decodedLocalBootstrap.bootstrap).includes("000005201"));
   check("local root remains QUID-free", localRoot.getAttribute("hson:quid") === null);
-  check("Hson boundary comments were parsed", [...localParagraph.childNodes].filter((node) => node.nodeType === Node.COMMENT_NODE).length >= 2);
+  check("local paragraph text was parsed", localParagraph.textContent === "ab");
   observer.disconnect();
   const localParagraphTree = localContinuation.tree.find.must.byTag("p");
   const localQuid = localParagraphTree.quid;
@@ -64,7 +63,7 @@ try {
 
   const browserLocal = render_document({ map: localMap });
   check("Node and browser-compatible local SSR bytes match", browserLocal.html === state.local.html);
-  check("browser local rendering matches its continuation", JSON.stringify(browserLocal.bootstrap) === JSON.stringify(localMap.capture({ identity: "strip" })));
+  check("browser local rendering matches its continuation", JSON.stringify(browserLocal.bootstrap) === JSON.stringify(localMap.capture()));
 
   const localLibrariesRoot = document.querySelector("#local-libraries-ssr");
   const localLibrariesButton = localLibrariesRoot.firstElementChild;
@@ -92,16 +91,14 @@ try {
   localLibrariesContinuation.dispose();
 
   const decodedFull = decode_ssr_bootstrap(state.encoded.full);
-  const fullMap = hson.liveMap.fromNode(decodedFull.bootstrap.root);
-  if (fullMap.mode !== "document") throw new Error("full SSR bootstrap must be a document");
-  fullMap.restore(decodedFull.bootstrap, { identity: "strip" });
+  const fullMap = install_libraries_snapshot(decodedFull.bootstrap).map;
   const parsedFull = new DOMParser().parseFromString(state.full.html, "text/html");
   check("full document parses in standards mode", parsedFull.compatMode === "CSS1Compat");
   const fullRoot = parsedFull.documentElement;
   check("full-document bootstrap remains out-of-band", parsedFull.querySelector('script[type="application/vnd.hson-live.ssr-bootstrap"]') === null);
   const fullObserver = new MutationObserver(() => {});
   fullObserver.observe(fullRoot, { subtree: true, childList: true, attributes: true, characterData: true });
-  const fullContinuation = continue_document({ map: fullMap, root: fullRoot });
+  const fullContinuation = continue_document({ map: fullMap, document: fullMap.lib(state.full.document), root: fullRoot });
   check("full documentElement identity survives", fullContinuation.tree.dom.el() === fullRoot);
   check("full document out-of-band continuation writes nothing", fullObserver.takeRecords().length === 0);
   fullObserver.disconnect();
