@@ -7,11 +7,12 @@ export { mediaToAtRule, convertSupportsToAt } from "../../../internal/css/global
 import { make_style_setter } from "./style-setter.js";
 import { normalize_css_var_name } from "./style-getter.js";
 import { render_global_css_rule, render_global_css_value, render_scoped_global_css_rule } from "../../../internal/css/global-css-text.js";
+import type { PortableDocumentStylesheetRecord } from "../../../internal/css/portable-document-stylesheet.js";
 
 const GLOBAL_VARS_RULE_KEY = "global-vars::root";
 const GLOBAL_VARS_SELECTOR = ":root";
 
-type StoredGlobalRule = GlobalRule & { ruleKey: string; order: number; scopes: string[] };
+type StoredGlobalRule = GlobalRule & { ruleKey: string; order: number; scopes: string[]; sourceOrder?: boolean };
 
 /**
  * Render a StyleSetter value into CSS declaration text.
@@ -33,22 +34,6 @@ function renderCssValue(v: CssValue): string | null { return render_global_css_v
  */
 export function render_rule(selector: string, decls: Record<string, string>): string {
   return render_global_css_rule(selector, decls);
-}
-
-/**
- * Render a CSS rule inside nested at-rule scopes.
- *
- * @param selector CSS selector for the inner rule.
- * @param decls Canonical property map for the rule body.
- * @param scopes At-rule wrappers, ordered outermost to innermost.
- * @returns Scoped CSS text, or `""` when the inner rule is empty.
- */
-function renderScopedRule(
-  selector: string,
-  decls: Record<string, string>,
-  scopes: readonly string[],
-): string {
-  return render_scoped_global_css_rule(selector, decls, scopes);
 }
 
 /**
@@ -187,6 +172,7 @@ export class GlobalCss {
     const ruleKey = keyStr.trim();
     const selector = selStr.trim();
     if (!ruleKey) throw new Error("GlobalCss.rule: empty source");
+    if (ruleKey.startsWith("stylesheet:")) throw new TypeError("The stylesheet: rule key prefix is reserved for parsed CSS rules.");
     if (!selector) throw new Error("GlobalCss.rule: empty selector");
 
     // The scope stack is part of rule identity; a selector may coexist at base,
@@ -406,6 +392,16 @@ export class GlobalCss {
     return JSON.stringify([scopes, ruleKey]);
   }
 
+  /** Admit one already validated parser rule at the runtime's shared order slot. */
+  public appendParsedRule(rule: PortableDocumentStylesheetRecord["rules"][number], order: number): void {
+    const identity = this.identity(rule.ruleKey, rule.scopes);
+    if (this.rules.has(identity)) throw new TypeError("Duplicate parsed CSS rule key.");
+    const decls = Object.fromEntries(rule.declarations);
+    this.rules.set(identity, { ruleKey: rule.ruleKey, selector: rule.selector, scopes: [...rule.scopes], decls, order, sourceOrder: true });
+    this.rendered.set(identity, render_global_css_rule(rule.selector, decls, true));
+    this.notifyChanged();
+  }
+
   /** Public drop addresses every scope bearing the supplied explicit key. */
   private remove(keyStr: string): void {
     const source = keyStr.trim();
@@ -465,6 +461,8 @@ export class GlobalCss {
     return [...new Set([...this.rules.values()].map((rule) => rule.ruleKey))].sort();
   }
 
+  public ruleKeys(): readonly string[] { return this.list(); }
+
   /** Prefer the base scope when one key names several scoped rules. */
   private get(sourceRaw: string): string | undefined {
     const source = sourceRaw.trim();
@@ -483,7 +481,7 @@ export class GlobalCss {
       .sort((a, b) => a.order - b.order)
       .map((rule) => ({
         order: rule.order,
-        text: renderScopedRule(rule.selector, rule.decls, rule.scopes),
+        text: render_scoped_global_css_rule(rule.selector, rule.decls, rule.scopes, rule.sourceOrder),
       }));
   }
 

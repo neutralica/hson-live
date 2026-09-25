@@ -10,6 +10,8 @@ const browser = new Set([
   "test:canonical-interactions-browser",
   "test:browser-realization-parser-closure",
   "test:document-ssr-browser",
+  "test:livemap-document-css-browser",
+  "test:stylesheet-ingress-browser",
 ]);
 const network = new Set(["test:livehost-node-http2", "test:livehost-node-hosting"]);
 const environmentDependent = new Set([...browser, ...network]);

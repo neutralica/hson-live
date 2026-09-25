@@ -4,13 +4,13 @@ import { normalize_css_key } from "../../transform/utils/attrs-utils/normalize-c
 import { CssValue, CssProp } from "../../../core/style.types.js";
 import { AnimAdapters, CssAnimScope, CssAnimHandle } from "../../../types/animate.types.js";
 import { PropertyManager, PropertyRegistry } from "../../../types/at-property.types.js";
-import { KeyframesManager, KeyframesInput, KeyframesRegistry } from "../../../types/keyframes.types.js";
+import { KeyframesManager, KeyframesInput, KeyframesRegistry, type KeyframeSelector, type CssDeclMap } from "../../../types/keyframes.types.js";
 import { CssGlobalHandle } from "../../../types/css.types.js";
 import { LiveTree } from "../livetree.js";
 import { apply_animation, bind_anim_api } from "../methods/anim.js";
-import { manage_property } from "./at-property-builder.js";
+import { canonical_property_registration, manage_property } from "./at-property-builder.js";
 import { GlobalCss, GlobalCssRuntimeApi } from "./global-css.js";
-import { manage_keyframes } from "./keyframes-manager.js";
+import { canonical_keyframes_definition, manage_keyframes } from "./keyframes-manager.js";
 import { css_supports_decl } from "./style-setter.js";
 import {
   default_livetree_runtime,
@@ -19,6 +19,9 @@ import {
 } from "../runtime/livetree-runtime.js";
 import { mark_runtime_infrastructure } from "../../../internal/browser-realization/browser-realization-dom.js";
 import { render_complete_css, render_quid_rule, selector_for_quid } from "./css-render.js";
+import { DocumentStylesheetError, parse_document_stylesheet } from "../../../internal/css/parse-document-stylesheet.js";
+import { render_property_registration } from "../../../internal/css/property-registration.js";
+import { render_keyframes_definition } from "../../../internal/css/keyframes-definition.js";
 
 
 const CSS_HOST_TAG = "hson-_style";
@@ -119,6 +122,10 @@ export class CssRuntimeManager {
   private keyframesApi: KeyframesManager | undefined;
   private changed: boolean = false;
   private readonly globalCss = new GlobalCss(() => this.nextRuleOrder++);
+  private readonly orderedGlobalDefinitions = new Map<string, number>();
+  private readonly parsedKeyframes = new Set<string>();
+  private hasStylesheetIngress = false;
+  private admittingStylesheet = false;
   private globalsApi: GlobalCssRuntimeApi | undefined;
   private readonly documentListener = (): void => {
     this.changed = true;
@@ -156,6 +163,7 @@ export class CssRuntimeManager {
   private markChanged(): void {
     // mark dirty, but DO NOT write immediately
     this.changed = true;
+    if (this.admittingStylesheet) return;
 
     // schedule a single flush
     this.scheduleSync();
@@ -247,6 +255,16 @@ export class CssRuntimeManager {
       }
     }
     const rules = [...this.globalCss.renderEntries()];
+    for (const name of this.atPropManager.list()) {
+      const order = this.orderedGlobalDefinitions.get(`property:${name}`);
+      const definition = this.atPropManager.get(name);
+      if (order !== undefined && definition) rules.push({ order, text: render_property_registration(definition) });
+    }
+    for (const name of this.keyframeManager.list()) {
+      const order = this.orderedGlobalDefinitions.get(`keyframes:${name}`);
+      const definition = this.keyframeManager.get(name);
+      if (order !== undefined && definition) rules.push({ order, text: render_keyframes_definition(definition, definition.name, this.parsedKeyframes.has(name)) });
+    }
     for (const [quid, props] of this.rulesByQuid) {
       if (props.size === 0) continue;
       const order = this.quidRuleOrder.get(quid);
@@ -254,10 +272,51 @@ export class CssRuntimeManager {
       rules.push({ order, text: render_quid_rule(quid, props) });
     }
     return render_complete_css(
-      this.atPropManager.renderAll(),
-      this.keyframeManager.renderAll(),
+      this.atPropManager.list().filter((name) => !this.orderedGlobalDefinitions.has(`property:${name}`))
+        .map((name) => render_property_registration(this.atPropManager.get(name)!)).join("\n\n"),
+      this.keyframeManager.list().filter((name) => !this.orderedGlobalDefinitions.has(`keyframes:${name}`))
+        .map((name) => render_keyframes_definition(this.keyframeManager.get(name)!)).join("\n\n"),
       rules,
     );
+  }
+
+  /** Shared portable grammar, admitted into this runtime's global CSS owner. */
+  private appendStylesheet(cssText: string): void {
+    const parsed = parse_document_stylesheet(cssText, this.globalCss.ruleKeys());
+    if (parsed.order.length === 0) return;
+    for (const property of parsed.properties) if (this.atPropManager.has(property.name)) {
+      throw new DocumentStylesheetError("CSS_ADMISSION", `Duplicate @property ${property.name}.`, 1, 1, cssText, "@property");
+    }
+    for (const keyframes of parsed.keyframes) if (this.keyframeManager.has(keyframes.name)) {
+      throw new DocumentStylesheetError("CSS_ADMISSION", `Duplicate @keyframes ${keyframes.name}.`, 1, 1, cssText, "@keyframes");
+    }
+    const byRuleKey = new Map(parsed.rules.map((rule) => [rule.ruleKey, rule]));
+    const byKeyframes = new Map(parsed.keyframes.map((definition) => [definition.name, definition]));
+    this.admittingStylesheet = true;
+    try {
+      for (const entry of parsed.order) {
+        const order = this.nextRuleOrder++;
+        if (entry.kind === "rule") {
+          const rule = byRuleKey.get(entry.ruleKey)!;
+          this.globalCss.appendParsedRule(rule, order);
+        } else if (entry.kind === "property") {
+          const property = parsed.properties.find((item) => item.name === entry.name)!;
+          this.atPropManager.register(property);
+          this.orderedGlobalDefinitions.set(`property:${entry.name}`, order);
+        } else {
+          const definition = byKeyframes.get(entry.name)!;
+          this.keyframeManager.set({ name: definition.name, steps: definition.steps.map((step): readonly [KeyframeSelector, CssDeclMap] =>
+            [step.at, Object.fromEntries(step.declarations)]) });
+          this.orderedGlobalDefinitions.set(`keyframes:${entry.name}`, order);
+          this.parsedKeyframes.add(entry.name);
+        }
+      }
+      this.hasStylesheetIngress = true;
+      this.changed = true;
+    } finally {
+      this.admittingStylesheet = false;
+    }
+    this.scheduleSync();
   }
 
   private syncToDom(): void {
@@ -403,9 +462,29 @@ export class CssRuntimeManager {
   public get atProperty(): PropertyManager {
     if (!this.atPropertyApi) {
       this.atPropertyApi = {
-        register: (input: Parameters<PropertyManager["register"]>[0]) => this.atPropManager.register(input),
-        registerMany: (inputs: Parameters<PropertyManager["registerMany"]>[0]) => this.atPropManager.registerMany(inputs),
-        unregister: (name: Parameters<PropertyManager["unregister"]>[0]) => this.atPropManager.unregister(name),
+        register: (input: Parameters<PropertyManager["register"]>[0]) => {
+          const definition = canonical_property_registration(input);
+          const existed = this.atPropManager.has(definition.name);
+          if (this.hasStylesheetIngress && !existed) this.orderedGlobalDefinitions.set(`property:${definition.name}`, this.nextRuleOrder++);
+          try { this.atPropManager.register(definition); }
+          catch (error) {
+            if (!existed) this.orderedGlobalDefinitions.delete(`property:${definition.name}`);
+            throw error;
+          }
+        },
+        registerMany: (inputs: Parameters<PropertyManager["registerMany"]>[0]) => {
+          if (!this.hasStylesheetIngress) { this.atPropManager.registerMany(inputs); return; }
+          const definitions = inputs.map(canonical_property_registration);
+          for (const definition of definitions) {
+            if (this.atPropManager.has(definition.name) || this.orderedGlobalDefinitions.has(`property:${definition.name}`)) continue;
+            this.orderedGlobalDefinitions.set(`property:${definition.name}`, this.nextRuleOrder++);
+          }
+          this.atPropManager.registerMany(definitions);
+        },
+        unregister: (name: Parameters<PropertyManager["unregister"]>[0]) => {
+          this.atPropManager.unregister(name);
+          this.orderedGlobalDefinitions.delete(`property:${name}`);
+        },
         has: (name: Parameters<PropertyManager["has"]>[0]) => this.atPropManager.has(name),
         get: (name: Parameters<PropertyManager["get"]>[0]) => this.atPropManager.get(name),
       };
@@ -421,9 +500,32 @@ export class CssRuntimeManager {
   public get keyframes(): KeyframesManager {
     if (!this.keyframesApi) {
       this.keyframesApi = {
-        set: (input: Parameters<KeyframesManager["set"]>[0]) => this.keyframeManager.set(input),
-        setMany: (inputs: Parameters<KeyframesManager["setMany"]>[0]) => this.keyframeManager.setMany(inputs),
-        delete: (name: Parameters<KeyframesManager["delete"]>[0]) => this.keyframeManager.delete(name),
+        set: (input: Parameters<KeyframesManager["set"]>[0]) => {
+          const definition = canonical_keyframes_definition(input);
+          const existed = this.keyframeManager.has(definition.name);
+          if (this.hasStylesheetIngress && !existed) this.orderedGlobalDefinitions.set(`keyframes:${definition.name}`, this.nextRuleOrder++);
+          try { this.keyframeManager.set(input); }
+          catch (error) {
+            if (!existed) this.orderedGlobalDefinitions.delete(`keyframes:${definition.name}`);
+            throw error;
+          }
+          this.parsedKeyframes.delete(definition.name);
+        },
+        setMany: (inputs: Parameters<KeyframesManager["setMany"]>[0]) => {
+          if (!this.hasStylesheetIngress) { this.keyframeManager.setMany(inputs); return; }
+          const definitions = inputs.map(canonical_keyframes_definition);
+          for (const definition of definitions) {
+            if (this.keyframeManager.has(definition.name) || this.orderedGlobalDefinitions.has(`keyframes:${definition.name}`)) continue;
+            this.orderedGlobalDefinitions.set(`keyframes:${definition.name}`, this.nextRuleOrder++);
+          }
+          this.keyframeManager.setMany(inputs);
+          for (const definition of definitions) this.parsedKeyframes.delete(definition.name);
+        },
+        delete: (name: Parameters<KeyframesManager["delete"]>[0]) => {
+          this.keyframeManager.delete(name);
+          this.orderedGlobalDefinitions.delete(`keyframes:${name}`);
+          this.parsedKeyframes.delete(name);
+        },
         has: (name: Parameters<KeyframesManager["has"]>[0]) => this.keyframeManager.has(name),
         get: (name: Parameters<KeyframesManager["get"]>[0]) => this.keyframeManager.get(name),
       };
@@ -623,6 +725,9 @@ export class CssRuntimeManager {
     // clear all internal state
     this.rulesByQuid.clear();
     this.quidRuleOrder.clear();
+    this.orderedGlobalDefinitions.clear();
+    this.parsedKeyframes.clear();
+    this.hasStylesheetIngress = false;
     this.changed = false;
     this.scheduled = false;
 
@@ -659,6 +764,9 @@ export class CssRuntimeManager {
     this.styleEls.clear();
     this.rulesByQuid.clear();
     this.quidRuleOrder.clear();
+    this.orderedGlobalDefinitions.clear();
+    this.parsedKeyframes.clear();
+    this.hasStylesheetIngress = false;
     this.globals_invoke().clearAll();
     this.globalsApi?.dispose();
     this.globalsApi = undefined;
@@ -733,6 +841,7 @@ export class CssRuntimeManager {
     const globalApi = mgr.globals_invoke();
 
     return {
+      stylesheet: (cssText: string) => mgr.appendStylesheet(cssText),
       rule: globalApi.rule,
       sel: globalApi.sel,
       var: globalApi.var,

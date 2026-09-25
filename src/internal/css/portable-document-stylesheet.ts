@@ -4,18 +4,26 @@ import { canonical_property_registration, render_property_registration } from ".
 import type { CssValue } from "../../core/style.types.js";
 import type { PropertyInput, PropertyRegistration, PropertySyntax } from "../../types/at-property.types.js";
 import type { KeyframesInput, KeyframesDef, KeyframeSelector } from "../../types/keyframes.types.js";
-import { render_complete_css, render_global_css_value, render_scoped_global_css_rule } from "./global-css-text.js";
+import { render_global_css_value, render_scoped_global_css_rule } from "./global-css-text.js";
 
 /**
  * Canonical document-global CSS state. The rule array is authored first-write
- * order; declarations and the two global registries are canonical name order.
+ * order; parsed declarations retain source order, while structured authoring
+ * keeps its canonical name order. The two global registries are name ordered.
  * There is no render cache, order counter, DOM host, QUID, or owner ledger.
  */
 export type PortableDocumentStylesheet = Readonly<{
   rules: readonly PortableDocumentRule[];
   properties: readonly PropertyRegistration[];
   keyframes: readonly KeyframesDef[];
+  order: readonly PortableDocumentCssEntry[];
 }>;
+
+export type PortableDocumentCssEntry = Readonly<
+  | { kind: "rule"; ruleKey: string; scopes: readonly string[] }
+  | { kind: "property"; name: string }
+  | { kind: "keyframes"; name: string }
+>;
 
 export type PortableDocumentRule = Readonly<{
   ruleKey: string;
@@ -40,7 +48,33 @@ export type PortableDocumentStylesheetRecord = Readonly<{
       declarations: readonly (readonly [string, string])[];
     }>[];
   }>[];
+  order: readonly PortableDocumentCssEntry[];
 }>;
+
+export function css_entry_identity(entry: PortableDocumentCssEntry): string {
+  return entry.kind === "rule" ? JSON.stringify(["rule", entry.scopes, entry.ruleKey]) : JSON.stringify([entry.kind, entry.name]);
+}
+
+export function stylesheet_order_for(
+  value: Pick<PortableDocumentStylesheet, "rules" | "properties" | "keyframes">,
+): PortableDocumentCssEntry[] {
+  return [
+    ...value.properties.map((item) => ({ kind: "property" as const, name: item.name })),
+    ...value.keyframes.map((item) => ({ kind: "keyframes" as const, name: item.name })),
+    ...value.rules.map((item) => ({ kind: "rule" as const, ruleKey: item.ruleKey, scopes: item.scopes })),
+  ];
+}
+
+export function reconcile_stylesheet_order(
+  prior: readonly PortableDocumentCssEntry[],
+  next: Pick<PortableDocumentStylesheet, "rules" | "properties" | "keyframes">,
+): PortableDocumentCssEntry[] {
+  const candidates = stylesheet_order_for(next);
+  const available = new Set(candidates.map(css_entry_identity));
+  const kept = prior.filter((item) => available.has(css_entry_identity(item)));
+  const seen = new Set(kept.map(css_entry_identity));
+  return [...kept, ...candidates.filter((item) => !seen.has(css_entry_identity(item)))];
+}
 
 const PROPERTY_SYNTAX: ReadonlySet<string> = new Set<PropertySyntax>([
   "<number>", "<length>", "<angle>", "<time>", "<percentage>", "<color>",
@@ -82,11 +116,15 @@ function declaration_pairs(input: unknown): Readonly<Record<string, string>> {
     if (values.has(property)) throw new TypeError("Duplicate stylesheet declaration.");
     values.set(property, value);
   }
-  return Object.freeze(Object.fromEntries([...values].sort(([a], [b]) => compare_names(a, b))));
+  return Object.freeze(Object.fromEntries(values));
 }
 
 function pairs(declarations: Readonly<Record<string, string>>): readonly (readonly [string, string])[] {
-  return Object.entries(declarations).sort(([a], [b]) => compare_names(a, b)).map(([key, value]) => [key, value] as const);
+  return Object.entries(declarations).map(([key, value]) => [key, value] as const);
+}
+
+function sorted_pairs(declarations: Readonly<Record<string, string>>): readonly (readonly [string, string])[] {
+  return [...pairs(declarations)].sort(([a], [b]) => compare_names(a, b));
 }
 
 function property_registration(input: unknown): PropertyRegistration {
@@ -122,8 +160,8 @@ function keyframes_definition(input: unknown): KeyframesDef {
 
 /** Admit a detached, frozen canonical value from a structured portable record. */
 export function decode_portable_document_stylesheet(input: unknown): PortableDocumentStylesheet {
-  const value = record(input, ["rules", "properties", "keyframes"]);
-  if (!Array.isArray(value.rules) || !Array.isArray(value.properties) || !Array.isArray(value.keyframes)) {
+  const value = record(input, ["rules", "properties", "keyframes", "order"]);
+  if (!Array.isArray(value.rules) || !Array.isArray(value.properties) || !Array.isArray(value.keyframes) || !Array.isArray(value.order)) {
     throw new TypeError("Invalid stylesheet collections.");
   }
   const ruleKeys = new Set<string>();
@@ -145,12 +183,28 @@ export function decode_portable_document_stylesheet(input: unknown): PortableDoc
   if (new Set(properties.map((item) => item.name)).size !== properties.length) throw new TypeError("Duplicate @property.");
   const keyframes = value.keyframes.map(keyframes_definition).sort((a, b) => compare_names(a.name, b.name));
   if (new Set(keyframes.map((item) => item.name)).size !== keyframes.length) throw new TypeError("Duplicate @keyframes.");
-  return Object.freeze({ rules: Object.freeze(rules), properties: Object.freeze(properties), keyframes: Object.freeze(keyframes) });
+  const order: PortableDocumentCssEntry[] = value.order.map((item: unknown) => {
+    if (item === null || typeof item !== "object") throw new TypeError("Invalid stylesheet order entry.");
+    if (Object.hasOwn(item, "ruleKey")) {
+      const entry = record(item, ["kind", "ruleKey", "scopes"]);
+      if (entry.kind !== "rule" || !Array.isArray(entry.scopes)) throw new TypeError("Invalid stylesheet rule order entry.");
+      return Object.freeze({ kind: "rule", ruleKey: nonempty(entry.ruleKey), scopes: Object.freeze(entry.scopes.map(nonempty)) });
+    }
+    const entry = record(item, ["kind", "name"]);
+    if (entry.kind !== "property" && entry.kind !== "keyframes") throw new TypeError("Invalid stylesheet order kind.");
+    return Object.freeze({ kind: entry.kind, name: nonempty(entry.name) });
+  });
+  const expected = stylesheet_order_for({ rules, properties, keyframes }).map(css_entry_identity);
+  const actual = order.map(css_entry_identity);
+  if (actual.length !== expected.length || new Set(actual).size !== actual.length || actual.some((item) => !expected.includes(item))) {
+    throw new TypeError("Stylesheet order disagrees with entries.");
+  }
+  return Object.freeze({ rules: Object.freeze(rules), properties: Object.freeze(properties), keyframes: Object.freeze(keyframes), order: Object.freeze(order) });
 }
 
 /** The initial semantic state of every future document library. */
 export function empty_portable_document_stylesheet(): PortableDocumentStylesheet {
-  return decode_portable_document_stylesheet({ rules: [], properties: [], keyframes: [] });
+  return decode_portable_document_stylesheet({ rules: [], properties: [], keyframes: [], order: [] });
 }
 
 export function encode_portable_document_stylesheet(value: PortableDocumentStylesheet): PortableDocumentStylesheetRecord {
@@ -158,11 +212,13 @@ export function encode_portable_document_stylesheet(value: PortableDocumentStyle
     rules: value.rules.map((rule) => ({ ...rule, scopes: [...rule.scopes], declarations: pairs(rule.declarations) })),
     properties: value.properties.map((property) => ({ ...property })),
     keyframes: value.keyframes.map((definition) => ({ name: definition.name, steps: definition.steps.map((step) => ({ at: step.at, declarations: pairs(step.decls) })) })),
+    order: value.order.map((entry) => ({ ...entry })),
   });
   return {
     rules: canonical.rules.map((rule) => ({ ruleKey: rule.ruleKey, selector: rule.selector, scopes: [...rule.scopes], declarations: pairs(rule.declarations) })),
     properties: canonical.properties.map((property) => ({ ...property })),
     keyframes: canonical.keyframes.map((definition) => ({ name: definition.name, steps: definition.steps.map((step) => ({ at: step.at, declarations: pairs(step.decls) })) })),
+    order: canonical.order.map((entry) => ({ ...entry })),
   };
 }
 
@@ -176,11 +232,12 @@ export function portable_document_stylesheet_equal(a: PortableDocumentStylesheet
 
 export function render_portable_document_stylesheet(value: PortableDocumentStylesheet): string {
   const canonical = decode_portable_document_stylesheet(encode_portable_document_stylesheet(value));
-  const propertyCss = canonical.properties.map(render_property_registration).join("\n\n");
-  const keyframesCss = canonical.keyframes.map((definition) => render_keyframes_definition(definition)).join("\n\n");
-  return render_complete_css(propertyCss, keyframesCss, canonical.rules.map((rule, order) => ({
-    order, text: render_scoped_global_css_rule(rule.selector, rule.declarations, rule.scopes),
-  })));
+  return canonical.order.map((entry) => {
+    if (entry.kind === "property") return render_property_registration(canonical.properties.find((item) => item.name === entry.name)!);
+    if (entry.kind === "keyframes") return render_keyframes_definition(canonical.keyframes.find((item) => item.name === entry.name)!, entry.name, true);
+    const rule = canonical.rules.find((item) => item.ruleKey === entry.ruleKey && JSON.stringify(item.scopes) === JSON.stringify(entry.scopes))!;
+    return render_scoped_global_css_rule(rule.selector, rule.declarations, rule.scopes, true);
+  }).join("\n\n");
 }
 
 /** Set one declaration; existing rule position survives updates, removal/re-add appends. */
@@ -208,11 +265,11 @@ export function set_portable_document_declaration(
     if (index < 0) return value;
     rules.splice(index, 1);
   } else {
-    const next = { ruleKey, selector, scopes, declarations };
+    const next = { ruleKey, selector, scopes, declarations: Object.fromEntries(sorted_pairs(declarations)) };
     if (index < 0) rules.push(next);
     else rules[index] = next;
   }
-  const result = decode_portable_document_stylesheet({ ...encode_portable_document_stylesheet(value), rules: rules.map((rule) => ({ ...rule, declarations: pairs(rule.declarations) })) });
+  const result = decode_portable_document_stylesheet({ ...encode_portable_document_stylesheet(value), rules: rules.map((rule) => ({ ...rule, declarations: pairs(rule.declarations) })), order: reconcile_stylesheet_order(value.order, { ...value, rules }) });
   return portable_document_stylesheet_equal(value, result) ? value : result;
 }
 
@@ -220,34 +277,34 @@ export function drop_portable_document_rule(value: PortableDocumentStylesheet, r
   const identity = JSON.stringify([scopes, ruleKey.trim()]);
   const rules = value.rules.filter((rule) => JSON.stringify([rule.scopes, rule.ruleKey]) !== identity);
   if (rules.length === value.rules.length) return value;
-  return decode_portable_document_stylesheet({ ...encode_portable_document_stylesheet(value), rules: rules.map((rule) => ({ ...rule, declarations: pairs(rule.declarations) })) });
+  return decode_portable_document_stylesheet({ ...encode_portable_document_stylesheet(value), rules: rules.map((rule) => ({ ...rule, declarations: pairs(rule.declarations) })), order: reconcile_stylesheet_order(value.order, { ...value, rules }) });
 }
 
 export function set_portable_document_property(value: PortableDocumentStylesheet, input: PropertyInput): PortableDocumentStylesheet {
   const registration = property_registration(canonical_property_registration(input));
   const properties = value.properties.filter((item) => item.name !== registration.name).map((item) => ({ ...item }));
   properties.push(registration);
-  const result = decode_portable_document_stylesheet({ ...encode_portable_document_stylesheet(value), properties });
+  const result = decode_portable_document_stylesheet({ ...encode_portable_document_stylesheet(value), properties, order: reconcile_stylesheet_order(value.order, { ...value, properties }) });
   return portable_document_stylesheet_equal(value, result) ? value : result;
 }
 
 export function drop_portable_document_property(value: PortableDocumentStylesheet, name: string): PortableDocumentStylesheet {
   const properties = value.properties.filter((item) => item.name !== name.trim());
   return properties.length === value.properties.length ? value
-    : decode_portable_document_stylesheet({ ...encode_portable_document_stylesheet(value), properties });
+    : decode_portable_document_stylesheet({ ...encode_portable_document_stylesheet(value), properties, order: reconcile_stylesheet_order(value.order, { ...value, properties }) });
 }
 
 export function set_portable_document_keyframes(value: PortableDocumentStylesheet, input: KeyframesInput): PortableDocumentStylesheet {
   const normalized = canonical_keyframes_definition(input);
   const keyframes = value.keyframes.filter((item) => item.name !== normalized.name)
     .map((definition) => ({ name: definition.name, steps: definition.steps.map((step) => ({ at: step.at, declarations: pairs(step.decls) })) }));
-  keyframes.push({ name: normalized.name, steps: normalized.steps.map((step) => ({ at: step.at, declarations: pairs(step.decls) })) });
-  const result = decode_portable_document_stylesheet({ ...encode_portable_document_stylesheet(value), keyframes });
+  keyframes.push({ name: normalized.name, steps: normalized.steps.map((step) => ({ at: step.at, declarations: sorted_pairs(step.decls) })) });
+  const result = decode_portable_document_stylesheet({ ...encode_portable_document_stylesheet(value), keyframes, order: reconcile_stylesheet_order(value.order, { ...value, keyframes: keyframes.map(keyframes_definition) }) });
   return portable_document_stylesheet_equal(value, result) ? value : result;
 }
 
 export function drop_portable_document_keyframes(value: PortableDocumentStylesheet, name: string): PortableDocumentStylesheet {
   const keyframes = encode_portable_document_stylesheet(value).keyframes.filter((item) => item.name !== name.trim());
   return keyframes.length === value.keyframes.length ? value
-    : decode_portable_document_stylesheet({ ...encode_portable_document_stylesheet(value), keyframes });
+    : decode_portable_document_stylesheet({ ...encode_portable_document_stylesheet(value), keyframes, order: reconcile_stylesheet_order(value.order, { ...value, keyframes: value.keyframes.filter((item) => item.name !== name.trim()) }) });
 }

@@ -56,7 +56,7 @@ Data library roots may be objects, arrays, strings, finite numbers, booleans, or
 
 Document libraries expose `document.content`, `document.attrs`, `document.flags`, `document.byQuid`, logical `at(path)` locations, commits, and document capture. Document identity is local to the runtime; portable addresses and requests use paths.
 
-Every document library also owns an initially empty portable stylesheet. The root library handle exposes `page.css`; data libraries and `page.at(path)` locations do not. `page.css` is already document-wide, so it has no `.global`. It follows the global rule vocabulary: `sel`, `rule`, `scope`, `media`, `supports`, `layer`, `var`, `drop`, `clearAll`, `has`, `list`, `get`, `atProperty`, and `keyframes`. Rule handles support `set`, `setProp`, `setMany`, `remove`, `clear`, and `drop`. `snapshot()` returns deterministic CSS text for inspection.
+Every document library also owns an initially empty portable stylesheet. The root library handle exposes `page.css`; data libraries and `page.at(path)` locations do not. `page.css` is already document-wide, so it has no `.global`. It follows the global rule vocabulary: `sel`, `rule`, `scope`, `media`, `supports`, `layer`, `var`, `drop`, `clearAll`, `has`, `list`, `get`, `atProperty`, and `keyframes`. `stylesheet(cssText): void` parses a complete CSS stylesheet and appends its supported content in one transition. Rule handles support `set`, `setProp`, `setMany`, `remove`, `clear`, and `drop`. `snapshot()` returns deterministic CSS text for inspection; whitespace and comments from source text are not retained.
 
 ```ts
 const page = map.lib("page");
@@ -65,7 +65,7 @@ page.css.sel("#home-screen").set.display("grid");
 const html = map.render("page");
 ```
 
-Each accepted CSS call is a map-wide semantic transition. No-op calls leave `map.rev` unchanged. Multi-declaration and registry batches validate and commit atomically. CSS commits carry a QUID-free changed rule, registry definition, or clear operation. Construction-time `css` input is currently rejected; author through `page.css` after admission.
+Each accepted CSS call is a map-wide semantic transition. No-op calls leave `map.rev` unchanged. Multi-declaration, registry batches, and stylesheet text ingress validate and commit atomically. `stylesheet()` returns `void`; empty or comment-only text does nothing. Parsed rules receive stable `stylesheet:1`, `stylesheet:2`, and subsequent keys, visible through `list()` and addressable through `get()` and `drop()`. This prefix is reserved from `rule(key, selector)` so author-named rules cannot collide. Duplicate selectors remain separate ordered rules, and parsed declarations retain authored order, including shorthand/longhand order. `clearAll()` clears all managed CSS, including parsed rules, properties, and keyframes. Unsupported constructs such as `@import`, unknown at-rules, layer statements, duplicate declarations, CSS nesting, and CSS that cannot safely enter a managed HTML `<style>` produce a `DocumentStylesheetError` without a map transition. CSS commits carry QUID-free semantic state. Construction-time `css` input is currently rejected; author through `page.css` after admission.
 
 ```ts
 state.at(["count"]).set(1);

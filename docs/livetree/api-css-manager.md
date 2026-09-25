@@ -346,6 +346,7 @@ css.rule("app-shell", ".app").set.display("grid");
 css.media({ maxWidth: 700 }).sel(".app").set.display("block");
 css.supports({ display: "grid" }).sel(".grid").set.display("grid");
 css.layer("base").sel(":root").set.colorScheme("dark");
+css.stylesheet(".app { color: blue; } @media (max-width: 700px) { .app { display: block; } }");
 ```
 
 Global facade surface:
@@ -363,6 +364,7 @@ css.var
 css.has(ruleKey)
 css.list()
 css.get(ruleKey)
+css.stylesheet(cssText)
 ```
 
 `scope(scopeName, atRule)` currently uses only `atRule`; `scopeName` is accepted
@@ -381,6 +383,15 @@ Rules render with deterministic property ordering. Empty rules are dropped.
 The same key may identify rules in distinct at-rule scopes; `css.drop(key)`
 removes that key across all scopes, and `css.list()` reports it once.
 Global and QUID rules preserve first-write cascade order; updates keep their place.
+`stylesheet(cssText): void` parses and appends a complete stylesheet using the
+same grammar as document-library `page.css.stylesheet(cssText)`. It admits
+selector rules, supported scopes, document-global `@property`, and keyframes
+into this runtime's existing global CSS state. Duplicate selectors remain
+separate, addressable rules with stable `stylesheet:1`, `stylesheet:2`, and later
+keys. Unsupported constructs such as `@import` fail before runtime mutation;
+empty and comment-only text is a no-op. `tree.css` itself has no `stylesheet()`.
+The existing LiveTree `clearAll()` clears global selector rules; use
+`atProperty.unregister()` and `keyframes.delete()` for those registries.
 
 ### Global Variables
 

@@ -19,14 +19,18 @@ export function render_global_css_value(value: unknown): string | null {
   return String(value).trim();
 }
 
-/** Existing global-rule spelling and sorted-declaration rendering. */
-export function render_global_css_rule(selector: string, decls: Readonly<Record<string, string>>): string {
-  const body = Object.keys(decls).map((key) => key.trim()).filter(Boolean).sort()
+/** Existing global-rule spelling; parsed rules retain declaration order. */
+export function render_global_css_rule(selector: string, decls: Readonly<Record<string, string>>, sourceOrder = false): string {
+  const keys = Object.keys(decls).map((key) => key.trim()).filter(Boolean);
+  if (!sourceOrder) keys.sort();
+  const body = keys
     .map((key) => {
       const value = decls[key]?.trim();
       if (!value) return "";
       const property = canon_to_css_prop(key);
-      return `${property}:${normalize_css_value(property, value)};`;
+      const important = /\s*!important$/i.test(value);
+      const plain = important ? value.replace(/\s*!important$/i, "").trim() : value;
+      return `${property}:${sourceOrder ? plain : normalize_css_value(property, plain)}${important ? " !important" : ""};`;
     }).join("");
   return body ? `${selector}{${body}}` : "";
 }
@@ -36,8 +40,9 @@ export function render_scoped_global_css_rule(
   selector: string,
   decls: Readonly<Record<string, string>>,
   scopes: readonly string[],
+  sourceOrder = false,
 ): string {
-  let text = render_global_css_rule(selector, decls).trim();
+  let text = render_global_css_rule(selector, decls, sourceOrder).trim();
   if (!text) return "";
   for (let index = scopes.length - 1; index >= 0; index -= 1) {
     text = `${scopes[index]} {\n${text.split("\n").map((line) => `  ${line}`).join("\n")}\n}`;

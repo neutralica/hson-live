@@ -494,6 +494,7 @@ check("managed browser style text equals the headless complete renderer", () => 
   const css = tree.css.global;
   css.sel(".deck").set.color("navy");
   css.media({ maxWidth: 600 }).sel(".deck").set.display("none");
+  css.stylesheet(".from-text { display: grid; } @layer components { .from-text { color: red; } }");
   tree.css.set.opacity("0.5");
   const manager = _livetree_runtime_test_css_manager(runtime);
   const headlessCss = tree.css.snapshot();
@@ -501,8 +502,10 @@ check("managed browser style text equals the headless complete renderer", () => 
   assert.equal(document.styleTexts().length, 0);
   projectInto(runtime, tree, document);
   assert.deepEqual(document.styleTexts(), [headlessCss]);
+  assert.match(document.styleTexts()[0] ?? "", /\.from-text\{display:grid;\}/);
   css.sel(".deck").set.backgroundColor("white");
   tree.css.set.color("blue");
+  css.stylesheet(".after-projection { opacity: .5; }");
   manager.syncNow();
   assert.deepEqual(document.styleTexts(), [tree.css.snapshot()]);
   tree.remove();

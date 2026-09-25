@@ -142,6 +142,7 @@ export interface KeyframesManager {
 
 /** Runtime ownership and rendering access for the stylesheet owner. @internal */
 export interface KeyframesRegistry extends KeyframesManager {
+  list(): readonly KeyframesName[];
   setOwned(owner: string, input: KeyframesInput): void;
   releaseOwner(owner: string): void;
   renderAll(): string;

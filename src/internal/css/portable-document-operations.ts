@@ -2,6 +2,7 @@ import type { LiveMapCssOp, LiveMapCssUnitOp } from "../../types/livemap.types.j
 import {
   decode_portable_document_stylesheet,
   encode_portable_document_stylesheet,
+  reconcile_stylesheet_order,
   type PortableDocumentStylesheet,
 } from "./portable-document-stylesheet.js";
 
@@ -28,19 +29,19 @@ function freeze_nested(value: unknown): void {
 function canonical_unit(input: unknown): LiveMapCssUnitOp {
   const header = fields(input, ["domain", "kind"], ["ruleKey", "scopes", "rule", "name", "definition"]);
   if (header.domain !== "css") throw new TypeError("Invalid document CSS operation domain.");
-  if (header.kind === "clear-rules") {
+  if (header.kind === "clear-all") {
     fields(input, ["domain", "kind"]);
-    return { domain: "css", kind: "clear-rules" };
+    return { domain: "css", kind: "clear-all" };
   }
   if (header.kind === "rule") {
     const value = fields(input, ["domain", "kind", "ruleKey", "scopes"], ["rule"]);
     const identity = decode_portable_document_stylesheet({
       rules: [{ ruleKey: value.ruleKey, selector: "x", scopes: value.scopes, declarations: [["color", "x"]] }],
-      properties: [], keyframes: [],
+      properties: [], keyframes: [], order: [{ kind: "rule", ruleKey: value.ruleKey, scopes: value.scopes }],
     }).rules[0]!;
     if (!Object.hasOwn(value, "rule")) return { domain: "css", kind: "rule", ruleKey: identity.ruleKey, scopes: identity.scopes };
     const rule = encode_portable_document_stylesheet(decode_portable_document_stylesheet({
-      rules: [value.rule], properties: [], keyframes: [],
+      rules: [value.rule], properties: [], keyframes: [], order: [{ kind: "rule", ruleKey: value.ruleKey, scopes: value.scopes }],
     })).rules[0]!;
     if (rule.ruleKey !== identity.ruleKey || JSON.stringify(rule.scopes) !== JSON.stringify(identity.scopes)) {
       throw new TypeError("CSS rule operation identity disagrees with its definition.");
@@ -54,7 +55,7 @@ function canonical_unit(input: unknown): LiveMapCssUnitOp {
     }
     if (!Object.hasOwn(value, "definition")) return { domain: "css", kind: "property", name: value.name };
     const definition = encode_portable_document_stylesheet(decode_portable_document_stylesheet({
-      rules: [], properties: [value.definition], keyframes: [],
+      rules: [], properties: [value.definition], keyframes: [], order: [{ kind: "property", name: value.name }],
     })).properties[0]!;
     if (definition.name !== value.name) throw new TypeError("CSS @property operation name disagrees with its definition.");
     return { domain: "css", kind: "property", name: value.name, definition };
@@ -66,7 +67,7 @@ function canonical_unit(input: unknown): LiveMapCssUnitOp {
     }
     if (!Object.hasOwn(value, "definition")) return { domain: "css", kind: "keyframes", name: value.name };
     const definition = encode_portable_document_stylesheet(decode_portable_document_stylesheet({
-      rules: [], properties: [], keyframes: [value.definition],
+      rules: [], properties: [], keyframes: [value.definition], order: [{ kind: "keyframes", name: value.name }],
     })).keyframes[0]!;
     if (definition.name !== value.name) throw new TypeError("CSS keyframes operation name disagrees with its definition.");
     return { domain: "css", kind: "keyframes", name: value.name, definition };
@@ -76,9 +77,15 @@ function canonical_unit(input: unknown): LiveMapCssUnitOp {
 
 /** Admit a detached canonical operation before publication or replay. */
 export function canonical_portable_document_css_op(input: unknown): LiveMapCssOp {
-  const header = fields(input, ["domain", "kind"], ["operations", "ruleKey", "scopes", "rule", "name", "definition"]);
+  const header = fields(input, ["domain", "kind"], ["operations", "ruleKey", "scopes", "rule", "name", "definition", "stylesheet"]);
   let result: LiveMapCssOp;
-  if (header.kind === "batch") {
+  if (header.kind === "append") {
+    const value = fields(input, ["domain", "kind", "stylesheet"]);
+    if (value.domain !== "css") throw new TypeError("Invalid document CSS operation domain.");
+    const stylesheet = encode_portable_document_stylesheet(decode_portable_document_stylesheet(value.stylesheet));
+    if (stylesheet.order.length === 0) throw new TypeError("Empty CSS append operation.");
+    result = { domain: "css", kind: "append", stylesheet };
+  } else if (header.kind === "batch") {
     const value = fields(input, ["domain", "kind", "operations"]);
     if (value.domain !== "css" || !Array.isArray(value.operations) || value.operations.length === 0) {
       throw new TypeError("CSS batch must contain operations.");
@@ -94,6 +101,16 @@ export function apply_portable_document_css_op(
   current: PortableDocumentStylesheet,
   operation: LiveMapCssOp,
 ): PortableDocumentStylesheet {
+  if (operation.kind === "append") {
+    const incoming = decode_portable_document_stylesheet(operation.stylesheet);
+    const encoded = encode_portable_document_stylesheet(current);
+    return decode_portable_document_stylesheet({
+      rules: [...encoded.rules, ...operation.stylesheet.rules],
+      properties: [...encoded.properties, ...operation.stylesheet.properties],
+      keyframes: [...encoded.keyframes, ...operation.stylesheet.keyframes],
+      order: [...encoded.order, ...incoming.order],
+    });
+  }
   if (operation.kind === "batch") {
     if (!Array.isArray(operation.operations) || operation.operations.length === 0) {
       throw new TypeError("CSS batch must contain operations.");
@@ -106,8 +123,8 @@ export function apply_portable_document_css_op(
 function apply_css_unit(current: PortableDocumentStylesheet, operation: LiveMapCssUnitOp): PortableDocumentStylesheet {
   if (operation.domain !== "css") throw new TypeError("Invalid document CSS operation domain.");
   const encoded = encode_portable_document_stylesheet(current);
-  if (operation.kind === "clear-rules") {
-    return decode_portable_document_stylesheet({ ...encoded, rules: [] });
+  if (operation.kind === "clear-all") {
+    return decode_portable_document_stylesheet({ rules: [], properties: [], keyframes: [], order: [] });
   }
   if (operation.kind === "rule") {
     const identity = JSON.stringify([operation.scopes, operation.ruleKey]);
@@ -120,7 +137,7 @@ function apply_css_unit(current: PortableDocumentStylesheet, operation: LiveMapC
       if (priorIndex < 0) rules.push(operation.rule);
       else rules.splice(priorIndex, 0, operation.rule);
     }
-    return decode_portable_document_stylesheet({ ...encoded, rules });
+    return decode_portable_document_stylesheet({ ...encoded, rules, order: reconcile_stylesheet_order(encoded.order, { ...current, rules: rules.map((rule) => ({ ...rule, declarations: Object.fromEntries(rule.declarations) })) }) });
   }
   if (operation.kind === "property") {
     const properties = encoded.properties.filter((item) => item.name !== operation.name);
@@ -128,12 +145,12 @@ function apply_css_unit(current: PortableDocumentStylesheet, operation: LiveMapC
       if (operation.definition.name !== operation.name) throw new TypeError("CSS @property operation name disagrees with its definition.");
       properties.push(operation.definition);
     }
-    return decode_portable_document_stylesheet({ ...encoded, properties });
+    return decode_portable_document_stylesheet({ ...encoded, properties, order: reconcile_stylesheet_order(encoded.order, { ...current, properties }) });
   }
   const keyframes = encoded.keyframes.filter((item) => item.name !== operation.name);
   if (operation.definition !== undefined) {
     if (operation.definition.name !== operation.name) throw new TypeError("CSS keyframes operation name disagrees with its definition.");
     keyframes.push(operation.definition);
   }
-  return decode_portable_document_stylesheet({ ...encoded, keyframes });
+  return decode_portable_document_stylesheet({ ...encoded, keyframes, order: reconcile_stylesheet_order(encoded.order, { ...current, keyframes: keyframes.map((item) => ({ name: item.name, steps: item.steps.map((step) => ({ at: step.at, decls: Object.fromEntries(step.declarations) })) })) }) });
 }

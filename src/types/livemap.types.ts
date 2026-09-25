@@ -1218,9 +1218,11 @@ export type LiveMapCssUnitOp = Readonly<
   | { domain: "css"; kind: "rule"; ruleKey: string; scopes: readonly string[]; rule?: import("./document-css.types.js").DocumentCssRecord["rules"][number] }
   | { domain: "css"; kind: "property"; name: string; definition?: import("./at-property.types.js").PropertyRegistration }
   | { domain: "css"; kind: "keyframes"; name: string; definition?: import("./document-css.types.js").DocumentCssRecord["keyframes"][number] }
-  | { domain: "css"; kind: "clear-rules" }
+  | { domain: "css"; kind: "clear-all" }
 >;
-export type LiveMapCssOp = LiveMapCssUnitOp | Readonly<{ domain: "css"; kind: "batch"; operations: readonly LiveMapCssUnitOp[] }>;
+export type LiveMapCssOp = LiveMapCssUnitOp
+  | Readonly<{ domain: "css"; kind: "batch"; operations: readonly LiveMapCssUnitOp[] }>
+  | Readonly<{ domain: "css"; kind: "append"; stylesheet: import("./document-css.types.js").DocumentCssRecord }>;
 
 /** Portable, ordered topology admission in the map's semantic stream. */
 export type LiveMapLibraryAddOperation = Readonly<{

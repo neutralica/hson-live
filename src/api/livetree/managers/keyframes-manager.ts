@@ -75,6 +75,7 @@ export function manage_keyframes(args: {
   };
 
   return {
+    list(): readonly KeyframesName[] { return [...byName.keys()].sort(); },
     set(input: KeyframesInput): void {
       // normalize at boundary.
       const next = canonical_keyframes_definition(input);

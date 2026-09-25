@@ -10,7 +10,9 @@ import { mediaToAtRule, convertSupportsToAt as convertSupportsToAtRule } from ".
 import { canonical_property_registration } from "../../internal/css/property-registration.js";
 import { canonical_keyframes_definition } from "../../internal/css/keyframes-definition.js";
 import { render_scoped_global_css_rule } from "../../internal/css/global-css-text.js";
+import { DocumentStylesheetError, parse_document_stylesheet } from "../../internal/css/parse-document-stylesheet.js";
 import {
+  decode_portable_document_stylesheet,
   encode_portable_document_stylesheet,
   render_portable_document_stylesheet,
   set_portable_document_declaration,
@@ -52,6 +54,7 @@ export function make_livemap_document_css(
     const ruleKey = rawKey.trim();
     const selector = rawSelector.trim();
     if (!ruleKey || !selector) throw new TypeError("Document CSS rule key and selector must be nonempty.");
+    if (ruleKey.startsWith("stylesheet:")) throw new TypeError("The stylesheet: rule key prefix is reserved for parsed CSS rules.");
     const write = (property: string, value: DocumentCssValue): void => {
       const before = read();
       const after = set_portable_document_declaration(before, ruleKey, selector, property, value, scopes);
@@ -143,13 +146,15 @@ export function make_livemap_document_css(
   const keyframes: DocumentCssHandle["keyframes"] = {
     set: (input: KeyframesInput) => {
       const definition = canonical_keyframes_definition(input);
-      const encoded = encode_portable_document_stylesheet({ ...read(), keyframes: [definition] }).keyframes[0]!;
+      const encoded = { name: definition.name, steps: definition.steps.map((step) => ({ at: step.at,
+        declarations: Object.entries(step.decls).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, value]): readonly [string, string] => [key, value]) })) };
       commit({ domain: "css", kind: "keyframes", name: definition.name, definition: encoded });
     },
     setMany: (inputs: readonly KeyframesInput[]) => {
       const definitions = inputs.map(canonical_keyframes_definition);
       if (definitions.length) commit({ domain: "css", kind: "batch", operations: definitions.map((definition) => {
-        const encoded = encode_portable_document_stylesheet({ ...read(), keyframes: [definition] }).keyframes[0]!;
+        const encoded = { name: definition.name, steps: definition.steps.map((step) => ({ at: step.at,
+          declarations: Object.entries(step.decls).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, value]): readonly [string, string] => [key, value]) })) };
         return { domain: "css", kind: "keyframes", name: definition.name, definition: encoded };
       }) });
     },
@@ -158,13 +163,30 @@ export function make_livemap_document_css(
     get: (name: string): KeyframesDef | undefined => read().keyframes.find((item) => item.name === name.trim()),
   };
   return Object.freeze({ ...root, var: vars, atProperty, keyframes,
+    stylesheet: (cssText: string): void => {
+      const existing = read();
+      const parsed = parse_document_stylesheet(cssText, existing.rules.map((item) => item.ruleKey));
+      if (parsed.order.length === 0) return;
+      const before = encode_portable_document_stylesheet(existing);
+      try {
+        decode_portable_document_stylesheet({
+          rules: [...before.rules, ...parsed.rules],
+          properties: [...before.properties, ...parsed.properties],
+          keyframes: [...before.keyframes, ...parsed.keyframes],
+          order: [...before.order, ...parsed.order],
+        });
+      } catch (error) {
+        throw new DocumentStylesheetError("CSS_ADMISSION", error instanceof Error ? error.message : String(error), 1, 1, cssText, "stylesheet");
+      }
+      commit({ domain: "css", kind: "append", stylesheet: parsed });
+    },
     drop: (ruleKey: string) => {
       const units = read().rules.filter((item) => item.ruleKey === ruleKey.trim()).map((item): LiveMapCssUnitOp =>
         ({ domain: "css", kind: "rule", ruleKey: item.ruleKey, scopes: item.scopes }));
       if (units.length === 1) commit(units[0]!);
       else if (units.length > 1) commit({ domain: "css", kind: "batch", operations: units });
     },
-    clearAll: () => { commit({ domain: "css", kind: "clear-rules" }); },
+    clearAll: () => { commit({ domain: "css", kind: "clear-all" }); },
     has: (ruleKey: string) => read().rules.some((item) => item.ruleKey === ruleKey.trim()),
     list: () => [...new Set(read().rules.map((item) => item.ruleKey))].sort(),
     get: (ruleKey: string) => {

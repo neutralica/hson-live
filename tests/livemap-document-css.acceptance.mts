@@ -9,6 +9,8 @@ const map = hsonLiveMap.fromLibraries({ page: { document }, data: { data: { coun
 const page = map.lib("page");
 const data = map.lib("data");
 if (false) {
+  const transitionReturn: void = page.css.stylesheet("body { margin: 0; }");
+  void transitionReturn;
   // @ts-expect-error Data Libraries have no stylesheet capability.
   data.css;
   // @ts-expect-error Document locations have no stylesheet capability.
@@ -17,13 +19,16 @@ if (false) {
   page.css.global;
 }
 const dynamic: LiveMapDynamicLibrary = map.lib("page" as string);
-if (dynamic.mode === "document") assert.equal(dynamic.css.snapshot(), "");
+if (dynamic.mode === "document") {
+  assert.equal(dynamic.css.snapshot(), "");
+  dynamic.css.stylesheet("");
+}
 assert.equal("css" in data, false);
 assert.equal("css" in page.at([]), false);
 assert.equal("global" in page.css, false);
 assert.equal(page.css.snapshot(), "");
 assert.deepEqual(map.capture().libraries.find((item) => item.name === "page")?.css,
-  { rules: [], properties: [], keyframes: [] });
+  { rules: [], properties: [], keyframes: [], order: [] });
 assert.equal("css" in (map.capture().libraries.find((item) => item.name === "data") ?? {}), false);
 assert.doesNotMatch(map.render("page"), /data-hson-managed-document-css/);
 assert.throws(() => hsonLiveMap.fromLibraries({ data: { data: 1, css: {} } } as never), /Initial Library CSS input/);
@@ -105,7 +110,7 @@ assert.throws(() => fresh.replay({ kind: "map", changed: true, prevRev: replayRe
   operations: [{ library: "page", operation: { domain: "css", kind: "rule", ruleKey: "missing", scopes: [] } }] } as never),
   /semantic stylesheet change/);
 assert.throws(() => fresh.replay({ kind: "map", changed: true, prevRev: replayRev, rev: replayRev + 1,
-  operations: [{ library: "page", operation: { domain: "css", kind: "clear-rules", extra: true } }] } as never),
+  operations: [{ library: "page", operation: { domain: "css", kind: "clear-all", extra: true } }] } as never),
   /Invalid document CSS operation fields/);
 assert.equal(fresh.rev, replayRev);
 assert.deepEqual(fresh.capture(), styled);
@@ -147,6 +152,7 @@ const workerMap = hsonLiveMap.fromLibraries({ page: { document: "<html <head/> <
 workerMap.lib("page").css.sel("body").set.margin("0");
 workerMap.lib("page").css.atProperty.register(["--phase", "<number>", "0"]);
 workerMap.lib("page").css.keyframes.set({ name: "fade", steps: { from: { opacity: "0" }, to: { opacity: "1" } } });
+workerMap.lib("page").css.stylesheet(".worker { color: var(--accent, blue); } @media (min-width: 1px) { .worker { display: grid; } }");
 assert.deepEqual(worker.capture, workerMap.capture());
 assert.equal(worker.css, workerMap.lib("page").css.snapshot());
 assert.equal(worker.html, workerMap.render("page"));

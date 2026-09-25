@@ -239,9 +239,9 @@ export function canonical_keyframes_definition(input: KeyframesInput): Keyframes
  *   An array of CSS lines like `"    transform: rotate(90deg);"` suitable
  *   for inclusion in a keyframe step block.
  */
-function renderDecls(decls: CssDeclMap): string[] {
-  // stable ordering by original canonical keys
-  const keys = Object.keys(decls).sort();
+function renderDecls(decls: CssDeclMap, sourceOrder = false): string[] {
+  const keys = Object.keys(decls);
+  if (!sourceOrder) keys.sort();
 
   return keys.map((k) => {
     // CHANGE: canonical -> emitted css prop (camel->kebab, keep --vars, etc.)
@@ -273,7 +273,7 @@ function renderDecls(decls: CssDeclMap): string[] {
  * @returns
  *   Complete CSS text for a single `@keyframes <name> { ... }` block.
  */
-export function render_keyframes_definition(def: KeyframesDef, emittedName: string = def.name): string {
+export function render_keyframes_definition(def: KeyframesDef, emittedName: string = def.name, sourceOrder = false): string {
   // start block.
   const lines: string[] = [];
   lines.push(`@keyframes ${emittedName} {`);
@@ -281,7 +281,7 @@ export function render_keyframes_definition(def: KeyframesDef, emittedName: stri
   // render steps.
   for (const step of def.steps) {
     lines.push(`  ${step.at} {`);
-    lines.push(...renderDecls(step.decls));
+    lines.push(...renderDecls(step.decls, sourceOrder));
     lines.push(`  }`);
   }
 

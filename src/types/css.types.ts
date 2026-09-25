@@ -138,6 +138,7 @@ export type CssGlobalsApi = Readonly<{
 
 /** Application rules and registries owned by one LiveTree runtime. */
 export type CssGlobalHandle = CssGlobalsApi & Readonly<{
+  stylesheet: (cssText: string) => void;
   atProperty: PropertyManager;
   keyframes: KeyframesManager;
 }>;

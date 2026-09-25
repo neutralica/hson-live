@@ -19,8 +19,7 @@ if (chromeBinary === undefined) throw new Error("Document CSS browser check requ
 const map = hsonLiveMap.fromLibraries({ page: {
   document: '<html <head <title "CSS"/> <style "#home-screen{color:red;}"/>/> <body <main id=home-screen "Styled"/>/>/>',
 } });
-map.lib("page").css.sel("#home-screen").set.color("rgb(0, 0, 255)");
-map.lib("page").css.sel("#home-screen").set.display("grid");
+map.lib("page").css.stylesheet("#home-screen { color: rgb(0, 0, 255); display: grid; }");
 const html = map.render("page");
 assert.equal((html.match(/data-hson-managed-document-css/g) ?? []).length, 1);
 

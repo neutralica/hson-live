@@ -38,6 +38,7 @@ export function manage_property(args: {
 
     //  public API implementation.
     return {
+        list(): readonly CssCustomPropName[] { return [...regByName.keys()].sort(); },
         register(input: PropertyInput): void {
             const next = canonical_property_registration(input);
             const prev = regByName.get(next.name);

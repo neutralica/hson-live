@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { hsonLiveTree } from "hson-live/livetree";
+import { hsonLiveMap } from "hson-live/livemap";
 import * as livetreeEntrypoint from "hson-live/livetree";
 import { make_branch_from_node } from "../dist/api/livetree/creation/create-branch.js";
 import { create_livetree_runtime } from "../src/api/livetree/runtime/livetree-runtime.ts";
@@ -31,6 +32,12 @@ function check(name: string, run: () => void): void {
 
 const owner = hsonLiveTree.fromNode({ $_tag: "main", $_content: [] });
 const css = owner.css.global;
+if (false) {
+  const stylesheetReturn: void = css.stylesheet("body { margin: 0; }");
+  void stylesheetReturn;
+  // @ts-expect-error A complete stylesheet is runtime-global, not node-scoped.
+  owner.css.stylesheet("body { margin: 0; }");
+}
 css.clearAll();
 
 check("owning subpath exposes LiveTree styling without manager implementations", () => {
@@ -62,6 +69,53 @@ check("published global facade retains rules, selectors, variables, property con
   assert.match(owner.css.snapshot(), /@property --phase/);
   assert.match(owner.css.snapshot(), /@keyframes fade/);
   assert.match(owner.css.snapshot(), /@media \(max-width: 700px\)/);
+});
+
+check("global stylesheet ingress shares the portable parser and source order with document CSS", () => {
+  const source = `
+    .same { color: red; }
+    .same { color: blue; }
+    @media (max-width: 600px) { @supports (display: grid) { @layer components { .card { display: grid; } } } }
+    @property --phase { syntax: "<number>"; inherits: false; initial-value: 0; }
+    @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  `;
+  const tree = hsonLiveTree.fromNode({ $_tag: "main", $_content: [] }, { isolated: true });
+  const other = hsonLiveTree.fromNode({ $_tag: "main", $_content: [] }, { isolated: true });
+  const map = hsonLiveMap.fromLibraries({ page: { document: "<html <head/> <body/>/>" } });
+  const before = map.rev;
+  tree.css.global.stylesheet(source);
+  map.lib("page").css.stylesheet(source);
+  assert.equal(map.rev, before + 1);
+  assert.equal(tree.css.snapshot(), map.lib("page").css.snapshot());
+  assert.deepEqual(tree.css.global.list(), map.lib("page").css.list());
+  assert.equal(tree.css.global.atProperty.get("--phase")?.init, "0");
+  assert.equal(tree.css.global.keyframes.get("fade")?.steps.length, 2);
+  assert.equal(other.css.snapshot(), "");
+  tree.css.global.atProperty.register(["--later", "<number>", "1"]);
+  map.lib("page").css.atProperty.register(["--later", "<number>", "1"]);
+  tree.css.global.keyframes.set({ name: "later", steps: { from: { opacity: "0" }, to: { opacity: "1" } } });
+  map.lib("page").css.keyframes.set({ name: "later", steps: { from: { opacity: "0" }, to: { opacity: "1" } } });
+  const moreProperties = [["--alpha", "<number>", "0"], ["--beta", "<number>", "1"]] as const;
+  tree.css.global.atProperty.registerMany(moreProperties);
+  map.lib("page").css.atProperty.registerMany(moreProperties);
+  const moreKeyframes = [
+    { name: "alpha", steps: { from: { opacity: "0" } } },
+    { name: "beta", steps: { to: { opacity: "1" } } },
+  ];
+  tree.css.global.keyframes.setMany(moreKeyframes);
+  map.lib("page").css.keyframes.setMany(moreKeyframes);
+  assert.equal(tree.css.snapshot(), map.lib("page").css.snapshot());
+  tree.css.global.stylesheet(".late { color: green; }");
+  tree.css.global.sel(".structured").set.color("black");
+  assert.ok(tree.css.snapshot().indexOf(".late{") < tree.css.snapshot().indexOf(".structured{"));
+  const unchanged = tree.css.snapshot();
+  for (const empty of ["", "/* only comment */"]) tree.css.global.stylesheet(empty);
+  assert.equal(tree.css.snapshot(), unchanged);
+  assert.throws(() => tree.css.global.stylesheet(".valid { color: red; } @import url(a.css);"), /@import/);
+  assert.equal(tree.css.snapshot(), unchanged);
+  assert.equal("stylesheet" in tree.css, false);
+  tree.remove();
+  other.remove();
 });
 
 check("isolated public trees retain separate complete CSS with equal QUIDs", () => {

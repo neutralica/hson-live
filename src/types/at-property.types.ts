@@ -88,5 +88,6 @@ export interface PropertyManager {
 
 /** Rendering access used only by the runtime stylesheet owner. @internal */
 export interface PropertyRegistry extends PropertyManager {
+  list(): readonly CssCustomPropName[];
   renderAll(): string;
 }

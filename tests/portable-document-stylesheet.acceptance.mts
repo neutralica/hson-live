@@ -37,7 +37,7 @@ function check(name: string, run: () => void): void {
 
 check("empty state clones, round trips, compares and renders empty", () => {
   const empty = empty_portable_document_stylesheet();
-  assert.deepEqual(encode_portable_document_stylesheet(empty), { rules: [], properties: [], keyframes: [] });
+  assert.deepEqual(encode_portable_document_stylesheet(empty), { rules: [], properties: [], keyframes: [], order: [] });
   assert.equal(render_portable_document_stylesheet(empty), "");
   assert.ok(portable_document_stylesheet_equal(empty, clone_portable_document_stylesheet(empty)));
   assert.ok(portable_document_stylesheet_equal(empty, decode_portable_document_stylesheet(JSON.parse(JSON.stringify(encode_portable_document_stylesheet(empty))))));
@@ -104,7 +104,7 @@ check("portable selector rendering matches the current GlobalCss text path", () 
   runtime.dispose();
 });
 
-check("global @property and authored keyframes clone, round trip and render in runtime registry order", () => {
+check("global @property and authored keyframes clone, round trip and retain authored order", () => {
   let sheet = empty_portable_document_stylesheet();
   sheet = set_portable_document_property(sheet, ["--z", "*", "anything"]);
   sheet = set_portable_document_property(sheet, ["--phase", "<number>", "0"]);
@@ -115,9 +115,9 @@ check("global @property and authored keyframes clone, round trip and render in r
   assert.deepEqual(sheet.keyframes.map((item) => item.name), ["fade", "zoom"]);
   assert.deepEqual(sheet.keyframes[0]?.steps.map((step) => step.at), ["from", "50%", "to"]);
   const css = render_portable_document_stylesheet(sheet);
-  assert.ok(css.indexOf("@property --phase") < css.indexOf("@property --z"));
-  assert.ok(css.indexOf("@property --z") < css.indexOf("@keyframes fade"));
-  assert.ok(css.indexOf("@keyframes fade") < css.indexOf("@keyframes zoom"));
+  assert.ok(css.indexOf("@property --z") < css.indexOf("@property --phase"));
+  assert.ok(css.indexOf("@property --phase") < css.indexOf("@keyframes zoom"));
+  assert.ok(css.indexOf("@keyframes zoom") < css.indexOf("@keyframes fade"));
   assert.ok(css.indexOf("@keyframes zoom") < css.indexOf("body{animation:fade 1s;}"));
   const clone = clone_portable_document_stylesheet(sheet);
   assert.ok(portable_document_stylesheet_equal(sheet, clone));
@@ -136,18 +136,18 @@ check("global @property and authored keyframes clone, round trip and render in r
 });
 
 check("admission rejects nonportable or ambiguous records", () => {
-  assert.throws(() => decode_portable_document_stylesheet({ rules: [{ ruleKey: "a", selector: ".a", scopes: [], declarations: [["color", "red"], ["color", "blue"]] }], properties: [], keyframes: [] }));
-  assert.throws(() => decode_portable_document_stylesheet({ rules: [{ ruleKey: "a", selector: ".a", scopes: [], declarations: [["color", "red"]] }, { ruleKey: "a", selector: ".b", scopes: [], declarations: [["color", "blue"]] }], properties: [], keyframes: [] }));
-  assert.throws(() => decode_portable_document_stylesheet({ rules: [], properties: [{ name: "--phase", syn: "<number>", inh: false }], keyframes: [] }));
-  assert.throws(() => decode_portable_document_stylesheet({ rules: [], properties: [], keyframes: [{ name: "fade", steps: [{ at: "wat", declarations: [["opacity", "0"]] }] }] }));
-  assert.throws(() => decode_portable_document_stylesheet({ rules: [], properties: [], keyframes: [{ name: "fade", owner: "runtime-node", steps: [{ at: "from", declarations: [["opacity", "0"]] }] }] }));
-  assert.throws(() => decode_portable_document_stylesheet({ rules: [], properties: [], keyframes: [], quid: "000000abc" }));
-  const accessor = Object.defineProperty({ rules: [], properties: [] }, "keyframes", { enumerable: true, get: () => [] });
+  assert.throws(() => decode_portable_document_stylesheet({ rules: [{ ruleKey: "a", selector: ".a", scopes: [], declarations: [["color", "red"], ["color", "blue"]] }], properties: [], keyframes: [], order: [{ kind: "rule", ruleKey: "a", scopes: [] }] }));
+  assert.throws(() => decode_portable_document_stylesheet({ rules: [{ ruleKey: "a", selector: ".a", scopes: [], declarations: [["color", "red"]] }, { ruleKey: "a", selector: ".b", scopes: [], declarations: [["color", "blue"]] }], properties: [], keyframes: [], order: [{ kind: "rule", ruleKey: "a", scopes: [] }] }));
+  assert.throws(() => decode_portable_document_stylesheet({ rules: [], properties: [{ name: "--phase", syn: "<number>", inh: false }], keyframes: [], order: [{ kind: "property", name: "--phase" }] }));
+  assert.throws(() => decode_portable_document_stylesheet({ rules: [], properties: [], keyframes: [{ name: "fade", steps: [{ at: "wat", declarations: [["opacity", "0"]] }] }], order: [{ kind: "keyframes", name: "fade" }] }));
+  assert.throws(() => decode_portable_document_stylesheet({ rules: [], properties: [], keyframes: [{ name: "fade", owner: "runtime-node", steps: [{ at: "from", declarations: [["opacity", "0"]] }] }], order: [{ kind: "keyframes", name: "fade" }] }));
+  assert.throws(() => decode_portable_document_stylesheet({ rules: [], properties: [], keyframes: [], order: [], quid: "000000abc" }));
+  const accessor = Object.defineProperty({ rules: [], properties: [], order: [] }, "keyframes", { enumerable: true, get: () => [] });
   assert.throws(() => decode_portable_document_stylesheet(accessor));
 });
 
 check("portable admission and rendering ignore browser CSS.supports", () => {
-  const sample = { rules: [{ ruleKey: "x", selector: ".x", scopes: [], declarations: [["futureProperty", "future-value"]] }], properties: [], keyframes: [] };
+  const sample = { rules: [{ ruleKey: "x", selector: ".x", scopes: [], declarations: [["futureProperty", "future-value"]] }], properties: [], keyframes: [], order: [{ kind: "rule", ruleKey: "x", scopes: [] }] };
   const before = render_portable_document_stylesheet(decode_portable_document_stylesheet(sample));
   const previous = Object.getOwnPropertyDescriptor(globalThis, "CSS");
   try {

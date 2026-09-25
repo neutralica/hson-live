@@ -14,6 +14,10 @@ export type DocumentCssRecord = Readonly<{
     name: string;
     steps: readonly Readonly<{ at: KeyframeSelector; declarations: readonly (readonly [string, string])[] }>[];
   }>[];
+  order: readonly Readonly<
+    | { kind: "rule"; ruleKey: string; scopes: readonly string[] }
+    | { kind: "property" | "keyframes"; name: string }
+  >[];
 }>;
 
 /** Browser-independent value vocabulary used by document stylesheet authoring. */
@@ -65,6 +69,8 @@ export type DocumentCssRuleFacade = Readonly<{
 
 /** Root-only, document-wide portable stylesheet capability. */
 export type DocumentCssHandle = DocumentCssRuleFacade & Readonly<{
+  /** Parse and append complete authored CSS source as one semantic transition. */
+  stylesheet: (cssText: string) => void;
   drop: (ruleKey: string) => void;
   clearAll: () => void;
   has: (ruleKey: string) => boolean;
