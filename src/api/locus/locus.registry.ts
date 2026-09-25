@@ -44,7 +44,7 @@ function establish_authority_identity(
 }
 
 /**
- * Route a public fixed Library registry through the aggregate authority while
+ * Route a public Library registry through the aggregate authority while
  * preserving the ordinary Locus construction and action callback shape.
  */
 export function create_registry_locus<
@@ -66,6 +66,7 @@ export function create_registry_locus_internal<
     gate?: (input: LocusHostedAggregateGateInput) => void | Promise<void>;
     prepareGate?: (input: LocusHostedAggregateGateInput) => void;
     maxHistoryBytes?: number;
+    recoveryFloorRevision?: number;
     afterRecoveryCut?: () => void | Promise<void>;
   }> = {},
 ): Readonly<{
@@ -133,6 +134,7 @@ export function create_registry_locus_internal<
     ...(options.actionDedupe === undefined ? {} : { actionDedupe: options.actionDedupe }),
     ...(options.schema === undefined ? {} : { schema: options.schema }),
     internal: Object.freeze({
+      ...(internal.recoveryFloorRevision === undefined ? {} : { recoveryFloorRevision: internal.recoveryFloorRevision }),
       ...(internal.afterRecoveryCut === undefined ? {} : { afterRecoveryCut: internal.afterRecoveryCut }),
       acquireActionActivity: () => activity.acquire("action"),
       acquireSessionActivity: () => activity.acquire("session"),
@@ -178,6 +180,9 @@ export function create_registry_locus_internal<
 
   const locus = Object.freeze({
     map: options.map,
+    lib: Object.freeze({ add: (definitions: import("../../types/livemap.types.js").LiveMapDefinitions,
+      admission?: Readonly<{ exposure?: Readonly<Record<string, import("../../types/locus.types.js").LocusLibraryExposure>> }>) =>
+      authority.add_libraries(definitions, admission?.exposure) }),
     cut: (sessionId: string, document?: string) => {
       if (disposed || typeof sessionId !== "string" || sessionId.length === 0) throw new LocusProjectionUnavailableError();
       const effective = authority.sessions.projection(sessionId);

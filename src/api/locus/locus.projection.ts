@@ -42,9 +42,11 @@ export type LocusHostedProjectionPolicy = Readonly<{
   exposure: ReadonlyMap<string, "server-private" | "client-public">;
   defaultProjection?: LocusRequestedProjection;
   authorizeProjection?: LocusProjectionAuthorizer;
+  /** Install a prevalidated hosted batch before the authority publishes it. @internal */
+  installRuntimeExposure: (entries: readonly LocusExposureEntry[], registry: HostedRegistry) => void;
 }>;
 
-/** Validate deployment policy against the restored/current fixed application registry. */
+/** Validate deployment policy against the restored/current application registry. */
 export function make_locus_hosted_projection_policy(
   registry: HostedRegistry,
   authority: HostedAuthorityFence,
@@ -72,10 +74,36 @@ export function make_locus_hosted_projection_policy(
     throw new Error("Hosted Locus projection authorizer must be a function.");
   }
   if (defaultProjection !== undefined) normalize_request(defaultProjection);
-  return Object.freeze({ registry, authority: Object.freeze({ ...authority }), exposure,
+  let currentRegistry = registry;
+  return Object.freeze({ get registry() { return currentRegistry; }, authority: Object.freeze({ ...authority }), exposure,
     ...(defaultProjection === undefined ? {} : { defaultProjection: normalize_request(defaultProjection) }),
     ...(authorizeProjection === undefined ? {} : { authorizeProjection }),
+    installRuntimeExposure(entries: readonly LocusExposureEntry[], nextRegistry: HostedRegistry) {
+      // The caller validates the entire policy before admission. This install
+      // runs in the prepared transition's publication boundary and cannot fail.
+      for (const entry of entries) exposure.set(entry.library, entry.exposure);
+      currentRegistry = nextRegistry;
+    },
   });
+}
+
+/** Validate a complete per-library hosted classification before durable acceptance. */
+export function runtime_locus_exposure_entries(
+  names: readonly string[],
+  values: Readonly<Record<string, "server-private" | "client-public">> | undefined,
+): readonly LocusExposureEntry[] {
+  const requested = values ?? {};
+  const candidates = new Set(names);
+  for (const name of Object.keys(requested)) {
+    if (!candidates.has(name)) throw new Error(`Hosted exposure names an unknown Library ${JSON.stringify(name)}.`);
+  }
+  return Object.freeze(names.map((library) => {
+    const exposure = requested[library] ?? "server-private";
+    if (exposure !== "server-private" && exposure !== "client-public") {
+      throw new Error(`Hosted exposure is invalid for ${JSON.stringify(library)}.`);
+    }
+    return Object.freeze({ library, exposure });
+  }));
 }
 
 const EMPTY_REQUEST: LocusRequestedProjection = Object.freeze({ libraries: Object.freeze([]) });

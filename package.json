@@ -230,6 +230,7 @@
     "test:locus-selected-capture-z3a": "node --import=tsx tests/locus-selected-capture-z3a.acceptance.mts",
     "test:locus-checkpoint-z3b": "node --import=tsx tests/locus-checkpoint-z3b.acceptance.mts",
     "test:locus-hosted-topology-durability": "node --import=tsx tests/locus-hosted-topology-durability.acceptance.mts",
+    "test:locus-hosted-runtime-admission": "node --import=tsx tests/locus-hosted-runtime-admission.acceptance.mts",
     "test:locus-live-projection-6c": "node --import=tsx tests/locus-live-projection-6c.acceptance.mts",
     "test:locus-live-wire-6c": "node --import=tsx tests/locus-live-wire-6c.acceptance.mts",
     "test:locus-authority-acceptance-z1z2": "node --import=tsx tests/locus-authority-acceptance-z1z2.acceptance.mts",

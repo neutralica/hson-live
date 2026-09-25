@@ -17,7 +17,8 @@ import type { EchoMapManagementLease } from "../../internal/echo-map-capability.
 import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
 import { make_livemap_mirror_from_portable_aggregate_internal } from "../livemap/livemap.libraries.js";
 import { decode_locus_live_projected_envelope_internal, type LocusLiveProjectedWireEnvelope } from "../locus/locus.live-projection.js";
-import { admit_authority_projection_snapshot, authority_projection_as_client_composition_internal, bind_client_projection_identity_internal, client_projection_identity_internal } from "../locus/locus.authority-projection-snapshot.js";
+import { admit_authority_projection_snapshot, authority_projection_as_client_composition_internal, bind_client_projection_identity_internal, advance_client_projection_identity_internal, client_projection_identity_internal } from "../locus/locus.authority-projection-snapshot.js";
+import { locus_projection_contract_digest } from "../locus/locus.projection.js";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../locus/locus.aggregate.protocol.js";
 import {
   create_echo_endpoint_connection_internal,
@@ -136,6 +137,8 @@ function create_registry_echo_semantic_client_internal<
   let incarnationId: string | undefined;
   let registryDigest: string | undefined;
   let projectionDigest: string | undefined = map === undefined ? undefined : client_projection_identity_internal(map);
+  let projectionSequence = 0;
+  let projectionFeatures: readonly string[] = [];
   let authorityRev: number | undefined;
   const authorityPositionListeners = new Set<(revision: number) => void>();
   const publishAuthorityPosition = (): void => {
@@ -167,6 +170,7 @@ function create_registry_echo_semantic_client_internal<
     reject: (reason: Error) => void;
     outcome?: Exclude<HostedPlanOutcome, "reject">;
     projectionDigest?: string;
+    projectionSequence?: number;
     registryDigest?: string;
     snapshotReceived: boolean;
   }> | undefined;
@@ -321,7 +325,8 @@ function create_registry_echo_semantic_client_internal<
         throw new Error("Hosted recovery projected registry mismatch.");
       }
       if (recoveryCurrent(active)) recovery = Object.freeze({ ...active, outcome: message.outcome,
-        projectionDigest: message.projectionDigest, registryDigest: message.registryDigest });
+        projectionDigest: message.projectionDigest, registryDigest: message.registryDigest,
+        projectionSequence: message.projectionSequence ?? 0 });
       return;
     }
     if (message.type === "recovery-snapshot") {
@@ -360,6 +365,14 @@ function create_registry_echo_semantic_client_internal<
       apply_progress(message.progress, true);
       return;
     }
+    if (message.type === "projection-change") {
+      const active = liveRecovery;
+      if (status !== "live" || active === undefined || active.id !== message.id) return;
+      if (endpoint.session.status !== "attached" || endpoint.session.sessionId !== active.sessionId
+        || endpoint.session.epoch !== active.sessionEpoch) return;
+      apply_projection_change(message);
+      return;
+    }
     if (message.type === "recovery-caught-up") {
       const active = current_recovery(message.id);
       if (active === undefined) return;
@@ -370,6 +383,10 @@ function create_registry_echo_semantic_client_internal<
       if (authorityRev !== message.throughRev) {
         throw new Error("Hosted recovery caught-up authority revision does not match the Echo cursor.");
       }
+      if ((message.projectionSequence ?? 0) !== (active.projectionSequence ?? 0)) {
+        throw new Error("Hosted recovery projection sequence is incompatible.");
+      }
+      projectionSequence = message.projectionSequence ?? 0;
       status = "live";
       replica.markReady();
       recovery = undefined;
@@ -414,8 +431,62 @@ function create_registry_echo_semantic_client_internal<
     incarnationId = snapshot.authority.incarnationId;
     registryDigest = composition.registryDigest;
     projectionDigest = snapshot.projectionDigest;
+    projectionFeatures = snapshot.systemFeatures;
     authorityRev = snapshot.revision;
     publishAuthorityPosition();
+  }
+
+  function apply_projection_change(message: import("../locus/locus.aggregate.transport.internal.js").LocusHostedProjectionChange): void {
+    if (map === undefined || authorityRev === undefined || projectionDigest === undefined
+      || registryDigest === undefined || incarnationId === undefined
+      || message.logicalMapId !== clientLogicalMapId || message.incarnationId !== incarnationId
+      || message.authorityRev !== authorityRev || message.sequence !== projectionSequence + 1
+      || message.previousDigest !== projectionDigest
+      || JSON.stringify(message.systemFeatures) !== JSON.stringify(projectionFeatures)) {
+      throw new Error("Hosted projection change fence is incompatible.");
+    }
+    const nextDigest = locus_projection_contract_digest(Object.freeze({ logicalMapId: clientLogicalMapId, incarnationId }),
+      message.libraries, message.htmlDocument, message.systemFeatures, message.writableDocuments);
+    if (nextDigest !== message.projectionDigest) throw new Error("Hosted projection change digest is incompatible.");
+    const current = replica.clientProjection();
+    if (current === undefined) throw new Error("Hosted projection change requires a composed client map.");
+    const oldEntries = current.registry.libraries.filter((entry) => entry.scope === undefined);
+    for (const old of oldEntries) {
+      const next = message.libraries.find((entry) => entry.name === old.name);
+      if (next === undefined || next.mode !== old.mode || next.schema !== old.schema
+        || next.schemaDigest !== old.schemaDigest || next.rootCodec !== old.rootCodec) {
+        throw new Error("Hosted projection change cannot replace an existing Library contract.");
+      }
+    }
+    const oldNames = new Set(oldEntries.map((entry) => entry.name));
+    const added = message.libraries.filter((entry) => !oldNames.has(entry.name));
+    if (added.length === 0) {
+      if (message.topology !== undefined || message.system !== undefined || message.registryDigest !== registryDigest) {
+        throw new Error("Hosted projection change topology is incompatible.");
+      }
+    } else {
+      const topology = message.topology;
+      if (topology === undefined || topology.operation.kind !== "library-add"
+        || topology.operation.libraries.length !== added.length
+        || topology.operation.libraries.some((entry, index) => {
+          const contract = added[index];
+          return contract === undefined || entry.name !== contract.name || entry.mode !== contract.mode
+            || entry.schema !== contract.schema;
+        })) throw new Error("Hosted projection change lacks its exact Library addition.");
+      if (added.some((entry) => entry.mode === "document") && projectionFeatures.includes("interactions")
+        && message.system === undefined) throw new Error("Hosted projection change lacks projected interactions.");
+      if (!projectionFeatures.includes("interactions") && message.system !== undefined) {
+        throw new Error("Hosted projection change has unexpected interactions.");
+      }
+      replica.installProjectedTopology(topology, message.registryDigest, message.system);
+      if (replica.clientProjection()?.registry.digest !== message.registryDigest) {
+        throw new Error("Hosted projection topology installation is incomplete.");
+      }
+    }
+    advance_client_projection_identity_internal(map, incarnationId, projectionDigest, message.projectionDigest);
+    projectionDigest = message.projectionDigest;
+    registryDigest = message.registryDigest;
+    projectionSequence = message.sequence;
   }
 
   function apply_live_envelope(envelope: LocusLiveProjectedWireEnvelope): void {

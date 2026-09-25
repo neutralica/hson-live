@@ -11,8 +11,8 @@ has no hosted projection policy.
 
 ## Session-projected hosted rendering
 
-A multi-library Locus stores an immutable effective projection when its session
-is authorized. Server application code uses the session ID to obtain one cut:
+A multi-library Locus stores the current effective projection for each authorized
+session. An explicit `locus.sessions.updateProjection` may expand it. Server application code uses the session ID to obtain one cut:
 
 ```ts
 const cut = locus.cut(sessionId);
@@ -46,7 +46,7 @@ The projected hosted carrier is `hson-ssr-bootstrap` version 3 with kind
 `hson-authority-projection-snapshot-v1`. The encoder and decoder reject the
 older complete hosted `hosted-document` and `hosted-libraries` version 2
 families. Local version 2 remains distinct. The live projected commit/wire v2
-and hosted socket v4 formats are unchanged.
+formats remain in use; the hosted socket uses v5 for live projection changes.
 
 An application can send `cut.html` alone. If it sends a state carrier, it must
 place the encoding of **that cut's** `data` beside the HTML. The application

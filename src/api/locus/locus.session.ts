@@ -25,7 +25,8 @@ type SessionRecord = {
   readonly credential?: LocusSessionCredential;
   readonly resumable: boolean;
   readonly principalId?: string;
-  readonly effectiveProjection?: LocusEffectiveProjection;
+  effectiveProjection?: LocusEffectiveProjection;
+  projectionSequence: number;
   readonly disposeResources: LocusDisposer;
   readonly subscriptionCount: () => number;
   state: LocusSessionState;
@@ -70,6 +71,8 @@ export type LocusSessionManager = Readonly<{
   release_ephemeral: (sessionId: LocusSessionId, epoch: LocusConnectionEpoch) => boolean;
   is_active: (sessionId: LocusSessionId, epoch: LocusConnectionEpoch) => boolean;
   projection: (sessionId: LocusSessionId) => LocusEffectiveProjection | undefined;
+  projection_sequence: (sessionId: LocusSessionId) => number | undefined;
+  update_projection: (sessionId: LocusSessionId, expected: LocusEffectiveProjection, next: LocusEffectiveProjection) => number;
   /** Immutable projections of all still-resumable sessions at one roster cut. */
   resumable_projections: () => readonly Readonly<{ sessionId: LocusSessionId; projection: LocusEffectiveProjection }>[];
   debug: () => LocusSessionDiagnostics;
@@ -190,6 +193,7 @@ export function make_locus_session_manager(options: LocusSessionOptions = {}): L
       resumable,
       ...(context?.principalId === undefined ? {} : { principalId: context.principalId }),
       ...(effectiveProjection === undefined ? {} : { effectiveProjection }),
+      projectionSequence: 0,
       disposeResources,
       subscriptionCount,
       state: "attached",
@@ -327,6 +331,21 @@ export function make_locus_session_manager(options: LocusSessionOptions = {}): L
     return record?.state === "attached" || record?.state === "disconnected" ? record.effectiveProjection : undefined;
   }
 
+  function projection_sequence(sessionId: LocusSessionId): number | undefined {
+    const record = sessions.get(sessionId);
+    return record?.state === "attached" || record?.state === "disconnected" ? record.projectionSequence : undefined;
+  }
+
+  function update_projection(sessionId: LocusSessionId, expected: LocusEffectiveProjection, next: LocusEffectiveProjection): number {
+    const record = sessions.get(sessionId);
+    if (record?.state !== "attached" || record.attachment === undefined || record.effectiveProjection !== expected) {
+      throw new Error("Locus session projection update is stale or unavailable.");
+    }
+    record.effectiveProjection = next;
+    record.projectionSequence += 1;
+    return record.projectionSequence;
+  }
+
   function resumable_projections(): readonly Readonly<{ sessionId: LocusSessionId; projection: LocusEffectiveProjection }>[] {
     const result: Readonly<{ sessionId: LocusSessionId; projection: LocusEffectiveProjection }>[] = [];
     for (const record of sessions.values()) {
@@ -390,5 +409,6 @@ export function make_locus_session_manager(options: LocusSessionOptions = {}): L
     listeners.clear();
   }
 
-  return Object.freeze({ create, reattach, detach, goodbye, revoke, release_ephemeral, is_active, projection, resumable_projections, debug, onChange, dispose });
+  return Object.freeze({ create, reattach, detach, goodbye, revoke, release_ephemeral, is_active,
+    projection, projection_sequence, update_projection, resumable_projections, debug, onChange, dispose });
 }

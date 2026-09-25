@@ -129,7 +129,7 @@ export type LocusHostedAggregate = Readonly<{
   readonly rev: number;
   mutate: (mutation: (draft: LocusHostedAggregateDraft) => void | Promise<void>) => Promise<HostedAggregateCommit | undefined>;
   /** @internal Stage one ordinary LiveMap library-add batch through this authority's gate. */
-  add_libraries_internal: (definitions: LiveMapDefinitions) => Promise<HostedAggregateCommit>;
+  add_libraries_internal: (definitions: LiveMapDefinitions, afterInstall?: () => void) => Promise<HostedAggregateCommit>;
   dispatch_action: (name: string, payload?: ExactDataCarrier | JsonValue, message?: LocusClientActionMessage, origin?: LocusActionOrigin) => Promise<unknown | void>;
   /** @internal Ordered non-mutation barrier shared with aggregate mutations. */
   run_exclusive: <TResult>(operation: () => TResult | Promise<TResult>) => Promise<TResult>;
@@ -253,11 +253,14 @@ export function create_locus_hosted_aggregate_internal(
     async mutate(mutation) {
       return (await enqueue(mutation)).commit;
     },
-    add_libraries_internal(definitions) {
+    add_libraries_internal(definitions, afterInstall) {
       const run = async (): Promise<HostedAggregateCommit> => {
         if (disposed || faulted) throw new Error("Hosted aggregate Locus authority is closed or faulted.");
         const prepared = prepare_hosted_livemap_library_add_internal(options.map, owner, definitions);
-        return accept_prepared(prepared.transition, prepared.afterInstall);
+        return accept_prepared(prepared.transition, () => {
+          prepared.afterInstall();
+          afterInstall?.();
+        });
       };
       const next = tail.then(run, run);
       tail = next.then(() => undefined, () => undefined);

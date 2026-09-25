@@ -34,6 +34,19 @@ export function client_projection_identity_internal(map: LiveMap): string | unde
   return clientProjectionIdentity.get(map)?.digest;
 }
 
+/** Advance an existing Echo map's session contract without replacing that map. @internal */
+export function advance_client_projection_identity_internal(
+  map: LiveMap,
+  incarnationId: string,
+  previousDigest: string,
+  nextDigest: string,
+): void {
+  const current = clientProjectionIdentity.get(map);
+  if (current?.incarnationId !== incarnationId || current.digest !== previousDigest
+    || !/^[a-f0-9]{64}$/u.test(nextDigest)) fail();
+  clientProjectionIdentity.set(map, Object.freeze({ digest: nextDigest, incarnationId }));
+}
+
 export const AUTHORITY_PROJECTION_SNAPSHOT_FORMAT: "hson-authority-projection-snapshot-v1" = "hson-authority-projection-snapshot-v1";
 
 type Root = Readonly<{ format: "hson-exact-value"; payload: string }>;

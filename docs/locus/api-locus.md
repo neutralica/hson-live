@@ -1,6 +1,6 @@
 # Locus API
 
-`Locus` governs one fixed application library registry and separate system state. The registry may contain one library or many; its cardinality does not change the hosted protocol. A hosted client obtains an authorized session projection before receiving framework state.
+`Locus` governs one application library registry and separate system state. The registry may grow while the authority runs. A hosted client obtains an authorized session projection before receiving framework state.
 
 ```ts
 import { create_locus } from "hson-live/locus";
@@ -18,7 +18,13 @@ const locus = create_locus({
 
 Every application library needs one explicit `client-public` or `server-private` exposure entry. Public exposure makes a library eligible; the session projection and read authorizer determine what this particular client receives. A one-library registry is not implicitly selected or public. A selected HTML document must be an authorized document in the effective projection. `defaultProjection`, when configured, is a default *request* and still passes authorization.
 
-`create_persistent_locus` uses the same registry ontology. Durable authority checkpoints remain complete and server-side; exposure is not serialized into them. Application code may read `locus.map` and private state for server work, and remains responsible for arbitrary HTML or `Response` values it writes itself.
+After construction, admit an atomic batch with `await locus.lib.add(definitions, { exposure })`. Definitions have the same `data` or `document` and optional `schema` fields as `map.lib.add`. Exposure is a per-name object, for example `{ page: "client-public", credentials: "server-private" }`; omitted entries default to `server-private`. Locus validates the batch and its exposure before durable acceptance. Direct `map.lib.add` on the managed authority remains fenced. A public classification only makes a name eligible; it never changes an existing session grant.
+
+`await locus.sessions.updateProjection(sessionId, request)` reauthorizes an attached session against current topology using that connection's current context and the ordinary `authorizeProjection` callback. Requests name the desired libraries and optional document, system features, and write scope. Grants remain exact sets of names: an addition to the authority does not expand an old grant. The operation currently accepts grant expansion and document selection changes within the existing system-feature scope. To reduce a grant, revoke the session and establish a new one. Successful changes advance a session projection sequence and digest without creating an authority revision. A disconnected session must reattach before calling this operation.
+
+`create_persistent_locus` uses the same registry ontology. Durable authority checkpoints remain complete and server-side; exposure is not serialized into them. After restart the application supplies classifications for every restored library, including runtime additions. Application code may read `locus.map` and private state for server work, and remains responsible for arbitrary HTML or `Response` values it writes itself.
+
+A restored persistent runtime gives reconnecting clients a projected snapshot for cursors at or before its loaded revision. This reestablishes client identity after restart even when durable authority revision and incarnation are unchanged.
 
 ## Persistence
 
@@ -32,13 +38,13 @@ An activation error is reconciled by reading the exact active checkpoint identit
 
 ## Hosted cut and client state
 
-After a session is established, `locus.cut(sessionId, document?)` produces an object-owned authorized cut. Its `html` and `data` (`AuthorityProjectionSnapshot`) come from one coherent authority revision and the session's stored immutable projection. It rejects a revoked session and any private, unselected, wrong-kind, or otherwise unauthorized document choice without naming hidden libraries. A zero-argument cut needs an authorized `htmlDocument`; no first-document fallback exists.
+After a session is established, `locus.cut(sessionId, document?)` produces an object-owned authorized cut. Its `html` and `data` (`AuthorityProjectionSnapshot`) come from one coherent authority revision and the session's current effective projection. It rejects a revoked session and any private, unselected, wrong-kind, or otherwise unauthorized document choice without naming hidden libraries. A zero-argument cut needs an authorized `htmlDocument`; no first-document fallback exists.
 
 The application owns the HTML shell, routing, headers, CSP, asset tags, and bootstrap placement. `new Response(cut.html)` is valid when no browser continuation is needed. When continuation is needed, encode the projected state from that same cut with the hosted SSR bootstrap v3 `hosted-projection` contract. Local SSR still uses its separate version 2 contract.
 
 The browser composes client-local libraries separately with the authority projection. Echo starts `authorityRev` from the authority snapshot revision; its `map.rev` follows ordinary local LiveMap revisions. Hosted continuation checks projection identity, authority binding and revision, then adopts matching DOM before installing Mirror. It does not compare server-generated QUIDs.
 
-The active hosted socket is `hson-locus-hosted-aggregate-message-v4`. It projects bootstrap, live commits or progress, retained replay, recovery tail, and snapshot fallback for the stored session projection. Reattachment reuses that projection; revocation fences new cuts and transport work.
+The active hosted socket is `hson-locus-hosted-aggregate-message-v5`. Hidden runtime additions emit progress with no private topology. A successful session expansion emits a separate `projection-change` event at the current authority revision; Echo installs only the newly granted `library-add` roots into its existing client map. Reattachment reuses the current projection; revocation fences new cuts and transport work. Full topology reconciliation across disconnection, retained replay, and snapshot fallback remains Phase 2c.
 
 Local `render_document(...)` pairs browser-compatible HTML with a detached continuation bootstrap without an authorization boundary. Local one-library LiveMap constructors remain supported.
 

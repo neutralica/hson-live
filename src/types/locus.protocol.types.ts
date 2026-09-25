@@ -1,4 +1,4 @@
-// Action and session transport contracts for the fixed registry.
+// Action and session transport contracts for the application registry.
 // locus.types.ts
 
 import type {

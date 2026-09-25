@@ -15,6 +15,7 @@ import type {
   LiveMapDefinitions,
   LiveMapLibraryInput,
   LiveMapLibraryOperation,
+  LiveMapLibraryAddOperation,
   LiveMapLibraryPathHandle,
   LiveMapDataOp,
   LiveMapLibraryFeedEvent,
@@ -74,6 +75,7 @@ import {
   assert_portable_aggregate_snapshot_shape,
   portable_aggregate_snapshot_as_local,
   make_portable_aggregate_snapshot,
+  make_hosted_registry,
   decode_hosted_root,
   encode_hosted_root,
   HOSTED_MAX_SNAPSHOT_BYTES,
@@ -97,6 +99,75 @@ const HOSTED_LIBRARY_ADMISSION = new WeakMap<object, (owner: object, inputs: Liv
   transition: PreparedLiveMapAuthorityTransition;
   afterInstall: () => void;
 }>>();
+
+function topology_definitions(operation: LiveMapLibraryAddOperation): LiveMapDefinitions {
+  if (operation.operation.kind !== "library-add" || operation.operation.libraries.length === 0
+    || operation.library !== operation.operation.libraries[0]?.name) {
+    throw new Error("LiveMap topology replay requires a canonical library-add operation.");
+  }
+  const definitions: Record<string, LiveMapLibraryInput> = Object.create(null);
+  for (const entry of operation.operation.libraries) {
+    if (Object.hasOwn(definitions, entry.name)) throw new Error("LiveMap topology replay contains a duplicate Library.");
+    const schema = HsonSchemaHandle.fromHson(entry.schema);
+    if (schema.toHson() !== entry.schema) throw new Error("LiveMap topology replay Schema is not canonical.");
+    const root = decode_hosted_root(entry.root);
+    admit_portable_hson_node(root, "LiveMap topology replay");
+    if (classify_live_root_mode(root, entry.mode === "document" ? "document" : "data") !== entry.mode
+      || JSON.stringify(encode_hosted_root(root)) !== JSON.stringify(entry.root)) {
+      throw new Error("LiveMap topology replay root mode or encoding is inconsistent.");
+    }
+    definitions[entry.name] = entry.mode === "document"
+      ? { document: root, schema }
+      : { data: reconstructed_data(root), schema };
+  }
+  return definitions;
+}
+
+function is_library_add_operation(operation: LiveMapLibraryOperation | LiveMapLibraryAddOperation): operation is LiveMapLibraryAddOperation {
+  return "kind" in operation.operation && operation.operation.kind === "library-add";
+}
+
+/** Install a projected Phase 1b operation in the existing composed client map. @internal */
+export function install_client_projected_topology_internal(
+  map: LiveMap,
+  owner: object,
+  operation: LiveMapLibraryAddOperation,
+  expectedDigest: string,
+  system?: Readonly<{ format: "hson-exact-value"; payload: string }>,
+): void {
+  const aggregate = internal_livemap_aggregate_authority(map);
+  const current = aggregate.clientProjection();
+  if (current === undefined) throw new Error("Projected topology requires a composed client LiveMap.");
+  const definitions = topology_definitions(operation);
+  const newBindings = operation.operation.libraries.map((entry) => Object.freeze({
+    name: entry.name, mode: entry.mode, schema: HsonSchemaHandle.fromHson(entry.schema), identity: Object.freeze({}),
+  }));
+  const existing = current.registry.libraries.map((entry) => Object.freeze({
+    name: entry.name, mode: entry.mode, schema: HsonSchemaHandle.fromHson(entry.schema), identity: Object.freeze({}),
+    ...(entry.scope === undefined ? {} : { scope: entry.scope }),
+  }));
+  const application = [...existing.filter((entry) => entry.scope === undefined), ...newBindings]
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const predicted = make_hosted_registry([...application, ...existing.filter((entry) => entry.scope === "hson-internal")]);
+  if (predicted.digest !== expectedDigest) throw new Error("Projected topology registry digest is incompatible.");
+  const prepared = prepare_hosted_livemap_library_add_internal(map, owner, definitions);
+  let installSystem: (() => void) | undefined;
+  try {
+    installSystem = system === undefined ? undefined
+      : aggregate.prepareClientProjectionSystemManaged(owner, decode_hosted_root(system));
+    if (JSON.stringify(prepared.transition.commit.topology) !== JSON.stringify(operation)) {
+      throw new Error("Projected topology operation is noncanonical.");
+    }
+  } catch (cause) {
+    aggregate.discard(prepared.transition);
+    throw cause;
+  }
+  aggregate.accept(prepared.transition, "isolate", () => {
+    prepared.afterInstall();
+    installSystem?.();
+    aggregate.extendClientProjectionManaged(owner, operation.operation.libraries.map((entry) => entry.name), expectedDigest);
+  });
+}
 
 /** Stage the public definition grammar through the map's managed authority. @internal */
 export function prepare_hosted_livemap_library_add_internal(
@@ -197,7 +268,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
       ? make_data_library(library, aggregate, public_commit)
       : make_document_library(library, aggregate, public_commit);
     if (clientSnapshot !== undefined) CLIENT_LIBRARY_SOURCES.set(facade,
-      clientSnapshot.registry.libraries.some((entry) => entry.name === name) ? "authority-projected" : "client-local");
+      aggregate.clientProjection()?.libraries.includes(name) ? "authority-projected" : "client-local");
     selectedFacades.set(name, facade);
     return facade;
   };
@@ -236,28 +307,10 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
         throw new Error("LiveMap topology replay requires the next canonical library-add commit.");
       }
       const operation = commit.operations[0];
-      if (operation === undefined || !("kind" in operation.operation) || operation.operation.kind !== "library-add" || operation.operation.libraries.length === 0) {
+      if (operation === undefined || !is_library_add_operation(operation) || operation.operation.libraries.length === 0) {
         throw new Error("LiveMap topology replay requires a library-add operation.");
       }
-      if (operation.library !== operation.operation.libraries[0]?.name) {
-        throw new Error("LiveMap topology replay batch name is inconsistent.");
-      }
-      const definitions: Record<string, LiveMapLibraryInput> = Object.create(null);
-      for (const entry of operation.operation.libraries) {
-        if (Object.hasOwn(definitions, entry.name)) throw new Error("LiveMap topology replay contains a duplicate Library.");
-        const schema = HsonSchemaHandle.fromHson(entry.schema);
-        if (schema.toHson() !== entry.schema) throw new Error("LiveMap topology replay Schema is not canonical.");
-        const root = decode_hosted_root(entry.root);
-        admit_portable_hson_node(root, "LiveMap topology replay");
-        if (classify_live_root_mode(root, entry.mode === "document" ? "document" : "data") !== entry.mode
-          || JSON.stringify(encode_hosted_root(root)) !== JSON.stringify(entry.root)) {
-          throw new Error("LiveMap topology replay root mode or encoding is inconsistent.");
-        }
-        definitions[entry.name] = entry.mode === "document"
-          ? { document: root, schema }
-          : { data: reconstructed_data(root), schema };
-      }
-      return lib.add(definitions);
+      return lib.add(topology_definitions(operation));
     },
     capture: () => aggregate.captureLibraries(),
     restore: (snapshot: LiveMapSnapshot) => {

@@ -5,6 +5,7 @@ import type {
   LiveMapDocumentRequestTarget,
   LiveMapGraphCommit,
   LiveMap,
+  LiveMapDefinitions,
 } from "../../types/livemap.types.js";
 import type {
   LocusActionAuthorizer,
@@ -20,6 +21,7 @@ import type {
   LocusActionDedupeOptions,
   LocusSchema,
   LocusExposureEntry,
+  LocusLibraryExposure,
   LocusProjectionAuthorizer,
   LocusRequestedProjection,
   LocusSocketLike,
@@ -34,9 +36,9 @@ import { LocusPersistenceError } from "./locus.persistence.error.js";
 import { validate_document_path } from "../livemap/livemap.document.path.js";
 import { make_locus_action_dedupe_store } from "./locus.actions.js";
 import { make_locus_session_manager } from "./locus.session.js";
-import { make_locus_hosted_projection_policy, normalize_locus_effective_projection, type LocusEffectiveProjection } from "./locus.projection.js";
-import { LOCUS_LIVE_PROJECTED_WIRE_FORMAT, project_locus_live_transition_internal, type LocusLiveProjectedEvent } from "./locus.live-projection.js";
-import { capture_locus_session_authority_projection_snapshot, authority_projection_as_client_composition_internal } from "./locus.authority-projection-snapshot.js";
+import { LocusProjectionUnavailableError, make_locus_hosted_projection_policy, normalize_locus_effective_projection, runtime_locus_exposure_entries, type LocusEffectiveProjection } from "./locus.projection.js";
+import { LOCUS_LIVE_PROJECTED_WIRE_FORMAT, project_locus_live_transition_internal, projected_registry_digest, type LocusLiveProjectedEvent } from "./locus.live-projection.js";
+import { capture_locus_session_authority_projection_snapshot, capture_selected_authority_projection_snapshot, authority_projection_as_client_composition_internal } from "./locus.authority-projection-snapshot.js";
 import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
 import { INTERACTION_RESERVED_LIBRARY_KEY } from "../../internal/interaction-storage.js";
 import { decode_locus_action_payload, locus_schema_error_message } from "./locus.action-validation.js";
@@ -74,6 +76,7 @@ import {
 import type {
   LocusHostedAggregateDownstreamSink,
   LocusHostedAggregateProgress,
+  LocusHostedProjectionChange,
   LocusHostedAggregateSemanticAttachment,
 } from "./locus.aggregate.transport.internal.js";
 import type { LocusFiniteOperationRequest } from "./locus.transport.internal.js";
@@ -170,6 +173,8 @@ export type LocusHostedAggregateSocketOptions<
   schema?: Pick<LocusSchema<JsonValue | undefined, TActions>, "actions">;
   /** Internal deterministic interleave seam for pending-live proof coverage. */
   internal?: Readonly<{
+    /** A restored runtime cannot accept an old client's equal-revision identity as current. */
+    recoveryFloorRevision?: number;
     afterRecoveryCut?: () => void | Promise<void>;
     beforeRecoveryCaughtUp?: () => void | Promise<void>;
     afterRecoveryCaughtUp?: () => void | Promise<void>;
@@ -196,9 +201,10 @@ export type LocusHostedAggregateSocketServer<
     onClose?: LocusDisposer,
   ) => LocusHostedAggregateSemanticAttachment<TActions>;
   mutate: LocusHostedAggregate["mutate"];
+  add_libraries: (definitions: LiveMapDefinitions, exposure?: Readonly<Record<string, LocusLibraryExposure>>) => Promise<void>;
   dispatch_action: LocusHostedAggregate["dispatch_action"];
   dispatch_message: (message: import("../../types/locus.types.js").LocusClientActionMessage) => Promise<LocusClientActionResult>;
-  sessions: Readonly<{ debug: ReturnType<typeof make_locus_session_manager>["debug"]; onChange: ReturnType<typeof make_locus_session_manager>["onChange"]; revoke: ReturnType<typeof make_locus_session_manager>["revoke"]; projection: ReturnType<typeof make_locus_session_manager>["projection"]; dispose: () => void }>;
+  sessions: Readonly<{ debug: ReturnType<typeof make_locus_session_manager>["debug"]; onChange: ReturnType<typeof make_locus_session_manager>["onChange"]; revoke: ReturnType<typeof make_locus_session_manager>["revoke"]; projection: ReturnType<typeof make_locus_session_manager>["projection"]; updateProjection: (sessionId: LocusSessionId, request: LocusRequestedProjection) => Promise<Readonly<{ changed: boolean; sequence: number; digest: string; authorityRev: number }>>; dispose: () => void }>;
   actionRequests: Readonly<{ debug: ReturnType<typeof make_locus_action_dedupe_store>["debug"]; dispose: () => void }>;
   /** Ordered internal barrier used by persistence checkpointing. */
   run_exclusive: LocusHostedAggregate["run_exclusive"];
@@ -264,7 +270,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     beforeAccept({ transition, commit }) {
       const system = aggregate.systemState(INTERACTION_RESERVED_LIBRARY_KEY);
       const beforeSystem = system === undefined ? undefined : aggregate.systemRoot(system);
-      const afterSystem = aggregate.preparedSystemRoot(transition);
+      const afterSystem = commit.topology === undefined ? aggregate.preparedSystemRoot(transition) : beforeSystem;
       const roots = Object.freeze({
         ...(beforeSystem === undefined ? {} : { before: decode_hosted_root(encode_hosted_root(beforeSystem)) }),
         ...(afterSystem === undefined ? {} : { after: decode_hosted_root(encode_hosted_root(afterSystem)) }),
@@ -357,6 +363,89 @@ export function create_locus_hosted_aggregate_socket_internal<
     }
   });
 
+  async function add_libraries(
+    definitions: LiveMapDefinitions,
+    exposure?: Readonly<Record<string, LocusLibraryExposure>>,
+  ): Promise<void> {
+    if (disposed) throw new Error("Hosted Locus authority is disposed.");
+    if (typeof definitions !== "object" || definitions === null || Array.isArray(definitions)) {
+      throw new Error("Hosted Library definitions are malformed.");
+    }
+    const entries = runtime_locus_exposure_entries(Object.keys(definitions), exposure);
+    await locus.add_libraries_internal(definitions, () => {
+      const nextRegistry = aggregate.hostedRegistry();
+      projectionPolicy.installRuntimeExposure(entries, nextRegistry);
+      const bindings = aggregate.libraries();
+      for (const entry of entries) {
+        const index = nextRegistry.libraries.findIndex((candidate) => candidate.name === entry.library);
+        const identity = bindings[index];
+        if (identity !== undefined) identitiesByName.set(entry.library, identity);
+      }
+    });
+  }
+
+  function update_projection(sessionId: LocusSessionId, request: LocusRequestedProjection): Promise<Readonly<{
+    changed: boolean; sequence: number; digest: string; authorityRev: number;
+  }>> {
+    return locus.run_exclusive(async () => {
+      if (disposed) throw new LocusProjectionUnavailableError();
+      const connection = [...connections].find((candidate) => candidate.sessionId === sessionId
+        && candidate.sessionEpoch !== undefined && candidate.live && !candidate.closed
+        && !candidate.fenced && sessions.is_active(sessionId, candidate.sessionEpoch));
+      const previous = sessions.projection(sessionId);
+      if (connection === undefined || previous === undefined || connection.effectiveProjection !== previous
+        || connection.recoveryId === undefined || connection.sessionEpoch === undefined) {
+        throw new LocusProjectionUnavailableError();
+      }
+      const epoch = connection.sessionEpoch;
+      const next = await normalize_locus_effective_projection(projectionPolicy, request, connection.context);
+      if (!attachment_current(connection, sessionId, epoch) || !connection.live
+        || sessions.projection(sessionId) !== previous || connection.effectiveProjection !== previous) {
+        throw new LocusProjectionUnavailableError();
+      }
+      if (previous.libraries.some((entry) => !next.includesLibrary(entry.name))
+        || JSON.stringify(previous.systemFeatures) !== JSON.stringify(next.systemFeatures)) {
+        throw new LocusProjectionUnavailableError();
+      }
+      const currentSequence = sessions.projection_sequence(sessionId);
+      if (currentSequence === undefined) throw new LocusProjectionUnavailableError();
+      if (next.digest === previous.digest) return Object.freeze({ changed: false, sequence: currentSequence,
+        digest: previous.digest, authorityRev: locus.rev });
+      const added = next.libraries.filter((entry) => !previous.includesLibrary(entry.name));
+      const snapshot = capture_selected_authority_projection_snapshot(options.map, next);
+      const additions = added.map((entry) => {
+        const captured = snapshot.libraries.find((candidate) => candidate.name === entry.name);
+        if (captured === undefined) throw new LocusProjectionUnavailableError();
+        return Object.freeze({ name: entry.name, mode: entry.mode, schema: entry.schema, root: captured.root });
+      });
+      const first = additions[0];
+      const topology = first === undefined ? undefined : Object.freeze({ library: first.name,
+        operation: Object.freeze({ kind: "library-add" as const, libraries: Object.freeze(additions) }) });
+      const event: LocusHostedProjectionChange = Object.freeze({
+        type: "projection-change", id: connection.recoveryId,
+        logicalMapId: locus.logicalMapId, incarnationId: locus.incarnationId,
+        authorityRev: locus.rev, sequence: currentSequence + 1,
+        previousDigest: previous.digest, projectionDigest: next.digest,
+        registryDigest: projected_registry_digest(next),
+        libraries: next.libraries, htmlDocument: next.htmlDocument ?? null,
+        systemFeatures: next.systemFeatures, writableDocuments: next.writableDocuments,
+        ...(topology === undefined ? {} : { topology }),
+        ...(added.some((entry) => entry.mode === "document") && snapshot.system !== null
+          ? { system: snapshot.system.interactions } : {}),
+      });
+      encode_downstream_message(event, maxWireBytes);
+      const sequence = sessions.update_projection(sessionId, previous, next);
+      connection.effectiveProjection = next;
+      try { send(connection, event); }
+      catch (cause) {
+        sessions.revoke(sessionId);
+        close_failed_publication(connection);
+        throw cause;
+      }
+      return Object.freeze({ changed: true, sequence, digest: next.digest, authorityRev: locus.rev });
+    });
+  }
+
   function projected_live_output(connection: HostedConnection, event: LocusLiveProjectedEvent, effective: LocusEffectiveProjection) {
     const id = connection.recoveryId;
     if (id === undefined) throw new Error("Live publication has no recovery identity.");
@@ -443,7 +532,7 @@ export function create_locus_hosted_aggregate_socket_internal<
       throw new Error("Hosted aggregate semantic output is malformed.");
     }
     const semantic: Record<string, unknown> = { ...message };
-    if (semantic.type === "commit" || semantic.type === "progress") {
+    if (semantic.type === "commit" || semantic.type === "progress" || semantic.type === "projection-change") {
       connection.downstream.publication(semantic as Parameters<LocusHostedAggregateDownstreamSink["publication"]>[0]);
       return;
     }
@@ -563,6 +652,10 @@ export function create_locus_hosted_aggregate_socket_internal<
     if (cursor === undefined) {
       outcome = "snapshot";
       reason = "no_usable_revision";
+    } else if (options.internal?.recoveryFloorRevision !== undefined
+      && cursor.lastAppliedRev <= options.internal.recoveryFloorRevision) {
+      outcome = "snapshot";
+      reason = "history_unavailable";
     } else if (!sameProjectedRegistry) {
       outcome = "snapshot";
       reason = "registry_mismatch";
@@ -589,7 +682,9 @@ export function create_locus_hosted_aggregate_socket_internal<
     const cut = snapshot?.revision ?? head;
     await options.internal?.afterRecoveryCut?.();
     if (!recovery_delivery_current(connection, activeRecovery)) return;
-    send(connection, recovery_plan(request.id, outcome, cut, effective.digest, projectedRegistryDigest, reason === undefined ? undefined : { reason }));
+    const projectionSequence = sessions.projection_sequence(connection.sessionId) ?? 0;
+    send(connection, recovery_plan(request.id, outcome, cut, effective.digest, projectedRegistryDigest,
+      reason === undefined ? undefined : { reason }, projectionSequence));
     if (!recovery_delivery_current(connection, activeRecovery)) return;
     if (snapshot !== undefined) {
       send(connection, Object.freeze({
@@ -614,6 +709,7 @@ export function create_locus_hosted_aggregate_socket_internal<
       incarnationId: locus.incarnationId,
       registryDigest: projectedRegistryDigest,
       projectionDigest: effective.digest,
+      ...(projectionSequence === 0 ? {} : { projectionSequence }),
       throughRev: cut,
     }));
     if (!recovery_delivery_current(connection, activeRecovery)) return;
@@ -655,6 +751,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     projectionDigest: string,
     registryDigest: string,
     detail?: Readonly<{ reason: HostedSnapshotReason }> | Readonly<{ code: string; message: string }>,
+    projectionSequence = 0,
   ): object {
     const base = {
       type: "recovery-plan" as const,
@@ -663,6 +760,7 @@ export function create_locus_hosted_aggregate_socket_internal<
       incarnationId: locus.incarnationId,
       registryDigest,
       projectionDigest,
+      ...(projectionSequence === 0 ? {} : { projectionSequence }),
       headRev,
       outcome,
     };
@@ -695,6 +793,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     }
     if (connection.establishing) return false;
     connection.establishing = true;
+    const policyRegistry = projectionPolicy.registry;
     let projection: LocusEffectiveProjection | Promise<LocusEffectiveProjection>;
     try {
       projection = normalize_locus_effective_projection(projectionPolicy, undefined, connection.context);
@@ -703,7 +802,10 @@ export function create_locus_hosted_aggregate_socket_internal<
       return false;
     }
     const finish = (effectiveProjection: LocusEffectiveProjection): boolean | Promise<boolean> => {
-      if (admissionBarrier !== undefined) return admissionBarrier.then(() => finish(effectiveProjection));
+      if (admissionBarrier !== undefined || projectionPolicy.registry !== policyRegistry) return (admissionBarrier ?? Promise.resolve()).then(() => {
+        connection.establishing = false;
+        return bind_session(connection, resumable);
+      });
       if (connection.closed || connection.fenced || connection.sessionId !== undefined) {
         connection.establishing = false;
         return false;
@@ -739,6 +841,7 @@ export function create_locus_hosted_aggregate_socket_internal<
       return;
     }
     connection.establishing = true;
+    const policyRegistry = projectionPolicy.registry;
     const failProjection = (): void => {
       connection.establishing = false;
       if (!connection.closed) send(connection, Object.freeze({ type: "session-rejected", id: request.id, code: "LOCUS_PROJECTION_UNAVAILABLE", message: "Requested client projection is unavailable." }));
@@ -751,7 +854,10 @@ export function create_locus_hosted_aggregate_socket_internal<
       return;
     }
     const finish = (effectiveProjection: LocusEffectiveProjection): void | Promise<void> => {
-      if (admissionBarrier !== undefined) return admissionBarrier.then(() => finish(effectiveProjection));
+      if (admissionBarrier !== undefined || projectionPolicy.registry !== policyRegistry) return (admissionBarrier ?? Promise.resolve()).then(() => {
+        connection.establishing = false;
+        return session_create(connection, request);
+      });
       if (connection.closed || connection.fenced || connection.sessionId !== undefined) {
         connection.establishing = false;
         return;
@@ -1228,14 +1334,16 @@ export function create_locus_hosted_aggregate_socket_internal<
     map: options.map,
     logicalMapId: locus.logicalMapId,
     incarnationId: locus.incarnationId,
-    registryDigest: registry.digest,
+    get registryDigest() { return locus.registryDigest; },
     get rev() { return locus.rev; },
     connect,
     attach,
     mutate: locus.mutate,
+    add_libraries,
     dispatch_action: locus.dispatch_action,
     dispatch_message,
-    sessions: Object.freeze({ debug: sessions.debug, onChange: sessions.onChange, revoke: sessions.revoke, projection: sessions.projection, dispose: sessions.dispose }),
+    sessions: Object.freeze({ debug: sessions.debug, onChange: sessions.onChange, revoke: sessions.revoke,
+      projection: sessions.projection, updateProjection: update_projection, dispose: sessions.dispose }),
     actionRequests: Object.freeze({ debug: actionRequests.debug, dispose: actionRequests.dispose }),
     run_exclusive: locus.run_exclusive,
     debug: () => Object.freeze({

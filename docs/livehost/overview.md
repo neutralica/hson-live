@@ -8,7 +8,7 @@ LiveHost, and the LiveHost Node runtime.
 | Layer | Owns | Cardinality |
 |---|---|---|
 | LiveMap | Canonical graph state, revision, mutation, schema enforcement, capture/apply/replay, paths, and graph equality | May exist without a Locus |
-| Locus | Authority over a fixed application library registry, FIFO mutation admission, canonical history, recovery, sessions, actions, persistence, projected synchronization, bootstrap state, and activity | One registry of one or more application libraries |
+| Locus | Authority over an application library registry, FIFO mutation admission, canonical history, recovery, sessions, actions, persistence, projected synchronization, bootstrap state, and activity | One registry of one or more application libraries |
 | Echo | Semantic hosted client endpoint and request/session lifecycle, optionally managing one composed projected LiveMap | Endpoint-only or one authority-projected registry replica |
 | Mirror | LiveTree ↔ LiveMap bridge; delegates supported hosted authoring through Echo without owning transport policy | One binding |
 | Application | Domain meaning, custom actions and side effects, authorization policy, event semantics, topology, acquisition-key meaning, retention policy, and cross-Locus workflows | Zero or more Loci |
@@ -164,4 +164,4 @@ The following identities are distinct:
 
 There is no generic `LocusId`.
 
-Locus supplies a session-projected `AuthorityProjectionSnapshot` from one coherent authority cut. Application/runtime code supplies routing, HTML shell, carrier placement, and delivery. Hosted SSR uses `hson-ssr-bootstrap` version 3 with `hosted-projection`; local SSR retains the distinct version 2 contract. The active hosted socket envelope is `hson-locus-hosted-aggregate-message-v4`. All are QUID-free and bound to the session projection. Unsupported older hosted generations are rejected. Authority persistence remains complete and server-side.
+Locus supplies a session-projected `AuthorityProjectionSnapshot` from one coherent authority cut. Application/runtime code supplies routing, HTML shell, carrier placement, and delivery. Hosted SSR uses `hson-ssr-bootstrap` version 3 with `hosted-projection`; local SSR retains the distinct version 2 contract. The active hosted socket envelope is `hson-locus-hosted-aggregate-message-v5`. All are QUID-free and bound to the session projection. Unsupported older hosted generations are rejected. Authority persistence remains complete and server-side.

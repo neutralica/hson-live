@@ -231,7 +231,7 @@ await check("aggregate result and publication ingress remain independently order
     EchoHostedAggregateSynchronizationOutput
   >((request) => attachment?.synchronization.begin(request), binding);
   const delayedFinite: LocusFiniteOperationOutcome[] = [];
-  const delayedPublications: Array<Extract<EchoHostedAggregateSynchronizationOutput, { type: "commit" | "progress" }>> = [];
+  const delayedPublications: EchoHostedAggregateSynchronizationOutput[] = [];
   let delayFinite = false;
   let delayPublication = false;
   attachment = server.attach({

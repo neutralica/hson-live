@@ -96,7 +96,7 @@ export function project_locus_live_revision_internal(
     afterVisible.system === null ? undefined : decode_hosted_root(afterVisible.system.interactions));
 }
 
-function projected_registry_digest(effective: LocusEffectiveProjection): string {
+export function projected_registry_digest(effective: LocusEffectiveProjection): string {
   const bindings: HostedRegistryBinding[] = effective.libraries.map((entry) => Object.freeze({
     name: entry.name, mode: entry.mode, schema: HsonSchema.fromHson(entry.schema), identity: Object.freeze({}),
   }));

@@ -1385,7 +1385,7 @@ function make_livemap_registry_engine(
     transition: import("./livemap.authority.js").PreparedLiveMapAuthorityTransition;
     identities: readonly LiveMapLibraryIdentity[];
   }> {
-    transitionController.assertPublicMutationAllowed();
+    if (clientComposition === undefined) transitionController.assertPublicMutationAllowed();
     const prevRev = mapRevision;
     if (definitions.length === 0) throw new Error("LiveMap topology batch is empty.");
     const hosted = require_hosted_state();
@@ -1468,7 +1468,7 @@ function make_livemap_registry_engine(
   }
 
   function add_libraries(definitions: readonly LibraryAddition[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void): LiveMapAggregateCommit {
-    transitionController.assertPublicMutationAllowed();
+    if (clientComposition === undefined) transitionController.assertPublicMutationAllowed();
     if (definitions.length === 0) return Object.freeze({
       kind: "aggregate", changed: false, prevRev: mapRevision, rev: mapRevision, operations: Object.freeze([]),
     });
@@ -2082,7 +2082,9 @@ function make_livemap_registry_engine(
       return Object.freeze({ target, kind: "graph", operation: entry.graph });
     });
     const transition = prepare_authority_transition(writes);
-    if (composition !== undefined) return transitionController.acceptAuthority(transition).commit;
+    if (composition !== undefined) return transitionController.acceptAuthority(transition, "propagate", () => {
+      clientComposition = Object.freeze({ ...composition, revision: input.rev });
+    }).commit;
     const local = transition.commit.hosted;
     if (durable && !transition.commit.changed) {
       // The old runtime may have distinguished equal-content subjects only
@@ -2243,6 +2245,50 @@ function make_livemap_registry_engine(
       revision: clientComposition.revision,
       libraries: Object.freeze([...clientComposition.bindings.keys()]),
     }),
+    extendClientProjectionManaged: (owner, names, expectedDigest) => transitionController.runManaged(owner, () => {
+      const composition = clientComposition;
+      const hosted = require_hosted_state();
+      if (composition === undefined || clientManagementOwner !== owner) {
+        throw new Error("Client projection topology requires Echo management.");
+      }
+      const bindings = new Map(composition.bindings);
+      const projected = new Set(composition.projected);
+      for (const name of names) {
+        if (bindings.has(name)) throw new Error("Client projection already owns the Library.");
+        const binding = hosted.byName.get(name);
+        if (binding === undefined || binding.scope === "hson-internal") {
+          throw new Error("Client projection topology is unavailable.");
+        }
+        bindings.set(name, binding);
+        projected.add(binding.identity as LiveMapLibraryIdentity);
+      }
+      const application = [...bindings.values()].filter((binding) => binding.scope !== "hson-internal")
+        .sort((a, b) => a.name.localeCompare(b.name));
+      const system = [...bindings.values()].filter((binding) => binding.scope === "hson-internal");
+      const registry = make_hosted_registry([...application, ...system]);
+      if (registry.digest !== expectedDigest) throw new Error("Client projection registry digest is incompatible.");
+      for (const name of names) {
+        const binding = bindings.get(name);
+        if (binding !== undefined) projectedCaptureContinuity.set(binding.identity as LiveMapLibraryIdentity, Object.freeze({}));
+      }
+      clientComposition = Object.freeze({ ...composition, registry, projected, bindings });
+    }),
+    prepareClientProjectionSystemManaged: (owner, root) => transitionController.runManaged(owner, () => {
+      if (clientComposition === undefined || clientManagementOwner !== owner || systemState === undefined) {
+        throw new Error("Client projected system state is unavailable.");
+      }
+      admit_portable_hson_node(root, "Client projected system root");
+      const prepared = prepare_livemap_root(root, "data");
+      if (prepared.mode !== "data-object") throw new Error("Client projected system root mode is incompatible.");
+      must_hson_schema_root(systemState.hsonSchema, prepared.root);
+      const value = must_projected_root_value(prepared.root);
+      return () => {
+        if (systemState !== undefined) {
+          systemState.root = prepared.root;
+          systemState.projectedValue = value;
+        }
+      };
+    }),
     captureLibraries: capture_libraries_aggregate,
     captureHosted: capture_hosted_aggregate,
     captureSemanticCheckpoint: capture_semantic_checkpoint,
@@ -2279,9 +2325,11 @@ function make_livemap_registry_engine(
         throw new Error("Hosted authority progress fence is incompatible.");
       }
       if (composition !== undefined) {
-        if (!Number.isSafeInteger(progress.prevRev) || progress.rev !== progress.prevRev + 1) {
-          throw new LiveMapRevError(progress.prevRev, progress.rev);
+        if (!Number.isSafeInteger(progress.prevRev) || progress.prevRev !== composition.revision
+          || progress.rev !== progress.prevRev + 1) {
+          throw new LiveMapRevError(progress.prevRev, composition.revision);
         }
+        clientComposition = Object.freeze({ ...composition, revision: progress.rev });
         return progress.rev;
       }
       if (!Number.isSafeInteger(progress.prevRev) || !Number.isSafeInteger(progress.rev)

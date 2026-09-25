@@ -144,7 +144,7 @@ const authority = create_locus({
 const echo = create_echo({ socket, map: clientMap, recovery: { logicalMapId } });
 ```
 
-A one-library hosted application is a one-library registry. It still requires explicit exposure and an authorized session projection. `authority.cut(sessionId, document?)` creates one HTML and projection-state cut at a single authority revision. The application owns its shell and can return `cut.html` without a bootstrap carrier. Hosted Echo manages projected libraries in the composed client map; local libraries remain local. The active hosted socket envelope is `hson-locus-hosted-aggregate-message-v4`.
+A one-library hosted application is a one-library registry. It still requires explicit exposure and an authorized session projection. `locus.lib.add(definitions, { exposure })` admits a runtime authority batch; missing exposure entries default to private. `locus.sessions.updateProjection(sessionId, request)` explicitly expands an attached session grant using current authorization context. `authority.cut(sessionId, document?)` creates one HTML and projection-state cut at a single authority revision and current session projection. The application owns its shell and can return `cut.html` without a bootstrap carrier. Hosted Echo installs newly granted libraries in the existing composed client map; local libraries remain local. The active hosted socket envelope is `hson-locus-hosted-aggregate-message-v5`.
 
 ### 7. Local SSR — render, deliver, restore, continue
 
@@ -165,7 +165,7 @@ a standard Web `Response`; storage, routes, cache policy, and security remain
 application-owned. Runtime coverage: SSR codec and document-SSR acceptance
 tests.
 
-For a fixed Library registry, use `render_document({ map: libraries, document: "page" })`;
+For a Library registry, use `render_document({ map: libraries, document: "page" })`;
 if it contains exactly one public document Library, the document name is inferred.
 The result includes `document`, selected-document `html`, and `bootstrap` for the
 complete Libraries snapshot, including its data Libraries. Data LiveMaps and
@@ -240,7 +240,7 @@ and document continuation.
   specialist subpaths; keep normal composition imports at the package root.
 - Treat action payload/result values as `HsonData`: check presence, use
   `Hson.data.entries(value)` for exact semantics or `Hson.data.materialize(value)` for a detached JS view.
-- Construct hosted Locus from a fixed library registry with explicit exposure and session projection; a one-library application uses the same path. Keep persistence server-side.
+- Construct hosted Locus from a library registry with explicit initial exposure and session projection; a one-library application uses the same path. Runtime admissions use `locus.lib.add` with private exposure as the default. Keep persistence server-side.
 - Admit documents through `hsonLiveMap.fromLibraries({ page: { document, schema } })`;
   use `map.render("page")` for local HTML and path document requests for mutation.
 - Use `TransformOutput`, `SsrBootstrapCodecError`, `tree.style`/`tree.css` or

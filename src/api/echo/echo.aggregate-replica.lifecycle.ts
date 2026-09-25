@@ -5,6 +5,8 @@ import type { EchoMapManagementLease } from "../../internal/echo-map-capability.
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
 import type { HostedLiveMapSnapshot } from "../../types/livemap.types.js";
 import type { PortableAggregateCommit } from "../livemap/livemap.hosted.js";
+import type { LiveMapLibraryAddOperation } from "../../types/livemap.types.js";
+import { install_client_projected_topology_internal } from "../livemap/livemap.libraries.js";
 import type { HostedAuthorityFence, HostedRegistry } from "../livemap/livemap.hosted.js";
 import type { EchoReplicaCapability } from "./echo.replica.js";
 
@@ -16,6 +18,8 @@ export type EchoAggregateReplicaCapability = EchoReplicaCapability<LiveMap | und
   clientProjection: () => Readonly<{ authority: HostedAuthorityFence; registry: HostedRegistry; revision: number; libraries: readonly string[] }> | undefined;
   restoreHosted: (snapshot: PortableAggregateSnapshot) => void;
   replayHosted: (commit: PortableAggregateCommit, authorityRev?: number) => number;
+  installProjectedTopology: (operation: LiveMapLibraryAddOperation, expectedRegistryDigest: string,
+    system?: Readonly<{ format: "hson-exact-value"; payload: string }>) => void;
   advanceHostedProgress: (progress: Readonly<{
     logicalMapId: string;
     incarnationId: string;
@@ -72,6 +76,10 @@ export function create_echo_aggregate_replica_capability_internal(
     replayHosted(commit, authorityRev): number {
       if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");
       return internal_livemap_aggregate_authority(map).replayClientHostedManaged(owner, commit, authorityRev).rev;
+    },
+    installProjectedTopology(operation, expectedRegistryDigest, system): void {
+      if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");
+      install_client_projected_topology_internal(map, owner, operation, expectedRegistryDigest, system);
     },
     advanceHostedProgress(progress): number {
       if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");

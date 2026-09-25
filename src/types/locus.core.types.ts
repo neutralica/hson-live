@@ -35,7 +35,7 @@ import type {
   LocusSessionRejectCode,
   LocusSocketLike,
 } from "./locus.protocol.types.js";
-import type { LocusExposureEntry, LocusProjectionAuthorizer, LocusRequestedProjection } from "./locus.projection.types.js";
+import type { LocusExposureEntry, LocusLibraryExposure, LocusProjectionAuthorizer, LocusRequestedProjection } from "./locus.projection.types.js";
 import type {
   LocusActionRequestId,
   LocusConnectionEpoch,
@@ -104,9 +104,12 @@ type LocusMutationDraftForInput<TInput> =
 
 /** Inferred only inside a Locus registry mutation callback. */
 type LocusMutationDraft<TLibraries extends LiveMapDefinitions> = Readonly<{
-  lib: <TLibrary extends Extract<keyof TLibraries, string>>(
-    name: TLibrary,
-  ) => LocusMutationDraftForInput<TLibraries[TLibrary]>;
+  lib: {
+    <TLibrary extends Extract<keyof TLibraries, string>>(
+      name: TLibrary,
+    ): LocusMutationDraftForInput<TLibraries[TLibrary]>;
+    (name: string): LocusBroadDataMutationDraft | LocusDocumentMutationDraft;
+  };
 }>;
 
 type LocusInputs<TMap extends LiveMap> =
@@ -272,6 +275,13 @@ export type LocusSessionLifecycleEvent =
 export type LocusSessionInspector = Readonly<{
   debug: () => LocusSessionDiagnostics;
   onChange: (listener: (event: LocusSessionLifecycleEvent) => void) => LocusDisposer;
+  /** Reauthorize an attached session against current authority topology and its current connection context. */
+  updateProjection: (sessionId: LocusSessionId, request: LocusRequestedProjection) => Promise<Readonly<{
+    changed: boolean;
+    sequence: number;
+    digest: string;
+    authorityRev: number;
+  }>>;
   dispose: LocusDisposer;
 }>;
 
@@ -471,6 +481,10 @@ export type Locus<
   readonly incarnationId: LocusIncarnationId;
   readonly rev: number;
   activity: LocusActivity;
+  lib: Readonly<{
+    /** One durable authority topology transition; omitted exposure is server-private. */
+    add: (definitions: LiveMapDefinitions, options?: Readonly<{ exposure?: Readonly<Record<string, LocusLibraryExposure>> }>) => Promise<void>;
+  }>;
   sessions: LocusSessionInspector;
   actionRequests: LocusActionDedupeInspector;
   mutate: (mutation: (draft: LocusMutationDraft<LocusInputs<TMap>>) => void | Promise<void>) => Promise<void>;

@@ -1,4 +1,4 @@
-import type { LiveMap } from "../../types/livemap.types.js";
+import type { LiveMap, LiveMapSnapshot } from "../../types/livemap.types.js";
 import type {
   LocusActionPayloads,
   LocusOptions,
@@ -7,6 +7,7 @@ import type {
   PersistentLocusOptions,
 } from "../../types/locus.types.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
+import { encode_hosted_root, LIVEMAP_LIBRARIES_SNAPSHOT_FORMAT } from "../livemap/livemap.hosted.js";
 import type { HostedAggregateCommit } from "../livemap/livemap.hosted.js";
 import { LocusPersistenceAppendUncertainError, LocusPersistenceError } from "./locus.persistence.error.js";
 import {
@@ -95,6 +96,7 @@ async function persistent_view<
     })();
   const records = new WeakMap<HostedAggregateCommit, object>();
   const runtime = create_registry_locus_internal(managedOptions as LocusOptions<TMap, TActions>, {
+    ...(initialize ? {} : { recoveryFloorRevision: options.map.rev }),
     prepareGate: ({ commit }) => {
       if (!commit.changed) return;
       const record = commit_record(commit);
@@ -133,7 +135,7 @@ async function persistent_view<
   return locus;
 }
 
-/** Create a durable fixed-registry Locus through the ordinary persistence entry point. */
+/** Create a durable Locus through the ordinary persistence entry point. */
 export async function create_persistent_registry_locus<
   TMap extends LiveMap,
   TActions extends LocusActionPayloads = LocusActionPayloads,
@@ -142,23 +144,50 @@ export async function create_persistent_registry_locus<
 ): Promise<PersistentLocus<TMap, TActions>> {
   const initialAuthority = internal_livemap_aggregate_authority(options.map);
   const initial = initialAuthority.hostedPosition();
-  make_locus_hosted_projection_policy(initialAuthority.hostedRegistry(), initial.authority,
-    options.exposure, options.defaultProjection, options.authorizeProjection);
   const logicalMapId = options.logicalMapId ?? initial.authority.logicalMapId;
   const restored = await load_persistent_locus_hosted_aggregate_internal(logicalMapId, {
     persistence: options.persistence as LocusHostedAggregatePersistenceAdapter,
   });
   if (restored === undefined) return persistent_view(options, true);
   const restoredCheckpoint = internal_livemap_aggregate_authority(restored.map).captureSemanticCheckpoint();
-  if (restoredCheckpoint.registry.digest !== initial.registryDigest) {
+  const initialRegistry = initialAuthority.hostedRegistry();
+  const originalNames = initialRegistry.libraries.filter((entry) => entry.scope !== "hson-internal");
+  const restoredNames = restoredCheckpoint.registry.libraries.filter((entry) => entry.scope !== "hson-internal");
+  const initialSystem = initialRegistry.libraries.filter((entry) => entry.scope === "hson-internal");
+  const restoredSystem = restoredCheckpoint.registry.libraries.filter((entry) => entry.scope === "hson-internal");
+  if (originalNames.some((entry) => JSON.stringify(entry)
+      !== JSON.stringify(restoredNames.find((candidate) => candidate.name === entry.name)))
+    || JSON.stringify(initialSystem) !== JSON.stringify(restoredSystem)) {
     restored.dispose();
     throw new LocusPersistenceError(
       "LOCUS_PERSISTED_STATE_INVALID",
-      "Hosted registry persistence registry does not match the supplied static map topology.",
+      "Hosted registry persistence registry does not extend the supplied map topology.",
     );
   }
-  // The supplied public map retains its registry but receives only the durable
-  // semantic cut. This creates a new local identity epoch and no old claims.
+  // Deployment policy must classify every restored application name. Policy
+  // remains Locus-owned and is never imported from semantic Library records.
+  try {
+    make_locus_hosted_projection_policy(restoredCheckpoint.registry, restoredCheckpoint.authority,
+      options.exposure, options.defaultProjection, options.authorizeProjection);
+  } catch (cause) {
+    restored.dispose();
+    throw new LocusPersistenceError("LOCUS_PERSISTED_STATE_INVALID",
+      `Hosted registry topology requires complete deployment exposure: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+  }
+  if (restoredCheckpoint.registry.digest !== initial.registryDigest) {
+    const libraries: LiveMapSnapshot["libraries"] = restoredCheckpoint.registry.libraries.map((entry, index) => {
+      const root = restoredCheckpoint.libraries[index];
+      if (root?.name !== entry.name) throw new LocusPersistenceError("LOCUS_PERSISTED_STATE_INVALID",
+        "Restored topology root order is invalid.");
+      return Object.freeze({ name: entry.name, mode: entry.mode, schema: entry.schema,
+        schemaDigest: entry.schemaDigest, root: encode_hosted_root(root.root) });
+    });
+    const snapshot: LiveMapSnapshot = Object.freeze({ format: LIVEMAP_LIBRARIES_SNAPSHOT_FORMAT,
+      revision: restoredCheckpoint.revision, registry: restoredCheckpoint.registry,
+      registryDigest: restoredCheckpoint.registry.digest, libraries: Object.freeze(libraries) });
+    options.map.restore(snapshot);
+  }
+  // Rebind the durable authority fence and begin a fresh local identity epoch.
   internal_livemap_aggregate_authority(options.map).installSemanticCheckpoint(restoredCheckpoint);
   restored.dispose();
   return persistent_view(options, false);
