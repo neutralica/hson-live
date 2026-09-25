@@ -36,6 +36,11 @@ export function mark_runtime_infrastructure(node: Node): void {
   RUNTIME_INFRASTRUCTURE.add(node);
 }
 
+/** Roll back an infrastructure claim when exact continuation construction aborts. @internal */
+export function unmark_runtime_infrastructure(node: Node): void {
+  RUNTIME_INFRASTRUCTURE.delete(node);
+}
+
 /** Whether a node was explicitly claimed by runtime infrastructure. @internal */
 export function is_runtime_infrastructure(node: Node): boolean {
   return RUNTIME_INFRASTRUCTURE.has(node);
@@ -59,13 +64,14 @@ export function materialize_browser_realization(
 export function match_browser_realization_root(
   plan: BrowserRealizationPlan,
   target: Element,
-  options: Readonly<{ allowRuntimeInfrastructure?: boolean }> = {},
+  options: Readonly<{ allowRuntimeInfrastructure?: boolean; retainRuntimeInfrastructure?: Node }> = {},
 ): BrowserRealizationMatch {
   if (plan.roots.length !== 1 || plan.roots[0]?.kind !== "element") {
     throw new Error("Exact browser realization requires one planned Element root.");
   }
   const links: Array<Readonly<{ canonicalNode: HsonNode; domNode: Node }>> = [];
-  match_node(plan.roots[0], target, target.ownerDocument, links, options.allowRuntimeInfrastructure === true);
+  match_node(plan.roots[0], target, target.ownerDocument, links,
+    options.allowRuntimeInfrastructure === true, options.retainRuntimeInfrastructure);
   return Object.freeze({ links: Object.freeze(links) });
 }
 
@@ -155,6 +161,7 @@ function match_node(
   ownerDocument: Document,
   links: Array<Readonly<{ canonicalNode: HsonNode; domNode: Node }>>,
   allowRuntimeInfrastructure: boolean,
+  retainRuntimeInfrastructure?: Node,
 ): void {
   if ((actual as { ownerDocument?: Document }).ownerDocument !== ownerDocument) {
     throw new Error("Existing browser realization spans more than one owner Document.");
@@ -186,7 +193,7 @@ function match_node(
   if (plan.kind === "element") links.push(Object.freeze({ canonicalNode: plan.canonicalNode, domNode: element }));
   const target = child_target(element, plan);
   const actualChildren = Array.from(target.childNodes).filter((child) => (
-    !allowRuntimeInfrastructure || !is_runtime_infrastructure(child)
+    !allowRuntimeInfrastructure || !is_runtime_infrastructure(child) || child === retainRuntimeInfrastructure
   ));
   if (actualChildren.length !== plan.children.length) {
     throw new Error(`Existing <${plan.localName}> child count does not match its realization plan.`);
@@ -195,7 +202,8 @@ function match_node(
     ? target.ownerDocument
     : ownerDocument;
   for (let index = 0; index < plan.children.length; index += 1) {
-    match_node(plan.children[index]!, actualChildren[index]!, childOwnerDocument, links, allowRuntimeInfrastructure);
+    match_node(plan.children[index]!, actualChildren[index]!, childOwnerDocument, links,
+      allowRuntimeInfrastructure, retainRuntimeInfrastructure);
   }
 }
 

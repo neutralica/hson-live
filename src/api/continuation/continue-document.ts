@@ -10,6 +10,8 @@ import type {
 import { activate_interactions } from "../interactions/interactions.js";
 import { reflect_existing_document_in_runtime } from "../mirror/mirror.document.js";
 import { runtime_for_tree } from "../livetree/runtime/livetree-runtime.js";
+import { bind_document_css_tree } from "../livetree/managers/bound-document-css.js";
+import { echo_document_authority_for } from "../echo/echo.document-authority.js";
 import { adopt_exact_existing_document, type ExactDocumentAdoption } from "./continuation.adopt.js";
 import {
   reserve_continuation_root,
@@ -55,17 +57,13 @@ export function continue_document(options: Readonly<{
   let adoption: ExactDocumentAdoption | undefined;
   let reflect: ReturnType<typeof reflect_existing_document_in_runtime> | undefined;
   let disposeInteractions: (() => void) | undefined;
+  let disposeCssBinding: (() => void) | undefined;
   try {
     const resolved = resolve_continuation_document(options.map, options.document);
-    if (resolved.selected.css.snapshot() !== "") {
-      throw new DocumentContinuationError("adopt", new Error(
-        "Document CSS continuation is unsupported until managed stylesheet adoption is implemented.",
-      ));
-    }
     const revision = resolved.selected.rev;
     const canonicalRoot = resolved.selected.root();
     try {
-      adoption = adopt_exact_existing_document(canonicalRoot, options.root);
+      adoption = adopt_exact_existing_document(canonicalRoot, options.root, resolved.selected.css.snapshot());
       if (resolved.selected.rev !== revision) {
         throw new Error("Canonical document revision changed during exact DOM adoption.");
       }
@@ -100,6 +98,12 @@ export function continue_document(options: Readonly<{
         throw new DocumentContinuationError("interactions", cause);
       }
     }
+    try {
+      disposeCssBinding = bind_document_css_tree(adoption.tree, resolved.selected,
+        adoption.managedStyle, echo_document_authority_for(resolved.selected) !== undefined);
+    } catch (cause) {
+      throw new DocumentContinuationError("adopt", cause);
+    }
     adoption.commit();
     let disposed = false;
     const result: DocumentContinuation = Object.freeze({
@@ -111,6 +115,7 @@ export function continue_document(options: Readonly<{
         disposed = true;
         let failure: unknown;
         try { disposeInteractions?.(); } catch (cause) { failure ??= cause; }
+        try { disposeCssBinding?.(); } catch (cause) { failure ??= cause; }
         try { reflect?.dispose(); } catch (cause) { failure ??= cause; }
         releaseRoot();
         if (failure !== undefined) throw failure;
@@ -120,6 +125,7 @@ export function continue_document(options: Readonly<{
     return result;
   } catch (cause) {
     try { disposeInteractions?.(); } catch { /* Preserve construction failure. */ }
+    try { disposeCssBinding?.(); } catch { /* Preserve construction failure. */ }
     try { reflect?.dispose(); } catch { /* Preserve construction failure. */ }
     try { adoption?.abort(); } catch { /* Preserve construction failure. */ }
     releaseRoot();

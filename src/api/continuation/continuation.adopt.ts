@@ -10,7 +10,7 @@ import { preflight_livetree_quid_graph } from "../livetree/quid/data-quid.js";
 import {
   bind_graph_runtime,
   claim_runtime_document_silently,
-  default_livetree_runtime,
+  continuation_runtime_for_document,
   release_nodes_runtime,
   runtime_for_tree,
   runtime_owns_document,
@@ -31,11 +31,15 @@ import {
   assert_browser_realization_mappings,
   browser_parent_namespace_for_target,
   match_browser_realization_root,
+  mark_runtime_infrastructure,
+  unmark_runtime_infrastructure,
 } from "../../internal/browser-realization/browser-realization-dom.js";
 import { plan_browser_realization } from "../../internal/browser-realization/browser-realization-plan.js";
+import { plan_managed_document_css, MANAGED_DOCUMENT_CSS_MARKER } from "../../internal/browser-realization/managed-document-css.js";
 
 export type ExactDocumentAdoption = Readonly<{
   tree: LiveTree;
+  managedStyle: HTMLStyleElement | undefined;
   commit: () => void;
   abort: () => void;
   activateRuntimeManagers: () => void;
@@ -58,13 +62,39 @@ type AdoptedRootEntry = {
 
 const ADOPTED_ROOTS = new WeakMap<Element, AdoptedRootEntry>();
 
+function exact_managed_style(root: Element, css: string): HTMLStyleElement | undefined {
+  const marked: Element[] = [];
+  const visit = (element: Element): void => {
+    if (element.hasAttribute(MANAGED_DOCUMENT_CSS_MARKER)) marked.push(element);
+    for (const child of Array.from(element.childNodes)) if (child.nodeType === 1) visit(child as Element);
+    if (element.localName === "template") {
+      for (const child of Array.from((element as HTMLTemplateElement).content?.children ?? [])) visit(child);
+    }
+  };
+  visit(root);
+  if (marked.length !== (css ? 1 : 0)) {
+    throw new Error(css
+      ? `Expected exactly one managed document style; found ${marked.length}.`
+      : "Unexpected managed document style in an empty stylesheet realization.");
+  }
+  const style = marked[0];
+  if (style === undefined) return undefined;
+  if (style.localName !== "style" || style.namespaceURI !== "http://www.w3.org/1999/xhtml"
+    || style.getAttribute(MANAGED_DOCUMENT_CSS_MARKER) !== "v1") {
+    throw new Error("Managed document style marker is invalid.");
+  }
+  if (style.textContent !== css) throw new Error("Managed document style text does not match the selected document Library.");
+  return style as HTMLStyleElement;
+}
+
 function evict_adopted_root(target: Element, entry: AdoptedRootEntry): void {
   if (ADOPTED_ROOTS.get(target) !== entry) return;
   ADOPTED_ROOTS.delete(target);
   entry.stopTerminalObservation();
 }
 
-function reusable_cached_tree(target: Element, canonicalRoot: HsonNode): LiveTree | undefined {
+function reusable_cached_tree(target: Element, canonicalRoot: HsonNode, css: string,
+  managedStyle: HTMLStyleElement | undefined): LiveTree | undefined {
   const entry = ADOPTED_ROOTS.get(target);
   if (entry === undefined) return undefined;
   const tree = entry.tree;
@@ -86,10 +116,12 @@ function reusable_cached_tree(target: Element, canonicalRoot: HsonNode): LiveTre
       ? canonicalRoot.$_content[0]
       : undefined;
     if (canonicalOrdinaryRoot === undefined) throw new Error("Cached continuation input has no ordinary canonical root.");
-    const canonicalPlan = plan_browser_realization(canonicalRoot, {
+    const canonicalPlan = plan_managed_document_css(plan_browser_realization(canonicalRoot, {
       parentNamespace: browser_parent_namespace_for_target(target, canonicalOrdinaryRoot.$_tag),
+    }), css);
+    match_browser_realization_root(canonicalPlan, target, {
+      allowRuntimeInfrastructure: true, retainRuntimeInfrastructure: managedStyle,
     });
-    match_browser_realization_root(canonicalPlan, target, { allowRuntimeInfrastructure: true });
     return tree;
   } catch {
     evict_adopted_root(target, entry);
@@ -121,11 +153,14 @@ function cleanup_new_adoption(
 export function adopt_exact_existing_document(
   canonicalDocumentRoot: HsonNode,
   target: Element,
+  css = "",
 ): ExactDocumentAdoption {
-  const priorTree = reusable_cached_tree(target, canonicalDocumentRoot);
+  const managedStyle = exact_managed_style(target, css);
+  const priorTree = reusable_cached_tree(target, canonicalDocumentRoot, css, managedStyle);
   if (priorTree !== undefined) {
     return Object.freeze({
       tree: priorTree,
+      managedStyle,
       commit: () => {},
       abort: () => {},
       activateRuntimeManagers: () => {},
@@ -142,12 +177,12 @@ export function adopt_exact_existing_document(
 
   const canonicalOrdinaryRoot = canonicalDocumentRoot.$_content[0];
   const projectedRoot = clone_node(canonicalOrdinaryRoot);
-  const realization = plan_browser_realization(projectedRoot, {
+  const realization = plan_managed_document_css(plan_browser_realization(projectedRoot, {
     parentNamespace: browser_parent_namespace_for_target(target, projectedRoot.$_tag),
-  });
+  }), css);
   const match = match_browser_realization_root(realization, target);
 
-  const runtime = default_livetree_runtime();
+  const runtime = continuation_runtime_for_document(target.ownerDocument);
   const claim = claim_runtime_document_silently(runtime, target.ownerDocument);
   let tree: LiveTree | undefined;
   const linkedNodes: HsonNode[] = [];
@@ -183,8 +218,10 @@ export function adopt_exact_existing_document(
 
   const adoptedTree = tree;
   if (adoptedTree === undefined) throw new Error("Exact document adoption did not construct a LiveTree.");
+  if (managedStyle !== undefined) mark_runtime_infrastructure(managedStyle);
   return Object.freeze({
     tree: adoptedTree,
+    managedStyle,
     commit(): void {
       if (finished) return;
       const entry: AdoptedRootEntry = {
@@ -200,6 +237,7 @@ export function adopt_exact_existing_document(
     abort(): void {
       if (finished) return;
       finished = true;
+      if (managedStyle !== undefined) unmark_runtime_infrastructure(managedStyle);
       cleanup_new_adoption(projectedRoot, linkedNodes, runtime, claim);
     },
     activateRuntimeManagers(): void {

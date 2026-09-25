@@ -79,6 +79,11 @@ export function create_livetree_runtime(): LiveTreeRuntime {
   return make_runtime();
 }
 
+/** Continuations in one physical browser Document share its QUID runtime. @internal */
+export function continuation_runtime_for_document(document: Document): LiveTreeRuntime {
+  return RUNTIME_FOR_DOCUMENT.get(document) ?? create_livetree_runtime();
+}
+
 /** @internal */
 export function runtime_for_node(node: HsonNode): LiveTreeRuntime | undefined {
   return RUNTIME_FOR_NODE.get(node);

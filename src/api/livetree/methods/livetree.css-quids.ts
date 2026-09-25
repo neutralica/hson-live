@@ -5,6 +5,7 @@ import { normalize_css_key } from "../../transform/utils/attrs-utils/normalize-c
 import { CssHandleVoid, CssTreeHandle, CssHandleBase, CssPseudoKey, CssMapBase, StyleHandle, CssKey, MediaQueryInput, SupportsQueryInput, CssRuleFacade } from "../../../types/css.types.js";
 import { LiveTree } from "../livetree.js";
 import { CssRuntimeManager, isLiveTree } from "../managers/css-manager.js";
+import { bound_document_css_api, bound_document_css_for_tree } from "../managers/bound-document-css.js";
 import { pseudo_to_suffix } from "../managers/css-render.js";
 import { make_style_get_many, make_style_getter, StyleGetMany, StyleGetter, StyleGetterAdapters } from "../managers/style-getter.js";
 import { make_css_var_facade, make_style_setter, StyleSetter, StyleSetterAdapters } from "../managers/style-setter.js";
@@ -581,9 +582,16 @@ export function css_for_quids(
       atProperty: mgr.atProperty,
       keyframes: mgr.keyframes,
       get global() {
-        return cache_surface_value(this, "global", CssRuntimeManager.apiForRuntime(runtime_for_tree(host)));
+        const binding = bound_document_css_for_tree(host);
+        return cache_surface_value(this, "global", binding === undefined
+          ? CssRuntimeManager.apiForRuntime(runtime_for_tree(host))
+          : bound_document_css_api(binding));
       },
-      snapshot: () => mgr.renderCss(),
+      snapshot: () => {
+        const documentCss = bound_document_css_for_tree(host)?.document.css.snapshot() ?? "";
+        const runtimeCss = mgr.renderCss();
+        return documentCss && runtimeCss ? `${documentCss}\n\n${runtimeCss}` : documentCss || runtimeCss;
+      },
       get anim() {
         return cache_surface_value(this, "anim", mgr.animForQuids(ids));
       },
@@ -624,6 +632,34 @@ export function css_for_quids(
 
   }
 };
+
+/** A bound document's global view does not need node identity until QUID CSS is used. */
+export function css_for_bound_tree(host: LiveTree): CssTreeHandle {
+  let scoped: CssTreeHandle | undefined;
+  let global: ReturnType<typeof bound_document_css_api> | undefined;
+  const withQuid = (): CssTreeHandle => {
+    scoped ??= css_for_quids(host, [host.quid]);
+    return scoped;
+  };
+  const snapshot = (): string => {
+    const documentCss = bound_document_css_for_tree(host)?.document.css.snapshot() ?? "";
+    const runtimeCss = manager_for_host(host).renderCss();
+    return documentCss && runtimeCss ? `${documentCss}\n\n${runtimeCss}` : documentCss || runtimeCss;
+  };
+  return new Proxy({} as CssTreeHandle, {
+    get(_target, key) {
+      if (key === "global") {
+        const binding = bound_document_css_for_tree(host);
+        if (binding !== undefined) return global ??= bound_document_css_api(binding);
+        return global ?? withQuid().global;
+      }
+      if (key === "snapshot") return snapshot;
+      return Reflect.get(withQuid(), key);
+    },
+    ownKeys: () => Reflect.ownKeys(withQuid()),
+    getOwnPropertyDescriptor: (_target, key) => Reflect.getOwnPropertyDescriptor(withQuid(), key),
+  });
+}
 
 /**
  * Convenience wrapper for the single-QUID case.

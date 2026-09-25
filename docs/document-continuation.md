@@ -6,6 +6,17 @@ document at revision N and the server-rendered DOM supplied by the caller must
 already describe exactly the same document. Construction does not rebuild,
 normalize, repair, or replace that DOM.
 
+For a full HTML document with portable `page.css`, exact adoption verifies the
+single marked managed style in the head and its CSS text against the selected
+document Library. It retains the parsed style element without an initial write.
+Authored `<style>` nodes remain ordinary document nodes. Local `page.css` and
+the continued `tree.css.global` read and write one semantic stylesheet; later
+commits update the same browser realization. QUID CSS remains runtime-local in
+a separate later style host. Disposal stops the stylesheet observer and leaves
+the document Library and caller-owned DOM in place. Hosted projected CSS and
+authority-dispatched CSS authoring await Phase C; synchronous hosted global
+writes are rejected.
+
 The required DOM is defined by hson-live's browser-realization contract, not by
 public `.toHtml()`. The latter remains Hson transport HTML and may contain
 `_hson_*` carriers. The plan and serializer remain private; `hson-live/ssr`

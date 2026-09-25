@@ -296,16 +296,17 @@ tree.css.supports({ display: "grid" });
 
 ## Managed stylesheet ownership
 
-`tree.css.global` is the application stylesheet facade owned by the tree's LiveTree runtime. `global` means global within that runtime, not process-global.
+For a standalone LiveTree, `tree.css.global` is owned by its LiveTree runtime. For a locally continued LiveMap document, it reads and writes the selected document Library's `page.css` state. Those writes advance ordinary LiveMap revisions and update the adopted managed style. A hosted continued tree exposes projected reads, while synchronous global writes are fenced until hosted CSS projection is implemented.
 
 ```ts
 const css = tree.css.global;
 const cssText = tree.css.snapshot();
 ```
 
-`snapshot()` reads the complete retained stylesheet without a DOM. It includes
-global, scoped, QUID, `@property`, and keyframe rules and is suitable for
-headless/SSR serialization.
+`snapshot()` reads the complete retained stylesheet without a DOM. On a bound
+tree it composes document-owned global CSS first and runtime-owned QUID CSS and
+resources second. On a standalone tree it retains the existing runtime-only
+meaning.
 
 For independent Node/SSR stylesheet owners, construct each root with
 `hsonLiveTree.fromHson(source, { isolated: true })` (or `fromNode(node, { isolated: true })`).
@@ -315,13 +316,17 @@ QUID rule storage, runtime selection and ownership, forced synchronization,
 snapshots, and reset hooks are implementation details. Element-scoped styling
 does not require those operations; use `tree.css` for the owning element.
 
-The manager renders into one managed style host when a DOM is available:
+The standalone manager renders into one managed style host when a DOM is available:
 
 ```html
 <hson-_style id="css-manager">
   <style id="_hson"></style>
 </hson-_style>
 ```
+
+For a continued document, the SSR managed style remains in the document head.
+Runtime QUID CSS uses the separate host above, inserted after the managed
+document style so later equal-specificity rules retain runtime precedence.
 
 Runtime scheduling remains automatic:
 

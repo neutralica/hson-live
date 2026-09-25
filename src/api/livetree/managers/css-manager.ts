@@ -22,6 +22,7 @@ import { render_complete_css, render_quid_rule, selector_for_quid } from "./css-
 import { DocumentStylesheetError, parse_document_stylesheet } from "../../../internal/css/parse-document-stylesheet.js";
 import { render_property_registration } from "../../../internal/css/property-registration.js";
 import { render_keyframes_definition } from "../../../internal/css/keyframes-definition.js";
+import { runtime_has_document_css_binding } from "./bound-document-css.js";
 
 
 const CSS_HOST_TAG = "hson-_style";
@@ -322,6 +323,8 @@ export class CssRuntimeManager {
   private syncToDom(): void {
     const cssText = this.renderCss();
     for (const document of this.runtimeDocuments()) {
+      if (cssText === "" && !this.styleEls.has(document)
+        && runtime_has_document_css_binding(this.runtime)) continue;
       this.ensureStyleElement(document).textContent = cssText;
     }
     this.changed = false;

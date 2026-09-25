@@ -120,11 +120,197 @@ try {
   const cssMap = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body/>/>' } });
   cssMap.lib("page").css.sel("body").set.margin("0");
   const cssRoot = new DOMParser().parseFromString(cssMap.render("page"), "text/html").documentElement;
-  let cssContinuationFailure;
-  try { continue_document({ map: cssMap, document: cssMap.lib("page"), root: cssRoot }); }
-  catch (cause) { cssContinuationFailure = cause; }
-  check("CSS-bearing continuation is deliberately fenced until adoption", cssContinuationFailure?.phase === "adopt"
-    && /managed stylesheet adoption/.test(cssContinuationFailure.cause?.message ?? ""));
+  const cssStyle = cssRoot.querySelector('style[data-hson-managed-document-css="v1"]');
+  const cssBefore = cssStyle.textContent;
+  const cssObserver = new MutationObserver(() => {});
+  cssObserver.observe(cssRoot, { subtree: true, childList: true, characterData: true, attributes: true });
+  const cssContinuation = continue_document({ map: cssMap, document: cssMap.lib("page"), root: cssRoot });
+  check("CSS continuation adopts existing managed style without a write", cssStyle === cssRoot.querySelector('style[data-hson-managed-document-css="v1"]')
+    && cssStyle.textContent === cssBefore && cssObserver.takeRecords().length === 0);
+  cssObserver.disconnect();
+  const cssBeforeGlobalRev = cssMap.rev;
+  const boundGlobalCss = cssContinuation.tree.css.global;
+  await Promise.resolve();
+  check("bound global reads create no competing runtime style host", cssRoot.querySelector("hson-_style#css-manager") === null);
+  check("bound global access does not acquire root QUID identity", cssMap.rev === cssBeforeGlobalRev
+    && cssRoot.getAttribute("hson:quid") === null);
+  const cssRev = cssMap.rev;
+  boundGlobalCss.sel("body").set.padding("2px");
+  check("bound LiveTree global writes one semantic map transition", cssMap.rev === cssRev + 1
+    && cssMap.lib("page").css.get("sel:body")?.includes("padding:2px"));
+  check("bound LiveTree snapshot includes document CSS", cssContinuation.tree.css.snapshot().includes("padding:2px"));
+  const cssRemoveRev = cssMap.rev;
+  boundGlobalCss.sel("body").remove("padding");
+  check("bound rule removal is one semantic map transition", cssMap.rev === cssRemoveRev + 1
+    && !cssMap.lib("page").css.get("sel:body")?.includes("padding"));
+  cssMap.lib("page").css.stylesheet("body { color: blue; }");
+  check("page CSS updates adopted style and bound reads", cssStyle === cssRoot.querySelector('style[data-hson-managed-document-css="v1"]')
+    && cssStyle.textContent === cssMap.lib("page").css.snapshot()
+    && cssContinuation.tree.css.global.list().includes("stylesheet:1"));
+  const ingressRev = cssMap.rev;
+  cssContinuation.tree.css.global.stylesheet("body { background: yellow; }");
+  check("bound stylesheet ingress updates document semantic state", cssMap.lib("page").css.list().includes("stylesheet:2")
+    && cssStyle.textContent === cssMap.lib("page").css.snapshot() && cssMap.rev === ingressRev + 1);
+  const cssCapture = cssMap.capture();
+  cssMap.lib("page").css.atProperty.register(["--phase", "<number>", "0"]);
+  cssMap.lib("page").css.keyframes.set({ name: "phase", steps: { from: { opacity: "0" }, to: { opacity: "1" } } });
+  cssContinuation.tree.css.global.media({ minWidth: 1 }).sel("body").set.margin("3px");
+  check("bound registries and scoped rules follow document state", cssStyle.textContent === cssMap.lib("page").css.snapshot()
+    && cssContinuation.tree.css.global.atProperty.has("--phase")
+    && cssContinuation.tree.css.global.keyframes.has("phase"));
+  cssMap.restore(cssCapture);
+  check("restore converges the same managed style", cssStyle === cssRoot.querySelector('style[data-hson-managed-document-css="v1"]')
+    && cssStyle.textContent === cssMap.lib("page").css.snapshot()
+    && !cssContinuation.tree.css.global.keyframes.has("phase"));
+  cssMap.lib("page").css.clearAll();
+  check("clearAll removes empty managed realization", cssRoot.querySelector('style[data-hson-managed-document-css]') === null
+    && cssContinuation.tree.css.global.list().length === 0);
+  cssMap.lib("page").css.sel("body").set.margin("1px");
+  check("CSS added after an empty state creates one managed realization", cssRoot.querySelectorAll('style[data-hson-managed-document-css="v1"]').length === 1
+    && cssRoot.querySelector('style[data-hson-managed-document-css]').textContent === cssMap.lib("page").css.snapshot());
+  cssContinuation.dispose();
+  const reboundLocalStyle = cssRoot.querySelector('style[data-hson-managed-document-css]');
+  const reboundLocal = continue_document({ map: cssMap, root: cssRoot });
+  check("bound CSS recontinuation reuses the tree and managed element", reboundLocal.tree === cssContinuation.tree
+    && cssRoot.querySelector('style[data-hson-managed-document-css]') === reboundLocalStyle);
+  reboundLocal.dispose();
+
+  const reboundMap = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body/>/>' } });
+  reboundMap.lib("page").css.sel("body").set.margin("0");
+  const reboundRoot = new DOMParser().parseFromString(reboundMap.render("page"), "text/html").documentElement;
+  const reboundStyle = reboundRoot.querySelector('style[data-hson-managed-document-css]');
+  const firstBinding = continue_document({ map: reboundMap, root: reboundRoot });
+  firstBinding.dispose();
+  const secondBinding = continue_document({ map: reboundMap, root: reboundRoot });
+  check("CSS recontinuation reuses exact managed style", secondBinding.tree === firstBinding.tree
+    && reboundRoot.querySelector('style[data-hson-managed-document-css]') === reboundStyle);
+  secondBinding.dispose();
+
+  const malformedMap = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body/>/>' } });
+  malformedMap.lib("page").css.sel("body").set.color("red");
+  const malformedHtml = malformedMap.render("page");
+  const rejectCss = (name, mutate) => {
+    const root = new DOMParser().parseFromString(malformedHtml, "text/html").documentElement;
+    mutate(root);
+    let failure;
+    try { continue_document({ map: malformedMap, root }); } catch (cause) { failure = cause; }
+    check(name, failure?.phase === "adopt" && failure.cause instanceof Error);
+  };
+  rejectCss("missing managed style fails adoption", (root) => root.querySelector('style[data-hson-managed-document-css]').remove());
+  rejectCss("duplicate managed style fails adoption", (root) => root.querySelector("head").appendChild(root.querySelector('style[data-hson-managed-document-css]').cloneNode(true)));
+  rejectCss("wrong marker fails adoption", (root) => root.querySelector("style").setAttribute("data-hson-managed-document-css", "v2"));
+  rejectCss("wrong style location fails adoption", (root) => root.querySelector("body").appendChild(root.querySelector("style")));
+  rejectCss("wrong CSS text fails adoption", (root) => { root.querySelector("style").textContent = "body{color:blue;}"; });
+  rejectCss("extra forged managed style fails adoption", (root) => {
+    const forged = root.ownerDocument.createElement("style");
+    forged.setAttribute("data-hson-managed-document-css", "v1");
+    root.querySelector("body").appendChild(forged);
+  });
+  const emptyCssMap = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body/>/>' } });
+  const staleRoot = new DOMParser().parseFromString(emptyCssMap.render("page"), "text/html").documentElement;
+  const stale = staleRoot.ownerDocument.createElement("style");
+  stale.setAttribute("data-hson-managed-document-css", "v1");
+  staleRoot.querySelector("head").appendChild(stale);
+  let staleFailure;
+  try { continue_document({ map: emptyCssMap, root: staleRoot }); } catch (cause) { staleFailure = cause; }
+  check("managed style with empty semantic CSS fails adoption", staleFailure?.phase === "adopt");
+
+  const emptyStartRoot = new DOMParser().parseFromString(emptyCssMap.render("page"), "text/html").documentElement;
+  const emptyStartContinuation = continue_document({ map: emptyCssMap, root: emptyStartRoot });
+  emptyCssMap.lib("page").css.sel("body").set.color("green");
+  check("first post-continuation CSS commit creates managed style", emptyStartRoot.querySelectorAll('style[data-hson-managed-document-css="v1"]').length === 1
+    && emptyStartRoot.querySelector("style").textContent === emptyCssMap.lib("page").css.snapshot());
+  emptyStartContinuation.dispose();
+
+  const styledLibraries = hsonLiveMap.fromLibraries({
+    alpha: { document: '<html <head <style "body{color:red;}"/>/> <body <p "A"/>/>/>' },
+    beta: { document: '<html <head/> <body <p "B"/>/>/>' },
+  });
+  styledLibraries.lib("alpha").css.sel("body").set.color("blue");
+  styledLibraries.lib("beta").css.sel("body").set.color("green");
+  const alphaRoot = new DOMParser().parseFromString(styledLibraries.render("alpha"), "text/html").documentElement;
+  const betaRoot = new DOMParser().parseFromString(styledLibraries.render("beta"), "text/html").documentElement;
+  const authoredStyle = alphaRoot.querySelector("head style:not([data-hson-managed-document-css])");
+  const alphaManaged = alphaRoot.querySelector('style[data-hson-managed-document-css]');
+  const betaManaged = betaRoot.querySelector('style[data-hson-managed-document-css]');
+  const alphaContinued = continue_document({ map: styledLibraries, document: styledLibraries.lib("alpha"), root: alphaRoot });
+  const betaContinued = continue_document({ map: styledLibraries, document: styledLibraries.lib("beta"), root: betaRoot });
+  check("authored style remains graph content alongside managed CSS", authoredStyle === alphaRoot.querySelector("head style:not([data-hson-managed-document-css])")
+    && alphaContinued.tree.find.byTag("style")?.dom.el() === authoredStyle);
+  styledLibraries.lib("alpha").css.sel("body").set.margin("4px");
+  check("two selected Libraries retain separate managed style ownership", alphaManaged.textContent === styledLibraries.lib("alpha").css.snapshot()
+    && betaManaged.textContent === styledLibraries.lib("beta").css.snapshot()
+    && alphaContinued.tree.css.global.get("sel:body") !== betaContinued.tree.css.global.get("sel:body"));
+  const staleAlphaCss = alphaContinued.tree.css.global;
+  alphaContinued.dispose();
+  betaContinued.dispose();
+  check("disposal retains semantic CSS and caller DOM", alphaManaged.isConnected && betaManaged.isConnected
+    && styledLibraries.lib("alpha").css.has("sel:body"));
+  const detachedCssText = alphaManaged.textContent;
+  styledLibraries.lib("alpha").css.sel("body").set.padding("8px");
+  let staleBoundWriteFailed = false;
+  try { staleAlphaCss.sel("body").set.padding("9px"); } catch (cause) { staleBoundWriteFailed = /disposed/.test(cause.message); }
+  check("disposal stops browser CSS observation and stale bound writes", alphaManaged.textContent === detachedCssText
+    && staleBoundWriteFailed && styledLibraries.lib("alpha").css.get("sel:body")?.includes("padding:8px"));
+
+  const replaySource = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body/>/>' } });
+  replaySource.lib("page").css.sel("body").set.margin("0");
+  const replayTarget = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body/>/>' } });
+  replayTarget.lib("page").css.sel("body").set.margin("0");
+  const replayRoot = new DOMParser().parseFromString(replayTarget.render("page"), "text/html").documentElement;
+  const replayStyle = replayRoot.querySelector('style[data-hson-managed-document-css]');
+  const replayContinued = continue_document({ map: replayTarget, root: replayRoot });
+  let cssCommit;
+  const stopReplaySource = replaySource.commits.observe((commit) => { cssCommit = commit; });
+  replaySource.lib("page").css.sel("body").set.padding("6px");
+  stopReplaySource();
+  replayTarget.replay(cssCommit);
+  check("CSS replay converges existing bound realization", replayStyle === replayRoot.querySelector('style[data-hson-managed-document-css]')
+    && replayStyle.textContent === replayTarget.lib("page").css.snapshot());
+  replayContinued.dispose();
+
+  const cascadeMap = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body <p id=target "Target"/>/>/>' } });
+  cascadeMap.lib("page").css.sel("p").set.color("blue");
+  const cascadeFrame = document.createElement("iframe");
+  cascadeFrame.srcdoc = cascadeMap.render("page");
+  const cascadeLoaded = new Promise((resolve) => cascadeFrame.addEventListener("load", resolve, { once: true }));
+  document.body.appendChild(cascadeFrame);
+  await cascadeLoaded;
+  const cascadeDocument = cascadeFrame.contentDocument;
+  const cascadeRoot = cascadeDocument.documentElement;
+  const cascadeManaged = cascadeRoot.querySelector('style[data-hson-managed-document-css]');
+  const cascadeContinued = continue_document({ map: cascadeMap, root: cascadeRoot });
+  const target = cascadeRoot.querySelector("#target");
+  const targetTree = cascadeContinued.tree.find.must.byTag("p");
+  check("SSR document CSS computes before runtime QUID CSS", cascadeFrame.contentWindow.getComputedStyle(target).color === "rgb(0, 0, 255)");
+  const releasedQuid = targetTree.quid;
+  targetTree.css.set.color("red");
+  await new Promise((resolve) => cascadeFrame.contentWindow.requestAnimationFrame(() => cascadeFrame.contentWindow.requestAnimationFrame(resolve)));
+  const runtimeStyle = cascadeRoot.querySelector("hson-_style#css-manager style#_hson");
+  check("QUID CSS uses later separate runtime host and wins cascade", runtimeStyle !== null
+    && cascadeManaged.compareDocumentPosition(runtimeStyle) & Node.DOCUMENT_POSITION_FOLLOWING
+    && cascadeFrame.contentWindow.getComputedStyle(target).color === "rgb(255, 0, 0)");
+  check("bound snapshot composes document and runtime CSS", targetTree.css.snapshot().includes("p{color:blue;}")
+    && targetTree.css.snapshot().includes(targetTree.quid));
+  targetTree.css.clear();
+  await new Promise((resolve) => cascadeFrame.contentWindow.requestAnimationFrame(() => cascadeFrame.contentWindow.requestAnimationFrame(resolve)));
+  check("QUID CSS removal preserves document CSS", cascadeManaged.textContent === cascadeMap.lib("page").css.snapshot()
+    && cascadeFrame.contentWindow.getComputedStyle(target).color === "rgb(0, 0, 255)");
+  targetTree.css.set.color("red");
+  cascadeMap.lib("page").css.clearAll();
+  cascadeMap.lib("page").css.sel("p").set.color("blue");
+  await new Promise((resolve) => cascadeFrame.contentWindow.requestAnimationFrame(() => cascadeFrame.contentWindow.requestAnimationFrame(resolve)));
+  const renewedManaged = cascadeRoot.querySelector('style[data-hson-managed-document-css]');
+  check("managed style reappears before active runtime QUID host", renewedManaged !== null
+    && (renewedManaged.compareDocumentPosition(runtimeStyle) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+    && cascadeFrame.contentWindow.getComputedStyle(target).color === "rgb(255, 0, 0)");
+  cascadeMap.lib("page").document.content.remove({ kind: "path", path: [0, 0, 1] }, 0);
+  await new Promise((resolve) => cascadeFrame.contentWindow.requestAnimationFrame(() => cascadeFrame.contentWindow.requestAnimationFrame(resolve)));
+  check("releasing a QUID node retains document CSS", cascadeRoot.querySelector("#target") === null
+    && renewedManaged.textContent === cascadeMap.lib("page").css.snapshot()
+    && !cascadeContinued.tree.css.snapshot().includes(releasedQuid));
+  cascadeContinued.dispose();
+  cascadeFrame.remove();
 
   const librariesRoot = document.querySelector("#libraries-ssr");
   const librariesButton = librariesRoot.firstElementChild;
@@ -176,6 +362,13 @@ try {
   check("aggregate AsyncLiveTree uses local map revision", librariesButton.getAttribute("data-async") === "accepted" && librariesMap.rev === 3);
   const action = await librariesEcho.action("state.increment");
   check("configured aggregate action remains operational", action.type === "ack" && librariesEcho.map.lib("state").snap(["count"]) === 2 && librariesMap.rev === 4);
+  const hostedGlobalCss = librariesContinuation.tree.css.global;
+  const hostedCssRev = librariesMap.rev;
+  let hostedCssWriteFailed = false;
+  try { hostedGlobalCss.sel("body").set.margin("0"); }
+  catch (cause) { hostedCssWriteFailed = /Hosted document CSS authoring/.test(cause.message); }
+  check("hosted bound global CSS writes are fenced pending Phase C", hostedCssWriteFailed
+    && librariesMap.rev === hostedCssRev && hostedGlobalCss.list().length === 0);
   librariesContinuation.dispose();
   librariesEcho.dispose();
   librariesSocket.dispose();
