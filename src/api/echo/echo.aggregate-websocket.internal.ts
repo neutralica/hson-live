@@ -13,6 +13,7 @@ import type {
   LocusHostedAggregateSynchronizationRequest,
 } from "../locus/locus.aggregate.transport.internal.js";
 import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
+import { admit_authority_projection_snapshot, authority_projection_as_client_composition_internal } from "../locus/locus.authority-projection-snapshot.js";
 import { HOSTED_MAX_SNAPSHOT_BYTES, hosted_sha256 } from "../livemap/livemap.hosted.js";
 import { HsonSchema } from "../schema/hson-schema.js";
 import type { LiveMapLibraryAddOperation, LiveMapRootMode } from "../../types/livemap.types.js";
@@ -90,19 +91,35 @@ export function decode_echo_hosted_aggregate_synchronization_frame_internal(raw:
     const outcome: "current" | "replay" | "snapshot" = value.outcome;
     return Object.freeze({ type: "recovery-plan", id, logicalMapId, incarnationId, registryDigest, projectionDigest,
       ...(projectionSequence === undefined ? {} : { projectionSequence }), headRev, outcome,
-      ...(typeof value.reason === "string" ? { reason: value.reason as "no_usable_revision" | "incarnation_mismatch" | "registry_mismatch" | "history_unavailable" } : {}) });
+      ...(typeof value.reason === "string" ? { reason: value.reason as "no_usable_revision" | "incarnation_mismatch" | "registry_mismatch" | "history_unavailable" | "projection_changed" } : {}) });
   }
   if (value.type === "recovery-snapshot") return Object.freeze({ type: "recovery-snapshot", id, snapshot: value.snapshot as AuthorityProjectionSnapshot });
   if (value.type === "recovery-commit") {
     if (value.phase !== "body" && value.phase !== "tail") throw new Error("Hosted recovery commit phase is malformed.");
-    return Object.freeze({ type: "recovery-commit", id, phase: value.phase, commit: value.commit as LocusLiveProjectedWireEnvelope });
+    const projectionSequence = required_revision(value.projectionSequence);
+    const projectionDigest = required_digest(value.projectionDigest);
+    if (projectionSequence === undefined || projectionDigest === undefined) throw new Error("Hosted recovery commit projection fence is malformed.");
+    return Object.freeze({ type: "recovery-commit", id, phase: value.phase, projectionSequence,
+      projectionDigest, commit: value.commit as LocusLiveProjectedWireEnvelope });
   }
   if (value.type === "recovery-progress") {
     if (value.phase !== "body" && value.phase !== "tail") throw new Error("Hosted recovery progress phase is malformed.");
-    return Object.freeze({ type: "recovery-progress", id, phase: value.phase, progress: decode_progress(value.progress) });
+    const projectionSequence = required_revision(value.projectionSequence);
+    const projectionDigest = required_digest(value.projectionDigest);
+    if (projectionSequence === undefined || projectionDigest === undefined) throw new Error("Hosted recovery progress projection fence is malformed.");
+    return Object.freeze({ type: "recovery-progress", id, phase: value.phase, projectionSequence,
+      projectionDigest, progress: decode_progress(value.progress) });
   }
-  if (value.type === "commit") return Object.freeze({ type: "commit", id, commit: value.commit as LocusLiveProjectedWireEnvelope });
-  if (value.type === "progress") return Object.freeze({ type: "progress", id, progress: decode_progress(value.progress) });
+  if (value.type === "commit" || value.type === "progress") {
+    const projectionSequence = required_revision(value.projectionSequence);
+    const projectionDigest = required_digest(value.projectionDigest);
+    if (projectionSequence === undefined || projectionDigest === undefined) throw new Error("Hosted live projection fence is malformed.");
+    return value.type === "commit"
+      ? Object.freeze({ type: "commit", id, projectionSequence, projectionDigest,
+        commit: value.commit as LocusLiveProjectedWireEnvelope })
+      : Object.freeze({ type: "progress", id, projectionSequence, projectionDigest,
+        progress: decode_progress(value.progress) });
+  }
   if (value.type === "projection-change") return decode_projection_change(value, id);
   if (value.type === "recovery-caught-up") {
     const logicalMapId = required_string(value.logicalMapId);
@@ -125,7 +142,7 @@ function decode_projection_change(value: Record<string, unknown>, id: string): L
   const actual = Object.keys(value);
   if (actual.length < fields.length || actual.length > fields.length + 2
     || fields.some((field) => !Object.hasOwn(value, field))
-    || actual.some((field) => !fields.includes(field) && field !== "topology" && field !== "system")) {
+    || actual.some((field) => !fields.includes(field) && field !== "topology" && field !== "system" && field !== "reconciliation")) {
     throw new Error("Hosted projection change fields are malformed.");
   }
   const logicalMapId = required_string(value.logicalMapId);
@@ -213,11 +230,28 @@ function decode_projection_change(value: Record<string, unknown>, id: string): L
       || typeof root.payload !== "string") throw new Error("Hosted projection system root is malformed.");
     system = Object.freeze({ format: "hson-exact-value", payload: root.payload });
   }
+  let reconciliation: AuthorityProjectionSnapshot | undefined;
+  if (Object.hasOwn(value, "reconciliation")) {
+    if (topology !== undefined || system !== undefined) throw new Error("Hosted projection reconciliation is ambiguous.");
+    reconciliation = admit_authority_projection_snapshot(value.reconciliation);
+    const composition = authority_projection_as_client_composition_internal(reconciliation);
+    if (reconciliation.authority.logicalMapId !== logicalMapId
+      || reconciliation.authority.incarnationId !== incarnationId
+      || reconciliation.revision !== authorityRev || reconciliation.projectionDigest !== projectionDigest
+      || composition.registryDigest !== registryDigest
+      || JSON.stringify(reconciliation.libraries.map(({ root: _root, ...entry }) => entry)) !== JSON.stringify(libraries)
+      || reconciliation.htmlDocument !== htmlDocument
+      || JSON.stringify(reconciliation.systemFeatures) !== JSON.stringify(systemFeatures)
+      || JSON.stringify(reconciliation.writableDocuments) !== JSON.stringify(writableDocuments)) {
+      throw new Error("Hosted projection reconciliation contract is incompatible.");
+    }
+  }
   return Object.freeze({ type: "projection-change", id, logicalMapId, incarnationId, authorityRev,
     sequence, previousDigest, projectionDigest, registryDigest,
     libraries: Object.freeze(libraries), htmlDocument, systemFeatures: Object.freeze(systemFeatures),
     writableDocuments: Object.freeze(writableDocuments),
     ...(topology === undefined ? {} : { topology }), ...(system === undefined ? {} : { system }),
+    ...(reconciliation === undefined ? {} : { reconciliation }),
   });
 }
 

@@ -59,6 +59,10 @@ function effective_for(source: LiveMap) {
   return effective;
 }
 
+function projection_fence(source: LiveMap) {
+  return { projectionSequence: 0, projectionDigest: effective_for(source).digest };
+}
+
 function projected_client_map(source: LiveMap): LiveMap {
   return hsonLiveMap.fromClientSnapshot({ authority: project_authority_snapshot(
     internal_livemap_aggregate_authority(source).captureHosted(), effective_for(source)), localLibraries: {} });
@@ -229,11 +233,11 @@ await check("Echo processes commit, consecutive progress, commit as one contiguo
   const originAuthority = internal_livemap_aggregate_authority(origin);
   let commits = 0;
   map.commits.observe(() => { commits += 1; });
-  pair.sendFromServer({ type: "commit", id, commit: live_committed_value(origin, 1) });
+  pair.sendFromServer({ type: "commit", id, ...projection_fence(authority), commit: live_committed_value(origin, 1) });
   assert.equal(map.rev, 1);
   assert.equal(state.snap(["value"]), 1);
-  pair.sendFromServer({ type: "progress", id, progress: live_progress(snapshot, 10) });
-  pair.sendFromServer({ type: "progress", id, progress: live_progress(snapshot, 11) });
+  pair.sendFromServer({ type: "progress", id, ...projection_fence(authority), progress: live_progress(snapshot, 10) });
+  pair.sendFromServer({ type: "progress", id, ...projection_fence(authority), progress: live_progress(snapshot, 11) });
   assert.equal(map.rev, 1);
   assert.equal(client.lastAppliedRev, 12);
   assert.equal(state.snap(["value"]), 1);
@@ -242,7 +246,7 @@ await check("Echo processes commit, consecutive progress, commit as one contiguo
   originReplica.advanceHostedProgress(progress(snapshot, 10));
   originReplica.advanceHostedProgress(progress(snapshot, 11));
   originReplica.dispose();
-  pair.sendFromServer({ type: "commit", id, commit: live_committed_value(origin, 2) });
+  pair.sendFromServer({ type: "commit", id, ...projection_fence(authority), commit: live_committed_value(origin, 2) });
   assert.equal(map.rev, 2);
   assert.equal(client.lastAppliedRev, 13);
   assert.equal(state.snap(["value"]), 2);
@@ -271,10 +275,10 @@ await check("replay history processes commit, progress, commit, final progress b
       const id = message.id;
       return [
         Object.freeze({ ...message, outcome: "replay", headRev: 4 }),
-        Object.freeze({ format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT, type: "recovery-commit", id, phase: "body", commit: first }),
-        Object.freeze({ format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT, type: "recovery-progress", id, phase: "body", progress: live_progress(snapshot, 1) }),
-        Object.freeze({ format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT, type: "recovery-commit", id, phase: "body", commit: third }),
-        Object.freeze({ format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT, type: "recovery-progress", id, phase: "body", progress: live_progress(snapshot, 3) }),
+        Object.freeze({ format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT, type: "recovery-commit", id, phase: "body", ...projection_fence(authority), commit: first }),
+        Object.freeze({ format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT, type: "recovery-progress", id, phase: "body", ...projection_fence(authority), progress: live_progress(snapshot, 1) }),
+        Object.freeze({ format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT, type: "recovery-commit", id, phase: "body", ...projection_fence(authority), commit: third }),
+        Object.freeze({ format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT, type: "recovery-progress", id, phase: "body", ...projection_fence(authority), progress: live_progress(snapshot, 3) }),
       ];
     }
     if (message.type === "recovery-caught-up") return [Object.freeze({ ...message, throughRev: 4 })];
@@ -317,9 +321,9 @@ await check("snapshot recovery drains buffered progress and graph tail through c
       const id = message.id;
       return [
         message,
-        Object.freeze({ format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT, type: "recovery-progress", id, phase: "tail", progress: live_progress(snapshot, 4) }),
-        Object.freeze({ format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT, type: "recovery-commit", id, phase: "tail", commit: sixth }),
-        Object.freeze({ format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT, type: "recovery-progress", id, phase: "tail", progress: live_progress(snapshot, 6) }),
+        Object.freeze({ format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT, type: "recovery-progress", id, phase: "tail", ...projection_fence(authority), progress: live_progress(snapshot, 4) }),
+        Object.freeze({ format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT, type: "recovery-commit", id, phase: "tail", ...projection_fence(authority), commit: sixth }),
+        Object.freeze({ format: LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT, type: "recovery-progress", id, phase: "tail", ...projection_fence(authority), progress: live_progress(snapshot, 6) }),
       ];
     }
     if (message.type === "recovery-caught-up") return [Object.freeze({ ...message, throughRev: 7 })];
@@ -366,16 +370,36 @@ await check("Echo rejects progress gaps, stale duplicates, and wrong authority f
     const id = JSON.parse(pair.serverSent.find((raw) => JSON.parse(raw).type === "recovery-caught-up")!).id;
     const base = live_progress(snapshot, 0);
     if (scenario.firstValid === true) {
-      pair.sendFromServer({ type: "progress", id, progress: base });
+      pair.sendFromServer({ type: "progress", id, ...projection_fence(authority), progress: base });
       assert.equal(client.map?.rev, 0);
     }
     if (scenario.name === "jump after current position") {
-      assert.throws(() => pair.sendFromServer({ type: "progress", id, progress: scenario.make(base) }), /malformed/i);
+      assert.throws(() => pair.sendFromServer({ type: "progress", id, ...projection_fence(authority), progress: scenario.make(base) }), /malformed/i);
     } else {
-      pair.sendFromServer({ type: "progress", id, progress: scenario.make(base) });
+      pair.sendFromServer({ type: "progress", id, ...projection_fence(authority), progress: scenario.make(base) });
       assert.equal(client.diagnostics().status, "failed", scenario.name);
     }
     assert.equal(client.map?.rev, 0, scenario.name);
+    client.dispose();
+    server.dispose();
+  }
+});
+
+await check("Echo rejects authority traffic stamped for another projection sequence or digest", async () => {
+  for (const stale of [{ projectionSequence: 1 }, { projectionDigest: "0".repeat(64) }]) {
+    const authority = make_map();
+    const snapshot = internal_livemap_aggregate_authority(authority).captureHosted();
+    const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(authority), map: authority });
+    const pair = socket_pair();
+    server.connect(pair.server);
+    const client = create_echo_socket_client_internal({ socket: pair.client, logicalMapId: server.logicalMapId });
+    await client.connect();
+    const id = JSON.parse(pair.serverSent.find((raw) => JSON.parse(raw).type === "recovery-caught-up")!).id;
+    const before = client.lastAppliedRev;
+    pair.sendFromServer({ type: "progress", id, ...projection_fence(authority), ...stale,
+      progress: live_progress(snapshot, before ?? 0) });
+    assert.equal(client.diagnostics().status, "failed");
+    assert.equal(client.lastAppliedRev, before);
     client.dispose();
     server.dispose();
   }

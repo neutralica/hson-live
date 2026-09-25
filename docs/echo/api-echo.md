@@ -115,10 +115,12 @@ value/mutation observation; internal authority-position observers support Echo
 convergence and Mirror revision ordering.
 Retained hosted recovery applies projected library additions before later writes,
 then reconciles any explicit disconnected grant expansion at the recovery cut.
-It keeps the existing composed map, client-local libraries, and unrelated
-Mirror/LiveTree resources. Hidden additions advance only the authority cursor.
-Changed-topology snapshot fallback and in-place projection contraction remain
-Phase 2c-b work.
+When retained history is unavailable, a current projected snapshot reconciles
+the authority-owned libraries in the existing composed map before queued live
+traffic. Client-local libraries and unrelated Mirror/LiveTree resources remain.
+Hidden additions advance only the authority cursor. A session projection
+contraction removes revoked authority libraries and makes their old handles
+stale, without changing authority revision.
 `EchoRecovery` has no `onChange` observation member. Echo has no topology-aware
 `subscribe`/`unsubscribe`, public `seq`, or `onEvent` surface.
 

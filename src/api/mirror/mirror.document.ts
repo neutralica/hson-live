@@ -109,6 +109,7 @@ import {
 } from "../livemap/livemap.document.registration.js";
 import { livemap_document_observation_evidence } from "../livemap/livemap.document.capture.js";
 import { internal_authority_position_observer } from "../livemap/livemap.internal.js";
+import { observe_client_library_retirement_internal } from "../livemap/livemap.libraries.js";
 import {
   append_document_path,
   document_path_effect_for_graph_operation,
@@ -241,6 +242,7 @@ function reflect_document_binding_in_runtime(
   let off: LiveMapDisposer | undefined;
   let offAuthorityPosition: (() => void) | undefined;
   let offIdentityParticipant: (() => void) | undefined;
+  let offRetirement: (() => void) | undefined;
   let rootRegistration: DocumentBindingNodeRegistration | undefined;
 
   const release_borrowed_carrier = (): void => {
@@ -264,6 +266,8 @@ function reflect_document_binding_in_runtime(
     offAuthorityPosition = undefined;
     offIdentityParticipant?.();
     offIdentityParticipant = undefined;
+    offRetirement?.();
+    offRetirement = undefined;
   };
 
   const assert_delegation_ready = (registration: ProjectedRegistration): void => {
@@ -491,6 +495,8 @@ function reflect_document_binding_in_runtime(
     offAuthorityPosition = undefined;
     offIdentityParticipant?.();
     offIdentityParticipant = undefined;
+    offRetirement?.();
+    offRetirement = undefined;
     for (const registration of registrations) unregister_document_binding_node(registration.node, owner);
     if (rootRegistration !== undefined) {
       unregister_document_binding_node(projectedRoot, owner);
@@ -1379,6 +1385,10 @@ function reflect_document_binding_in_runtime(
       realize: refresh_registration_at_path,
     }));
     off = map.commits.observe(on_observation);
+    offRetirement = observe_client_library_retirement_internal(map, () => fail(new DocumentMirrorError(
+      DOCUMENT_MIRROR_TARGET_MISSING_ERROR_CODE,
+      "Projected document Library was removed from the session grant.",
+    )));
     offAuthorityPosition = internal_authority_position_observer(map)?.((revision) => {
       if (currentStatus !== "active") return;
       if (revision === currentRevision) return; // A graph commit or snapshot already supplied this position.
@@ -1405,6 +1415,8 @@ function reflect_document_binding_in_runtime(
     offAuthorityPosition = undefined;
     offIdentityParticipant?.();
     offIdentityParticipant = undefined;
+    offRetirement?.();
+    offRetirement = undefined;
     if (rootRegistration !== undefined) {
       unregister_document_binding_node(projectedRoot, owner);
       rootRegistration = undefined;

@@ -248,14 +248,17 @@ function data_library(map: LiveMap | undefined, name: string) {
     incarnationId: plan.incarnationId, registryDigest: plan.registryDigest,
     projectionDigest: "a".repeat(64), projectionSequence: 0, lastAppliedRev: 0 }));
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
-  const bad = messages(pair.serverSent).find((message) => message.type === "error" && message.code === "LOCUS_PROJECTION_UNAVAILABLE");
+  const bad = messages(pair.serverSent).find((message) => message.type === "recovery-plan"
+    && message.id === "bad-projection" && message.outcome === "snapshot"
+    && message.reason === "projection_changed");
   assert.ok(bad);
   pair.client.send(JSON.stringify({ type: "recover", id: "bad-projection-sequence", logicalMapId: server.logicalMapId,
     incarnationId: plan.incarnationId, registryDigest: plan.registryDigest,
     projectionDigest: plan.projectionDigest, projectionSequence: 1, lastAppliedRev: 0 }));
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
-  const staleSequence = messages(pair.serverSent).find((message) => message.type === "error"
-    && message.id === "bad-projection-sequence" && message.code === "LOCUS_PROJECTION_UNAVAILABLE");
+  const staleSequence = messages(pair.serverSent).find((message) => message.type === "recovery-plan"
+    && message.id === "bad-projection-sequence" && message.outcome === "snapshot"
+    && message.reason === "projection_changed");
   assert.ok(staleSequence);
   assert.equal(pair.serverSent.some((raw) => raw.includes("PRIVATE_NAME_SENTINEL")), false);
   server.dispose();

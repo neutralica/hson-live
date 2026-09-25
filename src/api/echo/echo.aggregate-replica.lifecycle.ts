@@ -6,7 +6,7 @@ import { internal_livemap_aggregate_authority } from "../livemap/livemap.interna
 import type { HostedLiveMapSnapshot } from "../../types/livemap.types.js";
 import type { PortableAggregateCommit } from "../livemap/livemap.hosted.js";
 import type { LiveMapLibraryAddOperation } from "../../types/livemap.types.js";
-import { install_client_projected_topology_internal } from "../livemap/livemap.libraries.js";
+import { install_client_projected_topology_internal, reconcile_client_projection_snapshot_internal } from "../livemap/livemap.libraries.js";
 import type { HostedAuthorityFence, HostedRegistry } from "../livemap/livemap.hosted.js";
 import type { EchoReplicaCapability } from "./echo.replica.js";
 
@@ -71,7 +71,9 @@ export function create_echo_aggregate_replica_capability_internal(
     },
     restoreHosted(snapshot): void {
       if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");
-      internal_livemap_aggregate_authority(map).restoreClientHostedManaged(owner, snapshot);
+      if (internal_livemap_aggregate_authority(map).clientProjection() === undefined) {
+        internal_livemap_aggregate_authority(map).restoreClientHostedManaged(owner, snapshot);
+      } else reconcile_client_projection_snapshot_internal(map, owner, snapshot);
     },
     replayHosted(commit, authorityRev): number {
       if (map === undefined) throw new Error("Hosted aggregate replica has no mirror.");

@@ -29,6 +29,16 @@ export function bind_client_projection_identity_internal(map: LiveMap, snapshot:
     incarnationId: admitted.authority.incarnationId }));
 }
 
+/** Replace a verified Echo contract after an authorized projected fallback. @internal */
+export function replace_client_projection_identity_internal(
+  map: LiveMap, previousDigest: string | undefined, snapshot: AuthorityProjectionSnapshot,
+): void {
+  const admitted = admit_authority_projection_snapshot(snapshot);
+  if (clientProjectionIdentity.get(map)?.digest !== previousDigest) fail();
+  clientProjectionIdentity.set(map, Object.freeze({ digest: admitted.projectionDigest,
+    incarnationId: admitted.authority.incarnationId }));
+}
+
 /** @internal */
 export function client_projection_identity_internal(map: LiveMap): string | undefined {
   return clientProjectionIdentity.get(map)?.digest;

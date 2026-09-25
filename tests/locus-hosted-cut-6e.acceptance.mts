@@ -269,7 +269,7 @@ assert.match(render_document({ map: local }).html, /LOCAL_CUT/);
   assert.equal(browser.map, browserMap);
   assert.equal(browserMap.lib("local"), localLibrary);
   assert.equal(localHandle.snap(), "LOCAL_SURVIVES_FALLBACK_SENTINEL");
-  assert.equal(projectedHandle.active, false);
+  assert.equal(projectedHandle.active, true);
   const permitted = browserMap.lib("permittedData");
   if (permitted.mode === "document") throw new Error("Expected projected data library.");
   assert.equal(permitted.snap(["value"]), "PERMITTED_FALLBACK_TAIL_SENTINEL");

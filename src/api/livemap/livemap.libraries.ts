@@ -95,6 +95,8 @@ type NamedLibrary = Readonly<{
 
 const PUBLIC_MULTI_LIBRARY_MAPS = new WeakSet<object>();
 const CLIENT_LIBRARY_SOURCES = new WeakMap<object, "authority-projected" | "client-local">();
+const CLIENT_LIBRARY_RETIREMENT = new WeakMap<object, Set<() => void>>();
+const CLIENT_PROJECTION_RECONCILE = new WeakMap<object, (owner: object, snapshot: PortableAggregateSnapshot) => void>();
 const HOSTED_LIBRARY_ADMISSION = new WeakMap<object, (owner: object, inputs: LiveMapDefinitions) => Readonly<{
   transition: PreparedLiveMapAuthorityTransition;
   afterInstall: () => void;
@@ -183,6 +185,23 @@ export function prepare_hosted_livemap_library_add_internal(
 /** Internal ownership evidence for write-propagating link admission. */
 export function client_library_source_internal(value: object): "authority-projected" | "client-local" | undefined {
   return CLIENT_LIBRARY_SOURCES.get(value);
+}
+
+/** Observe terminal retirement of one projected document binding. @internal */
+export function observe_client_library_retirement_internal(value: object, listener: () => void): () => void {
+  const listeners = CLIENT_LIBRARY_RETIREMENT.get(value) ?? new Set<() => void>();
+  listeners.add(listener);
+  CLIENT_LIBRARY_RETIREMENT.set(value, listeners);
+  return () => { listeners.delete(listener); };
+}
+
+/** Reconcile only the managed authority partition of an existing composed map. @internal */
+export function reconcile_client_projection_snapshot_internal(
+  map: LiveMap, owner: object, snapshot: PortableAggregateSnapshot,
+): void {
+  const reconcile = CLIENT_PROJECTION_RECONCILE.get(map);
+  if (reconcile === undefined) throw new Error("Client projection reconciliation requires a composed LiveMap.");
+  reconcile(owner, snapshot);
 }
 
 /** True only for the dedicated local multi-library public facade. @internal */
@@ -400,6 +419,47 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
           add(definition.name, definition.input, identity);
         }
       },
+    });
+  });
+  if (clientSnapshot !== undefined) CLIENT_PROJECTION_RECONCILE.set(libraries, (owner, snapshot) => {
+    const prior = aggregate.clientProjection();
+    if (prior === undefined) throw new Error("Client projection is unavailable.");
+    const previousNames = prior.registry.libraries.filter((entry) => entry.scope === undefined)
+      .map((entry) => entry.name);
+    const inputs = new Map<string, NamedLibrary["input"]>();
+    for (const entry of snapshot.libraries) {
+      const contract = snapshot.registry.libraries.find((candidate) => candidate.name === entry.name);
+      if (contract === undefined || contract.scope === "hson-internal") continue;
+      const schema = HsonSchemaHandle.fromHson(entry.schema);
+      const root = decode_hosted_root(entry.root);
+      inputs.set(entry.name, must_library_input(entry.name, entry.mode === "document"
+        ? { document: root, schema } : { data: reconstructed_data(root), schema }));
+    }
+    aggregate.restoreClientHostedManaged(owner, snapshot, (projected, retired) => {
+      const nextByName = new Map(projected.map((entry) => [entry.name, entry.identity]));
+      const retiredFacades: object[] = [];
+      for (const name of previousNames) {
+        const existing = named.get(name);
+        if (existing === undefined) continue;
+        if (nextByName.get(name) === existing.identity) continue;
+        const facade = selectedFacades.get(name);
+        if (facade !== undefined) retiredFacades.push(facade);
+        named.delete(name);
+        namesByIdentity.delete(existing.identity);
+        selectedFacades.delete(name);
+      }
+      for (const entry of projected) {
+        if (named.get(entry.name)?.identity === entry.identity) continue;
+        const input = inputs.get(entry.name);
+        if (input === undefined) throw new Error("Reconciled Library definition is unavailable.");
+        add(entry.name, input, entry.identity);
+      }
+      void retired;
+      for (const facade of retiredFacades) {
+        for (const listener of [...(CLIENT_LIBRARY_RETIREMENT.get(facade) ?? [])]) {
+          try { listener(); } catch { /* Retired resource observers cannot roll back accepted topology. */ }
+        }
+      }
     });
   });
   return libraries as unknown as LiveMap<TLibraries>;

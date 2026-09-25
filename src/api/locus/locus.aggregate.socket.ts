@@ -113,7 +113,7 @@ type HostedRequest =
   }>;
 
 type HostedPlanOutcome = "current" | "replay" | "snapshot" | "reject";
-type HostedSnapshotReason = "no_usable_revision" | "incarnation_mismatch" | "registry_mismatch" | "history_unavailable";
+type HostedSnapshotReason = "no_usable_revision" | "incarnation_mismatch" | "registry_mismatch" | "history_unavailable" | "projection_changed";
 
 type HostedHistoryEntry = Readonly<{
   envelope: LocusHostedAggregateAuthorityEnvelope;
@@ -293,11 +293,12 @@ export function create_locus_hosted_aggregate_socket_internal<
       }
       for (const { sessionId, projection: effective } of roster) {
         const event = project_locus_live_transition_internal(commit, effective, beforeSystem, afterSystem);
-        const live = projected_output(WORST_CASE_RECOVERY_ID, event, effective);
+        const live = projected_output(WORST_CASE_RECOVERY_ID, event, effective,
+          sessions.projection_sequence(sessionId) ?? 0);
         encode_downstream_message(live, maxWireBytes);
         encode_downstream_message(live.type === "progress"
-          ? Object.freeze({ type: "recovery-progress", id: WORST_CASE_RECOVERY_ID, phase: "tail", progress: live.progress })
-          : Object.freeze({ type: "recovery-commit", id: WORST_CASE_RECOVERY_ID, phase: "tail", commit: live.commit }), maxWireBytes);
+          ? Object.freeze({ ...live, type: "recovery-progress", phase: "tail", progress: live.progress })
+          : Object.freeze({ ...live, type: "recovery-commit", phase: "tail", commit: live.commit }), maxWireBytes);
         events.set(sessionId, event);
       }
       preparedSystemRoots.set(commit, roots);
@@ -414,10 +415,8 @@ export function create_locus_hosted_aggregate_socket_internal<
             || !connection.live || connection.effectiveProjection !== previous)) {
         throw new LocusProjectionUnavailableError();
       }
-      if (previous.libraries.some((entry) => !next.includesLibrary(entry.name))
-        || JSON.stringify(previous.systemFeatures) !== JSON.stringify(next.systemFeatures)) {
-        throw new LocusProjectionUnavailableError();
-      }
+      const reconcile = previous.libraries.some((entry) => !next.includesLibrary(entry.name))
+        || JSON.stringify(previous.systemFeatures) !== JSON.stringify(next.systemFeatures);
       const currentSequence = sessions.projection_sequence(sessionId);
       if (currentSequence === undefined) throw new LocusProjectionUnavailableError();
       if (next.digest === previous.digest) return Object.freeze({ changed: false, sequence: currentSequence,
@@ -445,14 +444,14 @@ export function create_locus_hosted_aggregate_socket_internal<
         registryDigest: projected_registry_digest(next),
         libraries: next.libraries, htmlDocument: next.htmlDocument ?? null,
         systemFeatures: next.systemFeatures, writableDocuments: next.writableDocuments,
-        ...(topology === undefined ? {} : { topology }),
-        ...(added.some((entry) => entry.mode === "document") && snapshot.system !== null
+        ...(reconcile ? { reconciliation: snapshot } : topology === undefined ? {} : { topology }),
+        ...(!reconcile && added.some((entry) => entry.mode === "document") && snapshot.system !== null
           ? { system: snapshot.system.interactions } : {}),
       });
-      encode_downstream_message(event, maxWireBytes);
+      encode_downstream_message(event, reconcile ? HOSTED_MAX_SNAPSHOT_BYTES : maxWireBytes);
       const sequence = sessions.update_projection(sessionId, previous, next);
       connection.effectiveProjection = next;
-      try { send(connection, event); }
+      try { send(connection, event, reconcile ? HOSTED_MAX_SNAPSHOT_BYTES : maxWireBytes); }
       catch (cause) {
         sessions.revoke(sessionId);
         close_failed_publication(connection);
@@ -465,13 +464,17 @@ export function create_locus_hosted_aggregate_socket_internal<
   function projected_live_output(connection: HostedConnection, event: LocusLiveProjectedEvent, effective: LocusEffectiveProjection) {
     const id = connection.recoveryId;
     if (id === undefined) throw new Error("Live publication has no recovery identity.");
-    return projected_output(id, event, effective);
+    return projected_output(id, event, effective,
+      connection.sessionId === undefined ? 0 : sessions.projection_sequence(connection.sessionId) ?? 0);
   }
 
-  function projected_output(id: string, event: LocusLiveProjectedEvent, effective: LocusEffectiveProjection) {
+  function projected_output(id: string, event: LocusLiveProjectedEvent, effective: LocusEffectiveProjection,
+    projectionSequence: number) {
     return event.kind === "progress"
-      ? Object.freeze({ type: "progress" as const, id, progress: event.progress })
-      : Object.freeze({ type: "commit" as const, id, commit: Object.freeze({
+      ? Object.freeze({ type: "progress" as const, id, projectionSequence, projectionDigest: effective.digest,
+        progress: event.progress })
+      : Object.freeze({ type: "commit" as const, id, projectionSequence, projectionDigest: effective.digest,
+        commit: Object.freeze({
         format: LOCUS_LIVE_PROJECTED_WIRE_FORMAT,
         logicalMapId: effective.authority.logicalMapId,
         incarnationId: effective.authority.incarnationId,
@@ -606,11 +609,12 @@ export function create_locus_hosted_aggregate_socket_internal<
     return project_locus_live_transition_internal(entry.envelope.commit, effective, entry.beforeSystem, entry.afterSystem);
   }
 
-  function send_projected_recovery_event(connection: HostedConnection, id: string, phase: "body" | "tail", event: LocusLiveProjectedEvent, effective: LocusEffectiveProjection): void {
-    const live = projected_live_output(connection, event, effective);
+  function send_projected_recovery_event(connection: HostedConnection, id: string, phase: "body" | "tail",
+    event: LocusLiveProjectedEvent, effective: LocusEffectiveProjection, projectionSequence: number): void {
+    const live = projected_output(id, event, effective, projectionSequence);
     send(connection, live.type === "progress"
-      ? Object.freeze({ type: "recovery-progress", id, phase, progress: live.progress })
-      : Object.freeze({ type: "recovery-commit", id, phase, commit: live.commit }));
+      ? Object.freeze({ ...live, type: "recovery-progress", phase, progress: live.progress })
+      : Object.freeze({ ...live, type: "recovery-commit", phase, commit: live.commit }));
   }
 
   async function recover(connection: HostedConnection, request: Extract<HostedRequest, { type: "recover" }>): Promise<void> {
@@ -642,10 +646,7 @@ export function create_locus_hosted_aggregate_socket_internal<
     }
     const priorProjection = cursor === undefined ? undefined
       : sessions.projection_at_digest(connection.sessionId, cursor.projectionDigest, cursor.projectionSequence);
-    if (cursor !== undefined && sameIncarnation && priorProjection === undefined) {
-      reject(connection, "LOCUS_PROJECTION_UNAVAILABLE", "Hosted recovery projection is incompatible.", request.id);
-      return;
-    }
+    const unknownPriorProjection = cursor !== undefined && sameIncarnation && priorProjection === undefined;
     const replayProjection = priorProjection?.projection ?? effective;
     const replaySequence = priorProjection?.sequence ?? sessions.projection_sequence(connection.sessionId) ?? 0;
     if (cursor !== undefined && cursor.lastAppliedRev > locus.rev && sameIncarnation) {
@@ -676,10 +677,17 @@ export function create_locus_hosted_aggregate_socket_internal<
     if (cursor === undefined) {
       outcome = "snapshot";
       reason = "no_usable_revision";
+    } else if (unknownPriorProjection) {
+      outcome = "snapshot";
+      reason = "projection_changed";
     } else if (options.internal?.recoveryFloorRevision !== undefined
       && cursor.lastAppliedRev <= options.internal.recoveryFloorRevision) {
       outcome = "snapshot";
       reason = "history_unavailable";
+    } else if (replayProjection.libraries.some((entry) => !effective.includesLibrary(entry.name))
+      || JSON.stringify(replayProjection.systemFeatures) !== JSON.stringify(effective.systemFeatures)) {
+      outcome = "snapshot";
+      reason = "projection_changed";
     } else if (!sameProjectedRegistry) {
       outcome = "snapshot";
       reason = "registry_mismatch";
@@ -722,7 +730,8 @@ export function create_locus_hosted_aggregate_socket_internal<
     } else {
       for (const entry of replay) {
         if (!recovery_delivery_current(connection, activeRecovery)) return;
-        send_projected_recovery_event(connection, request.id, "body", projected_history_event(entry, replayProjection), replayProjection);
+        send_projected_recovery_event(connection, request.id, "body", projected_history_event(entry, replayProjection),
+          replayProjection, replaySequence);
         if (!recovery_delivery_current(connection, activeRecovery)) return;
       }
     }
@@ -1353,7 +1362,9 @@ export function create_locus_hosted_aggregate_socket_internal<
     const semantic = attach({
       finite: (message) => socket.send(encode_downstream_message(message, maxWireBytes)),
       synchronization: (message) => socket.send(encode_downstream_message(message, message.type === "recovery-snapshot" ? HOSTED_MAX_SNAPSHOT_BYTES : maxWireBytes)),
-      publication: (message) => socket.send(encode_downstream_message(message, maxWireBytes)),
+      publication: (message) => socket.send(encode_downstream_message(message,
+        message.type === "projection-change" && message.reconciliation !== undefined
+          ? HOSTED_MAX_SNAPSHOT_BYTES : maxWireBytes)),
       event: () => {},
     }, context, stopListeners);
     try {

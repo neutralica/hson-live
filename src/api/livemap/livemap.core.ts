@@ -1964,7 +1964,11 @@ function make_livemap_registry_engine(
     restore_libraries_aggregate(portable, snapshot.authority);
   }
 
-  function restore_client_projection(snapshot: PortableAggregateSnapshot): void {
+  function restore_client_projection(
+    snapshot: PortableAggregateSnapshot,
+    afterTopologyInstall?: (projected: readonly Readonly<{ name: string; identity: LiveMapLibraryIdentity }>[],
+      retired: readonly LiveMapLibraryIdentity[]) => void,
+  ): void {
     const composition = clientComposition;
     if (composition === undefined) throw new Error("Client projection is not configured.");
     if (clientManagementOwner === undefined
@@ -1972,19 +1976,29 @@ function make_livemap_registry_engine(
       throw new Error("Client projection restore requires Echo management.");
     }
     assert_portable_aggregate_snapshot_shape(snapshot);
-    if (snapshot.authority.logicalMapId !== composition.authority.logicalMapId
-      || snapshot.registryDigest !== composition.registry.digest
-      || JSON.stringify(snapshot.registry) !== JSON.stringify(composition.registry)) {
-      throw new Error("Client projection snapshot has an incompatible authority or registry.");
+    if (snapshot.authority.logicalMapId !== composition.authority.logicalMapId) {
+      throw new Error("Client projection snapshot authority is incompatible.");
     }
+    const hosted = require_hosted_state();
+    const localStates = libraryRegistry.all().filter((state) => !composition.projected.has(state.identity));
+    const localBindings = localStates.map((state) => {
+      const binding = hosted.byIdentity.get(state.identity);
+      if (binding === undefined) throw new Error("Client-local Library binding is unavailable.");
+      return binding;
+    });
     const candidates: Array<Readonly<{
-      library: LiveMapLibraryState;
+      name: string;
+      state: LiveMapLibraryState;
       root: HsonNode;
       documentOverlay?: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay;
       projectedOverlay?: LiveMapProjectedIdentityOverlay;
       projectedValue?: OrderedProjectedValue;
+      retained: boolean;
+      changed: boolean;
+      binding: HostedRegistryBinding;
     }>> = [];
-    let systemCandidate: Readonly<{ root: HsonNode; value: OrderedProjectedValue }> | undefined;
+    let nextSystem: LiveMapSystemState | undefined;
+    let systemBinding: HostedRegistryBinding | undefined;
     for (let index = 0; index < snapshot.registry.libraries.length; index += 1) {
       const entry = snapshot.registry.libraries[index];
       const encoded = snapshot.libraries[index];
@@ -1993,58 +2007,102 @@ function make_livemap_registry_engine(
         || entry.schemaDigest !== encoded.schemaDigest) {
         throw new Error("Client projection snapshot Library metadata is incompatible.");
       }
-      const binding = composition.bindings.get(entry.name);
-      if (binding === undefined) throw new Error("Client projection snapshot contains an unknown Library.");
+      const oldBinding = composition.bindings.get(entry.name);
+      if (oldBinding === undefined && hosted.byName.has(entry.name)) {
+        throw new Error("Client-local Library collides with the authority projection.");
+      }
+      const schema = HsonSchemaHandle.fromHson(entry.schema);
       const root = decode_hosted_root(encoded.root, HOSTED_MAX_SNAPSHOT_BYTES);
       admit_portable_hson_node(root, "Client projection snapshot");
-      const prepared = prepare_livemap_root(root, binding.mode === "document" ? "document" : "data");
-      if (prepared.mode !== binding.mode) throw new Error("Client projection snapshot root mode is incompatible.");
-      must_hson_schema_root(binding.schema, prepared.root);
-      if (binding.scope === "hson-internal") {
-        if (systemState === undefined || systemState.identity !== binding.identity) {
-          throw new Error("Client projection system state is unavailable.");
-        }
-        systemCandidate = Object.freeze({ root: prepared.root, value: must_projected_root_value(prepared.root) });
+      const prepared = prepare_livemap_root(root, entry.mode === "document" ? "document" : "data");
+      if (prepared.mode !== entry.mode) throw new Error("Client projection snapshot root mode is incompatible.");
+      must_hson_schema_root(schema, prepared.root);
+      if (entry.scope === "hson-internal") {
+        if (nextSystem !== undefined) throw new Error("Client projection has duplicate system state.");
+        nextSystem = prepare_system_state(Object.freeze({
+          key: INTERACTION_RESERVED_LIBRARY_KEY, transportName: entry.name,
+          root: prepared.root, hsonSchema: schema,
+        }));
+        systemBinding = Object.freeze({ name: entry.name, scope: "hson-internal", identity: systemIdentity,
+          mode: entry.mode, schema });
       } else {
-        const library = require_library(binding.identity as LiveMapLibraryIdentity);
+        const retained = oldBinding !== undefined && oldBinding.scope === undefined
+          && oldBinding.mode === entry.mode && oldBinding.schema.toHson() === entry.schema;
+        const previous = retained ? require_library(oldBinding.identity as LiveMapLibraryIdentity) : undefined;
+        const changed = previous === undefined || !canonical_graph_equal(previous.root, prepared.root);
+        const state = previous ?? make_livemap_library(prepared, schema);
+        const binding: HostedRegistryBinding = Object.freeze({ name: entry.name, identity: state.identity,
+          mode: entry.mode, schema });
         candidates.push(Object.freeze({
-          library,
-          root: prepared.root,
-          ...(prepared.documentOverlay === undefined ? {} : { documentOverlay: prepared.documentOverlay }),
-          ...(prepared.projectedOverlay === undefined ? {} : {
-            projectedOverlay: prepared.projectedOverlay,
-            projectedValue: must_projected_root_value(prepared.root),
-          }),
+          name: entry.name, state, binding, retained, changed,
+          root: changed ? prepared.root : state.root,
+          documentOverlay: changed ? prepared.documentOverlay : state.documentOverlay,
+          projectedOverlay: changed ? prepared.projectedOverlay : state.projectedOverlay,
+          projectedValue: entry.mode === "document" ? undefined
+            : changed ? must_projected_root_value(prepared.root) : state.projectedValue,
         }));
       }
     }
+    const projectedBindings = candidates.map((candidate) => candidate.binding);
+    const nextBindings = [...localBindings, ...projectedBindings,
+      ...(systemBinding === undefined ? [] : [systemBinding])];
+    const nextRegistry = make_hosted_registry(nextBindings);
+    const nextProjectedRegistry = make_hosted_registry([...projectedBindings,
+      ...(systemBinding === undefined ? [] : [systemBinding])]);
+    if (nextProjectedRegistry.digest !== snapshot.registryDigest
+      || JSON.stringify(nextProjectedRegistry) !== JSON.stringify(snapshot.registry)) {
+      throw new Error("Client projection snapshot registry is inconsistent.");
+    }
+    const projected = new Set(candidates.map((candidate) => candidate.state.identity));
+    const retired = [...composition.projected].filter((identity) => !projected.has(identity));
+    const beforeActive = aggregate_quid_locations(libraryRegistry.all());
+    const afterStates = [...localStates, ...candidates.map((candidate) => Object.freeze({
+      ...candidate.state, root: candidate.root,
+      documentOverlay: candidate.documentOverlay, projectedOverlay: candidate.projectedOverlay,
+      projectedValue: candidate.projectedValue,
+    }))];
+    const afterActive = aggregate_quid_locations(afterStates);
+    const ledger = stage_livemap_identity_epoch(mapIdentityEpoch.issued(), beforeActive.keys(), afterActive.keys());
     const previousRevision = mapRevision;
     const changedLibraries = Object.freeze(candidates
-      .filter((candidate) => !canonical_graph_equal(candidate.library.root, candidate.root))
-      .map((candidate) => candidate.library.identity));
-    // Keep the one runtime epoch and its monotonic issued ledger. Removed
-    // projected overlays retire their claims; no old claim can be minted again.
-    for (const candidate of candidates) Object.assign(candidate.library, {
-      root: candidate.root,
-      documentOverlay: candidate.documentOverlay,
-      projectedOverlay: candidate.projectedOverlay,
-      projectedValue: candidate.projectedValue,
-    });
-    for (const candidate of candidates) projectedCaptureContinuity.set(candidate.library.identity, Object.freeze({}));
-    if (systemCandidate !== undefined && systemState !== undefined) {
-      systemState.root = systemCandidate.root;
-      systemState.projectedValue = systemCandidate.value;
+      .filter((candidate) => candidate.changed)
+      .map((candidate) => candidate.state.identity));
+    const semanticChanged = retired.length > 0 || changedLibraries.length > 0
+      || (systemState === undefined) !== (nextSystem === undefined)
+      || (systemState !== undefined && nextSystem !== undefined
+        && !canonical_graph_equal(systemState.root, nextSystem.root));
+    // The complete candidate is validated before this single installation.
+    mapIdentityEpoch.install(ledger);
+    for (const candidate of candidates) {
+      if (candidate.changed) Object.assign(candidate.state, {
+        root: candidate.root, documentOverlay: candidate.documentOverlay,
+        projectedOverlay: candidate.projectedOverlay, projectedValue: candidate.projectedValue,
+      });
+      projectedCaptureContinuity.set(candidate.state.identity, Object.freeze({}));
     }
-    if (candidates.length > 0 || systemCandidate !== undefined) mapRevision += 1;
+    for (const identity of retired) projectedCaptureContinuity.delete(identity);
+    libraryRegistry.replace([...localStates, ...candidates.map((candidate) => candidate.state)]);
+    systemState = nextSystem;
+    hostedRegistry = nextRegistry;
+    hostedBindingsByIdentity = new Map(nextBindings.map((binding) => [binding.identity, binding]));
+    hostedBindingsByName = new Map(nextBindings.map((binding) => [binding.name, binding]));
+    if (semanticChanged) mapRevision += 1;
     hostedFence = Object.freeze({ ...snapshot.authority });
-    clientComposition = Object.freeze({ ...composition, authority: hostedFence, revision: snapshot.revision });
+    clientComposition = Object.freeze({ authority: hostedFence, revision: snapshot.revision,
+      registry: snapshot.registry, projected,
+      bindings: new Map([...projectedBindings, ...(systemBinding === undefined ? [] : [systemBinding])]
+        .map((binding) => [binding.name, binding])) });
     transitionController.invalidate();
+    afterTopologyInstall?.(Object.freeze(candidates.map((candidate) => Object.freeze({
+      name: candidate.name, identity: candidate.state.identity,
+    }))), Object.freeze(retired));
     const event = Object.freeze({
       previousRevision,
       revision: mapRevision,
-      libraries: Object.freeze(candidates.map((candidate) => candidate.library.identity)),
+      libraries: Object.freeze(candidates.filter((candidate) => candidate.retained)
+        .map((candidate) => candidate.state.identity)),
       changedLibraries,
-      continuity: "new-epoch" as const,
+      continuity: "same-epoch" as const,
     });
     enqueuePublication(() => {
       for (const observer of [...aggregateRestoreObservers]) observer(event);
@@ -2297,9 +2355,10 @@ function make_livemap_registry_engine(
     restorePortableLibraries: (snapshot) => restore_libraries_aggregate(snapshot),
     restoreHosted: restore_hosted_aggregate,
     restoreClientHosted: restore_client_hosted_aggregate,
-    restoreClientHostedManaged: (owner, snapshot) => transitionController.runManaged(
+    restoreClientHostedManaged: (owner, snapshot, afterTopologyInstall) => transitionController.runManaged(
       owner,
-      () => restore_client_hosted_aggregate(snapshot),
+      () => clientComposition === undefined ? restore_client_hosted_aggregate(snapshot)
+        : restore_client_projection(snapshot, afterTopologyInstall),
     ),
     restoreHostedManaged: (owner, snapshot) => transitionController.runManaged(
       owner,

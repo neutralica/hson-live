@@ -208,7 +208,7 @@ await check("actual socket aggregate bootstrap establishes one projected QUID-fr
   assert.equal(data_library(attached.client.map!, "colors").snap(["accent"]), "#000");
   const sent = attached.pair.serverSent.map((raw) => JSON.parse(raw) as Record<string, unknown>);
   assert.equal(sent.some((message) => message.type === "hello"), false);
-  assert.equal(sent.find((message) => message.type === "recovery-snapshot")?.format, "hson-locus-hosted-aggregate-message-v6");
+  assert.equal(sent.find((message) => message.type === "recovery-snapshot")?.format, "hson-locus-hosted-aggregate-message-v7");
   assert.equal((sent.find((message) => message.type === "recovery-snapshot")?.snapshot as { format: string }).format,
     "hson-authority-projection-snapshot-v1");
   assert.equal(attached.pair.serverSent.some((raw) => raw.includes("issuedQuids") || raw.includes("identityEpoch")), false);
@@ -323,7 +323,7 @@ await check("aggregate snapshot recovery restores a retained mirror in place and
   server.dispose();
 });
 
-await check("a state-only aggregate snapshot preserves the client identity epoch while retiring projected claims", async () => {
+await check("a state-only aggregate snapshot preserves unchanged document identity and Mirror resources", async () => {
   install_fake_document();
   const map = make_map();
   const server = create_locus_hosted_aggregate_socket_internal({ ...test_public_projection(map), map, maxHistoryBytes: 1 });
@@ -336,10 +336,10 @@ await check("a state-only aggregate snapshot preserves the client identity epoch
   const attached = await attach(server, { map: stale });
   assert.equal(attached.recovery.outcome, "snapshot");
   assert.equal(reflected.sourceRevision, 1);
-  assert.equal(reflected.diagnostics().updatesApplied, 1);
-  assert.equal(oldSubject.active, false);
+  assert.equal(reflected.diagnostics().updatesApplied, 0);
+  assert.equal(oldSubject.active, true);
   assert.equal(livemap_identity_epoch_accounting(page_library(stale).document).epoch, oldEpoch);
-  assert.equal(page_library(stale).document.byQuid("000008299"), undefined);
+  assert.ok(page_library(stale).document.byQuid("000008299"));
   assert.equal(reflected.status, "active");
   reflected.dispose();
   server.dispose();

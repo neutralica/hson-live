@@ -1,2 +1,2 @@
 /** @internal Exact current aggregate socket protocol discriminator. */
-export const LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT = "hson-locus-hosted-aggregate-message-v6" as const;
+export const LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT = "hson-locus-hosted-aggregate-message-v7" as const;
