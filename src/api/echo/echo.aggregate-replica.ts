@@ -484,7 +484,7 @@ function create_registry_echo_semantic_client_internal<
         || snapshot.authority.incarnationId !== incarnationId
         || snapshot.revision !== authorityRev || snapshot.projectionDigest !== nextDigest
         || composition.registryDigest !== message.registryDigest
-        || JSON.stringify(snapshot.libraries.map(({ root: _root, ...entry }) => entry)) !== JSON.stringify(message.libraries)
+        || JSON.stringify(snapshot.libraries.map(({ root: _root, css: _css, ...entry }) => entry)) !== JSON.stringify(message.libraries)
         || snapshot.htmlDocument !== message.htmlDocument
         || JSON.stringify(snapshot.systemFeatures) !== JSON.stringify(message.systemFeatures)
         || JSON.stringify(snapshot.writableDocuments) !== JSON.stringify(message.writableDocuments)) {

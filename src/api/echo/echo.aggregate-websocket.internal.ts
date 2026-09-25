@@ -239,7 +239,7 @@ function decode_projection_change(value: Record<string, unknown>, id: string): L
       || reconciliation.authority.incarnationId !== incarnationId
       || reconciliation.revision !== authorityRev || reconciliation.projectionDigest !== projectionDigest
       || composition.registryDigest !== registryDigest
-      || JSON.stringify(reconciliation.libraries.map(({ root: _root, ...entry }) => entry)) !== JSON.stringify(libraries)
+      || JSON.stringify(reconciliation.libraries.map(({ root: _root, css: _css, ...entry }) => entry)) !== JSON.stringify(libraries)
       || reconciliation.htmlDocument !== htmlDocument
       || JSON.stringify(reconciliation.systemFeatures) !== JSON.stringify(systemFeatures)
       || JSON.stringify(reconciliation.writableDocuments) !== JSON.stringify(writableDocuments)) {

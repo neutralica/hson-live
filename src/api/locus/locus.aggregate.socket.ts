@@ -415,8 +415,10 @@ export function create_locus_hosted_aggregate_socket_internal<
             || !connection.live || connection.effectiveProjection !== previous)) {
         throw new LocusProjectionUnavailableError();
       }
+      const added = next.libraries.filter((entry) => !previous.includesLibrary(entry.name));
       const reconcile = previous.libraries.some((entry) => !next.includesLibrary(entry.name))
-        || JSON.stringify(previous.systemFeatures) !== JSON.stringify(next.systemFeatures);
+        || JSON.stringify(previous.systemFeatures) !== JSON.stringify(next.systemFeatures)
+        || added.some((entry) => entry.mode === "document");
       const currentSequence = sessions.projection_sequence(sessionId);
       if (currentSequence === undefined) throw new LocusProjectionUnavailableError();
       if (next.digest === previous.digest) return Object.freeze({ changed: false, sequence: currentSequence,
@@ -426,7 +428,6 @@ export function create_locus_hosted_aggregate_socket_internal<
         return Object.freeze({ changed: true, sequence, digest: next.digest, authorityRev: locus.rev });
       }
       if (connection === undefined || connection.recoveryId === undefined) throw new LocusProjectionUnavailableError();
-      const added = next.libraries.filter((entry) => !previous.includesLibrary(entry.name));
       const snapshot = capture_selected_authority_projection_snapshot(options.map, next);
       const additions = added.map((entry) => {
         const captured = snapshot.libraries.find((candidate) => candidate.name === entry.name);
@@ -744,6 +745,7 @@ export function create_locus_hosted_aggregate_socket_internal<
         return Object.freeze({ name: entry.name, mode: entry.mode, schema: entry.schema, root: captured.root });
       });
       const first = additions[0];
+      const reconcile = added.some((entry) => entry.mode === "document");
       const change: LocusHostedProjectionChange = Object.freeze({
         type: "projection-change", id: request.id,
         logicalMapId: locus.logicalMapId, incarnationId: locus.incarnationId,
@@ -752,12 +754,12 @@ export function create_locus_hosted_aggregate_socket_internal<
         registryDigest: projectedRegistryDigest,
         libraries: effective.libraries, htmlDocument: effective.htmlDocument ?? null,
         systemFeatures: effective.systemFeatures, writableDocuments: effective.writableDocuments,
-        ...(first === undefined ? {} : { topology: Object.freeze({ library: first.name,
+        ...(reconcile ? { reconciliation: headSnapshot } : first === undefined ? {} : { topology: Object.freeze({ library: first.name,
           operation: Object.freeze({ kind: "library-add" as const, libraries: Object.freeze(additions) }) }) }),
-        ...(added.some((entry) => entry.mode === "document") && headSnapshot.system !== null
+        ...(!reconcile && added.some((entry) => entry.mode === "document") && headSnapshot.system !== null
           ? { system: headSnapshot.system.interactions } : {}),
       });
-      send(connection, change);
+      send(connection, change, reconcile ? HOSTED_MAX_SNAPSHOT_BYTES : maxWireBytes);
       if (!recovery_delivery_current(connection, activeRecovery)) return;
     }
     await options.internal?.beforeRecoveryCaughtUp?.();
@@ -1009,7 +1011,7 @@ export function create_locus_hosted_aggregate_socket_internal<
       let result: unknown | void;
       if (is_document_action(request.name)) {
         const { payload: _wirePayload, ...requestWithoutPayload } = request;
-        const validated = validate_action_request(Object.freeze({ ...requestWithoutPayload, ...(payload === undefined ? {} : { payload: hson_data_text(payload) }) }));
+        const validated = validate_action_request(Object.freeze({ ...requestWithoutPayload, ...(payload === undefined ? {} : { payload: hson_data_text(payload) }) }), origin);
         if (!validated.ok || validated.executeDocument === undefined) throw new Error(validated.ok ? "Hosted document action resolution was lost." : validated.message);
         await locus.mutate(validated.executeDocument);
         result = undefined;
@@ -1134,12 +1136,17 @@ export function create_locus_hosted_aggregate_socket_internal<
 
   function validate_action_request(
     request: Extract<HostedRequest, { type: "action" }>,
+    origin: LocusActionOrigin = Object.freeze({ kind: "direct" }),
   ): Readonly<{ ok: true; payload: ExactDataCarrier | undefined; executeDocument?: (draft: LocusHostedAggregateDraft) => void }> | Readonly<{ ok: false; code: string; message: string }> {
     try {
       const admittedPayload = request.payload === undefined ? undefined : admit_hson_data_input(request.payload);
       if (is_document_action(request.name)) {
         const record = exact_record(admittedPayload?.materialize(), `Hosted document action ${request.name}`);
         const libraryName = required_string(record.library);
+        if (origin.kind === "session" && (libraryName === undefined
+          || !sessions.projection(origin.sessionId)?.canAuthorDocument(libraryName))) {
+          return Object.freeze({ ok: false, code: "LOCUS_ACTION_FORBIDDEN", message: "Document authoring is unavailable for this session." });
+        }
         const identity = libraryName === undefined ? undefined : identitiesByName.get(libraryName);
         if (libraryName === undefined || identity === undefined) throw new Error("Hosted document action requires a known library.");
         const selected = options.map.lib(libraryName);
@@ -1587,6 +1594,7 @@ function document_action_target(
   });
   return Object.freeze({
     mode: "document" as const,
+    css: draft.css,
     document: Object.freeze({ attrs, content }),
   });
 }
@@ -1606,7 +1614,8 @@ function document_target_for_library(
 }
 
 function is_document_action(name: string): boolean {
-  return name === "document.attrs.set"
+  return name === "document.css"
+    || name === "document.attrs.set"
     || name === "document.attrs.drop"
     || name === "document.attrs.setMany"
     || name === "document.attrs.dropMany"

@@ -45,15 +45,16 @@ import { validate_document_path } from "./livemap.document.path.js";
 import { normalize_replacement_lineage } from "./livemap.document.lineage.js";
 import { clone_hson_graph_without_quids } from "./livemap.document.capture.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
-import { decode_portable_document_stylesheet, encode_portable_document_stylesheet, empty_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
+import { decode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
+import { canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
 
 export const HOSTED_REGISTRY_FORMAT = "hson-hosted-registry" as const;
 export const HOSTED_COMMIT_FORMAT = "hson-hosted-commit" as const;
 export const LIVEMAP_LIBRARIES_SNAPSHOT_FORMAT = "hson-livemap-libraries-snapshot" as const;
 export const HOSTED_GRAPH_OP_FORMAT = "hson-hosted-graph-op-v2" as const;
 export const HOSTED_CLIENT_GRAPH_OP_FORMAT = "hson-hosted-client-graph-op-v1" as const;
-export const PORTABLE_AGGREGATE_COMMIT_FORMAT = "hson-portable-aggregate-commit-v1" as const;
-export const PORTABLE_AGGREGATE_SNAPSHOT_FORMAT = "hson-portable-aggregate-snapshot-v1" as const;
+export const PORTABLE_AGGREGATE_COMMIT_FORMAT = "hson-portable-aggregate-commit-v2" as const;
+export const PORTABLE_AGGREGATE_SNAPSHOT_FORMAT = "hson-portable-aggregate-snapshot-v2" as const;
 export const HOSTED_ROOT_FORMAT = "hson-exact-value" as const;
 
 export const HOSTED_MAX_LIBRARIES = 1_024;
@@ -96,14 +97,14 @@ export type HostedRegistryBinding = Readonly<{
 
 export type HostedSemanticOperation = Readonly<{
   library: string;
-  operation: LiveMapAnyOp;
+  operation: LiveMapAnyOp | import("../../types/livemap.types.js").LiveMapCssOp;
 }>;
 
 export type HostedReplayOperation = Readonly<{
   library: string;
-  domain: "data" | "graph";
+  domain: "data" | "graph" | "css";
   kind: string;
-  format: "structural-json" | typeof HOSTED_GRAPH_OP_FORMAT;
+  format: "structural-json" | typeof HOSTED_GRAPH_OP_FORMAT | "hson-document-css-op";
   payload: string;
 }>;
 
@@ -135,6 +136,13 @@ export type PortableAggregateOperation =
     kind: Exclude<LiveMapGraphOp["op"], "ensure-quid">;
     format: typeof HOSTED_CLIENT_GRAPH_OP_FORMAT;
     payload: string;
+  }>
+  | Readonly<{
+    library: string;
+    domain: "css";
+    kind: import("../../types/livemap.types.js").LiveMapCssOp["kind"];
+    format: "hson-document-css-op";
+    payload: string;
   }>;
 
 export type PortableAggregateCommit = Readonly<{
@@ -150,9 +158,10 @@ export type PortableAggregateCommit = Readonly<{
 
 export type DecodedHostedOperation = Readonly<{
   library: HostedRegistryBinding;
-  semantic: LiveMapAnyOp;
+  semantic: LiveMapAnyOp | import("../../types/livemap.types.js").LiveMapCssOp;
   projected?: LiveMapProjectedDataOp;
   graph?: LiveMapGraphOp | LiveMapProjectedGraphEnsureQuidOp;
+  css?: import("../../types/livemap.types.js").LiveMapCssOp;
 }>;
 
 export class HostedAggregateRepresentationError extends Error {
@@ -213,7 +222,7 @@ export function make_hosted_commit(
     rev: number;
     operations: readonly Readonly<{
       target: Readonly<{ library?: LiveMapLibraryIdentity; system?: LiveMapSystemIdentity }>;
-      operation: LiveMapAnyOp;
+      operation: LiveMapAnyOp | import("../../types/livemap.types.js").LiveMapCssOp;
       projected?: LiveMapProjectedDataOp;
     }>[];
   }>,
@@ -238,6 +247,7 @@ export function make_hosted_commit(
       });
     const operation = evidence.domain === "data"
       ? materialize_livemap_projected_op(require_single_projected_operation(evidence.payload))
+      : evidence.domain === "css" ? decode_hosted_css_operation(evidence.payload, binding.mode)
       : decode_hosted_graph_operation(evidence.payload, binding.mode);
     semantic.push(Object.freeze({ library: binding.name, operation }));
     replay.push(evidence);
@@ -328,7 +338,16 @@ export function decode_hosted_commit(
     }
     const binding = bindingsByName.get(semantic.library);
     if (binding === undefined) throw new HostedAggregateRepresentationError("Hosted commit references an unknown Library.", index);
-    const operation = semantic.operation as LiveMapAnyOp;
+    const operation = semantic.operation as LiveMapAnyOp | import("../../types/livemap.types.js").LiveMapCssOp;
+    if (evidence.domain === "css") {
+      const css = decode_hosted_css_operation(String(evidence.payload), binding.mode);
+      const expected = encode_hosted_operation(binding.name, binding.mode, css);
+      if (evidence.kind !== css.kind || evidence.format !== expected.format
+        || evidence.payload !== expected.payload || !hosted_semantic_equal(operation, css)) {
+        throw new HostedAggregateRepresentationError("Hosted CSS operation and evidence disagree.", index);
+      }
+      return Object.freeze({ library: binding, semantic: css, css });
+    }
     if (evidence.domain === "data") {
       if (binding.mode === "document" || evidence.format !== LIVEMAP_STRUCTURAL_JSON_FORMAT) {
         throw new HostedAggregateRepresentationError("Hosted data replay evidence is incompatible.", index);
@@ -378,13 +397,19 @@ export function make_portable_aggregate_commit(authority: HostedAggregateCommit)
       throw new HostedAggregateRepresentationError("Authority history operation evidence is incomplete.");
     }
     const operation = entry.operation;
-    if ("domain" in operation && operation.op === "ensure-quid") continue;
+    if ("domain" in operation && operation.domain === "graph" && operation.op === "ensure-quid") continue;
+    if (evidence.domain === "css") {
+      if (!("domain" in operation) || operation.domain !== "css") throw new HostedAggregateRepresentationError("Authority CSS operation domains disagree.");
+      operations.push(Object.freeze({ library: entry.library, domain: "css", kind: operation.kind,
+        format: "hson-document-css-op", payload: evidence.payload }));
+      continue;
+    }
     if (evidence.domain === "data") {
       if ("domain" in operation) throw new HostedAggregateRepresentationError("Authority history operation domains disagree.");
       operations.push(Object.freeze({ library: entry.library, domain: "data", kind: operation.kind, format: "structural-json", payload: evidence.payload }));
       continue;
     }
-    if (!("domain" in operation) || evidence.domain !== "graph") {
+    if (!("domain" in operation) || operation.domain !== "graph" || evidence.domain !== "graph") {
       throw new HostedAggregateRepresentationError("Authority history operation domains disagree.");
     }
     operations.push(Object.freeze({
@@ -443,6 +468,14 @@ export function decode_portable_aggregate_commit(
       }
       return Object.freeze({ library: binding, semantic: materialize_livemap_projected_op(projected), projected });
     }
+    if (evidence.domain === "css") {
+      if (evidence.format !== "hson-document-css-op" || binding.mode !== "document") throw incompatible_graph();
+      const css = decode_hosted_css_operation(evidence.payload, binding.mode);
+      if (css.kind !== evidence.kind || JSON.stringify(css) !== evidence.payload) {
+        throw new HostedAggregateRepresentationError("Hosted client CSS operation is noncanonical.", index);
+      }
+      return Object.freeze({ library: binding, semantic: css, css });
+    }
     if (evidence.domain !== "graph" || evidence.format !== HOSTED_CLIENT_GRAPH_OP_FORMAT || binding.mode !== "document") {
       throw incompatible_graph();
     }
@@ -484,7 +517,7 @@ export function assert_portable_aggregate_snapshot_shape(snapshot: PortableAggre
     || typeof authority.incarnationId !== "string" || !authority.incarnationId) {
     throw new HostedAggregateRepresentationError("Hosted client snapshot envelope is malformed.");
   }
-  assert_libraries_snapshot_entries(record, true);
+  assert_libraries_snapshot_entries(record);
   if (snapshot.registryDigest !== snapshot.registry.digest
     || snapshot.libraries.length !== snapshot.registry.libraries.length) {
     throw new HostedAggregateRepresentationError("Hosted client snapshot registry is malformed.");
@@ -502,9 +535,7 @@ export function portable_aggregate_snapshot_as_local(snapshot: PortableAggregate
     revision: snapshot.revision,
     registry: snapshot.registry,
     registryDigest: snapshot.registryDigest,
-    libraries: Object.freeze(snapshot.libraries.map((entry) => entry.mode === "document" && entry.css === undefined
-      ? Object.freeze({ ...entry, css: encode_portable_document_stylesheet(empty_portable_document_stylesheet()) })
-      : entry)),
+    libraries: snapshot.libraries,
   });
 }
 
@@ -565,7 +596,7 @@ export function assert_local_libraries_snapshot_shape(snapshot: LocalLibrariesCo
   assert_libraries_snapshot_shape(snapshot);
 }
 
-function assert_libraries_snapshot_entries(record: Readonly<Record<string, unknown>>, allowProjectionWithoutCss = false): void {
+function assert_libraries_snapshot_entries(record: Readonly<Record<string, unknown>>): void {
   const registry = exact_record(record.registry, "Hosted snapshot registry");
   exact_keys(registry, ["format", "libraries", "digest"], "Hosted snapshot registry");
   if (!Array.isArray(registry.libraries) || !Array.isArray(record.libraries)) {
@@ -582,10 +613,10 @@ function assert_libraries_snapshot_entries(record: Readonly<Record<string, unkno
   }
   for (const entry of record.libraries) {
     const item = exact_record(entry, "Hosted snapshot Library");
-    exact_keys(item, entry.mode === "document" && (!allowProjectionWithoutCss || entry.css !== undefined)
+    exact_keys(item, entry.mode === "document"
       ? ["name", "mode", "schema", "schemaDigest", "root", "css"]
       : ["name", "mode", "schema", "schemaDigest", "root"], "Hosted snapshot Library");
-    if (entry.mode === "document" && entry.css !== undefined) decode_portable_document_stylesheet(item.css);
+    if (entry.mode === "document") decode_portable_document_stylesheet(item.css);
   }
 }
 
@@ -606,12 +637,18 @@ export function assert_hosted_libraries_snapshot_shape(snapshot: HostedLiveMapSn
   assert_libraries_snapshot_shape(semantic);
 }
 
-function encode_hosted_operation(name: string, mode: LiveMapRootMode, operation: LiveMapAnyOp): HostedReplayOperation {
+function encode_hosted_operation(name: string, mode: LiveMapRootMode, operation: LiveMapAnyOp | import("../../types/livemap.types.js").LiveMapCssOp): HostedReplayOperation {
   if (!("domain" in operation)) {
     if (mode === "document") throw new HostedAggregateRepresentationError("Data operation is incompatible with a document Library.");
     const projected = projected_operation_from_semantic(operation);
     const encoded = encode_livemap_replay_transport([projected]);
     return Object.freeze({ library: name, domain: "data", kind: operation.kind, format: encoded.format, payload: encoded.payload });
+  }
+  if (operation.domain === "css") {
+    if (mode !== "document") throw new HostedAggregateRepresentationError("CSS operation requires a document Library.");
+    const css = canonical_portable_document_css_op(operation);
+    return Object.freeze({ library: name, domain: "css", kind: css.kind,
+      format: "hson-document-css-op", payload: JSON.stringify(css) });
   }
   if (mode === "document") {
     if (operation.op === "ensure-quid" && "projected" in operation.target) {
@@ -627,6 +664,17 @@ function encode_hosted_operation(name: string, mode: LiveMapRootMode, operation:
     format: HOSTED_GRAPH_OP_FORMAT,
     payload: encode_hosted_graph_operation(operation),
   });
+}
+
+function decode_hosted_css_operation(payload: string, mode: LiveMapRootMode): import("../../types/livemap.types.js").LiveMapCssOp {
+  if (mode !== "document" || typeof payload !== "string" || new TextEncoder().encode(payload).byteLength > HOSTED_MAX_COMMIT_BYTES) {
+    throw new HostedAggregateRepresentationError("Hosted CSS operation is incompatible or oversized.");
+  }
+  let parsed: unknown;
+  try { parsed = JSON.parse(payload); } catch { throw new HostedAggregateRepresentationError("Hosted CSS operation is malformed."); }
+  const css = canonical_portable_document_css_op(parsed);
+  if (JSON.stringify(css) !== payload) throw new HostedAggregateRepresentationError("Hosted CSS operation is noncanonical.");
+  return css;
 }
 
 function projected_operation_from_semantic(op: LiveMapDataOp): LiveMapProjectedDataOp {

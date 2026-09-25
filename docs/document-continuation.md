@@ -13,9 +13,10 @@ Authored `<style>` nodes remain ordinary document nodes. Local `page.css` and
 the continued `tree.css.global` read and write one semantic stylesheet; later
 commits update the same browser realization. QUID CSS remains runtime-local in
 a separate later style host. Disposal stops the stylesheet observer and leaves
-the document Library and caller-owned DOM in place. Hosted projected CSS and
-authority-dispatched CSS authoring await Phase C; synchronous hosted global
-writes are rejected.
+the document Library and caller-owned DOM in place. Hosted cuts project CSS
+with the selected document, and Echo applies live, replayed, and fallback CSS
+through LiveMap before the adopted style is updated. Synchronous hosted global
+writes are rejected; `tree.async.css.global` uses the document authority path.
 
 The required DOM is defined by hson-live's browser-realization contract, not by
 public `.toHtml()`. The latter remains Hson transport HTML and may contain
@@ -106,6 +107,7 @@ const continuation = await continue_hosted_document({
 });
 
 await continuation.tree.async.attrs.set("data-state", "accepted");
+await continuation.tree.async.css.global.sel("body").setProp("color", "navy");
 ```
 
 The caller supplies a replica-bearing `Echo` whose exact map already contains

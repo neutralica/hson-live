@@ -33,7 +33,7 @@ export type LiveMapSemanticCheckpoint = Readonly<{
   authority: HostedAuthorityFence;
   revision: number;
   registry: HostedRegistry;
-  libraries: readonly Readonly<{ name: string; root: HsonNode }>[];
+  libraries: readonly Readonly<{ name: string; root: HsonNode; css?: import("../../types/document-css.types.js").DocumentCssRecord }>[];
 }>;
 
 type InternalLiveMapOwner = Readonly<{
@@ -101,7 +101,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   captureSelectedHosted: (names: readonly string[], includeSystem: boolean) => Readonly<{
     authority: import("./livemap.hosted.js").HostedAuthorityFence;
     revision: number;
-    libraries: readonly Readonly<{ name: string; root: Readonly<{ format: "hson-exact-value"; payload: string }> }>[];
+    libraries: readonly Readonly<{ name: string; root: Readonly<{ format: "hson-exact-value"; payload: string }>; css?: import("../../types/document-css.types.js").DocumentCssRecord }>[];
     system: Readonly<{ format: "hson-exact-value"; payload: string }> | null;
   }>;
   /** Bind a fixed authority-projected subset of this client map. @internal */

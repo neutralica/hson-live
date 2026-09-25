@@ -689,6 +689,10 @@ function make_livemap_registry_engine(
     const prevRev = mapRevision;
     const preparedIdentityGeneration = identityGeneration;
     const candidates = new Map<LiveMapLibraryIdentity, AggregateCandidate>();
+    const cssCandidates = new Map<LiveMapLibraryIdentity, Readonly<{
+      before: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
+      after: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
+    }>>();
     let systemCandidate: AggregateSystemCandidate | undefined;
     const replayingSystem = writes.some((write) => write.kind === "replay-data");
     const initialActiveQuids = aggregate_quid_locations(libraryRegistry.all());
@@ -850,7 +854,7 @@ function make_livemap_registry_engine(
         };
         const candidate = systemCandidate;
         const target = aggregate_system_target(system.identity, write.target.path);
-        if (write.kind === "graph" || write.kind === "ensure-quid") {
+        if (write.kind === "graph" || write.kind === "ensure-quid" || write.kind === "css") {
           throw new Error("Transactional Hson system state cannot own graph identity.");
         }
         if (write.kind === "replay-data") {
@@ -889,6 +893,21 @@ function make_livemap_registry_engine(
       }
       const library = require_library(write.target.library);
       const target = aggregate_target(library.identity, write.target.path);
+      if (write.kind === "css") {
+        if (library.mode !== "document" || target.path.length !== 0) {
+          throw new Error("CSS operations require a document Library root.");
+        }
+        const operation = canonical_portable_document_css_op(write.operation);
+        const current = cssCandidates.get(library.identity)?.after ?? stylesheet(library.identity);
+        const next = apply_portable_document_css_op(current, operation);
+        if (!portable_document_stylesheet_equal(current, next)) {
+          cssCandidates.set(library.identity, Object.freeze({
+            before: cssCandidates.get(library.identity)?.before ?? current, after: next,
+          }));
+          operations.push(Object.freeze({ target, operation }));
+        }
+        continue;
+      }
       const candidate = candidate_for(library.identity);
       if (write.kind === "graph") {
         if (!is_aggregate_document_candidate(candidate)) {
@@ -1137,6 +1156,7 @@ function make_livemap_registry_engine(
       baseStillCurrent: () => mapRevision === prevRev
         && identityGeneration === preparedIdentityGeneration
         && [...candidates.values()].every((candidate) => canonical_graph_equal(candidate.library.root, candidate.baseRoot))
+        && [...cssCandidates].every(([identity, candidate]) => stylesheet(identity) === candidate.before)
         && (systemCandidate === undefined
           || canonical_graph_equal(systemCandidate.system.root, systemCandidate.baseRoot)),
       install: () => {
@@ -1159,6 +1179,7 @@ function make_livemap_registry_engine(
             });
           }
         }
+        for (const [identity, candidate] of cssCandidates) require_library(identity).stylesheet = candidate.after;
         if (systemCandidate !== undefined) {
           overwrite_hson_node(systemCandidate.system.root, systemCandidate.nextRoot);
           systemCandidate.system.projectedValue = systemCandidate.value;
@@ -1320,6 +1341,7 @@ function make_livemap_registry_engine(
     const hosted = require_hosted_state();
     const projected = new Set<LiveMapLibraryIdentity>();
     const bindings = new Map<string, HostedRegistryBinding>();
+    const initialCss: Array<readonly [LiveMapLibraryIdentity, import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet]> = [];
     for (let index = 0; index < snapshot.registry.libraries.length; index += 1) {
       const entry = snapshot.registry.libraries[index];
       const root = snapshot.libraries[index];
@@ -1342,10 +1364,12 @@ function make_livemap_registry_engine(
       bindings.set(entry.name, binding);
       if (binding.scope !== "hson-internal") {
         const identity = binding.identity as LiveMapLibraryIdentity;
+        if (entry.mode === "document") initialCss.push([identity, decode_portable_document_stylesheet(root.css)]);
         projected.add(identity);
         projectedCaptureContinuity.set(identity, Object.freeze({}));
       }
     }
+    for (const [identity, css] of initialCss) require_library(identity).stylesheet = css;
     clientComposition = Object.freeze({
       authority: Object.freeze({ ...snapshot.authority }),
       registry: snapshot.registry,
@@ -1490,7 +1514,7 @@ function make_livemap_registry_engine(
   function commit_stylesheet(libraryIdentity: LiveMapLibraryIdentity, operation: LiveMapCssOp): LiveMapAggregateCommit {
     if (clientComposition === undefined) transitionController.assertPublicMutationAllowed();
     else if (clientComposition.projected.has(libraryIdentity)) {
-      throw new Error("Projected document CSS awaits hosted CSS parity.");
+      throw new Error("Projected document CSS requires authority authoring.");
     }
     const state = require_library(libraryIdentity);
     const current = stylesheet(libraryIdentity);
@@ -1569,7 +1593,8 @@ function make_livemap_registry_engine(
       }
       const state = require_library(binding.identity as LiveMapLibraryIdentity);
       return Object.freeze({ name, root: encode_hosted_root(
-        clone_hson_graph_without_quids(state.root), HOSTED_MAX_SNAPSHOT_BYTES) });
+        clone_hson_graph_without_quids(state.root), HOSTED_MAX_SNAPSHOT_BYTES),
+        ...(state.mode === "document" ? { css: encode_portable_document_stylesheet(stylesheet(state.identity)) } : {}) });
     });
     const system = includeSystem ? (() => {
       if (systemState === undefined) throw new Error("Selected hosted system state is unavailable.");
@@ -1637,7 +1662,8 @@ function make_livemap_registry_engine(
       const state = binding.scope === "hson-internal"
         ? systemState : require_library(binding.identity as LiveMapLibraryIdentity);
       if (state === undefined) throw new Error("Checkpoint system state is unavailable.");
-      return Object.freeze({ name: entry.name, root: clone_hson_graph_without_quids(state.root) });
+      return Object.freeze({ name: entry.name, root: clone_hson_graph_without_quids(state.root),
+        ...(entry.mode === "document" ? { css: encode_portable_document_stylesheet(stylesheet(state.identity as LiveMapLibraryIdentity)) } : {}) });
     });
     if (mapRevision !== revision || hostedFence !== authority) {
       throw new Error("Authority changed during checkpoint capture.");
@@ -1674,10 +1700,10 @@ function make_livemap_registry_engine(
       }
       const state = require_library(binding.identity as LiveMapLibraryIdentity);
       return Object.freeze({ kind: "application" as const, state, prepared,
-        css: prepared.mode === "document" ? empty_portable_document_stylesheet() : undefined,
+        css: prepared.mode === "document" ? decode_portable_document_stylesheet(item.css) : undefined,
         changed: !canonical_graph_equal(state.root, prepared.root)
           || (prepared.mode === "document" && !portable_document_stylesheet_equal(stylesheet(state.identity),
-            empty_portable_document_stylesheet())),
+            decode_portable_document_stylesheet(item.css))),
         projectedValue: prepared.projectedOverlay === undefined
           ? undefined : must_projected_root_value(prepared.root) });
     });
@@ -2057,6 +2083,7 @@ function make_livemap_registry_engine(
       projectedValue?: OrderedProjectedValue;
       css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
       retained: boolean;
+      graphChanged: boolean;
       changed: boolean;
       binding: HostedRegistryBinding;
     }>> = [];
@@ -2092,21 +2119,21 @@ function make_livemap_registry_engine(
         const retained = oldBinding !== undefined && oldBinding.scope === undefined
           && oldBinding.mode === entry.mode && oldBinding.schema.toHson() === entry.schema;
         const previous = retained ? require_library(oldBinding.identity as LiveMapLibraryIdentity) : undefined;
-        const css = entry.mode === "document" ? encoded.css === undefined
-          ? empty_portable_document_stylesheet() : decode_portable_document_stylesheet(encoded.css)
+        const css = entry.mode === "document" ? decode_portable_document_stylesheet(encoded.css)
           : undefined;
-        const changed = previous === undefined || !canonical_graph_equal(previous.root, prepared.root)
-          || (css !== undefined && !portable_document_stylesheet_equal(stylesheet(previous.identity), css));
         const state = previous ?? make_livemap_library(prepared, schema);
+        const graphChanged = previous === undefined || !canonical_graph_equal(previous.root, prepared.root);
+        const changed = graphChanged
+          || (css !== undefined && !portable_document_stylesheet_equal(stylesheet(state.identity), css));
         const binding: HostedRegistryBinding = Object.freeze({ name: entry.name, identity: state.identity,
           mode: entry.mode, schema });
         candidates.push(Object.freeze({
-          name: entry.name, state, binding, retained, changed,
-          root: changed ? prepared.root : state.root,
-          documentOverlay: changed ? prepared.documentOverlay : state.documentOverlay,
-          projectedOverlay: changed ? prepared.projectedOverlay : state.projectedOverlay,
+          name: entry.name, state, binding, retained, graphChanged, changed,
+          root: graphChanged ? prepared.root : state.root,
+          documentOverlay: graphChanged ? prepared.documentOverlay : state.documentOverlay,
+          projectedOverlay: graphChanged ? prepared.projectedOverlay : state.projectedOverlay,
           projectedValue: entry.mode === "document" ? undefined
-            : changed ? must_projected_root_value(prepared.root) : state.projectedValue,
+            : graphChanged ? must_projected_root_value(prepared.root) : state.projectedValue,
           css,
         }));
       }
@@ -2134,9 +2161,9 @@ function make_livemap_registry_engine(
     const ledger = stage_livemap_identity_epoch(mapIdentityEpoch.issued(), beforeActive.keys(), afterActive.keys());
     const previousRevision = mapRevision;
     const changedLibraries = Object.freeze(candidates
-      .filter((candidate) => candidate.changed)
+      .filter((candidate) => candidate.graphChanged)
       .map((candidate) => candidate.state.identity));
-    const semanticChanged = retired.length > 0 || changedLibraries.length > 0
+    const semanticChanged = retired.length > 0 || candidates.some((candidate) => candidate.changed)
       || (systemState === undefined) !== (nextSystem === undefined)
       || (systemState !== undefined && nextSystem !== undefined
         && !canonical_graph_equal(systemState.root, nextSystem.root));
@@ -2197,6 +2224,10 @@ function make_livemap_registry_engine(
       }
     } else if (input.prevRev !== mapRevision) throw new LiveMapRevError(input.prevRev, mapRevision);
     const writes: LiveMapAggregateWrite[] = decoded.map((entry): LiveMapAggregateWrite => {
+      if (entry.css !== undefined) return Object.freeze({
+        target: aggregate_target(entry.library.identity as LiveMapLibraryIdentity, []),
+        kind: "css", operation: entry.css,
+      });
       const path = "path" in entry.semantic ? entry.semantic.path : (
         "target" in entry.semantic ? entry.semantic.target.path : []
       );
@@ -2278,6 +2309,10 @@ function make_livemap_registry_engine(
       throw new LiveMapRevError(input.prevRev, mapRevision);
     }
     const writes: LiveMapAggregateWrite[] = decoded.map((entry): LiveMapAggregateWrite => {
+      if (entry.css !== undefined) return Object.freeze({
+        target: aggregate_target(entry.library.identity as LiveMapLibraryIdentity, []),
+        kind: "css", operation: entry.css,
+      });
       const path = "path" in entry.semantic ? entry.semantic.path : (
         "target" in entry.semantic ? entry.semantic.target.path : []
       );

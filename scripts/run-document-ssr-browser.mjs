@@ -32,6 +32,8 @@ function chromeExecutable() {
 let server;
 let librariesSocketServer;
 let librariesLocus;
+let cssSocketServer;
+let cssLocus;
 let chrome;
 let timeoutId;
 let moduleSource = "";
@@ -149,13 +151,65 @@ try {
   if (librariesSocketAddress === null || typeof librariesSocketAddress === "string") throw new Error("Libraries browser socket server has no TCP address.");
   const librariesSocketUrl = `ws://127.0.0.1:${librariesSocketAddress.port}`;
 
+  const cssMap = hson.liveMap.fromLibraries({ page: { document: '<html <head/> <body <p id="hosted-css-target" "hosted"/>/>/>' } });
+  cssMap.lib("page").css.sel("#hosted-css-target").set.color("rgb(1, 2, 3)");
+  cssLocus = hsonLocus.create({ map: cssMap,
+    exposure: [{ library: "page", exposure: "client-public" }],
+    defaultProjection: { libraries: ["page"], htmlDocument: "page" },
+    authorizeProjection: () => ({ libraries: ["page"], writableDocuments: ["page"] }),
+  });
+  const cssSessionSent = [];
+  let receiveCssSession;
+  const closeCssSession = cssLocus.connect({
+    send(raw) { cssSessionSent.push(JSON.parse(raw)); }, close() {},
+    onMessage(listener) { receiveCssSession = listener; return () => { receiveCssSession = undefined; }; },
+    onClose() { return () => {}; },
+  });
+  receiveCssSession(JSON.stringify({ type: "session-create", id: "css-ssr" }));
+  const cssIssued = cssSessionSent.find((message) => message.type === "session-created");
+  if (!cssIssued) throw new Error("Styled SSR session was not authorized.");
+  const cssCut = render_hosted_document({ authority: cssLocus, sessionId: cssIssued.sessionId });
+  closeCssSession();
+  await cssLocus.mutate((draft) => { draft.lib("page").css({ domain: "css", kind: "rule", ruleKey: "sel:#hosted-css-target", scopes: [],
+    rule: { ruleKey: "sel:#hosted-css-target", selector: "#hosted-css-target", scopes: [], declarations: [["color", "rgb(4, 5, 6)"]] } }); });
+  cssSocketServer = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  await new Promise((resolveListen, rejectListen) => {
+    cssSocketServer.once("listening", resolveListen);
+    cssSocketServer.once("error", rejectListen);
+  });
+  cssSocketServer.on("connection", (socket) => cssLocus.connect({
+    send(raw) { socket.send(raw); }, close(code, reason) { socket.close(code, reason); },
+    onMessage(listener) { const handler = (data) => listener(data.toString()); socket.on("message", handler); return () => socket.off("message", handler); },
+    onClose(listener) { socket.on("close", listener); return () => socket.off("close", listener); },
+  }));
+  const cssSocketAddress = cssSocketServer.address();
+  if (cssSocketAddress === null || typeof cssSocketAddress === "string") throw new Error("Styled browser socket server has no TCP address.");
+  const cssSocketUrl = `ws://127.0.0.1:${cssSocketAddress.port}`;
+
   let reportResult;
   const browserResult = new Promise((resolveResult) => { reportResult = resolveResult; });
   server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
     if (url.pathname === "/__state") {
       response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ local, localLibraries, full, libraries, librariesSocketUrl, credential: issued.credential, encoded }));
+      response.end(JSON.stringify({ local, localLibraries, full, libraries, librariesSocketUrl, credential: issued.credential,
+        cssCut, cssSocketUrl, cssCredential: cssIssued.credential, encoded }));
+      return;
+    }
+    if (url.pathname === "/__css-mutate") {
+      await cssLocus.mutate((draft) => { draft.lib("page").css({ domain: "css", kind: "rule", ruleKey: "sel:#hosted-css-target", scopes: [],
+        rule: { ruleKey: "sel:#hosted-css-target", selector: "#hosted-css-target", scopes: [], declarations: [["color", "rgb(7, 8, 9)"]] } }); });
+      response.writeHead(204).end();
+      return;
+    }
+    if (url.pathname === "/__css-revoke") {
+      await cssLocus.sessions.updateProjection(cssIssued.sessionId, { libraries: [] });
+      response.writeHead(204).end();
+      return;
+    }
+    if (url.pathname === "/__css-regrant") {
+      await cssLocus.sessions.updateProjection(cssIssued.sessionId, { libraries: ["page"], htmlDocument: "page" });
+      response.writeHead(204).end();
       return;
     }
     if (url.pathname === "/__result") {
@@ -234,7 +288,9 @@ try {
     await closed;
   }
   await new Promise((resolveClose) => librariesSocketServer?.close(resolveClose) ?? resolveClose());
+  await new Promise((resolveClose) => cssSocketServer?.close(resolveClose) ?? resolveClose());
   await new Promise((resolveClose) => server?.close(resolveClose) ?? resolveClose());
   librariesLocus?.dispose();
+  cssLocus?.dispose();
   await rm(fixtureRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }

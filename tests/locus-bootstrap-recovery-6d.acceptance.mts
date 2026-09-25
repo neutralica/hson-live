@@ -94,7 +94,7 @@ function data_library(map: LiveMap | undefined, name: string) {
   assert.equal(data_library(client.map, "local").snap(["value"]), "LOCAL_BOOTSTRAP");
   const initialSnapshot = pair.serverSent.find((raw) => JSON.parse(raw).type === "recovery-snapshot");
   assert.ok(initialSnapshot);
-  assert.equal(JSON.parse(initialSnapshot).snapshot.format, "hson-authority-projection-snapshot-v1");
+  assert.equal(JSON.parse(initialSnapshot).snapshot.format, "hson-authority-projection-snapshot-v2");
   assert.equal(JSON.parse(initialSnapshot).format, LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT);
   hidden_absent(initialSnapshot);
   const local = data_library(client.map, "local");

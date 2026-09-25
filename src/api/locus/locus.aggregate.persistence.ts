@@ -13,6 +13,7 @@ import type { LiveMapSemanticCheckpoint } from "../livemap/livemap.internal.js";
 import type { HostedRegistry, HostedRegistryEntry } from "../livemap/livemap.hosted.js";
 import { hosted_sha256 } from "../livemap/livemap.hosted.js";
 import { HsonSchema } from "../schema/hson-schema.js";
+import { decode_portable_document_stylesheet, encode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
 import {
   CHECKPOINT_CHUNK_MAX_BYTES, CHECKPOINT_MAX_CHUNKS, CHECKPOINT_MAX_MANIFEST_BYTES,
   CheckpointTokenDecoder, encode_checkpoint_chunks, validate_checkpoint_chunk,
@@ -26,12 +27,12 @@ import {
 import { LocusPersistenceAppendUncertainError, LocusPersistenceError } from "./locus.persistence.error.js";
 
 export type LocusDurableAggregateCommit = Readonly<Omit<PortableAggregateCommit, "format"> & {
-  format: "hson-livemap-durable-commit-v1";
+  format: "hson-livemap-durable-commit-v2";
 }>;
 
-/** The active v2 manifest is the atomic checkpoint decision. */
+/** The active manifest is the atomic checkpoint decision. */
 export type LocusHostedAggregatePersistedManifest = Readonly<{
-  format: "hson-locus-durable-aggregate-checkpoint-v2";
+  format: "hson-locus-durable-aggregate-checkpoint-v3";
   checkpointId: string;
   logicalMapId: string;
   incarnationId: string;
@@ -45,7 +46,7 @@ type AnyCheckpoint = LocusHostedAggregatePersistedManifest;
 
 /** Internal storage wrapper around one QUID-free semantic transition. */
 export type LocusHostedAggregatePersistedCommit = Readonly<{
-  format: "hson-locus-durable-aggregate-record-v1";
+  format: "hson-locus-durable-aggregate-record-v2";
   logicalMapId: string;
   incarnationId: string;
   mapKind: "hosted-aggregate";
@@ -173,7 +174,10 @@ export async function write_semantic_checkpoint(
     if (entry === undefined || library === undefined || entry.name !== library.name) throw invalid_state();
     const { schema, ...fixed } = entry;
     metadata.push(fixed);
-    for (const [part, value] of [["schema", schema], ["root", library.root]] as const) {
+    const parts: readonly (readonly ["schema" | "root" | "css", unknown])[] = entry.mode === "document"
+      ? [["schema", schema], ["root", library.root], ["css", library.css]]
+      : [["schema", schema], ["root", library.root]];
+    for (const [part, value] of parts) {
       for (const { chunk, descriptor } of encode_checkpoint_chunks(id, checkpoint.revision, entry.name, part, value)) {
         if (descriptors.length >= CHECKPOINT_MAX_CHUNKS) throw new Error("Checkpoint chunk count exceeds its supported bound.");
         await adapter.putCheckpointChunk(chunk);
@@ -182,7 +186,7 @@ export async function write_semantic_checkpoint(
     }
   }
   const manifest: LocusHostedAggregatePersistedManifest = Object.freeze({
-    format: "hson-locus-durable-aggregate-checkpoint-v2",
+    format: "hson-locus-durable-aggregate-checkpoint-v3",
     checkpointId: id,
     logicalMapId: checkpoint.authority.logicalMapId,
     incarnationId: checkpoint.authority.incarnationId,
@@ -204,7 +208,7 @@ export async function write_semantic_checkpoint(
     let active: LocusHostedAggregatePersistedState | undefined;
     try { active = await adapter.load(checkpoint.authority.logicalMapId); }
     catch { throw new LocusPersistenceError("LOCUS_PERSISTENCE_CHECKPOINT_UNCERTAIN", "Checkpoint activation outcome is uncertain.", { cause }); }
-    if (active?.checkpoint.format === "hson-locus-durable-aggregate-checkpoint-v2"
+    if (active?.checkpoint.format === "hson-locus-durable-aggregate-checkpoint-v3"
       && active.checkpoint.checkpointId === id) {
       // Exactly this candidate won despite the transport error.
     } else if ((active === undefined ? undefined : active_checkpoint_id(active.checkpoint)) === expectedId) {
@@ -219,7 +223,7 @@ export async function write_semantic_checkpoint(
 
 export function assert_checkpoint_manifest(value: Record<string, unknown>, requestedLogicalMapId: string): LocusHostedAggregatePersistedManifest {
   if (!exact_keys(value, ["format", "checkpointId", "logicalMapId", "incarnationId", "mapKind", "registryDigest", "rev", "registry", "chunks"])
-    || value.format !== "hson-locus-durable-aggregate-checkpoint-v2"
+    || value.format !== "hson-locus-durable-aggregate-checkpoint-v3"
     || typeof value.checkpointId !== "string" || !/^[0-9a-f-]{36}$/u.test(value.checkpointId)
     || value.logicalMapId !== requestedLogicalMapId || requestedLogicalMapId.length > CHECKPOINT_MAX_MANIFEST_BYTES
     || typeof value.incarnationId !== "string" || !value.incarnationId
@@ -248,7 +252,9 @@ export function assert_checkpoint_manifest(value: Record<string, unknown>, reque
   let position = 0;
   const ids = new Set<string>();
   for (const entry of registry.libraries as readonly Record<string, unknown>[]) {
-    for (const part of ["schema", "root"] as const) {
+    const parts: readonly ("schema" | "root" | "css")[] = entry.mode === "document"
+      ? ["schema", "root", "css"] : ["schema", "root"];
+    for (const part of parts) {
       let index = 0;
       while (position < value.chunks.length) {
         const descriptor = record(value.chunks[position]);
@@ -276,12 +282,14 @@ async function restore_manifest(
   manifest: LocusHostedAggregatePersistedManifest,
   adapter: LocusHostedAggregatePersistenceAdapter,
 ): Promise<LiveMap> {
-  const libraries: Array<Readonly<{ name: string; root: HsonNode }>> = [];
+  const libraries: Array<Readonly<{ name: string; root: HsonNode; css?: import("../../types/document-css.types.js").DocumentCssRecord }>> = [];
   const registryEntries: HostedRegistryEntry[] = [];
   let position = 0;
   for (const fixed of manifest.registry.libraries) {
     const values: unknown[] = [];
-    for (const part of ["schema", "root"] as const) {
+    const parts: readonly ("schema" | "root" | "css")[] = fixed.mode === "document"
+      ? ["schema", "root", "css"] : ["schema", "root"];
+    for (const part of parts) {
       const decoder = new CheckpointTokenDecoder();
       while (position < manifest.chunks.length && manifest.chunks[position]?.owner === fixed.name
         && manifest.chunks[position]?.part === part) {
@@ -292,7 +300,7 @@ async function restore_manifest(
       }
       values.push(decoder.finish());
     }
-    const [schema, root] = values;
+    const [schema, root, css] = values;
     if (typeof schema !== "string" || hosted_sha256(schema) !== fixed.schemaDigest
       || typeof root !== "object" || root === null || Array.isArray(root)) throw invalid_state();
     registryEntries.push(Object.freeze({
@@ -303,7 +311,8 @@ async function restore_manifest(
       schemaDigest: fixed.schemaDigest,
       rootCodec: fixed.rootCodec,
     }));
-    libraries.push(Object.freeze({ name: fixed.name, root: root as HsonNode }));
+    libraries.push(Object.freeze({ name: fixed.name, root: root as HsonNode,
+      ...(fixed.mode === "document" ? { css: encode_portable_document_stylesheet(decode_portable_document_stylesheet(css)) } : {}) }));
   }
   const registry: HostedRegistry = Object.freeze({ format: "hson-hosted-registry",
     libraries: Object.freeze(registryEntries), digest: manifest.registryDigest });
@@ -319,12 +328,12 @@ function hosted_commit(commit: HostedAggregateCommit): LocusHostedAggregatePersi
   if (projected === undefined) throw new Error("Runtime-local identity demand cannot become durable authority history.");
   const { format: _clientFormat, ...semantic } = projected;
   return Object.freeze({
-    format: "hson-locus-durable-aggregate-record-v1",
+    format: "hson-locus-durable-aggregate-record-v2",
     logicalMapId: commit.authority.logicalMapId,
     incarnationId: commit.authority.incarnationId,
     mapKind: "hosted-aggregate",
     registryDigest: commit.registryDigest,
-    commit: Object.freeze({ ...semantic, format: "hson-livemap-durable-commit-v1" }),
+    commit: Object.freeze({ ...semantic, format: "hson-livemap-durable-commit-v2" }),
   });
 }
 
@@ -334,7 +343,7 @@ export function durable_aggregate_commit(commit: HostedAggregateCommit): LocusHo
 
 function durable_aggregate_commit_as_client(commit: LocusDurableAggregateCommit): PortableAggregateCommit {
   const { format: _format, ...semantic } = commit;
-  return Object.freeze({ format: "hson-portable-aggregate-commit-v1", ...semantic });
+  return Object.freeze({ format: "hson-portable-aggregate-commit-v2", ...semantic });
 }
 
 function assert_commit_fence(
@@ -347,7 +356,7 @@ function assert_commit_fence(
   if (persisted === undefined || !exact_keys(persisted, [
     "format", "logicalMapId", "incarnationId", "mapKind", "registryDigest", "commit",
   ])
-    || persisted.format !== "hson-locus-durable-aggregate-record-v1"
+    || persisted.format !== "hson-locus-durable-aggregate-record-v2"
     || persisted.logicalMapId !== checkpoint.logicalMapId
     || persisted.incarnationId !== checkpoint.incarnationId
     || persisted.mapKind !== "hosted-aggregate") {
@@ -359,7 +368,7 @@ function assert_commit_fence(
   if (!(topology
     ? exact_keys(commitRecord, ["format", "authority", "previousRegistryDigest", "registryDigest", "topology", "prevRev", "rev", "operations"])
     : exact_keys(commitRecord, ["format", "authority", "registryDigest", "prevRev", "rev", "operations"]))
-    || commitRecord.format !== "hson-livemap-durable-commit-v1") throw invalid_state();
+    || commitRecord.format !== "hson-livemap-durable-commit-v2") throw invalid_state();
   const authority = record(commitRecord.authority);
   if (authority === undefined
     || authority.logicalMapId !== checkpoint.logicalMapId

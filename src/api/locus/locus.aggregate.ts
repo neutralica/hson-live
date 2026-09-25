@@ -57,6 +57,8 @@ export type LocusHostedAggregateDataDraft = Readonly<{
 type LocusHostedAggregateDocumentGraphMutation = Exclude<LiveMapGraphOp, Readonly<{ op: "ensure-quid" }>>;
 
 export type LocusHostedAggregateDocumentDraft = Readonly<{
+  /** Stage an existing portable document stylesheet operation at this Library's authority gate. */
+  css: (operation: import("../../types/livemap.types.js").LiveMapCssOp) => void;
   /** The selected library is separate from the document-local graph target. */
   graph: (operation: LocusHostedAggregateDocumentGraphMutation) => void;
   attrs: Readonly<{
@@ -355,6 +357,10 @@ function make_managed_aggregate_draft(
         move: (target, from, to) => graph(Object.freeze({ domain: "graph", op: "move-content", target, from, to })),
       });
       return Object.freeze({
+        css: (operation: import("../../types/livemap.types.js").LiveMapCssOp) => {
+          assert_open();
+          writes.push(Object.freeze({ target: aggregate.target(binding.identity, []), kind: "css", operation }));
+        },
         graph,
         attrs,
         content,

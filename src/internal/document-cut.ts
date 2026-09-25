@@ -165,6 +165,7 @@ export function cut_hosted_projection(
   } catch (cause) {
     throw new DocumentSsrError("bootstrap", "The session document could not be decoded.", cause);
   }
-  return Object.freeze({ html: realize(capture), data: snapshot, document: selected,
+  const css = render_portable_document_stylesheet(decode_portable_document_stylesheet(library.css));
+  return Object.freeze({ html: realize(capture, css), data: snapshot, document: selected,
     revision: snapshot.revision, projectionDigest: snapshot.projectionDigest });
 }

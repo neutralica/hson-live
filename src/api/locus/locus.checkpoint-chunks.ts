@@ -12,7 +12,7 @@ export type CheckpointChunk = Readonly<{ id: string; payload: string }>;
 export type CheckpointChunkDescriptor = Readonly<{
   id: string;
   owner: string;
-  part: "schema" | "root";
+  part: "schema" | "root" | "css";
   rev: number;
   index: number;
   bytes: number;
@@ -82,7 +82,7 @@ function* tokens(value: unknown): Generator<Token> {
 }
 
 export function* encode_checkpoint_chunks(
-  checkpointId: string, rev: number, owner: string, part: "schema" | "root", value: unknown,
+  checkpointId: string, rev: number, owner: string, part: "schema" | "root" | "css", value: unknown,
 ): Generator<Readonly<{ chunk: CheckpointChunk; descriptor: CheckpointChunkDescriptor }>> {
   let payload = "";
   let bytes = 0;

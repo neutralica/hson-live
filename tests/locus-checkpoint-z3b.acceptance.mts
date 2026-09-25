@@ -47,8 +47,8 @@ async function host(adapter: MemoryCheckpointAdapter, logicalMapId: string) {
 
 function active(adapter: MemoryCheckpointAdapter, id: string): LocusHostedAggregatePersistedManifest {
   const checkpoint = adapter.state(id)?.checkpoint;
-  assert.equal(checkpoint?.format, "hson-locus-durable-aggregate-checkpoint-v2");
-  if (checkpoint?.format !== "hson-locus-durable-aggregate-checkpoint-v2") throw new Error("Expected v2 checkpoint.");
+  assert.equal(checkpoint?.format, "hson-locus-durable-aggregate-checkpoint-v3");
+  if (checkpoint?.format !== "hson-locus-durable-aggregate-checkpoint-v3") throw new Error("Expected v2 checkpoint.");
   return checkpoint;
 }
 
@@ -288,9 +288,9 @@ await case_("missing and corrupt chunks, bad descriptors, schema and tail gaps f
   await mutateManifest((copy) => { copy.rev += 1; });
   await mutateManifest((copy) => { copy.registry.libraries[0].schemaDigest = "0".repeat(64); });
   const gap = structuredClone(valid) as any;
-  gap.commits = [{ format: "hson-locus-durable-aggregate-record-v1", logicalMapId: id,
+  gap.commits = [{ format: "hson-locus-durable-aggregate-record-v2", logicalMapId: id,
     incarnationId: manifest.incarnationId, mapKind: "hosted-aggregate", registryDigest: manifest.registryDigest,
-    commit: { format: "hson-livemap-durable-commit-v1", authority: { logicalMapId: id,
+    commit: { format: "hson-livemap-durable-commit-v2", authority: { logicalMapId: id,
       incarnationId: manifest.incarnationId }, registryDigest: manifest.registryDigest,
       prevRev: manifest.rev + 1, rev: manifest.rev + 2, operations: [] } }];
   adapter.seed(id, gap);

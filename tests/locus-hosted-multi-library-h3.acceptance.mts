@@ -208,9 +208,9 @@ await check("actual socket aggregate bootstrap establishes one projected QUID-fr
   assert.equal(data_library(attached.client.map!, "colors").snap(["accent"]), "#000");
   const sent = attached.pair.serverSent.map((raw) => JSON.parse(raw) as Record<string, unknown>);
   assert.equal(sent.some((message) => message.type === "hello"), false);
-  assert.equal(sent.find((message) => message.type === "recovery-snapshot")?.format, "hson-locus-hosted-aggregate-message-v7");
+  assert.equal(sent.find((message) => message.type === "recovery-snapshot")?.format, "hson-locus-hosted-aggregate-message-v8");
   assert.equal((sent.find((message) => message.type === "recovery-snapshot")?.snapshot as { format: string }).format,
-    "hson-authority-projection-snapshot-v1");
+    "hson-authority-projection-snapshot-v2");
   assert.equal(attached.pair.serverSent.some((raw) => raw.includes("issuedQuids") || raw.includes("identityEpoch")), false);
   server.dispose();
 });

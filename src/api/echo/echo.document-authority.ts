@@ -14,6 +14,7 @@ export {
 export type { EchoDocumentAuthority } from "./echo.document-authority-registry.js";
 
 export type EchoDocumentAction =
+  | Readonly<{ name: "document.css"; payload: { operation: import("../../types/livemap.types.js").LiveMapCssOp } }>
   | Readonly<{ name: "document.attrs.set"; payload: { target: LiveMapDocumentRequestTarget; name: string; value: LiveMapDocumentAttributeValue } }>
   | Readonly<{ name: "document.attrs.drop"; payload: { target: LiveMapDocumentRequestTarget; name: string } }>
   | Readonly<{ name: "document.attrs.setMany"; payload: { target: LiveMapDocumentRequestTarget; values: LiveMapDocumentAttrs } }>
@@ -218,6 +219,7 @@ export function document_action_payload_with_library(
   action: EchoDocumentAction,
   library: string,
 ): JsonValue {
+  if (action.name === "document.css") return Object.freeze({ library, operation: action.payload.operation }) as JsonValue;
   const target = Object.freeze({
     kind: "path" as const,
     path: [...action.payload.target.path],

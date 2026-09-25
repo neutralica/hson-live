@@ -98,6 +98,22 @@ type NamedLibrary = Readonly<{
 
 const PUBLIC_MULTI_LIBRARY_MAPS = new WeakSet<object>();
 const CLIENT_LIBRARY_SOURCES = new WeakMap<object, "authority-projected" | "client-local">();
+const DOCUMENT_CSS_STATE = new WeakMap<object, () => import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet>();
+const DOCUMENT_CSS_COMMIT = new WeakMap<object, (operation: import("../../types/livemap.types.js").LiveMapCssOp) => void>();
+
+/** @internal Current semantic stylesheet for a selected document Library. */
+export function document_css_state_internal(document: LiveMapDocumentLibrary): import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet {
+  const read = DOCUMENT_CSS_STATE.get(document);
+  if (read === undefined) throw new Error("Document CSS state is unavailable.");
+  return read();
+}
+
+/** @internal Commit an already-canonical local CSS operation through its owning LiveMap. */
+export function commit_document_css_internal(document: LiveMapDocumentLibrary, operation: import("../../types/livemap.types.js").LiveMapCssOp): void {
+  const commit = DOCUMENT_CSS_COMMIT.get(document);
+  if (commit === undefined) throw new Error("Document CSS authority is unavailable.");
+  commit(operation);
+}
 const CLIENT_LIBRARY_RETIREMENT = new WeakMap<object, Set<() => void>>();
 const CLIENT_PROJECTION_RECONCILE = new WeakMap<object, (owner: object, snapshot: PortableAggregateSnapshot) => void>();
 const HOSTED_LIBRARY_ADMISSION = new WeakMap<object, (owner: object, inputs: LiveMapDefinitions) => Readonly<{
@@ -276,11 +292,15 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
         const library = namesByIdentity.get(commit.css.library);
         return library === undefined ? [] : [Object.freeze({ library, operation: commit.css.operation })];
       })()),
-      ...commit.operations.flatMap((entry): readonly LiveMapLibraryOperation[] => {
+      ...commit.operations.flatMap((entry): LiveMapCommit["operations"] => {
         if (entry.target.domain !== "application") return [];
         const library = namesByIdentity.get(entry.target.library);
         if (library === undefined) return [];
-        return [Object.freeze({ library, operation: entry.operation })];
+        const operation = entry.operation;
+        if ("domain" in operation && operation.domain === "css") {
+          return [Object.freeze({ library, operation })];
+        }
+        return [Object.freeze({ library, operation })];
       }),
     ]),
   });
@@ -1046,6 +1066,8 @@ function make_document_library(
   register_livemap_document_identity_overlay(facade, controller.overlay);
   register_livemap_identity_epoch_owner(facade, controller.identityEpoch);
   const selected = Object.freeze(facade);
+  DOCUMENT_CSS_STATE.set(selected, () => aggregate.stylesheet(library.identity));
+  DOCUMENT_CSS_COMMIT.set(selected, (operation) => { aggregate.commitStylesheet(library.identity, operation); });
   register_internal_authority_position_observer(selected, aggregate.observeAuthorityPosition);
   return selected;
 }

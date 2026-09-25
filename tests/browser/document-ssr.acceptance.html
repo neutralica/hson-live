@@ -316,7 +316,7 @@ try {
   const librariesButton = librariesRoot.firstElementChild;
   const decodedHostedLibraries = decode_ssr_bootstrap(state.encoded.libraries);
   check("browser hosted Libraries encoding matches Node byte-for-byte", encode_ssr_bootstrap(decodedHostedLibraries.bootstrap) === state.encoded.libraries);
-  check("hosted carrier is the projected v3 family", decodedHostedLibraries.kind === "hosted-projection");
+  check("hosted carrier is the projected v4 family", decodedHostedLibraries.kind === "hosted-projection");
   const librariesMap = hson.liveMap.fromClientSnapshot({ authority: decodedHostedLibraries.bootstrap, localLibraries: {} });
   check("aggregate client map starts at its local revision", librariesMap.rev === 0);
   check("projected authority snapshot carries N", decodedHostedLibraries.bootstrap.revision === state.libraries.bootstrap.revision);
@@ -367,11 +367,79 @@ try {
   let hostedCssWriteFailed = false;
   try { hostedGlobalCss.sel("body").set.margin("0"); }
   catch (cause) { hostedCssWriteFailed = /Hosted document CSS authoring/.test(cause.message); }
-  check("hosted bound global CSS writes are fenced pending Phase C", hostedCssWriteFailed
+  check("hosted bound synchronous global CSS writes are fenced", hostedCssWriteFailed
     && librariesMap.rev === hostedCssRev && hostedGlobalCss.list().length === 0);
   librariesContinuation.dispose();
   librariesEcho.dispose();
   librariesSocket.dispose();
+
+  const cssFrame = document.createElement("iframe");
+  document.body.appendChild(cssFrame);
+  await new Promise((resolve) => { cssFrame.onload = resolve; cssFrame.srcdoc = state.cssCut.html; });
+  const hostedCssRoot = cssFrame.contentDocument.documentElement;
+  const hostedStyle = hostedCssRoot.querySelector('style[data-hson-managed-document-css="v1"]');
+  const hostedTarget = hostedCssRoot.querySelector("#hosted-css-target");
+  check("hosted CSS cut styles a browser without JavaScript", hostedStyle !== null
+    && cssFrame.contentWindow.getComputedStyle(hostedTarget).color === "rgb(1, 2, 3)");
+  const cssBootstrap = decode_ssr_bootstrap(encode_ssr_bootstrap(state.cssCut.bootstrap));
+  const cssClientMap = hson.liveMap.fromClientSnapshot({ authority: cssBootstrap.bootstrap, localLibraries: {} });
+  check("hosted CSS bootstrap contains document stylesheet", cssClientMap.lib("page").css.snapshot().includes("rgb(1, 2, 3)"));
+  const cssBrowserSocket = create_browser_locus_socket(state.cssSocketUrl);
+  await cssBrowserSocket.ready;
+  const cssEcho = create_echo({ socket: cssBrowserSocket.socket, map: cssClientMap,
+    recovery: { logicalMapId: cssBootstrap.bootstrap.authority.logicalMapId },
+    session: { credential: state.cssCredential } });
+  cssEcho.connect();
+  await cssEcho.session.reattach();
+  const cssContinued = await continue_hosted_document({ echo: cssEcho, authority: cssBootstrap.bootstrap,
+    document: cssEcho.map.lib("page"), root: hostedCssRoot });
+  check("hosted CSS replay updates adopted style", hostedStyle === hostedCssRoot.querySelector('style[data-hson-managed-document-css="v1"]')
+    && cssFrame.contentWindow.getComputedStyle(hostedTarget).color === "rgb(4, 5, 6)");
+  const authoredCssRev = cssClientMap.rev;
+  await cssContinued.tree.async.css.global.sel("#hosted-css-target").setProp("color", "rgb(10, 11, 12)");
+  check("hosted async CSS authoring converges through Echo", cssClientMap.rev === authoredCssRev + 1
+    && hostedStyle === hostedCssRoot.querySelector('style[data-hson-managed-document-css="v1"]')
+    && cssFrame.contentWindow.getComputedStyle(hostedTarget).color === "rgb(10, 11, 12)");
+  const cssTargetTree = cssContinued.tree.find.must.byTag("p");
+  cssTargetTree.css.set.opacity(0.7);
+  check("hosted snapshot composes document CSS and QUID CSS", cssContinued.tree.css.snapshot().includes("rgb(10, 11, 12)")
+    && cssContinued.tree.css.snapshot().includes(cssTargetTree.quid));
+  await fetch("/__css-mutate");
+  for (let attempt = 0; attempt < 50 && cssFrame.contentWindow.getComputedStyle(hostedTarget).color !== "rgb(7, 8, 9)"; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  check("later authority CSS mutation updates the same adopted style", hostedStyle === hostedCssRoot.querySelector('style[data-hson-managed-document-css="v1"]')
+    && cssFrame.contentWindow.getComputedStyle(hostedTarget).color === "rgb(7, 8, 9)");
+  await cssContinued.tree.async.css.global.clearAll();
+  check("hosted CSS clear removes the managed realization", hostedCssRoot.querySelector('style[data-hson-managed-document-css]') === null
+    && cssEcho.map.lib("page").css.snapshot() === "");
+  await cssContinued.tree.async.css.global.stylesheet("/* RAW_SOURCE_SENTINEL */ #hosted-css-target { color: rgb(13, 14, 15) !important; }");
+  const recreatedStyle = hostedCssRoot.querySelector('style[data-hson-managed-document-css="v1"]');
+  check("hosted stylesheet ingress realizes one parsed semantic style", recreatedStyle !== null
+    && hostedCssRoot.querySelectorAll('style[data-hson-managed-document-css]').length === 1
+    && !cssEcho.map.lib("page").css.snapshot().includes("RAW_SOURCE_SENTINEL")
+    && cssFrame.contentWindow.getComputedStyle(hostedTarget).color === "rgb(13, 14, 15)");
+  await fetch("/__css-revoke");
+  for (let attempt = 0; attempt < 50 && recreatedStyle.isConnected; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  let revokedCssHandleFailed = false;
+  try { cssEcho.map.lib("page"); } catch { revokedCssHandleFailed = true; }
+  check("projection contraction retires the managed style and document", !recreatedStyle.isConnected
+    && hostedCssRoot.querySelector('style[data-hson-managed-document-css]') === null
+    && revokedCssHandleFailed);
+  await fetch("/__css-regrant");
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    try { if (cssEcho.map.lib("page").mode === "document") break; } catch { /* Wait for Echo projection update. */ }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  check("regrant installs current CSS without reviving stale realization", cssEcho.map.lib("page").css.snapshot().includes("rgb(13,14,15)")
+    && hostedCssRoot.querySelector('style[data-hson-managed-document-css]') === null
+    && !recreatedStyle.isConnected);
+  cssContinued.dispose();
+  cssEcho.dispose();
+  cssBrowserSocket.dispose();
+  cssFrame.remove();
 
   document.documentElement.dataset.status = "pass";
   document.documentElement.dataset.detail = `${results.length}/${results.length}`;

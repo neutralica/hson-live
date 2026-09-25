@@ -32,7 +32,7 @@ if (mode === "--child") {
     libraries.push({ ...contract, root: { format: "hson-exact-value" as const,
       payload: rootTemplate.replace('"xxx"', `"${"x".repeat(size)}"`) } });
   }
-  const bootstrap = { format: "hson-authority-projection-snapshot-v1" as const, authority, revision: 0,
+  const bootstrap = { format: "hson-authority-projection-snapshot-v2" as const, authority, revision: 0,
     projectionDigest: locus_projection_contract_digest(authority, contracts, null, [], []),
     libraries,
     htmlDocument: null, systemFeatures: [], writableDocuments: [], system: null };

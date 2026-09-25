@@ -7,6 +7,11 @@ import type {
 import { document_binding_for_node, type DocumentBoundAttrsMutation } from "./lifecycle/document-binding-state.js";
 import { parent_for_node } from "./lifecycle/graph-ownership.js";
 import type { LiveTree } from "./livetree.js";
+import type { DocumentCssHandle, DocumentCssMap, DocumentCssValue } from "../../types/document-css.types.js";
+import { make_livemap_document_css } from "../livemap/livemap.css.js";
+import { commit_document_css_internal, document_css_state_internal } from "../livemap/livemap.libraries.js";
+import { bound_document_css_for_tree } from "./managers/bound-document-css.js";
+import { echo_document_authority_for } from "../echo/echo.document-authority-registry.js";
 import {
   livetree_flag_values,
   normalize_livetree_attr_name,
@@ -54,6 +59,23 @@ export type AsyncLiveTreeForm<TOwner extends LiveTree> = Readonly<{
   setChecked(value: boolean): Promise<AsyncLiveTree<TOwner>>;
 }>;
 
+export type AsyncLiveTreeCssRule<TOwner extends LiveTree> = Readonly<{
+  setProp(property: string, value: DocumentCssValue): Promise<AsyncLiveTree<TOwner>>;
+  setMany(values: DocumentCssMap): Promise<AsyncLiveTree<TOwner>>;
+  remove(property: string): Promise<AsyncLiveTree<TOwner>>;
+  clear(): Promise<AsyncLiveTree<TOwner>>;
+  drop(): Promise<AsyncLiveTree<TOwner>>;
+}>;
+
+/** One completed document stylesheet transition through the owning authority. */
+export type AsyncLiveTreeCssGlobal<TOwner extends LiveTree> = Readonly<{
+  edit(write: (css: DocumentCssHandle) => void): Promise<AsyncLiveTree<TOwner>>;
+  stylesheet(text: string): Promise<AsyncLiveTree<TOwner>>;
+  clearAll(): Promise<AsyncLiveTree<TOwner>>;
+  rule(key: string, selector: string): AsyncLiveTreeCssRule<TOwner>;
+  sel(selector: string): AsyncLiveTreeCssRule<TOwner>;
+}>;
+
 /** Explicit Promise-settled exact document-authoring context for one LiveTree. */
 export interface AsyncLiveTree<TOwner extends LiveTree = LiveTree> {
   readonly attrs: AsyncLiveTreeAttrs<TOwner>;
@@ -62,6 +84,7 @@ export interface AsyncLiveTree<TOwner extends LiveTree = LiveTree> {
   readonly classlist: AsyncLiveTreeClasslist<TOwner>;
   readonly text: AsyncLiveTreeText<TOwner>;
   readonly form: AsyncLiveTreeForm<TOwner>;
+  readonly css: Readonly<{ global: AsyncLiveTreeCssGlobal<TOwner> }>;
   readonly sync: TOwner;
   empty(): Promise<AsyncLiveTree<TOwner>>;
   remove(): Promise<void>;
@@ -74,6 +97,7 @@ class AsyncLiveTreeImplementation<TOwner extends LiveTree> implements AsyncLiveT
   public readonly classlist: AsyncLiveTreeClasslist<TOwner>;
   public readonly text: AsyncLiveTreeText<TOwner>;
   public readonly form: AsyncLiveTreeForm<TOwner>;
+  public readonly css: Readonly<{ global: AsyncLiveTreeCssGlobal<TOwner> }>;
 
   public constructor(private readonly owner: TOwner) {
     const fluent = (operation: () => void | Promise<void>): Promise<AsyncLiveTree<TOwner>> => {
@@ -83,6 +107,49 @@ class AsyncLiveTreeImplementation<TOwner extends LiveTree> implements AsyncLiveT
         return Promise.reject(cause);
       }
     };
+
+    const editCss: AsyncLiveTreeCssGlobal<TOwner>["edit"] = (write) => fluent(async () => {
+      const binding = bound_document_css_for_tree(owner);
+      if (binding === undefined || !binding.active) throw new Error("Async document CSS requires an active bound document.");
+      const build = () => {
+        let operation: import("../../types/livemap.types.js").LiveMapCssOp | undefined;
+        const css = make_livemap_document_css(
+          () => document_css_state_internal(binding.document),
+          (next) => {
+            if (operation !== undefined) throw new Error("Async CSS edit must produce one semantic transition.");
+            operation = next;
+          },
+        );
+        const returned: unknown = write(css);
+        if (returned instanceof Promise) throw new Error("Async CSS edit callback must complete synchronously.");
+        return operation;
+      };
+      if (binding.hosted) {
+        const authority = echo_document_authority_for(binding.document);
+        if (authority === undefined) throw new Error("Hosted document CSS authority is unavailable.");
+        await authority.enqueue(() => {
+          const operation = build();
+          return operation === undefined ? undefined : { name: "document.css", payload: { operation } };
+        });
+      } else {
+        const operation = build();
+        if (operation !== undefined) commit_document_css_internal(binding.document, operation);
+      }
+    });
+    const cssRule = (select: (css: DocumentCssHandle) => ReturnType<DocumentCssHandle["rule"]>): AsyncLiveTreeCssRule<TOwner> => Object.freeze({
+      setProp: (property, value) => editCss((css) => { select(css).setProp(property, value); }),
+      setMany: (values) => editCss((css) => { select(css).setMany(values); }),
+      remove: (property) => editCss((css) => { select(css).remove(property); }),
+      clear: () => editCss((css) => { select(css).clear(); }),
+      drop: () => editCss((css) => { select(css).drop(); }),
+    });
+    this.css = Object.freeze({ global: Object.freeze({
+      edit: editCss,
+      stylesheet: (text: string) => editCss((css) => { css.stylesheet(text); }),
+      clearAll: () => editCss((css) => { css.clearAll(); }),
+      rule: (key: string, selector: string) => cssRule((css) => css.rule(key, selector)),
+      sel: (selector: string) => cssRule((css) => css.sel(selector)),
+    }) });
 
     const attrs = (mutation: DocumentBoundAttrsMutation, local: () => void): Promise<AsyncLiveTree<TOwner>> =>
       fluent(async () => {

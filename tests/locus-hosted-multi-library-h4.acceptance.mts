@@ -148,8 +148,8 @@ await check("initial durable aggregate cut and atomic cross-library tail omit ge
   const initial = adapter.state("h4-global-cut")!;
   assert.equal(initial.checkpoint.mapKind, "hosted-aggregate");
   if (initial.checkpoint.mapKind !== "hosted-aggregate") throw new Error("Expected aggregate checkpoint.");
-  assert.equal(initial.checkpoint.format, "hson-locus-durable-aggregate-checkpoint-v2");
-  if (initial.checkpoint.format !== "hson-locus-durable-aggregate-checkpoint-v2") throw new Error("Expected v2 checkpoint.");
+  assert.equal(initial.checkpoint.format, "hson-locus-durable-aggregate-checkpoint-v3");
+  if (initial.checkpoint.format !== "hson-locus-durable-aggregate-checkpoint-v3") throw new Error("Expected v2 checkpoint.");
   assert.equal(initial.checkpoint.registry.format, "hson-hosted-registry");
   assert.equal(initial.checkpoint.logicalMapId.startsWith("h1-"), false);
   assert.equal(initial.checkpoint.incarnationId.startsWith("h1-"), false);
@@ -170,7 +170,7 @@ await check("initial durable aggregate cut and atomic cross-library tail omit ge
   const tail = persisted.commits[0]!;
   assert.equal(tail.mapKind, "hosted-aggregate");
   if (tail.mapKind !== "hosted-aggregate") throw new Error("Expected aggregate tail.");
-  assert.equal(tail.commit.format, "hson-livemap-durable-commit-v1");
+  assert.equal(tail.commit.format, "hson-livemap-durable-commit-v2");
   assert.equal(JSON.stringify(tail).includes(ACTIVE_QUID), false);
   assert.equal(JSON.stringify(tail).includes("ensure-quid"), false);
   assert.deepEqual(tail.commit.operations.map((operation) => operation.library), ["state", "colors", "page"]);

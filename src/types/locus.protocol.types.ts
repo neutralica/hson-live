@@ -43,11 +43,13 @@ export type LocusDocumentActionName =
   | "document.content.replace"
   | "document.content.insert"
   | "document.content.remove"
-  | "document.content.move";
+  | "document.content.move"
+  | "document.css";
 
 export type LocusDocumentTargetPayload = LiveMapDocumentRequestTarget;
 
 export type LocusDocumentActionPayloads = Readonly<{
+  "document.css": { operation: import("./livemap.types.js").LiveMapCssOp };
   "document.attrs.set": {
     target: LocusDocumentTargetPayload;
     name: string;

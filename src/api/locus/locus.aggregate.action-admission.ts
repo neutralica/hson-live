@@ -26,7 +26,7 @@ export type LocusAggregateActionAuthorityInternals<TActions extends LocusActionP
   incarnationId: string;
   currentSeq: () => number;
   headRev: () => number;
-  validateAction: (message: LocusClientActionMessage<TActions>) => LocusAggregateValidatedAction;
+  validateAction: (message: LocusClientActionMessage<TActions>, origin: LocusActionOrigin) => LocusAggregateValidatedAction;
   executeAction: (
     message: LocusClientActionMessage<TActions>,
     payload: ExactDataCarrier | undefined,
@@ -92,7 +92,7 @@ export async function admit_locus_aggregate_external_action<
 
   if (!attempt.attachmentCurrent()) return rejectStaleAttachment();
 
-  const validated = authority.validateAction(message);
+  const validated = authority.validateAction(message, attempt.origin);
   if (!validated.ok) {
     return Object.freeze({
       kind: "rejected",

@@ -17,6 +17,7 @@ import {
 import { decode_locus_portable_graph_content } from "./locus.graph-content-codec.js";
 import { resolve_document_path, validate_document_path } from "../livemap/livemap.document.path.js";
 import { normalize_replacement_lineage } from "../livemap/livemap.document.lineage.js";
+import { canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
 
 export type LocusDocumentActionResolution =
   | Readonly<{ kind: "not-document-action" }>
@@ -27,6 +28,8 @@ export type LocusDocumentActionResolution =
 /** Minimal selected document mutation target for aggregate drafts. */
 export type LocusDocumentActionTarget = Readonly<{
   mode: "document";
+  css?: import("../../types/document-css.types.js").DocumentCssHandle
+    | ((operation: import("../../types/livemap.types.js").LiveMapCssOp) => unknown);
   document: Readonly<{
     attrs: Readonly<{
       set: (...args: Parameters<LiveMapDocumentApi["attrs"]["set"]>) => unknown;
@@ -50,6 +53,7 @@ export function is_locus_document_action_target(value: unknown): value is LocusD
 }
 
 const DOCUMENT_ACTION_NAMES: ReadonlySet<string> = new Set<LocusDocumentActionName>([
+  "document.css",
   "document.attrs.set",
   "document.attrs.drop",
   "document.attrs.setMany",
@@ -71,6 +75,18 @@ export function resolve_locus_document_action(
   if (!is_document_action_name(name)) return Object.freeze({ kind: "not-document-action" });
   if (!is_record(payload)) {
     return Object.freeze({ kind: "invalid", message: `Locus action ${name} requires an object payload.` });
+  }
+
+  if (name === "document.css") {
+    if (!has_exact_keys(payload, ["operation"])) return invalid_fields(name);
+    let operation: import("../../types/livemap.types.js").LiveMapCssOp;
+    try { operation = canonical_portable_document_css_op(payload.operation); }
+    catch { return Object.freeze({ kind: "invalid", message: "Locus document CSS operation is invalid." }); }
+    return Object.freeze({ kind: "ready", payload: decoded_action_payload({ operation }),
+      execute: (targetMap = map) => {
+        if (typeof targetMap.css !== "function") throw new Error("Hosted document CSS requires its authority draft.");
+        return targetMap.css(operation);
+      } });
   }
 
   const target = decode_locus_document_target(payload.target);

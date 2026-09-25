@@ -39,7 +39,7 @@ export type LiveMapAuthorityTarget = LiveMapStructuralTarget | LiveMapSystemTarg
 /** One library-qualified operation in the map-global internal order. @internal */
 export type LiveMapAggregateOperation = Readonly<{
   target: LiveMapAuthorityTarget;
-  operation: LiveMapAnyOp;
+  operation: LiveMapAnyOp | LiveMapCssOp;
   /** Carrier-native evidence for exact data transport. @internal */
   projected?: LiveMapProjectedDataOp;
 }>;
@@ -106,6 +106,11 @@ export type LiveMapAggregateWrite =
     target: LiveMapAuthorityTarget;
     kind: "graph";
     operation: import("../../types/livemap.types.js").LiveMapGraphOp;
+  }>
+  | Readonly<{
+    target: LiveMapAuthorityTarget;
+    kind: "css";
+    operation: LiveMapCssOp;
   }>
   | Readonly<{
     target: LiveMapAuthorityTarget;

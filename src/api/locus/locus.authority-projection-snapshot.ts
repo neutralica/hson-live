@@ -15,6 +15,7 @@ import { INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME } from "../../internal/inte
 import type { LocusSessionManager } from "./locus.session.js";
 import type { LiveMap } from "../../types/livemap.types.js";
 import { internal_livemap_aggregate_authority } from "../livemap/livemap.internal.js";
+import { decode_portable_document_stylesheet, encode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
 
 const clientProjectionIdentity = new WeakMap<LiveMap, Readonly<{ digest: string; incarnationId: string }>>();
 const admittedSnapshots = new WeakMap<object, AuthorityProjectionSnapshot>();
@@ -57,7 +58,7 @@ export function advance_client_projection_identity_internal(
   clientProjectionIdentity.set(map, Object.freeze({ digest: nextDigest, incarnationId }));
 }
 
-export const AUTHORITY_PROJECTION_SNAPSHOT_FORMAT: "hson-authority-projection-snapshot-v1" = "hson-authority-projection-snapshot-v1";
+export const AUTHORITY_PROJECTION_SNAPSHOT_FORMAT: "hson-authority-projection-snapshot-v2" = "hson-authority-projection-snapshot-v2";
 
 type Root = Readonly<{ format: "hson-exact-value"; payload: string }>;
 type AuthorityProjectionLibrary = AuthorityProjectionSnapshot["libraries"][number];
@@ -118,7 +119,11 @@ export function admit_authority_projection_snapshot(input: unknown): AuthorityPr
     if (!/^[a-f0-9]{64}$/.test(digest)) return fail();
     const names = new Set<string>();
     const libraries = array(value.libraries).map((candidate): AuthorityProjectionLibrary => {
-      const entry = record(candidate, ["name", "mode", "schema", "schemaDigest", "rootCodec", "root"]);
+      const candidateMode = typeof candidate === "object" && candidate !== null && Object.hasOwn(candidate, "mode")
+        ? Reflect.get(candidate, "mode") : undefined;
+      const entry = record(candidate, candidateMode === "document"
+        ? ["name", "mode", "schema", "schemaDigest", "rootCodec", "root", "css"]
+        : ["name", "mode", "schema", "schemaDigest", "rootCodec", "root"]);
       const name = string(entry.name);
       if (names.has(name)) return fail();
       names.add(name);
@@ -129,7 +134,8 @@ export function admit_authority_projection_snapshot(input: unknown): AuthorityPr
       const schemaSource: HsonSchemaData = schema.toHson();
       if (schemaSource !== suppliedSchema || entry.schemaDigest !== hosted_sha256(schemaSource) || entry.rootCodec !== "hson-exact-value") return fail();
       return Object.freeze({ name, mode, schema: schemaSource, schemaDigest: hosted_sha256(schemaSource), rootCodec: "hson-exact-value",
-        root: root(entry.root, schema, mode) });
+        root: root(entry.root, schema, mode),
+        ...(mode === "document" ? { css: encode_portable_document_stylesheet(decode_portable_document_stylesheet(entry.css)) } : {}) });
     });
     if (libraries.some((entry, index) => index > 0 && libraries[index - 1]!.name.localeCompare(entry.name) >= 0)) return fail();
     const htmlDocument = value.htmlDocument;
@@ -154,7 +160,7 @@ export function admit_authority_projection_snapshot(input: unknown): AuthorityPr
       if (encode_hosted_root(projected, HOSTED_MAX_SNAPSHOT_BYTES).payload !== validatedRoot.payload) return fail();
       system = Object.freeze({ interactions: validatedRoot });
     } else if (value.system !== null) return fail();
-    const contract = libraries.map(({ root: _root, ...entry }) => entry);
+    const contract = libraries.map(({ root: _root, css: _css, ...entry }) => entry);
     if (locus_projection_contract_digest(authority, contract, htmlDocument, systemFeatures, writableDocuments) !== digest) return fail();
     const snapshot: AuthorityProjectionSnapshot = Object.freeze({ format: AUTHORITY_PROJECTION_SNAPSHOT_FORMAT,
       authority, revision, projectionDigest: digest, libraries: Object.freeze(libraries),
@@ -196,7 +202,8 @@ export function project_authority_snapshot(
       if (captured === undefined || current === undefined || current.scope !== undefined
         || current.mode !== contract.mode || current.schema !== contract.schema || current.schemaDigest !== contract.schemaDigest
         || current.rootCodec !== contract.rootCodec) return fail();
-      return Object.freeze({ ...contract, root: captured.root });
+      return Object.freeze({ ...contract, root: captured.root,
+        ...(contract.mode === "document" ? { css: captured.css } : {}) });
     });
     const includedDocuments = new Set(libraries.filter((entry) => entry.mode === "document").map((entry) => entry.name));
     let system: AuthorityProjectionSnapshot["system"] = null;
@@ -226,7 +233,8 @@ export function capture_selected_authority_projection_snapshot(
     const libraries: AuthorityProjectionLibrary[] = effective.libraries.map((contract, index) => {
       const captured = selected.libraries[index];
       if (captured?.name !== contract.name) return fail();
-      return Object.freeze({ ...contract, root: captured.root });
+      return Object.freeze({ ...contract, root: captured.root,
+        ...(contract.mode === "document" ? { css: captured.css } : {}) });
     });
     const includedDocuments = new Set(libraries.filter((entry) => entry.mode === "document").map((entry) => entry.name));
     const system = selected.system === null ? null : Object.freeze({ interactions: encode_hosted_root(
@@ -272,11 +280,12 @@ export function authority_projection_as_client_composition_internal(input: Autho
   const registry = entries.length === 0 ? emptyRegistry : make_hosted_registry(entries);
   const libraries = snapshot.libraries.map((entry) => Object.freeze({
     name: entry.name, mode: entry.mode, schema: entry.schema, schemaDigest: entry.schemaDigest, root: entry.root,
+    ...(entry.mode === "document" ? { css: entry.css } : {}),
   }));
   if (snapshot.system !== null) libraries.push(Object.freeze({
     name: INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME, mode: "data-object", schema: systemSchema.toHson(),
     schemaDigest: hosted_sha256(systemSchema.toHson()), root: snapshot.system.interactions,
   }));
-  return Object.freeze({ format: "hson-portable-aggregate-snapshot-v1", authority: snapshot.authority,
+  return Object.freeze({ format: "hson-portable-aggregate-snapshot-v2", authority: snapshot.authority,
     revision: snapshot.revision, registry, registryDigest: registry.digest, libraries: Object.freeze(libraries) });
 }

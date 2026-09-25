@@ -171,7 +171,7 @@ export function decode_ssr_bootstrap(
 
 function normalize_bootstrap(bootstrap: unknown): Readonly<{ kind: SsrBootstrapKind; payload: unknown }> {
   if (!is_record(bootstrap)) throw new TypeError("Bootstrap must be an object.");
-  if (bootstrap.format === "hson-authority-projection-snapshot-v1") {
+  if (bootstrap.format === "hson-authority-projection-snapshot-v2") {
     return { kind: "hosted-projection", payload: admit_authority_projection_snapshot(bootstrap) };
   }
   if (bootstrap.format === "hson-livemap-libraries-snapshot") {

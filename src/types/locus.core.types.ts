@@ -81,6 +81,7 @@ type LocusBroadDataMutationDraft = Readonly<{
 type LocusDocumentGraphMutation = Exclude<LiveMapGraphOp, Readonly<{ op: "ensure-quid" }>>;
 
 type LocusDocumentMutationDraft = Readonly<{
+  css: (operation: import("./livemap.types.js").LiveMapCssOp) => void;
   graph: (operation: LocusDocumentGraphMutation) => void;
   attrs: Readonly<{
     set: (target: LiveMapDocumentCommitTarget, name: string, value: LiveMapDocumentAttributeValue) => void;

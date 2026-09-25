@@ -14,7 +14,7 @@ export type LocusProjectionSystemFeature = "interactions";
 
 /** Portable authority half of a composed client LiveMap; local libraries are separate. */
 export type AuthorityProjectionSnapshot = Readonly<{
-  format: "hson-authority-projection-snapshot-v1";
+  format: "hson-authority-projection-snapshot-v2";
   authority: Readonly<{ logicalMapId: string; incarnationId: string }>;
   revision: number;
   projectionDigest: string;
@@ -25,6 +25,7 @@ export type AuthorityProjectionSnapshot = Readonly<{
     schemaDigest: string;
     rootCodec: "hson-exact-value";
     root: Readonly<{ format: "hson-exact-value"; payload: string }>;
+    css?: import("./document-css.types.js").DocumentCssRecord;
   }>[];
   htmlDocument: string | null;
   systemFeatures: readonly LocusProjectionSystemFeature[];

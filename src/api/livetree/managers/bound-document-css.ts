@@ -8,6 +8,7 @@ import { runtime_for_tree, type LiveTreeRuntime } from "../runtime/livetree-runt
 import { document_binding_for_node } from "../lifecycle/document-binding-state.js";
 import { is_runtime_infrastructure, mark_runtime_infrastructure } from "../../../internal/browser-realization/browser-realization-dom.js";
 import { MANAGED_DOCUMENT_CSS_MARKER } from "../../../internal/browser-realization/managed-document-css.js";
+import { observe_client_library_retirement_internal } from "../../livemap/livemap.libraries.js";
 
 type Binding = {
   document: LiveMapDocumentLibrary;
@@ -69,8 +70,26 @@ export function bind_document_css_tree(
     if (style.textContent !== next) style.textContent = next;
   };
   const stop = document.commits.observe(sync);
+  const offRetirement = hosted ? observe_client_library_retirement_internal(document, () => {
+    style?.remove();
+    style = undefined;
+    stop();
+    binding.active = false;
+    runtimeBindings.delete(binding);
+    if (BINDINGS.get(owner) === binding) BINDINGS.delete(owner);
+  }) : undefined;
+  try { sync(); }
+  catch (cause) {
+    stop();
+    offRetirement?.();
+    binding.active = false;
+    runtimeBindings.delete(binding);
+    if (BINDINGS.get(owner) === binding) BINDINGS.delete(owner);
+    throw cause;
+  }
   return (): void => {
     stop();
+    offRetirement?.();
     binding.active = false;
     runtimeBindings.delete(binding);
     if (BINDINGS.get(owner) === binding) BINDINGS.delete(owner);
@@ -113,7 +132,7 @@ export function bound_document_css_api(binding: Binding): CssGlobalHandle {
   const css = binding.document.css;
   const write = (): void => {
     if (!binding.active) throw new Error("Document CSS continuation binding has been disposed.");
-    if (binding.hosted) throw new Error("Hosted document CSS authoring awaits authority projection support.");
+    if (binding.hosted) throw new Error("Hosted document CSS authoring requires the async authority path.");
   };
   const vars = (source: DocumentCssRuleFacade["var"]) => Object.freeze({ ...source,
     set: (name: string, value: DocumentCssValue) => { write(); source.set(name, value); },

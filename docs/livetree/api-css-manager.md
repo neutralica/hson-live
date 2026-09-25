@@ -296,7 +296,7 @@ tree.css.supports({ display: "grid" });
 
 ## Managed stylesheet ownership
 
-For a standalone LiveTree, `tree.css.global` is owned by its LiveTree runtime. For a locally continued LiveMap document, it reads and writes the selected document Library's `page.css` state. Those writes advance ordinary LiveMap revisions and update the adopted managed style. A hosted continued tree exposes projected reads, while synchronous global writes are fenced until hosted CSS projection is implemented.
+For a standalone LiveTree, `tree.css.global` is owned by its LiveTree runtime. For a locally continued LiveMap document, it reads and writes the selected document Library's `page.css` state. Those writes advance ordinary LiveMap revisions and update the adopted managed style. A hosted continued tree exposes current projected reads. Its synchronous global writes are fenced; use `tree.async.css.global` for authority-dispatched writes. That async facade supports `edit`, `stylesheet`, `clearAll`, and `rule`/`sel` declaration changes. Each call sends one semantic CSS transition through the existing hosted document action path and resolves under the same Echo completion rules as other hosted document mutations. QUID CSS stays in the runtime style host.
 
 ```ts
 const css = tree.css.global;
