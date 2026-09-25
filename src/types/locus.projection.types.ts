@@ -1,4 +1,5 @@
 import type { LocusConnectionContext } from "./locus.protocol.types.js";
+import type { LiveMapRootMode } from "./livemap.types.js";
 
 /** Hosted deployment policy for one application library. Never part of Hson or a Schema. */
 export type LocusLibraryExposure = "server-private" | "client-public";
@@ -19,7 +20,7 @@ export type AuthorityProjectionSnapshot = Readonly<{
   projectionDigest: string;
   libraries: readonly Readonly<{
     name: string;
-    mode: "data-object" | "data-array" | "document";
+    mode: LiveMapRootMode;
     schema: import("../api/transform/transform.types.js").HsonSchemaData;
     schemaDigest: string;
     rootCodec: "hson-exact-value";

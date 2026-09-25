@@ -11,6 +11,8 @@ const { map: separateRuntime } = install_libraries_snapshot(snapshot);
 
 `LiveMapSnapshot` has format `"hson-livemap-libraries-snapshot"`, one global `revision`, an ordered registry with Schema sources and digests, a registry digest, and exact encoded roots for every library. Capture detaches its content from later mutation. It omits generated QUIDs, local identity epochs, and issued-QUID ledgers. Restoring or installing validates the entire registry and its roots before publishing a replacement; no partial library state becomes visible.
 
+Local captures may contain zero application libraries, including a completely empty registry. Hosted runtime admission is a later phase: durable Locus checkpoint manifests still require at least one hosted registry entry, and action-only client sessions continue to use endpoint-only Echo.
+
 `restore` applies a compatible complete snapshot to the same map. `install_libraries_snapshot` creates a separate local map and a fresh runtime identity domain. Portable data never claims process-local QUID continuity. For local document inspection, a selected document library also exposes `capture()` with explicit local identity categories. That selected-library capture is not the registry's portable reconstruction format.
 
 Changed local mutations produce map-wide commits with named library operations and a single revision transition. Hosted replay and durable recovery operate through internal authority facilities and exact registry or projected cuts; application code does not replay a solo-map capture. Locus persists semantic, QUID-free state and reconstructs a fresh generated identity epoch after process restart.

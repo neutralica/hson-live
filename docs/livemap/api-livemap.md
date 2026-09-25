@@ -16,6 +16,10 @@ const map = hsonLiveMap.fromLibraries({
 
 `data` accepts a JSON value or JSON source string. `document` accepts Hson source text or a canonical Hson node. Every library requires a Hson Schema in the matching mode, and admission validates the initial state. The public facade also provides `fromClientSnapshot(...)` for a client composition with an authority projection.
 
+`hsonLiveMap.create()` creates a fully initialized map with no application libraries at revision 0. `hsonLiveMap.fromLibraries({})` has the same empty-registry semantics. The topology remains fixed after construction. An empty map can be captured and restored; `lib(name)` reports an unknown library and `render()` reports that no document is available.
+
+`ANY_DATA` and `ANY_DOCUMENT` are ordinary Hson Schemas for the full data and document families. They are exported from `hson-live` and `hson-live/hson`. The equivalent authored forms are `<type "data">` and `<type "document">`. Library admission still requires an explicit `schema` field.
+
 ## Selection and reads
 
 ```ts
@@ -31,6 +35,8 @@ page.at([]).snap();
 `lib(name)` selects a declared library and preserves its type. Data paths use string object keys and numeric array indexes. Document paths use numeric positions in the canonical document. Reads return detached values or mediated location handles; they do not expose a mutable canonical node.
 
 Data locations offer `set`, `replace`, `delete`, `update`, observation, and shape-specific object or array methods. An object handle can `setKey` or `setMany` to create Schema-permitted keys, `renameKey`, and delete keys. An array handle can insert, remove, move, and replace items. Optional or union-shaped locations require a runtime refinement such as `present()`, `asObject()`, or `asArray()` before shape-specific operations.
+
+Data library roots may be objects, arrays, strings, finite numbers, booleans, or null. A string passed as `data` is parsed as JSON source text: use `data: '"hello"'` for a string value. Primitive roots expose scalar handles, with no object or array mutation capabilities. The root mode is fixed at construction; a whole-root mutation that changes its kind fails before commit.
 
 Document libraries expose `document.content`, `document.attrs`, `document.flags`, `document.byQuid`, logical `at(path)` locations, commits, and document capture. Document identity is local to the runtime; portable addresses and requests use paths.
 

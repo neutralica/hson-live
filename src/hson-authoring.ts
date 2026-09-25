@@ -13,6 +13,7 @@ import { _throw_transform_err } from "./core/errors.js";
 import { is_transform_error } from "./core/errors.js";
 import { is_Node } from "./core/node-guards.js";
 import { HsonSchema } from "./api/schema/hson-schema.js";
+export { ANY_DATA, ANY_DOCUMENT } from "./api/schema/hson-schema.js";
 import type { HsonCanonical, HsonData, HsonDocument, HsonSchemaData } from "./api/transform/transform.types.js";
 import type { Tokens } from "./api/transform/token.types.js";
 

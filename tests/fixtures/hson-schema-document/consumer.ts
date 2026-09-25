@@ -1,7 +1,9 @@
-import { DocumentSequenceSchema, ListSchema, PageSchema } from "./producer.js";
+import { AnyDocumentSchema, DocumentSequenceSchema, ListSchema, MainDocumentSchema, PageSchema } from "./producer.js";
 import { type SchemaType, HsonDocument, Hson, hsonLiveMap } from "hson-live";
 
 export const authored: HsonDocument<typeof PageSchema> = Hson.document`<main id=hero data-extension=yes <section "body"/>/>`;
+export const broadDocument: HsonDocument<typeof AnyDocumentSchema> = AnyDocumentSchema.certify(Hson.document`<main <p "body"/>/>`);
+export const broadMainDocument: HsonDocument<typeof MainDocumentSchema> = MainDocumentSchema.certify(Hson.document`<main <p "body"/>/>`);
 
 declare const dynamic: import("hson-live/hson").HsonCanonical;
 export const certified: HsonDocument<typeof PageSchema> = PageSchema.certify(dynamic);

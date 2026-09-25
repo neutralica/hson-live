@@ -1,4 +1,4 @@
-import { Hson } from "hson-live/hson";
+import { ANY_DATA, ANY_DOCUMENT, Hson } from "hson-live/hson";
 import {
   hsonLiveMap,
   LiveMapDocumentIdentityProvenanceError,
@@ -23,6 +23,11 @@ const projectedAcquisitionIsPublic: "ensureIdentity" extends keyof typeof state 
 const capture: LiveMapSnapshot = map.capture();
 void projectedAcquisitionIsPublic;
 void capture.libraries;
+const empty = hsonLiveMap.create();
+void empty.capture();
+const scalar = hsonLiveMap.fromLibraries({ value: { data: 1, schema: ANY_DATA } });
+void scalar.lib("value").at([]).asScalar();
+void ANY_DOCUMENT.toHson();
 
 const documentMap = hsonLiveMap.fromLibraries({
   page: { document: `<main <button id="target" "Save"/>/>`, schema: Hson.schema`<type "document" tag "main" content <sequence [<tag "button" attrs <props <id "string">> content "string">]>>` },

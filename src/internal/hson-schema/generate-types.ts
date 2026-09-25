@@ -126,6 +126,7 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
     return emitDocumentElement(item, path);
   };
   const emitDocumentContent = (content: HsonSchemaDocumentContent, path: string): string => {
+    if (content.kind === "document-broad") return "readonly HsonNode[]";
     if (content.kind === "document-empty") return "readonly []";
     if (content.kind === "document-repeat") {
       const item = emitDocumentItem(content.item, `${path}RItem`);
@@ -155,6 +156,7 @@ export function generate_hson_schema_types(name: string, root: HsonSchemaSemanti
   };
 
   const emitDocumentRootContent = (content: HsonSchemaDocumentContent, path: string): string => {
+    if (content.kind === "document-broad") return "readonly HsonNode[]";
     if (content.kind === "document-empty") return "readonly []";
     if (content.kind === "document-repeat") {
       const item = emitDocumentItem(content.item, `${path}RItem`);

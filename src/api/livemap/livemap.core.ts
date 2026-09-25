@@ -39,7 +39,7 @@ import {
 } from "./livemap.document.capture.js";
 import { livemap_document_identity_overlay_equal, livemap_document_identity_quids, register_livemap_document_identity_at_path, register_livemap_document_identity_effects, type LiveMapDocumentIdentityEffect } from "./livemap.document.identity.js";
 import { canonical_graph_equal } from "./livemap.document.install.js";
-import { prepare_livemap_root } from "./livemap.document.js";
+import { classify_live_root_mode, prepare_livemap_root } from "./livemap.document.js";
 import {
   prepare_document_graph_operation,
   type PreparedDocumentMutation
@@ -168,6 +168,7 @@ type LiveMapCoreWriteOp =
 export type RegistryRoot = Readonly<{
   root: HsonNode;
   hsonSchema?: HsonSchema;
+  family: "data" | "document";
 }>;
 
 export type InitialSystemState = Readonly<{
@@ -185,9 +186,8 @@ export function make_livemap_registry_authority(
   aggregate: InternalLiveMapAggregateAuthority;
   identities: readonly LiveMapLibraryIdentity[];
 }> {
-  if (roots.length === 0) throw new Error("LiveMap registry requires at least one library.");
-  const prepared = roots.map(({ root, hsonSchema }) => {
-    const graph = prepare_livemap_root(root);
+  const prepared = roots.map(({ root, hsonSchema, family }) => {
+    const graph = prepare_livemap_root(root, family);
     if (hsonSchema !== undefined) must_hson_schema_root(hsonSchema, graph.root);
     return { graph, hsonSchema };
   });
@@ -1012,6 +1012,10 @@ function make_livemap_registry_engine(
       } else {
         must_hson_schema_projected_candidate(candidate.library.hsonSchema, candidate.value);
         const root = projected_candidate_graph(candidate.detachedRoot, candidate.value, candidate.writes);
+        const nextMode = classify_live_root_mode(root, "data");
+        if (nextMode !== candidate.library.mode) {
+          throw new Error(`LiveMap data root mode is fixed at construction: expected ${candidate.library.mode}; observed ${nextMode}.`);
+        }
         apply_livemap_projected_identity_overlay(root, candidate.overlay);
         candidate.nextRoot = root;
       }
@@ -1501,7 +1505,7 @@ function make_livemap_registry_engine(
       const binding = hosted.byName.get(entry.name);
       if (binding === undefined) throw new Error("Checkpoint Library binding is unavailable.");
       admit_portable_hson_node(item.root, "Semantic checkpoint root");
-      const prepared = prepare_livemap_root(item.root);
+      const prepared = prepare_livemap_root(item.root, entry.mode === "document" ? "document" : "data");
       if (prepared.mode !== entry.mode) throw new Error("Checkpoint root mode disagrees with registry.");
       must_hson_schema_root(binding.schema, prepared.root);
       if (entry.scope === "hson-internal") {
@@ -1613,7 +1617,7 @@ function make_livemap_registry_engine(
       if (binding === undefined) throw new Error("Hosted aggregate snapshot Library binding is unavailable.");
       const root = decode_hosted_root(encoded.root);
       if (identity === undefined) admit_portable_hson_node(root, "LiveMap Libraries snapshot");
-      const prepared = prepare_livemap_root(root);
+      const prepared = prepare_livemap_root(root, entry.mode === "document" ? "document" : "data");
       if (prepared.mode !== entry.mode) throw new Error("Hosted aggregate snapshot root mode disagrees with its registry.");
       must_hson_schema_root(binding.schema, prepared.root);
       if (entry.scope === "hson-internal") {
@@ -1770,7 +1774,7 @@ function make_livemap_registry_engine(
       if (binding === undefined) throw new Error("Client projection snapshot contains an unknown Library.");
       const root = decode_hosted_root(encoded.root, HOSTED_MAX_SNAPSHOT_BYTES);
       admit_portable_hson_node(root, "Client projection snapshot");
-      const prepared = prepare_livemap_root(root);
+      const prepared = prepare_livemap_root(root, binding.mode === "document" ? "document" : "data");
       if (prepared.mode !== binding.mode) throw new Error("Client projection snapshot root mode is incompatible.");
       must_hson_schema_root(binding.schema, prepared.root);
       if (binding.scope === "hson-internal") {

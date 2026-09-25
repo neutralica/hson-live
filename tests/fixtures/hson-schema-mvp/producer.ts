@@ -1,5 +1,7 @@
 import { Hson } from "hson-live";
 
+export const AnyDataSchema: __HsonSchema<__AnyDataSchemaEvidence["value"], __AnyDataSchemaEvidence["mode"], __AnyDataSchemaEvidence["identity"]> = (Hson.schema`<type "data">` as unknown as __HsonSchema<__AnyDataSchemaEvidence["value"], __AnyDataSchemaEvidence["mode"], __AnyDataSchemaEvidence["identity"]>);
+
 export const UserSchema: __HsonSchema<__UserSchemaEvidence["value"], __UserSchemaEvidence["mode"], __UserSchemaEvidence["identity"]> = (Hson.schema`
   <type "data" content <
     name "string"
@@ -66,6 +68,7 @@ export const SameShapeTwoSchema: __HsonSchema<__SameShapeTwoSchemaEvidence["valu
 
 // @hson-schema generated type exports
 import type { HsonSchema as __HsonSchema } from "hson-live";
+import type { Evidence as __AnyDataSchemaEvidence } from "./producer.AnyDataSchema.hson-schema.generated.js";
 import type { Evidence as __InteractionFieldsSchemaEvidence } from "./producer.InteractionFieldsSchema.hson-schema.generated.js";
 import type { Evidence as __RelationalUniqueSchemaEvidence } from "./producer.RelationalUniqueSchema.hson-schema.generated.js";
 import type { Evidence as __ReuseSchemaEvidence } from "./producer.ReuseSchema.hson-schema.generated.js";

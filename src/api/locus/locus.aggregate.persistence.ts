@@ -231,7 +231,9 @@ export function assert_checkpoint_manifest(value: Record<string, unknown>, reque
       || exact_keys(entry, ["name", "mode", "schemaDigest", "rootCodec"]))
       || typeof entry.name !== "string" || !entry.name || entry.name.length > 1_024 || names.has(entry.name)
       || (entry.scope !== undefined && entry.scope !== "hson-internal")
-      || (entry.mode !== "data-object" && entry.mode !== "data-array" && entry.mode !== "document")
+      || (entry.mode !== "data-object" && entry.mode !== "data-array" && entry.mode !== "data-string"
+        && entry.mode !== "data-number" && entry.mode !== "data-boolean" && entry.mode !== "data-null"
+        && entry.mode !== "document")
       || !valid_digest(entry.schemaDigest) || entry.rootCodec !== "hson-exact-value") throw invalid_state();
     names.add(entry.name);
   }

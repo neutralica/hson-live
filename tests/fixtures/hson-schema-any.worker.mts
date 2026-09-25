@@ -1,5 +1,5 @@
 import { parentPort } from "node:worker_threads";
-import { Hson, HsonData, hsonLiveMap, type HsonSchema } from "../../src/index.ts";
+import { ANY_DATA, ANY_DOCUMENT, Hson, HsonData, hsonLiveMap, type HsonSchema } from "../../src/index.ts";
 
 const schema: HsonSchema = Hson.schema`<type "data" content <args "any" payload "any">>`;
 const canonical = Hson.canonical`<args [null, true, -0] payload <z 1 a <nested []>>>`;
@@ -13,6 +13,9 @@ const relationalAccepted = relational.certify(Hson.canonical`<items [<kind "wide
 let relationalRejected = false;
 try { relational.certify(Hson.canonical`<items [<kind "wide">, <kind "single-b">]>`); }
 catch { relationalRejected = true; }
+const empty = hsonLiveMap.create();
+const primitive = hsonLiveMap.fromLibraries({ value: { data: 7, schema: ANY_DATA } });
+const broadDocument = Hson.document`<main <p "worker"/>/>`;
 
 parentPort?.postMessage({
   certified: certified === canonical,
@@ -23,4 +26,9 @@ parentPort?.postMessage({
   safeProto: Object.hasOwn(Hson.data.materialize(Hson.data.entries(exact)?.[1]?.[1]!) as object, "__proto__"),
   relationalAccepted: typeof relationalAccepted === "string",
   relationalRejected,
+  emptyRev: empty.rev,
+  emptyCount: empty.capture().libraries.length,
+  primitiveMode: primitive.lib("value").mode,
+  primitiveValue: primitive.lib("value").snap(),
+  broadDocument: ANY_DOCUMENT.certify(broadDocument) === broadDocument,
 });

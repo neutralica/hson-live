@@ -53,7 +53,7 @@ check("exact HTML, SVG, and custom element roots compile", () => {
 });
 check("unknown and illegal document descriptor members reject", () => {
   assert.equal(schema('tag "main" content "empty" surprise true').ok, false);
-  assert.equal(schema('tag "main"').ok, false);
+  assert.equal(schema('tag "main"').ok, true);
   assert.equal(schema('tag <union [<exact "main">, <exact "section">]> content "empty"').ok, false);
 });
 check("string and exact empty content validate", () => {

@@ -8,6 +8,9 @@
 <div id="result"></div>
 <script type="module">
 import {
+  ANY_DATA,
+  ANY_DOCUMENT,
+  Hson,
   continue_document,
   continue_hosted_document,
   create_echo,
@@ -15,6 +18,7 @@ import {
   decode_ssr_bootstrap,
   encode_ssr_bootstrap,
   hson,
+  hsonLiveMap,
   install_libraries_snapshot,
   render_document,
 } from "/bundle.js";
@@ -26,6 +30,15 @@ const check = (name, condition) => {
 };
 
 try {
+  const emptyMap = hsonLiveMap.create();
+  const emptyCapture = emptyMap.capture();
+  emptyMap.restore(emptyCapture);
+  check("browser empty LiveMap captures and restores", emptyMap.rev === 0 && emptyCapture.libraries.length === 0);
+  const primitiveMap = hsonLiveMap.fromLibraries({ value: { data: 7, schema: ANY_DATA } });
+  check("browser primitive data root admits and captures", primitiveMap.lib("value").mode === "data-number"
+    && primitiveMap.lib("value").snap() === 7 && primitiveMap.capture().libraries.length === 1);
+  const broadDocument = Hson.document`<main <p "browser"/>/>`;
+  check("browser document family top certifies nested content", ANY_DOCUMENT.certify(broadDocument) === broadDocument);
   const state = await fetch("/__state").then((response) => response.json());
   const decodedLocalBootstrap = decode_ssr_bootstrap(state.encoded.local);
   check("browser local encoding matches Node byte-for-byte", encode_ssr_bootstrap(decodedLocalBootstrap.bootstrap) === state.encoded.local);

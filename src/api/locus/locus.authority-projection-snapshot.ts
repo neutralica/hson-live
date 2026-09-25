@@ -69,12 +69,12 @@ function json_utf8_bytes(value: unknown): number {
   return 2 + Math.max(0, entries.length - 1)
     + entries.reduce((total, [key, item]) => total + json_utf8_bytes(key) + 1 + json_utf8_bytes(item), 0);
 }
-function root(value: unknown, schema: HsonSchema, mode: "data-object" | "data-array" | "document"): Root {
+function root(value: unknown, schema: HsonSchema, mode: import("../../types/livemap.types.js").LiveMapRootMode): Root {
   const raw = record(value, ["format", "payload"]);
   if (raw.format !== "hson-exact-value" || typeof raw.payload !== "string") return fail();
   const decoded = decode_hosted_root(raw, HOSTED_MAX_SNAPSHOT_BYTES);
   admit_portable_hson_node(decoded, "authority projection snapshot");
-  if (classify_live_root_mode(decoded) !== mode) return fail();
+  if (classify_live_root_mode(decoded, mode === "document" ? "document" : "data") !== mode) return fail();
   validate_hson_schema_graph(schema, decoded);
   return Object.freeze({ format: "hson-exact-value", payload: raw.payload });
 }
@@ -100,7 +100,7 @@ export function admit_authority_projection_snapshot(input: unknown): AuthorityPr
       if (names.has(name)) return fail();
       names.add(name);
       const mode = entry.mode;
-      if (mode !== "data-object" && mode !== "data-array" && mode !== "document") return fail();
+      if (mode !== "data-object" && mode !== "data-array" && mode !== "data-string" && mode !== "data-number" && mode !== "data-boolean" && mode !== "data-null" && mode !== "document") return fail();
       const suppliedSchema = string(entry.schema);
       const schema = HsonSchema.fromHson(suppliedSchema);
       const schemaSource: HsonSchemaData = schema.toHson();

@@ -17,7 +17,7 @@ const testEvents = create_test_event_emitter("core.public-entrypoint-surface");
 const repositoryRoot = resolve(import.meta.dirname, "..");
 
 const ROOT_EXPORTS = `
-AsyncLiveTree AsyncLiveTreeAttrs AsyncLiveTreeClasslist AsyncLiveTreeFlags AsyncLiveTreeForm AsyncLiveTreeId AsyncLiveTreeText AuthoritativeInteractionDescriptor
+ANY_DATA ANY_DOCUMENT AsyncLiveTree AsyncLiveTreeAttrs AsyncLiveTreeClasslist AsyncLiveTreeFlags AsyncLiveTreeForm AsyncLiveTreeId AsyncLiveTreeText AuthoritativeInteractionDescriptor
 AuthorityProjectionSnapshot BinaryDecodeOptions BrowserRealizationHtml DataLiveMapMode DecodedSsrBootstrap DetachedLiveContent DocumentContinuation DocumentContinuationError
 DocumentMirror DocumentMirrorError DocumentMirrorStatus DocumentSsrError Echo EchoActionFn EchoActionPromise EchoActionRequest
 EchoActionStatusResult EchoOptions EchoRecoveryError EchoRetryActionFn EchoSession EchoSessionError EchoSessionFailure EchoSessionOptions
@@ -271,7 +271,7 @@ await check("all retained overlapping runtime values preserve strict identity", 
     livehost: await import("hson-live/livehost"),
   } as const;
   const overlap = {
-    hson: ["Hson", "TransformError", "is_transform_error", "read_transform_error_details"],
+    hson: ["ANY_DATA", "ANY_DOCUMENT", "Hson", "TransformError", "is_transform_error", "read_transform_error_details"],
     transform: ["hsonTransform", "TransformError", "is_transform_error", "read_transform_error_details"],
     number: ["hsonCalc"],
     livetree: ["hsonLiveTree", "LiveTree", "TreeSelector", "LiveTreeAlreadyAttachedError", "LiveTreeAttributeError", "LiveTreeBatchError", "LiveTreeDisposedError", "LiveTreeProtectedRootError", "LiveTreeQuidReuseError", "LiveTreeLinkedIdentityRequiredError"],

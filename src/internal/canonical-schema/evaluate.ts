@@ -276,6 +276,7 @@ function document_attrs(graph: VerifiedCanonicalSchemaGraph, ref: number, input:
 function document_content(graph: VerifiedCanonicalSchemaGraph, ref: number, children: readonly HsonNode[], path: readonly number[], state: EvaluationState, depth = 0): CanonicalGraphEvaluation {
   if (depth > state.limits.maxDepth || children.length > state.limits.maxContentItems || !step(state)) return resource(ref, path);
   const node = graph.nodes[ref];
+  if (node?.kind === "document-broad-content") return valid();
   if (node?.kind === "document-content-union") {
     if (!add_union_work(state, node.choices.length)) return resource(ref, path);
     const branches = node.choices.map((choice) => document_content(graph, choice, children, path, state, depth + 1));

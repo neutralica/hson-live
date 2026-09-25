@@ -69,6 +69,7 @@ export type HsonSchemaDocumentItem =
   | HsonSchemaDocumentElement;
 
 export type HsonSchemaDocumentContent =
+  | Readonly<{ kind: "document-broad" }>
   | Readonly<{ kind: "document-empty" }>
   | Readonly<{ kind: "document-string-content" }>
   | Readonly<{ kind: "document-sequence"; items: readonly HsonSchemaDocumentItem[] }>
@@ -196,11 +197,13 @@ export function compile_hson_schema(source: string): HsonSchemaCompilation {
   }
   let semantic: HsonSchemaSemanticNode | undefined;
   if (materialized.type === "data") {
-    const expected = HSON_SCHEMA_DATA_ROOT_ORDER.filter(member => member !== "defs" || definitionsInput !== undefined);
+    const expected = HSON_SCHEMA_DATA_ROOT_ORDER.filter(member => member === "type" || member === "defs" && definitionsInput !== undefined || member === "content" && "content" in materialized);
     if (rootKeys.length !== expected.length || rootKeys.some((key, index) => key !== expected[index])) {
-      return failure("INVALID_ROOT", [], 'Data Hson Schema root must contain `type "data"`, optional `defs`, then `content`.');
+      return failure("INVALID_ROOT", [], 'Data Hson Schema root must contain `type "data"`, optional `defs`, then optional `content`.');
     }
-    semantic = is_root_schema_descriptor(materialized.content)
+    semantic = !("content" in materialized) ? Object.freeze({ kind: "any" as const })
+      : materialized.content === "any" ? Object.freeze({ kind: "any" as const })
+      : is_root_schema_descriptor(materialized.content)
       ? decode_expression(materialized.content, ["content"], false, issues, ranges, parsed.value, parsed.provenance, definitionNames, referenceUses)?.schema
       : decode_object_members(materialized.content, ["content"], issues, ranges, parsed.value, parsed.provenance, definitionNames, referenceUses);
   } else if (materialized.type === "document") {
@@ -505,14 +508,15 @@ function decode_document_element(input: JsonObject, path: readonly (string | num
   for (const key of Object.keys(input)) if (!allowed.has(key)) issue(issues, "UNKNOWN_SCHEMA_MEMBER", [...path, key], `Unknown document Schema member ${JSON.stringify(key)}.`);
   if (rootDescriptor && input.type !== "document") issue(issues, "INVALID_ROOT", [...path, "type"], 'Document descriptor requires `type "document"`.');
   if (typeof input.tag !== "string" || input.tag.length === 0 || input.tag.startsWith("_hson_")) issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, "tag"], "Document `tag` requires one ordinary exact tag string.");
-  if (!("content" in input)) issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, "content"], "Document descriptor requires explicit `content`.");
   let attrs: readonly HsonSchemaDocumentAttr[] = Object.freeze([]);
   let attrsExact = false;
   if ("attrs" in input) {
     const decoded = decode_document_attrs(input.attrs, [...path, "attrs"], issues, ranges, root, provenance, definitionNames, referenceUses);
     if (decoded !== undefined) { attrs = decoded.attrs; attrsExact = decoded.closed; }
   }
-  const content = decode_document_content(input.content, [...path, "content"], issues, ranges, root, provenance, definitionNames, referenceUses);
+  const content = "content" in input
+    ? decode_document_content(input.content, [...path, "content"], issues, ranges, root, provenance, definitionNames, referenceUses)
+    : Object.freeze({ kind: "document-broad" as const });
   if (typeof input.tag !== "string" || input.tag.length === 0 || input.tag.startsWith("_hson_") || content === undefined) return undefined;
   const schema = Object.freeze({ kind: "document-element", tag: input.tag, attrs, attrsExact, content } as const);
   bind_range(schema, path, ranges, root, provenance);
@@ -528,8 +532,9 @@ function decode_document_schema(input: JsonObject, path: readonly (string | numb
     const allowed = new Set(["type", "defs", "content"]);
     for (const key of Object.keys(input)) if (!allowed.has(key)) issue(issues, "UNKNOWN_SCHEMA_MEMBER", [...path, key], `Unknown document Schema member ${JSON.stringify(key)}.`);
     if (input.type !== "document") issue(issues, "INVALID_ROOT", [...path, "type"], 'Document descriptor requires `type "document"`.');
-    if (!("content" in input)) issue(issues, "INVALID_SCHEMA_EXPRESSION", [...path, "content"], "Document descriptor requires explicit `content`.");
-    else content = decode_document_content(input.content, [...path, "content"], issues, ranges, root, provenance, definitionNames, referenceUses);
+    content = "content" in input
+      ? decode_document_content(input.content, [...path, "content"], issues, ranges, root, provenance, definitionNames, referenceUses)
+      : Object.freeze({ kind: "document-broad" as const });
   }
   if (content === undefined) return undefined;
   const schema = Object.freeze({ kind: "document", content } as const);
@@ -685,7 +690,8 @@ function lower_hson_schema_semantic_with_sources(root: HsonSchemaSemanticNode, d
   };
   const lowerDocumentContent = (content: HsonSchemaDocumentContent, source: HsonSchemaRangedNode): number => {
     const ref = reserve(content.kind === "document-repeat" ? content : source); nodes[ref] = { kind: "document-sequence", items: [] };
-    if (content.kind === "document-empty") nodes[ref] = { kind: "document-sequence", items: Object.freeze([]) };
+    if (content.kind === "document-broad") nodes[ref] = { kind: "document-broad-content" };
+    else if (content.kind === "document-empty") nodes[ref] = { kind: "document-sequence", items: Object.freeze([]) };
     else if (content.kind === "document-string-content") { const text = reserve(source); nodes[text] = { kind: "document-text" }; nodes[ref] = { kind: "document-sequence", items: Object.freeze([text]) }; }
     else if (content.kind === "document-sequence") nodes[ref] = { kind: "document-sequence", items: Object.freeze(content.items.map((item) => lowerDocumentItem(item, source))) };
     else nodes[ref] = { kind: "document-repeat", item: lowerDocumentItem(content.item, source), ...(content.count === undefined ? {} : { count: content.count }) };
@@ -956,6 +962,7 @@ function build_bootstrap(): VerifiedCanonicalSchemaGraph {
   const root = reserve();
   const data = reserve();
   const dataType = literal("data");
+  const optionalRootContent = reserve();
   const rootContent = reserve();
   const content = reserve();
   const expression = reserve();
@@ -1051,21 +1058,24 @@ function build_bootstrap(): VerifiedCanonicalSchemaGraph {
   nodes[expression] = { kind: "projected-union", choices: [primitiveAtoms, exact, object, optionalDescriptor, array, tuple, union, authoredRef, refinedNumber, refinedString, refinedArray, refinedTuple] };
   nodes[content] = { kind: "projected-record", value: expression };
   nodes[rootContent] = { kind: "projected-union", choices: [content, expression] };
+  nodes[optionalRootContent] = { kind: "projected-optional", base: rootContent };
   const optionalDefinitions = reserve();
   const definitions = reserve();
   const definitionValue = add({ kind: "projected-any" });
   nodes[definitions] = { kind: "projected-record", value: definitionValue };
   nodes[optionalDefinitions] = { kind: "projected-optional", base: definitions };
-  nodes[data] = { kind: "projected-object", exact: true, properties: [["type", dataType], ["content", rootContent], ["defs", optionalDefinitions]] };
+  nodes[data] = { kind: "projected-object", exact: true, properties: [["type", dataType], ["content", optionalRootContent], ["defs", optionalDefinitions]] };
 
   const document = reserve();
   const documentType = literal("document");
   const tag = reserve();
   const tagValue = add({ kind: "projected-string" });
   nodes[tag] = { kind: "projected-optional", base: tagValue };
+  const optionalDocumentContent = reserve();
   const documentAny = add({ kind: "projected-any" });
+  nodes[optionalDocumentContent] = { kind: "projected-optional", base: documentAny };
   const optionalAttrs = optional(documentAny);
-  nodes[document] = { kind: "projected-object", exact: false, properties: [["type", documentType], ["tag", tag], ["content", documentAny], ["attrs", optionalAttrs], ["defs", optionalDefinitions]] };
+  nodes[document] = { kind: "projected-object", exact: false, properties: [["type", documentType], ["tag", tag], ["content", optionalDocumentContent], ["attrs", optionalAttrs], ["defs", optionalDefinitions]] };
   nodes[root] = { kind: "projected-union", choices: [data, document] };
   const result = verify_canonical_schema_graph({ format: CANONICAL_SCHEMA_FORMAT, version: CANONICAL_SCHEMA_VERSION, capabilities: { projectedRoot: 0 }, nodes });
   if (!result.ok) throw new Error(result.issues.map((entry) => entry.message).join(" "));

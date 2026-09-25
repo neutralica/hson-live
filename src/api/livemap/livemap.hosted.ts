@@ -157,7 +157,7 @@ export class HostedAggregateRepresentationError extends Error {
 }
 
 export function make_hosted_registry(bindings: readonly HostedRegistryBinding[]): HostedRegistry {
-  if (bindings.length === 0 || bindings.length > HOSTED_MAX_LIBRARIES) {
+  if (bindings.length > HOSTED_MAX_LIBRARIES) {
     throw new HostedAggregateRepresentationError("Hosted registry library count is outside its supported bound.");
   }
   const names = new Set<string>();
@@ -168,7 +168,7 @@ export function make_hosted_registry(bindings: readonly HostedRegistryBinding[])
     if (scope !== undefined && scope !== "hson-internal") {
       throw new HostedAggregateRepresentationError("Hosted registry Library scope is malformed.");
     }
-    if (mode !== "data-object" && mode !== "data-array" && mode !== "document") {
+    if (mode !== "data-object" && mode !== "data-array" && mode !== "data-string" && mode !== "data-number" && mode !== "data-boolean" && mode !== "data-null" && mode !== "document") {
       throw new HostedAggregateRepresentationError("Hosted registry contains an unsupported root mode.");
     }
     if (typeof schema !== "object" || schema === null) throw new HostedAggregateRepresentationError("Hosted registry Schema source is malformed.");

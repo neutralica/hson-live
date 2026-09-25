@@ -164,7 +164,6 @@ export function make_livemap_library(
 export function make_livemap_library_registry(
   initialLibraries: readonly LiveMapLibraryState[],
 ): LiveMapLibraryRegistry {
-  if (initialLibraries.length === 0) throw new Error("LiveMap library registry requires at least one library.");
   const entries = new Map<LiveMapLibraryIdentity, LiveMapLibraryState>();
   const ordered: LiveMapLibraryState[] = [];
 

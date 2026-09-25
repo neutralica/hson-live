@@ -25,6 +25,10 @@ not a Schema feature.
 
 ## Any canonical data value
 
+`<type "data">` is the family-top Schema for every valid Hson data value. It is equivalent to `<type "data" content "any">` and to the exported `ANY_DATA` Schema object. Adding `content` narrows the accepted data. The family includes object, array, string, finite number, boolean, and null roots.
+
+`<type "document">` is the family-top Schema for every valid Hson document, equivalent to `ANY_DOCUMENT`. `<type "document" tag "main">` narrows only the root tag; its content remains unconstrained. `content "empty"` explicitly requires empty content. Both constants are ordinary `HsonSchema` values, with the usual `toHson()` and `certify()` behavior. Generated evidence for the data top uses `JsonValue`; document top evidence represents a canonical document root with broad valid content and retains its proof identity.
+
 The authored data expression `"any"` accepts any canonical Hson data-mode
 value: strings, finite numbers (including `-0`), booleans, null, ordered dense
 arrays, and ordered arbitrary-key data objects, recursively. Empty arrays and

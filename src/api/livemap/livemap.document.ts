@@ -1,4 +1,4 @@
-import { ARR_TAG, ELEM_TAG, OBJ_TAG, ROOT_TAG, STR_TAG } from "../../core/constants.js";
+import { ARR_TAG, ELEM_TAG, OBJ_TAG, ROOT_TAG, STR_TAG, VAL_TAG } from "../../core/constants.js";
 import { assert_invariants } from "../../core/assert-invariants.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import type { HsonNode } from "../../core/types.js";
@@ -17,7 +17,7 @@ export type PreparedLiveMapRoot = Readonly<{
 }>;
 
 /** Clone, validate, classify, and establish document identity before ownership. */
-export function prepare_livemap_root(input: HsonNode): PreparedLiveMapRoot {
+export function prepare_livemap_root(input: HsonNode, family?: "data" | "document"): PreparedLiveMapRoot {
   const cloned = normalize_hson_array_index_order(
     clone_live_root(input),
     "prepare_livemap_root",
@@ -28,16 +28,16 @@ export function prepare_livemap_root(input: HsonNode): PreparedLiveMapRoot {
   const root = normalize_document_root(cloned);
   let mode: LiveMapRootMode;
   try {
-    mode = classify_live_root_shape(root);
+    mode = classify_live_root_shape(root, family);
   } catch {
     // Preserve the established malformed-root cause chain while still letting
     // the document overlay own QUID validation for classifiable documents.
-    mode = classify_live_root_mode(root);
+    mode = classify_live_root_mode(root, family);
   }
 
   if (mode === "document") {
     const documentOverlay = build_livemap_document_identity_overlay(root, mode);
-    classify_live_root_mode(root);
+    classify_live_root_mode(root, family);
     return {
       root,
       mode,
@@ -46,27 +46,31 @@ export function prepare_livemap_root(input: HsonNode): PreparedLiveMapRoot {
   }
 
   const projectedOverlay = build_livemap_projected_identity_overlay(root);
-  classify_live_root_mode(root);
+  classify_live_root_mode(root, family);
   return { root, mode, projectedOverlay };
 }
 
 /** Validate and classify one canonical LiveMap root without using JSON projection. */
-export function classify_live_root_mode(root: HsonNode): LiveMapRootMode {
+export function classify_live_root_mode(root: HsonNode, family?: "data" | "document"): LiveMapRootMode {
   try {
     assert_invariants(root, "classify_live_root_mode");
   } catch (cause) {
     throw new Error("LiveMap cannot own a malformed canonical Hson root.", { cause });
   }
 
-  const mode = classify_live_root_shape(root);
+  const mode = classify_live_root_shape(root, family);
+  if (family === "data" && mode === "document" || family === "document" && mode !== "document") {
+    throw new Error(`LiveMap ${family} root has an incompatible semantic family.`);
+  }
   if (mode === "document") assert_document_special_tags(root);
   return mode;
 }
 
-function classify_live_root_shape(root: HsonNode): LiveMapRootMode {
+function classify_live_root_shape(root: HsonNode, family?: "data" | "document"): LiveMapRootMode {
 
   if (root.$_tag === OBJ_TAG) return "data-object";
   if (root.$_tag === ARR_TAG) return "data-array";
+  if (family === "data" && (root.$_tag === STR_TAG || root.$_tag === VAL_TAG)) return primitive_data_mode(root);
   if (root.$_tag !== ROOT_TAG) {
     throw new Error(
       `LiveMap canonical root must be <${ROOT_TAG}>; observed <${root.$_tag}> with ${root.$_content.length} top-level content item(s).`,
@@ -84,11 +88,21 @@ function classify_live_root_shape(root: HsonNode): LiveMapRootMode {
 
   if (cluster.$_tag === OBJ_TAG) return "data-object";
   if (cluster.$_tag === ARR_TAG) return "data-array";
+  if (family === "data" && (cluster.$_tag === STR_TAG || cluster.$_tag === VAL_TAG)) return primitive_data_mode(cluster);
   if (cluster.$_tag === ELEM_TAG) return "document";
   if (cluster.$_tag === STR_TAG || is_ordinary_element_node(cluster)) return "document";
   throw new Error(
     "LiveMap canonical root has unsupported top-level content; expected data cluster or document content.",
   );
+}
+
+function primitive_data_mode(node: HsonNode): DataLiveMapMode {
+  if (node.$_tag === STR_TAG) return "data-string";
+  const value = node.$_content[0];
+  if (value === null) return "data-null";
+  if (typeof value === "boolean") return "data-boolean";
+  if (typeof value === "number") return "data-number";
+  throw new Error("LiveMap primitive data root is malformed.");
 }
 
 /** Convert parser/detached element carriers into the one retained document root shape. */
@@ -129,5 +143,5 @@ function describe_top_level(root: HsonNode): string {
 }
 
 export function is_data_livemap_mode(mode: LiveMapRootMode): mode is DataLiveMapMode {
-  return mode === "data-object" || mode === "data-array";
+  return mode !== "document";
 }

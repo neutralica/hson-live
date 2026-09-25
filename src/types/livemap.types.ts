@@ -33,7 +33,7 @@ export type LivePath = readonly LivePathPart[];
 
 /** Canonical root shape owned by one LiveMap instance. */
 export type LiveMapRootMode = DataLiveMapMode | LiveMapDocumentMode;
-export type DataLiveMapMode = "data-object" | "data-array";
+export type DataLiveMapMode = "data-object" | "data-array" | "data-string" | "data-number" | "data-boolean" | "data-null";
 export type LiveMapDocumentMode = "document";
 
 /** One detached semantic snapshot of a complete fixed LiveMap Libraries registry. */

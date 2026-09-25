@@ -6,6 +6,7 @@ import { validate_hson_schema_graph } from "../../internal/schema-hson-validatio
 import { hson_data_value } from "../data/hson-data.js";
 import { projected_value_to_hson_node } from "../../core/projected-value-graph.js";
 import { hson_document_root } from "../document/hson-document.js";
+import type { HsonNode, JsonValue } from "../../core/types.js";
 
 type Compiled = Extract<ReturnType<typeof compile_hson_schema>, { ok: true }>["value"];
 type Certified<TSchema extends HsonSchema> = TSchema extends HsonSchema<unknown, "data">
@@ -64,6 +65,12 @@ export class HsonSchema<
     return data.toHson() as unknown as Certified<TSchema>;
   }
 }
+
+/** The ordinary broad Schema for every valid Hson data value. */
+export const ANY_DATA: HsonSchema<JsonValue, "data"> = HsonSchema.fromHson('<type "data">') as HsonSchema<JsonValue, "data">;
+
+/** The ordinary broad Schema for every valid Hson document. */
+export const ANY_DOCUMENT: HsonSchema<HsonNode, "document"> = HsonSchema.fromHson('<type "document">') as HsonSchema<HsonNode, "document">;
 
 function schema_state_of(schema: HsonSchema): Readonly<{ source: HsonSchemaData; compiled: Compiled }> {
   const state = schema_state.get(schema);

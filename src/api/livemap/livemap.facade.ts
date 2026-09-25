@@ -5,8 +5,14 @@ import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.t
 import { authority_projection_as_client_composition_internal, bind_client_projection_identity_internal } from "../locus/locus.authority-projection-snapshot.js";
 
 export interface HsonLiveMapFacade {
+  readonly create: typeof create;
   readonly fromLibraries: typeof fromLibraries;
   readonly fromClientSnapshot: typeof fromClientSnapshot;
+}
+
+/** Construct a fully initialized LiveMap with no application libraries. */
+function create(): LiveMap<{}> {
+  return make_livemap_libraries({});
 }
 
 /** Establish one named local Library registry. */
@@ -37,6 +43,7 @@ function fromClientSnapshot(input: Readonly<{
 }
 
 export const hsonLiveMap: HsonLiveMapFacade = Object.freeze({
+  create,
   fromLibraries,
   fromClientSnapshot,
 });

@@ -1,6 +1,11 @@
-import { InteractionFieldsSchema, RelationalUniqueSchema, TreeSchema, UserSchema } from "./producer.js";
+import { AnyDataSchema, InteractionFieldsSchema, RelationalUniqueSchema, TreeSchema, UserSchema } from "./producer.js";
 import { type SchemaType, HsonData, Hson, hsonCalc, hsonLiveMap, hsonLocus, hsonTransform, type HsonNumber } from "hson-live";
 import type { HsonCanonical } from "hson-live/hson";
+
+const anyDataValue: SchemaType<typeof AnyDataSchema> = { nested: ["text", 3, true, null] };
+const anyDataCertified: HsonData<typeof AnyDataSchema> = AnyDataSchema.certify(Hson.data`["text", 3, true, null]`);
+void anyDataValue;
+void anyDataCertified;
 
 const authored: HsonData<typeof UserSchema> = Hson.data`
   <name "Ada" score 37 age 37 percent 80 code "ID-7" key "abc" status "ready" phase "lobby" turn "player1" zero 0 negativeZero -0 signedZeroChoice -0 flags [true, false] pair ["x", 2] account <kind "user" handle "ada">>

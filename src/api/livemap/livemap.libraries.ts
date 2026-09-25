@@ -49,6 +49,7 @@ import {
 } from "./livemap.internal.js";
 import type { LiveMapAggregateCommit, LiveMapLibraryIdentity } from "./livemap.library.js";
 import { make_livemap_registry_authority, type InitialSystemState } from "./livemap.core.js";
+import { is_data_livemap_mode } from "./livemap.document.js";
 import { render_local_libraries_html } from "../../internal/document-cut.js";
 import { make_livemap_document_mutation_api } from "./livemap.document.mutation.js";
 import { make_livemap_document_attrs_read_api, make_livemap_document_flags_read_api } from "./livemap.document.attrs.js";
@@ -109,7 +110,6 @@ export function make_livemap_libraries<const TLibraries extends LiveMapInput>(
   clientSnapshot?: PortableAggregateSnapshot,
 ): LiveMap<TLibraries> {
   const entries = Object.entries(inputs);
-  if (entries.length === 0) throw new Error("LiveMap fromLibraries requires at least one named Library.");
 
   const definitions = entries.map(([name, value]) => ({
     name,
@@ -118,6 +118,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapInput>(
   const built = make_livemap_registry_authority(definitions.map(({ input }) => ({
     root: library_root(input),
     hsonSchema: input.schema,
+    family: "data" in input ? "data" as const : "document" as const,
   })), systems);
   const aggregate = built.aggregate;
   const namesByIdentity = new Map<LiveMapLibraryIdentity, string>();
@@ -258,7 +259,7 @@ export function make_livemap_mirror_from_portable_aggregate_internal(
       } else {
         inputs[entry.name] = entry.mode === "document"
           ? { document: root, schema }
-          : { data: node_to_json_value(root), schema };
+          : { data: reconstructed_data(root), schema };
       }
     }
     for (const [name, definition] of Object.entries(localLibraries)) {
@@ -308,7 +309,7 @@ export function make_livemap_mirror_from_semantic_checkpoint_internal(
     } else {
       inputs[entry.name] = entry.mode === "document"
         ? { document: library.root, schema }
-        : { data: node_to_json_value(library.root), schema };
+        : { data: reconstructed_data(library.root), schema };
     }
   }
   const map = make_livemap_libraries(inputs, systems);
@@ -352,7 +353,7 @@ export function make_livemap_mirror_from_snapshot_internal(
     }
     inputs[registry.name] = registry.mode === "document"
       ? { document: root, schema: HsonSchemaHandle.fromHson(registry.schema) }
-      : { data: node_to_json_value(root), schema: HsonSchemaHandle.fromHson(registry.schema) };
+      : { data: reconstructed_data(root), schema: HsonSchemaHandle.fromHson(registry.schema) };
   }
 
   const mirror = make_livemap_libraries(inputs, systems);
@@ -367,7 +368,7 @@ function make_data_library(
   public_commit: (commit: LiveMapAggregateCommit) => LiveMapCommit,
 ): LiveMapDataLibrary {
   const inspected = aggregate.inspect().libraries.find((entry) => entry.identity === library.identity);
-  if (inspected === undefined || (inspected.mode !== "data-object" && inspected.mode !== "data-array")) {
+  if (inspected === undefined || !is_data_livemap_mode(inspected.mode)) {
     throw new Error(`LiveMap Library ${JSON.stringify(library.name)} is not a data Library.`);
   }
   const snap = (path: LivePath = []): JsonValue | undefined => aggregate.snap(library.identity, path);
@@ -818,4 +819,10 @@ function library_root(input: LiveMapLibraryInput): HsonNode {
   return typeof input.document === "string"
     ? parse_hson(input.document, { allowTopLevelDocumentText: true })
     : input.document;
+}
+
+/** A string in the public data input is JSON source, so re-encode stored string values. */
+function reconstructed_data(root: HsonNode): JsonValue {
+  const value = node_to_json_value(root);
+  return typeof value === "string" ? JSON.stringify(value) : value;
 }

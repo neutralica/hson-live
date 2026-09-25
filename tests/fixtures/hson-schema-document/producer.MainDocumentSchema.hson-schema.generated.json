@@ -1,0 +1,8 @@
+{
+  "compatibilityVersion": "hson-schema-mvp-10",
+  "declarationIdentity": "producer.ts#MainDocumentSchema",
+  "sourceDigest": "3ca09affe35b9c3fa7a04b2ac4e2cd4d8d868180bf477be0e42c9b0b90bc49f9",
+  "semanticGraphDigest": "76a6fa4690cdbc0b1a75c3be3167dbfd6eff3a053c7e7d419938640a306f25ac",
+  "generatedDeclarationDigest": "177e1e3319e3bdebb2d9f13ae461942add63ba0edc79d16d25ed9c5d3256862f",
+  "graphHson": "<format \"hson-canonical-schema\" version 3 capabilities <documentRoot 0> nodes «<kind \"document-root\" content 1>,<kind \"document-sequence\" items «2»>,<kind \"document-element\" tag \"main\" content 3>,<kind \"document-broad-content\">»>"
+}
