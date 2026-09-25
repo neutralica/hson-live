@@ -44,7 +44,7 @@ function isPropTuple(x: PropertyInput): x is PropertyInputTuple {
  * @throws
  *   If `syn !== "*"` and `init` is missing or empty after trimming.
  */
-function coerce_atprop_input(input: PropertyInput): PropertyRegistration {
+export function canonical_property_registration(input: PropertyInput): PropertyRegistration {
     // tuple:
     if (isPropTuple(input)) {
         const [name, syn, initOrUndefined, inhOrUndefined] = input;
@@ -72,6 +72,14 @@ function coerce_atprop_input(input: PropertyInput): PropertyRegistration {
     return { name, syn, inh, init };
 }
 
+/** Pure deterministic rendering shared by runtime and portable document stylesheets. */
+export function render_property_registration(r: PropertyRegistration): string {
+    const lines = [`@property ${r.name} {`, `  syntax: "${r.syn}";`, `  inherits: ${r.inh ? "true" : "false"};`];
+    if (r.init !== undefined) lines.push(`  initial-value: ${r.init};`);
+    lines.push("}");
+    return lines.join("\n");
+}
+
 /**
  * Create a `PropertyManager` for CSS `@property` registrations.
  *
@@ -79,7 +87,7 @@ function coerce_atprop_input(input: PropertyInput): PropertyRegistration {
  * and can render either a single `@property` block or the full set.
  *
  * Design notes:
- * - Inputs are normalized through `coerce_atprop_input()` so internal state is
+ * - Inputs are normalized through `canonical_property_registration()` so internal state is
  *   canonical (stable comparisons, stable rendering).
  * - `onChange()` is invoked whenever registrations *meaningfully* change, so a
  *   caller (typically a higher-level CSS manager) can re-render/rebuild a style
@@ -106,49 +114,10 @@ export function manage_property(args: {
 
 
 
-    /**
-     * Render a single `@property` registration into canonical CSS text.
-     *
-     * Output is intentionally deterministic and diff-friendly:
-     * - always emits `syntax` and `inherits`
-     * - emits `initial-value` only when provided (optional only for `syn="*"`)
-     * - uses stable indentation and newline joining
-     *
-     * @param r
-     *   The normalized property registration to render.
-     *
-     * @returns
-     *   A complete `@property … { … }` block as CSS text.
-     */
-    function renderReg(r: PropertyRegistration): string {
-        //  build lines explicitly; init is optional only for "*".
-        const lines: string[] = [];
-
-        //  start at-rule block.
-        lines.push(`@property ${r.name} {`);
-
-        //  syntax is always required.
-        lines.push(`  syntax: "${r.syn}";`);
-
-        //  inherits is always emitted explicitly.
-        lines.push(`  inherits: ${r.inh ? "true" : "false"};`);
-
-        //  initial-value is emitted only if present.
-        if (r.init !== undefined) {
-            lines.push(`  initial-value: ${r.init};`);
-        }
-
-        //  end block.
-        lines.push(`}`);
-
-        //  join with newlines.
-        return lines.join("\n");
-    }
-
     //  public API implementation.
     return {
         register(input: PropertyInput): void {
-            const next = coerce_atprop_input(input);
+            const next = canonical_property_registration(input);
             const prev = regByName.get(next.name);
 
             //  cheap equality check; normalize ensures stable strings.
@@ -168,7 +137,7 @@ export function manage_property(args: {
             let changed = false;
 
             for (const input of inputs) {
-                const next = coerce_atprop_input(input);
+                const next = canonical_property_registration(input);
                 const prev = regByName.get(next.name);
 
                 const isSame =
@@ -210,7 +179,7 @@ export function manage_property(args: {
             const blocks: string[] = [];
             for (const name of names) {
                 const reg = regByName.get(name);
-                if (reg) blocks.push(renderReg(reg));
+                if (reg) blocks.push(render_property_registration(reg));
             }
 
             return blocks.join("\n\n");

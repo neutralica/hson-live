@@ -2,9 +2,8 @@ import { camel_to_kebab } from "../../transform/utils/attrs-utils/camel_to_kebab
 import { is_persisted_quid } from "../../../core/hson-node-quid.js";
 import type { CssPseudoKey } from "../../../core/style.types.js";
 import { HSON_QUID_MARKUP_NAME } from "../quid/data-quid.js";
-
-/** Portable, already-authored stylesheet rule. Order is assigned on first write. */
-export type ManagedCssRule = Readonly<{ order: number; text: string }>;
+export { render_complete_css } from "../../../internal/css/global-css-text.js";
+export type { ManagedCssRule } from "../../../internal/css/global-css-text.js";
 
 export function pseudo_to_suffix(p: CssPseudoKey): string {
   switch (p) {
@@ -38,20 +37,4 @@ export function render_quid_rule(quid: string, props: ReadonlyMap<string, string
   if (props.size === 0) return "";
   const declarations = [...props].map(([prop, value]) => `${css_property(prop)}: ${value};`);
   return `${selector_for_quid(quid)} { ${declarations.join(" ")} }`;
-}
-
-/**
- * The sole complete managed-stylesheet composition path. Registries retain
- * their stable prefix position; selector and QUID rules share authored order.
- * This renderer has no DOM, CSSOM, scheduling, or runtime dependency.
- */
-export function render_complete_css(
-  propertyCss: string,
-  keyframesCss: string,
-  rules: readonly ManagedCssRule[],
-): string {
-  const parts = [propertyCss.trim(), keyframesCss.trim()];
-  const ordered = [...rules].sort((a, b) => a.order - b.order);
-  parts.push(...ordered.map((rule) => rule.text.trim()));
-  return parts.filter(Boolean).join("\n\n");
 }

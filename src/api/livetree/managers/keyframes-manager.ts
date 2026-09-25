@@ -179,7 +179,7 @@ function sortSteps(steps: readonly KeyframeStep[]): KeyframeStep[] {
  *   - there are zero steps
  *   - any selector is invalid
  */
-function normalizeKeyframesInput(input: KeyframesInput): KeyframesDef {
+export function canonical_keyframes_definition(input: KeyframesInput): KeyframesDef {
   // normalize name (trim only).
   const name: KeyframesName = input.name.trim();
 
@@ -273,7 +273,7 @@ function renderDecls(decls: CssDeclMap): string[] {
  * @returns
  *   Complete CSS text for a single `@keyframes <name> { ... }` block.
  */
-function renderKeyframes(def: KeyframesDef, emittedName: string = def.name): string {
+export function render_keyframes_definition(def: KeyframesDef, emittedName: string = def.name): string {
   // start block.
   const lines: string[] = [];
   lines.push(`@keyframes ${emittedName} {`);
@@ -367,7 +367,7 @@ export function manage_keyframes(args: {
   return {
     set(input: KeyframesInput): void {
       // normalize at boundary.
-      const next = normalizeKeyframesInput(input);
+      const next = canonical_keyframes_definition(input);
 
       // optional changed-detection.
       const prev = byName.get(next.name);
@@ -393,7 +393,7 @@ export function manage_keyframes(args: {
       const o = owner.trim();
       if (!o) return;
 
-      const next = normalizeKeyframesInput(input);
+      const next = canonical_keyframes_definition(input);
 
       const prev = byName.get(next.name);
       const priorOwner = ownerByName.get(next.name);
@@ -408,7 +408,7 @@ export function manage_keyframes(args: {
     setMany(inputs: readonly KeyframesInput[]): void {
       // batch normalize.
       for (const input of inputs) {
-        const next = normalizeKeyframesInput(input);
+        const next = canonical_keyframes_definition(input);
         // changed: explicit setMany() means durable/global; clear generated ownership.
         releaseNameOwnership(next.name);
         byName.set(next.name, next);
@@ -461,7 +461,7 @@ export function manage_keyframes(args: {
       const blocks: string[] = [];
       for (const n of names) {
         const def = byName.get(n);
-        if (def) blocks.push(renderKeyframes(def, `${args.namePrefix ?? ""}${def.name}`));
+        if (def) blocks.push(render_keyframes_definition(def, `${args.namePrefix ?? ""}${def.name}`));
       }
 
       return blocks.join("\n\n");

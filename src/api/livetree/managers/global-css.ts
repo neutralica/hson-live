@@ -1,11 +1,10 @@
 // global-css.ts
 
-import { canon_to_css_prop, normalize_css_value } from "../../transform/utils/attrs-utils/normalize-css.js";
 import { CssGlobalsApi, CssMapBase, CssPseudoKey, CssRuleFacade, CssValue, GlobalRule, GlobalRuleHandle, GlobalVarFacade, MediaQueryInput, SupportsQueryInput } from "../../../types/css.types.js";
-import { camel_to_kebab } from "../../transform/utils/attrs-utils/camel_to_kebab.js";
 import { pseudo_to_suffix, type ManagedCssRule } from "./css-render.js";
 import { make_style_setter } from "./style-setter.js";
 import { normalize_css_var_name } from "./style-getter.js";
+import { render_global_css_rule, render_global_css_value, render_scoped_global_css_rule } from "../../../internal/css/global-css-text.js";
 
 const GLOBAL_VARS_RULE_KEY = "global-vars::root";
 const GLOBAL_VARS_SELECTOR = ":root";
@@ -18,29 +17,7 @@ type StoredGlobalRule = GlobalRule & { ruleKey: string; order: number; scopes: s
  * @param v Value supplied through the StyleSetter surface.
  * @returns A trimmed CSS value, or `null` when the value represents removal.
  */
-function renderCssValue(v: unknown): string | null {
-  if (v == null) return null;
-
-  if (typeof v === "string") return v.trim();
-  if (typeof v === "number") return String(v);
-  if (typeof v === "boolean") return v ? "true" : "false";
-
-  if (typeof v === "object") {
-    const obj = v as { value?: unknown; unit?: unknown };
-    if ("value" in obj) {
-      const raw = obj.value;
-      const unit = typeof obj.unit === "string" ? obj.unit : "";
-      const val =
-        typeof raw === "string" ? raw.trim() :
-          typeof raw === "number" ? String(raw) :
-            raw == null ? "" :
-              String(raw);
-      return `${val}${unit}`.trim();
-    }
-  }
-
-  return String(v).trim();
-}
+function renderCssValue(v: CssValue): string | null { return render_global_css_value(v); }
 
 /**
  * Render a selector and canonical declaration map into CSS text.
@@ -53,29 +30,7 @@ function renderCssValue(v: unknown): string | null {
  * @returns A compact CSS rule, or `""` when no declarations remain.
  */
 export function render_rule(selector: string, decls: Record<string, string>): string {
-  const keys = Object.keys(decls)
-    .map(k => k.trim())
-    .filter(Boolean)
-    .sort();
-
-  if (keys.length === 0) return "";
-
-  const body = keys
-    .map((canon) => {
-      const raw = decls[canon];
-      const trimmed = raw == null ? "" : String(raw).trim();
-      if (trimmed.length === 0) return "";
-
-      const prop = canon_to_css_prop(canon);
-      const val = normalize_css_value(prop, trimmed);
-
-      return `${prop}:${val};`;
-    })
-    .filter(Boolean)
-    .join("");
-
-  if (!body) return "";
-  return `${selector}{${body}}`;
+  return render_global_css_rule(selector, decls);
 }
 
 /**
@@ -91,30 +46,7 @@ function renderScopedRule(
   decls: Record<string, string>,
   scopes: readonly string[],
 ): string {
-  const base = render_rule(selector, decls).trim();
-  if (!base) return "";
-
-  let out = base;
-
-  for (let i = scopes.length - 1; i >= 0; i -= 1) {
-    const scope = scopes[i] ?? "";
-    out = `${scope} {\n${indentBlock(out)}\n}`;
-  }
-
-  return out;
-}
-
-/**
- * Indent a block of rendered CSS by one nesting level.
- *
- * @param src CSS text to indent.
- * @returns The same text with two spaces added to each line.
- */
-function indentBlock(src: string): string {
-  return src
-    .split("\n")
-    .map((line) => `  ${line}`)
-    .join("\n");
+  return render_scoped_global_css_rule(selector, decls, scopes);
 }
 
 /**
