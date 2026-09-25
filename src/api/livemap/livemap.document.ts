@@ -58,7 +58,6 @@ import { make_livemap_document_location_factory } from "./livemap.document.locat
 import { make_livemap_document_proxy } from "./livemap.proxy.js";
 import type { LiveMapDocumentWatchRegistration } from "./livemap.watch.js";
 import type { InternalDocumentSchemaController } from "./livemap.document.schema.js";
-import { cut_local_document } from "../../internal/document-cut.js";
 import { assert_document_special_tags } from "../../core/document-special-tags.js";
 
 export type PreparedLiveMapRoot = Readonly<{
@@ -283,7 +282,6 @@ function make_document_livemap(
       return core.rev;
     },
     capture,
-    cut: () => cut_local_document(documentMap),
     document,
   });
   register_livemap_document_identity_overlay(documentMap, controller.overlay);

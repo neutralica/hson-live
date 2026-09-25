@@ -328,7 +328,7 @@ check("single raw-text substitutions preserve ordinary and complete managed CSS"
 check("external script admits, inline script rejects, and unsafe style closes reject browser realization", () => {
   const script = Hson.document`<script src="/app.js"/>`;
   assert.equal(hsonTransform.fromHson(script).toHtml().serialize(), '<script src="/app.js"></script>');
-  assert.equal(hsonLiveMap.fromDocument(script).cut().html, '<script src="/app.js"></script>');
+  assert.equal(render_document({ map: hsonLiveMap.fromDocument(script) }).html, '<script src="/app.js"></script>');
   assert.throws(() => Hson.document`<script "go()"/>`, /requires src and no content/);
   assert.throws(() => Hson.document`<script src="/app.js" "go()"/>`, /requires src and no content/);
 

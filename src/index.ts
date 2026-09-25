@@ -80,8 +80,6 @@ export type {
   EncodedSsrBootstrap,
   HostedLibrariesDocumentSsr,
   LibrariesDocumentSsr,
-  DocumentCut,
-  LibrariesDocumentCut,
   HostedLibrariesDocumentCut,
   SsrBootstrapCodecOptions,
   SsrBootstrapKind,

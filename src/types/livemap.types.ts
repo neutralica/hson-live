@@ -36,7 +36,7 @@ export type LiveMapRootMode = DataLiveMapMode | DocumentLiveMapMode;
 export type DataLiveMapMode = "data-object" | "data-array";
 export type DocumentLiveMapMode = "document";
 
-/** One detached semantic cut of a complete fixed LiveMap Libraries registry. */
+/** One detached semantic snapshot of a complete fixed LiveMap Libraries registry. */
 export type LiveMapLibrariesSnapshot = Readonly<{
   format: "hson-livemap-libraries-snapshot";
   revision: number;
@@ -62,7 +62,7 @@ export type LiveMapLibrariesSnapshot = Readonly<{
   }>[];
 }>;
 
-/** Complete local browser cut with portable roots and no server runtime identity. */
+/** Complete local continuation snapshot with portable roots and no server runtime identity. */
 export type LocalLibrariesContinuationSnapshot = LiveMapLibrariesSnapshot;
 
 /** Internal owner-local exact cut plus its hosted authority fence. */
@@ -1231,8 +1231,6 @@ type DocumentLiveMapShared<
     InternalDocumentLogicalPathDescriptor<TEvidence, TPath>
   >;
   capture: DocumentLiveMapCaptureApi<TMode>;
-  /** Browser HTML and continuation data from one canonical revision. */
-  cut: () => import("../api/ssr/ssr.types.js").DocumentCut;
   /** Atomically replace this document with a canonical same-mode capture. */
   install: (
     capture: DocumentLiveMapCapture,
@@ -1752,10 +1750,8 @@ export type LiveMapLibraries<TLibraries extends LiveMapLibrariesInput = LiveMapL
   lib: <TLibrary extends Extract<keyof TLibraries, string>>(
     name: TLibrary,
   ) => LiveMapLibraryFacadeForInput<TLibraries[TLibrary], TLibrary>;
-  /** Capture one detached semantic cut of the complete public and hidden registry. */
+  /** Capture one detached semantic snapshot of the complete public and hidden registry. */
   capture: () => LiveMapLibrariesSnapshot;
-  /** Select one document while retaining the complete Libraries continuation. */
-  cut: (document?: string) => import("../api/ssr/ssr.types.js").LibrariesDocumentCut;
   commits: LiveMapMultiLibraryCommitObserverApi<Extract<keyof TLibraries, string>>;
 }>;
 

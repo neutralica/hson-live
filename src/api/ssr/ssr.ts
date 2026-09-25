@@ -7,7 +7,7 @@ import { is_locus_libraries_snapshot_authority_internal } from "../locus/locus.l
 import { install_libraries_snapshot, is_public_multi_library_livemap } from "../livemap/livemap.libraries.js";
 import { decode_hosted_root } from "../livemap/livemap.hosted.js";
 import { DocumentSsrError } from "./ssr.error.js";
-import { cut_local_document, cut_local_libraries } from "../../internal/document-cut.js";
+import { render_local_document, render_local_libraries } from "../../internal/document-cut.js";
 import type {
   DocumentSsr,
   LibrariesDocumentSsr,
@@ -49,10 +49,9 @@ export function render_document(options: Readonly<{
   require_options(options, "render_document");
   const map = options.map;
   if (is_public_multi_library_livemap(map)) {
-    const cut = cut_local_libraries(map as LiveMapLibraries, options.document,
+    return render_local_libraries(map as LiveMapLibraries, options.document,
       install_libraries_snapshot, decode_hosted_root,
       () => testHook?.("local-libraries-after-capture"));
-    return Object.freeze({ html: cut.html, bootstrap: cut.data, document: cut.document });
   }
   const documentMap = map as DocumentLiveMap;
   if (typeof documentMap !== "object" || documentMap === null
@@ -60,8 +59,7 @@ export function render_document(options: Readonly<{
     throw new TypeError("render_document requires one DocumentLiveMap.");
   }
 
-  const cut = cut_local_document(documentMap, () => testHook?.("local-after-capture"));
-  return Object.freeze({ html: cut.html, bootstrap: cut.data });
+  return render_local_document(documentMap, () => testHook?.("local-after-capture"));
 }
 
 /** Compose browser HTML and projected authority state from one authorized session cut. */

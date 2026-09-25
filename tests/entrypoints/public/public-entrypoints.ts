@@ -25,8 +25,6 @@ import {
   type DocumentSsr,
   type LibrariesDocumentSsr,
   type HostedLibrariesDocumentSsr,
-  type DocumentCut,
-  type LibrariesDocumentCut,
   type HostedLibrariesDocumentCut,
   type SsrBootstrapKind,
   type EncodedSsrBootstrap,
@@ -86,9 +84,8 @@ localContinuation.dispose();
 void hostedContinuation;
 void DocumentContinuationError;
 const localSsr: DocumentSsr = render_document({ map: continuationMap });
-const localCut: DocumentCut = continuationMap.cut();
-const localCutEncoded: EncodedSsrBootstrap<"document"> = encode_ssr_bootstrap(localCut.data);
-void localCutEncoded;
+// @ts-expect-error Local document maps do not expose hosted cuts.
+continuationMap.cut();
 const encodedSsr: EncodedSsrBootstrap<"document"> = encode_ssr_bootstrap(localSsr.bootstrap);
 const decodedSsr: Extract<DecodedSsrBootstrap, { kind: "document" }> = decode_ssr_bootstrap(encodedSsr);
 const ssrKind: SsrBootstrapKind = decodedSsr.kind;
@@ -109,8 +106,8 @@ declare const libraries: import("hson-live/livemap").LiveMapLibraries;
 declare const librariesSnapshot: LiveMapLibrariesSnapshot;
 const installedLibraries = install_libraries_snapshot(librariesSnapshot);
 const librariesSsr: LibrariesDocumentSsr = render_document({ map: libraries });
-const librariesCut: LibrariesDocumentCut = libraries.cut();
-void librariesCut.document;
+// @ts-expect-error Local Libraries registries do not expose hosted cuts.
+libraries.cut();
 declare const librariesAuthority: import("hson-live/locus").Locus;
 declare const hostedLibrariesSnapshot: { format: "hson-livemap-client-snapshot-v1" };
 // @ts-expect-error Complete hosted Libraries state is retired from SSR encoding.

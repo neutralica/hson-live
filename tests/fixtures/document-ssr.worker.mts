@@ -7,7 +7,6 @@ import { admit_exact_runtime_livemap_node } from "../../src/internal/exact-runti
 const map = admit_exact_runtime_livemap_node(parse_hson_exact_runtime(`<main <p @000005301 "a" "" "worker"/>/>`, { allowTopLevelDocumentText: true }));
 if (map.mode !== "document") throw new Error("Worker SSR fixture requires a document map.");
 const result = render_document({ map });
-const cut = map.cut();
 const emptyMap = hsonLiveMap.fromHson("");
 if (emptyMap.mode !== "document") throw new Error("Worker empty fixture requires a document map.");
 let emptySsrRejected = false;
@@ -26,7 +25,6 @@ const largeEncoded = encode_ssr_bootstrap(largeBootstrap);
 parentPort?.postMessage(Object.freeze({
   html: result.html,
   bootstrap: result.bootstrap,
-  cut,
   encoded,
   decoded: decode_ssr_bootstrap(encoded),
   largeEncoded,

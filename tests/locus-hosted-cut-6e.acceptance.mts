@@ -181,9 +181,9 @@ assert.throws(() => render_hosted_document({ authority: locus, sessionId }), /pr
 disconnectNoDefault();
 locus.dispose();
 
-// Ordinary local structural cuts remain independent of hosted authorization.
+// Local rendering remains independent of hosted authorization.
 const local = hsonLiveMap.fromLibraries({ page: { document: '<main <p "LOCAL_CUT"/>/>', schema: Page } });
-assert.equal(local.cut().html, render_document({ map: local }).html);
+assert.match(render_document({ map: local }).html, /LOCAL_CUT/);
 
 // The same hostile authority fixture crosses an actual SSR -> live -> history-insufficient
 // recovery. Inspect every emitted wire frame, including the fallback envelope and tail.

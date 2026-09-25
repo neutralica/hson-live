@@ -141,17 +141,17 @@ const echo = create_echo({ socket, map: clientMap, recovery: { logicalMapId } })
 
 A one-library hosted application is a one-library registry. It still requires explicit exposure and an authorized session projection. `authority.cut(sessionId, document?)` creates one HTML and projection-state cut at a single authority revision. The application owns its shell and can return `cut.html` without a bootstrap carrier. Hosted Echo manages projected libraries in the composed client map; local libraries remain local. The active hosted socket envelope is `hson-locus-hosted-aggregate-message-v4`.
 
-### 7. Local SSR — cut, deliver, restore, continue
+### 7. Local SSR — render, deliver, restore, continue
 
 ```ts
-import { decode_ssr_bootstrap, encode_ssr_bootstrap } from "hson-live/ssr";
+import { decode_ssr_bootstrap, encode_ssr_bootstrap, render_document } from "hson-live/ssr";
 
-const cut = documentMap.cut();
-const encoded = encode_ssr_bootstrap(cut.data);
+const rendered = render_document({ map: documentMap });
+const encoded = encode_ssr_bootstrap(rendered.bootstrap);
 const decoded = decode_ssr_bootstrap(encoded);
 ```
 
-`cut.html` is `BrowserRealizationHtml`, not `Hson.toHtml()` transport
+`rendered.html` is `BrowserRealizationHtml`, not `Hson.toHtml()` transport
 HTML. Use the matching public installer/restore path for `decoded.bootstrap`,
 then `continue_document` with an explicit existing root Element. Put an
 application-root carrier outside that continued root with no surrounding
@@ -160,12 +160,12 @@ a standard Web `Response`; storage, routes, cache policy, and security remain
 application-owned. Runtime coverage: SSR codec and document-SSR acceptance
 tests.
 
-For a fixed Library registry, use `libraries.cut("page")`; if it contains
-exactly one public document Library, `libraries.cut()` infers its name. The
-result includes `document`, selected-document `html`, and `data` for the
+For a fixed Library registry, use `render_document({ map: libraries, document: "page" })`;
+if it contains exactly one public document Library, the document name is inferred.
+The result includes `document`, selected-document `html`, and `bootstrap` for the
 complete Libraries snapshot, including its data Libraries. Data LiveMaps and
-data-only local maps have no browser-realizable `cut()` method. `render_document({ map })` remains the
-lower-level functional equivalent and returns the payload as `bootstrap`.
+data-only local maps cannot render a document. The HTML and bootstrap derive
+from one semantic revision.
 
 ### 8. Hosted SSR — authorized cut and continuation
 

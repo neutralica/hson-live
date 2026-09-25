@@ -139,17 +139,18 @@ assert.throws(
 
 {
   const map = document_map(`<main <p @000005401 "before"/>/>`);
-  const cut = map.cut();
-  assert.deepEqual(Object.keys(cut).sort(), ["data", "html"]);
-  assert.equal(cut.data.rev, 0);
-  assert.deepEqual(cut, { html: render_document({ map }).html, data: map.capture({ identity: "strip" }) });
-  assert.doesNotMatch(JSON.stringify(cut), /000005401|hson:quid|"quid"/);
-  const encoded = encode_ssr_bootstrap(cut.data);
+  assert.equal("cut" in map, false);
+  const rendered = render_document({ map });
+  assert.deepEqual(Object.keys(rendered).sort(), ["bootstrap", "html"]);
+  assert.equal(rendered.bootstrap.rev, 0);
+  assert.deepEqual(rendered.bootstrap, map.capture({ identity: "strip" }));
+  assert.doesNotMatch(JSON.stringify(rendered), /000005401|hson:quid|"quid"/);
+  const encoded = encode_ssr_bootstrap(rendered.bootstrap);
   assert.equal(typeof encoded, "string");
   map.document.attrs.set(target(0, 0), "data-cut", "after");
   assert.equal(map.rev, 1);
-  assert.doesNotMatch(cut.html, /data-cut/);
-  assert.match(map.cut().html, /data-cut="after"/);
+  assert.doesNotMatch(rendered.html, /data-cut/);
+  assert.match(render_document({ map }).html, /data-cut="after"/);
 }
 
 process.stdout.write("Document SSR acceptance passed.\n");

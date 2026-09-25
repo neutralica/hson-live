@@ -40,6 +40,6 @@ The browser composes client-local libraries separately with the authority projec
 
 The active hosted socket is `hson-locus-hosted-aggregate-message-v4`. It projects bootstrap, live commits or progress, retained replay, recovery tail, and snapshot fallback for the stored session projection. Reattachment reuses that projection; revocation fences new cuts and transport work.
 
-Ordinary local `map.cut()` and `libraries.cut(...)` remain structural APIs, not authorization boundaries. Local one-library LiveMap constructors remain supported.
+Local `render_document(...)` pairs browser-compatible HTML with a detached continuation bootstrap without an authorization boundary. Local one-library LiveMap constructors remain supported.
 
 See [authorized client projections](./authorized-client-projection.md), [SSR composition](../ssr-composition.md), and [Echo API](../echo/api-echo.md).

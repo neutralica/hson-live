@@ -119,7 +119,7 @@ const decodedLibraries = decode_ssr_bootstrap(encodedLibraries);
 assert.equal(decodedLibraries.kind, "libraries");
 if (decodedLibraries.kind !== "libraries") throw new Error("Wrong Libraries kind.");
 assert.deepEqual(decodedLibraries.bootstrap, librariesBootstrap);
-assert.deepEqual(install_libraries_snapshot(decodedLibraries.bootstrap).map.cut().data, librariesBootstrap);
+assert.deepEqual(install_libraries_snapshot(decodedLibraries.bootstrap).map.capture(), librariesBootstrap);
 assert.deepEqual(decodedLibraries.bootstrap.registry.libraries.map((entry) => entry.name), librariesBootstrap.registry.libraries.map((entry) => entry.name));
 
 // Legacy hosted Libraries bootstrap is likewise unavailable for encoding.

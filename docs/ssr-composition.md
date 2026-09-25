@@ -2,9 +2,9 @@
 
 ## Local rendering
 
-`map.cut()` and `render_document({ map })` are local structural APIs. The caller
-owns the whole local map. They capture once, render the detached selected
-document, and return local continuation data. A Libraries map may infer its sole
+`render_document({ map })` is the local structural SSR API. The caller owns the
+whole local map. It captures once, renders the detached selected document, and
+returns local continuation data. A Libraries map may infer its sole
 document; multiple local documents require a name. Local SSR uses
 `hson-ssr-bootstrap` version 2 (`document` or `libraries`). This local contract
 has no hosted projection policy.

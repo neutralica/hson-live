@@ -11,7 +11,6 @@ const map = admit_exact_runtime_livemap_libraries({
   page: { document: parse_hson_exact_runtime('<main <p @000009711 "worker"/>/>', { allowTopLevelDocumentText: true }), schema: PageSchema },
 });
 const result = render_document({ map });
-const cut = map.cut();
 const encoded = encode_ssr_bootstrap(result.bootstrap);
 const installed = install_libraries_snapshot(result.bootstrap).map;
 const state = installed.lib("state");
@@ -20,7 +19,6 @@ parentPort?.postMessage(Object.freeze({
   html: result.html,
   document: result.document,
   bootstrap: result.bootstrap,
-  cut,
   encoded,
   decoded: decode_ssr_bootstrap(encoded),
   revision: installed.rev,

@@ -7,8 +7,6 @@ export type {
   DocumentSsr,
   LibrariesDocumentSsr,
   HostedLibrariesDocumentSsr,
-  DocumentCut,
-  LibrariesDocumentCut,
   HostedLibrariesDocumentCut,
 } from "./ssr.types.js";
 export type {

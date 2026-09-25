@@ -14,8 +14,8 @@ import { clone_hson_graph_without_quids } from "../api/livemap/livemap.document.
 import { decode_hosted_root, encode_hosted_root } from "../api/livemap/livemap.hosted.js";
 import type {
   BrowserRealizationHtml,
-  DocumentCut,
-  LibrariesDocumentCut,
+  DocumentSsr,
+  LibrariesDocumentSsr,
 } from "../api/ssr/ssr.types.js";
 
 function validate_capture(capture: DocumentLiveMapCapture): DocumentLiveMapCapture<"document"> {
@@ -46,28 +46,28 @@ function realize(capture: DocumentLiveMapCapture<"document">): BrowserRealizatio
   }
 }
 
-export function cut_document_capture(capture: DocumentLiveMapCapture): DocumentCut {
+function render_document_capture(capture: DocumentLiveMapCapture): DocumentSsr {
   const validated = validate_capture(capture);
-  const data: DocumentLiveMapCapture<"document"> = Object.freeze({
+  const bootstrap: DocumentLiveMapCapture<"document"> = Object.freeze({
     ...validated,
     root: clone_hson_graph_without_quids(validated.root),
   });
-  return Object.freeze({ html: realize(data), data });
+  return Object.freeze({ html: realize(bootstrap), bootstrap });
 }
 
-export function cut_local_document(
+export function render_local_document(
   map: DocumentLiveMap,
   afterCapture?: () => void,
-): DocumentCut {
+): DocumentSsr {
   let capture: DocumentLiveMapCapture;
   try {
     capture = validate_capture(map.capture({ identity: "strip" }));
   } catch (cause) {
     if (cause instanceof DocumentSsrError) throw cause;
-    throw new DocumentSsrError("capture", "The document cut could not be captured.", cause);
+    throw new DocumentSsrError("capture", "The document could not be captured for rendering.", cause);
   }
   afterCapture?.();
-  return cut_document_capture(capture);
+  return render_document_capture(capture);
 }
 
 function selected_document(snapshot: LiveMapLibrariesSnapshot, requested: unknown): string {
@@ -79,10 +79,10 @@ function selected_document(snapshot: LiveMapLibrariesSnapshot, requested: unknow
   );
   if (requested === undefined) {
     if (documents.length === 0) {
-      throw new DocumentSsrError("select", "The Libraries cut contains no selectable public document Library.");
+      throw new DocumentSsrError("select", "The Libraries snapshot contains no selectable public document Library.");
     }
     if (documents.length !== 1) {
-      throw new DocumentSsrError("select", "The Libraries cut contains multiple public document Libraries; document is required.");
+      throw new DocumentSsrError("select", "The Libraries snapshot contains multiple public document Libraries; document is required.");
     }
     return documents[0]!.name;
   }
@@ -93,12 +93,12 @@ function selected_document(snapshot: LiveMapLibrariesSnapshot, requested: unknow
   return requested;
 }
 
-function cut_libraries_snapshot<TSnapshot extends LiveMapLibrariesSnapshot>(
+function render_libraries_snapshot<TSnapshot extends LiveMapLibrariesSnapshot>(
   snapshot: TSnapshot,
   document: unknown,
   install: (snapshot: TSnapshot) => unknown,
   decodeRoot: (root: unknown) => HsonNode,
-): Readonly<{ html: BrowserRealizationHtml; data: TSnapshot; document: string }> {
+): Readonly<{ html: BrowserRealizationHtml; document: string }> {
   const selected = selected_document(snapshot, document);
   let capture: DocumentLiveMapCapture<"document">;
   try {
@@ -117,25 +117,25 @@ function cut_libraries_snapshot<TSnapshot extends LiveMapLibrariesSnapshot>(
     if (cause instanceof DocumentSsrError) throw cause;
     throw new DocumentSsrError("bootstrap", "The captured semantic Libraries snapshot could not be decoded.", cause);
   }
-  return Object.freeze({ html: realize(capture), data: snapshot, document: selected });
+  return Object.freeze({ html: realize(capture), document: selected });
 }
 
-export function cut_local_libraries(
+export function render_local_libraries(
   map: LiveMapLibraries,
   document: unknown,
   install: (snapshot: LiveMapLibrariesSnapshot) => unknown,
   decodeRoot: (root: unknown) => HsonNode,
   afterCapture?: () => void,
-): LibrariesDocumentCut {
+): LibrariesDocumentSsr {
   let snapshot: LiveMapLibrariesSnapshot;
   try {
     snapshot = map.capture();
   } catch (cause) {
-    throw new DocumentSsrError("capture", "The complete Libraries cut could not be captured.", cause);
+    throw new DocumentSsrError("capture", "The complete Libraries snapshot could not be captured for rendering.", cause);
   }
   afterCapture?.();
-  const cut = cut_libraries_snapshot(snapshot, document, install, decodeRoot);
-  const data: LocalLibrariesContinuationSnapshot = Object.freeze({
+  const rendered = render_libraries_snapshot(snapshot, document, install, decodeRoot);
+  const bootstrap: LocalLibrariesContinuationSnapshot = Object.freeze({
     format: snapshot.format,
     revision: snapshot.revision,
     registry: snapshot.registry,
@@ -145,7 +145,7 @@ export function cut_local_libraries(
       root: encode_hosted_root(clone_hson_graph_without_quids(decodeRoot(library.root))),
     }))),
   });
-  return Object.freeze({ html: cut.html, data, document: cut.document });
+  return Object.freeze({ html: rendered.html, bootstrap, document: rendered.document });
 }
 
 /** Hosted client egress: both siblings are derived from the admitted session snapshot. */

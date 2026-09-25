@@ -16,13 +16,13 @@ export type BrowserRealizationHtml = string & Readonly<{
   [BROWSER_REALIZATION_HTML]: true;
 }>;
 
-/** One local canonical cut and the browser-realization HTML derived from it. */
+/** Browser-realization HTML and a document bootstrap from one local capture. */
 export type DocumentSsr = Readonly<{
   html: BrowserRealizationHtml;
   bootstrap: DocumentLiveMapCapture<"document">;
 }>;
 
-/** One selected document realization paired with its complete local Libraries cut. */
+/** One selected document realization paired with its complete local Libraries snapshot. */
 export type LibrariesDocumentSsr = Readonly<{
   html: BrowserRealizationHtml;
   bootstrap: LocalLibrariesContinuationSnapshot;
@@ -38,13 +38,6 @@ export type HostedLibrariesDocumentSsr = Readonly<{
   projectionDigest: string;
 }>;
 
-/** Object-owned local cut; `data` is accepted by the bootstrap codec. */
-export type DocumentCut = Readonly<{ html: BrowserRealizationHtml; data: DocumentLiveMapCapture<"document"> }>;
-export type LibrariesDocumentCut = Readonly<{
-  html: BrowserRealizationHtml;
-  data: LocalLibrariesContinuationSnapshot;
-  document: string;
-}>;
 export type HostedLibrariesDocumentCut = Readonly<{
   html: BrowserRealizationHtml;
   data: AuthorityProjectionSnapshot;

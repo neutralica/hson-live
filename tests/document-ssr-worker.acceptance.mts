@@ -14,7 +14,6 @@ const largeBootstrap = render_document({ map: largeMap }).bootstrap;
 const worker = await new Promise<Readonly<{
   html: string;
   bootstrap: unknown;
-  cut: unknown;
   encoded: string;
   decoded: unknown;
   largeEncoded: string;
@@ -36,7 +35,6 @@ assert.equal(worker.html, node.html);
 assert.doesNotMatch(worker.html, /hson:quid|000005301/);
 assert.doesNotMatch(JSON.stringify(worker.bootstrap), /000005301|"quid"/);
 assert.deepEqual(worker.bootstrap, node.bootstrap);
-assert.deepEqual(worker.cut, map.cut());
 assert.equal(worker.encoded, encode_ssr_bootstrap(node.bootstrap));
 assert.deepEqual(worker.decoded, { kind: "document", bootstrap: node.bootstrap });
 assert.equal(worker.largeEncoded, encode_ssr_bootstrap(largeBootstrap));

@@ -64,19 +64,17 @@ try {
 
   const browserLocal = render_document({ map: localMap });
   check("Node and browser-compatible local SSR bytes match", browserLocal.html === state.local.html);
-  const browserLocalCut = localMap.cut();
-  check("browser local object cut matches its continuation", browserLocalCut.html === browserLocal.html
-    && JSON.stringify(browserLocalCut.data) === JSON.stringify(browserLocal.bootstrap));
+  check("browser local rendering matches its continuation", JSON.stringify(browserLocal.bootstrap) === JSON.stringify(localMap.capture({ identity: "strip" })));
 
   const localLibrariesRoot = document.querySelector("#local-libraries-ssr");
   const localLibrariesButton = localLibrariesRoot.firstElementChild;
   const decodedLocalLibraries = decode_ssr_bootstrap(state.encoded.localLibraries);
   check("browser Libraries encoding matches Node byte-for-byte", encode_ssr_bootstrap(decodedLocalLibraries.bootstrap) === state.encoded.localLibraries);
   const localLibrariesInstalled = install_libraries_snapshot(decodedLocalLibraries.bootstrap);
-  const browserLibrariesCut = localLibrariesInstalled.map.cut();
-  check("browser Libraries object cut retains the complete continuation", browserLibrariesCut.document === "page"
-    && browserLibrariesCut.html === state.localLibraries.html
-    && JSON.stringify(browserLibrariesCut.data) === JSON.stringify(decodedLocalLibraries.bootstrap));
+  const browserLibrariesRender = render_document({ map: localLibrariesInstalled.map });
+  check("browser Libraries rendering retains the complete continuation", browserLibrariesRender.document === "page"
+    && browserLibrariesRender.html === state.localLibraries.html
+    && JSON.stringify(browserLibrariesRender.bootstrap) === JSON.stringify(decodedLocalLibraries.bootstrap));
   const localLibrariesSelected = localLibrariesInstalled.map.lib(state.localLibraries.document);
   const localLibrariesObserver = new MutationObserver(() => {});
   localLibrariesObserver.observe(localLibrariesRoot, { subtree: true, childList: true, attributes: true, characterData: true });
@@ -89,7 +87,7 @@ try {
   check("local aggregate continuation preserves root identity", localLibrariesContinuation.tree.dom.el() === localLibrariesRoot);
   check("local aggregate continuation preserves descendant identity", localLibrariesRoot.firstElementChild === localLibrariesButton);
   check("local aggregate continuation writes nothing", localLibrariesObserver.takeRecords().length === 0);
-  check("local aggregate install restores the complete cut", localLibrariesInstalled.map.lib("state").snap(["count"]) === 7 && localLibrariesInstalled.map.rev === state.localLibraries.bootstrap.revision);
+  check("local aggregate install restores the complete snapshot", localLibrariesInstalled.map.lib("state").snap(["count"]) === 7 && localLibrariesInstalled.map.rev === state.localLibraries.bootstrap.revision);
   localLibrariesObserver.disconnect();
   localLibrariesContinuation.dispose();
 
