@@ -45,8 +45,8 @@ The projected hosted carrier is `hson-ssr-bootstrap` version 3 with kind
 `hosted-projection`. Its payload is an admitted
 `hson-authority-projection-snapshot-v1`. The encoder and decoder reject the
 older complete hosted `hosted-document` and `hosted-libraries` version 2
-families. Local version 2 remains distinct. The live projected commit/wire v2
-formats remain in use; the hosted socket uses v5 for live projection changes.
+families. Local version 2 remains distinct. The live projected commit/wire
+use v3 and the hosted socket uses v6.
 
 An application can send `cut.html` alone. If it sends a state carrier, it must
 place the encoding of **that cut's** `data` beside the HTML. The application

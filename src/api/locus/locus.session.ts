@@ -27,6 +27,7 @@ type SessionRecord = {
   readonly principalId?: string;
   effectiveProjection?: LocusEffectiveProjection;
   projectionSequence: number;
+  readonly projectionHistory: Map<number, LocusEffectiveProjection>;
   readonly disposeResources: LocusDisposer;
   readonly subscriptionCount: () => number;
   state: LocusSessionState;
@@ -72,6 +73,10 @@ export type LocusSessionManager = Readonly<{
   is_active: (sessionId: LocusSessionId, epoch: LocusConnectionEpoch) => boolean;
   projection: (sessionId: LocusSessionId) => LocusEffectiveProjection | undefined;
   projection_sequence: (sessionId: LocusSessionId) => number | undefined;
+  projection_at_digest: (sessionId: LocusSessionId, digest: string, sequence: number) => Readonly<{
+    projection: LocusEffectiveProjection; sequence: number;
+  }> | undefined;
+  disconnected_with_principal: (sessionId: LocusSessionId, context: LocusConnectionContext) => boolean;
   update_projection: (sessionId: LocusSessionId, expected: LocusEffectiveProjection, next: LocusEffectiveProjection) => number;
   /** Immutable projections of all still-resumable sessions at one roster cut. */
   resumable_projections: () => readonly Readonly<{ sessionId: LocusSessionId; projection: LocusEffectiveProjection }>[];
@@ -147,6 +152,7 @@ export function make_locus_session_manager(options: LocusSessionOptions = {}): L
   function dispose_resources(record: SessionRecord): void {
     if (record.resourcesDisposed) return;
     record.resourcesDisposed = true;
+    record.projectionHistory.clear();
     record.disposeResources();
   }
 
@@ -194,6 +200,7 @@ export function make_locus_session_manager(options: LocusSessionOptions = {}): L
       ...(context?.principalId === undefined ? {} : { principalId: context.principalId }),
       ...(effectiveProjection === undefined ? {} : { effectiveProjection }),
       projectionSequence: 0,
+      projectionHistory: new Map(effectiveProjection === undefined ? [] : [[0, effectiveProjection]]),
       disposeResources,
       subscriptionCount,
       state: "attached",
@@ -336,13 +343,29 @@ export function make_locus_session_manager(options: LocusSessionOptions = {}): L
     return record?.state === "attached" || record?.state === "disconnected" ? record.projectionSequence : undefined;
   }
 
+  function projection_at_digest(sessionId: LocusSessionId, digest: string, sequence: number) {
+    const record = sessions.get(sessionId);
+    const projection = record?.state === "attached" || record?.state === "disconnected"
+      ? record.projectionHistory.get(sequence) : undefined;
+    return projection?.digest === digest ? Object.freeze({ projection, sequence }) : undefined;
+  }
+
+  function disconnected_with_principal(sessionId: LocusSessionId, context: LocusConnectionContext): boolean {
+    const record = sessions.get(sessionId);
+    return record?.state === "disconnected" && record.resumable
+      && record.principalId === context.principalId;
+  }
+
   function update_projection(sessionId: LocusSessionId, expected: LocusEffectiveProjection, next: LocusEffectiveProjection): number {
     const record = sessions.get(sessionId);
-    if (record?.state !== "attached" || record.attachment === undefined || record.effectiveProjection !== expected) {
+    if (record === undefined || (record.state !== "attached" && record.state !== "disconnected")
+      || (record.state === "attached" && record.attachment === undefined)
+      || record.effectiveProjection !== expected) {
       throw new Error("Locus session projection update is stale or unavailable.");
     }
     record.effectiveProjection = next;
     record.projectionSequence += 1;
+    record.projectionHistory.set(record.projectionSequence, next);
     return record.projectionSequence;
   }
 
@@ -410,5 +433,6 @@ export function make_locus_session_manager(options: LocusSessionOptions = {}): L
   }
 
   return Object.freeze({ create, reattach, detach, goodbye, revoke, release_ephemeral, is_active,
-    projection, projection_sequence, update_projection, resumable_projections, debug, onChange, dispose });
+    projection, projection_sequence, projection_at_digest, disconnected_with_principal,
+    update_projection, resumable_projections, debug, onChange, dispose });
 }

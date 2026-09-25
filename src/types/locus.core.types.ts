@@ -275,8 +275,9 @@ export type LocusSessionLifecycleEvent =
 export type LocusSessionInspector = Readonly<{
   debug: () => LocusSessionDiagnostics;
   onChange: (listener: (event: LocusSessionLifecycleEvent) => void) => LocusDisposer;
-  /** Reauthorize an attached session against current authority topology and its current connection context. */
-  updateProjection: (sessionId: LocusSessionId, request: LocusRequestedProjection) => Promise<Readonly<{
+  /** Reauthorize an attached session, or supply current context for a disconnected resumable session. */
+  updateProjection: (sessionId: LocusSessionId, request: LocusRequestedProjection,
+    context?: LocusConnectionContext) => Promise<Readonly<{
     changed: boolean;
     sequence: number;
     digest: string;

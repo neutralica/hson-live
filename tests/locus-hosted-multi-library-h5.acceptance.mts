@@ -509,6 +509,7 @@ await check("the public socket fails closed for malformed requests and an ahead 
     incarnationId: bootstrap.snapshot.authority.incarnationId,
     registryDigest: bootstrapPlan.registryDigest,
     projectionDigest: bootstrapPlan.projectionDigest,
+    projectionSequence: 0,
     lastAppliedRev: 1,
   }));
   await Promise.resolve();

@@ -14,6 +14,7 @@ export type LocusHostedAggregateRecoveryCursor = Readonly<{
   incarnationId: string;
   registryDigest: string;
   projectionDigest: string;
+  projectionSequence: number;
   lastAppliedRev: number;
 }>;
 

@@ -15,9 +15,9 @@ import type {
 } from "../../types/locus.types.js";
 import type { EchoMapManagementLease } from "../../internal/echo-map-capability.js";
 import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
-import { make_livemap_mirror_from_portable_aggregate_internal } from "../livemap/livemap.libraries.js";
+import { make_livemap_libraries, make_livemap_mirror_from_portable_aggregate_internal } from "../livemap/livemap.libraries.js";
 import { decode_locus_live_projected_envelope_internal, type LocusLiveProjectedWireEnvelope } from "../locus/locus.live-projection.js";
-import { admit_authority_projection_snapshot, authority_projection_as_client_composition_internal, bind_client_projection_identity_internal, advance_client_projection_identity_internal, client_projection_identity_internal } from "../locus/locus.authority-projection-snapshot.js";
+import { AUTHORITY_PROJECTION_SNAPSHOT_FORMAT, admit_authority_projection_snapshot, authority_projection_as_client_composition_internal, bind_client_projection_identity_internal, advance_client_projection_identity_internal, client_projection_identity_internal } from "../locus/locus.authority-projection-snapshot.js";
 import { locus_projection_contract_digest } from "../locus/locus.projection.js";
 import { LOCUS_HOSTED_AGGREGATE_SOCKET_FORMAT } from "../locus/locus.aggregate.protocol.js";
 import {
@@ -287,7 +287,8 @@ function create_registry_echo_semantic_client_internal<
         logicalMapId: clientLogicalMapId,
         ...(incarnationId === undefined || registryDigest === undefined || projectionDigest === undefined || authorityRev === undefined
           ? {}
-          : { cursor: Object.freeze({ incarnationId, registryDigest, projectionDigest, lastAppliedRev: authorityRev }) }),
+          : { cursor: Object.freeze({ incarnationId, registryDigest, projectionDigest,
+            projectionSequence, lastAppliedRev: authorityRev }) }),
       });
       options.connection.synchronization.begin(request);
     });
@@ -366,6 +367,11 @@ function create_registry_echo_semantic_client_internal<
       return;
     }
     if (message.type === "projection-change") {
+      const recovering = current_recovery(message.id);
+      if (recovering !== undefined && recovering.outcome !== "snapshot") {
+        apply_projection_change(message, true);
+        return;
+      }
       const active = liveRecovery;
       if (status !== "live" || active === undefined || active.id !== message.id) return;
       if (endpoint.session.status !== "attached" || endpoint.session.sessionId !== active.sessionId
@@ -383,7 +389,8 @@ function create_registry_echo_semantic_client_internal<
       if (authorityRev !== message.throughRev) {
         throw new Error("Hosted recovery caught-up authority revision does not match the Echo cursor.");
       }
-      if ((message.projectionSequence ?? 0) !== (active.projectionSequence ?? 0)) {
+      if ((message.projectionSequence ?? 0) !== (active.outcome === "snapshot"
+        ? (active.projectionSequence ?? 0) : projectionSequence)) {
         throw new Error("Hosted recovery projection sequence is incompatible.");
       }
       projectionSequence = message.projectionSequence ?? 0;
@@ -436,11 +443,13 @@ function create_registry_echo_semantic_client_internal<
     publishAuthorityPosition();
   }
 
-  function apply_projection_change(message: import("../locus/locus.aggregate.transport.internal.js").LocusHostedProjectionChange): void {
-    if (map === undefined || authorityRev === undefined || projectionDigest === undefined
+  function apply_projection_change(message: import("../locus/locus.aggregate.transport.internal.js").LocusHostedProjectionChange,
+    recovering = false): void {
+    if (authorityRev === undefined || projectionDigest === undefined
       || registryDigest === undefined || incarnationId === undefined
       || message.logicalMapId !== clientLogicalMapId || message.incarnationId !== incarnationId
-      || message.authorityRev !== authorityRev || message.sequence !== projectionSequence + 1
+      || message.authorityRev !== authorityRev
+      || (recovering ? message.sequence <= projectionSequence : message.sequence !== projectionSequence + 1)
       || message.previousDigest !== projectionDigest
       || JSON.stringify(message.systemFeatures) !== JSON.stringify(projectionFeatures)) {
       throw new Error("Hosted projection change fence is incompatible.");
@@ -449,8 +458,10 @@ function create_registry_echo_semantic_client_internal<
       message.libraries, message.htmlDocument, message.systemFeatures, message.writableDocuments);
     if (nextDigest !== message.projectionDigest) throw new Error("Hosted projection change digest is incompatible.");
     const current = replica.clientProjection();
-    if (current === undefined) throw new Error("Hosted projection change requires a composed client map.");
-    const oldEntries = current.registry.libraries.filter((entry) => entry.scope === undefined);
+    if ((map === undefined && !recovering) || (map !== undefined && current === undefined)) {
+      throw new Error("Hosted projection change requires a composed client map.");
+    }
+    const oldEntries = current?.registry.libraries.filter((entry) => entry.scope === undefined) ?? [];
     for (const old of oldEntries) {
       const next = message.libraries.find((entry) => entry.name === old.name);
       if (next === undefined || next.mode !== old.mode || next.schema !== old.schema
@@ -461,7 +472,8 @@ function create_registry_echo_semantic_client_internal<
     const oldNames = new Set(oldEntries.map((entry) => entry.name));
     const added = message.libraries.filter((entry) => !oldNames.has(entry.name));
     if (added.length === 0) {
-      if (message.topology !== undefined || message.system !== undefined || message.registryDigest !== registryDigest) {
+      if (map === undefined || message.topology !== undefined || message.system !== undefined
+        || message.registryDigest !== registryDigest) {
         throw new Error("Hosted projection change topology is incompatible.");
       }
     } else {
@@ -478,11 +490,26 @@ function create_registry_echo_semantic_client_internal<
       if (!projectionFeatures.includes("interactions") && message.system !== undefined) {
         throw new Error("Hosted projection change has unexpected interactions.");
       }
+      if (map === undefined) {
+        const empty = admit_authority_projection_snapshot(Object.freeze({
+          format: AUTHORITY_PROJECTION_SNAPSHOT_FORMAT,
+          authority: Object.freeze({ logicalMapId: clientLogicalMapId, incarnationId }),
+          revision: authorityRev, projectionDigest, libraries: Object.freeze([]),
+          htmlDocument: null, systemFeatures: Object.freeze([]), writableDocuments: Object.freeze([]), system: null,
+        }));
+        const composition = authority_projection_as_client_composition_internal(empty);
+        if (composition.registryDigest !== registryDigest) throw new Error("Empty projected topology fence is incompatible.");
+        const created = make_livemap_libraries({}, [], composition);
+        replica.attachMap(created);
+        map = created;
+        bind_client_projection_identity_internal(created, empty);
+      }
       replica.installProjectedTopology(topology, message.registryDigest, message.system);
       if (replica.clientProjection()?.registry.digest !== message.registryDigest) {
         throw new Error("Hosted projection topology installation is incomplete.");
       }
     }
+    if (map === undefined) throw new Error("Hosted projection change requires a composed client map.");
     advance_client_projection_identity_internal(map, incarnationId, projectionDigest, message.projectionDigest);
     projectionDigest = message.projectionDigest;
     registryDigest = message.registryDigest;
@@ -499,6 +526,20 @@ function create_registry_echo_semantic_client_internal<
     }));
     if (authorityRev === undefined || admitted.prevRev !== authorityRev) {
       throw new Error("Projected live commit is not contiguous with the Echo authority cursor.");
+    }
+    if (admitted.topology !== undefined) {
+      if (map === undefined || admitted.previousRegistryDigest !== registryDigest
+        || admitted.operations.length !== 0) {
+        throw new Error("Projected topology commit is incompatible with this Echo map.");
+      }
+      replica.installProjectedTopology(admitted.topology, admitted.registryDigest);
+      replica.advanceHostedProgress(Object.freeze({ logicalMapId: clientLogicalMapId,
+        incarnationId, registryDigest: admitted.registryDigest,
+        prevRev: admitted.prevRev, rev: admitted.rev }));
+      registryDigest = admitted.registryDigest;
+      authorityRev = admitted.rev;
+      publishAuthorityPosition();
+      return;
     }
     const commit = Object.freeze({ ...admitted, registryDigest });
     if (map !== undefined) replica.replayHosted(commit, authorityRev);

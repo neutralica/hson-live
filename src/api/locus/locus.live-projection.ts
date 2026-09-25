@@ -10,13 +10,15 @@ import { interaction_schema_internal, project_interaction_state_internal } from 
 import type { LocusEffectiveProjection } from "./locus.projection.js";
 
 /** Session-projected commit contract for visible authority effects. */
-export const LOCUS_LIVE_PROJECTED_COMMIT_FORMAT = "hson-locus-live-projected-client-commit-v2" as const;
-export const LOCUS_LIVE_PROJECTED_WIRE_FORMAT = "hson-locus-live-projected-client-wire-v2" as const;
+export const LOCUS_LIVE_PROJECTED_COMMIT_FORMAT = "hson-locus-live-projected-client-commit-v3" as const;
+export const LOCUS_LIVE_PROJECTED_WIRE_FORMAT = "hson-locus-live-projected-client-wire-v3" as const;
 
 export type LocusLiveProjectedCommit = Readonly<{
   format: typeof LOCUS_LIVE_PROJECTED_COMMIT_FORMAT;
   authority: HostedAggregateCommit["authority"];
   registryDigest: string;
+  previousRegistryDigest?: string;
+  topology?: import("../../types/livemap.types.js").LiveMapLibraryAddOperation;
   prevRev: number;
   rev: number;
   operations: readonly PortableAggregateOperation[];
@@ -59,14 +61,21 @@ export function decode_locus_live_projected_envelope_internal(
   const envelope = exact_record(input, ["format", "logicalMapId", "incarnationId", "registryDigest", "commit"]);
   if (envelope.format !== LOCUS_LIVE_PROJECTED_WIRE_FORMAT
     || envelope.logicalMapId !== expected.logicalMapId
-    || envelope.incarnationId !== expected.incarnationId
-    || envelope.registryDigest !== expected.registryDigest) throw new Error("Projected live wire fence is incompatible.");
-  const commit = exact_record(envelope.commit, ["format", "authority", "registryDigest", "prevRev", "rev", "operations"]);
+    || envelope.incarnationId !== expected.incarnationId) throw new Error("Projected live wire fence is incompatible.");
+  const topology = typeof envelope.commit === "object" && envelope.commit !== null
+    && Object.hasOwn(envelope.commit, "topology");
+  const commit = exact_record(envelope.commit, topology
+    ? ["format", "authority", "registryDigest", "previousRegistryDigest", "topology", "prevRev", "rev", "operations"]
+    : ["format", "authority", "registryDigest", "prevRev", "rev", "operations"]);
   const authority = exact_record(commit.authority, ["logicalMapId", "incarnationId"]);
   if (commit.format !== LOCUS_LIVE_PROJECTED_COMMIT_FORMAT
     || authority.logicalMapId !== envelope.logicalMapId
     || authority.incarnationId !== envelope.incarnationId
-    || commit.registryDigest !== envelope.registryDigest) throw new Error("Projected live commit fence is incompatible.");
+    || commit.registryDigest !== envelope.registryDigest
+    || (topology && commit.previousRegistryDigest !== expected.registryDigest)
+    || (!topology && commit.registryDigest !== expected.registryDigest)) {
+    throw new Error("Projected live commit fence is incompatible.");
+  }
   return Object.freeze({ ...commit, format: "hson-portable-aggregate-commit-v1" }) as PortableAggregateCommit;
 }
 
@@ -122,6 +131,25 @@ export function project_locus_live_transition_internal(
   }
   const registryDigest = projected_registry_digest(effective);
   const complete = make_portable_aggregate_commit(authority);
+  if (complete?.topology !== undefined) {
+    const visible = complete.topology.operation.libraries.filter((entry) => effective.includesLibrary(entry.name));
+    if (visible.length === 0) return Object.freeze({ kind: "progress", progress: Object.freeze({
+      logicalMapId: effective.authority.logicalMapId, incarnationId: effective.authority.incarnationId,
+      registryDigest, prevRev: authority.prevRev, rev: authority.rev,
+    }) });
+    const addedNames = new Set(visible.map((entry) => entry.name));
+    const previousRegistryDigest = projected_registry_digest(Object.freeze({ ...effective,
+      libraries: Object.freeze(effective.libraries.filter((entry) => !addedNames.has(entry.name))) }));
+    const first = visible[0];
+    if (first === undefined) throw new Error("Projected topology addition is empty.");
+    return Object.freeze({ kind: "commit", commit: Object.freeze({
+      format: LOCUS_LIVE_PROJECTED_COMMIT_FORMAT, authority: effective.authority,
+      previousRegistryDigest, registryDigest, prevRev: authority.prevRev, rev: authority.rev,
+      topology: Object.freeze({ library: first.name,
+        operation: Object.freeze({ kind: "library-add" as const, libraries: Object.freeze(visible) }) }),
+      operations: Object.freeze([]),
+    }) });
+  }
   const operations: PortableAggregateOperation[] = complete?.operations.filter((entry) =>
     entry.library !== INTERACTION_RESERVED_LIBRARY_TRANSPORT_NAME && effective.includesLibrary(entry.library)) ?? [];
   if (effective.hasSystemFeature("interactions")) {

@@ -91,6 +91,7 @@ type HostedCursor = Readonly<{
   incarnationId: string;
   registryDigest: string;
   projectionDigest: string;
+  projectionSequence: number;
   lastAppliedRev: number;
 }>;
 
@@ -125,6 +126,7 @@ type HostedRecoveryAttachment = Readonly<{
   id: string;
   sessionId: string;
   epoch: number;
+  projection: LocusEffectiveProjection;
 }>;
 
 type HostedConnection = {
@@ -204,7 +206,7 @@ export type LocusHostedAggregateSocketServer<
   add_libraries: (definitions: LiveMapDefinitions, exposure?: Readonly<Record<string, LocusLibraryExposure>>) => Promise<void>;
   dispatch_action: LocusHostedAggregate["dispatch_action"];
   dispatch_message: (message: import("../../types/locus.types.js").LocusClientActionMessage) => Promise<LocusClientActionResult>;
-  sessions: Readonly<{ debug: ReturnType<typeof make_locus_session_manager>["debug"]; onChange: ReturnType<typeof make_locus_session_manager>["onChange"]; revoke: ReturnType<typeof make_locus_session_manager>["revoke"]; projection: ReturnType<typeof make_locus_session_manager>["projection"]; updateProjection: (sessionId: LocusSessionId, request: LocusRequestedProjection) => Promise<Readonly<{ changed: boolean; sequence: number; digest: string; authorityRev: number }>>; dispose: () => void }>;
+  sessions: Readonly<{ debug: ReturnType<typeof make_locus_session_manager>["debug"]; onChange: ReturnType<typeof make_locus_session_manager>["onChange"]; revoke: ReturnType<typeof make_locus_session_manager>["revoke"]; projection: ReturnType<typeof make_locus_session_manager>["projection"]; updateProjection: (sessionId: LocusSessionId, request: LocusRequestedProjection, context?: LocusConnectionContext) => Promise<Readonly<{ changed: boolean; sequence: number; digest: string; authorityRev: number }>>; dispose: () => void }>;
   actionRequests: Readonly<{ debug: ReturnType<typeof make_locus_action_dedupe_store>["debug"]; dispose: () => void }>;
   /** Ordered internal barrier used by persistence checkpointing. */
   run_exclusive: LocusHostedAggregate["run_exclusive"];
@@ -387,7 +389,8 @@ export function create_locus_hosted_aggregate_socket_internal<
     });
   }
 
-  function update_projection(sessionId: LocusSessionId, request: LocusRequestedProjection): Promise<Readonly<{
+  function update_projection(sessionId: LocusSessionId, request: LocusRequestedProjection,
+    context?: LocusConnectionContext): Promise<Readonly<{
     changed: boolean; sequence: number; digest: string; authorityRev: number;
   }>> {
     return locus.run_exclusive(async () => {
@@ -396,14 +399,19 @@ export function create_locus_hosted_aggregate_socket_internal<
         && candidate.sessionEpoch !== undefined && candidate.live && !candidate.closed
         && !candidate.fenced && sessions.is_active(sessionId, candidate.sessionEpoch));
       const previous = sessions.projection(sessionId);
-      if (connection === undefined || previous === undefined || connection.effectiveProjection !== previous
-        || connection.recoveryId === undefined || connection.sessionEpoch === undefined) {
+      const disconnected = connection === undefined && context !== undefined
+        && sessions.disconnected_with_principal(sessionId, context);
+      if (previous === undefined || (!disconnected && (connection === undefined
+        || connection.effectiveProjection !== previous || connection.recoveryId === undefined
+        || connection.sessionEpoch === undefined))) {
         throw new LocusProjectionUnavailableError();
       }
-      const epoch = connection.sessionEpoch;
-      const next = await normalize_locus_effective_projection(projectionPolicy, request, connection.context);
-      if (!attachment_current(connection, sessionId, epoch) || !connection.live
-        || sessions.projection(sessionId) !== previous || connection.effectiveProjection !== previous) {
+      const epoch = connection?.sessionEpoch;
+      const next = await normalize_locus_effective_projection(projectionPolicy, request, connection?.context ?? context);
+      if (sessions.projection(sessionId) !== previous
+        || (disconnected ? context === undefined || !sessions.disconnected_with_principal(sessionId, context)
+          : connection === undefined || epoch === undefined || !attachment_current(connection, sessionId, epoch)
+            || !connection.live || connection.effectiveProjection !== previous)) {
         throw new LocusProjectionUnavailableError();
       }
       if (previous.libraries.some((entry) => !next.includesLibrary(entry.name))
@@ -414,6 +422,11 @@ export function create_locus_hosted_aggregate_socket_internal<
       if (currentSequence === undefined) throw new LocusProjectionUnavailableError();
       if (next.digest === previous.digest) return Object.freeze({ changed: false, sequence: currentSequence,
         digest: previous.digest, authorityRev: locus.rev });
+      if (disconnected) {
+        const sequence = sessions.update_projection(sessionId, previous, next);
+        return Object.freeze({ changed: true, sequence, digest: next.digest, authorityRev: locus.rev });
+      }
+      if (connection === undefined || connection.recoveryId === undefined) throw new LocusProjectionUnavailableError();
       const added = next.libraries.filter((entry) => !previous.includesLibrary(entry.name));
       const snapshot = capture_selected_authority_projection_snapshot(options.map, next);
       const additions = added.map((entry) => {
@@ -568,7 +581,9 @@ export function create_locus_hosted_aggregate_socket_internal<
   }
 
   function recovery_delivery_current(connection: HostedConnection, recovery: HostedRecoveryAttachment): boolean {
-    return connection.recovering && recovery_attachment_current(connection, recovery);
+    return connection.recovering && recovery_attachment_current(connection, recovery)
+      && sessions.projection(recovery.sessionId) === recovery.projection
+      && connection.effectiveProjection === recovery.projection;
   }
 
   function stop_recovery(connection: HostedConnection): void {
@@ -625,10 +640,14 @@ export function create_locus_hosted_aggregate_socket_internal<
       reject(connection, "LOCUS_PROJECTION_UNAVAILABLE", "Hosted recovery projection is unavailable.", request.id);
       return;
     }
-    if (cursor !== undefined && sameIncarnation && cursor.projectionDigest !== effective.digest) {
+    const priorProjection = cursor === undefined ? undefined
+      : sessions.projection_at_digest(connection.sessionId, cursor.projectionDigest, cursor.projectionSequence);
+    if (cursor !== undefined && sameIncarnation && priorProjection === undefined) {
       reject(connection, "LOCUS_PROJECTION_UNAVAILABLE", "Hosted recovery projection is incompatible.", request.id);
       return;
     }
+    const replayProjection = priorProjection?.projection ?? effective;
+    const replaySequence = priorProjection?.sequence ?? sessions.projection_sequence(connection.sessionId) ?? 0;
     if (cursor !== undefined && cursor.lastAppliedRev > locus.rev && sameIncarnation) {
       reject(connection, "REVISION_AHEAD_OF_AUTHORITY", "Hosted recovery cursor is ahead of authority.", request.id);
       return;
@@ -637,6 +656,7 @@ export function create_locus_hosted_aggregate_socket_internal<
       id: request.id,
       sessionId: connection.sessionId,
       epoch: connection.sessionEpoch,
+      projection: effective,
     });
 
     connection.recoveryId = request.id;
@@ -651,7 +671,8 @@ export function create_locus_hosted_aggregate_socket_internal<
     const headSnapshot = capture_locus_session_authority_projection_snapshot(options.map, sessions, connection.sessionId);
     const head = headSnapshot.revision;
     const projectedRegistryDigest = authority_projection_as_client_composition_internal(headSnapshot).registryDigest;
-    const sameProjectedRegistry = cursor?.registryDigest === projectedRegistryDigest;
+    const replayRegistryDigest = projected_registry_digest(replayProjection);
+    const sameProjectedRegistry = cursor?.registryDigest === replayRegistryDigest;
     if (cursor === undefined) {
       outcome = "snapshot";
       reason = "no_usable_revision";
@@ -686,8 +707,10 @@ export function create_locus_hosted_aggregate_socket_internal<
     await options.internal?.afterRecoveryCut?.();
     if (!recovery_delivery_current(connection, activeRecovery)) return;
     const projectionSequence = sessions.projection_sequence(connection.sessionId) ?? 0;
-    send(connection, recovery_plan(request.id, outcome, cut, effective.digest, projectedRegistryDigest,
-      reason === undefined ? undefined : { reason }, projectionSequence));
+    send(connection, recovery_plan(request.id, outcome, cut,
+      snapshot === undefined ? replayProjection.digest : effective.digest,
+      snapshot === undefined ? replayRegistryDigest : projectedRegistryDigest,
+      reason === undefined ? undefined : { reason }, snapshot === undefined ? replaySequence : projectionSequence));
     if (!recovery_delivery_current(connection, activeRecovery)) return;
     if (snapshot !== undefined) {
       send(connection, Object.freeze({
@@ -699,9 +722,34 @@ export function create_locus_hosted_aggregate_socket_internal<
     } else {
       for (const entry of replay) {
         if (!recovery_delivery_current(connection, activeRecovery)) return;
-        send_projected_recovery_event(connection, request.id, "body", projected_history_event(entry, effective), effective);
+        send_projected_recovery_event(connection, request.id, "body", projected_history_event(entry, replayProjection), replayProjection);
         if (!recovery_delivery_current(connection, activeRecovery)) return;
       }
+    }
+    if (snapshot === undefined && replayProjection !== effective) {
+      if (!recovery_delivery_current(connection, activeRecovery)) return;
+      const added = effective.libraries.filter((entry) => !replayProjection.includesLibrary(entry.name));
+      const additions = added.map((entry) => {
+        const captured = headSnapshot.libraries.find((candidate) => candidate.name === entry.name);
+        if (captured === undefined) throw new LocusProjectionUnavailableError();
+        return Object.freeze({ name: entry.name, mode: entry.mode, schema: entry.schema, root: captured.root });
+      });
+      const first = additions[0];
+      const change: LocusHostedProjectionChange = Object.freeze({
+        type: "projection-change", id: request.id,
+        logicalMapId: locus.logicalMapId, incarnationId: locus.incarnationId,
+        authorityRev: cut, sequence: projectionSequence,
+        previousDigest: replayProjection.digest, projectionDigest: effective.digest,
+        registryDigest: projectedRegistryDigest,
+        libraries: effective.libraries, htmlDocument: effective.htmlDocument ?? null,
+        systemFeatures: effective.systemFeatures, writableDocuments: effective.writableDocuments,
+        ...(first === undefined ? {} : { topology: Object.freeze({ library: first.name,
+          operation: Object.freeze({ kind: "library-add" as const, libraries: Object.freeze(additions) }) }) }),
+        ...(added.some((entry) => entry.mode === "document") && headSnapshot.system !== null
+          ? { system: headSnapshot.system.interactions } : {}),
+      });
+      send(connection, change);
+      if (!recovery_delivery_current(connection, activeRecovery)) return;
     }
     await options.internal?.beforeRecoveryCaughtUp?.();
     if (!recovery_delivery_current(connection, activeRecovery)) return;
@@ -1449,9 +1497,11 @@ function decode_request(raw: string, maxWireBytes: number): HostedRequest {
   if (typeof raw !== "string" || utf8_bytes(raw) > maxWireBytes) throw new Error("Hosted aggregate request is malformed or exceeds its byte limit.");
   const value = exact_record(JSON.parse(raw), "Hosted aggregate request");
   if (value.type === "recover") {
-    const hasCursor = Object.hasOwn(value, "incarnationId") || Object.hasOwn(value, "registryDigest") || Object.hasOwn(value, "projectionDigest") || Object.hasOwn(value, "lastAppliedRev");
+    const hasCursor = Object.hasOwn(value, "incarnationId") || Object.hasOwn(value, "registryDigest")
+      || Object.hasOwn(value, "projectionDigest") || Object.hasOwn(value, "projectionSequence")
+      || Object.hasOwn(value, "lastAppliedRev");
     exact_keys(value, hasCursor
-      ? ["type", "id", "logicalMapId", "incarnationId", "registryDigest", "projectionDigest", "lastAppliedRev"]
+      ? ["type", "id", "logicalMapId", "incarnationId", "registryDigest", "projectionDigest", "projectionSequence", "lastAppliedRev"]
       : ["type", "id", "logicalMapId"], "Hosted recovery request");
     const id = required_string(value.id);
     const logicalMapId = required_string(value.logicalMapId);
@@ -1461,9 +1511,12 @@ function decode_request(raw: string, maxWireBytes: number): HostedRequest {
     const incarnationId = required_string(value.incarnationId);
     const registryDigest = required_digest(value.registryDigest);
     const projectionDigest = required_digest(value.projectionDigest);
+    const projectionSequence = required_revision(value.projectionSequence);
     const lastAppliedRev = required_revision(value.lastAppliedRev);
-    if (incarnationId === undefined || registryDigest === undefined || projectionDigest === undefined || lastAppliedRev === undefined) throw new Error("Hosted recovery cursor is malformed.");
-    return Object.freeze({ type: "recover", id, logicalMapId, cursor: Object.freeze({ incarnationId, registryDigest, projectionDigest, lastAppliedRev }) });
+    if (incarnationId === undefined || registryDigest === undefined || projectionDigest === undefined
+      || projectionSequence === undefined || lastAppliedRev === undefined) throw new Error("Hosted recovery cursor is malformed.");
+    return Object.freeze({ type: "recover", id, logicalMapId,
+      cursor: Object.freeze({ incarnationId, registryDigest, projectionDigest, projectionSequence, lastAppliedRev }) });
   }
   if (value.type === "session-create" || value.type === "session-goodbye") {
     const decoded = decode_locus_message(raw);

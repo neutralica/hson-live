@@ -113,6 +113,12 @@ Replica graph changes are observed through LiveMap commit/sub/feed/watch
 facilities. Progress-only authority advancement emits no application commit or
 value/mutation observation; internal authority-position observers support Echo
 convergence and Mirror revision ordering.
+Retained hosted recovery applies projected library additions before later writes,
+then reconciles any explicit disconnected grant expansion at the recovery cut.
+It keeps the existing composed map, client-local libraries, and unrelated
+Mirror/LiveTree resources. Hidden additions advance only the authority cursor.
+Changed-topology snapshot fallback and in-place projection contraction remain
+Phase 2c-b work.
 `EchoRecovery` has no `onChange` observation member. Echo has no topology-aware
 `subscribe`/`unsubscribe`, public `seq`, or `onEvent` surface.
 

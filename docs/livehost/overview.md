@@ -164,4 +164,4 @@ The following identities are distinct:
 
 There is no generic `LocusId`.
 
-Locus supplies a session-projected `AuthorityProjectionSnapshot` from one coherent authority cut. Application/runtime code supplies routing, HTML shell, carrier placement, and delivery. Hosted SSR uses `hson-ssr-bootstrap` version 3 with `hosted-projection`; local SSR retains the distinct version 2 contract. The active hosted socket envelope is `hson-locus-hosted-aggregate-message-v5`. All are QUID-free and bound to the session projection. Unsupported older hosted generations are rejected. Authority persistence remains complete and server-side.
+Locus supplies a session-projected `AuthorityProjectionSnapshot` from one coherent authority cut. Application/runtime code supplies routing, HTML shell, carrier placement, and delivery. Hosted SSR uses `hson-ssr-bootstrap` version 3 with `hosted-projection`; local SSR retains the distinct version 2 contract. The active hosted socket envelope is `hson-locus-hosted-aggregate-message-v6`. All are QUID-free and bound to the session projection. Unsupported older hosted generations are rejected. Authority persistence remains complete and server-side.
