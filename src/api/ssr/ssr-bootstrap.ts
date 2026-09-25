@@ -16,6 +16,7 @@ import {
   decode_hosted_root,
 } from "../livemap/livemap.hosted.js";
 import { SsrBootstrapCodecError } from "./ssr-bootstrap.error.js";
+import { decode_portable_document_stylesheet, encode_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
 import type {
   DecodedSsrBootstrap,
   EncodedSsrBootstrap,
@@ -24,7 +25,7 @@ import type {
 } from "./ssr-bootstrap.types.js";
 
 const FORMAT = "hson-ssr-bootstrap" as const;
-const LOCAL_VERSION = 2 as const;
+const LOCAL_VERSION = 3 as const;
 const HOSTED_PROJECTION_VERSION = 3 as const;
 const DEFAULT_MAX_ENCODED_BYTES = 96 * 1_024 * 1_024;
 const BASE64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
@@ -47,6 +48,7 @@ type WireLibrary = Readonly<{
   schemaDigest: string;
   rootFormat: "hson-exact-value";
   rootPayload: string;
+  css?: import("../../types/document-css.types.js").DocumentCssRecord;
 }>;
 type LibrariesPayload = Readonly<{
   snapshotFormat: "hson-livemap-libraries-snapshot";
@@ -209,6 +211,7 @@ function libraries_payload(snapshot: LocalLibrariesContinuationSnapshot): Librar
       schemaDigest: require_string(entry.schemaDigest),
       rootFormat: require_root_format(entry.root.format),
       rootPayload: require_string(entry.root.payload),
+      ...(entry.mode === "document" ? { css: encode_portable_document_stylesheet(decode_portable_document_stylesheet(entry.css)) } : {}),
     })),
   };
 }
@@ -260,11 +263,14 @@ function decode_registry_entry(input: unknown): LiveMapSnapshot["registry"]["lib
 }
 
 function decode_library_entry(input: unknown): LiveMapSnapshot["libraries"][number] {
-  const entry = record(input); exact_keys(entry, ["name", "mode", "schema", "schemaDigest", "rootFormat", "rootPayload"]);
+  const entry = record(input); exact_keys(entry, entry.mode === "document"
+    ? ["name", "mode", "schema", "schemaDigest", "rootFormat", "rootPayload", "css"]
+    : ["name", "mode", "schema", "schemaDigest", "rootFormat", "rootPayload"]);
   if (typeof entry.name !== "string" || !is_mode(entry.mode) || typeof entry.schema !== "string"
     || typeof entry.schemaDigest !== "string" || entry.rootFormat !== "hson-exact-value" || typeof entry.rootPayload !== "string") throw new TypeError("Library entry is malformed.");
   return Object.freeze({ name: entry.name, mode: entry.mode, schema: decoded_schema(entry.schema), schemaDigest: entry.schemaDigest,
-    root: Object.freeze({ format: entry.rootFormat, payload: entry.rootPayload }) });
+    root: Object.freeze({ format: entry.rootFormat, payload: entry.rootPayload }),
+    ...(entry.mode === "document" ? { css: encode_portable_document_stylesheet(decode_portable_document_stylesheet(entry.css)) } : {}) });
 }
 
 function canonical_json(value: unknown): string {

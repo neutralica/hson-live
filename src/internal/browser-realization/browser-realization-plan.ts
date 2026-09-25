@@ -362,13 +362,7 @@ function plan_atomic(
       throw incompatible("a leading LF in textarea is suppressed by the HTML parser", text.path);
     }
   } else {
-    if (text.value.includes("\r")) {
-      throw incompatible(`${host} RAWTEXT containing CR cannot survive HTML input preprocessing`, text.path);
-    }
-    const sentinel = new RegExp(`<\\/${host}(?:[\\t\\n\\f\\r \\/>]|$)`, "i");
-    if (sentinel.test(text.value)) {
-      throw incompatible(`${host} RAWTEXT contains a parser-significant closing sentinel`, text.path);
-    }
+    assert_browser_rawtext_text(text.value, host, text.path);
   }
   return [Object.freeze({
     kind: "text",
@@ -377,6 +371,18 @@ function plan_atomic(
     ...(text.canonicalNode === undefined ? {} : { canonicalNode: text.canonicalNode }),
     parserContext,
   })];
+}
+
+/** Shared parser-safety check for authored and derived RAWTEXT content. */
+export function assert_browser_rawtext_text(value: string, host: string, path: string): void {
+  assert_parser_transportable_string(value, path, "text");
+  if (value.includes("\r")) {
+    throw incompatible(`${host} RAWTEXT containing CR cannot survive HTML input preprocessing`, path);
+  }
+  const sentinel = new RegExp(`<\\/${host}(?:[\\t\\n\\f\\r \\/>]|$)`, "i");
+  if (sentinel.test(value)) {
+    throw incompatible(`${host} RAWTEXT contains a parser-significant closing sentinel`, path);
+  }
 }
 
 function derive_table_wrappers(

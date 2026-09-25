@@ -27,7 +27,9 @@ import { rewrite_interaction_subjects, validate_interaction_subjects } from "../
 import { INTERACTION_RESERVED_LIBRARY_KEY } from "../../internal/interaction-storage.js";
 import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
 import { HsonSchema as HsonSchemaHandle, compiled_hson_schema_of } from "../schema/hson-schema.js";
-import type { HostedLiveMapSnapshot, LiveMapDataOp, LiveMapDocumentPath, LiveMapGraphCommit, LiveMapGraphOp, LiveMapSnapshot, LivePath } from "../../types/livemap.types.js";
+import type { HostedLiveMapSnapshot, LiveMapCssOp, LiveMapDataOp, LiveMapDocumentPath, LiveMapGraphCommit, LiveMapGraphOp, LiveMapSnapshot, LivePath } from "../../types/livemap.types.js";
+import { apply_portable_document_css_op, canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
+import { decode_portable_document_stylesheet, empty_portable_document_stylesheet, encode_portable_document_stylesheet, portable_document_stylesheet_equal } from "../../internal/css/portable-document-stylesheet.js";
 import type { HsonSchema } from "../transform/transform.types.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 import {
@@ -1477,6 +1479,52 @@ function make_livemap_registry_engine(
       afterInstall?.(prepared.identities)).commit;
   }
 
+  function stylesheet(libraryIdentity: LiveMapLibraryIdentity) {
+    const state = require_library(libraryIdentity);
+    if (state.mode !== "document" || state.stylesheet === undefined) {
+      throw new Error("Document stylesheet requires a document Library.");
+    }
+    return state.stylesheet;
+  }
+
+  function commit_stylesheet(libraryIdentity: LiveMapLibraryIdentity, operation: LiveMapCssOp): LiveMapAggregateCommit {
+    if (clientComposition === undefined) transitionController.assertPublicMutationAllowed();
+    else if (clientComposition.projected.has(libraryIdentity)) {
+      throw new Error("Projected document CSS awaits hosted CSS parity.");
+    }
+    const state = require_library(libraryIdentity);
+    const current = stylesheet(libraryIdentity);
+    const normalizedOp = canonical_portable_document_css_op(operation);
+    if (new TextEncoder().encode(JSON.stringify(normalizedOp)).byteLength > HOSTED_MAX_SNAPSHOT_BYTES) {
+      throw new TypeError("Document CSS operation exceeds the snapshot bound.");
+    }
+    const next = apply_portable_document_css_op(current, normalizedOp);
+    const prevRev = mapRevision;
+    if (portable_document_stylesheet_equal(current, next)) {
+      return Object.freeze({ kind: "aggregate", changed: false, prevRev, rev: prevRev,
+        operations: Object.freeze([]) });
+    }
+    const commit: LiveMapAggregateCommit = Object.freeze({ kind: "aggregate", changed: true,
+      prevRev, rev: prevRev + 1, operations: Object.freeze([]),
+      css: Object.freeze({ library: libraryIdentity, operation: normalizedOp }) });
+    const prepared = transitionController.prepareAuthority({
+      commit, libraryModes: Object.freeze(["document"]),
+      baseStillCurrent: () => mapRevision === prevRev && state.stylesheet === current,
+      install: () => { state.stylesheet = next; mapRevision = commit.rev; },
+      notify: (accepted) => enqueuePublication(() => {
+        aggregateAcceptedTransitions += 1;
+        aggregatePublications += 1;
+        let firstFailure: unknown;
+        for (const observer of [...aggregateObservers]) {
+          try { observer(accepted); } catch (error) { firstFailure ??= error; }
+        }
+        publishAuthorityPosition(accepted.rev);
+        if (firstFailure !== undefined) throw firstFailure;
+      }),
+    });
+    return transitionController.acceptAuthority(prepared).commit;
+  }
+
   function capture_libraries_aggregate(): LiveMapSnapshot {
     const hosted = require_hosted_state();
     const libraries = hosted.registry.libraries.map((entry) => {
@@ -1496,6 +1544,7 @@ function make_livemap_registry_engine(
         schema: entry.schema,
         schemaDigest: entry.schemaDigest,
         root: encode_hosted_root(clone_hson_graph_without_quids(state.root)),
+        ...(entry.mode === "document" ? { css: encode_portable_document_stylesheet(stylesheet(state.identity)) } : {}),
       });
     });
     const snapshot: LiveMapSnapshot = Object.freeze({
@@ -1625,7 +1674,10 @@ function make_livemap_registry_engine(
       }
       const state = require_library(binding.identity as LiveMapLibraryIdentity);
       return Object.freeze({ kind: "application" as const, state, prepared,
-        changed: !canonical_graph_equal(state.root, prepared.root),
+        css: prepared.mode === "document" ? empty_portable_document_stylesheet() : undefined,
+        changed: !canonical_graph_equal(state.root, prepared.root)
+          || (prepared.mode === "document" && !portable_document_stylesheet_equal(stylesheet(state.identity),
+            empty_portable_document_stylesheet())),
         projectedValue: prepared.projectedOverlay === undefined
           ? undefined : must_projected_root_value(prepared.root) });
     });
@@ -1644,6 +1696,7 @@ function make_livemap_registry_engine(
           documentOverlay: candidate.prepared.documentOverlay,
           projectedOverlay: candidate.prepared.projectedOverlay,
           projectedValue: candidate.projectedValue,
+          ...(candidate.css === undefined ? {} : { stylesheet: candidate.css }),
         });
       }
     }
@@ -1681,6 +1734,7 @@ function make_livemap_registry_engine(
     const candidates: Array<Readonly<{
       state: LiveMapLibraryState;
       prepared: ReturnType<typeof prepare_livemap_root>;
+      css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
       projectedValue?: OrderedProjectedValue;
       newlyInstalled: boolean;
       schema: HsonSchema;
@@ -1718,6 +1772,7 @@ function make_livemap_registry_engine(
           ? require_library(old.identity as LiveMapLibraryIdentity)
           : make_livemap_library(prepared, schema);
         candidates.push(Object.freeze({ name: entry.name, state, prepared, schema, newlyInstalled: !compatible,
+          ...(entry.mode === "document" ? { css: decode_portable_document_stylesheet(encoded.css) } : {}),
           projectedValue: prepared.mode === "document" ? undefined : must_projected_root_value(prepared.root) }));
       }
     }
@@ -1741,17 +1796,19 @@ function make_livemap_registry_engine(
     }
     const previousRevision = mapRevision;
     const changedLibraries = Object.freeze(candidates
-      .filter(({ state, prepared, newlyInstalled }) => newlyInstalled || !canonical_graph_equal(state.root, prepared.root))
+      .filter(({ state, prepared, newlyInstalled, css }) => newlyInstalled || !canonical_graph_equal(state.root, prepared.root)
+        || (css !== undefined && !portable_document_stylesheet_equal(stylesheet(state.identity), css)))
       .map(({ state }) => state.identity));
     // Portable restoration starts a fresh identity epoch. Existing shared
     // records remain live; removed/replaced identities disappear from lookup.
     mapIdentityEpoch.replace([]);
-    for (const { state, prepared, projectedValue } of candidates) {
+    for (const { state, prepared, projectedValue, css } of candidates) {
       Object.assign(state, {
         root: prepared.root,
         documentOverlay: prepared.documentOverlay,
         projectedOverlay: prepared.projectedOverlay,
         projectedValue,
+        ...(css === undefined ? {} : { stylesheet: css }),
       });
     }
     libraryRegistry.replace(candidates.map(({ state }) => state));
@@ -1818,6 +1875,7 @@ function make_livemap_registry_engine(
       library: LiveMapLibraryState;
       root: HsonNode;
       mode: LiveMapLibraryState["mode"];
+      css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
       documentOverlay?: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay;
       projectedOverlay?: LiveMapProjectedIdentityOverlay;
       projectedValue?: OrderedProjectedValue;
@@ -1859,6 +1917,7 @@ function make_livemap_registry_engine(
         library: require_library(binding.identity as LiveMapLibraryIdentity),
         root: prepared.root,
         mode: prepared.mode,
+        ...(prepared.mode === "document" ? { css: decode_portable_document_stylesheet(encoded.css) } : {}),
         ...((proof?.overlays.get(entry.name)?.document ?? prepared.documentOverlay) === undefined
           ? {} : { documentOverlay: proof?.overlays.get(entry.name)?.document ?? prepared.documentOverlay }),
         ...((proof?.overlays.get(entry.name)?.projected ?? prepared.projectedOverlay) === undefined ? {} : {
@@ -1874,6 +1933,7 @@ function make_livemap_registry_engine(
       documentOverlay: candidate.documentOverlay,
       projectedOverlay: candidate.projectedOverlay,
       projectedValue: candidate.projectedValue,
+      ...(candidate.css === undefined ? {} : { stylesheet: candidate.css }),
     }));
     const active = aggregate_quid_locations(candidateStates);
     for (const quid of active.keys()) {
@@ -1893,7 +1953,8 @@ function make_livemap_registry_engine(
       ? "same-epoch" as const
       : "new-epoch" as const;
     const changedLibraries = Object.freeze(candidates
-      .filter((candidate) => !canonical_graph_equal(candidate.library.root, candidate.root))
+      .filter((candidate) => !canonical_graph_equal(candidate.library.root, candidate.root)
+        || (candidate.css !== undefined && !portable_document_stylesheet_equal(stylesheet(candidate.library.identity), candidate.css)))
       .map((candidate) => candidate.library.identity));
     if (systemState !== undefined && systemCandidate === undefined) {
       throw new Error("Hosted aggregate snapshot omitted configured transactional system state.");
@@ -1904,6 +1965,7 @@ function make_livemap_registry_engine(
         documentOverlay: candidate.documentOverlay,
         projectedOverlay: candidate.projectedOverlay,
         projectedValue: candidate.projectedValue,
+        ...(candidate.css === undefined ? {} : { stylesheet: candidate.css }),
       });
     }
     if (systemCandidate !== undefined) {
@@ -1993,6 +2055,7 @@ function make_livemap_registry_engine(
       documentOverlay?: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay;
       projectedOverlay?: LiveMapProjectedIdentityOverlay;
       projectedValue?: OrderedProjectedValue;
+      css?: import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
       retained: boolean;
       changed: boolean;
       binding: HostedRegistryBinding;
@@ -2029,7 +2092,11 @@ function make_livemap_registry_engine(
         const retained = oldBinding !== undefined && oldBinding.scope === undefined
           && oldBinding.mode === entry.mode && oldBinding.schema.toHson() === entry.schema;
         const previous = retained ? require_library(oldBinding.identity as LiveMapLibraryIdentity) : undefined;
-        const changed = previous === undefined || !canonical_graph_equal(previous.root, prepared.root);
+        const css = entry.mode === "document" ? encoded.css === undefined
+          ? empty_portable_document_stylesheet() : decode_portable_document_stylesheet(encoded.css)
+          : undefined;
+        const changed = previous === undefined || !canonical_graph_equal(previous.root, prepared.root)
+          || (css !== undefined && !portable_document_stylesheet_equal(stylesheet(previous.identity), css));
         const state = previous ?? make_livemap_library(prepared, schema);
         const binding: HostedRegistryBinding = Object.freeze({ name: entry.name, identity: state.identity,
           mode: entry.mode, schema });
@@ -2040,6 +2107,7 @@ function make_livemap_registry_engine(
           projectedOverlay: changed ? prepared.projectedOverlay : state.projectedOverlay,
           projectedValue: entry.mode === "document" ? undefined
             : changed ? must_projected_root_value(prepared.root) : state.projectedValue,
+          css,
         }));
       }
     }
@@ -2060,6 +2128,7 @@ function make_livemap_registry_engine(
       ...candidate.state, root: candidate.root,
       documentOverlay: candidate.documentOverlay, projectedOverlay: candidate.projectedOverlay,
       projectedValue: candidate.projectedValue,
+      ...(candidate.css === undefined ? {} : { stylesheet: candidate.css }),
     }))];
     const afterActive = aggregate_quid_locations(afterStates);
     const ledger = stage_livemap_identity_epoch(mapIdentityEpoch.issued(), beforeActive.keys(), afterActive.keys());
@@ -2077,6 +2146,7 @@ function make_livemap_registry_engine(
       if (candidate.changed) Object.assign(candidate.state, {
         root: candidate.root, documentOverlay: candidate.documentOverlay,
         projectedOverlay: candidate.projectedOverlay, projectedValue: candidate.projectedValue,
+        ...(candidate.css === undefined ? {} : { stylesheet: candidate.css }),
       });
       projectedCaptureContinuity.set(candidate.state.identity, Object.freeze({}));
     }
@@ -2348,6 +2418,8 @@ function make_livemap_registry_engine(
       };
     }),
     captureLibraries: capture_libraries_aggregate,
+    stylesheet,
+    commitStylesheet: commit_stylesheet,
     captureHosted: capture_hosted_aggregate,
     captureSemanticCheckpoint: capture_semantic_checkpoint,
     installSemanticCheckpoint: install_semantic_checkpoint,

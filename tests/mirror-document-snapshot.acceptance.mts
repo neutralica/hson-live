@@ -76,6 +76,7 @@ function with_capture(
   return {
     mode: "document",
     get rev() { return map.rev; },
+    css: map.css,
     root: map.root,
     at: map.at,
     proxy: map.proxy,

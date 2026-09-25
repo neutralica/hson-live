@@ -57,6 +57,11 @@ export function continue_document(options: Readonly<{
   let disposeInteractions: (() => void) | undefined;
   try {
     const resolved = resolve_continuation_document(options.map, options.document);
+    if (resolved.selected.css.snapshot() !== "") {
+      throw new DocumentContinuationError("adopt", new Error(
+        "Document CSS continuation is unsupported until managed stylesheet adoption is implemented.",
+      ));
+    }
     const revision = resolved.selected.rev;
     const canonicalRoot = resolved.selected.root();
     try {

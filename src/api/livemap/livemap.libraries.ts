@@ -1,5 +1,7 @@
 import type { PortableAggregateSnapshot } from "./livemap.hosted.internal.types.js";
 import { clone_node } from "../../core/clone-node.js";
+import { apply_portable_document_css_op, canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
+import { portable_document_stylesheet_equal } from "../../internal/css/portable-document-stylesheet.js";
 import { register_echo_map_capability_internal } from "../../internal/echo-map-capability.js";
 import { INTERACTION_RESERVED_LIBRARY_KEY } from "../../internal/interaction-storage.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
@@ -54,6 +56,7 @@ import type { LiveMapAggregateCommit, LiveMapLibraryIdentity } from "./livemap.l
 import { make_livemap_registry_authority, type InitialSystemState } from "./livemap.core.js";
 import { classify_live_root_mode, is_data_livemap_mode } from "./livemap.document.js";
 import { render_local_libraries_html } from "../../internal/document-cut.js";
+import { make_livemap_document_css } from "./livemap.css.js";
 import { make_livemap_document_mutation_api } from "./livemap.document.mutation.js";
 import { make_livemap_document_attrs_read_api, make_livemap_document_flags_read_api } from "./livemap.document.attrs.js";
 import { make_livemap_document_location_factory, read_livemap_document_logical_location } from "./livemap.document.location.js";
@@ -125,7 +128,7 @@ function topology_definitions(operation: LiveMapLibraryAddOperation): LiveMapDef
   return definitions;
 }
 
-function is_library_add_operation(operation: LiveMapLibraryOperation | LiveMapLibraryAddOperation): operation is LiveMapLibraryAddOperation {
+function is_library_add_operation(operation: LiveMapCommit["operations"][number]): operation is LiveMapLibraryAddOperation {
   return "kind" in operation.operation && operation.operation.kind === "library-add";
 }
 
@@ -269,6 +272,10 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
     rev: commit.rev,
     operations: Object.freeze([
       ...(commit.topology === undefined ? [] : [commit.topology]),
+      ...(commit.css === undefined ? [] : (() => {
+        const library = namesByIdentity.get(commit.css.library);
+        return library === undefined ? [] : [Object.freeze({ library, operation: commit.css.operation })];
+      })()),
       ...commit.operations.flatMap((entry): readonly LiveMapLibraryOperation[] => {
         if (entry.target.domain !== "application") return [];
         const library = namesByIdentity.get(entry.target.library);
@@ -326,6 +333,16 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
         throw new Error("LiveMap topology replay requires the next canonical library-add commit.");
       }
       const operation = commit.operations[0];
+      if (operation !== undefined && "domain" in operation.operation && operation.operation.domain === "css") {
+        const binding = named.get(operation.library);
+        if (binding === undefined || "data" in binding.input) throw new Error("CSS replay requires a document Library.");
+        const normalized = canonical_portable_document_css_op(operation.operation);
+        const current = aggregate.stylesheet(binding.identity);
+        if (portable_document_stylesheet_equal(current, apply_portable_document_css_op(current, normalized))) {
+          throw new Error("CSS replay requires a semantic stylesheet change.");
+        }
+        return public_commit(aggregate.commitStylesheet(binding.identity, normalized));
+      }
       if (operation === undefined || !is_library_add_operation(operation) || operation.operation.libraries.length === 0) {
         throw new Error("LiveMap topology replay requires a library-add operation.");
       }
@@ -1014,6 +1031,10 @@ function make_document_library(
   const facade: LiveMapDocumentLibrary = {
     mode: "document" as const,
     get rev() { return aggregate.inspect().revision; },
+    css: make_livemap_document_css(
+      () => aggregate.stylesheet(library.identity),
+      (operation) => { aggregate.commitStylesheet(library.identity, operation); },
+    ),
     root: () => clone_node(root()),
     at: (path) => wrap_location(raw_at(path)),
     proxy: (path: readonly number[] = []) => Object.freeze({ $_: wrap_location(raw_at(path)) }),
@@ -1035,6 +1056,9 @@ function must_library_input(name: string, value: unknown): LiveMapLibraryInput &
   }
   if (!is_record(value)) {
     throw new TypeError(`LiveMap Library ${JSON.stringify(name)} must be an input object.`);
+  }
+  if (Object.hasOwn(value, "css")) {
+    throw new TypeError("Initial Library CSS input is not supported; author through the document Library css handle.");
   }
   const schema = value.schema === undefined
     ? (Object.hasOwn(value, "data") ? ANY_DATA : ANY_DOCUMENT)

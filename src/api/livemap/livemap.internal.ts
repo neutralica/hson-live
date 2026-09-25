@@ -117,6 +117,8 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   /** Validate a projected system root now and install it with the next topology transition. @internal */
   prepareClientProjectionSystemManaged: (owner: object, root: HsonNode) => () => void;
   captureLibraries: () => LiveMapSnapshot;
+  stylesheet: (library: LiveMapLibraryIdentity) => import("../../internal/css/portable-document-stylesheet.js").PortableDocumentStylesheet;
+  commitStylesheet: (library: LiveMapLibraryIdentity, operation: import("../../types/livemap.types.js").LiveMapCssOp) => LiveMapAggregateCommit;
   captureHosted: () => HostedLiveMapSnapshot;
   captureSemanticCheckpoint: () => LiveMapSemanticCheckpoint;
   installSemanticCheckpoint: (checkpoint: LiveMapSemanticCheckpoint) => void;

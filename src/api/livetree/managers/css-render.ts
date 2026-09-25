@@ -1,24 +1,9 @@
 import { camel_to_kebab } from "../../transform/utils/attrs-utils/camel_to_kebab.js";
 import { is_persisted_quid } from "../../../core/hson-node-quid.js";
-import type { CssPseudoKey } from "../../../core/style.types.js";
 import { HSON_QUID_MARKUP_NAME } from "../quid/data-quid.js";
+export { pseudo_to_suffix } from "../../../internal/css/pseudo-suffix.js";
 export { render_complete_css } from "../../../internal/css/global-css-text.js";
 export type { ManagedCssRule } from "../../../internal/css/global-css-text.js";
-
-export function pseudo_to_suffix(p: CssPseudoKey): string {
-  switch (p) {
-    case "_hover": return ":hover";
-    case "_active": return ":active";
-    case "_focus": return ":focus";
-    case "_focusWithin": return ":focus-within";
-    case "_focusVisible": return ":focus-visible";
-    case "_visited": return ":visited";
-    case "_disabled": return ":disabled";
-    case "_checked": return ":checked";
-    case "__before": return "::before";
-    case "__after": return "::after";
-  }
-}
 
 export function selector_for_quid(quid: string): string {
   if (!is_persisted_quid(quid)) {

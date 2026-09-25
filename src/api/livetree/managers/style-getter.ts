@@ -3,6 +3,8 @@
 import { AllowedStyleKey, CssKey, CssVarName } from "../../../types/css.types.js";
 import { camel_to_kebab } from "../../transform/utils/attrs-utils/camel_to_kebab.js";
 import { normalize_css_key } from "../../transform/utils/attrs-utils/normalize-css.js";
+import { normalize_css_var_name } from "../../../internal/css/css-var-name.js";
+export { normalize_css_var_name } from "../../../internal/css/css-var-name.js";
 
 /**
  * Backend contract for style reads.
@@ -58,23 +60,6 @@ export type StyleGetter = GetSurface;
  * - `"x"` convenience names
  * - `"-x"` common single-hyphen typo/convenience names
  */
-export function normalize_css_var_name(name: string): CssVarName | undefined {
-  const trimmed = name.trim();
-  if (!trimmed) return undefined;
-
-  if (trimmed.startsWith("--")) {
-    // changed: bare "--" is not a usable custom-property name
-    if (trimmed.length <= 2) return undefined;
-    return trimmed as CssVarName;
-  }
-
-  // changed: tolerate a single leading hyphen, or any accidental leading run.
-  const bare = trimmed.startsWith("-") ? trimmed.replace(/^-+/, "") : trimmed;
-  if (!bare) return undefined;
-
-  return `--${bare}` as CssVarName;
-}
-
 /**
  * Create the canonical bulk-read function for a style-like handle.
  *

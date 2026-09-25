@@ -70,7 +70,7 @@ expectCode("A", "SSR_BOOTSTRAP_MALFORMED");
 expectCode(base64url(new Uint8Array([0xff])), "SSR_BOOTSTRAP_MALFORMED");
 expectCode(encodeText("{"), "SSR_BOOTSTRAP_MALFORMED");
 expectCode(encodeText(JSON.stringify({ ...parsed, format: "wrong" })), "SSR_BOOTSTRAP_FORMAT_UNSUPPORTED");
-expectCode(encodeText(JSON.stringify({ ...parsed, version: 3 })), "SSR_BOOTSTRAP_VERSION_UNSUPPORTED");
+expectCode(encodeText(JSON.stringify({ ...parsed, version: 4 })), "SSR_BOOTSTRAP_VERSION_UNSUPPORTED");
 expectCode(encodeText(JSON.stringify({ ...parsed, kind: "wrong" })), "SSR_BOOTSTRAP_KIND_UNSUPPORTED");
 const { payload: _missing, ...missing } = parsed;
 expectCode(encodeText(JSON.stringify(missing)), "SSR_BOOTSTRAP_PAYLOAD_INVALID");

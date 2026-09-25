@@ -56,6 +56,17 @@ Data library roots may be objects, arrays, strings, finite numbers, booleans, or
 
 Document libraries expose `document.content`, `document.attrs`, `document.flags`, `document.byQuid`, logical `at(path)` locations, commits, and document capture. Document identity is local to the runtime; portable addresses and requests use paths.
 
+Every document library also owns an initially empty portable stylesheet. The root library handle exposes `page.css`; data libraries and `page.at(path)` locations do not. `page.css` is already document-wide, so it has no `.global`. It follows the global rule vocabulary: `sel`, `rule`, `scope`, `media`, `supports`, `layer`, `var`, `drop`, `clearAll`, `has`, `list`, `get`, `atProperty`, and `keyframes`. Rule handles support `set`, `setProp`, `setMany`, `remove`, `clear`, and `drop`. `snapshot()` returns deterministic CSS text for inspection.
+
+```ts
+const page = map.lib("page");
+page.css.sel("body").set.margin("0");
+page.css.sel("#home-screen").set.display("grid");
+const html = map.render("page");
+```
+
+Each accepted CSS call is a map-wide semantic transition. No-op calls leave `map.rev` unchanged. Multi-declaration and registry batches validate and commit atomically. CSS commits carry a QUID-free changed rule, registry definition, or clear operation. Construction-time `css` input is currently rejected; author through `page.css` after admission.
+
 ```ts
 state.at(["count"]).set(1);
 page.document.attrs.set({ kind: "path", path: [0] }, "title", "Ready");
@@ -70,7 +81,7 @@ const snapshot = map.capture();
 map.restore(snapshot);
 ```
 
-`capture()` returns a detached `LiveMapSnapshot` of the complete ordered registry at one revision. It includes Schema sources and digests and exact encoded roots. It omits generated QUIDs, identity epochs, and issued ledgers. `restore(snapshot)` validates and replaces the complete local topology, including restoring an earlier topology; removed or replaced library handles become stale. `install_libraries_snapshot(snapshot)` creates a separate local map from a portable snapshot. `map.replay(commit)` applies one portable local `library-add` commit at its recorded base revision.
+`capture()` returns a detached `LiveMapSnapshot` of the complete ordered registry at one revision. It includes Schema sources and digests, exact encoded roots, and each document library's portable stylesheet record, including the explicit empty record. Data libraries have no CSS field. It omits generated QUIDs, identity epochs, and issued ledgers. `restore(snapshot)` validates and replaces the complete local topology, including restoring an earlier topology; removed or replaced library handles become stale. `install_libraries_snapshot(snapshot)` creates a separate local map from a portable snapshot. `map.replay(commit)` applies one portable local `library-add` or CSS commit at its recorded base revision. The local snapshot shape changed in Phase A2; older pre-A2 development snapshots are not read.
 
 The selected document library's `capture()` supports local document-specific identity categories. It is a library observation, not a separate LiveMap authority. The map-wide snapshot is the portable registry reconstruction surface.
 
@@ -83,6 +94,8 @@ const hosted = locus.cut(sessionId, "page");
 ```
 
 `map.render(document?)` returns browser-realization HTML directly. It infers the name only when the registry contains exactly one document library. A missing document or an ambiguous selection fails clearly. A data library cannot be rendered as a document.
+
+For an explicit `<html><head>...<body>...` document, nonempty `page.css` is realized as one marked `<style data-hson-managed-document-css="v1">` after authored head children. Authored `<style>` nodes remain document graph content and retain their source order. Empty managed CSS emits no derived style. Nonempty managed CSS on a fragment root is rejected, as is CSS containing parser-significant `</style` RAWTEXT or other nontransportable text. The managed style works on first contact without client JavaScript. Local `render_document(...)` uses the same captured document and CSS revision for HTML and bootstrap. CSS-bearing `continue_document(...)` deliberately reports unsupported adoption until Phase B; LiveTree global/QUID CSS remains independently owned. Hosted CSS projection and Echo parity are Phase C work.
 
 `render_document(...)` composes coherent local HTML and a continuation bootstrap from one state cut. `locus.cut(...)` produces an authorized hosted projection and HTML for one session. Local LiveMap has no `cut()` method.
 

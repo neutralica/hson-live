@@ -117,6 +117,15 @@ try {
   fullObserver.disconnect();
   fullContinuation.dispose();
 
+  const cssMap = hsonLiveMap.fromLibraries({ page: { document: '<html <head/> <body/>/>' } });
+  cssMap.lib("page").css.sel("body").set.margin("0");
+  const cssRoot = new DOMParser().parseFromString(cssMap.render("page"), "text/html").documentElement;
+  let cssContinuationFailure;
+  try { continue_document({ map: cssMap, document: cssMap.lib("page"), root: cssRoot }); }
+  catch (cause) { cssContinuationFailure = cause; }
+  check("CSS-bearing continuation is deliberately fenced until adoption", cssContinuationFailure?.phase === "adopt"
+    && /managed stylesheet adoption/.test(cssContinuationFailure.cause?.message ?? ""));
+
   const librariesRoot = document.querySelector("#libraries-ssr");
   const librariesButton = librariesRoot.firstElementChild;
   const decodedHostedLibraries = decode_ssr_bootstrap(state.encoded.libraries);

@@ -7,6 +7,8 @@ import type {
 import type { HsonNode } from "../core/types.js";
 import type { AuthorityProjectionSnapshot } from "../types/locus.projection.types.js";
 import { plan_browser_realization } from "./browser-realization/browser-realization-plan.js";
+import { plan_managed_document_css } from "./browser-realization/managed-document-css.js";
+import { decode_portable_document_stylesheet, render_portable_document_stylesheet } from "./css/portable-document-stylesheet.js";
 import { serialize_browser_realization } from "./browser-realization/browser-realization-serialize.js";
 import { DocumentSsrError } from "./document-cut.error.js";
 import { clone_hson_graph_without_quids } from "../api/livemap/livemap.document.capture.js";
@@ -28,9 +30,9 @@ function validate_capture(capture: LiveMapDocumentCapture): LiveMapDocumentCaptu
   return capture;
 }
 
-function realize(capture: LiveMapDocumentCapture<"document">): BrowserRealizationHtml {
+function realize(capture: LiveMapDocumentCapture<"document">, css = ""): BrowserRealizationHtml {
   try {
-    const plan = plan_browser_realization(capture.root);
+    const plan = plan_managed_document_css(plan_browser_realization(capture.root), css);
     if (plan.roots.length !== 1 || plan.roots[0]?.kind !== "element") {
       throw new Error("Document SSR requires exactly one ordinary canonical document root.");
     }
@@ -91,7 +93,10 @@ function render_libraries_snapshot<TSnapshot extends LiveMapSnapshot>(
     if (cause instanceof DocumentSsrError) throw cause;
     throw new DocumentSsrError("bootstrap", "The captured semantic Libraries snapshot could not be decoded.", cause);
   }
-  return Object.freeze({ html: realize(capture), document: selected });
+  const encoded = snapshot.libraries.find((entry) => entry.name === selected);
+  if (encoded?.css === undefined) throw new DocumentSsrError("bootstrap", "Document Library stylesheet is missing.");
+  const css = render_portable_document_stylesheet(decode_portable_document_stylesheet(encoded.css));
+  return Object.freeze({ html: realize(capture, css), document: selected });
 }
 
 export function render_local_libraries(

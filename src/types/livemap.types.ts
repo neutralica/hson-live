@@ -59,6 +59,8 @@ export type LiveMapSnapshot = Readonly<{
     schema: import("../api/transform/transform.types.js").HsonSchemaData;
     schemaDigest: string;
     root: Readonly<{ format: "hson-exact-value"; payload: string }>;
+    /** Present exactly for document Libraries; absent for data Libraries. */
+    css?: import("./document-css.types.js").DocumentCssRecord;
   }>[];
 }>;
 
@@ -1174,6 +1176,7 @@ export type LiveMapDataLibraryInput<
   data: JsonValue | string;
   schema: TSchema;
   document?: never;
+  css?: never;
 }>;
 
 /** One explicit initial document library input for a public multi-library LiveMap. */
@@ -1184,6 +1187,7 @@ export type LiveMapDocumentLibraryInput<
   document: string | HsonNode;
   schema: TSchema;
   data?: never;
+  css?: never;
 }>;
 
 /** Established explicit-Schema library input. */
@@ -1208,6 +1212,15 @@ export type LiveMapLibraryOperation<
   library: TLibrary;
   operation: TOperation;
 }>;
+
+/** Portable local document stylesheet transition. One operation changes one bounded CSS unit. */
+export type LiveMapCssUnitOp = Readonly<
+  | { domain: "css"; kind: "rule"; ruleKey: string; scopes: readonly string[]; rule?: import("./document-css.types.js").DocumentCssRecord["rules"][number] }
+  | { domain: "css"; kind: "property"; name: string; definition?: import("./at-property.types.js").PropertyRegistration }
+  | { domain: "css"; kind: "keyframes"; name: string; definition?: import("./document-css.types.js").DocumentCssRecord["keyframes"][number] }
+  | { domain: "css"; kind: "clear-rules" }
+>;
+export type LiveMapCssOp = LiveMapCssUnitOp | Readonly<{ domain: "css"; kind: "batch"; operations: readonly LiveMapCssUnitOp[] }>;
 
 /** Portable, ordered topology admission in the map's semantic stream. */
 export type LiveMapLibraryAddOperation = Readonly<{
@@ -1238,7 +1251,7 @@ export type LiveMapCommit<
   prevRev: number;
   rev: number;
   operations: readonly ([LiveMapAnyOp] extends [TOperation]
-    ? LiveMapLibraryOperation<TLibrary, TOperation> | LiveMapLibraryAddOperation
+    ? LiveMapLibraryOperation<TLibrary, TOperation> | LiveMapLibraryAddOperation | Readonly<{ library: TLibrary; operation: LiveMapCssOp }>
     : LiveMapLibraryOperation<TLibrary, TOperation>)[];
 }>;
 
@@ -1473,6 +1486,7 @@ export type LiveMapDocumentLibrary<
 > = Readonly<{
   readonly mode: LiveMapDocumentMode;
   readonly rev: number;
+  readonly css: import("./document-css.types.js").DocumentCssHandle;
   root: () => HsonNode;
   at<const TPath extends readonly number[]>(
     path: TPath & ([InternalDocumentLogicalPathEndpoint<TEvidence, TPath>] extends [never]

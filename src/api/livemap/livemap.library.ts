@@ -8,6 +8,8 @@ import type { OrderedProjectedValue } from "../../core/ordered-projected-value.j
 import type { HostedAggregateCommit } from "./livemap.hosted.js";
 import type { LiveMapProjectedDataOp } from "./livemap.transport.js";
 import type { LiveMapSystemIdentity } from "./livemap.system.js";
+import { empty_portable_document_stylesheet, type PortableDocumentStylesheet } from "../../internal/css/portable-document-stylesheet.js";
+import type { LiveMapCssOp } from "../../types/livemap.types.js";
 
 /**
  * Opaque, map-local library authority. It intentionally has no string form:
@@ -55,6 +57,8 @@ export type LiveMapAggregateCommit = Readonly<{
   prevRev: number;
   rev: number;
   operations: readonly LiveMapAggregateOperation[];
+  /** One local portable stylesheet operation, owned by a document Library. */
+  css?: Readonly<{ library: LiveMapLibraryIdentity; operation: LiveMapCssOp }>;
   /** The shared portable topology effect for local and hosted admission. */
   topology?: import("../../types/livemap.types.js").LiveMapLibraryAddOperation;
   /** Exact named replay envelope when this aggregate has a configured hosted registry. @internal */
@@ -125,6 +129,7 @@ export type LiveMapLibraryState = {
   projectedOverlay?: LiveMapProjectedIdentityOverlay;
   projectedValue?: OrderedProjectedValue;
   hsonSchema?: HsonSchema;
+  stylesheet?: PortableDocumentStylesheet;
 };
 
 /**
@@ -153,6 +158,7 @@ export function make_livemap_library(
     identity: Object.freeze(Object.create(null)),
     mode: prepared.mode,
     root: prepared.root,
+    ...(prepared.mode === "document" ? { stylesheet: empty_portable_document_stylesheet() } : {}),
     ...(prepared.documentOverlay === undefined ? {} : { documentOverlay: prepared.documentOverlay }),
     ...(prepared.projectedOverlay === undefined ? {} : { projectedOverlay: prepared.projectedOverlay }),
     ...(hsonSchema === undefined ? {} : { hsonSchema }),

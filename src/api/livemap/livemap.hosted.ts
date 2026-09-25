@@ -45,6 +45,7 @@ import { validate_document_path } from "./livemap.document.path.js";
 import { normalize_replacement_lineage } from "./livemap.document.lineage.js";
 import { clone_hson_graph_without_quids } from "./livemap.document.capture.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
+import { decode_portable_document_stylesheet, encode_portable_document_stylesheet, empty_portable_document_stylesheet } from "../../internal/css/portable-document-stylesheet.js";
 
 export const HOSTED_REGISTRY_FORMAT = "hson-hosted-registry" as const;
 export const HOSTED_COMMIT_FORMAT = "hson-hosted-commit" as const;
@@ -483,7 +484,7 @@ export function assert_portable_aggregate_snapshot_shape(snapshot: PortableAggre
     || typeof authority.incarnationId !== "string" || !authority.incarnationId) {
     throw new HostedAggregateRepresentationError("Hosted client snapshot envelope is malformed.");
   }
-  assert_libraries_snapshot_entries(record);
+  assert_libraries_snapshot_entries(record, true);
   if (snapshot.registryDigest !== snapshot.registry.digest
     || snapshot.libraries.length !== snapshot.registry.libraries.length) {
     throw new HostedAggregateRepresentationError("Hosted client snapshot registry is malformed.");
@@ -501,7 +502,9 @@ export function portable_aggregate_snapshot_as_local(snapshot: PortableAggregate
     revision: snapshot.revision,
     registry: snapshot.registry,
     registryDigest: snapshot.registryDigest,
-    libraries: snapshot.libraries,
+    libraries: Object.freeze(snapshot.libraries.map((entry) => entry.mode === "document" && entry.css === undefined
+      ? Object.freeze({ ...entry, css: encode_portable_document_stylesheet(empty_portable_document_stylesheet()) })
+      : entry)),
   });
 }
 
@@ -562,7 +565,7 @@ export function assert_local_libraries_snapshot_shape(snapshot: LocalLibrariesCo
   assert_libraries_snapshot_shape(snapshot);
 }
 
-function assert_libraries_snapshot_entries(record: Readonly<Record<string, unknown>>): void {
+function assert_libraries_snapshot_entries(record: Readonly<Record<string, unknown>>, allowProjectionWithoutCss = false): void {
   const registry = exact_record(record.registry, "Hosted snapshot registry");
   exact_keys(registry, ["format", "libraries", "digest"], "Hosted snapshot registry");
   if (!Array.isArray(registry.libraries) || !Array.isArray(record.libraries)) {
@@ -579,7 +582,10 @@ function assert_libraries_snapshot_entries(record: Readonly<Record<string, unkno
   }
   for (const entry of record.libraries) {
     const item = exact_record(entry, "Hosted snapshot Library");
-    exact_keys(item, ["name", "mode", "schema", "schemaDigest", "root"], "Hosted snapshot Library");
+    exact_keys(item, entry.mode === "document" && (!allowProjectionWithoutCss || entry.css !== undefined)
+      ? ["name", "mode", "schema", "schemaDigest", "root", "css"]
+      : ["name", "mode", "schema", "schemaDigest", "root"], "Hosted snapshot Library");
+    if (entry.mode === "document" && entry.css !== undefined) decode_portable_document_stylesheet(item.css);
   }
 }
 

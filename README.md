@@ -194,7 +194,7 @@ LiveTree's CSS remains recognizably CSS. Dynamic property values can be created 
 
 LiveMap provides mutable, revisioned application state over canonical Hson graphs. It supports both data and document state, including multiple named data/document libraries coordinated under one LiveMap controlling atomic mutation, observation, Schema governance, capture/recovery, and canonical commit history.
 
-`hsonLiveMap.create()` creates an empty, fully initialized registry at revision 0. Its capture can be restored, and rendering requires a document library. `hsonLiveMap.fromLibraries({})` creates the same empty state. Library topology is fixed after construction.
+`hsonLiveMap.create()` creates an empty, fully initialized registry at revision 0. Its capture can be restored, and rendering requires a document library. `hsonLiveMap.fromLibraries({})` creates the same empty state. `map.lib.add(...)` admits libraries later.
 
 `ANY_DATA` and `ANY_DOCUMENT` are ordinary broad Schemas, equivalent to `<type "data">` and `<type "document">`. Data libraries admit object, array, string, number, boolean, and null roots. A string data input is JSON source text, so use `data: '"hello"'` for a string root.
 
@@ -230,6 +230,8 @@ const paragraph = map.lib("page").at([0]);
 console.log(paragraph.snap());
 const html = map.render(); // one document library makes selection unambiguous
 ```
+
+Each document library also owns an initially empty portable stylesheet. Its root-only `page.css` facade writes document-wide selector rules, scopes, variables, `@property`, and keyframes through LiveMap's revisioned commit stream. For example, `map.lib("page").css.sel("body").set.margin("0")` changes one map revision; `map.render("page")` includes the resulting CSS in a managed `<style>` inside an explicit `<html><head>`. `page.css.snapshot()` returns CSS text for inspection. Data libraries and document path handles have no `.css`; `page.css` has no `.global`. CSS-bearing continuation and hosted CSS synchronization await later phases.
 
 Path handles are fixed logical coordinates that re-resolve against the current map revision. They support detached snapshots, observation, feeds, subscriptions, and mutation without exposing mutable references into the graph itself. Data locations additionally expose object and array capabilities; document locations expose authored content, attributes, text, and item operations.
 

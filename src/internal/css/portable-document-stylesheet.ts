@@ -1,6 +1,6 @@
 import { normalize_css_key } from "../../api/transform/utils/attrs-utils/normalize-css.js";
-import { canonical_keyframes_definition, render_keyframes_definition } from "../../api/livetree/managers/keyframes-manager.js";
-import { canonical_property_registration, render_property_registration } from "../../api/livetree/managers/at-property-builder.js";
+import { canonical_keyframes_definition, render_keyframes_definition } from "./keyframes-definition.js";
+import { canonical_property_registration, render_property_registration } from "./property-registration.js";
 import type { CssValue } from "../../core/style.types.js";
 import type { PropertyInput, PropertyRegistration, PropertySyntax } from "../../types/at-property.types.js";
 import type { KeyframesInput, KeyframesDef, KeyframeSelector } from "../../types/keyframes.types.js";
