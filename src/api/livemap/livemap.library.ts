@@ -55,7 +55,7 @@ export type LiveMapAggregateCommit = Readonly<{
   prevRev: number;
   rev: number;
   operations: readonly LiveMapAggregateOperation[];
-  /** Portable local topology effect; hosted encoding is deferred to Phase 2. */
+  /** The shared portable topology effect for local and hosted admission. */
   topology?: import("../../types/livemap.types.js").LiveMapLibraryAddOperation;
   /** Exact named replay envelope when this aggregate has a configured hosted registry. @internal */
   hosted?: HostedAggregateCommit;

@@ -83,6 +83,7 @@ import { make_livemap_array_api } from "./livemap.handle-array.js";
 import { make_livemap_object_api } from "./livemap.handle-object.js";
 import type { LiveMapProjectedPropagation } from "./livemap.projected-propagation.js";
 import type { LiveMapSemanticCheckpoint } from "./livemap.internal.js";
+import type { PreparedLiveMapAuthorityTransition } from "./livemap.authority.js";
 
 type NamedLibrary = Readonly<{
   name: string;
@@ -92,6 +93,21 @@ type NamedLibrary = Readonly<{
 
 const PUBLIC_MULTI_LIBRARY_MAPS = new WeakSet<object>();
 const CLIENT_LIBRARY_SOURCES = new WeakMap<object, "authority-projected" | "client-local">();
+const HOSTED_LIBRARY_ADMISSION = new WeakMap<object, (owner: object, inputs: LiveMapDefinitions) => Readonly<{
+  transition: PreparedLiveMapAuthorityTransition;
+  afterInstall: () => void;
+}>>();
+
+/** Stage the public definition grammar through the map's managed authority. @internal */
+export function prepare_hosted_livemap_library_add_internal(
+  map: LiveMap,
+  owner: object,
+  inputs: LiveMapDefinitions,
+): Readonly<{ transition: PreparedLiveMapAuthorityTransition; afterInstall: () => void }> {
+  const prepare = HOSTED_LIBRARY_ADMISSION.get(map);
+  if (prepare === undefined) throw new Error("Hosted Library admission requires a multi-library LiveMap.");
+  return prepare(owner, inputs);
+}
 
 /** Internal ownership evidence for write-propagating link admission. */
 export function client_library_source_internal(value: object): "authority-projected" | "client-local" | undefined {
@@ -307,6 +323,32 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
     },
   }));
   PUBLIC_MULTI_LIBRARY_MAPS.add(libraries);
+  HOSTED_LIBRARY_ADMISSION.set(libraries, (owner, inputs) => {
+    const additions = Object.entries(inputs).map(([name, value]) => Object.freeze({
+      name, input: must_library_input(name, value),
+    }));
+    if (additions.length === 0) throw new Error("Hosted Library admission batch is empty.");
+    for (const { name } of additions) {
+      if (named.has(name)) throw new Error(`LiveMap Library name ${JSON.stringify(name)} is duplicated.`);
+    }
+    const prepared = aggregate.prepareAddLibrariesManaged(owner, additions.map(({ name, input }) => Object.freeze({
+      name,
+      root: library_root(input),
+      hsonSchema: input.schema,
+      family: "data" in input ? "data" as const : "document" as const,
+    })));
+    return Object.freeze({
+      transition: prepared.transition,
+      afterInstall: () => {
+        for (let index = 0; index < additions.length; index += 1) {
+          const definition = additions[index];
+          const identity = prepared.identities[index];
+          if (definition === undefined || identity === undefined) throw new Error("Hosted Library admission lost an identity.");
+          add(definition.name, definition.input, identity);
+        }
+      },
+    });
+  });
   return libraries as unknown as LiveMap<TLibraries>;
 }
 

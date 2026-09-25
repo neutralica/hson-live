@@ -17,6 +17,7 @@ import type {
   LiveMapDocumentAttrs,
   LiveMapDocumentCommitTarget,
   LiveMapGraphOp,
+  LiveMapLibraryAddOperation,
   LiveMapRootMode,
   HostedLiveMapSnapshot,
   LiveMapSnapshot,
@@ -109,6 +110,8 @@ export type HostedAggregateCommit = Readonly<{
   format: typeof HOSTED_COMMIT_FORMAT;
   authority: HostedAuthorityFence;
   registryDigest: string;
+  previousRegistryDigest?: string;
+  topology?: LiveMapLibraryAddOperation;
   changed: boolean;
   prevRev: number;
   rev: number;
@@ -137,6 +140,8 @@ export type PortableAggregateCommit = Readonly<{
   format: typeof PORTABLE_AGGREGATE_COMMIT_FORMAT;
   authority: HostedAuthorityFence;
   registryDigest: string;
+  previousRegistryDigest?: string;
+  topology?: LiveMapLibraryAddOperation;
   prevRev: number;
   rev: number;
   operations: readonly PortableAggregateOperation[];
@@ -250,6 +255,35 @@ export function make_hosted_commit(
   return commit;
 }
 
+/** Wrap the ordinary LiveMap library-add semantic operation in hosted revision fences. */
+export function make_hosted_topology_commit(
+  fence: HostedAuthorityFence,
+  previous: HostedRegistry,
+  resulting: HostedRegistry,
+  topology: LiveMapLibraryAddOperation,
+  prevRev: number,
+): HostedAggregateCommit {
+  if (topology.operation.kind !== "library-add" || topology.operation.libraries.length === 0
+    || topology.operation.libraries[0]?.name !== topology.library
+    || !valid_revision(prevRev)) {
+    throw new HostedAggregateRepresentationError("Hosted topology transition is malformed.");
+  }
+  const commit: HostedAggregateCommit = Object.freeze({
+    format: HOSTED_COMMIT_FORMAT,
+    authority: fence,
+    previousRegistryDigest: previous.digest,
+    registryDigest: resulting.digest,
+    topology,
+    changed: true,
+    prevRev,
+    rev: prevRev + 1,
+    operations: Object.freeze([]),
+    replay: Object.freeze({ operations: Object.freeze([]) }),
+  });
+  assert_encoded_bound(commit, HOSTED_MAX_COMMIT_BYTES, "Hosted topology commit");
+  return commit;
+}
+
 export function decode_hosted_commit(
   input: HostedAggregateCommit,
   registry: HostedRegistry,
@@ -316,6 +350,25 @@ export function decode_hosted_commit(
 
 /** Derive QUID-free semantic effects from a living authority transition. */
 export function make_portable_aggregate_commit(authority: HostedAggregateCommit): PortableAggregateCommit | undefined {
+  if (authority.topology !== undefined) {
+    if (authority.previousRegistryDigest === undefined || authority.operations.length !== 0
+      || authority.replay.operations.length !== 0 || !authority.changed
+      || authority.rev !== authority.prevRev + 1) {
+      throw new HostedAggregateRepresentationError("Hosted topology commit evidence is inconsistent.");
+    }
+    const commit: PortableAggregateCommit = Object.freeze({
+      format: PORTABLE_AGGREGATE_COMMIT_FORMAT,
+      authority: authority.authority,
+      previousRegistryDigest: authority.previousRegistryDigest,
+      registryDigest: authority.registryDigest,
+      topology: authority.topology,
+      prevRev: authority.prevRev,
+      rev: authority.rev,
+      operations: Object.freeze([]),
+    });
+    assert_encoded_bound(commit, HOSTED_MAX_COMMIT_BYTES, "Hosted topology commit");
+    return commit;
+  }
   const operations: PortableAggregateCommit["operations"][number][] = [];
   for (let index = 0; index < authority.operations.length; index += 1) {
     const entry = authority.operations[index];

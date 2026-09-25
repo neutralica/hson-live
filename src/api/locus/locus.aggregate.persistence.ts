@@ -82,7 +82,7 @@ export type PersistentLocusHostedAggregate = Omit<LocusHostedAggregate, "run_exc
   checkpoint: () => Promise<void>;
 }>;
 
-/** Internal construction options for one fixed, already-hosted registry. */
+/** Internal construction options for one hosted authority registry. */
 export type PersistentLocusHostedAggregateOptions = Omit<LocusHostedAggregateOptions, "gate"> & Readonly<{
   persistence: LocusHostedAggregatePersistenceAdapter;
   /** Optional storage identity override for a new, revision-zero hosted map. */
@@ -154,9 +154,16 @@ export async function write_semantic_checkpoint(
 ): Promise<void> {
   const id = checkpoint_id();
   const previous = await adapter.load(checkpoint.authority.logicalMapId);
-  if (previous !== undefined && (previous.checkpoint.incarnationId !== checkpoint.authority.incarnationId
-    || previous.checkpoint.registryDigest !== checkpoint.registry.digest
-    || previous.checkpoint.rev > checkpoint.revision)) throw invalid_state();
+  if (previous !== undefined) {
+    if (previous.checkpoint.incarnationId !== checkpoint.authority.incarnationId
+      || previous.checkpoint.rev > checkpoint.revision) throw invalid_state();
+    const validated = await validate_hosted_aggregate_state(checkpoint.authority.logicalMapId, previous, adapter);
+    const expected = internal_livemap_aggregate_authority(validated.map).captureSemanticCheckpoint();
+    if (expected.revision !== checkpoint.revision
+      || expected.registry.digest !== checkpoint.registry.digest
+      || JSON.stringify(expected.registry) !== JSON.stringify(checkpoint.registry)
+      || JSON.stringify(expected.libraries) !== JSON.stringify(checkpoint.libraries)) throw invalid_state();
+  }
   const expectedId = previous === undefined ? undefined : active_checkpoint_id(previous.checkpoint);
   const descriptors: CheckpointChunkDescriptor[] = [];
   const metadata: Omit<HostedRegistryEntry, "schema">[] = [];
@@ -219,11 +226,12 @@ export function assert_checkpoint_manifest(value: Record<string, unknown>, reque
     || value.incarnationId.length > CHECKPOINT_MAX_MANIFEST_BYTES
     || value.mapKind !== "hosted-aggregate" || !valid_digest(value.registryDigest)
     || !valid_revision(value.rev) || !Array.isArray(value.chunks)
-    || value.chunks.length < 2 || value.chunks.length > CHECKPOINT_MAX_CHUNKS) throw invalid_state();
+    || value.chunks.length > CHECKPOINT_MAX_CHUNKS) throw invalid_state();
   const registry = record(value.registry);
   if (registry === undefined || !exact_keys(registry, ["format", "libraries", "digest"])
     || registry.format !== "hson-hosted-registry" || registry.digest !== value.registryDigest
-    || !Array.isArray(registry.libraries) || registry.libraries.length < 1 || registry.libraries.length > 1_024) throw invalid_state();
+    || !Array.isArray(registry.libraries) || registry.libraries.length > 1_024
+    || (registry.libraries.length === 0 ? value.chunks.length !== 0 : value.chunks.length < 2)) throw invalid_state();
   const names = new Set<string>();
   for (const raw of registry.libraries) {
     const entry = record(raw);
@@ -333,6 +341,7 @@ function assert_commit_fence(
   value: unknown,
   checkpoint: AnyCheckpoint,
   expectedPrevRev: number,
+  expectedRegistryDigest: string,
 ): LocusDurableAggregateCommit {
   const persisted = record(value);
   if (persisted === undefined || !exact_keys(persisted, [
@@ -341,19 +350,27 @@ function assert_commit_fence(
     || persisted.format !== "hson-locus-durable-aggregate-record-v1"
     || persisted.logicalMapId !== checkpoint.logicalMapId
     || persisted.incarnationId !== checkpoint.incarnationId
-    || persisted.mapKind !== "hosted-aggregate"
-    || persisted.registryDigest !== checkpoint.registryDigest) {
+    || persisted.mapKind !== "hosted-aggregate") {
     throw invalid_state();
   }
   const commitRecord = record(persisted.commit);
   if (commitRecord === undefined) throw invalid_state();
-  if (!exact_keys(commitRecord, ["format", "authority", "registryDigest", "prevRev", "rev", "operations"])
+  const topology = Object.hasOwn(commitRecord, "topology");
+  if (!(topology
+    ? exact_keys(commitRecord, ["format", "authority", "previousRegistryDigest", "registryDigest", "topology", "prevRev", "rev", "operations"])
+    : exact_keys(commitRecord, ["format", "authority", "registryDigest", "prevRev", "rev", "operations"]))
     || commitRecord.format !== "hson-livemap-durable-commit-v1") throw invalid_state();
   const authority = record(commitRecord.authority);
   if (authority === undefined
     || authority.logicalMapId !== checkpoint.logicalMapId
     || authority.incarnationId !== checkpoint.incarnationId
-    || commitRecord.registryDigest !== checkpoint.registryDigest
+    || persisted.registryDigest !== commitRecord.registryDigest
+    || (topology
+      ? commitRecord.previousRegistryDigest !== expectedRegistryDigest
+        || !valid_digest(commitRecord.registryDigest)
+        || commitRecord.registryDigest === expectedRegistryDigest
+        || !Array.isArray(commitRecord.operations) || commitRecord.operations.length !== 0
+      : commitRecord.registryDigest !== expectedRegistryDigest)
     || commitRecord.prevRev !== expectedPrevRev
     || commitRecord.rev !== expectedPrevRev + 1) {
     throw invalid_state();
@@ -380,7 +397,9 @@ async function validate_hosted_aggregate_state(
       || aggregate.hostedPosition().revision !== checkpoint.rev) throw invalid_state();
 
     let expectedPrevRev = checkpoint.rev;
+    let expectedRegistryDigest = checkpoint.registryDigest;
     let lastCoveredRev: number | undefined;
+    let lastCoveredDigest: string | undefined;
     let crossedCheckpoint = false;
     for (const item of state.commits) {
       const maybe = record(item);
@@ -388,17 +407,34 @@ async function validate_hosted_aggregate_state(
       if (commitRecord !== undefined && valid_revision(commitRecord.rev) && commitRecord.rev <= checkpoint.rev) {
         if (crossedCheckpoint || !valid_revision(commitRecord.prevRev)
           || (lastCoveredRev !== undefined && commitRecord.prevRev !== lastCoveredRev)) throw invalid_state();
-        assert_commit_fence(item, checkpoint, commitRecord.prevRev);
+        const priorDigest = lastCoveredDigest ?? (
+          valid_digest(commitRecord.previousRegistryDigest)
+            ? commitRecord.previousRegistryDigest : commitRecord.registryDigest
+        );
+        if (!valid_digest(priorDigest)) throw invalid_state();
+        const covered = assert_commit_fence(item, checkpoint, commitRecord.prevRev, priorDigest);
+        lastCoveredDigest = covered.registryDigest;
         lastCoveredRev = commitRecord.rev;
         continue;
       }
       crossedCheckpoint = true;
-      const commit = assert_commit_fence(item, checkpoint, expectedPrevRev);
-      // Durable replay validates portable operation semantics, the registry
-      // fence, every library Schema, and atomic installation.
-      aggregate.replayDurableHosted(durable_aggregate_commit_as_client(commit));
+      if (lastCoveredRev === checkpoint.rev && lastCoveredDigest !== checkpoint.registryDigest) throw invalid_state();
+      const commit = assert_commit_fence(item, checkpoint, expectedPrevRev, expectedRegistryDigest);
+      if (commit.topology !== undefined) {
+        const replayed = map.replay(Object.freeze({ kind: "map", changed: true,
+          prevRev: commit.prevRev, rev: commit.rev,
+          operations: Object.freeze([commit.topology]) }));
+        if (replayed.operations.length !== 1
+          || JSON.stringify(replayed.operations[0]) !== JSON.stringify(commit.topology)) throw invalid_state();
+      } else {
+        // Portable writes are admitted against the topology reached so far.
+        aggregate.replayDurableHosted(durable_aggregate_commit_as_client(commit));
+      }
+      if (aggregate.hostedPosition().registryDigest !== commit.registryDigest) throw invalid_state();
+      expectedRegistryDigest = commit.registryDigest;
       expectedPrevRev += 1;
     }
+    if (lastCoveredRev === checkpoint.rev && lastCoveredDigest !== checkpoint.registryDigest) throw invalid_state();
     if (map.rev !== expectedPrevRev) throw invalid_state();
     return Object.freeze({ checkpoint, map });
   } catch (cause) {
@@ -490,6 +526,7 @@ function persistent_view(
     get registryDigest() { return locus.registryDigest; },
     get rev() { return locus.rev; },
     mutate: locus.mutate,
+    add_libraries_internal: locus.add_libraries_internal,
     dispatch_action: locus.dispatch_action,
     on_commit: locus.on_commit,
     checkpoint,
@@ -536,6 +573,7 @@ export async function restore_persistent_locus_hosted_aggregate_internal(
   options: RestorePersistentLocusHostedAggregateOptions,
 ): Promise<PersistentLocusHostedAggregate> {
   const validated = await validate_hosted_aggregate_state(logicalMapId, state, options.persistence);
+  const validatedPosition = internal_livemap_aggregate_authority(validated.map).hostedPosition();
   const { persistence, ...hostedOptions } = options;
   const durability = make_durability_gate(persistence);
   const locus = create_locus_hosted_aggregate_internal({
@@ -544,10 +582,10 @@ export async function restore_persistent_locus_hosted_aggregate_internal(
     ...durability,
     uncertainGateFailure: (cause) => cause instanceof LocusPersistenceError && cause.code === "LOCUS_PERSISTENCE_APPEND_UNCERTAIN",
   });
-  const actual = internal_livemap_aggregate_authority(locus.map).hostedPosition();
-  if (actual.authority.logicalMapId !== validated.checkpoint.logicalMapId
-    || actual.authority.incarnationId !== validated.checkpoint.incarnationId
-    || actual.registryDigest !== validated.checkpoint.registryDigest) {
+  if (locus.logicalMapId !== validated.checkpoint.logicalMapId
+    || locus.incarnationId !== validated.checkpoint.incarnationId
+    || locus.registryDigest !== validatedPosition.registryDigest
+    || locus.rev !== validatedPosition.revision) {
     locus.dispose();
     throw invalid_state();
   }

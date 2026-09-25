@@ -7,6 +7,7 @@ import type {
   LiveMapDocumentContent,
   LiveMapGraphOp,
   LiveMap,
+  LiveMapDefinitions,
   LivePath,
 } from "../../types/livemap.types.js";
 import type { LocusActionOrigin, LocusClientActionMessage } from "../../types/locus.types.js";
@@ -23,6 +24,7 @@ import {
 } from "../livemap/livemap.hosted.js";
 import { admit_public_document_graph_operation } from "../livemap/livemap.document.mutation.js";
 import type { PreparedLiveMapAuthorityTransition } from "../livemap/livemap.authority.js";
+import { prepare_hosted_livemap_library_add_internal } from "../livemap/livemap.libraries.js";
 import { projected_value_from_hson_node } from "../../core/projected-value-graph.js";
 import {
   is_ordered_projected_object,
@@ -126,6 +128,8 @@ export type LocusHostedAggregate = Readonly<{
   readonly registryDigest: string;
   readonly rev: number;
   mutate: (mutation: (draft: LocusHostedAggregateDraft) => void | Promise<void>) => Promise<HostedAggregateCommit | undefined>;
+  /** @internal Stage one ordinary LiveMap library-add batch through this authority's gate. */
+  add_libraries_internal: (definitions: LiveMapDefinitions) => Promise<HostedAggregateCommit>;
   dispatch_action: (name: string, payload?: ExactDataCarrier | JsonValue, message?: LocusClientActionMessage, origin?: LocusActionOrigin) => Promise<unknown | void>;
   /** @internal Ordered non-mutation barrier shared with aggregate mutations. */
   run_exclusive: <TResult>(operation: () => TResult | Promise<TResult>) => Promise<TResult>;
@@ -153,6 +157,70 @@ export function create_locus_hosted_aggregate_internal(
 
   aggregate.claimManagement(owner);
 
+  const accept_prepared = async (
+    transition: PreparedLiveMapAuthorityTransition,
+    afterInstall?: () => void,
+  ): Promise<HostedAggregateCommit> => {
+    const hosted = transition.commit.hosted;
+    if (hosted === undefined) {
+      aggregate.discard(transition);
+      throw new Error("Hosted map-authority transition did not produce exact replay evidence.");
+    }
+    const gateInput = Object.freeze({ transition, commit: hosted,
+      baseRevision: transition.baseRevision, nextRevision: transition.nextRevision });
+    let releaseReservation: (() => void) | undefined;
+    let preaccept: LocusHostedAggregatePreaccept | void;
+    try {
+      options.prepareGate?.(gateInput);
+      releaseReservation = aggregate.reserve(transition);
+      reservedDecision = true;
+      preaccept = options.beforeAccept?.(gateInput);
+    } catch (cause) {
+      aggregate.discard(transition);
+      releaseReservation?.();
+      reservedDecision = false;
+      if (disposed && !faulted) aggregate.releaseManagement(owner);
+      throw cause;
+    }
+    let durableDecision = false;
+    try {
+      try {
+        await options.gate?.(gateInput);
+        durableDecision = true;
+      } catch (cause) {
+        if (options.uncertainGateFailure?.(cause)) {
+          faulted = true;
+          try { options.onFault?.(cause); } catch { /* The authority remains fenced. */ }
+        }
+        throw cause;
+      }
+      // The reserved transition is installed only after its durable decision.
+      const accepted = aggregate.accept(transition, "isolate", () => {
+        afterInstall?.();
+        preaccept?.install?.();
+      }).commit;
+      const acceptedHosted = accepted.hosted;
+      if (acceptedHosted === undefined) throw new Error("Accepted hosted commit is unavailable.");
+      for (const listener of [...commitListeners]) {
+        try { listener(acceptedHosted); } catch { /* External observers are isolated. */ }
+      }
+      return acceptedHosted;
+    } catch (cause) {
+      if (durableDecision) {
+        faulted = true;
+        try { options.onFault?.(cause); } catch { /* The authority remains fenced. */ }
+      } else {
+        aggregate.discard(transition);
+      }
+      throw cause;
+    } finally {
+      preaccept?.release?.();
+      releaseReservation?.();
+      reservedDecision = false;
+      if (disposed && !faulted) aggregate.releaseManagement(owner);
+    }
+  };
+
   const enqueue = <T>(
     operation: (draft: LocusHostedAggregateDraft) => T | Promise<T>,
   ): Promise<Readonly<{ result: T; commit: HostedAggregateCommit | undefined }>> => {
@@ -169,68 +237,7 @@ export function create_locus_hosted_aggregate_internal(
       if (writes.length === 0) return Object.freeze({ result, commit: undefined });
 
       const transition = aggregate.prepareManaged(owner, writes);
-      const hosted = transition.commit.hosted;
-      if (hosted === undefined) {
-        aggregate.discard(transition);
-        throw new Error("Hosted map-authority transition did not produce exact replay evidence.");
-      }
-      const gateInput = Object.freeze({
-          transition,
-          commit: hosted,
-          baseRevision: transition.baseRevision,
-          nextRevision: transition.nextRevision,
-        });
-      let releaseReservation: (() => void) | undefined;
-      let preaccept: LocusHostedAggregatePreaccept | void;
-      try {
-        options.prepareGate?.(gateInput);
-        releaseReservation = aggregate.reserve(transition);
-        reservedDecision = true;
-        preaccept = options.beforeAccept?.(gateInput);
-      } catch (cause) {
-        aggregate.discard(transition);
-        releaseReservation?.();
-        reservedDecision = false;
-        if (disposed && !faulted) aggregate.releaseManagement(owner);
-        throw cause;
-      }
-      let durableDecision = false;
-      try {
-        try {
-          await options.gate?.(gateInput);
-          durableDecision = true;
-        } catch (cause) {
-          if (options.uncertainGateFailure?.(cause)) {
-            faulted = true;
-            try { options.onFault?.(cause); } catch { /* The authority remains fenced. */ }
-          }
-          throw cause;
-        }
-        // Reservation has already checked the complete base fence. No ordinary
-        // stale decision is permitted after the durable append succeeds.
-        const accepted = aggregate.accept(transition, "isolate", preaccept?.install).commit;
-        const acceptedHosted = accepted.hosted;
-        if (acceptedHosted === undefined) throw new Error("Accepted hosted commit is unavailable.");
-        // State and prepared history are installed before external publication.
-        // Listener failures do not split the transition.
-        for (const listener of [...commitListeners]) {
-          try { listener(acceptedHosted); } catch { /* External observers are isolated. */ }
-        }
-        return Object.freeze({ result, commit: acceptedHosted });
-      } catch (cause) {
-        if (durableDecision) {
-          faulted = true;
-          try { options.onFault?.(cause); } catch { /* The authority remains fenced. */ }
-        } else {
-          aggregate.discard(transition);
-        }
-        throw cause;
-      } finally {
-        preaccept?.release?.();
-        releaseReservation?.();
-        reservedDecision = false;
-        if (disposed && !faulted) aggregate.releaseManagement(owner);
-      }
+      return Object.freeze({ result, commit: await accept_prepared(transition) });
     };
     const next = tail.then(run, run);
     tail = next.then(() => undefined, () => undefined);
@@ -241,10 +248,20 @@ export function create_locus_hosted_aggregate_internal(
     map: options.map,
     logicalMapId: snapshot.authority.logicalMapId,
     incarnationId: snapshot.authority.incarnationId,
-    registryDigest: snapshot.registryDigest,
+    get registryDigest() { return aggregate.hostedPosition().registryDigest; },
     get rev() { return options.map.rev; },
     async mutate(mutation) {
       return (await enqueue(mutation)).commit;
+    },
+    add_libraries_internal(definitions) {
+      const run = async (): Promise<HostedAggregateCommit> => {
+        if (disposed || faulted) throw new Error("Hosted aggregate Locus authority is closed or faulted.");
+        const prepared = prepare_hosted_livemap_library_add_internal(options.map, owner, definitions);
+        return accept_prepared(prepared.transition, prepared.afterInstall);
+      };
+      const next = tail.then(run, run);
+      tail = next.then(() => undefined, () => undefined);
+      return next;
     },
     async dispatch_action(name, payload, message, origin = directOrigin) {
       const action = options.actions?.[name];

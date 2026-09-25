@@ -69,6 +69,25 @@ await case_("v1 checkpoint rejects as unsupported", async () => {
   await assert.rejects(() => host(adapter, "z3b-v1"), /invalid/i);
 });
 
+await case_("empty authority checkpoint restores without a placeholder library", async () => {
+  const adapter = new MemoryCheckpointAdapter();
+  const id = "z3b-empty";
+  const locus = await create_persistent_locus({
+    map: hsonLiveMap.create(), persistence: adapter, logicalMapId: id, exposure: [],
+  });
+  const manifest = active(adapter, id);
+  assert.deepEqual(manifest.registry.libraries, []);
+  assert.deepEqual(manifest.chunks, []);
+  locus.dispose();
+  const restored = await create_persistent_locus({
+    map: hsonLiveMap.create(), persistence: adapter, logicalMapId: id, exposure: [],
+  });
+  assert.ok(restored);
+  assert.equal(restored.rev, 0);
+  assert.deepEqual(restored.map.capture().registry.libraries, []);
+  restored.dispose();
+});
+
 await case_("checkpoint chunks exclude runtime QUID identity and restore fresh identity", async () => {
   const adapter = new MemoryCheckpointAdapter();
   const id = "z3b-quid";

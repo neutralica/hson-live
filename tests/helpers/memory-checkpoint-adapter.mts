@@ -53,8 +53,14 @@ export class MemoryCheckpointAdapter implements LocusHostedAggregatePersistenceA
     this.appendCalls.push(structuredClone(record));
     if (this.failAppend !== undefined) { const failure = this.failAppend; this.failAppend = undefined; throw failure; }
     const state = this.states.get(record.logicalMapId);
+    const priorDigest = state?.commits.at(-1)?.registryDigest ?? state?.checkpoint.registryDigest;
     if (state === undefined || state.checkpoint.incarnationId !== record.incarnationId
-      || state.checkpoint.registryDigest !== record.registryDigest) throw new Error("Durable commit fence mismatch.");
+      || record.registryDigest !== record.commit.registryDigest
+      || (record.commit.topology === undefined
+        ? priorDigest !== record.registryDigest
+        : record.commit.previousRegistryDigest !== priorDigest || record.registryDigest === priorDigest)) {
+      throw new Error("Durable commit fence mismatch.");
+    }
     const expected = state.commits.at(-1)?.commit.rev ?? state.checkpoint.rev;
     if (record.commit.prevRev !== expected || record.commit.rev !== expected + 1) throw new Error("Durable tail gap.");
     this.states.set(record.logicalMapId, Object.freeze({ checkpoint: state.checkpoint,

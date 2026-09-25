@@ -71,6 +71,7 @@ import {
   make_hosted_authority_fence,
   make_hosted_commit,
   make_hosted_registry,
+  make_hosted_topology_commit,
   make_portable_aggregate_commit,
   portable_aggregate_snapshot_as_local,
   type HostedAggregateCommit,
@@ -1373,17 +1374,20 @@ function make_livemap_registry_engine(
     return registry;
   }
 
-  function add_libraries(definitions: readonly Readonly<{
+  type LibraryAddition = Readonly<{
     name: string;
     root: HsonNode;
     hsonSchema: HsonSchema;
     family: "data" | "document";
-  }>[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void): LiveMapAggregateCommit {
+  }>;
+
+  function prepare_add_libraries(definitions: readonly LibraryAddition[]): Readonly<{
+    transition: import("./livemap.authority.js").PreparedLiveMapAuthorityTransition;
+    identities: readonly LiveMapLibraryIdentity[];
+  }> {
     transitionController.assertPublicMutationAllowed();
     const prevRev = mapRevision;
-    if (definitions.length === 0) return Object.freeze({
-      kind: "aggregate", changed: false, prevRev, rev: prevRev, operations: Object.freeze([]),
-    });
+    if (definitions.length === 0) throw new Error("LiveMap topology batch is empty.");
     const hosted = require_hosted_state();
     const prepared = definitions.map(({ name, root, hsonSchema, family }) => {
       admit_portable_hson_node(root, `LiveMap Library ${JSON.stringify(name)}`);
@@ -1434,6 +1438,7 @@ function make_livemap_registry_engine(
     const commit: LiveMapAggregateCommit = Object.freeze({
       kind: "aggregate", changed: true, prevRev, rev: prevRev + 1,
       operations: Object.freeze([]), topology,
+      hosted: make_hosted_topology_commit(hosted.fence, hosted.registry, nextRegistry, topology, prevRev),
     });
     const transition = transitionController.prepareAuthority({
       commit,
@@ -1459,8 +1464,17 @@ function make_livemap_registry_engine(
         if (firstFailure !== undefined) throw firstFailure;
       }),
     });
-    return transitionController.acceptAuthority(transition, "propagate", () =>
-      afterInstall?.(prepared.map(({ state }) => state.identity))).commit;
+    return Object.freeze({ transition, identities: Object.freeze(prepared.map(({ state }) => state.identity)) });
+  }
+
+  function add_libraries(definitions: readonly LibraryAddition[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void): LiveMapAggregateCommit {
+    transitionController.assertPublicMutationAllowed();
+    if (definitions.length === 0) return Object.freeze({
+      kind: "aggregate", changed: false, prevRev: mapRevision, rev: mapRevision, operations: Object.freeze([]),
+    });
+    const prepared = prepare_add_libraries(definitions);
+    return transitionController.acceptAuthority(prepared.transition, "propagate", () =>
+      afterInstall?.(prepared.identities)).commit;
   }
 
   function capture_libraries_aggregate(): LiveMapSnapshot {
@@ -2193,6 +2207,10 @@ function make_livemap_registry_engine(
     systemTarget: aggregate_system_target,
     configureHostedRegistry: configure_hosted_registry,
     addLibraries: add_libraries,
+    prepareAddLibrariesManaged: (owner, definitions) => transitionController.runManaged(
+      owner,
+      () => prepare_add_libraries(definitions),
+    ),
     hostedRegistry: () => require_hosted_state().registry,
     hostedPosition: () => {
       const hosted = require_hosted_state();
