@@ -177,13 +177,27 @@ export function structural_region_at(
 
 function maskProtectedSource(text: string, region: StructuralRegion): string | undefined {
   let body = text.slice(region.bodyRange.start, region.bodyRange.end);
-  for (const range of [...region.protectedRanges].reverse()) {
+  let cursor = 0;
+  let quoted = false;
+  let comment = false;
+  for (const range of region.protectedRanges) {
     const start = range.start - region.bodyRange.start;
     const end = range.end - region.bodyRange.start;
+    for (; cursor < start; cursor += 1) {
+      const character = body[cursor];
+      if (comment) {
+        if (character === "\n" || character === "\r") comment = false;
+      } else if (quoted) {
+        if (character === "\\") cursor += 1;
+        else if (character === '"') quoted = false;
+      } else if (character === '"') quoted = true;
+      else if (character === "/" && body[cursor + 1] === "/") { comment = true; cursor += 1; }
+    }
     const original = body.slice(start, end);
     if (original.includes("\n") || original.includes("\r") || original.length < 3) return undefined;
-    const replacement = '"x"'.padEnd(original.length, " ");
+    const replacement = (quoted ? "x" : '"x"').padEnd(original.length, " ");
     body = body.slice(0, start) + replacement + body.slice(end);
+    cursor = end;
   }
   return body;
 }

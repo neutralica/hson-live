@@ -176,6 +176,7 @@ export async function run(): Promise<void> {
   const structuralUri = vscode.Uri.file(join(workspace, "hson-structural-editing.ts"));
   const markdownStructuralUri = vscode.Uri.file(join(workspace, "hson-structural-editing.md"));
   const saveTypeScriptUri = vscode.Uri.file(join(workspace, "hson-format-on-save.ts"));
+  const documentTypeScriptUri = vscode.Uri.file(join(workspace, "hson-document-format-on-save.ts"));
   const saveMarkdownUri = vscode.Uri.file(join(workspace, "hson-format-on-save.md"));
   const invalidSaveUri = vscode.Uri.file(join(workspace, "hson-format-on-save-invalid.ts"));
   try {
@@ -187,6 +188,45 @@ export async function run(): Promise<void> {
     };
     const formattingConfiguration = vscode.workspace.getConfiguration("hson.formatting", folder.uri);
     assert.equal(formattingConfiguration.get<boolean>("formatOnSave"), true, "Hson format-on-save defaults on in real VS Code");
+
+    const documentInput = [
+      'import { Hson, hsonLiveMap, type LiveHostApplication } from "hson-live";',
+      'const pulsePage = "/pulse";',
+      "const ordinary =  1;",
+      "const unrelated = `  untouched`;",
+      "const mainShell = Hson.document`",
+      "<html",
+      "<head",
+      '<style ".pulse-mount{position:fixed;left:0;bottom:0}"/>',
+      "/>",
+      "<body",
+      "<iframe",
+      'src="${pulsePage}"',
+      'title="Pulse diagnostics"',
+      "/>",
+      "<main",
+      '<h1 "Deck"/>',
+      "/>",
+      "/>",
+      "/>",
+      "`;",
+      "",
+    ].join("\n");
+    const documentExpected = documentInput.replace(
+      '\n<html\n<head\n<style ".pulse-mount{position:fixed;left:0;bottom:0}"/>\n/>\n<body\n<iframe\nsrc="${pulsePage}"\ntitle="Pulse diagnostics"\n/>\n<main\n<h1 "Deck"/>\n/>\n/>\n/>\n',
+      '\n<html\n  <head\n    <style ".pulse-mount{position:fixed;left:0;bottom:0}"/>\n  />\n  <body\n    <iframe\n      src="${pulsePage}"\n      title="Pulse diagnostics"\n    />\n    <main\n      <h1 "Deck"/>\n    />\n  />\n/>\n',
+    );
+    await vscode.workspace.fs.writeFile(documentTypeScriptUri, Buffer.from("// document format fixture\n"));
+    const documentTypeScript = await vscode.workspace.openTextDocument(documentTypeScriptUri);
+    const documentEditor = await vscode.window.showTextDocument(documentTypeScript);
+    documentEditor.options = { ...documentEditor.options, insertSpaces: true, tabSize: 2 };
+    await replaceDocument(documentTypeScript, documentInput);
+    await vscode.commands.executeCommand("hson.formatDocument");
+    assert.equal(documentTypeScript.getText().slice(documentTypeScript.getText().indexOf("Hson.document`")),
+      documentExpected.slice(documentExpected.indexOf("Hson.document`")), "manual Hson Format Document indents the authored document and preserves CSS");
+    await replaceDocument(documentTypeScript, documentInput);
+    assert.equal(await documentTypeScript.save(), true);
+    assert.equal(documentTypeScript.getText(), documentExpected, "save indents the authored Hson.document region without changing surrounding TypeScript");
 
     const typeScriptInput = [
       'import { Hson } from "hson-live/hson";',
@@ -244,6 +284,10 @@ export async function run(): Promise<void> {
     assert.equal(invalidSave.getText(), invalidInput, "invalid Hson is skipped without rewriting");
 
     await formattingConfiguration.update("formatOnSave", false, vscode.ConfigurationTarget.WorkspaceFolder);
+    await vscode.window.showTextDocument(documentTypeScript);
+    await replaceDocument(documentTypeScript, documentInput);
+    assert.equal(await documentTypeScript.save(), true);
+    assert.equal(documentTypeScript.getText(), documentInput, "disabled Hson format-on-save leaves Hson.document unchanged");
     await vscode.window.showTextDocument(saveTypeScript);
     await replaceDocument(saveTypeScript, typeScriptInput);
     assert.equal(await saveTypeScript.save(), true);
@@ -395,6 +439,7 @@ export async function run(): Promise<void> {
     await vscode.workspace.fs.delete(structuralUri).then(undefined, () => undefined);
     await vscode.workspace.fs.delete(markdownStructuralUri).then(undefined, () => undefined);
     await vscode.workspace.fs.delete(saveTypeScriptUri).then(undefined, () => undefined);
+    await vscode.workspace.fs.delete(documentTypeScriptUri).then(undefined, () => undefined);
     await vscode.workspace.fs.delete(saveMarkdownUri).then(undefined, () => undefined);
     await vscode.workspace.fs.delete(invalidSaveUri).then(undefined, () => undefined);
   }

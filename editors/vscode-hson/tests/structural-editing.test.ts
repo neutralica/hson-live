@@ -125,6 +125,19 @@ check("interpolation expressions remain protected during formatting", () => {
   }
 });
 
+check("quoted document interpolation does not suppress formatting of the enclosing Hson region", () => {
+  const input = 'import { Hson } from "hson-live";\nconst pulsePage = "/pulse";\n'
+    + 'const mainShell = Hson.document`\n<html\n<head\n<style ".pulse-mount{position:fixed;left:0;bottom:0}"/>\n/>\n'
+    + '<body\n<iframe\nsrc="${pulsePage}"\ntitle="Pulse diagnostics"\n/>\n/>\n/>\n`;\nconst ordinary =  1;\nconst unrelated = `  untouched`;\n';
+  const expected = input.replace(
+    '\n<html\n<head\n<style ".pulse-mount{position:fixed;left:0;bottom:0}"/>\n/>\n<body\n<iframe\nsrc="${pulsePage}"\ntitle="Pulse diagnostics"\n/>\n/>\n/>\n',
+    '\n<html\n  <head\n    <style ".pulse-mount{position:fixed;left:0;bottom:0}"/>\n  />\n  <body\n    <iframe\n      src="${pulsePage}"\n      title="Pulse diagnostics"\n    />\n  />\n/>\n',
+  );
+  assert.equal(structural_regions("/workspace/source.ts", "typescript", input).length, 1);
+  assert.equal(format(input), expected);
+  assert.equal(format(expected), expected);
+});
+
 check("document formatting repairs nesting without rewriting tokens", () => {
   const input = template('\n   <main\n<section\n       <p "hello"/>\n />\n      />\n');
   const expected = template('\n<main\n  <section\n    <p "hello"/>\n  />\n/>\n');
