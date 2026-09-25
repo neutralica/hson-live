@@ -93,15 +93,23 @@ export function runtime_locus_exposure_entries(
   values: Readonly<Record<string, "server-private" | "client-public">> | undefined,
 ): readonly LocusExposureEntry[] {
   const requested = values ?? {};
+  if (typeof requested !== "object" || requested === null || Array.isArray(requested)) {
+    throw new Error("Hosted exposure must be a per-Library record.");
+  }
   const candidates = new Set(names);
-  for (const name of Object.keys(requested)) {
+  const explicit = new Map<string, "server-private" | "client-public">();
+  for (const name of Reflect.ownKeys(requested)) {
+    if (typeof name !== "string") throw new Error("Hosted exposure contains an invalid Library name.");
     if (!candidates.has(name)) throw new Error(`Hosted exposure names an unknown Library ${JSON.stringify(name)}.`);
+    const descriptor = Object.getOwnPropertyDescriptor(requested, name);
+    if (descriptor === undefined || !("value" in descriptor)
+      || (descriptor.value !== "server-private" && descriptor.value !== "client-public")) {
+      throw new Error(`Hosted exposure is invalid for ${JSON.stringify(name)}.`);
+    }
+    explicit.set(name, descriptor.value);
   }
   return Object.freeze(names.map((library) => {
-    const exposure = requested[library] ?? "server-private";
-    if (exposure !== "server-private" && exposure !== "client-public") {
-      throw new Error(`Hosted exposure is invalid for ${JSON.stringify(library)}.`);
-    }
+    const exposure = explicit.get(library) ?? "server-private";
     return Object.freeze({ library, exposure });
   }));
 }

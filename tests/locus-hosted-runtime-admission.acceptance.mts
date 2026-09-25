@@ -53,24 +53,30 @@ const preferences = clientMap.lib("preferences");
 assert.equal(client_library_source_internal(preferences), "client-local");
 assert.equal(clientMap.rev, beforeClientRev + 1);
 assert.equal(locus.rev, beforeAuthorityRev);
+const beforeAdmissionWire = wire.received.length;
 await locus.lib.add({ newPublic: { data: { count: 2 } }, page: { document: Hson.document`<main <p "RUNTIME_PAGE_SENTINEL"/>/>` },
   privateState: { data: { secret: "PRIVATE_ROOT_SENTINEL" } } },
 { exposure: { newPublic: "client-public", page: "client-public" } });
 assert.equal(locus.rev, beforeAuthorityRev + 1);
 assert.equal(echo.lastAppliedRev, locus.rev);
 assert.equal(clientMap.rev, beforeClientRev + 1);
-assert.equal(wire.received.at(-1)?.includes("newPublic"), false);
-assert.equal(wire.received.at(-1)?.includes("privateState"), false);
+for (const encoded of wire.received.slice(beforeAdmissionWire)) {
+  assert.equal(encoded.includes("newPublic"), false);
+  assert.equal(encoded.includes("privateState"), false);
+  assert.equal(encoded.includes("PRIVATE_ROOT_SENTINEL"), false);
+}
 const sessionId = echo.session.sessionId;
 assert.ok(sessionId);
 const rejected = await locus.sessions.updateProjection(sessionId, { libraries: ["base", "newPublic"] });
 assert.equal(rejected.changed, false);
 assert.equal(clientMap.rev, beforeClientRev + 1);
 allowNew = true;
+const authorityMapRevBeforeProjection = authority.rev;
 const result = await locus.sessions.updateProjection(sessionId, { libraries: ["base", "newPublic", "page"], htmlDocument: "page" });
 assert.equal(result.changed, true);
 assert.equal(result.authorityRev, locus.rev);
 assert.equal(result.sequence, 1);
+assert.equal(authority.rev, authorityMapRevBeforeProjection);
 assert.equal(echo.map, clientMap);
 assert.equal(clientMap.rev, beforeClientRev + 2);
 assert.equal(clientMap.lib("base"), base);
@@ -284,3 +290,30 @@ const sortedRestart = await create_persistent_locus({ map: sortedRestartMap, per
 assert.equal(sortedRestartMap.lib("aardvark").mode, "data-object");
 sortedRestart.dispose();
 process.stdout.write("ok - public admission uses the durable authority gate atomically\n");
+
+const capturedMap = hsonLiveMap.create();
+const capturedLocus = hsonLocus.create({ map: capturedMap, exposure: [],
+  authorizeProjection: ({ requested }) => ({ libraries: requested.libraries }) });
+const mutableBatch = { one: { data: { value: 1 } } };
+const pendingBatch = capturedLocus.lib.add(mutableBatch, { exposure: { one: "client-public" } });
+Object.assign(mutableBatch, { unclassified: { data: { secret: "LATE_LIBRARY_SENTINEL" } } });
+await pendingBatch;
+assert.equal(capturedLocus.rev, 1);
+assert.equal(capturedMap.lib("one").mode, "data-object");
+assert.throws(() => capturedMap.lib("unclassified"), /Unknown/);
+const inheritedExposure: Record<string, "client-public"> = Object.create({ inherited: "client-public" });
+await capturedLocus.lib.add({ inherited: { data: { secret: "INHERITED_EXPOSURE_SENTINEL" } } },
+  { exposure: inheritedExposure });
+const capturedWire = sockets();
+capturedLocus.connect(capturedWire.server);
+capturedWire.client.send(JSON.stringify({ type: "session-create", id: "captured-session",
+  projection: { libraries: ["one", "inherited"] } }));
+capturedWire.client.send(JSON.stringify({ type: "recover", id: "captured-recover",
+  logicalMapId: capturedLocus.logicalMapId }));
+await new Promise<void>((resolve) => setTimeout(resolve, 0));
+const capturedSnapshot = capturedWire.received.find((raw) => JSON.parse(raw).type === "recovery-snapshot");
+assert.ok(capturedSnapshot);
+assert.ok(capturedSnapshot.includes('"one"'));
+assert.equal(capturedSnapshot.includes("INHERITED_EXPOSURE_SENTINEL"), false);
+capturedLocus.dispose();
+process.stdout.write("ok - admission captures names before queueing and ignores inherited exposure\n");

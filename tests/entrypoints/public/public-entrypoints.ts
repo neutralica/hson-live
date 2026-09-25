@@ -421,6 +421,9 @@ declare const soloConnection: LocusConnection;
 declare const librariesConnection: LocusConnection;
 void soloLocus.dispatchAction;
 void multiLocus.dispatchAction;
+void multiLocus.lib.add({ runtimeState: { data: { count: 1 } } },
+  { exposure: { runtimeState: "client-public" } });
+void multiLocus.sessions.updateProjection("session", { libraries: ["runtimeState"] });
 void soloConnection.emitEvent("event", null);
 void librariesConnection.emitEvent("event", null);
 void multiActionContext.emitEvent("event", null);

@@ -371,8 +371,11 @@ export function create_locus_hosted_aggregate_socket_internal<
     if (typeof definitions !== "object" || definitions === null || Array.isArray(definitions)) {
       throw new Error("Hosted Library definitions are malformed.");
     }
-    const entries = runtime_locus_exposure_entries(Object.keys(definitions), exposure);
-    await locus.add_libraries_internal(definitions, () => {
+    // Capture the batch before it enters the asynchronous authority queue. The
+    // policy names and semantic names must come from the same caller snapshot.
+    const capturedDefinitions: LiveMapDefinitions = Object.freeze(Object.fromEntries(Object.entries(definitions)));
+    const entries = runtime_locus_exposure_entries(Object.keys(capturedDefinitions), exposure);
+    await locus.add_libraries_internal(capturedDefinitions, () => {
       const nextRegistry = aggregate.hostedRegistry();
       projectionPolicy.installRuntimeExposure(entries, nextRegistry);
       const bindings = aggregate.libraries();
