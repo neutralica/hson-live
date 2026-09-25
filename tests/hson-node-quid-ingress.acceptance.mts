@@ -852,13 +852,15 @@ check("internal exact LiveMap installation remains cold while public raw admissi
   assert.equal(get_node_by_quid(Q6), undefined);
 });
 
-check("incompatible registry capture restoration is atomic", () => {
+check("registry capture restoration replaces topology without carrying source identity", () => {
   const target = exactMap(document_root(element("main", Q1)));
   const source = exactMap(document_root(element("section", Q2)), SectionEmpty);
-  const before = target.capture();
-  assert.throws(() => target.restore(source.capture()));
-  assert.deepEqual(target.capture(), before);
-  assert.equal(target.rev, before.revision);
+  const oldPage = target.lib("page");
+  const portable = source.capture();
+  target.restore(portable);
+  assert.deepEqual(target.capture(), portable);
+  assert.equal(target.lib("page").document.byQuid(Q2), undefined);
+  assert.throws(() => oldPage.root());
 });
 
 process.stdout.write(`# ${checks} HsonNode QUID ingress checks passed\n`);

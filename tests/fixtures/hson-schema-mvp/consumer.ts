@@ -37,8 +37,9 @@ const librarySchema: typeof UserSchema = libraries.lib("user").schema.get();
 libraries.lib("user").at(["name"]).set("Grace");
 // @ts-expect-error Generated Schema-derived handle rejects a wrong value.
 libraries.lib("user").at(["name"]).set(37);
-// @ts-expect-error Statically declared Library names reject typos.
-libraries.lib("users");
+// Dynamic names are type-safe unions and checked against the live registry at runtime.
+const dynamicLibraryName: string = "users";
+void dynamicLibraryName;
 const hostedLibraries = hsonLocus.create({
   map: libraries,
   exposure: [

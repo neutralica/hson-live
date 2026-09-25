@@ -23,6 +23,10 @@ const worker = await new Promise<any>((resolve, reject) => {
 });
 
 assert.equal(worker.hasDocument, false);
+assert.deepEqual(worker.runtimeAdmission, {
+  rev: 1, html: "<main>worker</main>", digest: worker.runtimeAdmission.digest,
+  replayDigest: worker.runtimeAdmission.digest,
+});
 assert.equal(worker.html, node.html);
 assert.doesNotMatch(worker.html, /hson:quid|000009711/);
 assert.doesNotMatch(JSON.stringify(worker.bootstrap), /000009711|identityEpoch|issuedQuids|"identity"|"quid"/);

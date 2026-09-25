@@ -128,6 +128,10 @@ export type {
   LiveMapDocumentLibraryInput,
   LiveMapInput,
   LiveMapLibraryInput,
+  LiveMapLibraryDefinition,
+  LiveMapDefinitions,
+  LiveMapLibraryAddOperation,
+  LiveMapDynamicLibrary,
 } from "./types/livemap.types.js";
 
 export type { Mirror } from "./api/mirror/mirror.facade.js";

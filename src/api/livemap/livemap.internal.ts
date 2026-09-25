@@ -75,6 +75,13 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   systemTarget: (system: LiveMapSystemIdentity, path: LivePath) => import("./livemap.library.js").LiveMapSystemTarget;
   /** Fix public names and exact Schema sources before hosted capture/replay. @internal */
   configureHostedRegistry: (bindings: readonly HostedRegistryBinding[]) => HostedRegistry;
+  /** Accept one locally prepared, portable batch as one topology transition. @internal */
+  addLibraries: (definitions: readonly Readonly<{
+    name: string;
+    root: HsonNode;
+    hsonSchema: HsonSchema;
+    family: "data" | "document";
+  }>[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void) => LiveMapAggregateCommit;
   hostedRegistry: () => HostedRegistry;
   /** Read the hosted identity and revision without capturing roots. @internal */
   hostedPosition: () => Readonly<{ authority: import("./livemap.hosted.js").HostedAuthorityFence; revision: number; registryDigest: string }>;
@@ -99,7 +106,7 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
   captureHosted: () => HostedLiveMapSnapshot;
   captureSemanticCheckpoint: () => LiveMapSemanticCheckpoint;
   installSemanticCheckpoint: (checkpoint: LiveMapSemanticCheckpoint) => void;
-  restoreLibraries: (snapshot: LiveMapSnapshot) => void;
+  restoreLibraries: (snapshot: LiveMapSnapshot, afterTopologyInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void) => void;
   restorePortableLibraries: (snapshot: LocalLibrariesContinuationSnapshot) => void;
   restoreHosted: (snapshot: HostedLiveMapSnapshot, authorityOverride?: import("./livemap.hosted.js").HostedAuthorityFence) => void;
   /** QUID-free network snapshot; installs a fresh local identity epoch. @internal */

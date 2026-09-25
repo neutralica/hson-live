@@ -1,6 +1,6 @@
 # LiveMap registries
 
-`hsonLiveMap.fromLibraries(...)` creates one LiveMap authority with a fixed, statically named set of libraries. A one-library LiveMap uses the same API. The same map can remain local or attach to Locus.
+`hsonLiveMap.fromLibraries(...)` creates one LiveMap authority with initial named libraries at revision 0. A one-library LiveMap uses the same API. Local code may admit more libraries later with `map.lib.add(...)`.
 
 ```ts
 const map = hsonLiveMap.fromLibraries({
@@ -18,10 +18,9 @@ Each entry has exactly one ingress field:
 - `data` accepts a JSON value or JSON source text.
 - `document` accepts Hson source text or a canonical Hson node.
 
-Every Library requires `schema`. Initial material is validated during construction. The Hson Schema generator augments each Schema declaration with private evidence, so `SchemaType<typeof ColorsSchema>` supplies the selected data and handle types; callers do not pass a duplicate type parameter.
+`schema` may be omitted. A data library then uses `ANY_DATA`; a document library uses `ANY_DOCUMENT`. Initial material is validated during construction or runtime admission. An explicit Schema retains its generated type evidence, so `SchemaType<typeof ColorsSchema>` supplies the selected data and handle types; callers do not pass a duplicate type parameter.
 
-`map.lib(name)` accepts only the literal names in the static registry and is the
-semantic narrowing boundary. A selected data Library has `root()`, `snap()`,
+`map.lib(name)` preserves precise typing for construction-time names. Runtime-added names use a data/document union and are checked against the living registry. A selected data Library has `root()`, `snap()`,
 `at(path)`, and `schema.get()`; a selected document Library has document-wide
 observation/identity operations plus logical `at(path)` locations. No second
 `.data` or `.document` selection is required. Handle paths are relative to that
@@ -41,9 +40,9 @@ text/content locations do not expose those element-only capabilities.
 `hsonMirror(map.lib("page"))` binds one named document Library and stays
 attached across unrelated global revisions and recovery replacement.
 
-Multi-library mutations return `LiveMapMultiLibraryCommit`. It holds one map-wide `prevRev`/`rev` transition and one ordered `operations` array. Every operation is `{ library, operation }`; the library name is public and the engine's opaque library identity is never exposed. A hosted Locus retains one global revision and complete authority commit history. Echo receives one ordered client stream in which a revision has either a graph commit or generic progress without a graph effect.
+Multi-library mutations return `LiveMapCommit`. It holds one map-wide `prevRev`/`rev` transition and one ordered `operations` array. Every operation is `{ library, operation }`; the library name is public and the engine's opaque library identity is never exposed. A local `lib.add(...)` batch contributes one `library-add` operation with ordered definitions and advances revision once. A hosted Locus retains one global revision and complete authority commit history for its fixed initial registry. Echo receives one ordered client stream in which a revision has either a graph commit or generic progress without a graph effect.
 
-There is no default Library on a multi-map, no public topology lifecycle (`add`, `remove`, `replace`, or `rename`), and no alternate hosted solo topology. QUID allocation remains map-wide within the underlying authority, but raw QUIDs do not route mutation requests across Libraries and identities cannot be transferred between Libraries. `root` and `snap` are selected-Library operations.
+There is no default Library on a multi-map and no public removal, replacement, or rename operation. `lib.add(...)` changes local topology; hosted topology mutation is deferred. QUID allocation remains map-wide within the underlying authority, but raw QUIDs do not route mutation requests across Libraries and identities cannot be transferred between Libraries. `root` and `snap` are selected-Library operations.
 
 `map.capture()` synchronously returns one detached `LiveMapSnapshot`.
 It contains the complete ordered registry, QUID-free public and hidden roots,

@@ -12,7 +12,7 @@ const same = UserSchema.certify(user);
 
 The Schema object's `certify` method validates one canonical candidate in its
 own mode and returns a Schema-proven primitive string. LiveMap's distinct
-operation is library admission with an explicit Schema: `hsonLiveMap.fromLibraries({ state: { data, schema: UserSchema } })`. A context-neutral
+operation is library admission with a governing Schema: `hsonLiveMap.fromLibraries({ state: { data, schema: UserSchema } })` or `map.lib.add({ state: { data, schema: UserSchema } })`. Omitting `schema` selects `ANY_DATA` or `ANY_DOCUMENT` from the entry's explicit kind. A context-neutral
 `Hson.canonical` string such as `"text"` can be admitted according to the
 Schema's mode; a known wrong-mode candidate rejects.
 

@@ -55,6 +55,8 @@ export type LiveMapAggregateCommit = Readonly<{
   prevRev: number;
   rev: number;
   operations: readonly LiveMapAggregateOperation[];
+  /** Portable local topology effect; hosted encoding is deferred to Phase 2. */
+  topology?: import("../../types/livemap.types.js").LiveMapLibraryAddOperation;
   /** Exact named replay envelope when this aggregate has a configured hosted registry. @internal */
   hosted?: HostedAggregateCommit;
 }>;
@@ -134,6 +136,8 @@ export type LiveMapLibraryState = {
  * @internal
  */
 export type LiveMapLibraryRegistry = Readonly<{
+  add: (libraries: readonly LiveMapLibraryState[]) => void;
+  replace: (libraries: readonly LiveMapLibraryState[]) => void;
   get: (identity: LiveMapLibraryIdentity) => LiveMapLibraryState | undefined;
   require: (identity: LiveMapLibraryIdentity) => LiveMapLibraryState;
   all: () => readonly LiveMapLibraryState[];
@@ -177,6 +181,25 @@ export function make_livemap_library_registry(
 
   for (const library of initialLibraries) add(library);
   return Object.freeze({
+    add: (libraries) => {
+      const staged = new Set<LiveMapLibraryIdentity>();
+      for (const library of libraries) {
+        if (entries.has(library.identity) || staged.has(library.identity)) {
+          throw new Error("LiveMap library registry cannot register one identity twice.");
+        }
+        staged.add(library.identity);
+      }
+      for (const library of libraries) add(library);
+    },
+    replace: (libraries) => {
+      const identities = new Set(libraries.map((library) => library.identity));
+      if (identities.size !== libraries.length) {
+        throw new Error("LiveMap replacement registry contains duplicate identities.");
+      }
+      entries.clear();
+      ordered.length = 0;
+      for (const library of libraries) add(library);
+    },
     get: (identity) => entries.get(identity),
     require: (identity) => {
       const library = entries.get(identity);

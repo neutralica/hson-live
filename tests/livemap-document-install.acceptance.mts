@@ -68,14 +68,16 @@ check("restoration is atomic on malformed snapshot metadata", () => {
   assert.deepEqual(target.capture(), before);
 });
 
-check("foreign registry Schema cannot be installed", () => {
+check("foreign registry Schema replaces topology and retires old handles", () => {
   const target = registry('<main <item "before"/>/>');
   const other = hsonLiveMap.fromLibraries({
     page: { document: '<main "other"/>', schema: Hson.schema`<type "document" tag "main" content "string">` },
   });
-  const before = target.capture();
-  assert.throws(() => target.restore(other.capture()));
-  assert.deepEqual(target.capture(), before);
+  const oldPage = target.lib("page");
+  target.restore(other.capture());
+  assert.deepEqual(target.capture(), other.capture());
+  assert.throws(() => oldPage.root());
+  assert.match(target.render("page"), /other/);
 });
 
 check("portable capture excludes supplied runtime QUIDs", () => {

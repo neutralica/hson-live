@@ -72,7 +72,7 @@ check("fromLibraries establishes fixed named data and document Libraries", () =>
   assert.equal(map.lib("page").root().$_content.length, 1);
   assert.equal("document" in map.lib("page"), true);
   assert.equal(node(map.lib("page").at([]).snap()).$_tag, "main");
-  assert.equal("add" in map.lib, false);
+  assert.equal("add" in map.lib, true);
   assert.equal("create" in map.lib, false);
   assert.equal("library" in map, false);
 });
@@ -393,8 +393,9 @@ if (false) {
   page.snap();
   // @ts-expect-error A selected data library has no document authority.
   state.document;
-  // @ts-expect-error The static registry rejects misspelled named libraries.
-  map.lib("pages");
+  // Dynamic names are accepted by the type surface and checked at runtime.
+  const dynamicName: string = "pages";
+  map.lib(dynamicName);
 }
 
 process.stdout.write(`1..${checks}\n`);

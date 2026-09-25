@@ -36,7 +36,7 @@ export type LiveMapRootMode = DataLiveMapMode | LiveMapDocumentMode;
 export type DataLiveMapMode = "data-object" | "data-array" | "data-string" | "data-number" | "data-boolean" | "data-null";
 export type LiveMapDocumentMode = "document";
 
-/** One detached semantic snapshot of a complete fixed LiveMap Libraries registry. */
+/** One detached semantic snapshot of the complete LiveMap registry at a revision. */
 export type LiveMapSnapshot = Readonly<{
   format: "hson-livemap-libraries-snapshot";
   revision: number;
@@ -1186,13 +1186,18 @@ export type LiveMapDocumentLibraryInput<
   data?: never;
 }>;
 
-/** Discriminated initial material for one statically named Library. */
-export type LiveMapLibraryInput =
-  | LiveMapDataLibraryInput
-  | LiveMapDocumentLibraryInput;
+/** Established explicit-Schema library input. */
+export type LiveMapLibraryInput = LiveMapDataLibraryInput | LiveMapDocumentLibraryInput;
 
-/** The complete static registry accepted by `hsonLiveMap.fromLibraries(...)`. */
-export type LiveMapInput = Readonly<Record<string, LiveMapLibraryInput>>;
+/** Runtime and construction input; omitted Schema selects the family top. */
+export type LiveMapLibraryDefinition =
+  | Readonly<Omit<LiveMapDataLibraryInput, "schema"> & { schema?: HsonSchema<unknown, HsonSchemaMode> }>
+  | Readonly<Omit<LiveMapDocumentLibraryInput, "schema"> & { schema?: HsonSchema<unknown, HsonSchemaMode> }>;
+
+export type LiveMapDefinitions = Readonly<Record<string, LiveMapLibraryDefinition>>;
+
+/** The shared construction and runtime-admission definition grammar. */
+export type LiveMapInput = LiveMapDefinitions;
 
 
 /** One publicly named operation in the map-wide ordered commit stream. */
@@ -1202,6 +1207,21 @@ export type LiveMapLibraryOperation<
 > = Readonly<{
   library: TLibrary;
   operation: TOperation;
+}>;
+
+/** Portable, ordered topology admission in the map's semantic stream. */
+export type LiveMapLibraryAddOperation = Readonly<{
+  /** First admitted name identifies this batch in legacy name-only observers. */
+  library: string;
+  operation: Readonly<{
+    kind: "library-add";
+    libraries: readonly Readonly<{
+      name: string;
+      mode: LiveMapRootMode;
+      schema: import("../api/transform/transform.types.js").HsonSchemaData;
+      root: Readonly<{ format: "hson-exact-value"; payload: string }>;
+    }>[];
+  }>;
 }>;
 
 /**
@@ -1217,7 +1237,9 @@ export type LiveMapCommit<
   changed: boolean;
   prevRev: number;
   rev: number;
-  operations: readonly LiveMapLibraryOperation<TLibrary, TOperation>[];
+  operations: readonly ([LiveMapAnyOp] extends [TOperation]
+    ? LiveMapLibraryOperation<TLibrary, TOperation> | LiveMapLibraryAddOperation
+    : LiveMapLibraryOperation<TLibrary, TOperation>)[];
 }>;
 
 /** One selected data handle relative to its Library, never to a library name path segment. */
@@ -1499,7 +1521,20 @@ type LiveMapLibraryFacadeForInput<TInput, TLibrary extends string> =
     ? LiveMapDataLibrary<SchemaType<TSchema>, TLibrary, TSchema>
     : TInput extends LiveMapDocumentLibraryInput<infer TSchema>
       ? LiveMapDocumentLibrary<SchemaType<TSchema>, TLibrary, TSchema>
-      : never;
+      : TInput extends { data: unknown }
+        ? "schema" extends keyof TInput
+          ? LiveMapDataLibrary<unknown, TLibrary, HsonSchema>
+          : LiveMapDataLibrary<JsonValue, TLibrary, typeof import("../api/schema/hson-schema.js").ANY_DATA>
+        : TInput extends { document: unknown }
+          ? "schema" extends keyof TInput
+            ? LiveMapDocumentLibrary<unknown, TLibrary, HsonSchema>
+            : LiveMapDocumentLibrary<HsonNode, TLibrary, typeof import("../api/schema/hson-schema.js").ANY_DOCUMENT>
+          : never;
+
+/** Schema-neutral selection when a name was admitted after construction. */
+export type LiveMapDynamicLibrary =
+  | LiveMapDataLibrary
+  | LiveMapDocumentLibrary;
 
 /** The single global observer surface for a local multi-library LiveMap. */
 export type LiveMapRegistryCommitObserverApi<TLibrary extends string = string> = Readonly<{
@@ -1509,24 +1544,29 @@ export type LiveMapRegistryCommitObserverApi<TLibrary extends string = string> =
 declare const liveMapLibrariesType: unique symbol;
 
 /**
- * A statically established collection of canonical Libraries. It has no
- * default root and intentionally exposes neither topology mutation nor Locus
- * authority in this first local release.
+ * A collection of canonical Libraries with a local topology transition.
  */
-export type LiveMap<TLibraries extends LiveMapInput = LiveMapInput> = Readonly<{
+export type LiveMap<TLibraries extends LiveMapDefinitions = LiveMapInput> = Readonly<{
   /** Private type evidence; it has no runtime property or public selector. */
   readonly [liveMapLibrariesType]: TLibraries;
   readonly rev: number;
-  lib: <TLibrary extends Extract<keyof TLibraries, string>>(
-    name: TLibrary,
-  ) => LiveMapLibraryFacadeForInput<TLibraries[TLibrary], TLibrary>;
+  lib: {
+    <TLibrary extends string>(
+      name: TLibrary,
+    ): TLibrary extends Extract<keyof TLibraries, string>
+      ? LiveMapLibraryFacadeForInput<TLibraries[TLibrary], TLibrary>
+      : LiveMapDynamicLibrary;
+    readonly add: (definitions: LiveMapDefinitions) => LiveMapCommit;
+  };
+  /** Replay one portable local library-add commit at its recorded base revision. */
+  replay: (commit: LiveMapCommit) => LiveMapCommit;
   /** Capture one detached semantic snapshot of the complete public and hidden registry. */
   capture: () => LiveMapSnapshot;
-  /** Restore a complete compatible registry snapshot at its captured revision. */
+  /** Restore a complete local registry snapshot at its captured revision. */
   restore: (snapshot: LiveMapSnapshot) => void;
   /** Render one selected document as browser-compatible HTML. */
   render: (document?: string) => import("../api/ssr/ssr.types.js").BrowserRealizationHtml;
-  commits: LiveMapRegistryCommitObserverApi<Extract<keyof TLibraries, string>>;
+  commits: LiveMapRegistryCommitObserverApi;
 }>;
 
 /**

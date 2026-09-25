@@ -26,6 +26,7 @@ import type { HsonNode, JsonValue } from "../../core/types.js";
 import { rewrite_interaction_subjects, validate_interaction_subjects } from "../../internal/interaction-path-maintenance.js";
 import { INTERACTION_RESERVED_LIBRARY_KEY } from "../../internal/interaction-storage.js";
 import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
+import { HsonSchema as HsonSchemaHandle, compiled_hson_schema_of } from "../schema/hson-schema.js";
 import type { HostedLiveMapSnapshot, LiveMapDataOp, LiveMapDocumentPath, LiveMapGraphCommit, LiveMapGraphOp, LiveMapSnapshot, LivePath } from "../../types/livemap.types.js";
 import type { HsonSchema } from "../transform/transform.types.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
@@ -188,7 +189,10 @@ export function make_livemap_registry_authority(
 }> {
   const prepared = roots.map(({ root, hsonSchema, family }) => {
     const graph = prepare_livemap_root(root, family);
-    if (hsonSchema !== undefined) must_hson_schema_root(hsonSchema, graph.root);
+    if (hsonSchema !== undefined) {
+      must_hson_schema_family(hsonSchema, family);
+      must_hson_schema_root(hsonSchema, graph.root);
+    }
     return { graph, hsonSchema };
   });
   const aggregate = make_livemap_registry_engine(prepared, systems);
@@ -1369,6 +1373,96 @@ function make_livemap_registry_engine(
     return registry;
   }
 
+  function add_libraries(definitions: readonly Readonly<{
+    name: string;
+    root: HsonNode;
+    hsonSchema: HsonSchema;
+    family: "data" | "document";
+  }>[], afterInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void): LiveMapAggregateCommit {
+    transitionController.assertPublicMutationAllowed();
+    const prevRev = mapRevision;
+    if (definitions.length === 0) return Object.freeze({
+      kind: "aggregate", changed: false, prevRev, rev: prevRev, operations: Object.freeze([]),
+    });
+    const hosted = require_hosted_state();
+    const prepared = definitions.map(({ name, root, hsonSchema, family }) => {
+      admit_portable_hson_node(root, `LiveMap Library ${JSON.stringify(name)}`);
+      const graph = prepare_livemap_root(root, family);
+      must_hson_schema_family(hsonSchema, family);
+      must_hson_schema_root(hsonSchema, graph.root);
+      const state = make_livemap_library(graph, hsonSchema);
+      if (state.mode !== "document") state.projectedValue = must_projected_root_value(state.root);
+      return Object.freeze({ name, state, hsonSchema });
+    });
+    const existingBindings = libraryRegistry.all().map((state) => {
+      const binding = hosted.byIdentity.get(state.identity);
+      if (binding === undefined) throw new Error("LiveMap Library binding is unavailable.");
+      return binding;
+    });
+    const newBindings = prepared.map(({ name, state, hsonSchema }): HostedRegistryBinding => Object.freeze({
+      name, identity: state.identity, mode: state.mode, schema: hsonSchema,
+    }));
+    const systemBinding: HostedRegistryBinding[] = [];
+    if (systemState !== undefined) {
+      const binding = hosted.byIdentity.get(systemState.identity);
+      if (binding === undefined) throw new Error("LiveMap system binding is unavailable.");
+      systemBinding.push(binding);
+    }
+    const nextBindings = [...existingBindings, ...newBindings, ...systemBinding];
+    if (newBindings.some((binding) => binding.name === INTERACTION_RESERVED_LIBRARY_KEY)) {
+      throw new Error("LiveMap system Library name is reserved.");
+    }
+    const nextRegistry = make_hosted_registry(nextBindings);
+    const nextByIdentity = new Map(nextBindings.map((binding) => [binding.identity, binding]));
+    const nextByName = new Map(nextBindings.map((binding) => [binding.name, binding]));
+    const beforeActive = aggregate_quid_locations(libraryRegistry.all());
+    const afterActive = aggregate_quid_locations([...libraryRegistry.all(), ...prepared.map((item) => item.state)]);
+    const nextLedger = stage_livemap_identity_epoch(mapIdentityEpoch.issued(), beforeActive.keys(), afterActive.keys());
+    const first = prepared[0];
+    if (first === undefined) throw new Error("LiveMap topology batch is empty.");
+    const topology = Object.freeze({
+      library: first.name,
+      operation: Object.freeze({ kind: "library-add" as const,
+        libraries: Object.freeze(prepared.map(({ name, state, hsonSchema }) => Object.freeze({
+          name,
+          mode: state.mode,
+          schema: hsonSchema.toHson(),
+          root: encode_hosted_root(clone_hson_graph_without_quids(state.root)),
+        }))),
+      }),
+    });
+    const commit: LiveMapAggregateCommit = Object.freeze({
+      kind: "aggregate", changed: true, prevRev, rev: prevRev + 1,
+      operations: Object.freeze([]), topology,
+    });
+    const transition = transitionController.prepareAuthority({
+      commit,
+      libraryModes: Object.freeze(prepared.map(({ state }) => state.mode)),
+      baseStillCurrent: () => mapRevision === prevRev && hostedRegistry === hosted.registry,
+      install: () => {
+        mapIdentityEpoch.install(nextLedger);
+        libraryRegistry.add(prepared.map(({ state }) => state));
+        hostedRegistry = nextRegistry;
+        hostedBindingsByIdentity = nextByIdentity;
+        hostedBindingsByName = nextByName;
+        mapRevision = commit.rev;
+      },
+      notify: (acceptedCommit) => enqueuePublication(() => {
+        aggregateAcceptedTransitions += 1;
+        aggregatePublications += 1;
+        let firstFailure: unknown;
+        for (const observer of [...aggregateObservers]) {
+          try { observer(acceptedCommit); }
+          catch (error) { firstFailure ??= error; }
+        }
+        publishAuthorityPosition(acceptedCommit.rev);
+        if (firstFailure !== undefined) throw firstFailure;
+      }),
+    });
+    return transitionController.acceptAuthority(transition, "propagate", () =>
+      afterInstall?.(prepared.map(({ state }) => state.identity))).commit;
+  }
+
   function capture_libraries_aggregate(): LiveMapSnapshot {
     const hosted = require_hosted_state();
     const libraries = hosted.registry.libraries.map((entry) => {
@@ -1557,9 +1651,119 @@ function make_livemap_registry_engine(
     });
   }
 
+  function restore_local_topology(
+    snapshot: LiveMapSnapshot,
+    afterTopologyInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void,
+  ): void {
+    if (clientComposition !== undefined) {
+      throw new Error("Client projection topology requires hosted synchronization.");
+    }
+    if (!Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0
+      || snapshot.registryDigest !== snapshot.registry.digest
+      || snapshot.libraries.length !== snapshot.registry.libraries.length) {
+      throw new Error("LiveMap topology snapshot envelope is malformed.");
+    }
+    const hosted = require_hosted_state();
+    const candidates: Array<Readonly<{
+      state: LiveMapLibraryState;
+      prepared: ReturnType<typeof prepare_livemap_root>;
+      projectedValue?: OrderedProjectedValue;
+      newlyInstalled: boolean;
+      schema: HsonSchema;
+      name: string;
+    }>> = [];
+    let systemRoot: HsonNode | undefined;
+    let systemValue: OrderedProjectedValue | undefined;
+    for (let index = 0; index < snapshot.registry.libraries.length; index += 1) {
+      const entry = snapshot.registry.libraries[index];
+      const encoded = snapshot.libraries[index];
+      if (entry === undefined || encoded === undefined || entry.name !== encoded.name
+        || entry.mode !== encoded.mode || entry.schema !== encoded.schema
+        || entry.schemaDigest !== encoded.schemaDigest) {
+        throw new Error("LiveMap topology snapshot Library metadata is malformed.");
+      }
+      const root = decode_hosted_root(encoded.root);
+      admit_portable_hson_node(root, "LiveMap topology snapshot");
+      const schema = HsonSchemaHandle.fromHson(entry.schema);
+      const prepared = prepare_livemap_root(root, entry.mode === "document" ? "document" : "data");
+      if (prepared.mode !== entry.mode) throw new Error("LiveMap topology snapshot root mode disagrees with registry.");
+      must_hson_schema_family(schema, entry.mode === "document" ? "document" : "data");
+      must_hson_schema_root(schema, prepared.root);
+      if (entry.scope === "hson-internal") {
+        if (systemState === undefined || systemState.transportName !== entry.name
+          || systemState.hsonSchema.toHson() !== entry.schema || entry.mode !== "data-object") {
+          throw new Error("LiveMap topology snapshot system state is incompatible.");
+        }
+        systemRoot = prepared.root;
+        systemValue = must_projected_root_value(prepared.root);
+      } else {
+        const old = hosted.byName.get(entry.name);
+        const compatible = old !== undefined && old.scope === undefined
+          && old.mode === entry.mode && old.schema.toHson() === entry.schema;
+        const state = compatible
+          ? require_library(old.identity as LiveMapLibraryIdentity)
+          : make_livemap_library(prepared, schema);
+        candidates.push(Object.freeze({ name: entry.name, state, prepared, schema, newlyInstalled: !compatible,
+          projectedValue: prepared.mode === "document" ? undefined : must_projected_root_value(prepared.root) }));
+      }
+    }
+    if (systemState !== undefined && systemRoot === undefined) {
+      throw new Error("LiveMap topology snapshot omitted configured system state.");
+    }
+    const bindings: HostedRegistryBinding[] = candidates.map(({ name, state, schema }) => Object.freeze({
+      name, identity: state.identity, mode: state.mode, schema,
+    }));
+    if (systemState !== undefined) bindings.push(Object.freeze({
+      name: systemState.transportName,
+      scope: "hson-internal",
+      identity: systemState.identity,
+      mode: "data-object",
+      schema: systemState.hsonSchema,
+    }));
+    const registry = make_hosted_registry(bindings);
+    if (registry.digest !== snapshot.registry.digest
+      || JSON.stringify(registry) !== JSON.stringify(snapshot.registry)) {
+      throw new Error("LiveMap topology snapshot registry is inconsistent.");
+    }
+    const previousRevision = mapRevision;
+    const changedLibraries = Object.freeze(candidates
+      .filter(({ state, prepared, newlyInstalled }) => newlyInstalled || !canonical_graph_equal(state.root, prepared.root))
+      .map(({ state }) => state.identity));
+    // Portable restoration starts a fresh identity epoch. Existing shared
+    // records remain live; removed/replaced identities disappear from lookup.
+    mapIdentityEpoch.replace([]);
+    for (const { state, prepared, projectedValue } of candidates) {
+      Object.assign(state, {
+        root: prepared.root,
+        documentOverlay: prepared.documentOverlay,
+        projectedOverlay: prepared.projectedOverlay,
+        projectedValue,
+      });
+    }
+    libraryRegistry.replace(candidates.map(({ state }) => state));
+    if (systemState !== undefined && systemRoot !== undefined && systemValue !== undefined) {
+      systemState.root = systemRoot;
+      systemState.projectedValue = systemValue;
+    }
+    hostedRegistry = registry;
+    hostedBindingsByIdentity = new Map(bindings.map((binding) => [binding.identity, binding]));
+    hostedBindingsByName = new Map(bindings.map((binding) => [binding.name, binding]));
+    mapRevision = snapshot.revision;
+    transitionController.invalidate();
+    const restored = Object.freeze(candidates.map(({ state }) => state.identity));
+    afterTopologyInstall?.(restored);
+    const event = Object.freeze({ previousRevision, revision: mapRevision, libraries: restored,
+      changedLibraries, continuity: "new-epoch" as const });
+    enqueuePublication(() => {
+      for (const observer of [...aggregateRestoreObservers]) observer(event);
+      publishAuthorityPosition();
+    });
+  }
+
   function restore_libraries_aggregate(
     snapshot: LiveMapSnapshot | HostedLiveMapSnapshot,
     authority?: HostedAuthorityFence,
+    afterTopologyInstall?: (identities: readonly LiveMapLibraryIdentity[]) => void,
   ): void {
     transitionController.assertPublicMutationAllowed();
     const hosted = require_hosted_state();
@@ -1572,6 +1776,11 @@ function make_livemap_registry_engine(
     if ("identity" in snapshot) assert_hosted_libraries_snapshot_shape(snapshot);
     else assert_libraries_snapshot_shape(snapshot);
     assert_libraries_snapshot_bound(snapshot);
+    if (identity === undefined && authority === undefined
+      && snapshot.registry.digest !== hosted.registry.digest) {
+      restore_local_topology(snapshot, afterTopologyInstall);
+      return;
+    }
     if (snapshot.format !== LIVEMAP_LIBRARIES_SNAPSHOT_FORMAT
       || snapshot.registryDigest !== hosted.registry.digest
       || snapshot.registry.digest !== hosted.registry.digest
@@ -1983,6 +2192,7 @@ function make_livemap_registry_engine(
     systemRoot: (system) => require_system(system).root,
     systemTarget: aggregate_system_target,
     configureHostedRegistry: configure_hosted_registry,
+    addLibraries: add_libraries,
     hostedRegistry: () => require_hosted_state().registry,
     hostedPosition: () => {
       const hosted = require_hosted_state();
@@ -2019,7 +2229,7 @@ function make_livemap_registry_engine(
     captureHosted: capture_hosted_aggregate,
     captureSemanticCheckpoint: capture_semantic_checkpoint,
     installSemanticCheckpoint: install_semantic_checkpoint,
-    restoreLibraries: (snapshot) => restore_libraries_aggregate(snapshot),
+    restoreLibraries: (snapshot, afterTopologyInstall) => restore_libraries_aggregate(snapshot, undefined, afterTopologyInstall),
     restorePortableLibraries: (snapshot) => restore_libraries_aggregate(snapshot),
     restoreHosted: restore_hosted_aggregate,
     restoreClientHosted: restore_client_hosted_aggregate,
@@ -2231,6 +2441,12 @@ function must_core_move_index(
 
 
 /** Enforce the sole public Schema authority against one complete canonical root. */
+function must_hson_schema_family(schema: HsonSchema, family: "data" | "document"): void {
+  const kind = compiled_hson_schema_of(schema).semantic.kind;
+  const schemaFamily = kind === "document" || kind === "document-element" ? "document" : "data";
+  if (schemaFamily !== family) throw new Error(`LiveMap ${family} Library requires a ${family} Schema.`);
+}
+
 function must_hson_schema_root(schema: HsonSchema, root: HsonNode): void {
   validate_hson_schema_graph(schema, root);
 }

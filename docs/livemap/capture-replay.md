@@ -13,7 +13,9 @@ const { map: separateRuntime } = install_libraries_snapshot(snapshot);
 
 Local captures may contain zero application libraries, including a completely empty registry. Hosted runtime admission is a later phase: durable Locus checkpoint manifests still require at least one hosted registry entry, and action-only client sessions continue to use endpoint-only Echo.
 
-`restore` applies a compatible complete snapshot to the same map. `install_libraries_snapshot` creates a separate local map and a fresh runtime identity domain. Portable data never claims process-local QUID continuity. For local document inspection, a selected document library also exposes `capture()` with explicit local identity categories. That selected-library capture is not the registry's portable reconstruction format.
+`restore` applies a complete local snapshot to the same map, including topology changes. It starts a new local identity epoch when topology differs; handles for removed or replaced libraries become stale. `install_libraries_snapshot` creates a separate local map and a fresh runtime identity domain. Portable data never claims process-local QUID continuity. For local document inspection, a selected document library also exposes `capture()` with explicit local identity categories. That selected-library capture is not the registry's portable reconstruction format.
+
+`map.lib.add(...)` produces a portable local `library-add` commit. `map.replay(commit)` can apply that topology commit to another local map at the recorded preceding revision. The operation carries names, modes, Schemas, and initial roots without generated QUIDs. Hosted Locus/Echo topology delivery and durable topology commits remain a later phase.
 
 Changed local mutations produce map-wide commits with named library operations and a single revision transition. Hosted replay and durable recovery operate through internal authority facilities and exact registry or projected cuts; application code does not replay a solo-map capture. Locus persists semantic, QUID-free state and reconstructs a fresh generated identity epoch after process restart.
 

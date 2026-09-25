@@ -15,6 +15,11 @@ const encoded = encode_ssr_bootstrap(result.bootstrap);
 const installed = install_libraries_snapshot(result.bootstrap).map;
 const state = installed.lib("state");
 if (state.mode === "document") throw new Error("Expected installed data Library.");
+const runtime = hsonLiveMap.create();
+const runtimeCommit = runtime.lib.add({ runtimePage: { document: Hson.document`<main "worker"/>` },
+  runtimeData: { data: true } });
+const runtimeReplay = hsonLiveMap.create();
+runtimeReplay.replay(runtimeCommit);
 parentPort?.postMessage(Object.freeze({
   html: result.html,
   document: result.document,
@@ -25,4 +30,6 @@ parentPort?.postMessage(Object.freeze({
   state: state.snap(),
   page: installed.lib("page").root(),
   hasDocument: "document" in globalThis,
+  runtimeAdmission: Object.freeze({ rev: runtime.rev, html: runtime.render(),
+    replayDigest: runtimeReplay.capture().registry.digest, digest: runtime.capture().registry.digest }),
 }));

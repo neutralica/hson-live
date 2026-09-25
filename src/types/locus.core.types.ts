@@ -10,6 +10,7 @@ import type {
   LiveMapDataLibraryInput,
   LiveMapGraphOp,
   LiveMapInput,
+  LiveMapDefinitions,
   LiveMapPathValue,
   LiveMapSetValue,
   LiveMapWriteValue,
@@ -102,7 +103,7 @@ type LocusMutationDraftForInput<TInput> =
       : LocusBroadDataMutationDraft | LocusDocumentMutationDraft;
 
 /** Inferred only inside a Locus registry mutation callback. */
-type LocusMutationDraft<TLibraries extends LiveMapInput> = Readonly<{
+type LocusMutationDraft<TLibraries extends LiveMapDefinitions> = Readonly<{
   lib: <TLibrary extends Extract<keyof TLibraries, string>>(
     name: TLibrary,
   ) => LocusMutationDraftForInput<TLibraries[TLibrary]>;

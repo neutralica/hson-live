@@ -53,15 +53,18 @@ check("ancestor rename follows descendants", () => { const m = map({ a: { b: [] 
 check("ancestor array move follows descendants", () => { const m = map([{ b: {} }, {}]); const h = acquire_projected_identity(m.lib("state"), [0, "b"]); m.lib("state").at([]).asArray()!.move(0, 1); assert.deepEqual(h.path(), [1, "b"]); });
 check("whole-root replacement fences the identity epoch", () => { const m = map({ a: {} }); const h = acquire_projected_identity(m.lib("state"), ["a"]); m.lib("state").at([]).replace({ a: {} }); assert.equal(h.active, false); });
 check("durable restore fences old handles", () => { const m = map({ a: {} }); const h = acquire_projected_identity(m.lib("state"), ["a"]); m.restore(m.capture()); assert.equal(h.active, false); });
-check("incompatible registry capture cannot replace one-library state", () => {
+check("different registry capture replaces topology and retires old identity", () => {
   const source = map({ a: { value: 1 } });
   acquire_projected_identity(source.lib("state"), ["a"]);
   const incompatible = hson.liveMap.fromLibraries({ other: { data: { a: { value: 1 } }, schema: ObjectSchema } }).capture();
   const target = map({ a: { value: 0 } });
-  const before = target.capture();
-  assert.throws(() => target.restore(incompatible));
-  assert.deepEqual(target.capture(), before);
-  assert.equal(livemap_identity_epoch_accounting(target.lib("state")).issued, 0);
+  const oldState = target.lib("state");
+  const oldIdentity = acquire_projected_identity(oldState, ["a"]);
+  target.restore(incompatible);
+  assert.deepEqual(target.capture(), incompatible);
+  assert.equal(oldIdentity.active, false);
+  assert.throws(() => oldState.snap());
+  assert.equal(livemap_identity_epoch_accounting(target.lib("other")).issued, 0);
 });
 check("portable projected capture transfers state without overlay or ledger", () => {
   const source = map({ a: { value: 1 } });

@@ -1,4 +1,4 @@
-import type { LiveMap, LiveMapInput } from "../../types/livemap.types.js";
+import type { LiveMap, LiveMapInput, LiveMapDefinitions } from "../../types/livemap.types.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 import { make_livemap_libraries, make_livemap_mirror_from_portable_aggregate_internal } from "./livemap.libraries.js";
 import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
@@ -16,7 +16,7 @@ function create(): LiveMap<{}> {
 }
 
 /** Establish one named local Library registry. */
-function fromLibraries<const TLibraries extends LiveMapInput>(libraries: TLibraries): LiveMap<TLibraries> {
+function fromLibraries<const TLibraries extends LiveMapDefinitions>(libraries: TLibraries): LiveMap<TLibraries> {
   for (const [name, input] of Object.entries(libraries)) {
     if ("document" in input && input.document !== undefined && typeof input.document !== "string") {
       admit_portable_hson_node(input.document, `LiveMap.fromLibraries(${name})`);

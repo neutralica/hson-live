@@ -1,8 +1,8 @@
 # LiveMap
 
-LiveMap owns one revisioned registry of named canonical Hson libraries. The registry is the state machine, whether it contains one library or many. Each library is either data or document state and has a required Hson Schema.
+LiveMap owns one revisioned registry of named canonical Hson libraries. The registry is the state machine, whether it contains one library or many. Each library is either data or document state and has a governing Hson Schema.
 
-The registry may contain zero libraries. `hsonLiveMap.create()` and `hsonLiveMap.fromLibraries({})` create a complete empty runtime at revision 0. It supports capture, restore, and observers. Rendering requires a document library. Library topology is fixed after construction.
+The registry may contain zero libraries. `hsonLiveMap.create()` and `hsonLiveMap.fromLibraries({})` create a complete empty runtime at revision 0. It supports capture, restore, and observers. Rendering requires a document library. `map.lib.add(...)` admits local libraries later as one revisioned batch.
 
 ```ts
 import { Hson, hsonLiveMap } from "hson-live";
@@ -37,7 +37,7 @@ Paths are portable coordinates: data paths contain object keys and array indexes
 
 ## Construction
 
-`hsonLiveMap.fromLibraries({ name: { data, schema } })` admits data from a JSON value or JSON source text. `hsonLiveMap.fromLibraries({ name: { document, schema } })` admits document Hson source text or a canonical Hson node. Every library has an explicit name and Schema. The registry topology is fixed at construction.
+`hsonLiveMap.fromLibraries({ name: { data, schema? } })` admits data from a JSON value or JSON source text. `hsonLiveMap.fromLibraries({ name: { document, schema? } })` admits document Hson source text or a canonical Hson node. `map.lib.add(...)` accepts the same definition shape after construction. Omitting Schema uses `ANY_DATA` or `ANY_DOCUMENT`. The `data` or `document` field remains explicit.
 
 Data roots may be objects, arrays, strings, numbers, booleans, or null. For a string root, pass JSON source text such as `data: '"hello"'`. `ANY_DATA` and `ANY_DOCUMENT` are reusable broad Schemas for the complete valid data and document families.
 

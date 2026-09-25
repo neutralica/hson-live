@@ -81,17 +81,20 @@ check("restore of same registry captures exact canonical state", () => {
   assert.equal(canonical_hson_graph_equal(source.lib("page").root(), target.lib("page").root()), true);
   assert.equal(target.rev, source.rev);
 });
-check("incompatible registry snapshot is rejected atomically", () => {
+check("different registry snapshot replaces topology and retires old handles", () => {
   const target = ordinary("<main/>");
-  const before = target.capture();
+  const oldPage = target.lib("page");
   const other = hsonLiveMap.fromLibraries({ other: { document: "<main/>", schema: Empty } });
-  assert.throws(() => target.restore(other.capture()));
-  assert.deepEqual(target.capture(), before);
+  target.restore(other.capture());
+  assert.deepEqual(target.capture(), other.capture());
+  assert.throws(() => oldPage.root());
+  assert.throws(() => target.lib("page"));
+  assert.equal(target.lib("other").mode, "document");
 });
 check("local registry exposes no solo capture or install category", () => {
   const map = ordinary("<main/>");
   assert.equal("install" in map, false);
-  assert.equal("replay" in map, false);
+  assert.equal(typeof map.replay, "function");
   assert.equal("cut" in map, false);
   assert.equal("capture" in map.lib("page"), true);
 });

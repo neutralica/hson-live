@@ -219,6 +219,7 @@
     "test:livemap-n-library-engine": "node --import=tsx tests/livemap-n-library-engine.acceptance.mts",
     "test:livemap-public-libraries": "node --import=tsx tests/livemap-public-libraries.acceptance.mts",
     "test:livemap-phase-1a": "node --import=tsx tests/livemap-phase-1a.acceptance.mts",
+    "test:livemap-phase-1b": "node --import=tsx tests/livemap-phase-1b.acceptance.mts",
     "test:livemap-shape-handles": "node --import=tsx tests/livemap-shape-handles.acceptance.mts",
     "test:livemap-hosted-multi-library-h1": "node --import=tsx tests/livemap-hosted-multi-library-h1.acceptance.mts",
     "test:locus-hosted-multi-library-h3": "node --import=tsx tests/locus-hosted-multi-library-h3.acceptance.mts",

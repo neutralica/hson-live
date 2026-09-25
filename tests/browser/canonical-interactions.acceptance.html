@@ -73,7 +73,16 @@
     const passive = new Event("hson-passive", { cancelable: true });
     button.dispatchEvent(passive);
 
-    const passed = calls.element === 1
+    const runtimeMap = hsonLiveMap.create();
+    const runtimeCommit = runtimeMap.lib.add({ runtimePage: { document: Hson.document`<main "browser"/>` },
+      runtimeData: { data: true } });
+    const runtimeReplica = hsonLiveMap.create();
+    runtimeReplica.replay(runtimeCommit);
+    const runtimeAdmissionPassed = runtimeMap.rev === 1
+      && runtimeMap.render() === "<main>browser</main>"
+      && runtimeReplica.capture().registry.digest === runtimeMap.capture().registry.digest;
+
+    const passed = runtimeAdmissionPassed && calls.element === 1
       && calls.document === 1
       && calls.window === 1
       && calls.passive === 1
