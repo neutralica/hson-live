@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
-import { Hson, type HsonSchema } from "../src/index.ts";
+import { Hson, hsonLiveMap, hsonTransform, type HsonSchema } from "../src/index.ts";
+import { HsonSchema as RuntimeHsonSchema } from "../src/api/schema/hson-schema.ts";
 import { compile_hson_schema } from "../src/internal/hson-schema/compiler.ts";
 import { generate_hson_schema_types } from "../src/internal/hson-schema/generate-types.ts";
 import { evaluate_canonical_document_schema } from "../src/internal/canonical-schema/evaluate.ts";
@@ -219,6 +222,28 @@ check("runtime certification selects document context before empty-source detach
     () => dataSchema.certify(emptyCanonical),
     (cause) => cause instanceof TypeError && /HsonData\.fromHson.*data-mode Hson/.test(cause.message),
   );
+});
+
+check("public and worker entrypoint Schema fixtures compile and admit their documents", () => {
+  for (const path of ["entrypoints/public/public-entrypoints.ts", "entrypoints/worker/livemap-worker.ts"]) {
+    const source = readFileSync(resolve(import.meta.dirname, path), "utf8");
+    const literals = [...source.matchAll(/Hson\.schema`([^`]*)`/g)];
+    assert.ok(literals.length > 0, `${path} has Schema fixtures`);
+    for (const [, schemaSource] of literals) {
+      const compiled = compile_hson_schema(schemaSource);
+      assert.equal(compiled.ok, true, `${path}: ${compiled.ok ? "" : compiled.issues.map(issue => issue.message).join("; ")}`);
+      assert.doesNotThrow(() => RuntimeHsonSchema.fromHson(hsonTransform.fromHson(schemaSource).toHson().serialize()), path);
+    }
+    const documentFixtures = [...source.matchAll(/document:\s*`([^`]*)`\s*,\s*schema:\s*Hson\.schema`([^`]*)`/g)];
+    assert.equal(documentFixtures.length, 1, `${path} has one document registry fixture`);
+    const [, documentSource, schemaSource] = documentFixtures[0]!;
+    const document = Hson.document.fromHson(hsonTransform.fromHson(documentSource).toHson().serialize());
+    const schema = RuntimeHsonSchema.fromHson(hsonTransform.fromHson(schemaSource).toHson().serialize());
+    assert.equal(schema.certify(document), document);
+    const page = hsonLiveMap.fromLibraries({ page: { document: documentSource, schema } }).lib("page");
+    assert.equal(page.mode, "document");
+    if (path.includes("worker")) assert.ok(page.at([]).id("target"));
+  }
 });
 
 const performanceCases = [

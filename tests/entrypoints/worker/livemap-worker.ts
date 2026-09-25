@@ -25,7 +25,7 @@ void projectedAcquisitionIsPublic;
 void capture.libraries;
 
 const documentMap = hsonLiveMap.fromLibraries({
-  page: { document: `<main <button "Save" id "target">>`, schema: Hson.schema`<type "document" content <main <button string id string>>>` },
+  page: { document: `<main <button id="target" "Save"/>/>`, schema: Hson.schema`<type "document" tag "main" content <sequence [<tag "button" attrs <props <id "string">> content "string">]>>` },
 });
 const page = documentMap.lib("page");
 if (page.mode === "document") {
