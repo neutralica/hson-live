@@ -119,7 +119,7 @@ assert.equal(manifest.capabilities.untrustedWorkspaces.restrictedConfigurations,
 assert.ok(manifest.devDependencies.esbuild);
 assert.ok(manifest.devDependencies.typescript);
 assert.deepEqual(manifest.contributes.typescriptServerPlugins, [{
-  name: "../typescript-plugin",
+  name: "hson-schema-typescript-plugin",
   enableForWorkspaceTypeScriptVersions: true,
 }]);
 const pluginRequire = createRequire(new URL("../node_modules/__hson_plugin_probe.cjs", import.meta.url));

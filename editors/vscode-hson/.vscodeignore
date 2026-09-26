@@ -2,6 +2,8 @@ src/**
 scripts/**
 tests/**
 node_modules/**
+!node_modules/hson-schema-typescript-plugin/**
+typescript-plugin/**
 .gitignore
 .test-dist/**
 .vscode-test/**

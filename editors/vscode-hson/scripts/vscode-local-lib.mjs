@@ -303,7 +303,7 @@ export async function packageCurrentSource(options) {
     if (options.runPackager) await options.runPackager(temporaryVsix);
     else {
       const vsce = join(extensionRoot, "node_modules", ".bin", "vsce");
-      await requireSuccessful("packaging failure", vsce, ["package", "--no-dependencies", "--out", temporaryVsix], {
+      await requireSuccessful("packaging failure", vsce, ["package", "--no-yarn", "--follow-symlinks", "--out", temporaryVsix], {
         cwd: extensionRoot,
         capture: false,
         runProcess: runner,

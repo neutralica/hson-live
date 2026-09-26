@@ -1,0 +1,212 @@
+import assert from "node:assert/strict";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
+import ts from "typescript";
+import { create_schema_language_service } from "../editors/vscode-hson/src/schema-language-service.ts";
+import { SchemaSourceMapping } from "../src/internal/hson-schema/source-mapping.ts";
+import { generate_hson_schema_evidence } from "../src/internal/hson-schema/generated-evidence.ts";
+import { create_test_event_emitter } from "./test-events.mjs";
+
+export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "tooling.schema-editor-view", title: "Schema editor compiler view", category: "Tooling", runtime: "node", tags: Object.freeze(["schema", "editor", "typescript", "source-integrity"]) });
+const events = create_test_event_emitter("tooling.schema-editor-view");
+let checks = 0;
+function check(name: string, body: () => void): void {
+  events.case_begin(name, name);
+  try { body(); checks++; events.case_end(name, "pass"); }
+  catch (error) { events.diagnostic(name, "assertion", String(error)); events.case_end(name, "fail"); events.terminal("fail"); throw error; }
+}
+
+assert.equal(ts.version, "5.9.3");
+const root = resolve(import.meta.dirname, "..");
+mkdirSync(join(root, "tmp"), { recursive: true });
+const temporary = mkdtempSync(join(root, "tmp", "schema-editor-view-"));
+process.once("exit", () => rmSync(temporary, { recursive: true, force: true }));
+
+function bytes(directory: string): Map<string, Buffer> {
+  const output = new Map<string, Buffer>();
+  const visit = (path: string): void => { for (const entry of readdirSync(path, { withFileTypes: true })) {
+    const file = join(path, entry.name); if (entry.isDirectory()) visit(file); else output.set(relative(directory, file), readFileSync(file));
+  } };
+  visit(directory); return output;
+}
+function project(name: string, files: Record<string, string>, extraOptions: ts.CompilerOptions = {}) {
+  const directory = join(temporary, name); mkdirSync(directory, { recursive: true });
+  writeFileSync(join(directory, "package.json"), '{"type":"module"}');
+  for (const [file, source] of Object.entries(files)) { mkdirSync(dirname(join(directory, file)), { recursive: true }); writeFileSync(join(directory, file), source); }
+  const options: ts.CompilerOptions = { strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, noEmit: true, target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, types: [], baseUrl: directory,
+    paths: { "hson-live": [join(root, "dist/index.d.ts")], "hson-live/hson": [join(root, "dist/hson-authoring.d.ts")] }, ...extraOptions };
+  const live = new Map<string, string>(); const versions = new Map<string, number>(); let revision = 0;
+  const roots = Object.keys(files).filter(file => /\.[cm]?tsx?$/.test(file)).map(file => join(directory, file));
+  const host: ts.LanguageServiceHost = {
+    getCompilationSettings: () => options, getScriptFileNames: () => roots, getProjectVersion: () => String(revision),
+    getScriptVersion: file => String(versions.get(file) ?? 0),
+    getScriptSnapshot: file => { const text = live.get(file) ?? (existsSync(file) ? readFileSync(file, "utf8") : undefined); return text === undefined ? undefined : ts.ScriptSnapshot.fromString(text); },
+    getCurrentDirectory: () => directory, getDefaultLibFileName: ts.getDefaultLibFilePath, useCaseSensitiveFileNames: () => true,
+    fileExists: ts.sys.fileExists, readFile: ts.sys.readFile, readDirectory: ts.sys.readDirectory, directoryExists: ts.sys.directoryExists, getDirectories: ts.sys.getDirectories,
+  };
+  const underlying = ts.createLanguageService(host);
+  const service = create_schema_language_service(ts, underlying, host, join(directory, "tsconfig.json"));
+  const file = (name: string) => join(directory, name);
+  const text = (name: string) => live.get(file(name)) ?? readFileSync(file(name), "utf8");
+  return { directory, service, underlying, host, file, text, options,
+    edit(name: string, source: string) { live.set(file(name), source); versions.set(file(name), (versions.get(file(name)) ?? 0) + 1); revision++; },
+    errors(name: string) { return service.getSemanticDiagnostics(file(name)); },
+  };
+}
+const producer = '\uFEFFimport { Hson, type SchemaType } from "hson-live";\r\n// before\r\nconst before: number = "wrong-before";\r\nexport const Thing = Hson.schema`<type "data" content <name "string" status <exact "ready">>>`;\r\n// between\r\nconst between: number = "wrong-between";\r\nexport const Slide = Hson.schema`<type "document">`;\r\nexport const Twin = Hson.schema`<type "document">`;\r\nconst after: number = "wrong-after";\r\ndeclare const local: SchemaType<typeof Thing>;\r\nconst localName: string = local.name;\r\nlocal.na';
+const consumer = 'import { type SchemaType, type HsonSchema, type HsonData, type HsonDocument } from "hson-live";\nimport { Thing, Slide, Twin } from "./schema.js";\nimport { imported } from "./second.js";\ndeclare const value: SchemaType<typeof Thing>;\nconst name: string = value.name;\nconst status: "ready" = value.status;\nconst wrong: number = value.name;\ntype WrongMode = HsonData<typeof Slide>;\ndeclare const doc: HsonDocument<typeof Slide>;\nconst wrongIdentity: HsonDocument<typeof Twin> = doc;\nconst sameIdentity: HsonDocument<typeof Slide> = imported;\n';
+const app = project("live", { "schema.ts": producer, "consumer.ts": consumer, "second.ts": 'import { type HsonDocument } from "hson-live"; import { Slide } from "./schema.js"; export declare const imported: HsonDocument<typeof Slide>;\n' });
+const originalBytes = bytes(app.directory);
+const messages = (values: readonly ts.Diagnostic[]) => values.map(value => `${value.code}@${value.start}: ${ts.flattenDiagnosticMessageText(value.messageText, "\n")}`).join("\n");
+
+check("producer and cross-module consumers have precise value, mode and declaration identity", () => {
+  const errors = app.errors("consumer.ts");
+  assert.equal(errors.length, 3, messages(errors));
+  assert.ok(!messages(errors).includes("/.hson/"), messages(errors));
+  for (const marker of ["wrong:", "WrongMode", "wrongIdentity:"]) assert.ok(errors.some(error => (error.start ?? -1) >= consumer.indexOf(marker) && (error.start ?? -1) < consumer.indexOf(marker) + 45), marker);
+  assert.equal(app.errors("second.ts").length, 0);
+  const hover = app.service.getQuickInfoAtPosition(app.file("schema.ts"), producer.indexOf("Thing ="));
+  assert.ok(hover); assert.equal(hover.textSpan.start, producer.indexOf("Thing ="));
+  assert.match(ts.displayPartsToString(hover.displayParts), /HsonSchema/);
+  const source = app.service.getProgram()?.getSourceFile(app.file("schema.ts")); assert.ok(source);
+  assert.match(source.text, /Evidence/); assert.equal(app.text("schema.ts"), producer);
+});
+
+check("real diagnostics before, between and after generated insertions map to authored bytes", () => {
+  const errors = app.errors("schema.ts");
+  assert.equal(errors.length, 4, messages(errors));
+  for (const name of ["before", "between", "after"]) {
+    const expected = producer.indexOf(`const ${name}:`) + 6;
+    const error = errors.find(item => item.start === expected); assert.ok(error, messages(errors));
+    assert.equal(error.length, name.length); assert.equal(error.file?.text, producer);
+  }
+  assert.ok(errors.every(error => !ts.flattenDiagnosticMessageText(error.messageText, "\n").includes("__HsonSchema")));
+});
+
+check("definitions, bound spans, references and rename use authored coordinates", () => {
+  const offset = consumer.indexOf("typeof Thing") + 7;
+  const definition = app.service.getDefinitionAtPosition(app.file("consumer.ts"), offset)?.find(item => item.fileName === app.file("schema.ts"));
+  assert.ok(definition); assert.equal(definition.textSpan.start, producer.indexOf("Thing =")); assert.equal(definition.textSpan.length, 5);
+  const bound = app.service.getDefinitionAndBoundSpan(app.file("consumer.ts"), offset); assert.equal(bound?.textSpan.start, offset);
+  const references = app.service.getReferencesAtPosition(app.file("schema.ts"), producer.indexOf("Thing ="));
+  assert.ok(references?.some(item => item.fileName === app.file("consumer.ts") && item.textSpan.start === offset));
+  const rename = app.service.findRenameLocations(app.file("schema.ts"), producer.indexOf("Thing ="), false, false, {});
+  assert.ok(rename && rename.length >= 4);
+  for (const location of rename) { assert.ok(!location.fileName.includes("/.hson/")); assert.equal(app.text(relative(app.directory, location.fileName)).slice(location.textSpan.start, location.textSpan.start + location.textSpan.length), "Thing"); }
+});
+
+check("member completion replacement spans remain authored after multiple transforms", () => {
+  const result = app.service.getCompletionsAtPosition(app.file("schema.ts"), producer.length, {});
+  assert.ok(result); assert.ok(result.entries.some(entry => entry.name === "name"));
+  const range = result.optionalReplacementSpan ?? result.entries.find(entry => entry.name === "name")?.replacementSpan;
+  assert.ok(range); assert.equal(producer.slice(range.start, range.start + range.length), "na");
+});
+
+check("unsaved valid edits update consumers immediately and preserve identity module names", () => {
+  const before = app.service.getProgram()?.getSourceFiles().filter(file => file.fileName.includes("/editor-evidence/")).map(file => file.fileName).sort();
+  const slideFile = before?.find(file => file.endsWith("Slide.hson-schema.generated.ts")); assert.ok(slideFile);
+  const slideSnapshot = app.host.getScriptSnapshot(slideFile);
+  app.edit("schema.ts", producer.replace('name "string"', 'name "number"'));
+  const errors = app.errors("consumer.ts");
+  assert.ok(errors.some(error => error.start === consumer.indexOf("name: string")), messages(errors));
+  assert.ok(!errors.some(error => error.start === consumer.indexOf("wrong: number")), messages(errors));
+  assert.equal(app.errors("second.ts").length, 0);
+  assert.deepEqual(app.service.getProgram()?.getSourceFiles().filter(file => file.fileName.includes("/editor-evidence/")).map(file => file.fileName).sort(), before);
+  assert.equal(app.host.getScriptSnapshot(slideFile), slideSnapshot, "Unchanged declarations reuse the identical evidence snapshot.");
+});
+
+check("invalid and unterminated unsaved Schemas withdraw proof and recover without saves", () => {
+  for (const source of [producer.replace('content <name "string"', 'content <name "broken"'), producer.slice(0, producer.indexOf('content <name')) + 'content <']) {
+    app.edit("schema.ts", source);
+    const errors = app.errors("consumer.ts");
+    assert.ok(errors.some(error => ts.flattenDiagnosticMessageText(error.messageText, " ").includes("unknown")), messages(errors));
+    assert.ok(!app.service.getProgram()?.getSourceFiles().some(file => file.fileName.endsWith("Thing.hson-schema.generated.ts")));
+  }
+  app.edit("schema.ts", producer);
+  assert.equal(app.errors("consumer.ts").length, 3, messages(app.errors("consumer.ts")));
+});
+
+check("edits before, between and after declarations update all position mappings", () => {
+  const updated = producer.replace('// before', '// more text before\r\n// before').replace('// between', '// extra between\r\n// between').replace('const after:', '// after too\r\nconst after:');
+  app.edit("schema.ts", updated);
+  const errors = app.errors("schema.ts");
+  for (const name of ["before", "between", "after"]) assert.ok(errors.some(error => error.start === updated.indexOf(`const ${name}:`) + 6), messages(errors));
+  const definition = app.service.getDefinitionAtPosition(app.file("consumer.ts"), consumer.indexOf("typeof Thing") + 7)?.find(item => item.fileName === app.file("schema.ts"));
+  assert.equal(definition?.textSpan.start, updated.indexOf("Thing ="));
+  app.edit("schema.ts", producer);
+});
+
+check("mapping handles generated-only, copied and boundary-crossing ranges deterministically", () => {
+  const mapping = new SchemaSourceMapping("abcdef", [{ start: 1, end: 1, text: "GEN" }, { start: 3, end: 5, text: "TYPE" }]);
+  assert.equal(mapping.text, "aGENbcTYPEf");
+  assert.equal(mapping.to_transformed(1), 4);
+  assert.deepEqual(mapping.to_authored({ start: 4, length: 2 }), { start: 1, length: 2 });
+  assert.equal(mapping.to_authored({ start: 1, length: 3 }), undefined);
+  assert.deepEqual(mapping.to_authored({ start: 0, length: 5 }), { start: 0, length: 2 });
+  assert.equal(mapping.authored_edit({ start: 0, length: 5 }), undefined);
+});
+
+check("the diagnostic boundary suppresses generated-only spans while preserving crossing application spans", () => {
+  const program = app.service.getProgram(); const source = program?.getSourceFile(app.file("schema.ts")); assert.ok(source);
+  const original = app.underlying.getSemanticDiagnostics;
+  const tagStart = source.text.indexOf("Hson.schema`");
+  const importStart = source.text.lastIndexOf("import type");
+  app.underlying.getSemanticDiagnostics = () => [
+    { file: source, start: importStart, length: 11, code: 99991, category: ts.DiagnosticCategory.Error, messageText: "Generated-only test diagnostic" },
+    { file: source, start: tagStart - 1, length: 5, code: 99992, category: ts.DiagnosticCategory.Error, messageText: "Boundary-spanning test diagnostic" },
+  ];
+  try {
+    const errors = app.errors("schema.ts"); assert.equal(errors.length, 1); assert.equal(errors[0]?.code, 99992);
+    assert.equal(errors[0]?.start, producer.indexOf("Hson.schema`")); assert.equal(errors[0]?.length, 4);
+  } finally { app.underlying.getSemanticDiagnostics = original; }
+});
+
+check("legacy associations cannot retain stale proof and fake Hson bindings never acquire evidence", () => {
+  const legacyPath = join(root, "tests/fixtures/hson-schema-mvp/producer.ts");
+  const legacy = readFileSync(legacyPath, "utf8");
+  const test = project("legacy-view", { "producer.ts": legacy, "consumer.ts": 'import { type SchemaType } from "hson-live"; import { UserSchema } from "./producer.js"; declare const value: SchemaType<typeof UserSchema>; const name: string = value.name;' });
+  assert.equal(test.errors("consumer.ts").length, 0);
+  test.edit("producer.ts", legacy.replace('name "string"', 'name "number"'));
+  assert.ok(test.errors("consumer.ts").some(error => error.code === 2322));
+  test.edit("producer.ts", legacy.replace('name "string"', 'name "broken"'));
+  assert.ok(test.errors("consumer.ts").some(error => error.code === 18046));
+  test.edit("producer.ts", legacy.replace("const UserSchema", "let UserSchema"));
+  assert.ok(test.errors("consumer.ts").some(error => error.code === 18046), "An unsupported declaration form must not retain legacy proof.");
+  test.edit("producer.ts", legacy); assert.equal(test.errors("consumer.ts").length, 0); test.service.dispose();
+  const fake = project("fake-view", { "schema.ts": 'const Hson = { schema: String.raw }; export const S = Hson.schema`<type "data">`;' });
+  assert.equal(fake.errors("schema.ts").length, 0);
+  assert.ok(!fake.service.getProgram()?.getSourceFiles().some(file => file.fileName.includes("/editor-evidence/"))); fake.service.dispose();
+});
+
+check("formatting and refactor edit services see only authored source", () => {
+  const changes = app.service.getFormattingEditsForDocument(app.file("schema.ts"), { indentSize: 2, tabSize: 2, convertTabsToSpaces: true });
+  assert.ok(changes.every(change => change.span.start + change.span.length <= producer.length && !change.newText.includes("__Hson")));
+  const organized = app.service.organizeImports({ type: "file", fileName: app.file("schema.ts") }, {}, {});
+  assert.ok(organized.every(file => file.textChanges.every(change => !change.newText.includes("Evidence") && !change.newText.includes("__Hson"))));
+});
+
+check("a Schema at end of file needs neither a semicolon nor a trailing newline", () => {
+  const test = project("eof", { "schema.ts": 'import { Hson } from "hson-live"; export const S = Hson.schema`<type "data">`' });
+  assert.equal(test.errors("schema.ts").length, 0); assert.equal(test.service.getSyntacticDiagnostics(test.file("schema.ts")).length, 0);
+  test.service.dispose();
+});
+
+check("Phase 1 precision fixture passes entirely through the in-memory view", () => {
+  const directory = join(temporary, "precision"); cpSync(join(root, "tests/fixtures/hson-schema-compiler-project"), directory, { recursive: true });
+  const files: Record<string, string> = {};
+  for (const [name, contents] of bytes(directory)) files[name] = contents.toString();
+  const exact = project("precision-live", files, { paths: { "hson-live": [join(root, "dist/index.d.ts")], "hson-live/hson": [join(root, "dist/hson-authoring.d.ts")], "@support/*": ["./support/*"] }, types: ["node"] });
+  const before = bytes(exact.directory);
+  for (const name of Object.keys(files).filter(name => /\.[cm]?tsx?$/.test(name))) assert.equal(exact.errors(name).length, 0, `${name}\n${messages(exact.errors(name))}`);
+  const evidence = exact.service.getProgram()?.getSourceFiles().filter(file => file.fileName.includes("/editor-evidence/"));
+  assert.equal(evidence?.length, 12);
+  const slide = evidence?.find(file => file.fileName.endsWith("slideSchema.hson-schema.generated.ts"));
+  assert.equal(slide?.text, generate_hson_schema_evidence("slideSchema", '\n<type "document">\n', "schema.ts#slideSchema").declaration);
+  assert.deepEqual(bytes(exact.directory), before); exact.service.dispose();
+});
+
+check("editor operations never change disk bytes or materialize a generated project", () => {
+  assert.deepEqual(bytes(app.directory), originalBytes); assert.equal(existsSync(join(app.directory, ".hson")), false);
+});
+app.service.dispose();
+events.terminal("pass"); console.log(JSON.stringify({ schemaEditorView: "passed", checks, typescript: ts.version }));

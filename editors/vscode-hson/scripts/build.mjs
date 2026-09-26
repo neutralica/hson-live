@@ -1,4 +1,4 @@
-import { rm, copyFile } from "node:fs/promises";
+import { rm, copyFile, mkdir, realpath } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
@@ -38,7 +38,7 @@ await build({
 await build({
   absWorkingDir: extensionRoot,
   entryPoints: ["src/tsserver-plugin/tsserver-plugin.ts"],
-  outfile: "typescript-plugin/dist/index.cjs",
+  outfile: "node_modules/hson-schema-typescript-plugin/dist/index.cjs",
   bundle: true,
   format: "cjs",
   platform: "node",
@@ -48,4 +48,8 @@ await build({
   legalComments: "none",
   logLevel: "info",
 });
+await mkdir(new URL("../node_modules/hson-schema-typescript-plugin", import.meta.url), { recursive: true });
+if (await realpath(new URL("../typescript-plugin", import.meta.url)) !== await realpath(new URL("../node_modules/hson-schema-typescript-plugin", import.meta.url))) {
+  await copyFile(new URL("../typescript-plugin/package.json", import.meta.url), new URL("../node_modules/hson-schema-typescript-plugin/package.json", import.meta.url));
+}
 await copyFile(createRequire(import.meta.url).resolve("vscode-oniguruma/release/onig.wasm"), new URL("../dist/onig.wasm", import.meta.url));

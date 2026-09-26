@@ -4,9 +4,7 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } 
 import ts from "typescript";
 import { generate_hson_schema_evidence } from "./generated-evidence.js";
 import {
-  apply_source_edits, generated_exports_block, generated_exports_block_from_source, GENERATED_EXPORTS_START,
-  schema_association_edits, schema_type_association,
-  type SchemaSourceAssociation, type SchemaSourceEdit,
+  apply_source_edits, schema_source_plan, type SchemaSourceEdit,
 } from "./source-transformation.js";
 
 type SchemaDeclaration = Readonly<{
@@ -83,22 +81,8 @@ export function generate_schema_compiler_project(
     const generated = `sources/${source}`;
     const originalBytes = readFileSync(sourceFile.fileName);
     const declarations = schemas.filter(schema => schema.sourceFile === sourceFile);
-    const associations: SchemaSourceAssociation[] = [];
-    const imports: string[] = [];
+    const associations: { declaration: ts.VariableDeclaration; name: string; specifier: string }[] = [];
     const schemaRecords: SourceRecord["schemas"][number][] = [];
-    const names = new Set<string>();
-    const visitNames = (node: ts.Node): void => {
-      if (ts.isIdentifier(node)) names.add(node.text);
-      ts.forEachChild(node, visitNames);
-    };
-    visitNames(sourceFile);
-    const allocate = (preferred: string): string => {
-      let name = preferred;
-      for (let index = 1; names.has(name); index += 1) name = `${preferred}_${index}`;
-      names.add(name);
-      return name;
-    };
-    const schemaTypeName = allocate("__HsonSchema");
     for (const schema of declarations) {
       const evidencePath = compiler_project_evidence_path(source, schema.name);
       const evidence = generate_hson_schema_evidence(schema.name, schema.source, `${source}#${schema.name}`);
@@ -106,23 +90,17 @@ export function generate_schema_compiler_project(
       add(evidencePath.replace(/\.[cm]?ts$/, ".json"), evidence.metadata);
       const runtimePath = evidencePath.replace(/\.mts$/, ".mjs").replace(/\.cts$/, ".cjs").replace(/\.ts$/, ".js");
       const specifier = module_path(relative(dirname(join(outputRoot, generated)), join(outputRoot, runtimePath)));
-      const association = schema_type_association(schema.name, specifier, schemaTypeName, allocate(`__${schema.name}Evidence`));
-      associations.push({ declaration: schema.declaration, text: association.schemaAssociation });
-      imports.push(association.reexport);
+      associations.push({ declaration: schema.declaration, name: schema.name, specifier });
       schemaRecords.push({ name: schema.name, start: schema.declaration.getStart(), end: schema.declaration.getEnd(), evidence: evidencePath });
     }
     const edits: SchemaSourceEdit[] = [
-      ...schema_association_edits(associations),
+      ...schema_source_plan(sourceFile, associations).edits,
       ...overlays.filter(overlay => resolve(overlay.file) === resolve(sourceFile.fileName)).map(({ start, end, text }) => ({ start, end, text })),
     ];
     if (!sourceFile.fileName.endsWith(".json")) {
-      // Replace legacy imports only in this generated representation, never in their producer.
-      const legacy = legacy_import_block_edit(sourceFile);
-      if (legacy !== undefined) edits.push(legacy);
       const shebangOnly = sourceFile.text.startsWith("#!") && !sourceFile.text.includes("\n");
       const headerPosition = shebangOnly ? sourceFile.text.length : sourceFile.text.startsWith("#!") ? sourceFile.text.indexOf("\n") + 1 : 0;
       edits.push({ start: headerPosition, end: headerPosition, text: shebangOnly ? `\n${HEADER}` : HEADER });
-      if (imports.length > 0) edits.push({ start: sourceFile.text.length, end: sourceFile.text.length, text: `\n${generated_exports_block(imports, schemaTypeName)}` });
       add(generated, apply_source_edits(sourceFile.text, edits));
     } else {
       add(generated, originalBytes); // JSON has no comment syntax; the manifest establishes ownership.
@@ -164,22 +142,6 @@ export function generate_schema_compiler_project(
   const generatedProject = join(outputRoot, "tsconfig.json");
   verify_module_graph(generatedProject, program, sourceFiles, mirrors);
   return { project: generatedProject, manifest: manifestPath, sources: records.length, schemas: schemas.length };
-}
-
-function legacy_import_block_edit(source: ts.SourceFile): SchemaSourceEdit | undefined {
-  for (const statement of source.statements) {
-    if (!ts.isImportDeclaration(statement) || !statement.importClause?.isTypeOnly
-      || !ts.isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text !== "hson-live") continue;
-    const bindings = statement.importClause.namedBindings;
-    if (bindings === undefined || !ts.isNamedImports(bindings)
-      || !bindings.elements.some(binding => binding.name.text === "__HsonSchema" && binding.propertyName?.text === "HsonSchema")) continue;
-    for (const comment of ts.getLeadingCommentRanges(source.text, statement.getFullStart()) ?? []) {
-      if (source.text.slice(comment.pos, comment.end) !== GENERATED_EXPORTS_START) continue;
-      const block = generated_exports_block_from_source(source.text.slice(comment.pos));
-      if (comment.pos + block.length >= statement.getEnd()) return { start: comment.pos, end: comment.pos + block.length, text: "" };
-    }
-  }
-  return undefined;
 }
 
 /** Reject a changed resolution instead of quietly mixing original and mirrored source identities. */
