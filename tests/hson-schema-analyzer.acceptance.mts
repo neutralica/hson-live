@@ -51,7 +51,7 @@ writeFileSync(config, JSON.stringify({ compilerOptions: { strict: true, exactOpt
 
 const run = (mode: "generate" | "verify" | "check" | "build") => spawnSync(process.execPath, ["--import=tsx", "scripts/hson-schema.mts", mode, "--project", config], { cwd: root, encoding: "utf8" });
 
-function selected(): string { const entry = join(project, ".hson/compiler-input/tsconfig.json/tsconfig.json"); return dirname(resolve(dirname(entry), JSON.parse(readFileSync(entry, "utf8")).extends)); }
+function selected(): string { const entry = join(project, ".hson/compiler-input/tsconfig.json/tsconfig.json"); return dirname(entry); }
 function evidence(name: string): string { const match = /^(.*)\.([^.]+)\.hson-schema\.generated\.(ts|json)$/.exec(name)!; return join(selected(), "evidence", `${match[1]}.ts`, `${match[2]}.hson-schema.generated.${match[3]}`); }
 function published(name: string): string { const match = /^(.*)\.([^.]+)\.hson-schema\.generated\.d\.ts$/.exec(name)!; return join(project, "out/internal/hson-schema", `${match[1]}.ts`, `${match[2]}.hson-schema.generated.d.ts`); }
 function generated_source(path: string): string { return readFileSync(join(selected(), "sources", path.slice(project.length + 1)), "utf8"); }

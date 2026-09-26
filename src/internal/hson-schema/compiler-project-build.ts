@@ -13,7 +13,7 @@ type Emission = { path: string; text: string; source: string };
 
 /** Runtime uses captured authored inputs; only declarations use the precise compiler view. */
 export function check_schema_project(projectPath: string, current: Current, emit: boolean): void {
-  const snapshot = new SchemaProjectSnapshot();
+  const snapshot = new SchemaProjectSnapshot({ root: current.selected, files: current.files });
   const read = ts.readConfigFile(projectPath, snapshot.readFile);
   const authored = ts.parseJsonConfigFileContent(read.config, snapshot.host, dirname(projectPath), undefined, projectPath);
   if (read.error || authored.errors.length) diagnostics([...(read.error ? [read.error] : []), ...authored.errors]);
@@ -52,7 +52,7 @@ export function check_schema_project(projectPath: string, current: Current, emit
   assert_current();
   for (const [path, text] of outputs) { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, text); }
   function assert_current(): void {
-    if (!snapshot.isCurrent() || verify_schema_compiler_project(projectPath).manifest.revision !== current.manifest.revision) throw new Error("Source/project revision changed during checking or build; no output published.");
+    if (!snapshot.isCurrent() || verify_schema_compiler_project(projectPath).manifest.publication !== current.manifest.publication) throw new Error("Source/project revision changed during checking or build; no output published.");
   }
 }
 

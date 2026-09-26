@@ -1,9 +1,7 @@
 import * as messages from "./diagnostic-messages.js";
 import * as vscode from "vscode";
 import { spawn, type ChildProcess } from "node:child_process";
-import { dirname, extname, relative, resolve, sep } from "node:path";
 import { local_hson_schema_declarations, local_hson_schema_diagnostics } from "./hson-schema-local.js";
-import { inspect_hson_schema_evidence } from "../../../src/internal/hson-schema/generated-evidence.js";
 import {
   local_hson_schema_completion,
   local_hson_schema_symbols,
@@ -342,30 +340,6 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(collection, diagnosticsOutput);
 
   const localSchemaCollection = vscode.languages.createDiagnosticCollection("hson-schema-authoring");
-  const schemaEvidenceCollection = vscode.languages.createDiagnosticCollection("hson-schema-evidence");
-  const publishSchemaEvidence = (document: vscode.TextDocument): void => {
-    if (document.languageId !== "typescript" && document.languageId !== "typescriptreact") return;
-    const declarations = local_hson_schema_declarations(document.getText(), document.fileName);
-    const diagnostics: vscode.Diagnostic[] = [];
-    const folder = vscode.workspace.getWorkspaceFolder(document.uri);
-    let project: string | undefined;
-    if (folder !== undefined) try { project = discover_schema_project(folder.uri.fsPath, document.fileName); } catch { project = undefined; }
-    for (const declaration of declarations) {
-      const generated = resolve(document.fileName.slice(0, -extname(document.fileName).length) + `.${declaration.name}.hson-schema.generated.ts`);
-      const metadata = generated.slice(0, -2) + "json";
-      const range = new vscode.Range(document.positionAt(declaration.start), document.positionAt(declaration.end));
-      const identity = project === undefined ? undefined : `${relative(dirname(project), document.fileName).split(sep).join("/")}#${declaration.name}`;
-      const evidence = identity === undefined ? { state: "error" as const, message: "No containing tsconfig.json was found." }
-        : inspect_hson_schema_evidence(declaration.name, declaration.template, identity, generated, metadata);
-      if (evidence.state === "current") continue;
-      const label = evidence.state === "missing" ? "missing" : evidence.state === "stale" ? "stale" : evidence.state === "invalid" ? "invalid" : "unavailable";
-      const diagnostic = new vscode.Diagnostic(range, `Generated Hson Schema types for ${declaration.name} are ${label}.${evidence.message === undefined ? "" : ` ${evidence.message}`} Generate Schema Types or start Hson Schema watch.`, evidence.state === "invalid" || evidence.state === "error" ? vscode.DiagnosticSeverity.Error : vscode.DiagnosticSeverity.Warning);
-      diagnostic.source = "Hson Schema";
-      diagnostic.code = evidence.state === "missing" ? "HSON_SCHEMA_GENERATED_EVIDENCE_MISSING" : evidence.state === "stale" ? "HSON_SCHEMA_GENERATED_EVIDENCE_STALE" : evidence.state === "invalid" ? "HSON_SCHEMA_GENERATED_EVIDENCE_INVALID" : "HSON_SCHEMA_GENERATED_EVIDENCE_ERROR";
-      diagnostics.push(diagnostic);
-    }
-    schemaEvidenceCollection.set(document.uri, diagnostics);
-  };
   const publishLocalSchema = (document: vscode.TextDocument): void => {
     if (document.languageId !== "typescript" && document.languageId !== "typescriptreact") return;
     localSchemaCollection.set(document.uri, local_hson_schema_diagnostics(document.fileName, document.getText()).map(spec => {
@@ -373,11 +347,11 @@ export function activate(context: vscode.ExtensionContext): void {
       diagnostic.source = "Hson Schema"; diagnostic.code = spec.code; return diagnostic;
     }));
   };
-  for (const document of vscode.workspace.textDocuments) { publishLocalSchema(document); publishSchemaEvidence(document); }
-  context.subscriptions.push(localSchemaCollection, schemaEvidenceCollection,
-    vscode.workspace.onDidOpenTextDocument(document => { publishLocalSchema(document); publishSchemaEvidence(document); }),
-    vscode.workspace.onDidChangeTextDocument(event => { publishLocalSchema(event.document); publishSchemaEvidence(event.document); }),
-    vscode.workspace.onDidCloseTextDocument(document => { localSchemaCollection.delete(document.uri); schemaEvidenceCollection.delete(document.uri); }));
+  for (const document of vscode.workspace.textDocuments) publishLocalSchema(document);
+  context.subscriptions.push(localSchemaCollection,
+    vscode.workspace.onDidOpenTextDocument(document => publishLocalSchema(document)),
+    vscode.workspace.onDidChangeTextDocument(event => publishLocalSchema(event.document)),
+    vscode.workspace.onDidCloseTextDocument(document => localSchemaCollection.delete(document.uri)));
 
   // Secure local defs/ref tooling deliberately shares the pure compiler with
   // authoring diagnostics. It never asks the trusted runtime to load a project.
@@ -726,11 +700,6 @@ export function activate(context: vscode.ExtensionContext): void {
     };
     attach(child.stdout); attach(child.stderr);
   };
-  const refreshSchemaEvidence = (): void => {
-    for (const document of vscode.workspace.textDocuments) {
-      publishSchemaEvidence(document);
-    }
-  };
   const stopSchemaWatch = async (requested?: vscode.Uri): Promise<void> => {
     const folder = await schemaToolFolder(requested);
     if (folder === undefined) return;
@@ -777,7 +746,7 @@ export function activate(context: vscode.ExtensionContext): void {
     await new Promise<void>(resolveOnce => {
       child.once("error", error => { schemaToolOutput.appendLine(`Hson Schema ${mode} failed to start: ${error.message}`); schemaToolStates.set(key, "error"); updateSchemaToolStatus(); resolveOnce(); });
       child.once("close", code => {
-        if (code === 0) { schemaToolOutput.appendLine(`Hson Schema ${mode} completed in ${Math.round(performance.now() - started)}ms.`); schemaToolStates.set(key, schemaWatches.has(key) ? "watching" : "stopped"); refreshSchemaEvidence(); }
+        if (code === 0) { schemaToolOutput.appendLine(`Hson Schema ${mode} completed in ${Math.round(performance.now() - started)}ms.`); schemaToolStates.set(key, schemaWatches.has(key) ? "watching" : "stopped"); }
         else { schemaToolOutput.appendLine(`Hson Schema ${mode} exited with code ${code ?? "unknown"}.`); schemaToolStates.set(key, "error"); void vscode.window.showErrorMessage(`Hson Schema ${mode} failed.`, "Show Hson Output").then(action => action === "Show Hson Output" && schemaToolOutput.show(true)); }
         updateSchemaToolStatus(); resolveOnce();
       });
@@ -796,14 +765,13 @@ export function activate(context: vscode.ExtensionContext): void {
       const state = schema_watch_output_state(line);
       if (state === undefined || !schemaWatches.has(key)) return;
       schemaToolStates.set(key, state); updateSchemaToolStatus();
-      if (state === "watching") refreshSchemaEvidence();
     });
     updateSchemaToolStatus();
     child.once("error", error => { schemaToolOutput.appendLine(`Hson Schema watch failed to start: ${error.message}`); schemaWatches.delete(key); schemaToolStates.set(key, "error"); updateSchemaToolStatus(); });
     child.once("close", code => {
       const managed = schemaWatches.delete(key);
       if (managed) { schemaToolStates.set(key, code === 0 ? "stopped" : "error"); schemaToolOutput.appendLine(`Hson Schema watch exited with code ${code ?? "unknown"}.`); if (code !== 0) void vscode.window.showErrorMessage("Hson Schema watch stopped unexpectedly.", "Show Hson Output").then(action => action === "Show Hson Output" && schemaToolOutput.show(true)); }
-      updateSchemaToolStatus(); refreshSchemaEvidence();
+      updateSchemaToolStatus();
     });
     return new Promise<boolean>(resolveStart => {
       child.once("spawn", () => resolveStart(true));
@@ -868,23 +836,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (action?.command !== undefined) await vscode.commands.executeCommand(action.command);
     }),
   );
-  context.subscriptions.push(vscode.languages.registerCodeActionsProvider(["typescript", "typescriptreact"], {
-    provideCodeActions(document, _range, codeActionContext) {
-      const evidence = codeActionContext.diagnostics.filter(diagnostic => diagnostic.code === "HSON_SCHEMA_GENERATED_EVIDENCE_MISSING" || diagnostic.code === "HSON_SCHEMA_GENERATED_EVIDENCE_STALE");
-      if (evidence.length === 0) return [];
-      const generate = new vscode.CodeAction("Generate Hson Schema types", vscode.CodeActionKind.QuickFix);
-      generate.diagnostics = evidence; generate.command = { command: "hson.generateSchemaTypes", title: "Generate Hson Schema types", arguments: [document.uri] };
-      const watch = new vscode.CodeAction("Start Hson Schema watch", vscode.CodeActionKind.QuickFix);
-      watch.diagnostics = evidence; watch.command = { command: "hson.startSchemaWatch", title: "Start Hson Schema watch", arguments: [document.uri] };
-      return [generate, watch];
-    },
-  }, { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }));
-  const watcher = vscode.workspace.createFileSystemWatcher("**/*.{js,mjs,cjs,ts,mts,cts,json}");
-  const changed = (uri: vscode.Uri): void => {
-    if (uri.fsPath.includes(".hson-schema.generated.")) refreshSchemaEvidence();
-  };
-  context.subscriptions.push(schemaToolOutput, hsonStatus, watcher,
-    watcher.onDidChange(changed), watcher.onDidCreate(changed), watcher.onDidDelete(changed),
+  context.subscriptions.push(schemaToolOutput, hsonStatus,
     vscode.workspace.onDidChangeWorkspaceFolders(event => {
       for (const folder of event.removed) {
         for (const [key, watch] of schemaWatches) if (watch.folder.uri.toString() === folder.uri.toString()) {

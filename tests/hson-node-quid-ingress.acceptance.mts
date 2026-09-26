@@ -6,6 +6,7 @@ import { hson } from "../src/hson.ts";
 import { hsonTransform } from "../src/api/transform/index.ts";
 import { UNSAFE_TRANSFORM_SOURCE } from "../src/api/transform/transform.browser.ts";
 import { hsonLiveMap } from "../src/api/livemap/livemap.facade.ts";
+import { install_libraries_snapshot } from "../src/api/livemap/index.ts";
 import { Hson } from "../src/index.ts";
 import { hsonLiveTree } from "../src/api/livetree/livetree.facade.ts";
 import { make_branch_from_node } from "../src/api/livetree/creation/create-branch.ts";
@@ -852,15 +853,42 @@ check("internal exact LiveMap installation remains cold while public raw admissi
   assert.equal(get_node_by_quid(Q6), undefined);
 });
 
-check("registry capture restoration replaces topology without carrying source identity", () => {
+check("same-topology registry restore transfers state without carrying runtime identity", () => {
+  const target = exactMap(document_root(element("main", Q1)));
+  const source = exactMap(document_root(element("main", Q2)),
+    Hson.schema`<type "document" tag "main" content "empty">`);
+  source.lib("page").at([]).asElement()!.attrs.set("title", "restored");
+  const page = target.lib("page");
+  const portable = source.capture();
+  assert.equal(target.capture().registry.digest, portable.registry.digest);
+  assert.equal(JSON.stringify(portable).includes(Q2), false);
+  target.restore(portable);
+  assert.deepEqual(target.capture(), portable);
+  assert.equal(target.lib("page"), page);
+  assert.equal(page.at([]).asElement()!.attrs.get("title"), "restored");
+  assert.equal(page.document.byQuid(Q1), undefined);
+  assert.equal(page.document.byQuid(Q2), undefined);
+  assert.equal(source.lib("page").document.byQuid(Q2)?.$_tag, "main");
+});
+
+check("incompatible registry restore preserves topology and fresh installation omits source identity", () => {
   const target = exactMap(document_root(element("main", Q1)));
   const source = exactMap(document_root(element("section", Q2)), SectionEmpty);
   const oldPage = target.lib("page");
+  const before = target.capture();
   const portable = source.capture();
-  target.restore(portable);
-  assert.deepEqual(target.capture(), portable);
-  assert.equal(target.lib("page").document.byQuid(Q2), undefined);
-  assert.throws(() => oldPage.root());
+  assert.notEqual(before.registry.digest, portable.registry.digest);
+  assert.throws(() => target.restore(portable), /current Library topology/);
+  assert.deepEqual(target.capture(), before);
+  assert.equal(target.lib("page"), oldPage);
+  assert.equal(oldPage.document.byQuid(Q1)?.$_tag, "main");
+  assert.equal(oldPage.document.byQuid(Q2), undefined);
+  const installed = install_libraries_snapshot(portable).map;
+  assert.deepEqual(installed.capture(), portable);
+  const page = installed.lib("page");
+  if (page.mode !== "document") throw new Error("Expected installed document Library");
+  assert.equal(must_tag(page.root(), "section").$_tag, "section");
+  assert.equal(page.document.byQuid(Q2), undefined);
 });
 
 process.stdout.write(`# ${checks} HsonNode QUID ingress checks passed\n`);

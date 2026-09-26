@@ -12,7 +12,7 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "Syntax, local HsonSchema authoring, symbols, and generated-evidence diagnostics work in Restricted Mode. Schema execution and local applications run only when explicitly invoked in a trusted workspace."
+      "description": "Syntax, local HsonSchema authoring, symbols, and live Schema diagnostics work in Restricted Mode. Schema execution and local applications run only when explicitly invoked in a trusted workspace."
     }
   },
   "engines": {

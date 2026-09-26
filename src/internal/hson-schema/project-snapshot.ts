@@ -1,12 +1,33 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { resolve, dirname, sep } from "node:path";
 import ts from "typescript";
 
 export class ObsoleteSchemaProject extends Error {}
 
 /** Memoized compiler filesystem observations, including failed lookups and wildcard membership. */
 export class SchemaProjectSnapshot {
+  private readonly directories = new Map<string, string>();
+  private readonly generatedFiles = new Map<string, Buffer>();
+  constructor(private readonly generated?: Readonly<{ root: string; files: ReadonlyMap<string, Buffer> }>) {
+    for (const [file, bytes] of generated?.files ?? []) {
+      this.generatedFiles.set(this.key(file), bytes);
+      let directory = dirname(file);
+      while (this.generated_path(directory)) {
+        this.directories.set(this.key(directory), directory);
+        if (generated !== undefined && this.key(directory) === this.key(generated.root)) break;
+        directory = dirname(directory);
+      }
+    }
+  }
+  private key(path: string): string {
+    const absolute = resolve(path);
+    return ts.sys.useCaseSensitiveFileNames ? absolute : absolute.toLowerCase();
+  }
+  private generated_path(path: string): boolean {
+    const absolute = this.key(path);
+    return this.generated !== undefined && (absolute === this.key(this.generated.root) || absolute.startsWith(this.key(this.generated.root) + sep));
+  }
   private readonly observations = new Map<string, { value: unknown; read: () => unknown }>();
   private readonly bytes = new Map<string, Buffer>();
   private observe<T>(key: string, read: () => T): T {
@@ -17,6 +38,10 @@ export class SchemaProjectSnapshot {
     return value;
   }
   readonly readFile = (path: string): string | undefined => {
+    if (this.generated_path(path)) {
+      const bytes = this.generatedFiles.get(this.key(path));
+      return bytes === undefined ? undefined : decode_typescript_bytes(bytes);
+    }
     const key = `text:${resolve(path)}`;
     const existing = this.observations.get(key);
     if (existing !== undefined) return this.texts.get(resolve(path));
@@ -34,15 +59,18 @@ export class SchemaProjectSnapshot {
   private readonly texts = new Map<string, string | undefined>();
   readBytes(path: string): Buffer {
     this.readFile(path);
-    const bytes = this.bytes.get(resolve(path));
+    const bytes = this.generated_path(path) ? this.generatedFiles.get(this.key(path)) : this.bytes.get(resolve(path));
     if (bytes === undefined) throw new ObsoleteSchemaProject(`Input disappeared: ${path}`);
     return bytes;
   }
-  readonly fileExists = (path: string): boolean => this.observe(`file:${resolve(path)}`, () => ts.sys.fileExists(path));
-  readonly directoryExists = (path: string): boolean => this.observe(`directory:${resolve(path)}`, () => ts.sys.directoryExists(path));
-  readonly getDirectories = (path: string): string[] => this.observe(`directories:${resolve(path)}`, () => ts.sys.getDirectories(path).sort());
-  readonly realpath = (path: string): string => this.observe(`realpath:${resolve(path)}`, () => ts.sys.realpath?.(path) ?? path);
+  readonly fileExists = (path: string): boolean => this.generated_path(path) ? this.generatedFiles.has(this.key(path)) : this.observe(`file:${resolve(path)}`, () => ts.sys.fileExists(path));
+  readonly directoryExists = (path: string): boolean => this.generated_path(path) ? this.directories.has(this.key(path)) : this.observe(`directory:${resolve(path)}`, () => ts.sys.directoryExists(path));
+  readonly getDirectories = (path: string): string[] => this.generated_path(path) ? [...this.directories.values()].filter(directory => this.key(dirname(directory)) === this.key(path)).sort() : this.observe(`directories:${resolve(path)}`, () => ts.sys.getDirectories(path).sort());
+  readonly realpath = (path: string): string => this.generated_path(path) ? resolve(path) : this.observe(`realpath:${resolve(path)}`, () => ts.sys.realpath?.(path) ?? path);
   readonly readDirectory: ts.ParseConfigHost["readDirectory"] = (path, extensions, excludes, includes, depth) => {
+    // Generated configurations have explicit roots. No mutable on-disk glob may
+    // introduce a file that was not captured in the publication manifest.
+    if (this.generated_path(path)) return [];
     const key = JSON.stringify(["glob", resolve(path), extensions, excludes, includes, depth]);
     return this.observe(key, () => ts.sys.readDirectory(path, extensions, [...excludes ?? [], "**/.hson/**"], includes, depth).sort());
   };
@@ -79,7 +107,7 @@ export class SchemaProjectSnapshot {
           default: throw new Error("Unknown Hson snapshot query.");
         }
       }
-      if (JSON.stringify(actual) !== JSON.stringify(expected)) return false;
+      if (JSON.stringify(actual ?? null) !== JSON.stringify(expected ?? null)) return false;
     }
     return snapshot.isCurrent();
   }

@@ -74,7 +74,7 @@ process.once("exit", () => watcher.kill("SIGTERM"));
 const original = readFileSync(source, "utf8");
 function artifact(name: string): string {
   const selector = join(project, ".hson/compiler-input/tsconfig.json/tsconfig.json");
-  const selected = dirname(resolve(dirname(selector), JSON.parse(readFileSync(selector, "utf8")).extends));
+  const selected = dirname(selector);
   return join(selected, "evidence/schema.ts", `${name}.hson-schema.generated.ts`);
 }
 function current(text: string, error = false): boolean { return text.split(/\r?\n/).some(line => { try { const event = JSON.parse(line); return event.state === "current" && Array.isArray(event.diagnostics) && (error ? event.diagnostics.length > 0 : event.diagnostics.length === 0); } catch { return false; } }); }

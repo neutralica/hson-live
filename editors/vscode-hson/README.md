@@ -35,7 +35,7 @@ export const UserSchema = Hson.schema`
 `;
 ```
 
-The extension discovers direct `Hson.schema` declarations and generator-managed evidence to provide diagnostics, completion, hover, definitions, references, and rename support.
+The extension uses current `Hson.schema` editor text and an in-memory compiler view for diagnostics, precise typing, completion, hover, definitions, references, and rename support. Unsaved edits do not require colocated evidence files or saved `.hson` output.
 
 For example, `<ref "…">` completion is scoped to the current Schema declaration's `defs`, and navigation follows those semantic references rather than matching text alone.
 
@@ -124,4 +124,4 @@ After updating the installed extension, run **Developer: Reload Window** when re
 
 Extension implementation, packaging, integration-test, appearance-authority, and regression-suite documentation is maintained with the extension source.
 
-Schema Generate and Watch now publish immutable compiler projects under `.hson/`; they never inject imports or annotations into authored TypeScript. The TypeScript plugin continues to use current unsaved in-memory views. For legacy cleanup and publishing see the library’s [Phase 4 contract](../../docs/contracts/hson-schema-compiler-project-phase-4.md).
+Schema Generate and Watch now maintain one current compiler repository per project under `.hson/`; they never inject imports or annotations into authored TypeScript. The TypeScript plugin continues to use current unsaved in-memory views. For legacy cleanup and publishing see the library’s [Phase 4 contract](../../docs/contracts/hson-schema-compiler-project-phase-4.md).

@@ -52,6 +52,11 @@ assert.deepEqual(markdownGrammar.patterns, [
 ]);
 assert.deepEqual(markdownGrammar.repository["hson-backtick-code-block"].patterns, [{ include: "source.hson" }]);
 assert.deepEqual(markdownGrammar.repository["hson-tilde-code-block"].patterns, [{ include: "source.hson" }]);
+assert.doesNotMatch(extensionBundle, /HSON_SCHEMA_GENERATED_EVIDENCE_|publishSchemaEvidence|refreshSchemaEvidence|hson-schema-evidence/);
+for (const command of ["hson.generateSchemaTypes", "hson.checkSchemas", "hson.startSchemaWatch", "hson.stopSchemaWatch"]) {
+  assert.ok(manifest.contributes.commands.some(entry => entry.command === command));
+  assert.ok(extensionBundle.includes(command));
+}
 assert.match(extensionBundle, /markdown_hson_fence_marker_parts/);
 assert.match(extensionBundle, /function discover_static_from_hson_sources/);
 assert.match(extensionBundle, /function map_static_hson_range/);

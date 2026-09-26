@@ -134,9 +134,10 @@ check("format-on-save is an editor participant, not another watcher, process, or
   assert.match(extensionSource, /onWillSaveTextDocument/);
   assert.equal(extensionSource.match(/structural_formatting_edits\(/g)?.length, 1);
   assert.match(extensionSource, /registerDocumentFormattingEditProvider\(markdownSelector/);
-  assert.equal(extensionSource.match(/createFileSystemWatcher\(/g)?.length, 3);
+  assert.equal(extensionSource.match(/createFileSystemWatcher\(/g)?.length, 2);
   assert.equal(extensionSource.match(/createStatusBarItem\(/g)?.length, 1);
   assert.doesNotMatch(extensionSource, /format(?:ting)?(?:Watch|Status|Process)/i);
+  assert.doesNotMatch(extensionSource, /publishSchemaEvidence|refreshSchemaEvidence|HSON_SCHEMA_GENERATED_EVIDENCE_/);
 });
 
 check("manifest exposes both format commands in the palette and editor context with selection sensitivity", () => {

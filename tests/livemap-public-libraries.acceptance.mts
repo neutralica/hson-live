@@ -72,9 +72,25 @@ check("fromLibraries establishes fixed named data and document Libraries", () =>
   assert.equal(map.lib("page").root().$_content.length, 1);
   assert.equal("document" in map.lib("page"), true);
   assert.equal(node(map.lib("page").at([]).snap()).$_tag, "main");
-  assert.equal("add" in map.lib, true);
+  assert.equal(typeof map.addLibraries, "function");
+  assert.equal("add" in map.lib, false);
   assert.equal("create" in map.lib, false);
   assert.equal("library" in map, false);
+});
+
+check("addLibraries admits runtime libraries while lib remains a selector", () => {
+  const map = create_map();
+  const page = map.lib("page");
+  const commit = map.addLibraries({ extra: { data: { primary: "green" }, schema: ColorsSchema } });
+  assert.deepEqual([commit.changed, commit.prevRev, commit.rev, map.rev], [true, 0, 1, 1]);
+  assert.equal(commit.operations.length, 1);
+  assert.equal(Reflect.get(commit.operations[0]!.operation, "kind"), "library-add");
+  const extra = map.lib("extra");
+  if (extra.mode === "document") throw new Error("Expected admitted data Library");
+  assert.equal(extra.snap(["primary"]), "green");
+  assert.equal(map.lib("page"), page);
+  assert.equal(map.lib("state").snap(["count"]), 1);
+  assert.equal("add" in map.lib, false);
 });
 
 check("public aggregate snapshot transfers state and revision without generated identity", () => {

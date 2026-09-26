@@ -32,7 +32,7 @@ function run(mode: string, extra: string[] = []) { return spawnSync(process.exec
 function pass(result: ReturnType<typeof run>): void { assert.equal(result.status, 0, result.stdout + result.stderr); }
 function preserve(): void { for (const [path, bytes] of authored) assert.deepEqual(readFileSync(join(project, path)), bytes, path); }
 const stable = join(project, ".hson/compiler-input/tsconfig.json/tsconfig.json");
-function selected(): string { return dirname(resolve(dirname(stable), JSON.parse(readFileSync(stable, "utf8")).extends)); }
+function selected(): string { return dirname(stable); }
 check("missing verification fails without generating or modifying source", () => { const result = run("verify"); assert.notEqual(result.status, 0); assert.match(result.stderr, /Missing/); preserve(); });
 for (const mode of ["generate", "verify", "check", "build"]) check(`${mode} preserves BOM, CRLF, comments, spacing, annotations and missing newline`, () => { pass(run(mode)); preserve(); });
 check("published selected state is checkable by stock TypeScript", () => {
@@ -44,12 +44,11 @@ check("source and config edits fail read-only freshness; incompatible tooling fa
   const stale = run("verify"); assert.notEqual(stale.status, 0); assert.match(stale.stderr, /Stale/); assert.deepEqual(readFileSync(stable), selector);
   writeFileSync(join(project, "helper.ts"), authored.get("helper.ts")!);
   const prior = readFileSync(config); writeFileSync(config, `${prior.toString()}\n`); assert.notEqual(run("verify").status, 0); writeFileSync(config, prior);
-  // Selector's manifest digest also protects compatibility metadata from edits.
+  // Integrity and compatibility are independent checks.
   const manifest = join(selected(), "manifest.json"), original = readFileSync(manifest);
-  const incompatible = original.toString().replace('compiler-project-4', 'compiler-project-0');
-  writeFileSync(manifest, incompatible);
-  const oldSelector = JSON.parse(selector.toString()); oldSelector.$hsonSchema.manifestDigest = createHash("sha256").update(incompatible).digest("hex");
-  writeFileSync(stable, JSON.stringify(oldSelector));
+  const { contentDigest: _digest, ...incompatible } = JSON.parse(original.toString());
+  incompatible.compatibility = "compiler-project-0";
+  writeFileSync(manifest, JSON.stringify({ ...incompatible, contentDigest: createHash("sha256").update(JSON.stringify(incompatible)).digest("hex") }));
   const mismatch = run("verify"); assert.notEqual(mismatch.status, 0); assert.match(mismatch.stderr, /Incompatible/);
   writeFileSync(manifest, original); writeFileSync(stable, selector);
   pass(run("verify")); preserve();

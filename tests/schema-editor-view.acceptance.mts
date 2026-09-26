@@ -5,6 +5,7 @@ import ts from "typescript";
 import { create_schema_language_service } from "../editors/vscode-hson/src/schema-language-service.ts";
 import { SchemaSourceMapping } from "../src/internal/hson-schema/source-mapping.ts";
 import { generate_hson_schema_evidence } from "../src/internal/hson-schema/generated-evidence.ts";
+import { local_hson_schema_diagnostics } from "../editors/vscode-hson/src/hson-schema-local.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({ id: "tooling.schema-editor-view", title: "Schema editor compiler view", category: "Tooling", runtime: "node", tags: Object.freeze(["schema", "editor", "typescript", "source-integrity"]) });
@@ -60,6 +61,7 @@ const originalBytes = bytes(app.directory);
 const messages = (values: readonly ts.Diagnostic[]) => values.map(value => `${value.code}@${value.start}: ${ts.flattenDiagnosticMessageText(value.messageText, "\n")}`).join("\n");
 
 check("producer and cross-module consumers have precise value, mode and declaration identity", () => {
+  assert.deepEqual(local_hson_schema_diagnostics(app.file("schema.ts"), app.text("schema.ts")), []);
   const errors = app.errors("consumer.ts");
   assert.equal(errors.length, 3, messages(errors));
   assert.ok(!messages(errors).includes("/.hson/"), messages(errors));
@@ -118,11 +120,15 @@ check("unsaved valid edits update consumers immediately and preserve identity mo
 check("invalid and unterminated unsaved Schemas withdraw proof and recover without saves", () => {
   for (const source of [producer.replace('content <name "string"', 'content <name "broken"'), producer.slice(0, producer.indexOf('content <name')) + 'content <']) {
     app.edit("schema.ts", source);
+    const local = local_hson_schema_diagnostics(app.file("schema.ts"), source);
+    assert.ok(local.length > 0 || app.service.getSyntacticDiagnostics(app.file("schema.ts")).length > 0);
+    assert.ok(local.every(error => !error.code.startsWith("HSON_SCHEMA_GENERATED_EVIDENCE")));
     const errors = app.errors("consumer.ts");
     assert.ok(errors.some(error => ts.flattenDiagnosticMessageText(error.messageText, " ").includes("unknown")), messages(errors));
     assert.ok(!app.service.getProgram()?.getSourceFiles().some(file => file.fileName.endsWith("Thing.hson-schema.generated.ts")));
   }
   app.edit("schema.ts", producer);
+  assert.deepEqual(local_hson_schema_diagnostics(app.file("schema.ts"), producer), []);
   assert.equal(app.errors("consumer.ts").length, 3, messages(app.errors("consumer.ts")));
 });
 

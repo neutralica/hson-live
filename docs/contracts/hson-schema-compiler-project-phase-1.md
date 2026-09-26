@@ -27,7 +27,7 @@ commitment. It prints the generated project and manifest paths. Generation must
 succeed before checking; stock TypeScript does not run the Schema generator or
 verify the freshness of previously generated inputs.
 
-For the opt-in saved-project watcher and immutable revision layout, see
+For the saved-project watcher and current-state publication contract, see
 [Phase 3](./hson-schema-compiler-project-phase-3.md). This document describes
 finite Phase 1 generation.
 

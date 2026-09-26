@@ -30,11 +30,11 @@ const projectPath = resolve(projectArg);
 const librarySourceRoot = resolve(fileURLToPath(new URL("../src/", import.meta.url)));
 if (args.includes("--help") || mode === ("--help" as Mode)) {
   console.log(`hson-schema <generate|verify|check|build|watch|migrate> --project tsconfig.json
-  generate: publish current immutable compiler inputs; authored source is untouched
+  generate: publish current compiler inputs; authored source is untouched
   verify: read-only ownership, compatibility and freshness verification
   check: verify, then precisely check the generated compiler project
   build: verify/check, then emit authored runtime and precise declarations from one revision
-  watch: publish coherent immutable revisions; authoring errors are recoverable
+  watch: replace current compiler inputs; authoring errors are recoverable
   migrate: preview recognized legacy association/artifact cleanup; --write applies it
   experimental-project [--watch]: compatibility alias for generate/watch`);
 } else try {

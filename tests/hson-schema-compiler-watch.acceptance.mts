@@ -3,12 +3,12 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import ts from "typescript";
-import { create_schema_compiler_project_watch } from "../src/internal/hson-schema/compiler-project-watch.ts";
+import { create_schema_compiler_project_watch, verify_schema_compiler_project } from "../src/internal/hson-schema/compiler-project-watch.ts";
 import { SchemaProjectSnapshot } from "../src/internal/hson-schema/project-snapshot.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
-  id: "hson-schema-compiler-watch", title: "Hson Schema immutable project watch", category: "Tooling", runtime: "node",
+  id: "hson-schema-compiler-watch", title: "Hson Schema current project watch", category: "Tooling", runtime: "node",
   tags: Object.freeze(["hson-schema", "typescript", "source-integrity", "watch"]),
 });
 const events = create_test_event_emitter("hson-schema-compiler-watch");
@@ -45,8 +45,11 @@ await check("snapshot fingerprints bind exact bytes and freshness checks never a
     assert.deepEqual(decoded.readBytes(file), bytes);
   }
   unlinkSync(file);
+  const missing = new SchemaProjectSnapshot(); missing.readFile(file);
+  assert.equal(SchemaProjectSnapshot.matches(missing.records()), true);
+  assert.equal(SchemaProjectSnapshot.matches(JSON.parse(JSON.stringify(missing.records()))), true);
 });
-await check("finite project adoption preserves old files and unchanged errors stay silent", async () => {
+await check("unchanged invalid state is reused across watcher startup", async () => {
   const quiet = mkdtempSync(join(root, "tmp/schema-watch-quiet-"));
   const emitted: string[] = [];
   const config = join(quiet, "tsconfig.json");
@@ -54,30 +57,68 @@ await check("finite project adoption preserves old files and unchanged errors st
   writeFileSync(join(quiet, "source.ts"), "export const value = 1;\n");
   const watcher = create_schema_compiler_project_watch(config, () => ({ schemas: [], overlays: [], diagnostics: ["current authoring error"] }), event => emitted.push(event.state));
   try {
-    const seeded = spawnSync(process.execPath, [join(root, "dist/hson-schema.mjs"), "experimental-project", "--project", config], { encoding: "utf8", timeout: 60_000 });
-    assert.equal(seeded.status, 0, seeded.stdout + seeded.stderr);
-    const seed = JSON.parse(seeded.stdout.trim());
-    const oldSource = join(dirname(seed.manifest), "sources/source.ts");
-    const oldBytes = readFileSync(oldSource);
     await watcher.poll(); await watcher.poll(); await watcher.poll();
     assert.deepEqual(emitted, ["prepared", "current"]);
     writeFileSync(join(quiet, "source.ts"), "export const value = 2;\n");
     await watcher.poll(); await watcher.poll();
     assert.deepEqual(emitted, ["prepared", "current", "prepared", "current"]);
-    assert.deepEqual(readFileSync(oldSource), oldBytes);
+    const currentManifest = join(quiet, ".hson/compiler-input/tsconfig.json/manifest.json");
+    const currentBytes = readFileSync(currentManifest);
+    const restarted = create_schema_compiler_project_watch(config, () => { throw new Error("unchanged invalid source must be reused"); }, event => emitted.push(event.state));
+    try { await restarted.poll(); await restarted.poll(); } finally { restarted.stop(); }
+    assert.equal(emitted.at(-1), "current");
+    assert.deepEqual(readFileSync(currentManifest), currentBytes);
     const refused = spawnSync(process.execPath, [join(root, "dist/hson-schema.mjs"), "experimental-project", "--project", config], { encoding: "utf8", timeout: 60_000 });
-    assert.equal(refused.status, 0, refused.stderr);
+    assert.notEqual(refused.status, 0); // Reused invalid diagnostics remain honest.
   } finally { watcher.stop(); rmSync(quiet, { recursive: true, force: true }); }
 });
+await check("interrupted replacement cannot be verified or reused as current proof", async () => {
+  const directory = mkdtempSync(join(root, "tmp/schema-interrupted-"));
+  const config = join(directory, "tsconfig.json"), source = join(directory, "source.ts");
+  writeFileSync(config, JSON.stringify({ compilerOptions: { types: [] }, files: ["source.ts"] }));
+  writeFileSync(source, "export const value = 1;");
+  const analyze = () => ({ schemas: [], overlays: [], diagnostics: [] });
+  const first = create_schema_compiler_project_watch(config, analyze, () => {});
+  const interrupted = create_schema_compiler_project_watch(config, analyze, () => {}, undefined, () => { throw new Error("simulated interruption"); });
+  try {
+    await first.poll(); first.stop();
+    writeFileSync(source, "export const value = 2;");
+    await assert.rejects(interrupted.poll(), /simulated interruption/);
+    assert.throws(() => verify_schema_compiler_project(config), /incomplete or in progress/);
+    const restarted = create_schema_compiler_project_watch(config, analyze, () => {});
+    try { await assert.rejects(restarted.poll(), /incomplete or in progress/); } finally { restarted.stop(); }
+    assert.equal(readFileSync(source, "utf8"), "export const value = 2;");
+  } finally { first.stop(); interrupted.stop(); rmSync(directory, { recursive: true, force: true }); }
+});
+await check("unchanged valid watch restarts reuse exactly the same publication", async () => {
+  const directory = mkdtempSync(join(root, "tmp/schema-restart-"));
+  const config = join(directory, "tsconfig.json");
+  writeFileSync(config, JSON.stringify({ compilerOptions: { types: [] }, files: ["source.ts"] }));
+  writeFileSync(join(directory, "source.ts"), "export const value = 1;");
+  let analyses = 0;
+  const analyze = () => { analyses++; return { schemas: [], overlays: [], diagnostics: [] }; };
+  try {
+    let publication: string | undefined;
+    for (let index = 0; index < 3; index++) {
+      const events: string[] = [];
+      const watch = create_schema_compiler_project_watch(config, analyze, event => events.push(event.state));
+      try { await watch.poll(); await watch.poll(); } finally { watch.stop(); }
+      const state = verify_schema_compiler_project(config);
+      if (publication !== undefined) { assert.equal(state.manifest.publication, publication); assert.deepEqual(events, ["current"]); }
+      publication = state.manifest.publication;
+      assert.equal(existsSync(join(state.selected, "revisions")), false);
+    }
+    assert.equal(analyses, 1);
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
 const authored = new Map<string, Buffer>();
-const immutable = new Map<string, Buffer>();
 function write(path: string, text: string): void {
   const file = join(project, path); mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, text); authored.set(path, Buffer.from(text));
 }
 function remove(path: string): void { unlinkSync(join(project, path)); authored.delete(path); }
 function preserve(): void {
   for (const [path, bytes] of authored) assert.deepEqual(readFileSync(join(project, path)), bytes, path);
-  for (const [path, bytes] of immutable) assert.deepEqual(readFileSync(path), bytes, `Retired revision was mutated: ${path}`);
+  assert.equal(existsSync(join(output, "revisions")), false);
 }
 const schema = (name: string, value = "a") => `export const ${name} = Hson.schema\`<type "data" content <value <exact "${value}">>>\`;\n`;
 const imports = 'import { Hson } from "hson-live";\r\n';
@@ -133,7 +174,7 @@ async function next(state = "current"): Promise<Event> {
       if (event.state === "current") {
         const state = JSON.parse(readFileSync(event.manifest, "utf8"));
         assert.equal(state.revision, event.revision);
-        for (const path of [event.manifest, ...state.files.map((file: { path: string }) => join(dirname(event.manifest), file.path))]) immutable.set(path, readFileSync(path));
+
       }
       return event;
     }
@@ -155,13 +196,11 @@ try {
   await check("repairing that same file restores precise stock TypeScript value and nominal identity", async () => {
     write("schema.ts", valid()); current = await next(); assert.deepEqual(names(current), ["B", "S", "Twin"], JSON.stringify(current)); passes(); preserve();
   });
-  await check("invalidating one declaration withdraws proof locally and retains the previous immutable revision", async () => {
-    const previousProject = join(dirname(current.manifest), "tsconfig.json");
-    const previousBytes = readFileSync(current.manifest);
+  await check("invalidating one declaration removes stale proof while preserving independent evidence", async () => {
     write("schema.ts", imports + 'export const S = Hson.schema`<props <`;\n' + schema("Twin") + schema("B", "b"));
     current = await next(); assert.deepEqual(names(current), ["B", "Twin"]); assert.ok(current.diagnostics.length);
     assert.notEqual(tsc().status, 0, "The precise consumer must stop checking against the stale S proof");
-    assert.deepEqual(readFileSync(join(dirname(previousProject), "manifest.json")), previousBytes); passes(previousProject); preserve();
+    assert.equal(existsSync(join(output, "evidence/schema.ts/S.hson-schema.generated.ts")), false); preserve();
   });
   await check("repair restores proof without restart", async () => { write("schema.ts", valid()); current = await next(); passes(); preserve(); });
   await check("new included source is discovered without touching known sources", async () => {
@@ -186,12 +225,11 @@ try {
     current = await next(); assert.deepEqual(names(current), ["Twin"]); assert.ok(current.diagnostics.length); preserve();
     write("schema.ts", imports + schema("S") + schema("Twin")); current = await next(); passes(); preserve();
   });
-  await check("extended configuration membership changes are observed and frozen for old readers", async () => {
-    const previousProject = join(dirname(current.manifest), "tsconfig.json");
+  await check("extended configuration membership changes replace current inputs", async () => {
     write("excluded/added.ts", imports + schema("Added"));
     write("tsconfig.json", JSON.stringify({ extends: "./base.json" }));
     write("base.json", JSON.stringify({ ...base, include: ["./*.ts", "./excluded/*.ts"] }));
-    current = await next(); assert.ok(names(current).includes("Added")); passes(); passes(previousProject); preserve();
+    current = await next(); assert.ok(names(current).includes("Added")); passes(); preserve();
     write("base.json", JSON.stringify({ ...base, include: ["./*.ts"] })); current = await next(); assert.ok(!names(current).includes("Added")); passes(); preserve();
   });
   await check("broken config withdraws proof and editing only that config recovers", async () => {
@@ -246,7 +284,7 @@ void changed; void wrong;
     writeFileSync(join(output, "keep.txt"), "user owned");
     write("schema.ts", valid() + "// saved change\n"); current = await next(); assert.equal(readFileSync(join(output, "keep.txt"), "utf8"), "user owned"); preserve();
   });
-  await check("an unowned selector replacement causes fatal safe failure", async () => {
+  await check("an edited generated config causes fatal safe failure", async () => {
     writeFileSync(selector, '{"files":[]}\n');
     write("schema.ts", valid() + "// next saved change\n");
     await new Promise<void>((accept, reject) => {

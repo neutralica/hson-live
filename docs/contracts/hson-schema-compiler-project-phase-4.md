@@ -6,33 +6,53 @@ model in memory, including current unsaved text and authored source mappings.
 
 | Command | Responsibility |
 | --- | --- |
-| `generate --project tsconfig.json` | Capture source/config/dependencies, prepare and validate a complete immutable revision, then atomically advance the stable selector. Invalid Schemas publish current unproved state and return failure. |
+| `generate --project tsconfig.json` | Reuse unchanged input or capture source/config/dependencies and publish one complete current compiler repository. Invalid Schemas publish current unproved state and return failure. |
 | `verify --project tsconfig.json` | Read-only verification of ownership, tooling compatibility and every captured filesystem observation. Missing, stale, edited or invalid state fails. No repair occurs. |
 | `check --project tsconfig.json` | Verify current generated state, then run precise TypeScript checking. Generation includes Schema semantic and static Hson validation. |
 | `build --project tsconfig.json` | Verify/check; emit configured runtime JavaScript from captured authored inputs and configured declarations from the precise compiler view. Both graphs must still match the same captured revision before writing output. |
-| `watch --project tsconfig.json` | Continuously publish coherent immutable revisions, recovering from ordinary authoring errors. Infrastructure and ownership failures terminate. |
+| `watch --project tsconfig.json` | Continuously replace current generated state, recovering from ordinary authoring errors. Infrastructure and ownership failures terminate. |
 | `migrate --project tsconfig.json` | Preview explicit legacy cleanup. `--write` applies recognized syntax removal and digest-verified colocated artifact removal. Ambiguity refuses the operation before any write. |
 
 `experimental-project` is a compatibility alias for `generate`; its `--watch`
 option delegates to normal `watch`. There is no separate experimental writer.
 Run `generate` before `verify`, `check` or `build` after editing saved inputs.
 Stock `tsc -p .hson/compiler-input/tsconfig.json/tsconfig.json` also checks the
-selected view, but cannot independently verify its freshness.
+current view, but cannot independently verify its freshness.
 
 ## Generated ownership
 
-`.hson/compiler-input/<config filename>/tsconfig.json` is a small stable selector.
-It selects one complete `revisions/revision-*/` project containing frozen config,
-transformed sources, evidence, metadata and an ownership manifest. The manifest
-records source edits, exact byte digests, dependency/discovery observations and
-compatibility. The selector alone determines current authority. Retired revisions
-remain physically present and immutable for readers already using them. No automatic
-collection, timeout deletion or reader coordination is provided.
+`.hson/compiler-input/<config filename>/` contains `sources/`, `evidence/`,
+`manifest.json` and `tsconfig.json`. It is current generated state, not history.
+The manifest records owned paths and digests, source mappings, input observations,
+diagnostics, tooling compatibility and a publication identity. An unchanged valid
+or invalid project reuses its publication without generated filesystem churn.
 
-New, deleted, renamed, moved and excluded files change project membership. Invalid
-Schemas withdraw current precise evidence; old retained files are not authoritative.
-Unowned neighbors are never deleted. `.hson/` is ignored development state and need
-not be committed or published. CI must generate it before verifying/checking.
+Candidates are prepared in transient staging, with final-path compiler validation.
+During replacement `.publishing.json` marks the repository unavailable. Candidate
+files are installed before the final manifest; removing the marker completes
+publication. An interrupted replacement is refused, never accepted as precise proof.
+Preparation failure preserves the previous complete payload, but changed authored
+inputs make that payload stale. See [publication and recovery details](./hson-schema-compiler-project-phase-3.md).
+
+Hson verify/check/build capture all manifest-owned compiler bytes and membership,
+validate digests and recheck the publication boundary. Races fail clearly. Checking
+and declaration generation read that frozen capture, not changing generated files.
+Final checks still bind authored runtime inputs to the same publication. Stock
+`tsc` may read quiescent output; arbitrary external readers are not guaranteed
+survival across concurrent Watch updates. No reader leases or reference counting
+are required.
+
+Changed membership removes obsolete owned sources, evidence and metadata. Invalid
+Schemas withdraw current precision, and repair restores it. Unowned neighbors,
+edited files and symlink destinations are protected. Existing known revision
+layouts are adopted during normal generation after ownership validation; uncertain
+material causes an actionable refusal. Normal operation retains no old revisions.
+`.hson/` is ignored development state, not committed or published; CI generates it.
+
+The extension's live compiler view requires neither colocated evidence nor saved
+`.hson` output. Legacy missing/stale disk-evidence diagnostics and their quick fixes
+are removed. Actual Schema and TypeScript diagnostics and explicit Generate, Check
+and Watch commands remain independent of saved-project evidence status.
 
 ## Build and package output
 
@@ -82,9 +102,8 @@ is removed; only explicit migration can edit legacy authored syntax.
 The cutover suite checks normal command source bytes, stock checking, freshness,
 separate runtime output, declaration helpers/objects, package consumers, private
 proofs and nominal identity, map paths, legacy refusal/cleanup and default watch.
-Phase 1/2/3 suites continue to cover compiler, editor and immutable watcher behavior.
+Phase 1/2/3 suites continue to cover compiler, editor and current-state watcher behavior.
 The pre-commit hook still runs `npm run check`; normal build/check scripts now use
 the generated workflow, so the hook no longer invokes the legacy writer.
 
-Retired revision garbage collection, extension UX, broader reexport policy and
-bundler redesign remain separate work.
+Extension runner UX, broader reexport policy and bundler redesign remain separate work.

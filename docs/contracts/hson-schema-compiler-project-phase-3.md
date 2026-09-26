@@ -1,129 +1,95 @@
-# Hson Schema generated-project watch (Phase 3)
+# Hson Schema generated-project watch
 
-> Historical phase contract. The supported default commands and publishing contract
-> are now described in [Phase 4](./hson-schema-compiler-project-phase-4.md).
+The current default workflow is described in [Phase 4](./hson-schema-compiler-project-phase-4.md).
+`experimental-project --watch` is a compatibility alias for normal `watch`.
 
+## Current-state publication
 
-Opt in using:
-
-```sh
-hson-schema experimental-project --project ./tsconfig.json --watch
-tsc --project .hson/compiler-input/tsconfig.json/tsconfig.json
-```
-
-The first `tsconfig.json` directory component is the authored configuration's filename.
-The second is the stable generated project selector. The legacy default commands
-(`generate`, `verify`, `check`, `build`, `watch`) remain unchanged. Phase 2's
-unsaved editor/compiler view remains independent of this disk watcher.
-
-## Publication and ownership
+`.hson/compiler-input/<config filename>/` contains one generated compiler repository:
 
 ```text
-.hson/compiler-input/tsconfig.json/
-  tsconfig.json                 stable selector, atomically replaced
-  revisions/
-    revision-<unique name>/
-      tsconfig.json             frozen compiler options and explicit roots
-      manifest.json             owned paths, digests, source revision, diagnostics
-      sources/                  complete mirrored local input graph
-      evidence/                 current precise declarations and metadata
+sources/
+evidence/
+manifest.json
+tsconfig.json
 ```
 
-`create_schema_compiler_project_watch` uses the existing compiler-project
-materializer, Schema compiler, evidence generator, association edits and static
-proof overlays. It creates a fresh candidate directory, materializes the entire
-project, verifies its module graph, checks ownership and input freshness, then
-renames a prepared selector file over the stable selector. No generated source,
-evidence, or manifest file in a published revision is subsequently rewritten.
-The selector contains the selected relative configuration path, an ownership
-marker, authored project path, manifest digest and input fingerprint. That one
-file is the authority boundary. A candidate is never authoritative just because
-its files exist.
+The original Phase 3 implementation retained immutable revision directories behind
+an atomic selector. That was an implementation tradeoff, not the product contract;
+retained history is no longer normal generated state.
 
-Compiler options are frozen from TypeScript's parsed configuration, with public
-enum serialization checked by a round trip. The selected configuration does not
-extend the mutable authored configuration. Package scopes inside the mirrored
-project are copied. As in Phase 1, external declaration/package dependencies
-remain external; this is not a snapshot of the dependency installation.
-Authored TypeScript errors remain TypeScript errors. Candidate structural
-validation does not require the current application to pass type checking.
+Watch and finite generation first validate existing ownership, compatibility and
+persisted filesystem observations. Unchanged valid **or invalid** input reuses the
+same publication, including across process restarts. No files or timestamps change.
+A startup current event still reports the saved diagnostics to command consumers.
 
-Only unchanged manifest-owned generated files can be replaced or removed.
-Before switching the selector, the selected revision and its manifest are
-verified. Edited generated files, an unowned selector, symlink destinations,
-unsupported Phase 1 layouts, and internal invariant failures fail clearly.
-Unlisted neighbors are never recursively removed. An obsolete unpublished
-candidate's manifest-owned files are removed; empty nested directories and
-pre-manifest failed preparations may remain. An incomplete preparation never
-becomes current, and a new attempt uses a fresh directory.
+Changed input is captured, analyzed and materialized in `.staging-*` under the
+project boundary. Candidate configuration and module resolution are validated for
+the final paths using captured compiler inputs, before publication. The last input
+freshness check precedes replacement. Obsolete candidates cannot become current.
 
-**Retired published revisions are retained indefinitely and are non-authoritative.**
-There is no timer, lease, reader lock or garbage collection API. Readers that
-already parsed an old selector can finish reading its revision. New readers of
-the stable entry select the newly published revision. Disk accumulation is an
-accepted experimental limitation; explicit cleanup is deferred.
+Publication creates `.publishing.json` exclusively, rechecks ownership and the
+previous publication, installs the candidate files and removes obsolete owned
+files. The manifest is installed last. Removing the publication marker makes that
+complete manifest authoritative. This is a small filesystem completeness boundary,
+not an atomic nonempty-directory replacement. Simultaneous publishers fail clearly.
 
-Finite Phase 1 generation retains its existing layout and behavior. Watch can
-adopt an unchanged manifest-owned Phase 1 project by replacing its selector;
-the former project files are then retained but not selected. Once adopted, use
-Watch to maintain that generated project. Finite Phase 1 generation refuses to
-overwrite the watch-owned selector. Phase 4 will unify the default workflow.
+A marker left by interruption means unavailable/incomplete state; verify, check,
+build and generation refuse it. Retry while a publisher is active. After a crash,
+the error identifies the marker and staging inventory for inspection and recovery;
+restore a complete manifest-owned payload and remove the marker only after checking
+its ownership and digests. No uncertain files are deleted automatically. A preparation
+failure before replacement leaves the old complete payload, whose recorded inputs
+still determine freshness; it cannot certify newer authored input.
 
-## Input revisions and discovery
+## Ownership and adoption
 
-`SchemaProjectSnapshot` memoizes compiler filesystem observations: exact source
-bytes, configs (including extended and missing configs), imported declarations,
-package scopes, failed file/module lookups, real paths, directory existence,
-directory lists and TypeScript include/exclude glob results. Generated `.hson`
-trees are excluded from wildcard discovery. A SHA-256 fingerprint covers the
-sorted observation set, using byte hashes for file contents. Freshness checks
-never advance the snapshot baseline or depend on modification times.
+Only unchanged manifest-owned files can be replaced or removed. Edited files,
+symlink destinations, unowned collisions and unexpected objects are refused.
+Unlisted files and directories remain untouched; only empty ancestors of removed
+owned files are pruned. Candidate disposal uses its own ownership inventory, even
+when preparation stopped after only some files were written.
 
-One sequential cycle runs at a time. Polling every 250 ms compares the recorded
-queries to current filesystem state; unchanged success or error states are
-silent. No successful Schema analysis is required to establish observations.
-New include matches, removed files, missing dependencies appearing, and config
-changes therefore wake recovery. Captured compiler-host text supplies the AST;
-the same captured bytes supply the manifest and source copies. A changed input
-before publication discards the obsolete candidate. Later edits are coalesced
-into the next current snapshot. The final input check immediately precedes the
-selector rename; subsequent edits are new observations for the next cycle.
+Normal generation/watch automatically recognizes the old selector owner and
+validates the selected manifest digest and every recognized revision's owned files.
+It regenerates the current repository, then removes those old owned payloads.
+Unowned neighbors remain at their existing paths; directories containing them stay.
+Edited or ambiguous old revisions fail with their path and an inspection instruction.
+There is no ongoing history collector and no additional cleanup command.
 
-## Invalid and recovering projects
+## Readers and coherent capture
 
-A complete but invalid Schema owns no precise generated association. Other
-independently valid declarations retain their evidence. Unterminated tags and
-ambiguous duplicate declarations likewise have no precise evidence. Legacy
-synthetic annotations are broadened only in the generated representation.
-Ordinary authored annotations remain authored. An unterminated template can
-consume the rest of its module under TypeScript's parser; declarations absent
-from that AST cannot retain independent evidence.
+Stock `tsc -p .hson/compiler-input/tsconfig.json/tsconfig.json` can check quiescent
+output. An external reader racing Watch is not guaranteed an indefinitely available
+old generation. Two directory slots or a symlink exchange would not provide that
+multi-file reader guarantee either.
 
-Invalid configurations publish an unproved current view using TypeScript's
-available recovery/discovery result; they do not keep the previous precise
-project current. Empty membership publishes a generated empty module. Syntax,
-Schema, config and missing-import diagnostics refer to authored locations.
-Expected errors are reported in the current event and immutable manifest;
-repair publishes a new current event with cleared diagnostics. Invalid states
-never stop ordinary edit observation. Fatal ownership/infrastructure failures
-terminate rather than masquerading as authoring errors.
+Hson verify/check/build read a complete manifest, capture all its owned files,
+validate every digest, and recheck the publication identity and completeness marker.
+A race fails clearly; it never authorizes a mixed snapshot. TypeScript uses the
+captured generated bytes and filesystem membership, with no disk fallback inside
+the generated root. External dependencies continue through the observed compiler
+host. Check/build verify captured authored inputs and the current publication again
+before accepting success or publishing outputs. No reader leases or locks exist.
 
-Evidence filenames use the full producer-relative filename and export name.
-The existing `source-relative-path#export` identity locator and per-evidence
-unique symbol remain unchanged. Moves and renames produce only the new paths
-and identities in the selected revision; no durable identity across moves is
-promised. Authored files are never written, formatted, normalized or executed.
+## Input revisions and invalid projects
 
-## Validation and remaining work
+`SchemaProjectSnapshot` tracks exact bytes, configs, declarations, package scopes,
+failed lookups, real paths, directory existence/listings and include/exclude results.
+The fingerprint is SHA-256 over sorted observations, independent of timestamps.
+Generated `.hson` trees are excluded from authored wildcard discovery. Sequential
+polling coalesces changes, including recovery when missing dependencies appear.
 
-`npm run test:hson-schema-compiler-watch` uses controlled repo-local temporary
-projects, stock TypeScript 5.9.3, observable publication events, and an
-acceptance-only IPC barrier (`HSON_SCHEMA_WATCH_TEST_BARRIER=1` with IPC) to
-force an edit after preparation. No arbitrary long sleep establishes correctness.
-Processes and disposable fixtures are cleaned up. Tests check retained immutable
-bytes as well as authored bytes throughout lifecycle transitions.
+Invalid, incomplete or ambiguous Schema declarations own no current precise proof.
+Independent valid declarations retain theirs. Invalid configurations publish the
+available unproved discovery/recovery view; empty membership uses an empty module.
+Ordinary authoring errors remain observable and repair restores precision without
+restarting. Infrastructure/ownership failures terminate clearly. Authored source
+is never rewritten, formatted or executed by this workflow.
 
-Phase 4 still owns the default CLI cutover and removal of the legacy source
-writer. Declaration/publishing closure, package reexport policy, explicit
-revision garbage collection, extension status UI and application runner retry
-behavior remain out of scope.
+## Validation
+
+The project, watch and cutover acceptance suites cover unchanged reuse, restart,
+source/config/package/membership changes, invalid/repair transitions, coherent
+capture races, interrupted publication, ownership, old-layout adoption and unchanged
+authored bytes. Phase 2 tests independently cover unsaved live compiler views.

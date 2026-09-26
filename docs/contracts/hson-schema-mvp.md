@@ -17,7 +17,7 @@ export type User = SchemaType<typeof UserSchema>;
 const authored: HsonData<typeof UserSchema> = Hson.data`<name "Ada" score 37>`;
 ```
 
-The packaged `hson-schema` tool discovers direct, substitution-free official `Hson.schema` declarations, checks Schema semantics, and generates private evidence in immutable tool-owned `.hson/` compiler projects for value, mode, and Schema identity. The application imports the Schema symbol and uses `SchemaType<typeof UserSchema>` and `HsonData<typeof UserSchema>`; it does not import generated suffix names.
+The packaged `hson-schema` tool discovers direct, substitution-free official `Hson.schema` declarations, checks Schema semantics, and generates private evidence in current tool-owned `.hson/` compiler projects for value, mode, and Schema identity. The application imports the Schema symbol and uses `SchemaType<typeof UserSchema>` and `HsonData<typeof UserSchema>`; it does not import generated suffix names.
 
 Run `hson-schema generate --project tsconfig.json` after authoring or changing Schemas, and `hson-schema check --project tsconfig.json` in the authoritative build. `verify` checks artifact freshness without repairing it. Static authored assignments are proven only when the analyzer validates the direct `Hson.data` source against current generated evidence. Plain TypeScript sees the tag's unproved `HsonData` return and cannot grant proof on its own. The TypeScript editor plugin uses current in-memory compiler views, including unsaved source. See the [compiler workflow and publishing contract](./hson-schema-compiler-project-phase-4.md).
 

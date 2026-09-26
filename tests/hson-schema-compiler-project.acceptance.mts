@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import ts from "typescript";
 import { generate_hson_schema_evidence } from "../src/internal/hson-schema/generated-evidence.ts";
 import { unwrap_tagged_schema } from "../src/internal/hson-schema/source-transformation.ts";
+import { capture_schema_compiler_project, verify_schema_compiler_project } from "../src/internal/hson-schema/compiler-project-watch.ts";
+import { check_schema_project } from "../src/internal/hson-schema/compiler-project-build.ts";
+import { SchemaProjectSnapshot } from "../src/internal/hson-schema/project-snapshot.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
@@ -140,8 +144,11 @@ check("evidence is exactly the existing generator output and runtime tags remain
 
 check("regeneration is deterministic and leaves unowned neighbors alone", () => {
   const first = snapshot(output, false);
+  const mtimes = [...first.keys()].map(path => statSync(join(output, path)).mtimeMs);
   succeed(generate(project));
-  assert.deepEqual(snapshot(output, false), first); // Retired revision stays immutable.
+  assert.deepEqual(snapshot(output, false), first);
+  assert.deepEqual([...first.keys()].map(path => statSync(join(output, path)).mtimeMs), mtimes);
+  assert.equal(existsSync(join(output, "revisions")), false);
   const neighbor = join(output, "sources/user-notes.txt");
   writeFileSync(neighbor, "Not owned by the generator.");
   succeed(generate(project));
@@ -150,7 +157,7 @@ check("regeneration is deterministic and leaves unowned neighbors alone", () => 
 });
 
 check("an edited generated file is never overwritten", () => {
-  output = dirname(resolve(stable, JSON.parse(readFileSync(generatedConfig, "utf8")).extends));
+  output = stable;
   const file = join(output, "sources/schema.ts");
   const original = readFileSync(file);
   writeFileSync(file, Buffer.concat([original, Buffer.from("\n// user edit\n")]));
@@ -171,7 +178,7 @@ check("ownership metadata cannot escape the generated boundary", () => {
   writeFileSync(path, JSON.stringify(unsafe));
   const result = generate(project);
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /Invalid generated path/);
+  assert.match(result.stderr, /Invalid generated path|Edited/);
   assert.deepEqual(snapshot(project), before);
   writeFileSync(path, original);
 });
@@ -188,17 +195,17 @@ check("a first run refuses existing unowned destinations", () => {
   assert.deepEqual(snapshot(other, false), original);
 });
 
-check("finite regeneration withdraws obsolete evidence while retaining prior revisions", () => {
+check("finite regeneration removes obsolete owned evidence without history", () => {
   const temporarySource = join(project, "extra.ts");
   writeFileSync(temporarySource, 'import { Hson } from "hson-live"; export const Extra = Hson.schema`<type "data">`;\n');
   succeed(generate(project));
-  output = dirname(resolve(stable, JSON.parse(readFileSync(generatedConfig, "utf8")).extends));
+  output = stable;
   const artifact = join(output, "evidence/extra.ts/Extra.hson-schema.generated.ts");
   assert.ok(existsSync(artifact));
   unlinkSync(temporarySource);
   succeed(generate(project));
-  assert.equal(existsSync(artifact), true);
-  output = dirname(resolve(stable, JSON.parse(readFileSync(generatedConfig, "utf8")).extends));
+  assert.equal(existsSync(artifact), false);
+  output = stable;
   assert.equal(existsSync(join(output, "sources/extra.ts")), false);
   assert.deepEqual(snapshot(project), before);
 });
@@ -257,6 +264,96 @@ check("existing Schema fixtures use the same evidence and transformation without
   succeed(generate(legacy));
   succeed(stock_check(join(legacy, ".hson/compiler-input/tsconfig.json/tsconfig.json")));
   assert.deepEqual(snapshot(legacy), original);
+});
+
+
+check("capture racing publication fails clearly and captured compiler reads never fall through to disk", () => {
+  const config = join(project, "tsconfig.json");
+  const prior = verify_schema_compiler_project(config);
+  const captured = new SchemaProjectSnapshot({ root: prior.selected, files: prior.files });
+  const schema = join(project, "schema.ts"), original = readFileSync(schema);
+  let changed = false;
+  assert.throws(() => capture_schema_compiler_project(config, () => {
+    if (changed) return;
+    changed = true;
+    writeFileSync(schema, Buffer.concat([original, Buffer.from("\n// new publication\n")]));
+    succeed(generate(project));
+  }), /publication changed during capture/);
+  if (!ts.sys.useCaseSensitiveFileNames) {
+    assert.equal(captured.readFile(prior.project.toUpperCase()), captured.readFile(prior.project));
+    assert.equal(captured.fileExists(prior.project.toUpperCase()), true);
+    assert.equal(captured.directoryExists(prior.selected.toUpperCase()), true);
+  }
+  const read = ts.readConfigFile(prior.project, captured.readFile);
+  const parsed = ts.parseJsonConfigFileContent(read.config, captured.host, prior.selected, undefined, prior.project);
+  const program = ts.createProgram(parsed.fileNames, parsed.options, captured.compilerHost(parsed.options));
+  assert.equal(ts.getPreEmitDiagnostics(program).length, 0);
+  assert.equal(captured.readFile(join(prior.selected, "sources/schema.ts")), prior.files.get(join(prior.selected, "sources/schema.ts"))!.toString());
+  assert.throws(() => check_schema_project(config, prior, false), /revision changed/);
+  assert.throws(() => check_schema_project(config, prior, true), /revision changed/);
+  writeFileSync(schema, original); succeed(generate(project));
+  assert.deepEqual(snapshot(project), before);
+});
+
+check("incomplete publication refuses verify and cannot authorize overwriting neighbors", () => {
+  const marker = join(stable, ".publishing.json");
+  writeFileSync(marker, '{"owner":"hson-schema-publication-v1"}');
+  const saved = snapshot(stable, false);
+  assert.throws(() => verify_schema_compiler_project(join(project, "tsconfig.json")), /incomplete or in progress/);
+  const result = generate(project); assert.notEqual(result.status, 0); assert.match(result.stderr, /incomplete or in progress/);
+  assert.deepEqual(snapshot(stable, false), saved);
+  unlinkSync(marker);
+  verify_schema_compiler_project(join(project, "tsconfig.json"));
+});
+
+check("symlink and unowned final destinations are refused before any current replacement", () => {
+  const extra = join(project, "extra.ts"), destination = join(stable, "sources/extra.ts");
+  writeFileSync(extra, "export const extra = 1;");
+  symlinkSync(extra, destination);
+  const manifestBytes = readFileSync(join(stable, "manifest.json"));
+  assert.notEqual(generate(project).status, 0);
+  assert.deepEqual(readFileSync(join(stable, "manifest.json")), manifestBytes);
+  assert.equal(readFileSync(extra, "utf8"), "export const extra = 1;");
+  unlinkSync(destination); writeFileSync(destination, "user owned");
+  assert.notEqual(generate(project).status, 0);
+  assert.equal(readFileSync(destination, "utf8"), "user owned");
+  unlinkSync(destination); unlinkSync(extra); succeed(generate(project));
+});
+
+check("old selected and retired revisions migrate once, preserving neighbors and refusing edited history", () => {
+  const other = prepare("revision-migration"); succeed(generate(other));
+  const target = join(other, ".hson/compiler-input/tsconfig.json");
+  const originalSources = snapshot(other);
+  const current = JSON.parse(readFileSync(join(target, "manifest.json"), "utf8"));
+  const digest = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
+  for (const name of ["revision-oldA", "revision-oldB"]) {
+    const retired = join(target, "revisions", name); mkdirSync(retired, { recursive: true });
+    const files = current.files.map((file: { path: string }) => {
+      const text = readFileSync(join(target, file.path), "utf8").split(target).join(retired);
+      mkdirSync(dirname(join(retired, file.path)), { recursive: true }); writeFileSync(join(retired, file.path), text);
+      return { path: file.path, digest: digest(text) };
+    });
+    const { publication: _publication, contentDigest: _integrity, ...old } = current;
+    writeFileSync(join(retired, "manifest.json"), JSON.stringify({ ...old, compatibility: current.compatibility.replace("compiler-project-5", "compiler-project-4"), files }));
+  }
+  for (const directory of ["sources", "evidence"]) rmSync(join(target, directory), { recursive: true });
+  unlinkSync(join(target, "manifest.json"));
+  const selected = join(target, "revisions/revision-oldB");
+  writeFileSync(join(target, "tsconfig.json"), JSON.stringify({ extends: "./revisions/revision-oldB/tsconfig.json", $hsonSchema: { owner: "hson-schema-compiler-selector-v1", project: join(other, "tsconfig.json"), revision: current.revision, manifestDigest: digest(readFileSync(join(selected, "manifest.json"))) } }));
+  const edited = join(target, "revisions/revision-oldA/sources/schema.ts"), bytes = readFileSync(edited);
+  writeFileSync(edited, "edited generated source");
+  const protectedState = snapshot(target, false);
+  assert.notEqual(generate(other).status, 0); assert.deepEqual(snapshot(target, false), protectedState);
+  writeFileSync(edited, bytes);
+  writeFileSync(join(selected, "notes.txt"), "user notes");
+  mkdirSync(join(selected, "empty-user-directory"));
+  succeed(generate(other));
+  assert.equal(existsSync(join(target, "revisions/revision-oldA")), false);
+  assert.deepEqual(readdirSync(selected).sort(), ["empty-user-directory", "notes.txt"]);
+  assert.equal(readFileSync(join(selected, "notes.txt"), "utf8"), "user notes");
+  succeed(stock_check(join(target, "tsconfig.json")));
+  const after = snapshot(target, false); succeed(generate(other)); assert.deepEqual(snapshot(target, false), after);
+  assert.deepEqual(snapshot(other), originalSources);
 });
 
 events.terminal("pass");
