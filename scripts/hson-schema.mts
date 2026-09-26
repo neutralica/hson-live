@@ -14,7 +14,7 @@ const runtimeBase = packagedRuntime ? "../dist" : "../src";
 const { is_official_hson_package_binding } = await import(`${runtimeBase}/internal/embedded-hson/discover-hson-tagged-templates.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/embedded-hson/discover-hson-tagged-templates.ts");
 const { compile_hson_schema, HSON_SCHEMA_MVP_COMPATIBILITY_VERSION } = await import(`${runtimeBase}/internal/hson-schema/compiler.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/compiler.ts");
 const { generate_hson_schema_evidence } = await import(`${runtimeBase}/internal/hson-schema/generated-evidence.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/generated-evidence.ts");
-const { apply_generated_schema_associations, generated_exports_block, generated_exports_block_from_source, remove_generated_exports_block, schema_type_association, unwrap_tagged_schema } = await import(`${runtimeBase}/internal/hson-schema/source-transformation.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/source-transformation.ts");
+const { apply_generated_schema_associations, generated_exports_block, generated_exports_block_from_source, remove_generated_exports_block, schema_type_association, schema_association_edits, unwrap_tagged_schema } = await import(`${runtimeBase}/internal/hson-schema/source-transformation.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/source-transformation.ts");
 const { projected_value_from_hson_node } = await import(`${runtimeBase}/core/projected-value-graph.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/core/projected-value-graph.ts");
 const { evaluate_canonical_document_schema, evaluate_canonical_projected_schema } = await import(`${runtimeBase}/internal/canonical-schema/evaluate.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/canonical-schema/evaluate.ts");
 const { parse_hson_with_provenance } = await import(`${runtimeBase}/internal/hson-source-provenance/parse-hson-with-provenance.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-source-provenance/parse-hson-with-provenance.ts");
@@ -39,7 +39,8 @@ if (!["generate", "verify", "check", "build", "watch", "experimental-project"].i
 
 if (mode === "watch") run_watch();
 else try {
-  if (mode === "experimental-project") await run_experimental_project();
+  if (mode === "experimental-project" && args.includes("--watch")) await run_experimental_project_watch();
+  else if (mode === "experimental-project") await run_experimental_project();
   else run_cycle(mode);
 } catch (error) { console.error(error_message(error)); process.exitCode = 1; }
 
@@ -57,6 +58,50 @@ async function run_experimental_project(): Promise<void> {
   const { generate_schema_compiler_project } = await import(`${runtimeBase}/internal/hson-schema/compiler-project.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/compiler-project.ts");
   const generated = generate_schema_compiler_project(projectPath, config, program, schemas, analysis.overlays);
   console.log(JSON.stringify({ hsonSchema: "experimental-project", ...generated }));
+}
+
+/** Saved project view only; the editor's unsaved snapshot service stays independent. */
+async function run_experimental_project_watch(): Promise<void> {
+  const { create_schema_compiler_project_watch } = await import(`${runtimeBase}/internal/hson-schema/compiler-project-watch.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/compiler-project-watch.ts");
+  const watcher = create_schema_compiler_project_watch(projectPath, (config, program, configDiagnostics) => {
+    const checker = program.getTypeChecker();
+    const diagnostics: Diagnostic[] = [...configDiagnostics, ...program.getOptionsDiagnostics(), ...program.getSyntacticDiagnostics()].map(d => ({ message: format_ts_diagnostic(d) }));
+    let schemas = discover_schemas(program, checker, diagnostics);
+    try { require_schema_compiler_options(config, schemas.length); reject_schema_reexports(program, checker, schemas); }
+    catch (error) { diagnostics.push({ message: error_message(error) }); schemas = []; }
+    if (configDiagnostics.length) schemas = [];
+    const analysis = analyze_static_hson(program, checker, schemas, diagnostics);
+    const valid = new Set(schemas.map(schema => schema.declaration));
+    const broad: Overlay[] = [];
+    for (const source of program.getSourceFiles()) {
+      if (source.isDeclarationFile || program.isSourceFileFromExternalLibrary(source)) continue;
+      for (const statement of source.statements) if (ts.isVariableStatement(statement)) for (const declaration of statement.declarationList.declarations) {
+        if (!valid.has(declaration) && declaration.type !== undefined && ts.isTypeReferenceNode(declaration.type)
+          && ts.isIdentifier(declaration.type.typeName) && declaration.type.typeName.text === "__HsonSchema") {
+          broad.push(...schema_association_edits([{ declaration, text: 'import("hson-live").HsonSchema' }]).map(edit => ({ file: source.fileName, ...edit })));
+        }
+      }
+    }
+    // Native diagnostics catch temporary missing imports too; generated precision replaces ordinary broad-tag diagnostics.
+    const missingImports = program.getSemanticDiagnostics().filter(d => [2307, 2792, 7016].includes(d.code));
+    diagnostics.push(...missingImports.map(d => ({ message: format_ts_diagnostic(d) })));
+    return { schemas, overlays: [...analysis.overlays, ...broad], diagnostics: diagnostics.map(d => `${d.file ?? ""}${d.file === undefined ? "" : ": "}${d.message}`) };
+  }, event => { if (event.state !== "prepared") console.log(JSON.stringify({ hsonSchema: "experimental-project-watch", ...event })); },
+  // Acceptance-only IPC barrier: deterministic edits after preparation, before revision verification.
+  process.env.HSON_SCHEMA_WATCH_TEST_BARRIER === "1" && process.send !== undefined ? async event => {
+    process.send?.(event);
+    await new Promise<void>(accept => process.once("message", () => accept()));
+  } : undefined);
+  let stopped = false;
+  const stop = (): void => { stopped = true; watcher.stop(); };
+  process.once("SIGINT", stop);
+  process.once("SIGTERM", stop);
+  try {
+    while (!stopped) {
+      await watcher.poll();
+      if (!stopped) await new Promise<void>(accept => setTimeout(accept, 250));
+    }
+  } finally { watcher.stop(); process.removeListener("SIGINT", stop); process.removeListener("SIGTERM", stop); }
 }
 
 function require_schema_compiler_options(config: ts.ParsedCommandLine, schemas: number): void {
@@ -171,20 +216,36 @@ function run_cycle(selected: Exclude<Mode, "watch" | "experimental-project">): C
   return Object.freeze({ schemas: schemaDeclarations.length, updates, inputs: authoritative_watch_inputs(config) });
 }
 
-function discover_schemas(program: ts.Program, checker: ts.TypeChecker): SchemaDeclaration[] {
+function discover_schemas(program: ts.Program, checker: ts.TypeChecker, diagnostics?: Diagnostic[]): SchemaDeclaration[] {
   const output: SchemaDeclaration[] = [];
   for (const sourceFile of program.getSourceFiles()) {
     if (sourceFile.isDeclarationFile || sourceFile.fileName.startsWith(`${librarySourceRoot}${sep}`) || sourceFile.fileName.includes(`${sep}node_modules${sep}`) || sourceFile.fileName.includes(".hson-schema.generated.")) continue;
+    const counts = new Map<string, number>();
+    if (diagnostics !== undefined) for (const statement of sourceFile.statements) if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) if (ts.isIdentifier(declaration.name)) counts.set(declaration.name.text, (counts.get(declaration.name.text) ?? 0) + 1);
+    }
     for (const statement of sourceFile.statements) {
       if (!ts.isVariableStatement(statement) || (statement.declarationList.flags & ts.NodeFlags.Const) === 0 || statement.declarationList.declarations.length !== 1) continue;
       const declaration = statement.declarationList.declarations[0];
       if (declaration === undefined || !ts.isIdentifier(declaration.name) || declaration.initializer === undefined) continue;
       const tagged = unwrap_tagged_schema(declaration.initializer);
       if (tagged === undefined || !is_official_hson_member_tag(tagged, "schema", checker)) continue;
-      if (!ts.isNoSubstitutionTemplateLiteral(tagged.template)) throw new Error(`${sourceFile.fileName}: ${declaration.name.text} must use a substitution-free official Hson.schema tagged template.`);
+      if ((counts.get(declaration.name.text) ?? 0) > 1) {
+        diagnostics?.push({ file: sourceFile.fileName, message: `Duplicate Schema declaration ${declaration.name.text}; precise evidence withdrawn.` });
+        continue;
+      }
+      if (!ts.isNoSubstitutionTemplateLiteral(tagged.template) || tagged.template.isUnterminated) {
+        const message = `${sourceFile.fileName}: ${declaration.name.text} must use a complete substitution-free official Hson.schema tagged template.`;
+        if (diagnostics === undefined) throw new Error(message);
+        diagnostics.push({ message }); continue;
+      }
       const source = raw_template(tagged.template, sourceFile);
       const compiled = compile_hson_schema(source);
-      if (!compiled.ok) throw new Error(`${sourceFile.fileName}: ${declaration.name.text}: ${compiled.issues.map((issue) => issue.message).join(" ")}`);
+      if (!compiled.ok) {
+        const message = `${sourceFile.fileName}: ${declaration.name.text}: ${compiled.issues.map((issue) => issue.message).join(" ")}`;
+        if (diagnostics === undefined) throw new Error(message);
+        diagnostics.push({ message }); continue;
+      }
       output.push(Object.freeze({ sourceFile, statement, declaration, tagged, name: declaration.name.text, source, compiled: compiled.value }));
     }
   }

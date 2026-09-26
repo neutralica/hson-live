@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import ts from "typescript";
+import type { SchemaProjectSnapshot } from "./project-snapshot.js";
 import { generate_hson_schema_evidence } from "./generated-evidence.js";
 import {
   apply_source_edits, schema_source_plan, type SchemaSourceEdit,
@@ -35,7 +36,7 @@ export function compiler_project_evidence_path(source: string, name: string): st
 
 /**
  * Experimental, noEmit-only project materialization. This never invokes the legacy
- * source writer. Editor mappings, concurrent watch publication, and emit are later phases.
+ * source writer. Watch prepares isolated candidates here and publishes their selector separately; emit remains unsupported.
  */
 export function generate_schema_compiler_project(
   projectPath: string,
@@ -43,9 +44,10 @@ export function generate_schema_compiler_project(
   program: ts.Program,
   schemas: readonly SchemaDeclaration[],
   overlays: readonly SourceOverlay[] = [],
+  candidate?: Readonly<{ outputRoot: string; snapshot: SchemaProjectSnapshot; diagnostics: readonly string[] }>,
 ): Readonly<{ project: string; manifest: string; sources: number; schemas: number }> {
   const projectRoot = dirname(resolve(projectPath));
-  const outputRoot = join(projectRoot, ".hson", "compiler-input", basename(projectPath));
+  const outputRoot = candidate?.outputRoot ?? join(projectRoot, ".hson", "compiler-input", basename(projectPath));
   if (config.projectReferences?.length) throw new Error("Experimental Hson compiler projects do not yet support project references.");
   const sourceFiles = program.getSourceFiles().filter(file => {
     if (program.isSourceFileDefaultLibrary(file) || program.isSourceFileFromExternalLibrary(file)
@@ -79,7 +81,7 @@ export function generate_schema_compiler_project(
   for (const sourceFile of sourceFiles) {
     const source = slash(relative(projectRoot, sourceFile.fileName));
     const generated = `sources/${source}`;
-    const originalBytes = readFileSync(sourceFile.fileName);
+    const originalBytes = candidate?.snapshot.readBytes(sourceFile.fileName) ?? readFileSync(sourceFile.fileName);
     const declarations = schemas.filter(schema => schema.sourceFile === sourceFile);
     const associations: { declaration: ts.VariableDeclaration; name: string; specifier: string }[] = [];
     const schemaRecords: SourceRecord["schemas"][number][] = [];
@@ -109,7 +111,7 @@ export function generate_schema_compiler_project(
     // Preserve each original package scope, including type/imports/exports and nested scopes.
     for (let directory = dirname(sourceFile.fileName); within(projectRoot, directory); directory = dirname(directory)) {
       const manifest = join(directory, "package.json");
-      if (existsSync(manifest)) add(`sources/${slash(relative(projectRoot, manifest))}`, readFileSync(manifest));
+      if (candidate?.snapshot.fileExists(manifest) ?? existsSync(manifest)) add(`sources/${slash(relative(projectRoot, manifest))}`, candidate?.snapshot.readBytes(manifest) ?? readFileSync(manifest));
       if (resolve(directory) === projectRoot) break;
     }
   }
@@ -120,9 +122,11 @@ export function generate_schema_compiler_project(
   const pathsBase = options.baseUrl ?? (typeof options.pathsBasePath === "string" ? options.pathsBasePath : projectRoot);
   const paths = options.paths === undefined ? undefined : Object.fromEntries(Object.entries(options.paths).map(([name, entries]) => [name, entries.map(entry => slash(remap(resolve(pathsBase, entry))))]));
   const externalDeclarationRoots = config.fileNames.filter(path => !mirrors.has(resolve(path)) && program.getSourceFile(path)?.isDeclarationFile === true);
+  if (records.length === 0 && externalDeclarationRoots.length === 0) add("sources/__empty__.ts", `${HEADER}export {};\n`);
   add("tsconfig.json", `${JSON.stringify({
-    extends: module_path(relative(outputRoot, projectPath)),
+    ...(candidate === undefined ? { extends: module_path(relative(outputRoot, projectPath)) } : {}),
     compilerOptions: {
+      ...(candidate === undefined ? {} : frozen_compiler_options(options)),
       noEmit: true, composite: false, incremental: false, tsBuildInfoFile: null,
       declaration: false, declarationMap: false, emitDeclarationOnly: false,
       outFile: null, declarationDir: null, outDir: "./unused-output", rootDir: ".",
@@ -134,11 +138,11 @@ export function generate_schema_compiler_project(
       ...(options.typeRoots === undefined ? {} : { typeRoots: options.typeRoots.map(path => slash(remap(path))) }),
     },
     // Explicit roots prevent default discovery of either the authored or an old generated graph.
-    files: [...records.map(record => `./${record.generated}`), ...externalDeclarationRoots.map(path => slash(resolve(path)))].sort(),
+    files: records.length === 0 && externalDeclarationRoots.length === 0 ? ["./sources/__empty__.ts"] : [...records.map(record => `./${record.generated}`), ...externalDeclarationRoots.map(path => slash(resolve(path)))].sort(),
     include: [], exclude: [], references: [],
   }, null, 2)}\n`);
   const manifestPath = join(outputRoot, "manifest.json");
-  publish_owned_files(projectRoot, outputRoot, basename(projectPath), planned, records);
+  publish_owned_files(projectRoot, outputRoot, basename(projectPath), planned, records, candidate === undefined ? undefined : { revision: candidate.snapshot.fingerprint(), diagnostics: candidate.diagnostics });
   const generatedProject = join(outputRoot, "tsconfig.json");
   verify_module_graph(generatedProject, program, sourceFiles, mirrors);
   return { project: generatedProject, manifest: manifestPath, sources: records.length, schemas: schemas.length };
@@ -193,7 +197,7 @@ function is_module_reference(node: ts.StringLiteralLike): boolean {
       && (parent.expression.kind === ts.SyntaxKind.ImportKeyword || ts.isIdentifier(parent.expression) && parent.expression.text === "require");
 }
 
-function publish_owned_files(projectRoot: string, outputRoot: string, project: string, planned: ReadonlyMap<string, Buffer>, sources: readonly SourceRecord[]): void {
+function publish_owned_files(projectRoot: string, outputRoot: string, project: string, planned: ReadonlyMap<string, Buffer>, sources: readonly SourceRecord[], revision?: Readonly<{ revision: string; diagnostics: readonly string[] }>): void {
   assert_no_symlinks(projectRoot, outputRoot);
   const manifestPath = join(outputRoot, "manifest.json");
   assert_no_symlinks(projectRoot, manifestPath);
@@ -215,7 +219,7 @@ function publish_owned_files(projectRoot: string, outputRoot: string, project: s
   }
   for (const { path } of previous) if (!planned.has(path) && existsSync(join(outputRoot, path))) unlinkSync(join(outputRoot, path));
   const files = [...planned].map(([path, content]): OwnedFile => ({ path, digest: digest(content) })).sort((a, b) => a.path.localeCompare(b.path));
-  const manifest = `${JSON.stringify({ owner: OWNER, project, files, sources }, null, 2)}\n`;
+  const manifest = `${JSON.stringify({ owner: OWNER, project, files, sources, ...revision }, null, 2)}\n`;
   if (!existsSync(manifestPath) || readFileSync(manifestPath, "utf8") !== manifest) writeFileSync(manifestPath, manifest);
 }
 
@@ -262,3 +266,45 @@ function slash(path: string): string { return path.split(sep).join("/"); }
 function module_path(path: string): string { const value = slash(path); return value.startsWith(".") ? value : `./${value}`; }
 function within(root: string, path: string): boolean { const value = relative(resolve(root), resolve(path)); return value === "" || value !== ".." && !value.startsWith(`..${sep}`) && !isAbsolute(value); }
 function digest(value: Buffer): string { return createHash("sha256").update(value).digest("hex"); }
+
+/** Parsed path options are absolute. Serialize the public enum options without retaining mutable extends files. */
+function frozen_compiler_options(options: ts.CompilerOptions): Record<string, unknown> {
+  const result: Record<string, unknown> = { ...options };
+  delete result.configFilePath;
+  delete result.configFile;
+  delete result.pathsBasePath;
+  const enums: Record<string, Record<number, string>> = {
+    target: ts.ScriptTarget, module: ts.ModuleKind, moduleResolution: ts.ModuleResolutionKind,
+    jsx: ts.JsxEmit, newLine: ts.NewLineKind, moduleDetection: ts.ModuleDetectionKind,
+  };
+  for (const [key, values] of Object.entries(enums)) {
+    const value = result[key];
+    if (typeof value === "number") result[key] = values[value]?.toLowerCase();
+  }
+  if (options.target === ts.ScriptTarget.ESNext) result.target = "esnext";
+  if (options.jsx === ts.JsxEmit.ReactJSX) result.jsx = "react-jsx";
+  if (options.jsx === ts.JsxEmit.ReactJSXDev) result.jsx = "react-jsxdev";
+  if (options.newLine !== undefined) result.newLine = options.newLine === ts.NewLineKind.LineFeed ? "lf" : "crlf";
+  if (options.lib !== undefined) result.lib = options.lib.map(lib => lib.replace(/^lib\./, "").replace(/\.d\.ts$/, ""));
+  const roundTrip = ts.convertCompilerOptionsFromJson(result, "/");
+  if (roundTrip.errors.length) throw new Error(`Cannot freeze generated compiler options: ${roundTrip.errors.map(d => ts.flattenDiagnosticMessageText(d.messageText, "\n")).join("\n")}`);
+  for (const key of Object.keys(result)) {
+    if (JSON.stringify(roundTrip.options[key]) !== JSON.stringify(options[key])) throw new Error(`Cannot preserve generated compiler option ${key}.`);
+  }
+  return result;
+}
+
+/** Validate the manifest boundary before selecting or retiring a generated project. */
+export function validate_schema_project_ownership(projectRoot: string, outputRoot: string, project: string): void {
+  assert_no_symlinks(projectRoot, outputRoot);
+  const manifest = join(outputRoot, "manifest.json");
+  assert_no_symlinks(projectRoot, manifest);
+  if (!existsSync(manifest)) throw new Error(`Missing Hson compiler-project ownership manifest: ${manifest}`);
+  for (const file of read_owned_files(outputRoot, manifest, project)) {
+    const path = join(outputRoot, file.path);
+    assert_no_symlinks(projectRoot, path);
+    if (!existsSync(path) || !lstatSync(path).isFile() || digest(readFileSync(path)) !== file.digest) {
+      throw new Error(`Unowned/edited Hson compiler-project file: ${path}`);
+    }
+  }
+}
