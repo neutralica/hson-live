@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { ANY_DATA, ANY_DOCUMENT, Hson, add_interaction, enable_interactions, hsonLiveMap } from "../src/index.ts";
-import { install_libraries_snapshot } from "../src/api/livemap/index.ts";
+import { install_libraries_snapshot, type LiveMapCommit } from "../src/api/livemap/index.ts";
 import { internal_livemap_aggregate_authority } from "../src/api/livemap/livemap.internal.ts";
 import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.identity-epoch.ts";
 import { is_Node } from "../src/core/node-guards.ts";
@@ -26,6 +26,42 @@ function check(name: string, run: () => void): void {
 }
 
 const page = Hson.document`<main "Hello"/>`;
+
+check("facade admission refines one map and keeps commit evidence", () => {
+  const map = hsonLiveMap.create();
+  const original = map;
+  const commits: LiveMapCommit[] = [];
+  const stop = map.commits.observe((commit) => { commits.push(commit); });
+  hsonLiveMap.addLibraries(map, { home: { document: page } });
+  assert.equal(map, original);
+  assert.equal(map.rev, 1);
+  assert.equal(map.lib("home").mode, "document");
+  const home = map.lib("home");
+  hsonLiveMap.addLibraries(map, { state: { data: { count: 0 } } });
+  assert.equal(map.rev, 2);
+  assert.equal(map.lib("home"), home);
+  assert.deepEqual(map.lib("state").snap(), { count: 0 });
+  const beforeFailure = map.capture();
+  const duplicateName: string = "home";
+  assert.throws(() => hsonLiveMap.addLibraries(map, {
+    extra: { data: 1 }, [duplicateName]: { data: 2 },
+  }), /duplicated/);
+  assert.deepEqual(map.capture(), beforeFailure);
+  assert.equal(commits.length, 2);
+  map.lib("home").css.stylesheet("body { margin: 0; }");
+  assert.match(map.lib("home").css.snapshot(), /margin/);
+  assert.equal(commits.length, 3);
+  const styled = map.capture();
+  const replayed = hsonLiveMap.create();
+  for (const commit of commits) replayed.replay(commit);
+  assert.deepEqual(replayed.capture(), styled);
+  const foreign = hsonLiveMap.fromLibraries({ other: { data: 1 } }).capture();
+  assert.throws(() => map.restore(foreign), /current Library topology/);
+  assert.deepEqual(map.capture(), styled);
+  map.restore(styled);
+  assert.deepEqual(map.capture(), styled);
+  stop();
+});
 
 check("empty map admits a document and data atomically with top Schemas", () => {
   const map = hsonLiveMap.create();
@@ -126,7 +162,7 @@ check("failed admission leaves revision, registry, observers and identity alone"
   stop();
 });
 
-check("portable replay, fresh install and two-way local topology restore", () => {
+check("portable replay and fresh install preserve topology guarantees", () => {
   const map = hsonLiveMap.create();
   const before = map.capture();
   const commit = map.lib.add({ page: { document: page }, state: { data: { count: 0 } } });
@@ -146,22 +182,22 @@ check("portable replay, fresh install and two-way local topology restore", () =>
   assert.throws(() => rejectedReplica.replay(invalidReplay));
   assert.deepEqual(rejectedReplica.capture(), rejectedBefore);
   const oldPage = map.lib("page");
-  map.restore(before);
-  assert.equal(map.rev, 0);
-  assert.deepEqual(map.capture(), before);
-  assert.throws(() => oldPage.root(), /another map authority/);
+  assert.throws(() => map.restore(before), /current Library topology/);
+  assert.deepEqual(map.capture(), after);
+  assert.equal(map.lib("page"), oldPage);
+  assert.deepEqual(install_libraries_snapshot(before).map.capture(), before);
   const invalidRestore = JSON.parse(JSON.stringify(after));
   invalidRestore.libraries[0].root.payload = "<not-valid";
   assert.throws(() => map.restore(invalidRestore));
-  assert.deepEqual(map.capture(), before);
+  assert.deepEqual(map.capture(), after);
   map.restore(after);
   assert.equal(map.rev, 1);
   assert.equal(map.capture().registry.digest, after.registry.digest);
   assert.equal(map.render(), "<main>Hello</main>");
-  assert.notEqual(map.lib("page"), oldPage);
+  assert.equal(map.lib("page"), oldPage);
 });
 
-check("forward replay and topology restore preserve shared library handles", () => {
+check("forward replay and compatible restore preserve shared library handles", () => {
   const source = hsonLiveMap.fromLibraries({ state: { data: { count: 1 } } });
   const initial = source.capture();
   const state = source.lib("state");
@@ -170,9 +206,10 @@ check("forward replay and topology restore preserve shared library handles", () 
   const replica = install_libraries_snapshot(initial).map;
   replica.replay(transition);
   assert.equal(replica.capture().registry.digest, later.registry.digest);
-  source.restore(initial);
+  assert.throws(() => source.restore(initial), /current Library topology/);
   assert.equal(source.lib("state"), state);
-  assert.deepEqual(state.snap(), { count: 1 });
+  assert.deepEqual(source.capture(), later);
+  assert.deepEqual(install_libraries_snapshot(initial).map.capture(), initial);
   source.restore(later);
   assert.equal(source.lib("state"), state);
   assert.deepEqual(state.snap(), { count: 1 });

@@ -1200,6 +1200,11 @@ export type LiveMapLibraryDefinition =
 
 export type LiveMapDefinitions = Readonly<Record<string, LiveMapLibraryDefinition>>;
 
+/** Only keys named by the type itself establish static topology. */
+export type LiveMapKnownDefinitions<TLibraries extends LiveMapDefinitions> = {
+  readonly [TName in keyof TLibraries as string extends TName ? never : TName]: TLibraries[TName];
+};
+
 /** The shared construction and runtime-admission definition grammar. */
 export type LiveMapInput = LiveMapDefinitions;
 
@@ -1559,31 +1564,41 @@ export type LiveMapRegistryCommitObserverApi<TLibrary extends string = string> =
 
 declare const liveMapLibrariesType: unique symbol;
 
+type LiveMapReceiverDefinitions<TMap> = TMap extends Readonly<{
+  [liveMapLibrariesType]: infer TLibraries extends LiveMapDefinitions;
+}> ? TLibraries : never;
+
+/** Static topology already established on a LiveMap binding. */
+export type LiveMapKnownNames<TMap extends LiveMap> = Extract<
+  keyof LiveMapKnownDefinitions<LiveMapReceiverDefinitions<TMap>>, string
+>;
+
+type LiveMapLibrarySelector<TMap> = {
+  <TLibrary extends Extract<keyof LiveMapKnownDefinitions<LiveMapReceiverDefinitions<TMap>>, string>>(
+    name: TLibrary,
+  ): LiveMapLibraryFacadeForInput<LiveMapKnownDefinitions<LiveMapReceiverDefinitions<TMap>>[TLibrary], TLibrary>;
+  (name: string): LiveMapDynamicLibrary;
+  readonly add: (definitions: LiveMapDefinitions) => LiveMapCommit;
+};
+
 /**
  * A collection of canonical Libraries with a local topology transition.
  */
-export type LiveMap<TLibraries extends LiveMapDefinitions = LiveMapInput> = Readonly<{
+export interface LiveMap<TLibraries extends LiveMapDefinitions = LiveMapInput> {
   /** Private type evidence; it has no runtime property or public selector. */
   readonly [liveMapLibrariesType]: TLibraries;
   readonly rev: number;
-  lib: {
-    <TLibrary extends string>(
-      name: TLibrary,
-    ): TLibrary extends Extract<keyof TLibraries, string>
-      ? LiveMapLibraryFacadeForInput<TLibraries[TLibrary], TLibrary>
-      : LiveMapDynamicLibrary;
-    readonly add: (definitions: LiveMapDefinitions) => LiveMapCommit;
-  };
+  readonly lib: LiveMapLibrarySelector<this>;
   /** Replay one portable local library-add commit at its recorded base revision. */
   replay: (commit: LiveMapCommit) => LiveMapCommit;
   /** Capture one detached semantic snapshot of the complete public and hidden registry. */
   capture: () => LiveMapSnapshot;
-  /** Restore a complete local registry snapshot at its captured revision. */
+  /** Restore a local snapshot with the same Library topology at its captured revision. */
   restore: (snapshot: LiveMapSnapshot) => void;
   /** Render one selected document as browser-compatible HTML. */
   render: (document?: string) => import("../api/ssr/ssr.types.js").BrowserRealizationHtml;
   commits: LiveMapRegistryCommitObserverApi;
-}>;
+}
 
 /**
  * Normalized set operation emitted by a LiveMap mutation.

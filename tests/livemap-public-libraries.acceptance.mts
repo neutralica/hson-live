@@ -134,8 +134,10 @@ check("named registry construction preserves selection and atomic commits in eit
     ]);
     assert.deepEqual([commit.prevRev, commit.rev], [0, 1]);
     assert.deepEqual(commit.operations.map((entry) => entry.target.library), [right, left]);
-    assert.equal(map.lib("left").snap(["count"]), 10);
-    assert.equal(map.lib("right").snap(["count"]), 20);
+    const leftSelected = map.lib("left");
+    const rightSelected = map.lib("right");
+    assert.equal(leftSelected.mode !== "document" && leftSelected.snap(["count"]), 10);
+    assert.equal(rightSelected.mode !== "document" && rightSelected.snap(["count"]), 20);
     assert.equal(map.rev, 1);
   }
 });

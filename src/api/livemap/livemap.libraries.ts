@@ -15,6 +15,7 @@ import type {
   LiveMapSnapshot,
   LiveMapInput,
   LiveMapDefinitions,
+  LiveMapKnownDefinitions,
   LiveMapLibraryInput,
   LiveMapLibraryOperation,
   LiveMapLibraryAddOperation,
@@ -236,7 +237,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
   inputs: TLibraries,
   systems: readonly InitialSystemState[] = [],
   clientSnapshot?: PortableAggregateSnapshot,
-): LiveMap<TLibraries> {
+): LiveMap<LiveMapKnownDefinitions<TLibraries>> {
   const entries = Object.entries(inputs);
 
   const definitions = entries.map(([name, value]) => ({
@@ -370,32 +371,10 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
     },
     capture: () => aggregate.captureLibraries(),
     restore: (snapshot: LiveMapSnapshot) => {
-      if (snapshot.registry.digest === aggregate.hostedRegistry().digest) {
-        aggregate.restoreLibraries(snapshot);
-        return;
+      if (snapshot.registry.digest !== aggregate.hostedRegistry().digest) {
+        throw new Error("LiveMap restore requires the current Library topology; install a different capture in a fresh map.");
       }
-      const next = snapshot.registry.libraries.filter((entry) => entry.scope !== "hson-internal")
-        .map((entry) => {
-          const encoded = snapshot.libraries.find((library) => library.name === entry.name);
-          if (encoded === undefined) throw new Error("LiveMap topology snapshot omitted a Library.");
-          const root = decode_hosted_root(encoded.root);
-          const schema = HsonSchemaHandle.fromHson(entry.schema);
-          return Object.freeze({ name: entry.name, input: must_library_input(entry.name,
-            entry.mode === "document" ? { document: root, schema } : { data: reconstructed_data(root), schema }) });
-        });
-      aggregate.restoreLibraries(snapshot, (identities) => {
-        const previous = new Map(named);
-        named.clear();
-        namesByIdentity.clear();
-        for (let index = 0; index < next.length; index += 1) {
-          const definition = next[index];
-          const identity = identities[index];
-          if (definition !== undefined && identity !== undefined) add(definition.name, definition.input, identity);
-        }
-        for (const [name, old] of previous) {
-          if (named.get(name)?.identity !== old.identity) selectedFacades.delete(name);
-        }
-      });
+      aggregate.restoreLibraries(snapshot);
     },
     render: (document?: string) => render_local_libraries_html(
       libraries as LiveMap, document, install_libraries_snapshot, decode_hosted_root,
@@ -499,7 +478,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
       }
     });
   });
-  return libraries as unknown as LiveMap<TLibraries>;
+  return libraries as unknown as LiveMap<LiveMapKnownDefinitions<TLibraries>>;
 }
 
 /**

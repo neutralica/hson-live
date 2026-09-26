@@ -5,6 +5,7 @@ import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-cod
 import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
+import { install_libraries_snapshot } from "../src/api/livemap/index.ts";
 
 const Q1 = "000000v71";
 const Q2 = "000000v72";
@@ -81,15 +82,17 @@ check("restore of same registry captures exact canonical state", () => {
   assert.equal(canonical_hson_graph_equal(source.lib("page").root(), target.lib("page").root()), true);
   assert.equal(target.rev, source.rev);
 });
-check("different registry snapshot replaces topology and retires old handles", () => {
+check("different registry snapshot requires fresh installation", () => {
   const target = ordinary("<main/>");
   const oldPage = target.lib("page");
   const other = hsonLiveMap.fromLibraries({ other: { document: "<main/>", schema: Empty } });
-  target.restore(other.capture());
-  assert.deepEqual(target.capture(), other.capture());
-  assert.throws(() => oldPage.root());
-  assert.throws(() => target.lib("page"));
-  assert.equal(target.lib("other").mode, "document");
+  const before = target.capture();
+  assert.throws(() => target.restore(other.capture()), /current Library topology/);
+  assert.deepEqual(target.capture(), before);
+  assert.equal(target.lib("page"), oldPage);
+  const installed = install_libraries_snapshot(other.capture()).map;
+  assert.deepEqual(installed.capture(), other.capture());
+  assert.equal(installed.lib("other").mode, "document");
 });
 check("local registry exposes no solo capture or install category", () => {
   const map = ordinary("<main/>");

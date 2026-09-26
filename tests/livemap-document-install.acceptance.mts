@@ -5,6 +5,7 @@ import { Hson, hsonLiveMap } from "../src/index.ts";
 import { parse_hson_exact_runtime } from "../src/internal/exact-runtime-hson-codec.ts";
 import { admit_exact_runtime_livemap_libraries } from "../src/internal/exact-runtime-node-admission.ts";
 import type { LiveMapSnapshot } from "../src/types/livemap.types.ts";
+import { install_libraries_snapshot } from "../src/api/livemap/index.ts";
 
 export const HSON_LIVE_TEST_METADATA = Object.freeze({
   id: "livemap.document-install",
@@ -68,16 +69,19 @@ check("restoration is atomic on malformed snapshot metadata", () => {
   assert.deepEqual(target.capture(), before);
 });
 
-check("foreign registry Schema replaces topology and retires old handles", () => {
+check("foreign registry Schema requires fresh installation", () => {
   const target = registry('<main <item "before"/>/>');
   const other = hsonLiveMap.fromLibraries({
     page: { document: '<main "other"/>', schema: Hson.schema`<type "document" tag "main" content "string">` },
   });
   const oldPage = target.lib("page");
-  target.restore(other.capture());
-  assert.deepEqual(target.capture(), other.capture());
-  assert.throws(() => oldPage.root());
-  assert.match(target.render("page"), /other/);
+  const before = target.capture();
+  assert.throws(() => target.restore(other.capture()), /current Library topology/);
+  assert.deepEqual(target.capture(), before);
+  assert.equal(target.lib("page"), oldPage);
+  const installed = install_libraries_snapshot(other.capture()).map;
+  assert.deepEqual(installed.capture(), other.capture());
+  assert.match(installed.render("page"), /other/);
 });
 
 check("portable capture excludes supplied runtime QUIDs", () => {

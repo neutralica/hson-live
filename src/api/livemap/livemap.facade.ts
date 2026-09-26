@@ -1,4 +1,4 @@
-import type { LiveMap, LiveMapInput, LiveMapDefinitions } from "../../types/livemap.types.js";
+import type { LiveMap, LiveMapInput, LiveMapDefinitions, LiveMapKnownDefinitions, LiveMapKnownNames } from "../../types/livemap.types.js";
 import { admit_portable_hson_node } from "../transform/utils/hson-utils/quid-ingress.js";
 import { make_livemap_libraries, make_livemap_mirror_from_portable_aggregate_internal } from "./livemap.libraries.js";
 import type { AuthorityProjectionSnapshot } from "../../types/locus.projection.types.js";
@@ -7,6 +7,7 @@ import { authority_projection_as_client_composition_internal, bind_client_projec
 export interface HsonLiveMapFacade {
   readonly create: typeof create;
   readonly fromLibraries: typeof fromLibraries;
+  readonly addLibraries: typeof addLibraries;
   readonly fromClientSnapshot: typeof fromClientSnapshot;
 }
 
@@ -16,13 +17,22 @@ function create(): LiveMap<{}> {
 }
 
 /** Establish one named local Library registry. */
-function fromLibraries<const TLibraries extends LiveMapDefinitions>(libraries: TLibraries): LiveMap<TLibraries> {
+function fromLibraries<const TLibraries extends LiveMapDefinitions>(libraries: TLibraries): LiveMap<LiveMapKnownDefinitions<TLibraries>> {
   for (const [name, input] of Object.entries(libraries)) {
     if ("document" in input && input.document !== undefined && typeof input.document !== "string") {
       admit_portable_hson_node(input.document, `LiveMap.fromLibraries(${name})`);
     }
   }
   return make_livemap_libraries(libraries);
+}
+
+/** Admit a batch on the original map and refine its known library topology. */
+function addLibraries<TMap extends LiveMap, const TDefinitions extends LiveMapDefinitions>(
+  map: TMap,
+  definitions: TDefinitions & (Extract<keyof LiveMapKnownDefinitions<TDefinitions>, LiveMapKnownNames<TMap>> extends never
+    ? unknown : never),
+): asserts map is TMap & LiveMap<LiveMapKnownDefinitions<TDefinitions>> {
+  map.lib.add(definitions);
 }
 
 /** Compose one client registry from visible authority state and client-owned declarations. */
@@ -45,5 +55,6 @@ function fromClientSnapshot(input: Readonly<{
 export const hsonLiveMap: HsonLiveMapFacade = Object.freeze({
   create,
   fromLibraries,
+  addLibraries,
   fromClientSnapshot,
 });
