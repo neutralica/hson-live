@@ -131,7 +131,10 @@ export type {
   LiveMapLibraryDefinition,
   LiveMapDefinitions,
   LiveMapLibraryAddOperation,
+  LiveMapLibrarySchemaUseOperation,
   LiveMapDynamicLibrary,
+  LiveMapKnownNames,
+  LiveMapWithLibrarySchema,
 } from "./types/livemap.types.js";
 
 export type { Mirror } from "./api/mirror/mirror.facade.js";

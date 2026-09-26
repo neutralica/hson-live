@@ -111,6 +111,21 @@ check("stock TypeScript retains value, mode, identity, refinements, recursion, d
   assert.equal(existsSync(join(project, "out")), false);
 });
 
+check("post-hoc attachment proof is compiler-view only", () => {
+  const generated = readFileSync(join(output, "sources/consumer.ts"), "utf8");
+  assert.match(generated, /__hson_assert_library_schema\(attachedDocument, "home", PageSchema\)/);
+  assert.match(generated, /attachedDocument\.lib\("home"\)\.schema\.use\(PageSchema\)/);
+  const current = verify_schema_compiler_project(join(project, "tsconfig.json"));
+  check_schema_project(join(project, "tsconfig.json"), current, true);
+  const runtime = readFileSync(join(project, "out/consumer.js"), "utf8");
+  assert.match(runtime, /schema\.use\(PageSchema\)/);
+  assert.doesNotMatch(runtime, /__hson_assert_library_schema/);
+  const declaration = readFileSync(join(project, "out/consumer.d.ts"), "utf8");
+  assert.doesNotMatch(declaration, /__hson_assert_library_schema|\.hson\//);
+  assert.match(declaration, /refinedHomeLibrary\(\): import\("hson-live"\)\.LiveMapDocumentLibrary</);
+  rmSync(join(project, "out"), { recursive: true, force: true });
+});
+
 check("evidence is exactly the existing generator output and runtime tags remain unchanged", () => {
   const info = manifest();
   const evidencePaths: string[] = [];

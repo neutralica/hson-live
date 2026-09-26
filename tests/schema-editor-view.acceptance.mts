@@ -197,6 +197,31 @@ check("a Schema at end of file needs neither a semicolon nor a trailing newline"
   test.service.dispose();
 });
 
+check("unsaved direct Schema attachment refines immediately and stale proofs are withdrawn", () => {
+  const declaration = 'export const Page = Hson.schema`<type "document" tag "main" content "string">`;';
+  const prefix = 'import { Hson, hsonLiveMap } from "hson-live";\n';
+  const map = 'const map = hsonLiveMap.fromLibraries({ home: { document: `<main "hello"/>` } });\n';
+  const exact = 'const exact: typeof Page = map.lib("home").schema.get();\nconst text: string = map.lib("home").at([0]).snap();\n';
+  const attached = `${prefix}${declaration}\n${map}map.lib("home").schema.use(Page);\n${exact}`;
+  const broad = `${prefix}${declaration}\n${map}${exact}`;
+  const test = project("attachment-live", { "index.ts": broad });
+  assert.ok(test.errors("index.ts").some(error => error.code === 2322), messages(test.errors("index.ts")));
+
+  test.edit("index.ts", attached);
+  assert.equal(test.errors("index.ts").length, 0, messages(test.errors("index.ts")));
+
+  test.edit("index.ts", broad);
+  assert.ok(test.errors("index.ts").some(error => error.code === 2322), messages(test.errors("index.ts")));
+
+  const dynamic = `${prefix}${declaration}\n${map}declare const name: string;\nmap.lib(name).schema.use(Page);\n${exact}`;
+  test.edit("index.ts", dynamic);
+  assert.ok(test.errors("index.ts").some(error => error.code === 2322), messages(test.errors("index.ts")));
+
+  test.edit("index.ts", attached.replace('content "string"', 'content <'));
+  assert.ok(test.errors("index.ts").length > 0, "Invalid unsaved Schema text must withdraw attachment evidence.");
+  test.service.dispose();
+});
+
 check("Phase 1 precision fixture passes entirely through the in-memory view", () => {
   const directory = join(temporary, "precision"); cpSync(join(root, "tests/fixtures/hson-schema-compiler-project"), directory, { recursive: true });
   const files: Record<string, string> = {};

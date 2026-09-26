@@ -41,6 +41,19 @@ Paths are portable coordinates: data paths contain object keys and array indexes
 
 Data roots may be objects, arrays, strings, numbers, booleans, or null. For a string root, pass JSON source text such as `data: '"hello"'`. `ANY_DATA` and `ANY_DOCUMENT` are reusable broad Schemas for the complete valid data and document families.
 
+On an unmanaged local map, a library admitted with an implicit or explicit
+family-top Schema can later be tightened once:
+
+```ts
+map.lib("page").schema.use(PageSchema);
+```
+
+The current complete root validates before the contract changes. A successful
+attachment is one map revision and portable commit; canonical equality is an
+unchanged no-op. The installed specific Schema is fixed thereafter. Managed
+Locus authorities and projected Echo maps reject this direct operation in the
+current local-only phase.
+
 ```ts
 const StateSchema = Hson.schema`<type "data" content <count "number">>`;
 const PageSchema = Hson.schema`<type "document" tag "main" content "empty">`;

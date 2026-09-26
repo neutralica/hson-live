@@ -20,6 +20,14 @@ Each entry has exactly one ingress field:
 
 `schema` may be omitted. A data library then uses `ANY_DATA`; a document library uses `ANY_DOCUMENT`. Initial material is validated during construction or runtime admission. An explicit Schema retains its generated type evidence, so `SchemaType<typeof ColorsSchema>` supplies the selected data and handle types; callers do not pass a duplicate type parameter.
 
+An unmanaged local family-top library may be tightened later with
+`map.lib("name").schema.use(Schema)`. The complete existing root is validated
+before installation. One real attachment advances the map once and emits one
+portable `library-schema-use` operation; the same canonical Schema is a no-op,
+and a different specific contract cannot replace the installed contract.
+Direct calls are deliberately fenced on Locus-managed and projected client
+maps until hosted authority support is added.
+
 `map.lib(name)` preserves precise typing for construction-time names. Runtime-added names use a dynamic data/document facade and are checked against the living registry. Its document CSS capability is guarded by the selected library's actual mode. Other kind-specific operations require a `mode` check. A selected data Library has `root()`, `snap()`,
 `at(path)`, and `schema.get()`; a selected document Library has document-wide
 observation/identity operations plus logical `at(path)` locations. No second

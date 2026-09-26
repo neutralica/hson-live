@@ -300,13 +300,13 @@ check("queued structural observations consume each accepted document root", () =
   binding.dispose();
 });
 
-check("a throwing document watch does not prevent Reflection or later observers", () => {
+check("a throwing document watch does not misreport acceptance or prevent later delivery", () => {
   const map = element(`<main/>`);
   const binding = hsonMirror(map);
   let later = 0;
   map.at([]).watch(() => { throw new Error("watch failure"); });
   map.commits.observe(() => { later += 1; });
-  assert.throws(() => map.document.attrs.set(path(), "title", "next"), /watch failure/);
+  assert.equal(map.document.attrs.set(path(), "title", "next").changed, true);
   assert.equal(map.rev, 1);
   assert.equal(binding.sourceRevision, 1);
   assert.equal(authoredTree(binding).attrs.get("title"), "next");
@@ -314,13 +314,13 @@ check("a throwing document watch does not prevent Reflection or later observers"
   binding.dispose();
 });
 
-check("an observer throwing before Reflection is isolated from Reflection and later observers", () => {
+check("an observer throwing before Reflection cannot escape an accepted commit", () => {
   const map = element(`<main/>`);
   const off = map.commits.observe(() => { throw new Error("early observer failure"); });
   const binding = hsonMirror(map);
   let later = 0;
   map.commits.observe(() => { later += 1; });
-  assert.throws(() => map.document.attrs.set(path(), "one", true), /early observer failure/);
+  assert.equal(map.document.attrs.set(path(), "one", true).changed, true);
   assert.equal(map.rev, 1);
   assert.equal(binding.status, "active");
   assert.equal(binding.sourceRevision, 1);
@@ -335,11 +335,11 @@ check("an observer throwing before Reflection is isolated from Reflection and la
   binding.dispose();
 });
 
-check("an observer throwing after Reflection leaves Reflection current", () => {
+check("an observer throwing after Reflection leaves accepted Reflection current", () => {
   const map = element(`<main/>`);
   const binding = hsonMirror(map);
   map.commits.observe(() => { throw new Error("late observer failure"); });
-  assert.throws(() => map.document.attrs.set(path(), "title", "next"), /late observer failure/);
+  assert.equal(map.document.attrs.set(path(), "title", "next").changed, true);
   assert.equal(map.rev, 1);
   assert.equal(binding.status, "active");
   assert.equal(binding.sourceRevision, 1);
@@ -395,27 +395,27 @@ check("a fresh binding reconstructs current canonical state after failed binding
   fresh.dispose();
 });
 
-check("multiple throwing watches all execute and the first watch error escapes", () => {
+check("multiple throwing watches all execute without escaping acceptance", () => {
   const map = element(`<main/>`);
   const order: string[] = [];
   map.at([]).watch(() => { order.push("watch-1"); throw new Error("first watch"); });
   map.at([]).watch(() => { order.push("watch-2"); throw new Error("second watch"); });
   map.commits.observe(() => order.push("observer"));
-  assert.throws(() => map.document.attrs.set(path(), "title", "next"), /first watch/);
+  assert.equal(map.document.attrs.set(path(), "title", "next").changed, true);
   assert.deepEqual(order, ["watch-1", "watch-2", "observer"]);
 });
 
-check("multiple ordinary observer failures are isolated and the first escapes", () => {
+check("multiple ordinary observer failures are isolated from the caller", () => {
   const map = element(`<main/>`);
   const order: string[] = [];
   map.commits.observe(() => { order.push("observer-1"); throw new Error("first observer"); });
   map.commits.observe(() => { order.push("observer-2"); throw new Error("second observer"); });
-  assert.throws(() => map.document.attrs.set(path(), "title", "next"), /first observer/);
+  assert.equal(map.document.attrs.set(path(), "title", "next").changed, true);
   assert.deepEqual(order, ["observer-1", "observer-2"]);
   assert.equal(map.rev, 1);
 });
 
-check("a retained outer observer error escapes only after queued publication drains", () => {
+check("a retained outer observer error stays isolated after queued publication drains", () => {
   const map = element(`<main/>`);
   const order: string[] = [];
   let nested = false;
@@ -432,7 +432,7 @@ check("a retained outer observer error escapes only after queued publication dra
   map.commits.observe((observation) => {
     if (observation.kind === "commit") order.push(`after:${observation.commit.rev}`);
   });
-  assert.throws(() => map.document.attrs.set(path(), "outer", true), /outer observer failure/);
+  assert.equal(map.document.attrs.set(path(), "outer", true).changed, true);
   assert.deepEqual(order, ["before:1", "after:1", "before:2", "after:2"]);
   if (binding.status === "failed") throw binding.failure;
   assert.equal(binding.status, "active");
@@ -442,11 +442,11 @@ check("a retained outer observer error escapes only after queued publication dra
   binding.dispose();
 });
 
-check("first publication failure retains precedence over a later observer failure", () => {
+check("watch and observer failures remain isolated after acceptance", () => {
   const map = element(`<main/>`);
   map.at([]).watch(() => { throw new Error("watch failure"); });
   map.commits.observe(() => { throw new Error("observer failure"); });
-  assert.throws(() => map.document.attrs.set(path(), "title", "next"), /watch failure/);
+  assert.equal(map.document.attrs.set(path(), "title", "next").changed, true);
   assert.equal(map.rev, 1);
 });
 

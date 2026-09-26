@@ -1,6 +1,6 @@
 import { dirname, relative, resolve, sep } from "node:path";
 import ts from "typescript";
-import { apply_source_edits, type SchemaSourceEdit } from "./source-transformation.js";
+import { apply_source_edits, library_schema_attachment_plan, type PreciseSchemaFact, type SchemaSourceEdit } from "./source-transformation.js";
 
 type EvidenceOrigin = Readonly<{ source: string; name: string; evidence: string }>;
 
@@ -9,11 +9,17 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
   if (origins.length === 0) return new Map();
   const checker = program.getTypeChecker();
   const names = new Map<ts.Type, { evidence: string; field?: "value" | "identity" }>();
+  const preciseSchemas: PreciseSchemaFact[] = [];
   for (const origin of origins) {
     const source = program.getSourceFile(origin.source);
     if (source === undefined) throw new Error(`Missing declaration producer: ${origin.source}`);
     for (const statement of source.statements) if (ts.isVariableStatement(statement)) for (const declaration of statement.declarationList.declarations) {
       if (!ts.isIdentifier(declaration.name) || declaration.name.text !== origin.name || declaration.type === undefined || !ts.isTypeReferenceNode(declaration.type)) continue;
+      const mode = declaration.type.typeArguments?.[1];
+      if (mode !== undefined && ts.isLiteralTypeNode(mode) && ts.isStringLiteral(mode.literal)
+        && (mode.literal.text === "data" || mode.literal.text === "document")) {
+        preciseSchemas.push({ declaration, mode: mode.literal.text });
+      }
       names.set(checker.getTypeAtLocation(declaration), { evidence: origin.evidence });
       const value = declaration.type.typeArguments?.[0], identity = declaration.type.typeArguments?.[2];
       if (value !== undefined) {
@@ -28,6 +34,7 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
   for (const source of program.getSourceFiles()) {
     if (source.isDeclarationFile || source.fileName.includes(".hson-schema.generated.") || program.isSourceFileFromExternalLibrary(source)) continue;
     const edits: SchemaSourceEdit[] = [];
+    const attachments = library_schema_attachment_plan(source, checker, preciseSchemas).attachments;
     const module = checker.getSymbolAtLocation(source);
     const exported = new Set<ts.Declaration>();
     if (module !== undefined) for (let symbol of checker.getExportsOfModule(module)) {
@@ -50,7 +57,12 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
           : field(origin.field) };
       }
       const fallback = (): { node: ts.TypeNode; changed: boolean } => {
-        const node = checker.typeToTypeNode(type, context, ts.NodeBuilderFlags.NoTruncation | ts.NodeBuilderFlags.UseAliasDefinedOutsideCurrentScope);
+        let node: ts.TypeNode | undefined;
+        try {
+          node = checker.typeToTypeNode(type, context, ts.NodeBuilderFlags.NoTruncation | ts.NodeBuilderFlags.UseAliasDefinedOutsideCurrentScope);
+        } catch (cause) {
+          throw new Error(`Cannot name inferred declaration type near ${context.getText(source)} in ${source.fileName}.`, { cause });
+        }
         if (node === undefined) throw new Error(`Cannot name inferred declaration type in ${source.fileName}.`);
         return { node, changed: false };
       };
@@ -122,12 +134,57 @@ export function schema_declaration_views(program: ts.Program, origins: readonly 
       const rendered = render(type, node);
       if (rendered.changed) edits.push({ start: position, end: position, text: `: ${printer.printNode(ts.EmitHint.Unspecified, rendered.node, source)}` });
     };
+    const refinedLibraryReturn = (node: ts.FunctionDeclaration | ts.MethodDeclaration | ts.GetAccessorDeclaration): string | undefined => {
+      const body = node.body;
+      if (body === undefined || !ts.isBlock(body)) return undefined;
+      const returns = body.statements.filter(ts.isReturnStatement);
+      if (returns.length !== 1) return undefined;
+      const returned = returns[0];
+      const expression = returned?.expression;
+      if (returned === undefined || expression === undefined || !ts.isCallExpression(expression)
+        || !ts.isPropertyAccessExpression(expression.expression) || expression.expression.name.text !== "lib"
+        || !ts.isIdentifier(expression.expression.expression) || expression.arguments.length !== 1
+        || !ts.isStringLiteral(expression.arguments[0])) return undefined;
+      const map = expression.expression.expression;
+      const library = expression.arguments[0];
+      const attachment = attachments.find(fact => fact.statement.parent === body && fact.statement.getEnd() < returned.getStart(source)
+        && checker.getSymbolAtLocation(fact.map) === checker.getSymbolAtLocation(map)
+        && fact.library.text === library.text);
+      const proof = body.statements.find((statement): statement is ts.ExpressionStatement => {
+        if (!ts.isExpressionStatement(statement) || statement.getEnd() >= returned.getStart(source)
+          || !ts.isCallExpression(statement.expression) || !ts.isIdentifier(statement.expression.expression)
+          || !statement.expression.expression.text.startsWith("__hson_assert_library_schema")
+          || statement.expression.arguments.length !== 3) return false;
+        const [provedMap, provedLibrary, provedSchema] = statement.expression.arguments;
+        return provedMap !== undefined && ts.isIdentifier(provedMap)
+          && checker.getSymbolAtLocation(provedMap) === checker.getSymbolAtLocation(map)
+          && provedLibrary !== undefined && ts.isStringLiteral(provedLibrary) && provedLibrary.text === library.text
+          && provedSchema !== undefined && ts.isIdentifier(provedSchema);
+      });
+      const schemaNode = attachment?.schema ?? (proof !== undefined && ts.isCallExpression(proof.expression)
+        ? proof.expression.arguments[2] : undefined);
+      if (schemaNode === undefined || !ts.isIdentifier(schemaNode)) return undefined;
+      const modeProperty = checker.getPropertyOfType(checker.getTypeAtLocation(expression), "mode");
+      const mode = attachment?.mode ?? (modeProperty === undefined ? undefined
+        : checker.getTypeOfSymbolAtLocation(modeProperty, expression));
+      const modeName = typeof mode === "string" ? mode
+        : mode !== undefined && (mode.flags & ts.TypeFlags.StringLiteral) !== 0
+          ? (mode as ts.StringLiteralType).value : undefined;
+      if (modeName !== "document" && modeName !== "data") return undefined;
+      const facade = modeName === "document" ? "LiveMapDocumentLibrary" : "LiveMapDataLibrary";
+      const schema = schemaNode.getText(source);
+      return `import("hson-live").${facade}<import("hson-live").SchemaType<typeof ${schema}>, ${JSON.stringify(library.text)}, typeof ${schema}>`;
+    };
     const visit = (node: ts.Node): void => {
       if ((ts.isVariableDeclaration(node) || ts.isPropertyDeclaration(node)) && node.type === undefined && node.initializer !== undefined && publicDeclaration(node)) annotate(checker.getTypeAtLocation(node), node, ts.isPropertyDeclaration(node) ? (node.questionToken ?? node.exclamationToken ?? node.name).getEnd() : node.name.getEnd());
       if ((ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isGetAccessorDeclaration(node)) && node.body !== undefined && node.type === undefined && publicDeclaration(node)) {
         const signature = checker.getSignatureFromDeclaration(node);
         const closing = node.getChildren(source).find(child => child.kind === ts.SyntaxKind.CloseParenToken);
-        if (signature !== undefined && closing !== undefined) annotate(checker.getReturnTypeOfSignature(signature), node, closing.getEnd());
+        if (signature !== undefined && closing !== undefined) {
+          const targeted = refinedLibraryReturn(node);
+          if (targeted !== undefined) edits.push({ start: closing.getEnd(), end: closing.getEnd(), text: `: ${targeted}` });
+          else annotate(checker.getReturnTypeOfSignature(signature), node, closing.getEnd());
+        }
       }
       ts.forEachChild(node, visit);
     };

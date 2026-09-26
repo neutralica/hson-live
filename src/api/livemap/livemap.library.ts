@@ -61,6 +61,11 @@ export type LiveMapAggregateCommit = Readonly<{
   css?: Readonly<{ library: LiveMapLibraryIdentity; operation: LiveMapCssOp }>;
   /** The shared portable topology effect for local and hosted admission. */
   topology?: import("../../types/livemap.types.js").LiveMapLibraryAddOperation;
+  /** One local-only portable Schema contract tightening. */
+  schemaUse?: Readonly<{
+    library: LiveMapLibraryIdentity;
+    operation: import("../../types/livemap.types.js").LiveMapLibrarySchemaUseOperation["operation"];
+  }>;
   /** Exact named replay envelope when this aggregate has a configured hosted registry. @internal */
   hosted?: HostedAggregateCommit;
 }>;

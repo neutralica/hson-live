@@ -92,6 +92,14 @@ export type InternalLiveMapAggregateAuthority = Readonly<{
     transition: PreparedLiveMapAuthorityTransition;
     identities: readonly LiveMapLibraryIdentity[];
   }>;
+  /** Tighten one unmanaged local Library from its family-top Schema. @internal */
+  useLibrarySchema: (
+    library: LiveMapLibraryIdentity,
+    schema: HsonSchema,
+    expectedPreviousSchemaDigest?: string,
+  ) => LiveMapAggregateCommit;
+  /** Current governing Schema object for one selected Library. @internal */
+  librarySchema: (library: LiveMapLibraryIdentity) => HsonSchema;
   hostedRegistry: () => HostedRegistry;
   /** Read the hosted identity and revision without capturing roots. @internal */
   hostedPosition: () => Readonly<{ authority: import("./livemap.hosted.js").HostedAuthorityFence; revision: number; registryDigest: string }>;

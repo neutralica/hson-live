@@ -1256,6 +1256,16 @@ export type LiveMapLibraryAddOperation = Readonly<{
   }>;
 }>;
 
+/** Portable tightening of one existing Library's governing Schema contract. */
+export type LiveMapLibrarySchemaUseOperation<TLibrary extends string = string> = Readonly<{
+  library: TLibrary;
+  operation: Readonly<{
+    kind: "library-schema-use";
+    previousSchemaDigest: string;
+    schema: import("../api/transform/transform.types.js").HsonSchemaData;
+  }>;
+}>;
+
 /**
  * A truthful local multi-library commit. `operations` is one ordered stream;
  * it may contain one or several library names and always advances one map-wide
@@ -1270,7 +1280,7 @@ export type LiveMapCommit<
   prevRev: number;
   rev: number;
   operations: readonly ([LiveMapAnyOp] extends [TOperation]
-    ? LiveMapLibraryOperation<TLibrary, TOperation> | LiveMapLibraryAddOperation | Readonly<{ library: TLibrary; operation: LiveMapCssOp }>
+    ? LiveMapLibraryOperation<TLibrary, TOperation> | LiveMapLibraryAddOperation | LiveMapLibrarySchemaUseOperation<TLibrary> | Readonly<{ library: TLibrary; operation: LiveMapCssOp }>
     : LiveMapLibraryOperation<TLibrary, TOperation>)[];
 }>;
 
@@ -1349,8 +1359,19 @@ export type LiveMapDataLibrary<
   at: <const TPath extends LivePath>(
     path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
   ) => LiveMapLibraryPathHandle<LiveMapPathValue<TValue, TPath>, TLibrary>;
-  schema: Readonly<{ get: () => TSchema }>;
+  schema: Readonly<{
+    get: () => LiveMapCurrentDataSchema<TSchema>;
+    use: LiveMapSchemaUse<LiveMapDataSchemaUse<TSchema>, TLibrary>;
+  }>;
 }>;
+
+type LiveMapCurrentDataSchema<TSchema extends HsonSchema> =
+  JsonValue extends SchemaType<TSchema> ? HsonSchema<unknown, "data"> : TSchema;
+type LiveMapDataSchemaUse<TSchema extends HsonSchema> =
+  JsonValue extends SchemaType<TSchema> ? HsonSchema<unknown, "data"> : TSchema;
+type LiveMapSchemaUse<TSchema extends HsonSchema, TLibrary extends string> = {
+  bivarianceHack(schema: TSchema): LiveMapCommit<TLibrary>;
+}["bivarianceHack"];
 
 type LiveMapLibraryDocumentCommit<
   TLibrary extends string,
@@ -1546,8 +1567,16 @@ export type LiveMapDocumentLibrary<
   }>;
   /** Global-revision selected-document observations used by one Mirror binding. */
   commits: LiveMapCommitObserverApi;
-  schema: Readonly<{ get: () => TSchema }>;
+  schema: Readonly<{
+    get: () => LiveMapCurrentDocumentSchema<TSchema>;
+    use: LiveMapSchemaUse<LiveMapDocumentSchemaUse<TSchema>, TLibrary>;
+  }>;
 }>;
+
+type LiveMapCurrentDocumentSchema<TSchema extends HsonSchema> =
+  HsonNode extends SchemaType<TSchema> ? HsonSchema<unknown, "document"> : TSchema;
+type LiveMapDocumentSchemaUse<TSchema extends HsonSchema> =
+  HsonNode extends SchemaType<TSchema> ? HsonSchema<unknown, "document"> : TSchema;
 
 type LiveMapLibraryFacadeForInput<TInput, TLibrary extends string> =
   TInput extends LiveMapDataLibraryInput<infer TSchema>
@@ -1567,9 +1596,22 @@ type LiveMapLibraryFacadeForInput<TInput, TLibrary extends string> =
 /** Document-root capabilities dispatched and guarded by the selected runtime mode. */
 type LiveMapDynamicDocumentCapabilities = Pick<LiveMapDocumentLibrary, "css">;
 
+type LiveMapDynamicSchemaFacade<TLibrary> = TLibrary extends unknown
+  ? Omit<TLibrary, "schema"> & Readonly<{
+    schema: Readonly<{
+      get: () => TLibrary extends Readonly<{ mode: DataLiveMapMode }>
+        ? HsonSchema<unknown, "data">
+        : TLibrary extends Readonly<{ mode: LiveMapDocumentMode }>
+          ? HsonSchema<unknown, "document">
+          : HsonSchema;
+      use: (schema: HsonSchema) => LiveMapCommit;
+    }>;
+  }>
+  : never;
+
 /** Schema-neutral selection for names whose mode is not statically established. */
 export type LiveMapDynamicLibrary =
-  (LiveMapDataLibrary | LiveMapDocumentLibrary) & LiveMapDynamicDocumentCapabilities;
+  LiveMapDynamicSchemaFacade<LiveMapDataLibrary | LiveMapDocumentLibrary> & LiveMapDynamicDocumentCapabilities;
 
 /** The single global observer surface for a local multi-library LiveMap. */
 export type LiveMapRegistryCommitObserverApi<TLibrary extends string = string> = Readonly<{
@@ -1577,22 +1619,58 @@ export type LiveMapRegistryCommitObserverApi<TLibrary extends string = string> =
 }>;
 
 declare const liveMapLibrariesType: unique symbol;
+declare const liveMapLibrarySchemaRefinementsType: unique symbol;
 
 type LiveMapReceiverDefinitions<TMap> = TMap extends Readonly<{
   [liveMapLibrariesType]: infer TLibraries extends LiveMapDefinitions;
 }> ? TLibraries : never;
 
+type LiveMapDefinitionWithSchema<TInput, TSchema extends HsonSchema> =
+  TInput extends Readonly<{ data: unknown }>
+    ? Readonly<Omit<TInput, "schema"> & { schema: Extract<TSchema, HsonSchema<unknown, "data">> }>
+    : TInput extends Readonly<{ document: unknown }>
+      ? Readonly<Omit<TInput, "schema"> & { schema: Extract<TSchema, HsonSchema<unknown, "document">> }>
+      : never;
+
+type LiveMapSchemaRefinements<TMap> = TMap extends Readonly<{
+  [liveMapLibrarySchemaRefinementsType]: infer TRefinements;
+}> ? TRefinements : Readonly<Record<never, never>>;
+
+type LiveMapEffectiveDefinitions<TMap> = {
+  readonly [TName in keyof LiveMapReceiverDefinitions<TMap>]: TName extends keyof LiveMapSchemaRefinements<TMap>
+    ? LiveMapDefinitionWithSchema<
+      LiveMapReceiverDefinitions<TMap>[TName],
+      Extract<LiveMapSchemaRefinements<TMap>[TName], HsonSchema>
+    >
+    : LiveMapReceiverDefinitions<TMap>[TName];
+};
+
+/** Compiler-view result after one direct, successful Library Schema tightening. */
+export type LiveMapWithLibrarySchema<
+  TMap extends object,
+  TLibrary extends LiveMapKnownNames<TMap>,
+  TSchema extends HsonSchema,
+> = TMap & Readonly<{
+  [liveMapLibrarySchemaRefinementsType]: LiveMapSchemaRefinements<TMap> & Readonly<Record<TLibrary, TSchema>>;
+}>;
+
 /** Static topology already established on a LiveMap binding. */
-export type LiveMapKnownNames<TMap extends LiveMap> = Extract<
+export type LiveMapKnownNames<TMap extends object> = Extract<
   keyof LiveMapKnownDefinitions<LiveMapReceiverDefinitions<TMap>>, string
 >;
 
-type LiveMapLibrarySelector<TMap> = {
-  <TLibrary extends Extract<keyof LiveMapKnownDefinitions<LiveMapReceiverDefinitions<TMap>>, string>>(
-    name: TLibrary,
-  ): LiveMapLibraryFacadeForInput<LiveMapKnownDefinitions<LiveMapReceiverDefinitions<TMap>>[TLibrary], TLibrary>;
-  (name: string): LiveMapDynamicLibrary;
-};
+type LiveMapEffectiveKnownNames<TMap> = Extract<
+  keyof LiveMapKnownDefinitions<LiveMapEffectiveDefinitions<TMap>>, string
+>;
+
+type LiveMapLibrarySelector<TMap> = [LiveMapEffectiveKnownNames<TMap>] extends [never]
+  ? (name: string) => LiveMapDynamicLibrary
+  : {
+      <TLibrary extends LiveMapEffectiveKnownNames<TMap>>(
+        name: TLibrary,
+      ): LiveMapLibraryFacadeForInput<LiveMapKnownDefinitions<LiveMapEffectiveDefinitions<TMap>>[TLibrary], TLibrary>;
+      (name: string): LiveMapDynamicLibrary;
+    };
 
 /**
  * A collection of canonical Libraries with a local topology transition.

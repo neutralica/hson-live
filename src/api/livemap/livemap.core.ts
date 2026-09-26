@@ -26,7 +26,7 @@ import type { HsonNode, JsonValue } from "../../core/types.js";
 import { rewrite_interaction_subjects, validate_interaction_subjects } from "../../internal/interaction-path-maintenance.js";
 import { INTERACTION_RESERVED_LIBRARY_KEY } from "../../internal/interaction-storage.js";
 import { validate_hson_schema_graph } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
-import { HsonSchema as HsonSchemaHandle, compiled_hson_schema_of } from "../schema/hson-schema.js";
+import { ANY_DATA, ANY_DOCUMENT, HsonSchema as HsonSchemaHandle, compiled_hson_schema_of } from "../schema/hson-schema.js";
 import type { HostedLiveMapSnapshot, LiveMapCssOp, LiveMapDataOp, LiveMapDocumentPath, LiveMapGraphCommit, LiveMapGraphOp, LiveMapSnapshot, LivePath } from "../../types/livemap.types.js";
 import { apply_portable_document_css_op, canonical_portable_document_css_op } from "../../internal/css/portable-document-operations.js";
 import { decode_portable_document_stylesheet, empty_portable_document_stylesheet, encode_portable_document_stylesheet, portable_document_stylesheet_equal } from "../../internal/css/portable-document-stylesheet.js";
@@ -1499,8 +1499,93 @@ function make_livemap_registry_engine(
       kind: "aggregate", changed: false, prevRev: mapRevision, rev: mapRevision, operations: Object.freeze([]),
     });
     const prepared = prepare_add_libraries(definitions);
-    return transitionController.acceptAuthority(prepared.transition, "propagate", () =>
+    return transitionController.acceptAuthority(prepared.transition, "isolate", () =>
       afterInstall?.(prepared.identities)).commit;
+  }
+
+  function use_library_schema(
+    libraryIdentity: LiveMapLibraryIdentity,
+    schema: HsonSchema,
+    expectedPreviousSchemaDigest?: string,
+  ): LiveMapAggregateCommit {
+    transitionController.assertPublicMutationAllowed();
+    if (clientComposition !== undefined) {
+      throw new LiveMapTransitionError(
+        "LIVEMAP_MANAGED_MUTATION_REJECTED",
+        "Projected LiveMap Library Schema attachment requires Echo authority support.",
+      );
+    }
+    if (!(schema instanceof HsonSchemaHandle)) throw new TypeError("LiveMap Library Schema attachment requires a genuine HsonSchema.");
+    const state = require_library(libraryIdentity);
+    const family = state.mode === "document" ? "document" as const : "data" as const;
+    must_hson_schema_family(schema, family);
+    const current = state.hsonSchema;
+    if (current === undefined) throw new Error("LiveMap Library governing Schema is unavailable.");
+    const hosted = require_hosted_state();
+    const currentBinding = hosted.byIdentity.get(libraryIdentity);
+    if (currentBinding === undefined || currentBinding.scope !== undefined) {
+      throw new Error("LiveMap Library registry binding is unavailable.");
+    }
+    const currentEntry = hosted.registry.libraries.find((entry) => entry.name === currentBinding.name);
+    if (currentEntry === undefined) throw new Error("LiveMap Library registry contract is unavailable.");
+    if (expectedPreviousSchemaDigest !== undefined && expectedPreviousSchemaDigest !== currentEntry.schemaDigest) {
+      throw new Error("LiveMap Library Schema replay prior-contract digest is incompatible.");
+    }
+    const currentSource = current.toHson();
+    const requestedSource = schema.toHson();
+    const prevRev = mapRevision;
+    if (currentSource === requestedSource) {
+      return Object.freeze({ kind: "aggregate", changed: false, prevRev, rev: prevRev,
+        operations: Object.freeze([]) });
+    }
+    const familyTop = family === "document" ? ANY_DOCUMENT.toHson() : ANY_DATA.toHson();
+    if (currentSource !== familyTop) {
+      throw new Error("LiveMap Library governing Schema is already fixed to a different specific contract.");
+    }
+    must_hson_schema_root(schema, state.root);
+
+    const nextBindings = hosted.registry.libraries.map((entry): HostedRegistryBinding => {
+      const binding = hosted.byName.get(entry.name);
+      if (binding === undefined) throw new Error("LiveMap hosted registry binding is incomplete.");
+      return binding.identity === libraryIdentity ? Object.freeze({ ...binding, schema }) : binding;
+    });
+    const nextRegistry = make_hosted_registry(nextBindings);
+    const nextByIdentity = new Map(nextBindings.map((binding) => [binding.identity, binding]));
+    const nextByName = new Map(nextBindings.map((binding) => [binding.name, binding]));
+    const operation = Object.freeze({
+      kind: "library-schema-use" as const,
+      previousSchemaDigest: currentEntry.schemaDigest,
+      schema: requestedSource,
+    });
+    const commit: LiveMapAggregateCommit = Object.freeze({
+      kind: "aggregate", changed: true, prevRev, rev: prevRev + 1,
+      operations: Object.freeze([]),
+      schemaUse: Object.freeze({ library: libraryIdentity, operation }),
+    });
+    const prepared = transitionController.prepareAuthority({
+      commit,
+      libraryModes: Object.freeze([state.mode]),
+      baseStillCurrent: () => mapRevision === prevRev && state.hsonSchema === current
+        && hostedRegistry === hosted.registry,
+      install: () => {
+        state.hsonSchema = schema;
+        hostedRegistry = nextRegistry;
+        hostedBindingsByIdentity = nextByIdentity;
+        hostedBindingsByName = nextByName;
+        mapRevision = commit.rev;
+      },
+      notify: (accepted) => enqueuePublication(() => {
+        aggregateAcceptedTransitions += 1;
+        aggregatePublications += 1;
+        let firstFailure: unknown;
+        for (const observer of [...aggregateObservers]) {
+          try { observer(accepted); } catch (error) { firstFailure ??= error; }
+        }
+        publishAuthorityPosition(accepted.rev);
+        if (firstFailure !== undefined) throw firstFailure;
+      }),
+    });
+    return transitionController.acceptAuthority(prepared).commit;
   }
 
   function stylesheet(libraryIdentity: LiveMapLibraryIdentity) {
@@ -2241,7 +2326,7 @@ function make_livemap_registry_engine(
       return Object.freeze({ target, kind: "graph", operation: entry.graph });
     });
     const transition = prepare_authority_transition(writes);
-    if (composition !== undefined) return transitionController.acceptAuthority(transition, "propagate", () => {
+    if (composition !== undefined) return transitionController.acceptAuthority(transition, "isolate", () => {
       clientComposition = Object.freeze({ ...composition, revision: input.rev });
     }).commit;
     const local = transition.commit.hosted;
@@ -2376,6 +2461,12 @@ function make_livemap_registry_engine(
       owner,
       () => prepare_add_libraries(definitions),
     ),
+    useLibrarySchema: use_library_schema,
+    librarySchema: (library) => {
+      const schema = require_library(library).hsonSchema;
+      if (schema === undefined) throw new Error("LiveMap Library governing Schema is unavailable.");
+      return schema;
+    },
     hostedRegistry: () => require_hosted_state().registry,
     hostedPosition: () => {
       const hosted = require_hosted_state();

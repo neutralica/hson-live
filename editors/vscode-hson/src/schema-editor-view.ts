@@ -2,7 +2,8 @@ import type ts from "typescript";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
 import { generate_hson_schema_evidence } from "../../../src/internal/hson-schema/generated-evidence.js";
-import { schema_association_edits, schema_source_plan, unwrap_tagged_schema, type SchemaSourceEdit } from "../../../src/internal/hson-schema/source-transformation.js";
+import { library_schema_attachment_plan, schema_association_edits, schema_source_plan, unwrap_tagged_schema, type PreciseSchemaFact, type SchemaSourceEdit } from "../../../src/internal/hson-schema/source-transformation.js";
+import { compile_hson_schema } from "../../../src/internal/hson-schema/compiler.js";
 import { SchemaSourceMapping } from "../../../src/internal/hson-schema/source-mapping.js";
 import { is_official_hson_package_binding } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 
@@ -58,6 +59,27 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
     const nextDeclarations = new Map<string, string>();
     const nextLabels = new Map<string, string>();
     const checker = program.getTypeChecker();
+    const schemaFacts: PreciseSchemaFact[] = [];
+    for (const candidate of program.getSourceFiles()) {
+      if (candidate.isDeclarationFile || program.isSourceFileFromExternalLibrary(candidate)
+        || !/\.[cm]?tsx?$/.test(candidate.fileName) || candidate.fileName.includes(".hson-schema.generated.")) continue;
+      for (const statement of candidate.statements) {
+        if (!typescript.isVariableStatement(statement)
+          || (statement.declarationList.flags & typescript.NodeFlags.Const) === 0
+          || statement.declarationList.declarations.length !== 1) continue;
+        const declaration = statement.declarationList.declarations[0];
+        if (declaration === undefined || !typescript.isIdentifier(declaration.name) || declaration.initializer === undefined) continue;
+        const tag = unwrap_tagged_schema(declaration.initializer);
+        if (tag === undefined || !typescript.isPropertyAccessExpression(tag.tag) || tag.tag.name.text !== "schema"
+          || !typescript.isIdentifier(tag.tag.expression) || !is_official_hson_package_binding(tag.tag.expression, "Hson", checker, true)
+          || !typescript.isNoSubstitutionTemplateLiteral(tag.template) || tag.template.isUnterminated) continue;
+        const compiled = compile_hson_schema(tag.template.getText(candidate).slice(1, -1));
+        if (!compiled.ok) continue;
+        const mode = compiled.value.semantic.kind === "document" || compiled.value.semantic.kind === "document-element"
+          ? "document" as const : "data" as const;
+        schemaFacts.push(Object.freeze({ declaration, mode }));
+      }
+    }
     for (const source of program.getSourceFiles()) {
       if (source.isDeclarationFile || program.isSourceFileFromExternalLibrary(source)
         || !/\.[cm]?tsx?$/.test(source.fileName) || source.fileName.includes(".hson-schema.generated.")) continue;
@@ -92,12 +114,14 @@ export function install_live_schema_view(typescript: typeof ts, host: ts.Languag
           if (!valid && legacy) broad.push(...schema_association_edits([{ declaration, text: 'import("hson-live").HsonSchema' }]));
         }
       }
-      if (schemas.length === 0 && broad.length === 0) continue;
+      const attachments = library_schema_attachment_plan(source, checker, schemaFacts);
+      if (schemas.length === 0 && broad.length === 0 && attachments.edits.length === 0) continue;
       const plan = schema_source_plan(source, schemas);
-      const edits = [...plan.edits, ...broad];
+      const edits = [...plan.edits, ...broad, ...attachments.edits];
       const mapping = new SchemaSourceMapping(source.text, edits);
       const key = canonical(source.fileName);
-      nextSources.set(key, { ...snapshot(mapping.text, sources.get(key)), mapping, source, generatedNames: plan.generatedNames });
+      nextSources.set(key, { ...snapshot(mapping.text, sources.get(key)), mapping, source,
+        generatedNames: [...plan.generatedNames, ...attachments.generatedNames] });
     }
     // tsserver's shared document registry requires a ScriptInfo for virtual modules.
     for (const [file, value] of nextEvidence) if (evidence.get(file) !== value) registerEvidence?.(file, value.text);

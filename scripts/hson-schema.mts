@@ -11,7 +11,7 @@ const packagedRuntime = import.meta.url.endsWith(".mjs") && existsSync(new URL("
 const runtimeBase = packagedRuntime ? "../dist" : "../src";
 const { is_official_hson_package_binding } = await import(`${runtimeBase}/internal/embedded-hson/discover-hson-tagged-templates.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/embedded-hson/discover-hson-tagged-templates.ts");
 const { compile_hson_schema } = await import(`${runtimeBase}/internal/hson-schema/compiler.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/compiler.ts");
-const { schema_association_edits, unwrap_tagged_schema, legacy_import_block_edit } = await import(`${runtimeBase}/internal/hson-schema/source-transformation.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/source-transformation.ts");
+const { schema_association_edits, unwrap_tagged_schema, legacy_import_block_edit, library_schema_attachment_plan } = await import(`${runtimeBase}/internal/hson-schema/source-transformation.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-schema/source-transformation.ts");
 const { projected_value_from_hson_node } = await import(`${runtimeBase}/core/projected-value-graph.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/core/projected-value-graph.ts");
 const { evaluate_canonical_document_schema, evaluate_canonical_projected_schema } = await import(`${runtimeBase}/internal/canonical-schema/evaluate.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/canonical-schema/evaluate.ts");
 const { parse_hson_with_provenance } = await import(`${runtimeBase}/internal/hson-source-provenance/parse-hson-with-provenance.${packagedRuntime ? "js" : "ts"}`) as typeof import("../src/internal/hson-source-provenance/parse-hson-with-provenance.ts");
@@ -67,6 +67,12 @@ async function run_project(watch: boolean): Promise<void> {
     catch (error) { diagnostics.push({ message: error_message(error) }); schemas = []; }
     if (configDiagnostics.length) schemas = [];
     const analysis = analyze_static_hson(program, checker, schemas, diagnostics);
+    const attachmentFacts = schemas.map(schema => Object.freeze({ declaration: schema.declaration, mode: schema_mode(schema) }));
+    const attachments: Overlay[] = [];
+    for (const source of program.getSourceFiles()) {
+      if (source.isDeclarationFile || program.isSourceFileFromExternalLibrary(source)) continue;
+      attachments.push(...library_schema_attachment_plan(source, checker, attachmentFacts).edits.map(edit => ({ file: source.fileName, ...edit })));
+    }
     const valid = new Set(schemas.map(schema => schema.declaration));
     const broad: Overlay[] = [];
     for (const source of program.getSourceFiles()) {
@@ -85,7 +91,7 @@ async function run_project(watch: boolean): Promise<void> {
       return legacy === undefined || d.start === undefined || d.start < legacy.start || d.start >= legacy.end;
     });
     diagnostics.push(...missingImports.map(d => ({ message: format_ts_diagnostic(d) })));
-    return { schemas, overlays: [...analysis.overlays, ...broad], diagnostics: diagnostics.map(d => `${d.file ?? ""}${d.file === undefined ? "" : ": "}${d.message}`) };
+    return { schemas, overlays: [...analysis.overlays, ...broad, ...attachments], diagnostics: diagnostics.map(d => `${d.file ?? ""}${d.file === undefined ? "" : ": "}${d.message}`) };
   }, event => {
     if (event.state === "current") { published = true; issues = event.diagnostics ?? []; }
     if (event.state !== "prepared") console.log(JSON.stringify({ hsonSchema: watch ? "watch" : "generate", ...event }));

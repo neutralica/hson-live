@@ -19,6 +19,7 @@ import type {
   LiveMapLibraryInput,
   LiveMapLibraryOperation,
   LiveMapLibraryAddOperation,
+  LiveMapLibrarySchemaUseOperation,
   LiveMapLibraryPathHandle,
   LiveMapDataOp,
   LiveMapLibraryFeedEvent,
@@ -147,6 +148,24 @@ function topology_definitions(operation: LiveMapLibraryAddOperation): LiveMapDef
 
 function is_library_add_operation(operation: LiveMapCommit["operations"][number]): operation is LiveMapLibraryAddOperation {
   return "kind" in operation.operation && operation.operation.kind === "library-add";
+}
+
+function is_library_schema_use_operation(
+  operation: LiveMapCommit["operations"][number],
+): operation is LiveMapLibrarySchemaUseOperation {
+  if (typeof operation !== "object" || operation === null
+    || Reflect.ownKeys(operation).length !== 2 || !Object.hasOwn(operation, "library")
+    || !Object.hasOwn(operation, "operation") || typeof operation.library !== "string"
+    || typeof operation.operation !== "object" || operation.operation === null
+    || Reflect.ownKeys(operation.operation).length !== 3
+    || !Object.hasOwn(operation.operation, "kind")
+    || !Object.hasOwn(operation.operation, "previousSchemaDigest")
+    || !Object.hasOwn(operation.operation, "schema")) return false;
+  const candidate = operation.operation as Readonly<Record<string, unknown>>;
+  return candidate.kind === "library-schema-use"
+    && typeof candidate.previousSchemaDigest === "string"
+    && /^[a-f0-9]{64}$/u.test(candidate.previousSchemaDigest)
+    && typeof candidate.schema === "string";
 }
 
 /** Install a projected Phase 1b operation in the existing composed client map. @internal */
@@ -289,6 +308,10 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
     rev: commit.rev,
     operations: Object.freeze([
       ...(commit.topology === undefined ? [] : [commit.topology]),
+      ...(commit.schemaUse === undefined ? [] : (() => {
+        const library = namesByIdentity.get(commit.schemaUse.library);
+        return library === undefined ? [] : [Object.freeze({ library, operation: commit.schemaUse.operation })];
+      })()),
       ...(commit.css === undefined ? [] : (() => {
         const library = namesByIdentity.get(commit.css.library);
         return library === undefined ? [] : [Object.freeze({ library, operation: commit.css.operation })];
@@ -352,7 +375,7 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
     replay: (commit: LiveMapCommit): LiveMapCommit => {
       if (commit.kind !== "map" || !commit.changed || commit.prevRev !== aggregate.inspect().revision
         || commit.rev !== commit.prevRev + 1 || commit.operations.length !== 1) {
-        throw new Error("LiveMap topology replay requires the next canonical library-add commit.");
+        throw new Error("LiveMap replay requires the next canonical supported commit.");
       }
       const operation = commit.operations[0];
       if (operation !== undefined && "domain" in operation.operation && operation.operation.domain === "css") {
@@ -365,8 +388,23 @@ export function make_livemap_libraries<const TLibraries extends LiveMapDefinitio
         }
         return public_commit(aggregate.commitStylesheet(binding.identity, normalized));
       }
+      if (operation !== undefined && is_library_schema_use_operation(operation)) {
+        const binding = named.get(operation.library);
+        if (binding === undefined) throw new Error("LiveMap Schema replay requires an existing Library.");
+        const schema = HsonSchemaHandle.fromHson(operation.operation.schema);
+        if (schema.toHson() !== operation.operation.schema) {
+          throw new Error("LiveMap Schema replay requires canonical Schema text.");
+        }
+        const replayed = public_commit(aggregate.useLibrarySchema(
+          binding.identity,
+          schema,
+          operation.operation.previousSchemaDigest,
+        ));
+        if (!replayed.changed) throw new Error("LiveMap Schema replay requires a semantic tightening transition.");
+        return replayed;
+      }
       if (operation === undefined || !is_library_add_operation(operation) || operation.operation.libraries.length === 0) {
-        throw new Error("LiveMap topology replay requires a library-add operation.");
+        throw new Error("LiveMap replay requires a supported topology operation.");
       }
       return addLibraries(topology_definitions(operation));
     },
@@ -730,7 +768,10 @@ function make_data_library(
     root: () => clone_node(aggregate.root(library.identity)),
     snap: library_snap,
     at: library_at as LiveMapDataLibrary["at"],
-    schema: Object.freeze({ get: () => library.input.schema }),
+    schema: Object.freeze({
+      get: () => aggregate.librarySchema(library.identity) as HsonSchemaHandle<unknown, "data">,
+      use: (schema: HsonSchemaHandle) => public_commit(aggregate.useLibrarySchema(library.identity, schema)),
+    }),
   };
   Object.defineProperty(facade, "css", {
     get: () => { throw new Error(`LiveMap Library ${JSON.stringify(library.name)} is a data Library; document CSS is unavailable.`); },
@@ -859,7 +900,7 @@ function make_document_library(
     overlay: () => aggregate.documentOverlay(library.identity),
     commits: document_commits,
     identityEpoch: aggregate.identityEpoch(),
-    getDocumentSchema: () => library.input.schema,
+    getDocumentSchema: () => aggregate.librarySchema(library.identity),
     useDocumentSchema: () => {
       throw new Error("Named LiveMap document Library schema is fixed at construction.");
     },
@@ -1044,7 +1085,10 @@ function make_document_library(
     capture,
     document: documentApi,
     commits: document_commits,
-    schema: Object.freeze({ get: () => library.input.schema }),
+    schema: Object.freeze({
+      get: () => aggregate.librarySchema(library.identity) as HsonSchemaHandle<unknown, "document">,
+      use: (schema: HsonSchemaHandle) => public_commit(aggregate.useLibrarySchema(library.identity, schema)),
+    }),
   };
   register_livemap_document_identity_overlay(facade, controller.overlay);
   register_livemap_identity_epoch_owner(facade, controller.identityEpoch);

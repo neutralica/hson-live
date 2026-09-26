@@ -213,6 +213,7 @@ export function audit_editor_parity(
         const authoritative = diagnostic_keys([
           ...authoritativeProgram.getSyntacticDiagnostics(authoritativeSource),
           ...authoritativeProgram.getSemanticDiagnostics(authoritativeSource),
+          ...authoritativeProgram.getDeclarationDiagnostics(authoritativeSource),
         ]);
         const languageService = editorProject.getLanguageService(true);
         const editor = diagnostic_keys([

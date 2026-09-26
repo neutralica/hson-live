@@ -20,8 +20,8 @@ const directory = mkdtempSync(join(root, "tmp/schema-editor-tsserver-"));
 const extension = join(root, "editors/vscode-hson");
 const manifest = JSON.parse(readFileSync(join(extension, "package.json"), "utf8"));
 const plugin = manifest.contributes.typescriptServerPlugins[0].name;
-const schema = 'import { Hson, type SchemaType } from "hson-live";\nconst before: number = "before";\nexport const Thing = Hson.schema`<type "data" content <name "string">>`;\nconst between: number = "between";\nexport const Slide = Hson.schema`<type "document">`;\nexport const Twin = Hson.schema`<type "document">`;\nconst after: number = "after";\ndeclare const local: SchemaType<typeof Thing>;\nlocal.na';
-const consumer = 'import { type SchemaType, type HsonData, type HsonDocument } from "hson-live";\nimport { Thing, Slide, Twin } from "./schema.js";\nimport { imported } from "./second.js";\ndeclare const value: SchemaType<typeof Thing>;\nconst wrong: number = value.name;\ndeclare const doc: HsonDocument<typeof Slide>;\nconst wrongIdentity: HsonDocument<typeof Twin> = doc;\nconst sameIdentity: HsonDocument<typeof Slide> = imported;\ntype WrongMode = HsonData<typeof Slide>;\n';
+const schema = 'import { Hson, type SchemaType } from "hson-live";\nconst before: number = "before";\nexport const Thing = Hson.schema`<type "data" content <name "string">>`;\nconst between: number = "between";\nexport const Slide = Hson.schema`<type "document">`;\nexport const Twin = Hson.schema`<type "document">`;\nexport const Page = Hson.schema`<type "document" tag "main" content "string">`;\nconst after: number = "after";\ndeclare const local: SchemaType<typeof Thing>;\nlocal.na';
+const consumer = 'import { hsonLiveMap, type SchemaType, type HsonData, type HsonDocument } from "hson-live";\nimport { Thing, Slide, Twin, Page } from "./schema.js";\nimport { imported } from "./second.js";\ndeclare const value: SchemaType<typeof Thing>;\nconst wrong: number = value.name;\ndeclare const doc: HsonDocument<typeof Slide>;\nconst wrongIdentity: HsonDocument<typeof Twin> = doc;\nconst sameIdentity: HsonDocument<typeof Slide> = imported;\ntype WrongMode = HsonData<typeof Slide>;\nconst map = hsonLiveMap.fromLibraries({ home: { document: `<main "hello"/>` } });\nmap.lib("home").schema.use(Page);\nconst exactPage: typeof Page = map.lib("home").schema.get();\nconst pageText: string = map.lib("home").at([0]).snap();\n';
 const file = name => join(directory, name);
 writeFileSync(file("package.json"), '{"type":"module"}');
 writeFileSync(file("schema.ts"), schema);
@@ -61,6 +61,11 @@ let live = schema;
 async function edit(text) {
   await request("updateOpen", { changedFiles: [{ fileName: file("schema.ts"), textChanges: [{ start: { line: 1, offset: 1 }, end: location(live, live.length), newText: text }] }] });
   live = text;
+}
+let liveConsumer = consumer;
+async function editConsumer(text) {
+  await request("updateOpen", { changedFiles: [{ fileName: file("consumer.ts"), textChanges: [{ start: { line: 1, offset: 1 }, end: location(liveConsumer, liveConsumer.length), newText: text }] }] });
+  liveConsumer = text;
 }
 const diagnostics = name => request("semanticDiagnosticsSync", { file: file(name) });
 try {
@@ -102,6 +107,14 @@ try {
     await edit(shifted);
     const definitions = await request("definition", { file: file("consumer.ts"), ...location(consumer, consumer.indexOf("typeof Slide") + 7) });
     assert.deepEqual(definitions[0].start, location(shifted, shifted.indexOf("Slide =")));
+  });
+  await check("unsaved Schema attachment refines immediately and removal withdraws the proof", async () => {
+    const withoutAttachment = consumer.replace('map.lib("home").schema.use(Page);\n', "");
+    await editConsumer(withoutAttachment);
+    const broad = await diagnostics("consumer.ts");
+    assert.ok(broad.some(error => JSON.stringify(error.start) === JSON.stringify(location(withoutAttachment, withoutAttachment.indexOf("exactPage:")))), JSON.stringify(broad));
+    await editConsumer(consumer);
+    assert.equal((await diagnostics("consumer.ts")).length, 3);
   });
   await check("real tsserver never writes authored source or generated evidence to disk", async () => {
     for (const [name, original] of originals) assert.deepEqual(readFileSync(file(name)), original);

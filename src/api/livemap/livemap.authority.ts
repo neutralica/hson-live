@@ -151,7 +151,7 @@ export function make_livemap_transition_controller(
 
   function acceptAuthority(
     transition: PreparedLiveMapAuthorityTransition,
-    policy: LiveMapTransitionNotificationPolicy = "propagate",
+    policy: LiveMapTransitionNotificationPolicy = "isolate",
     afterInstall?: () => void,
   ): LiveMapAuthorityTransitionAcceptance {
     const record = authority_record_for(transition);

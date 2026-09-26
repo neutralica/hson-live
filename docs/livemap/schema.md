@@ -12,9 +12,17 @@ const same = UserSchema.certify(user);
 
 The Schema object's `certify` method validates one canonical candidate in its
 own mode and returns a Schema-proven primitive string. LiveMap's distinct
-operation is library admission with a governing Schema: `hsonLiveMap.fromLibraries({ state: { data, schema: UserSchema } })` or `map.addLibraries({ state: { data, schema: UserSchema } })`. Omitting `schema` selects `ANY_DATA` or `ANY_DOCUMENT` from the entry's explicit kind. A context-neutral
+operation is establishing a governing library contract: either at admission with `hsonLiveMap.fromLibraries({ state: { data, schema: UserSchema } })` / `map.addLibraries({ state: { data, schema: UserSchema } })`, or afterward on an unmanaged local map with `map.lib("state").schema.use(UserSchema)`. Omitting `schema` selects `ANY_DATA` or `ANY_DOCUMENT` from the entry's explicit kind. A context-neutral
 `Hson.canonical` string such as `"text"` can be admitted according to the
 Schema's mode; a known wrong-mode candidate rejects.
+
+Post-hoc `schema.use` is tightening-only. A family-top contract may acquire one
+same-family specific Schema after the complete current root validates. The
+attachment is one ordinary revisioned map commit; canonical equality is an
+unchanged no-op, while a wrong family or a different fixed Schema rejects
+atomically. Capture and local replay retain the tightened contract, and a
+pre-tightening capture cannot restore over it. Locus-managed authorities and
+projected Echo clients reject direct attachment in this phase.
 
 Mismatches throw the internal `HsonSchemaError` with structured issues; incomplete or
 unrecognized Schemas fail with `INVALID_SCHEMA`, incompatible roots with
@@ -195,5 +203,5 @@ Static source shape alone is insufficient. Two maps can independently govern one
 Static authored source uses `HsonData<typeof Schema>` or
 `HsonDocument<typeof Schema>` annotations and the headless Schema analyzer;
 it does not call `schema.certify`. Dynamic ingress uses
-`schema.certify`. Map-owned state is validated during library admission and before
-mutation commits.
+`schema.certify`. Map-owned state is validated during library admission, before
+post-hoc attachment, and before mutation commits.
