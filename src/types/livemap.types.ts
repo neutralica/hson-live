@@ -585,6 +585,12 @@ type InternalDocumentRootDescriptor<TEvidence> = Readonly<{
 type InternalDocumentSchemaEndpoint = string | HsonNode | undefined;
 type InternalDocumentLegacyEndpoint = HsonNode | Primitive | undefined;
 
+/** An erased tag supplies no evidence about logical root or child structure. */
+type InternalDocumentHasBroadTag<TEvidence> =
+  TEvidence extends Readonly<{ $_tag: infer TTag extends string }>
+    ? string extends TTag ? true : false
+    : false;
+
 type InternalDocumentNormalizeBranches<TResult> = [Exclude<
   TResult,
   InternalDocumentInvalidStaticPath
@@ -602,7 +608,9 @@ type InternalDocumentSequenceCoordinate<
   ? TItems[number] | InternalDocumentMissingCoordinate
   : `${TIndex}` extends keyof TItems
     ? TItems[TIndex & keyof TItems]
-    : InternalDocumentInvalidStaticPath;
+    : number extends TItems["length"]
+      ? TItems[number] | InternalDocumentMissingCoordinate
+      : InternalDocumentInvalidStaticPath;
 
 type InternalDocumentIndexWithinCount<
   TIndex extends number,
@@ -740,7 +748,9 @@ type InternalDocumentResolveContentPath<
 type InternalDocumentResolveRootBranch<
   TEvidence,
   TPath extends readonly number[],
-> = TEvidence extends Readonly<{
+> = InternalDocumentHasBroadTag<TEvidence> extends true
+  ? InternalDocumentBroadSubtree
+  : TEvidence extends Readonly<{
     kind: "document";
     content: infer TContent;
   }>
@@ -763,9 +773,11 @@ type InternalDocumentMaterializedItem<TItem> =
           $_tag: infer TTag extends string;
           $_content: infer TContent extends readonly unknown[];
         }>
-        ? TTag extends "_hson_root" | "_hson_elem"
+        ? InternalDocumentHasBroadTag<TItem> extends true
           ? InternalDocumentBroadSubtree
-          : Readonly<{
+          : TTag extends "_hson_root" | "_hson_elem"
+            ? InternalDocumentBroadSubtree
+            : Readonly<{
               kind: "element";
               attrs: "broad";
               content: InternalDocumentMaterializedContent<TContent>;

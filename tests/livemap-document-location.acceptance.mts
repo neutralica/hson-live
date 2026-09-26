@@ -1,6 +1,6 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import { Hson, hsonLiveMap, type HsonSchema } from "../src/index.ts";
+import { ANY_DOCUMENT, Hson, hsonLiveMap, type HsonDocument, type HsonSchema } from "../src/index.ts";
 import { create_test_event_emitter } from "./test-events.mjs";
 import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
 import { is_Node } from "../src/core/node-guards.ts";
@@ -39,6 +39,35 @@ const DataSchema: HsonSchema = Hson.schema`<type "data" content <items <array "s
 const item = (): HsonNode => ({ $_tag: "item", $_content: [] });
 const tag = (value: unknown): string | undefined => is_Node(value) ? value.$_tag : undefined;
 const tree = (source: string) => hsonLiveMap.fromLibraries({ page: { document: source, schema: TreeSchema } });
+
+check("broad composed documents retain logical, relative, and proxy paths", () => {
+  const shell = (insert: HsonDocument) => Hson.document`
+    <html <head/> <body ${insert} /> />
+  `;
+  const document = shell(Hson.document`<section "slide00"/>`);
+  const map = hsonLiveMap.fromLibraries({
+    home: { document },
+    explicit: { document, schema: ANY_DOCUMENT },
+  });
+  for (const page of [map.lib("home"), map.lib("explicit")]) {
+    assert.equal(tag(page.at([]).snap()), "html");
+    assert.equal(tag(page.at([0]).snap()), "head");
+    assert.equal(tag(page.at([1]).snap()), "body");
+    assert.equal(tag(page.at([1, 0]).snap()), "section");
+    assert.equal(page.at([1, 0, 0]).snap(), "slide00");
+    assert.equal(page.at([1]).at([0]), page.at([1, 0]));
+    assert.equal(page.at([]).at([1, 0]), page.at([1, 0]));
+    assert.equal(page.at([999]).snap(), undefined);
+    assert.equal(page.at([999]).present(), undefined);
+    assert.equal(page.at([999]).at([0]).snap(), undefined);
+    assert.equal(page.proxy().$_, page.at([]));
+    assert.equal(page.proxy([1, 0]).$_, page.at([1, 0]));
+    assert.equal(page.proxy([1]).$_.at([0]), page.at([1, 0]));
+    assert.equal(page.proxy([999]).$_.snap(), undefined);
+    const path: readonly number[] = [1, 0, 0];
+    assert.equal(page.at(path).snap(), "slide00");
+  }
+});
 
 check("one-library document locations read root, child, and nested paths", () => {
   const map = tree("<main <item <item/>/>/>");
